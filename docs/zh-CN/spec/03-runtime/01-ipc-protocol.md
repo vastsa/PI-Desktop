@@ -1389,7 +1389,9 @@ Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `p
 渲染器 IPC 仅保留给 Plan 安全的预览门面和 URL 回退：
 
 - `browser/openExternal({url?})` — 白名单内的 http(s)/mailto，或省略时使用当前访客页 URL
-- 事件：`browser/event/state {url, title, isLoading, canGoBack, canGoForward}`
+- 渲染器打开/关闭插件视图时可携带 `sessionId`、`tabId`。打开前检查插件贡献和作用域；
+  关闭仅释放对应标签的页面，不关闭其他标签共享的工具栏。只提供会话 id 时释放该会话的页面。
+- 事件：`browser/event/state {url, title, isLoading, canGoBack, canGoForward, loadError?, sessionId?, tabId?}`
   （同时以 `browser:state` 推送给插件视图）
 - 代理预览事件：`browser/event/preview {sessionId, path?, url?}`。
   Electron Main 会校验工作区 `path` 位于该会话项目内，在该对话的插件视图可见时

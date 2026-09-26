@@ -599,7 +599,11 @@ export function SettingsPage() {
                     {t("settings.openFeedback")}
                   </Button>
                 </SettingsRow>
-                <UpdatesRow currentVersion={version?.version} />
+                <UpdatesRow
+                  currentVersion={version?.version}
+                  settings={settings ?? null}
+                  saveSettings={saveSettings}
+                />
               </SettingsCard>
 
               {settings && (

@@ -9,6 +9,7 @@ import type { GlobalPermissionMode } from "./permissions.js";
 import type { PluginMarketSource } from "./plugins.js";
 import type { SpeechSettings } from "./speech.js";
 import type { ThinkingLevel } from "./models.js";
+import type { UpdatePreference } from "./platform.js";
 
 export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 
@@ -34,6 +35,10 @@ export type AppSettings = {
   imageGenerationModels?: import("../image-generation.js").ImageGenerationBinding[] | null;
   defaultProviderId?: string;
   defaultModelId?: string;
+  /** Per-install update behavior; absent uses the package's safe default. */
+  updatePreference?: UpdatePreference;
+  /** Last manually announced release; kept local to avoid repeating notices. */
+  lastNotifiedUpdateVersion?: string;
   /** Host speech bindings. Absent means voice actions stay disabled. */
   speech?: SpeechSettings;
   defaultMode: Mode;

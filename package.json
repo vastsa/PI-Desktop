@@ -30,6 +30,7 @@
     "test:e2e:theme-surfaces": "node scripts/e2e-theme-surfaces.mjs",
     "test:e2e:composer-occlusion": "node scripts/e2e-theme-surfaces.mjs --dock-mask-only",
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",
+    "test:e2e:composer-model-selection": "node scripts/e2e-composer-model-selection.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
     "test:e2e:copy-tex": "node scripts/e2e-copy-tex.mjs",

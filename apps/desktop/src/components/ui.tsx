@@ -364,7 +364,6 @@ export function Tooltip({
   label,
   children,
   className,
-  ariaLabel,
   disabled = false,
   delayMs = 300,
   hideDelayMs = 100,

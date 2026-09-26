@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-09-21.2
+Policy-Sync: 2026-09-26.1
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -319,6 +319,7 @@ Do not push, open a PR, or merge unless the user explicitly asks.
 **Issue:** fetch, read body/comments/labels, verify against code. Bugs: reproduce or give concrete evidence; classify as confirmed regression / existing defect / already fixed / expected behavior / environment-specific / insufficient evidence. Do not implement first and investigate later.
 
 **PR:** fetch first. Do not land on direction alone — the change must fix the reported root cause with the smallest coherent change (not a leftover workaround, docs-only restatement, or extra files instead of a fix). Preserve authorship when that bar is met; do not force-push or rewrite for nits. Request changes and do not merge when the root cause remains. Landing blockers include build/typecheck/test/E2E failure, merge conflict, data corruption risk, security violation, secret leakage, sandbox bypass, incompatible protocol change, an incomplete fix, and an oversized diff without a stated reason.
+**Temporary PR type scope:** outside contributions are limited to `perf` and `fix` pull requests. A `feat`, `refactor`, `docs`, `test`, `chore`, `build`, or `ci` PR from a contributor without write access is closed without merging and is not reimplemented as a replacement. Maintainers — accounts with write access, plus the branches and automated agent work they direct — keep every change type. Recorded as R6.1 in `docs/spec/06-delivery/03-ai-development-workflow.md`; lifted by removing both.
 
 Security reports are private via `SECURITY.md` — never open a public issue for vulnerabilities or credential exposure.
 

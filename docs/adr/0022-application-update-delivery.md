@@ -1,9 +1,9 @@
 # ADR 0022: Application Update Delivery
 
-- Status: Accepted (amended by D364 / D603 / ADR 0197, D450 / ADR 0289)
+- Status: Accepted (amended by D364 / D603 / D628 / ADR 0197, D450 / ADR 0289; issue #1098)
 - Date: 2026-07-26
 - Deciders: PI-Desktop core
-- Related: D120, D126, D364, D603, D010, D450, ADR 0021, ADR 0197, ADR 0289
+- Related: D120, D126, D364, D603, D628, D010, D450, ADR 0021, ADR 0197, ADR 0289
 
 ## Context
 
@@ -89,3 +89,35 @@ builds NSIS and ZIP separately and stamps the ZIP app metadata with
 even though ordinary ZIP launches do not set `PORTABLE_EXECUTABLE_FILE`. Users
 extract the archive and run `PI-Desktop.exe`; the NSIS lane and existing data
 directory remain unchanged.
+
+## Amendment (issue #1098)
+
+For Windows NSIS installs, `PI_DESKTOP_UPDATE_CACHE_DIR` may set an absolute,
+writable base for electron-updater's download cache. Main reads the cache's
+subdirectory name from the packaged `app-update.yml`, adopts the installer and
+block-map differential baselines plus any staged update from `%LOCALAPPDATA%`
+on startup, then removes the legacy cache directory only when empty. Unknown
+files and already-populated destinations are preserved rather than overwritten
+or recursively deleted. Once the feed confirms the running version is current,
+Main deletes only the obsolete `pending/` staging directory and keeps the
+baselines for the next differential update. The default
+cache location remains unchanged unless the variable is set. Main does not write
+to the installation directory: the NSIS script still writes its `installer.exe`
+baseline to `%LOCALAPPDATA%`, which Main adopts on the next launch.
+
+
+## Amendment (D628)
+
+Settings → Info exposes a persisted per-install `updatePreference` with
+`automatic` and `manual` values. Automatic preserves the existing in-app
+installer lane. Manual continues stable-release checks but disables automatic
+download and install-on-quit, and raises one reminder per discovered version.
+The last reminded version is stored in the existing Host-owned app settings
+JSON and is intentionally omitted from portable configuration sync.
+
+Installed Windows NSIS, packaged macOS, and Linux AppImage default to Automatic.
+Windows ZIP/portable packages default to Manual; opting into Automatic is
+available on supported Windows packages only after the UI warns that NSIS may
+replace the extracted no-install copy. Unsupported installer formats remain
+Manual. This additive setting requires no database schema or host protocol
+version change.

@@ -270,4 +270,8 @@ Skills use a separate, simpler path. The catalog (id, name, description) is part
 of the base system prompt, the `Skill` schema is itself deferred behind
 `ToolSearch`, and its body is fetched by a local `Skill` tool that Electron main
 serves directly — the sidecar never holds skill text, and a skill document
-reaches the model only when it asks for it (D174/D185).
+reaches the model only when it asks for it (D174/D185). The loaded result
+includes the absolute `SKILL.md` location and a sentence naming its parent
+directory, so relative references such as `references/foo.md` and `SECRET.md`
+resolve against the document that was actually loaded. The catalog remains
+unchanged and carries no path metadata.

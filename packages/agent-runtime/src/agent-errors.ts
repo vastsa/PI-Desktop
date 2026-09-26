@@ -8,7 +8,7 @@
  * "error") and the rejected-promise paths.
  */
 
-import { isCertificateVerificationError } from "@pi-desktop/shared";
+import { ErrorCodes, isCertificateVerificationError } from "@pi-desktop/shared";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 
 export type ClassifiedAgentError = {
@@ -93,6 +93,9 @@ function hasNetworkCause(err: unknown, message: string): boolean {
 function extractErrorCode(err: unknown): string | number | undefined {
   let current: any = err;
   for (let depth = 0; depth < 4 && current; depth += 1) {
+    if (typeof current.errorCode === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(current.errorCode)) {
+      return current.errorCode;
+    }
     if (typeof current.code === "number") {
       return Number.isSafeInteger(current.code) ? current.code : undefined;
     }
@@ -446,6 +449,19 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
       !certificateFailure,
       networkDetailFields(network),
     );
+  }
+
+  if (
+    providerCode === ErrorCodes.HOST_OVERLOADED ||
+    /host RPC capacity is exhausted|HOST_OVERLOADED/i.test(rawMessage)
+  ) {
+    return result(ErrorCodes.HOST_OVERLOADED, true, { origin: "host" });
+  }
+  if (
+    providerCode === ErrorCodes.HOST_UNAVAILABLE ||
+    /host RPC unavailable|host-core is unavailable|host RPC timeout/i.test(rawMessage)
+  ) {
+    return result(ErrorCodes.HOST_UNAVAILABLE, true, { origin: "host" });
   }
 
   // The adapter itself refuses how the request was built, so re-sending it

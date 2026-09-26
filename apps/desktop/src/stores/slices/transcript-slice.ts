@@ -1,6 +1,5 @@
 import i18n from "i18next";
 import type {
-  ReviewRollbackResult,
   UiMessage,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";

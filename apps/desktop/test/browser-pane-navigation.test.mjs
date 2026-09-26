@@ -49,7 +49,9 @@ function harness(t) {
 }
 
 test("timing out a new preview does not return the previous document as ready", async (t) => {
-  const { request } = harness(t);
+  const { request, wc } = harness(t);
+  wc.pendingLoads[0].resolve(); // An old document finishing cannot satisfy this load.
+  await settled();
   t.mock.timers.tick(100);
   assert.equal(await request, null);
 });
@@ -58,7 +60,11 @@ test("a rejected navigation does not return the previous document as ready", asy
   const { pane, wc, request } = harness(t);
   t.mock.timers.tick(100);
   await request;
-  wc.loadURL = async () => { throw new Error("fixture load failure"); };
+  wc.loadURL = async (url) => {
+    wc.emit("did-start-navigation", {}, url, false, true);
+    wc.emit("did-navigate", {}, wc.url); // Late commit of the preceding document.
+    throw new Error("fixture load failure");
+  };
   assert.equal(await pane.navigateAndWait("https://fixture.invalid/failed"), null);
 });
 
@@ -66,7 +72,11 @@ test("a completed navigation returns its actual page, including redirects", asyn
   const { pane, wc, request } = harness(t);
   t.mock.timers.tick(100);
   await request;
-  wc.loadURL = async () => { wc.url = "https://fixture.invalid/redirected"; };
+  wc.loadURL = async (url) => {
+    wc.emit("did-start-navigation", {}, url, false, true);
+    wc.url = "https://fixture.invalid/redirected";
+    wc.emit("did-redirect-navigation", {}, wc.url, false, true);
+  };
   const state = await pane.navigateAndWait("https://fixture.invalid/new");
   assert.equal(state.url, "https://fixture.invalid/redirected");
 });
@@ -92,6 +102,8 @@ test("late native navigation events cannot publish after the session is invalida
   wc.url = "https://fixture.invalid/second";
   wc.pendingLoads.shift().resolve();
   await second;
+  assert.equal(published.at(-1).url, "https://fixture.invalid/second");
+  published.length = 0;
 
   wc.emit("did-navigate", {}, "https://fixture.invalid/first");
   wc.emit("did-fail-load", {}, -3, "aborted", "https://fixture.invalid/first", true);
@@ -111,6 +123,8 @@ async function loadedPage() {
   wc.url = "https://fixture.invalid/page";
   wc.pendingLoads.shift().resolve();
   await request;
+  assert.equal(published[0].isLoading, true);
+  published.length = 0;
   return { pane, wc, published };
 }
 

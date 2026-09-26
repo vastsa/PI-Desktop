@@ -183,7 +183,11 @@ test("draft Composer thinking follows the exact model selected in its menu", () 
   );
   assert.match(
     composerSource,
-    /const nextThinkingLevel = activeSession[\s\S]*?thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)[\s\S]*?initialThinkingLevelForBinding\(/,
+    /const selectedSameModel =\s*activeSessionId &&\s*candidate\.id === provider\?\.id &&\s*sameComposerModelId\(modelId \?\? "", nextModelId\);/,
+  );
+  assert.match(
+    composerSource,
+    /const nextThinkingLevel = selectedSameModel\s*\?\s*thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)\s*:\s*initialThinkingLevelForBinding\(/,
   );
   assert.match(composerSource, /const selectedBinding = provider\?\.models\.find/);
   assert.match(composerSource, /const draftThinkingLevel = initialThinkingLevelForBinding\(/);

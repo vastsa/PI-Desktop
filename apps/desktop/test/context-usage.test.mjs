@@ -87,6 +87,7 @@ test("context window prefers the selected model catalog over provider fallback",
         {
           id: "gpt-5.6-luna",
           contextWindow: 128_000,
+          contextWindowSource: "catalog",
           maxTokens: 8_192,
           thinkingLevels: [],
         },

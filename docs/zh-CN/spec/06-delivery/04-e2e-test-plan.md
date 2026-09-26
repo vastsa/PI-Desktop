@@ -276,6 +276,14 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M2
 - **状态**：自动（协议烟雾：提供商创建+秘密，无明文回显）
 
+#### E2E-PROVIDER-keep-explicit-model-overrides：目录刷新不覆盖用户限额与能力选择
+
+- **前提条件**：已配置一个目录发布上下文窗口、最大输出 token 和图片输入能力的模型。
+- **步骤**：编辑该模型，将最大输出 token 设为通用种子值 8,192；将图片输入开关先关再开，使显式选择与当前目录值相同；保存并重开设置。再用更新后的目录记录刷新该模型。
+- **预期**：最大输出 token 仍是 8,192，且来源标记为 `user`，即使上下文窗口来源为 `catalog`；图片输入仍保持用户显式选择。目录修正只更新来源标记为 `catalog` 的限额，不会把用户显式设置重新解释为跟随目录。
+- **关联规格**：`03-runtime/11-provider-model-system.md`、`03-runtime/12-provider-config-schema.md`、`03-runtime/13-model-catalog-and-selection.md`
+- **状态**：由 shared/runtime 与 host-core 回归测试覆盖；真实桌面 UI 验收待执行
+
 #### E2E-PROVIDER-defaults-survive-an-added-provider：新增提供商不改写应用默认值
 
 - **前提条件**：应用运行；提供商 A 已保存并设为应用默认模型；另有提供商 B 提供不同的模型；A 上配置了一个图片模型，另一家服务上也配置了一个。
@@ -2320,11 +2328,25 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   也不能显示它。只有最新导航可以显示 guest，旧 B 查询迟到不能覆盖 C。切回 A 恢复 A，
   空会话保持空白。迟到完成不能撤销关闭或销毁。同会话正常导航保留当前页面。
   非法目标、失败或超时不能把上一个文档报告为目标会话已经就绪。切换导航超过既有
-  15 秒等待上限后保持隐藏，需重试，不承诺迟到完成自动显示。
+  15 秒主框架等待上限后保持隐藏并显示错误，需重试。慢图片或子框架不阻塞已提交页面的显示；
+  页面尚未加载完成就导航时，旧请求的 ERR_ABORTED 不得阻止新地址、标题和加载状态更新。
 - **关联规范**：`04-ux/08-component-spec.md` §5.3；ADR 0028、ADR 0170。
 - **状态**：`browser-host-session.test.mjs` 与 `browser-pane-navigation.test.mjs`
   覆盖生产 BrowserHost/BrowserPane 服务路径，控制原生浏览器与 Host 边界，采用确定性
   时钟。尚不覆盖原生 Electron 合成显示或报告者的真实会话。
+
+#### E2E-BROWSER-responsive-resource-tabs
+
+- **前提**：浏览器已启用；隔离配置；本地页面包含延迟 17 秒的图片、延迟主响应及普通/新窗口链接。
+- **步骤**：输入慢图片页面地址，检查加载反馈及图片完成前的显示；打开两个聊天链接和网页新窗口链接，
+  切换标签，在其中一个标签内导航后再切走、切回；检查慢主响应、停止、失败、重试及外部打开设置。
+- **预期**：主框架导航提交后显示页面；新链接保留原标签，各标签保留表单、滚动位置、JS 状态和独立历史，切换不重新请求页面；
+  普通导航只更新原标签。失败/停止后地址栏仍可用；外部模式不新建工作面板标签。
+  会话切换、非法协议的隔离和可见性规则继续生效。
+- **补充路径**：通过 ToolSearch/BrowserPreview 预览文件，原标签的未提交表单和地址不被改写；
+  后台导航恢复到对应会话的标签，旧加载完成不能覆盖新意图；新空白标签地址和状态为空；
+  关闭后台标签销毁对应 WebContents，不影响其他标签，删除会话或销毁插件/窗口释放所属页面。
+- **状态**：隔离 Electron 定向验证；不新增仓库测试套件。
 
 #### E2E-BROWSER-in-page-navigation：浏览器工具栏跟随同文档导航
 
@@ -5415,7 +5437,7 @@ eleven-tool-round desktop paths are verified by
 | G——插件 | E2E-022、E2E-022A、E2E-022B、E2E-022C、E2E-023、E2E-024、E2E-024B、E2E-024C、E2E-024D、E2E-024AA、E2E-024E、E2E-024W、E2E-024F、E2E-024G、E2E-024H、 E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M、E2E-024N、E2E-024O、E2E-024P、E2E-025、E2E-026、E2E-105、E2E-117、E2E-120、E2E-122、E2E-123、E2E-148、E2E-153、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-imported-pi-package-wrapper、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 | H——诊断 | E2E-027、E2E-031、E2E-034、E2E-042、E2E-096、E2E-098、E2E-104、E2E-107、E2E-108、E2E-109、E2E-110、E2E-113、E2E-115、E2E-116、 E2E-118、E2E-121、E2E-146、E2E-194、E2E-195 |
 | 安全性 | E2E-028、E2E-029、E2E-030、E2E-024J、E2E-024K、E2E-024M、E2E-049、E2E-068、E2E-086、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、 E2E-110、E2E-112、E2E-113、E2E-115、E2E-116、E2E-117、E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-151、E2E-153 |
-| 品质 | E2E-CHAT-running-status-survives-output-pauses、E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-250、E2E-PLUGIN-imported-pi-package-skills、E2E-SUBAGENT-resume-a-settled-delegation |
+| 品质 | E2E-CHAT-running-status-survives-output-pauses、E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-UPDATE-preference-and-once-only-reminder、E2E-250、E2E-PLUGIN-imported-pi-package-skills、E2E-SUBAGENT-resume-a-settled-delegation |
 | 品质（项目排序） | E2E-253 |
 | C — 对话和直播（输入法斜杠别名） | E2E-255 |
 | E——工具和权限（Skill 常驻） | E2E-254 |
@@ -5435,6 +5457,7 @@ eleven-tool-round desktop paths are verified by
 | 品质（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | C — 对话与流式（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | 品质（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
+| 品质（Windows 更新缓存） | E2E-260 |
 | 安全性（导入扩展依赖） | E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
 | 品质（导入扩展依赖） | E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
 | F / G / 安全性 / 品质 — 导入扩展的 npm 恢复 | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -5466,10 +5489,11 @@ eleven-tool-round desktop paths are verified by
 | M2（输入法斜杠别名） | E2E-255 |
 | M5（Skill 常驻） | E2E-254 |
 | M6 | E2E-104、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、E2E-117、 E2E-118、E2E-119、E2E-120、E2E-103 |
-| M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-166、E2E-SUBAGENT-resume-a-settled-delegation |
+| M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-UPDATE-preference-and-once-only-reminder、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-166、E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+（已选模型顺序） | E2E-MODEL-selected-order-persists |
 | M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
+| M6+（Windows 更新缓存） | E2E-260 |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
@@ -7275,11 +7299,13 @@ eleven-tool-round desktop paths are verified by
   有干净用户配置；账户是无需管理员提升的标准用户。
 - **步骤**：1) 检查发布目录和 `latest.yml`。2) 将便携版 ZIP 解压到用户可写目录，
   不运行 NSIS 安装程序。3) 启动解压后的 `PI-Desktop.exe`。4) 确认没有管理员提示，
-  且运行中的应用显示 PI-Desktop 图标和任务栏入口。5) 调用检查更新。6) 确认设置 → 信息
-  提供发布页而不是“重启以更新”。7) 退出并再次启动解压后的可执行文件。
+  且运行中的应用显示 PI-Desktop 图标和任务栏入口。5) 打开设置 → 关于，确认默认选择
+  手动；短暂选择自动并查看替换警告，再恢复手动。6) 调用检查更新。7) 确认设置 → 关于
+  提供发布页而不是“重启以更新”。8) 退出并再次启动解压后的可执行文件。
 - **预期**：两个 Windows 工件都无空格并已上传。`latest.yml` 只指向 NSIS 安装程序。
   ZIP 解压后的应用无需安装向导或管理员提示即可启动，保持正常的 PI-Desktop 任务栏
-  标识和图标，使用现有应用数据目录，并报告更新模式 `manual`。可用更新不会下载或运行
+  标识和图标，使用现有应用数据目录，并默认选择更新偏好 `manual`、报告有效更新模式
+  `manual`。可用更新不会下载或运行
   `PI-Desktop-Setup-<version>.exe`。再次启动从同一配置恢复会话。
 - **链接规格**：`01-product/01-product-scope.md`、
   `06-delivery/06-release-runbook.md`、`03-runtime/07-process-model.md`、
@@ -7288,6 +7314,26 @@ eleven-tool-round desktop paths are verified by
 - **里程碑**：M6+
 - **状态**：单元/源合同已覆盖（`auto-update.test.mjs`）；本机 Windows 启动仍为
   运行器验证（除非明确要求，否则不要在本地跑 E2E）
+
+#### E2E-UPDATE-preference-and-once-only-reminder：更新偏好与单次提醒
+
+- **前提条件**：有隔离的打包应用配置（支持自动安装的 Windows NSIS 安装版和
+  Windows 便携 ZIP），并可在不运行生产安装程序的情况下让更新发现路径在多次检查中
+  返回同一个稳定版。
+- **步骤**：1) 在已安装包中打开设置 → 关于，确认默认选择自动。2) 选择手动，关闭并重新
+  打开设置，再重启应用，确认手动偏好仍保留。3) 让检查发现一个稳定版；确认没有自动下载
+  或安装，只显示一次提醒。关闭提醒、离开再返回，重复检查后重启并再次检查。4) 确认同一
+  版本不会再次提醒，但设置行仍显示版本并可打开发布页。5) 选择自动，确认受支持平台恢复
+  现有应用内下载/安装行为。6) 启动便携 ZIP，确认默认手动；明确选择自动前先查看风险警告。
+- **预期**：偏好按安装实例持久化。手动模式只检查，并保存最近提醒版本，避免重复检查和
+  重启后重复提示；关于页中的状态与发布页入口始终可用。自动模式在支持的平台维持现有行为。
+  ZIP/便携包默认手动，只有经过带警告的明确选择才可改为自动。
+- **链接规格**：`03-runtime/07-process-model.md`、`04-ux/09-interaction-patterns.md`、
+  ADR 0022 / D628
+- **验收**：质量（设置交互与更新安全）
+- **里程碑**：M6+
+- **状态**：`pnpm test:e2e:settings-scroll` 覆盖设置选择与持久化；
+  `update-preference.test.mjs` 覆盖模式/提醒策略。打包 Windows 安装器旅程仍需运行器验证。
 
 #### E2E-201：为已配置模型设置别名并复制模型 id
 
@@ -9010,3 +9056,13 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **里程碑：** 提供商配置维护。
 - **状态：** `pnpm test:e2e:provider-api-style`、`official-native-search.test.ts`；
   共享路由测试覆盖伪装域名、不安全地址和未知中转站。未验证线上服务或 Host/SQLite 保存。
+
+#### E2E-260：Windows 更新缓存可安全迁移和回收
+
+- **前提：** 已打包的 Windows x64 NSIS 安装、隔离用户配置，以及非系统卷上的可写缓存目录。使用本地更新源 fixture；不得访问 GitHub 或付费服务。
+- **步骤：** 1）在旧 `%LOCALAPPDATA%` 更新缓存中准备 `installer.exe`、`current.blockmap` 和待安装更新。2）设置 `PI_DESKTOP_UPDATE_CACHE_DIR` 为隔离缓存根目录后启动。3）确认 Main 将差分基线和待安装更新迁移至配置目录，并清理旧目录。4）完成更新并启动新版本。5）fixture 报告没有更新后检查配置目录。
+- **预期：** 缓存子目录名以 `app-update.yml` 为准；迁移保留待安装更新及差分基线。确认当前版本已是最新版本后，只移除 `pending/`，`installer.exe` 和 `current.blockmap` 仍供下次增量更新使用。未设置覆盖变量时默认路径保持不变；应用不会将下载写入 `Program Files`。
+- **规格：** `03-runtime/07-process-model.md`、ADR 0022。
+- **验收：** 缓存路径、迁移和清理单测通过；Windows task-candidate 验证应覆盖更新源传输、安装器交接和文件系统行为，且不连接真实发布源。
+- **里程碑：** M6+
+- **状态：** 单测和源码契约覆盖（`update-cache.test.mjs`、`auto-update.test.mjs`）；仍需 Windows 安装器/E2E 验证。

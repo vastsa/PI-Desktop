@@ -339,16 +339,18 @@ describe("RuntimeService prompt lifecycle", () => {
     });
   });
 
-  it("settles every running turn as aborted when the sidecar dies", async () => {
+  it("settles every running turn as aborted with the honest crash code when the sidecar dies", async () => {
     const { host, sidecar, service, ended } = build();
     await service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });
     sidecar.exit?.({ intentional: false, code: 1, signal: null });
     await settle();
     expect(host.calls.find((call) => call.method === "session.endTurn")?.params).toMatchObject({
       status: "aborted",
+      errorCode: "AGENT_SIDECAR_CRASHED",
       recoverInflight: true,
     });
     expect(ended[0]?.reason).toBe("aborted");
+    expect(ended[0]?.errorCode).toBe("AGENT_SIDECAR_CRASHED");
     expect(service.isBusy("s1")).toBe(false);
   });
 

@@ -596,6 +596,7 @@ export function useAppShellRuntime() {
     });
     // Agent-driven HTML preview: surface the browser tab when the agent
     // opens a workspace file in the embedded browser (BrowserPreview tool).
+    const offBrowserState = api.onBrowserState((event) => useAppStore.getState().updateBrowserWorkPanelTab(event));
     const offBrowserPreview = api.onBrowserPreview((event) => {
       useAppStore
         .getState()
@@ -797,6 +798,7 @@ export function useAppShellRuntime() {
       offToast();
       offInsecureEndpoint();
       offBrowserPreview();
+      offBrowserState();
       offHostStatus();
       offNotificationChanged();
       offSessionsChanged();

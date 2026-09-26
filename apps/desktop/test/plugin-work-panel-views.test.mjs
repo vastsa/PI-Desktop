@@ -257,7 +257,7 @@ test("the view list is filtered by permission, scope, and entry existence", () =
     /isBrowserView = pluginId === BROWSER_PLUGIN_ID && viewId === BROWSER_VIEW_ID/,
   );
   assert.match(openBody, /isBrowserView && sessionId/);
-  assert.match(openBody, /isBrowserView && location/);
+  assert.match(openBody, /browserHost\.setChromeSession\(sessionId,.*location\)/);
 });
 
 test("opening a different project refreshes the scope-filtered view list", () => {

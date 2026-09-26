@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
  * block splitting, `remark-math`, the TeX bracket normalizer, `rehype-raw`,
  * `rehype-sanitize` and `rehype-katex`.
  */
-test("TeX bracket math renders through the production Markdown pipeline", async () => {
+test("TeX math and wrapped HTTP links render through the production Markdown pipeline", async () => {
   const server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),
     configFile: false,
@@ -47,6 +47,17 @@ test("TeX bracket math renders through the production Markdown pipeline", async 
     const display = (html) => html.includes("katex-display");
     const inline = (html) =>
       html.includes('class="katex"') && !html.includes("katex-display");
+
+    // A nested linked-host destination must be normalized before the
+    // production rehype sanitizer removes its invalid wrapper href.
+    const wrappedLink = render(
+      "[#1106](([github.com](https://github.com/vastsa/PI-Desktop/issues/1106)))",
+    );
+    assert.match(
+      wrappedLink,
+      /<a[^>]*href="https:\/\/github\.com\/vastsa\/PI-Desktop\/issues\/1106"/,
+    );
+    assert.match(wrappedLink, /target="_blank"/);
 
     // The issue's exact replies: a display formula on its own lines.
     const issueMultiline = render("\\[\nD \\leftrightarrow H\n\\]");

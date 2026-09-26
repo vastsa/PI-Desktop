@@ -1,173 +1,49 @@
 import { create } from "zustand";
-import i18n from "i18next";
 import type {
-  AgentEventEnvelope,
-  AgentStatus,
-  AgentPromptAttachment,
-  AskToolResolution,
-  AppError,
-  AppNotification,
   AppSettings,
-  AppVersionInfo,
-  ContextCompactionMark,
-  ContextCompactionRecord,
   ModelInfo,
-  OnboardingState,
-  Mode,
-  PlanProposal,
-  PlanResolveRequest,
-  PlanResolutionResult,
   PlanningState,
-  PlanningStateEvent,
-  PluginSummary,
-  PluginTheme,
-  PluginViewMeta,
-  PermissionMode,
-  ProjectWorkspace,
-  ProposalKind,
-  ProviderPublic,
-  ReviewRollbackResult,
-  SessionDetail,
-  SessionSummary,
-  ThinkingLevel,
-  UiMessage,
 } from "@pi-desktop/shared";
 import {
-  contextCompactionMark,
-  ErrorCodes as SharedErrorCodes,
-  initialThinkingLevelForBinding,
-  modeForProposalKind,
   migrateKeybindingOverrides,
-  modelIdsMatch,
   normalizeMode,
-  normalizeProposalKind,
   PROTOCOL_VERSION,
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import type { SettingsTabId } from "../lib/settings-search";
-import { createNavigationIntentController } from "../lib/navigation-intent";
-import { scheduleHomeDraftAdopt } from "../lib/composer-draft-cache";
-import {
-  commitForkedSessionState,
-  forkedSessionMessages,
-  FORKED_SESSION_WINDOW,
-} from "../lib/session-fork";
-import {
-  EMPTY_SESSION_WINDOW,
-  sessionIsReusableEmpty,
-} from "../lib/session-create";
-import {
-  rememberProject,
-  renameRecentProject,
-  setProjectPinned,
-} from "../lib/recent-projects";
-import { applyOptimisticSessionConfiguration } from "../lib/session-thinking";
+import { rememberProject } from "../lib/recent-projects";
 import {
   RETAINED_SESSION_PANE_LIMIT,
   clearSessionPanes,
-  releaseSessionPane,
-  retainSessionPane,
 } from "../lib/session-panes";
-import { normalizeProjectPath, sessionMatchesProject } from "../lib/sidebar-session-groups";
-import {
-  dedupeSessionMessages,
-  mergeLiveSessionMessages,
-  removeLiveSessionMessage,
-  optimisticUserMessage,
-  upsertLiveSessionMessage,
-  durableCoversLiveSessionMessages,
-} from "../lib/session-transcript";
 import {
   latestSessionOutcomes,
-  type SidebarSessionOutcome,
 } from "../lib/sidebar-session-status";
 import {
-  loadSidebarPreferences,
-  projectIsArchived,
-  projectIsCollapsed,
-  projectIsPinned,
   projectWorkspaceFromPath,
   saveSidebarPreferences,
-  sessionIsArchived,
-  sessionIsPinned,
-  sortProjects,
-  sortSessions,
-  normalizeProjectName,
-  type ProjectMeta,
-  type ProjectSort,
-  type SessionMeta,
-  type SessionSort,
 } from "../lib/sidebar-preferences";
-import { settleStoppedAssistantMetrics } from "../lib/context-usage";
-import { formatToolValue } from "../lib/tool-display";
-import { withReviewChangeState } from "../lib/workspace-review";
-import { preferredFileWorkPanelTab } from "../lib/work-panel-tabs";
-import {
-  clearSessionPermissions,
-  enqueuePermission,
-  headPermission,
-  removePermission,
-  removePermissionForToolCall,
-  sessionPermissions,
-  type PermissionQueues,
-} from "../lib/pending-permissions";
-import {
-  clearSessionAsks,
-  enqueueAsk,
-  headAsk,
-  removeAsk,
-  removeAskForToolCall,
-  type AskQueues,
-} from "../lib/pending-asks";
 import {
   WORK_PANEL_DEFAULT_WIDTH,
   WORK_PANEL_MIN_WIDTH,
 } from "../lib/work-panel-resize";
 import {
-  isActivePlanExecution,
   isPendingPlan,
   latestPlanProposal,
-  mergePlanCheckpoint,
-  terminalizeMissingPlan,
 } from "../lib/plan-mode-state";
-import {
-  resolveComposerSmartStop,
-  type ComposerDraftSnapshot,
-  type ComposerPrefill,
-} from "../lib/composer-smart-stop";
-import {
-  enqueueQueuedPrompt,
-  promoteQueuedPrompt,
-  queuedPromptForSession,
-  removeQueuedPrompt,
-  type QueuedPrompt,
-  type QueuedPrompts,
-} from "../lib/queued-prompts";
-import type { AgentQueueChangedEvent, QueuedTurnSummary } from "@pi-desktop/shared";
 import { settleBootstrapRequests } from "../lib/bootstrap-result";
 import {
   createSessionRuntime,
   type SessionRuntime,
-  type SubmittedComposerDraft,
 } from "./runtime/session-runtime";
 import type { StoreAccess } from "./slices/types";
 import {
   createWorkPanelSlice,
-  currentWorkPanelContext,
   switchWorkPanelSession,
 } from "./slices/work-panel-slice";
 import {
   createInitialState,
   initialSidebarPreferences,
 } from "./slices/initial-state";
-import type {
-  AgentTurnResult,
-  DraftSessionConfiguration,
-  PendingPlanRefreshResult,
-  ToastItem,
-  ToastOptions,
-  ToastVariant,
-} from "./app-state";
 import { createSessionSlice } from "./slices/session-slice";
 import { createQueueSlice } from "./slices/queue-slice";
 import { createTranscriptSlice } from "./slices/transcript-slice";
@@ -207,198 +83,33 @@ export { isDefaultSessionTitle } from "./runtime/session-title-runtime";
 
 export type { WorkPanelTab } from "../lib/work-panel-tabs";
 
-function promptAttachmentsFromDraft(
-  references: ComposerDraftSnapshot["fileReferences"],
-): AgentPromptAttachment[] {
-  return references.flatMap((reference) => {
-    const kind =
-      reference.kind ??
-      (/\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i.test(reference.path)
-        ? "image"
-        : "file");
-    // Inline chips use tokens for both files and images. Ordinary file chips
-    // already serialize to @path text (the model can Read them); only image
-    // chips need the structured transport for vision/fallback handling.
-    if (reference.token && kind !== "image") return [];
-    return [
-      {
-        path: reference.path,
-        name: reference.name,
-        kind,
-        ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
-      },
-    ];
-  });
-}
+import {
+  promptAttachmentsFromDraft,
+  promptAttachmentsFromMessage,
+  withoutRecordKey,
+  viewingSessionIdForPrompt,
+  messageErrorFromUnknown,
+  assistantErrorMessage,
+  sessionModeForPlanningState,
+  openPlanArtifact,
+  decorateSessions,
+  promoteProjectPath,
+  removeProjectPath,
+  upsertWorkspace,
+  withProjectDisplayName,
+  preferencesFromState,
+  withCompactionMark,
+} from "./helpers/store-helpers";
 
-function promptAttachmentsFromMessage(
-  attachments: UiMessage["attachments"],
-): AgentPromptAttachment[] {
-  return (attachments ?? []).map((attachment) => ({
-    path: attachment.ref,
-    name: attachment.name,
-    kind: attachment.kind,
-    ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
-    ...(attachment.size !== undefined ? { size: attachment.size } : {}),
-  }));
-}
-
-// Sessions created before locale switches keep their old default title, so
-// match against every locale's defaults (case-insensitive), not just the
-// active locale's.
-function withoutRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-  const next = { ...record };
-  delete next[key];
-  return next;
-}
-
-function viewingSessionIdForPrompt(
-  state: Pick<AppState, "page" | "activeSessionId">,
-  sessionId: string,
-): string | null {
-  return state.page === "chat" && state.activeSessionId === sessionId
-    ? sessionId
-    : null;
-}
+export type AppState = import("./app-state").AppState;
 
 export const SESSION_TRANSCRIPT_PAGE_SIZE = 100;
 export const SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 * 1024;
 export { RETAINED_SESSION_PANE_LIMIT };
-// Preserve the original 320px tool-content minimum beside the 44px activity rail.
 export { WORK_PANEL_DEFAULT_WIDTH, WORK_PANEL_MIN_WIDTH };
-
-function messageErrorFromUnknown(error: unknown): AppError {
-  const value = error as {
-    code?: string;
-    message?: string;
-    retriable?: boolean;
-  };
-  return {
-    code: value?.code || "INTERNAL",
-    message:
-      error instanceof Error
-        ? error.message
-        : typeof value?.message === "string"
-          ? value.message
-          : String(error),
-    retriable: value?.retriable === true,
-  };
-}
-
-function assistantErrorMessage(error: AppError): UiMessage {
-  return {
-    id: crypto.randomUUID(),
-    role: "assistant",
-    content: "",
-    createdAt: new Date().toISOString(),
-    status: "error",
-    isError: true,
-    error,
-  };
-}
-
-/** Project planning state and proposal kind determine the durable mode shown in the sidebar. */
-function sessionModeForPlanningState(
-  state: PlanningState,
-  kind: ProposalKind | undefined,
-): Mode {
-  if (state === "inactive") return "agent";
-  return modeForProposalKind(kind ?? "plan");
-}
-
-export type AppState = import("./app-state").AppState;
-
-function openPlanArtifact(
-  proposal: PlanProposal,
-  openWorkPanelTabForSession: AppState["openWorkPanelTabForSession"],
-  pluginViews: AppState["pluginViews"],
-) {
-  const relativePath = proposal.artifact?.relativePath;
-  if (!relativePath) return;
-  openWorkPanelTabForSession(
-    proposal.sessionId,
-    preferredFileWorkPanelTab(relativePath, pluginViews),
-  );
-}
-
-function decorateSessions(
-  sessions: SessionSummary[],
-  meta: Record<string, SessionMeta>,
-): SessionSummary[] {
-  return sessions.map((session) => ({
-    ...session,
-    pinned: sessionIsPinned(session.id, meta),
-    archived: sessionIsArchived(session.id, meta),
-  }));
-}
-
-function promoteProjectPath(paths: string[], rawPath: string): string[] {
-  const key = normalizeProjectPath(rawPath);
-  if (!key) return paths;
-  const withoutPath = paths.filter(
-    (path) => normalizeProjectPath(path) !== key,
-  );
-  return [...withoutPath, rawPath];
-}
-
-function removeProjectPath(paths: string[], rawPath: string): string[] {
-  const key = normalizeProjectPath(rawPath);
-  return key
-    ? paths.filter((path) => normalizeProjectPath(path) !== key)
-    : paths;
-}
-
-function upsertWorkspace(
-  projects: ProjectWorkspace[],
-  workspace: ProjectWorkspace,
-): ProjectWorkspace[] {
-  const key = normalizeProjectPath(workspace.path);
-  if (!key) return projects;
-  const index = projects.findIndex((item) => normalizeProjectPath(item.path) === key);
-  if (index < 0) return [...projects, workspace];
-  const next = projects.slice();
-  next[index] = { ...next[index], ...workspace };
-  return next;
-}
-
-function withProjectDisplayName(
-  workspace: ProjectWorkspace,
-  projectMeta: Record<string, ProjectMeta>,
-): ProjectWorkspace {
-  const key = normalizeProjectPath(workspace.path);
-  const name = key ? projectMeta[key]?.name : undefined;
-  return name ? { ...workspace, name } : workspace;
-}
-
-function preferencesFromState(state: Pick<
-  AppState,
-  | "sessionMeta"
-  | "projectMeta"
-  | "projectSort"
-  | "sessionView"
-  | "openProjectPaths"
->) {
-  return {
-    sessionMeta: state.sessionMeta,
-    projectMeta: state.projectMeta,
-    projectSort: state.projectSort,
-    sessionView: state.sessionView,
-    openProjectPaths: state.openProjectPaths,
-  };
-}
 
 function persistCurrentSidebar(getState: () => AppState): void {
   saveSidebarPreferences(preferencesFromState(getState()));
-}
-
-/** Append a freshly installed checkpoint, or replace a retried one by id. */
-function withCompactionMark(
-  marks: AppState["sessionCompactions"][string] | undefined,
-  mark: AppState["sessionCompactions"][string][number],
-): AppState["sessionCompactions"][string] {
-  const existing = marks?.find((m) => m.id === mark.id);
-  const merged = { ...mark, summary: mark.summary ?? existing?.summary };
-  return [...(marks ?? []).filter((m) => m.id !== mark.id), merged];
 }
 
 let storeAccess: StoreAccess | null = null;

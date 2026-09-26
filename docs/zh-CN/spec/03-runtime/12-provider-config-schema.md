@@ -89,6 +89,7 @@
           "contextWindow": { "type": "integer", "minimum": 0 },
           "contextWindowSource": { "enum": ["catalog", "user"] },
           "maxTokens": { "type": "integer", "minimum": 0 },
+          "maxTokensSource": { "enum": ["catalog", "user"] },
           "thinkingLevels": {
             "type": "array",
             "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -136,11 +137,17 @@ JSON、根节点非对象、`models` 非数组，或任一条目不可读，都�
 为防止设置页的部分视图覆盖并丢失存储数据，当存储值降级时，`providers.update` 会以
 `MODEL_BINDINGS_DEGRADED` 拒绝显式替换模型数组；不涉及模型数组的提供商字段仍可更新。
 
-`models[].contextWindowSource` 记录存储的 `contextWindow` 来自哪里：`catalog` 表示
-models.dev 快照，之后的目录修正可以替换它（查询未命中而回退到通用形状不算修正）；`user` 表示用户在设置中手改的值，永不被
-替换。该字段可选，因此早于该标记写出的配置仍可读，旧客户端会忽略它。host-core 只
-保留这两个取值、丢弃其它值，避免出现第三种无人识别的状态。解析规则见
+`models[].contextWindowSource` 与 `models[].maxTokensSource` 分别记录各自限额的来源。
+`catalog` 表示 models.dev 快照，之后对应目录字段的修正可以替换它（查询未命中而回退到
+通用形状不算修正）；`user` 表示用户在设置中输入的值，永不被目录覆盖。修改上下文窗口
+不会改变最大输出 token 的来源。两个字段都是可选的，旧配置仍可读，旧客户端会忽略它们。
+host-core 只保留 `catalog` / `user`，丢弃其他值。没有来源标记的旧记录会保留已存限额，
+包括通用的 128,000 / 8,192，因为旧值无法表明它是通用种子还是用户显式选择。解析规则见
 [13-model-catalog-and-selection](13-model-catalog-and-selection.md) §9.1。
+
+`supportsImages` 与 `supportsDocuments` 缺省或为 `null` 时跟随已发布能力，直到用户
+主动更改复选框。用户一旦选择，显式布尔值就会固定保存；即使当前值与目录相同，之后的
+目录修正也不会撤销用户选择。
 
 `compatibility.supportsReasoning` 和
 `compatibility.supportedThinkingLevels` 对于存储的记录保持可读状态
@@ -504,6 +511,9 @@ Chat Completions 配置使用同源 Responses。关闭搜索后恢复原配置�
 `models[].name`，以及智谱 OpenAI Responses 端点返回的 `models[].slug`——因此有应答的端点不会被
 当成空列表。连接测试复用同一
 套请求构造，因此「模型列表加载成功」与「连接测试通过」描述的始终是同一个地址、认证头与格式。
+Anthropic 风格端点如果因为服务本来就不提供模型列表而返回 404，连接测试可以改用同源的
+`OPTIONS /v1/messages` 路由探测；这个探测不会发送凭据或产生计费模型请求，只证明端点可达，模型 ID
+仍需手动添加。
 
 ### 按哪个发布方读取元数据
 

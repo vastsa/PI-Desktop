@@ -150,7 +150,7 @@ export function useComposerAttachments({
       }
       showToast(t, "chat.filesAttached", { count: chips.length }, "success");
     } catch (error) {
-      showErrorToast(t, error);
+      showErrorToast(error);
     } finally {
       pickerInFlight.current = false;
       setPasting(false);
@@ -247,7 +247,7 @@ export function useComposerAttachments({
           "success",
         );
       } catch (error) {
-        showErrorToast(t, error);
+        showErrorToast(error);
       } finally {
         setPasting(false);
       }
@@ -354,7 +354,7 @@ export function useComposerAttachments({
       }
       if (chips.length) showToast(t, "chat.filesAttached", { count: chips.length }, "success");
     } catch (error) {
-      showErrorToast(t, error);
+      showErrorToast(error);
     } finally {
       setPasting(false);
     }
@@ -386,7 +386,7 @@ export function useComposerAttachments({
         if (directory.path) await useAppStore.getState().activateProject(directory.path);
       }
     } catch (error) {
-      showErrorToast(t, error);
+      showErrorToast(error);
     }
   };
 
@@ -446,7 +446,7 @@ function showToast(
   useAppStore.getState().showToast(t(key, options), { variant });
 }
 
-function showErrorToast(t: TFunction, error: unknown): void {
+function showErrorToast(error: unknown): void {
   useAppStore
     .getState()
     .showToast(error instanceof Error ? error.message : String(error), { variant: "error" });

@@ -8,7 +8,6 @@ import {
 import { validateMcpServer } from "./mcp-config.js";
 import { parseNetDomains, type PluginNetDomain } from "./net-policy.js";
 import {
-  isExternalThemeAssetPath,
   isThemeAssetPath,
   normalizeThemeAssetPath,
   THEME_ASSET_EXTENSIONS,

@@ -306,7 +306,9 @@ Namespace: `pi.plugin.*`
 Skills are contributed declaratively (`contributes.skills` + `agent.prompt.inject`),
 not invoked by the plugin: the host puts the catalog in the system prompt and the
 model loads a body through the built-in `Skill` tool (D174). Planned, not
-currently exposed: `pi.agent.appendSystemHint(text)`.
+currently exposed: `pi.agent.appendSystemHint(text)`. When the body is loaded,
+the tool result also identifies the `SKILL.md` location and the directory to use
+when resolving relative references; the catalog remains metadata-only.
 
 ### Background services (requires `background.service`)
 - `pi.services.register({ id, start, stop? })`

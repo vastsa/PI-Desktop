@@ -94,7 +94,7 @@ errors remain readable instead of becoming replacement characters.
 |---|---|
 | Renderer crash | reload the current window after an unexpected renderer exit, unless the window is closing or the app is quitting; keep host/agent processes; same-host reload restores only live pending Plan/Goal approvals and their deadlines, not terminal cards |
 | Rust host crash | mark app degraded, interrupt pending/queued/running approval work, keep pending sessions in their contract mode (Plan or Goal) and already-approved sessions in Agent, attempt restart host, and fail active sessions closed |
-| Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution |
+| Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution; the sidecar's stderr tail is classified at exit — a V8 heap-exhaustion banner settles the owning turn as `AGENT_SIDECAR_OOM`, any other unexpected exit as `AGENT_SIDECAR_CRASHED` (issue #1077) |
 | Electron main crash | full app exit |
 
 Crashpad is started local-only (`uploadToServer: false`) before `ready`, and
@@ -259,6 +259,23 @@ front of the launcher or a plugin panel (ADR 0086).
 reaches `downloaded`. Electron still emits `before-quit`, so the normal
 sidecar/host shutdown sequence runs before the updater replaces the app.
 
+For Windows NSIS installs, `PI_DESKTOP_UPDATE_CACHE_DIR` may override the
+electron-updater cache base with an absolute, writable directory. The packaged
+`app-update.yml` remains authoritative for the cache subdirectory name. On first
+startup after relocation, Main adopts the differential installer and block map
+from the legacy `%LOCALAPPDATA%` cache, preserves any staged update, then removes
+the old cache directory only when empty. Unknown files and an already-populated
+destination are preserved rather than overwritten or recursively deleted. When
+the update feed confirms the running version is current, Main removes only the
+`pending/` download staging directory; differential baselines stay available for
+the next small update. Do not point the override at an installation directory
+that requires elevation to write.
+
+The download-and-install path remains owned by Electron Main. The installer itself
+still creates `installer.exe` in `%LOCALAPPDATA%`; relocation adopts that copy on
+the next launch rather than changing the NSIS installer or writing into
+`Program Files` (issue #1098).
+
 ## 6. Dev vs release
 
 ### Dev
@@ -286,11 +303,17 @@ sidecar/host shutdown sequence runs before the updater replaces the app.
   pure-JS helpers it calls without changing process or protocol ownership
 - renderer dependencies ship through Vite output rather than duplicate raw
   package trees; no interactive PTY native module is packaged
-- packaged builds use the Main-owned update controller. macOS, non-AppImage
-  Linux, and Windows ZIP runs are manual-delivery modes; legacy Windows
-  portable executables remain manual when `PORTABLE_EXECUTABLE_FILE` is set.
-  Windows NSIS and Linux AppImage use the in-app feeds published by D126 tag
-  releases
+- packaged builds use the Main-owned update controller and a persisted
+  per-install `updatePreference`. Automatic mode keeps the existing in-app
+  download/install flow on supported packages; Manual mode checks the fixed
+  stable feed without starting downloads or installing on quit, and reminds
+  once per available version. Defaults are Automatic for Windows NSIS,
+  packaged macOS, and Linux AppImage; Windows ZIP/portable and packages without
+  automatic-install support default to Manual. Windows ZIP/portable users can
+  explicitly opt into Automatic after a warning that the NSIS installer may
+  replace the extracted copy. Preference and last-reminded version use the
+  existing host-owned app settings JSON; neither is included in portable
+  configuration sync.
 
 ## 7. Remote target topology (post-MVP)
 

@@ -236,7 +236,10 @@ fn a_global_skill_moves_into_a_project() {
 
         assert_eq!(moved.id, "review");
         assert_eq!(moved.level.as_deref(), Some("project"));
-        assert_eq!(moved.project_path.as_deref(), Some(project_path.as_str()));
+        assert_eq!(
+            moved.project_path.as_deref(),
+            Some(crate::agent_capabilities::normalize_project_path(&project_path).as_str())
+        );
         assert!(!home.path().join("skills/review.md").exists());
         let target = project.path().join(".agents/skills/review.md");
         assert_eq!(
@@ -727,9 +730,15 @@ fn imports_a_directory_with_skill_md_in_link_mode() {
     let mut registry = UserSkillRegistry::new(app.path());
     let mut payload = input("Ignored", "project", Some(app.path().to_str().unwrap()));
     payload.mode = Some("link".into());
-    let record = registry
-        .import(source_dir.to_str().unwrap(), payload)
-        .unwrap();
+    let record = match registry.import(source_dir.to_str().unwrap(), payload) {
+        Ok(record) => record,
+        Err(err) if cfg!(windows) && format!("{err:#}").contains("1314") => {
+            // Unprivileged Windows environments without Developer Mode enabled
+            // cannot create filesystem symlinks (os error 1314).
+            return;
+        }
+        Err(err) => panic!("import failed unexpectedly: {err:#}"),
+    };
     let normalized_project =
         crate::agent_capabilities::normalize_project_path(app.path().to_str().unwrap());
     let expected_root = crate::agent_capabilities::capability_dir(
@@ -763,7 +772,15 @@ fn imports_a_file_in_link_mode() {
     let mut registry = UserSkillRegistry::new(app.path());
     let mut payload = input("Ignored", "project", Some(app.path().to_str().unwrap()));
     payload.mode = Some("link".into());
-    let record = registry.import(source.to_str().unwrap(), payload).unwrap();
+    let record = match registry.import(source.to_str().unwrap(), payload) {
+        Ok(record) => record,
+        Err(err) if cfg!(windows) && format!("{err:#}").contains("1314") => {
+            // Unprivileged Windows environments without Developer Mode enabled
+            // cannot create filesystem symlinks (os error 1314).
+            return;
+        }
+        Err(err) => panic!("import failed unexpectedly: {err:#}"),
+    };
     let normalized_project =
         crate::agent_capabilities::normalize_project_path(app.path().to_str().unwrap());
     let expected = crate::agent_capabilities::capability_dir(

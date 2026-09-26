@@ -15,7 +15,16 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { Button, HelpIcon, SettingsToggle, TooltipButton, cx, Input, Textarea } from "../ui";
+import {
+  Button,
+  HelpIcon,
+  Input,
+  SettingsToggle,
+  Textarea,
+  TooltipButton,
+  cx,
+  portalOverlay,
+} from "../ui";
 import { IconKeyboard, IconSettings, IconX } from "../icons";
 import { SettingsMenuSelect } from "../settings/SettingsMenuSelect";
 
@@ -145,7 +154,7 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
     setRecordingKey(null);
   };
 
-  return (
+  return portalOverlay(
     <div className="plugins-modal-backdrop" role="presentation">
       <div
         className="plugins-modal plugins-settings-modal"
@@ -255,6 +264,6 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
   );
 }

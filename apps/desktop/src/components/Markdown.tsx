@@ -56,6 +56,7 @@ import {
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import { absoluteImagePath, remarkLocalImagePaths } from "../lib/markdown-image-paths";
+import { remarkNormalizeWrappedMarkdownLinkDestinations } from "../lib/markdown-link-destinations";
 import { useOpenChatFileRef } from "../hooks/use-preview-target";
 import {
   useChatFileMenuItems,
@@ -786,7 +787,11 @@ const markdownComponents: Components = {
 // The grammar the block splitter parses with, plus the renderer-only rewrite
 // of local image paths. `remarkLocalImagePaths` transforms URLs and moves no
 // block boundary, so the splitter has no reason to run it.
-const staticRemarkPlugins = [...markdownRemarkPlugins, remarkLocalImagePaths];
+const staticRemarkPlugins = [
+  ...markdownRemarkPlugins,
+  remarkNormalizeWrappedMarkdownLinkDestinations,
+  remarkLocalImagePaths,
+];
 
 // Extend the default schema only for the media elements rendered above, plus
 // `remark-math`'s math classes on `<code>`: the default `language-*` allow list

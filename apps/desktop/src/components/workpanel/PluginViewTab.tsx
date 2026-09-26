@@ -24,6 +24,7 @@ export function PluginViewTab({
   blocked = false,
   sessionId,
   location,
+  tabId,
 }: {
   pluginId: string;
   viewId: string;
@@ -32,9 +33,13 @@ export function PluginViewTab({
   blocked?: boolean;
   sessionId?: string;
   location?: string;
+  tabId?: string;
 }) {
   const { t } = useTranslation();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const viewLocation = pluginId === "pi.browser" && viewId === "browser" ? undefined : location;
   const [failed, setFailed] = useState(false);
 
   // Create the view, and re-create it whenever the plugin's lifecycle changed
@@ -43,7 +48,7 @@ export function PluginViewTab({
   useEffect(() => {
     let current = true;
     const open = () => {
-      void api.pluginViewOpen(pluginId, viewId, { sessionId, location }).then(
+      void api.pluginViewOpen(pluginId, viewId, { sessionId, location: locationRef.current, tabId }).then(
         () => {
           if (current) setFailed(false);
         },
@@ -61,7 +66,7 @@ export function PluginViewTab({
       current = false;
       off();
     };
-  }, [pluginId, viewId, sessionId, location]);
+  }, [pluginId, viewId, sessionId, viewLocation, tabId]);
 
   useEffect(() => {
     const surface = surfaceRef.current;

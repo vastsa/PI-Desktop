@@ -9,7 +9,7 @@ import {
   type OAuthRespondInput,
 } from "@pi-desktop/shared";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
-import { probeModelList } from "../model-discovery";
+import { probeProviderEndpoint } from "../model-discovery";
 import {
   probeDiscoveryCandidates,
   type DiscoveryAttempt,
@@ -242,7 +242,7 @@ export function registerProviderIpc({
         connection test passed" can never describe two different endpoints: one
         URL rule, one auth rule, one wire style, for a real at-least-once check.
       */
-      const probe = await probeModelList({
+      const probe = await probeProviderEndpoint({
         baseUrl,
         apiKey: secret.value,
         apiStyle: detail.provider?.apiStyle,

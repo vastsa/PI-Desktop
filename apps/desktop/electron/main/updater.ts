@@ -12,26 +12,65 @@
  *    NSIS installer must not replace a no-install run.
  *  - Linux deb (no $APPIMAGE in env) → notify + link.
  *  - Unpackaged dev runs → disabled (no app-update.yml in resources).
+ *
+ * The installer download cache lives in the user cache directory rather than
+ * beside the installation; `PI_DESKTOP_UPDATE_CACHE_DIR` relocates it, and
+ * `./update-cache` owns what may be reclaimed from it (#1098).
  */
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { app, shell } from "electron";
 import electronUpdaterPkg from "electron-updater";
-import type { UpdateInfo, ProgressInfo } from "electron-updater";
+import type { AppUpdater, UpdateInfo, ProgressInfo } from "electron-updater";
 import {
   formatChangelogNotes,
   IPC,
-  type UpdateMode,
+  type UpdatePreference,
   type UpdateState,
 } from "@pi-desktop/shared";
 import type { Logger } from "./logger";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import {
+  defaultUpdateCacheBasePath,
+  relocateUpdateCacheBasePath,
+  resolveUpdateCacheOverride,
+  UPDATE_CACHE_DIR_ENV,
+} from "./update-cache";
+import { UpdateCacheMaintenance } from "./update-cache-maintenance";
+import {
   raceWithTimeout,
   UPDATE_CHECK_TIMEOUT_CODE,
 } from "./update-timeout";
+import {
+  resolveDefaultUpdatePreference,
+  resolveEffectiveUpdatePreference,
+  resolveStoredUpdatePreference,
+  resolveUpdateMode as resolveUpdateModePolicy,
+  supportsAutomaticUpdates,
+  type WindowsDistribution,
+} from "./update-policy";
+import { ManualUpdateReminderTracker } from "./manual-update-reminder";
 
-const { autoUpdater } = electronUpdaterPkg;
+export { resolveUpdateMode } from "./update-policy";
+export type { WindowsDistribution } from "./update-policy";
+
+const { NsisUpdater, autoUpdater } = electronUpdaterPkg;
+
+/** Windows NSIS updater with a caller-selected cache base. */
+class RelocatedNsisUpdater extends NsisUpdater {
+  constructor(baseCachePath: string) {
+    super();
+    relocateUpdateCacheBasePath(this.app, baseCachePath);
+  }
+}
+
+function createRelocatedUpdater(
+  platform: NodeJS.Platform,
+  baseCachePath: string,
+): AppUpdater | null {
+  return platform === "win32" ? new RelocatedNsisUpdater(baseCachePath) : null;
+}
 
 export const RELEASES_URL = "https://github.com/vastsa/PI-Desktop/releases/latest";
 
@@ -42,45 +81,51 @@ export const AUTO_CHECK_TIMEOUT_MS = 8_000;
 /** Manual check can wait a bit longer; still far below the socket timeout. */
 export const MANUAL_CHECK_TIMEOUT_MS = 15_000;
 
+export type UpdaterSettings = {
+  updatePreference?: unknown;
+  lastNotifiedUpdateVersion?: unknown;
+};
+
 export type UpdaterOptions = {
   logger: Logger;
   send: (channel: string, payload: unknown) => void;
   currentVersion: string;
+  readUpdateSettings?: () => Promise<UpdaterSettings>;
+  persistLastNotifiedVersion?: (version: string) => Promise<void>;
   /**
    * Active product UI locale for shipped-locale release notes.
    * Called when attaching notes to update state; defaults to English.
    */
   getLocale?: () => string | null | undefined;
+  /**
+   * `PI_DESKTOP_UPDATE_CACHE_DIR`; an absolute directory moves the updater's
+   * download cache out of the user cache directory. Empty keeps the default.
+   */
+  updateCacheDirOverride?: string | null;
   /** Overrides for tests. */
   platform?: NodeJS.Platform;
   isPackaged?: boolean;
   distribution?: WindowsDistribution;
 };
 
-export type WindowsDistribution = "installed" | "zip";
-
-export function resolveUpdateMode(
-  platform: NodeJS.Platform,
-  isPackaged: boolean,
-  env: NodeJS.ProcessEnv = process.env,
-  distribution?: WindowsDistribution,
-): UpdateMode {
-  if (!isPackaged) return "disabled";
-  if (platform === "win32") {
-    return env.PORTABLE_EXECUTABLE_FILE || distribution === "zip"
-      ? "manual"
-      : "in-app";
-  }
-  if (platform === "darwin") return "in-app";
-  if (platform === "linux" && env.APPIMAGE) return "in-app";
-  // non-AppImage linux installs
-  return "manual";
-}
-
 export class AppUpdaterController {
   private readonly logger: Logger;
   private readonly send: (channel: string, payload: unknown) => void;
   private readonly getLocale: () => string | null | undefined;
+  private readonly platform: NodeJS.Platform;
+  private readonly isPackaged: boolean;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly distribution?: WindowsDistribution;
+  private readonly defaultPreference: UpdatePreference;
+  private readonly automaticSupported: boolean;
+  private readonly readUpdateSettings?: () => Promise<UpdaterSettings>;
+  private readonly persistLastNotifiedVersion?: (version: string) => Promise<void>;
+  private readonly manualReminderTracker = new ManualUpdateReminderTracker();
+  private preference: UpdatePreference;
+  private preferenceRevision = 0;
+  private settingsReady: Promise<void> | null = null;
+  private autoCheckStarted = false;
+  private disposed = false;
   private state: UpdateState;
   private manualRequested = false;
   private initialTimer: NodeJS.Timeout | null = null;
@@ -94,6 +139,8 @@ export class AppUpdaterController {
    * is about to see is the update restart.
    */
   private installRequested = false;
+  private readonly autoUpdater: AppUpdater;
+  private readonly cacheMaintenance: UpdateCacheMaintenance;
 
   private readPackagedDistribution(
     isPackaged: boolean,
@@ -133,14 +180,69 @@ export class AppUpdaterController {
       (platform === "win32"
         ? this.readPackagedDistribution(isPackaged)
         : undefined);
-    const mode = resolveUpdateMode(
+    this.platform = platform;
+    this.isPackaged = isPackaged;
+    this.env = process.env;
+    this.distribution = distribution;
+    this.defaultPreference = resolveDefaultUpdatePreference(
       platform,
       isPackaged,
-      process.env,
+      this.env,
       distribution,
     );
+    this.preference = this.defaultPreference;
+    this.automaticSupported = supportsAutomaticUpdates(
+      platform,
+      isPackaged,
+      this.env,
+    );
+    this.readUpdateSettings = options.readUpdateSettings;
+    this.persistLastNotifiedVersion = options.persistLastNotifiedVersion;
+    const mode = resolveUpdateModePolicy(
+      platform,
+      isPackaged,
+      this.env,
+      distribution,
+      this.preference,
+    );
+    const defaultCacheBasePath = defaultUpdateCacheBasePath({
+      platform,
+      env: process.env,
+      home: homedir(),
+    });
+    const requestedCacheBasePath =
+      options.updateCacheDirOverride ??
+      resolveUpdateCacheOverride(process.env[UPDATE_CACHE_DIR_ENV]);
+    const relocated =
+      mode !== "in-app" || !requestedCacheBasePath
+        ? null
+        : createRelocatedUpdater(platform, requestedCacheBasePath);
+    const activeBasePath =
+      relocated && requestedCacheBasePath
+        ? requestedCacheBasePath
+        : defaultCacheBasePath;
+    const legacyBasePath = relocated ? defaultCacheBasePath : null;
+    if (requestedCacheBasePath && !relocated && mode !== "disabled") {
+      this.logger.app(
+        "updater",
+        "warn",
+        "update cache relocation is not supported on this target",
+        { data: { platform } },
+      );
+    }
+    this.autoUpdater = relocated ?? autoUpdater;
+    this.cacheMaintenance = new UpdateCacheMaintenance({
+      resourcesPath: process.resourcesPath,
+      activeBasePath,
+      legacyBasePath,
+      logger: this.logger,
+    });
     this.state = {
       mode,
+      preference: this.preference,
+      defaultPreference: this.defaultPreference,
+      automaticSupported: this.automaticSupported,
+      manualReminder: false,
       status: "idle",
       currentVersion: options.currentVersion,
       releasesUrl: RELEASES_URL,
@@ -154,21 +256,130 @@ export class AppUpdaterController {
     return formatChangelogNotes(version, this.getLocale());
   }
 
+  private ensureSettingsLoaded(): Promise<void> {
+    if (this.settingsReady) return this.settingsReady;
+    const preferenceRevision = this.preferenceRevision;
+    this.settingsReady = (async () => {
+      if (!this.readUpdateSettings) {
+        this.applyPreference(this.preference, false);
+        return;
+      }
+      try {
+        const settings = await this.readUpdateSettings();
+        if (this.disposed) return;
+        const lastNotifiedVersion = settings.lastNotifiedUpdateVersion;
+        if (
+          typeof lastNotifiedVersion === "string" &&
+          lastNotifiedVersion.length > 0 &&
+          lastNotifiedVersion.length <= 128
+        ) {
+          this.manualReminderTracker.hydrate(lastNotifiedVersion);
+        }
+        const preference = resolveStoredUpdatePreference(
+          settings.updatePreference,
+          this.defaultPreference,
+        );
+        if (preferenceRevision === this.preferenceRevision) {
+          this.applyPreference(preference, false);
+        }
+      } catch (error) {
+        this.logger.app("updater", "warn", "update preferences unavailable", {
+          data: { detail: String(error) },
+        });
+        if (preferenceRevision === this.preferenceRevision) {
+          this.applyPreference("manual", false);
+        }
+      }
+    })();
+    return this.settingsReady;
+  }
+
+  private manualReminderFor(version: string): boolean {
+    const decision = this.manualReminderTracker.observe(version);
+    if (decision.persist && this.persistLastNotifiedVersion) {
+      void this.persistLastNotifiedVersion(version).catch((error) => {
+        this.logger.app("updater", "warn", "manual update reminder persistence failed", {
+          data: { detail: String(error), version },
+        });
+      });
+    }
+    return decision.show;
+  }
+
+  private applyPreference(
+    preference: UpdatePreference,
+    checkImmediately: boolean,
+  ): void {
+    const previousMode = this.state.mode;
+    const effectivePreference = resolveEffectiveUpdatePreference(
+      preference,
+      this.automaticSupported,
+    );
+    const mode = resolveUpdateModePolicy(
+      this.platform,
+      this.isPackaged,
+      this.env,
+      this.distribution,
+      effectivePreference,
+    );
+    const preferenceChanged =
+      effectivePreference !== this.preference || mode !== previousMode;
+    this.preference = effectivePreference;
+    this.autoUpdater.autoDownload = mode === "in-app";
+    this.autoUpdater.autoInstallOnAppQuit = mode === "in-app";
+    if (!preferenceChanged) return;
+
+    const patch: Partial<UpdateState> = {
+      mode,
+      preference: effectivePreference,
+      manualReminder: false,
+    };
+    if (mode === "manual") {
+      if (
+        this.state.status === "downloading" ||
+        this.state.status === "downloaded"
+      ) {
+        patch.status = this.state.availableVersion ? "available" : "idle";
+        patch.progressPercent = undefined;
+      }
+      if (this.state.availableVersion) {
+        patch.manualReminder = this.manualReminderFor(
+          this.state.availableVersion,
+        );
+      }
+    }
+    this.setState(patch);
+    if (
+      checkImmediately &&
+      previousMode === "manual" &&
+      mode === "in-app"
+    ) {
+      void this.check().catch(() => undefined);
+    }
+  }
+
+  setPreference(preference: UpdatePreference): void {
+    if (preference !== "automatic" && preference !== "manual") return;
+    this.preferenceRevision += 1;
+    this.applyPreference(preference, true);
+  }
+
   private attachListeners() {
     if (this.listenersAttached) return;
     this.listenersAttached = true;
 
-    autoUpdater.autoDownload = this.state.mode === "in-app";
+    // Do not let cached updates download or install before Host preferences load.
+    this.autoUpdater.autoDownload = false;
+    this.autoUpdater.autoInstallOnAppQuit = false;
     // electron-updater defaults allowPrerelease=true when the installed
     // version has a prerelease component (e.g. 0.2.0-rc.6). That pins the
     // GitHub provider to the same custom channel ("rc") and never offers a
     // newer stable release such as 0.2.2. Always track GitHub's latest
     // stable release so RC installs can graduate to stable.
-    autoUpdater.allowPrerelease = false;
-    // Even if the user ignores the restart prompt, a downloaded update
-    // lands on the next normal quit.
-    autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.logger = {
+    this.autoUpdater.allowPrerelease = false;
+    // Only automatic mode may install on quit; manual mode never hands an
+    // installer a no-install/portable directory.
+    this.autoUpdater.logger = {
       info: (m: unknown) =>
         this.logger.app("updater", "info", "updater diagnostic", {
           data: { detail: String(m) },
@@ -187,26 +398,38 @@ export class AppUpdaterController {
         }),
     };
 
-    autoUpdater.on("checking-for-update", () => {
+    this.autoUpdater.on("checking-for-update", () => {
       this.setState({ status: "checking", error: undefined });
     });
-    autoUpdater.on("update-available", (info: UpdateInfo) => {
+    this.autoUpdater.on("update-available", (info: UpdateInfo) => {
+      const automatic = this.state.mode === "in-app";
       this.setState({
-        status: this.state.mode === "in-app" ? "downloading" : "available",
+        status: automatic ? "downloading" : "available",
         availableVersion: info.version,
         releaseNotes: this.notesFor(info.version),
-        progressPercent: this.state.mode === "in-app" ? 0 : undefined,
+        progressPercent: automatic ? 0 : undefined,
+        manualReminder: automatic
+          ? false
+          : this.manualReminderFor(info.version),
       });
     });
-    autoUpdater.on("update-not-available", () => {
+    this.autoUpdater.on("update-not-available", () => {
       this.setState({
         status: "up-to-date",
         availableVersion: undefined,
         releaseNotes: undefined,
         progressPercent: undefined,
+        manualReminder: false,
       });
+      // In-app installs have no newer staged installer after the feed reports
+      // current. Keep the differential baselines for the next update. Manual
+      // delivery modes may share a cache with an installed NSIS copy.
+      if (this.state.mode === "in-app") {
+        void this.cacheMaintenance.discardDownloadedInstaller();
+      }
     });
-    autoUpdater.on("download-progress", (progress: ProgressInfo) => {
+    this.autoUpdater.on("download-progress", (progress: ProgressInfo) => {
+      if (this.state.mode !== "in-app") return;
       this.setState({
         status: "downloading",
         // Preserve notes already attached when discovery advanced to download.
@@ -215,15 +438,19 @@ export class AppUpdaterController {
         progressPercent: Math.round(progress.percent),
       });
     });
-    autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
+    this.autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
+      const automatic = this.state.mode === "in-app";
       this.setState({
-        status: "downloaded",
+        status: automatic ? "downloaded" : "available",
         availableVersion: info.version,
         releaseNotes: this.notesFor(info.version),
-        progressPercent: 100,
+        progressPercent: automatic ? 100 : undefined,
+        manualReminder: automatic
+          ? false
+          : this.manualReminderFor(info.version),
       });
     });
-    autoUpdater.on("error", (error: Error) => {
+    this.autoUpdater.on("error", (error: Error) => {
       // Auto checks fail quietly (offline, private repo, rate limits);
       // the renderer only surfaces errors when `manual` is set.
       this.logger.app("updater", "warn", "updater error", { data: String(error) });
@@ -254,6 +481,7 @@ export class AppUpdaterController {
 
   /** User- or schedule-triggered check. Resolves with the settled state. */
   async check(options: { manual?: boolean } = {}): Promise<UpdateState> {
+    await this.ensureSettingsLoaded();
     if (this.state.mode === "disabled") {
       throw new Error("updates are disabled in development builds");
     }
@@ -273,7 +501,7 @@ export class AppUpdaterController {
       // first-window path. The race only bounds *our* wait; electron-updater
       // may still finish later and emit available/up-to-date.
       await raceWithTimeout(
-        autoUpdater.checkForUpdates(),
+        this.autoUpdater.checkForUpdates(),
         timeoutMs,
         "update check",
       );
@@ -310,7 +538,7 @@ export class AppUpdaterController {
     if (this.state.status === "downloading" || this.state.status === "downloaded") {
       return this.state;
     }
-    await autoUpdater.downloadUpdate();
+    await this.autoUpdater.downloadUpdate();
     return this.state;
   }
 
@@ -327,14 +555,19 @@ export class AppUpdaterController {
 
   /** Quit and install a downloaded update (in-app mode). */
   install(): void {
-    if (this.state.status !== "downloaded") {
+    if (this.state.mode !== "in-app" || this.state.status !== "downloaded") {
       throw new Error("no downloaded update to install");
     }
     // Marked before the call: quitAndInstall spawns the installer itself, so
     // the shutdown handler must already know this quit is the update restart.
     this.installRequested = true;
     // Fires 'before-quit' first, so host/sidecar shutdown still runs.
-    autoUpdater.quitAndInstall(false, true);
+    this.autoUpdater.quitAndInstall(false, true);
+  }
+  /** Adopt legacy NSIS cache files before the first update check. */
+  reclaimRelocatedUpdateCache(): Promise<void> {
+    if (this.state.mode === "disabled") return Promise.resolve();
+    return this.cacheMaintenance.reclaimLegacyCache();
   }
 
   async openReleases(): Promise<void> {
@@ -349,18 +582,21 @@ export class AppUpdaterController {
    * first window or pin the updater on `checking`.
    */
   startAutoCheck() {
-    if (this.state.mode === "disabled" || this.initialTimer || this.intervalTimer) {
-      return;
-    }
-    this.initialTimer = setTimeout(() => {
-      void this.check().catch(() => undefined);
-    }, AUTO_CHECK_INITIAL_DELAY_MS);
-    this.intervalTimer = setInterval(() => {
-      void this.check().catch(() => undefined);
-    }, AUTO_CHECK_INTERVAL_MS);
+    if (this.autoCheckStarted || this.state.mode === "disabled") return;
+    this.autoCheckStarted = true;
+    void this.ensureSettingsLoaded().then(() => {
+      if (this.disposed || this.state.mode === "disabled") return;
+      this.initialTimer = setTimeout(() => {
+        void this.check().catch(() => undefined);
+      }, AUTO_CHECK_INITIAL_DELAY_MS);
+      this.intervalTimer = setInterval(() => {
+        void this.check().catch(() => undefined);
+      }, AUTO_CHECK_INTERVAL_MS);
+    });
   }
 
   dispose() {
+    this.disposed = true;
     if (this.initialTimer) clearTimeout(this.initialTimer);
     if (this.intervalTimer) clearInterval(this.intervalTimer);
     this.initialTimer = null;

@@ -33,11 +33,13 @@ for (const preloadPath of [
   join(appDir, "out/preload/index.cjs"),
   join(appDir, "out/preload/plugin-panel.js"),
 ]) {
-  if (!existsSync(preloadPath)) {
-    console.error("preload output missing:", preloadPath);
+  let source;
+  try {
+    source = readFileSync(preloadPath, "utf8");
+  } catch {
+    console.error("preload output missing or unreadable:", preloadPath);
     process.exit(1);
   }
-  const source = readFileSync(preloadPath, "utf8");
   if (/require\(["']\.\//.test(source)) {
     console.error("sandbox preload must not require a local runtime chunk:", preloadPath);
     process.exit(1);

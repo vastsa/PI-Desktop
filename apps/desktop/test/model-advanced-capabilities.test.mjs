@@ -52,13 +52,9 @@ test("the capability checkboxes show and follow the published value", () => {
   assert.match(pickerSource, /settings\.documentInput/);
   assert.match(pickerSource, /supportsImages: next/);
   assert.match(pickerSource, /supportsDocuments: next/);
-  // Agreeing with models.dev stores "follow the catalog" instead of an
-  // equal-valued override, so a later catalog correction still lands and no
-  // separate reset control is needed.
-  assert.match(
-    pickerSource,
-    /onChange\(event\.target\.checked === published \? null : event\.target\.checked\)/,
-  );
+  // A deliberate checkbox change pins the selected value even when it equals
+  // today's catalog value; later catalog corrections must not undo that choice.
+  assert.match(pickerSource, /onChange\(event\.target\.checked\)/);
   assert.match(
     pickerSource,
     /const effective = typeof value === "boolean" \? value : published/,

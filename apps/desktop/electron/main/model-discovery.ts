@@ -6,7 +6,9 @@
  *
  *  - `normalizeModelList` turns a response body into rows and is pure;
  *  - `modelListRequest` builds the request one endpoint needs;
- *  - `probeModelList` performs exactly one request, with redirect safety.
+ *  - `probeModelList` performs exactly one model-list request, with redirect safety;
+ *  - `probeProviderEndpoint` also recognizes Anthropic-compatible services that
+ *    intentionally do not publish a model list, such as token-plan gateways.
  *
  * The candidate sweep that resolves an unknown Base URL lives in
  * `provider-endpoint-probe.ts` and drives `probeModelList`, so discovery and
@@ -196,6 +198,61 @@ export type ModelListProbe = {
   status: number;
   models: DiscoveredModel[];
 };
+
+/**
+ * Probe an Anthropic-compatible message route when model discovery is absent.
+ *
+ * Some token-plan gateways expose only POST /v1/messages and deliberately do
+ * not implement GET /v1/models. OPTIONS proves that the configured route is
+ * registered without sending credentials or a billable model request.
+ */
+async function probeAnthropicMessagesEndpoint(opts: {
+  baseUrl: string;
+  allowOrigin?: string;
+  signal: AbortSignal;
+}): Promise<{ url: string; status: number }> {
+  const base = opts.baseUrl.trim().replace(/\/+$/, "");
+  const root = base.endsWith("/v1") ? base : `${base}/v1`;
+  const requestUrl = `${root}/messages`;
+  const allowOrigin = opts.allowOrigin ?? originOf(opts.baseUrl);
+  if (allowOrigin && originOf(requestUrl) !== allowOrigin) {
+    throw new Error("message endpoint request refused: it left the configured origin");
+  }
+  const response = await fetch(requestUrl, {
+    method: "OPTIONS",
+    signal: opts.signal,
+    redirect: "manual",
+  });
+  if (!response.ok) {
+    throw Object.assign(new Error(`message endpoint probe failed (${response.status})`), {
+      status: response.status,
+    });
+  }
+  return { url: requestUrl, status: response.status };
+}
+
+/**
+ * Check the configured provider endpoint for connection tests.
+ *
+ * A successful model list includes models. A successful Anthropic OPTIONS
+ * fallback proves only route reachability, so it deliberately returns an
+ * empty model list and leaves manual model entry to the settings UI.
+ */
+export async function probeProviderEndpoint(opts: Parameters<typeof probeModelList>[0]): Promise<ModelListProbe> {
+  try {
+    return await probeModelList(opts);
+  } catch (error) {
+    const status = (error as { status?: unknown }).status;
+    const discoveryStyle = opts.discoveryStyle ?? discoveryStyleForApiStyle(opts.apiStyle);
+    if (status !== 404 || discoveryStyle !== "anthropic_models") throw error;
+    const fallback = await probeAnthropicMessagesEndpoint({
+      baseUrl: opts.baseUrl,
+      allowOrigin: opts.allowOrigin,
+      signal: opts.signal ?? defaultTimeoutSignal(),
+    });
+    return { ...fallback, models: [] };
+  }
+}
 
 function originOf(value: string): string | undefined {
   try {

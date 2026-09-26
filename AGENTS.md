@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Policy-Sync: 2026-09-21.2
+Policy-Sync: 2026-09-26.1
 
 Mandatory rules for AI coding agents working in PI-Desktop.
 
@@ -744,6 +744,17 @@ and leave it open. Do not implement first and investigate later.
 ---
 
 ## 15. GitHub Pull Request Intake
+
+**Temporary PR type scope (effective 2026-09-26).** Outside contributions
+are limited to `perf` and `fix` pull requests. A pull request from a
+contributor without write access whose change type is `feat`, `refactor`,
+`docs`, `test`, `chore`, `build`, or `ci` is not a landing candidate:
+comment the policy in the pull request's language, then close it without
+merging, and do not reimplement it as a replacement while the restriction
+is in force. Maintainers — accounts with write access, plus the branches
+and automated agent work they direct — keep every change type. The
+restriction is lifted by removing this paragraph and R6.1 in
+`docs/spec/06-delivery/03-ai-development-workflow.md`.
 
 For a linked pull request, fetch it first. Do not replace the
 contributor's work until the review below is complete.

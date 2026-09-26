@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type {
   Mode,
   ProviderPublic,
   SessionThinkingLevel,
 } from "@pi-desktop/shared";
 import {
-  initialThinkingLevelForBinding,
   imageGenerationBindings,
+  initialThinkingLevelForBinding,
   isImageGenerationModel,
 } from "@pi-desktop/shared";
-import { useAppStore } from "../../../../stores/app-store";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   composerModelBinding,
   composerModelMatchesQuery,
@@ -21,11 +20,12 @@ import {
   providerSearchText,
 } from "../../../../lib/provider-display";
 import { providerThinkingLevels } from "../../../../lib/session-thinking";
+import { useAppStore } from "../../../../stores/app-store";
 import {
+  type ComposerMenuView,
   sessionThinkingMenuLevels,
   thinkingLevelForProvider,
   thinkingProviderForModel,
-  type ComposerMenuView,
 } from "../model";
 import { createLatestCommitQueue } from "../thinking-commit-queue";
 
@@ -256,7 +256,11 @@ export function useComposerModelMenu({
       const nextBinding = candidate.models.find((entry) =>
         sameComposerModelId(entry.id, nextModelId),
       );
-      const nextThinkingLevel = activeSessionId
+      const selectedSameModel =
+        activeSessionId &&
+        candidate.id === provider?.id &&
+        sameComposerModelId(modelId ?? "", nextModelId);
+      const nextThinkingLevel = selectedSameModel
         ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)
         : initialThinkingLevelForBinding(
             nextBinding,

@@ -7,6 +7,7 @@ import {
   formatFileInsert,
   isSvgAttachment,
   MAX_INLINE_IMAGE_BYTES,
+  MAX_INLINED_IMAGE_HISTORY_BYTES,
   SVG_MIME_TYPE,
   type MessageAttachment,
   type UiMessage,
@@ -17,6 +18,16 @@ export type AttachmentHistoryContext = {
   projectPath?: string;
   attachmentsDir?: string;
   supportsVision: boolean;
+  /**
+   * Maximum aggregate raw image bytes inlined into V8 memory during history restoration
+   * (default: 30,000,000 / 30 MB).
+   * Older or excess images retain their file reference and fallback path without multiplying base64 heaps.
+   */
+  maxInlinedImageBytes?: number;
+  /**
+   * Optional maximum count of recent user messages eligible for inlining image attachments (default: 10).
+   */
+  maxInlinedImageMessages?: number;
 };
 
 function pathInside(root: string, candidate: string): boolean {
@@ -54,6 +65,9 @@ export async function hydrateAttachmentHistory(
   params: AttachmentHistoryContext,
 ): Promise<UiMessage[]> {
   const supportsVision = params.supportsVision;
+  const maxInlinedImageBytes =
+    params.maxInlinedImageBytes ?? MAX_INLINED_IMAGE_HISTORY_BYTES;
+  const maxInlinedImageMessages = params.maxInlinedImageMessages ?? 10;
   const roots = [
     params.scratchDir,
     params.projectPath,
@@ -68,8 +82,38 @@ export async function hydrateAttachmentHistory(
       }
     }),
   );
+
+  // Pre-scan user messages from newest to oldest to allocate the cumulative inlining byte budget [P1].
+  // Restricts base64 inlining to the latest N user messages within the total byte budget.
+  // Excess or older images retain their file reference and fallback path without V8 heap bloat (#1077).
+  const inlinableAttachmentKeys = new Set<string>();
+  let remainingBudget = maxInlinedImageBytes;
+  let eligibleUserMessageCount = 0;
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg?.role !== "user" || !msg.attachments?.length) continue;
+    const hasImages = msg.attachments.some((a) => a.kind === "image");
+    if (!hasImages) continue;
+    if (eligibleUserMessageCount >= maxInlinedImageMessages) break;
+    eligibleUserMessageCount += 1;
+
+    for (let aIdx = 0; aIdx < msg.attachments.length; aIdx++) {
+      const attachment = msg.attachments[aIdx];
+      if (attachment?.kind !== "image") continue;
+      const size = attachment.size ?? 0;
+      if (size <= MAX_INLINE_IMAGE_BYTES && (remainingBudget >= size || remainingBudget === maxInlinedImageBytes)) {
+        inlinableAttachmentKeys.add(`${i}:${aIdx}`);
+        remainingBudget = Math.max(0, remainingBudget - size);
+      }
+    }
+    if (remainingBudget <= 0) break;
+  }
+
   const resolveAttachment = async (
     sourceAttachment: NonNullable<UiMessage["attachments"]>[number],
+    msgIndex: number,
+    attachmentIndex: number,
   ): Promise<{ attachment: MessageAttachment; fallbackPath?: string }> => {
     // Old transcripts can still label SVG as an image. Normalize before every
     // early return, and discard any stale transient data without mutating history.
@@ -94,7 +138,8 @@ export async function hydrateAttachmentHistory(
       if (!canonicalRoots.some((root) => root && pathInside(root, canonical))) {
         return { attachment };
       }
-      const shouldInline = attachment.kind === "image" && supportsVision;
+      const allowInlining = inlinableAttachmentKeys.has(`${msgIndex}:${attachmentIndex}`);
+      const shouldInline = allowInlining && attachment.kind === "image" && supportsVision;
       const size = (await stat(canonical)).size;
       const bytes =
         shouldInline && size <= MAX_INLINE_IMAGE_BYTES
@@ -117,9 +162,13 @@ export async function hydrateAttachmentHistory(
   };
 
   return Promise.all(
-    history.map(async (message) => {
+    history.map(async (message, msgIndex) => {
       if (message.role !== "user" || !message.attachments?.length) return message;
-      const resolved = await Promise.all(message.attachments.map(resolveAttachment));
+      const resolved = await Promise.all(
+        message.attachments.map((a, aIndex) =>
+          resolveAttachment(a, msgIndex, aIndex)
+        )
+      );
       const fallbackPaths = resolved
         .map((item) => item.fallbackPath)
         .filter((path): path is string => Boolean(path))

@@ -121,10 +121,14 @@ export const BROWSER_PLUGIN_TAB = {
 } as const;
 
 export function browserPluginTab(location?: string): WorkPanelTab {
-  return {
-    ...pluginWorkPanelTab(BROWSER_PLUGIN_TAB.pluginId, BROWSER_PLUGIN_TAB.viewId),
-    ...(location ? { location } : {}),
-  };
+  const base = pluginWorkPanelTab(BROWSER_PLUGIN_TAB.pluginId, BROWSER_PLUGIN_TAB.viewId);
+  if (!location) return base;
+  const target = location.trim();
+  return { ...base, id: `${base.id}:${Date.now().toString(36)}-${++newWorkPanelTabSequence}`, location: target, label: browserTabLabel(target) };
+}
+
+export function browserTabLabel(location: string): string {
+  try { return new URL(location).host || location; } catch { return location.split(/[\\/]/).at(-1) || location; }
 }
 
 /**

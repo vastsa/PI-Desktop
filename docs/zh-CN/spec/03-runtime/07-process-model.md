@@ -72,7 +72,7 @@ queued/running `plan_approvals` 执行状态已中断并中止它们
 |---|---|
 | Renderer 崩溃 | 重新加载窗口，保留 host/agent 进程；同一主机重新加载仅恢复实时待处理的 Plan/Goal 批准及其截止日期，而不是终端卡 |
 | Rust 主机崩溃 | 将应用程序标记为降级、中断 pending/queued/running 审批工作、将待处理会话保留在其合同模式（Plan 或 Goal）中并将已批准的会话保留在 Agent 中、尝试重新启动主机并关闭活动会话失败 |
-| Node 代理崩溃 | 中止活动轮次和实时批准 waiters/queue 条目，在合同模式下保留待处理会话，在 Rust 中保留已批准的 Agent 模式，重新启动 sidecar，并且从不重播执行 |
+| Node 代理崩溃 | 中止活动轮次和实时批准 waiters/queue 条目，在合同模式下保留待处理会话，在 Rust 中保留已批准的 Agent 模式，重新启动 sidecar，并且从不重播执行；sidecar 退出时对其 stderr 尾部做分类——V8 堆耗尽横幅使所属回合以 `AGENT_SIDECAR_OOM` 收尾，其他意外退出以 `AGENT_SIDECAR_CRASHED` 收尾（issue #1077） |
 | Electron 主要崩溃 | 完整的应用程序退出 |
 
 Crashpad 在 `ready` 之前以本地模式启动（`uploadToServer: false`），转储放在
@@ -216,10 +216,13 @@ sidecar/host 关闭序列在更新程序替换应用程序之前运行。
   它调用的纯 JS 助手无需更改进程或协议所有权
 - 渲染器依赖项通过 Vite 输出传送，而不是重复原始数据
   包树；桌面包不再携带交互式 PTY 原生模块
-- 打包版本使用 Main 拥有的更新控制器。macOS、非 AppImage Linux 和
-  Windows ZIP 运行为手动交付模式；旧 Windows 便携版 exe 在设置了
-  `PORTABLE_EXECUTABLE_FILE` 时仍保持手动交付。Windows NSIS 和 Linux
-  AppImage 使用 D126 标签发布的应用内提要
+- 打包版本使用 Main 拥有的更新控制器，并使用按安装实例持久化的
+  `updatePreference`。自动模式在受支持的包上保持现有应用内下载/安装流程；手动模式
+  继续检查固定稳定版更新，但不自动下载或退出安装，并对每个可用版本只提醒一次。
+  Windows NSIS、已打包 macOS 和 Linux AppImage 默认自动；Windows ZIP/便携版，以及
+  不支持自动安装的包默认手动。Windows ZIP/便携版可在确认 NSIS 可能替换解压副本的
+  警告后明确选择自动。偏好和最近提醒版本保存在 Host 所有的应用设置 JSON 中，且不会
+  进入便携配置同步。
 
 ## 7. 远程目标拓扑（MVP 后）
 

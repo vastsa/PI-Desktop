@@ -134,6 +134,10 @@ pub struct ModelBinding {
     /// seed is inherited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_source: Option<String>,
+    /// Provenance of `max_tokens`, independent from the context-window marker.
+    /// Absent legacy values keep the historical generic-seed fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens_source: Option<String>,
     /// Context window in tokens. Optional on the wire: an absent key reads as
     /// `0`, which `normalize_model_bindings` replaces with the generic default,
     /// so a stored record that omits it still loads as one binding instead of

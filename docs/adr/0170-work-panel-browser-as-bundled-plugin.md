@@ -39,9 +39,10 @@ guest.
    stability). It errors if `pi.browser` is disabled; otherwise it loads the
    workspace file into the guest when that session's chrome is visible and
    reveals the plugin view. Plugin CDP stays Agent-only (`plugin_*`).
-6. **v1 is a singleton guest.** Session locations are remembered and rebound
-   when the originating conversation's plugin tab is shown (D142). Background
-   sessions do not steal the visible guest.
+6. The original singleton guest decision is superseded by
+   [Retain a host-owned browser page per resource tab](retained-browser-pages-per-tab.md).
+   BrowserHost now retains one page per session/tab while plugin chrome remains
+   a shared, host-controlled surface.
 
 This supersedes ADR 0105 clause 4 (Browser remains a host-built launcher) and
 the host-launcher clause of ADR 0019. Guest ownership and navigation policy
@@ -52,8 +53,8 @@ superseded: the panel's launchable surfaces are plugin views.
 
 - Disabling `pi.browser` removes the launcher row, agent CDP, and guest. URL
   chips fall back to `openExternal`. `BrowserPreview` fails closed.
-- Third-party plugins with `browser.cdp` share the same guest; last chrome
-  `setBounds` wins.
+- Third-party plugins with `browser.cdp` address the current browser page;
+  bounds remain clamped to the active browser chrome.
 - Plan still sees `BrowserPreview`. The Browser plugin tool is also visible in Plan/Goal for the four `planSafeActions` (`navigate`, `snapshot`, `screenshot`, `console`); click/fill/evaluate/cdp stay Agent-only (ADR 0211).
 
 ## Alternatives considered

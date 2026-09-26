@@ -35,6 +35,9 @@ export function copyProviderConfiguration(provider: ProviderPublic, name: string
         ? { contextWindowSource: model.contextWindowSource }
         : {}),
       maxTokens: model.maxTokens,
+      ...(model.maxTokensSource !== undefined
+        ? { maxTokensSource: model.maxTokensSource }
+        : {}),
       thinkingLevels: [...model.thinkingLevels],
       defaultThinkingLevel: model.defaultThinkingLevel,
       ...(model.supportsImages !== undefined ? { supportsImages: model.supportsImages } : {}),

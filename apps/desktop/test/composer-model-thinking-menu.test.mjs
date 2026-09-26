@@ -31,6 +31,10 @@ test("model selection returns to the root without closing", () => {
   assert.match(composerSource, /setQuery\(""\);[\s\S]*?setView\("root"\)/);
   assert.match(composerSource, /const thinkingMenuLevels = sessionThinkingMenuLevels\(availableThinkingLevels\)/);
 });
+test("switching models adopts the target default without resetting same-model overrides", () => {
+  assert.match(modelMenuSource, /const selectedSameModel =\s*activeSessionId &&\s*candidate\.id === provider\?\.id &&\s*sameComposerModelId\(modelId \?\? "", nextModelId\);/);
+  assert.match(modelMenuSource, /const nextThinkingLevel = selectedSameModel\s*\?\s*thinkingLevelForProvider\(nextModelProvider, thinkingLevel\)\s*:\s*initialThinkingLevelForBinding\(\s*nextBinding,\s*nextModelProvider\?\.supportedThinkingLevels,\s*\)/);
+});
 test("the menu root carries the reasoning slider itself", () => {
   // The root view renders the slider and nothing else for the level: there is
   // no reasoning entry left to open a list of levels.

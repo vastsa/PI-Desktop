@@ -13,7 +13,7 @@
 
 import { publishedThinkingLevels } from "./thinking-levels.js";
 import type {
-  ContextWindowSource,
+  ModelLimitSource,
   ModelBinding,
   ModelInfo,
   ThinkingLevel,
@@ -147,14 +147,14 @@ export const CATALOG_DEFAULT_MAX_TOKENS = 8_192;
  * binding that was saved before the fix; a `user` binding is the user's own
  * number and is never replaced, even when it equals the generic fallback.
  *
- * Older provider bindings name no source. They keep the rule this helper has
- * always applied: the generic 128k seed is treated as inherited when a
- * published limit is known, while every other value stays authoritative.
+ * A binding without provenance keeps its stored value. Older records cannot
+ * distinguish an intentional 128k override from the generic seed, so inferring
+ * catalog ownership would risk overwriting a user choice.
  */
 export function effectiveContextWindow(
   publishedContextWindow?: number | null,
   configuredContextWindow?: number | null,
-  source?: ContextWindowSource | null,
+  source?: ModelLimitSource | null,
 ): number | undefined {
   const published = positiveTokenCount(publishedContextWindow);
   const configured = positiveTokenCount(configuredContextWindow);
@@ -162,24 +162,22 @@ export function effectiveContextWindow(
   if (source === "catalog") return published ?? configured;
   if (source === "user") return configured ?? published;
   if (configured === undefined) return published;
-  if (published !== undefined && configured === CATALOG_DEFAULT_CONTEXT_WINDOW) {
-    return published;
-  }
   return configured;
 }
 
 /**
  * Resolve a model's effective output cap.
  *
- * The provenance rule the context window follows, applied to `limit.output`: a
- * `catalog` binding reads the published record, a `user` binding is the user's
- * own number and is never replaced, and a binding written before the marker
- * existed treats the generic 8.2k seed as inherited.
+ * Output-cap provenance is independent from context-window provenance: a
+ * `catalog` follows the published record and `user` is never replaced. A
+ * legacy binding with no output-cap marker preserves its stored value, including
+ * 8.2k: older records cannot distinguish that seed from an intentional user
+ * choice. Changing a context window never changes output-cap ownership.
  */
 export function effectiveMaxTokens(
   publishedMaxTokens?: number | null,
   configuredMaxTokens?: number | null,
-  source?: ContextWindowSource | null,
+  source?: ModelLimitSource | null,
 ): number | undefined {
   const published = positiveTokenCount(publishedMaxTokens);
   const configured = positiveTokenCount(configuredMaxTokens);
@@ -187,9 +185,6 @@ export function effectiveMaxTokens(
   if (source === "catalog") return published ?? configured;
   if (source === "user") return configured ?? published;
   if (configured === undefined) return published;
-  if (published !== undefined && configured === CATALOG_DEFAULT_MAX_TOKENS) {
-    return published;
-  }
   return configured;
 }
 
@@ -203,7 +198,7 @@ function positiveTokenCount(value?: number | null): number | undefined {
 
 /** Binding fields the limits resolver reads and rewrites. */
 type BindingLimits = Pick<ModelBinding, "contextWindow"> &
-  Partial<Pick<ModelBinding, "maxTokens" | "contextWindowSource">>;
+  Partial<Pick<ModelBinding, "maxTokens" | "contextWindowSource" | "maxTokensSource">>;
 
 /**
  * Resolve a saved binding's limits against its catalog baseline for
@@ -226,14 +221,20 @@ type BindingLimits = Pick<ModelBinding, "contextWindow"> &
 export function resolveBindingLimits<
   C extends { contextWindow?: number | null; maxTokens?: number | null; source?: string },
   B extends BindingLimits,
->(catalogConfig: C, binding: B): { catalogConfig: C; binding: B };
+>(catalogConfig: C, binding: B): {
+  catalogConfig: C;
+  binding: B & Partial<Pick<ModelBinding, "contextWindowSource" | "maxTokensSource">>;
+};
 export function resolveBindingLimits<
   C extends { contextWindow?: number | null; maxTokens?: number | null; source?: string },
   B extends BindingLimits,
 >(
   catalogConfig: C,
   binding: B | null | undefined,
-): { catalogConfig: C; binding: B | null | undefined };
+): {
+  catalogConfig: C;
+  binding: (B & Partial<Pick<ModelBinding, "contextWindowSource" | "maxTokensSource">>) | null | undefined;
+};
 export function resolveBindingLimits(
   catalogConfig: { contextWindow?: number | null; maxTokens?: number | null; source?: string },
   binding: BindingLimits | null | undefined,
@@ -249,13 +250,21 @@ export function resolveBindingLimits(
   const publishedMax = publishedRecord
     ? positiveTokenCount(catalogConfig.maxTokens)
     : undefined;
-  const source = binding.contextWindowSource ?? undefined;
-  const resolved = effectiveContextWindow(published, binding.contextWindow, source);
-  const resolvedMax = effectiveMaxTokens(publishedMax, binding.maxTokens, source);
+  const contextWindowSource = binding.contextWindowSource ?? "user";
+  const resolved = effectiveContextWindow(
+    published,
+    binding.contextWindow,
+    contextWindowSource,
+  );
+  // Older rows lack independent output provenance, so preserve their stored cap
+  // rather than guessing whether the generic seed was a deliberate user choice.
+  const maxTokensSource = binding.maxTokensSource ?? "user";
+  const resolvedMax = effectiveMaxTokens(publishedMax, binding.maxTokens, maxTokensSource);
+  const resolvedMaxSource = maxTokensSource;
   if (resolved === undefined && resolvedMax === undefined) {
     return { catalogConfig, binding };
   }
-  const inherited = source !== "user" && published !== undefined;
+  const inherited = contextWindowSource === "catalog" && published !== undefined;
   return {
     catalogConfig: {
       ...catalogConfig,
@@ -267,10 +276,15 @@ export function resolveBindingLimits(
       ...(resolved !== undefined
         ? {
             contextWindow: resolved,
-            ...(inherited ? { contextWindowSource: "catalog" as const } : {}),
+            contextWindowSource: inherited ? "catalog" as const : contextWindowSource,
           }
         : {}),
-      ...(resolvedMax !== undefined ? { maxTokens: resolvedMax } : {}),
+      ...(resolvedMax !== undefined
+        ? {
+            maxTokens: resolvedMax,
+            ...(resolvedMaxSource ? { maxTokensSource: resolvedMaxSource } : {}),
+          }
+        : {}),
     },
   };
 }
@@ -290,6 +304,7 @@ export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
     // correction still reaches this binding.
     contextWindowSource: "catalog",
     maxTokens: model.maxTokens || model.limit?.output || CATALOG_DEFAULT_MAX_TOKENS,
+    maxTokensSource: "catalog",
     thinkingLevels,
     defaultThinkingLevel: thinkingLevels.includes("medium")
       ? "medium"
@@ -326,6 +341,7 @@ export function bindingForCustomModel(id: string): ModelBinding {
     contextWindow: CATALOG_DEFAULT_CONTEXT_WINDOW,
     contextWindowSource: "catalog",
     maxTokens: CATALOG_DEFAULT_MAX_TOKENS,
+    maxTokensSource: "catalog",
     thinkingLevels: [],
     defaultThinkingLevel: null,
     supportsImages: null,

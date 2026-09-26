@@ -97,6 +97,8 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `AGENT_NOT_FOUND` | 不 | 会话丢失 |
 | `TURN_NOT_FOUND` | 不 | 使 id 无效 |
 | `TURN_ABORTED` | 不 | 回合被 user/system 中止 |
+| `AGENT_SIDECAR_CRASHED` | 不 | Node agent sidecar 进程在回合中途死亡；所属回合以中止收尾并使用此代码，而不是无关的 Plan 审批代码（issue #1077） |
+| `AGENT_SIDECAR_OOM` | 不 | sidecar 在 JavaScript 堆触及配置上限后死亡，依据其 stderr 尾部的 V8 致命错误横幅判定；在输入缩小之前，同一回合会以同样方式失败（issue #1077） |
 | `MODEL_NOT_CONFIGURED` | 不 | 未选择可用模型，或提供商因未知而拒绝所选模型 |
 | `PROVIDER_ERROR` | 是的 | 上游提供商故障；可重试的故障（5xx 网关）最多获得四次同回合重试，而格式错误的 400/422 请求，以及适配器自身拒绝的请求选项（Google 适配器遇到自定义 `fetch`，issue #1072）都是终止的 |
 | `PROVIDER_UNAUTHORIZED` | 不 | bad/missing 提供商凭证 |

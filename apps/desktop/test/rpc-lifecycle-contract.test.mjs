@@ -297,7 +297,23 @@ test("sidecar crash reports carry the last stderr lines", () => {
   );
   assert.match(mainSource, /agent sidecar exited unexpectedly/);
   assert.ok(
-    mainSource.includes("data: { exitCode: code, signal, stderrTail }"),
+    mainSource.includes("stderrTail,"),
     "crash log carries the tail",
+  );
+  // The crash kind is classified once from the tail and reaches both the
+  // settlement code and the log line, so an OOM death never reads as an
+  assert.match(runtimeSidecarSource, /classifySidecarCrash\(stderrTail\)/);
+  assert.match(runtimeSidecarSource, /sidecarCrashErrorCode\(crash\.kind\)/);
+  assert.match(runtimeSidecarSource, /crashKind: crash\.kind/);
+  assert.ok(
+    runtimeSidecarSource.includes(
+      "settleCrashedSession(sessionId, crashedTurnId, crashErrorCode)",
+    ),
+    "the owning turn settles with the classified code",
+  );
+  assert.doesNotMatch(runtimeSidecarSource, /finishTurn\([^)]*"PLAN_APPROVAL_INTERRUPTED"/);
+  assert.match(
+    runtimeSidecarSource,
+    /finishTurn\(sessionId, "aborted", errorCode, \{/,
   );
 });

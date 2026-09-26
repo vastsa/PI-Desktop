@@ -1,4 +1,4 @@
-import { applyMessageUpdate, IPC, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
+import { applyMessageUpdate, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
 import type { FinishTurn } from "./plans";
 import type { RuntimeState } from "./context";
 import type { InflightCheckpointer } from "@pi-desktop/host-runtime";

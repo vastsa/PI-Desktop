@@ -5457,7 +5457,7 @@ mod tests {
             panic!("expected child")
         };
         let child_scratch = crate::scratch::session_dir(db.data_dir(), &child.summary.id).unwrap();
-        let child_file = child_scratch.join("pasted/first note.txt");
+        let child_file = child_scratch.join("pasted").join("first note.txt");
         assert_eq!(
             std::fs::read_to_string(&child_file).unwrap(),
             "original reference bytes"
@@ -5493,7 +5493,8 @@ mod tests {
         };
         let grandchild_file = crate::scratch::session_dir(db.data_dir(), &grandchild.summary.id)
             .unwrap()
-            .join("pasted/first note.txt");
+            .join("pasted")
+            .join("first note.txt");
         assert_eq!(
             std::fs::read_to_string(&grandchild_file).unwrap(),
             "original reference bytes"

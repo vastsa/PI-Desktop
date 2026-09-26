@@ -1,7 +1,7 @@
 import { app, globalShortcut, type Tray } from "electron";
 import type { CloseBehavior } from "@pi-desktop/shared";
 import type { AgentSidecar } from "../agent-sidecar";
-import type { BrowserPane } from "../browser-view";
+import type { BrowserHost } from "../browser-host";
 import type { HostProcess } from "../host-process";
 import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import type { Logger } from "../logger";
@@ -41,7 +41,7 @@ export type ShutdownDependencies = {
   plugins: Pick<PluginRuntime, "disposeAll">;
   userMcp: Pick<UserMcpRuntime, "disposeAll">;
   mcpOAuth?: Pick<McpOAuthManager, "disposeAll">;
-  browserPane: Pick<BrowserPane, "dispose">;
+  browserHost: Pick<BrowserHost, "dispose">;
   pluginViews: Pick<PluginViewHost, "dispose">;
   updater: Pick<AppUpdaterController, "dispose" | "isInstallingUpdate">;
   logger: Pick<Logger, "app">;
@@ -63,7 +63,7 @@ export function registerShutdownHandlers({
   plugins,
   userMcp,
   mcpOAuth,
-  browserPane,
+  browserHost,
   pluginViews,
   updater,
   logger,
@@ -169,7 +169,7 @@ export function registerShutdownHandlers({
       const pluginShutdown = plugins.disposeAll();
       userMcp.disposeAll();
       mcpOAuth?.disposeAll();
-      browserPane.dispose();
+      browserHost.dispose();
       inflightCheckpointer.dispose();
       const sidecarShutdown = getSidecar()?.dispose();
 

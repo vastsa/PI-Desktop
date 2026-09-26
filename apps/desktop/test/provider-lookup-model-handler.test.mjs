@@ -92,7 +92,7 @@ function harness(realCatalog) {
     },
     "../oauth": { OAUTH_AUTH_KIND: "oauth" },
     "../model-discovery": {
-      probeModelList: async () => {
+      probeProviderEndpoint: async () => {
         throw new Error("the lookup must not probe the network");
       },
     },

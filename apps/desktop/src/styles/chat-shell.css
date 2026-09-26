@@ -166,8 +166,9 @@
 .settings-content-enter {
   /* No `forwards`/`both` fill: this entrance ends on the element's own state,
      so a fill would only keep the animation "in effect" — and with it the
-     stacking context that left route-level overlays (the plugin modals, the
-     plugin detail sheet) underneath the opaque titlebar band. */
+     stacking context that can leave any legacy route-level fixed surface
+     underneath the opaque titlebar band. Modal surfaces use the viewport
+     overlay host, but keeping this invariant protects other fixed content. */
   animation: route-surface-in var(--motion-duration-normal) var(--motion-ease-out);
 }
 

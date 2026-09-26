@@ -223,14 +223,10 @@ export function catalogModelIdsMatch(candidate: string, requested: string): bool
   );
 }
 
-/**
- * Where a saved context window came from.
- *
- * `catalog` is a metadata snapshot: the value follows the published models.dev
- * record, so a later catalog correction still reaches an already saved binding.
- * `user` is the user's own number and is never overwritten by the catalog.
- */
-export type ContextWindowSource = "catalog" | "user";
+/** Where a saved model limit came from; user-authored values are never replaced. */
+export type ModelLimitSource = "catalog" | "user";
+/** @deprecated Use ModelLimitSource; kept for existing context-window callers. */
+export type ContextWindowSource = ModelLimitSource;
 
 /** Provider-local model settings persisted with the provider configuration. */
 export type ModelBinding = {
@@ -244,18 +240,21 @@ export type ModelBinding = {
    * `effectiveContextWindow`. */
   contextWindowSource?: ContextWindowSource;
   maxTokens: number;
+  /** Provenance of `maxTokens`, independent of `contextWindowSource`. */
+  maxTokensSource?: ModelLimitSource;
   thinkingLevels: ThinkingLevel[];
   /** Canonical enabled level, or `omit` when new sessions should send no override. */
   defaultThinkingLevel: SessionThinkingLevel | null;
   /**
    * User override for image input. `null` or absent follows the published
-   * models.dev capability; `true` forces image transport on for an endpoint the
-   * catalog describes too narrowly, `false` keeps images out of the request.
+   * models.dev capability. Once explicitly selected, either boolean is pinned
+   * even when it matches today's catalog value.
    */
   supportsImages?: boolean | null;
   /**
    * User override for document (PDF) input, with the same three-state meaning.
-   * Documents are still transported as bounded file references, so this records
+   * An explicit boolean remains pinned if the catalog later changes. Documents
+   * are still transported as bounded file references, so this records
    * the capability the model actually has rather than switching the encoding.
    */
   supportsDocuments?: boolean | null;

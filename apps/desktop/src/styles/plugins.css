@@ -1258,6 +1258,10 @@
 }
 
 /* Detail sheet: a right-side overlay instead of a nested-border sidebar. */
+#pi-desktop-overlays > .plugins-sheet-layer {
+  pointer-events: auto;
+}
+
 .plugins-sheet-layer {
   position: fixed;
   inset: 0;
@@ -1749,6 +1753,11 @@
   color: var(--ds-text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
+}
+
+/* The shared overlay host is inert until a portaled surface opts back in. */
+#pi-desktop-overlays > .plugins-modal-backdrop {
+  pointer-events: auto;
 }
 
 /* Permission review dialog: the last stop before granting capabilities. */

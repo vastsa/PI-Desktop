@@ -925,6 +925,31 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             return Err(rpc_err(1002, message, "INVALID_PARAMS"));
         }
     }
+    if let Some(preference) = object.get("updatePreference") {
+        if !matches!(preference.as_str(), Some("automatic") | Some("manual")) {
+            return Err(rpc_err(
+                1002,
+                "updatePreference must be automatic or manual",
+                "INVALID_PARAMS",
+            ));
+        }
+    }
+    if let Some(version) = object.get("lastNotifiedUpdateVersion") {
+        let Some(version) = version.as_str() else {
+            return Err(rpc_err(
+                1002,
+                "lastNotifiedUpdateVersion must be a non-empty string",
+                "INVALID_PARAMS",
+            ));
+        };
+        if version.trim().is_empty() || version.len() > 128 {
+            return Err(rpc_err(
+                1002,
+                "lastNotifiedUpdateVersion must contain 1 to 128 characters",
+                "INVALID_PARAMS",
+            ));
+        }
+    }
     if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
         if !infinite_retry.is_boolean() {
             return Err(rpc_err(
@@ -9426,6 +9451,32 @@ mod image_generation_settings_tests {
             json!([{"providerId": "p", "modelId": " "}]),
         ] {
             assert!(validate_settings_value(&json!({"imageGenerationModels": value})).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod update_settings_tests {
+    use super::*;
+
+    #[test]
+    fn validates_update_preference_and_reminder_version() {
+        for value in [
+            json!({}),
+            json!({"updatePreference": "automatic"}),
+            json!({"updatePreference": "manual"}),
+            json!({"lastNotifiedUpdateVersion": "0.15.9"}),
+        ] {
+            assert!(validate_settings_value(&value).is_ok(), "{value}");
+        }
+        for value in [
+            json!({"updatePreference": "sometimes"}),
+            json!({"updatePreference": null}),
+            json!({"lastNotifiedUpdateVersion": "  "}),
+            json!({"lastNotifiedUpdateVersion": 12}),
+            json!({"lastNotifiedUpdateVersion": "x".repeat(129)}),
+        ] {
+            assert!(validate_settings_value(&value).is_err(), "{value}");
         }
     }
 }

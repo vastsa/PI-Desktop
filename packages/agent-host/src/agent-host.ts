@@ -25,7 +25,6 @@ import type {
   RacpSessionStatus,
   RacpTurn,
   RacpTurnAdmission,
-  ToolPermissionRequest,
   UiMessage,
 } from "@pi-desktop/shared";
 import {

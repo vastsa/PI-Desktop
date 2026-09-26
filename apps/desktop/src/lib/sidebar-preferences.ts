@@ -1,4 +1,4 @@
-import type { ProjectWorkspace, SessionSummary, SessionSort } from "@pi-desktop/shared";
+import type { ProjectWorkspace, SessionSort } from "@pi-desktop/shared";
 export type { SessionSort } from "@pi-desktop/shared";
 export { sortSessions, sessionIsPinned, sessionIsArchived } from "@pi-desktop/shared";
 
@@ -89,9 +89,6 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 function bool(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
-}
-function number(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 function manualOrder(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0

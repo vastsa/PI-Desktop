@@ -23,17 +23,45 @@ let settings = {
   enterToSend: true,
   developerMode: false,
 };
+let updateState = {
+  mode: "in-app",
+  preference: "automatic",
+  defaultPreference: "automatic",
+  automaticSupported: true,
+  manualReminder: false,
+  status: "available",
+  currentVersion: "0.15.8",
+  availableVersion: "0.15.9",
+  releasesUrl: "https://github.com/vastsa/PI-Desktop/releases/latest",
+};
+const updateStateListeners = new Set();
 window.piDesktop = {
-  platform: "darwin", on: () => () => {},
+  platform: "darwin",
+  on(channel, listener) {
+    if (channel === IPC.event.updatesState) updateStateListeners.add(listener);
+    return () => updateStateListeners.delete(listener);
+  },
   async invoke(channel, input) {
     let data;
     switch (channel) {
       case IPC.invoke.pluginScenicThemesDestinations: data = destinations; break;
       case IPC.invoke.settingsGet: data = settings; break;
-      case IPC.invoke.settingsSet: settings = input; data = settings; break;
+      case IPC.invoke.settingsSet:
+        settings = input;
+        data = settings;
+        if (settings.updatePreference === "automatic" || settings.updatePreference === "manual") {
+          updateState = {
+            ...updateState,
+            preference: settings.updatePreference,
+            mode: settings.updatePreference === "automatic" ? "in-app" : "manual",
+          };
+          for (const listener of updateStateListeners) listener(updateState);
+        }
+        break;
       case IPC.invoke.providersList: data = { providers: [] }; break;
       case IPC.invoke.sessionList: data = { sessions: [] }; break;
       case IPC.invoke.appGetOnboarding: data = {}; break;
+      case IPC.invoke.updatesGetState: data = updateState; break;
       case IPC.invoke.configSyncGetState:
         data = {
           configured: false,
@@ -130,6 +158,50 @@ async function scroll() {
   assert(pane().scrollTop > 0, "Destination must be scrollable for this check");
   return pane().scrollTop;
 }
+async function exerciseUpdatePreference() {
+  await select("Info");
+  await settle();
+  const trigger = () => document.querySelector('button[aria-label="Update behavior"]');
+  assert(trigger() instanceof HTMLButtonElement, "Update behavior selector must render");
+  assert(trigger().textContent?.includes("Automatic"), "Installed package defaults to Automatic");
+  assert(
+    [...document.querySelectorAll(".update-settings-actions button")]
+      .some((button) => button.textContent?.includes("Check for updates")),
+    "Automatic mode keeps the existing update check action",
+  );
+
+  async function choosePreference(label, value) {
+    const selectTrigger = trigger();
+    assert(selectTrigger instanceof HTMLButtonElement, "Update selector trigger must remain mounted");
+    flushSync(() => selectTrigger.click());
+    await settle();
+    const option = [...document.querySelectorAll('[role="option"]')]
+      .find((candidate) => candidate.textContent?.trim() === label);
+    assert(option instanceof HTMLButtonElement, `Missing update preference option: ${label}`);
+    flushSync(() => option.click());
+    await settle();
+    assert(settings.updatePreference === value, `${label} preference must persist through settings IPC`);
+    assert(useAppStore.getState().settings?.updatePreference === value, `${label} preference must update the renderer store`);
+    assert(updateState.preference === value, `${label} preference must update the shared update state`);
+  }
+
+  await choosePreference("Manual", "manual");
+  assert(trigger().textContent?.includes("Manual"), "Manual must become the selected value");
+  assert(
+    [...document.querySelectorAll(".update-settings-actions button")]
+      .some((button) => button.textContent?.includes("View release")),
+    "Manual mode must offer the release page for an available version",
+  );
+
+  await select("AI");
+  await select("Info");
+  await settle();
+  assert(trigger().textContent?.includes("Manual"), "Manual preference must survive leaving and reopening Info");
+  await choosePreference("Automatic", "automatic");
+  assert(trigger().textContent?.includes("Automatic"), "Automatic must be selectable again");
+  return { updatePreference: settings.updatePreference, updateMode: updateState.mode };
+}
+
 async function exerciseBrazilianPortuguese() {
   await select("General");
   const trigger = document.querySelector(".settings-language-trigger");
@@ -238,6 +310,7 @@ window.settingsScrollProbe = async () => {
     assert(pane().scrollTop > 0, "Search within the active tab must still locate its row");
     checks.push({ theme, ok: true });
   }
+  checks.push(await exerciseUpdatePreference());
   checks.push(await exerciseBrazilianPortuguese());
   return { ok: true, checks };
 };

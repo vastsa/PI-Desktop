@@ -39,6 +39,9 @@ use tracing_subscriber::EnvFilter;
 
 use crate::state::AppState;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::args().any(|arg| arg == tools::INTERNAL_TOOL_RUNNER_FLAG) {

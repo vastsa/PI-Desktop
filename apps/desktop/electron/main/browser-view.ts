@@ -1,5 +1,5 @@
 import { shell, WebContentsView, type BrowserWindow } from "electron";
-import { statSync, watch, type FSWatcher } from "node:fs";
+import { realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserState } from "@pi-desktop/shared";
@@ -38,8 +38,15 @@ export function normalizeUrl(raw: string): string | null {
 }
 
 function isWithinRoot(path: string, root: string): boolean {
-  const resolvedRoot = resolve(root);
-  return path === resolvedRoot || path.startsWith(resolvedRoot + sep);
+  try {
+    const realRoot = realpathSync(resolve(root));
+    const realPath = realpathSync(resolve(path));
+    return realPath === realRoot || realPath.startsWith(realRoot + sep);
+  } catch {
+    const resolvedRoot = resolve(root);
+    const resolvedPath = resolve(path);
+    return resolvedPath === resolvedRoot || resolvedPath.startsWith(resolvedRoot + sep);
+  }
 }
 
 /**
@@ -68,11 +75,14 @@ export function resolveLocalFile(raw: string, root: string | null): string | nul
   const resolved = resolve(candidate);
   if (!isWithinRoot(resolved, root)) return null;
   try {
-    if (!statSync(resolved).isFile()) return null;
+    const real = realpathSync(resolved);
+    const realRoot = realpathSync(resolve(root));
+    if (real !== realRoot && !real.startsWith(realRoot + sep)) return null;
+    if (!statSync(real).isFile()) return null;
+    return real;
   } catch {
     return null;
   }
-  return resolved;
 }
 
 export class BrowserPane {
@@ -89,9 +99,15 @@ export class BrowserPane {
   private stateEventsEpoch: number | null = null;
   private stateUrl: string | null = null;
   private nativeNavigationPending = false;
+  private pendingTarget: string | null = null;
+  private loadError: { url: string; message: string } | null = null;
+  private cancelPending: (() => void) | null = null;
 
-  constructor(onState: (state: BrowserState) => void) {
+  private readonly onOpenUrl?: (url: string) => void;
+
+  constructor(onState: (state: BrowserState) => void, onOpenUrl?: (url: string) => void) {
     this.onState = onState;
+    this.onOpenUrl = onOpenUrl;
   }
 
   setWindow(window: BrowserWindow | null): void {
@@ -104,9 +120,10 @@ export class BrowserPane {
     const wc = this.view?.webContents;
     if (!wc || wc.isDestroyed()) return null;
     return {
-      url: wc.getURL(),
+      url: this.loadError?.url ?? this.pendingTarget ?? wc.getURL(),
       title: wc.getTitle(),
-      isLoading: wc.isLoading(),
+      isLoading: !this.loadError && (this.pendingTarget !== null || wc.isLoading()),
+      ...(this.loadError ? { loadError: this.loadError.message } : {}),
       canGoBack: wc.navigationHistory.canGoBack(),
       canGoForward: wc.navigationHistory.canGoForward(),
     };
@@ -124,6 +141,10 @@ export class BrowserPane {
    * navigation establishes a new event scope.
    */
   invalidateNavigation(): void {
+    this.cancelPending?.();
+    this.cancelPending = null;
+    this.pendingTarget = null;
+    this.loadError = null;
     this.navigationEpoch += 1;
     this.stateEventsEpoch = null;
     this.stateUrl = null;
@@ -131,33 +152,7 @@ export class BrowserPane {
   }
 
   navigate(raw: string, fileRoot: string | null = null): BrowserState | null {
-    if (fileRoot) this.fileRoot = fileRoot;
-    const localPath = resolveLocalFile(raw, this.fileRoot);
-    if (localPath) {
-      const epoch = this.beginManagedNavigation();
-      const view = this.ensureView();
-      this.watchDirForReload(dirname(localPath));
-      void view.webContents
-        .loadURL(pathToFileURL(localPath).toString())
-        .then(() => this.completeManagedNavigation(epoch))
-        .catch(() => {
-          // A failed replacement must not publish the previous document.
-        });
-      if (this.visible) this.attach();
-      return this.getState();
-    }
-    const url = normalizeUrl(raw);
-    if (!url) return this.getState();
-    const epoch = this.beginManagedNavigation();
-    this.clearLiveReload();
-    const view = this.ensureView();
-    void view.webContents
-      .loadURL(url)
-      .then(() => this.completeManagedNavigation(epoch))
-      .catch(() => {
-        // A failed replacement must not publish the previous document.
-      });
-    if (this.visible) this.attach();
+    void this.navigateAndWait(raw, fileRoot);
     return this.getState();
   }
 
@@ -171,36 +166,83 @@ export class BrowserPane {
     const target = localPath
       ? pathToFileURL(localPath).toString()
       : normalizeUrl(raw);
-    if (!target) return null;
+    if (!target) {
+      this.beginManagedNavigation();
+      this.loadError = { url: raw, message: "INVALID_URL" };
+      const state = this.getState();
+      if (state) this.onState(state);
+      return null;
+    }
     const epoch = this.beginManagedNavigation();
+    this.pendingTarget = target;
+    this.loadError = null;
     if (localPath) this.watchDirForReload(dirname(localPath));
     else this.clearLiveReload();
     const view = this.ensureView();
+    const wc = view.webContents;
+    const loading = this.getState();
+    if (loading) this.onState(loading);
     if (this.visible) this.attach();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const completed = await Promise.race([
-        view.webContents.loadURL(target).then(() => true),
-        new Promise<false>((resolve) => {
-          timer = setTimeout(() => resolve(false), Math.max(1, timeoutMs));
-        }),
-      ]);
-      if (!completed || epoch !== this.navigationEpoch) return null;
-      const state = this.getState();
-      if (state) this.enableStateEvents(epoch, state.url);
-      return state;
-    } catch {
-      // Load failures still surface through did-fail-load → state push, but
-      // must not make a previous session's document eligible for display.
-      return null;
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    return new Promise<BrowserState | null>((resolve) => {
+      let settled = false;
+      let started = false;
+      const destinations = new Set([target]);
+      const finish = (committed: boolean, error?: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        wc.removeListener("did-start-navigation", onStart);
+        wc.removeListener("did-navigate", onCommit);
+        wc.removeListener("did-redirect-navigation", onRedirect);
+        wc.removeListener("did-fail-load", onFailure);
+        if (epoch !== this.navigationEpoch) { resolve(null); return; }
+        this.cancelPending = null;
+        this.pendingTarget = null;
+        if (error) this.loadError = { url: target, message: error };
+        const state = this.getState();
+        if (committed && state) this.enableStateEvents(epoch, state.url);
+        if (error && state) this.onState(state);
+        resolve(committed ? state : null);
+      };
+      const onStart = (_event: unknown, url: string, inPlace: boolean, mainFrame: boolean) => {
+        if (mainFrame && !inPlace && url === target) started = true;
+      };
+      const onRedirect = (_event: unknown, url: string, inPlace: boolean, mainFrame: boolean) => {
+        if (started && mainFrame && !inPlace && epoch === this.navigationEpoch) destinations.add(url);
+      };
+      const onFailure = (_event: unknown, code: number, description: string, url: string, mainFrame: boolean) => {
+        if (mainFrame !== false && code !== -3 && destinations.has(url)) finish(false, description);
+      };
+      const onCommit = (_event: unknown, url: string) => {
+        // A current main-frame commit is ready to display even if images or
+        // subframes are still loading. Old-session events cannot satisfy it.
+        if (started && epoch === this.navigationEpoch && destinations.has(url) && url === wc.getURL()) finish(true);
+      };
+      const timer = setTimeout(() => finish(false, "ERR_TIMED_OUT"), Math.max(1, timeoutMs));
+      this.cancelPending = () => finish(false);
+      wc.on("did-start-navigation", onStart);
+      wc.on("did-navigate", onCommit);
+      wc.on("did-redirect-navigation", onRedirect);
+      wc.on("did-fail-load", onFailure);
+      void wc.loadURL(target).then(
+        () => { if (destinations.has(wc.getURL())) finish(true); },
+        (error: unknown) => finish(false, error instanceof Error ? error.message : String(error)),
+      );
+    });
   }
 
   action(action: "back" | "forward" | "reload" | "stop"): void {
     const wc = this.view?.webContents;
     if (!wc || wc.isDestroyed()) return;
+    if (action === "stop" && this.pendingTarget) {
+      const url = this.pendingTarget;
+      this.cancelPending?.();
+      this.loadError = { url, message: "ERR_ABORTED" };
+      wc.stop();
+      const state = this.getState();
+      if (state) this.onState(state);
+      return;
+    }
     if (action === "back" && wc.navigationHistory.canGoBack()) {
       this.nativeNavigationPending = this.hasCurrentStateEventScope();
       wc.navigationHistory.goBack();
@@ -229,6 +271,7 @@ export class BrowserPane {
   setVisible(visible: boolean): void {
     this.visible = visible;
     if (!this.view) return;
+    this.view.setVisible?.(visible);
     if (visible) this.attach();
     else this.detach();
   }
@@ -332,13 +375,17 @@ export class BrowserPane {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
+        backgroundThrottling: true,
         partition: PARTITION,
       },
     });
     const wc = view.webContents;
     wc.setWindowOpenHandler(({ url }) => {
       const allowed = parseAllowedExternalUrl(url);
-      if (allowed) void shell.openExternal(allowed);
+      if (allowed) {
+        if (this.onOpenUrl) this.onOpenUrl(allowed);
+        else void shell.openExternal(allowed);
+      }
       return { action: "deny" };
     });
     wc.session.setPermissionRequestHandler((_wc, _permission, callback) => {
@@ -395,7 +442,9 @@ export class BrowserPane {
     wc.on(
       "did-fail-load",
       (_event, _errorCode, _errorDescription, validatedUrl, isMainFrame) => {
-        if (isMainFrame === false) return;
+        // Replacing a still-loading document aborts its old request. That
+        // event must not consume the pending navigation to the new document.
+        if (isMainFrame === false || _errorCode === -3) return;
         if (this.acceptNativeNavigation(validatedUrl)) push();
       },
     );
@@ -404,6 +453,10 @@ export class BrowserPane {
   }
 
   private beginManagedNavigation(): number {
+    this.cancelPending?.();
+    this.cancelPending = null;
+    this.pendingTarget = null;
+    this.loadError = null;
     const epoch = ++this.navigationEpoch;
     this.stateEventsEpoch = null;
     this.stateUrl = null;
@@ -416,14 +469,6 @@ export class BrowserPane {
     this.stateEventsEpoch = epoch;
     this.stateUrl = url;
     this.nativeNavigationPending = false;
-  }
-
-  private completeManagedNavigation(epoch: number): void {
-    if (epoch !== this.navigationEpoch) return;
-    const state = this.getState();
-    if (!state) return;
-    this.enableStateEvents(epoch, state.url);
-    this.onState(state);
   }
 
   private hasCurrentStateEventScope(): boolean {

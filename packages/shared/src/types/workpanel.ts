@@ -83,6 +83,11 @@ export type WorkspaceDiff = {
 export type BrowserAction = "back" | "forward" | "reload" | "stop";
 
 export type BrowserState = {
+  /** Main-owned origin for retained browser resource tabs. */
+  sessionId?: string;
+  tabId?: string;
+  /** Navigation failure; the previous document must not be presented as ready. */
+  loadError?: string;
   url: string;
   title: string;
   isLoading: boolean;

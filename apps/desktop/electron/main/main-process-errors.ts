@@ -128,3 +128,9 @@ export function installMainProcessErrorHandlers(next?: MainProcessErrorSink): vo
     reportMainProcessError("unhandledRejection", reason);
   });
 }
+
+/** One-line message for an error of unknown shape, for user-facing lists. */
+export function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message.slice(0, 300);
+  return String(error).slice(0, 300);
+}

@@ -268,6 +268,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyDeveloperMode,
     applyPreventScreenSleep,
     applyKeepAwakeWhileRunning,
+    applyUpdatePreference: (preference) => updater.setPreference(preference),
     resolveEffectiveCommandShell,
   });
   registerConfigSyncIpc({
@@ -331,7 +332,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     plugins,
     browserHost,
     clipboardHistory,
-    logger,
     recordPastedClipboardFiles,
     currentWorkspacePath,
     setCurrentWorkspacePath,

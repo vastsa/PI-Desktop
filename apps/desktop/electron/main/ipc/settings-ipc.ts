@@ -1,5 +1,4 @@
-import { IPC } from "@pi-desktop/shared";
-import { testNetworkProxy } from "../network-proxy";
+import { IPC, type UpdatePreference } from "@pi-desktop/shared";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";
@@ -23,6 +22,7 @@ export type SettingsIpcDependencies = {
   applyDeveloperMode: (settings?: { developerMode?: unknown } | null) => void;
   applyPreventScreenSleep: (settings?: { preventScreenSleep?: unknown } | null) => void;
   applyKeepAwakeWhileRunning: (settings?: { keepAwakeWhileRunning?: unknown } | null) => void;
+  applyUpdatePreference: (preference: UpdatePreference) => void;
   resolveEffectiveCommandShell: () => Promise<unknown>;
 };
 
@@ -41,6 +41,7 @@ export function registerSettingsIpc({
   applyDeveloperMode,
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
+  applyUpdatePreference,
   resolveEffectiveCommandShell,
 }: SettingsIpcDependencies): void {
   let host: HostProcess | null = null;
@@ -67,6 +68,11 @@ export function registerSettingsIpc({
     if (!host) throw new Error("host unavailable");
     const validatedSettings = validateSettingsWrite(settings);
     const result = await host.call("settings.set", validatedSettings);
+    const updatePreference = (validatedSettings as { updatePreference?: unknown })
+      .updatePreference;
+    if (updatePreference === "automatic" || updatePreference === "manual") {
+      applyUpdatePreference(updatePreference);
+    }
     if (typeof (validatedSettings as { keepAwakeWhileRunning?: unknown })
       .keepAwakeWhileRunning === "boolean") {
       applyKeepAwakeWhileRunning(validatedSettings as { keepAwakeWhileRunning: boolean });

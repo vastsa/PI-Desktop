@@ -228,6 +228,18 @@ test("Escape dismisses a finished install but never a running download", () => {
   assert.match(dialogSrc, /className="plugins-modal-actions"/);
 });
 
+test("the install dialog is mounted above the route and sidebar stacking contexts", () => {
+  assert.match(dialogSrc, /portalOverlay\(/);
+  assert.match(
+    dialogSrc,
+    /return portalOverlay\(\s*<div className="plugins-modal-backdrop"/,
+  );
+  assert.match(
+    pluginsCss,
+    /#pi-desktop-overlays > \.plugins-modal-backdrop\s*\{[^}]*pointer-events:\s*auto;/,
+  );
+});
+
 test("install dialog copy exists in every shipped locale", () => {
   const keys = [
     "plugins.installDialogTitle",

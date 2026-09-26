@@ -520,7 +520,8 @@ pi.browser.console(input?: { limit?: number }): Promise<{ messages: unknown[] }>
 pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 ```
 
-访客页是宿主拥有的 `WebContentsView`（`persist:work-browser`）。
+当前访客页是宿主拥有的 `WebContentsView`（`persist:work-browser`），各资源标签保留自己的页面。
+后台会话导航保留给该会话上次选中的标签；尚无标签时由首个标签消费，不导航或返回其他会话的页面。
 `setBounds` 相对调用插件视图的内容区，并被夹紧，因此访客页不能盖住聊天/输入框。
 `cdp` 默认拒绝；cookie、storage、target 和网络拦截方法以 `PERMISSION_DENIED` 失败。
 代理调用的会话身份来自进行中的 `plugins.execute` `sessionId`，而不是插件参数（D333 / ADR 0170）。
@@ -530,6 +531,10 @@ pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 不会在后台轮询或重新读取系统剪贴板。连续相同内容会合并并刷新时间戳。历史只保留在
 内存中，最多保留 30 天、500 条和 256 MiB；单条文本最多 100 KiB UTF-8 字节，图片
 最多 50 MiB。图片统一返回 PNG 字节及像素尺寸。没有粘贴过的复制内容不会被记录。
+
+`navigate` 在当前主框架导航提交（含重定向）时返回，不等待慢图片或子框架。
+`browser:state` 立即报告加载状态，导航失败时可带 `loadError`。
+可选的 `sessionId`、`tabId` 标识宿主管理的工作面板目标；插件不能通过导航参数指定这些身份。
 
 ### 服务（需要 `background.service`）
 ```ts

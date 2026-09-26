@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseSkillFrontmatter } from "@pi-desktop/plugin-sdk";
 import type { PluginSkillDef } from "@pi-desktop/agent-runtime";
+import type { LoadedSkillDocument } from "./skill-document";
 
 /**
  * Skills PI-Desktop ships itself.
@@ -67,11 +68,11 @@ export function isPluginWorkspace(
 }
 
 /** Front matter carries the skill's title and applicability line. */
-function readBuiltinSkill(fileName: string): string | null {
+function readBuiltinSkill(fileName: string): { path: string; raw: string } | null {
   const path = resolveBuiltinSkillPath(fileName);
   if (!path) return null;
   try {
-    return readFileSync(path, "utf8");
+    return { path, raw: readFileSync(path, "utf8") };
   } catch {
     return null;
   }
@@ -93,8 +94,8 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
   return ids.flatMap((id) => {
     const file = id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE;
     const raw = readBuiltinSkill(file);
-    if (!raw?.trim()) return [];
-    const parsed = parseSkillFrontmatter(raw);
+    if (!raw?.raw.trim()) return [];
+    const parsed = parseSkillFrontmatter(raw.raw);
     return parsed.body ? [{ id, name: parsed.name ?? id, description: parsed.description }] : [];
   });
 }
@@ -103,17 +104,16 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
  * Load a built-in skill body for the `Skill` tool. Returns null for any id the
  * host does not ship, which is the caller's cue to try the plugin registry.
  */
-export function loadBuiltinSkillBody(
-  id: string,
-): { id: string; name: string; body: string } | null {
+export function loadBuiltinSkillBody(id: string): LoadedSkillDocument | null {
   if (id !== PLUGIN_DEV_SKILL_ID && id !== IMAGE_GENERATION_SKILL_ID) return null;
   const raw = readBuiltinSkill(id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE);
-  if (!raw?.trim()) return null;
-  const parsed = parseSkillFrontmatter(raw);
+  if (!raw?.raw.trim()) return null;
+  const parsed = parseSkillFrontmatter(raw.raw);
   if (!parsed.body) return null;
   return {
     id,
     name: parsed.name ?? id,
     body: parsed.body,
+    location: raw.path,
   };
 }

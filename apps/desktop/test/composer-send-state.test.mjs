@@ -23,6 +23,7 @@ const [
   eventsSlice,
   queueSlice,
   transcriptSlice,
+  storeHelpers,
   toolbar,
   submitHook,
   draftHook,
@@ -38,6 +39,7 @@ const [
   readStoreModule("slices/events-slice.ts"),
   readStoreModule("slices/queue-slice.ts"),
   readStoreModule("slices/transcript-slice.ts"),
+  readStoreModule("helpers/store-helpers.ts"),
   readComposerModule("ComposerToolbar.tsx"),
   readComposerModule("hooks/useComposerSubmit.ts"),
   readComposerModule("hooks/useComposerDraft.ts"),
@@ -296,9 +298,11 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
 });
 
 test("draft attachment routing keeps image chips structured and file chips textual", () => {
-  const helperSource = appStore.match(
-    /function promptAttachmentsFromDraft\([\s\S]*?\n\}\n\nfunction promptAttachmentsFromMessage/,
-  )?.[0]?.replace(/\n\nfunction promptAttachmentsFromMessage[\s\S]*$/, "");
+  const helperSource = storeHelpers.match(
+    /(?:export\s+)?function promptAttachmentsFromDraft\([\s\S]*?\n\}\n\n(?:export\s+)?function promptAttachmentsFromMessage/,
+  )?.[0]
+    ?.replace(/\n\n(?:export\s+)?function promptAttachmentsFromMessage[\s\S]*$/, "")
+    .replace(/^export\s+/, "");
   assert.ok(helperSource, "prompt attachment mapper not found");
   const executable = helperSource.replace(
     /function promptAttachmentsFromDraft\(\s*references: ComposerDraftSnapshot\["fileReferences"\],\s*\): AgentPromptAttachment\[\] \{/,

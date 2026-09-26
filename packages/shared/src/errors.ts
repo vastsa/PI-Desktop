@@ -79,6 +79,21 @@ export const ErrorCodes = {
   CONTEXT_COMPACTION_FAILED: "CONTEXT_COMPACTION_FAILED",
   STREAM_FAILED: "STREAM_FAILED",
   EMPTY_MODEL_RESPONSE: "EMPTY_MODEL_RESPONSE",
+  /**
+   * The Node agent sidecar process died mid-turn (native crash, kill, or an
+   * unclassified abort). Main and the headless runtime settle the owning turn
+   * with this code so a crash is visible in the durable transcript instead of
+   * reading as a plan-approval interruption.
+   */
+  AGENT_SIDECAR_CRASHED: "AGENT_SIDECAR_CRASHED",
+  /**
+   * The Node agent sidecar died after its JavaScript heap hit the configured
+   * cap (`--max-old-space-size`): the turn's context, tool output, or stream
+   * grew past what the runtime process can hold. Diagnosed from the child's
+   * stderr tail (`Reached heap limit` / `heap out of memory`); retrying the
+   * same turn fails the same way until the input shrinks.
+   */
+  AGENT_SIDECAR_OOM: "AGENT_SIDECAR_OOM",
   PROMPT_ENHANCEMENT_EMPTY: "PROMPT_ENHANCEMENT_EMPTY",
   SPEECH_NOT_CONFIGURED: "SPEECH_NOT_CONFIGURED",
   SPEECH_PROTOCOL_UNSUPPORTED: "SPEECH_PROTOCOL_UNSUPPORTED",

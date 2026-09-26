@@ -38,9 +38,9 @@ function textModel(): ModelInfo {
 }
 
 describe("effective model context windows", () => {
-  it("lets a published long-context window replace the legacy generic seed", () => {
-    expect(effectiveContextWindow(1_050_000, 128_000)).toBe(1_050_000);
-    expect(effectiveContextWindow(64_000, 128_000)).toBe(64_000);
+  it("lets a published long-context window replace a catalog-marked seed", () => {
+    expect(effectiveContextWindow(1_050_000, 128_000, "catalog")).toBe(1_050_000);
+    expect(effectiveContextWindow(64_000, 128_000, "catalog")).toBe(64_000);
   });
 
   it("preserves a non-default per-model override", () => {
@@ -50,9 +50,11 @@ describe("effective model context windows", () => {
 });
 
 describe("effective model output caps", () => {
-  it("lets a published cap replace the legacy generic seed", () => {
-    expect(effectiveMaxTokens(131_072, 8_192)).toBe(131_072);
-    expect(effectiveMaxTokens(64_000, 8_192)).toBe(64_000);
+  it("preserves every unmarked stored cap, including the generic seed", () => {
+    expect(effectiveMaxTokens(131_072, 8_192)).toBe(8_192);
+    expect(effectiveMaxTokens(64_000, 8_192)).toBe(8_192);
+    expect(effectiveMaxTokens(131_072, 32_000)).toBe(32_000);
+    expect(effectiveMaxTokens(131_072, undefined)).toBe(131_072);
   });
 
   it("preserves a non-default cap, a user's number and a catalog snapshot", () => {
@@ -71,6 +73,7 @@ describe("binding context-window provenance", () => {
     });
     expect(binding.contextWindow).toBe(1_048_576);
     expect(binding.contextWindowSource).toBe("catalog");
+    expect(binding.maxTokensSource).toBe("catalog");
   });
 
   it("follows a catalog correction for a catalog-sourced window", () => {
@@ -91,10 +94,10 @@ describe("binding context-window provenance", () => {
     expect(effectiveContextWindow(undefined, 128_000, "catalog")).toBe(128_000);
   });
 
-  it("keeps the historical rule for records written before the marker", () => {
-    // Older bindings name no source. The documented fallback is the rule this
-    // helper always applied: only the generic 128k seed is inherited.
-    expect(effectiveContextWindow(1_050_000, 128_000, undefined)).toBe(1_050_000);
+  it("preserves legacy stored windows when provenance is absent", () => {
+    // An old 128k value cannot reveal whether it was a generic seed or the
+    // user's explicit choice, so an upgrade must not replace it speculatively.
+    expect(effectiveContextWindow(1_050_000, 128_000, undefined)).toBe(128_000);
     expect(effectiveContextWindow(1_050_000, 1_048_576, undefined)).toBe(1_048_576);
     expect(effectiveContextWindow(1_050_000, 256_000, null)).toBe(256_000);
     expect(effectiveContextWindow(undefined, 128_000, undefined)).toBe(128_000);
@@ -139,6 +142,7 @@ describe("binding context-window provenance", () => {
       contextWindow: 128_000,
       maxTokens: 8_192,
       contextWindowSource: "catalog" as const,
+      maxTokensSource: "catalog" as const,
     };
     const published = { source: "models.dev", contextWindow: 1_048_576, maxTokens: 131_072 };
     const resolved = resolveBindingLimits(published, binding);
@@ -147,12 +151,51 @@ describe("binding context-window provenance", () => {
     expect(resolved.catalogConfig.maxTokens).toBe(131_072);
   });
 
-  it("keeps the output cap and window the user set", () => {
-    const binding = { contextWindow: 128_000, maxTokens: 4_096, contextWindowSource: "user" as const };
+  it("preserves both limits on an unmarked legacy binding", () => {
     const published = { source: "models.dev", contextWindow: 1_048_576, maxTokens: 131_072 };
-    const resolved = resolveBindingLimits(published, binding);
-    expect(resolved.binding.contextWindow).toBe(128_000);
-    expect(resolved.binding.maxTokens).toBe(4_096);
+    const legacy = resolveBindingLimits(published, {
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+    });
+    expect(legacy.binding.contextWindow).toBe(128_000);
+    expect(legacy.binding.contextWindowSource).toBe("user");
+    expect(legacy.binding.maxTokens).toBe(8_192);
+    expect(legacy.binding.maxTokensSource).toBe("user");
+  });
+
+  it("keeps output ownership independent when only the context window follows the catalog", () => {
+    const published = { source: "models.dev", contextWindow: 1_048_576, maxTokens: 131_072 };
+    const legacyOutput = resolveBindingLimits(published, {
+      contextWindow: 128_000,
+      contextWindowSource: "catalog" as const,
+      maxTokens: 8_192,
+    });
+    expect(legacyOutput.binding.contextWindow).toBe(1_048_576);
+    expect(legacyOutput.binding.contextWindowSource).toBe("catalog");
+    expect(legacyOutput.binding.maxTokens).toBe(8_192);
+    expect(legacyOutput.binding.maxTokensSource).toBe("user");
+  });
+
+  it("keeps the output cap independently when the context window follows the catalog", () => {
+    const published = { source: "models.dev", contextWindow: 1_048_576, maxTokens: 131_072 };
+    const explicit = resolveBindingLimits(published, {
+      contextWindow: 128_000,
+      contextWindowSource: "catalog" as const,
+      maxTokens: 8_192,
+      maxTokensSource: "user" as const,
+    });
+    expect(explicit.binding.contextWindow).toBe(1_048_576);
+    expect(explicit.binding.maxTokens).toBe(8_192);
+    expect(explicit.binding.maxTokensSource).toBe("user");
+
+    // Legacy rows have no output-cap marker. A non-generic stored value was
+    // authoritative before provenance existed and must remain so.
+    const legacy = resolveBindingLimits(published, {
+      contextWindow: 1_048_576,
+      contextWindowSource: "catalog" as const,
+      maxTokens: 4_096,
+    });
+    expect(legacy.binding.maxTokens).toBe(4_096);
   });
 });
 
@@ -194,6 +237,14 @@ describe("effective binding attachment capabilities", () => {
     expect(bindingSupportsDocuments({ supportsDocuments: false }, visionModel())).toBe(
       false,
     );
+  });
+
+  it("keeps a capability the user explicitly selected when the catalog changes", () => {
+    const selected = { supportsImages: true };
+    // This was the published value when the user selected it; a later catalog
+    // correction must not reinterpret that explicit choice as "follow".
+    expect(bindingSupportsImages(selected, visionModel())).toBe(true);
+    expect(bindingSupportsImages(selected, textModel())).toBe(true);
   });
 
   it("treats an unknown model as unsupported unless the user answered", () => {

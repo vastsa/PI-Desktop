@@ -140,9 +140,9 @@ test("installed row controls share one aligned rail and explain icon actions", (
 // rightmost 120px. The page header lives in that band, so the frame must reserve
 // it on macOS too or the title row paints underneath. The plugins page is the one
 // destination page with controls in that corner (header actions, detail-sheet
-// close), so both must clear the band. The sheet's fixed layer stacks inside the
-// route surface (its entry animation leaves a transform behind), so the band
-// paints over the sheet on every platform and the sheet reserves it everywhere.
+// close), so both must clear the band. The sheet mounts on the viewport overlay
+// host, so its fixed layer is independent of the route surface while its own
+// head still reserves the titlebar band.
 test("plugins page keeps its header clear of the titlebar band on every platform", () => {
   assert.match(
     stylesSource,

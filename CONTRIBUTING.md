@@ -131,6 +131,44 @@ request is opened. A run on a stale request branch is useful for debugging but
 does not replace that gate. Record any unavailable required suite as `NOT RUN`
 with its reason, alternative validation, and remaining risk.
 
+## Pull Request Acceptance Scope (temporary)
+
+Effective 2026-09-26, until this section is removed, outside contributions are
+limited to pull requests whose change type is `perf` or `fix`:
+
+```text
+fix(host-core): preserve session ownership during restart
+perf(composer): stop re-rendering the transcript on every keystroke
+```
+
+An outside pull request of any other type is not accepted for now. A `feat`,
+`refactor`, `docs`, `test`, `chore`, `build`, or `ci` pull request is closed
+without review and without merge, and is not reimplemented as a replacement
+while this window is in force.
+Relabelling other work as `fix` or `perf` does not qualify it.
+
+The restriction governs outside contributions only. Maintainers — accounts with
+write access to this repository, plus the branches and automated agent work they
+direct — keep every change type. A `feat`, `refactor`, `docs`, `test`, `chore`,
+`build`, or `ci` pull request for planned maintainer work remains a valid
+delivery path under `AGENTS.md` R1–R7.
+
+- Feature ideas: open an issue with the feature request form instead of a pull
+  request. Features are planned and delivered by the maintainers here; an
+  unsolicited `feat` pull request is not a delivery path during this window.
+- Bug fixes and performance regressions: `fix` and `perf` pull requests stay
+  welcome and are reviewed under the root-cause and minimality bar of R6 in
+  [`docs/spec/06-delivery/03-ai-development-workflow.md`](docs/spec/06-delivery/03-ai-development-workflow.md).
+- Mixed changes: land the `fix` part first and describe the rest in an issue.
+  Do not hide other work inside a `fix` or `perf` pull request.
+- Documentation, tests, refactors, dependency updates, and tooling are handled
+  by the maintainers while this window is in force.
+
+The restriction is temporary and recorded as R6.1 in
+[`docs/spec/06-delivery/03-ai-development-workflow.md`](docs/spec/06-delivery/03-ai-development-workflow.md).
+It is lifted by removing this section and that subsection, not by arguing scope
+inside a pull request.
+
 ## Commit and Pull Request
 
 Use one logical commit where practical and follow Conventional Commits:
@@ -147,13 +185,18 @@ Before committing, review the complete diff. Never commit:
 - Local databases, logs, configuration, or machine-specific paths.
 - `node_modules/`, build artifacts, release packages, or unrelated changes.
 
+Outside contributions are limited to `fix` and `perf` pull requests while the
+temporary Pull Request Acceptance Scope above is in force; maintainer-planned
+work keeps every change type.
+
 Refresh against latest `origin/main` (`pnpm check:pr-base`) and run the
 required E2E suite from the request worktree first; then open a pull request
 against `main` with:
 
 - a concise summary and rationale;
 - affected specs, ADRs, and E2E scenarios;
-- validation commands and actual results;
+- An outside pull request of any other change type — `feat`, `refactor`,
+  `docs`, `test`,
 - compatibility, migration, security, and remaining-risk notes when relevant.
 
 Do not force-push contributor branches, bypass required checks, or merge a

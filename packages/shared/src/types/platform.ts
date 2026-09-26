@@ -35,12 +35,13 @@ export type HostStatusEvent = {
   archMismatch?: { platform: string; processArch: string; machineArch: string };
 };
 
+/** User-selected update behavior; unsupported installers remain manual. */
+export type UpdatePreference = "automatic" | "manual";
+
 /**
- * How app updates are delivered on this install:
- *  - in-app: electron-updater downloads and installs (Windows NSIS, Linux
- *    AppImage, packaged macOS)
- *  - manual: we only detect new versions and link to the releases page
- *    (Linux deb/rpm, Windows ZIP)
+ * Effective update delivery on this install:
+ *  - in-app: electron-updater downloads and installs
+ *  - manual: detect versions and link to the releases page
  *  - disabled: development / unpackaged build
  */
 export type UpdateMode = "in-app" | "manual" | "disabled";
@@ -57,6 +58,11 @@ export type UpdateStatus =
 /** Snapshot pushed on the `updatesState` event and returned by updates IPC. */
 export type UpdateState = {
   mode: UpdateMode;
+  preference: UpdatePreference;
+  defaultPreference: UpdatePreference;
+  automaticSupported: boolean;
+  /** Manual-mode banner is shown once for each discovered version. */
+  manualReminder?: boolean;
   status: UpdateStatus;
   currentVersion: string;
   availableVersion?: string;

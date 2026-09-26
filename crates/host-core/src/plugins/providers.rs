@@ -169,6 +169,7 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                     .filter(|value| !value.is_empty())
                                     .map(str::to_string),
                                 context_window_source: None,
+                                max_tokens_source: None,
                                 context_window: model
                                     .get("contextWindow")
                                     .and_then(Value::as_u64)

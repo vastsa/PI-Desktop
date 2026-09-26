@@ -9,7 +9,6 @@ import {
 } from "@pi-desktop/shared";
 import type { AppState } from "../../../../stores/app-store";
 import { useAppStore } from "../../../../stores/app-store";
-import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import { api } from "../../../../lib/api";
 import { draftKeyForSession } from "../../../../lib/composer-draft-cache";
 import { runExtensionCommand, runPaletteCommand } from "../../../../lib/commands";

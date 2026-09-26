@@ -6,7 +6,7 @@ import {
   type PluginInstallJob,
 } from "../../features/plugins/install-progress";
 import { useAppStore } from "../../stores/app-store";
-import { Button, cx } from "../ui";
+import { Button, cx, portalOverlay } from "../ui";
 import {
   IconCircleCheck,
   IconCopy,
@@ -106,7 +106,7 @@ export function PluginInstallDialog({ job, onCancel, onRetry, onClose }: Props) 
     return <IconDownload size={size} />;
   };
 
-  return (
+  return portalOverlay(
     <div className="plugins-modal-backdrop" role="presentation">
       <div
         className="plugins-modal plugins-install-modal"
@@ -252,6 +252,6 @@ export function PluginInstallDialog({ job, onCancel, onRetry, onClose }: Props) 
           )}
         </div>
       </div>
-    </div>
+    </div>,
   );
 }

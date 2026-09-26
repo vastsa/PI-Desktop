@@ -246,10 +246,10 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    input records the capability but does not change the encoding, since pi-ai
    0.87.1 has no PDF content block and PDFs stay bounded file references.
 10. The settings checkboxes show the effective answer against the published
-    baseline, and setting one back to the published value stores "follow the
-    catalog" rather than an equal-valued override. Agreeing with models.dev is
-    therefore the reset, and no separate reset control or per-capability
-    explanatory copy is required.
+    baseline. An untouched or `null` value follows the catalog; once the user
+    changes a checkbox, its selected boolean is explicit and remains pinned,
+    even if it equals the currently published value. Catalog refreshes therefore
+    cannot undo a deliberate choice.
 10a. `nativeWebSearch` is a two-state opt-in (absent means off; there is no
     catalog baseline because models.dev publishes no hosted-tool capability).
     When enabled and the model resolves to `anthropic-messages`,

@@ -7,6 +7,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
 import type { AgentActivity, UiMessage } from "@pi-desktop/shared";
+import { Markdown } from "../../apps/desktop/src/components/Markdown";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
@@ -20,6 +21,94 @@ declare global {
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
+}
+
+async function markdownLinkInteractionProbe(
+  i18n: ReturnType<typeof createInstance>,
+) {
+  const destination = "https://github.com/vastsa/PI-Desktop/issues/1106";
+  const initialState = useAppStore.getState();
+  const openedUrls: string[] = [];
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;top:24px;left:24px";
+  document.body.append(host);
+  const renderErrors: unknown[] = [];
+  const root = createRoot(host, {
+    onUncaughtError: (error) => renderErrors.push(error),
+  });
+
+  try {
+    useAppStore.setState({
+      activeSessionId: "markdown-link-probe",
+      page: "chat",
+      settings: { ...initialState.settings, linkOpenTarget: "workpanel" },
+      openUrlInWorkPanel: (url) => openedUrls.push(url),
+    });
+    flushSync(() =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <Markdown
+            source="[#1106](([github.com](https://github.com/vastsa/PI-Desktop/issues/1106)))"
+          />
+        </I18nextProvider>,
+      ),
+    );
+
+    const anchor = host.querySelector<HTMLAnchorElement>("a");
+    assert(anchor, "wrapped Markdown destination did not render an anchor");
+    assert(
+      anchor.getAttribute("href") === destination,
+      `wrapped Markdown destination rendered the wrong href: ${anchor.getAttribute("href")}`,
+    );
+
+    let clickWasPrevented = false;
+    flushSync(() => {
+      clickWasPrevented = !anchor.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    assert(clickWasPrevented, "plain link click was not handled by Markdown");
+    assert(
+      openedUrls[0] === destination,
+      `plain link click opened ${openedUrls[0] ?? "nothing"}`,
+    );
+
+    let contextMenuWasPrevented = false;
+    flushSync(() => {
+      contextMenuWasPrevented = !anchor.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 80,
+          clientY: 80,
+        }),
+      );
+    });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    assert(contextMenuWasPrevented, "link context menu did not suppress the native menu");
+
+    const menu = document.body.querySelector<HTMLElement>('[role="menu"]');
+    assert(menu, "link context menu was not rendered");
+    for (const [id, label] of [
+      ["open-external", "Open in default browser"],
+      ["open-workpanel", "Open in work panel"],
+    ]) {
+      const item = menu.querySelector<HTMLElement>(`[data-context-menu-item="${id}"]`);
+      assert(item?.textContent?.includes(label), `link menu is missing ${label}`);
+    }
+    assert(renderErrors.length === 0, `Markdown render failed: ${renderErrors.map(String).join("; ")}`);
+    return { ok: true, href: anchor.href, clickedUrl: openedUrls[0], menuItems: 3 };
+  } finally {
+    flushSync(() => root.unmount());
+    host.remove();
+    useAppStore.setState({
+      activeSessionId: initialState.activeSessionId,
+      page: initialState.page,
+      settings: initialState.settings,
+      openUrlInWorkPanel: initialState.openUrlInWorkPanel,
+    });
+  }
 }
 
 const createdAt = "2026-09-13T00:00:00.000Z";
@@ -233,9 +322,11 @@ globalThis.transcriptRenderProbe = async () => {
     );
 
     const statusLifecycle = await transcriptStatusProbe();
+    const markdownLinks = await markdownLinkInteractionProbe(i18n);
     return {
-      ok: statusLifecycle.ok,
+      ok: statusLifecycle.ok && markdownLinks.ok,
       statusLifecycle,
+      markdownLinks,
       groups,
       textUpdates: 20,
       textUpdateRenders,

@@ -157,6 +157,9 @@ export function createProviderCatalogRuntime({
         ...(bindingResolved.binding.contextWindowSource
           ? { contextWindowSource: bindingResolved.binding.contextWindowSource }
           : {}),
+        ...(bindingResolved.binding.maxTokensSource
+          ? { maxTokensSource: bindingResolved.binding.maxTokensSource }
+          : {}),
       };
     });
     return {
@@ -205,6 +208,8 @@ export function createProviderCatalogRuntime({
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
       keepAwakeWhileRunning?: unknown;
+      updatePreference?: unknown;
+      lastNotifiedUpdateVersion?: unknown;
       networkProxy?: unknown;
     };
     if (
@@ -228,6 +233,25 @@ export function createProviderCatalogRuntime({
       typeof value.keepAwakeWhileRunning !== "boolean"
     ) {
       throw Object.assign(new Error("keepAwakeWhileRunning is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "updatePreference") &&
+      value.updatePreference !== "automatic" &&
+      value.updatePreference !== "manual"
+    ) {
+      throw Object.assign(new Error("updatePreference is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "lastNotifiedUpdateVersion") &&
+      (typeof value.lastNotifiedUpdateVersion !== "string" ||
+        value.lastNotifiedUpdateVersion.trim().length === 0 ||
+        value.lastNotifiedUpdateVersion.length > 128)
+    ) {
+      throw Object.assign(new Error("lastNotifiedUpdateVersion is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }

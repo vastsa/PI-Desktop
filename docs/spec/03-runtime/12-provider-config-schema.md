@@ -92,6 +92,7 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
           "contextWindow": { "type": "integer", "minimum": 0 },
           "contextWindowSource": { "enum": ["catalog", "user"] },
           "maxTokens": { "type": "integer", "minimum": 0 },
+          "maxTokensSource": { "enum": ["catalog", "user"] },
           "thinkingLevels": {
             "type": "array",
             "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -120,14 +121,19 @@ provider or model resolution; UI naming and clearing rules are specified in
 alias, drops a blank one, and enforces the 60-character limit by rejecting an
 over-long alias with `MODEL_ALIAS_TOO_LONG`.
 
-`models[].contextWindowSource` records where the stored `contextWindow` came
-from. `catalog` marks a models.dev snapshot that a later catalog correction may
-replace (a lookup that falls back to the generic shape is not a correction);
-`user` marks a number entered in Settings and is never replaced. The
-property is optional, so a config written before the marker stays readable and
-older clients ignore it. Host-core keeps only those two values and drops anything
-else, so an unreadable marker cannot turn into a third state. The resolution rule
-is specified in [13-model-catalog-and-selection](13-model-catalog-and-selection.md) §9.1.
+`models[].contextWindowSource` and `models[].maxTokensSource` independently
+record where their corresponding limit came from. `catalog` marks a models.dev
+snapshot that a later correction may replace (a lookup that falls back to the
+generic shape is not a correction); `user` marks a value entered in Settings
+and is never replaced. In particular, changing the context window does not
+change ownership of the output cap. Both properties are optional, so configs
+written before either marker stay readable and older clients ignore them.
+Host-core keeps only `catalog` and `user` and drops other values. Legacy rows
+without a source marker preserve their stored limit, including the generic
+128,000 / 8,192 values, because the old record cannot reveal whether a value was
+an explicit user choice.
+The resolution rule is specified in
+[13-model-catalog-and-selection](13-model-catalog-and-selection.md) §9.1.
 
 `compatibility.supportsReasoning` and
 `compatibility.supportedThinkingLevels` remain readable for stored-record and
@@ -204,6 +210,11 @@ zero and seeds the generic default (128,000 / 8,192) — the same value the
 legacy binding above is materialized with, and the same value a plugin
 manifest that declares no limits already produces. The stored array and the
 manifest therefore agree on what a model without limits means (D610).
+
+For `supportsImages` and `supportsDocuments`, absent or `null` follows the
+published capability until the user explicitly changes the checkbox. Either
+explicit boolean is then pinned, even when it equals today's published value;
+a later catalog correction cannot reverse the user's choice.
 
 Each entry of a stored `models` array is decoded on its own. An entry that no
 longer matches the schema is skipped and reported on the host log with the
@@ -724,7 +735,11 @@ unknown OpenAI-compatible endpoint. Every published model-list shape is read —
 OpenAI Responses endpoint returns — so an endpoint that answers is never treated
 as empty. Connection testing reuses
 the same request builder, so "the model list loaded" and "the connection test
-passed" always describe the same URL, auth header and format.
+passed" always describe the same URL, auth header and format. Anthropic-style
+endpoints that return 404 because they intentionally publish no model list may
+instead pass connection testing through a same-origin `OPTIONS /v1/messages`
+route probe; this proves reachability without sending credentials or a billable
+model request, while model IDs remain manual.
 
 ### Which publisher a row is read against
 

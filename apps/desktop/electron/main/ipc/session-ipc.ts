@@ -9,7 +9,6 @@ import {
   draftMatchesExisting,
   providerCreateInputFromDraft,
   isModelConfigImportSource,
-  type ActivationScope,
   type ModelConfigImportDraft,
   type Mode,
   type SessionThinkingLevel,
@@ -37,11 +36,6 @@ type RuntimeSession = {
   modelId?: string;
   thinkingLevel?: SessionThinkingLevel;
   [key: string]: unknown;
-};
-
-type ImportableModelConfig = ModelConfigImportDraft & {
-  id?: string;
-  secretValue?: string;
 };
 
 let scannedImportSessions = new Map<string, ExternalSessionSummary>();

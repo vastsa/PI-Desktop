@@ -33,6 +33,10 @@ docs/image/pi_logo.webp
 *.cer
 *.p8
 *.mobileprovision
+*.pem
+*.key
+!scripts/e2e/fixtures/certificates/localhost-cert.pem
+!scripts/e2e/fixtures/certificates/localhost-key.pem
 
 # IDE / OS
 .DS_Store
@@ -54,3 +58,6 @@ coverage/
 .claude/
 .workbuddy
 electron.vite.config.*.mjs
+
+.playwright-cli
+worktrees

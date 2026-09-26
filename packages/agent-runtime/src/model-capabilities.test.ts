@@ -78,7 +78,7 @@ describe("main-supplied model capabilities", () => {
     });
   });
 
-  it("uses the published long-context window when a legacy binding has the generic seed", () => {
+  it("uses the published long-context window when a binding marks its seed as catalog-owned", () => {
     const model = {
       ...knownModel(),
       contextWindow: 1_050_000,
@@ -86,11 +86,31 @@ describe("main-supplied model capabilities", () => {
     };
     const configured = modelConfigWithBinding(model, {
       contextWindow: 128_000,
+      contextWindowSource: "catalog",
       maxTokens: 8_192,
       thinkingLevels: [],
     });
     expect(configured.contextWindow).toBe(1_050_000);
     expect(configured.limit?.context).toBe(1_050_000);
+  });
+
+  it("does not use a generic fallback to replace a catalog snapshot", () => {
+    const configured = modelConfigWithBinding(genericModelConfig("gateway-model"), {
+      contextWindow: 1_000_000,
+      contextWindowSource: "catalog",
+      maxTokens: 8_192,
+      thinkingLevels: [],
+    });
+    expect(configured.contextWindow).toBe(1_000_000);
+  });
+
+  it("preserves a legacy stored context window without provenance", () => {
+    const configured = modelConfigWithBinding(knownModel(), {
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+      thinkingLevels: [],
+    });
+    expect(configured.contextWindow).toBe(128_000);
   });
 
   it("applies binding limits and preserves explicit thinking levels", () => {

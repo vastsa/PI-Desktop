@@ -6,12 +6,17 @@ import { loadStyles } from "./helpers/styles.mjs";
 const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
 const overlaySources = [
+  "../src/components/ReleaseNotesDialog.tsx",
+  "../src/components/plugins/PluginInstallDialog.tsx",
+  "../src/components/plugins/PluginSettingsSheet.tsx",
   "../src/components/settings/ProviderSetupDialog.tsx",
   "../src/components/settings/VendorAccountDialog.tsx",
   "../src/components/settings/OAuthLoginDialog.tsx",
   "../src/components/settings/SkillEditorSheet.tsx",
   "../src/components/settings/SubagentEditorSheet.tsx",
   "../src/components/extensions/McpEditorSheet.tsx",
+  "../src/features/plugins/PluginDialogs.tsx",
+  "../src/features/plugins/PluginDetailSheet.tsx",
 ];
 
 test("route entrance does not leave a transform containing block", async () => {
@@ -27,9 +32,9 @@ test("route entrance does not leave a transform containing block", async () => {
     /\.route-surface,\s*\.settings-content-inner\s*\{[^}]*animation:\s*route-surface-in/,
   );
   // No fill either: the entrance ends on the element's own state, so a fill
-  // would only keep the animation in effect — and with it the stacking context
-  // that left route-level overlays (the plugin modals, the plugin detail
-  // sheet) underneath the opaque titlebar band.
+  // would only keep the animation in effect and trap legacy route-level fixed
+  // surfaces under the opaque titlebar band. Modal surfaces use the viewport
+  // overlay host, but this remains a shell invariant for fixed content.
   const entrance = styles.match(
     /\.route-surface,\n\.settings-content-enter \{[^}]*\}/,
   );
@@ -48,6 +53,16 @@ test("settings overlays mount on a viewport-fixed host outside the app shell", a
   assert.match(host[0], /position:\s*fixed/);
   assert.match(host[0], /inset:\s*0/);
 
+  const pluginsCss = await read("../src/styles/plugins.css");
+  assert.match(
+    pluginsCss,
+    /#pi-desktop-overlays\s*>\s*\.plugins-modal-backdrop\s*\{[^}]*pointer-events:\s*auto;/,
+  );
+  assert.match(
+    pluginsCss,
+    /#pi-desktop-overlays\s*>\s*\.plugins-sheet-layer\s*\{[^}]*pointer-events:\s*auto;/,
+  );
+
   const ui = await read("../src/components/ui.tsx");
   assert.match(ui, /export function portalOverlay/);
   assert.match(ui, /pi-desktop-overlays/);
@@ -58,6 +73,13 @@ test("settings overlays mount on a viewport-fixed host outside the app shell", a
     const source = await read(rel);
     assert.match(source, /portalOverlay\(/, `${rel} must portal its overlay`);
   }
+
+  const pluginDialogs = await read("../src/features/plugins/PluginDialogs.tsx");
+  assert.equal(
+    pluginDialogs.match(/portalOverlay\(/g)?.length,
+    3,
+    "each route-owned plugin modal must mount on the overlay host",
+  );
 });
 
 // A route overlay is no longer trapped under the window chrome (see the

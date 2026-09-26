@@ -47,14 +47,15 @@ test("new tabs are unique launcher pages and replace themselves with a tool", ()
     openWorkPanelTabState({ tabs: [], activeTabId: null }, first),
     second,
   );
+  const browser = browserPluginTab("https://example.com");
   const replaced = replaceWorkPanelTabState(
     state,
     second.id,
-    browserPluginTab("https://example.com"),
+    browser,
   );
 
-  assert.deepEqual(replaced.tabs.map((tab) => tab.id), [first.id, "plugin:pi.browser/browser"]);
-  assert.equal(replaced.activeTabId, "plugin:pi.browser/browser");
+  assert.deepEqual(replaced.tabs.map((tab) => tab.id), [first.id, browser.id]);
+  assert.equal(replaced.activeTabId, browser.id);
   assert.equal(replaced.tabs.find((tab) => tab.id === first.id)?.kind, "new");
 });
 

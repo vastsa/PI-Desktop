@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn copies_structured_and_compacted_inputs_and_rolls_back_until_committed() {
         let dir = tempfile::tempdir().unwrap();
-        let pasted = dir.path().join("scratch/source/pasted");
+        let pasted = dir.path().join("scratch").join("source").join("pasted");
         fs::create_dir_all(&pasted).unwrap();
         let file = pasted.join("input.txt");
         fs::write(&file, "bytes").unwrap();
@@ -241,7 +241,12 @@ mod tests {
             &mut compactions,
         )
         .unwrap();
-        let target = dir.path().join("scratch/child/pasted/input.txt");
+        let target = dir
+            .path()
+            .join("scratch")
+            .join("child")
+            .join("pasted")
+            .join("input.txt");
         assert_eq!(fs::read_to_string(&target).unwrap(), "bytes");
         assert_eq!(
             records[0].blocks[0]["ref"],

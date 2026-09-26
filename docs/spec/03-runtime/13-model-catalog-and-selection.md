@@ -192,19 +192,25 @@ Each session stores:
 - `thinkingLevel` (`off|minimal|low|medium|high|xhigh|max|omit`)
 
 Changing model or thinking level mid-session affects subsequent turns only.
-The stored thinking preference survives restart; the effective request level
-is clamped against the selected model binding's enabled levels at execution
-time, except `omit`, which is preserved on a reasoning model and sends no
-thinking override. An empty binding or a binding containing only `off`
-resolves to `off`.
+The stored thinking preference survives restart. An explicit switch to a
+different provider/model in Composer resets `thinkingLevel` to the target
+binding's `defaultThinkingLevel`, clamped to its enabled levels; if unset, it
+uses the normal new-session fallback. Selecting the already-active
+provider/model preserves a manually selected level. The effective request
+level remains clamped against the selected model binding's enabled levels at
+execution time, except `omit`, which is preserved on a reasoning model and
+sends no thinking override. An empty binding or a binding containing only
+`off` resolves to `off`.
 
-For a newly created session, the renderer resolves the selected (or app-default)
-model's `ModelBinding`. A reasoning model starts at that binding's
-`defaultThinkingLevel` (`omit` is preserved; other values are clamped onto the
-enabled levels). When the default is unset it falls back to the highest enabled
-level seeded from published `supportedThinkingLevels`. A non-reasoning or
-unknown model starts at `off` until the user enables a non-`off` level. This is
-a creation default only and never rewrites an existing session's stored choice.
+For a newly created session or explicit model switch, the renderer resolves the
+selected (or app-default) model's `ModelBinding`. A reasoning model starts at
+that binding's `defaultThinkingLevel` (`omit` is preserved; other values are
+clamped onto the enabled levels). When the default is unset it falls back to
+the highest enabled level seeded from published `supportedThinkingLevels`. A
+non-reasoning or unknown model starts at `off` until the user enables a
+non-`off` level. Changing a default in Settings does not rewrite existing
+sessions; an existing session keeps its stored choice until a different model
+is explicitly selected.
 
 Unpinned sessions still advertise that inherited default model's reasoning
 capability on session list/get/create/fork/configure. Enrichment does not pin
@@ -320,30 +326,29 @@ read.
 ### 9.1 Effective model limits
 
 The runtime, the context inspector and the settings surface resolve one effective
-model window and output cap. Every binding records where its `contextWindow` came
-from (`contextWindowSource`), and the same marker governs `maxTokens`:
+model window and output cap. Bindings record their provenance independently:
+`contextWindowSource` belongs to `contextWindow`, and `maxTokensSource` belongs
+to `maxTokens`.
 
-- `catalog` — the number is a models.dev snapshot, so a later correction to the
-  published `limit.context` or `limit.output` replaces it. A refreshed record
-  such as `gpt-5.6-luna` (`1,050,000` tokens) stops appearing as a 128k model, a
-  row added while nothing published its id stops reporting the generic 8.2k
-  output once the record resolves, and a limit that models.dev corrects reaches
-  the binding without deleting and re-adding the model. Only a resolved
-  models.dev record counts as published: when the lookup misses and falls back to
-  the generic shape (for example a custom gateway URL serving an id several
-  publishers list), its `128,000` and `8,192` are not a correction, and the
+- `catalog` — that limit is a models.dev snapshot, so a later correction to its
+  published field replaces it. A refreshed context such as `gpt-5.6-luna`
+  (`1,050,000` tokens) stops appearing as a 128k model, and a row added while
+  nothing published its id stops reporting the generic 8.2k output once the
+  record resolves. Only a resolved models.dev record counts as published: when
+  lookup falls back to the generic shape (for example a gateway serving an id
+  several publishers list), its 128k / 8.2k values are not a correction and the
   stored catalog snapshot stays in force.
-- `user` — the number was entered through the per-model Advanced control (or the
-  preset ladder in it) and is never replaced by the catalog, including the
-  `128,000` and `8,192` values that are otherwise the generic seed.
+- `user` — the value was entered in that limit's Advanced control or preset
+  ladder and is never replaced by the catalog, including explicit 128,000 and
+  8,192 values that equal the generic seeds. Setting a context window cannot
+  change the output-cap source.
 
-Bindings written before the marker name no source. They keep the historical rule,
-deterministically: a published `limit.context` replaces exactly the generic
-`128,000` seed and a published `limit.output` replaces exactly the generic
-`8,192`, and every other stored value stays the explicit value. Unknown models
-still use the conservative 128k / 8.2k generic limits and are never promoted from
-an ID pattern alone. The marker is optional in the persisted record, so a config
-written by an older version stays readable and a downgrade ignores it.
+Bindings written before either marker preserve their stored window and output
+cap, including 128,000 and 8,192, because old records cannot distinguish generic
+seeds from user choices. Only explicit `catalog` provenance follows later
+corrections. Unknown models use conservative
+128k / 8.2k limits and are never promoted from an ID pattern alone. Both markers
+are optional, so old configs remain readable and downgrade clients ignore them.
 
 The configured user value remains persisted and visible in Advanced settings, but
 provider safety does not trust an enlarged override beyond a known published
