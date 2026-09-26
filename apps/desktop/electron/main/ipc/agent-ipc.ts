@@ -450,6 +450,7 @@ export function registerAgentIpc({
     const instructions: string[] = [];
     let slashCommand: string | undefined;
     let skillMentions: UiMessage["skillMentions"];
+    let agentMentions: UiMessage["agentMentions"];
     let expandedByTemplate = false;
     if (!sessionMessage && /(^|\s)\/\S/.test(req.content)) {
       try {
@@ -543,6 +544,9 @@ export function registerAgentIpc({
             buildAgentDispatchInstruction(mentions.map((mention) => mention.name)),
           );
           slashCommand ??= req.content;
+          // The offsets are into `req.content`, which is what `command` holds,
+          // so the transcript can chip the same tokens the user typed.
+          agentMentions = mentions.map(({ start, end, name }) => ({ start, end, name }));
         }
       } catch (error) {
         logger.app("session", "warn", "agent mention rewrite failed; sending literal text", {
@@ -606,6 +610,7 @@ export function registerAgentIpc({
         : {}),
       ...(slashCommand ? { command: slashCommand } : {}),
       ...(skillMentions ? { skillMentions } : {}),
+      ...(agentMentions ? { agentMentions } : {}),
       ...(revisionMeta?.revisionCount
         ? {
             revisionRootId: revisionMeta.rootUserId,

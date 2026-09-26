@@ -42,6 +42,17 @@
   background: var(--ds-tile-hover);
 }
 
+/* Sent-message delegate node: the same .composer-chip surface as a file, minus
+   the button affordance — a delegate names a run, not something to open. */
+.chat-agent-chip {
+  border: 0;
+  padding-right: 4px;
+  font: inherit;
+  text-align: start;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
 /* Path/URL tokens inside plain user-message text. */
 .chat-text-link {
   background: none;

@@ -265,6 +265,7 @@ export const en = {
     sessionTranscriptEmpty: "This session's history could not be read. Reopen the session to try again.",
     referenceMenu: "References",
     agentGroup: "Agents",
+    agentChipLabel: "agent",
     fileGroup: "Files",
     agentDispatchModeBlocked: "Delegating to an agent needs Agent mode. Switch to Agent mode and send again.",
     removeAgentReference: "Remove agent {{name}}",

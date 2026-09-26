@@ -23,6 +23,7 @@ import { TooltipButton } from "../../../components/ui";
 import { userMessageMenuItems } from "./menu-items";
 import { SessionMessageOrigin } from "./SessionMessageOrigin";
 import {
+  AgentRefChip,
   CopyButton,
   FileRefChip,
   LinkifiedText,
@@ -34,18 +35,35 @@ import {
   useTranscriptMenu,
 } from "./TranscriptMenu";
 
-function SkillInvocationText({ message }: { message: UiMessage }) {
+/**
+ * Render the typed form of a slash-invoked turn, chipping the tokens the user
+ * actually named and leaving their own words as text.
+ *
+ * Skill and delegate mentions are both recorded at send time as offsets into
+ * `command`, and both are validated here before they are trusted: a stored
+ * mention that does not line up with the text falls back to rendering the whole
+ * draft, so a bad range can never drop or duplicate a run of characters.
+ */
+function InvocationText({ message }: { message: UiMessage }) {
   const command = message.command ?? "";
-  const mentions = message.skillMentions ?? [];
+  const skills = message.skillMentions ?? [];
+  const agents = message.agentMentions ?? [];
   const parts: ReactNode[] = [];
   let cursor = 0;
+  // One ordered pass over both mention kinds; they never overlap, but sorting
+  // keeps that from being a rendering assumption.
+  const mentions = [
+    ...skills.map((mention) => ({ ...mention, kind: "skill" as const })),
+    ...agents.map((mention) => ({ ...mention, kind: "agent" as const })),
+  ].sort((a, b) => a.start - b.start);
   for (const mention of mentions) {
+    const text = command.slice(mention.start, mention.end);
     if (
       !Number.isInteger(mention.start) ||
       !Number.isInteger(mention.end) ||
       mention.start < cursor ||
       mention.end > command.length ||
-      !command.slice(mention.start, mention.end).startsWith("/")
+      (mention.kind === "skill" ? !text.startsWith("/") : !text.startsWith("@"))
     ) {
       return <LinkifiedText text={command} attachments={message.attachments} />;
     }
@@ -53,9 +71,18 @@ function SkillInvocationText({ message }: { message: UiMessage }) {
       parts.push(<LinkifiedText key={`text-${cursor}`} text={command.slice(cursor, mention.start)} attachments={message.attachments} />);
     }
     parts.push(
-      <code key={`skill-${mention.start}`} className="chat-command-chip" title={mention.id}>
-        {command.slice(mention.start, mention.end)}
-      </code>,
+      mention.kind === "skill" ? (
+        <code key={`skill-${mention.start}`} className="chat-command-chip" title={mention.id}>
+          {text}
+        </code>
+      ) : (
+        <AgentRefChip
+          key={`agent-${mention.start}`}
+          name={`@${mention.name}`}
+          data-source-start={mention.start}
+          data-source-end={mention.end}
+        />
+      ),
     );
     cursor = mention.end;
   }
@@ -279,8 +306,8 @@ export const MessageRow = memo(function MessageRow({
                 {message.content ? (
                   <div className="message-user-text selectable">
                     {editableUserMessage && message.command ? (
-                      message.skillMentions?.length ? (
-                        <SkillInvocationText message={message} />
+                      message.skillMentions?.length || message.agentMentions?.length ? (
+                        <InvocationText message={message} />
                       ) : (
                         // Templates retain the existing whole-invocation chip.
                         <code

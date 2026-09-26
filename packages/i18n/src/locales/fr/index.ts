@@ -258,6 +258,7 @@ export const fr = {
     "sessionTranscriptEmpty": "L'historique de cette session n'a pas pu être lu. Rouvrez la session pour réessayer.",
     "referenceMenu": "Références",
     "agentGroup": "Agents",
+    "agentChipLabel": "agent",
     "fileGroup": "Fichiers",
     "agentDispatchModeBlocked": "La délégation à un agent nécessite le mode Agent. Passez en mode Agent et renvoyez.",
     "removeAgentReference": "Supprimer l’agent {{name}}",

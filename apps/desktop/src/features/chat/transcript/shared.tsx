@@ -415,6 +415,36 @@ export function fileChipIcon(name: string, kind?: "image" | "file") {
 }
 
 /** Compact leaf-name chip matching the composer file node (D320). */
+/**
+ * A delegate named in a sent message, shown as one node the way a file
+ * reference is (ADR 0308).
+ *
+ * It is deliberately not a button: a file chip opens that file, and there is
+ * nothing to open for a delegate — the run it started is what the transcript
+ * already shows above.
+ */
+export function AgentRefChip({
+  name,
+  ...position
+}: {
+  name: string;
+} & SourcePositionProps) {
+  const { t } = useTranslation();
+  return (
+    <span
+      className="composer-chip chat-agent-chip"
+      {...position}
+      title={name}
+      aria-label={`${name} — ${t("chat.agentChipLabel")}`}
+    >
+      <span className="composer-chip-icon" aria-hidden>
+        <IconBot size={13} />
+      </span>
+      <span className="composer-chip-name">{name}</span>
+    </span>
+  );
+}
+
 export function FileRefChip({
   name,
   path,

@@ -117,6 +117,9 @@ test("an @agent draft becomes an explicit Task instruction with the token stripp
   assert.doesNotMatch(content, /@explorer/);
   // The transcript keeps the user's original text as the visible chip.
   assert.equal(h.row().command, "@explorer 修一下登录");
+  // And the offsets of the named delegates, so the transcript can chip the
+  // token itself and leave the user's words as text.
+  assert.deepEqual(h.row().agentMentions, [{ start: 0, end: 9, name: "explorer" }]);
   // What is persisted is what the model saw.
   assert.equal(h.row().content, content);
 });
@@ -139,6 +142,20 @@ test("a mention resolves even when the draft text runs into it", async () => {
   assert.match(content, /Agent: "explorer"/);
   assert.match(content, /look\s+into this/);
   assert.doesNotMatch(content, /@explorer/);
+});
+
+test("several delegates are all recorded, in the order they appear", async () => {
+  const h = await send({ content: "@code-reviewer and @explorer check this" });
+  assert.deepEqual(h.row().agentMentions, [
+    { start: 0, end: 14, name: "code-reviewer" },
+    { start: 19, end: 28, name: "explorer" },
+  ]);
+});
+
+test("a turn that names no delegate records none", async () => {
+  const h = await send({ content: "@nosuchagent do it" });
+  assert.equal(h.row().command, undefined);
+  assert.equal(h.row().agentMentions, undefined);
 });
 
 test("Plan mode never rewrites, because Task does not exist there", async () => {

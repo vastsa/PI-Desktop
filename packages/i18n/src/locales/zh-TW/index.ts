@@ -260,6 +260,7 @@ export const zhTW = {
     sessionTranscriptEmpty: "無法讀取此工作階段的記錄，請重新開啟後再試一次。",
     referenceMenu: "引用",
     agentGroup: "智能體",
+    agentChipLabel: "智能體",
     fileGroup: "檔案",
     agentDispatchModeBlocked: "委派智能體需要在智能體模式下進行。請切換到智能體模式後重新傳送。",
     removeAgentReference: "移除智能體 {{name}}",

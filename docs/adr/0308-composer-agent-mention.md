@@ -104,11 +104,14 @@ The draft survives the refusal for retry after switching modes.
 
 ### Not done here
 
-- **Transcript rendering** reuses the whole-invocation chip, as a template
-  expansion does. Rendering only the `@agent` span as a chip would need an
-  `agentMentions` field on `UiMessage` and matching mappings in host-core's
-  `ui_to_record` / `record_to_ui`. Deferred: the whole-draft chip is the same
-  affordance `/skill` and templates already have.
+- **Transcript rendering** chips each named delegate, the way a file reference
+  is chipped. `agentMentions` is recorded on the message when the turn is sent
+  and persisted through host-core's `ui_to_record` / `record_to_ui`, mirroring
+  `skillMentions`. Recording rather than re-resolving on render is the same
+  durability skills already have: a message sent while a delegate existed keeps
+  its chip after that delegate is removed. A stored range that does not line up
+  with the text falls back to the whole draft, so a bad offset cannot drop or
+  duplicate characters.
 - **Enforced dispatch** — starting a delegate without the model's involvement —
   is explicitly out of scope. It would require a public runtime entry point for
   the currently private `buildSubagentTool().execute`, a sidecar RPC, an IPC
