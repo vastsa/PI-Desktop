@@ -1174,8 +1174,16 @@ fn tool_read(
         .unwrap_or(DEFAULT_READ_LINES)
         .min(BUDGET_SEARCH.max_lines);
 
-    let meta = std::fs::metadata(&resolved)
-        .map_err(|e| ("TOOL_FAILED".into(), format!("read failed: {e}")))?;
+    let meta = std::fs::metadata(&resolved).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            (
+                "FILE_NOT_FOUND".into(),
+                format!("File not found: {path}"),
+            )
+        } else {
+            ("TOOL_FAILED".into(), format!("read failed: {e}"))
+        }
+    })?;
     if meta.is_dir() {
         return Err((
             READ_PATH_IS_DIRECTORY.into(),
@@ -1203,8 +1211,16 @@ fn tool_read(
         }
     }
 
-    let bytes = std::fs::read(&resolved)
-        .map_err(|e| ("TOOL_FAILED".into(), format!("read failed: {e}")))?;
+    let bytes = std::fs::read(&resolved).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            (
+                "FILE_NOT_FOUND".into(),
+                format!("File not found: {path}"),
+            )
+        } else {
+            ("TOOL_FAILED".into(), format!("read failed: {e}"))
+        }
+    })?;
     if hashline::looks_binary_bytes(&bytes) {
         return Err((
             "TOOL_BINARY_CONTENT".into(),
@@ -1300,8 +1316,22 @@ fn tool_write(
         std::fs::create_dir_all(parent)
             .map_err(|e| ("TOOL_FAILED".into(), format!("mkdir failed: {e}")))?;
     }
-    std::fs::write(&resolved, &content)
-        .map_err(|e| ("TOOL_FAILED".into(), format!("write failed: {e}")))?;
+    if !resolved.parent().map(|p| p.exists()).unwrap_or(false) {
+        return Err((
+            "FILE_NOT_FOUND".into(),
+            format!("File not found: {path} (parent directory is missing)"),
+        ));
+    }
+    std::fs::write(&resolved, &content).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            (
+                "FILE_NOT_FOUND".into(),
+                format!("File not found: {path}"),
+            )
+        } else {
+            ("TOOL_FAILED".into(), format!("write failed: {e}"))
+        }
+    })?;
     let landed = std::fs::read(&resolved)
         .map_err(|e| ("TOOL_FAILED".into(), format!("read back failed: {e}")))?;
     let file = hashline::normalize_file(&landed);
