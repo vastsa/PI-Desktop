@@ -31,7 +31,7 @@ export function PluginsPage() {
   } = page;
 
   return (
-    <div className="thread-scroll">
+    <div className="route-scroll">
       <div className="page-frame plugins-page">
         <div className="page-header plugins-page-header">
           <div className="plugins-title-block">

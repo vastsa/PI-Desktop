@@ -1762,6 +1762,9 @@ identify the platform validation still needed.
   the Installed / Marketplace segmented control and search field sit at their
   intended offset instead of at the window's top edge. `.page-frame` reserves
   `--ds-toolbar-height` plus an 8px buffer on darwin, win32, and linux alike.
+  Scrolling Plugins, Scheduled, and Pull requests uses a destination-owned
+  scroller rather than the chat transcript scroller, so the bottom rows remain
+  fully painted and reachable instead of inheriting the Composer occlusion mask.
   The plugin detail sheet stacks above the band (`z-index: 60`) and keeps its
   own head at the top edge, with its close button opting out of the drag
   rectangle.
@@ -1769,7 +1772,8 @@ identify the platform validation still needed.
 - **Acceptance**: C (UI), Quality
 - **Milestone**: M2
 - **Status**: Source-level regression covered
-  (`apps/desktop/test/plugins-page-style.test.mjs`); full UI scenario Draft
+  (`apps/desktop/test/plugins-page-style.test.mjs`,
+  `apps/desktop/test/route-scroll.test.mjs`); full UI scenario Draft
 
 #### E2E-088: Composer Agent/Plan/Goal chip updates the session
 

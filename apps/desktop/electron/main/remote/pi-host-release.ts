@@ -113,9 +113,8 @@ export function parseChecksumFile(text: string, artifactName: string): string | 
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const [digest, ...rest] = trimmed.split(/\s+/);
-    if (!digest) continue;
-    const normalized = normalizeChecksum(digest);
+    const [rawChecksum, ...rest] = trimmed.split(/\s+/);
+    const normalized = normalizeChecksum(rawChecksum ?? "");
     if (!normalized) continue;
     // `sha256sum` writes the bare name; some tools prefix `*` or a path.
     const named = rest.join(" ").replace(/^\*/, "").split("/").pop() ?? "";

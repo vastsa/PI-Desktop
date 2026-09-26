@@ -112,12 +112,16 @@ const networkProxySource = await readFile(
   new URL("../src/components/settings/NetworkProxySection.tsx", import.meta.url),
   "utf8",
 );
+const voiceSettingsSource = await readFile(
+  new URL("../src/features/settings/voice/VoiceSettingsSection.tsx", import.meta.url),
+  "utf8",
+);
 
 test("Basics and AI tabs expose their respective app and AI controls", () => {
   const generalStart = settingsPageSource.indexOf('{tab === "general" && settings && (');
   const aiStart = settingsPageSource.indexOf('{tab === "ai" && settings && (');
   const voiceStart = settingsPageSource.indexOf(
-    '{tab === "voice" && settings && (',
+    '{tab === "voice" && !tabHidden && settings && (',
   );
   const generalSource = settingsPageSource.slice(generalStart, aiStart);
   const aiSource = settingsPageSource.slice(aiStart, voiceStart);
@@ -174,7 +178,9 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.doesNotMatch(aiSource, /<select/);
   // Voice owns a separate destination; the AI tab does not duplicate it.
   assert.doesNotMatch(aiSource, /VoiceSettingsCard|VoiceSettingsSection|voice-settings/);
-  assert.match(settingsPageSource, /tab === "voice" && settings && [\s\S]*?<VoiceSettingsSection/);
+  assert.match(settingsPageSource, /tab === "voice" && !tabHidden && settings && [\s\S]*?<VoiceSettingsSection/);
+  assert.match(voiceSettingsSource, /if \(!voice\.enabled\) \{/);
+  assert.match(voiceSettingsSource, /voiceMicUnavailable/);
   assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
   assert.doesNotMatch(stylesSource, /\.settings-speech/);
   assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);

@@ -739,10 +739,6 @@
   padding-top: calc(var(--ds-toolbar-height) + 8px);
 }
 
-.route-page > .thread-scroll {
-  flex: 1;
-}
-
 .chat-error-layer {
   position: absolute;
   inset-inline: 0;

@@ -89,7 +89,7 @@ export function ScheduledPage() {
     error: "scheduled.statusError",
   } as const;
   return (
-    <div className="thread-scroll">
+    <div className="route-scroll">
       <div className="page-frame">
         <div className="page-header">
           <div>

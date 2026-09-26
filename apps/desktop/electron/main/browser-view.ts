@@ -1,5 +1,5 @@
 import { shell, WebContentsView, type BrowserWindow } from "electron";
-import { statSync, watch, type FSWatcher } from "node:fs";
+import { realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BrowserState } from "@pi-desktop/shared";
@@ -38,8 +38,15 @@ export function normalizeUrl(raw: string): string | null {
 }
 
 function isWithinRoot(path: string, root: string): boolean {
-  const resolvedRoot = resolve(root);
-  return path === resolvedRoot || path.startsWith(resolvedRoot + sep);
+  try {
+    const realRoot = realpathSync(resolve(root));
+    const realPath = realpathSync(resolve(path));
+    return realPath === realRoot || realPath.startsWith(realRoot + sep);
+  } catch {
+    const resolvedRoot = resolve(root);
+    const resolvedPath = resolve(path);
+    return resolvedPath === resolvedRoot || resolvedPath.startsWith(resolvedRoot + sep);
+  }
 }
 
 /**
@@ -68,11 +75,14 @@ export function resolveLocalFile(raw: string, root: string | null): string | nul
   const resolved = resolve(candidate);
   if (!isWithinRoot(resolved, root)) return null;
   try {
-    if (!statSync(resolved).isFile()) return null;
+    const real = realpathSync(resolved);
+    const realRoot = realpathSync(resolve(root));
+    if (real !== realRoot && !real.startsWith(realRoot + sep)) return null;
+    if (!statSync(real).isFile()) return null;
+    return real;
   } catch {
     return null;
   }
-  return resolved;
 }
 
 export class BrowserPane {

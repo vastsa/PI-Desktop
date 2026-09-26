@@ -31,6 +31,8 @@
     "dist:linux": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
+    "@picovoice/pvrecorder-node": "1.2.9",
+    "transcribe-cpp": "0.2.2",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
@@ -45,12 +47,10 @@
     "@pi-desktop/shared": "workspace:*",
     "@pi-desktop/voice-runtime": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
-    "@picovoice/pvrecorder-node": "1.2.9",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.6.0",
-    "transcribe-cpp": "0.2.2",
     "dompurify": "^3.4.13",
     "electron": "^43.4.1",
     "electron-builder": "^26.15.3",

@@ -312,6 +312,9 @@ combined model × reasoning selection (§11).
   content at the top edge reserves the band: the transcript
   (`.thread-content`) and the destination-page frame (`.page-frame`, shared by
   Plugins, Scheduled, and Pull requests) both pad by `--ds-toolbar-height`.
+  Destination pages scroll in a route-owned content container separate from the
+  chat transcript scroller; Composer-specific occlusion and follow behavior must
+  not fade or hide destination rows at the bottom of the page.
   Without that reservation a page header renders behind the band and its title
   row is clipped. The plugin detail sheet reserves it too (D296): the route
   surface keeps a transform after its entry animation, so the sheet's fixed

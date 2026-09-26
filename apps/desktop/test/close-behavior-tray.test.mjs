@@ -89,7 +89,7 @@ test("permission to close does not leak into the next window", () => {
   assert.doesNotMatch(mainSource, /let allowWindowClose\b/);
   assert.match(
     mainSource,
-    /const windowsAllowedToClose = new WeakSet<BrowserWindow>\(\)/,
+    /(?:const|readonly)\s+windowsAllowedToClose = new WeakSet<BrowserWindow>\(\)/,
   );
   assert.match(mainSource, /windowsAllowedToClose\.has\(window\)/);
 });
