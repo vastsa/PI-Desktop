@@ -1404,6 +1404,20 @@ export const api = {
       IPC.invoke.statsGetTokenUsageHistory,
       query,
     ),
+  indexStatus: (rootPath?: string) =>
+    invoke<{ roots: import("@pi-desktop/shared").WorkspaceIndexRoot[] }>(
+      IPC.invoke.indexStatus,
+      { rootPath },
+    ),
+  indexRebuild: (rootPath?: string) =>
+    invoke<{ root: import("@pi-desktop/shared").WorkspaceIndexRoot }>(
+      IPC.invoke.indexRebuild,
+      { rootPath },
+    ),
+  indexClear: (rootPath?: string) =>
+    invoke<{ ok: boolean; cleared: number }>(IPC.invoke.indexClear, {
+      rootPath,
+    }),
   menuRendererReady: () =>
     invoke<{ ready: boolean }>(IPC.invoke.menuRendererReady),
   setTraySessionPreferences: (preferences: TraySessionPreferences) =>

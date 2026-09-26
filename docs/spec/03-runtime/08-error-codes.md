@@ -119,6 +119,9 @@ does not turn temporary thread pressure into a host process exit.
 |---|---|---|
 | `WORKSPACE_REQUIRED` | no | no workspace bound |
 | `PATH_OUTSIDE_WORKSPACE` | no | path escapes sandbox before an explicit outside-path permission decision, or a prompt attachment is outside its session scratch/project/attachment roots |
+| `INDEX_UNAVAILABLE` | no | the index store could not be opened or the rebuild worker failed |
+| `INDEX_ROOT_OUTSIDE_WORKSPACE` | no | index.status/rebuild/clear was called with a root that is not the active workspace root |
+| `INDEX_REBUILD_FAILED` | no | a background index rebuild failed partway; the root is marked failed and can be rebuilt again |
 | `WORKSPACE_PATH_DENIED` | no | an explicit `Read`/`Write`/`Edit` path hit the always-on security denylist (private keys, `.env` files, credential bundles, `.git/objects`); an outside-path grant does not lift it (spec 15 §3) |
 | `READ_PATH_IS_DIRECTORY` | no | `Read` was given a directory; the result carries a `Glob` suggestion |
 | `TOOL_BINARY_CONTENT` | no | `Read` refused to dump a binary file into the model context |

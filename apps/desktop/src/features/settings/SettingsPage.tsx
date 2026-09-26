@@ -17,6 +17,7 @@ import {
 import { pluginViewIcon } from "../../lib/plugin-view-icons";
 import {
   IconArchive,
+  IconDatabase,
   IconBookOpen,
   IconBot,
   IconChevronLeft,
@@ -34,6 +35,7 @@ import {
   IconMic,
 } from "../../components/icons";
 import { Badge, Button, cx, SegmentedControl, SettingsToggle } from "../../components/ui";
+import { IndexPage } from "../../components/settings/IndexPage";
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
@@ -235,6 +237,7 @@ export function SettingsPage() {
       subagents: <IconBot size={14} />,
       import: <IconDownload size={14} />,
       projects: <IconArchive size={14} />,
+      index: <IconDatabase size={14} />,
       sync: <IconCloudDown size={14} />,
       remoteHosts: <IconGlobe size={14} />,
       voice: <IconMic size={14} />,
@@ -566,6 +569,9 @@ export function SettingsPage() {
 
           {tab === "projects" && <ProjectsPage />}
 
+          {tab === "index" && settings && (
+            <IndexPage settings={settings} saveSettings={saveSettings} />
+          )}
           {tab === "sync" && !tabHidden && <ConfigSyncPage />}
 
           {tab === "remoteHosts" && !tabHidden && <RemoteHostsPage />}

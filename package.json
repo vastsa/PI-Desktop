@@ -21,6 +21,7 @@
     "test": "pnpm build:js && pnpm -r --if-present test && cargo test -p host-core",
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",
+    "test:e2e:index": "node scripts/e2e-index.mjs",
     "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
     "test:e2e:keep-awake": "node scripts/e2e-keep-awake.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",

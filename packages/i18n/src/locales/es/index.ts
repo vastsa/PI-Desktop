@@ -712,6 +712,7 @@ sklm: {
       "subagents": "Subagentes",
       "import": "Importar",
       "projects": "Proyectos",
+      "index": "Índice",
       "sync": "Sincronización en la nube",
       "remoteHosts": "Hosts remotos",
       "info": "Información",
@@ -1103,6 +1104,7 @@ sklm: {
     "subagentSaved": "Guardado {{name}}",
     "import": "Importar",
     "projectArchive": "Archivo de proyecto",
+    "index": "Biblioteca de índices",
     "remoteHosts": {
       "title": "Hosts remotos",
       "listError": "No se pudieron cargar los hosts",
@@ -2460,7 +2462,53 @@ sklm: {
       "continue": "Continuar",
       "dismiss": "Descartar"
     }
-  }
+  },
+  "index": {
+    "loading": "Cargando estado del índice…",
+    "grepBoost": "Indexación del espacio de trabajo",
+    "grepBoostDesc": "Mientras este interruptor esté activado, los espacios de trabajo recién abiertos se indexan en segundo plano y esta página muestra su estado. Todo se queda en este equipo.",
+    "loadErrorTitle": "Estado del índice no disponible",
+    "loadErrorDesc": "El host no respondió.",
+    "retry": "Reintentar",
+    "statusDesc": "El índice es una caché local reconstruible.",
+    "indexSubtitle": "El índice local es una caché reconstruible; esta página muestra su estado y salud.",
+    "nudgeText": "Todo se ejecuta localmente y nunca sube el contenido de tu espacio de trabajo.",
+    "nudgeDismiss": "Entendido",
+    "sectionCode": "Base de código",
+    "progressFiles": "{{done}} / {{total}} archivos",
+    "progressFallback": "El índice se construye en segundo plano; puede seguir trabajando.",
+    "emptyTitle": "Sin índice para el espacio actual",
+    "emptyDesc": "Cree uno para ver el número de archivos y el tamaño. El índice se queda en este equipo.",
+    "actions": "Acciones del índice",
+    "actionsDesc": "Crea o reconstruye el índice del espacio de trabajo actual. No se puede crear con el interruptor desactivado, porque nada lo usaría.",
+    "localOnly": "Todo se guarda localmente y nunca se sube.",
+    "rebuilding": "Indexando…",
+    "clearing": "Borrando…",
+    "actionError": "La acción del índice falló. Puede volver a intentarlo.",
+    "card": {
+      "health": "Estado del índice",
+      "status": "Estado",
+      "files": "Archivos indexados",
+      "size": "Tamaño indexado",
+      "errors": "Archivos ilegibles",
+      "updated": "Última actualización",
+    },
+    "action": {
+      "rebuild": "Reconstruir índice",
+      "build": "Crear índice",
+      "clear": "Borrar índice",
+    },
+    "status": {
+      "fresh": "Listo",
+      "building": "Construyendo",
+      "stale": "Actualizando",
+      "failed": "Error",
+      "partial": "Parcial",
+      "disabled": "Desactivado",
+      "skipped_over_limit": "Presupuesto excedido",
+    },
+  },
 } satisfies EnglishCatalog;
+
 
 export default es;

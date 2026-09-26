@@ -5,6 +5,9 @@
  * like "主题" or "theme" can surface the tab that owns the row.
  */
 
+/**
+ * Settings destinations.
+ */
 export type SettingsTabId =
   | "general"
   | "ai"
@@ -16,6 +19,7 @@ export type SettingsTabId =
   | "subagents"
   | "import"
   | "projects"
+  | "index"
   | "sync"
   | "remoteHosts"
   | "voice"
@@ -267,6 +271,21 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.archive",
       "project.restore",
       "project.delete",
+    ],
+  },
+  {
+    id: "index",
+    labelKey: "settings.nav.index",
+    titleKey: "settings.index",
+    // Host/workspace lifecycle — the switch, its status and the rebuild/clear
+    // actions — so it joins the Workspace group instead of a group of its own.
+    group: "workspace",
+    keywordKeys: [
+      "index.card.health",
+      "index.card.files",
+      "index.card.size",
+      "index.action.rebuild",
+      "index.action.clear",
     ],
   },
   {

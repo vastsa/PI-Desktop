@@ -212,6 +212,22 @@
   --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   /* Global type scale (D343). 1 = product ramp; Appearance multiplies --text-*. */
   --font-scale: 1;
+
+  /*
+    Spacing ladder. Theme-invariant, so it lives in the base `:root` block
+    alongside the other semantic tokens, and is also declared in the `@theme`
+    block below so Tailwind can see the scale. The duplication is deliberate:
+    Tailwind only emits a `@theme` variable once something consumes it (as a
+    utility or through `var()`), so a `var(--space-*)` reference in a
+    stylesheet could otherwise resolve to nothing and the spacing would
+    silently collapse to zero.
+  */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
 }
 
 :root[data-theme="light"] {
@@ -323,7 +339,10 @@
     Token scales — the ONLY allowed values for typography and radii.
     Raw px/em literals for font-size, font-weight, line-height,
     letter-spacing, and border-radius are forbidden in component CSS
-    and TSX (enforced by scripts/check-style-tokens.mjs).
+    and TSX (enforced by scripts/check-style-tokens.mjs). The `--space-*`
+    ladder below is the same kind of scale for margin/padding/gap; it is not
+    yet machine-enforced because the renderer still carries a large backlog of
+    raw px spacing that would fail a repo-wide check.
   */
   /*
     Apple-inspired fixed-radius ladder for dense desktop UI. Compact controls
@@ -387,4 +406,18 @@
   --tracking-tight: -0.02em;
   --tracking-normal: 0em;
   --tracking-wide: 0.02em;
+
+  /*
+    Spacing ladder (design-system §6.1). Four-pixel rhythm; `--space-5` fills
+    the gap the doc leaves between 16 and 24 so the ramp stays linear. Values
+    match the documented scale exactly (space-1 4, space-2 8, space-3 12,
+    space-4 16, space-6 24). Mirrored in the base `:root` block above for the
+    reason noted there; keep the two copies in lockstep.
+  */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
 }

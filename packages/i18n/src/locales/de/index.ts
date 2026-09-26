@@ -712,6 +712,7 @@ sklm: {
       "subagents": "Subagenten",
       "import": "Importieren Sie",
       "projects": "Projekte",
+      "index": "Index",
       "sync": "Cloud-Synchronisierung",
       "remoteHosts": "Remote-Hosts",
       "info": "Informationen",
@@ -1103,6 +1104,7 @@ sklm: {
     "subagentSaved": "Gespeichert {{name}}",
     "import": "Importieren",
     "projectArchive": "Projektarchiv",
+    "index": "Indexbibliothek",
     "remoteHosts": {
       "title": "Remote-Hosts",
       "listError": "Hosts konnten nicht geladen werden",
@@ -2460,7 +2462,53 @@ sklm: {
       "continue": "Weiter",
       "dismiss": "Verwerfen"
     }
-  }
+  },
+  "index": {
+    "loading": "Index-Status wird geladen…",
+    "grepBoost": "Workspace-Indizierung",
+    "grepBoostDesc": "Solange dieser Schalter aktiviert ist, werden neu geöffnete Workspaces im Hintergrund indexiert, und diese Seite zeigt deren Status. Alle Daten bleiben auf diesem Computer.",
+    "loadErrorTitle": "Index-Status nicht verfügbar",
+    "loadErrorDesc": "Der Host hat nicht geantwortet.",
+    "retry": "Erneut versuchen",
+    "statusDesc": "Der Index ist ein lokal neu aufbaubarer Zwischenspeicher.",
+    "indexSubtitle": "Der lokale Index ist ein neu aufbaubarer Zwischenspeicher; diese Seite zeigt Status und Zustand.",
+    "nudgeText": "Alles läuft lokal und lädt niemals Workspace-Inhalte hoch.",
+    "nudgeDismiss": "Verstanden",
+    "sectionCode": "Codebasis",
+    "progressFiles": "{{done}} / {{total}} Dateien",
+    "progressFallback": "Der Index wird im Hintergrund aufgebaut; Sie können weiterarbeiten.",
+    "emptyTitle": "Kein Index für den aktuellen Arbeitsbereich",
+    "emptyDesc": "Erstellen Sie einen, um Dateianzahl und Größe zu sehen. Der Index bleibt auf diesem Computer.",
+    "actions": "Index-Aktionen",
+    "actionsDesc": "Erstellt oder aktualisiert den Index des aktuellen Workspaces. Bei deaktiviertem Schalter ist das nicht möglich, weil nichts ihn verwenden würde.",
+    "localOnly": "Alles wird lokal gespeichert und nie hochgeladen.",
+    "rebuilding": "Wird indiziert…",
+    "clearing": "Wird gelöscht…",
+    "actionError": "Die Indexaktion ist fehlgeschlagen. Sie können es erneut versuchen.",
+    "card": {
+      "health": "Index-Status",
+      "status": "Status",
+      "files": "Indizierte Dateien",
+      "size": "Indexgröße",
+      "errors": "Unlesbare Dateien",
+      "updated": "Zuletzt aktualisiert",
+    },
+    "action": {
+      "rebuild": "Index neu aufbauen",
+      "build": "Index aufbauen",
+      "clear": "Index löschen",
+    },
+    "status": {
+      "fresh": "Bereit",
+      "building": "Wird aufgebaut",
+      "stale": "Aktualisiert",
+      "failed": "Fehlgeschlagen",
+      "partial": "Teilweise",
+      "disabled": "Aus",
+      "skipped_over_limit": "Budget überschritten",
+    },
+  },
 } satisfies EnglishCatalog;
+
 
 export default de;

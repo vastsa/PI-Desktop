@@ -9,6 +9,7 @@ export * from "./types/models.js";
 export * from "./types/permissions.js";
 export * from "./types/messages.js";
 export * from "./types/sessions.js";
+export * from "./types/workspace-index.js";
 export * from "./types/agent.js";
 export * from "./types/workspace.js";
 export * from "./types/providers.js";

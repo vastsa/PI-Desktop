@@ -4,6 +4,7 @@ mod artifacts;
 mod audit;
 mod config_sync;
 mod db;
+mod index;
 mod keyboard;
 mod mcp_servers;
 mod network_policy;

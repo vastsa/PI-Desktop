@@ -884,6 +884,49 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M2
 - **状态**：草案
 
+### 工作区索引
+
+#### E2E-INDEX-status-rebuild-clear：隔离索引生命周期仅限当前工作区
+
+- **前置条件**：debug host-core 可用；测试框架可创建临时 data、workspace 和 outside 目录。
+- **步骤**：1）以隔离的 `PI_DESKTOP_DATA_DIR` 启动 host-core。2）设置临时工作区。
+  3）确认 `index.status` 为空。4）调用 `index.rebuild`，确认索引一个 fixture 文件。
+  5）尝试重建工作区外目录。6）清理工作区 root，再次读取状态。
+- **预期**：重建产生一个 `fresh` root；状态仅暴露元数据、不暴露文件内容；
+  工作区外 root 返回 `INDEX_ROOT_OUTSIDE_WORKSPACE`；clear 只删除所选 root，状态随后为空。
+  所有索引文件都位于临时 data 目录并由测试框架清理。
+- **关联规格**：`03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`
+- **验收**：C（工作区工具与边界）、质量（数据安全）
+- **里程碑**：M6+
+- **状态**：由 `pnpm test:e2e:index` 自动化
+
+#### E2E-INDEX-settings-health-card：索引健康卡反映 host 生命周期
+
+- **前置条件**：应用正在运行且存在活动工作区；设置的工作区分组下有「索引」目的地。
+- **步骤**：1）打开 设置 → 索引。2）观察无索引工作区的空态。3）点击「建立索引」
+  并等待卡片刷新。4）点击「清理索引」。5）可选：把窗口指向超预算或部分失败的索引工作区。
+- **预期**：卡片显示 host 返回的状态、已索引文件数、已索引体积、非零时的无法读取文件数
+  与最近更新时间。建立与清理都会调用 host 生命周期 RPC 并用返回状态刷新。文案把索引
+  描述为可重建的本地缓存，绝不声称 Grep 读取它。加载失败显示重试而不是空白卡片。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`、
+  `03-runtime/04-data-storage.md`
+- **验收**：D（工作区）、质量（本地数据安全）
+- **里程碑**：M6+
+- **状态**：已记录；RPC 生命周期由 `pnpm test:e2e:index` 覆盖，UI 自动化待补
+
+#### E2E-INDEX-auto-index：仅在开关开启时随工作区切换建立索引
+
+- **前置条件**：host RPC 可用；两个临时工作区；开关为默认值。
+- **步骤**：1）开关关闭时 `workspace.set` 到工作区 A 并读取 `index.status`。
+  2）开启 `indexGrepBoost`。3）`workspace.set` 到工作区 B 并轮询 `index.status`。
+- **预期**：开关关闭时状态保持为空。开关开启后，变更的工作区立即标记 `building`，
+  后台重建最终落到 `fresh` 并统计到 fixture 文件；`workspace.set` 立即返回、不等待扫描。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：D（工作区）、质量（响应性）
+- **里程碑**：M6+
+- **状态**：host-core RPC 边界已自动化
+  （`workspace_set_auto_indexes_only_while_the_switch_is_on`）
+
 ### 工作区打开
 
 #### E2E-012：打开项目目录

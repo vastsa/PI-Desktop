@@ -107,6 +107,12 @@ export const ErrorCodes = {
    * delegate's model, or how much it reads at once has to change.
    */
   SUBAGENT_CONTEXT_OVERFLOW: "SUBAGENT_CONTEXT_OVERFLOW",
+  /** index.status/rebuild/clear could not reach the index store. */
+  INDEX_UNAVAILABLE: "INDEX_UNAVAILABLE",
+  /** The requested index root does not match the active workspace root. */
+  INDEX_ROOT_OUTSIDE_WORKSPACE: "INDEX_ROOT_OUTSIDE_WORKSPACE",
+  /** A background index rebuild failed; Grep keeps working via rg. */
+  INDEX_REBUILD_FAILED: "INDEX_REBUILD_FAILED",
   WORKSPACE_REQUIRED: "WORKSPACE_REQUIRED",
   PATH_OUTSIDE_WORKSPACE: "PATH_OUTSIDE_WORKSPACE",
   TOOL_NOT_FOUND: "TOOL_NOT_FOUND",

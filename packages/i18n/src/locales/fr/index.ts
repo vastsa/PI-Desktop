@@ -712,6 +712,7 @@ sklm: {
       "subagents": "Sous-agents",
       "import": "Importation",
       "projects": "Projets",
+      "index": "Index",
       "sync": "Synchronisation cloud",
       "remoteHosts": "Hôtes distants",
       "info": "Informations",
@@ -1103,6 +1104,7 @@ sklm: {
     "subagentSaved": "Enregistré {{name}}",
     "import": "Importation",
     "projectArchive": "Archive du projet",
+    "index": "Bibliothèque d'index",
     "remoteHosts": {
       "title": "Hôtes distants",
       "listError": "Impossible de charger les hôtes",
@@ -2460,7 +2462,53 @@ sklm: {
       "continue": "Continuer",
       "dismiss": "Ignorer"
     }
-  }
+  },
+  "index": {
+    "loading": "Chargement de l'état de l'index…",
+    "grepBoost": "Indexation de l'espace de travail",
+    "grepBoostDesc": "Lorsque cet interrupteur est activé, les espaces de travail récemment ouverts sont indexés en arrière-plan et cette page en affiche l'état. Tout reste sur cette machine.",
+    "loadErrorTitle": "État de l'index indisponible",
+    "loadErrorDesc": "L'hôte n'a pas répondu.",
+    "retry": "Réessayer",
+    "statusDesc": "L'index est un cache local reconstruisible.",
+    "indexSubtitle": "L'index local est un cache reconstruisible ; cette page en affiche l'état et la santé.",
+    "nudgeText": "Tout s'exécute localement et ne téléverse jamais le contenu de votre espace de travail.",
+    "nudgeDismiss": "Compris",
+    "sectionCode": "Base de code",
+    "progressFiles": "{{done}} / {{total}} fichiers",
+    "progressFallback": "L'index se construit en arrière-plan ; vous pouvez continuer à travailler.",
+    "emptyTitle": "Aucun index pour l'espace actuel",
+    "emptyDesc": "Créez-en un pour voir le nombre de fichiers et la taille. L'index reste sur cette machine.",
+    "actions": "Actions de l'index",
+    "actionsDesc": "Crée ou reconstruit l'index de l'espace de travail actuel. Impossible de le créer interrupteur désactivé, car rien ne l'utiliserait.",
+    "localOnly": "Tout est stocké localement et jamais envoyé.",
+    "rebuilding": "Indexation…",
+    "clearing": "Effacement…",
+    "actionError": "L'action d'index a échoué. Vous pouvez réessayer.",
+    "card": {
+      "health": "État de l'index",
+      "status": "État",
+      "files": "Fichiers indexés",
+      "size": "Taille indexée",
+      "errors": "Fichiers illisibles",
+      "updated": "Dernière mise à jour",
+    },
+    "action": {
+      "rebuild": "Reconstruire l'index",
+      "build": "Créer l'index",
+      "clear": "Effacer l'index",
+    },
+    "status": {
+      "fresh": "Prêt",
+      "building": "Construction",
+      "stale": "Mise à jour",
+      "failed": "Échec",
+      "partial": "Partiel",
+      "disabled": "Désactivé",
+      "skipped_over_limit": "Budget dépassé",
+    },
+  },
 } satisfies EnglishCatalog;
+
 
 export default fr;

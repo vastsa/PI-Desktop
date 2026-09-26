@@ -24,6 +24,12 @@ export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 export type CloseBehavior = "ask" | "tray" | "quit";
 
 export type AppSettings = {
+  /**
+   * Workspace group. One switch, default off: it owns the whole lifecycle of
+   * the workspace index — on, newly opened workspaces get indexed in the
+   * background so the Index page can report status; off, nothing builds one.
+   */
+  indexGrepBoost: boolean;
   imageGeneration?: import("../image-generation.js").ImageGenerationBinding | null;
   /** All models marked for image generation; absent falls back to imageGeneration. */
   imageGenerationModels?: import("../image-generation.js").ImageGenerationBinding[] | null;

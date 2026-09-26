@@ -203,6 +203,24 @@ type ToolBudgetHealth = {
 - `workspace.set`
 - `workspace.clear`
 
+### Workspace index
+- `index.status({rootPath?})` returns lifecycle status for the host-owned,
+  disposable workspace index. It never exposes file contents.
+- `index.rebuild({rootPath?})` scans the selected workspace into the isolated
+  `<data-dir>/index/index.db` cache. When `rootPath` is omitted, the current
+  workspace is used. The operation enforces fixed file-count and byte budgets.
+- `workspace.set` triggers a background `ensure_index` + rebuild for a changed
+workspace while `indexGrepBoost` is on; with it off, switching workspaces
+never touches the index. `index.clear({rootPath?})` removes the active
+  workspace root namespace. When `rootPath` is present it must equal the active
+  workspace; omission selects that same workspace.
+
+The index database is a rebuildable optimization cache, not filesystem truth.
+No tool reads it: `tools.execute` keeps its exact behavior whether or not an
+index exists, and the index RPCs are the cache's only consumer. Roots report
+`fresh`, `building`, `stale`, `failed`, `partial`, `disabled`, or
+`skipped_over_limit`.
+
 ### Review snapshots (ADR 0043)
 - `review.rollback({sessionId, snapshotId})` — verify the current post-tool
   hash, restore the session-owned previous bytes, and return one of
