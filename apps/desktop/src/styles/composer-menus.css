@@ -524,6 +524,27 @@
   text-transform: none;
 }
 
+/* One provider identity mark, on the group heading and on each of its rows.
+   A brand mark is drawn through a mask so the artwork stays monochrome and
+   inherits the surrounding text color: upstream publishes these as
+   `currentColor` paths, and a mask keeps a run of vendors at one visual
+   weight in both themes instead of a row of saturated logos. */
+.composer-model-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* One provider identity mark, on the group heading and on each of its rows.
+   Both kinds are currentColor paths, so both inherit the surrounding text
+   color: a run of vendors reads as one visual weight in either theme rather
+   than a set of saturated logos, and a vendored mark and the generic fallback
+   sit at the same weight and size. */
+.provider-mark {
+  flex: 0 0 auto;
+  color: var(--ds-text-faint);
+}
+
 /* Model rows share the provider heading's compact inset. Normal-weight option
    text stays distinct from the stronger provider heading. */
 .composer-model-group .composer-model-option {
@@ -595,7 +616,29 @@
   color: var(--ds-text-faint);
 }
 
+/*
+ * One limits pair per row, read the same way as the settings rows: the
+ * context window and the output limit, separated by a quiet middot. An
+ * unpublished value renders as an em dash, so a row never invents a number.
+ */
+.composer-model-option-limits {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
 .composer-model-option-ctx {
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-model-option-sep {
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+}
+
+.composer-model-option-max {
   color: var(--ds-text-faint);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;

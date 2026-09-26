@@ -29,6 +29,14 @@ export type ProviderPublic = {
   /** @deprecated Use `models[0]?.id`; retained for older runtime consumers. */
   defaultModelId?: string;
   apiStyle?: string;
+  /**
+   * models.dev provider key this row's metadata resolved through, when the
+   * catalog knows the row. Absent for a row the catalog could not place, and
+   * never a wire identity: it exists so the UI can pick the row's own brand
+   * mark instead of guessing from a display name. Purely additive; older
+   * producers simply omit it.
+   */
+  catalogProviderKey?: string;
   /** Effective capability for the provider's current default model. */
   supportsReasoning: boolean;
   /** Effective image-input capability for the provider's current default model. */

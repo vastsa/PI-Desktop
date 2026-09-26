@@ -69,6 +69,8 @@ export type ProviderIpcDependencies = {
     | "getStatus"
     | "findModel"
     | "anthropicThinkingFor"
+    | "providerKeyForRow"
+    | "vendorProviderKeyForModel"
     | "modelsForProvider"
   >;
   vendorOAuth: VendorOAuth;
@@ -157,7 +159,15 @@ export function registerProviderIpc({
       });
       return {
         info: model
-          ? modelInfoFromModelsDev(model, input?.providerId ?? "")
+          ? modelInfoFromModelsDev(
+              model,
+              input?.providerId ?? "",
+              modelsDevCatalog.vendorProviderKeyForModel({
+                vendorKey: lookupVendorKey,
+                baseUrl: input?.baseUrl,
+                modelId,
+              }),
+            )
           : null,
       };
     },
@@ -397,6 +407,14 @@ export function registerProviderIpc({
           baseUrl: catalogBaseUrl,
           modelId: model.modelId,
         });
+        // The vendor that owns the id, for this row's display mark. A custom
+        // endpoint resolves no provider key of its own, so this is what lets a
+        // row name its own vendor instead of inheriting the host's.
+        const vendorKey = modelsDevCatalog.vendorProviderKeyForModel({
+          vendorKey: catalogVendorKey,
+          baseUrl: catalogBaseUrl,
+          modelId: model.modelId,
+        });
         const catalogModelConfig = catalogModelConfigFor(modelsDevCatalog, {
           vendorKey: catalogVendorKey,
           baseUrl: catalogBaseUrl,
@@ -410,7 +428,11 @@ export function registerProviderIpc({
           resolvedModel.binding,
         );
         const info = modelsDevModel
-          ? modelInfoFromModelsDev(modelsDevModel, provider?.id ?? "")
+          ? modelInfoFromModelsDev(
+              modelsDevModel,
+              provider?.id ?? "",
+              vendorKey,
+            )
           : {
               modelId: model.modelId,
               displayName: model.displayName,
@@ -429,6 +451,7 @@ export function registerProviderIpc({
               ] as Array<"text" | "tools" | "vision" | "reasoning" | "json">,
               supportedThinkingLevels: [...(catalogModelConfig.supportedThinkingLevels ?? [])],
               source: model.source ?? ("discovered" as const),
+              ...(vendorKey ? { catalogVendorKey: vendorKey } : {}),
             };
         return {
           ...info,

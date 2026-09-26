@@ -6,8 +6,10 @@ import {
   composerModelBadges,
   composerModelBinding,
   composerModelDisplayName,
+  composerModelOutputLimit,
   sameComposerModelId,
 } from "../../../lib/composer-models";
+import { ModelProviderIcon } from "./ModelProviderIcon";
 
 export type ComposerModelGroup = {
   provider: ProviderPublic;
@@ -59,7 +61,10 @@ export function ComposerModelList({
                       role="group"
                       aria-label={group.providerDisplayName}
                     >
-                      <div className="composer-model-group-label">{group.providerDisplayName}</div>
+                      <div className="composer-model-group-label">
+                        <ModelProviderIcon catalogProviderKey={group.provider.catalogProviderKey} />
+                        {group.providerDisplayName}
+                      </div>
                       {group.models.map((model) => {
                         const index = flatIndex++;
                         const active =
@@ -75,6 +80,7 @@ export function ComposerModelList({
                           model.modelId,
                           model.displayName,
                         );
+                        const outputLimit = composerModelOutputLimit(model);
                         return (
                           <button
                             key={`${group.provider.id}:${model.modelId}`}
@@ -87,6 +93,9 @@ export function ComposerModelList({
                             onMouseMove={() => setModelHighlight(index)}
                             onClick={() => void selectModel(group.provider, model.modelId)}
                           >
+                            <ModelProviderIcon
+                              catalogProviderKey={model.catalogVendorKey ?? group.provider.catalogProviderKey}
+                            />
                             <span className="composer-model-option-main">
                               {/*
                                 One label per row, never both: the name the user
@@ -123,9 +132,15 @@ export function ComposerModelList({
                                     </span>
                                   );
                                 })}
-                                {model.contextWindow ? (
-                                  <span className="composer-model-option-ctx">
-                                    {formatTokenCount(model.contextWindow)}
+                                {model.contextWindow || outputLimit ? (
+                                  <span className="composer-model-option-limits">
+                                    <span className="composer-model-option-ctx">
+                                      {formatTokenCount(model.contextWindow)}
+                                    </span>
+                                    <span className="composer-model-option-sep" aria-hidden="true">·</span>
+                                    <span className="composer-model-option-max">
+                                      {formatTokenCount(outputLimit)}
+                                    </span>
                                   </span>
                                 ) : null}
                               </span>

@@ -12,7 +12,8 @@
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
-    "build:deps": "pnpm --filter '@pi-desktop/desktop^...' build",
+    "build:marks": "node ../../scripts/build-provider-marks.mjs",
+    "build:deps": "pnpm run build:marks && pnpm --filter '@pi-desktop/desktop^...' build",
     "predev": "pnpm run build:deps && cargo build --manifest-path ../../Cargo.toml -p host-core",
     "dev": "node ../../scripts/dev-electron.mjs",
     "build": "electron-vite build",

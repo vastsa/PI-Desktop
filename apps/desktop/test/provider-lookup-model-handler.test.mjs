@@ -81,6 +81,7 @@ function harness(realCatalog) {
       catalogCalls.push(["findModel", input]);
       return realCatalog.findModel(input);
     },
+    vendorProviderKeyForModel: (input) => realCatalog.vendorProviderKeyForModel(input),
   };
   const { registerProviderIpc } = load("../electron/main/ipc/provider-ipc.ts", {
     "@pi-desktop/shared": {

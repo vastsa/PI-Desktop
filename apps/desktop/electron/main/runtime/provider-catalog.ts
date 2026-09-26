@@ -110,7 +110,7 @@ export function createProviderCatalogRuntime({
   const enrichProvider = <T extends RuntimeProvider>(
     provider: T,
     selectedModelId?: string,
-  ): T & ThinkingCapabilities & { supportsVision: boolean } => {
+  ): T & ThinkingCapabilities & { supportsVision: boolean; catalogProviderKey?: string } => {
     const modelId =
       selectedModelId ||
       provider.modelId ||
@@ -132,6 +132,15 @@ export function createProviderCatalogRuntime({
       resolved.catalogConfig,
       resolved.binding,
     );
+    // The catalog key the row's own metadata resolves through. It is the one
+    // identifier that already survived every alias (vendorKey, base URL,
+    // native-adapter mapping), so the UI can hand it to the brand-mark table
+    // instead of re-deriving that mapping for itself. An unknown endpoint
+    // resolves to nothing and is simply left absent.
+    const catalogProviderKey = modelsDevCatalog.providerKeyForRow({
+      vendorKey: provider.vendorKey,
+      baseUrl: provider.baseUrl,
+    });
     const models = provider.models?.map((binding) => {
       const catalogModelConfig = catalogModelConfigFor(modelsDevCatalog, {
         vendorKey: provider.vendorKey,
@@ -162,6 +171,7 @@ export function createProviderCatalogRuntime({
     return {
       ...provider,
       ...(models ? { models } : {}),
+      ...(catalogProviderKey ? { catalogProviderKey } : {}),
       ...(catalogModelConfig.source !== "generic"
         ? {
             contextWindow: modelConfig.contextWindow,

@@ -355,7 +355,13 @@ type ProviderConfig = {
     supportsReasoning?: boolean
     supportedThinkingLevels?: ThinkingLevel[]
   }
-  defaultModelId?: string
+  /**
+   * models.dev provider key this row's metadata resolved through, when the
+   * catalog knows the row. Optional and non-authoritative: it exists only so
+   * the UI can select the row's own bundled brand mark instead of guessing
+   * from a display name. Absent for a row the catalog cannot place.
+   */
+  catalogProviderKey?: string
   models: ModelBinding[]        // selected models and per-model settings
   createdAt: string
   updatedAt: string

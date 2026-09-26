@@ -4999,6 +4999,36 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   schema、权限都没有变化。见 `04-ux/08-component-spec.md` 与
   E2E-CHAT-opaque-floating-decision-and-retry-surfaces。
 
+## 2026-09-25 — 模型选择器使用打包的单色提供商图标（D628，issue #1028）
+
+- 修订 `11-provider-model-system.md` 与
+  `13-model-catalog-and-selection.md` §9.2.1（ADR `provider-brand-marks`）。
+  `ProviderPublic` 新增可选的 `catalogProviderKey`，由主进程经已有的
+  `modelsDevCatalog.providerKeyForRow` 一次性填充；`ModelInfo` 新增可选的
+  `catalogVendorKey`，由新增的 `modelsDevCatalog.vendorProviderKeyForModel`
+  填充。渲染层按该 key 选择图标，绝不重新推导别名映射，因此不存在第二事实来源，
+  被改名的行也不会借用其他厂商的美术资源。行优先使用自己的厂商 key，因为一个自定义
+  端点往往同时服务多个厂商：同一组行共享 `providerId`，而每一行各自指名其归属。
+- 该归属从模型 ID 的厂商路由（`openai/gpt-6-astra` 指名 `openai`）读出，扫描范围是
+  目录为该 ID 自带的候选索引（即 `findModel` 所用的同一套索引），再经既有的提供商
+  别名表映射。它指名的是权重归属者，而不是本次查找恰好命中的记录由谁发布。只是元
+  数据：不改变任何能力、上限或线模型 ID，`findModel` 本身也未改动。
+- Composer 模型行从左至右为：提供商图标、线模型 ID、推理/视觉标记，以及
+  「上下文窗口 · 输出上限」一对数值。此前只显示上下文窗口；现在输出上限以同一
+  个共享紧凑格式化函数显示在其后，服务未发布的上限显示为破折号。
+- 图标以单色 `currentColor` 美术资源打包在 `apps/desktop/src/assets/models/` 下，
+  由 `scripts/build-provider-marks.mjs` 编译为内联 React 组件（`build:deps` 会运行
+  它，并有测试在「重新生成结果与已提交文件不一致」时失败）。它们是路径而非图片，
+  因此没有运行时拉取、没有会失败的 `<img>`、也不占 CSP 表面；继承主题文字颜色使
+  各厂商保持同一视觉重量。此前尝试过「对打包资产用 CSS `mask-image` 渲染」并已否
+  决：Vite 会把 4 KB 以下的资产内联为 `data:` URL，而 mask 无法从中取样绘制，且本次
+  打包的多个图标都在该阈值以下——结果是部分厂商显示为纯灰方块，其余看起来却正常。
+  没有 bundled 图标的 key（包括目录无法指认厂商的行）统一回退到共享通用图标。
+- 第二条归属信号覆盖不带路由的模型 ID：若发布者自身的 key 就是已知厂商，即该厂商在
+  描述自家模型——小米的裸 `mimo-v2.6-pro` 因此解析为 `xiaomi`，`xiaomi` 也据此加入
+  `MODEL_VENDOR_PREFIXES`。中转网关不符合该条件（其 key 不在厂商集合中），所以只是
+  转载某模型的网关无法冒领其图标；厂商路由始终优先于发布者 key。两种信号都指认不出
+  的 ID（含未知自由格式 ID）仍走回退。
 ## 2026-09-25 —— 模型设置统一为一份 AI 服务列表加一份已选模型摘要（D625）
 
 - 模型设置页在用户连接任何服务前要求太多。API-key 服务打开时是一个收起的

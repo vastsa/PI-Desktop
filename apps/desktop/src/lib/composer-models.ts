@@ -93,6 +93,10 @@ export function composerModelBadges(
   if (bindingSupportsImages(binding, model)) badges.push("vision");
   return badges;
 }
+/** Published output limit for one model row, when the catalog states one. */
+export function composerModelOutputLimit(model: ModelInfo): number | undefined {
+  return model.maxTokens ?? model.limit?.output;
+}
 
 /** Search the full id, configured alias, published name, family and provider. */
 export function composerModelMatchesQuery(

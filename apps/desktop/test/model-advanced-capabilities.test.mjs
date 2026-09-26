@@ -30,6 +30,14 @@ const catalogSource = await readFile(
 );
 const mainSource = await readMainSource();
 const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts");
+const iconSource = await readFile(
+  new URL("../src/features/chat/composer/ModelProviderIcon.tsx", import.meta.url),
+  "utf8",
+);
+const providersTypeSource = await readFile(
+  new URL("../../../packages/shared/src/types/providers.ts", import.meta.url),
+  "utf8",
+);
 const sidecarSource = await readFile(
   new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
   "utf8",
@@ -98,6 +106,65 @@ test("image generation selection hides the summary when nothing can be chosen", 
 
 test("the Composer model rows use the provider binding for vision badges", () => {
   assert.match(composerSource, /composerModelBadges\(model, group\.provider\)/);
+});
+
+test("the Composer model rows pair the context window with the output limit", () => {
+  // The picker row reads like the settings row — context window, then output
+  // limit — so a model's shape is the same number in both places.
+  assert.match(composerSource, /composerModelOutputLimit\(model\)/);
+  assert.match(
+    composerSource,
+    /composer-model-option-ctx[\s\S]*?composer-model-option-sep[\s\S]*?composer-model-option-max/,
+  );
+  // Both values go through the one shared compact formatter, so an unpublished
+  // limit reads as an em dash instead of an invented number.
+  assert.match(composerSource, /formatTokenCount\(outputLimit\)/);
+  assert.match(styles, /\.composer-model-option-limits \{/);
+  assert.match(styles, /\.composer-model-option-max \{/);
+});
+
+test("a provider row carries the catalog key its brand mark comes from", () => {
+  // The key is resolved once, in Main, through the same alias mapping that
+  // already places the row's metadata — so two providers a user renamed to the
+  // same display name keep their own marks, and a custom row the catalog
+  // cannot place leaves the field absent rather than inventing an identity.
+  assert.match(
+    providerCatalogSource,
+    /const catalogProviderKey = modelsDevCatalog\.providerKeyForRow\(\{[\s\S]*?\}\)/,
+  );
+  assert.match(
+    providerCatalogSource,
+    /\.\.\.\(catalogProviderKey \? \{ catalogProviderKey \} : \{\}\)/,
+  );
+  // The field is optional on the public provider type, so an old producer that
+  // never sends it still type-checks and the UI falls back.
+  assert.match(providersTypeSource, /catalogProviderKey\?: string;/);
+});
+
+test("each composer model row and group heading carries a provider mark", () => {
+  // A row prefers the vendor that owns ITS model over the row's own provider:
+  // one custom endpoint serves several vendors, so a group of rows shares a
+  // provider key while each names its own vendor. The heading has no row to
+  // read, so it stays on the provider's key.
+  assert.match(
+    composerSource,
+    /<ModelProviderIcon\s+catalogProviderKey=\{model\.catalogVendorKey \?\? group\.provider\.catalogProviderKey\}\s*\/>/,
+  );
+  assert.match(composerSource, /<ModelProviderIcon catalogProviderKey=\{group\.provider\.catalogProviderKey\} \/>/);
+  // The marks are inline currentColor paths, not asset URLs, so a vendored
+  // mark and the generic fallback sit at the same weight and inherit the
+  // theme's text color: a run of vendors reads as one visual weight instead of
+  // a set of saturated logos.
+  assert.match(iconSource, /<Mark size=\{14\} className="provider-mark provider-mark-brand" \/>/);
+  // Twice: once on the group heading, once per row. The heading names the
+  // vendor and the rows repeat it, so a long list stays readable after the
+  // heading has scrolled away.
+  assert.equal((composerSource.match(/<ModelProviderIcon\b/g) ?? []).length, 2);
+  assert.match(composerSource, /composer-model-group-label[\s\S]{0,200}?<ModelProviderIcon /);
+  // One shared size/colour for both kinds, so the fallback never looks like a
+  // different class of thing from a vendored mark.
+  assert.match(styles, /\.provider-mark \{[\s\S]*?color: var\(--ds-text-faint\);/);
+  assert.match(styles, /flex: 0 0 auto;/);
 });
 
 test("capability overrides reach the transport modality arrays", () => {

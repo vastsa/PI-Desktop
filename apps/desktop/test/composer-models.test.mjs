@@ -6,6 +6,7 @@ import {
   composerModelBinding,
   composerModelDisplayName,
   composerModelMatchesQuery,
+  composerModelOutputLimit,
   composerModelsForProvider,
   sameComposerModelId,
 } from "../src/lib/composer-models.ts";
@@ -181,6 +182,29 @@ test("composer model rows expose published reasoning and vision markers", () => 
     }),
     [],
   );
+});
+
+test("composer model rows expose the published output limit", () => {
+  // models.dev states both limits, and the picker shows the same pair the
+  // settings row shows, through the same compact formatter.
+  assert.equal(
+    composerModelOutputLimit({
+      ...model("gpt-5.6-luna"),
+      contextWindow: 1_050_000,
+      maxTokens: 32_768,
+      limit: { context: 1_050_000, output: 32_768 },
+    }),
+    32_768,
+  );
+  // `limit.output` is the same published number on a record written before
+  // the convenience field existed.
+  assert.equal(
+    composerModelOutputLimit({ ...model("legacy-row"), limit: { output: 8_192 } }),
+    8_192,
+  );
+  // A model the catalog does not describe states nothing at all, so the row
+  // renders an em dash rather than a limit the service never published.
+  assert.equal(composerModelOutputLimit(model("unknown-model")), undefined);
 });
 
 test("composer vision marker follows the binding's image-input override (#214)", () => {

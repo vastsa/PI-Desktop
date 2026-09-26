@@ -42,8 +42,8 @@ export const MODEL_VENDOR_PREFIXES = new Set([
   "tencent",
   "x-ai",
   "xai",
-  "z-ai",
   "zai",
+  "xiaomi",
   "zhipuai",
 ]);
 
@@ -367,6 +367,16 @@ export type ModelInfo = {
   source: "bundled" | "discovered" | "user";
   /** Metadata catalog that supplied this row, when it is a known model. */
   catalogSource?: "models.dev";
+  /**
+   * Catalog provider key of the vendor that OWNS this model, when models.dev
+   * publishes it under a vendor route such as `openai/gpt-6-astra`.
+   *
+   * Distinct from `providerId`, which is the row the user configured: one
+   * custom endpoint serves several vendors, so a group of rows shares a
+   * `providerId` and each carries its own owner. Decorative only — the UI
+   * picks a brand mark with it and never uses it to identify the binding.
+   */
+  catalogVendorKey?: string;
 };
 
 /**

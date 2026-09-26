@@ -7069,6 +7069,49 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   theme schema, or permission change. See `04-ux/08-component-spec.md` and
   E2E-CHAT-opaque-floating-decision-and-retry-surfaces.
 
+## 2026-09-25 — Bundled monochrome provider marks in the model picker (D628, issue #1028)
+
+- Amend `11-provider-model-system.md` and
+  `13-model-catalog-and-selection.md` §9.2.1 (ADR `provider-brand-marks`).
+  `ProviderPublic` gains an optional `catalogProviderKey`, filled once in Main
+  by the existing `modelsDevCatalog.providerKeyForRow`, and `ModelInfo` gains an
+  optional `catalogVendorKey`, filled by a new
+  `modelsDevCatalog.vendorProviderKeyForModel`. The renderer selects a mark by
+  that key and never re-derives the alias mapping, so there is no second source
+  of truth and a renamed row cannot borrow another vendor's artwork. A row
+  prefers its own vendor key, because one custom endpoint serves several
+  vendors: a group of rows shares a `providerId` while each names its owner.
+- The owner is read off the id's vendor route (`openai/gpt-6-astra` names
+  `openai`) across the catalog's own candidate index for the id — the same
+  indexed set `findModel` searches — and mapped through the existing provider
+  alias table. It names whoever owns the weights rather than whichever host
+  published the record the lookup scored highest. Metadata only: no capability,
+  limit, or wire id changes, and `findModel` itself is untouched.
+- A second signal covers ids that carry no route: a publisher whose own key is a
+  known vendor is that vendor describing its own model, which is how Xiaomi's
+  bare `mimo-v2.6-pro` resolves to `xiaomi`. `xiaomi` joins
+  `MODEL_VENDOR_PREFIXES` for this. A reseller cannot qualify — its key
+  (`opencode-go`, `nano-gpt`, `requesty`) is not in the vendor set — so a gateway
+  whose row merely republishes a model cannot claim its mark, and a route always
+  beats a publisher key. Ids named by neither signal, including an unknown
+  free-form id, still fall back.
+- The Composer model row reads: provider mark, wire model ID, reasoning/vision
+  badges, and the `context window · output limit` pair. Only the window was
+  shown before; the output limit now sits beside it through the same shared
+  compact formatter, with an em dash for any limit the service never published.
+- Marks are vendored under `apps/desktop/src/assets/models/` as monochrome
+  `currentColor` artwork and compiled into inline React components by
+  `scripts/build-provider-marks.mjs` (`build:deps` runs it, and a test fails when
+  regenerating does not reproduce the committed file). They are paths rather than
+  images, so there is no runtime fetch, no `<img>` to fail, and no CSP surface;
+  inheriting the theme text color keeps every vendor at one visual weight. A CSS
+  `mask-image` over a bundled asset was tried first and rejected: Vite inlines
+  assets under 4 KB as `data:` URLs, a mask cannot paint from those, and several
+  curated marks sit under that threshold — so several vendors rendered as solid
+  gray squares while the rest looked correct. A key with no vendored mark,
+  including a vendor the catalog cannot name, falls back to the shared generic
+  mark.
+
 ## 2026-09-25 — Model settings unify around one AI service list and a chosen-models summary (D625)
 
 - The model settings page asked too much before a user could connect anything.

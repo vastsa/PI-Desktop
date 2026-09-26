@@ -508,6 +508,45 @@ function normalizedModelId(value: string): string {
 }
 
 
+/**
+ * Vendor routes an id spells on its own, e.g. `openai/gpt-6-astra` and
+ * `openai-gpt-6-astra` both say `openai`.
+ *
+ * This is the vendor signal that survives a gateway: a reseller publishes its
+ * own record under its own key, but the route it keeps in the id still names
+ * whoever owns the weights.
+ *
+ * It is not the only one — see `isKnownVendorKey`, which covers ids a vendor
+ * publishes without any route, such as Xiaomi's bare `mimo-v2.6-pro`.
+ */
+function vendorPrefixesInModelId(modelId: string): string[] {
+  const normalized = normalizedModelId(modelId);
+  const found: string[] = [];
+  for (const prefix of MODEL_VENDOR_PREFIXES) {
+    if (
+      normalized.startsWith(`${prefix}/`) ||
+      normalized.startsWith(`${prefix}-`) ||
+      normalized.startsWith(`${prefix}.`)
+    ) {
+      found.push(prefix);
+    }
+  }
+  return found;
+}
+
+
+/**
+ * Whether a catalog provider key is itself a vendor name.
+ *
+ * Used as the second owner signal: a publisher whose own key is a vendor is
+ * that vendor describing its own model, which is the same claim a route in the
+ * id makes. A reseller never qualifies, because its key (`opencode-go`,
+ * `nano-gpt`, `requesty`) is not in the vendor set, so this cannot hand a
+ * gateway's mark to a row it merely republishes.
+ */
+function isKnownVendorKey(providerKey: string): boolean {
+  return MODEL_VENDOR_PREFIXES.has(providerKey);
+}
 function modelVendorPrefixes(model: ModelsDevModel): string[] {
   const prefixes = new Set<string>();
   const add = (value: unknown) => {
@@ -521,16 +560,7 @@ function modelVendorPrefixes(model: ModelsDevModel): string[] {
   add(providerRecord?.id);
   const npmProvider = nonEmptyString(providerRecord?.npm);
   if (npmProvider) add(npmProvider.split("/").at(-1)?.replace(/^@ai-sdk-/, ""));
-  const modelId = normalizedModelId(model.modelId);
-  for (const prefix of MODEL_VENDOR_PREFIXES) {
-    if (
-      modelId.startsWith(`${prefix}/`) ||
-      modelId.startsWith(`${prefix}-`) ||
-      modelId.startsWith(`${prefix}.`)
-    ) {
-      prefixes.add(prefix);
-    }
-  }
+  for (const prefix of vendorPrefixesInModelId(model.modelId)) prefixes.add(prefix);
   return [...prefixes];
 }
 
@@ -701,6 +731,7 @@ function capabilityList(model: ModelsDevModel): ModelInfo["capabilities"] {
 export function modelInfoFromModelsDev(
   model: ModelsDevModel,
   providerId: string,
+  vendorProviderKey?: string,
 ): ModelInfo {
   const contextWindow = positiveInteger(model.limit.context);
   const maxTokens = positiveInteger(model.limit.output);
@@ -738,6 +769,7 @@ export function modelInfoFromModelsDev(
     supportedThinkingLevels: [...model.thinkingLevels],
     source: "discovered",
     catalogSource: "models.dev",
+    ...(vendorProviderKey ? { catalogVendorKey: vendorProviderKey } : {}),
   };
 }
 
@@ -1609,12 +1641,74 @@ export class ModelsDevCatalog {
           seen.add(key);
           return true;
         })
-        .map((model) => modelInfoFromModelsDev(model, input.providerId)),
+        .map((model) =>
+          modelInfoFromModelsDev(
+            model,
+            input.providerId,
+            this.vendorProviderKeyForModel({
+              vendorKey: input.vendorKey,
+              baseUrl: input.baseUrl,
+              modelId: model.modelId,
+            }),
+          ),
+        ),
     );
   }
 
   /** models.dev provider key for a configured row, when the catalog knows it. */
   providerKeyForRow(input: { vendorKey?: string; baseUrl?: string }): string | undefined {
     return this.providerFor(input)?.providerKey;
+  }
+
+  /**
+   * Catalog provider key of the vendor that OWNS a model id — not the host
+   * whose record this lookup happened to score highest.
+   *
+   * A custom OpenAI-compatible row serves several vendors at once, so its own
+   * base URL resolves to no catalog provider (`providerKeyForRow` answers
+   * nothing), while every id it serves is still published somewhere under a
+   * vendor route such as `openai/gpt-6-astra`. Reading that route across all
+   * publishers names the owner, so a row can carry its own vendor's identity
+   * instead of inheriting whichever gateway's record won.
+   *
+   * Metadata only: it changes no capability, limit, or wire id, and it never
+   * overrides `providerKeyForRow`. Used to choose a display mark.
+   */
+  vendorProviderKeyForModel(input: {
+    vendorKey?: string;
+    baseUrl?: string;
+    modelId: string;
+  }): string | undefined {
+    const requested = normalizedModelId(input.modelId);
+    if (!requested) return undefined;
+    // Reuse the same generation-indexed candidate set `findModel` searches, so
+    // this costs one map lookup rather than a catalog scan.
+    if (!this.lookupIndex) this.lookupIndex = new ModelsDevLookupIndex(this.providers);
+    const publishers = this.lookupIndex.candidates(requested);
+    const spellings = [
+      requested,
+      ...publishers.flatMap((entry) => entry.model.modelId),
+    ];
+    const published = this.providers;
+    // Strongest signal first: the vendor route inside the id itself.
+    for (const prefix of [...new Set(spellings.flatMap(vendorPrefixesInModelId))]) {
+      for (const key of providerKeyCandidates(prefix)) {
+        if (published.has(key)) return key;
+      }
+    }
+    /* Then the publisher's own identity, for ids that carry no route. Xiaomi
+       publishes `mimo-v2.6-pro` under its own key with no `xiaomi/` prefix, so
+       the id alone names nothing. A publisher whose own key IS a known vendor
+       is that vendor describing its own model, which is the same claim the
+       route makes — and a reseller is never mistaken for one, because its key
+       (`opencode-go`, `nano-gpt`) is not in the vendor set and so is skipped. */
+    for (const entry of publishers) {
+      const key = normalizedProviderKey(entry.provider.providerKey);
+      if (!isKnownVendorKey(key)) continue;
+      for (const candidate of providerKeyCandidates(key)) {
+        if (published.has(candidate)) return candidate;
+      }
+    }
+    return undefined;
   }
 }

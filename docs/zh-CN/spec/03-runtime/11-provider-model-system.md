@@ -290,7 +290,12 @@ type ProviderConfig = {
     supportsReasoning?: boolean
     supportedThinkingLevels?: ThinkingLevel[]
   }
-  defaultModelId?: string
+  /**
+   * 该行的元数据经由 models.dev 的哪个 provider key 解析得到；目录无法定位该行时
+   * 为空。可选且非权威：它只用于让界面选中该行自带的 bundled 品牌图标，而不是从
+   * 显示名去猜测。
+   */
+  catalogProviderKey?: string
   models?: UserModelConfig[]    // optional user-defined models
   createdAt: string
   updatedAt: string
