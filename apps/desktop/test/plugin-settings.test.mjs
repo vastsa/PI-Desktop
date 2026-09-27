@@ -52,3 +52,13 @@ test("settings writes validate values, notify the plugin, and never use global s
   assert.doesNotMatch(runtime, /globalShortcut\.(?:register|unregister)\(/);
   assert.match(runtime, /assertPermission\(loaded, "keyboard\.globalShortcut"\)/);
 });
+
+test("host plugin modals hide docked native plugin views via blocking-overlay", async () => {
+  // Native WebContentsView composites above the renderer; PluginSettingsSheet
+  // and the install/permission/template dialogs must register the overlay
+  // owner so WorkPanel can hide the docked view while they are open.
+  assert.match(sheet, /useBlockingOverlay/);
+  const dialogs = await read("../src/features/plugins/PluginDialogs.tsx");
+  assert.match(dialogs, /useBlockingOverlay/);
+  assert.match(dialogs, /PluginBlockingModal/);
+});
