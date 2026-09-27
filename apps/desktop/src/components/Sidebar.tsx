@@ -66,6 +66,7 @@ import { useArmedDelete } from "../hooks/use-armed-delete";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../hooks/use-update-state";
+import { useRunningTitleSheen } from "../hooks/use-running-title-sheen";
 import {
   IconArchive,
   IconArchiveRestore,
@@ -272,6 +273,14 @@ export function Sidebar({
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
   const update = useUpdateState();
+  // The running sheen is sized from each row's measured title, so the list
+  // container is what gets watched. See the hook for why CSS cannot do it.
+  const sessionGroupsRef = useRef<HTMLDivElement | null>(null);
+  const runningSessionIds = useMemo(
+    () => Object.keys(runningSessions).filter((id) => runningSessions[id]),
+    [runningSessions],
+  );
+  useRunningTitleSheen(sessionGroupsRef, runningSessionIds);
 
   const [sortOpen, setSortOpen] = useState(false);
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
@@ -2484,6 +2493,7 @@ export function Sidebar({
         </div>
 
         <div
+          ref={sessionGroupsRef}
           className={`sidebar-session-groups min-h-0 flex-1 overflow-auto px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
           onScroll={() => {
             if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);

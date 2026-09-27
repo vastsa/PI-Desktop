@@ -383,45 +383,56 @@
 
 @supports (background-clip: text) or (-webkit-background-clip: text) {
   .thread-item.running .thread-item-title {
-    /* A running row says so by sheening its own title. The dot that used to sit
-   at the leading edge is gone, so the run now reads inside the row rather
-   than beside it, and the streak travels across the glyph outlines
-   themselves rather than across a box behind them.
+    /* A sweep is a physical light passing over the glyphs, so its thickness
+       and its speed are both lengths, never a share of the row. Sized as
+       percentages they become two different effects in one list: the same stop
+       is a fat, slow bar on a three-word session and a thin, fast one on a
+       thirty-word session.
 
-   The title keeps whatever colour the row already gives it — a dim streak
-   travels over it, it does not change colour itself. An earlier pass made
-   the gradient a dim base with one bright band, which darkened the whole
-   title just to light a slice of it. The base stops below are `currentColor`
-   so the streak rides the row's real colour through its hover and selected
-   states instead of a colour pinned at rest. */
+       `--sheen-width` and `--sheen-band` are both written by
+       `useRunningTitleSheen`, which is also what runs the animation — the band
+       has to travel `width + band` pixels to clear both edges, and that
+       duration cannot be expressed here. The values below are the resting
+       state and the no-script fallback; the hook overwrites them before
+       paint. Nothing here animates on its own, so a row that never gets
+       measured simply shows its title at full strength.
 
-@supports (background-clip: text) or (-webkit-background-clip: text) {
-  .thread-item.running .thread-item-title {
+       The peak is a single stop, not a plateau. Two dim stops at
+       `50% ± band/2` would hold the full dip across the band's whole width,
+       which reads as a block sitting on the row rather than as light passing
+       over it; one stop keeps the profile triangular, so only the glyphs
+       under the exact centre take the deepest shading.
+
+       The dip is mixed from `currentColor` rather than a `--ds-text-muted`.
+       That token resolves incompatibly across themes — translucent white in
+       dark, an opaque `#5d5d5d` in light — so a band built from it dims dark
+       text and then lands on the same grey as the light text it is meant to
+       contrast with, and the sweep disappears there entirely. Deriving from
+       `currentColor` makes the band a fixed fraction of whatever the row is
+       actually painted in: darker than the text on a dark surface, lighter on
+       a light one, with no per-theme rule, and it follows hover and selection
+       for free. */
+    --sheen-band: 64px;
+    /* Overwritten before paint by the hook; this only covers the first frame. */
+    --sheen-width: 160px;
     background-image: linear-gradient(
       100deg,
-      currentColor 0%,
-      currentColor 45%,
-      var(--ds-text-muted) 50%,
-      currentColor 55%,
+      currentColor 0,
+      currentColor calc(50% - var(--sheen-band) / 2),
+      color-mix(in oklab, currentColor 45%, transparent) 50%,
+      currentColor calc(50% + var(--sheen-band) / 2),
       currentColor 100%
     );
     background-repeat: no-repeat;
-    /* 2.4 titles wide, so the streak clears the element at both ends of the
-       sweep. At 2x the dim band still straddled the right edge at the start
-       and the left edge at the end, and the loop reset jumped the banded
-       part of the title from one side to the other — the flicker. The
-       background itself still spans the element throughout: 100% puts it at
-       −1.4W→W, 0% at 0→2.4W, and the positions between cover more. */
-    background-size: 240% 100%;
-    background-position: 100% 0;
+    background-size: calc(2 * var(--sheen-width) + var(--sheen-band)) 100%;
+    /* Parked a full band-width left of the text, so a pass begins with the
+       band still off-screen instead of already washing the first glyphs. */
+    background-position: calc(-1 * (var(--sheen-width) + var(--sheen-band))) 0;
     -webkit-background-clip: text;
     background-clip: text;
     /* The fill is emptied, not the `color` property: the base stops resolve
        `currentColor` against `color`, so clearing it would clear the title. */
     -webkit-text-fill-color: transparent;
-    /* Linear, not eased: an ease-out decelerates into the dead end and then
-       snaps back, which reads as a stutter on a title this short. */
-    animation: sidebar-title-sheen 2.3s linear infinite;
   }
 }
 
@@ -453,11 +464,13 @@
   .thread-item-status.permission::before {
     animation: none;
   }
-  /* The streak cannot travel, so the run holds a still dim band at the middle
-     of the sweep — still the glyph-shaped one, never a bare colour. */
+  /* The hook declines to start the animation under reduced motion, so all
+     that is left to settle here is the resting stop. Parking the band at its
+     end position — a full band-width clear of the text — leaves the title
+     painted at its own colour, which is the honest "not moving" state; a
+     frozen band mid-row would instead sit on the glyphs permanently. */
   .thread-item.running .thread-item-title {
-    animation: none;
-    background-position: 50% 0;
+    background-position: 0 0;
   }
 }
 
