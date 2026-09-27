@@ -1813,7 +1813,7 @@ export function Sidebar({
               toggleSessionPin(session);
             }}
           >
-            <IconPin size={14} />
+            <IconPin size={14} fill={pinned ? "currentColor" : "none"} />
           </TooltipButton>
           <TooltipButton
             type="button"

@@ -350,6 +350,13 @@ test("session rows reveal inline pin and archive actions ahead of the overflow m
   assert.match(rowActions, /toggleSessionPin\(session\)/);
   assert.match(rowActions, /void archiveSession\(session\)/);
   assert.equal(rowActions.match(/event\.stopPropagation\(\)/g)?.length, 3);
+  // The pin trigger fills with the row state, so the two states read apart
+  // from the row alone. It keeps the pin glyph rather than the filled star
+  // that marks a pinned project, so the two pins stay distinguishable.
+  assert.match(
+    rowActions,
+    /<IconPin size=\{14\} fill=\{pinned \? "currentColor" : "none"\} \/>/,
+  );
   // The archive trigger swaps its glyph so the state is readable without
   // opening a menu, and both labels follow the row state.
   assert.match(
