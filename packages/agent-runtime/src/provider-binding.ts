@@ -41,8 +41,8 @@ import {
 } from "@pi-desktop/shared";
 import { genericModelConfig } from "./model-capabilities.js";
 import {
-  gpt6AstraRequiresResponsesApi,
-  withGpt6AstraThinkingOffOmitted,
+  gpt6ToolingRequiresResponsesApi,
+  withGpt6ToolingThinkingOffOmitted,
 } from "./openai-model-quirks.js";
 import type { ModelConfig } from "./thinking-level.js";
 
@@ -197,9 +197,10 @@ export function apiBindingForProviderModel(provider: RuntimeProviderConfig): Api
 
 function providerRequestTransport(provider: RuntimeProviderConfig) {
   const catalogStyle = resolveApiStyle(provider.modelConfig?.api);
+  // gpt-6-astra/sol/luna + tools need Responses (or effort none on Completions).
   const apiStyle =
     catalogStyle ??
-    (gpt6AstraRequiresResponsesApi({
+    (gpt6ToolingRequiresResponsesApi({
       modelId: provider.modelId,
       vendorKey: provider.vendorKey,
     })
@@ -270,7 +271,7 @@ export function buildProviderModel(
 ): Model<Api> {
   const binding = apiBindingForProviderModel(provider);
   const catalog = provider.modelConfig;
-  const catalogModel = withGpt6AstraThinkingOffOmitted(
+  const catalogModel = withGpt6ToolingThinkingOffOmitted(
     provider.modelId,
     catalog
       ? (({ source: _source, ...model }) => model)(catalog)

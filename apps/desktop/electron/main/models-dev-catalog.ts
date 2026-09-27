@@ -21,8 +21,8 @@ import type {
 } from "@pi-desktop/shared";
 import {
   genericModelConfig,
-  gpt6AstraRequiresResponsesApi,
-  withGpt6AstraThinkingOffOmitted,
+  gpt6ToolingRequiresResponsesApi,
+  withGpt6ToolingThinkingOffOmitted,
   type ModelConfig,
 } from "@pi-desktop/agent-runtime";
 
@@ -421,9 +421,9 @@ function resolvePublishedModelApi(
   if (providerKey === "opencode-go" && RESPONSES_ONLY_MODEL_IDS.has(modelId.toLowerCase())) {
     return "openai-responses";
   }
-  // gpt-6-astra rejects Chat Completions when tools and reasoning_effort coexist.
+  // gpt-6-astra/sol/luna need Responses when tools and reasoning coexist.
   if (
-    gpt6AstraRequiresResponsesApi({
+    gpt6ToolingRequiresResponsesApi({
       modelId,
       vendorKey: providerKey,
     })
@@ -730,7 +730,7 @@ export function modelInfoFromModelsDev(
 ): ModelInfo {
   const contextWindow = positiveInteger(model.limit.context);
   const maxTokens = positiveInteger(model.limit.output);
-  const thinkingLevelMap = withGpt6AstraThinkingOffOmitted(
+  const thinkingLevelMap = withGpt6ToolingThinkingOffOmitted(
     model.modelId,
     {
       thinkingLevelMap: thinkingLevelMapFromModelsDev(
@@ -814,7 +814,7 @@ export function modelConfigFromModelsDev(
   if (model.family !== undefined) config.family = model.family;
   if (model.attachment !== undefined) config.attachment = model.attachment;
   if (model.reasoningOptions !== undefined) config.reasoningOptions = model.reasoningOptions;
-  const thinkingLevelMap = withGpt6AstraThinkingOffOmitted(model.modelId, {
+  const thinkingLevelMap = withGpt6ToolingThinkingOffOmitted(model.modelId, {
     thinkingLevelMap: thinkingLevelMapFromModelsDev(model.reasoningOptions, thinkingLevels),
   }).thinkingLevelMap;
   if (thinkingLevelMap) config.thinkingLevelMap = thinkingLevelMap;

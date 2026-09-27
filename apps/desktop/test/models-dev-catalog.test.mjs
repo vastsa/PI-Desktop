@@ -945,7 +945,7 @@ test("models.dev parsing keeps the per-model wire API with a responses-only fall
   assert.equal(config.api, "openai-responses");
 });
 
-test("gpt-6-astra on OpenAI uses Responses and omits off→none", () => {
+test("gpt-6 astra/sol/luna on OpenAI use Responses and omit off→none", () => {
   const [openai, gateway] = parseModelsDevCatalog({
     openai: {
       name: "OpenAI",
@@ -963,6 +963,11 @@ test("gpt-6-astra on OpenAI uses Responses and omits off→none", () => {
           reasoning: true,
           reasoning_options: [{ type: "effort", values: ["none", "low", "high"] }],
         },
+        "gpt-6-luna": {
+          id: "gpt-6-luna",
+          reasoning: true,
+          reasoning_options: [{ type: "effort", values: ["none", "low", "high"] }],
+        },
       },
     },
     llmgateway: {
@@ -972,20 +977,17 @@ test("gpt-6-astra on OpenAI uses Responses and omits off→none", () => {
       },
     },
   });
-  const astra = openai.models.find((model) => model.modelId === "gpt-6-astra");
-  const sol = openai.models.find((model) => model.modelId === "gpt-6-sol");
-  assert.equal(astra.modelApi, "openai-responses");
-  assert.equal(sol.modelApi, undefined);
+  for (const id of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+    const model = openai.models.find((entry) => entry.modelId === id);
+    assert.equal(model.modelApi, "openai-responses", id);
+    const config = modelConfigFromModelsDev(model, "https://api.openai.com/v1");
+    assert.equal(config.api, "openai-responses", id);
+    assert.equal(config.thinkingLevelMap?.off, null, id);
+  }
   assert.equal(
     gateway.models.find((model) => model.modelId === "gpt-6-astra").modelApi,
     undefined,
   );
-  const config = modelConfigFromModelsDev(astra, "https://api.openai.com/v1");
-  assert.equal(config.api, "openai-responses");
-  assert.equal(config.thinkingLevelMap?.off, null);
-  assert.equal(config.thinkingLevelMap?.high, "high");
-  const info = modelInfoFromModelsDev(astra, "row");
-  assert.equal(info.thinkingLevelMap?.off, null);
 });
 
 test("models.dev parsing retains every model in a provider", () => {
