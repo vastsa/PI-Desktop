@@ -474,6 +474,24 @@
   }
 }
 
+/* A pinned session is angled, never filled. The icon set has no glyph of its
+   own for the state — only the pin and the pin-off — so the angle carries it.
+   Filling the outline made the button read as a different, heavier icon
+   rather than the same pin in a state, and at that size the solid head lost
+   the pin's shape altogether.
+
+   Both places that draw a pin take the angle, so the glyph reads the same way
+   everywhere it appears.
+
+   The pin is tall and narrow, so turning it grows its bounding box to about
+   the full 24-unit grid: at 13px that is ~13.2px across the diagonal against
+   a 13px slot. The slot does not clip and the title is a further 5px away, so
+   nothing is cut off and nothing collides — the glyph simply fills its box. */
+.thread-item-pin,
+.session-pin-action.is-pinned {
+  transform: rotate(45deg);
+}
+
 .thread-item-pin {
   flex: 0 0 auto;
   color: var(--ds-accent);

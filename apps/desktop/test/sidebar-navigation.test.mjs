@@ -286,7 +286,7 @@ test("session rows line their title up with the project name in every state", ()
   // A reserved but unpainted slot: a plain row keeps its bare leading edge,
   // while the row stays on the same x as a project name either way.
   assert.match(sessionMain, /className="thread-item-slot"/);
-  assert.match(sessionMain, /!status && pinned \? <IconPin size=\{11\}/);
+  assert.match(sessionMain, /!status && pinned \? <IconPin size=\{13\} fill="none" className="thread-item-pin"/);
   assert.doesNotMatch(sessionMain, /thread-item-glyph/);
   // A text badge has no fixed width for the slot, so it follows the title.
   assert.match(
@@ -396,11 +396,22 @@ test("session rows reveal inline pin and archive actions ahead of the overflow m
   assert.match(rowActions, /void archiveSession\(session\)/);
   assert.equal(rowActions.match(/event\.stopPropagation\(\)/g)?.length, 3);
   // The pin trigger fills with the row state, so the two states read apart
-  // from the row alone. It keeps the pin glyph rather than the filled star
-  // that marks a pinned project, so the two pins stay distinguishable.
+  // from the row alone.
+  //
+  // The state is the angle, not the fill. The icon set has no pinned glyph of
+  // its own, and filling the outline turned a state marker into what looked
+  // like a different, heavier icon — at this size the solid head no longer
+  // read as a pin. The outline stays unfilled and the row state rotates it.
   assert.match(
     rowActions,
-    /<IconPin size=\{14\} fill=\{pinned \? "currentColor" : "none"\} \/>/,
+    /<IconPin size=\{14\} fill="none" className=\{cx\("session-pin-action", pinned && "is-pinned"\)\} \/>/,
+  );
+  assert.doesNotMatch(sidebarSource, /fill=\{pinned \? "currentColor" : "none"\}/);
+  // Both pins take the angle, so the glyph reads the same wherever it appears.
+  // The slot does not clip, so the rotated pin filling its 13px box is safe.
+  assert.match(
+    globalStyles,
+    /\.thread-item-pin,\s*\.session-pin-action\.is-pinned\s*\{[^}]*transform:\s*rotate\(45deg\);/s,
   );
   // The archive trigger swaps its glyph so the state is readable without
   // opening a menu, and both labels follow the row state.

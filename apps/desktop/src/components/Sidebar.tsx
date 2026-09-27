@@ -1826,7 +1826,7 @@ export function Sidebar({
               whether or not this row carries a pin; transient status glyphs
               render above and borrow the same box. */}
           <span className="thread-item-slot" aria-hidden>
-            {!status && pinned ? <IconPin size={11} className="thread-item-pin" /> : null}
+            {!status && pinned ? <IconPin size={13} fill="none" className="thread-item-pin" /> : null}
           </span>
           <span className="thread-item-title">{taskTitle(session.title)}</span>
           {/* A text badge cannot fit the fixed icon slot, so the Pi source
@@ -1872,7 +1872,7 @@ export function Sidebar({
               toggleSessionPin(session);
             }}
           >
-            <IconPin size={14} fill={pinned ? "currentColor" : "none"} />
+            <IconPin size={14} fill="none" className={cx("session-pin-action", pinned && "is-pinned")} />
           </TooltipButton>
           <TooltipButton
             type="button"
