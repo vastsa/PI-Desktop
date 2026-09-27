@@ -1,18 +1,14 @@
 # ADR 0062: Bounded Subagents Behind a Task Tool
 
-
 - Status: Accepted for implementation (definition roots amended by ADR 0112;
-  timeout policy amended by ADR 0119; delegation presentation amended by D265;
-  opt-in parent-tool inherit amended by ADR 0246; resumable delegations amended
-  by ADR 0279)
+  timeout policy amended by ADR 0119; delegation presentation amended by D265)
 - Date: 2026-08-06
 - Deciders: PI-Desktop core
 - Related: D201, ADR 0041 (persistence outbox), ADR 0048 (lazy per-turn tool
   activation), ADR 0053 (plan checkpoint and execution epoch), D123 (prompt
   template documents), D138 (session-scoped inline permission requests),
   D198 (contract modes), ADR 0112 (capability roots and Settings IA), ADR 0119
-  (event-driven subagent timeouts), D265 (one delegation reads as a card too),
-  ADR 0246 (opt-in `tools: inherit`), ADR 0279 (resumable delegations)
+  (event-driven subagent timeouts), D265 (one delegation reads as a card too)
 
 ## Context
 
@@ -105,11 +101,11 @@ remains an optional hard backstop with a maximum of 80.
 
 Fan-out makes one same-process ordering problem real, and the sidecar owns it.
 host-core admits one mutation per session at a time, so concurrent writes cannot
-tear, but it defines no order between same-path mutations — and the sidecar's
-edit-recovery contract allows three counted failures per path before terminating
-the prompt, which only means "re-read and retry" if the attempts were ordered. A
-`PathMutex` in the sidecar serializes mutating calls per normalized path;
-different paths never wait on each other, which is the point.
+tear, but it defines no order between two same-path mutations — and the sidecar's
+edit-recovery contract counts failures per path and terminates the second failed
+`Edit` on one file, which only means "re-read and retry once" if the attempts
+were ordered. A `PathMutex` in the sidecar serializes mutating calls per
+normalized path; different paths never wait on each other, which is the point.
 Delegates also run under the same bounded provider retry policy as the parent
 (one retry, 8s delay cap), so a fan-out cannot turn one failing provider into a
 retry storm.
@@ -173,11 +169,9 @@ many requests wait behind it.
 - **Inherit the session model always.** Cheaper to reason about. Rejected: a
   wide search is exactly the work worth doing on a cheap fast model while the
   parent keeps the expensive one.
-- **Let delegates inherit the parent's tools.** Rejected for silent, always-on
-   inherit: it makes every delegation as dangerous as the session, and a
-   definition is the only place a reader can see what a delegate may do.
-   Amended by ADR 0246: a document may opt in with `tools: inherit` and a
-   deny list; builtins stay on today's whitelist.
+- **Let delegates inherit the parent's tools.** Rejected: it makes every
+  delegation as dangerous as the session, and a definition is the only place a
+  reader can see what a delegate may do.
 - **A separate process per delegate.** Real isolation, but it duplicates the
   host connection, provider setup and event plumbing for a bounded worker that
   already runs under host-core containment. Rejected for v1.

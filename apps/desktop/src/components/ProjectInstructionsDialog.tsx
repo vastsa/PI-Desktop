@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { AgentInstructionFile } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import { Button, Textarea, TooltipButton } from "./ui";
+import { Button, Textarea } from "./ui";
 import { IconClose } from "./icons";
 
 export function ProjectInstructionsDialog({
@@ -12,7 +12,7 @@ export function ProjectInstructionsDialog({
   onSaved,
   onError,
 }: {
-  project: { name: string; path: string; groupId?: string; legacy?: boolean };
+  project: { name: string; path: string };
   onClose: () => void;
   onSaved: () => void;
   onError: (error: unknown) => void;
@@ -24,17 +24,7 @@ export function ProjectInstructionsDialog({
 
   useEffect(() => {
     let cancelled = false;
-    const load = project.groupId && !project.legacy
-      ? api.getProjectGroupInstructions(project.groupId).then((result) => ({
-          project: {
-            scope: "project" as const,
-            path: "ChatGPT Project instructions",
-            content: result.content,
-            exists: true,
-          },
-        }))
-      : api.getAgentInstructions(project.path);
-    void load.then((result) => {
+    void api.getAgentInstructions(project.path).then((result) => {
       if (cancelled || !result.project) return;
       setFile(result.project);
       setDraft(result.project.content);
@@ -44,7 +34,7 @@ export function ProjectInstructionsDialog({
     return () => {
       cancelled = true;
     };
-  }, [project.groupId, project.legacy, project.path]);
+  }, [project.path]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -57,13 +47,8 @@ export function ProjectInstructionsDialog({
   const save = async () => {
     setSaving(true);
     try {
-      if (project.groupId && !project.legacy) {
-        const result = await api.saveProjectGroupInstructions(project.groupId, draft);
-        setFile((current) => current ? { ...current, content: result.content, exists: true } : current);
-      } else {
-        const result = await api.saveAgentInstructions("project", draft, project.path);
-        setFile(result.file);
-      }
+      const result = await api.saveAgentInstructions("project", draft, project.path);
+      setFile(result.file);
       onSaved();
     } catch (error) {
       onError(error);
@@ -95,16 +80,15 @@ export function ProjectInstructionsDialog({
             </h3>
             <div className="project-instructions-dialog-project">{project.name}</div>
           </div>
-          <TooltipButton
+          <button
             type="button"
             className="project-instructions-dialog-close"
-            tooltip={t("settings.cancel")}
-            ariaLabel={t("settings.cancel")}
+            aria-label={t("settings.cancel")}
             disabled={saving}
             onClick={onClose}
           >
             <IconClose size={16} />
-          </TooltipButton>
+          </button>
         </div>
         <div className="project-instructions-dialog-path">{file?.path ?? ""}</div>
         <Textarea

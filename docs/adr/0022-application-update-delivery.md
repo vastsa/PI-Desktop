@@ -1,9 +1,9 @@
 # ADR 0022: Application Update Delivery
 
-- Status: Accepted (amended by D364 / D603 / D628 / ADR 0197, D450 / ADR 0289; issue #1098)
+- Status: Accepted (amended by D364 / ADR 0197)
 - Date: 2026-07-26
 - Deciders: PI-Desktop core
-- Related: D120, D126, D364, D603, D628, D010, D450, ADR 0021, ADR 0197, ADR 0289
+- Related: D120, D126, D364, D010, ADR 0021, ADR 0197
 
 ## Context
 
@@ -20,13 +20,12 @@ download-and-install flow.
    Releases feed, update polling, and install lifecycle. Renderer IPC exposes
    only allowlisted check, state, release-link, and install operations; callers
    cannot supply a feed URL.
-2. Development builds keep updates disabled. Packaged macOS, Windows NSIS, and
-   Linux AppImage use in-app download and quit-and-install delivery. Non-AppImage
-   Linux (deb/rpm) and Windows ZIP builds (`piDistribution = "zip"`) use
-   notify-and-link delivery so an NSIS installer cannot replace a no-install
-   run. Legacy portable executables remain manual when
-   `PORTABLE_EXECUTABLE_FILE` is present. (Packaged macOS was notify-and-link
-   until D450 / ADR 0289 qualified the signed in-app channel.)
+2. Development builds keep updates disabled. Packaged macOS and non-AppImage
+   Linux use manual delivery: discovery stops at `available` and opens the
+   fixed releases page. Windows NSIS and Linux AppImage use in-app download and
+   quit-and-install delivery. Windows portable builds (`PORTABLE_EXECUTABLE_FILE`)
+   use the same notify-and-link path as macOS so an NSIS installer cannot replace
+   a no-install run.
 3. The updater always sets `allowPrerelease = false`. electron-updater would
    otherwise pin prerelease installs (for example `0.2.0-rc.6`) to the same
    custom channel (`rc`) and never offer a newer stable GitHub latest release.
@@ -41,7 +40,8 @@ download-and-install flow.
    cannot be validated.
 6. D126 later lifts D010's macOS-only publication scope and publishes all
    platform artifacts and update manifests produced by the release matrix.
-   D450 / ADR 0289 qualifies the signed macOS in-app channel on that same feed.
+   macOS remains notify-and-link until a signed in-app channel is separately
+   qualified.
 7. Dual-locale product "what's new" text (D164) is maintained in
    `packages/shared` as EN + zh-CN catalogs. Main formats notes for the
    discovered version using the product UI locale and attaches them as optional
@@ -54,15 +54,14 @@ download-and-install flow.
   Settings, and the ambient banner.
 - The sandboxed renderer cannot redirect update traffic or install arbitrary
   packages.
-- Windows NSIS, Linux AppImage, and packaged macOS can update in-app from
-  published tag feeds; Linux deb and Windows ZIP users install from the
-  release page after extracting the archive.
+- Windows NSIS and Linux AppImage can update in-app from published tag feeds;
+  macOS, Linux deb, and Windows portable users install from the release page.
 - Prerelease installs graduate to newer stable releases through the same
   latest feed; a dedicated RC channel is not active.
 - In-app bilingual release highlights ship with the build and follow the
   product locale without a second network surface.
-- Rollback, staged rollout, and optional prerelease-channel policy remain
-  operational follow-ups rather than renderer capabilities.
+- Signing, rollback, staged rollout, and optional prerelease-channel policy
+  remain operational follow-ups rather than renderer capabilities.
 
 ## Alternatives
 
@@ -72,52 +71,3 @@ download-and-install flow.
   installation path.
 - Force one delivery mode on every platform: rejected because installer and
   signing guarantees differ by target.
-
-## Amendment (D450 / ADR 0289)
-
-Official GitHub tag macOS artifacts are Developer ID-signed, notarized, and
-stapled. Packaged macOS therefore uses the same in-app `electron-updater` lane
-as Windows NSIS and Linux AppImage. Local unsigned packaging without a
-certificate remains available (D078).
-
-## Amendment (D603)
-
-The Windows no-install lane now publishes a normal ZIP archive instead of
-electron-builder's self-extracting `portable` executable. The release helper
-builds NSIS and ZIP separately and stamps the ZIP app metadata with
-`piDistribution = "zip"`; the updater uses that marker to keep the ZIP manual
-even though ordinary ZIP launches do not set `PORTABLE_EXECUTABLE_FILE`. Users
-extract the archive and run `PI-Desktop.exe`; the NSIS lane and existing data
-directory remain unchanged.
-
-## Amendment (issue #1098)
-
-For Windows NSIS installs, `PI_DESKTOP_UPDATE_CACHE_DIR` may set an absolute,
-writable base for electron-updater's download cache. Main reads the cache's
-subdirectory name from the packaged `app-update.yml`, adopts the installer and
-block-map differential baselines plus any staged update from `%LOCALAPPDATA%`
-on startup, then removes the legacy cache directory only when empty. Unknown
-files and already-populated destinations are preserved rather than overwritten
-or recursively deleted. Once the feed confirms the running version is current,
-Main deletes only the obsolete `pending/` staging directory and keeps the
-baselines for the next differential update. The default
-cache location remains unchanged unless the variable is set. Main does not write
-to the installation directory: the NSIS script still writes its `installer.exe`
-baseline to `%LOCALAPPDATA%`, which Main adopts on the next launch.
-
-
-## Amendment (D628)
-
-Settings → Info exposes a persisted per-install `updatePreference` with
-`automatic` and `manual` values. Automatic preserves the existing in-app
-installer lane. Manual continues stable-release checks but disables automatic
-download and install-on-quit, and raises one reminder per discovered version.
-The last reminded version is stored in the existing Host-owned app settings
-JSON and is intentionally omitted from portable configuration sync.
-
-Installed Windows NSIS, packaged macOS, and Linux AppImage default to Automatic.
-Windows ZIP/portable packages default to Manual; opting into Automatic is
-available on supported Windows packages only after the UI warns that NSIS may
-replace the extracted no-install copy. Unsupported installer formats remain
-Manual. This additive setting requires no database schema or host protocol
-version change.

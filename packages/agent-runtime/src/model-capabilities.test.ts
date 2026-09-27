@@ -78,7 +78,7 @@ describe("main-supplied model capabilities", () => {
     });
   });
 
-  it("uses the published long-context window when a binding marks its seed as catalog-owned", () => {
+  it("uses the published long-context window when a legacy binding has the generic seed", () => {
     const model = {
       ...knownModel(),
       contextWindow: 1_050_000,
@@ -86,7 +86,6 @@ describe("main-supplied model capabilities", () => {
     };
     const configured = modelConfigWithBinding(model, {
       contextWindow: 128_000,
-      contextWindowSource: "catalog",
       maxTokens: 8_192,
       thinkingLevels: [],
     });
@@ -94,37 +93,12 @@ describe("main-supplied model capabilities", () => {
     expect(configured.limit?.context).toBe(1_050_000);
   });
 
-  it("does not use a generic fallback to replace a catalog snapshot", () => {
-    const configured = modelConfigWithBinding(genericModelConfig("gateway-model"), {
-      contextWindow: 1_000_000,
-      contextWindowSource: "catalog",
-      maxTokens: 8_192,
-      thinkingLevels: [],
-    });
-    expect(configured.contextWindow).toBe(1_000_000);
-  });
-
-  it("preserves a legacy stored context window without provenance", () => {
-    const configured = modelConfigWithBinding(knownModel(), {
-      contextWindow: 128_000,
-      maxTokens: 8_192,
-      thinkingLevels: [],
-    });
-    expect(configured.contextWindow).toBe(128_000);
-  });
-
   it("applies binding limits and preserves explicit thinking levels", () => {
-    const configured = modelConfigWithBinding(
-      {
-        ...knownModel(),
-        thinkingLevelMap: { xhigh: null, max: null },
-      },
-      {
-        contextWindow: 64_000,
-        maxTokens: 4_000,
-        thinkingLevels: ["off", "minimal", "low", "max"],
-      },
-    );
+    const configured = modelConfigWithBinding(knownModel(), {
+      contextWindow: 64_000,
+      maxTokens: 4_000,
+      thinkingLevels: ["off", "minimal", "low", "max"],
+    });
     expect(configured.contextWindow).toBe(64_000);
     expect(configured.maxTokens).toBe(4_000);
     expect(configured.reasoning).toBe(true);
@@ -134,15 +108,6 @@ describe("main-supplied model capabilities", () => {
       "low",
       "max",
     ]);
-    expect(configured.thinkingLevelMap).toMatchObject({ max: "max" });
-
-    const enlarged = modelConfigWithBinding(knownModel(), {
-      contextWindow: 256_000,
-      maxTokens: 8_192,
-      thinkingLevels: [],
-    });
-    expect(enlarged.contextWindow).toBe(256_000);
-    expect(enlarged.catalogContextWindow).toBe(128_000);
 
     const unknown = modelConfigWithBinding(genericModelConfig("unknown"), {
       contextWindow: 16_000,

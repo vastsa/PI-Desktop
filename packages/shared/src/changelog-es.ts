@@ -2,123 +2,6 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
-    "version": "0.15.6",
-    "date": "2026-09-23",
-    "highlights": [
-      "Activa la búsqueda nativa en los servicios existentes de DeepSeek, xAI y OpenAI sin cambiar su configuración de conexión.",
-      "Añade compatibilidad con GPT-6 Astra, Sol y Luna en los catálogos de modelos de OpenAI y ChatGPT/Codex.",
-    ],
-  },
-
-  {
-    "version": "0.15.5",
-    "date": "2026-09-23",
-    "highlights": [
-      "Añade compatibilidad con GPT-6 Astra, Sol y Luna en los catálogos de modelos de OpenAI y ChatGPT/Codex.",
-    ],
-  },
-
-  {
-    "version": "0.15.2",
-    "date": "2026-09-21",
-    "highlights": [
-      "Genera y edita imágenes en el chat, elige un modelo y crea lotes con la habilidad integrada imagegen.",
-      "La actividad de herramientas sigue el ancho de la conversación y contiene correctamente las etiquetas largas.",
-      "Los archivos adjuntos pegados se conservan aunque el pegado termine después de cambiar de sesión.",
-      "El modelo predeterminado seleccionado se conserva al editar proveedores y se aplica un respaldo seguro si se elimina.",
-      "Las secciones anidadas de pensamiento y actividad de herramientas son más fáciles de leer, recorrer y recuperar.",
-      "Mejora los diseños del Composer, los controles de razonamiento y la coherencia de temas del espacio de trabajo.",
-      "Añade un interruptor opcional en Ajustes para reintentar fallos de red y temporales del proveedor hasta que tengan éxito.",
-    ],
-  },
-
-  {
-    "version": "0.15.1",
-    "date": "2026-09-19",
-    "highlights": [
-      "Empareja y gestiona hosts remotos por SSH desde Ajustes, con inicio de sesión por contraseña, instalación y reconexión al arrancar.",
-      "Configura la mejora de prompts (plantilla, modelo y razonamiento) en la tarjeta de ajustes de IA.",
-      "Arrastra los modelos seleccionados para reordenarlos, y añade un nivel «omitir pensamiento» que no envía anulación al proveedor.",
-      "Redimensiona o contrae la barra lateral, y restaura el ancho predeterminado de barra o panel con un doble clic.",
-      "Gestiona proyectos en un archivo agrupado con inspector, e importa cada tipo desde su propio banco de trabajo.",
-      "Escanea e importa en lote skills y servidores MCP de otras herramientas de agente.",
-      "El extra de la barra de menús de macOS usa un status item nativo, con atajos de sesión acotados en la bandeja.",
-      "Las compilaciones oficiales de macOS van firmadas y notarizadas, con actualizaciones in-app.",
-      "La DMG firmada de macOS instala con dos iconos; la nota de apertura sin firmar queda solo en el ZIP.",
-      "Review se abre solo cuando lo pides, y al abrir una sesión aterrizas en el último turno.",
-      "Recupera una cola de envío atascada e ignora orígenes de steering falsificados.",
-    ],
-  },
-
-  {
-    "version": "0.15.0",
-    "date": "2026-09-17",
-    "highlights": [
-      "Reordena, edita, bloquea y promociona prompts en cola para que un mensaje posterior se ejecute a continuación.",
-      "Clona un repositorio git desde el diálogo de crear proyecto.",
-      "Arrastra el ancho del contenido de la conversación dentro de la columna de chat.",
-      "Los fallos de instalación del mercado de skills muestran un reintento en lugar de un botón inerte.",
-      "Los proveedores declarados por plugins aparecen como filas nativas, con claves API y agentes personalizados de confianza.",
-      "Los plugins pueden pedir conexiones en tiempo real, atajos globales, permisos de capacidad y un canal oficial con copias de seguridad.",
-      "Los plugins pueden registrar variables de tema, recursos de tema y un widget flotante transparente.",
-      "Elimina un proyecto junto con las sesiones que le pertenecen, tras una segunda confirmación.",
-      "Los subagentes tienen una lista ordenada de modelos de respaldo, se pueden reanudar desde la misma tarjeta Task, y los builtins se activan en Ajustes.",
-      "Las referencias de archivo en filas de herramientas abren la vista correcta, expandir detalles mantiene la lectura, y el hover de Plan es una placa opaca.",
-    ],
-  },
-
-  {
-    "version": "0.14.9",
-    "date": "2026-09-17",
-    "highlights": [
-      "Reordena, edita, bloquea y promociona prompts en cola para que un mensaje posterior se ejecute a continuación.",
-      "Clona un repositorio git desde el diálogo de crear proyecto.",
-      "Arrastra el ancho del contenido de la conversación dentro de la columna de chat.",
-      "Los fallos de instalación del mercado de skills muestran un reintento en lugar de un botón inerte.",
-      "Los proveedores declarados por plugins aparecen como filas nativas, con claves API y agentes personalizados de confianza.",
-      "Los plugins pueden pedir conexiones en tiempo real, atajos globales, permisos de capacidad y un canal oficial con copias de seguridad.",
-      "Los plugins pueden registrar variables de tema, recursos de tema y un widget flotante transparente.",
-      "Elimina un proyecto junto con las sesiones que le pertenecen, tras una segunda confirmación.",
-      "Los subagentes tienen una lista ordenada de modelos de respaldo, y los builtins incluidos se pueden activar en Ajustes.",
-      "Las referencias de archivo en filas de herramientas abren la vista correcta, expandir detalles mantiene la lectura, y el hover de Plan es una placa opaca.",
-    ],
-  },
-
-
-  {
-    "version": "0.14.8",
-    "date": "2026-09-14",
-    "highlights": [
-      "Explora e instala servidores MCP del registro oficial y de fuentes configuradas por el usuario en el mercado MCP.",
-      "Explora e instala skills de catálogos curados y GitHub en el mercado de Skills, con HTTPS público y límites de tamaño.",
-      "Incluye la vista de archivos como el plugin File Manager integrado, y permite que un plugin empaquetado conserve una actualización del marketplace.",
-      "Añade un modo de vista previa del panel de trabajo, eleva el suelo de la columna de chat a 450px y prioriza MainChat en el diseño de tres columnas.",
-      "Descubre sesiones independientes, envía mensajes de colaboración del host y abre enlaces de colaboración.",
-      "Los subagentes pueden heredar las herramientas del padre, los builtins incluidos aparecen en Ajustes, se añade un builtin de diseñador de UI y el estado de creación es distinto.",
-      "Dirige un turno activo con Alt+Enter y expande archivos de texto pegados en el compositor para editarlos.",
-      "Rediseña la creación de proyectos con espacios de trabajo de varias carpetas, memoria del proyecto y un editor visual de memoria.",
-      "Instala dependencias y skills declaradas de paquetes pi importados detrás de un límite de seguridad del host.",
-      "Añade chips predefinidos para la ventana de contexto y la salida máxima, muestra rangos de líneas de Read en los chips de herramientas y mantiene el contexto recuperable tras una compactación fallida.",
-    ],
-  },
-  {
-    "version": "0.14.6",
-    "date": "2026-09-10",
-    "highlights": [
-      "Avisa cuando esta versión es más antigua que tus datos locales o es la versión Intel en Apple Silicon, en lugar de fallar en silencio.",
-      "Añade un plano de control de escritorio MCP local; los plugins revisados controlan el escritorio solo tras consentimiento nativo.",
-      "Añade plantillas de subagentes, un selector de modelos acotado por proveedor y el nivel de razonamiento efectivo en las tarjetas de delegación.",
-      "Asigna alias a modelos configurados, copia IDs de modelo y prioriza la API propia del modelo sobre el estilo del proveedor.",
-      "Sustituye la coincidencia textual de Edit por operaciones ancladas a líneas, con guía de recuperación específica por error.",
-      "Reintenta proveedores hasta diez veces con cuenta atrás visible y recupera turnos autónomos de solo progreso.",
-      "Rediseña el instalador de macOS, añade un exe portátil para Windows y un paquete RPM para Linux, y restaura los iconos de bandeja y dock de GNOME.",
-      "Copia IDs de conversación y abre carpetas de sesión desde la barra lateral, con tooltips localizados en acciones de solo icono.",
-      "Muestra el estado del proceso en vivo y los intervalos de silencio en la fila de actividad, y añade un conmutador fijo del panel de trabajo.",
-      "Aplica reglas de ignorado del espacio de trabajo, resuelve enlaces simbólicos colgantes y revalida la salida de red de plugins en cada redirección.",
-      "Respeta reglas de omisión de proxy, conserva glifos de uso privado pegados y carga vistas previas sin bloquear el editor.",
-    ],
-  },
-  {
     "version": "0.14.5",
     "date": "2026-09-09",
     "highlights": [
@@ -176,6 +59,7 @@ export const esEntries: ChangelogEntry[] = [
     "version": "0.13.11",
     "date": "2026-09-07",
     "highlights": [
+      "Habilite el complemento Advisor incluido para que un segundo modelo revise la conversación actual.",
       "Permita que los complementos enumeren modelos, lean el contexto de la sesión en curso y soliciten finalizaciones propiedad del host sin recibir credenciales."
     ]
   },

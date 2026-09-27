@@ -63,11 +63,10 @@ Plan 策略：插件代理工具、注册工具的插件技能以及任何
 5. **主题插件**：提供覆盖设计令牌的 CSS 文件
 
 ### 超出 MVP 范围（已实现）
-6. **工作面板视图插件**：在应用的工作面板中停靠隔离的 HTML 视图
-7. **MCP 服务器插件**：声明 stdio 或远程 HTTP MCP 服务器，其工具
+6. **MCP 服务器插件**：声明 stdio 或远程 HTTP MCP 服务器，其工具
    加入代理工具集
-8. **后台服务插件**：让受监督的驻地工人保持活力
-9. **插件间消息总线**：声明主题上的 publish/subscribe
+7. **后台服务插件**：让受监督的驻地工人保持活力
+8. **插件间消息总线**：声明主题上的 publish/subscribe
 
 ### 稍后
 - 计费/签名插件
@@ -286,7 +285,6 @@ Host Main (PI-Desktop)
 - `pi.session.list()` / `get()` / `listMessages()` // `session.read.own`
 - `pi.session.rename()` // `session.update.own`
 - `pi.session.delete()` // `session.delete.own`
-- `pi.usage.listTurns()` // `usage.read`；只读已完成回合事实，不含消息正文
 - `pi.agent.complete(input)` // `agent.complete`；宿主代发一次性补全
 
 技能以声明方式贡献（`contributes.skills` + `agent.prompt.inject`），
@@ -490,24 +488,6 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
 - 新增和编辑复用 `McpEditorSheet`，包含 stdio/HTTP 卡片、环境变量/请求头行、
   校验、重名拦截和测试连接。
 - 启用状态存于应用本地；运行时过滤关闭项前，项目记录先遮蔽全局记录。
-- 用户 MCP 工具在传输断开或保存的连接被编辑后仍可路由。下一次调用会
-  对当前保存的服务器重新握手，并在派发前用新列表校验该工具；不必再做
-  一次 `ToolSearch`。未知名称不会触发发现。
-- 恢复前、后都会检查启用状态和项目作用域。删除服务器或销毁运行时会丢掉
-  记住的名称；过期的进行中握手不能把它们恢复回来。并发调用共享一次握手。
-- 恢复失败报告 `UNAVAILABLE`，并沿用现有失败策略（编辑或测试连接后再试），
-  而不是每次调用都反复连接。已移除的工具返回 `TOOL_NOT_FOUND`。恢复从不
-  重放失败的 `tools/call`，因为那次调用可能已经产生过副作用。
-
-- Streamable HTTP `202 Accepted` acknowledgements for notifications and client
-  responses are not JSON-RPC replies. Any acknowledgement body is discarded,
-  including plain-text `Accepted`; ordinary request replies still follow the
-  JSON/SSE parsing and response-size limits.
-- The MCP row shows “Authorization required” only when runtime status explicitly
-  reports `authRequired`. Missing credentials, an untested connection, and
-  non-authentication failures do not imply OAuth is required. A stored OAuth
-  credential does not hide a subsequent authentication failure. Manual OAuth
-  authorization remains available from the HTTP server menu.
 
 ### 12. 3 设置 > 智能体中的技能管理
 
@@ -545,7 +525,7 @@ Plugins → Load Development Plugin → choose directory
 | 生态系统对象 | 关系 |
 |---|---|
 | 圆周率技能 | 可以通过技能插件分发/管理 |
-| pi 扩展 | 由插件以 `contributes.agentExtensions` 加 `agent.extension` 授权贡献；pi CLI 扩展可导入为开发插件（D387 / D388、ADR 0214 / 0215、[16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions)） |
+| 圆周率扩展 | 不直接等同；需要一个适配器层 |
 | MCP | 插件在 `contributes.mcpServers` 中声明 MCP 服务器；他们的工具加入代理的工具集中 |
 | Agent 工具 | 最重要的插件扩展界面之一 |
 

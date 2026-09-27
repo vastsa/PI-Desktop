@@ -1,9 +1,3 @@
-import {
-  readSettingsSource,
-  readMainSource,
-  readAppSource,
-  readSharedTypesSource,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -13,14 +7,23 @@ const shortcutSource = await readFile(
   new URL("../../../packages/shared/src/keyboard-shortcuts.ts", import.meta.url),
   "utf8",
 );
-const sharedTypesSource = await readSharedTypesSource();
-const appSource = await readAppSource();
+const sharedTypesSource = await readFile(
+  new URL("../../../packages/shared/src/types.ts", import.meta.url),
+  "utf8",
+);
+const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const menuSource = await readFile(
   new URL("../electron/main/application-menu.ts", import.meta.url),
   "utf8",
 );
-const mainSource = await readMainSource();
-const settingsSource = await readSettingsSource();
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
+const settingsSource = await readFile(
+  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
+  "utf8",
+);
 const sectionSource = await readFile(
   new URL("../src/components/settings/KeyboardShortcutsSection.tsx", import.meta.url),
   "utf8",
@@ -44,7 +47,7 @@ test("shared shortcut map drives renderer dispatch and native menu accelerators"
     "openWorkPanel",
     "openPluginLauncher",
     "abort",
-    "toggleWindow",
+    "closeWindow",
     "resetZoom",
     "zoomIn",
     "zoomOut",
@@ -66,10 +69,7 @@ test("shared shortcut map drives renderer dispatch and native menu accelerators"
   assert.match(mainSource, /globalShortcut\.register/);
   assert.match(mainSource, /keyboard\.setGlobalShortcut/);
   assert.match(mainSource, /pluginLauncherBinding: string \| null/);
-  assert.match(
-    mainSource,
-    /launcherState\.pluginLauncherAccelerator && launcherState\.pluginLauncherAccelerator !== accelerator/,
-  );
+  assert.match(mainSource, /pluginLauncherAccelerator && pluginLauncherAccelerator !== accelerator/);
   assert.match(mainSource, /method === "keyboard\.shortcut"/);
 });
 

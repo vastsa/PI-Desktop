@@ -25,20 +25,16 @@ import {
   Clock,
   CloudDownload,
   Code2,
-  Database,
   Download,
   Copy,
   Dot,
   ExternalLink,
-  Eye,
-  EyeOff,
   FileDiff,
   FileSpreadsheet,
   FileText,
   Folder,
   FolderOpen,
   FolderPlus,
-  GripVertical,
   Globe2,
   GitFork,
   GitPullRequestArrow,
@@ -50,7 +46,6 @@ import {
   ListChecks,
   LogOut,
   Mic,
-  Minus,
   MessageSquare,
   MessageSquarePlus,
   Monitor,
@@ -60,9 +55,6 @@ import {
   Palette,
   PanelLeft,
   PanelRight,
-  PanelRightOpen,
-  Maximize2,
-  Minimize2,
   PawPrint,
   PencilLine,
   Pin,
@@ -86,7 +78,6 @@ import {
   Sun,
   Target,
   Terminal,
-  TextSelect,
   Trash2,
   TriangleAlert,
   UserRound,
@@ -159,7 +150,6 @@ export const IconNewSession = icon(MessageSquarePlus);
 export const IconFolder = icon(Folder);
 export const IconFolderOpen = icon(FolderOpen);
 export const IconNewProject = icon(FolderPlus);
-export const IconGripVertical = icon(GripVertical);
 export const IconFileText = icon(FileText);
 export const IconGlobe = icon(Globe2);
 export const IconBranch = icon(GitFork);
@@ -172,18 +162,12 @@ export const IconAt = icon(AtSign);
 export const IconSettings = icon(Settings);
 export const IconHelp = icon(CircleHelp);
 export const IconPanel = icon(PanelRight);
-export const IconPanelOpen = icon(PanelRightOpen);
-export const IconPanelMaximize = icon(Maximize2);
-export const IconPanelRestore = icon(Minimize2);
 export const IconDiff = icon(FileDiff);
 export const IconSidebar = icon(PanelLeft);
 export const IconArrowUp = icon(ArrowUp);
 export const IconArrowDown = icon(ArrowDown);
 export const IconCopy = icon(Copy);
-/* Chat context menus: hand a message's rendered text to the platform selection. */
-export const IconTextSelect = icon(TextSelect);
 export const IconCode = icon(Code2);
-export const IconDatabase = icon(Database);
 export const IconCheck = icon(Check);
 export const IconBell = icon(Bell);
 export const IconBot = icon(Bot);
@@ -191,9 +175,6 @@ export const IconCheckCheck = icon(CheckCheck);
 export const IconShield = icon(Shield);
 export const IconChevronDown = icon(ChevronDown);
 export const IconClose = icon(X);
-/* Frameless window chrome (WindowControls): minimize / maximize / restore. */
-export const IconMinus = icon(Minus);
-export const IconSquare = icon(Square);
 export const IconSliders = icon(SlidersHorizontal);
 export const IconConfig = icon(RefreshCcw);
 export const IconChevronLeft = icon(ChevronLeft);
@@ -245,9 +226,6 @@ export const IconStar = icon(Star);
 export const IconCircleCheck = icon(CircleCheck);
 export const IconCircleAlert = icon(CircleAlert);
 export const IconTriangleAlert = icon(TriangleAlert);
-/* Password field reveal toggle (see PasswordInput). */
-export const IconEye = icon(Eye);
-export const IconEyeOff = icon(EyeOff);
 
 export function IconStop({ size = 16, style, ...props }: IconProps) {
   return (

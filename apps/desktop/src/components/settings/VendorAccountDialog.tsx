@@ -6,8 +6,7 @@
  * entitlements, so this dialog shows what the account can actually run rather
  * than every model the vendor publishes. Choosing among those rows is
  * `ModelSelectionPanes`, the same picker the AI service dialog renders, so an
- * account is not a reduced version of a service: the account's own list and the
- * models it may run are both on screen from the first paint (D625).
+ * account is not a reduced version of a service.
  */
 import { useEffect, useState } from "react";
 import {
@@ -17,7 +16,7 @@ import {
 } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
-import { Button, Field, Input, portalOverlay } from "../ui";
+import { Button, Field, Input } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
@@ -99,7 +98,7 @@ export function VendorAccountDialog({
     });
   };
 
-  return portalOverlay(
+  return (
     <div
       className="overlay vendor-account-overlay"
       role="presentation"
@@ -139,12 +138,6 @@ export function VendorAccountDialog({
             listTitle={t("settings.accountModels")}
             busy={saving}
             onReload={discovery.reload}
-            lookupContext={{
-              baseUrl: provider.baseUrl,
-              vendorKey: provider.vendorKey,
-              providerId: provider.id,
-            }}
-            apiStyle={provider.apiStyle ?? ""}
           />
         </div>
 

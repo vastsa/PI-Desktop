@@ -1,4 +1,3 @@
-import { readAppSource, readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
@@ -17,19 +16,17 @@ const [
   composer,
   styles,
   mascotLogo,
-  appLanguage,
 ] = await Promise.all([
     read("../../../packages/i18n/src/locales/en/index.ts"),
     read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
     read("../src/components/BrandLogo.tsx"),
     read("../src/components/icons.tsx"),
     read("../src/components/Sidebar.tsx"),
-    readAppSource(),
+    read("../src/App.tsx"),
     read("../src/components/ChatSurface.tsx"),
-    readComposerSource(),
+    read("../src/components/Composer.tsx"),
     loadStyles(),
     read("../src/components/HomeMascotLogo.tsx"),
-    read("../src/lib/app-language.ts"),
   ]);
 
 test("renderer surfaces the PI-Desktop brand instead of the Codex shell brand", () => {
@@ -94,7 +91,6 @@ test("app chrome uses the shared brand asset without branding the composer input
     styles,
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.home-mascot-still\.home-mascot-dark,[\s\S]*?\.home-mascot-still\.home-mascot-light[\s\S]*?display:\s*block;/,
   );
-  assert.match(appLanguage, /document\.documentElement\.lang\s*=\s*target/);
   assert.doesNotMatch(styles, /@keyframes home-mascot-orbit|@keyframes home-mascot-breathe|@keyframes home-mascot-blink/);
   assert.doesNotMatch(styles, /background-size:\s*5000px 100px|image-rendering:\s*pixelated/);
   assert.doesNotMatch(composer, /<BrandLogo/);
@@ -104,6 +100,6 @@ test("app chrome uses the shared brand asset without branding the composer input
   assert.doesNotMatch(composer, /infinity-mark|∞/);
   assert.match(sidebar, /<BrandLogo\s+size=\{20\}/);
   assert.match(sidebar, /IconNewSession/);
-  assert.match(app, /<IconNewSession\s+size=\{15\}/);
+  assert.match(app, /<IconNewSession\s+size=\{13\}/);
   assert.doesNotMatch(sidebar, /IconCompose|IconPiMark|IconPiHome/);
 });

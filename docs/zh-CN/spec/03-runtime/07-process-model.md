@@ -36,12 +36,6 @@ PI-Desktop.app
 截图装置、并行 profile）与默认安装不共享数据库、outbox 或日志，在已有实例运行时
 仍可启动（D236、ADR 0094）。
 
-开发构建本身就是独立安装，而不是同一安装的第二个进程：它运行在操作系统应用
-数据根目录下的 `PI-Desktop Dev`，数据目录为 `~/.pi-desktop-dev`。因此正式打包版
-持有锁时 `pnpm dev` 仍可启动，两者不会共享数据库、outbox 或日志树（D599、
-ADR 0094）。显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时
-profile。
-
 1. Electron 主启动
 2. 加载英文语言环境默认值
 3. 生成 Rust host-core
@@ -57,61 +51,23 @@ queued/running `plan_approvals` 执行状态已中断并中止它们
 跑步轮流。此内部进程纪元栅栏未序列化或发送
 协议。
 
-渲染器的 bootstrap 本身没有超时，因此由渲染器自己监视对首个状态的等待。到达
-`STARTUP_SLOW_HINT_MS`（30 秒）时，启动表面在不判定启动失败的前提下加上日志、
-诊断与退出；到达 `STARTUP_STALLED_MS`（180 秒）时它变成恢复表面，并额外提供
-重试。两个界限都高于 main↔host 的 RPC 上限（`DEFAULT_RPC_TIMEOUT_MS`，130 秒），
-因此慢但成功的启动永远不会被报告为失败。看门狗从不取消它所监视的启动：成功完成
-的启动会用 shell 替换该表面，恢复表面则替换启动画面。渲染器绘制的窗口控制按钮
-保持在该表面之上，因此无边框的 Windows/Linux 窗口始终可以关闭；从该表面退出走
-渲染器退出通道（`pi-desktop/app/quit`），它与“退出”菜单项执行同一套有序关停。
-
 ## 4. 崩溃策略
 
 | 崩溃 | 政策 |
 |---|---|
 | Renderer 崩溃 | 重新加载窗口，保留 host/agent 进程；同一主机重新加载仅恢复实时待处理的 Plan/Goal 批准及其截止日期，而不是终端卡 |
 | Rust 主机崩溃 | 将应用程序标记为降级、中断 pending/queued/running 审批工作、将待处理会话保留在其合同模式（Plan 或 Goal）中并将已批准的会话保留在 Agent 中、尝试重新启动主机并关闭活动会话失败 |
-| Node 代理崩溃 | 中止活动轮次和实时批准 waiters/queue 条目，在合同模式下保留待处理会话，在 Rust 中保留已批准的 Agent 模式，重新启动 sidecar，并且从不重播执行；sidecar 退出时对其 stderr 尾部做分类——V8 堆耗尽横幅使所属回合以 `AGENT_SIDECAR_OOM` 收尾，其他意外退出以 `AGENT_SIDECAR_CRASHED` 收尾（issue #1077） |
+| Node 代理崩溃 | 中止活动轮次和实时批准 waiters/queue 条目，在合同模式下保留待处理会话，在 Rust 中保留已批准的 Agent 模式，重新启动 sidecar，并且从不重播执行 |
 | Electron 主要崩溃 | 完整的应用程序退出 |
-
-Crashpad 在 `ready` 之前以本地模式启动（`uploadToServer: false`），转储放在
-`<data_dir>/crash-dumps`（D602），因此 `PI_DESKTOP_DATA_DIR` profile 不会与
-其它安装共用转储。下一次持有单实例锁的启动会为新于 `crash-dumps.json` 的
-转储写一条诊断记录。Crashpad 记录 Chromium 进程崩溃（main、renderer、GPU、
-utility）；应用已经恢复的 renderer 崩溃仍会留下转储，并记为 warn。host-core
-与 sidecar 崩溃仍走本节的监督器路径以及 `host` / `agent` 日志通道。
 
 断开的 stdout/stderr（`EPIPE`/`EIO`）不是主进程崩溃。Main 会忽略这些写入，
 因此 Linux AppImage 或没有活动 TTY 的 GUI 启动会继续监管 host/sidecar，而不是
 弹出 Electron 的未捕获异常对话框。
 
-主进程 JavaScript `uncaughtException` 同样不是 Electron 主进程崩溃（只有原生
-主进程 abort 才会退出应用）。Main 自行处理 `uncaughtException` /
-`unhandledRejection`，写入 `app/runtime` 记录并继续运行，从而抑制 Electron
-默认的 “A JavaScript error occurred in the main process” 对话框。可恢复的
-网络栈异常包括 Chromium 把非 Latin-1 HTTP 头拷进 `Headers.set`
-（`TypeError: Cannot convert argument to a ByteString`），常见于 Windows 系统
-代理或网关注入 Unicode 头。下一次 `net.fetch` 或更新检查不得再弹出该原生框。
-
 Linux 打包的 host-core 在 Ubuntu 22.04 上构建，需要 glibc 2.35 或更高版本
 （Ubuntu 22.04、Debian 12、Fedora 36+）。更低的 glibc 是致命 host 状态，而不是
 重启循环：界面会列出这些发行版，而不是只显示“无法连接本地服务”。Linux 标签
 作业不得换用会抬高所需 glibc 的更新 runner。
-
-另有两种启动结果会被明确命名，而不是笼统地当作服务不可用（D380）：
-
-- **降级安装。** 当数据目录的 SQLite schema 比当前构建支持的更新时，host-core
-  会拒绝打开（stderr 输出 `database schema version N is newer than supported
-  M`）。Electron 从退出前的最后一段 stderr 解析该行，首次失败即停止重启循环，
-  并推送 `message: "DB_SCHEMA_TOO_NEW"` 且带有两个版本号的 `hostStatus`。横幅
-  提示用户安装上次打开这些数据的更新版 PI-Desktop。不会向下迁移数据。
-- **非原生构建。** 启动时 Electron 比较 `process.arch` 与实际 CPU（macOS 通过
-  `sysctl.proc_translated` 判断，仅在 Rosetta 2 下为 `1`；其他平台用
-  `os.machine()`）。不匹配时即使启动成功，也会随启动 `hostStatus` 附带
-  `archMismatch`，渲染层显示可关闭的提示，说明当前构建（macOS 上为 Intel /
-  Apple Silicon）并指向对应下载。arm64 构建在 Intel Mac 上根本无法启动，因此
-  只能检测 Intel 构建跑在 Apple Silicon 上这一方向。
 
 Windows 安装包目标为 x64。Windows host-core 使用
 `x86_64-pc-windows-msvc` 目标和 `target-feature=+crt-static` 构建，因此 NSIS
@@ -119,15 +75,9 @@ Windows 安装包目标为 x64。Windows host-core 使用
 系统通过操作系统的 x64 模拟运行该 x64 安装包；目前不发布原生 Windows ARM64
 工件。
 
-监管参数（传输、重启策略与回合生命周期位于 `packages/host-runtime`，ADR 0284；Electron main 适配它们并负责面向渲染层的状态）：
+监管参数（在Electron main中实现）：
 
 - 子进程退出立即拒绝该子进程的所有正在进行的 RPC（无 130 秒超时等待）。
-- 每个 RPC 都带有有限的传输超时。Bash 与桌面分发的（`plugin_*` / `mcp_*`）工具会
-  叠加 host-core 在报告结果前可能消耗的等待，`agent.compact` 则叠加 sidecar 自身的摘要
-  预算——每次尝试的流空转看门狗加上重试退避（**D614**，issue #795）；其余调用使用 130
-  秒默认值。绝不要为了迁就某个慢方法而放宽默认值：那会同时掩盖其他调用上真正丢失的回复。
-- 超过 64 MiB 的 NDJSON 请求行以 `LIMIT_EXCEEDED` 应答，不结束 stdin 读取器（ADR 0216）。Electron 在写入 stdin 前拒绝同样大小的载荷（ADR 0217）。
-- Windows Alt+Space 钩子只保留 stdout 发送端的弱引用。stdin EOF 后 serve 丢弃最后一个强引用，host-core 退出；泄漏的发送端不能把关闭卡住超过 5 秒（ADR 0217）。
 - 使用指数退避 `0.5s → 1s → 2s` 自动重启（上限 4 秒）。
 - 每个孩子最多**每 2 分钟窗口** 3 次重新启动；除此之外，该应用程序
   保持降级并发出 `hostStatus { ok: false, component, fatal: true }`。
@@ -216,22 +166,17 @@ sidecar/host 关闭序列在更新程序替换应用程序之前运行。
   它调用的纯 JS 助手无需更改进程或协议所有权
 - 渲染器依赖项通过 Vite 输出传送，而不是重复原始数据
   包树；桌面包不再携带交互式 PTY 原生模块
-- 打包版本使用 Main 拥有的更新控制器，并使用按安装实例持久化的
-  `updatePreference`。自动模式在受支持的包上保持现有应用内下载/安装流程；手动模式
-  继续检查固定稳定版更新，但不自动下载或退出安装，并对每个可用版本只提醒一次。
-  Windows NSIS、已打包 macOS 和 Linux AppImage 默认自动；Windows ZIP/便携版，以及
-  不支持自动安装的包默认手动。Windows ZIP/便携版可在确认 NSIS 可能替换解压副本的
-  警告后明确选择自动。偏好和最近提醒版本保存在 Host 所有的应用设置 JSON 中，且不会
-  进入便携配置同步。
+- 打包版本使用 Main 拥有的更新控制器。 macOS、非 AppImage
+  Linux 和 Windows 便携版运行为手动交付模式； Windows NSIS 和
+  Linux AppImage 使用 D126 标签发布的应用内提要
 
 ## 7. 远程目标拓扑（MVP 后）
 
 远程控制不会给 Rust host-core 或当前 renderer IPC 表面增加公共监听器。目标 Agent
 Host 是无头模块（`packages/agent-host`），拥有会话与回合准入、回合队列、审批代理和
 事件日志，与 Node pi sidecar、Rust host-core 一起受监督，其上是已认证的 RACP 服务
-（D374）。首个远程部署（D375）把该模块作为无头 `pi-host` 运行在远端机器上，只绑定
-loopback，桌面经 SSH 端口转发连接。未排期的 Gateway 拓扑会增加出站 Host link；
-Gateway 负责路由已认证客户，但不拥有工作区状态。
+（D376）。生产环境中 Host 发起出站 Gateway 链路；Gateway 负责路由已认证客户，
+但不拥有工作区状态。
 
 详细拓扑、所有权和迁移边界见
 [`02-architecture/05-remote-agent-control.md`](/zh-CN/spec/02-architecture/05-remote-agent-control)。
@@ -251,17 +196,3 @@ Gateway 负责路由已认证客户，但不拥有工作区状态。
 6. 已批准的 queued/running 执行被中断，无需
    重播及其持久会话仍然是 Agent
 7. Bash timeout/abort 关闭完整的子进程树
-
-
-### Native tray session projection
-
-The tray service keeps Running, Unread, and Pinned groups current independently
-of renderer visibility or lifetime. Host remains authoritative for sessions and
-notifications; root agent events describe running state. Renderer mirrors only
-organization preferences through a main-window-only IPC. Read requests are
-coalesced; obsolete Host results cannot repopulate the menu, failures clear
-shortcuts, and quitting prevents further publication. A closed window retains
-only the last organization copy, which is replaced after renderer bootstrap.
-Menu command readiness is acknowledged after bootstrap's initial navigation,
-so a tray click cannot be overwritten by the startup draft or pending-plan
-selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

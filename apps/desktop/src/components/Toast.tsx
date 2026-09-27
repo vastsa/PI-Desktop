@@ -8,7 +8,6 @@ import {
   IconInfo,
   IconTriangleAlert,
 } from "./icons";
-import { TooltipButton } from "./ui";
 
 const VARIANT_ICON: Record<ToastVariant, typeof IconInfo> = {
   info: IconInfo,
@@ -62,16 +61,15 @@ function ToastCard({ item }: { item: ToastItem }) {
       <span className="toast-icon" aria-hidden>
         <Icon size={16} />
       </span>
-      <span className="toast-message selectable">{item.message}</span>
-      <TooltipButton
+      <span className="toast-message">{item.message}</span>
+      <button
         type="button"
         className="toast-dismiss"
-        tooltip={t("toast.dismiss")}
-        ariaLabel={t("toast.dismiss")}
+        aria-label={t("toast.dismiss")}
         onClick={beginClose}
       >
         <IconClose size={13} />
-      </TooltipButton>
+      </button>
     </div>
   );
 }

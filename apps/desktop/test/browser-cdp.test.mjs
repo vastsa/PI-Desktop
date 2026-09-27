@@ -1,4 +1,3 @@
-import { readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -111,12 +110,11 @@ const runtimeSource = readFileSync(
   resolve("electron/main/plugin-runtime.ts"),
   "utf8",
 );
-const mainSource = readMainSourceSync();
+const mainSource = readFileSync(resolve("electron/main/index.ts"), "utf8");
 
 test("in-flight tool.execute session survives the child host-api round trip", () => {
-  assert.match(runtimeSource, /private readonly toolInvocations = new PluginToolInvocations/);
-  assert.match(runtimeSource, /toolInvocations\.begin\(target/);
-  assert.match(runtimeSource, /invocationId: invocation\.id/);
+  assert.match(runtimeSource, /private executingToolSessions = new Map/);
+  assert.match(runtimeSource, /stack.push\(\{ sessionId, toolName: name \}\)/);
   assert.match(runtimeSource, /this\.browserSessionId\(pluginId\)/);
 });
 

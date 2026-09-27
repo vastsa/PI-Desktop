@@ -1,8 +1,4 @@
-import {
-  SESSION_THINKING_LEVELS,
-  type SessionThinkingLevel,
-  type ThinkingLevel,
-} from "@pi-desktop/shared";
+import type { ThinkingLevel } from "@pi-desktop/shared";
 
 const THINKING_LEVELS: ThinkingLevel[] = [
   "off",
@@ -22,10 +18,10 @@ const DEFAULT_REASONING_LEVELS: ThinkingLevel[] = [
   "high",
 ];
 
-export function normalizeThinkingLevel(value: unknown): SessionThinkingLevel {
+export function normalizeThinkingLevel(value: unknown): ThinkingLevel {
   return typeof value === "string" &&
-    (SESSION_THINKING_LEVELS as readonly string[]).includes(value)
-    ? (value as SessionThinkingLevel)
+    THINKING_LEVELS.includes(value as ThinkingLevel)
+    ? (value as ThinkingLevel)
     : "off";
 }
 

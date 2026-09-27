@@ -3,7 +3,7 @@ import test from "node:test";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -244,38 +244,25 @@ test("a stdio server that cannot start fails the handshake, not the process", as
   assert.match(String(failure.message), /exited with code/);
 });
 
-test("a slow server times out instead of hanging the load", async () => {
+test("a slow server times out instead of hanging the load", async (t) => {
   const dir = stdioPlugin();
-  const pidFile = join(dir, "pid");
-  writeFileSync(
-    join(dir, "server.mjs"),
-    'import { writeFileSync } from "node:fs";\nwriteFileSync(process.env.STUB_PID_FILE, String(process.pid));\nsetInterval(() => {}, 1000);\n',
-  );
+  writeFileSync(join(dir, "server.mjs"), "setInterval(() => {}, 1000);\n");
   const client = new McpServerClient({
     pluginId: "com.example.mcp",
     rootPath: dir,
     server: { id: "stub", transport: "stdio", command: "node", args: ["./server.mjs"] },
-    values: { STUB_PID_FILE: pidFile },
+    values: {},
     connectTimeoutMs: 250,
   });
+  t.after(() => client.close());
   await assert.rejects(client.connect(), (error) => {
     assert.equal(error.code, "TIMEOUT");
     return true;
   });
-  const pid = Number(readFileSync(pidFile, "utf8"));
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    try {
-      process.kill(pid, 0);
-    } catch {
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  assert.fail("timed-out stdio mcp child survived handshake cleanup");
 });
 
 /** Streamable-HTTP stub: JSON for the handshake, SSE for discovery. */
-async function startHttpServer(t, { slowToolDelayMs } = {}) {
+async function startHttpServer(t) {
   const requests = [];
   const server = createServer((req, res) => {
     const chunks = [];
@@ -295,12 +282,7 @@ async function startHttpServer(t, { slowToolDelayMs } = {}) {
         return;
       }
       if (message.method === "notifications/initialized") {
-        res.writeHead(202, { "content-type": "text/plain" }).end("Accepted");
-        return;
-      }
-      if (message.method === "ping") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }));
+        res.writeHead(202).end();
         return;
       }
       if (message.method === "tools/list") {
@@ -309,7 +291,7 @@ async function startHttpServer(t, { slowToolDelayMs } = {}) {
           `event: message\ndata: ${JSON.stringify({
             jsonrpc: "2.0",
             id: message.id,
-            result: { tools: [{ name: "headers" }, ...(slowToolDelayMs ? [{ name: "slow" }] : [])] },
+            result: { tools: [{ name: "headers" }] },
           })}\n\n`,
         );
         return;
@@ -330,17 +312,6 @@ async function startHttpServer(t, { slowToolDelayMs } = {}) {
             },
           }),
         );
-        return;
-      }
-      if (message.params?.name === "slow" && slowToolDelayMs) {
-        setTimeout(() => {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({
-            jsonrpc: "2.0",
-            id: message.id,
-            result: { content: [{ type: "text", text: "finished" }] },
-          }));
-        }, slowToolDelayMs);
         return;
       }
       res.writeHead(503).end("unavailable");
@@ -370,108 +341,10 @@ test("a remote mcp server negotiates over http and keeps its session", async (t)
   );
   const result = await client.callTool("headers", {});
   assert.equal(describeMcpContent(result.content), `sess-42|sk-test|${MCP_PROTOCOL_VERSION}`);
-  await client.ping();
-  assert.equal(requests.at(-1).message.method, "ping");
   // The very first request cannot carry a session id, later ones must.
   assert.equal(requests[0].headers["mcp-session-id"], undefined);
   assert.equal(requests[0].headers["x-api-key"], "sk-test");
   assert.equal(requests.at(-1).headers["mcp-session-id"], "sess-42");
-});
-
-test("a remote MCP tool can run longer than the connection timeout", async (t) => {
-  const { url } = await startHttpServer(t, { slowToolDelayMs: 80 });
-  const client = new McpServerClient({
-    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-http-")),
-    server: { id: "remote", transport: "http", url },
-    values: {},
-    connectTimeoutMs: 20,
-    callTimeoutMs: 500,
-  });
-  t.after(() => client.close());
-
-  assert.deepEqual((await client.connect()).map((tool) => tool.name), ["headers", "slow"]);
-  const result = await client.callTool("slow", {});
-  assert.equal(describeMcpContent(result.content), "finished");
-});
-test("aborting one HTTP MCP call cancels its request", async (t) => {
-  let callStarted;
-  let cancellationReceived;
-  const started = new Promise((resolve) => { callStarted = resolve; });
-  const canceled = new Promise((resolve) => { cancellationReceived = resolve; });
-  let callId;
-  const fetchImpl = async (_url, options) => {
-    const message = JSON.parse(options.body);
-    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
-    if (message.method === "notifications/cancelled") {
-      cancellationReceived(message.params.requestId);
-      return new Response(null, { status: 202 });
-    }
-    if (message.method === "tools/call") {
-      callId = message.id;
-      callStarted();
-      return new Promise((_, reject) => {
-        options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-      });
-    }
-    const result = message.method === "initialize"
-      ? { protocolVersion: message.params.protocolVersion, capabilities: {} }
-      : { tools: [{ name: "slow" }] };
-    return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-  const client = new McpServerClient({
-    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-cancel-")),
-    server: { id: "remote", transport: "http", url: "https://mcp.example.com/mcp" },
-    values: {},
-    fetchImpl,
-  });
-  t.after(() => client.close());
-  await client.connect();
-
-  const controller = new AbortController();
-  const call = client.callTool("slow", {}, controller.signal);
-  await started;
-  controller.abort();
-  await assert.rejects(call, { code: "TOOL_ABORTED" });
-  assert.equal(await canceled, callId);
-});
-
-test("aborting a tool waiting for a shared handshake does not send tools/call", async (t) => {
-  let finishInitialize;
-  let initializeStarted;
-  const started = new Promise((resolve) => { initializeStarted = resolve; });
-  const methods = [];
-  const fetchImpl = async (_url, options) => {
-    const message = JSON.parse(options.body);
-    methods.push(message.method);
-    if (message.method === "initialize") {
-      initializeStarted();
-      return new Promise((resolve) => { finishInitialize = () => resolve(new Response(JSON.stringify({
-        jsonrpc: "2.0", id: message.id,
-        result: { protocolVersion: message.params.protocolVersion, capabilities: {} },
-      }), { status: 200, headers: { "content-type": "application/json" } })); });
-    }
-    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
-    return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { tools: [{ name: "echo" }] } }), {
-      status: 200, headers: { "content-type": "application/json" },
-    });
-  };
-  const client = new McpServerClient({
-    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-cancel-")),
-    server: { id: "remote", transport: "http", url: "https://mcp.example.com/mcp" },
-    values: {}, fetchImpl,
-  });
-  t.after(() => client.close());
-  const controller = new AbortController();
-  const call = client.callTool("echo", {}, controller.signal);
-  await started;
-  controller.abort();
-  await assert.rejects(call, { code: "TOOL_ABORTED" });
-  finishInitialize();
-  await client.connect();
-  assert.ok(!methods.includes("tools/call"));
 });
 
 test("an http failure is reported as HTTP_ERROR", async (t) => {
@@ -522,74 +395,6 @@ test("an http redirect is rechecked before the next MCP request", async (t) => {
   assert.equal(requests[0].options.redirect, "manual");
 });
 
-test("cross-origin mcp redirects do not forward credentials or session ids", async (t) => {
-  const requests = [];
-  const client = new McpServerClient({
-    pluginId: "com.example.remote",
-    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-http-")),
-    server: { id: "remote", transport: "http", url: "http://first.example.test/mcp" },
-    values: {
-      Authorization: "Bearer secret",
-      Cookie: "session=secret",
-      "x-api-key": "secret",
-      "x-safe": "keep",
-    },
-    fetchImpl: async (url, options) => {
-      requests.push({ url, options });
-      if (requests.length === 1) {
-        return new Response(null, {
-          status: 302,
-          headers: { location: "http://second.example.test/mcp" },
-        });
-      }
-      const message = JSON.parse(options.body);
-      if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
-      if (message.method === "tools/list") {
-        return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { tools: [] } }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }), {
-        status: 200,
-        headers: { "content-type": "application/json", "mcp-session-id": "sess-1" },
-      });
-    },
-    assertUrlAllowed: () => {},
-    connectTimeoutMs: 5_000,
-  });
-  t.after(() => client.close());
-  await client.connect();
-  assert.equal(requests.length, 4);
-  assert.equal(requests[0].options.headers.Authorization, "Bearer secret");
-  assert.equal(requests[1].options.headers.Authorization, undefined);
-  assert.equal(requests[1].options.headers.Cookie, undefined);
-  assert.equal(requests[1].options.headers["x-api-key"], undefined);
-  assert.equal(requests[1].options.headers["x-safe"], undefined);
-  assert.equal(requests[1].options.headers["mcp-session-id"], undefined);
-});
-
-test("an oversized remote mcp response fails closed", async (t) => {
-  const client = new McpServerClient({
-    pluginId: "com.example.remote",
-    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-http-")),
-    server: { id: "remote", transport: "http", url: "http://mcp.example.test/mcp" },
-    values: {},
-    fetchImpl: async () =>
-      new Response("x".repeat(4 * 1024 * 1024 + 1), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    connectTimeoutMs: 5_000,
-  });
-  t.after(() => client.close());
-  await assert.rejects(client.connect(), (error) => {
-    assert.equal(error.code, "LIMIT_EXCEEDED");
-    return true;
-  });
-  assert.equal(client.isConnected(), false);
-});
-
 test("the stdio environment carries no host secrets", () => {
   process.env.PI_LEAKED_SECRET = "must-not-cross";
   try {
@@ -598,20 +403,10 @@ test("the stdio environment carries no host secrets", () => {
     assert.equal(env.TOKEN, "t0ken");
     assert.equal(env.PI_LEAKED_SECRET, undefined);
     // PATH still crosses, or a bare command name could never be found.
-    assert.ok(typeof env.PATH === "string" && env.PATH.length > 0);
-    for (const part of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
-      assert.ok(env.PATH.split(delimiter).includes(part), part);
-    }
+    assert.equal(env.PATH, process.env.PATH);
   } finally {
     delete process.env.PI_LEAKED_SECRET;
   }
-});
-
-test("stdio PATH uses the login-shell lookup and names a missing command", () => {
-  const src = readFileSync(join(desktopRoot, "electron/main/plugin-mcp.ts"), "utf8");
-  assert.match(src, /import \{ userLookupPath \} from "\.\/user-login-path\.ts"/);
-  assert.match(src, /userLookupPath\(process\.env\.PATH/);
-  assert.match(src, /command not found: \$\{options\.command\}/);
 });
 
 test("a command may not escape the plugin directory", () => {
@@ -649,8 +444,7 @@ test("discovered mcp tools ride the existing plugin tool path", () => {
   assert.match(register, /this\.tools\.set\(fullName/);
   // Remote code the desktop cannot inspect never auto-approves.
   assert.match(register, /risk: "medium"/);
-  assert.match(register, /this\.mcpCalls\.run\(/);
-  assert.match(register, /client\.callTool\(tool\.name, toolArgs, signal\)/);
+  assert.match(register, /client\.callTool\(tool\.name, toolArgs\)/);
   // A server that fails to answer must not fail the plugin load.
   assert.match(register, /await client\.connect\(\);\s*\n\s*\} catch \{/);
 });
@@ -663,206 +457,4 @@ test("mcp clients are closed when the plugin goes away", () => {
   assert.match(clear, /this\.mcpClients\.get\(pluginId\)/);
   assert.match(clear, /client\.close\(\)/);
   assert.match(clear, /this\.mcpClients\.delete\(pluginId\)/);
-});
-
-/**
- * A catalog stub whose size, page shape, cursor behaviour, and per-page delay
- * come from the test, so the client's catalog guards run through real stdio
- * framing rather than a hand-built result object.
- */
-const CATALOG_SERVER = `
-import { writeFileSync } from "node:fs";
-if (process.env.STUB_PID_FILE) writeFileSync(process.env.STUB_PID_FILE, String(process.pid));
-const NL = String.fromCharCode(10);
-const total = Number(process.env.STUB_TOOL_COUNT ?? "0");
-const pageSize = Number(process.env.STUB_PAGE_SIZE ?? "100");
-const cursorMode = process.env.STUB_CURSOR_MODE ?? "advance";
-const pageDelayMs = Number(process.env.STUB_PAGE_DELAY_MS ?? "0");
-const send = (msg) => process.stdout.write(JSON.stringify(msg) + NL);
-let buffer = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  let index = buffer.indexOf(NL);
-  while (index >= 0) {
-    const line = buffer.slice(0, index).trim();
-    buffer = buffer.slice(index + 1);
-    if (line) handle(JSON.parse(line));
-    index = buffer.indexOf(NL);
-  }
-});
-function nextCursorFor(page, start) {
-  if (cursorMode === "repeat") return "page-1";
-  if (cursorMode === "loop") return page === 1 ? "page-2" : "page-1";
-  if (cursorMode === "bogus") return 7;
-  if (cursorMode === "always") return "page-" + (page + 1);
-  return start + pageSize < total ? "page-" + (page + 1) : undefined;
-}
-function handle(msg) {
-  if (msg.method === "initialize") {
-    send({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "catalog", version: "1" } } });
-    return;
-  }
-  if (msg.method === "notifications/initialized") return;
-  if (msg.method === "tools/list") {
-    const cursor = msg.params && msg.params.cursor ? String(msg.params.cursor) : "";
-    const page = cursor ? Number(cursor.replace("page-", "")) : 0;
-    const start = page * pageSize;
-    const reply = () => {
-      const tools = [];
-      for (let i = start; i < Math.min(start + pageSize, total); i += 1) {
-        tools.push({ name: "tool_" + i, description: "Tool " + i, inputSchema: { type: "object", properties: {} } });
-      }
-      const nextCursor = nextCursorFor(page, start);
-      send({ jsonrpc: "2.0", id: msg.id, result: { tools, ...(nextCursor ? { nextCursor } : {}) } });
-    };
-    if (pageDelayMs > 0) setTimeout(reply, pageDelayMs);
-    else reply();
-    return;
-  }
-  if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "unknown method" } });
-}
-`;
-
-function catalogClient(t, values, extra = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "pi-mcp-catalog-"));
-  writeFileSync(join(dir, "server.mjs"), CATALOG_SERVER);
-  const pidFile = join(dir, "pid");
-  const audits = [];
-  const client = new McpServerClient({
-    pluginId: "com.example.mcp",
-    rootPath: dir,
-    server: { id: "catalog", label: "Catalog", transport: "stdio", command: "node", args: ["./server.mjs"] },
-    values: { STUB_PID_FILE: pidFile, ...values },
-    audit: (entry) => audits.push(entry),
-    connectTimeoutMs: 5_000,
-    callTimeoutMs: 5_000,
-    ...extra,
-  });
-  t.after(() => client.close());
-  return { client, audits, pidFile };
-}
-
-test("a catalog larger than the old per-server cap is discovered whole", async (t) => {
-  const { client, audits } = catalogClient(t, {
-    STUB_TOOL_COUNT: "300",
-    STUB_PAGE_SIZE: "100",
-  });
-  const tools = await client.connect();
-  // The old cap dropped everything past the 64th tool of the first pages.
-  assert.equal(tools.length, 300);
-  assert.equal(tools[0].name, "tool_0");
-  assert.equal(tools[64].name, "tool_64");
-  assert.equal(tools[299].name, "tool_299");
-  assert.equal(tools[299].description, "Tool 299");
-  assert.equal(client.getTools().length, 300);
-  const connect = audits.find((entry) => entry.api === "plugin.mcp.connect");
-  assert.equal(connect.ok, true);
-  assert.equal(connect.toolCount, 300);
-  assert.equal(
-    audits.some((entry) => entry.api === "plugin.mcp.tools.truncated"),
-    false,
-  );
-});
-
-test("a catalog over the protocol ceiling refuses the server instead of truncating", async (t) => {
-  const { client, audits } = catalogClient(t, {
-    STUB_TOOL_COUNT: "2049",
-    STUB_PAGE_SIZE: "2048",
-  });
-  await assert.rejects(client.connect(), { code: "LIMIT_EXCEEDED" });
-  // A refused handshake contributes no tools at all, never a prefix.
-  assert.equal(client.isConnected(), false);
-  assert.deepEqual(client.getTools(), []);
-  const connect = audits.filter((entry) => entry.api === "plugin.mcp.connect").pop();
-  assert.equal(connect.ok, false);
-  assert.equal(connect.errorCode, "LIMIT_EXCEEDED");
-  assert.match(connect.message, /2048 tools/);
-});
-
-test("a repeated tools/list cursor refuses the server", async (t) => {
-  const { client, audits } = catalogClient(t, {
-    STUB_TOOL_COUNT: "10",
-    STUB_PAGE_SIZE: "5",
-    STUB_CURSOR_MODE: "repeat",
-  });
-  await assert.rejects(client.connect(), { code: "INVALID_RESPONSE" });
-  assert.equal(client.isConnected(), false);
-  const connect = audits.filter((entry) => entry.api === "plugin.mcp.connect").pop();
-  assert.equal(connect.ok, false);
-  assert.match(connect.message, /repeated a tools\/list cursor/);
-});
-
-test("a tools/list cursor that loops back to an earlier page refuses the server", async (t) => {
-  const { client, audits } = catalogClient(t, {
-    STUB_TOOL_COUNT: "30",
-    STUB_PAGE_SIZE: "5",
-    STUB_CURSOR_MODE: "loop",
-  });
-  await assert.rejects(client.connect(), { code: "INVALID_RESPONSE" });
-  assert.equal(client.isConnected(), false);
-  const connect = audits.filter((entry) => entry.api === "plugin.mcp.connect").pop();
-  assert.match(connect.message, /repeated a tools\/list cursor/);
-});
-
-test("a server that never stops paginating is refused at the page ceiling", async (t) => {
-  const { client, audits } = catalogClient(t, {
-    STUB_TOOL_COUNT: "1",
-    STUB_PAGE_SIZE: "1",
-    STUB_CURSOR_MODE: "always",
-  });
-  await assert.rejects(client.connect(), { code: "LIMIT_EXCEEDED" });
-  const connect = audits.filter((entry) => entry.api === "plugin.mcp.connect").pop();
-  assert.match(connect.message, /100 pages/);
-});
-
-test("a catalog that cannot be listed inside its discovery budget is refused", async (t) => {
-  // Budget already spent before the first page: the guard trips immediately.
-  const spent = catalogClient(t, { STUB_TOOL_COUNT: "10", STUB_PAGE_SIZE: "5" }, {
-    discoveryTimeoutMs: 0,
-  });
-  await assert.rejects(spent.client.connect(), { code: "TIMEOUT" });
-  assert.equal(spent.client.isConnected(), false);
-
-  // A slow catalog crosses the budget mid-traversal instead.
-  const slow = catalogClient(
-    t,
-    { STUB_TOOL_COUNT: "100", STUB_PAGE_SIZE: "10", STUB_PAGE_DELAY_MS: "40" },
-    { discoveryTimeoutMs: 45 },
-  );
-  await assert.rejects(slow.client.connect(), { code: "TIMEOUT" });
-  assert.equal(slow.client.isConnected(), false);
-});
-
-test("a catalog cursor that is not a string refuses the server", async (t) => {
-  const { client, audits } = catalogClient(t, {
-    STUB_TOOL_COUNT: "10",
-    STUB_PAGE_SIZE: "5",
-    STUB_CURSOR_MODE: "bogus",
-  });
-  // A malformed cursor must not read as "that was the last page".
-  await assert.rejects(client.connect(), { code: "INVALID_RESPONSE" });
-  assert.deepEqual(client.getTools(), []);
-  const connect = audits.filter((entry) => entry.api === "plugin.mcp.connect").pop();
-  assert.match(connect.message, /non-string tools\/list cursor/);
-});
-
-test("a refused catalog kills the stdio child instead of leaving it behind", async (t) => {
-  const { client, pidFile } = catalogClient(t, {
-    STUB_TOOL_COUNT: "10",
-    STUB_PAGE_SIZE: "5",
-    STUB_CURSOR_MODE: "repeat",
-  });
-  await assert.rejects(client.connect(), { code: "INVALID_RESPONSE" });
-  const pid = Number(readFileSync(pidFile, "utf8"));
-  assert.ok(Number.isInteger(pid) && pid > 0, "stub did not report its pid");
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try {
-      process.kill(pid, 0);
-    } catch {
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  assert.fail("stdio mcp child survived a refused handshake");
 });

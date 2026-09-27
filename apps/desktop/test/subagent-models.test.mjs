@@ -19,7 +19,6 @@ const {
   subagentModelChoices,
   subagentModelOrphanPin,
   subagentModelPin,
-  subagentModelPinParts,
   subagentModelSelectValue,
 } = await import("../src/components/settings/subagent-models.ts");
 
@@ -58,46 +57,6 @@ test("a custom endpoint uses its display name instead of the generic vendor key"
   );
 });
 
-test("every option the picker offers is a pin the editor will save", () => {
-  // A custom endpoint's display name contains spaces, and the picker offers it.
-  // The editor's draft check must accept exactly what the picker produces, or
-  // the user can pick an option and then never save the sheet.
-  const choices = subagentModelChoices([
-    provider(),
-    provider({ id: "p2", name: "My Gateway", vendorKey: "custom" }),
-    provider({ id: "p3", name: "My Ollama", vendorKey: "" }),
-  ]);
-  assert.ok(choices.length > 0);
-  for (const choice of choices) {
-    assert.notEqual(
-      subagentModelPinParts(choice.value),
-      null,
-      `${choice.value} is offered but not saveable`,
-    );
-  }
-});
-
-test("a pin needs a provider half, a model half, and keeps its own slashes", () => {
-  assert.deepEqual(subagentModelPinParts("anthropic/claude-haiku-4-5"), {
-    providerPart: "anthropic",
-    modelId: "claude-haiku-4-5",
-  });
-  assert.deepEqual(subagentModelPinParts("  My Gateway/local-model  "), {
-    providerPart: "My Gateway",
-    modelId: "local-model",
-  });
-  // An openrouter-style model id carries its own slashes; only the first one
-  // separates the provider.
-  assert.deepEqual(subagentModelPinParts("openrouter/deepseek/deepseek-chat"), {
-    providerPart: "openrouter",
-    modelId: "deepseek/deepseek-chat",
-  });
-  // A bare id has no provider to look up, so it is not a pin.
-  assert.equal(subagentModelPinParts("claude-haiku-4-5"), null);
-  assert.equal(subagentModelPinParts("/claude-haiku-4-5"), null);
-  assert.equal(subagentModelPinParts("anthropic/"), null);
-});
-
 test("the sheet lists configured models from enabled, credentialed providers", () => {
   const choices = subagentModelChoices([
     provider(),
@@ -130,10 +89,7 @@ test("the sheet lists configured models from enabled, credentialed providers", (
   );
 });
 
-test("the sheet lists every configured binding regardless of the delegation flag", () => {
-  // The editor no longer consults `availableForSubagents`: a model the user
-  // configured in Settings is selectable, so the list cannot be empty while a
-  // runnable provider exists.
+test("the sheet only lists bindings explicitly enabled for subagents", () => {
   const choices = subagentModelChoices([
     provider({
       models: [
@@ -148,7 +104,7 @@ test("the sheet lists every configured binding regardless of the delegation flag
   ]);
   assert.deepEqual(
     choices.map((choice) => choice.modelId),
-    ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"],
+    ["claude-haiku-4-5"],
   );
 });
 
@@ -266,16 +222,7 @@ test("a pin that is no longer configured stays selectable", () => {
   assert.equal(subagentModelOrphanPin("openai/gpt-5", choices), "openai/gpt-5");
 });
 
-test("a pin keeps the full configured model id even when its suffix is another model", () => {
-  const choices = subagentModelChoices([provider({ models: [binding("generic/model"), binding("model")] })]);
-  assert.equal(subagentModelSelectValue("anthropic/model", choices), "anthropic/model");
-  assert.equal(subagentModelSelectValue("anthropic/GENERIC/MODEL", choices), "anthropic/generic/model");
-  assert.equal(subagentModelOrphanPin("anthropic/other/model", choices), "anthropic/other/model");
-  const prefixedOnly = choices.slice(0, 1);
-  assert.equal(subagentModelOrphanPin("anthropic/model", prefixedOnly), "anthropic/model");
-});
-
-test("the editor model field is a configured-only searchable picker with an empty-state action", async () => {
+test("the editor model field offers configured, custom, and empty-list paths", async () => {
   const source = await readFile(
     new URL("../src/components/settings/SubagentEditorSheet.tsx", import.meta.url),
     "utf8",
@@ -284,52 +231,15 @@ test("the editor model field is a configured-only searchable picker with an empt
     source.indexOf('label={t("extensions.subagents.model")}'),
     source.indexOf('label={t("extensions.subagents.thinking")}'),
   );
-  // A definition may pin any configured model, so the list is long enough that
-  // a native <select> cannot serve it: the field is an anchored menu with a
-  // filter field and its own scroll bound.
-  assert.match(modelField, /<SubagentModelPicker/);
-  assert.doesNotMatch(modelField, /<Select/);
-  assert.doesNotMatch(modelField, /<optgroup/);
+  assert.match(modelField, /<Select/);
+  assert.match(modelField, /<optgroup/);
+  assert.match(modelField, /extensions\.subagents\.modelInherit/);
+  assert.match(modelField, /extensions\.subagents\.modelPickCustom/);
   assert.match(modelField, /extensions\.subagents\.modelPickEmpty/);
-  assert.match(modelField, /extensions\.subagents\.modelPickEmptyAction/);
-  assert.match(modelField, /setSettingsTab\("agent"\)/);
-  // No hand-typed model id: the field never renders a free-text input.
-  assert.doesNotMatch(modelField, /<Input/);
-  assert.doesNotMatch(modelField, /modelPickCustom/);
   assert.match(source, /subagentModelChoices\(providers\)/);
+  assert.match(source, /CUSTOM_SUBAGENT_MODEL_VALUE/);
+  assert.match(source, /extensions\.subagents\.modelPickCustomHint/);
   assert.match(source, /resetSubagentTemplate\(draft\)/);
-});
-
-test("the model menu scrolls inside itself and filters, instead of using an OS-drawn list", async () => {
-  const picker = await readFile(
-    new URL("../src/components/settings/SubagentModelPicker.tsx", import.meta.url),
-    "utf8",
-  );
-  // The anchored surface is what gives the list its own scroll bound; an
-  // OS-drawn <select> popup runs off the window instead.
-  assert.match(picker, /<AnchoredMenu/);
-  assert.match(picker, /provider-service-menu/);
-  assert.match(picker, /provider-service-results/);
-  // A filter field, so a long list is searchable rather than only scrollable.
-  assert.match(picker, /extensions\.subagents\.modelSearch/);
-  assert.match(picker, /extensions\.subagents\.modelNoMatches/);
-  // Grouped by provider, like the composer and the default-model picker.
-  assert.match(picker, /provider-service-group/);
-  // Inherit-session is the empty value, so Enter cannot test it for truthiness.
-  assert.match(picker, /visibleIds\.includes\(activeId\)/);
-});
-
-test("the shared option-menu styles bound the list height and let it scroll", async () => {
-  const styles = await readFile(
-    new URL("../src/styles/model-config.css", import.meta.url),
-    "utf8",
-  );
-  const results = styles.match(/\.provider-service-results \{([^}]*)\}/);
-  assert.ok(results, ".provider-service-results rule is missing");
-  assert.match(results[1], /overflow-y:\s*auto/);
-  const menu = styles.match(/\.provider-service-menu \{([^}]*)\}/);
-  assert.ok(menu, ".provider-service-menu rule is missing");
-  assert.match(menu[1], /max-height:/);
 });
 
 test("the editor exposes the no-pass thinking option", async () => {
@@ -340,7 +250,7 @@ test("the editor exposes the no-pass thinking option", async () => {
   const thinkingField = source.slice(
     source.indexOf('label={t("extensions.subagents.thinking")}'),
   );
-  assert.match(thinkingField, /id: "omit"/);
+  assert.match(thinkingField, /value="omit"/);
   assert.match(thinkingField, /extensions\.subagents\.thinkingOmit/);
   assert.match(thinkingField, /SUBAGENT_THINKING_LEVELS/);
 });

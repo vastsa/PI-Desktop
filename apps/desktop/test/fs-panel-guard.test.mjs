@@ -16,7 +16,7 @@ import {
   resolveRealOpenablePath,
   resolveWithinRoot,
   MAX_TEXT_BYTES,
-} from "../../../packages/host-runtime/src/workspace-files.ts";
+} from "../electron/main/fs-panel.ts";
 
 const ROOT = resolve("virtual-workspace");
 
@@ -136,16 +136,16 @@ test("previewFile classifies text, images, binary, and oversized files", async (
   await writeFile(binaryPath, Buffer.from([0, 1, 2, 0]));
   await writeFile(largePath, "x".repeat(MAX_TEXT_BYTES + 1));
 
-  const text = await previewFile(textPath, "note.md");
+  const text = previewFile(textPath, "note.md");
   assert.equal(text.kind, "text");
   assert.equal(text.content, "hello\n");
 
-  const image = await previewFile(imagePath, "pixel.png");
+  const image = previewFile(imagePath, "pixel.png");
   assert.equal(image.kind, "image");
   assert.match(String(image.dataUrl), /^data:image\/png;base64,/);
 
-  assert.equal((await previewFile(binaryPath, "blob.bin")).kind, "binary");
-  assert.equal((await previewFile(largePath, "large.txt")).kind, "tooLarge");
+  assert.equal(previewFile(binaryPath, "blob.bin").kind, "binary");
+  assert.equal(previewFile(largePath, "large.txt").kind, "tooLarge");
 });
 
 test("imageMimeFor prefers a known extension and allowlists declared mime for blobs", () => {

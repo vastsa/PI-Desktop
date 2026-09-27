@@ -1,4 +1,3 @@
-import { readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -12,7 +11,7 @@ const repoRoot = join(desktopRoot, "../..");
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
 const builtinSrc = readFileSync(join(desktopRoot, "electron/main/builtin-skills.ts"), "utf8");
 const devToolsSrc = readFileSync(join(desktopRoot, "electron/main/plugin-dev-tools.ts"), "utf8");
-const mainSrc = readMainSourceSync();
+const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
 const packageJson = JSON.parse(readFileSync(join(desktopRoot, "package.json"), "utf8"));
 const skillDoc = readFileSync(
   join(desktopRoot, "resources/skills/plugin-development.md"),
@@ -23,14 +22,6 @@ const agentRuntimeSrc = readFileSync(
   "utf8",
 );
 const sidecarSrc = readFileSync(join(repoRoot, "packages/agent-runtime/src/sidecar.ts"), "utf8");
-const desktopSidecarSrc = readFileSync(
-  join(desktopRoot, "electron/main/runtime/sidecar.ts"),
-  "utf8",
-);
-const composerAutocompleteSrc = readFileSync(
-  join(desktopRoot, "src/components/ComposerAutocomplete.tsx"),
-  "utf8",
-);
 
 test("the plugin runtime indexes contributed skills under caps", () => {
   assert.match(runtimeSrc, /registerSkills/);
@@ -84,20 +75,6 @@ test("main forwards the skill catalog and serves the Skill tool locally", () => 
   assert.match(mainSrc, /loadSkillBody\(id\)/);
 });
 
-test("the composer lists active skills last and routes slash skills to the Skill tool", () => {
-  assert.match(mainSrc, /const loadComposerSkillCommands = async/);
-  assert.match(mainSrc, /const userSkills = \(await activeUserSkills/);
-  assert.match(mainSrc, /kind: "skill" as const/);
-  assert.match(mainSrc, /skillId: skill\.id/);
-  assert.match(
-    mainSrc,
-    /\.\.\.extensionCommands,\s*\.\.\.skillCommands,/,
-  );
-  assert.match(mainSrc, /findSkillMentions\(req\.content, activeSkills\)/);
-  assert.match(mainSrc, /Call the \\`Skill\\` tool with each of these ids/);
-  assert.match(composerAutocompleteSrc, /item\.command\.kind === "skill"/);
-});
-
 test("the agent runtime advertises skills and rebuilds when the catalog changes", () => {
   assert.match(agentRuntimeSrc, /pluginSkillsPrompt/);
   assert.match(agentRuntimeSrc, /SKILL_TOOL_NAME/);
@@ -109,7 +86,7 @@ test("the built-in plugin skill only activates for plugin workspaces", () => {
   assert.match(builtinSrc, /isPluginWorkspace/);
   assert.match(builtinSrc, /schemaVersion.*number/s);
   assert.match(builtinSrc, /pluginPaths\.some/);
-  assert.match(builtinSrc, /if \(isPluginWorkspace\(input\.workspacePath, input\.pluginPaths\)\) ids\.push\(PLUGIN_DEV_SKILL_ID\)/);
+  assert.match(builtinSrc, /if \(!isPluginWorkspace\(input\.workspacePath, input\.pluginPaths\)\) return \[\]/);
   assert.match(mainSrc, /builtinSkills\(\{/);
 });
 
@@ -123,9 +100,6 @@ test("the built-in skill body loads through the same Skill tool", () => {
     /loadBuiltinSkillBody\(id\) \?\?\s*\(await loadUserSkillBody\(id, projectPath\)\) \?\?\s*plugins\.loadSkillBody\(id\)/,
   );
   assert.match(mainSrc, /const userIds = \(await activeUserSkills/);
-  assert.match(desktopSidecarSrc, /formatSkillToolContent\(skill\)/);
-  assert.match(builtinSrc, /location: raw\.path/);
-  assert.match(runtimeSrc, /location: skill\.path/);
 });
 
 test("the built-in skill ships as a packaged resource with a dev fallback", () => {
@@ -176,7 +150,7 @@ test("only PluginCheck is available outside agent mode", () => {
   assert.doesNotMatch(nonAgentBranch, /PluginScaffold|PluginPack/);
   assert.match(
     builder.slice(agentBranchStart),
-    /tools\.push\("PluginScaffold", "PluginPack"/,
+    /tools\.push\("PluginScaffold", "PluginPack"\)/,
   );
 });
 

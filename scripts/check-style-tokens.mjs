@@ -5,8 +5,6 @@
  * `@theme` block of styles/tokens.css (see docs/spec/04-ux/07-ui-design-system.md).
  *
  * Checked:
- *  - CSS: migrated settings/composer/plugin search fills cannot contain raw
- *    hex, color functions, white, or black (see style-surface-tokens.mjs).
  *  - CSS: font-size / font-weight / line-height / letter-spacing /
  *    border-radius values must be var(...) based (token definitions on
  *    `--custom-property` lines are exempt).
@@ -16,7 +14,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findLiteralSurfaceColors } from "./style-surface-tokens.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = join(root, "apps/desktop/src");
@@ -46,13 +43,7 @@ const violations = [];
 
 for (const file of walk(srcDir)) {
   const rel = relative(root, file);
-  const source = readFileSync(file, "utf8");
-  if (file.endsWith(".css")) {
-    for (const violation of findLiteralSurfaceColors(source)) {
-      violations.push(`${rel}:${violation.line} raw ${violation.property} value "${violation.value}" — use a surface token`);
-    }
-  }
-  const lines = source.split("\n");
+  const lines = readFileSync(file, "utf8").split("\n");
   // `@font-face` descriptors describe the font file (weight ranges, etc.),
   // not UI typography, so they are exempt from the token scale.
   let inFontFace = 0;

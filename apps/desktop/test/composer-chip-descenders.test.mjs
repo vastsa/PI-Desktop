@@ -1,10 +1,12 @@
-import { readComposerSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const composerSource = await readComposerSource();
+const composerSource = await readFile(
+  new URL("../src/components/Composer.tsx", import.meta.url),
+  "utf8",
+);
 const styles = await loadStyles();
 
 function ruleBlock(source, selector) {
@@ -30,10 +32,10 @@ test("model chip label avoids leading-none under truncation", () => {
   );
 });
 
-test("model menu options show the complete wire id without truncation", () => {
+test("model menu options show one complete display name on hover", () => {
   assert.match(
     composerSource,
-    /const optionTitle = model\.modelId;/,
+    /const optionTitle =\s*model\.displayName \|\| model\.modelId;/,
   );
   assert.match(composerSource, /title=\{optionTitle\}/);
   const optionBlock =

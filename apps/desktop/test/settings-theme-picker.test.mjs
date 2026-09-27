@@ -1,4 +1,3 @@
-import { readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -8,7 +7,10 @@ const rowSource = await readFile(
   new URL("../src/components/settings/ThemeRow.tsx", import.meta.url),
   "utf8",
 );
-const settingsPageSource = await readSettingsSource();
+const settingsPageSource = await readFile(
+  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
+  "utf8",
+);
 const styles = await loadStyles();
 
 function pickerRule(selector, body = "") {
@@ -24,10 +26,7 @@ test("theme picker uses an anchored menu so the settings card cannot clip it", (
 });
 
 test("theme is a searchable picker row, not a card grid", () => {
-  // The built-in order comes from the shared theme table, so the picker cannot
-  // drift from the ids main and the panel host resolve.
-  assert.match(rowSource, /BUILTIN_THEME_PREFERENCES\.map\(/);
-  assert.doesNotMatch(rowSource, /BUILTIN_THEMES = \[/);
+  assert.match(rowSource, /BUILTIN_THEMES = \["system", "light", "dark"\]/);
   assert.match(rowSource, /saveSettings\(\{ theme: id \}\)/);
   assert.match(settingsPageSource, /<ThemeRow /);
   assert.doesNotMatch(settingsPageSource, /settings-theme-grid/);
@@ -43,9 +42,9 @@ test("plugin themes join the same searchable list after the built-ins", () => {
   assert.match(rowSource, /showDivider/);
 });
 
-test("the theme trigger hugs the current label without a native field chrome", () => {
-  assert.match(styles, pickerRule("\\.settings-theme-anchor", "width:\\s*max-content;"));
-  assert.match(styles, pickerRule("\\.settings-theme-trigger", "width:\\s*max-content;"));
+test("the theme trigger fills the settings control column without a native field chrome", () => {
+  assert.match(styles, pickerRule("\\.settings-theme-anchor", "width:\\s*100%;"));
+  assert.match(styles, pickerRule("\\.settings-theme-trigger", "width:\\s*100%;"));
   assert.match(styles, pickerRule("\\.settings-theme-search input", "outline:\\s*none;"));
   assert.match(styles, pickerRule("\\.settings-theme-search input", "padding:\\s*0;"));
 });

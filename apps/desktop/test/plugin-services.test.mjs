@@ -1,4 +1,3 @@
-import { readPluginsSourceSync, readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fork } from "node:child_process";
@@ -18,9 +17,9 @@ const { PluginRuntime } = await import("../electron/main/plugin-runtime.ts");
 
 const hostSrc = readFileSync(hostProcessEntry, "utf8");
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
-const mainSrc = readMainSourceSync();
+const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
 const apiSrc = readFileSync(join(desktopRoot, "src/lib/api.ts"), "utf8");
-const pluginsPageSrc = readPluginsSourceSync();
+const pluginsPageSrc = readFileSync(join(desktopRoot, "src/pages/PluginsPage.tsx"), "utf8");
 const protocolSrc = readFileSync(join(repoRoot, "packages/shared/src/protocol.ts"), "utf8");
 const enSrc = readFileSync(join(repoRoot, "packages/i18n/src/locales/en/index.ts"), "utf8");
 
@@ -34,23 +33,6 @@ function forkPluginProcess({ entry }) {
     onMessage: (handler) => child.on("message", handler),
     onExit: (handler) => child.on("exit", (code) => handler(code ?? 0)),
     kill: () => child.kill(),
-  };
-}
-
-function fakePluginProcess() {
-  let onMessage = () => {};
-  let onExit = () => {};
-  return {
-    postMessage: (message) => {
-      if (message.t === "init") {
-        queueMicrotask(() => onMessage({ t: "res", id: message.id, ok: true, value: null }));
-      }
-    },
-    onMessage: (handler) => { onMessage = handler; },
-    onExit: (handler) => { onExit = handler; },
-    onLog: () => {},
-    kill: () => {},
-    emitExit: (code) => onExit(code),
   };
 }
 
@@ -338,12 +320,7 @@ test("a crashed host process is restarted with backoff and the restart is counte
             id: "worker",
             start: async () => {
               // Die once, right after the broker was told the service is up.
-              if (countStart() === 1) {
-                setTimeout(() => {
-                  process.stderr.write("fixture older line\\nfixture service worker died");
-                  process.exit(7);
-                }, 30);
-              }
+              if (countStart() === 1) setTimeout(() => process.exit(7), 30);
             },
           });
         },
@@ -356,15 +333,7 @@ test("a crashed host process is restarted with backoff and the restart is counte
   const failed = await waitFor(() =>
     runtime.getServiceStates().find((s) => s.state === "failed"),
   );
-  // The exit code is the safe diagnosis: plugin output is not copied into
-  // user-visible errors or crash audit records.
-  assert.equal(failed.message, "plugin host process exited (exit code 7)");
-
-  const crash = await waitFor(() =>
-    audits.find((a) => a.api === "plugin.crash"),
-  );
-  assert.equal(crash.exitCode, 7);
-  assert.equal("message" in crash, false);
+  assert.equal(failed.message, "plugin host process exited");
 
   const scheduled = await waitFor(() =>
     audits.find((a) => a.api === "plugin.service.restart.scheduled"),
@@ -381,46 +350,6 @@ test("a crashed host process is restarted with backoff and the restart is counte
   assert.equal(running.restarts, 1);
   assert.equal(readFileSync(startsFile, "utf8"), "2");
   assert.ok(audits.some((a) => a.api === "plugin.service.restart" && a.ok));
-});
-
-test("Windows hard-fault exit codes stay unsigned across crash surfaces", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "pi-crash-format-plugin-"));
-  writeFileSync(
-    join(dir, "manifest.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      id: "com.example.crash-format",
-      name: "Crash Format Plugin",
-      version: "0.0.1",
-      main: "main.js",
-      permissions: [],
-      contributes: {},
-    }),
-    "utf8",
-  );
-  writeFileSync(join(dir, "main.js"), "module.exports = {};", "utf8");
-  let child;
-  const audits = [];
-  const crashes = [];
-  const runtime = new PluginRuntime({
-    hostEntry: hostProcessEntry,
-    spawnProcess: () => {
-      child = fakePluginProcess();
-      return child;
-    },
-    audit: (entry) => audits.push(entry),
-    onPluginCrash: (info) => crashes.push(info),
-  });
-  t.after(() => runtime.disposeAll());
-
-  await runtime.loadFromPath(dir);
-  child.emitExit(-1073741819);
-
-  const crash = audits.find((entry) => entry.api === "plugin.crash");
-  assert.equal(crash.exitCode, 3221225477);
-  assert.equal(crash.exitCodeHex, "0xC0000005");
-  assert.equal(crashes[0].exitCode, 3221225477);
-  assert.equal(crashes[0].exitCodeHex, "0xC0000005");
 });
 
 test("autoRestart:false leaves a crashed service down", async (t) => {
@@ -499,24 +428,4 @@ test("the plugins page keeps capability and service chips in row details", () =>
     assert.match(pluginsPageSrc, new RegExp(`plugins\\.${key}`));
     assert.match(enSrc, new RegExp(`${key}:`));
   }
-});
-
-test("capability badges include every declared plugin capability", () => {
-  const block = pluginsPageSrc.match(
-    /const CAPABILITY_ORDER: PluginCapability\[\] = \[([\s\S]*?)\];/,
-  )?.[1];
-  assert.ok(block, "capability badge order is missing");
-  const order = [...block.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(order, [
-    "panel",
-    "views",
-    "commands",
-    "tools",
-    "agentExtension",
-    "skills",
-    "themes",
-    "mcp",
-    "services",
-    "bus",
-  ]);
 });

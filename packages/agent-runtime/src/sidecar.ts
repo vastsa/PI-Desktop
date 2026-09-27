@@ -3,13 +3,15 @@
  * Protocol: NDJSON JSON-RPC on stdio with Electron main.
  * Host access is proxied through main (single host-core process).
  */
-import { randomUUID } from "node:crypto";
+import { createInterface } from "node:readline";
+import { createHash, randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
+import { copyFile, mkdir, readFile, realpath, stat } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { ModelAuth } from "@earendil-works/pi-ai";
 import { ParentHostProxy } from "./parent-host-proxy.js";
 import { visionFromModelConfig } from "./model-capabilities.js";
-import { hydrateAttachmentHistory } from "./attachment-history.js";
 import { classifyAgentError } from "./agent-errors.js";
-import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import {
   DesktopAgentRuntime,
   type PluginToolDef,
@@ -18,21 +20,19 @@ import {
   type RuntimeProviderConfig,
 } from "./runtime.js";
 import type { PluginSkillDef } from "./plugin-skills-prompt.js";
-import type { SessionMessageOrigin, TrustedExtensionSpec } from "@pi-desktop/shared";
 import type { ProjectInstructions } from "./project-instructions.js";
-import type { CustomSystemPrompt } from "./custom-system-prompt.js";
 import {
   normalizeSupportedThinkingLevels,
   normalizeThinkingLevel,
 } from "./sidecar-config.js";
 import { applyNodeNetworkProxy } from "./node-proxy.js";
-import { NATIVE_PI_SESSION_PREFIX, nativePiService } from "./native-pi-session.js";
 import {
+  formatFileInsert,
   isCommandShellOption,
+  MAX_INLINE_IMAGE_BYTES,
   normalizeMode,
   normalizeNetworkProxy,
   OAUTH_AUTH_KIND,
-  readNdjsonLines,
 } from "@pi-desktop/shared";
 import type {
   AgentEventEnvelope,
@@ -42,8 +42,9 @@ import type {
   ContextCompactionSettings,
   CommandShellOption,
   Mode,
+  MessageAttachment,
   PlanExecution,
-  SessionThinkingLevel,
+  ThinkingLevel,
   UiMessage,
 } from "@pi-desktop/shared";
 
@@ -91,30 +92,22 @@ type RuntimeParams = {
   mode?: Mode;
   /** Durable host turn ID for the prompt currently being executed. */
   turnId?: string;
-  thinkingLevel?: SessionThinkingLevel;
-  infiniteProviderRetry?: boolean;
+  thinkingLevel?: ThinkingLevel;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
-  /** Trusted extensions enabled for this session (D387). */
-  trustedExtensions?: TrustedExtensionSpec[];
   /** Delegates this session may spawn through `Task` (ADR 0062). */
   subagents?: SubagentDefinition[];
   /** Provider bindings for pinned models, keyed by `subagentModelKey`. */
   subagentProviders?: Record<string, RuntimeProviderConfig>;
-  /** Opted-in override keys, separate from definition-only pinned bindings. */
-  subagentModelKeys?: string[];
   scratchDir?: string;
   /** Session-bound workspace root supplied by Electron main. */
   projectPath?: string;
-  customSystemPrompt?: CustomSystemPrompt;
   projectInstructions?: ProjectInstructions;
-  projectMemory?: string;
   compactionSettings?: ContextCompactionSettings;
   attachmentsDir?: string;
   userMessageId?: string;
-  sessionMessage?: SessionMessageOrigin;
   attachments?: RuntimePromptAttachment[];
 };
 
@@ -154,6 +147,122 @@ function respond(id: string | number, result?: unknown, error?: unknown) {
   else write({ jsonrpc: "2.0", id, result });
 }
 
+function pathInside(root: string, candidate: string): boolean {
+  const child = relative(root, candidate);
+  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+}
+
+async function replayedAttachmentPath(
+  params: RuntimeParams,
+  attachment: NonNullable<UiMessage["attachments"]>[number],
+  source: string,
+): Promise<string> {
+  if (!params.scratchDir || !attachment.ref.startsWith("attachments/")) {
+    return source;
+  }
+  const root = resolve(params.scratchDir, "replayed");
+  await mkdir(root, { recursive: true });
+  const safeName =
+    attachment.name.replace(/[^\p{L}\p{N}._-]+/gu, "_") || "attachment";
+  const suffix = createHash("sha256")
+    .update(attachment.ref)
+    .digest("hex")
+    .slice(0, 12);
+  const target = resolve(root, `${safeName}-${suffix}`);
+  try {
+    await copyFile(source, target, fsConstants.COPYFILE_EXCL);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
+  }
+  return target;
+}
+
+async function hydrateAttachmentHistory(
+  history: UiMessage[],
+  params: RuntimeParams,
+): Promise<UiMessage[]> {
+  // Same helper the live prompt path uses, on the same override-shaped config,
+  // so a replayed image is inlined exactly when a fresh one would be.
+  const supportsVision = visionFromModelConfig(params.provider.modelConfig);
+  const roots = [
+    params.scratchDir,
+    params.projectPath,
+    params.attachmentsDir,
+  ].filter((value): value is string => Boolean(value));
+  const canonicalRoots = await Promise.all(
+    roots.map(async (root) => {
+      try {
+        return await realpath(root);
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  const resolveAttachment = async (
+    attachment: NonNullable<UiMessage["attachments"]>[number],
+  ): Promise<{ attachment: MessageAttachment; fallbackPath?: string }> => {
+    const ref = attachment.ref.trim();
+    if (!ref) return { attachment };
+    const candidate =
+      ref.startsWith("attachments/") && params.attachmentsDir
+        ? resolve(params.attachmentsDir, ref.slice("attachments/".length))
+        : isAbsolute(ref)
+          ? resolve(ref)
+          : params.projectPath
+            ? resolve(params.projectPath, ref)
+            : undefined;
+    if (!candidate) return { attachment };
+    try {
+      const canonical = await realpath(candidate);
+      if (!canonicalRoots.some((root) => root && pathInside(root, canonical))) {
+        return { attachment };
+      }
+      const shouldInline = attachment.kind === "image" && supportsVision;
+      const size = (await stat(canonical)).size;
+      const bytes =
+        shouldInline && size <= MAX_INLINE_IMAGE_BYTES
+          ? await readFile(canonical)
+          : undefined;
+      if (attachment.kind === "image" && supportsVision && bytes) {
+        return { attachment: { ...attachment, data: bytes.toString("base64") } };
+      }
+      return {
+        attachment,
+        fallbackPath: await replayedAttachmentPath(
+          params,
+          attachment,
+          canonical,
+        ),
+      };
+    } catch {
+      return { attachment };
+    }
+  };
+
+  return Promise.all(
+    history.map(async (message) => {
+      if (message.role !== "user" || !message.attachments?.length) return message;
+      const resolved = await Promise.all(message.attachments.map(resolveAttachment));
+      const fallbackPaths = resolved
+        .map((item) => item.fallbackPath)
+        .filter((path): path is string => Boolean(path))
+        .map((path) => formatFileInsert(path, "file"))
+        .join("")
+        .trim();
+      const content = message.content.trim()
+        ? fallbackPaths
+          ? `${message.content}\n${fallbackPaths}`
+          : message.content
+        : fallbackPaths;
+      return {
+        ...message,
+        content,
+        attachments: resolved.map((item) => item.attachment),
+      };
+    }),
+  );
+}
+
 async function runtimeFor(
   params: RuntimeParams,
   currentPrompt?: string,
@@ -178,9 +287,7 @@ async function runtimeFor(
   const thinkingLevel = normalizeThinkingLevel(params.thinkingLevel);
   const pluginTools = params.pluginTools ?? [];
   const pluginSkills = params.pluginSkills ?? [];
-  const trustedExtensions = params.trustedExtensions ?? [];
   const subagents = params.subagents ?? [];
-  const subagentModelKeys = params.subagentModelKeys ?? [];
   const subagentProviders = Object.fromEntries(
     Object.entries(params.subagentProviders ?? {}).map(([key, pinned]) => [
       key,
@@ -212,13 +319,9 @@ async function runtimeFor(
     thinkingLevel,
     pluginTools,
     pluginSkills,
-    trustedExtensions,
     subagents,
     subagentProviders,
-    subagentModelKeys,
     projectInstructions: params.projectInstructions,
-    customSystemPrompt: params.customSystemPrompt,
-    projectMemory: params.projectMemory,
     projectPath: params.projectPath,
     commandShell: params.commandShell,
   })
@@ -230,7 +333,6 @@ async function runtimeFor(
   }
   if (reusable) {
     reusable.setCompactionSettings(params.compactionSettings);
-    reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
     reusable.setMode(mode);
     return reusable;
   }
@@ -244,55 +346,38 @@ async function runtimeFor(
         compaction?: ContextCompactionRecord;
       } | null;
     }>("session.get", { id: sessionId });
-    let restoredMessages = detail?.session?.messages ?? [];
-    // The current prompt is sent separately below. Exclude its persisted row
-    // before attachment hydration so it cannot consume the history byte budget.
-    if (currentPrompt !== undefined && params.userMessageId) {
-      const last = restoredMessages.at(-1);
-      if (last?.role === "user" && last.id === params.userMessageId) {
-        restoredMessages = restoredMessages.slice(0, -1);
-      }
-    }
-    const supportsVision = visionFromModelConfig(params.provider.modelConfig);
-    history = await hydrateAttachmentHistory(restoredMessages, {
-      scratchDir: params.scratchDir,
-      projectPath: params.projectPath,
-      attachmentsDir: params.attachmentsDir,
-      supportsVision,
-    });
+    history = await hydrateAttachmentHistory(detail?.session?.messages ?? [], params);
     compaction = detail?.session?.compaction;
   } catch {
     // History restore is best-effort; a prompt can still start cleanly.
   }
-  // Older callers without a stable message id retain the previous content match.
-  if (currentPrompt !== undefined && !params.userMessageId) {
+  if (currentPrompt !== undefined) {
     const last = history.at(-1);
-    if (last?.role === "user" && last.content === currentPrompt) {
+    if (
+      last?.role === "user" &&
+      ((params.userMessageId && last.id === params.userMessageId) ||
+        (!params.userMessageId && last.content === currentPrompt))
+    ) {
       history = history.slice(0, -1);
     }
   }
   const runtime = new DesktopAgentRuntime({
-    host: hostProxy,
+    host: hostProxy as any,
     sessionId,
     mode,
     turnId: params.turnId,
     provider,
     commandShell: params.commandShell,
     thinkingLevel,
-    infiniteProviderRetry: params.infiniteProviderRetry === true,
     history,
     compaction,
     compactionSettings: params.compactionSettings,
     pluginTools,
     pluginSkills,
-    trustedExtensions,
     subagents,
     subagentProviders,
-    subagentModelKeys,
     projectPath: params.projectPath,
-    customSystemPrompt: params.customSystemPrompt,
     projectInstructions: params.projectInstructions,
-    projectMemory: params.projectMemory,
     scratchDir:
       typeof params.scratchDir === "string" && params.scratchDir
         ? params.scratchDir
@@ -300,20 +385,6 @@ async function runtimeFor(
     onEvent: (envelope: AgentEventEnvelope) => notify("agent.event", envelope),
   });
   runtimes.set(sessionId, runtime);
-  // Load failures are diagnostics, never a failed prompt (spec 16 §4.4).
-  await runtime.loadTrustedExtensions().catch(() => undefined);
-  if (provider.extensionAgentKey) {
-    const activated = await runtime.activateTrustedExtensionAgent(
-      provider.extensionAgentKey,
-      provider.modelId,
-    );
-    if (!activated) {
-      throw Object.assign(new Error("plugin agent is not available"), {
-        rpcCode: -32000,
-        errorCode: "MODEL_NOT_CONFIGURED",
-      });
-    }
-  }
   return runtime;
 }
 
@@ -363,40 +434,12 @@ async function handle(method: string, params: any): Promise<unknown> {
     }
     case "sidecar.health":
       return { ok: true, runtimes: runtimes.size };
-    case "native.session.list":
-      return { sessions: await nativePiService().list() };
-    case "native.session.search":
-      return nativePiService().search(String(params.query ?? ""));
-    case "native.session.get":
-      return {
-        session: nativePiService().detail(String(params.id ?? ""), {
-          messageBefore: params.messageBefore,
-          messageLimit: params.messageLimit,
-          messageAround: params.messageAround,
-          contentLimit: params.contentLimit,
-        }),
-      };
-    case "native.session.fork":
-      return {
-        session: nativePiService().fork({
-          id: String(params.id ?? ""),
-          title: typeof params.title === "string" ? params.title : undefined,
-          throughMessageId:
-            typeof params.throughMessageId === "string" ? params.throughMessageId : undefined,
-        }),
-      };
     case "agent.testRuntimeIdentity": {
       return testRuntimeIdentity(String(params.sessionId ?? ""));
     }
     case "agent.prompt": {
       const sessionId = String(params.sessionId);
       const content = String(params.content ?? "");
-      if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().prompt(sessionId, content, (envelope) =>
-          notify("native.agent.event", envelope),
-          typeof params.userMessageId === "string" ? params.userMessageId : undefined,
-        );
-      }
       const turnId =
         typeof params.turnId === "string" && params.turnId.trim()
           ? params.turnId
@@ -409,22 +452,7 @@ async function handle(method: string, params: any): Promise<unknown> {
         typeof params.userMessageId === "string" && params.userMessageId
           ? params.userMessageId
           : undefined;
-      // A `permissionMode` override on `agent.prompt` is the per-turn ceiling
-      // from spec §7.3 (R1 leftover). The sidecar accepts it so callers do not
-      // have to guard the field, but tool-approval enforcement still consults
-      // the session's stored mode inside host-core. Once host-core
-      // `session.beginTurn` accepts a per-turn override, this record will drive
-      // the enforcement gate; until then it stays a documented stub.
-      if (typeof params.permissionMode === "string" && params.permissionMode) {
-        // Log-only stub: observable in the sidecar log without affecting
-        // execution. Deliberately omitted from user-visible events.
-        void params.permissionMode;
-      }
-      const prompt: RuntimePrompt = {
-        text: content,
-        attachments,
-        ...(params.sessionMessage ? { sessionMessage: params.sessionMessage as SessionMessageOrigin } : {}),
-      };
+      const prompt: RuntimePrompt = { text: content, attachments };
       void runtime.prompt(prompt, userMessageId, turnId).catch((err) => {
         // Rejected-prompt path (pre-flight/transport failures). Streamed
         // provider errors surface via stopReason "error" and are classified
@@ -440,20 +468,6 @@ async function handle(method: string, params: any): Promise<unknown> {
         });
       });
       return { accepted: true, turnId };
-    }
-    case "agent.steeringContext":
-    case "agent.steer": {
-      const runtime = runtimes.get(String(params.sessionId ?? ""));
-      if (!runtime) {
-        throw Object.assign(new Error("No active turn to steer"), { errorCode: "TURN_NOT_FOUND" });
-      }
-      const expectedTurnId = String(params.expectedTurnId ?? "");
-      if (method === "agent.steeringContext") return runtime.steeringContext(expectedTurnId);
-      return runtime.steer(
-        { text: String(params.content ?? ""), attachments: params.attachments },
-        expectedTurnId,
-        params.message,
-      );
     }
     case "agent.executeApprovedPlan": {
       const sessionId = String(params.sessionId ?? "");
@@ -490,23 +504,13 @@ async function handle(method: string, params: any): Promise<unknown> {
     }
     case "agent.abort": {
       const sessionId = String(params.sessionId);
-      if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().abort(sessionId);
-      }
+      await hostProxy.call("plans.abort", { sessionId }).catch(() => undefined);
       const runtime = runtimes.get(sessionId);
-      const turnId = typeof params.turnId === "string" ? params.turnId : undefined;
-      if (turnId && runtime?.getStatus().currentTurnId !== turnId) return { ok: false, aborted: false };
-      await hostProxy.call("plans.abort", { sessionId, ...(turnId ? { turnId } : {}) }).catch(() => undefined);
-      if (runtime && runtimes.get(sessionId) === runtime && (!turnId || runtime.getStatus().currentTurnId === turnId)) {
-        await runtime.abort();
-      }
+      if (runtime) await runtime.abort();
       return { ok: true };
     }
     case "agent.stop": {
       const sessionId = String(params.sessionId);
-      if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().abort(sessionId);
-      }
       const runtime = runtimes.get(sessionId);
       return runtime?.requestGracefulStop() ?? { requested: false };
     }
@@ -520,25 +524,8 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       return runtime.resolveAskTool(params as AskToolResolution);
     }
-    case "extensions.command.run": {
-      const sessionId = String(params.sessionId ?? "");
-      const runtime = runtimes.get(sessionId);
-      if (!runtime) {
-        throw Object.assign(new Error("runtime not found for session"), {
-          rpcCode: -32000,
-          errorCode: "RUNTIME_NOT_FOUND",
-        });
-      }
-      return runtime.runTrustedExtensionCommand(
-        String(params.name ?? ""),
-        String(params.args ?? ""),
-      );
-    }
     case "agent.getStatus": {
       const sessionId = String(params.sessionId);
-      if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().status(sessionId);
-      }
       const runtime = runtimes.get(sessionId);
       return {
         status: runtime?.getStatus() ?? {
@@ -550,10 +537,6 @@ async function handle(method: string, params: any): Promise<unknown> {
     }
     case "agent.disposeSession": {
       const sessionId = String(params.sessionId);
-      if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        nativePiService().dispose(sessionId);
-        return { ok: true };
-      }
       const runtime = runtimes.get(sessionId);
       if (runtime) {
         await runtime.dispose();
@@ -568,15 +551,13 @@ async function handle(method: string, params: any): Promise<unknown> {
   }
 }
 
-readNdjsonLines(process.stdin, async (line) => {
+const rl = createInterface({ input: process.stdin });
+rl.on("line", async (line) => {
   if (!line.trim()) return;
   let msg: any;
   try {
     msg = JSON.parse(line);
   } catch {
-    process.stderr.write(
-      `[agent-sidecar] Invalid NDJSON frame (${Buffer.byteLength(line, "utf8")} bytes)\n`,
-    );
     return;
   }
   // Responses to host.proxy requests from parent
@@ -587,31 +568,12 @@ readNdjsonLines(process.stdin, async (line) => {
     const result = await handle(msg.method, msg.params ?? {});
     respond(msg.id, result);
   } catch (err: any) {
-    // Restore validation can fail before a runtime/stream exists. Preserve its
-    // safe provenance in the existing RPC error data instead of flattening it.
-    const local = readLocalRequestErrorDetails(err) ? classifyAgentError(err) : undefined;
     respond(msg.id, undefined, {
       code: err.rpcCode ?? -32000,
-      message: local?.message ?? (err instanceof Error ? err.message : String(err)),
-      data: local
-        ? { errorCode: local.code, retriable: local.retriable, details: local.details }
-        : { errorCode: err.errorCode ?? "INTERNAL" },
+      message: err instanceof Error ? err.message : String(err),
+      data: { errorCode: err.errorCode ?? "INTERNAL" },
     });
   }
-});
-
-// A rejected promise nobody awaits (a stray async event handler, a background
-// host call) must not take every session's runtime down with it: Node's
-// default for `unhandledRejection` is to exit the process. Log and carry on;
-// the affected session surfaces its own error through the normal event path.
-process.on("exit", () => nativePiService().disposeAll());
-
-process.on("unhandledRejection", (reason) => {
-  const detail =
-    reason instanceof Error
-      ? `${reason.name}: ${reason.message}${reason.stack ? `\n${reason.stack}` : ""}`
-      : String(reason);
-  process.stderr.write(`[agent-sidecar] unhandled promise rejection: ${detail}\n`);
 });
 
 const bootProxy = process.env.PI_DESKTOP_PROXY_JSON;

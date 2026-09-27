@@ -1,4 +1,3 @@
-import { readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -9,7 +8,10 @@ const search = await readFile(
   new URL("../src/lib/settings-search.ts", import.meta.url),
   "utf8",
 );
-const settingsPage = await readSettingsSource();
+const settingsPage = await readFile(
+  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
+  "utf8",
+);
 const api = await readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8");
 
 test("settings has no usage destination; host token history stays available", () => {

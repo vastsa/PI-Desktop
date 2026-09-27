@@ -12,7 +12,6 @@ import {
   createProvider,
   type Api,
   type Context,
-  type FetchFunction,
   type Model,
   type ModelAuth,
   type Models,
@@ -33,9 +32,6 @@ import {
   OPENCODE_GO_API_STYLE,
   OPENCODE_GO_BASE_URL,
   resolveApiStyle,
-  resolveNativeWebSearch,
-  nativeWebSearchTransport,
-  deepseekRequestCompat,
   zhipuRequestCompat,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -50,8 +46,6 @@ export type RuntimeProviderConfig = {
   modelId: string;
   apiKey: string;
   authKind?: string;
-  /** Plugin-owned trusted agent key when this is not a host provider row. */
-  extensionAgentKey?: string;
   /** Wire protocol for the endpoint (provider config apiStyle). */
   apiStyle?: string;
   supportsReasoning: boolean;
@@ -94,32 +88,6 @@ export function runtimeBaseUrlForApi(api: Api, baseUrl: string): string {
   const withoutTrailingSlash = baseUrl.replace(/\/+$/, "");
   const withoutVersion = withoutTrailingSlash.replace(/\/v1$/i, "");
   return withoutVersion || withoutTrailingSlash;
-}
-
-/**
- * Whether `api`'s pi-ai adapter accepts a caller-supplied `fetch`.
- *
- * The Google adapters throw unless `options.fetch` is `globalThis.fetch`
- * itself, and every wrapper this runtime builds is a different function, so a
- * request bound for them must carry no `fetch` at all (issue #1072). An
- * unknown wire API is treated as accepting one: only these two are known to
- * refuse, and the default must stay "inject" for everything else.
- */
-export function adapterAcceptsCustomFetch(api: Api | undefined): boolean {
-  return api !== "google-generative-ai" && api !== "google-vertex";
-}
-
-/**
- * The `fetch` one request may hand to `api`'s adapter: the caller's wrapper
- * where the adapter accepts one, otherwise nothing. Callers keep building the
- * wrapper (response capture, header override); this only decides whether it
- * reaches the adapter.
- */
-export function providerRequestFetch(
-  api: Api | undefined,
-  fetchFn: FetchFunction | undefined,
-): FetchFunction | undefined {
-  return adapterAcceptsCustomFetch(api) ? fetchFn : undefined;
 }
 
 /** Map a stored provider apiStyle onto a pi-ai wire API. Unknown styles fall
@@ -188,16 +156,7 @@ export function providerRequestKey(provider: RuntimeProviderConfig): string {
  * wrong adapter (the gateway answers 500, see #105).
  */
 export function apiBindingForProviderModel(provider: RuntimeProviderConfig): ApiBinding {
-  return apiBindingForStyle(providerRequestTransport(provider).apiStyle);
-}
-
-function providerRequestTransport(provider: RuntimeProviderConfig) {
-  const apiStyle = resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle;
-  return nativeWebSearchTransport({
-    apiStyle,
-    baseUrl: provider.baseUrl ?? provider.modelConfig?.baseUrl ?? apiBindingForStyle(apiStyle).defaultBaseUrl,
-    enabled: provider.modelConfig?.webSearch === true,
-  });
+  return apiBindingForStyle(resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle);
 }
 
 /**
@@ -232,56 +191,6 @@ export function copilotRequestHeaders(
   });
 }
 
-/**
- * Row-scoped models bypass pi-ai's native Copilot Bearer branch, so the token
- * would leave as X-Api-Key. Send it as Bearer and null out X-Api-Key instead.
- * Keep apiKey set so the Anthropic SDK skips its default credential chain.
- * OpenAI-style adapters already sign an apiKey as Bearer.
- */
-function copilotRequestAuth(
-  provider: Pick<RuntimeProviderConfig, "vendorKey">,
-  api: Api,
-  auth: ModelAuth,
-): ModelAuth {
-  if (
-    provider.vendorKey?.trim().toLowerCase() !== "github-copilot" ||
-    api !== "anthropic-messages" ||
-    !auth.apiKey
-  ) {
-    return auth;
-  }
-  const { apiKey, headers, ...rest } = auth;
-  const requestHeaders: NonNullable<ModelAuth["headers"]> = Object.fromEntries(
-    Object.entries(headers ?? {}).filter(([name]) => {
-      const lowerName = name.toLowerCase();
-      return lowerName !== "authorization" && lowerName !== "x-api-key";
-    }),
-  );
-  return {
-    ...rest,
-    apiKey,
-    headers: { ...requestHeaders, Authorization: `Bearer ${apiKey}`, "X-Api-Key": null },
-  };
-}
-
-/**
- * Claude models that publish an effort ladder without a `budget_tokens`
- * option (Opus 4.7+, Opus 5.x, Fable, ...) reject `thinking.type=enabled`
- * with a 400. pi-ai only sends adaptive thinking when
- * `compat.forceAdaptiveThinking` is set, and models.dev carries no compat
- * record, so derive the flag from the published reasoning options.
- */
-function requiresAdaptiveThinking(
-  model: Pick<ModelConfig, "reasoning" | "reasoningOptions">,
-): boolean {
-  const options = model.reasoningOptions ?? [];
-  return (
-    model.reasoning &&
-    options.some((option) => option.type === "effort") &&
-    !options.some((option) => option.type === "budget_tokens")
-  );
-}
-
 export function buildProviderModel(
   provider: RuntimeProviderConfig,
 ): Model<Api> {
@@ -292,17 +201,11 @@ export function buildProviderModel(
     : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl);
   const baseUrl = runtimeBaseUrlForApi(
     binding.api,
-    providerRequestTransport(provider).baseUrl ?? binding.defaultBaseUrl,
+    provider.baseUrl ?? catalog?.baseUrl ?? binding.defaultBaseUrl,
   );
   const zhipuCompat = zhipuRequestCompat({
     vendorKey: provider.vendorKey,
     baseUrl,
-  });
-  const deepseekCompat = deepseekRequestCompat({
-    vendorKey: provider.vendorKey,
-    baseUrl,
-    modelId: provider.modelId,
-    family: catalogModel.family,
   });
   const copilotDefaults =
     provider.vendorKey?.trim().toLowerCase() === "github-copilot"
@@ -312,49 +215,26 @@ export function buildProviderModel(
     ...(copilotDefaults ?? {}),
     ...(catalogModel.headers ?? {}),
   };
-  const thinkingProtocolCompat = catalogModel.thinkingProtocol
-    ? { forceAdaptiveThinking: catalogModel.thinkingProtocol === "adaptive" }
-    : undefined;
-  const autoAdaptiveThinking =
-    catalogModel.thinkingProtocol === undefined && requiresAdaptiveThinking(catalogModel);
   // OpenAI-compatible gateways are not guaranteed to implement the newer
   // `developer` role, even when the selected model supports reasoning. Keep
   // the broadest Chat Completions wire shape as the default; a catalog/model
   // override may opt into `developer` when the endpoint explicitly supports it.
-  // Zhipu / Z.AI and DeepSeek-family Completions flags cannot use pi-ai's
-  // provider-name detection: the row id stored as `model.provider` is a UUID.
+  // Zhipu / Z.AI need thinkingFormat + tool-stream even though the row id is a
+  // UUID, so URL/vendorKey detection cannot rely on pi-ai's provider name.
   const compat =
     binding.api === "openai-completions"
       ? {
           ...(catalogModel.compat ?? {}),
-          ...(thinkingProtocolCompat ?? {}),
           ...(zhipuCompat ?? {}),
-          ...(deepseekCompat ?? {}),
           supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
         }
-      : binding.api === "anthropic-messages" &&
-          (catalogModel.thinkingProtocol === "adaptive" || autoAdaptiveThinking)
-        ? {
-            ...(catalogModel.compat ?? {}),
-            ...(thinkingProtocolCompat ?? {}),
-            forceAdaptiveThinking: true,
-          }
-        : thinkingProtocolCompat
-          ? { ...(catalogModel.compat ?? {}), ...thinkingProtocolCompat }
-          : catalogModel.compat;
+      : catalogModel.compat;
   return {
     ...catalogModel,
     id: provider.modelId,
     api: binding.api,
     provider: provider.id,
     baseUrl,
-    webSearch:
-      resolveNativeWebSearch({
-        wireApi: binding.api,
-        modelWebSearch: catalogModel.webSearch,
-      }) === "on"
-        ? true
-        : undefined,
     ...(compat ? { compat } : {}),
     ...(Object.keys(modelHeaders).length > 0 ? { headers: modelHeaders } : {}),
   } as Model<Api>;
@@ -372,54 +252,26 @@ export function createProviderModels(
     createProvider({
       id: provider.id,
       name: provider.name,
-      baseUrl: model.baseUrl,
+      baseUrl: provider.baseUrl,
       auth: {
         apiKey: {
           name: `${provider.name} API key`,
-          // Stored apiKey semantics let each adapter emit its own auth header
+          // Plain apiKey semantics let each adapter emit its own auth header
           // (Bearer for OpenAI-style APIs, x-api-key for Anthropic, …).
           //
           // A vendor account resolves instead through Electron main, which
           // returns the whole `ModelAuth` — token, headers, and the
           // per-credential baseUrl GitHub Copilot hands out. pi-ai calls this
           // for every request and caches nothing, so a token that rotates
-          // mid-session is picked up on the next one. Copilot's Anthropic wire
-          // needs explicit Bearer auth because the model uses a row id.
+          // mid-session is picked up on the next one.
           resolve: async () =>
             resolveAuth
-              ? {
-                  auth: copilotRequestAuth(provider, model.api, await resolveAuth()),
-                  source: "OAuth",
-                }
+              ? { auth: await resolveAuth(), source: "OAuth" }
               : { auth: { apiKey: requestKey } },
         },
       },
       models: [model],
       api: apiBindingForProviderModel(provider).adapter(),
-    }),
-  );
-  return models;
-}
-/** Build a pi-ai model collection for a trusted extension-owned agent. */
-export function createExtensionAgentModels(input: {
-  providerId: string;
-  providerName: string;
-  model: Model<Api>;
-  stream: ProviderStreams;
-}): Models {
-  const models = createModels();
-  models.setProvider(
-    createProvider({
-      id: input.providerId,
-      name: input.providerName,
-      models: [input.model],
-      auth: {
-        apiKey: {
-          name: `${input.providerName} plugin credential`,
-          resolve: async () => ({ auth: { apiKey: "pi-desktop-plugin-agent" } }),
-        },
-      },
-      api: input.stream,
     }),
   );
   return models;

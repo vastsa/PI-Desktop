@@ -1,39 +1,26 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
-  isExternalThemeAssetPath,
-  isLocalNetDomain,
   LEGACY_FS_PERMISSIONS,
-  normalizeThemeAssetPath,
   PLUGIN_FS_MODES,
-  PLUGIN_ID_PATTERN,
   PLUGIN_PERMISSIONS,
   PLUGIN_VIEW_ICONS,
   validateManifest,
   type PluginManifest,
 } from "@pi-desktop/plugin-sdk";
-import {
-  MAX_PACKAGE_BYTES,
-  MAX_PACKAGE_FILES,
-  selectPackageFiles,
-  walkPluginDir,
-} from "./walk.js";
+import { MAX_PACKAGE_BYTES, MAX_PACKAGE_FILES, walkPluginDir } from "./walk.js";
 
 /**
  * Permissions the permission dialog surfaces as high risk. Kept in sync with
- * `PERMISSION_RISK` in apps/desktop/src/features/plugins/model.ts, which is the
- * copy the install dialog actually renders.
+ * `RISK_BY_PERMISSION` in apps/desktop/src/pages/PluginsPage.tsx.
  */
 export const HIGH_RISK_PERMISSIONS = [
   "net.fetch",
-  "net.websocket",
   "fs.write",
   "fs.delete",
   "agent.prompt.inject",
   "agent.tool.register",
   "browser.cdp",
-  "audio.capture.background",
-  "speech.adapter.register",
 ] as const;
 
 /** Host API surface each permission unlocks, used for the unused-permission hint. */
@@ -61,27 +48,7 @@ const PERMISSION_API_HINTS: Record<string, string[]> = {
   "fs.write": ["fs.writeText"],
   "fs.delete": ["fs.remove"],
   "agent.tool.register": ["agent.registerTool"],
-  "speech.adapter.register": ["speech.registerAdapter"],
   "net.fetch": ["net.fetch"],
-  "audio.capture.background": [
-    "audio.getInputDevices",
-    "audio.openInput",
-    "audio.closeInput",
-    "audio.getCaptureState",
-    "audio.onInputFrame",
-  ],
-  "audio.playback.background": [
-    "audio.openOutput",
-    "audio.writeOutput",
-    "audio.stopOutput",
-    "audio.closeOutput",
-  ],
-  "keyboard.globalShortcut": [
-    "keyboard.registerGlobalShortcut",
-    "keyboard.unregisterGlobalShortcut",
-    "keyboard.listGlobalShortcuts",
-  ],
-  "net.websocket": ["net.websocket.connect", "net.websocket.send", "net.websocket.close"],
   "shell.openExternal": ["shell.openExternal"],
   "browser.cdp": [
     "browser.navigate",
@@ -180,30 +147,11 @@ export async function check(dirInput: string): Promise<CheckResult> {
   }
   const manifest = validated.manifest;
 
-  if (!PLUGIN_ID_PATTERN.test(manifest.id)) {
-    errors.push({
-      code: "manifest.invalid-id",
-      message: `manifest.id "${manifest.id}" must be a lowercase dotted id such as "acme.notes" (${PLUGIN_ID_PATTERN.source})`,
-    });
-  }
-
   if (!(await fileExists(join(dir, manifest.main)))) {
     errors.push({
       code: "main.missing",
       message: `manifest.main "${manifest.main}" does not exist`,
     });
-  }
-
-  const icon = manifest.icon;
-  if (typeof icon === "string" && icon.trim()) {
-    // A missing icon degrades to the letter tile, so this is advice; an author
-    // who declared one meant to ship it.
-    if (isEscapingPath(icon) || !(await fileExists(join(dir, icon)))) {
-      warnings.push({
-        code: "icon.missing",
-        message: `manifest.icon "${icon}" does not exist in the plugin directory, so the host shows a letter tile`,
-      });
-    }
   }
 
   const panel = manifest.ui?.panel;
@@ -258,23 +206,6 @@ export async function check(dirInput: string): Promise<CheckResult> {
         code: "skill.no-frontmatter",
         message: `skill "${path}" has no "name"/"description" front matter, so the agent gets no summary of when to apply it`,
       });
-    }
-  }
-
-  // ADR 0255 (theme assets are absolute paths): the host-core installer
-  // rejects package-relative `contributes.themes[].assets` entries with
-  // PLUGIN_INVALID, while `validateManifest` above still accepts both
-  // spellings. Catch the disagreement at author time instead of letting a
-  // package publish that no user can install.
-  for (const theme of manifest.contributes?.themes ?? []) {
-    for (const asset of theme.assets ?? []) {
-      const normalized = normalizeThemeAssetPath(asset);
-      if (normalized && !isExternalThemeAssetPath(normalized)) {
-        errors.push({
-          code: "theme.asset-package-relative",
-          message: `contributes.themes "${theme.id}" asset "${asset}" must be an absolute image or font path: the installer rejects package-relative assets (ADR 0255). Ship the bytes inside pi.plugin.getDataPath() and reference them by absolute path, or register them at runtime with pi.themes.upsert`,
-        });
-      }
     }
   }
 
@@ -338,18 +269,6 @@ export async function check(dirInput: string): Promise<CheckResult> {
         'contributes.skills is declared without "agent.prompt.inject", so the skills are never sent to the agent',
     });
   }
-  // The allowlist accepts these hosts because a plugin that talks to a local
-  // daemon is legitimate, but an entry that reaches loopback, link-local, or
-  // the cloud metadata service also reaches whatever credentials live there.
-  const localDomains = (manifest.net?.domains ?? []).filter(
-    (domain) => typeof domain === "string" && isLocalNetDomain(domain),
-  );
-  if (localDomains.length) {
-    warnings.push({
-      code: "net.local-domain",
-      message: `net.domains admits local or cloud-metadata hosts (${localDomains.join(", ")}); a plugin with net.fetch can reach local services and instance credentials through them`,
-    });
-  }
   if (manifest.contributes?.agentTools?.length && !permissions.includes("agent.tool.register")) {
     errors.push({
       code: "permission.tools-missing",
@@ -371,33 +290,22 @@ export async function check(dirInput: string): Promise<CheckResult> {
   }
 
   const walk = await walkPluginDir(dir);
-  // Measure what `pack` ships, not what sits in the directory: `dist/` and
-  // credential files never enter the package (see `selectPackageFiles`).
-  const selection = selectPackageFiles(walk.files);
   if (walk.symlinks.length) {
     errors.push({
       code: "package.symlink",
       message: `symlinks are not allowed in a plugin package: ${walk.symlinks.slice(0, 5).join(", ")}`,
     });
   }
-  if (walk.truncated || selection.files.length > MAX_PACKAGE_FILES) {
+  if (walk.truncated) {
     errors.push({
       code: "package.too-many-files",
       message: `a plugin package may contain at most ${MAX_PACKAGE_FILES} files`,
     });
   }
-  if (selection.totalBytes > MAX_PACKAGE_BYTES) {
+  if (walk.totalBytes > MAX_PACKAGE_BYTES) {
     errors.push({
       code: "package.too-large",
       message: `a plugin package may not exceed ${MAX_PACKAGE_BYTES / (1024 * 1024)}MB`,
-    });
-  }
-  if (selection.skippedSecrets.length) {
-    warnings.push({
-      code: "package.secret-skipped",
-      message: `credential files are left out of the package: ${selection.skippedSecrets
-        .map((file) => file.path)
-        .join(", ")}`,
     });
   }
 
@@ -434,7 +342,7 @@ export async function check(dirInput: string): Promise<CheckResult> {
     manifest,
     errors,
     warnings,
-    fileCount: selection.files.length,
-    totalBytes: selection.totalBytes,
+    fileCount: walk.files.length,
+    totalBytes: walk.totalBytes,
   };
 }

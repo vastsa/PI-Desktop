@@ -402,7 +402,7 @@ dest       := path | quoted_path
 |---|---|
 | `EDIT_TAG_MISMATCH`，然后 `EDIT_LINES_UNSEEN` | 两者都不计数：两次不同的诚实失败，各有自己的宽限 |
 | 两次 `EDIT_TAG_MISMATCH` | 第二次计为尝试 1 |
-| `EDIT_PARSE_FAILED` 三次 | 第 3 次尝试——本轮停止 |
+| 两次 `EDIT_PARSE_FAILED` | 尝试 2——本轮停止 |
 | 一次失败，然后一次成功 `Edit`，然后一次失败 | 尝试 1——落盘的写入清除该路径的历史 |
 
 宽限按代码计数，而不是按调用计数，因此过时 tag 后跟未显示行是两次不同的诚实失败，而同一个

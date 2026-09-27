@@ -4,8 +4,8 @@
  * tested away from React and IME timing.
  *
  * Grammar mirrors the pi CLI editor:
- * - "/" opens all commands in the first token. Later whitespace-delimited
- *   slash tokens offer Skills only; app commands still require the first token.
+ * - "/" opens command mode only as the very first character of the draft,
+ *   while the cursor is still inside that first whitespace-free token.
  * - "@" opens file mode when the token containing the cursor starts with
  *   "@" and the character before it is start-of-input, whitespace, or one
  *   of the pi delimiters (" ' =). A `@"` prefix starts a quoted token that
@@ -45,22 +45,6 @@ const WHITESPACE = new Set([" ", "\t", "\n", "\r"]);
 /** Characters that end the token scan-back, per pi's autocomplete. */
 const DELIMITERS = new Set([" ", "\t", "\n", "\r", '"', "'", "="]);
 
-/** U+3001 IDEOGRAPHIC COMMA — the mark a Chinese IME gives for "/" (D405). */
-export const IDEOGRAPHIC_COMMA = "、";
-
-/**
- * A Chinese IME types "、" where an ASCII "/" is meant, and switching input
- * methods to reach the slash menu breaks the flow of writing (issue #65). The
- * first character of an otherwise empty draft is rewritten to "/" so the
- * ordinary command menu opens; a mark anywhere later in the draft is text and
- * is left untouched.
- */
-export function rewriteIdeographicCommaTrigger(value: string): string {
-  return value.startsWith(IDEOGRAPHIC_COMMA)
-    ? `/${value.slice(1)}`
-    : value;
-}
-
 function isBoundary(value: string, index: number): boolean {
   if (index <= 0) return true;
   return DELIMITERS.has(value[index - 1]);
@@ -73,21 +57,19 @@ export function detectTrigger(
 ): ComposerTrigger | null {
   if (cursor < 0 || cursor > value.length) return null;
 
-  // Only the token under the cursor can open the menu. A later slash is a
-  // Skill reference, not a second app command.
-  let slashStart = cursor;
-  while (slashStart > 0 && !WHITESPACE.has(value[slashStart - 1])) slashStart -= 1;
-  if (value[slashStart] === "/" && cursor > slashStart) {
-    let tokenEnd = cursor;
-    if (slashStart > 0) {
-      while (tokenEnd < value.length && !WHITESPACE.has(value[tokenEnd])) tokenEnd += 1;
+  // Slash mode: draft starts with "/", cursor inside the first token.
+  if (value.startsWith("/") && cursor >= 1) {
+    const head = value.slice(1, cursor);
+    let hasWhitespace = false;
+    for (const ch of head) {
+      if (WHITESPACE.has(ch)) {
+        hasWhitespace = true;
+        break;
+      }
     }
-    return {
-      mode: "slash",
-      query: value.slice(slashStart + 1, cursor),
-      tokenStart: slashStart,
-      tokenEnd,
-    };
+    if (!hasWhitespace) {
+      return { mode: "slash", query: head, tokenStart: 0, tokenEnd: cursor };
+    }
   }
 
   // File mode, quoted form first: @"query with spaces
@@ -127,23 +109,6 @@ export function detectTrigger(
   }
 
   return null;
-}
-
-export type SkillMention = { start: number; end: number; id: string };
-
-/** Resolve complete slash tokens against the active Skill catalog at send time. */
-export function findSkillMentions(
-  content: string,
-  skillIds: ReadonlyMap<string, string>,
-): SkillMention[] {
-  const mentions: SkillMention[] = [];
-  for (const match of content.matchAll(/(^|\s)\/([^\s]+)/g)) {
-    const id = skillIds.get(match[2]);
-    if (!id) continue;
-    const start = match.index + match[1].length;
-    mentions.push({ start, end: start + match[2].length + 1, id });
-  }
-  return mentions;
 }
 
 /** Insertion text for an accepted slash command: `/name ` ready for args. */

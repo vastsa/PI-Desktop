@@ -8,35 +8,6 @@
   background: var(--ds-bg-primary);
 }
 
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .app-shell.settings-mode,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell-full,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content-inner,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-titlebar {
-  background: transparent !important;
-}
-
-/* Scenic plugin themes own the image canvas. Keep the host Settings page as
- * transparent compositing surfaces so the single root scenic layer remains
- * visible beneath it; ordinary themes never match this attribute. */
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .app-shell.settings-mode,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell-full,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-content-inner,
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-titlebar {
-  background: transparent !important;
-}
-
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-shell-full .settings-nav.sidebar-surface {
-  background: color-mix(in oklab, var(--ds-bg-sidebar) 72%, transparent);
-}
-
-:root[data-plugin-theme^="plugin:io.github.akshayxkill.nexus-scenic-themes:"] .settings-panel {
-  background: color-mix(in oklab, var(--ds-bg-elevated) 72%, transparent);
-}
-
 .settings-shell,
 .settings-shell-full {
   position: relative;
@@ -45,64 +16,6 @@
   min-height: 0;
   width: 100%;
   background: var(--ds-bg-primary);
-}
-
-.plugin-scenic-themes-destination {
-  display: grid;
-  gap: 18px;
-  background: transparent;
-}
-
-.plugin-scenic-themes-description {
-  margin: -8px 0 0;
-  color: var(--ds-text-muted);
-}
-
-.plugin-scenic-theme-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.plugin-scenic-theme-card {
-  position: relative;
-  min-height: 178px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ds-border) 84%, transparent);
-  border-radius: var(--radius-md-plus);
-  background: color-mix(in srgb, var(--ds-bg-elevated) 76%, transparent);
-  box-shadow: 0 12px 28px color-mix(in srgb, #000 24%, transparent);
-  color: var(--ds-text-primary);
-  cursor: pointer;
-  isolation: isolate;
-  text-align: left;
-}
-
-.plugin-scenic-theme-card:hover { border-color: var(--ds-accent); }
-.plugin-scenic-theme-card:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; }
-.plugin-scenic-theme-card.active { border-color: var(--ds-accent); box-shadow: 0 0 0 1px var(--ds-accent), 0 12px 28px color-mix(in srgb, #000 30%, transparent); }
-.plugin-scenic-theme-card > img { position: absolute; z-index: -2; width: 100%; height: 100%; inset: 0; object-fit: cover; }
-.plugin-scenic-theme-card-shade { position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, transparent 18%, color-mix(in srgb, #000 72%, transparent) 100%); }
-.plugin-scenic-theme-card-content { position: absolute; right: 16px; bottom: 15px; left: 16px; display: grid; gap: 3px; }
-.plugin-scenic-theme-card-title { font-weight: 650; font-size: 15px; text-shadow: 0 1px 7px #000; }
-.plugin-scenic-theme-card-description { color: color-mix(in srgb, #fff 78%, transparent); font-size: 12px; text-shadow: 0 1px 5px #000; }
-.plugin-scenic-theme-card-check { position: absolute; top: 12px; right: 12px; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--ds-accent); color: var(--ds-accent-foreground); font-weight: 700; }
-
-.plugin-scenic-blur-control { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; border: 1px solid color-mix(in srgb, var(--ds-border) 84%, transparent); border-radius: var(--radius-md-plus); background: color-mix(in srgb, var(--ds-bg-elevated) 82%, transparent); box-shadow: 0 10px 24px color-mix(in srgb, #000 16%, transparent); }
-.plugin-scenic-blur-copy { display: grid; gap: 3px; }
-.plugin-scenic-blur-label { font-weight: 600; }
-.plugin-scenic-blur-actions { display: flex; align-items: center; gap: 12px; min-width: min(100%, 360px); }
-.plugin-scenic-blur-actions input { flex: 1; min-width: 110px; }
-.plugin-scenic-blur-actions output { min-width: 34px; color: var(--ds-text-muted); font-variant-numeric: tabular-nums; }
-
-@media (max-width: 720px) {
-  .plugin-scenic-theme-grid { grid-template-columns: 1fr; }
-  .plugin-scenic-blur-control { align-items: stretch; flex-direction: column; }
-  .plugin-scenic-blur-actions { min-width: 0; }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .plugin-scenic-theme-card, .plugin-scenic-blur-control { background: var(--ds-bg-elevated); }
 }
 
 /* The band spans the content column only. Spanning the full window width
@@ -127,56 +40,39 @@
 }
 
 .settings-shell-full .settings-nav {
-  /* Column rail: search band, scrolling directory, pinned back-to-app footer. */
-  display: flex;
-  flex-direction: column;
   /* Gold coding-shell settings rail ~275px at 1200-wide captures */
   width: var(--ds-settings-nav-width);
   flex: 0 0 var(--ds-settings-nav-width);
   /* D297: no right rule; the rail's own tone separates it from the content. */
+  background: var(--ds-bg-sidebar);
   padding: 0;
   gap: 0;
   overflow: hidden;
 }
 
-/*
- * The rail's top band keeps only the search pill: traffic-light clearance plus
- * the rail's control grid.
- */
+:root[data-theme="light"] .settings-shell-full .settings-nav {
+  background: #f4f4f4;
+}
+
+:root[data-theme="dark"] .settings-shell-full .settings-nav {
+  background: #000000;
+}
+
 .settings-nav-top {
   display: flex;
-  flex: 0 0 auto;
   flex-direction: column;
   gap: 8px;
   /* traffic-light / titlebar clearance */
   padding: 48px 12px 6px;
 }
 
-/*
- * Back to app is pinned to the foot of the rail, on the same horizontal line as
- * the main shell's sidebar footer icon row. That row centres its 32px controls
- * 24px above the window bottom (.sidebar-body's 6px inset + .sidebar-footer's
- * own 2px + half of the 32px control). The rail has no body inset of its own,
- * so the footer carries the whole 8px and the same 32px control lands on the
- * same centre line. Band height and top padding mirror .sidebar-footer.
- */
-.settings-nav-footer {
-  display: flex;
-  min-height: 40px;
-  flex: 0 0 auto;
-  align-items: center;
-  padding: 7px 12px 8px;
-}
-
-/* 32px, like the footer icon buttons it lines up with. */
 .settings-back {
   display: inline-flex;
-  height: 32px;
   align-items: center;
   gap: 2px;
   width: fit-content;
   border-radius: var(--radius-sm);
-  padding: 0 8px 0 4px;
+  padding: 3px 6px 3px 2px;
   color: var(--ds-text-secondary);
   font-size: var(--text-md);
   line-height: var(--leading-tighter);
@@ -206,11 +102,20 @@
   height: 32px;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--ds-settings-field-bg);
+  background: var(--ds-bg-primary);
   color: var(--ds-text-primary);
   padding: 0 12px 0 30px;
   font-size: var(--text-md);
   outline: none;
+}
+
+/* D297: the field is a raised fill on the rail, not a ringed box. */
+:root[data-theme="light"] .settings-search {
+  background: #ffffff;
+}
+
+:root[data-theme="dark"] .settings-search {
+  background: #212121;
 }
 
 .settings-search::placeholder {
@@ -271,8 +176,17 @@
 }
 
 .settings-nav-item.active {
-  background: var(--ds-settings-nav-active);
+  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
   color: var(--ds-text-primary);
+}
+
+:root[data-theme="light"] .settings-nav-item.active {
+  /* Gold active pill ~#d4d4d4 on #f4f4f4 rail */
+  background: color-mix(in oklab, #1a1c1f 12%, #ffffff);
+}
+
+:root[data-theme="dark"] .settings-nav-item.active {
+  background: color-mix(in oklab, var(--gray-0) 10%, transparent);
 }
 
 .settings-nav-icon {
@@ -307,34 +221,13 @@
   margin: 0;
 }
 
-/* The renderer owns this sandboxed iframe. It stays in normal Settings flow,
-   so it cannot cover the titlebar, native controls, rail, or resize edges. */
-.plugin-settings-destination {
-  display: block;
-  box-sizing: border-box;
-  border: 0;
-  background: transparent;
-  min-height: min(720px, calc(100vh - 150px));
-  width: 100%;
-}
-
 .settings-section-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   margin: 0 0 28px;
   color: var(--ds-text-primary);
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-strong);
   letter-spacing: var(--tracking-tighter);
   line-height: var(--leading-heading);
-}
-
-.settings-nav-experimental {
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  font-size: var(--text-2xs);
-  line-height: var(--leading-compact);
 }
 
 .settings-recovery {
@@ -358,13 +251,6 @@
   font-weight: var(--font-weight-strong);
 }
 
-/* The heading's help mark sits beside the heading rather than inside it: a
-   nested button would join the heading's accessible name. */
-.settings-card-heading-help {
-  display: flex;
-  align-items: center;
-}
-
 .settings-card-heading-row {
   display: flex;
   align-items: flex-end;
@@ -375,6 +261,13 @@
 
 .settings-card-heading-row .settings-card-heading {
   margin-bottom: 3px;
+}
+
+.settings-card-description {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
 }
 
 .settings-text-action {
@@ -423,6 +316,7 @@
 .settings-panel:has(> .settings-row),
 .settings-panel.shortcut-map,
 .settings-panel.agent-capability-panel,
+.settings-panel.provider-list-panel:has(> .provider-row-list),
 .settings-panel.model-provider-panel:has(> .model-provider-list) {
   gap: 6px;
   background: transparent;
@@ -456,428 +350,6 @@
   padding: 12px 14px 14px;
 }
 
-.settings-config-sync-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.settings-config-sync-form .field-input,
-.settings-config-sync-form .password-input {
-  width: 100%;
-}
-
-.settings-config-sync-http-option {
-  display: grid;
-  grid-column: 1 / -1;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--ds-warning) 32%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--ds-warning) 7%, transparent);
-}
-
-.settings-config-sync-http-option .settings-config-sync-warning {
-  margin: 0;
-}
-
-.settings-config-sync-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.settings-config-sync > .settings-card-block:first-child .settings-config-sync-actions,
-.settings-config-sync > .settings-card-block:first-of-type .settings-config-sync-actions {
-  padding: 0 16px 14px;
-}
-
-.settings-config-sync-message {
-  margin: 0 16px 14px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  overflow-wrap: anywhere;
-}
-
-.settings-config-sync-message.error,
-.settings-config-sync-error {
-  color: var(--ds-danger);
-}
-
-.settings-config-sync-refresh {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 16px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-}
-
-/*
- * A manual sync reports itself while its request is still open: the phase it
- * is in, a bar once it announced a total, and the figures it has moved so far.
- * It sits between the cards rather than inside one, because the first enable —
- * the slowest sync of all — runs before the status card exists. The page stack
- * spaces the cards around it, so only the inset that lines it up with their
- * content is left here.
- */
-.settings-config-sync-progress {
-  display: grid;
-  gap: 8px;
-  margin: 0 16px;
-}
-
-.settings-config-sync-progress-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.settings-config-sync-progress-title {
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
-  font-weight: var(--font-weight-medium-plus);
-}
-
-.settings-config-sync-progress-phase {
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-}
-
-.settings-config-sync-progress-bar {
-  position: relative;
-  height: 6px;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
-}
-
-.settings-config-sync-progress-bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--ds-accent);
-  transition: width var(--motion-duration-normal) var(--motion-ease-out);
-}
-
-.settings-config-sync-progress-figures {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-}
-
-.settings-config-sync-categories {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 18px;
-  padding: 14px 16px;
-}
-
-.settings-config-sync-category {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-}
-
-.settings-config-sync-category input {
-  accent-color: var(--ds-accent);
-}
-
-.settings-config-sync-sensitive {
-  color: var(--ds-warning);
-}
-
-.settings-config-sync-warning {
-  margin: 0 16px 14px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--ds-warning) 12%, transparent);
-  color: var(--ds-warning);
-  font-size: var(--text-sm);
-}
-
-.settings-config-sync-approvals {
-  display: grid;
-  gap: 6px;
-}
-
-.settings-config-sync-approval {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md-plus);
-  background: var(--ds-tile);
-}
-
-.settings-config-sync-approval-title {
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.settings-config-sync-approval-meta,
-.settings-config-sync-preview {
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-.settings-config-sync-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  padding: 14px 16px;
-}
-
-.settings-config-sync-mappings {
-  display: grid;
-  gap: 8px;
-}
-
-.settings-config-sync-mapping {
-  display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-  gap: 12px;
-  align-items: center;
-  padding: 8px 10px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--ds-tile);
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-.settings-config-sync-mapping-id,
-.settings-config-sync-mapping code {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-config-sync-password-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  max-width: 640px;
-}
-
-.settings-config-sync-password-actions .password-input {
-  width: 180px;
-}
-
-.settings-config-sync-history-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 16px 10px;
-}
-
-.settings-config-sync-history {
-  display: grid;
-  gap: 6px;
-}
-
-.settings-config-sync-history-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md-plus);
-  background: var(--ds-tile);
-}
-
-.settings-config-sync-history-empty {
-  padding: 4px 16px 14px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-}
-
-@media (max-width: 700px) {
-  .settings-config-sync-form,
-  .settings-config-sync-categories {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-config-sync-approval {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .settings-config-sync-mapping {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-config-sync-password-actions {
-    align-items: stretch;
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .settings-config-sync-password-actions .password-input {
-    width: 100%;
-  }
-
-  .settings-config-sync-history-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-
-/*
-  Remote hosts: inventory tiles, one Add form with SSH/Pair tabs, and
-  Experimental rows. The form keeps a two-column grid; host cards are
-  inventory rows rather than settings-copy + control.
-*/
-.settings-remote-host-list {
-  display: grid;
-  gap: 6px;
-}
-
-.settings-remote-host-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md-plus);
-  background: var(--ds-tile);
-}
-
-.settings-remote-host-empty {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  min-height: 56px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md-plus);
-  background: var(--ds-tile);
-  color: var(--ds-text-muted);
-  font-size: var(--text-md);
-  line-height: var(--leading-compact);
-}
-
-.settings-remote-host-empty-detail {
-  flex: 1 1 100%;
-  color: var(--ds-text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
-}
-
-.settings-remote-host-pulse {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-full);
-  background: var(--ds-text-muted);
-}
-
-.settings-remote-host-pulse.is-online {
-  background: var(--ds-success);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--ds-success) 22%, transparent);
-}
-
-.settings-remote-host-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.settings-remote-host-name {
-  overflow: hidden;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md-plus);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-compact);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-remote-host-meta {
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--ds-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
-  line-height: var(--leading-compact);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-remote-host-card-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-.settings-card-heading-row.settings-remote-host-add-heading {
-  align-items: center;
-}
-
-.settings-card-heading-row.settings-remote-host-add-heading .settings-card-heading {
-  margin-bottom: 0;
-}
-
-.settings-remote-host-form {
-  display: grid;
-  gap: 12px;
-  padding: 12px 14px 14px;
-}
-
-.settings-remote-host-add-panel[hidden] {
-  display: none;
-}
-
-.settings-remote-host-form-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.settings-remote-host-form-row.is-narrow-port {
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.4fr);
-}
-
-.settings-remote-host-form-auth {
-  display: grid;
-  gap: 6px;
-  justify-items: start;
-}
-
-.settings-remote-host-form-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-@media (max-width: 720px) {
-  .settings-remote-host-form-row,
-  .settings-remote-host-form-row.is-narrow-port {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-remote-host-card {
-    flex-wrap: wrap;
-  }
-
-  .settings-remote-host-card-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-}
-
 .settings-row {
   display: flex;
   align-items: center;
@@ -900,13 +372,12 @@
   line-height: var(--leading-compact);
 }
 
-/* A row's live value (not an explanation): visible, and secondary to the
-   title the same way the retired desc line was. */
-.settings-row-detail {
+.settings-row-desc {
   margin-top: 3px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
+  max-width: 62ch;
 }
 
 .settings-row-control {
@@ -918,32 +389,10 @@
   justify-content: flex-end;
 }
 
-/*
-  A toggle is 20 px tall, while the field metric (select triggers, text inputs)
-  resolves to ~38 px. Give the control column a matching minimum so toggle rows
-  are the same height as select rows; the switch stays centred via align-items.
-*/
-.settings-row-control:has(> .settings-toggle) {
-  min-height: var(--ds-field-height);
-}
-
-/*
-  A toggle paired with an icon action (prompt enhancement). The control column
-  has no gap of its own, so the two would otherwise touch.
-*/
-.settings-row-control:has(> .settings-toggle + .settings-icon-button) {
-  gap: 8px;
-}
+.settings-row-control .field-select,
 .settings-row-control .field-input {
   width: 100%;
   min-width: 140px;
-}
-
-.settings-row-control .field-select,
-.settings-row-control .settings-menu-select-anchor {
-  width: max-content;
-  max-width: 100%;
-  min-width: 0;
 }
 
 .settings-number-control {
@@ -1231,23 +680,6 @@
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
-/*
-  A disabled switch still reads as a switch: dimmed, not restyled, and the
-  cursor says why clicking does nothing.
-*/
-.settings-toggle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.settings-toggle:disabled:hover {
-  background: var(--ds-switch-track-off);
-}
-
-.settings-toggle.on:disabled:hover {
-  background: var(--ds-accent);
-}
-
 .settings-toggle.is-busy .settings-toggle-thumb {
   animation: settings-toggle-pending 900ms ease-in-out infinite alternate;
 }
@@ -1270,7 +702,8 @@
 }
 
 :root[data-theme="light"] .settings-toggle.on .settings-toggle-thumb {
-  /* Preserve the light on-state shadow; its fill comes from the knob token. */
+  /* On-state track is near-black in light; force a white knob. */
+  background: #ffffff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
@@ -1292,14 +725,8 @@
 
 .settings-pill-select,
 .settings-row-control .field-select {
-  width: max-content;
-  max-width: 100%;
-  min-width: 0;
-  /* Every Settings row that holds a value uses the same height: these pill
-     selects stand beside the row's text inputs, so they take the shared field
-     metric instead of a shorter pill that reads as a different control. */
-  min-height: var(--ds-field-height);
-  height: var(--ds-field-height);
+  min-width: 132px;
+  height: 30px;
   border-radius: var(--radius-full);
   border: 0;
   /* D297: controls on a tile row are raised fills, not ringed boxes. */
@@ -1310,10 +737,46 @@
   font-size: var(--text-sm-plus);
 }
 
-/* Global UI font picker (Appearance card). The closed pill shares the
-   language / theme trigger definition below; the menu portals to
-   document.body as a fixed floating layer so the settings card's overflow
-   cannot clip it. */
+/* Global UI font picker (Appearance card). Pill trigger mirrors the
+   shared settings select; the menu portals to document.body as a fixed
+   floating layer so the settings card's overflow cannot clip it. */
+.settings-font {
+  position: relative;
+}
+
+.settings-font-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+  max-width: 280px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+}
+
+.settings-font-trigger:hover {
+  background: var(--ds-bg-hover);
+}
+
+.settings-font-trigger-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.settings-font-trigger > svg {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+}
+
 .settings-font-menu {
   position: fixed;
   z-index: 60;
@@ -1419,6 +882,15 @@
   white-space: nowrap;
 }
 
+.settings-font-item-license {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-strong);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
 .settings-font-check {
   flex: 0 0 auto;
   color: var(--ds-accent);
@@ -1431,39 +903,24 @@
   text-align: center;
 }
 
-/* Appearance pickers (language, theme, font) plus the short-list menu selects
-   on the remaining tabs. The closed control hugs the current label (capped by
-   the row) so a short value does not stretch the column. Language and theme
-   menus are AnchoredMenu; the font menu portals itself. One definition here
-   means a design change reaches every Settings picker together. */
+/* Language and theme pickers (Appearance). Pill trigger matches the font
+   picker; the menu is an AnchoredMenu so the settings card cannot clip it. */
 .settings-language-anchor,
-.settings-theme-anchor,
-.settings-menu-select-anchor,
-.settings-font {
+.settings-theme-anchor {
   position: relative;
-  width: max-content;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.settings-menu-select-anchor.is-full {
   width: 100%;
+  min-width: 0;
 }
 
 .settings-language-trigger,
-.settings-theme-trigger,
-.settings-menu-select-trigger,
-.settings-font-trigger {
-  display: inline-flex;
+.settings-theme-trigger {
+  display: flex;
   align-items: center;
   gap: 8px;
-  width: max-content;
-  max-width: 100%;
+  width: 100%;
   min-width: 0;
-  /* One closed-trigger height for every picker: the metric a text input in the
-     same Settings row resolves to, so the two never disagree (see the token). */
-  height: var(--ds-field-height);
-  padding: 0 10px 0 12px;
+  height: 30px;
+  padding: 0 12px;
   border-radius: var(--radius-full);
   background: var(--ds-raised);
   box-shadow: var(--ds-raised-shadow);
@@ -1471,60 +928,29 @@
   font-size: var(--text-sm-plus);
 }
 
-.settings-menu-select-anchor.is-full .settings-menu-select-trigger {
-  display: flex;
-  width: 100%;
-}
-
-/* A stretched trigger is a form field, not a Settings-row pill: it stands as
-   tall as the input in the same grid row (provider setup, config sync).
-   `:where()` keeps this at the field metric's own specificity, so a surface
-   that owns a denser metric (the subagent sheet) still wins with a single
-   class instead of depending on stylesheet order. */
-:where(.settings-menu-select-anchor.is-full) .settings-menu-select-trigger {
-  height: var(--ds-field-height);
-}
-
 .settings-language-trigger:hover,
-.settings-theme-trigger:hover,
-.settings-menu-select-trigger:hover,
-.settings-font-trigger:hover {
+.settings-theme-trigger:hover {
   background: var(--ds-bg-hover);
 }
 
-/* A write in flight keeps the trigger readable but not re-openable. */
-.settings-menu-select-trigger:disabled {
-  color: var(--ds-text-secondary);
-  cursor: default;
-}
-
 .settings-language-trigger-label,
-.settings-theme-trigger-label,
-.settings-menu-select-trigger-label,
-.settings-font-trigger-label {
+.settings-theme-trigger-label {
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
 }
 
-.settings-menu-select-anchor.is-full .settings-menu-select-trigger-label {
-  flex: 1;
-}
-
 .settings-language-trigger > svg,
-.settings-theme-trigger > svg,
-.settings-menu-select-trigger > svg,
-.settings-font-trigger > svg {
+.settings-theme-trigger > svg {
   flex: 0 0 auto;
   color: var(--ds-text-muted);
 }
 
 .settings-language-menu,
-.settings-theme-menu,
-.settings-menu-select-menu {
+.settings-theme-menu {
   position: fixed;
   z-index: 60;
   width: min(240px, calc(100vw - 48px));
@@ -1539,15 +965,8 @@
   visibility: hidden;
 }
 
-.settings-menu-select-menu {
-  width: max-content;
-  min-width: 8rem;
-  max-width: min(280px, calc(100vw - 48px));
-}
-
 .settings-language-menu.is-open,
-.settings-theme-menu.is-open,
-.settings-menu-select-menu.is-open {
+.settings-theme-menu.is-open {
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
@@ -1592,8 +1011,7 @@
 }
 
 .settings-language-results,
-.settings-theme-results,
-.settings-menu-select-results {
+.settings-theme-results {
   min-height: 0;
   max-height: min(360px, calc(100vh - 220px));
   overflow-y: auto;
@@ -1602,16 +1020,14 @@
 }
 
 .settings-language-list,
-.settings-theme-list,
-.settings-menu-select-list {
+.settings-theme-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .settings-language-option,
-.settings-theme-option,
-.settings-menu-select-option {
+.settings-theme-option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1626,25 +1042,12 @@
 .settings-language-option:hover,
 .settings-language-option.is-active,
 .settings-theme-option:hover,
-.settings-theme-option.is-active,
-.settings-menu-select-option:hover,
-.settings-menu-select-option.is-active {
+.settings-theme-option.is-active {
   background: var(--ds-bg-hover);
 }
 
-/* A host-reported unavailable shell stays listed but cannot be chosen. */
-.settings-menu-select-option:disabled {
-  color: var(--ds-text-muted);
-  cursor: default;
-}
-
-.settings-menu-select-option:disabled:hover {
-  background: transparent;
-}
-
 .settings-language-option.is-current .settings-language-option-native,
-.settings-theme-option.is-current .settings-theme-option-title,
-.settings-menu-select-option.is-current .settings-menu-select-option-label {
+.settings-theme-option.is-current .settings-theme-option-title {
   color: var(--ds-text-primary);
 }
 
@@ -1658,22 +1061,12 @@
 }
 
 .settings-language-option-native,
-.settings-theme-option-title,
-.settings-menu-select-option-label {
+.settings-theme-option-title {
   overflow: hidden;
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.settings-menu-select-option:disabled .settings-menu-select-option-label {
-  color: var(--ds-text-muted);
-}
-
-.settings-menu-select-option-label {
-  min-width: 0;
-  flex: 1;
 }
 
 .settings-language-option-english,
@@ -1687,8 +1080,7 @@
 }
 
 .settings-language-check,
-.settings-theme-check,
-.settings-menu-select-check {
+.settings-theme-check {
   flex: 0 0 auto;
   color: var(--ds-accent);
 }
@@ -1713,7 +1105,7 @@
  * One workbench per page: a description line, a single toolbar (level filter
  * with counts, one search field, project picker, primary actions), then one
  * elevated panel whose rows are divided by level group headers. Rows follow
- * the service-row rhythm, lists flow at natural height, and loading/empty
+ * the provider-row rhythm, lists flow at natural height, and loading/empty
  * states reuse the same row anatomy.
  */
 
@@ -1832,7 +1224,7 @@
   align-items: center;
   gap: 6px;
   border-radius: var(--radius-full);
-  background: var(--ds-field-inset-bg);
+  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
   padding: 0 11px;
   color: var(--ds-text-muted);
   transition:
@@ -1841,15 +1233,17 @@
 }
 
 .agent-capability-search-wrap:focus-within {
-  background: var(--ds-field-inset-focus-bg);
+  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
 }
 
 :root[data-theme="light"] .agent-capability-search-wrap {
+  background: #f3f3f3;
   box-shadow: none;
 }
 
 :root[data-theme="light"] .agent-capability-search-wrap:focus-within {
+  background: #ffffff;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 35%, transparent);
 }
 
@@ -2000,7 +1394,7 @@
   gap: 6px;
 }
 
-/* Rows follow the service-row rhythm: quiet icon, name + badges, meta. */
+/* Rows follow the provider-row rhythm: quiet icon, name + badges, meta. */
 .agent-capability-row {
   display: flex;
   align-items: center;
@@ -2228,16 +1622,6 @@
   }
 }
 
-.agent-capability-row-actions > .settings-icon-button.is-action-highlight {
-  opacity: 1;
-  color: var(--ds-accent);
-}
-
-.agent-capability-row-actions > .settings-icon-button.is-action-highlight:hover:not(:disabled) {
-  color: var(--ds-accent);
-  background: color-mix(in oklab, var(--ds-accent) 14%, transparent);
-}
-
 .agent-capability-row.menu-open {
   background: var(--ds-tile-hover);
 }
@@ -2249,11 +1633,9 @@
 }
 
 .agent-capability-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: auto;
-  bottom: auto;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
   z-index: 30;
   display: flex;
   min-width: 168px;
@@ -2265,15 +1647,6 @@
   box-shadow:
     0 0 0 0.5px var(--ds-border-default),
     0 12px 32px rgb(0 0 0 / 20%);
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.agent-capability-menu.is-open {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
 }
 
 /*
@@ -2387,25 +1760,54 @@
 .agent-capability-project-picker {
   position: relative;
   display: inline-flex;
+  min-width: 148px;
   max-width: 200px;
   align-items: center;
   color: var(--ds-text-muted);
 }
 
-.agent-capability-project-picker .settings-menu-select-trigger {
+.agent-capability-project-picker select {
   min-width: 0;
-  max-width: 200px;
+  width: 100%;
   height: var(--agent-capability-control-height, 32px);
-  padding-left: 26px;
+  appearance: none;
+  border: 0;
   border-radius: var(--radius-sm);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
+  padding: 0 25px;
+  color: var(--ds-text-primary);
+  cursor: pointer;
   font-size: var(--text-xs-plus);
+  outline: none;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.agent-capability-project-picker > svg {
+.agent-capability-project-picker > svg:first-of-type {
   position: absolute;
   left: 8px;
-  z-index: 1;
   pointer-events: none;
+}
+
+.agent-capability-project-picker > svg:last-of-type {
+  position: absolute;
+  right: 7px;
+  pointer-events: none;
+}
+
+.agent-capability-project-picker select:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+}
+
+.agent-capability-project-picker select:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
+}
+
+.agent-capability-project-picker select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 /* Skeleton loading mirrors the row anatomy instead of a labeled block. */
@@ -2484,17 +1886,14 @@
 }
 
 /*
-  Chip the empty-state glyph on a wrapper, never on the SVG. Lucide icons set
-  inline width/height; padding those attributes crushes the stroke to a blank
-  chip. The CTA inside `.agent-capability-empty-action` keeps its own icon.
+  Direct child only. As a descendant selector this also dressed the icon inside
+  the empty state's own CTA button as a 34px faint chip, which ate the glyph and
+  stretched the button.
 */
-.agent-capability-empty-icon {
-  display: inline-flex;
+.agent-capability-empty > svg {
   width: 34px;
   height: 34px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
+  padding: 8px;
   border-radius: var(--radius-md);
   background: var(--ds-bg-chip);
   color: var(--ds-text-faint);
@@ -2588,7 +1987,7 @@
   .agent-capability-panel.is-refreshing .agent-capability-list,
   .agent-capability-row-actions > .settings-icon-button,
   .agent-capability-row-actions .agent-capability-menu-wrap,
-  .agent-capability-project-picker .settings-menu-select-trigger,
+  .agent-capability-project-picker select,
   .agent-capability-skeleton-glyph,
   .agent-capability-skeleton-line,
   .agent-capability-badge.is-connecting .agent-capability-status-dot {
@@ -2608,1192 +2007,4 @@
 
 .settings-proxy-control .field-input {
   width: 100%;
-}
-
-/*
-  Plaintext opt-in for endpoints the user typed themselves: the checkbox sits in
-  the row's control column, and the risk copy arrives only while it is on.
-*/
-.settings-network-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.settings-network-checkbox input {
-  accent-color: var(--ds-accent);
-}
-
-.settings-network-warning {
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--ds-warning) 12%, transparent);
-  color: var(--ds-warning);
-  font-size: var(--text-sm);
-}
-
-/* Agent extension state inside a plugin row (spec 16 §11). */
-.plugins-agent-extension {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.plugins-agent-extension-names {
-  font-size: var(--text-3xs);
-  color: var(--ds-text-muted);
-  word-break: break-all;
-}
-
-/* Trusted extensions (spec 16 §11): the trust notice and per-row diagnostics. */
-.agent-extension-trust-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 0 10px;
-  border-radius: var(--radius-md);
-  background: var(--ds-tile);
-  padding: 10px 12px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-compact);
-}
-
-.agent-extension-trust-notice svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.agent-extension-diagnostics-toggle {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.agent-extension-diagnostics {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.agent-extension-diagnostic {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-  border-radius: var(--radius-sm);
-  background: var(--ds-tile);
-  padding: 4px 8px;
-  font-size: var(--text-3xs);
-  color: var(--ds-text-muted);
-}
-
-.agent-extension-diagnostic.is-error .agent-extension-diagnostic-kind {
-  color: var(--ds-error);
-}
-
-.agent-extension-diagnostic-kind {
-  font-weight: var(--font-weight-medium);
-}
-
-.agent-extension-diagnostic-member {
-  font-family: var(--font-mono);
-}
-
-.agent-extension-diagnostic-message {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.extension-prompt-dialog {
-  max-height: calc(100dvh - 48px);
-  overflow-y: auto;
-}
-
-.extension-prompt-message {
-  overflow-wrap: anywhere;
-  margin: 0 0 12px;
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
-.extension-prompt-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.extension-prompt-option {
-  overflow-wrap: anywhere;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: var(--radius-md);
-  background: var(--ds-tile);
-  padding: 8px 10px;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.extension-prompt-option input {
-  flex-shrink: 0;
-}
-
-.extension-prompt-source-path {
-  display: block;
-  margin-top: 2px;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  font-size: var(--text-3xs);
-}
-
-/* Status texts set by trusted extensions for the active session (spec 16 §9). */
-.extension-status-line {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  pointer-events: none;
-}
-
-.extension-status-item {
-  border-radius: var(--radius-full);
-  background: var(--ds-bg-elevated-opaque);
-  box-shadow: var(--shadow-sm);
-  padding: 4px 10px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  line-height: var(--leading-normal);
-}
-
-/* ── MCP market (mcpm) ───────────────────────────────────────────────────
-   Stays inside the neutral ds-token language; category identity comes from
-   one tinted hue per category, everything else animates in greys. */
-
-.mcpm {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  animation: mcpm-enter var(--motion-duration-normal) var(--motion-ease-out) both;
-}
-
-@keyframes mcpm-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-
-.mcpm-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.mcpm-head-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.mcpm-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: flex-start;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile);
-  padding: 4px 12px 4px 8px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    color var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.mcpm-back:hover {
-  background: var(--ds-tile-hover);
-  color: var(--ds-text-primary);
-}
-
-.mcpm-back:active {
-  transform: scale(0.97);
-}
-
-.mcpm-title {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-lg, 20px);
-  font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-wide);
-}
-
-.mcpm-subtitle {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-}
-
-.mcpm-search {
-  min-width: 240px;
-}
-
-.mcpm-search .field-input {
-  border-radius: var(--radius-full);
-  transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.mcpm-search .field-input:focus-visible {
-  border-color: color-mix(in oklab, var(--gray-0) 32%, transparent);
-  box-shadow: 0 0 0 3px var(--ds-tile-deep);
-}
-
-.mcpm-cats {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.mcpm-chip {
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile);
-  padding: 5px 14px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    color var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.mcpm-chip:hover {
-  background: var(--ds-tile-hover);
-  color: var(--ds-text-primary);
-  transform: translateY(-1px);
-}
-
-.mcpm-chip:active {
-  transform: scale(0.95);
-}
-
-.mcpm-chip.is-active {
-  background: var(--ds-accent);
-  color: var(--ds-bg-primary);
-  font-weight: var(--font-weight-strong);
-}
-
-.mcpm-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 10px;
-}
-
-.mcpm-card {
-  display: flex;
-  gap: 12px;
-  border: 1px solid var(--ds-tile-deep);
-  border-radius: var(--radius-lg, 12px);
-  background: var(--ds-tile);
-  padding: 14px;
-  animation: mcpm-card-in var(--motion-duration-slow) var(--motion-ease-out) both;
-  animation-delay: calc(var(--stagger, 0) * 45ms);
-  transition:
-    transform var(--motion-duration-fast) var(--motion-ease-standard),
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.mcpm-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in oklab, var(--gray-0) 20%, transparent);
-  background: var(--ds-tile-hover);
-  box-shadow: 0 10px 28px color-mix(in oklab, #000 24%, transparent);
-}
-
-@keyframes mcpm-card-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.985);
-  }
-}
-
-.mcpm-glyph {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md, 10px);
-  background: color-mix(in oklab, var(--mcpm-hue) 15%, transparent);
-  color: var(--mcpm-hue);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--mcpm-hue) 24%, transparent);
-  transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.mcpm-card:hover .mcpm-glyph {
-  transform: scale(1.07);
-}
-
-.mcpm-glyph.is-devtools {
-  --mcpm-hue: oklch(72% 0.12 250);
-}
-
-.mcpm-glyph.is-web {
-  --mcpm-hue: oklch(74% 0.11 195);
-}
-
-.mcpm-glyph.is-docs {
-  --mcpm-hue: oklch(74% 0.1 295);
-}
-
-.mcpm-glyph.is-data {
-  --mcpm-hue: oklch(76% 0.12 80);
-}
-
-.mcpm-glyph.is-productivity {
-  --mcpm-hue: oklch(72% 0.13 155);
-}
-
-.mcpm-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  flex: 1;
-  min-width: 0;
-}
-
-.mcpm-card-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.mcpm-name {
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-strong);
-}
-
-.mcpm-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile-deep);
-  padding: 2px 8px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: var(--tracking-wide);
-}
-
-.mcpm-badge.is-verified {
-  background: color-mix(in oklab, var(--ds-success) 13%, transparent);
-  color: var(--ds-success);
-}
-
-.mcpm-cmd {
-  align-self: flex-start;
-  max-width: 100%;
-  overflow: hidden;
-  border-radius: var(--radius-sm, 6px);
-  background: var(--ds-tile-deep);
-  padding: 3px 8px;
-  color: var(--ds-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mcpm-cmd.is-block {
-  border: 1px solid var(--ds-tile-deep);
-  padding: 8px 10px;
-}
-
-.mcpm-desc {
-  display: -webkit-box;
-  margin: 0;
-  overflow: hidden;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-compact);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.mcpm-card-actions {
-  display: flex;
-  align-items: center;
-}
-
-.mcpm-install {
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--ds-accent);
-  padding: 7px 16px;
-  color: var(--ds-bg-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-strong);
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    transform var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
-    opacity var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.mcpm-install:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 5px 16px color-mix(in oklab, #000 28%, transparent);
-}
-
-.mcpm-install:active:not(:disabled) {
-  transform: scale(0.96);
-}
-
-.mcpm-install:disabled:not(.is-installed) {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.mcpm-install.is-installed {
-  background: transparent;
-  border: 1px solid var(--ds-tile-deep);
-  color: var(--ds-text-muted);
-  cursor: default;
-}
-
-.mcpm-install.is-ghost {
-  background: transparent;
-  border: 1px solid var(--ds-tile-deep);
-  color: var(--ds-text-muted);
-}
-
-.mcpm-empty {
-  margin: 0;
-  padding: 40px 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  text-align: center;
-}
-
-.mcpm-note {
-  display: flex;
-  gap: 6px;
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-.mcpm-note-label {
-  flex: 0 0 auto;
-  color: var(--ds-text-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.mcpm-sheet-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.mcpm-overlay {
-  animation: mcpm-overlay-in var(--motion-duration-normal) var(--motion-ease-standard) both;
-}
-
-@keyframes mcpm-overlay-in {
-  from {
-    opacity: 0;
-  }
-}
-
-.mcpm-sheet {
-  animation: mcpm-sheet-in var(--motion-duration-slow) var(--motion-ease-out) both;
-}
-
-@keyframes mcpm-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(14px) scale(0.985);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mcpm,
-  .mcpm-card,
-  .mcpm-overlay,
-  .mcpm-sheet,
-  .mcpm-chip,
-  .mcpm-install,
-  .mcpm-glyph,
-  .mcpm-back {
-    animation: none !important;
-    transition: none !important;
-  }
-}
-
-.mcpm-status {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-.mcpm-status.is-error {
-  color: var(--ds-warning);
-}
-
-.mcpm-badge.is-remote {
-  background: color-mix(in oklab, var(--ds-accent) 10%, transparent);
-  color: var(--ds-text-muted);
-}
-
-.mcpm-head-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.mcpm-source-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.mcpm-source {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--ds-tile-deep);
-  border-radius: var(--radius-md, 10px);
-  background: var(--ds-tile);
-  padding: 10px 12px;
-}
-
-.mcpm-source-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-}
-
-.mcpm-source-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border-top: 1px solid var(--ds-tile-deep);
-  margin-top: 4px;
-  padding-top: 14px;
-}
-
-.mcpm-pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 6px 0 2px;
-}
-
-.mcpm-page-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--ds-tile-deep);
-  border-radius: var(--radius-full);
-  background: var(--ds-tile);
-  color: var(--ds-text-primary);
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.mcpm-page-btn:hover:not(:disabled) {
-  background: var(--ds-tile-hover);
-  transform: translateY(-1px);
-}
-
-.mcpm-page-btn:active:not(:disabled) {
-  transform: scale(0.94);
-}
-
-.mcpm-page-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.mcpm-page-info {
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  min-width: 180px;
-  text-align: center;
-}
-
-.mcpm-page-btn.is-active {
-  background: var(--ds-accent);
-  color: var(--ds-bg-primary);
-  border-color: transparent;
-}
-
-.mcpm-page-ellipsis {
-  color: var(--ds-text-muted);
-  padding: 0 2px;
-  user-select: none;
-}
-
-.mcpm-page-jump {
-  width: 64px;
-  height: 30px;
-  padding: 0 8px;
-  text-align: center;
-  border-radius: var(--radius-full);
-}
-
-.mcpm-page-jump::placeholder {
-  color: var(--ds-text-muted);
-}
-
-/* ── Skill market (sklm) ───────────────────────────────────────────────────
-   Stays inside the neutral ds-token language; category identity comes from
-   one tinted hue per category, everything else animates in greys. */
-
-.sklm {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  animation: sklm-enter var(--motion-duration-normal) var(--motion-ease-out) both;
-}
-
-@keyframes sklm-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-
-.sklm-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.sklm-head-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.sklm-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: flex-start;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile);
-  padding: 4px 12px 4px 8px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    color var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.sklm-back:hover {
-  background: var(--ds-tile-hover);
-  color: var(--ds-text-primary);
-}
-
-.sklm-back:active {
-  transform: scale(0.97);
-}
-
-.sklm-title {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-lg, 20px);
-  font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-wide);
-}
-
-.sklm-subtitle {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-}
-
-.sklm-search {
-  min-width: 240px;
-}
-
-.sklm-search .field-input {
-  border-radius: var(--radius-full);
-  transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.sklm-search .field-input:focus-visible {
-  border-color: color-mix(in oklab, var(--gray-0) 32%, transparent);
-  box-shadow: 0 0 0 3px var(--ds-tile-deep);
-}
-
-.sklm-cats {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.sklm-chip {
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile);
-  padding: 5px 14px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    color var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.sklm-chip:hover {
-  background: var(--ds-tile-hover);
-  color: var(--ds-text-primary);
-  transform: translateY(-1px);
-}
-
-.sklm-chip:active {
-  transform: scale(0.95);
-}
-
-.sklm-chip.is-active {
-  background: var(--ds-accent);
-  color: var(--ds-bg-primary);
-  font-weight: var(--font-weight-strong);
-}
-
-.sklm-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 10px;
-}
-
-.sklm-card {
-  display: flex;
-  gap: 12px;
-  border: 1px solid var(--ds-tile-deep);
-  border-radius: var(--radius-lg, 12px);
-  background: var(--ds-tile);
-  padding: 14px;
-  animation: sklm-card-in var(--motion-duration-slow) var(--motion-ease-out) both;
-  animation-delay: calc(var(--stagger, 0) * 45ms);
-  transition:
-    transform var(--motion-duration-fast) var(--motion-ease-standard),
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.sklm-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in oklab, var(--gray-0) 20%, transparent);
-  background: var(--ds-tile-hover);
-  box-shadow: 0 10px 28px color-mix(in oklab, #000 24%, transparent);
-}
-
-@keyframes sklm-card-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.985);
-  }
-}
-
-.sklm-glyph {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md, 10px);
-  background: color-mix(in oklab, var(--sklm-hue) 15%, transparent);
-  color: var(--sklm-hue);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sklm-hue) 24%, transparent);
-  transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.sklm-card:hover .sklm-glyph {
-  transform: scale(1.07);
-}
-
-.sklm-glyph.is-coding,
-.sklm-glyph.is-devtools {
-  --sklm-hue: oklch(72% 0.12 250);
-}
-
-.sklm-glyph.is-writing,
-.sklm-glyph.is-web {
-  --sklm-hue: oklch(74% 0.11 195);
-}
-
-.sklm-glyph.is-docs {
-  --sklm-hue: oklch(74% 0.1 295);
-}
-
-.sklm-glyph.is-data {
-  --sklm-hue: oklch(76% 0.12 80);
-}
-
-.sklm-glyph.is-workflow,
-.sklm-glyph.is-productivity {
-  --sklm-hue: oklch(72% 0.13 155);
-}
-
-.sklm-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  flex: 1;
-  min-width: 0;
-}
-
-.sklm-card-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.sklm-name {
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-strong);
-}
-
-.sklm-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile-deep);
-  padding: 2px 8px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: var(--tracking-wide);
-}
-
-.sklm-badge.is-verified {
-  background: color-mix(in oklab, var(--ds-success) 13%, transparent);
-  color: var(--ds-success);
-}
-
-.sklm-cmd {
-  align-self: flex-start;
-  max-width: 100%;
-  overflow: hidden;
-  border-radius: var(--radius-sm, 6px);
-  background: var(--ds-tile-deep);
-  padding: 3px 8px;
-  color: var(--ds-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sklm-cmd.is-block {
-  border: 1px solid var(--ds-tile-deep);
-  padding: 8px 10px;
-}
-
-.sklm-desc {
-  display: -webkit-box;
-  margin: 0;
-  overflow: hidden;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-compact);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.sklm-card-actions {
-  display: flex;
-  align-items: center;
-}
-
-.sklm-install {
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--ds-accent);
-  padding: 7px 16px;
-  color: var(--ds-bg-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-strong);
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    transform var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
-    opacity var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.sklm-install:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 5px 16px color-mix(in oklab, #000 28%, transparent);
-}
-
-.sklm-install:active:not(:disabled) {
-  transform: scale(0.96);
-}
-
-.sklm-install:disabled:not(.is-installed) {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.sklm-install.is-installed {
-  background: transparent;
-  border: 1px solid var(--ds-tile-deep);
-  color: var(--ds-text-muted);
-  cursor: default;
-}
-
-.sklm-install.is-ghost {
-  background: transparent;
-  border: 1px solid var(--ds-tile-deep);
-  color: var(--ds-text-muted);
-}
-
-.sklm-empty {
-  margin: 0;
-  padding: 40px 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  text-align: center;
-}
-
-.sklm-note {
-  display: flex;
-  gap: 6px;
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-/* A failed preview must read as an error, not as a muted side note. */
-.sklm-note.is-error {
-  color: var(--ds-error);
-}
-
-.sklm-note-label {
-  flex: 0 0 auto;
-  color: var(--ds-text-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.sklm-sheet-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.sklm-overlay {
-  animation: sklm-overlay-in var(--motion-duration-normal) var(--motion-ease-standard) both;
-}
-
-@keyframes sklm-overlay-in {
-  from {
-    opacity: 0;
-  }
-}
-
-.sklm-sheet {
-  animation: sklm-sheet-in var(--motion-duration-slow) var(--motion-ease-out) both;
-}
-
-@keyframes sklm-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(14px) scale(0.985);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sklm,
-  .sklm-card,
-  .sklm-overlay,
-  .sklm-sheet,
-  .sklm-chip,
-  .sklm-install,
-  .sklm-glyph,
-  .sklm-back {
-    animation: none !important;
-    transition: none !important;
-  }
-}
-
-.sklm-status {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-.sklm-status.is-error {
-  color: var(--ds-warning);
-}
-
-.sklm-badge.is-remote {
-  background: color-mix(in oklab, var(--ds-accent) 10%, transparent);
-  color: var(--ds-text-muted);
-}
-
-.sklm-head-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.sklm-source-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.sklm-source {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--ds-tile-deep);
-  border-radius: var(--radius-md, 10px);
-  background: var(--ds-tile);
-  padding: 10px 12px;
-}
-
-.sklm-source-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-}
-
-.sklm-source-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border-top: 1px solid var(--ds-tile-deep);
-  margin-top: 4px;
-  padding-top: 14px;
-}
-
-.sklm-pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 6px 0 2px;
-}
-
-.sklm-page-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--ds-tile-deep);
-  border-radius: var(--radius-full);
-  background: var(--ds-tile);
-  color: var(--ds-text-primary);
-  cursor: pointer;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.sklm-page-btn:hover:not(:disabled) {
-  background: var(--ds-tile-hover);
-  transform: translateY(-1px);
-}
-
-.sklm-page-btn:active:not(:disabled) {
-  transform: scale(0.94);
-}
-
-.sklm-page-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.sklm-page-info {
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  min-width: 180px;
-  text-align: center;
-}
-
-.sklm-page-btn.is-active {
-  background: var(--ds-accent);
-  color: var(--ds-bg-primary);
-  border-color: transparent;
-}
-
-.sklm-page-ellipsis {
-  color: var(--ds-text-muted);
-  padding: 0 2px;
-  user-select: none;
-}
-
-.sklm-page-jump {
-  width: 64px;
-  height: 30px;
-  padding: 0 8px;
-  text-align: center;
-  border-radius: var(--radius-full);
-}
-
-.sklm-page-jump::placeholder {
-  color: var(--ds-text-muted);
 }

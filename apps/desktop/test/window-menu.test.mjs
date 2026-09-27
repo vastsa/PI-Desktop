@@ -1,13 +1,10 @@
-import { readAppSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
-import { readMainSource } from "./helpers/main-source.mjs";
 
-const mainSource = await readMainSource();
-const activationSource = await readFile(
-  new URL("../electron/main/bootstrap/app-activation.ts", import.meta.url),
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
   "utf8",
 );
 const menuSource = await readFile(
@@ -18,7 +15,10 @@ const shortcutSource = await readFile(
   new URL("../../../packages/shared/src/keyboard-shortcuts.ts", import.meta.url),
   "utf8",
 );
-const appSource = await readAppSource();
+const appSource = await readFile(
+  new URL("../src/App.tsx", import.meta.url),
+  "utf8",
+);
 const stylesSource = await loadStyles();
 const controlsSource = await readFile(
   new URL("../src/components/WindowControls.tsx", import.meta.url),
@@ -95,18 +95,7 @@ test("macOS application menu routes shell commands and preserves native roles", 
     assert.match(menuSource, new RegExp(`role: "${role}"`));
   }
   assert.match(menuSource, /function nativeAction\(/);
-  // The File menu's window item is the merged visibility toggle (D438): its
-  // accelerator is the toggle's own binding (D438, rebound by D439) and its
-  // click is that native action.
-  assert.match(menuSource, /accelerator\("toggleWindow"\)/);
-  assert.match(menuSource, /labels\.menu\.toggleWindow/);
-  for (const action of [
-    "toggleMainWindow",
-    "resetZoom",
-    "zoomIn",
-    "zoomOut",
-    "toggleFullScreen",
-  ]) {
+  for (const action of ["close", "resetZoom", "zoomIn", "zoomOut", "toggleFullScreen"]) {
     assert.match(menuSource, new RegExp(`"${action}"`));
   }
   assert.match(menuSource, /A plain item keeps the command clickable/);
@@ -123,7 +112,7 @@ test("developer mode gates every devtools entry point in the main process", () =
     menuSource,
     /\.\.\.\(developerMode[\s\S]*role: "toggleDevTools"/,
   );
-  assert.match(mainSource, /(?:let\s+)?developerMode\s*=\s*false/);
+  assert.match(mainSource, /let developerMode = false/);
   assert.match(mainSource, /function applyDeveloperMode/);
   assert.match(
     mainSource,
@@ -131,7 +120,7 @@ test("developer mode gates every devtools entry point in the main process", () =
   );
   assert.match(
     mainSource,
-    /before-input-event[\s\S]*!windowState\.developerMode[\s\S]*input\.code === "F12"/,
+    /before-input-event[\s\S]*!developerMode[\s\S]*input\.code === "F12"/,
   );
   assert.match(
     mainSource,
@@ -163,14 +152,16 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   }
   assert.match(appSource, /nativeMenuAction\(id\)/);
   assert.match(controlsSource, /windowControl\("getState"\)/);
-  assert.match(controlsSource, /ariaLabel=\{t\("window\.minimize"/);
-  assert.match(controlsSource, /ariaLabel=\{t\("window\.close"/);
-  assert.equal((appSource.match(/<WindowControls\s*\/>/g) ?? []).length, 1);
-  // The controls are rendered under the recovery surface too, so a window that
-  // never reaches the shell is still closable (issue #831).
+  assert.match(controlsSource, /aria-label=\{t\("window\.minimize"/);
+  assert.match(controlsSource, /aria-label=\{t\("window\.close"/);
+  assert.match(controlsSource, /window-controls-in-pane/);
   assert.match(
     appSource,
-    /\{shell\}[\s\S]*?\{\(ready && !showSplash\) \|\| startupPhase !== "starting" \?/,
+    /<section className="main-pane">[\s\S]*?<WindowControls contained \/>/,
+  );
+  assert.match(
+    stylesSource,
+    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*fixed;/s,
   );
   assert.match(
     stylesSource,
@@ -199,23 +190,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
     stylesSource,
     /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*0;/,
   );
-  // The base header rule stays platform-neutral; the win32/linux reservation
-  // ends the header's *box*, so its native drag rectangle stops before the
-  // control band instead of covering the window controls.
-  assert.doesNotMatch(
-    stylesSource,
-    /^\.work-panel-header\s*\{[^}]*margin-right:/ms,
-    "the base header rule stays platform-neutral",
-  );
-  assert.match(
-    stylesSource,
-    /:root\[data-platform="win32"\] \.work-panel-header,[\s\S]*:root\[data-platform="linux"\] \.work-panel-header\s*\{[^}]*margin-right:\s*var\(--ds-window-controls-width\);/,
-  );
-  assert.doesNotMatch(
-    stylesSource,
-    /padding-right:\s*calc\(var\(--ds-window-controls-width\)/,
-    "padding does not exclude an Electron draggable region",
-  );
+  assert.doesNotMatch(stylesSource, /\.work-panel-header\s*\{[^}]*margin-right:/s);
   assert.match(
     stylesSource,
     /:root\[data-platform="(win32|linux)"\] \.thread-content[\s\S]*?padding-top:\s*var\(--ds-toolbar-height\);/,
@@ -320,7 +295,7 @@ test("Windows taskbar minimize keeps the taskbar entry", () => {
   );
   assert.match(
     minimizeHandler,
-    /if \(windowState\.quitting \|\| !windowState\.tray \|\| process\.platform !== "darwin"\) return;/,
+    /if \(quitting \|\| !tray \|\| process\.platform !== "darwin"\) return;/,
   );
   assert.match(
     mainSource,
@@ -333,18 +308,14 @@ test("Windows taskbar minimize keeps the taskbar entry", () => {
 });
 
 test("macOS activation resurfaces a tray-hidden window", () => {
+  assert.match(mainSource, /app\.on\("activate", \(\) => \{\s*restoreMainWindow\(\);/);
   assert.match(
     mainSource,
-    /registerApplicationActivation\(\{[\s\S]*restoreMainWindow,/,
-  );
-  assert.match(activationSource, /app\.on\("activate", restoreMainWindow\)/);
-  assert.match(
-    activationSource,
     /app\.on\("did-become-active", \(\) => \{[\s\S]*restoreMainWindow\(\);/,
   );
   assert.match(
-    activationSource,
-    /if\s*\(\s*isQuitting\(\)\s*\|\|\s*!isApplicationBooted\(\)\s*\|\|\s*hasVisibleWindow\(\)\s*\)\s*return;/,
+    mainSource,
+    /if \(quitting \|\| !applicationBooted \|\| hasVisibleWindow\(\)\) return;/,
   );
   assert.match(
     mainSource,
@@ -360,12 +331,9 @@ test("desktop packaging builds the native host before every local target", () =>
   for (const name of ["pack", "dist", "dist:mac", "dist:win", "dist:linux"]) {
     const script = packageJson.scripts[name];
     assert.match(script, /pnpm run build:host-release/);
-    const packagingCommand = script.includes("build-desktop-release.mjs")
-      ? "build-desktop-release.mjs"
-      : "electron-builder";
     assert.ok(
-      script.indexOf("pnpm run build:host-release") < script.indexOf(packagingCommand),
-      `${name} must build the native host before the packaging command`,
+      script.indexOf("pnpm run build:host-release") < script.indexOf("electron-builder"),
+      `${name} must build the native host before electron-builder packages it`,
     );
   }
   assert.equal(packageJson.build.win.extraResources[0].to, "bin/pi-desktop-host-core.exe");

@@ -9,6 +9,7 @@
   responsive/reduced-motion tail last so it can override what precedes it.
   Reordering these imports changes rendering.
 */
+@import "./fonts.css";
 @import "./tokens.css";
 @import "./base.css";
 @import "./chrome.css";
@@ -19,18 +20,15 @@
 @import "./prose.css";
 @import "./ui-kit.css";
 @import "./overlays.css";
-@import "./session-search.css";
 @import "./theme-overrides.css";
 @import "./composer-menus.css";
 @import "./settings.css";
 @import "./destinations.css";
 @import "./projects.css";
-@import "./project-create-dialog.css";
 @import "./sessions.css";
 @import "./work-panel.css";
 @import "./providers.css";
 @import "./model-config.css";
-@import "./service-setup.css";
 @import "./chat-links.css";
 @import "./composer-autocomplete.css";
 @import "./plugins.css";

@@ -1,4 +1,3 @@
-import { readMainModuleSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -6,7 +5,7 @@ import test from "node:test";
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 const agentEndBlock = () => {
-  const main = readMainModuleSync("runtime/event-persistence.ts");
+  const main = read("../electron/main/index.ts");
   const start = main.indexOf('if (event.type === "agent_end")');
   assert.ok(start > 0, "agent_end branch exists");
   const end = main.indexOf('if (event.type === "message_end"', start);
@@ -30,7 +29,7 @@ test("the outbox is drained before a branch is archived", () => {
   const block = agentEndBlock();
 
   assert.match(block, /persistenceOutbox\.size\(\) > 0/);
-  assert.match(block, /await persistenceOutbox\.flush\(\(\) => runtimeState\.host\)/);
+  assert.match(block, /await persistenceOutbox\.flush\(\(\) => host\)/);
   // An archive that misses the final message is wrong forever once the pager
   // restores it, so a still-pending outbox skips the archive instead.
   assert.match(block, /skipped regenerate branch archive/);

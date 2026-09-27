@@ -1,5 +1,3 @@
-mod model_fallbacks;
-
 use crate::activation::ActivationScope;
 use crate::agent_capabilities::{
     capability_dir, file_timestamp, parse_front_matter, slugify, sorted_files, CapabilityLevel,
@@ -16,9 +14,7 @@ const MAX_USER_SUBAGENTS: usize = 64;
 pub const MAX_SUBAGENT_BYTES: usize = 32 * 1024;
 const MAX_NAME_CHARS: usize = 40;
 const MAX_DESCRIPTION_CHARS: usize = 400;
-/// Mirrors `MAX_SUBAGENT_MAX_TOKENS` in `packages/shared`. No published model
-/// accepts an output limit above 128k, so a larger declared value is a typo.
-const MAX_TOKENS_CEILING: u32 = 200_000;
+const MAX_TURNS_CEILING: u32 = 80;
 const DEFAULT_TOOLS: [&str; 3] = ["Read", "Glob", "Grep"];
 const ASSIGNABLE_TOOLS: [&str; 7] = [
     "Read",
@@ -33,18 +29,6 @@ const THINKING_LEVELS: [&str; 8] = [
     "off", "minimal", "low", "medium", "high", "xhigh", "max", "omit",
 ];
 const SUBAGENT_KIND: &str = "subagents";
-/// Activation state for the subagent builtins, kept in its own file
-/// (`<data-dir>/agent-capabilities/subagent-builtins.json`).
-///
-/// The builtins are constant documents inside agent-runtime, not files in
-/// `~/.agents/subagents`, so the directory scan that `list()` performs can
-/// never see their handles. That scan also `prune`s state for records it no
-/// longer finds, which would delete every builtin entry as an orphan on the
-/// first listing. A separate kind keeps the two catalogs apart, and because a
-/// `Global` value is only ever stored for an explicit `false`, the state is
-/// lazy and sticky: a handle that is off stays off even while it is absent, so
-/// a builtin restored in a later release comes back still disabled.
-const SUBAGENT_BUILTIN_KIND: &str = "subagent-builtins";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -61,12 +45,10 @@ pub struct UserSubagentRecord {
     pub tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub fallback_models: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
+    pub max_turns: Option<u32>,
     pub path: String,
     #[serde(default)]
     pub size_bytes: u64,
@@ -83,9 +65,8 @@ pub struct UserSubagentInput {
     pub body: Option<String>,
     pub tools: Option<Vec<String>>,
     pub model: Option<String>,
-    pub fallback_models: Option<Vec<String>>,
     pub thinking_level: Option<String>,
-    pub max_tokens: Option<u32>,
+    pub max_turns: Option<u32>,
     pub enabled: Option<bool>,
     /// Kept for protocol compatibility; subagents are global-only now.
     #[allow(dead_code)]
@@ -94,7 +75,6 @@ pub struct UserSubagentInput {
 
 pub struct UserSubagentRegistry {
     state: CapabilityState,
-    builtins: CapabilityState,
 }
 
 fn normalize_name(value: &str) -> String {
@@ -119,30 +99,18 @@ fn normalize_tools(requested: Option<&Vec<String>>) -> Vec<String> {
                 .map(|tool| (*tool).to_string())
                 .collect()
         });
-    let mut inherit = false;
     let mut result = Vec::new();
     for tool in &requested {
-        let trimmed = tool.trim();
-        if trimmed.eq_ignore_ascii_case("inherit") {
-            inherit = true;
-            continue;
-        }
         if let Some(canonical) = ASSIGNABLE_TOOLS
             .iter()
-            .find(|candidate| candidate.eq_ignore_ascii_case(trimmed))
+            .find(|candidate| candidate.eq_ignore_ascii_case(tool.trim()))
         {
             if !result.iter().any(|value: &String| value == canonical) {
                 result.push((*canonical).to_string());
             }
         }
     }
-    if inherit {
-        let mut tools = vec!["inherit".to_string()];
-        tools.extend(result);
-        tools
-    } else {
-        result
-    }
+    result
 }
 
 fn normalize_thinking(value: Option<&str>) -> Option<String> {
@@ -151,26 +119,6 @@ fn normalize_thinking(value: Option<&str>) -> Option<String> {
         .iter()
         .find(|level| **level == candidate)
         .map(|level| (*level).to_string())
-}
-
-/// A definition pin, normalized, or an error when it is not a pin.
-///
-/// The stored shape is `provider/model`. Only the slash is structural: the
-/// provider half is matched by a normalized alias in the runtime
-/// (`findProvider`), and a custom endpoint's display name may contain spaces,
-/// so those are valid here too. Rejecting a value the editor offers would leave
-/// the user with a definition that saves but can never resolve.
-fn normalize_model(value: Option<&str>) -> Result<Option<String>> {
-    let Some(trimmed) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-    let Some((provider, model)) = trimmed.split_once('/') else {
-        bail!("SUBAGENT_INVALID: `model` must be written as provider/model");
-    };
-    if provider.is_empty() || model.is_empty() {
-        bail!("SUBAGENT_INVALID: `model` must be written as provider/model");
-    }
-    Ok(Some(trimmed.to_string()))
 }
 
 fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentRecord> {
@@ -201,11 +149,11 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
     }
     let enabled = state.enabled(SUBAGENT_KIND, CapabilityLevel::Global, &name, None);
     let updated_at = file_timestamp(path);
-    let max_tokens = front
-        .get("maxtokens")
+    let max_turns = front
+        .get("maxturns")
         .and_then(|value| value.parse::<u32>().ok())
         .filter(|value| *value > 0)
-        .map(|value| value.min(MAX_TOKENS_CEILING));
+        .map(|value| value.min(MAX_TURNS_CEILING));
     Some(UserSubagentRecord {
         id: name.clone(),
         name,
@@ -218,9 +166,8 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
             .get("model")
             .cloned()
             .filter(|value| !value.is_empty()),
-        fallback_models: model_fallbacks::parse(&raw).ok()?,
         thinking_level: normalize_thinking(front.get("thinkinglevel").map(String::as_str)),
-        max_tokens,
+        max_turns,
         path: path.to_string_lossy().to_string(),
         size_bytes: raw.len() as u64,
         created_at: updated_at.clone(),
@@ -235,25 +182,15 @@ fn render_document(record: &UserSubagentRecord, body: &str) -> String {
         "description: {}\n",
         record.description.replace('\n', " ")
     ));
-    if record.tools.len() == 1 && record.tools[0].eq_ignore_ascii_case("inherit") {
-        output.push_str("tools: inherit\n");
-    } else {
-        output.push_str(&format!("tools: [{}]\n", record.tools.join(", ")));
-    }
+    output.push_str(&format!("tools: [{}]\n", record.tools.join(", ")));
     if let Some(model) = &record.model {
         output.push_str(&format!("model: {model}\n"));
-    }
-    if !record.fallback_models.is_empty() {
-        output.push_str(&format!(
-            "fallbackModels: [{}]\n",
-            record.fallback_models.join(", ")
-        ));
     }
     if let Some(level) = &record.thinking_level {
         output.push_str(&format!("thinkingLevel: {level}\n"));
     }
-    if let Some(max_tokens) = record.max_tokens {
-        output.push_str(&format!("maxTokens: {max_tokens}\n"));
+    if let Some(max_turns) = record.max_turns {
+        output.push_str(&format!("maxTurns: {max_turns}\n"));
     }
     output.push_str("---\n\n");
     output.push_str(body.trim());
@@ -269,7 +206,6 @@ impl UserSubagentRegistry {
     pub fn new(data_dir: &Path) -> Self {
         Self {
             state: CapabilityState::new(data_dir, SUBAGENT_KIND),
-            builtins: CapabilityState::new(data_dir, SUBAGENT_BUILTIN_KIND),
         }
     }
 
@@ -349,15 +285,12 @@ impl UserSubagentRegistry {
             enabled: input.enabled.unwrap_or(true),
             scope: ActivationScope::default(),
             tools,
-            model: normalize_model(input.model.as_deref())?,
-            fallback_models: model_fallbacks::normalize(
-                input.fallback_models.as_deref().unwrap_or(&[]),
-            )?,
+            model: input.model.filter(|value| !value.trim().is_empty()),
             thinking_level: normalize_thinking(input.thinking_level.as_deref()),
-            max_tokens: input
-                .max_tokens
+            max_turns: input
+                .max_turns
                 .filter(|value| *value > 0)
-                .map(|value| value.min(MAX_TOKENS_CEILING)),
+                .map(|value| value.min(MAX_TURNS_CEILING)),
             path: String::new(),
             size_bytes: 0,
             created_at: Utc::now().to_rfc3339(),
@@ -425,21 +358,18 @@ impl UserSubagentRegistry {
         next.tools = tools;
         next.model = match input.model {
             Some(value) if value.trim().is_empty() => None,
-            Some(value) => normalize_model(Some(value.as_str()))?,
+            Some(value) => Some(value),
             None => current.model,
         };
-        if let Some(values) = input.fallback_models {
-            next.fallback_models = model_fallbacks::normalize(&values)?;
-        }
         next.thinking_level = match input.thinking_level {
             Some(value) if value.trim().is_empty() => None,
             Some(value) => normalize_thinking(Some(value.as_str())),
             None => current.thinking_level,
         };
-        next.max_tokens = match input.max_tokens {
+        next.max_turns = match input.max_turns {
             Some(0) => None,
-            Some(value) => Some(value.min(MAX_TOKENS_CEILING)),
-            None => current.max_tokens,
+            Some(value) => Some(value.min(MAX_TURNS_CEILING)),
+            None => current.max_turns,
         };
         next.enabled = input.enabled.unwrap_or(current.enabled);
         next.path = current.path.clone();
@@ -512,37 +442,6 @@ impl UserSubagentRegistry {
         let _ = scope;
         self.find(id)
     }
-
-    /// Handles the user turned off among the shipped subagent builtins.
-    ///
-    /// Read straight from the state file: the builtins have no document to
-    /// scan, and the answer must not depend on which of them the running
-    /// build happens to define.
-    pub fn disabled_builtins(&self) -> Vec<String> {
-        self.builtins
-            .disabled_ids(SUBAGENT_BUILTIN_KIND, CapabilityLevel::Global)
-    }
-
-    /// Turn one builtin handle on or off, returning the normalized handle.
-    ///
-    /// The handle is normalized exactly like a document id, so the same
-    /// spelling reaches the runtime catalog. Nothing is validated against a
-    /// current builtin list on purpose: the state is sticky for handles a
-    /// later build may reintroduce.
-    pub fn set_builtin_enabled(&mut self, handle: &str, enabled: bool) -> Result<String> {
-        let name = normalize_name(handle);
-        if name.is_empty() {
-            bail!("SUBAGENT_INVALID: a builtin handle is required");
-        }
-        self.builtins.set_enabled(
-            SUBAGENT_BUILTIN_KIND,
-            CapabilityLevel::Global,
-            &name,
-            None,
-            enabled,
-        )?;
-        Ok(name)
-    }
 }
 
 #[cfg(test)]
@@ -568,70 +467,6 @@ mod tests {
     }
 
     #[test]
-    fn inherit_token_is_kept_and_unknown_tools_still_drop() {
-        assert_eq!(
-            normalize_tools(Some(&vec!["inherit".into()])),
-            vec!["inherit"]
-        );
-        assert_eq!(
-            normalize_tools(Some(&vec!["inherit".into(), "Bash".into(), "Nope".into()])),
-            vec!["inherit".to_string(), "Bash".to_string()]
-        );
-    }
-
-    #[test]
-    fn inherit_only_documents_round_trip() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("worker.md");
-        fs::write(
-            &path,
-            "---\nname: worker\ndescription: Uses the parent tools.\ntools: inherit\n---\n\nDo the job.\n",
-        )
-        .unwrap();
-        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
-        let record = parse_record(&path, &state).expect("inherit-only document must load");
-        assert_eq!(record.tools, vec!["inherit"]);
-        let rendered = render_document(&record, "Do the job.");
-        assert!(rendered.contains("tools: inherit\n"));
-        assert!(!rendered.contains("tools: [inherit]"));
-    }
-
-    #[test]
-    fn fallback_pins_survive_record_document_round_trips() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("worker.md");
-        fs::write(&path, "---\nname: worker\ndescription: Fixture.\nmodel: primary/model\nfallbackModels: [backup/one, Other Gateway/vendor/two]\n---\n\nKeep the body.\n").unwrap();
-        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
-        let mut record = parse_record(&path, &state).unwrap();
-        assert_eq!(
-            record.fallback_models,
-            vec!["backup/one", "Other Gateway/vendor/two"]
-        );
-        let wire = serde_json::to_value(&record).unwrap();
-        assert_eq!(
-            wire["fallbackModels"],
-            serde_json::json!(["backup/one", "Other Gateway/vendor/two"])
-        );
-        fs::write(&path, render_document(&record, "Keep the body.")).unwrap();
-        assert_eq!(
-            parse_record(&path, &state).unwrap().fallback_models,
-            record.fallback_models
-        );
-        record.fallback_models.clear();
-        let cleared = render_document(&record, "Keep the body.");
-        assert!(!cleared.contains("fallbackModels"));
-        fs::write(&path, cleared).unwrap();
-        assert!(parse_record(&path, &state)
-            .unwrap()
-            .fallback_models
-            .is_empty());
-        let old: UserSubagentInput = serde_json::from_str("{}").unwrap();
-        assert!(old.fallback_models.is_none());
-        let clear: UserSubagentInput = serde_json::from_str(r#"{"fallbackModels":[]}"#).unwrap();
-        assert_eq!(clear.fallback_models, Some(vec![]));
-    }
-
-    #[test]
     fn omit_is_a_valid_thinking_override() {
         assert_eq!(normalize_thinking(Some("omit")), Some("omit".into()));
         assert_eq!(normalize_thinking(Some(" OMIT ")), Some("omit".into()));
@@ -648,165 +483,13 @@ mod tests {
             scope: ActivationScope::default(),
             tools: vec!["Read".into()],
             model: None,
-            fallback_models: Vec::new(),
             thinking_level: None,
-            max_tokens: None,
+            max_turns: None,
             path: "/tmp/review.md".into(),
             size_bytes: 0,
             created_at: String::new(),
             updated_at: String::new(),
         };
         assert!(!render_document(&record, "Review it").contains("enabled"));
-    }
-
-    #[test]
-    fn an_output_cap_is_written_and_an_absent_one_is_omitted() {
-        let mut record = UserSubagentRecord {
-            id: "review".into(),
-            name: "review".into(),
-            level: Some("global".into()),
-            description: "Review code".into(),
-            enabled: true,
-            scope: ActivationScope::default(),
-            tools: vec!["Read".into()],
-            model: None,
-            fallback_models: Vec::new(),
-            thinking_level: None,
-            max_tokens: Some(16_000),
-            path: "/tmp/review.md".into(),
-            size_bytes: 0,
-            created_at: String::new(),
-            updated_at: String::new(),
-        };
-        let document = render_document(&record, "Review it");
-        assert!(document.contains("maxTokens: 16000\n"));
-
-        // Absent means "follow the model", so the key must not appear at all —
-        // a written `maxTokens: 0` would read back as an explicit empty cap.
-        record.max_tokens = None;
-        assert!(!render_document(&record, "Review it").contains("maxTokens"));
-    }
-
-    #[test]
-    fn legacy_max_turns_frontmatter_is_ignored() {
-        // The turn limit is gone (ADR 0253). A document that still declares the
-        // key must load like any other unknown frontmatter key: keys are only
-        // lowercased, so `maxTurns` used to normalize to `maxturns`, while
-        // `max-turns` was never read in the first place.
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("worker.md");
-        fs::write(
-            &path,
-            "---\nname: worker\ndescription: Uses the parent tools.\ntools: [Read]\nmaxTurns: 20\nmax-turns: 20\n---\n\nDo the job.\n",
-        )
-        .unwrap();
-        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
-        let record =
-            parse_record(&path, &state).expect("a legacy maxTurns key must not fail the load");
-        assert_eq!(record.description, "Uses the parent tools.");
-        assert!(!render_document(&record, "Do the job.").contains("maxTurns"));
-    }
-
-    #[test]
-    fn a_model_pin_requires_a_slash_and_keeps_the_users_spelling() {
-        // The shape is `provider/model`; the provider half may be a vendor key
-        // or a display name, and a custom endpoint's name contains spaces.
-        assert_eq!(
-            normalize_model(Some("anthropic/claude-haiku-4-5")).unwrap(),
-            Some("anthropic/claude-haiku-4-5".into())
-        );
-        assert_eq!(
-            normalize_model(Some("  My Gateway/local-model  ")).unwrap(),
-            Some("My Gateway/local-model".into())
-        );
-        // An openrouter-style model id keeps its own slashes.
-        assert_eq!(
-            normalize_model(Some("openrouter/deepseek/deepseek-chat")).unwrap(),
-            Some("openrouter/deepseek/deepseek-chat".into())
-        );
-    }
-
-    #[test]
-    fn a_cleared_model_is_none_and_a_malformed_one_is_rejected() {
-        assert_eq!(normalize_model(None).unwrap(), None);
-        assert_eq!(normalize_model(Some("   ")).unwrap(), None);
-
-        // A bare id has no provider to look up, so the runtime could never
-        // resolve it; the editor rejects the same shape before saving.
-        assert!(normalize_model(Some("claude-haiku-4-5")).is_err());
-        assert!(normalize_model(Some("/claude-haiku-4-5")).is_err());
-        assert!(normalize_model(Some("anthropic/")).is_err());
-    }
-
-    #[test]
-    fn builtins_are_enabled_until_one_is_turned_off() {
-        let dir = tempdir().unwrap();
-        let mut registry = UserSubagentRegistry::new(dir.path());
-        assert!(registry.disabled_builtins().is_empty());
-
-        let handle = registry.set_builtin_enabled("Fixer", false).unwrap();
-        assert_eq!(handle, "fixer");
-        assert_eq!(registry.disabled_builtins(), vec!["fixer".to_string()]);
-
-        registry.set_builtin_enabled("fixer", true).unwrap();
-        assert!(registry.disabled_builtins().is_empty());
-    }
-
-    #[test]
-    fn builtin_state_survives_a_registry_rebuild() {
-        let dir = tempdir().unwrap();
-        let mut registry = UserSubagentRegistry::new(dir.path());
-        registry.set_builtin_enabled("fixer", false).unwrap();
-        registry
-            .set_builtin_enabled("code-reviewer", false)
-            .unwrap();
-
-        let reopened = UserSubagentRegistry::new(dir.path());
-        // Sorted, so the answer never depends on insertion order.
-        assert_eq!(
-            reopened.disabled_builtins(),
-            vec!["code-reviewer".to_string(), "fixer".to_string()]
-        );
-    }
-
-    #[test]
-    fn a_blank_builtin_handle_is_rejected() {
-        let dir = tempdir().unwrap();
-        let mut registry = UserSubagentRegistry::new(dir.path());
-        let error = registry.set_builtin_enabled("   ", false).unwrap_err();
-        assert!(error.to_string().contains("SUBAGENT_INVALID"));
-        assert!(registry.disabled_builtins().is_empty());
-    }
-
-    #[test]
-    fn listing_documents_does_not_prune_builtin_state() {
-        // The scan prunes state for ids it did not find. A builtin has no
-        // document at all, so the two kinds must never share one state file or
-        // the first `list()` would delete every builtin the user turned off.
-        use crate::agent_capabilities::test_support;
-
-        let dir = tempdir().unwrap();
-        let agents = tempdir().unwrap();
-        let mut registry = UserSubagentRegistry::new(dir.path());
-        registry.set_builtin_enabled("fixer", false).unwrap();
-
-        test_support::with_global_agents(agents.path(), || {
-            registry.list().unwrap();
-        });
-        assert_eq!(registry.disabled_builtins(), vec!["fixer".to_string()]);
-
-        // And a rebuilt registry still agrees after the listing.
-        let mut reopened = UserSubagentRegistry::new(dir.path());
-        test_support::with_global_agents(agents.path(), || {
-            reopened.list().unwrap();
-        });
-        assert_eq!(reopened.disabled_builtins(), vec!["fixer".to_string()]);
-
-        // The document kind keeps its own file, so the builtin entry is not
-        // mistaken for a user subagent either.
-        assert!(dir
-            .path()
-            .join("agent-capabilities/subagent-builtins.json")
-            .exists());
     }
 }

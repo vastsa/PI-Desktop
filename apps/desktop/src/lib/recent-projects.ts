@@ -75,10 +75,7 @@ export function renameRecentProject(path: string, name: string): RecentProject[]
 }
 
 export function removeRecentProject(path: string): RecentProject[] {
-  const key = normalizedProjectPath(path);
-  const next = loadRecentProjects().filter(
-    (project) => normalizedProjectPath(project.path) !== key,
-  );
+  const next = loadRecentProjects().filter((p) => p.path !== path);
   localStorage.setItem(KEY, JSON.stringify(next));
   return next;
 }

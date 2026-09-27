@@ -6,8 +6,6 @@ import type {
   ModelModalities,
   ModelProviderMetadata,
   ModelReasoningOption,
-  SessionThinkingLevel,
-  ThinkingProtocol,
   ThinkingLevel,
 } from "@pi-desktop/shared";
 
@@ -30,7 +28,6 @@ export type ModelConfig = {
   attachment?: boolean;
   reasoning: boolean;
   reasoningOptions?: ModelReasoningOption[];
-  thinkingProtocol?: ThinkingProtocol;
   supportedThinkingLevels?: readonly ThinkingLevel[];
   thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
   toolCall?: boolean;
@@ -56,17 +53,8 @@ export type ModelConfig = {
   catalogProvider?: ModelProviderMetadata;
   /** Adapter-facing subset; models.dev modalities remain complete above. */
   input: Array<"text" | "image">;
-  /** Published context window retained as a safety ceiling for user overrides. */
-  catalogContextWindow?: number;
   contextWindow: number;
   maxTokens: number;
-  /**
-   * Opt-in for the provider-hosted web search tool. Set from the model
-   * binding when the user enables native web search for this model; the
-   * adapter attaches the vendor tool and extracts its stream blocks only
-   * when this is true.
-   */
-  webSearch?: boolean;
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
   /**
@@ -86,28 +74,12 @@ const THINKING_LEVELS: ThinkingLevel[] = [
   "max",
 ];
 
-/** Agent bookkeeping value: omit is stored as off so pi-ai does not synthesize a level. */
-export function agentThinkingLevel(level: SessionThinkingLevel): ThinkingLevel {
-  return level === "omit" ? "off" : level;
-}
-
-/** Null the Responses/simple-stream `off` fallback so omit sends no thinking field. */
-export function omitThinkingModel<T extends { thinkingLevelMap?: Partial<Record<string, string | null>> }>(
-  model: T,
-): T {
-  return {
-    ...model,
-    thinkingLevelMap: { ...model.thinkingLevelMap, off: null },
-  };
-}
-
 /** Apply the canonical nearest-supported-level rule to catalog metadata. */
 export function clampThinkingLevel(
   capabilities: ThinkingCapabilitySet,
-  requested: SessionThinkingLevel,
-): SessionThinkingLevel {
+  requested: ThinkingLevel,
+): ThinkingLevel {
   if (!capabilities.supportsReasoning) return "off";
-  if (requested === "omit") return "omit";
   const supported = new Set(capabilities.supportedThinkingLevels ?? ["off"]);
   if (supported.has(requested)) return requested;
 

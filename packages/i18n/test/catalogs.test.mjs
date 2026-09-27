@@ -10,7 +10,6 @@ import {
   zhCN,
   zhTW,
   ko,
-  ptBR,
 } from "../src/index.ts";
 
 function placeholders(value) {
@@ -31,29 +30,6 @@ test("every shipped catalog matches English keys and interpolation variables", (
   }
 });
 
-test("canonical thinking levels are not translated catalog entries", () => {
-  const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-  const effortKeys = [
-    "chat.effortOff",
-    "chat.effortMinimal",
-    "chat.effortLow",
-    "chat.effortMid",
-    "chat.effortHigh",
-    "chat.effortXhigh",
-    "chat.effortMax",
-  ];
-
-  for (const [id, catalog] of Object.entries(catalogs)) {
-    const flat = flattenCatalog(catalog);
-    for (const level of levels) {
-      assert.equal(flat[`thinkingLevel.${level}`], undefined, `${id} ${level}`);
-    }
-    for (const key of effortKeys) {
-      assert.equal(flat[key], undefined, `${id} ${key}`);
-    }
-  }
-});
-
 test("settings subagent empty-state copy uses a non-conflicting key", () => {
   const chinese = flattenCatalog(zhCN);
 
@@ -61,21 +37,6 @@ test("settings subagent empty-state copy uses a non-conflicting key", () => {
   assert.equal(chinese["settings.subagentsEmpty"], "还没有你自己的子智能体");
   assert.equal(typeof english["settings.subagents"], "string");
   assert.equal(typeof english["extensions.subagents.empty"], "string");
-});
-
-test("creation-phase delegation copy is catalog-backed", () => {
-  assert.equal(english["chat.subagentCreating"], "Starting subagent…");
-  assert.equal(
-    flattenCatalog(zhCN)["chat.subagentCreating"],
-    "正在创建子智能体…",
-  );
-  for (const [id, catalog] of Object.entries(catalogs)) {
-    assert.equal(
-      typeof flattenCatalog(catalog)["chat.subagentCreating"],
-      "string",
-      id,
-    );
-  }
 });
 
 test("settings rail labels stay concise and parallel across locales", () => {
@@ -139,7 +100,7 @@ test("import, project, and temporary-session copy is catalog-backed", () => {
     "settings.importGroupByPath",
     "settings.importNoProject",
     "settings.importSourceClaudeCode",
-    "project.selectProject",
+    "project.expandDetails",
     "project.openActions",
     "project.sessions",
   ]) {
@@ -165,28 +126,23 @@ test("locale resolution maps variants onto shipped catalogs and falls back to En
   assert.equal(resolveLocale("ko"), "ko");
   assert.equal(resolveLocale("ko-KR"), "ko");
   assert.equal(resolveLocale("ko_KR"), "ko");
-  assert.equal(resolveLocale("pt"), "pt-BR");
-  assert.equal(resolveLocale("pt-BR"), "pt-BR");
-  assert.equal(resolveLocale("pt_BR"), "pt-BR");
-  assert.equal(resolveLocale("pt-PT"), "pt-BR");
   assert.equal(resolveLocale(), "en");
 });
 
 test("the locale registry lists English first, then other locales by English name", () => {
   assert.deepEqual(
     supportedLocales.map((locale) => locale.id),
-    ["en", "zh-CN", "zh-TW", "de", "es", "tr", "fr", "ko", "pt-BR"],
+    ["en", "zh-CN", "zh-TW", "de", "es", "tr", "fr", "ko"],
   );
   assert.deepEqual(
     listedLocales().map((locale) => locale.id),
-    ["en", "zh-CN", "zh-TW", "fr", "de", "ko", "pt-BR", "es", "tr"],
+    ["en", "zh-CN", "zh-TW", "fr", "de", "ko", "es", "tr"],
   );
   assert.equal(localeInfoNative("de"), "Deutsch");
   assert.equal(localeInfoNative("es"), "Español");
   assert.equal(localeInfoNative("fr"), "Français");
   assert.equal(localeInfoNative("tr"), "Türkçe");
   assert.equal(localeInfoNative("ko"), "한국어");
-  assert.equal(localeInfoNative("pt-BR"), "Português (Brasil)");
   assert.equal(english["settings.languageSearchPlaceholder"], "Search languages…");
   assert.equal(english["settings.themeSearchPlaceholder"], "Search themes…");
   assert.equal(english["settings.languageAutoDesc"], "Currently {{state}}");
@@ -209,12 +165,6 @@ test("the locale registry lists English first, then other locales by English nam
   assert.equal(flattenCatalog(ko)["nav.projects"], "프로젝트");
   assert.equal(flattenCatalog(ko)["nav.temporarySessions"], "임시 대화");
   assert.notEqual(flattenCatalog(ko)["app.tagline"], english["app.tagline"]);
-  const brazilian = flattenCatalog(catalogs["pt-BR"]);
-  assert.equal(brazilian["settings.language"], "Idioma");
-  assert.equal(brazilian["settings.languageAuto"], "Usar idioma do sistema");
-  assert.equal(brazilian["nav.projects"], "Projetos");
-  assert.equal(brazilian["nav.temporarySessions"], "Conversas temporárias");
-  assert.notEqual(brazilian["app.tagline"], english["app.tagline"]);
 });
 
 function localeInfoNative(id) {

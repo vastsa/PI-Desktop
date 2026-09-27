@@ -2,123 +2,6 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
-    "version": "0.15.6",
-    "date": "2026-09-23",
-    "highlights": [
-      "Native Suche direkt in bestehenden DeepSeek-, xAI- und OpenAI-Diensten aktivieren, ohne gespeicherte Verbindungen zu ändern.",
-      "Unterstützung für GPT-6 Astra, Sol und Luna in den OpenAI- und ChatGPT/Codex-Modellkatalogen.",
-    ],
-  },
-
-  {
-    "version": "0.15.5",
-    "date": "2026-09-23",
-    "highlights": [
-      "Unterstützung für GPT-6 Astra, Sol und Luna in den OpenAI- und ChatGPT/Codex-Modellkatalogen.",
-    ],
-  },
-
-  {
-    "version": "0.15.2",
-    "date": "2026-09-21",
-    "highlights": [
-      "Bilder im Chat generieren und bearbeiten, ein Bildmodell wählen und mit dem integrierten imagegen-Skill Stapel erstellen.",
-      "Werkzeugaktivitäten folgen der Gesprächsbreite; lange Aktivitätsnamen werden sauber begrenzt.",
-      "Dateianhänge aus dem Einfügen bleiben erhalten, auch wenn der Vorgang nach einem Sitzungswechsel endet.",
-      "Das ausgewählte Standardmodell bleibt beim Bearbeiten von Anbietern erhalten und fällt sicher zurück, wenn es entfernt wird.",
-      "Verschachtelte Denk- und Werkzeugaktivitäten lassen sich leichter lesen, navigieren und wiederherstellen.",
-      "Composer-Layouts, Reasoning-Steuerung und die Theme-Konsistenz im Arbeitsbereich wurden verbessert.",
-      "Optionale Einstellung, Netzwerk- und vorübergehende Anbieterfehler bis zum Erfolg zu wiederholen.",
-    ],
-  },
-
-  {
-    "version": "0.15.1",
-    "date": "2026-09-19",
-    "highlights": [
-      "Remote-Hosts lassen sich in den Einstellungen per SSH koppeln und verwalten, inklusive Passwort-Login, Installation und erneuter Verbindung beim Start.",
-      "Prompt-Enhancement (Vorlage, Modell und Reasoning) wird in der KI-Einstellungskarte konfiguriert.",
-      "Ausgewählte Modelle lassen sich per Drag-and-Drop umordnen; eine Stufe „Thinking weglassen“ sendet keine Anbieter-Überschreibung.",
-      "Die Seitenleiste lässt sich vergrößern oder einklappen; ein Doppelklick stellt die Standardbreite von Seitenleiste oder Panel wieder her.",
-      "Projekte werden in einem gruppierten Archiv mit Inspektor verwaltet; der Import hat pro Art eine eigene Werkbank.",
-      "Skills und MCP-Server anderer Agent-Tools lassen sich scannen und gesammelt importieren.",
-      "Das macOS-Menüleisten-Extra bleibt auf einem nativen Statusitem, mit begrenzten Tray-Sitzungs-Shortcuts.",
-      "Offizielle macOS-Builds sind signiert und notariell beglaubigt und unterstützen In-App-Updates.",
-      "Die signierte macOS-DMG ist eine Zwei-Symbol-Installation; der Hinweis für unsignierte Starts bleibt nur im ZIP.",
-      "Review öffnet sich nur auf ausdrückliche Aktion; das Öffnen einer Sitzung landet bei der neuesten Runde.",
-      "Eine blockierte Sendewarteschlange wird wiederhergestellt, gefälschte Steering-Origins werden ignoriert.",
-    ],
-  },
-
-  {
-    "version": "0.15.0",
-    "date": "2026-09-17",
-    "highlights": [
-      "Warteschlangen-Prompts lassen sich umordnen, bearbeiten, sperren und als Nächstes senden.",
-      "Beim Erstellen eines Projekts lässt sich ein Git-Repository klonen.",
-      "Die Inhaltsbreite der Unterhaltung lässt sich in der Chat-Spalte ziehen.",
-      "Fehler bei der Skill-Markt-Installation zeigen einen Retry statt eines toten Buttons.",
-      "Von Plugins deklarierte Anbieter erscheinen als native Zeilen, inklusive API-Keys und vertrauenswürdiger Custom-Agents.",
-      "Plugins können Echtzeitverbindungen, globale Shortcuts, Fähigkeitsrechte und einen offiziellen Kanal mit Backups nutzen.",
-      "Plugins können Theme-Variablen, Theme-Assets und ein transparentes schwebendes Widget registrieren.",
-      "Ein Projekt wird zusammen mit seinen eigenen Sitzungen gelöscht, nach einer zweiten Bestätigung.",
-      "Subagenten erhalten eine geordnete Modell-Fallback-Liste; abgeschlossene laufen in derselben Task-Karte weiter; mitgelieferte Builtins lassen sich in den Einstellungen schalten.",
-      "Dateiverweise in Tool-Zeilen öffnen die passende Ansicht; das Aufklappen hält die Leseposition; Plan-Freigabe-Hover ist undurchsichtig.",
-    ],
-  },
-
-  {
-    "version": "0.14.9",
-    "date": "2026-09-17",
-    "highlights": [
-      "Warteschlangen-Prompts lassen sich umordnen, bearbeiten, sperren und als Nächstes senden.",
-      "Beim Erstellen eines Projekts lässt sich ein Git-Repository klonen.",
-      "Die Inhaltsbreite der Unterhaltung lässt sich in der Chat-Spalte ziehen.",
-      "Fehler bei der Skill-Markt-Installation zeigen einen Retry statt eines toten Buttons.",
-      "Von Plugins deklarierte Anbieter erscheinen als native Zeilen, inklusive API-Keys und vertrauenswürdiger Custom-Agents.",
-      "Plugins können Echtzeitverbindungen, globale Shortcuts, Fähigkeitsrechte und einen offiziellen Kanal mit Backups nutzen.",
-      "Plugins können Theme-Variablen, Theme-Assets und ein transparentes schwebendes Widget registrieren.",
-      "Ein Projekt wird zusammen mit seinen eigenen Sitzungen gelöscht, nach einer zweiten Bestätigung.",
-      "Subagenten erhalten eine geordnete Modell-Fallback-Liste; mitgelieferte Builtins lassen sich in den Einstellungen schalten.",
-      "Dateiverweise in Tool-Zeilen öffnen die passende Ansicht; das Aufklappen hält die Leseposition; Plan-Freigabe-Hover ist undurchsichtig.",
-    ],
-  },
-
-
-  {
-    "version": "0.14.8",
-    "date": "2026-09-14",
-    "highlights": [
-      "Durchsuchen und installieren Sie MCP-Server aus der offiziellen Registry und benutzerdefinierten Quellen im MCP-Markt.",
-      "Durchsuchen und installieren Sie Skills aus kuratierten und GitHub-Quellen im Skill-Markt, mit öffentlichem HTTPS und Größenbegrenzung.",
-      "Liefert die Dateiansicht als mitgeliefertes File-Manager-Plugin; gebündelte Plugins können Marktplatz-Updates behalten.",
-      "Fügt einen Vorschau-Modus für das Arbeitspanel hinzu, hebt die Chat-Spalte auf mindestens 450px und priorisiert MainChat im Dreispalten-Layout.",
-      "Findet unabhängige Sitzungen, sendet host-eigene Kollaborationsnachrichten und öffnet Kollaborationslinks.",
-      "Subagenten können Eltern-Tools erben, mitgelieferte Builtins erscheinen in den Einstellungen, ein UI-Designer-Builtin kommt hinzu, und das Erstellen zeigt einen eigenen Status.",
-      "Steuert einen laufenden Turn mit Alt+Enter und öffnet eingefügte Textdateien im Composer zum Bearbeiten.",
-      "Gestaltet die Projekterstellung neu: Mehrordner-Arbeitsbereiche, projekteigene Memory und visueller Memory-Editor.",
-      "Installiert deklarierte Abhängigkeiten und Skills aus importierten pi-Paketen hinter einer host-eigenen Sicherheitsgrenze.",
-      "Fügt Vorgabe-Chips für Kontextfenster und Max-Output hinzu, zeigt Read-Zeilenbereiche auf Tool-Chips und hält den Kontext nach fehlgeschlagener Kompaktierung wiederherstellbar.",
-    ],
-  },
-  {
-    "version": "0.14.6",
-    "date": "2026-09-10",
-    "highlights": [
-      "Warnt, wenn diese Version älter ist als Ihre lokalen Daten oder die Intel-Version auf Apple Silicon läuft, statt stumm zu scheitern.",
-      "Fügt eine lokale MCP-Desktop-Steuerebene hinzu; geprüfte Plugins steuern den Desktop nur nach nativer Zustimmung.",
-      "Fügt Subagent-Vorlagen, eine anbietergebundene Modellauswahl und die effektive Denkstufe auf Delegationskarten hinzu.",
-      "Konfigurierte Modelle mit Alias versehen, Modell-IDs kopieren und das modell-eigene Wire-API vor dem Anbieterstil bevorzugen.",
-      "Ersetzt textuelles Edit-Matching durch zeilenverankerte Operationen mit fehlerspezifischen Wiederherstellungshinweisen.",
-      "Wiederholt Anbieteranfragen bis zu zehnmal mit sichtbarem Countdown und setzt autonome Fortschrittsrunden fort.",
-      "Neu gestalteter macOS-Installer, portable Windows-Exe und Linux-RPM-Paket, GNOME-Tray- und Dock-Symbole wiederhergestellt.",
-      "Konversations-IDs kopieren und Sitzungsordner aus der Seitenleiste öffnen, mit lokalisierten Tooltips für Symbolaktionen.",
-      "Zeigt Live-Prozessstatus und ruhige Intervalle in der Aktivitätszeile und fügt einen fixierten Arbeitsbereich-Umschalter hinzu.",
-      "Erzwingt Ignore-Regeln im Arbeitsbereich, löst hängende Symlinks auf und prüft Plugin-Netzwerkausgang bei jeder Umleitung neu.",
-      "Beachtet Proxy-Bypass-Regeln, behält eingefügte Private-Use-Glyphen und lädt Dateivorschauen ohne den Editor zu blockieren.",
-    ],
-  },
-  {
     "version": "0.14.5",
     "date": "2026-09-09",
     "highlights": [
@@ -176,6 +59,7 @@ export const deEntries: ChangelogEntry[] = [
     "version": "0.13.11",
     "date": "2026-09-07",
     "highlights": [
+      "Aktivieren Sie das mitgelieferte Advisor-Plugin, damit ein zweites Modell die aktuelle Konversation überprüft.",
       "Ermöglichen Sie Plugins, Modelle aufzulisten, den Sitzungskontext während der Übertragung zu lesen und hosteigene Vervollständigungen anzufordern, ohne Anmeldeinformationen zu erhalten."
     ]
   },

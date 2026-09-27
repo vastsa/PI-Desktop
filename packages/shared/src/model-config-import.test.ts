@@ -3,6 +3,7 @@ import { bindingForCustomModel } from "./model-catalog.js";
 import {
   draftMatchesExisting,
   existingProviderMatchKey,
+  isPlaceholderSecret,
   parseCcSwitchConfigJson,
   parseCcSwitchProviders,
   parseClaudeCodeModelConfig,
@@ -10,6 +11,7 @@ import {
   parseJsonDocument,
   parseOpenCodeModelConfig,
   parsePiModelConfig,
+  parseTomlSubset,
   providerCreateInputFromDraft,
   publicModelConfigCandidate,
 } from "./model-config-import.js";
@@ -292,14 +294,9 @@ describe("matching and sanitizing", () => {
   });
 
   it("drops placeholder secrets", () => {
-    const drafts = (key: string) =>
-      parseClaudeCodeModelConfig({
-        env: { ANTHROPIC_API_KEY: key, ANTHROPIC_BASE_URL: "https://anyrouter.top" },
-        model: "claude-sonnet-4-5",
-      });
-    expect(publicModelConfigCandidate(drafts("YOUR_API_KEY")[0]).hasSecret).toBe(false);
-    expect(publicModelConfigCandidate(drafts("${OPENAI_API_KEY}")[0]).hasSecret).toBe(false);
-    expect(publicModelConfigCandidate(drafts("sk-live-real")[0]).hasSecret).toBe(true);
+    expect(isPlaceholderSecret("YOUR_API_KEY")).toBe(true);
+    expect(isPlaceholderSecret("${OPENAI_API_KEY}")).toBe(true);
+    expect(isPlaceholderSecret("sk-live-real")).toBe(false);
   });
 
   it("never copies a secret onto the public candidate", () => {
@@ -391,38 +388,6 @@ describe("parseCcSwitchProviders", () => {
     expect(rows).toHaveLength(1);
     expect(parseCcSwitchProviders(rows)[0]?.source).toBe("cc-switch");
   });
-
-  // Regression: issue #588 — a stale cc-switch snapshot of ~/.pi/agent/models.json
-  // used to silently outrank the pi source and drop any models added after the
-  // one-shot sync. Rows with app_type='pi' must be ignored here so the "pi"
-  // scanner keeps ownership of the authoritative file.
-  it("skips app_type='pi' rows so the pi native config stays authoritative", () => {
-    const drafts = parseCcSwitchProviders([
-      {
-        id: "opencode-go",
-        appType: "pi",
-        name: "OpenCode Zen Go",
-        settingsConfig: {
-          baseUrl: "https://api.oj.ink/v1",
-          api: "openai-completions",
-          apiKey: "sk-pi",
-          // Stale snapshot: only nine of ten models — missing `deepseek-flash`.
-          models: [
-            { id: "m1" },
-            { id: "m2" },
-            { id: "m3" },
-            { id: "m4" },
-            { id: "m5" },
-            { id: "m6" },
-            { id: "m7" },
-            { id: "m8" },
-            { id: "m9" },
-          ],
-        },
-      },
-    ]);
-    expect(drafts).toEqual([]);
-  });
 });
 
 describe("parseJsonDocument / parseTomlSubset", () => {
@@ -430,20 +395,8 @@ describe("parseJsonDocument / parseTomlSubset", () => {
     expect(parseJsonDocument('{ // c\n "a": 1, /* x */ "b": 2 }')).toEqual({ a: 1, b: 2 });
   });
 
-  it("accepts trailing commas before } and ] the way JSONC editors leave them", () => {
-    expect(
-      parseJsonDocument('{\n  "a": [1, 2,],\n  "b": { "c": 1, }, // note\n}\n'),
-    ).toEqual({ a: [1, 2], b: { c: 1 } });
-    expect(parseJsonDocument('{ "s": "keep ,] and ,} inside", }')).toEqual({
-      s: "keep ,] and ,} inside",
-    });
-    expect(parseJsonDocument('{ "a": 1,, }')).toBeNull();
-  });
-
   it("keeps quoted table keys", () => {
-    const drafts = parseCodexModelConfig(
-      `[model_providers."my.gw"]\nname = "GW"\nbase_url = "https://gw.example.com/v1"\nmodels = "m1"\n`,
-    );
-    expect(drafts.map((d) => [d.externalId, d.name])).toEqual([["my.gw", "GW"]]);
+    const parsed = parseTomlSubset(`[model_providers."my.gw"]\nname = "GW"\n`);
+    expect(parsed.tables.get("model_providers.my.gw")).toEqual({ name: "GW" });
   });
 });

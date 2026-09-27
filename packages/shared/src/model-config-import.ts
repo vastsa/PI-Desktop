@@ -12,12 +12,7 @@ import {
   type CatalogApiStyle,
 } from "./model-catalog.js";
 import { matchNamedPreset, normalizeEndpointUrl } from "./provider-presets.js";
-import type {
-  ModelLimitSource,
-  ModelBinding,
-  ProviderCreateInput,
-  ThinkingLevel,
-} from "./types.js";
+import type { ModelBinding, ProviderCreateInput, ThinkingLevel } from "./types.js";
 
 export const MODEL_CONFIG_IMPORT_SOURCES = [
   "claude-code",
@@ -194,14 +189,14 @@ export function parseJsonDocument(text: string): unknown | null {
     // fall through to JSONC
   }
   try {
-    return JSON.parse(stripTrailingCommas(stripJsonc(text))) as unknown;
+    return JSON.parse(stripJsonc(text)) as unknown;
   } catch {
     return null;
   }
 }
 
 /** Strip line and block comments that sit outside JSON strings. */
-function stripJsonc(text: string): string {
+export function stripJsonc(text: string): string {
   let out = "";
   let i = 0;
   let inString = false;
@@ -235,50 +230,6 @@ function stripJsonc(text: string): string {
       while (i + 1 < text.length && !(text[i] === "*" && text[i + 1] === "/")) i += 1;
       i += 2;
       continue;
-    }
-    out += ch;
-    i += 1;
-  }
-  return out;
-}
-
-/**
- * Drop a comma that only whitespace separates from a closing `}` or `]`.
- * JSONC editors leave these behind routinely (opencode.jsonc in particular),
- * and `JSON.parse` rejects the whole document over one of them. Runs on
- * comment-free text so a `,` inside a comment cannot confuse it; commas inside
- * strings are left alone.
- */
-function stripTrailingCommas(text: string): string {
-  let out = "";
-  let i = 0;
-  let inString = false;
-  let quote = "";
-  let escaped = false;
-  while (i < text.length) {
-    const ch = text[i];
-    if (inString) {
-      out += ch;
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === quote) inString = false;
-      i += 1;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inString = true;
-      quote = ch;
-      out += ch;
-      i += 1;
-      continue;
-    }
-    if (ch === ",") {
-      let j = i + 1;
-      while (j < text.length && /\s/.test(text[j])) j += 1;
-      if (text[j] === "}" || text[j] === "]") {
-        i += 1;
-        continue;
-      }
     }
     out += ch;
     i += 1;
@@ -538,13 +489,10 @@ function parseCcSwitchProvider(
     );
   }
   if (appType === "pi") {
-    // Pi providers have an authoritative native config (`~/.pi/agent/models.json`).
-    // CC Switch only stores a one-shot v18 migration snapshot of that file; models
-    // added afterwards never make it back in, and our dedupe key ignores `models`
-    // coverage. Trusting the snapshot silently drops the newer entries and lands
-    // pi providers under the "CC Switch" group with a renamed label. Let the `pi`
-    // scanner own these rows so the source of truth wins. See issue #588.
-    return [];
+    return retagCcSwitch(
+      row,
+      parsePiModelConfig({ providers: { [row.id]: row.settingsConfig } }, env),
+    );
   }
   if (appType === "codex" || appType === "grokbuild") {
     return parseCcSwitchTomlApp(row, env, appType === "codex" ? "responses" : "chat_completions");
@@ -712,7 +660,7 @@ function resolveSecret(raw: unknown, env: ModelConfigImportEnv): string | undefi
   return sanitizeSecret(trimmed);
 }
 
-function isPlaceholderSecret(value: string): boolean {
+export function isPlaceholderSecret(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return true;
   if (/^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$/.test(trimmed)) return true;
@@ -822,27 +770,8 @@ function bindingFromGenericModel(
   return {
     ...base,
     contextWindow: contextWindow ?? base.contextWindow,
-    // A window the file states is an explicit answer from its author; the
-    // generic seed it falls back to keeps following the catalog.
-    contextWindowSource:
-      importedModelLimitSource(record?.contextWindowSource) ??
-      (contextWindow === undefined ? base.contextWindowSource : "user"),
     maxTokens: maxTokens ?? base.maxTokens,
-    maxTokensSource:
-      importedModelLimitSource(record?.maxTokensSource) ??
-      (maxTokens === undefined ? base.maxTokensSource : "user"),
-    ...(record?.nativeWebSearch === true || record?.native_web_search === true
-      ? { nativeWebSearch: true }
-      : {}),
   };
-}
-
-/**
- * A config exported by PI-Desktop carries the provenance marker; an older or
- * foreign config does not.
- */
-function importedModelLimitSource(value: unknown): ModelLimitSource | undefined {
-  return value === "catalog" || value === "user" ? value : undefined;
 }
 
 function bindingFromPiModel(value: unknown): ModelBinding | null {
@@ -942,7 +871,7 @@ type TomlExtract = {
  * Minimal TOML reader for Codex `config.toml`: root keys plus `[table]`
  * assignments. Arrays-of-tables and inline tables are ignored.
  */
-function parseTomlSubset(text: string): TomlExtract {
+export function parseTomlSubset(text: string): TomlExtract {
   const root: Record<string, TomlValue> = {};
   const tables = new Map<string, Record<string, TomlValue>>();
   let current: Record<string, TomlValue> = root;

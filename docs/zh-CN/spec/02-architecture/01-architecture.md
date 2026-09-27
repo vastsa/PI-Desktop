@@ -104,10 +104,10 @@ Streamable HTTP MCP 服务。服务提供项目/会话/Agent/工作区常用命�
 远程控制在 [05-remote-agent-control](/zh-CN/spec/02-architecture/05-remote-agent-control)
 中单独定义。目标是在现有 sidecar 之上增加无头 Agent Host 模块，并暴露与传输无关的
 RACP 契约：WebSocket JSON-RPC 是 v1 规范绑定，HTTP/JSON + SSE 是其浏览器 profile，
-gRPC 保留（D374）。它不暴露 Electron IPC、`host.proxy` 或 host-core RPC，也不改变当前
+gRPC 保留（D376）。它不暴露 Electron IPC、`host.proxy` 或 host-core RPC，也不改变当前
 MVP 对远程 Gateway 的排除。首个实现把该模块放在 Electron Main 内，桌面 IPC、本地 MCP
-和 RACP 都调用它。首个远程部署（D375）把同一模块打包为另一台机器上的无头 `pi-host`，
-桌面经 SSH 隧道连接；Gateway 路由与浏览器访问保留规格但不排期。
+和 RACP 都调用它；生产部署把同一模块移入工作区旁的独立 Host，并通过出站 Gateway
+链路连接。
 
 ## 4. 请求路径（对话+工具）
 

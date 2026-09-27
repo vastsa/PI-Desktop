@@ -2,14 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   highestSupportedThinkingLevel,
   initialThinkingLevelForBinding,
-  initialThinkingLevelForUnmatchedModel,
-  canonicalThinkingLevel,
-  isSessionThinkingLevel,
   nearestSupportedThinkingLevel,
   publishedThinkingLevels,
-  sessionThinkingMenuLevels,
-  bindingDefaultThinkingMenuLevels,
-  resolveBindingDefaultThinkingLevel,
 } from "./thinking-levels.js";
 
 describe("highestSupportedThinkingLevel", () => {
@@ -81,24 +75,6 @@ describe("initialThinkingLevelForBinding", () => {
   });
 });
 
-describe("initialThinkingLevelForUnmatchedModel", () => {
-  it("starts unmatched models at off without overriding an explicit default", () => {
-    expect(
-      initialThinkingLevelForUnmatchedModel({
-        thinkingLevels: ["low", "high", "max"],
-        defaultThinkingLevel: null,
-      }),
-    ).toBe("off");
-    expect(initialThinkingLevelForUnmatchedModel(undefined, ["low", "high"])).toBe("off");
-    expect(
-      initialThinkingLevelForUnmatchedModel({
-        thinkingLevels: ["low", "high"],
-        defaultThinkingLevel: "low",
-      }),
-    ).toBe("low");
-  });
-});
-
 describe("publishedThinkingLevels", () => {
   it("returns the published levels in canonical order", () => {
     expect(publishedThinkingLevels({
@@ -131,39 +107,5 @@ describe("publishedThinkingLevels", () => {
     ]);
     expect(publishedThinkingLevels({ reasoning: false })).toEqual([]);
     expect(publishedThinkingLevels(undefined)).toEqual([]);
-  });
-});
-
-describe("session thinking omit", () => {
-  it("accepts omit as a session selector without treating it as a capability", () => {
-    expect(isSessionThinkingLevel("omit")).toBe(true);
-    expect(isSessionThinkingLevel("high")).toBe(true);
-    expect(isSessionThinkingLevel("turbo")).toBe(false);
-    expect(sessionThinkingMenuLevels(["low", "high"])).toEqual(["omit", "low", "high"]);
-    expect(sessionThinkingMenuLevels([])).toEqual(["off"]);
-    expect(canonicalThinkingLevel("omit")).toBe("off");
-    expect(canonicalThinkingLevel("high")).toBe("high");
-  });
-
-  it("offers omit as a Settings default on a reasoning binding", () => {
-    expect(bindingDefaultThinkingMenuLevels(["low", "high"])).toEqual(["omit", "low", "high"]);
-    expect(bindingDefaultThinkingMenuLevels(["high"])).toEqual(["omit", "high"]);
-    expect(bindingDefaultThinkingMenuLevels(["off"])).toEqual(["off"]);
-    expect(bindingDefaultThinkingMenuLevels([])).toEqual(["off"]);
-    expect(resolveBindingDefaultThinkingLevel("omit", ["low", "high"])).toBe("omit");
-    expect(resolveBindingDefaultThinkingLevel("omit", ["off"])).toBe("off");
-    expect(resolveBindingDefaultThinkingLevel(null, ["low", "high"])).toBe("low");
-    expect(
-      initialThinkingLevelForBinding({
-        thinkingLevels: ["low", "high"],
-        defaultThinkingLevel: "omit",
-      }),
-    ).toBe("omit");
-    expect(
-      initialThinkingLevelForBinding({
-        thinkingLevels: ["off"],
-        defaultThinkingLevel: "omit",
-      }),
-    ).toBe("off");
   });
 });

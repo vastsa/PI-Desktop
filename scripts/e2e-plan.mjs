@@ -5,45 +5,19 @@
  * This intentionally speaks only the host JSON-RPC protocol. It does not
  * configure a provider, call a provider, or require network access.
  */
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { PROTOCOL_VERSION as SHARED_PROTOCOL_VERSION } from "../packages/shared/dist/protocol.js";
 
-import {
-  assert,
-  assertToolFailure,
-  assertToolSuccess,
-  errorCodeOf,
-  errorText,
-  expectRpcError,
-  shortJson,
-  toolErrorCode,
-} from "./e2e/assert.mjs";
-import { resolveHostBinary } from "./e2e/host.mjs";
-import { withScenario } from "./e2e/fixture.mjs";
-import { waitFor } from "./e2e/wait.mjs";
-import {
-  beginTurn,
-  configureSession,
-  createSession,
-  endTurn,
-} from "./e2e/session.mjs";
-import {
-  enterPlan,
-  resolveParams,
-  resolvePlan,
-  submitPlan,
-  verifyArtifact,
-} from "./e2e/plan.mjs";
-
-import {
-  loadDevelopmentPlugin,
-  resolvePluginExecution,
-  waitForPluginExecution,
-} from "./e2e/plugin.mjs";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "..");
 const PROTOCOL_VERSION = 11;
 const PLAN_APPROVAL_TIMEOUT_MS = 30 * 60 * 1000;
 const LONG_TIMEOUT_ENABLED = process.env.PI_DESKTOP_E2E_LONG_TIMEOUT === "1";
@@ -66,8 +40,404 @@ function skip(id, detail) {
   console.log(`SKIP ${id} - ${detail}`);
 }
 
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function shortJson(value, max = 500) {
+  let text;
+  try {
+    text = JSON.stringify(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function errorCodeOf(error) {
+  return (
+    error?.errorCode ??
+    error?.data?.errorCode ??
+    error?.rpc?.data?.errorCode ??
+    error?.code ??
+    undefined
+  );
+}
+
+function errorText(error) {
+  const code = errorCodeOf(error);
+  const message = error?.message || String(error);
+  return code ? `${code}: ${message}` : message;
+}
+
+function rpcErrorFromWire(wire, method) {
+  const error = new Error(`${method}: ${wire?.message || shortJson(wire)}`);
+  error.errorCode = wire?.data?.errorCode;
+  error.rpc = wire;
+  return error;
+}
+
+function failPending(pending, error) {
+  for (const entry of pending.values()) {
+    clearTimeout(entry.timer);
+    entry.reject(error);
+  }
+  pending.clear();
+}
+
+function hostBinaryCandidates() {
+  const names =
+    process.platform === "win32"
+      ? ["pi-desktop-host-core.exe", "pi-desktop-host-core"]
+      : ["pi-desktop-host-core"];
+  const candidates = [];
+  const configured = process.env.PI_DESKTOP_HOST_BIN;
+  if (configured) {
+    const configuredPath = resolve(configured);
+    candidates.push(configuredPath);
+    if (process.platform === "win32" && !configuredPath.toLowerCase().endsWith(".exe")) {
+      candidates.push(`${configuredPath}.exe`);
+    }
+  }
+  for (const name of names) {
+    candidates.push(join(root, "target", "debug", name));
+    // Cargo target output is commonly shared by the primary checkout and
+    // slim worktrees, so also accept the workspace-level target directory.
+    candidates.push(join(root, "..", "..", "..", "target", "debug", name));
+  }
+  return candidates;
+}
+
+function resolveHostBinary() {
+  const candidates = hostBinaryCandidates();
+  const binary = candidates.find((candidate) => existsSync(candidate));
+  if (!binary) {
+    throw new Error(
+      `host binary missing; set PI_DESKTOP_HOST_BIN. Tried: ${candidates.join(", ")}`,
+    );
+  }
+  return resolve(binary);
+}
+
+class Host {
+  constructor(binary, dataDir) {
+    this.binary = binary;
+    this.dataDir = dataDir;
+    this.child = null;
+    this.readline = null;
+    this.pending = new Map();
+    this.notifications = [];
+    this.stderr = "";
+    this.exited = false;
+    this.exitPromise = Promise.resolve();
+  }
+
+  async start() {
+    if (this.child) throw new Error("host is already running");
+    this.pending = new Map();
+    this.notifications = [];
+    this.stderr = "";
+    this.exited = false;
+    const child = spawn(this.binary, [], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      env: { ...process.env, PI_DESKTOP_DATA_DIR: this.dataDir },
+    });
+    this.child = child;
+    this.exitPromise = new Promise((resolveExit) => {
+      child.once("exit", (code, signal) => {
+        this.exited = true;
+        const suffix = this.stderr.trim() ? ` stderr=${this.stderr.trim().slice(-500)}` : "";
+        failPending(
+          this.pending,
+          new Error(`host exited code=${code} signal=${signal || "none"}${suffix}`),
+        );
+        resolveExit({ code, signal });
+      });
+    });
+    child.on("error", (error) => {
+      failPending(this.pending, error);
+    });
+    child.stderr.on("data", (chunk) => {
+      this.stderr += String(chunk);
+      if (process.env.DEBUG_HOST) process.stderr.write(chunk);
+    });
+    this.readline = createInterface({ input: child.stdout });
+    this.readline.on("line", (line) => {
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        if (process.env.DEBUG_HOST) console.error(`host non-JSON stdout: ${line}`);
+        return;
+      }
+      if (message.id !== undefined && message.id !== null) {
+        const entry = this.pending.get(String(message.id));
+        if (!entry) return;
+        this.pending.delete(String(message.id));
+        clearTimeout(entry.timer);
+        if (message.error) entry.reject(rpcErrorFromWire(message.error, entry.method));
+        else entry.resolve(message.result);
+        return;
+      }
+      if (message.method) {
+        this.notifications.push(message);
+        if (this.notifications.length > 2_000) this.notifications.shift();
+      }
+    });
+
+    const handshake = await this.call(
+      "app.handshake",
+      { protocolVersion: PROTOCOL_VERSION },
+      45_000,
+    );
+    assert(
+      handshake?.protocolVersion === PROTOCOL_VERSION,
+      `handshake protocol mismatch: ${shortJson(handshake)}`,
+    );
+    return handshake;
+  }
+
+  call(method, params = {}, timeoutMs = 30_000) {
+    if (!this.child || this.exited) {
+      return Promise.reject(new Error(`host is not running for ${method}`));
+    }
+    const id = randomUUID();
+    return new Promise((resolveResult, rejectResult) => {
+      const timer = setTimeout(() => {
+        if (!this.pending.delete(id)) return;
+        rejectResult(new Error(`timeout ${method} after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.pending.set(id, {
+        method,
+        resolve: resolveResult,
+        reject: rejectResult,
+        timer,
+      });
+      try {
+        this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        rejectResult(error);
+      }
+    });
+  }
+
+  clearNotifications() {
+    this.notifications = [];
+  }
+
+  matchingNotifications(method, predicate = () => true) {
+    return this.notifications.filter((note) => note.method === method && predicate(note));
+  }
+
+  async stop() {
+    const child = this.child;
+    if (!child) return;
+    failPending(this.pending, new Error("host stopped by harness"));
+    try {
+      child.kill();
+    } catch {
+      // The exit event below is the authoritative cleanup signal.
+    }
+    await Promise.race([this.exitPromise, delay(3_000)]);
+    if (!this.exited) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Best effort on platforms without SIGKILL semantics.
+      }
+      await Promise.race([this.exitPromise, delay(3_000)]);
+    }
+    this.readline?.close();
+    this.readline = null;
+    this.child = null;
+    if (!this.exited) throw new Error("host did not exit during cleanup");
+  }
+
+  async restart() {
+    await this.stop();
+    await this.start();
+  }
+}
+
+async function withScenario(id, fn, binary, tempRoot) {
+  const scenarioRoot = await mkdtemp(join(tempRoot, `${id.toLowerCase()}-`));
+  const dataDir = join(scenarioRoot, "data");
+  const workspace = join(scenarioRoot, "workspace");
+  await mkdir(dataDir, { recursive: true });
+  await mkdir(workspace, { recursive: true });
+  const host = new Host(binary, dataDir);
+  let primaryError = null;
+  try {
+    await host.start();
+    await host.call("workspace.set", { path: workspace });
+    return await fn({ id, host, dataDir, workspace, scenarioRoot });
+  } catch (error) {
+    primaryError = error;
+    throw error;
+  } finally {
+    let cleanupError = null;
+    try {
+      await host.stop();
+    } catch (error) {
+      cleanupError = error;
+    }
+    try {
+      await rm(scenarioRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+    } catch (error) {
+      cleanupError ||= error;
+    }
+    if (!primaryError && cleanupError) throw cleanupError;
+  }
+}
+
+async function expectRpcError(call, expectedCodes) {
+  let returned = false;
+  let value;
+  try {
+    value = await call();
+    returned = true;
+  } catch (error) {
+    const code = errorCodeOf(error);
+    if (!expectedCodes.includes(code)) {
+      throw new Error(
+        `expected RPC error ${expectedCodes.join("/")}, got ${errorText(error)}`,
+      );
+    }
+    return code;
+  }
+  if (returned) {
+    throw new Error(`expected RPC error ${expectedCodes.join("/")}, got ${shortJson(value)}`);
+  }
+}
+
+function toolErrorCode(result) {
+  return result?.errorCode || result?.content?.code || result?.content?.errorCode;
+}
+
+function assertToolFailure(result, expectedCode) {
+  assert(result?.ok === false, `expected tool failure, got ${shortJson(result)}`);
+  assert(
+    toolErrorCode(result) === expectedCode,
+    `expected tool error ${expectedCode}, got ${shortJson(result)}`,
+  );
+}
+
+function assertToolSuccess(result, toolCallId) {
+  assert(result?.ok === true, `expected tool success, got ${shortJson(result)}`);
+  assert(result.toolCallId === toolCallId, `tool identity mismatch: ${shortJson(result)}`);
+}
+
+async function waitFor(predicate, timeoutMs, label, intervalMs = 25) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await delay(intervalMs);
+  }
+  throw new Error(`timeout waiting for ${label}`);
+}
+
+async function createSession(host, workspace, title, mode = "agent") {
+  const response = await host.call("session.create", {
+    title,
+    mode,
+    projectPath: workspace,
+  });
+  assert(response?.session?.id, `session.create returned no session: ${shortJson(response)}`);
+  return response.session;
+}
+
+async function configureSession(host, session, mode, permissionMode) {
+  const response = await host.call("session.configure", {
+    id: session.id,
+    mode,
+    permissionMode,
+  });
+  assert(response?.session?.id === session.id, `session.configure failed: ${shortJson(response)}`);
+  return response.session;
+}
+
+async function beginTurn(host, sessionId) {
+  const response = await host.call("session.beginTurn", { sessionId });
+  assert(response?.turnId, `session.beginTurn returned no turn: ${shortJson(response)}`);
+  return response.turnId;
+}
+
+async function endTurn(host, turnId, status = "completed") {
+  return host.call("session.endTurn", {
+    turnId,
+    status,
+    createNotification: false,
+  });
+}
+
+async function enterPlan(host, sessionId, turnId, toolCallId) {
+  const response = await host.call("plans.enter", {
+    sessionId,
+    turnId,
+    toolCallId,
+    requestedMode: "agent",
+  });
+  assert(response?.state === "planning", `plans.enter failed: ${shortJson(response)}`);
+  return response;
+}
+
+async function submitPlan(host, sessionId, turnId, toolCallId, title, markdown, question) {
+  const response = await host.call("plans.submit", {
+    sessionId,
+    turnId,
+    toolCallId,
+    title,
+    markdown,
+    question,
+  });
+  assert(response?.status === "pending", `plans.submit failed: ${shortJson(response)}`);
+  assert(response?.proposal?.id, `plans.submit returned no proposal: ${shortJson(response)}`);
+  return response.proposal;
+}
+
+function resolveParams(proposal, action, targetPermissionMode) {
+  const params = {
+    proposalId: proposal.id,
+    sessionId: proposal.sessionId,
+    turnId: proposal.turnId,
+    toolCallId: proposal.toolCallId,
+    version: proposal.version,
+    action,
+  };
+  if (targetPermissionMode !== undefined) params.targetPermissionMode = targetPermissionMode;
+  return params;
+}
+
+async function resolvePlan(host, proposal, action, targetPermissionMode) {
+  return host.call("plans.resolve", resolveParams(proposal, action, targetPermissionMode));
+}
+
+async function verifyArtifact(ctx, proposal, markdown, title, question) {
+  const artifact = proposal.artifact;
+  assert(artifact, `proposal has no artifact: ${shortJson(proposal)}`);
+  assert(
+    /^\.pi\/plan\/[^/\\]+\.md$/.test(artifact.relativePath),
+    `unsafe/unexpected artifact path: ${artifact.relativePath}`,
+  );
+  const path = join(ctx.workspace, ...artifact.relativePath.split("/"));
+  const bytes = await readFile(path);
+  const expectedBytes = Buffer.from(markdown, "utf8");
+  assert(bytes.equals(expectedBytes), `artifact bytes changed at ${artifact.relativePath}`);
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  assert(artifact.sha256 === sha256, `artifact hash mismatch: ${shortJson(artifact)}`);
+  assert(artifact.sizeBytes === bytes.length, `artifact size mismatch: ${shortJson(artifact)}`);
+  assert(proposal.markdown === markdown, "proposal Markdown is not byte-identical");
+  assert(proposal.plan === markdown, "proposal plan snapshot is not byte-identical");
+  assert(proposal.title === title.trim(), `structured title mismatch: ${shortJson(proposal)}`);
+  assert(proposal.question === question.trim(), `structured question mismatch: ${shortJson(proposal)}`);
+  return { path, bytes, sha256, sizeBytes: bytes.length };
+}
+
 function shellDialectForId(id) {
-  if (id === "windows-powershell" || id === "windows-pwsh") return "powershell";
+  if (id === "windows-powershell") return "powershell";
   if (id === "cmd") return "cmd";
   if (id === "git-bash" || id === "bash") return "posix";
   return undefined;
@@ -326,123 +696,6 @@ async function scenario106(binary, tempRoot) {
     });
     await endTurn(ctx.host, secondTurn);
     return `first=${proposal1.id.slice(0, 8)} second=${proposal2.id.slice(0, 8)} missingMode=${missingModeCode} approval=ask`;
-  }, binary, tempRoot);
-}
-
-async function scenarioPlanSafePlugin(binary, tempRoot) {
-  return withScenario("E2E-PLAN-005", async (ctx) => {
-    const pluginId = "e2e.plan-safe";
-    const toolName = "plugin_e2e_plan_safe_inspect";
-    const planSafeActions = ["snapshot"];
-    const pluginRoot = join(ctx.scenarioRoot, "plan-safe-plugin");
-    await mkdir(pluginRoot, { recursive: true });
-    await writeFile(join(pluginRoot, "main.js"), "module.exports = { onLoad() {} };", "utf8");
-    await writeFile(
-      join(pluginRoot, "manifest.json"),
-      JSON.stringify(
-        {
-          schemaVersion: 1,
-          id: pluginId,
-          name: "E2E Plan Safe",
-          version: "0.1.0",
-          main: "main.js",
-          contributes: {
-            agentTools: [
-              {
-                name: "inspect",
-                description: "Inspect a page without mutating it",
-                risk: "low",
-                planSafeActions,
-                schema: {
-                  type: "object",
-                  properties: {
-                    action: { type: "string", enum: ["snapshot", "click"] },
-                    url: { type: "string" },
-                  },
-                  required: ["action"],
-                },
-              },
-            ],
-          },
-          permissions: ["agent.tool.register"],
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-    const loaded = await loadDevelopmentPlugin(ctx.host, pluginRoot);
-    assert(loaded.id === pluginId && loaded.enabled === true, shortJson(loaded));
-
-    const session = await createSession(ctx.host, ctx.workspace, "Plan-safe plugin", "plan");
-    await configureSession(ctx.host, session, "plan", "auto");
-    const turnId = await beginTurn(ctx.host, session.id);
-
-    async function executeFixture(args, toolCallId) {
-      const dispatch = ctx.host.call("tools.execute", {
-        sessionId: session.id,
-        turnId,
-        toolCallId,
-        toolName,
-        declaredRisk: "low",
-        planSafeActions,
-        args,
-        // A forged sidecar mode cannot widen the durable Plan mode.
-        mode: "agent",
-      });
-      const notification = await waitForPluginExecution(ctx.host, toolName);
-      assert(notification, "Plan-safe plugin call was not dispatched");
-      assert(notification.params?.mode === "plan", shortJson(notification));
-      assert(
-        JSON.stringify(notification.params?.planSafeActions) === JSON.stringify(planSafeActions),
-        shortJson(notification),
-      );
-      const action = notification.params?.args?.action;
-      if (planSafeActions.includes(action)) {
-        await resolvePluginExecution(ctx.host, notification, {
-          ok: true,
-          content: { action, source: "plan-safe-fixture" },
-        });
-      } else {
-        await resolvePluginExecution(ctx.host, notification, {
-          ok: false,
-          errorCode: "PERMISSION_DENIED",
-          content: { error: `action ${String(action)} is not plan-safe` },
-        });
-      }
-      return dispatch;
-    }
-
-    const safe = await executeFixture(
-      { action: "snapshot", url: "https://example.com" },
-      "e2e-plan-safe-snapshot",
-    );
-    assertToolSuccess(safe, "e2e-plan-safe-snapshot");
-    assert(safe.content?.action === "snapshot", shortJson(safe));
-
-    ctx.host.clearNotifications();
-    const mutation = await executeFixture(
-      { action: "click", selector: "#sign-in" },
-      "e2e-plan-safe-click",
-    );
-    assertToolFailure(mutation, "PERMISSION_DENIED");
-
-    ctx.host.clearNotifications();
-    const undeclared = await ctx.host.call("tools.execute", {
-      sessionId: session.id,
-      turnId,
-      toolCallId: "e2e-plan-safe-undeclared",
-      toolName,
-      args: { action: "snapshot", url: "https://example.com" },
-      mode: "agent",
-    });
-    assertToolFailure(undeclared, "PLUGIN_DISABLED_IN_PLAN");
-    assert(
-      ctx.host.matchingNotifications("plugins.execute").length === 0,
-      "host dispatched a plugin call without planSafeActions",
-    );
-    await endTurn(ctx.host, turnId);
-    return "safe=snapshot mutation=PERMISSION_DENIED undeclared=PLUGIN_DISABLED_IN_PLAN";
   }, binary, tempRoot);
 }
 
@@ -708,7 +961,7 @@ async function scenario112(binary, tempRoot) {
     assert(choices.length > 0, `empty shell catalog: ${shortJson(catalog)}`);
     const expectedIds =
       process.platform === "win32"
-        ? ["windows-powershell", "windows-pwsh", "cmd", "git-bash"]
+        ? ["windows-powershell", "cmd", "git-bash"]
         : ["bash"];
     for (const id of expectedIds) {
       assert(choices.some((choice) => choice.id === id), `missing platform shell ${id}`);
@@ -806,9 +1059,7 @@ async function scenario115(binary, tempRoot) {
     const invalidLegs = [
       ["zero", 0, ["INVALID_ARGUMENT"]],
       ["negative", -1, ["INVALID_PARAMS"]],
-      // host-core caps timeoutMs at i32::MAX (MAX_TIMEOUT_MS); the agent-side
-      // 21,600 s ceiling lives in agent-runtime's Bash schema.
-      ["over-max", 2_147_483_648, ["INVALID_ARGUMENT"]],
+      ["over-max", 300_001, ["INVALID_ARGUMENT"]],
     ];
     const invalidDetails = [];
     for (const [name, timeoutMs, codes] of invalidLegs) {
@@ -975,7 +1226,6 @@ async function main() {
   try {
     await runScenario("E2E-105", () => scenario105(binary, tempRoot));
     await runScenario("E2E-106", () => scenario106(binary, tempRoot));
-    await runScenario("E2E-PLAN-005", () => scenarioPlanSafePlugin(binary, tempRoot));
     await runScenario("E2E-107", () => scenario107(binary, tempRoot));
     await runScenario("E2E-108", () => scenario108(binary, tempRoot));
     await runScenario("E2E-109", () => scenario109(binary, tempRoot));

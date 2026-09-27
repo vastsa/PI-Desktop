@@ -18,16 +18,8 @@ export const NETWORK_PROXY_SCHEMES = [
 ] as const;
 export type NetworkProxyScheme = (typeof NETWORK_PROXY_SCHEMES)[number];
 
-/**
- * Default bypass list for custom mode.
- *
- * Loopback plus the private ranges a user's own LAN devices live in. A proxy is
- * for reaching the public internet; sending `192.168.0.0/16` through it is how
- * a local model server, NAS or MCP endpoint stops answering. `<local>` keeps
- * Chromium's own single-label rule.
- */
 export const DEFAULT_NETWORK_PROXY_BYPASS =
-  "localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16";
+  "localhost,127.0.0.1,::1,<local>";
 
 export const PROXY_ENV_KEYS = [
   "HTTP_PROXY",
@@ -89,9 +81,6 @@ export function normalizeNetworkProxy(value: unknown): NetworkProxySettings {
     settings.url = record.url.trim();
   }
   if (bypass) settings.bypass = bypass;
-  // A build before the network policy owned it stored `allowFakeIp` here. The
-  // key is ignored, not rejected: the proxy decides where traffic goes, and
-  // `networkPolicy.mode` decides what the app tolerates from the route.
   return settings;
 }
 
@@ -200,8 +189,7 @@ export function validateNetworkProxy(
 ): { ok: true; value: NetworkProxySettings } | { ok: false; error: string } {
   const settings = normalizeNetworkProxy(value);
   if (settings.mode !== "custom") {
-    const next: NetworkProxySettings = { mode: settings.mode };
-    return { ok: true, value: next };
+    return { ok: true, value: { mode: settings.mode } };
   }
   const parsed = parseProxyUrl(settings.url ?? "");
   if (!parsed.ok) return parsed;
@@ -226,40 +214,9 @@ export function chromiumProxyConfig(
   const parsed = parseProxyUrl(settings.url ?? "");
   if (!parsed.ok) return { mode: "direct" };
   return {
-    proxyRules: chromiumProxyRules(parsed.value),
+    proxyRules: parsed.value.href,
     proxyBypassRules: effectiveProxyBypass(settings),
   };
-}
-
-/**
- * Chromium proxy rule for one parsed proxy URL.
- *
- * Chromium understands `http`, `https`, `socks` (SOCKS5), `socks4` and
- * `socks5` proxy rules, but not curl's `socks5h` spelling: `session.setProxy`
- * accepts the unsupported rule set without an error, then resolves to no
- * proxy at all and every request fails with `net::ERR_NO_SUPPORTED_PROXIES`.
- * Chromium's SOCKS5 already hands the hostname to the proxy, so `socks5h`
- * maps onto `socks5` without changing where names are resolved.
- *
- * Userinfo is also stripped. Chromium's proxy-rule parser rejects
- * `scheme://user:pass@host:port` with the same `ERR_NO_SUPPORTED_PROXIES`
- * failure (issue #490). Electron main points Chromium at a loopback SOCKS5
- * relay that injects those credentials; Node and curl keep the canonical
- * href from {@link parseProxyUrl}.
- */
-export function chromiumProxyRules(proxy: ParsedProxyUrl): string {
-  return formatProxyHref({
-    scheme: proxy.scheme === "socks5h" ? "socks5" : proxy.scheme,
-    host: proxy.host,
-    port: proxy.port,
-    username: "",
-    password: "",
-  });
-}
-
-/** True when Chromium cannot carry the credentials in `proxyRules`. */
-export function proxyHasCredentials(proxy: ParsedProxyUrl): boolean {
-  return Boolean(proxy.username || proxy.password);
 }
 
 /** Bypass list suitable for `NO_PROXY` / curl `--noproxy` (no Chromium `<local>`). */

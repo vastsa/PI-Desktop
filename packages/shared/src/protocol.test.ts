@@ -14,12 +14,6 @@ import {
   isCommandShellOption,
   isGlobalPermissionMode,
   isToolsOutputParams,
-  AGENT_COMPACT_RPC_TIMEOUT_MS,
-  CONFIG_SYNC_RPC_TIMEOUT_MS,
-  COMMAND_RPC_BUFFER_MS,
-  COMPACTION_SUMMARY_MAX_RETRIES,
-  COMPACTION_SUMMARY_RETRY_BUDGET_MS,
-  STREAM_IDLE_TIMEOUT_MS,
   rpcTimeoutMs,
   type PlanExecution,
   type PlanArtifact,
@@ -30,9 +24,9 @@ import {
 } from "./index.js";
 
 describe("Plan protocol contracts", () => {
-  it("uses protocol v11/schema v16 and exposes the plan, schedule, and shell channels", () => {
+  it("uses protocol v11/schema v13 and exposes the plan, schedule, and shell channels", () => {
     expect(PROTOCOL_VERSION).toBe(11);
-    expect(SCHEMA_VERSION).toBe(16);
+    expect(SCHEMA_VERSION).toBe(13);
     expect(IPC_WHITELIST.has(IPC.invoke.plansPending)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.plansResolve)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.event.plansChanged)).toBe(true);
@@ -43,8 +37,6 @@ describe("Plan protocol contracts", () => {
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledUpdate)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledDelete)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.scheduledRun)).toBe(true);
-    expect(IPC_WHITELIST.has(IPC.invoke.scheduledExecute)).toBe(true);
-    expect(IPC_WHITELIST.has(IPC.invoke.scheduledListRuns)).toBe(true);
     expect(IPC.invoke.providersRefreshModelCatalog).toBe(
       "pi-desktop/providers/refreshModelCatalog",
     );
@@ -67,12 +59,6 @@ describe("Plan protocol contracts", () => {
     expect(IPC.invoke.modelConfigImportRun).toBe("pi-desktop/modelConfig/importRun");
     expect(IPC_WHITELIST.has(IPC.invoke.modelConfigImportScan)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.modelConfigImportRun)).toBe(true);
-    expect(IPC.invoke.projectClone).toBe("pi-desktop/project/clone");
-    expect(IPC_WHITELIST.has(IPC.invoke.projectClone)).toBe(true);
-    expect(IPC.invoke.speechTranscribe).toBe("pi-desktop/speech/transcribe");
-    expect(IPC_WHITELIST.has(IPC.invoke.speechTranscribe)).toBe(true);
-    expect(IPC_WHITELIST.has(IPC.invoke.speechSynthesize)).toBe(true);
-    expect(IPC_WHITELIST.has(IPC.invoke.speechGetStatus)).toBe(true);
   });
 
   it("exposes the vendor-account OAuth channels through the preload whitelist", () => {
@@ -121,22 +107,10 @@ describe("Plan protocol contracts", () => {
       cadence: "manual",
       mode: normalizeMode("chat"),
       enabled: true,
-      permissionMode: "accept-edits",
-      thinkingLevel: "high",
-      providerId: "provider-1",
-      modelId: "model-1",
-      workspacePath: "C:/work/project",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
     expect(task.mode).toBe("plan");
-    expect(task).toMatchObject({
-      permissionMode: "accept-edits",
-      thinkingLevel: "high",
-      providerId: "provider-1",
-      modelId: "model-1",
-      workspacePath: "C:/work/project",
-    });
   });
 
   it("keeps approval actions and target permission modes typed", () => {
@@ -260,65 +234,5 @@ describe("Plan protocol contracts", () => {
     expect(rpcTimeoutMs("tools.abort", { sessionId: "s", toolCallId: "t" })).toBe(
       130_000,
     );
-  });
-
-  it("outlasts the whole model request a manual compaction spends (#795)", () => {
-    // One summary prompt plus the sidecar's retry budget: every attempt that
-    // stops producing events is cut by the stream watchdog, and each retry pays
-    // its backoff wait. A flat 130s fired on a ~158s compaction, so Electron
-    // reported a failure while the sidecar persisted the checkpoint anyway.
-    expect(STREAM_IDLE_TIMEOUT_MS).toBe(180_000);
-    expect(COMPACTION_SUMMARY_MAX_RETRIES).toBe(3);
-    expect(COMPACTION_SUMMARY_RETRY_BUDGET_MS).toBe(14_000);
-    expect(AGENT_COMPACT_RPC_TIMEOUT_MS).toBe(
-      (1 + COMPACTION_SUMMARY_MAX_RETRIES) * STREAM_IDLE_TIMEOUT_MS +
-        COMPACTION_SUMMARY_RETRY_BUDGET_MS +
-        COMMAND_RPC_BUFFER_MS,
-    );
-    expect(AGENT_COMPACT_RPC_TIMEOUT_MS).toBe(744_000);
-    expect(rpcTimeoutMs("agent.compact", { sessionId: "s" })).toBe(
-      AGENT_COMPACT_RPC_TIMEOUT_MS,
-    );
-    // The deadline is per-method on purpose: widening the global default would
-    // hide a genuinely lost reply on every other call.
-    expect(rpcTimeoutMs("agent.getStatus", { sessionId: "s" })).toBe(130_000);
-  });
-
-  it("covers the permission wait, the admission queue, and host-core dispatch", () => {
-    // Permission (120s) + admission queue (30s) + host-core dispatch (150s) +
-    // slack (10s). A flat 130s would cut off a prompted plugin tool that is
-    // still inside its budget, and dropping the queue wait would cut off a call
-    // that had to wait for a saturated plugin class before it was dispatched.
-    expect(rpcTimeoutMs("tools.execute", { toolName: "plugin_advisor_ask" })).toBe(
-      310_000,
-    );
-    expect(rpcTimeoutMs("tools.execute", { toolName: "mcp_github_search" })).toBe(
-      310_000,
-    );
-    expect(
-      rpcTimeoutMs("tools.execute", {
-        toolName: "plugin_advisor_ask",
-        timeoutMs: 5_000,
-      }),
-    ).toBe(165_000);
-    expect(
-      rpcTimeoutMs("tools.execute", { toolName: "plugin_advisor_ask", timeoutMs: 0 }),
-    ).toBe(310_000);
-  });
-
-  it("lets a whole cloud sync finish instead of failing on a lost reply", () => {
-    // The sync is one request that answers only when every phase is done, and
-    // the host keeps running after a transport deadline fires. The progress
-    // reports are the liveness signal, so the deadline is only a ceiling that
-    // stops a genuinely lost answer from hanging the caller forever.
-    expect(IPC.event.configSyncProgress).toBe(
-      "pi-desktop/configSync/event/progress",
-    );
-    expect(IPC_WHITELIST.has(IPC.event.configSyncProgress)).toBe(true);
-    expect(CONFIG_SYNC_RPC_TIMEOUT_MS).toBe(1_800_000);
-    expect(rpcTimeoutMs("configSync.syncNow", {})).toBe(
-      CONFIG_SYNC_RPC_TIMEOUT_MS,
-    );
-    expect(rpcTimeoutMs("configSync.getState", {})).toBe(130_000);
   });
 });

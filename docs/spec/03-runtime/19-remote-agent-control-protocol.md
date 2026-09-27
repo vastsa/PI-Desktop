@@ -3,10 +3,9 @@
 - Protocol name: `PI Remote Agent Control Protocol` (`RACP`)
 - Version: `1.0`
 - Status: Target specification; post-MVP
-- Decision: D373 / ADR 0205, amended by D374 and D375
-- Transport profiles: `RACP-WS` (normative v1 binding; first deployed over an
-  SSH tunnel), `RACP-HTTP` (browser profile; unscheduled), `RACP-GRPC`
-  (reserved)
+- Decision: D373 / ADR 0205, amended by D376
+- Transport profiles: `RACP-WS` (normative v1 binding), `RACP-HTTP`
+  (browser profile), `RACP-GRPC` (reserved)
 
 This document is normative for the remote control contract. It defines the
 operation model once and maps it to transports. It does not change the
@@ -33,11 +32,9 @@ workspace selection, tool policy, permission decisions, persistence, and
 provider credentials. A RACP server MUST route a request through those same
 authorities rather than reproducing them in a Gateway or client.
 
-RACP v1 is a strict subset of what the local desktop can do. The remote-host
-profile in §6.2 is the v1.1 addition that lets the desktop itself act as the
-Remote Client of a `pi-host` on another machine (D375); operations that stay
-deferred are listed in §6.3 so that no binding invents them under another
-name.
+RACP v1 is a strict subset of what the local desktop can do. Operations the
+desktop offers locally but v1 defers are listed in §6.2 so that no binding
+invents them under another name.
 
 ## 2. Terminology
 
@@ -85,9 +82,7 @@ The client sends:
       "attachments": true,
       "turnQueue": true,
       "hostEvents": true,
-      "history": true,
-      "toolRelay": true,
-      "terminal": true
+      "history": true
     },
     "maxReceiveBytes": 1048576
   }
@@ -121,11 +116,8 @@ The Host returns:
       "turnQueue": true,
       "hostEvents": true,
       "history": true,
-      "remoteHostProfile": true,
-      "toolRelay": true,
-      "terminal": true,
       "notifications": false,
-      "bindings": ["RACP-WS"]
+      "bindings": ["RACP-WS", "RACP-HTTP"]
     },
     "limits": {
       "maxFrameBytes": 1048576,
@@ -137,8 +129,7 @@ The Host returns:
     },
     "policy": {
       "remoteMaxPermissionMode": "ask",
-      "applyCeilingToPairedDevices": false,
-      "approvalLifetimeMs": 1800000
+      "approvalLifetimeMs": 120000
     }
   }
 }
@@ -261,13 +252,6 @@ type Turn = {
 Only one turn per session may be `running`, `waiting_approval`, or
 `waiting_input`. Up to `maxQueuedTurnsPerSession` turns may be `queued`; the
 Host releases them first-in first-out after the active turn's terminal event.
-Queued turns and their idempotency keys are persisted by Rust host-core
-(D375), so a Host restart restores the queue in order. A restored queue is
-held; release resumes on the first controller attach, local or remote, so a
-reboot never starts work unattended.
-Runtime events received before a queued start is acknowledged belong to the
-dequeued turn being started. They must not change the next waiting entry's
-status or prevent that entry from being canceled.
 `canceled` is the terminal state of a queued turn that never started;
 `interrupted` is the terminal state of a started turn that was stopped or
 aborted. Terminal turns are immutable.
@@ -311,8 +295,6 @@ type EventKind =
   | "item.delta"
   | "item.completed"
   | "tool.progress"
-  | "terminal.changed"
-  | "terminal.output"
   | "approval.requested"
   | "approval.resolved"
   | "input.requested"
@@ -321,8 +303,8 @@ type EventKind =
 ```
 
 Durable events carry `sequence`. Ephemeral events (`turn.activity`,
-`item.delta`, `tool.progress`, `terminal.output`) carry `afterSequence`
-instead: the sequence of the last durable event they follow. Ephemeral events are never retained,
+`item.delta`, `tool.progress`) carry `afterSequence` instead: the sequence of
+the last durable event they follow. Ephemeral events are never retained,
 never replayed, and never counted against the replay window; the snapshot's
 `activeItems` carry the content they accumulated (§5.4). A client applies gap
 detection to `sequence` only.
@@ -349,7 +331,7 @@ mapping is fixed:
 | `error` (terminal) | `turn.failed` | yes | Carries the normalized `AppError` |
 | `turn_start`, `turn_end`, `status` | `turn.activity` | no | Model rounds and activity phases such as `waiting-model`, `compacting`, `waiting-subagents` |
 | `message_start` | `item.started` | yes | `itemType: "message"` |
-| `message_update` | `item.delta` | no | `stream: \"delta\"` plus `deltaText`/`deltaThinking`; content is complete in `item.completed` (D412) |
+| `message_update` | `item.delta` | no | Delta text and thinking; content is complete in `item.completed` |
 | `message_end` | `item.completed` | yes | Full `UiMessage` |
 | `tool_start` | `item.started` | yes | `itemType: "tool"` |
 | `tool_update` | `tool.progress` | no | Partial results are complete in `item.completed` |
@@ -362,10 +344,6 @@ mapping is fixed:
 
 `turn.completed` therefore maps to the local `agent_end`, never to the local
 `turn_end`, which only closes one model round (`01-ipc-protocol.md` §6).
-
-`terminal.changed` (durable) records a terminal opening, closing, or exiting.
-`terminal.output` (ephemeral) carries pty bytes; it is recoverable only from
-the terminal's bounded replay ring (§6.2), never from the event log.
 
 An event payload that would exceed `maxFrameBytes` is emitted with
 `payload.truncated: true` and a bounded preview; the complete item is
@@ -557,57 +535,29 @@ to this same catalog.
 | `turn/stop` | controller | Finish the current assistant/tool boundary, then end the turn; idempotent |
 | `turn/interrupt` | controller | Abort the turn now; cancels a queued turn; idempotent |
 | `turn/cancel` | controller | Remove a queued turn that has not started; idempotent |
-| `turn/prioritize` | controller | Move a queued turn to the head of its session's queue; idempotent |
 | `approval/respond` | approver | Resolve one live approval request |
 | `input/respond` | controller | Resolve one live input request |
 | `attachment/create` | controller | Reserve a bounded attachment slot |
 | `attachment/complete` | controller | Verify an uploaded attachment hash and size |
-| `tools/advertise` | owner | Advertise client-executed tools for a session; replaces the connection's previous set; cleared on disconnect |
 | `session/revoke` | owner | Revoke a client or session membership |
 | `session/archive` | owner | Archive an idle session |
 
 The server MUST reject unknown operations with `METHOD_NOT_FOUND`. A client
 MUST use capability discovery rather than assuming optional operations exist.
 
-### 6.2 Remote-host profile (v1.1, required by rollout R2)
+### 6.2 Deferred operations
 
-When the desktop is the Remote Client of a `pi-host` on another machine, the
-renderer expects the session controls it has locally. These operations are
-part of the contract from v1.1 and are advertised through the
-`remoteHostProfile` capability. Each one keeps its local rule: configuration
-and fork are idle-only, deletion is owner-only, and every workspace read is
-resolved against the Session's durable root with the Host's ignore rules and
-`PATH_OUTSIDE_WORKSPACE` boundary. Terminals run on the Host machine with the
-session root as working directory and stream through `terminal.output`.
-
-| Operation | Role | Behavior |
-|---|---|---|
-| `session/configure` | controller | Change mode, provider/model, thinking level, or permission mode while idle; same rules as `pi-desktop/session/configure` |
-| `session/fork` | controller | Fork an idle session, optionally through a message id, into a new idle session |
-| `session/rename` | controller | Rename a session |
-| `session/delete` | owner | Delete a session and its transcript on the Host |
-| `session/compact` | controller | Run a manual context checkpoint on the active session |
-| `workspace/list` | viewer | List entries under the session root, bounded, honoring the Host ignore rules |
-| `workspace/read` | viewer | Read one bounded file under the session root; images as data URLs |
-| `workspace/diff` | viewer | Return the working-tree diff of the session root |
-| `terminal/open` | controller | Open a pty on the Host with the session root as cwd; returns a terminal id and the bounded replay ring; policy-gated (security §4.1) |
-| `terminal/input` | controller | Write bytes to an open terminal |
-| `terminal/resize` | controller | Resize an open terminal |
-| `terminal/close` | controller | Close a terminal; idempotent |
-| `connection/pair` | authenticated | Exchange the single-use pairing token presented on the upgrade for a device credential (security §3.4); only valid on a pairing connection (D448) |
-| `project/register` | owner | Register a Host directory as a project: the Host canonicalizes and validates the path and returns the project id (D448) |
-| `project/browse` | owner | List directories under a Host path, bounded, for the remote folder picker (D448) |
-
-### 6.3 Deferred operations
-
-The desktop offers these locally. RACP does not expose them yet; the names
-are reserved so a later minor version adds them under the same catalog and
-no binding invents a substitute.
+The desktop offers these locally. RACP v1 does not expose them; the names are
+reserved so a later minor version adds them under the same catalog and no
+binding invents a substitute.
 
 | Reserved operation | Local equivalent | Why deferred |
 |---|---|---|
-| per-turn model or thinking override | composer next-turn configuration | `session/configure` covers the idle case; per-turn overrides need their own policy review |
-| provider, secret, and vendor account management | settings and secrets IPC | Explicitly out of scope; remote Host providers are configured over the SSH bootstrap channel |
+| `session/configure` | `pi-desktop/session/configure` | Changing mode, model, thinking level, or permission mode remotely needs its own policy review |
+| `session/fork` | `session.fork` | Fork semantics and snapshot boundaries are idle-only and UI-driven today |
+| `session/rename`, `session/delete` | session organization IPC | Not needed for observation and control |
+| per-turn model or thinking override | composer next-turn configuration | The Host chooses the effective provider configuration in v1 |
+| provider, secret, and vendor account management | settings and secrets IPC | Explicitly out of scope; a credential-management capability would be a separate decision |
 
 ## 7. Core operation shapes
 
@@ -744,10 +694,7 @@ principal runs under the lower of `Session.permissionMode` and the Host's
 `accept-edits` < `auto`) unless the principal also holds `approver` and Host
 policy allows approvers to use the session's own mode. The result reports the
 applied value as `effectivePermissionMode`; the durable session mode is never
-changed by the ceiling. A desktop device paired through the SSH bootstrap
-holds `owner` and is exempt from the ceiling by default; the Host policy
-`applyCeilingToPairedDevices` re-applies it
-(`05-security/02-remote-control-security.md` §4.3).
+changed by the ceiling.
 
 ### 7.4 `turn/stop`, `turn/interrupt`, and `turn/cancel`
 
@@ -775,11 +722,6 @@ The three operations share this shape and each returns the current turn state.
   are never rolled back. On a queued turn it behaves as `turn/cancel`.
 - `turn/cancel` removes a queued turn and marks it `canceled`; on a started
   turn it returns `CONFLICT`.
-- `turn/prioritize` moves a queued turn to the head of its session's queue
-  (the desktop's "send now") and emits `turn.queued` with the new position;
-  it never touches the running turn, so a client that wants the entry to
-  start at the next boundary also calls `turn/stop`. On a started turn it
-  returns `CONFLICT`.
 
 A late call after a terminal event is a successful no-op. None of the three
 rewinds a persisted transcript.
@@ -925,47 +867,6 @@ the pending permission table and its timer; the Agent Host exposes that table
 through a `permissions.pending` read so a late-attaching client receives open
 requests in its snapshot and every client sees the same resolution.
 
-### 9.4 Relayed tool execution
-
-A desktop paired as `owner` MAY advertise tools that execute on the desktop
-(`tools/advertise`): its user-configured MCP servers and plugin tools that do
-not require the session workspace. The Host merges them into that session's
-catalog as relayed tools while the advertising connection lives. When the
-Agent calls one, the Host runs its normal permission flow first, then sends
-a server request on the advertising connection:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "server-request-77",
-  "method": "tool/execute",
-  "params": {
-    "executionId": "exec_01J...",
-    "sessionId": "ses_01J...",
-    "turnId": "turn_01J...",
-    "toolCallId": "call_01J...",
-    "toolName": "mcp_corp_search",
-    "args": { "query": "release notes" }
-  }
-}
-```
-
-The client executes the tool locally under its own plugin permissions and
-confirmation rules and responds with `{ result, isError }` bounded by
-`maxFrameBytes`, or with an error. Rules:
-
-1. A relayed tool never runs on the Host and never receives Host secrets; the
-   Host passes only the Agent's arguments, which are untrusted.
-2. The Host-side permission decision, including session grants, precedes the
-   relay request; the client does not re-ask the Host.
-3. The request deadline is the tool's own timeout. If the advertising
-   connection is gone or does not answer, the tool fails with `TOOL_FAILED`
-   and the turn continues; nothing is retried on another connection.
-4. Plugin tools whose manifest requires workspace or filesystem access are
-   not accepted by `tools/advertise`, because they would act on the desktop's
-   filesystem while the session root is on the Host.
-5. Relayed results are items like any other and are audited on both sides.
-
 ## 10. Attachments
 
 Small text and image inputs MAY be embedded in `turn/start` when their encoded
@@ -1012,14 +913,6 @@ binding defines two authentication profiles:
 
 A token in the URL is rejected in both profiles.
 
-First deployment (rollout R2): a `pi-host` binds loopback on the remote
-machine and the desktop reaches it through an SSH port forward on the header
-profile with a device token obtained by the SSH bootstrap pairing. Plain
-`ws://` is accepted on that port only when both the bind address and the peer
-address are loopback; the SSH channel provides confidentiality
-(`05-security/02-remote-control-security.md` §5.1). The cookie profile ships
-with the unscheduled browser milestone.
-
 ### 11.2 HTTP/JSON + SSE (`RACP-HTTP`, browser profile)
 
 | Operation family | HTTP mapping |
@@ -1034,7 +927,6 @@ with the unscheduled browser milestone.
 | Start turn | `POST /v1/sessions/{sessionId}/turns` |
 | Get turn | `GET /v1/turns/{turnId}` |
 | Stop / interrupt / cancel turn | `POST /v1/turns/{turnId}:stop` / `:interrupt` / `:cancel` |
-| Prioritize turn | `POST /v1/turns/{turnId}:prioritize` |
 | Session event stream | `GET /v1/sessions/{sessionId}/events` |
 | Host event stream | `GET /v1/events` |
 | Resolve approval | `POST /v1/approvals/{approvalId}:respond` |
@@ -1050,10 +942,8 @@ MAY instead consume the stream through `fetch` with header authentication, in
 which case it sends `Last-Event-ID` as a request header itself and implements
 its own reconnect.
 
-`RACP-HTTP` is required before any browser client ships. The browser
-milestone is unscheduled (D375); the mapping is retained so the contract does
-not drift, and the binding joins the conformance fixture with `RACP-WS` when
-it is scheduled.
+`RACP-HTTP` is required before any browser client ships and is delivered in
+rollout R4. It shares the conformance fixture with `RACP-WS`.
 
 ### 11.3 gRPC (`RACP-GRPC`, reserved)
 
@@ -1072,10 +962,6 @@ Reserving gRPC rather than requiring it keeps v1 at one interactive binding
 and one browser profile; the Host link (§11.4) uses `RACP-WS` framing.
 
 ### 11.4 Host link relay profile
-
-The Host link belongs to the unscheduled Gateway milestone (D375). It is
-specified here so the contract does not drift; the SSH-tunnel topology does
-not use it.
 
 The Host link is the outbound connection from an Agent Host to a Gateway. It
 is not a third client binding: it multiplexes logical client connections onto
@@ -1133,21 +1019,18 @@ The initial target limits are:
 | Read/metadata operation deadline | 15 seconds |
 | `turn/start` admission deadline | 5 seconds |
 | Approval lifetime, local default | 120 seconds, then deny |
-| Approval lifetime, remote policy | 30 minutes by default while a remote subscriber is attached; Host-configured, bounded, advertised as `approvalLifetimeMs` |
+| Approval lifetime, remote policy | Host-configured, bounded, advertised as `approvalLifetimeMs` |
 | Heartbeat interval | 30 seconds |
-| Terminal output replay ring | 128 KiB per terminal |
-| Open terminals per session | 2 |
-| Relayed tool execution deadline | The tool's own timeout |
 
 The Host MAY advertise stricter limits. It MUST return a structured limit
 error rather than truncating a command silently.
 
 Approval lifetime is a Host policy. The local default stays at 120 seconds
-then deny (frozen decision 17). While a remote subscriber is attached the
-default lifetime is 30 minutes (D375), because a remote approver is rarely at
-the keyboard; the Host operator may shorten or lengthen it within a bound, the
-tool call stays blocked for that lifetime unless a local or remote decision
-arrives earlier, and a disconnect never extends it.
+then deny (frozen decision 17). A Host with remote control enabled MAY apply a
+longer bounded lifetime to approvals raised while a remote subscriber is
+attached, because a remote approver is rarely at the keyboard; the tool call
+stays blocked for that lifetime, so the trade is explicit and configured, and
+a disconnect never extends it.
 
 ## 13. Errors
 
@@ -1183,11 +1066,6 @@ Initial RACP codes are:
 | `APPROVAL_STALE` | no | Approval response targets an old revision |
 | `PAYLOAD_TOO_LARGE` | no | Request, event, or attachment exceeds a limit |
 | `RATE_LIMITED` | yes | Principal, session, or host quota exceeded |
-| `PAIRING_FAILED` | no | The pairing token is unknown or was already exchanged |
-| `PAIRING_TOKEN_EXPIRED` | no | The pairing token's bootstrap window passed |
-| `CAPABILITY_UNAVAILABLE` | no | The Host does not advertise the capability the operation needs |
-| `REMOTE_PATH_NOT_FOUND` | no | A Host-side path does not exist |
-| `REMOTE_PATH_FORBIDDEN` | no | A Host-side path is outside what the principal may reach |
 | `INTERNAL` | maybe | Unexpected failure with a trace id |
 
 Implementations MUST map these codes into the shared `AppError` vocabulary
@@ -1213,42 +1091,14 @@ thing across all bindings.
 7. Conformance covers duplicate mutations, cursor replay, epoch change, cursor
    expiry, queued-turn ordering, approval decisions including `allow-session`
    and permission-mode selection, approval expiry, slow clients,
-   authorization, the remote permission ceiling, relayed tool execution,
-   terminal streaming, queue restoration after a restart, attachment hashes,
-   and host restart recovery.
+   authorization, the remote permission ceiling, attachment hashes, and host
+   restart recovery.
 8. The client treats a new major protocol version as incompatible unless an
    explicit compatibility adapter is selected.
 
-## 14a. RACP-WS binding implementation notes (D448)
-
-`packages/racp` is the reference implementation of the `RACP-WS` binding.
-Beyond the rules above it fixes these wire details:
-
-- `connection/initialize` answers with `server.hostId`, the Host's stable
-  identity minted at first start; a client keys its Host records by it, never
-  by hostname, address, or path.
-- The client sends `notifications/initialized` after the initialization
-  result; the Host closes a connection that has not initialized within the
-  §12 deadline.
-- A JSON-RPC error carries the `RemoteError` under `error.data`; the numeric
-  `error.code` is `-32601` for `METHOD_NOT_FOUND`, `-32602` for
-  `INVALID_ARGUMENT`, and `-32000` otherwise.
-- When the Host closes one subscription (`CLIENT_TOO_SLOW`) it sends the
-  `events/closed` notification with the subscription id, the `RemoteError`,
-  and the last safely delivered cursor; the connection stays open.
-- Terminal events are connection-local and are never entered into the
-  session's durable log; their `epoch` is the session's and
-  `terminal.changed` carries the current sequence without allocating one.
-- Device tokens are `pdt1.`-prefixed and pairing tokens `ppt1.`-prefixed;
-  both are presented as `Authorization: Bearer` on the upgrade, stored
-  hashed (SHA-256) on the Host, and never accepted from a URL.
-- Reconnect never re-sends an in-flight request: the pending calls of the
-  dropped connection fail with `HOST_DISCONNECTED`, and a caller that retries
-  presents the same idempotency key.
-
 ## 15. Amendment history
 
-D374 (2026-09-10) revised the D373 draft before implementation:
+D376 (2026-09-10) revised the D373 draft before implementation:
 
 - approval and input decisions became a superset of the local
   `allow-once` / `allow-session` / `deny`, `approve` / `reject` plus
@@ -1267,21 +1117,3 @@ D374 (2026-09-10) revised the D373 draft before implementation:
   permission ceiling, and the remote approval lifetime policy were defined;
 - `replayComplete`, a single `revision`, `ItemSummary`, and the
   `APPROVAL_EXPIRED` mapping replaced the inconsistent draft names.
-
-D375 (2026-09-10) re-sequenced the deployments and extended the catalog:
-
-- the remote-host profile (§6.2) with `session/configure`, `session/fork`,
-  `session/rename`, `session/delete`, `session/compact`, `workspace/list`,
-  `workspace/read`, and `workspace/diff`, advertised as `remoteHostProfile`;
-- the SSH-tunnel deployment of `RACP-WS` with the loopback rule and the
-  ceiling exemption for SSH-paired owner devices;
-- `RACP-HTTP`, the cookie profile, and the Host link marked as belonging to
-  unscheduled milestones;
-- `terminal/open`, `terminal/input`, `terminal/resize`, `terminal/close`, the
-  `terminal.changed` / `terminal.output` kinds, `tools/advertise`, the
-  `tool/execute` server request (§9.4), and `turn/prioritize` for the
-  desktop's "send now", all in the same milestone; and
-- queued turns persisted by host-core and held after a restart, the
-  30-minute default approval lifetime for remote subscribers, and the
-  `applyCeilingToPairedDevices` policy.
-

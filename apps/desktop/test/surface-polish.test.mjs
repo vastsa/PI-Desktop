@@ -6,24 +6,21 @@ import { loadStyles } from "./helpers/styles.mjs";
 const styles = await loadStyles();
 
 test("work panel uses a quiet light-theme inset surface", () => {
-  // The light inset and its raised strips are tokens, not literals pinned by a
-  // `:root[data-theme="light"]` override, so a contributed theme can move them
-  // (D418). A literal here would put the dock out of every theme's reach.
-  assert.match(styles, /--ds-bg-dock:\s*#fafafa/);
-  assert.match(styles, /--ds-bg-dock-raised:\s*#ffffff/);
-  assert.match(styles, /\.work-panel\s*\{[\s\S]*?background:\s*var\(--ds-bg-dock\)/);
   assert.match(
     styles,
-    /\.work-panel-header\s*\{[\s\S]*?background:\s*var\(--ds-bg-dock-raised\)/,
-  );
-  assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.work-panel\s*\{/);
-  assert.match(
-    styles,
-    /\.work-panel-tab-strip\s*\{[\s\S]*?display:\s*flex/,
+    /:root\[data-theme="light"\]\s+\.work-panel\s*\{[\s\S]*?background:\s*#fafafa/,
   );
   assert.match(
     styles,
-    /\.work-panel-launcher-row:hover\s*\{[\s\S]*?background:\s*var\(--ds-bg-hover\)/,
+    /:root\[data-theme="light"\]\s+\.work-panel-header\s*\{[\s\S]*?background:\s*#ffffff/,
+  );
+  assert.match(
+    styles,
+    /\.work-panel-context\s*\{[\s\S]*?display:\s*flex/,
+  );
+  assert.match(
+    styles,
+    /\.work-panel-menu-row\.active::before\s*\{[\s\S]*?background:\s*var\(--ds-text-primary\)/,
   );
 });
 
@@ -74,8 +71,10 @@ test("settings and form controls gain light-theme surfaces", () => {
     styles,
     /\.field-input:focus,\n\.field-select:focus,\n\.field-textarea:focus\s*\{[^}]*background:\s*var\(--ds-raised\)[^}]*box-shadow:\s*0 0 0 2px/,
   );
-  assert.match(styles, /\.settings-toggle\.on \.settings-toggle-thumb\s*\{[^}]*background:\s*var\(--ds-switch-knob-on\)/);
-  assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.settings-toggle\.on\s+\.settings-toggle-thumb\s*\{[^}]*background:/);
+  assert.match(
+    styles,
+    /:root\[data-theme="light"\]\s+\.settings-toggle\.on\s+\.settings-toggle-thumb\s*\{[\s\S]*?background:\s*#ffffff/,
+  );
   // D297: the segment track and keycaps come from the shared tile/raised
   // tokens, so they need no per-theme override and carry no stroke.
   assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.settings-segment\s*\{/);
@@ -91,16 +90,10 @@ test("settings and form controls gain light-theme surfaces", () => {
     /\.shortcut-keybinding kbd\s*\{[^}]*background:\s*var\(--ds-raised\)[^}]*box-shadow:\s*var\(--ds-raised-shadow\)/,
   );
   assert.doesNotMatch(styles, /\.shortcut-keybinding kbd\s*\{[^}]*border:/);
-  // The dialog scrim is a token now (issue #341). Its light value used to sit as
-  // a literal inside a `:root[data-theme="light"]` override, which raised
-  // specificity above the base rule *and* skipped the variable; the lighter
-  // light veil now lives in the light token block, so a theme can move it.
   assert.match(
     styles,
-    /:root\[data-theme="light"\][\s\S]*?--ds-scrim:\s*color-mix\(in oklab,\s*#1a1c1f 28%/,
+    /:root\[data-theme="light"\]\s+\.overlay\s*\{[\s\S]*?background:\s*color-mix\(in oklab,\s*#1a1c1f 28%/,
   );
-  assert.match(styles, /\.overlay\s*\{[^}]*background:\s*var\(--ds-scrim\)/);
-  assert.doesNotMatch(styles, /:root\[data-theme="light"\]\s+\.overlay\s*\{/);
 });
 
 test("switch on-track outranks the per-theme off-track", () => {

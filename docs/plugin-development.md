@@ -13,10 +13,9 @@ A plugin can contribute one or more of these capabilities:
 |---|---|---|
 | Command | An explicit action in global search | `contributes.commands`, `pi.commands.register` |
 | Panel | A small isolated HTML interface | `ui.panel`, `ui.panel` permission, `window.pluginBridge` |
-| Floating widget | A transparent, frameless companion window — a round orb, not a rectangle | `ui.panel` permission, `"ui": { "shape": "widget" }`, `window.pluginBridge` |
 | Work panel view | An interface docked in the app's right work panel | `contributes.views`, `ui.view` permission, `window.pluginBridge` |
 | Agent tool | A function the Agent can call | `contributes.agentTools`, `pi.agent.registerTool` |
-| One-shot completion | A host-owned completion against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
+| Reviewer completion | A host-owned one-shot against the user's models | `pi.models.list`, `pi.session.getLlmContext`, `pi.agent.complete` |
 | Skill | Instructions loaded by the Agent on demand | `contributes.skills`, `agent.prompt.inject` permission |
 | Theme | Design-token overrides | `contributes.themes`, `ui.theme` permission |
 | MCP server | Tools discovered from a local or remote MCP server | `contributes.mcpServers`, an MCP permission |
@@ -40,7 +39,6 @@ For the recommended app-first path, you need:
 - a running PI-Desktop build;
 - an empty folder for the plugin; and
 - a text editor.
-- To import a pi extension directory with npm dependencies, a system `npm` executable must be on `PATH`. Release builds ship no standalone Node/npm; without it, PI-Desktop reports a warning and the imported dependency cannot load.
 
 For the repository CLI path, you also need Node.js 22.19 or newer, pnpm 10 or
 newer, and a checkout of this repository. The devkit and SDK are currently
@@ -218,27 +216,6 @@ anchor it below the host drag band instead of using `top: 0`:
 The host does not inject a panel title. Keep the 46px drag band in mind for
 viewport-height calculations as well:
 `height: calc(100dvh - var(--pi-plugin-titlebar-height, 46px))`.
-
-### Floating widgets
-
-A plugin whose whole interface is a small floating shape — a voice orb, a timer,
-a status light — declares `"ui": { "shape": "widget" }` in its manifest instead
-of accepting a rectangle with a toolbar strip. The panel then opens as a
-transparent, frameless window:
-
-- no 46px drag band and no capsule; `--pi-plugin-titlebar-height` is `0px`
-- empty space drags the window, while a standard control — or any element marked
-  `data-pi-plugin-no-drag` — stays clickable
-- right-click on the surface opens the host menu: close, minimize, always on top
-- `ui.width` / `ui.height` are honoured down to 120×120, and `ui.alwaysOnTop`
-  pins the widget above other windows
-- the page can read `document.documentElement.dataset.piPluginPanelShape`
-  (`panel` | `widget` | `view`) to style one HTML entry for every placement
-
-Draw the silhouette yourself — `border-radius: 50%`, your own shadow, a glow that
-bleeds past the shape — and keep the page background transparent outside it, so
-the window disappears behind the shape. Everything else, `window.pluginBridge`,
-permissions, settings, is identical to a panel.
 
 ```html
 <!doctype html>
@@ -431,8 +408,6 @@ because Electron does not expose a cross-platform read-only OS permission API;
 `unknown` means the platform has not reported a result yet, and
 `unsupported` means desktop notifications are unavailable. Native plugin
 notifications are not added to PI-Desktop's durable task notification inbox.
-Clicking a delivered notification restores and focuses the main window, but
-does not activate a session.
 
 The panel bridge also exposes `ui.showToast`, `ui.closePanel`,
 `plugin.getSettings`, and `workspace.get`. A channel the host does not implement
@@ -511,11 +486,6 @@ with `net.fetch` granted. Redirects are followed by hand and re-checked, so an
 allowed host cannot bounce a request to one you did not declare. Bundle assets
 into the plugin rather than loading them from a CDN you would otherwise have to
 declare.
-
-`fetch` returns what the server answered, `429` and `Retry-After` included: the
-host never retries a request your plugin makes, so backoff after a rate limit is
-your own policy rather than a hidden host behaviour. A call that comes back
-`>= 400` is still audited, as `ok: false` with the delay the response advertised.
 
 ### 6.7 Theme
 
@@ -596,11 +566,10 @@ plugin's own persisted session partition, and network limited to
 plugin restricted to certain projects does not offer its views in others.
 
 `examples/plugins/hello` ships a working view at `views/greetings.html`, and
-PI-Desktop's own file view is a bundled plugin built the same way —
-`apps/desktop/resources/plugins/pi.file-manager` is a complete, non-toy example
-of a view that reaches the workspace over the public bridge: `fs.openDefault`
-and `fs.reveal` for the two actions only the host can perform, and the plugin's
-own `onPanelInvoke` channels for everything it reads and writes itself.
+PI-Desktop's own **Files** panel is a bundled plugin built the same way —
+`apps/desktop/resources/plugins/pi.files` is a complete, non-toy example of a
+view that reads the workspace over the public `fs.list` / `fs.readPreview` /
+`fs.glob` / `fs.openDefault` / `fs.reveal` bridge.
 
 ### 6.9 MCP server
 
@@ -636,13 +605,12 @@ remote server requires `mcp.server.remote`:
 ```
 
 A stdio command must be a bare command found on `PATH` or a plugin-relative
-executable; absolute paths are rejected. `npx` and `uvx` are resolved to the
-real Node.js / uv binaries (PATH, official Node, fnm, nvm, Volta, default uv
-install). Remote URLs may use HTTP or HTTPS, and the host must be listed in
-`net.domains`; non-loopback HTTP is unencrypted, so use it only on a trusted
-network. Setting references read only this plugin's settings—the host
-environment and provider secrets are never forwarded. MCP tools follow the
-same Agent-only policy and namespacing as hand-written plugin tools.
+executable; absolute paths are rejected. Remote URLs may use HTTP or HTTPS, and
+the host must be listed in `net.domains`; non-loopback HTTP is unencrypted, so
+use it only on a trusted network. Setting references read only this plugin's
+settings—the host environment and provider secrets are never forwarded. MCP
+tools follow the same Agent-only policy and namespacing as hand-written plugin
+tools.
 
 ### 6.10 Resident service and message bus
 
@@ -690,82 +658,6 @@ Call `unsubscribe()` during unload. A plugin does not receive its own bus
 messages. Treat topics as public to any installed plugin with a matching
 subscription; never put secrets in the payload.
 
-### 6.11 Agent extension (pi ExtensionAPI module)
-
-A plugin can ship code that runs inside the agent process itself: a module
-written against the pi CLI `ExtensionAPI`, the same contract pi extensions
-use. It registers tools, slash commands, and hooks on every turn, tool call,
-and provider request. Declare the modules and the `agent.extension`
-permission:
-
-```json
-{
-  "contributes": { "agentExtensions": ["src/index.ts"] },
-  "permissions": ["agent.extension"]
-}
-```
-
-```ts
-// src/index.ts
-import { Type } from "typebox";
-import { defineTool } from "@earendil-works/pi-coding-agent";
-
-export default function (pi) {
-  pi.registerTool(defineTool({
-    name: "fx_add", label: "Add", description: "Adds two numbers",
-    parameters: Type.Object({ a: Type.Number(), b: Type.Number() }),
-    async execute(_id, { a, b }) {
-      return { content: [{ type: "text", text: String(a + b) }], details: {} };
-    },
-  }));
-  pi.on("tool_call", (event) =>
-    event.toolName === "Bash" ? { block: true, reason: "not here" } : undefined,
-  );
-  pi.registerCommand("greet", {
-    description: "Say hello",
-    async handler(args, ctx) {
-      const name = await ctx.ui.input("Your name?");
-      ctx.ui.notify(`Hello ${name} ${args}`);
-    },
-  });
-}
-```
-
-What to know before you use it:
-
-- **It is not sandboxed.** The module runs in the agent process with the
-  same access as the agent's own tools. `agent.extension` is a high-risk
-  permission the user confirms explicitly; the manifest is rejected if you
-  list modules without it.
-- **TypeScript is fine.** Modules are loaded with jiti, so `.ts` needs no
-  build step. `typebox`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`,
-  and `@earendil-works/pi-coding-agent` resolve to the app's copies;
-  `@earendil-works/pi-tui` resolves to an inert stub, so terminal-UI calls
-  do nothing and show up as diagnostics.
-- **Tools are deferred.** Like plugin tools, the model activates them
-  through `ToolSearch` on demand. Names that collide with core or plugin
-  tools are rejected with a diagnostic.
-- **Slash commands** appear in the composer `/` menu and global search and
-  take the rest of the line as `args`. `ctx.ui.input` / `select` / `confirm`
-  open native dialogs; `ui.notify` is a toast.
-- **Supported members** are listed in spec 07-plugins/16 §5. Unsupported
-  ones (`setWidget`, `registerMessageRenderer`, `navigateTree`, and the
-  other terminal-only surfaces) are inert and reported in the plugin row's
-  details, never thrown.
-- **Existing pi extensions** need no changes: Plugins → overflow menu →
-  "Import pi extension" wraps a file or directory in a generated plugin. If
-  the directory declares production or optional dependencies, PI-Desktop first
-  runs `npm install --package-lock-only --omit=dev --legacy-peer-deps --no-audit
-  --no-fund --ignore-scripts`, validates the generated registry-only lockfile,
-  then runs `npm ci` with the same safety flags. Direct dependency specs are
-  checked across production, optional, dev, and peer fields; git resolution is
-  disabled, and no third-party lifecycle script runs. A native module that
-  needs a build script fails with a diagnostic — rebuild it against Electron
-  headers (`npx @electron/rebuild -v <electron version>`) inside the plugin
-  directory to fix it. Failed installs clean partial dependencies and report a
-  warning toast without blocking the import; the row shows a load error only if
-  the extension actually fails to load.
-
 ## 7. Permission design
 
 Permissions are both declared in `manifest.json` and granted by the user.
@@ -774,15 +666,8 @@ Undeclared or ungranted API calls fail with `PERMISSION_DENIED`.
 | Risk | Permissions |
 |---|---|
 | Low | `ui.panel`, `ui.view`, `ui.theme`, `notify` |
-| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut` |
-| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `net.fetch`, `mcp.server.local`, `mcp.server.remote`, `audio.capture.background`, `net.websocket` |
-
-`keyboard.globalShortcut` and `net.websocket` are implemented. `pi.audio.*`
-exists and is callable, and its methods keep their permission gate, but this
-host has no device backend yet: an authorized call is answered with a coded
-`UNSUPPORTED` refusal that is audited, and `onInputFrame` / `offInputFrame`
-throw the same code synchronously, until the device service lands and replaces
-the refusal with real capture and playback.
+| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe` |
+| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `net.fetch`, `mcp.server.local`, `mcp.server.remote` |
 
 Two permissions carry a declared range as well as a name, and the user is shown
 both: `manifest.fs` for the file modes (§6.5) and `manifest.net.domains` for
@@ -876,35 +761,6 @@ To test the exact artifact users receive:
 The Agent can also run `PluginCheck` in every operating mode. `PluginScaffold`
 and `PluginPack` are Agent-mode tools and are restricted to the current
 workspace.
-
-### Prepare a plugin center submission with `pi-plugin publish`
-
-`publish` packs the plugin and pins the package to the git commit it was built
-from, so the plugin center can rebuild and compare the artifact:
-
-```bash
-pnpm pi-plugin publish ../my-first-plugin [--out <dir>] [--ref <ref>] [--channel stable|beta] [--allow-dirty]
-```
-
-The command runs the same `check` and `pack` steps, then reads the `origin`
-remote and `HEAD` of the plugin's repository. SSH remotes are rewritten to the
-canonical `https://` form; remotes with embedded credentials or a non-HTTPS
-scheme are rejected. The working tree must be clean unless you pass
-`--allow-dirty`, which produces a submission the center cannot reproduce and
-prints a warning. The pinned `ref` is `--ref` when given, otherwise the tag
-that points at `HEAD` as `refs/tags/<tag>`; without a tag the bare commit is
-submitted with a warning. The plugin's path relative to the repository root is
-recorded so a plugin may live in a subdirectory.
-
-The result is `dist/<id>-<version>.submission.json` (or `--out`), a
-`schemaVersion: 1` payload with `pluginId`, `version`, `channel`, the
-`source` pin (`repository`, `ref`, `commit`, `path`), the `artifact`
-(`publisher-release` mode, file name, SHA-256, size), the declared
-`permissions`, and an `idempotencyKey` that is stable per plugin, version,
-commit, and artifact so a retried submission is not a new release. Attach the
-`.piplug` to a release on that commit, then submit the payload to the plugin
-center. The center re-resolves the source from the forge and does not trust
-the recorded values.
 
 ## 10. Prepare a release
 

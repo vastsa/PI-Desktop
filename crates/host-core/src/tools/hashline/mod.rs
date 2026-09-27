@@ -8,16 +8,16 @@ mod parse;
 mod store;
 mod tag;
 
-pub use apply::{apply_edit, canonical_key, encode_success, record_post_write, ToolError};
+pub use apply::{ToolError, apply_edit, canonical_key, encode_success, record_post_write};
 #[allow(unused_imports)]
-pub use parse::mv_dest;
+pub use parse::{is_rem, mv_dest};
 pub use store::HashlineStore;
 pub use tag::{
-    looks_binary_bytes, normalize_file, section_header, split_lines, strip_write_markup,
-    tag_of_lf_text, NormalizedFile,
+    NormalizedFile, looks_binary_bytes, normalize_file, section_header, split_lines,
+    strip_write_markup, tag_of_lf_text,
 };
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
 

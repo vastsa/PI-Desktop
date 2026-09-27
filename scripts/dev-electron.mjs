@@ -17,8 +17,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const APP_NAME = "PI-Desktop";
-const DEV_BUNDLE_ID = "net.aiuo.pi-desktop.dev";
-const BRANDING_SCHEMA = "v3";
+const DEV_BUNDLE_ID = "com.pi-desktop.app.dev";
+const BRANDING_SCHEMA = "v2";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP_ROOT = join(ROOT, "apps", "desktop");
 
@@ -104,8 +104,6 @@ export function prepareMacDevelopmentBundle({
         "--force",
         "--sign",
         "-",
-        "--identifier",
-        DEV_BUNDLE_ID,
         stagingBundle,
       ]);
     }

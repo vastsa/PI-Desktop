@@ -11,14 +11,11 @@
  *   1. Workspace version surfaces agree: every workspace package.json,
  *      [workspace.package] in Cargo.toml, the host-core Cargo.lock entry, and
  *      APP_VERSION in packages/shared/src/protocol.ts.
- *   2. apps/desktop/resources/models.dev/api.json parses as a provider catalog.
- *   3. packages/shared/src/changelog*.ts has an entry for the version under
+ *   2. packages/shared/src/changelog*.ts has an entry for the version under
  *      every shipped locale, newest-first, with matching highlight counts.
- *   4. packages/shared/src/changelog.test.ts pins the version as newest.
- *   5. README.md and README.zh-CN.md declare the current release line
+ *   3. packages/shared/src/changelog.test.ts pins the version as newest.
+ *   4. README.md and README.zh-CN.md declare the current release line
  *      (`<major>.<minor>.x`) in their status section.
- * For a prerelease preview, pass the stable version being previewed so the
- * changelog/README checks run against that catalog rather than x.y.z-beta.*.
  */
 import {
   readdirSync,
@@ -31,7 +28,6 @@ import {
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
-import { resolveReleaseDocumentCheck } from "./release-version-check.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (relPath) => readFileSync(path.join(root, relPath), "utf8");
@@ -44,16 +40,8 @@ if (requested && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(requested)) {
   process.exit(1);
 }
 
-const currentVersion = JSON.parse(read("package.json")).version;
-const { documentVersion, surfaceVersion, isPrereleasePreview } = resolveReleaseDocumentCheck(
-  currentVersion,
-  requested,
-);
-const releaseLine = `${documentVersion.split(".").slice(0, 2).join(".")}.x`;
-
-if (requested && !isPrereleasePreview && currentVersion !== requested) {
-  fail("package.json", `version is ${currentVersion}, expected ${requested}`);
-}
+const version = requested ?? JSON.parse(read("package.json")).version;
+const releaseLine = `${version.split(".").slice(0, 2).join(".")}.x`;
 
 // 1. Version surfaces.
 const packageFiles = ["package.json", "docs/package.json"];
@@ -65,7 +53,7 @@ for (const group of ["apps", "packages"]) {
 }
 for (const relPath of packageFiles) {
   const found = JSON.parse(read(relPath)).version;
-  if (found !== surfaceVersion) fail(relPath, `version is ${found}, expected ${surfaceVersion}`);
+  if (found !== version) fail(relPath, `version is ${found}, expected ${version}`);
 }
 
 for (const [relPath, pattern, label] of [
@@ -74,9 +62,7 @@ for (const [relPath, pattern, label] of [
   ["packages/shared/src/protocol.ts", /export const APP_VERSION = "([^"]+)"/, "APP_VERSION"],
 ]) {
   const found = read(relPath).match(pattern)?.[1];
-  if (found !== surfaceVersion) {
-    fail(relPath, `${label} is ${found ?? "missing"}, expected ${surfaceVersion}`);
-  }
+  if (found !== version) fail(relPath, `${label} is ${found ?? "missing"}, expected ${version}`);
 }
 
 // 2. Bundled models.dev snapshot.
@@ -111,7 +97,6 @@ async function loadChangelogCatalog() {
     "packages/shared/src/changelog-es.ts",
     "packages/shared/src/changelog-fr.ts",
     "packages/shared/src/changelog-ko.ts",
-    "packages/shared/src/changelog-pt-BR.ts",
     "packages/shared/src/changelog-tr.ts",
   ];
   try {
@@ -145,7 +130,7 @@ try {
 if (catalogs) {
   const enEntries = catalogs.en;
   const expectedVersions = enEntries?.map((entry) => entry.version) ?? [];
-  const requiredLocales = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR"];
+  const requiredLocales = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko"];
   for (const locale of requiredLocales) {
     if (!catalogs[locale]) {
       fail("packages/shared/src/changelog.ts", `missing shipped locale catalog: ${locale}`);
@@ -156,14 +141,14 @@ if (catalogs) {
       fail("packages/shared/src/changelog.ts", `the ${locale} catalog is empty`);
       continue;
     }
-    if (!entries.some((entry) => entry.version === documentVersion)) {
-      fail("packages/shared/src/changelog.ts", `${locale} has no entry for ${documentVersion}`);
+    if (!entries.some((entry) => entry.version === version)) {
+      fail("packages/shared/src/changelog.ts", `${locale} has no entry for ${version}`);
       continue;
     }
-    if (entries[0].version !== documentVersion) {
+    if (entries[0].version !== version) {
       fail(
         "packages/shared/src/changelog.ts",
-        `${locale} lists ${entries[0].version} first; ${documentVersion} must be newest-first`,
+        `${locale} lists ${entries[0].version} first; ${version} must be newest-first`,
       );
     }
     if (entries.map((entry) => entry.version).join("\u0000") !== expectedVersions.join("\u0000")) {
@@ -187,11 +172,8 @@ if (catalogs) {
 }
 
 // 3. Catalog test pins the newest version.
-if (!read("packages/shared/src/changelog.test.ts").includes(`"${documentVersion}"`)) {
-  fail(
-    "packages/shared/src/changelog.test.ts",
-    `expected version list does not contain ${documentVersion}`,
-  );
+if (!read("packages/shared/src/changelog.test.ts").includes(`"${version}"`)) {
+  fail("packages/shared/src/changelog.test.ts", `expected version list does not contain ${version}`);
 }
 
 // 4. READMEs declare the current release line.
@@ -202,10 +184,9 @@ for (const relPath of ["README.md", "README.zh-CN.md"]) {
 }
 
 if (failures.length > 0) {
-  console.error(`Release documentation is not aligned with ${documentVersion}:`);
+  console.error(`Release documentation is not aligned with ${version}:`);
   for (const failure of failures) console.error(`  - ${failure}`);
   console.error("\nSee docs/spec/06-delivery/06-release-runbook.md section 4.1.");
   process.exit(1);
 }
-const previewNote = isPrereleasePreview ? ` for ${surfaceVersion}` : "";
-console.log(`Release documentation is aligned with ${documentVersion}${previewNote} (${releaseLine} line).`);
+console.log(`Release documentation is aligned with ${version} (${releaseLine} line).`);

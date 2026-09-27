@@ -23,11 +23,7 @@ describe("mode-specific system prompts", () => {
     expect(prompt).toContain("After reject, expiry, or interruption");
     expect(prompt).toContain("follow the same one-SubmitPlan rule");
     expect(prompt).toContain("Do not wait for chat confirmation");
-    expect(prompt).toContain("Do not use Write, Edit");
-    expect(prompt).toContain("Do not create, overwrite, delete, or otherwise mutate workspace files in Plan mode");
-    expect(prompt).toContain("including through Bash");
-    expect(prompt).toContain("ask them to switch to Agent mode");
-    expect(prompt).toContain("Plugin tools that declare plan-safe actions are available for inspection");
+    expect(prompt).toContain("Do not use Write, Edit, plugin tools");
     expect(prompt).toContain("Bash is available under the active permission policy");
   });
 
@@ -43,8 +39,7 @@ describe("mode-specific system prompts", () => {
     expect(prompt).toContain("host writes a new .pi/goal artifact");
     expect(prompt).toContain("follow the same one-SubmitGoal rule");
     expect(prompt).toContain("pursue it autonomously");
-    expect(prompt).toContain("Do not use Write, Edit");
-    expect(prompt).toContain("Do not create, overwrite, delete, or otherwise mutate workspace files in Goal mode");
+    expect(prompt).toContain("Do not use Write, Edit, plugin tools");
     // Goal mode negotiates outcomes; the Plan contract must not leak into it.
     expect(prompt).not.toContain("SubmitPlan");
     expect(prompt).not.toContain(PLAN_MODE_SYSTEM_PROMPT);
@@ -54,7 +49,7 @@ describe("mode-specific system prompts", () => {
     const prompt = composeModeSystemPrompt("agent", "base instructions");
 
     expect(prompt).toContain("operating in Agent mode");
-    expect(prompt).not.toContain("Do not use Write, Edit");
+    expect(prompt).not.toContain("Do not use Write, Edit, plugin tools");
     expect(prompt).not.toContain("SubmitGoal");
   });
 });

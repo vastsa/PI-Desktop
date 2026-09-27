@@ -1,13 +1,15 @@
-import {
-  readStoreModule,
-  readStoreSource,
-  readTranscriptSource,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const transcriptSource = await readTranscriptSource();
+const transcriptSource = await readFile(
+  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
+  "utf8",
+);
+const detailSource = transcriptSource.slice(
+  transcriptSource.indexOf("function delegateTaskDescription"),
+  transcriptSource.indexOf("/**\n * A truthful one-level graph", transcriptSource.indexOf("function delegateTaskDescription")),
+);
 const runtimeSource = await readFile(
   new URL("../../../packages/agent-runtime/src/runtime.ts", import.meta.url),
   "utf8",
@@ -20,9 +22,10 @@ const followScrollSource = await readFile(
   new URL("../src/hooks/use-follow-scroll.ts", import.meta.url),
   "utf8",
 );
-const storeSource = await readStoreSource();
-const eventsSource = await readStoreModule("slices/events-slice.ts");
-const sessionRuntimeSource = await readStoreModule("runtime/session-runtime.ts");
+const storeSource = await readFile(
+  new URL("../src/stores/app-store.ts", import.meta.url),
+  "utf8",
+);
 const messagesCss = await readFile(
   new URL("../src/styles/messages.css", import.meta.url),
   "utf8",
@@ -115,23 +118,31 @@ test("a live delegate row keeps the attribution its stream carried", () => {
 });
 
 test("a terminal tool event repairs a row lost during renderer reload", () => {
-  assert.match(sessionRuntimeSource, /const toolStartsByCallId = new Map/);
-  assert.match(eventsSource, /const existing = state\.messages\.some\(/);
+  assert.match(storeSource, /const toolStartsByCallId = new Map/);
+  assert.match(storeSource, /const existing = s\.messages\.some\(/);
   assert.match(
-    eventsSource,
-    /messages: existing\s*\? state\.messages\.map\([\s\S]*?: \[\.\.\.state\.messages, completed\]/,
+    storeSource,
+    /messages: existing\s*\? s\.messages\.map\([\s\S]*?: \[\.\.\.s\.messages, completed\]/,
   );
-  assert.match(eventsSource, /toolDurationMs: toolStart\s*\n\s*\? Math\.max/);
-  assert.match(eventsSource, /toolName: message\.toolName \?\? completed\.toolName/);
+  assert.match(storeSource, /toolDurationMs: toolStart\s*\n\s*\? Math\.max/);
+  assert.match(storeSource, /toolName: message\.toolName \?\? completed\.toolName/);
 });
 
-test("inline delegate runs keep the live conversation process", () => {
+test("the shared side-panel detail keeps the live conversation process", () => {
   assert.match(transcriptSource, /delegate\?: SubagentRun/);
-  assert.match(transcriptSource, /<SubagentRunRows/);
-  assert.match(transcriptSource, /variant !== "topology" && open && hasDetails/);
+  assert.match(detailSource, /function delegateTaskDescription\(message: UiMessage\)/);
+  assert.match(detailSource, /className="subagent-detail-hero"/);
+  assert.match(detailSource, /className="subagent-detail-task-card"/);
+  assert.match(detailSource, /taskOverflow/);
+  assert.match(detailSource, /setTaskOverflow\(\(current\) => \(taskExpanded \? current : overflowing\)\)/);
+  assert.match(detailSource, /aria-expanded=\{taskExpanded\}/);
+  assert.match(detailSource, /aria-controls=\{taskBodyId\}/);
+  assert.match(detailSource, /<SubagentRunRows/);
+  assert.match(detailSource, /scrollable=\{false\}/);
   assert.match(transcriptSource, /className=\{`subagent-run-rows\$\{scrollable \? "" : " is-panel-flow"\}`\}/);
   assert.match(transcriptSource, /onScroll=\{scrollable \? handleScroll : undefined\}/);
   assert.match(transcriptSource, /\{scrollable && showJump \?/);
+  assert.doesNotMatch(detailSource, /<ToolDetailBlocks blocks=\{blocks\}/);
 });
 
 test("a Task row is expandable and names the delegate it used", () => {
@@ -179,8 +190,7 @@ test("a Task node and detail header show the effective thinking level", () => {
   );
   assert.match(transcriptSource, /function delegateThinkingLevel\(message: UiMessage\)/);
   assert.match(transcriptSource, /value === "off"/);
-  assert.match(transcriptSource, /const thinkingLabel = thinkingLevel \?\? "";/);
-  assert.doesNotMatch(transcriptSource, /thinkingLevel\./);
+  assert.match(transcriptSource, /t\(`thinkingLevel\.\$\{thinkingLevel\}`\)/);
   assert.match(
     transcriptSource,
     /const modelLabel = \[modelId, thinkingLabel\]\.filter\(Boolean\)\.join\(" "\);/,
@@ -188,6 +198,10 @@ test("a Task node and detail header show the effective thinking level", () => {
   assert.match(
     transcriptSource,
     /className="subagent-topology-node-model"[\s\S]*?title=\{modelLabel\}[\s\S]*?aria-label=\{modelLabel\}/,
+  );
+  assert.match(
+    transcriptSource,
+    /className="subagent-detail-model"[\s\S]*?title=\{modelLabel\}[\s\S]*?aria-label=\{modelLabel\}/,
   );
 });
 
@@ -243,31 +257,11 @@ test("every Task row renders as one accessible delegation topology", () => {
   assert.match(transcriptSource, /variant="topology"/);
   assert.match(transcriptSource, /className="subagent-topology-node-header"/);
   assert.match(transcriptSource, /aria-expanded=\{panelOpen\}/);
+  assert.match(transcriptSource, /aria-controls=\{hasDetails \? "subagent-panel" : undefined\}/);
   assert.match(
     transcriptSource,
-    /aria-controls=\{panelOpen \? `work-panel-surface-subagent:\$\{panelSelectionId\}` : undefined\}/,
+    /onClick=\{\(\) => \{\s*if \(!hasDetails\) return;\s*onUserInteraction\?\.\(\);\s*openSubagentPanel\(panelSelectionId\);\s*\}\}/,
   );
-  const topologyNode = transcriptSource.slice(
-    transcriptSource.indexOf('className="subagent-topology-node-header"'),
-    transcriptSource.indexOf(
-      "</button>",
-      transcriptSource.indexOf('className="subagent-topology-node-header"'),
-    ),
-  );
-  assert.doesNotMatch(topologyNode, /tool-row-caret/);
-  assert.match(
-    topologyNode,
-    /onClick=\{\(\) => \{\s*if \(!hasDetails\) return;\s*onUserInteraction\?\.\(\);\s*openSubagentTab\(panelSelectionId, agentName \|\| undefined\);\s*\}\}/,
-  );
-  assert.match(
-    transcriptSource,
-    /const openSubagentTab = useAppStore\(\(s\) => s\.openSubagentTab\)/,
-  );
-  assert.match(
-    transcriptSource,
-    /activeWorkPanelTabId === `subagent:\$\{panelSelectionId\}`/,
-  );
-  assert.match(storeSource, /openWorkPanelTab\(subagentWorkPanelTab\(id, agentName \|\| undefined\)\)/);
   assert.match(transcriptSource, /const inlineOpen = variant !== "topology" && open;/);
 });
 
@@ -385,7 +379,7 @@ test("an expanded delegate run follows the latest output while pinned (D302)", (
   assert.match(followScrollSource, /isRecentScrollGesture\(/);
   assert.match(
     followScrollSource,
-    /const followScrollNow = useCallback\(\(\) => \{[\s\S]{0,400}?if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
+    /const followScrollNow = useCallback\(\(\) => \{\s*if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
   );
   assert.match(followScrollSource, /new ResizeObserver\(followScrollNow\)/);
   assert.doesNotMatch(

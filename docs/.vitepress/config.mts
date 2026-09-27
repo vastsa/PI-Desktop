@@ -112,7 +112,7 @@ function specSidebar(locale: Locale): DefaultTheme.SidebarItem[] {
 }
 
 const enSidebar: DefaultTheme.Sidebar = {
-  '/guide/': [{ text: 'Guide', items: [{ text: 'Start here', link: '/guide/' }, { text: 'Screens', link: '/guide/screenshots' }, { text: 'MCP market', link: '/guide/mcp-market' }] }],
+  '/guide/': [{ text: 'Guide', items: [{ text: 'Start here', link: '/guide/' }, { text: 'Screens', link: '/guide/screenshots' }] }],
   '/plugin-development': [{ text: 'Plugin authoring', items: [{ text: 'Zero to one', link: '/plugin-development' }, ...specItems('07-plugins', 'en')] }],
   '/project/': [{ text: 'Project records', items: projectItems() }],
   '/spec/': specSidebar('en'),
@@ -130,7 +130,7 @@ const enSidebar: DefaultTheme.Sidebar = {
 }
 
 const zhSidebar: DefaultTheme.Sidebar = {
-  '/zh-CN/guide/': [{ text: '指南', items: [{ text: '快速开始', link: '/zh-CN/guide/' }, { text: '界面截图', link: '/zh-CN/guide/screenshots' }, { text: 'MCP 市场', link: '/zh-CN/guide/mcp-market' }] }],
+  '/zh-CN/guide/': [{ text: '指南', items: [{ text: '快速开始', link: '/zh-CN/guide/' }, { text: '界面截图', link: '/zh-CN/guide/screenshots' }] }],
   '/zh-CN/plugin-development': [{ text: '插件开发', items: [{ text: '从零到一', link: '/zh-CN/plugin-development' }, ...specItems('07-plugins', 'zh-CN')] }],
   '/zh-CN/spec/': specSidebar('zh-CN'),
   '/zh-CN/adr/': [
@@ -151,7 +151,6 @@ const enNav: DefaultTheme.NavItem[] = [
   { text: 'Specs', link: '/spec/README' },
   { text: 'ADRs', link: '/adr/README' },
   { text: 'Plugin guide', link: '/plugin-development' },
-  { text: 'Privacy policy', link: '/privacy-policy' },
   { text: 'GitHub', link: 'https://github.com/vastsa/PI-Desktop' },
 ]
 
@@ -160,20 +159,20 @@ const zhNav: DefaultTheme.NavItem[] = [
   { text: '规格', link: '/zh-CN/spec/README' },
   { text: 'ADR', link: '/zh-CN/adr/' },
   { text: '插件开发', link: '/zh-CN/plugin-development' },
-  { text: '隐私政策（英文）', link: '/privacy-policy' },
   { text: 'GitHub', link: 'https://github.com/vastsa/PI-Desktop' },
 ]
 
 export default defineConfig({
   title: 'PI-Desktop',
-  description: 'A modular desktop workspace for AI agents',
-  // Product shell is dark-base; lock docs to the same charcoal system.
-  appearance: 'force-dark',
+  description: 'Local-first AI coding agent documentation',
+  appearance: true,
   cleanUrls: true,
   lastUpdated: true,
   head: [
-    ['meta', { name: 'theme-color', content: '#0d0d0d' }],
-    ['meta', { name: 'color-scheme', content: 'dark light' }],
+    ['meta', { name: 'theme-color', content: '#f8fafc' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
+    ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap' }],
   ],
   locales: {
     root: { label: 'English', lang: 'en' },
@@ -181,7 +180,7 @@ export default defineConfig({
       label: '简体中文',
       lang: 'zh-CN',
       title: 'PI-Desktop 文档',
-      description: '面向 AI 智能体的模块化桌面工作区',
+      description: '本地优先的 AI 编程代理文档',
       themeConfig: {
         nav: zhNav,
         sidebar: zhSidebar,
@@ -194,7 +193,7 @@ export default defineConfig({
         darkModeSwitchLabel: '外观',
         langMenuLabel: '切换语言',
         editLink: { pattern: 'https://github.com/vastsa/PI-Desktop/edit/main/docs/:path', text: '在 GitHub 上编辑此页' },
-        footer: { message: '本地优先 · 模型可替换 · 插件可扩展。 <a href="https://aiuo.net" target="_blank" rel="noreferrer">AIUO.NET</a>', copyright: 'Copyright © 2026 PI-Desktop 贡献者' },
+        footer: { message: '为本地优先开发而构建。', copyright: 'Copyright © 2026 PI-Desktop 贡献者' },
       },
     },
   },
@@ -204,14 +203,14 @@ export default defineConfig({
     theme: { light: 'github-light', dark: 'github-dark' },
   },
   themeConfig: {
-    logo: '/app-icon.png',
+    logo: '/brand-mark.svg',
     siteTitle: 'PI-Desktop',
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: 'https://github.com/vastsa/PI-Desktop' }],
     editLink: { pattern: 'https://github.com/vastsa/PI-Desktop/edit/main/docs/:path', text: 'Edit this page on GitHub' },
     outline: { level: 'deep', label: 'On this page' },
     docFooter: { prev: 'Previous', next: 'Next' },
-    footer: { message: 'Local-first · Model-agnostic · Plugin-powered. <a href="https://aiuo.net" target="_blank" rel="noreferrer">AIUO.NET</a>', copyright: 'Copyright © 2026 PI-Desktop contributors' },
+    footer: { message: 'Built for local-first development.', copyright: 'Copyright © 2026 PI-Desktop contributors' },
     nav: enNav,
     sidebar: enSidebar,
   },

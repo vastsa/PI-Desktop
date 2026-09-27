@@ -3,7 +3,7 @@
 - 协议：`PI Remote Agent Control Protocol`（`RACP`）
 - 版本：`1.0`
 - 状态：目标规格，属于 MVP 之后
-- 决策：D373 / ADR 0205，经 D374 与 D375 修订
+- 决策：D373 / ADR 0205，经 D376 修订
 - 英文源规格：[英文源规格](/spec/03-runtime/19-remote-agent-control-protocol)
 
 英文页面是规范源。本页保留协议字段、方法名、错误码和代码结构，便于
@@ -13,8 +13,7 @@
 
 RACP 控制 Agent Host，不是 Electron IPC、`host.proxy`、Rust host-core
 协议、provider proxy、本地 MCP 或子代理 A2A/Peer 协议。RACP v1 是桌面本地
-能力的严格子集；§3 的远端 Host profile 是让桌面本身成为另一台机器上 `pi-host`
-的客户端所需的 v1.1 扩展（D375），仍推迟的操作在保留表中列名。
+能力的严格子集；本地有而 v1 暂不开放的操作在 §3 的保留表中列名。
 
 | Term | Meaning |
 |---|---|
@@ -47,7 +46,7 @@ HTTP/SSE 使用 POST 命令和带 `Last-Event-ID` 的事件流。资源以
 ```
 
 ```json
-{"protocolVersion":"1.0","capabilities":{"turnQueue":true,"hostEvents":true,"remoteHostProfile":true,"toolRelay":true,"terminal":true},"bindings":["RACP-WS"],"policy":{"remoteMaxPermissionMode":"ask","applyCeilingToPairedDevices":false,"approvalLifetimeMs":1800000}}
+{"protocolVersion":"1.0","capabilities":{"turnQueue":true,"hostEvents":true},"policy":{"remoteMaxPermissionMode":"ask","approvalLifetimeMs":120000}}
 ```
 
 ```ts
@@ -157,8 +156,6 @@ type RemoteError = { code: string; message: string; retriable: boolean; traceId:
 | `asktool_request` | `input.requested` | yes | 与本地 asktool 卡片相同的问题 |
 
 `turn.completed` 对应本地 `agent_end`，而不是只关闭一个模型轮次的 `turn_end`。
-`terminal.changed`（持久）记录终端的打开、关闭或退出；`terminal.output`（瞬态）
-携带 pty 字节，只能从终端的有界回放环恢复，绝不来自事件日志。
 
 ## 3. 资源和操作
 
@@ -185,44 +182,22 @@ Host 队列；持久事件使用每 epoch 递增且不复用的 `sequence`；附
 | `turn/stop` | controller | 在当前助手/工具边界后结束回合，幂等 |
 | `turn/interrupt` | controller | 立即中止回合，对排队回合等同取消，幂等 |
 | `turn/cancel` | controller | 移除尚未开始的排队回合，幂等 |
-| `turn/prioritize` | controller | 把排队回合移到会话队列头部，幂等 |
 | `approval/respond` | approver | 解决活动审批请求 |
 | `input/respond` | controller | 解决活动输入请求 |
 | `attachment/create` | controller | 预留有界附件槽位 |
 | `attachment/complete` | controller | 校验附件 hash 和大小 |
-| `tools/advertise` | owner | 公布在客户端执行的会话工具；替换该连接此前的集合；断开即清除 |
 | `session/revoke` | owner | 撤销客户端或会话成员资格 |
 | `session/archive` | owner | 归档空闲会话 |
 
-远端 Host profile（v1.1，rollout R2 必需）：当桌面是另一台机器上 `pi-host` 的
-客户端时，renderer 期望本地拥有的会话控制。这些操作从 v1.1 起属于契约，通过
-`remoteHostProfile` 能力公布，各自保持本地规则：配置与 fork 仅限空闲，删除仅限
-owner，工作区读取都按会话持久根、Host 忽略规则和 `PATH_OUTSIDE_WORKSPACE` 边界解析。
-
-| Operation | Role | Behavior |
-|---|---|---|
-| `session/configure` | controller | 空闲时修改模式、provider/模型、思考等级或权限模式，规则同 `pi-desktop/session/configure` |
-| `session/fork` | controller | 将空闲会话（可指定消息 id）fork 为新的空闲会话 |
-| `session/rename` | controller | 重命名会话 |
-| `session/delete` | owner | 删除会话及其在 Host 上的 transcript |
-| `session/compact` | controller | 对活动会话执行手动上下文检查点 |
-| `workspace/list` | viewer | 有界列出会话根下的条目，遵守 Host 忽略规则 |
-| `workspace/read` | viewer | 读取会话根下的一个有界文件，图片以 data URL 返回 |
-| `workspace/diff` | viewer | 返回会话根的工作树 diff |
-| `terminal/open` | controller | 在 Host 上以会话根为 cwd 打开 pty；返回终端 id 与有界回放环；受策略限制 |
-| `terminal/input` | controller | 向已打开终端写入字节 |
-| `terminal/resize` | controller | 调整已打开终端尺寸 |
-| `terminal/close` | controller | 关闭终端，幂等 |
-| `connection/pair` | authenticated | 用升级请求携带的一次性配对令牌换取设备凭证（安全规格 §3.4）；仅在配对连接上有效（D448） |
-| `project/register` | owner | 将 Host 上的目录注册为项目：Host 规范化并校验路径，返回项目 id（D448） |
-| `project/browse` | owner | 列出 Host 某路径下的目录，有界，供远程目录选择器使用（D448） |
-
-仍推迟的本地操作：
+v1 保留但不开放的本地操作：
 
 | Reserved operation | Local equivalent | Why deferred |
 |---|---|---|
-| 逐回合模型或思考等级覆盖 | composer 下一回合配置 | `session/configure` 覆盖空闲情形；逐回合覆盖需单独策略评审 |
-| provider、secret 和 vendor 账号管理 | settings 与 secrets IPC | 明确超出范围；远端 Host 的 provider 经 SSH 引导通道配置 |
+| `session/configure` | `pi-desktop/session/configure` | 远程修改模式、模型、思考等级或权限模式需要单独的策略评审 |
+| `session/fork` | `session.fork` | fork 语义和快照边界目前仅空闲时由 UI 驱动 |
+| `session/rename`、`session/delete` | 会话组织 IPC | 观察与控制不需要 |
+| 逐回合模型或思考等级覆盖 | composer 下一回合配置 | v1 由 Host 选择生效的 provider 配置 |
+| provider、secret 和 vendor 账号管理 | settings 与 secrets IPC | 明确超出范围；凭据管理能力需单独决策 |
 
 ## 4. 游标、队列、审批和附件
 
@@ -232,34 +207,17 @@ owner，工作区读取都按会话持久根、Host 忽略规则和 `PATH_OUTSID
 epoch；把日志放入 host-core 需要单独的 ADR。
 
 `turn/start` 默认 `reject_if_busy`，忙时返回 `AGENT_BUSY`；`admission: "queue"`
-进入 Host 拥有的每会话队列，所有客户端（含本地桌面）看到同一份队列；`turn/prioritize` 把排队回合移到队列头部
-（桌面的“立即发送”），不触碰正在运行的回合，想让它在下一个边界启动的客户端再调用
-`turn/stop`。排队回合及其
-幂等 key 由 host-core 持久化（D375），Host 重启后按序恢复并保持挂起，直到有
-controller 接入才继续释放，重启绝不无人值守地启动工作。远程主体
+进入 Host 拥有的每会话队列，所有客户端（含本地桌面）看到同一份队列。远程主体
 发起的回合运行在会话权限模式与 Host `remoteMaxPermissionMode`（默认 `ask`）
-中较低者之下，结果以 `effectivePermissionMode` 报告，不改变持久会话模式。经 SSH
-配对的桌面设备默认豁免上限，Host 策略 `applyCeilingToPairedDevices` 可重新施加。
-
-反向工具中继：作为 `owner` 配对的桌面可用 `tools/advertise` 公布在桌面执行的工具，
-即用户配置的 MCP 服务器和不需要会话工作区的插件工具；Host 在公布连接存活期间把
-它们并入该会话目录。Agent 调用时 Host 先走正常权限流程，再向公布连接发送
-`tool/execute` 服务端请求，客户端在本地插件权限与确认规则下执行并返回有界结果。
-中继工具绝不在 Host 运行、绝不收到 Host secret；截止时间是工具自身超时；公布连接
-断开则工具以 `TOOL_FAILED` 失败而回合继续；需要工作区或文件系统访问的插件工具不被
-接受。
-
-```json
-{"jsonrpc":"2.0","id":"server-request-77","method":"tool/execute","params":{"executionId":"exec_01J","toolName":"mcp_corp_search"}}
-```
+中较低者之下，结果以 `effectivePermissionMode` 报告，不改变持久会话模式。
 
 审批决策是本地词汇的超集：工具审批为 `allow-once`、`allow-session`、`deny`；
 Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且是跨回合的
 会话级转换；asktool 回答为 `Array<string[] | null>`，`null` 表示跳过。待处理请求
 是 Host 状态，host-core 通过 `permissions.pending` 提供读取，晚接入的客户端在
 快照中看到它们；首个有效决定生效，之后的有效响应返回 `alreadyResolved`。审批
-寿命由 Host 策略决定：本地默认 120 秒后拒绝，有远程订阅者接入时默认 30 分钟
-（D375），Host 可在上限内调整，本地或远程任一决定先到即生效，断线不会延长它。
+寿命由 Host 策略决定：本地默认 120 秒后拒绝，启用远程控制的 Host 可为远程
+订阅者配置更长的有界寿命，断线不会延长它。
 
 大附件使用 `attachment/create`、HTTPS 上传和 `attachment/complete`；
 远程本地路径、`file://` 和任意 URL 都不允许作为附件来源。经 Gateway 时上传
@@ -280,18 +238,13 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 | Start turn | `POST /v1/sessions/{sessionId}/turns` |
 | Get turn | `GET /v1/turns/{turnId}` |
 | Stop / interrupt / cancel turn | `POST /v1/turns/{turnId}:stop` / `:interrupt` / `:cancel` |
-| Prioritize turn | `POST /v1/turns/{turnId}:prioritize` |
 | Session event stream | `GET /v1/sessions/{sessionId}/events` |
 | Host event stream | `GET /v1/events` |
 | Resolve approval | `POST /v1/approvals/{approvalId}:respond` |
 | Resolve input | `POST /v1/inputs/{inputId}:respond` |
 
-`RACP-WS` 是 v1 唯一规范绑定，首个部署（rollout R2）是远端机器上只绑定 loopback
-的 `pi-host`，桌面经 SSH 端口转发以 header profile 和 SSH 引导配对得到的设备 token
-连接，绑定与对端都是 loopback 时才接受明文 `ws://`；`RACP-HTTP` 是浏览器 profile，
-在任何浏览器客户端发布前必须交付，但浏览器里程碑不排期（D375），映射保留以免
-契约漂移；`RACP-GRPC` 保留，若采用则 `.proto` 由 typebox 来源生成。Host link 属于
-不排期的 Gateway 里程碑，SSH 隧道拓扑不使用它。浏览器
+`RACP-WS` 是 v1 唯一规范绑定；`RACP-HTTP` 是浏览器 profile，在任何浏览器客户端
+发布前必须交付；`RACP-GRPC` 保留，若采用则 `.proto` 由 typebox 来源生成。浏览器
 无法在 WebSocket/EventSource 上设置请求头，因此非浏览器客户端用
 `Authorization` 头（header profile），浏览器客户端用 HttpOnly cookie + Origin 白名单
 + CSRF token（cookie profile）；两者都禁止 URL 中的 token。Host link
@@ -315,11 +268,8 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 | Read/metadata operation deadline | 15 seconds |
 | `turn/start` admission deadline | 5 seconds |
 | Approval lifetime, local default | 120 秒后拒绝 |
-| Approval lifetime, remote policy | 有远程订阅者接入时默认 30 分钟；Host 配置、有界，以 `approvalLifetimeMs` 公布 |
+| Approval lifetime, remote policy | Host 配置、有界，以 `approvalLifetimeMs` 公布 |
 | Heartbeat interval | 30 seconds |
-| Terminal output replay ring | 每终端 128 KiB |
-| Open terminals per session | 2 |
-| Relayed tool execution deadline | 工具自身超时 |
 
 | Code | Retriable | Meaning |
 |---|---:|---|
@@ -338,11 +288,6 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 | `APPROVAL_STALE` | no | 审批响应针对旧 revision |
 | `PAYLOAD_TOO_LARGE` | no | 请求、事件或附件超限 |
 | `RATE_LIMITED` | yes | 主体、会话或 Host 超额 |
-| `PAIRING_FAILED` | no | 配对令牌未知或已被兑换 |
-| `PAIRING_TOKEN_EXPIRED` | no | 配对令牌的引导窗口已过 |
-| `CAPABILITY_UNAVAILABLE` | no | Host 未宣告该操作所需的能力 |
-| `REMOTE_PATH_NOT_FOUND` | no | Host 侧路径不存在 |
-| `REMOTE_PATH_FORBIDDEN` | no | Host 侧路径超出主体可达范围 |
 | `INTERNAL` | maybe | 带 trace id 的内部错误 |
 
 错误必须同时携带稳定 code、可重试标记和 trace id。重复 mutation 使用同一
@@ -352,13 +297,8 @@ idempotency key 时返回原结果；使用相同 key 发送不同输入则失�
 
 新增字段只能追加，不能复用已有字段含义。可选能力必须通过初始化协商。
 终止状态不能回到活动状态；每个已发布 binding 的行为都必须通过相同 fixture
-验证，`RACP-WS` 是参考绑定。D374 于 2026-09-10 修订了 D373 草案：补齐本地
+验证，`RACP-WS` 是参考绑定。D376 于 2026-09-10 修订了 D373 草案：补齐本地
 审批词汇、引入 epoch 与瞬态事件、加入 Host 队列与 `permissions.pending`、
 新增 `host/list`、`project/list`、`session/history`、`turn/stop`、`turn/cancel`
 和 Host 流订阅、收敛为单一规范绑定与单一 IDL、定义浏览器认证 profile、Host link
-中继、远程权限上限和远程审批寿命。D375 又加入远端 Host profile、`RACP-WS` 的
-SSH 隧道部署与 loopback 规则、SSH 配对 owner 设备的上限豁免，并把 `RACP-HTTP`、
-cookie profile 与 Host link 标记为不排期；终端流式操作、`tools/advertise` 与
-`tool/execute` 中继、host-core 持久化的队列、远程订阅者 30 分钟默认审批寿命和
-`applyCeilingToPairedDevices` 策略同属该修订。
-完整状态机、示例和验收条款见英文源规格。
+中继、远程权限上限和远程审批寿命。完整状态机、示例和验收条款见英文源规格。

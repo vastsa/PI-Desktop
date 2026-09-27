@@ -37,13 +37,6 @@ run pointed at its own `PI_DESKTOP_DATA_DIR` (E2E harnesses, the capture rig, a
 side-by-side profile) shares no database, outbox, or logs with the default
 installation and stays launchable while one is running (D236, ADR 0094).
 
-A development build is its own installation rather than a second process of
-the same one: it runs under `PI-Desktop Dev` in the OS application-data root
-and reads `~/.pi-desktop-dev`. `pnpm dev` therefore starts while a packaged app
-holds its lock, and the two never share a database, an outbox, or a log tree
-(D599, ADR 0094). An explicit `--user-data-dir` is honored instead, because the
-E2E harnesses point a build at a throwaway profile with it.
-
 1. Electron main starts
 2. Load English locale defaults
 3. Spawn Rust host-core
@@ -59,95 +52,35 @@ queued/running `plan_approvals` execution states interrupted and aborts their
 running turns. This internal process-epoch fence is not serialized or sent over
 the protocol.
 
-The renderer bootstrap has no timeout of its own, so the renderer watches its own
-wait for the first state. At `STARTUP_SLOW_HINT_MS` (30s) the boot surface adds
-logs, diagnostics, and quit without calling the boot a failure; at
-`STARTUP_STALLED_MS` (180s) it becomes the recovery surface, which also offers a
-retry. Both bounds sit above the main↔host RPC ceiling
-(`DEFAULT_RPC_TIMEOUT_MS`, 130s), so a slow but successful boot is never reported
-as a failure. The watchdog never cancels the startup it watches: a boot that
-finishes replaces the surface with the shell, and the recovery surface replaces
-the splash. The renderer-drawn window controls stay above that surface, so a
-frameless Windows/Linux window can always be closed, and quitting from it goes
-through the renderer quit channel (`pi-desktop/app/quit`), which runs the same
-ordered shutdown as the Quit menu item.
-
 After host-core is up, Electron main reads `AppSettings.networkProxy` and
 applies it before spawning the agent sidecar (D340). Chromium sessions use
 `session.setProxy`; main-process `fetch` is `net.fetch`; the sidecar receives
 the same config through `sidecar.configure` and `PI_DESKTOP_PROXY_JSON`.
 HTTP(S) provider requests use undici's proxy dispatcher; SOCKS5 provider
 requests use a buffered CONNECT tunnel so a proxy may coalesce the SOCKS
-handshake response without stalling the request. Custom URLs with userinfo
-keep credentials for Node and curl; Chromium is pointed at a loopback SOCKS5
-relay that injects them, because `proxyRules` cannot carry userinfo (issue
-#490).
+handshake response without stalling the request.
 host-core marketplace `curl` gets `--proxy` from the stored settings and does
 **not** inherit proxy env, so workspace Bash cannot see proxy credentials.
-Marketplace curl diagnostics prefer UTF-8 and fall back to the active Windows
-ANSI code page before crossing the UTF-8 RPC boundary, so localized Schannel
-errors remain readable instead of becoming replacement characters.
 
 ## 4. Crash policy
 
 | Crash | Policy |
 |---|---|
-| Renderer crash | reload the current window after an unexpected renderer exit, unless the window is closing or the app is quitting; keep host/agent processes; same-host reload restores only live pending Plan/Goal approvals and their deadlines, not terminal cards |
+| Renderer crash | reload window, keep host/agent processes; same-host reload restores only live pending Plan/Goal approvals and their deadlines, not terminal cards |
 | Rust host crash | mark app degraded, interrupt pending/queued/running approval work, keep pending sessions in their contract mode (Plan or Goal) and already-approved sessions in Agent, attempt restart host, and fail active sessions closed |
-| Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution; the sidecar's stderr tail is classified at exit — a V8 heap-exhaustion banner settles the owning turn as `AGENT_SIDECAR_OOM`, any other unexpected exit as `AGENT_SIDECAR_CRASHED` (issue #1077) |
+| Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution |
 | Electron main crash | full app exit |
-
-Crashpad is started local-only (`uploadToServer: false`) before `ready`, and
-dumps are stored under `<data_dir>/crash-dumps` (D602) so a
-`PI_DESKTOP_DATA_DIR` profile does not share dumps with another installation.
-An unexpected renderer exit records its reason and exit code, then reloads the
-current main window when it is still live. A clean renderer exit and an accepted
-window close do not trigger recovery.
-The next launch that holds the single-instance lock writes one diagnostics
-line for dumps newer than `crash-dumps.json`. Crashpad records
-Chromium-process crashes (main, renderer, GPU, utility); a renderer crash the
-app already recovered still leaves a dump and is logged at warn. Host-core and
-sidecar crashes stay on the supervisor path in this section and the `host` /
-`agent` log channels.
 
 Broken stdout/stderr (`EPIPE`/`EIO`) is not a main-process crash. Main ignores
 those writes so a Linux AppImage or GUI launch without a live TTY keeps
 supervising host/sidecar instead of showing Electron's uncaught exception
 dialog.
 
-A main-process JavaScript `uncaughtException` is also not an Electron main
-crash (only a native main abort exits the app). Main installs its own
-`uncaughtException` / `unhandledRejection` handlers, writes `app/runtime`
-records, and keeps running. That suppresses Electron's default
-"A JavaScript error occurred in the main process" dialog. Recoverable
-network-stack throws include Chromium copying a non-Latin-1 HTTP header into
-`Headers.set` (`TypeError: Cannot convert argument to a ByteString`), which
-appears on Windows behind a system proxy or gateway that injects Unicode
-header values. The next `net.fetch` or updater request must not re-open that
-native dialog.
-
 Linux packaged host-core is built on Ubuntu 22.04 and needs glibc 2.35 or newer
 (Ubuntu 22.04, Debian 12, Fedora 36+). A lower glibc is a fatal host status,
 not a restart loop: the UI names those releases instead of "Can't reach the
 local service". The Linux tag job must not use a newer runner that would raise
 the needed glibc.
-
-Two more boot outcomes are named rather than left as a generic outage (D380):
-
-- **Downgraded build.** host-core refuses a data directory whose SQLite schema
-  is newer than the build supports (`database schema version N is newer than
-  supported M` on stderr). Electron parses that line from the last stderr
-  before exit, stops the restart loop on the first failure, and pushes
-  `hostStatus` with `message: "DB_SCHEMA_TOO_NEW"` and both numbers. The banner
-  tells the user to install the newer PI-Desktop that last opened this data.
-  No data is migrated down.
-- **Non-native build.** At boot Electron compares `process.arch` with the CPU
-  (on macOS via `sysctl.proc_translated`, which is `1` only under Rosetta 2;
-  elsewhere via `os.machine()`). A mismatch rides on the boot `hostStatus` as
-  `archMismatch` even when boot succeeded, and the renderer shows a dismissible
-  hint naming the build (Intel / Apple Silicon on macOS) and the matching
-  download. An arm64 build on an Intel Mac never launches, so only the
-  Intel-on-Apple-Silicon direction is detectable.
 
 Windows packages target x64. The Windows host-core build uses the
 `x86_64-pc-windows-msvc` target with `target-feature=+crt-static`, so the NSIS
@@ -156,20 +89,9 @@ start its local service. Windows 11 ARM64 systems run this x64 package through
 the operating system's x64 emulation; native Windows ARM64 artifacts are not
 currently published.
 
-Supervision parameters (the transports, restart policy, and turn lifecycle are
-`packages/host-runtime`, ADR 0284; Electron main adapts them and owns the
-renderer-facing status):
+Supervision parameters (implemented in Electron main):
 
 - Child exit rejects all in-flight RPCs for that child immediately (no 130s timeout wait).
-- Every RPC carries a finite transport deadline. Bash and desktop-dispatched
-  (`plugin_*` / `mcp_*`) tools add the waits host-core can spend before it
-  reports an outcome, and `agent.compact` adds the sidecar's own summary budget
-  — its stream watchdog per attempt plus its retry backoff (**D614**, issue
-  #795); everything else uses the 130s default. Never widen the default to cover
-  a slow method: that also hides a genuinely lost reply on every other call.
-- An NDJSON request line over 64 MiB is drained and answered with `LIMIT_EXCEEDED`; it does not end the stdin reader (ADR 0216). Electron rejects the same size before writing stdin (ADR 0217).
-- The Windows Alt+Space hook retains only a weak stdout sender. After stdin EOF, serve drops the last strong sender and host-core exits. A leaked sender cannot block shutdown for more than 5 s (ADR 0217).
-
 - Auto-restart with exponential backoff `0.5s → 1s → 2s` (cap 4s).
 - At most **3 restarts per 2-minute window** per child; beyond that the app
   stays degraded and emits `hostStatus { ok: false, component, fatal: true }`.
@@ -259,23 +181,6 @@ front of the launcher or a plugin panel (ADR 0086).
 reaches `downloaded`. Electron still emits `before-quit`, so the normal
 sidecar/host shutdown sequence runs before the updater replaces the app.
 
-For Windows NSIS installs, `PI_DESKTOP_UPDATE_CACHE_DIR` may override the
-electron-updater cache base with an absolute, writable directory. The packaged
-`app-update.yml` remains authoritative for the cache subdirectory name. On first
-startup after relocation, Main adopts the differential installer and block map
-from the legacy `%LOCALAPPDATA%` cache, preserves any staged update, then removes
-the old cache directory only when empty. Unknown files and an already-populated
-destination are preserved rather than overwritten or recursively deleted. When
-the update feed confirms the running version is current, Main removes only the
-`pending/` download staging directory; differential baselines stay available for
-the next small update. Do not point the override at an installation directory
-that requires elevation to write.
-
-The download-and-install path remains owned by Electron Main. The installer itself
-still creates `installer.exe` in `%LOCALAPPDATA%`; relocation adopts that copy on
-the next launch rather than changing the NSIS installer or writing into
-`Program Files` (issue #1098).
-
 ## 6. Dev vs release
 
 ### Dev
@@ -303,17 +208,9 @@ the next launch rather than changing the NSIS installer or writing into
   pure-JS helpers it calls without changing process or protocol ownership
 - renderer dependencies ship through Vite output rather than duplicate raw
   package trees; no interactive PTY native module is packaged
-- packaged builds use the Main-owned update controller and a persisted
-  per-install `updatePreference`. Automatic mode keeps the existing in-app
-  download/install flow on supported packages; Manual mode checks the fixed
-  stable feed without starting downloads or installing on quit, and reminds
-  once per available version. Defaults are Automatic for Windows NSIS,
-  packaged macOS, and Linux AppImage; Windows ZIP/portable and packages without
-  automatic-install support default to Manual. Windows ZIP/portable users can
-  explicitly opt into Automatic after a warning that the NSIS installer may
-  replace the extracted copy. Preference and last-reminded version use the
-  existing host-owned app settings JSON; neither is included in portable
-  configuration sync.
+- packaged builds use the Main-owned update controller. macOS, non-AppImage
+  Linux, and Windows portable runs are manual-delivery modes; Windows NSIS and
+  Linux AppImage use the in-app feeds published by D126 tag releases
 
 ## 7. Remote target topology (post-MVP)
 
@@ -321,12 +218,9 @@ Remote control does not add a public listener to Rust host-core or the current
 renderer IPC surface. The target Agent Host is a headless module
 (`packages/agent-host`) that owns session and turn admission, the turn queue,
 the approval broker, and the event log, supervised beside the Node pi sidecar
-and Rust host-core, with an authenticated RACP server above it (D374). The
-first remote deployment (D375) runs that module as a headless `pi-host` on a
-remote machine, bound to loopback and reached from the desktop through an SSH
-port forward. The unscheduled Gateway topology would add an outbound Host
-link; the Gateway routes authenticated clients and never owns workspace
-state.
+and Rust host-core, with an authenticated RACP server above it (D376). In
+production, the Host opens an outbound Gateway link; the Gateway routes
+authenticated clients and does not become the owner of workspace state.
 
 The detailed topology, ownership, and migration boundary are specified in
 [`02-architecture/05-remote-agent-control.md`](../02-architecture/05-remote-agent-control.md).
@@ -347,17 +241,3 @@ until a post-MVP implementation milestone explicitly amends this section.
 6. A queued/running execution that was already approved is interrupted without
    replay and its durable session remains Agent
 7. Bash timeout/abort shuts down the complete child process tree
-
-
-### Native tray session projection
-
-The tray service keeps Running, Unread, and Pinned groups current independently
-of renderer visibility or lifetime. Host remains authoritative for sessions and
-notifications; root agent events describe running state. Renderer mirrors only
-organization preferences through a main-window-only IPC. Read requests are
-coalesced; obsolete Host results cannot repopulate the menu, failures clear
-shortcuts, and quitting prevents further publication. A closed window retains
-only the last organization copy, which is replaced after renderer bootstrap.
-Menu command readiness is acknowledged after bootstrap's initial navigation,
-so a tray click cannot be overwritten by the startup draft or pending-plan
-selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

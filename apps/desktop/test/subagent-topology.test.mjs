@@ -7,10 +7,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
-  collectDelegationFailures,
   collectDelegationStatuses,
   collectDelegationTimings,
-  delegationIsCreating,
   delegationRoster,
   delegationRosterOutcome,
   delegationRosterSummary,
@@ -99,8 +97,8 @@ test("prefers the structured delegate outcome over the transport status", () => 
     "completed",
   );
   assert.equal(
-    subagentOutcome(task("timeout", "success", "timed_out").message),
-    "timed_out",
+    subagentOutcome(task("cap", "success", "truncated").message),
+    "truncated",
   );
   assert.equal(
     subagentOutcome(task("stop", "success", "aborted").message),
@@ -115,47 +113,6 @@ test("prefers the structured delegate outcome over the transport status", () => 
     "failed",
   );
   assert.equal(subagentOutcome(task("denied", "denied").message), "denied");
-});
-
-// ADR 0253 removed the turn limit and the `truncated` status with it. A row
-// persisted by an older build still carries the string, so it must not be read
-// as an outcome: the mapper ignores the unknown status and falls back to the
-// transport status of the Task row.
-test("rejects the legacy `truncated` status instead of mapping it to an outcome", () => {
-  assert.equal(
-    subagentOutcome(task("legacy", "success", "truncated").message),
-    "completed",
-  );
-  const statuses = collectDelegationStatuses([
-    lifecycle("TaskWait", {
-      delegations: [
-        { delegationId: "legacy", agent: "reviewer", status: "truncated" },
-      ],
-    }),
-  ]);
-  assert.equal(statuses.get("legacy"), undefined);
-  assert.deepEqual(
-    summarizeSubagentActivity([task("legacy", "success", "truncated")]),
-    { total: 1, finished: 1, running: 0, issues: 0, warnings: 0 },
-  );
-});
-
-test("running Task without a result handle is still being created", () => {
-  // ADR 0089: the parent `Task` returns its structured handle (delegationId)
-  // only at tool_end. A running row with no delegation payload is the window
-  // where the delegate runtime is still spawning.
-  assert.equal(delegationIsCreating(task("new", "running").message), true);
-  // Once the Task result carries a delegationId, the delegate has started.
-  assert.equal(
-    delegationIsCreating(task("done", "running", "running").message),
-    false,
-  );
-  assert.equal(
-    delegationIsCreating(task("settled", "success", "completed").message),
-    false,
-  );
-  // Not running is never treated as creating.
-  assert.equal(delegationIsCreating(task("idle", "success").message), false);
 });
 
 test("uses delegation lifecycle timestamps instead of the immediate Task duration", () => {
@@ -202,27 +159,6 @@ test("reads settled delegation status from a persisted TaskWait result", () => {
     "completed",
   );
 });
-test("preserves denied lifecycle outcomes", () => {
-  const statuses = collectDelegationStatuses([
-    lifecycle("TaskWait", {
-      delegations: [
-        { delegationId: "denied", agent: "reviewer", status: "denied" },
-      ],
-    }),
-  ]);
-  assert.equal(statuses.get("denied"), "denied");
-  assert.equal(
-    delegationRosterOutcome(delegationRoster({
-      toolName: "TaskWait",
-      toolResult: {
-        details: {
-          delegations: [{ delegationId: "denied", agent: "reviewer", status: "denied" }],
-        },
-      },
-    })),
-    "denied",
-  );
-});
 
 test("reads stopped status from TaskStop, including a running snapshot", () => {
   const statuses = collectDelegationStatuses([
@@ -238,111 +174,6 @@ test("reads stopped status from TaskStop, including a running snapshot", () => {
     subagentOutcome(task("d1", "success", "running").message, statuses),
     "stopped",
   );
-});
-
-// Issue #161: the status says *that* a delegate failed; the error says why.
-// `Task` returns before the delegate settles (ADR 0089), so only the lifecycle
-// rows can carry the reason.
-test("reads a failed delegation's error from a TaskWait roster entry", () => {
-  const failures = collectDelegationFailures([
-    task("d1", "success", "running"),
-    lifecycle("TaskWait", {
-      delegations: [
-        {
-          delegationId: "d1",
-          status: "failed",
-          error: { code: "SUBAGENT_FAILED", message: "Provider returned 500." },
-        },
-      ],
-    }),
-  ]);
-
-  assert.deepEqual(failures.get("d1"), {
-    code: "SUBAGENT_FAILED",
-    message: "Provider returned 500.",
-  });
-});
-
-test("reads a failed delegation's error from TaskStop's `stopped` list", () => {
-  const failures = collectDelegationFailures([
-    lifecycle("TaskStop", {
-      stopped: [
-        {
-          delegationId: "d9",
-          status: "aborted",
-          error: {
-            code: "DELEGATION_ABORTED",
-            message: "Parent turn ended.",
-          },
-        },
-      ],
-    }),
-  ]);
-
-  assert.deepEqual(failures.get("d9"), {
-    code: "DELEGATION_ABORTED",
-    message: "Parent turn ended.",
-  });
-});
-
-test("a later lifecycle row replaces an earlier failure for the same delegate", () => {
-  const failures = collectDelegationFailures([
-    lifecycle("TaskWait", {
-      delegations: [
-        {
-          delegationId: "d1",
-          status: "failed",
-          error: { code: "PROVIDER_ERROR", message: "first" },
-        },
-      ],
-    }),
-    lifecycle("TaskList", {
-      delegations: [
-        {
-          delegationId: "d1",
-          status: "failed",
-          error: { code: "PROVIDER_ERROR", message: "second" },
-        },
-      ],
-    }),
-  ]);
-
-  assert.equal(failures.get("d1").message, "second");
-});
-
-test("ignores roster entries that report no error at all", () => {
-  const failures = collectDelegationFailures([
-    lifecycle("TaskWait", {
-      delegations: [
-        { delegationId: "ok", status: "completed" },
-        { delegationId: "empty", status: "failed", error: {} },
-        { delegationId: "blank", status: "failed", error: { message: "   " } },
-        { status: "failed", error: { code: "X", message: "no id" } },
-      ],
-    }),
-  ]);
-
-  assert.equal(failures.size, 0);
-});
-
-test("a refreshed Task row carries its terminal failure before lifecycle polling", () => {
-  const failures = collectDelegationFailures([
-    {
-      kind: "tool",
-      message: {
-        ...task("d1", "error", "failed").message,
-        toolResult: {
-          details: {
-            delegationId: "d1",
-            status: "failed",
-            error: { code: "PROVIDER_ERROR", message: "provider failed" },
-          },
-        },
-      },
-    },
-  ]);
-
-  assert.deepEqual(failures.get("d1"), { code: "PROVIDER_ERROR", message: "provider failed" });
 });
 
 test("a finished turn treats leftover running delegates as aborted", () => {
@@ -371,7 +202,7 @@ test("summarizes partial fan-out without deduplicating repeated agent names", ()
     summarizeSubagentActivity([
       task("one", "running"),
       task("two", "success", "completed"),
-      task("three", "success", "timed_out"),
+      task("three", "success", "truncated"),
       task("four", "success", "aborted"),
       task("five", "success", "stopped"),
       task("six", "error", "failed"),
@@ -492,26 +323,4 @@ test("topology elapsed bounds follow this card's Task ids, not a later fan-out",
     ),
     { startedAt: 1_000, completedAt: 5_000 },
   );
-});
-
-
-test("settled Task snapshots outrank stale lifecycle polling during a parallel fan-out", () => {
-  const first = task("first", "success", "completed", { startedAt: 1000, completedAt: 5000 });
-  const second = task("second", "success", "running", { startedAt: 1100 });
-  const stalePoll = lifecycle("TaskList", { delegations: [
-    { delegationId: "first", status: "running", startedAt: 1000 },
-    { delegationId: "second", status: "running", startedAt: 1100 },
-  ] });
-  const items = [first, second, stalePoll];
-  const statuses = collectDelegationStatuses(items, { turnLive: true });
-  assert.equal(subagentOutcome(first.message, statuses), "completed");
-  assert.equal(subagentOutcome(second.message, statuses), "running");
-  assert.deepEqual(summarizeSubagentActivity([first, second], statuses), {
-    total: 2, finished: 1, running: 1, issues: 0, warnings: 0,
-  });
-  assert.deepEqual(collectDelegationTimings(items).get("first"), {
-    startedAt: 1000, completedAt: 5000,
-  });
-  // History reconstruction must preserve success, rather than infer abortion.
-  assert.equal(collectDelegationStatuses(items, { turnLive: false }).get("first"), "completed");
 });

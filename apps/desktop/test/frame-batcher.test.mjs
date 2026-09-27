@@ -30,16 +30,3 @@ test("frame batcher flushes immediately without leaving a timer", () => {
   assert.deepEqual(batches, [[1]]);
   assert.equal(batcher.size, 0);
 });
-
-test("frame batcher can concatenate values for the same stream target", () => {
-  const batches = [];
-  const batcher = createFrameBatcher((values) => {
-    batches.push([...values]);
-  });
-
-  batcher.enqueue("message:a", "Hel", (previous, next) => previous + next);
-  batcher.enqueue("message:a", "lo", (previous, next) => previous + next);
-  batcher.flushNow();
-
-  assert.deepEqual(batches, [["Hello"]]);
-});

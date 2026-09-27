@@ -16,11 +16,10 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::sync::{mpsc, watch};
 
-use crate::workspace::{resolve_tool_path_with_external, simple_canonicalize, ToolRoot};
+use crate::workspace::{resolve_tool_path_with_external, ToolRoot};
 
 mod grep_rg;
 pub mod hashline;
-pub mod ignore_rules;
 pub mod shell;
 
 pub use hashline::{HashlineContext, HashlineStore};
@@ -344,8 +343,9 @@ where
 async fn monitor_runner_control_pipe(mut control: tokio::io::Stdin) -> io::Result<()> {
     let mut buffer = [0u8; 1024];
     loop {
-        if control.read(&mut buffer).await? == 0 {
-            return Ok(());
+        match control.read(&mut buffer).await? {
+            0 => return Ok(()),
+            _ => {}
         }
     }
 }
@@ -426,7 +426,7 @@ pub async fn run_internal_tool_runner() -> Result<i32> {
                 let control_error = match control_result {
                     Ok(Ok(())) => None,
                     Ok(Err(error)) => Some(error),
-                    Err(error) => Some(io::Error::other(error)),
+                    Err(error) => Some(io::Error::new(io::ErrorKind::Other, error)),
                 };
                 let kill_result = kill_runner_process_group();
                 if let Some(error) = control_error {
@@ -571,13 +571,6 @@ pub struct ToolsExecuteParams {
     #[serde(default)]
     pub expected_command_shell_dialect: Option<String>,
     pub timeout_ms: Option<u64>,
-    /// Action names that may run in Plan or Goal mode (ADR 0211). When
-    /// set and non-empty, host-core admits this `plugin_*` tool in
-    /// contract modes even though plugins are otherwise Plan-denied; the
-    /// plugin-runtime still enforces the per-action restriction at
-    /// execute time.
-    #[serde(default)]
-    pub plan_safe_actions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -778,13 +771,6 @@ impl BashExecutionOptions {
     }
 }
 
-pub struct ToolExecutionOptions<'a> {
-    pub timeout_ms: Option<u64>,
-    pub bash_options: Option<BashExecutionOptions>,
-    pub allow_external_paths: bool,
-    pub hashline: Option<HashlineContext<'a>>,
-}
-
 pub fn validate_timeout_ms(timeout_ms: Option<u64>) -> Result<(), (String, String)> {
     if let Some(timeout_ms) = timeout_ms {
         if timeout_ms == 0 || timeout_ms > MAX_TIMEOUT_MS {
@@ -963,24 +949,6 @@ pub fn is_desktop_dispatched(tool_name: &str) -> bool {
     tool_name.starts_with("plugin_") || tool_name.starts_with("mcp_")
 }
 
-/// How long host-core waits for Electron main to answer an approved
-/// desktop-dispatched tool. It must outlast every budget Electron enforces
-/// inside it — the plugin tool budget (110s), and the widest MCP leg: a lazy
-/// handshake (10s) plus the whole `tools/list` traversal (30s) plus the call
-/// (100s) — so the innermost layer reports its own timeout instead of being cut
-/// off here (`07-plugins/12-plugin-ipc-and-host-services.md`, ADR 0038).
-/// Mirrored by `DESKTOP_TOOL_DISPATCH_TIMEOUT_MS` in
-/// `packages/shared/src/rpc-timeouts.ts`, which sizes the transport deadline
-/// around it. The admission queue wait happens before this budget starts, so
-/// that transport deadline carries it instead of this constant.
-pub const DESKTOP_TOOL_DISPATCH_TIMEOUT_MS: u64 = 150_000;
-
-/// Dispatch deadline for a desktop-dispatched tool. The sidecar sends no
-/// `timeoutMs` for these tools, so the default is what normally applies.
-pub fn desktop_dispatch_timeout_ms(requested: Option<u64>) -> u64 {
-    requested.unwrap_or(DESKTOP_TOOL_DISPATCH_TIMEOUT_MS)
-}
-
 #[cfg(test)]
 pub async fn execute_tool(
     workspace: Option<&Path>,
@@ -1025,12 +993,10 @@ pub async fn execute_tool_with_options(
         scratch,
         tool_name,
         args,
-        ToolExecutionOptions {
-            timeout_ms,
-            bash_options,
-            allow_external_paths: false,
-            hashline: None,
-        },
+        timeout_ms,
+        bash_options,
+        false,
+        None,
     )
     .await
 }
@@ -1042,16 +1008,13 @@ pub async fn execute_tool_with_path_access(
     scratch: Option<&Path>,
     tool_name: &str,
     args: &Value,
-    options: ToolExecutionOptions<'_>,
+    timeout_ms: Option<u64>,
+    bash_options: Option<BashExecutionOptions>,
+    allow_external_paths: bool,
+    hashline: Option<&HashlineContext<'_>>,
 ) -> ToolsExecuteResult {
-    let ToolExecutionOptions {
-        timeout_ms: requested_timeout_ms,
-        bash_options,
-        allow_external_paths,
-        hashline,
-    } = options;
     let started = Instant::now();
-    let timeout_ms = effective_timeout_ms(tool_name, requested_timeout_ms);
+    let timeout_ms = effective_timeout_ms(tool_name, timeout_ms);
     let tool_call_id = bash_options
         .as_ref()
         .map(|options| options.tool_call_id.clone())
@@ -1067,63 +1030,37 @@ pub async fn execute_tool_with_path_access(
             let _ = std::fs::create_dir_all(dir);
         }
     }
-    let result: Result<Value, hashline::ToolError> = match tool_name {
-        // Authorize the desktop-owned image request through the normal host gate.
-        // Only the trusted desktop runner performs the external call.
-        "GenerateImages" => Ok(serde_json::json!({ "authorized": true })),
-        "Read" => tool_read(
-            workspace,
-            scratch,
-            args,
-            allow_external_paths,
-            hashline.as_ref(),
-        )
-        .map_err(Into::into),
-        "Glob" => tool_glob(workspace, scratch, args, allow_external_paths).map_err(Into::into),
-        "Grep" => tool_grep(
-            workspace,
-            scratch,
-            args,
-            allow_external_paths,
-            hashline.as_ref(),
-        )
-        .map_err(Into::into),
-        "Write" => tool_write(
-            workspace,
-            scratch,
-            args,
-            allow_external_paths,
-            hashline.as_ref(),
-        )
-        .map_err(Into::into),
-        "Edit" => tool_edit(
-            workspace,
-            scratch,
-            args,
-            allow_external_paths,
-            hashline.as_ref(),
-        ),
-        "Bash" => {
-            let options = bash_options.unwrap_or_else(|| {
-                let id = shell::catalog(None)
-                    .effective
-                    .map(|option| option.id)
-                    .unwrap_or_else(|| shell::default_shell_id().to_string());
-                BashExecutionOptions::local(id, timeout_ms)
-            });
-            tool_bash(workspace, scratch, args, options)
-                .await
-                .map_err(Into::into)
-        }
-        other if is_desktop_dispatched(other) => Err(hashline::ToolError::new(
-            "TOOL_NOT_FOUND",
-            format!("{other} requires the desktop runner (dispatched via plugins.execute)"),
-        )),
-        other => Err(hashline::ToolError::new(
-            "TOOL_NOT_FOUND",
-            format!("unknown tool: {other}"),
-        )),
-    };
+    let result: Result<Value, hashline::ToolError> =
+        match tool_name {
+            "Read" => tool_read(workspace, scratch, args, allow_external_paths, hashline)
+                .map_err(Into::into),
+            "Glob" => tool_glob(workspace, scratch, args, allow_external_paths).map_err(Into::into),
+            "Grep" => tool_grep(workspace, scratch, args, allow_external_paths, hashline)
+                .map_err(Into::into),
+            "Write" => tool_write(workspace, scratch, args, allow_external_paths, hashline)
+                .map_err(Into::into),
+            "Edit" => tool_edit(workspace, scratch, args, allow_external_paths, hashline),
+            "Bash" => {
+                let options = bash_options.unwrap_or_else(|| {
+                    let id = shell::catalog(None)
+                        .effective
+                        .map(|option| option.id)
+                        .unwrap_or_else(|| shell::default_shell_id().to_string());
+                    BashExecutionOptions::local(id, timeout_ms)
+                });
+                tool_bash(workspace, scratch, args, options)
+                    .await
+                    .map_err(Into::into)
+            }
+            other if is_desktop_dispatched(other) => Err(hashline::ToolError::new(
+                "TOOL_NOT_FOUND",
+                format!("{other} requires the desktop runner (dispatched via plugins.execute)"),
+            )),
+            other => Err(hashline::ToolError::new(
+                "TOOL_NOT_FOUND",
+                format!("unknown tool: {other}"),
+            )),
+        };
 
     match result {
         Ok(content) => {
@@ -1224,9 +1161,6 @@ fn tool_read(
     let (resolved, root_kind) =
         resolve_tool_path_with_external(root, scratch, path, allow_external_paths)
             .map_err(|e| (e.clone(), e))?;
-    if ignore_rules::is_sensitive_path(&resolved) {
-        return Err(ignore_rules::denied_error(path));
-    }
     let offset = args
         .get("offset")
         .and_then(|v| v.as_u64())
@@ -1362,9 +1296,6 @@ fn tool_write(
     let (resolved, root_kind) =
         resolve_tool_path_with_external(root, scratch, path, allow_external_paths)
             .map_err(|e| (e.clone(), e))?;
-    if ignore_rules::is_sensitive_path(&resolved) {
-        return Err(ignore_rules::denied_error(path));
-    }
     if let Some(parent) = resolved.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| ("TOOL_FAILED".into(), format!("mkdir failed: {e}")))?;
@@ -1411,10 +1342,6 @@ fn tool_edit(
     let (resolved, root_kind) =
         resolve_tool_path_with_external(root, scratch, path, allow_external_paths)
             .map_err(|e| hashline::ToolError::new(e.clone(), e))?;
-    if ignore_rules::is_sensitive_path(&resolved) {
-        let (code, message) = ignore_rules::denied_error(path);
-        return Err(hashline::ToolError::new(code, message));
-    }
     let live = std::fs::read(&resolved)
         .map_err(|e| hashline::ToolError::new("TOOL_FAILED", format!("read failed: {e}")))?;
     let display = display_tool_path(root_kind, root, &resolved);
@@ -1447,10 +1374,6 @@ fn tool_edit(
         let (dest_resolved, dest_root) =
             resolve_tool_path_with_external(root, scratch, dest, allow_external_paths)
                 .map_err(|e| hashline::ToolError::new(e.clone(), e))?;
-        if ignore_rules::is_sensitive_path(&dest_resolved) {
-            let (code, message) = ignore_rules::denied_error(dest);
-            return Err(hashline::ToolError::new(code, message));
-        }
         if let Some(parent) = dest_resolved.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 hashline::ToolError::new("TOOL_FAILED", format!("mkdir failed: {e}"))
@@ -1567,15 +1490,11 @@ fn search_root(
 
 fn candidate_files(
     search_root: &Path,
-    ignore_root: &Path,
     scoped: bool,
     include: Option<&globset::GlobSet>,
     max_files: usize,
 ) -> (Vec<PathBuf>, bool) {
     if search_root.is_file() {
-        if ignore_rules::is_sensitive_path(search_root) {
-            return (Vec::new(), false);
-        }
         let relative = search_root
             .file_name()
             .map(Path::new)
@@ -1591,7 +1510,6 @@ fn candidate_files(
     if scoped {
         walker.parents(false);
     }
-    ignore_rules::configure_walker(&mut walker, ignore_root, scoped);
     let mut candidates: Vec<(PathBuf, SystemTime)> = Vec::new();
     let mut capped = false;
     for entry in walker.build().flatten() {
@@ -1652,18 +1570,8 @@ fn tool_glob(
         .filter(|v| *v > 0)
         .unwrap_or(GLOB_DEFAULT_LIMIT);
 
-    let ignore_root = if root_kind == ToolRoot::Workspace {
-        root
-    } else {
-        search_dir.as_path()
-    };
-    let (files, mut truncated) = candidate_files(
-        &search_dir,
-        ignore_root,
-        scoped,
-        Some(&set),
-        GLOB_MAX_LIMIT * 8,
-    );
+    let (files, mut truncated) =
+        candidate_files(&search_dir, scoped, Some(&set), GLOB_MAX_LIMIT * 8);
     let mut matches: Vec<String> = Vec::new();
     let mut bytes = 0_usize;
     for path in &files {
@@ -1754,12 +1662,6 @@ fn tool_grep(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let ignore_root = if root_kind == ToolRoot::Workspace {
-        root
-    } else {
-        search_dir.as_path()
-    };
-
     // Prefer a system `rg` when one is installed (Codex's search default).
     // The result shape, budgets, newest-first order, and scoped-ignore rule
     // stay host-defined; a missing or failing binary falls through.
@@ -1767,7 +1669,6 @@ fn tool_grep(
         pattern,
         search_dir: &search_dir,
         workspace_root: root,
-        ignore_root,
         root_kind,
         scoped,
         include: include_pattern,
@@ -1787,7 +1688,6 @@ fn tool_grep(
 
     let (files, mut truncated) = candidate_files(
         &search_dir,
-        ignore_root,
         scoped,
         include.as_ref(),
         GREP_MAX_CANDIDATE_FILES,
@@ -2680,30 +2580,12 @@ fn relative_display(root: &Path, path: &Path) -> String {
     // `path` comes back canonicalized from the resolver; strip against the
     // canonical root spelling too, or symlinked roots (macOS /var vs
     // /private/var) would render absolute.
-    //
-    // The resolver spells paths with `simple_canonicalize`, so the root must
-    // use that same spelling: std `Path::canonicalize` keeps the Windows
-    // `\\?\` prefix, which never matches a resolved path and made every
-    // workspace-relative label fall back to an absolute one.
-    let canonical_root = simple_canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    let display = path
-        .strip_prefix(&canonical_root)
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    path.strip_prefix(&canonical_root)
         .or_else(|_| path.strip_prefix(root))
         .unwrap_or(path)
         .to_string_lossy()
-        .to_string();
-
-    // Tool results are protocol-visible: Windows separators are normalized to
-    // POSIX spelling, while POSIX filenames may legally contain a literal
-    // backslash that must remain round-trippable through Read/Edit.
-    #[cfg(windows)]
-    {
-        display.replace('\\', "/")
-    }
-    #[cfg(not(windows))]
-    {
-        display
-    }
+        .to_string()
 }
 
 pub fn builtin_tool_defs() -> Value {
@@ -2801,8 +2683,8 @@ pub fn builtin_tool_defs() -> Value {
             "name": "Edit",
             "description": "Replace, insert, or delete lines in an existing file. Names positions and supplies new content only — never old_string. Required args: path, tag (4 hex from the latest Read/Grep/Write/Edit), ops. \
     Ops: `PUT N.=M:` replace inclusive lines N–M (body rows required); `PUT <N:` insert before N; `PUT >N:` insert after N; `PUT >$:` append; `CUT N.=M` delete; `REM` delete the file; `MV DEST` rename after other ops. \
-    Body rows are `+` plus the final line text; a bare `+` is an empty line. Every PUT with body rows must include the trailing colon, for example `PUT 48.=48:` followed by a `+replacement` row; `PUT 48.=48` followed by `+` rows is invalid. A colonless PUT is only for a register paste such as `PUT <1 @name`. No `-old` or context rows. Ranges name only the lines being changed — a pure insert uses a gap locator, not a widened PUT that restates survivors. \
-    All line numbers refer to the tagged snapshot and are 1-indexed. Re-ground on the tag returned by every successful write. After one failed Edit, classify the error: Read the live file for a stale tag or unseen lines (or retry unchanged on a complete EDIT_LINES_UNSEEN reveal), but correct syntax or range errors directly; do not guess.",
+    Body rows are `+` plus the final line text; a bare `+` is an empty line. No `-old` or context rows. Ranges name only the lines being changed — a pure insert uses a gap locator, not a widened PUT that restates survivors. \
+    All line numbers refer to the tagged snapshot and are 1-indexed. Re-ground on the tag returned by every successful write. After one failed Edit, Read the live file (or retry unchanged on a complete EDIT_LINES_UNSEEN reveal) once; do not guess.",
             "risk": "high",
             "parameters": {
                 "type": "object",
@@ -2840,73 +2722,6 @@ mod tests {
 
     fn plain_read(content: &str) -> String {
         hashline::strip_write_markup(content)
-    }
-
-    #[test]
-    fn desktop_dispatch_outlasts_every_electron_budget_it_wraps() {
-        // Copies of the Electron budgets, bound to their sources by
-        // `apps/desktop/test/plugin-timeout-budgets.test.mjs`, which reads both
-        // sides: the plugin tool budget (`PLUGIN_TOOL_TIMEOUT_MS`, 110s) and the
-        // widest MCP leg (`MCP_CONNECT_TIMEOUT_MS` + `MCP_TOOL_DISCOVERY_TIMEOUT_MS`
-        // + `MCP_CALL_TIMEOUT_MS`). host-core must not give up first, or a tool
-        // that is still inside its own budget (e.g. an `agent.complete` call, or
-        // an MCP call that first pays a lazy handshake and a catalog traversal)
-        // gets TOOL_TIMEOUT.
-        const PLUGIN_TOOL_TIMEOUT_MS: u64 = 110_000;
-        const MCP_CONNECT_TIMEOUT_MS: u64 = 10_000;
-        const MCP_TOOL_DISCOVERY_TIMEOUT_MS: u64 = 30_000;
-        const MCP_CALL_TIMEOUT_MS: u64 = 100_000;
-
-        assert_eq!(
-            desktop_dispatch_timeout_ms(None),
-            DESKTOP_TOOL_DISPATCH_TIMEOUT_MS
-        );
-        assert!(desktop_dispatch_timeout_ms(None) > PLUGIN_TOOL_TIMEOUT_MS);
-        assert!(
-            desktop_dispatch_timeout_ms(None)
-                > MCP_CONNECT_TIMEOUT_MS + MCP_TOOL_DISCOVERY_TIMEOUT_MS + MCP_CALL_TIMEOUT_MS
-        );
-        assert_eq!(desktop_dispatch_timeout_ms(Some(5_000)), 5_000);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn grep_preserves_posix_literal_backslashes_in_workspace_paths() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("src")).unwrap();
-        let file = dir.path().join("src").join(r"util\test.ts");
-        std::fs::write(&file, "const needle = 1;\n").unwrap();
-
-        let result = execute_tool(
-            Some(dir.path()),
-            None,
-            "Grep",
-            &serde_json::json!({ "pattern": "needle" }),
-            5_000,
-        )
-        .await;
-        assert!(result.ok, "grep failed: {:?}", result.content);
-        assert_eq!(
-            result.content["matches"][0]["path"].as_str(),
-            Some(r"src/util\test.ts")
-        );
-        assert_eq!(
-            result.content["tags"][r"src/util\test.ts"]
-                .as_str()
-                .map(str::len),
-            Some(4)
-        );
-
-        let read = execute_tool(
-            Some(dir.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": r"src/util\test.ts" }),
-            5_000,
-        )
-        .await;
-        assert!(read.ok, "read failed: {:?}", read.content);
-        assert_eq!(read.content["path"].as_str(), Some(r"src/util\test.ts"));
     }
 
     #[test]
@@ -3013,26 +2828,18 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let scratch = data.path().join("scratch/session-spill");
         let lines = BUDGET_SHELL.max_lines + 500;
-        #[cfg(windows)]
-        let command = format!("1..{lines} | ForEach-Object {{ [Console]::Out.WriteLine($_) }}");
-        #[cfg(not(windows))]
-        let command = format!("seq 1 {lines}");
         let result = execute_tool(
             Some(ws.path()),
             Some(&scratch),
             "Bash",
-            &serde_json::json!({ "command": command }),
+            &serde_json::json!({ "command": format!("seq 1 {lines}") }),
             30_000,
         )
         .await;
         assert!(result.ok, "bash tool failed: {:?}", result.content);
         assert_eq!(result.content["truncated"].as_bool(), Some(true));
         let stdout = result.content["stdout"].as_str().unwrap();
-        assert_eq!(
-            stdout.lines().take(2).collect::<Vec<_>>(),
-            ["1", "2"],
-            "head retained"
-        );
+        assert!(stdout.starts_with("1\n2\n"), "head retained");
         assert!(stdout.contains("[truncated:"), "marker present");
 
         // The marker names a spill file that holds the whole output.
@@ -3053,23 +2860,17 @@ mod tests {
         // A failing command's actionable message is its last line.
         let ws = tempfile::tempdir().unwrap();
         let lines = BUDGET_SHELL_ERR.max_lines + 200;
-        #[cfg(windows)]
-        let command = format!(
-            "1..{lines} | ForEach-Object {{ [Console]::Error.WriteLine($_) }}; [Console]::Error.WriteLine('error: the real problem'); exit 2"
-        );
-        #[cfg(not(windows))]
-        let command = format!("seq 1 {lines} >&2; printf 'error: the real problem\\n' >&2; exit 2");
         let result = execute_tool(
             Some(ws.path()),
             None,
             "Bash",
-            &serde_json::json!({ "command": command }),
+            &serde_json::json!({
+                "command": format!("seq 1 {lines} >&2; printf 'error: the real problem\\n' >&2; exit 2")
+            }),
             30_000,
         )
         .await;
         assert!(!result.ok);
-        assert_eq!(result.content["exitCode"].as_i64(), Some(2));
-        assert_eq!(result.content["truncated"].as_bool(), Some(true));
         let stderr = result.content["stderr"].as_str().unwrap();
         assert!(
             stderr.trim_end().ends_with("error: the real problem"),
@@ -3250,145 +3051,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn security_denylist_blocks_read_write_edit_and_hides_search_results() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(".env"), "SECRET_TOKEN=needle\n").unwrap();
-        std::fs::write(dir.path().join(".env.example"), "SECRET_TOKEN=needle\n").unwrap();
-        std::fs::write(dir.path().join("server.pem"), "needle\n").unwrap();
-        std::fs::write(dir.path().join("notes.txt"), "needle\n").unwrap();
-
-        let read = execute_tool(
-            Some(dir.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": ".env" }),
-            5_000,
-        )
-        .await;
-        assert!(!read.ok);
-        assert_eq!(read.error_code.as_deref(), Some("WORKSPACE_PATH_DENIED"));
-
-        // An explicit outside-path grant does not lift the denylist either.
-        let external = execute_tool_with_path_access(
-            Some(dir.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": ".env" }),
-            ToolExecutionOptions {
-                timeout_ms: Some(5_000),
-                bash_options: None,
-                allow_external_paths: true,
-                hashline: None,
-            },
-        )
-        .await;
-        assert_eq!(
-            external.error_code.as_deref(),
-            Some("WORKSPACE_PATH_DENIED")
-        );
-
-        let example = execute_tool(
-            Some(dir.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": ".env.example" }),
-            5_000,
-        )
-        .await;
-        assert!(example.ok, "templates stay readable: {:?}", example.content);
-
-        let write = execute_tool(
-            Some(dir.path()),
-            None,
-            "Write",
-            &serde_json::json!({ "path": "keys/id_rsa", "content": "x" }),
-            5_000,
-        )
-        .await;
-        assert_eq!(write.error_code.as_deref(), Some("WORKSPACE_PATH_DENIED"));
-        assert!(!dir.path().join("keys/id_rsa").exists());
-
-        let grep = execute_tool(
-            Some(dir.path()),
-            None,
-            "Grep",
-            &serde_json::json!({ "pattern": "needle" }),
-            5_000,
-        )
-        .await;
-        let shown = grep.content.to_string();
-        assert!(shown.contains("notes.txt"), "{shown}");
-        assert!(shown.contains(".env.example"), "{shown}");
-        assert!(!shown.contains("\".env\""), "{shown}");
-        assert!(!shown.contains("server.pem"), "{shown}");
-
-        let glob = execute_tool(
-            Some(dir.path()),
-            None,
-            "Glob",
-            &serde_json::json!({ "pattern": "**/*" }),
-            5_000,
-        )
-        .await;
-        let shown = glob.content.to_string();
-        assert!(shown.contains("notes.txt"), "{shown}");
-        assert!(!shown.contains("server.pem"), "{shown}");
-        assert!(!shown.contains("\".env\""), "{shown}");
-    }
-
-    #[tokio::test]
-    async fn default_ignores_and_workspace_ignore_file_hide_unscoped_walks_only() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("node_modules/pkg")).unwrap();
-        std::fs::write(dir.path().join("node_modules/pkg/index.js"), "needle\n").unwrap();
-        std::fs::create_dir_all(dir.path().join("generated")).unwrap();
-        std::fs::write(dir.path().join("generated/out.txt"), "needle\n").unwrap();
-        std::fs::write(dir.path().join("debug.log"), "needle\n").unwrap();
-        std::fs::write(dir.path().join("src.txt"), "needle\n").unwrap();
-        std::fs::write(dir.path().join(".pi-desktopignore"), "generated/\n").unwrap();
-
-        let unscoped = execute_tool(
-            Some(dir.path()),
-            None,
-            "Grep",
-            &serde_json::json!({ "pattern": "needle", "outputMode": "filesWithMatches" }),
-            5_000,
-        )
-        .await;
-        let shown = unscoped.content.to_string();
-        assert!(shown.contains("src.txt"), "{shown}");
-        assert!(
-            !shown.contains("node_modules"),
-            "app defaults hide dependency trees: {shown}"
-        );
-        assert!(
-            !shown.contains("generated"),
-            ".pi-desktopignore is honored: {shown}"
-        );
-        assert!(
-            !shown.contains("debug.log"),
-            "*.log is an app default: {shown}"
-        );
-
-        for path in ["node_modules/pkg", "generated"] {
-            let scoped = execute_tool(
-                Some(dir.path()),
-                None,
-                "Grep",
-                &serde_json::json!({ "pattern": "needle", "path": path }),
-                5_000,
-            )
-            .await;
-            assert_eq!(
-                scoped.content["count"].as_u64(),
-                Some(1),
-                "an explicit path opts back in for {path}: {:?}",
-                scoped.content
-            );
-        }
-    }
-
-    #[tokio::test]
     async fn read_rejects_directories_as_invalid_arguments_with_glob_guidance() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("src/nested")).unwrap();
@@ -3426,19 +3088,17 @@ mod tests {
         std::fs::create_dir_all(outside.path().join("src")).unwrap();
         let file = outside.path().join("src/outside.rs");
         std::fs::write(&file, "const needle = 1;\n").unwrap();
-        let canonical_file = simple_canonicalize(&file).unwrap();
+        let canonical_file = file.canonicalize().unwrap();
 
         let read = execute_tool_with_path_access(
             Some(workspace.path()),
             None,
             "Read",
             &serde_json::json!({ "path": file.to_str().unwrap() }),
-            ToolExecutionOptions {
-                timeout_ms: None,
-                bash_options: None,
-                allow_external_paths: true,
-                hashline: None,
-            },
+            None,
+            None,
+            true,
+            None,
         )
         .await;
         assert!(read.ok, "external read failed: {:?}", read.content);
@@ -3456,12 +3116,10 @@ mod tests {
                 "pattern": "needle",
                 "path": outside.path().to_str().unwrap(),
             }),
-            ToolExecutionOptions {
-                timeout_ms: None,
-                bash_options: None,
-                allow_external_paths: true,
-                hashline: None,
-            },
+            None,
+            None,
+            true,
+            None,
         )
         .await;
         assert!(grep.ok, "external grep failed: {:?}", grep.content);
@@ -3479,12 +3137,10 @@ mod tests {
                 "pattern": "needle",
                 "path": file.to_str().unwrap(),
             }),
-            ToolExecutionOptions {
-                timeout_ms: None,
-                bash_options: None,
-                allow_external_paths: true,
-                hashline: None,
-            },
+            None,
+            None,
+            true,
+            None,
         )
         .await;
         assert!(
@@ -3506,12 +3162,10 @@ mod tests {
                 "pattern": "*.rs",
                 "path": outside.path().join("src").to_str().unwrap(),
             }),
-            ToolExecutionOptions {
-                timeout_ms: None,
-                bash_options: None,
-                allow_external_paths: true,
-                hashline: None,
-            },
+            None,
+            None,
+            true,
+            None,
         )
         .await;
         assert!(glob.ok, "external glob failed: {:?}", glob.content);
@@ -3533,12 +3187,10 @@ mod tests {
             None,
             "Write",
             &serde_json::json!({ "path": file.to_str().unwrap(), "content": "before" }),
-            ToolExecutionOptions {
-                timeout_ms: None,
-                bash_options: None,
-                allow_external_paths: true,
-                hashline: None,
-            },
+            None,
+            None,
+            true,
+            None,
         )
         .await;
         assert!(write.ok, "external write failed: {:?}", write.content);
@@ -3554,12 +3206,10 @@ mod tests {
                 "tag": tag,
                 "ops": "PUT 1.=1:\n+after\n",
             }),
-            ToolExecutionOptions {
-                timeout_ms: None,
-                bash_options: None,
-                allow_external_paths: true,
-                hashline: None,
-            },
+            None,
+            None,
+            true,
+            None,
         )
         .await;
         assert!(edit.ok, "external edit failed: {:?}", edit.content);
@@ -3627,10 +3277,7 @@ mod tests {
             .iter()
             .map(|v| v.as_str().unwrap())
             .collect();
-        // `dist/` is an app-default ignore (spec 15 §4): the unscoped walk
-        // lists the two source files, and the explicit `path: dist` search
-        // above is how a caller opts back in.
-        assert_eq!(listed.len(), 2, "every file listed once: {listed:?}");
+        assert_eq!(listed.len(), 3, "every file listed once: {listed:?}");
 
         // Providers sometimes normalize the camel-case enum into a shell-style
         // spelling. Keep the canonical schema while accepting those harmless
@@ -3651,7 +3298,7 @@ mod tests {
             "grep alias failed: {:?}",
             aliased_files.content
         );
-        assert_eq!(aliased_files.content["files"].as_array().unwrap().len(), 2);
+        assert_eq!(aliased_files.content["files"].as_array().unwrap().len(), 3);
 
         let counts = execute_tool(
             Some(dir.path()),
@@ -4004,18 +3651,6 @@ mod tests {
         let edit = by_name("Edit");
         assert!(edit["parameters"]["properties"]["tag"].is_object());
         assert!(edit["parameters"]["properties"]["ops"].is_object());
-        assert!(edit["description"]
-            .as_str()
-            .unwrap()
-            .contains("PUT 48.=48:` followed by a `+replacement` row"));
-        assert!(edit["description"]
-            .as_str()
-            .unwrap()
-            .contains("PUT 48.=48` followed by `+` rows is invalid"));
-        assert!(edit["description"]
-            .as_str()
-            .unwrap()
-            .contains("classify the error"));
         assert!(edit["parameters"]["required"]
             .as_array()
             .unwrap()

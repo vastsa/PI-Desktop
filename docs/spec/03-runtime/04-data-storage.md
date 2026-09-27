@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v17)
+# 04. Data Storage (Schema v14)
 
 ## 0. Ownership decision
 
@@ -31,47 +31,28 @@ schema v7, v8, v11, and v14:
 4. **Extensible without migrations** where cheap (block vocabulary, JSONL line
    types, kv namespaces, `config_json` columns), **with migrations** where
    structural (new entities), versioned by `PRAGMA user_version`.
-
-Project groups use the existing `kv` extension boundary rather than a new
-relational schema. The host stores one JSON record per group in the
-`projectGroups` namespace, shared memory in `projectGroupMemory`, and shared
-instructions in `projectGroupInstructions`. The record contains the stable group
-id, display name, ordered canonical roots, primary root, timestamps, and optional
-`detachedPaths`. Removed roots stay in `detachedPaths` so an old path project
-record is not recreated as a standalone legacy group; sessions and files are not
-deleted. Existing path projects are projected as legacy single-root groups at
-read time; their path-scoped memory and filesystem instructions remain readable.
 5. **Plan/Goal checkpoints are immutable host artifacts** with recorded path,
    hash, and size; the existing approval row also carries execution fields.
    Startup interruption is the process-epoch fence and no work is replayed.
 
 ## 2. File layout
 
-A packaged installation keeps this tree in `~/.pi-desktop`. A development build
-keeps the same tree in `~/.pi-desktop-dev`, because a shipped app and a
-`pnpm dev` host are two installations that have to run at the same time (D599,
-ADR 0094). `PI_DESKTOP_DATA_DIR` replaces either root outright and is resolved
-to an absolute path before it reaches host-core as a child-process variable.
-
 ```text
 ~/.pi-desktop/
  ├── pi.sqlite            # index database (WAL: + -wal/-shm) — host-core only
  ├── pi.sqlite.v6.bak     # archived pre-v7 database (D119 breaking reset)
- ├── pi.sqlite.v8.bak     # exact readable backup before v8→v15 destructive work
- ├── pi.sqlite.v9.bak     # exact readable backup before v9→v15 destructive work
- ├── pi.sqlite.v10.bak    # exact readable backup before v10→v15 destructive work
+ ├── pi.sqlite.v8.bak     # exact readable backup before v8→v14 destructive work
+ ├── pi.sqlite.v9.bak     # exact readable backup before v9→v14 destructive work
+ ├── pi.sqlite.v10.bak    # exact readable backup before v10→v14 destructive work
  ├── sessions/            # transcript file store (D119) — host-core only
  │    ├── <sessionId>.jsonl           # live transcript (header + messages)
  │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
  │    └── <sessionId>.inflight.json   # streaming reply checkpoint (D299), transient
  ├── secrets/             # encrypted secret blobs + .machine-key (unchanged)
- ├── config-sync/         # encrypted sync base/pending bundles — host-core only
  ├── attachments/         # content-addressed blobs (sha256 name), refs from messages
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
- ├── crash-dumps/         # local Crashpad minidumps (never uploaded; D602)
- ├── crash-dumps.json     # last-reported dump mtime (best-effort marker)
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
@@ -84,20 +65,9 @@ to an absolute path before it reaches host-core as a child-process variable.
 
 One database file keeps cross-entity writes transactional (e.g. session +
 turn + artifact in one commit). The DB stores **no large payloads**: message
-
-turn + artifact in one commit). The DB stores **no large payloads**: message
 content lives in `sessions/`, attachments and tool outputs beyond the limits
 of [16-tool-result-limits](16-tool-result-limits.md) live on disk, referenced
 by path/hash.
-
-### 1.3 Portable configuration sync
-
-Host-core stores sync configuration in the `configSync` key-value namespace.
-The vault key reference and WebDAV password use the existing encrypted secret
-store. `config-sync/base.bin` and `config-sync/pending.bin` are authenticated
-encrypted bundles replaced with temp-file rename; they are not renderer- or
-sidecar-readable files. Sync revisions and resources remain remote immutable
-objects and do not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 
@@ -144,27 +114,7 @@ revisions never rewrites this file:
 
 ```jsonl
 {"type":"revision","rootUserId":"u1","revisionIndex":1,"createdAt":"…","messages":[…message records…],"turns":{"<messageId>":"<turnId>"}}
-{"type":"revision_live","rootUserId":"u2","revisionIndex":2,"createdAt":"…"}
 ```
-
-A branch is the transcript suffix rooted at its user turn, so a branch that is
-**still live** is byte-identical to content the transcript already stores. That
-branch gets a `revision_live` line: identity only, no `messages` payload, with
-the reader resolving the branch against the transcript. Storing the suffix
-instead is what made this file grow quadratically — a measured session wrote
-107 MB to hold 16 MB of unique content, because every finished turn rewrote a
-tail that had grown since the turn before. `revision` stays the line for a
-branch that has **left** the transcript, and it is the only line kind a legacy
-file contains.
-
-A reference line is constant-sized (99 bytes for a UUID family in a measured
-session) and does not grow with the branch it names. It deliberately omits the
-`turns` map a stored branch carries: that map exists for messages a restore has
-to re-attach after they left the index, and a live branch's messages *are* the
-session's index rows, so a restore reads their turns from the index. A copy here
-would put one entry per branch message on every finished turn — measured at 197
-bytes on the first turn and 1943 by the fortieth, which is the same quadratic
-growth this line kind exists to remove.
 
 Rules:
 
@@ -175,17 +125,6 @@ Rules:
   keeps integer ms.
 - Readers skip unknown `type` lines and a torn trailing line: new line kinds
   need no migration, and a crash mid-append cannot poison the file.
-- A `revision_live` line is meaningful only while its branch is the live
-  transcript suffix. Three writers keep that true: `archive_live_branch`
-  (revision switch) and `archive_discarded_regenerate_branch` (regenerate,
-  edit) each write the full `revision` line *before* the rewrite that stops
-  holding the branch, and `archive_dropped_live_branches` — reached through
-  `replace_messages` — does the same when a rewrite deletes the root turn
-  itself (message delete, smart Stop). A branch that is no longer live
-  therefore always ends with a stored payload, and a reader only ever resolves
-  a reference for the branch that is live right now. A new path that drops a
-  branch from the transcript without archiving it first would strand that
-  branch's reference line.
 - `compaction` is a model-context checkpoint, not a message — but it is
   rendered, as a divider row rather than a chat bubble (D203). Readers return
   every message unchanged and separately return **every** still-valid
@@ -199,10 +138,7 @@ Rules:
   for an active turn; a completed-turn checkpoint has an empty tail. The
   `details.retainedTailMode` value (`active_turn` or `completed_turn`) preserves
   that boundary, while legacy records are normalized to their latest user
-  message. When the bound model requires DeepSeek-style reasoning replay,
-  `details.retainedReasoning` may hold a bounded list of prior thinking turns
-  (text + thinking only) so post-compaction Completions requests can echo
-  usable reasoning without restoring tool-call pairs (ADR 0256 / #296). If the active message crossed the retention limit it is stored in
+  message. If the active message crossed the retention limit it is stored in
   marked, truncated form; the original message lines stay complete and
   authoritative for UI/diagnostics. An automatic compaction failure may store
   `details.fallback = "retained_tail"` and a short recovery summary instead of
@@ -238,7 +174,7 @@ PRAGMA trusted_schema = ON;       -- required by the FTS triggers (§4.8); the D
 PRAGMA auto_vacuum = INCREMENTAL; -- set at creation, before any table
 ```
 
-- Schema version lives in `PRAGMA user_version` (v15 = `15`). The v1 `meta`
+- Schema version lives in `PRAGMA user_version` (v14 = `14`). The v1 `meta`
   table is gone.
 - host-core is the **single writer**; statements use `prepare_cached`; every
   multi-row write runs in one transaction.
@@ -272,22 +208,6 @@ CREATE TABLE kv (
 | `ui` | non-critical UI state the renderer asks the host to keep |
 | `cache` | model-refresh stamps, recent model refs (spec 13 §3) |
 | `plugin:<id>` | per-plugin settings; uninstall = `DELETE WHERE ns = ?` |
-| `projectMemory` | durable user-authored context keyed by canonical project path; structured values contain `format: "entries-v1"`, visual `entries`, derived `content`, and `updatedAt` |
-
-The app settings JSON optionally stores `thinkingDisplayMode` (`detailed` or
-`compact`). Missing values retain detailed presentation. This additive display
-preference neither rewrites stored reasoning nor changes the database schema.
-
-The same blob optionally stores the prompt-enhancement overrides
-`promptEnhancementCustomTemplate` (the switch that decides whether a stored
-template applies), `promptEnhancementUserTemplate`,
-`promptEnhancementProviderId`, `promptEnhancementModelId`, and
-`promptEnhancementThinkingLevel` (ADR 0121). An absent or blank user template means the
-built-in default applies, so clearing the field stores no key rather than an
-empty string. A non-blank user template must contain the draft variable and stay
-within `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`; host-core rejects a write that
-breaks either rule and drops any stored `promptEnhancementSystemPrompt`, which is
-no longer read. No schema version bump is required.
 
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
@@ -303,13 +223,13 @@ type SidebarPreferences = {
   sessionMeta: Record<string, {
     pinned?: boolean;
     archived?: boolean;
-    order?: number; // renderer-local manual order
+    order?: number; // compatibility/future manual order
   }>;
   projectMeta: Record<string, {
     pinned?: boolean;
     archived?: boolean;
     collapsed?: boolean;
-    order?: number; // renderer-local manual order
+    order?: number; // compatibility/future manual order
   }>;
   projectSort: "recent" | "created" | "oldest" | "name" | "manual";
   sessionView: {
@@ -322,12 +242,9 @@ type SidebarPreferences = {
 
 - Project keys and retained paths use normalized full paths; session keys use
   durable session ids. Duplicate/slash-variant paths are discarded on load.
-- `projectSort: "manual"` and `projectMeta[*].order` store renderer-local
-  project presentation order. Dragging a project title or using ArrowUp
-  and ArrowDown on that title writes contiguous order values for the visible normalized paths.
-  Missing or invalid values fall back to stable path order; pinned and archived
-  priority remains applied before manual order. Session `manual`/`order` remain
-  compatibility fields and are not exposed by the sidebar.
+- `manual`/`order` are compatibility fields. This baseline exposes no
+  drag/manual-reorder interaction; values without a usable order fall back to
+  a stable recent ordering.
 - Missing, malformed, or unwritable preferences fall back to empty metadata,
   `recent`, archived hidden, and the host-selected project. Preference failure
   never blocks a host operation.
@@ -367,14 +284,6 @@ CREATE TABLE projects (
 - The *current* visible workspace is `kv(app, currentProjectId)` — no singleton
   table, no partial-unique flag. Retained tabs do not add more current-project
   fields.
-- Project memory is host-owned in `kv(ns='projectMemory', key=<canonical path>)`
-  rather than renderer preferences. It is independent for every project path,
-  capped at 32 KiB, and is loaded by Electron main when a project session
-  starts. Visual entries are normalized and rendered to plain `content` for
-  the runtime; legacy plain-text values remain readable and are shown as one
-  untitled entry when opened in the editor. The runtime labels it as
-  user-provided context so it cannot become a replacement for safety, tool, or
-  collaboration rules.
 
 ### 4.3 providers
 
@@ -396,15 +305,8 @@ CREATE TABLE providers (
   default_model_id TEXT,
   config_json      TEXT NOT NULL DEFAULT '{}',
   created_at       INTEGER NOT NULL,
-  updated_at       INTEGER NOT NULL,
-  -- Owning plugin id for a row a plugin declared in `contributes.providers`
-  -- (schema v17, ADR 0259). NULL is a user-owned row: the plugin refreshes its
-  -- own fields on every load, while the user path may edit or delete only the
-  -- rows it owns.
-  owner_plugin_id  TEXT
+  updated_at       INTEGER NOT NULL
 );
-CREATE INDEX idx_providers_owner ON providers(owner_plugin_id)
-  WHERE owner_plugin_id IS NOT NULL;
 ```
 
 ### 4.4 models — catalog cache
@@ -443,7 +345,7 @@ CREATE TABLE sessions (
   mode        TEXT NOT NULL DEFAULT 'agent',   -- plan | agent
   thinking_level TEXT NOT NULL DEFAULT 'off'
                 CHECK (thinking_level IN ('off', 'minimal', 'low', 'medium',
-                                          'high', 'xhigh', 'max', 'omit')),
+                                          'high', 'xhigh', 'max')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
@@ -482,9 +384,7 @@ CREATE INDEX idx_session_import_origins_plugin
   allowed, and built-in runtimes (e.g. `pi`) never exist in `providers`.
 - `thinking_level` is the durable session selector. New and v2-migrated
   sessions default to `off`; capability resolution may clamp the effective
-  request without rewriting the stored preference. Schema v19 adds `omit`
-  (ADR 0295): send no thinking override. Existing rows keep their stored
-  canonical values.
+  request without rewriting the stored preference.
 
 - `project_id` normalizes v1's free-text `project_path` (grouping, badges,
   hover-`+` new-session-in-project all become indexed lookups).
@@ -542,12 +442,6 @@ CREATE INDEX idx_session_import_origins_plugin
   message. Assistant Edit uses that child and records the original/edited
   response tails in the child's existing `message_revisions` store; the source
   transcript and source revisions are never rewritten.
-- Forks copy existing referenced files from `scratch/<sourceId>/pasted/` to
-  `scratch/<childId>/pasted/` and rewrite message/checkpoint paths before
-  indexing. Source deletion cannot remove the child copies. Unreferenced files,
-  later-message inputs outside a bounded fork, and other scratch outputs are
-  excluded. Missing expired inputs stay missing; no cross-session read grant
-  is added. Handled fork failures remove copied inputs and child transcripts.
 
 ### 4.6 turns — one row per agent run
 
@@ -656,121 +550,6 @@ Serves: mid-session model switches ("next turn only", spec 13 §4), the
 per-message cost chip's session rollup (benchmark §3.2), failed/aborted badges
 (§3.8), and retry lineage.
 
-### 4.6b turn_queue — Host-owned turn queue (schema v15)
-
-```sql
-CREATE TABLE turn_queue (
-  id               TEXT PRIMARY KEY,
-  session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  principal        TEXT NOT NULL,
-  idempotency_key  TEXT,
-  input_hash       TEXT NOT NULL,
-  content          TEXT NOT NULL,
-  attachments_json TEXT,
-  permission_mode  TEXT NOT NULL,
-  position         INTEGER NOT NULL,
-  priority         INTEGER,
-  created_at       INTEGER NOT NULL
-);
-CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
-CREATE UNIQUE INDEX idx_turn_queue_idempotency
-  ON turn_queue(session_id, principal, idempotency_key)
-  WHERE idempotency_key IS NOT NULL;
-```
-
-- One row per prompt admitted behind an active turn (D375 / ADR 0213). The
-  headless Agent Host module is the only writer through `session.queuePush`,
-  `session.queueList`, `session.queueRemove`, `session.queuePrioritize`, and
-  `session.queueReorder`; the store never starts a turn.
-- `position` is per session and only grows, so a removed entry never
-  reorders the rest. `principal` plus `idempotency_key` make a retried push
-  return the same row; a reused key with a different `input_hash` fails with
-  `IDEMPOTENCY_CONFLICT`. A session holds at most eight entries.
-- `priority` (schema v18, ADR 0265) is `NULL` until the entry is promoted with
-  "send now"; a promotion writes `MAX(priority) + 1` inside the session, so
-  promoted entries are delivered first in click order and the remaining entries
-  keep their `position` order. `queueReorder` swaps two adjacent non-promoted
-  `position` values and refuses a promoted entry.
-  `IDEMPOTENCY_CONFLICT`. A session holds at most eight entries.
-- `attachments_json` keeps the prompt's attachment references; bytes stay in
-  the session scratch or project root like any other prompt attachment.
-- After a restart the module lists every entry, holds each session's queue
-  until a controller attaches, and drains one entry after the active turn's
-  terminal event. Deleting the session cascades to its entries.
-
-### 4.6c session collaboration ledger — Host-owned delivery state (schema v16)
-
-```sql
-CREATE TABLE session_collaboration_links (
-  session_id            TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-  created_by_session_id TEXT NOT NULL,
-  plugin_id             TEXT NOT NULL,
-  created_at            INTEGER NOT NULL
-);
-
-CREATE TABLE session_collaboration_messages (
-  id                    TEXT PRIMARY KEY,
-  plugin_id             TEXT NOT NULL,
-  source_session_id     TEXT NOT NULL,
-  source_title          TEXT NOT NULL,
-  target_session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  target_title          TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK(kind IN ('task', 'message', 'completion')),
-  content               TEXT NOT NULL,
-  status                TEXT NOT NULL CHECK(status IN
-    ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
-  notify_on_completion  INTEGER NOT NULL DEFAULT 0,
-  turn_id               TEXT REFERENCES turns(id) ON DELETE SET NULL,
-  reply_to_message_id   TEXT,
-  idempotency_key       TEXT NOT NULL,
-  remaining_hops        INTEGER NOT NULL,
-  permission_ceiling    TEXT NOT NULL CHECK(permission_ceiling IN
-    ('ask', 'accept-edits', 'auto')),
-  result                TEXT,
-  error                 TEXT,
-  created_at            INTEGER NOT NULL,
-  updated_at            INTEGER NOT NULL,
-  UNIQUE(plugin_id, source_session_id, idempotency_key)
-);
-
-CREATE UNIQUE INDEX idx_session_collaboration_turn
-  ON session_collaboration_messages(turn_id) WHERE turn_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_session_collaboration_receipt
-  ON session_collaboration_messages(reply_to_message_id)
-  WHERE kind = 'completion';
-```
-
-- The ledger is the authoritative identity and lifecycle record for a
-  plugin-mediated delivery. `source_session_id` and `target_session_id` are
-  real durable Session IDs; titles are display snapshots only. `turn_id` is
-  assigned when the target actually begins the delivery, not when a plugin
-  creates the record.
-  `source_session_id` deliberately has no foreign key, unlike
-  `target_session_id`, which cascades, so a delivery record and its completion
-  receipt outlive a deleted sender. Read projections therefore report such
-  references with `available: false` instead of dropping the row.
-- `turn_queue.session_message_id` binds a queued Agent Host admission to its
-  ledger row. A retry with the same `(plugin_id, source_session_id,
-  idempotency_key)` returns the original delivery; changing its target, body,
-  kind, or callback flag fails with `IDEMPOTENCY_CONFLICT`.
-- A callback is a `kind = 'completion'` row with
-  `reply_to_message_id` pointing at the original delivery. The partial unique
-  index and the host settlement transaction make callback creation
-  at-most-once. Callback bodies contain a bounded result/error projection; the
-  original target transcript remains the full source of truth.
-- The host snapshots the sender's effective permission ceiling and rejects a
-  target whose current effective mode exceeds it. Autonomous chains decrement
-  `remaining_hops`; completion rows cannot create another automatic callback.
-- On startup, queued work that still has a `turn_queue` row remains held for
-  the Agent Host controller. Running work and queued deliveries without a
-  queue admission are marked `interrupted`; the startup fence never replays a
-  turn without a new controller admission.
-- Collaboration provenance is stored in the transcript line's `meta` as
-  `sessionMessage` and is projected to the UI as `UiMessage.sessionMessage`.
-  Host validation prevents forged, stripped, edited, or regenerated
-  collaboration input from becoming ordinary human input. This metadata is
-  additive and does not require a column in `messages`.
-
 ### 4.7 messages — transcript index
 
 The transcript itself is the per-session JSONL file (§2.1); this table is its
@@ -781,7 +560,7 @@ stream (as today) with `text = NULL`.
 ```sql
 CREATE TABLE messages (
   mid          INTEGER PRIMARY KEY,             -- stable rowid: FTS anchor, VACUUM-safe
-  id           TEXT NOT NULL UNIQUE,            -- caller-facing uuid (optimistic UI); colliding provider toolCallIds remap to {sessionId}:{id} (D444)
+  id           TEXT NOT NULL UNIQUE,            -- caller-facing uuid (optimistic UI)
   session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id      TEXT REFERENCES turns(id) ON DELETE SET NULL,
   seq          INTEGER NOT NULL,                -- per-session ordinal
@@ -807,16 +586,7 @@ type Block =
       toolUsage?: ToolTokenUsage }
   | { type: "attachment"; kind: "image" | "file"; name: string;
       ref: string /* attachments/<sha256> or absolute path */;
-      mimeType?: string; size?: number }
-  | { type: "hostedSearch"; status: "searching" | "completed" | "failed";
-      rounds: Array<{ id: string;
-        status: "searching" | "completed" | "failed";
-        kind?: "search" | "openPage" | "findInPage";
-        query?: string; url?: string;
-        sources: Array<{ url: string; title?: string }> }>;
-      replay?: Array<{ type: "hostedSearch"; phase: string;
-        blockId?: string; name?: string; input?: unknown;
-        status?: string; isError?: boolean; wire?: unknown }> };
+      mimeType?: string; size?: number };
 ```
 
 - Tool results are stored **post-truncation** (16-tool-result-limits); full
@@ -879,23 +649,9 @@ to.
 
 ### 4.8 messages_fts — full-text search
 
-The legacy `search.query` message search uses a trigram tokenizer for CJK and
-substring matches; queries shorter than 3 chars fall back to `LIKE` on
-`messages.text`. The desktop session search below reuses this index with a
-Unicode-aware literal verification step.
-
-Desktop session discovery (`search.sessions`) counts every matching indexed
-user/assistant message before paginating by session. It excludes sessions with
-`deleted_at` set and treats title/project matches separately from body counts.
-FTS queries are quoted literals and all candidates are verified with a
-host-owned Unicode lowercase literal predicate. Short queries and non-ASCII
-case mappings use that predicate directly, preserving title search behavior
-and keeping message retrieval consistent with renderer highlighting. `%`, `_`, quotes, and
-backslashes are literal text. Snippets surround the match, including short CJK
-queries, rather than always taking the start of the message. Context navigation
-resolves stable IDs against physical JSONL positions, and displays canonical
-JSONL text without modifying SQLite or the live transcript cache. See
-[ADR session-content-search](../../adr/session-content-search.md).
+Global search across transcripts (WorkBuddy-benchmark search, command
+palette). Trigram tokenizer covers CJK and substring matches; queries shorter
+than 3 chars fall back to `LIKE` on `messages.text`.
 
 ```sql
 CREATE VIRTUAL TABLE messages_fts USING fts5(
@@ -930,9 +686,7 @@ Archives discarded regenerate branches so users can page previous variants
 without stacking them in the live transcript (D105/D109). One row is one
 linear branch rooted at a user turn; the branch **payload** lives in the
 append-only `sessions/<id>.revisions.jsonl` (§2.1), keyed by
-`(rootUserId, revisionIndex)`. A branch that is still live stores a reference
-(`revision_live`) instead of a second copy of a transcript suffix the session
-already has; see §2.1.
+`(rootUserId, revisionIndex)`.
 
 ```sql
 CREATE TABLE message_revisions (
@@ -972,16 +726,14 @@ CREATE INDEX idx_message_revisions_root
   error-ended turn never reaches `agent_end`. So every operation that discards
   the live branch first writes it back over the revision it belongs to (D307):
   `session.activateRevision` re-archives the live branch of the family from
-  the durable transcript before the switch, `session.truncateFrom` archives the
-  discarded tail on regenerate/retry (refreshing the stamped variant, or
-  minting an inactive one), and `session.saveActiveRevision` refreshes an
-  already-archived index instead of skipping it. The refresh is one more line
-  in the append-only file (last record for `(rootUserId, revisionIndex)` wins)
-  plus a `message_count` update. The variant named by the live root's
-  `activeRevision` stamp is the one refreshed; a stamped variant with no index
-  row yet (its turn failed before archive) is stored as its own new variant,
-  never over a previous one.
-
+  the durable transcript before the switch, the regenerate path passes
+  `revisionIndex` to `session.saveRevision` to refresh the stamped variant, and
+  `session.saveActiveRevision` refreshes an already-archived index instead of
+  skipping it. The refresh is one more line in the append-only file (last
+  record for `(rootUserId, revisionIndex)` wins) plus a `message_count` update.
+  The variant named by the live root's `activeRevision` stamp is the one
+  refreshed; a stamped variant with no index row yet (its turn failed before
+  archive) is stored as its own new variant, never over a previous one.
 
 ### 4.10 artifacts — files a session produced
 
@@ -1039,27 +791,7 @@ CREATE INDEX idx_task_runs ON task_runs(task_id, started_at DESC);
 ```
 
 A run that spawns a session gets its transcript for free via `session_id`.
-The existing JSON extension stores `schedule: {hour, minute, weekday}`,
-`nextRunAt` (epoch milliseconds) and `workspacePath` for desktop automations.
-Optional `weekdays` stores 1–7 unique integers in 0–6, overriding legacy
-`weekday` for weekly schedules. Missing `weekdays` preserves the single-day
-behavior. Invalid or empty selections are rejected before mutation. No table
-migration is needed. Daily/weekly schedules use the host local timezone; hourly
-schedules compute `nextRunAt = now + 3_600_000`, ignoring calendar fields. Absence
-of `schedule` leaves legacy tasks unarmed. No physical schema change is made.
-Task wire fields project `schedule`, RFC3339 `nextRunAt`, `workspacePath` and the
-optional task-owned `permissionMode` plus paired `providerId`/`modelId` values.
-These additive values stay in `config_json`; no physical migration is required.
-Missing model fields retain run-time app-default resolution. Missing permission
-keeps legacy behavior: Ask for automatic runs and inherited permission for Run now.
-See [the automation ADR](../../adr/scheduled-desktop-automations.md) and
-[ADR 0305](../../adr/0305-scheduled-task-execution-settings.md).
-
-Tasks also persist optional `thinkingLevel` using the existing session values
-(including `off` and `omit`). The full Composer model/reasoning picker and
-controller are reused with a task-draft configuration callback. Both manual and
-automatic runs apply the saved level. Missing or cleared levels retain the
-legacy `off` behavior; no database migration is required.
+Finer schedules (cron) land in `config_json` without a migration.
 
 Scheduled task `config_json.mode` is a durable operating-mode value. There is
 intentionally no physical `scheduled_tasks.mode` column. The v7→v8
@@ -1086,19 +818,13 @@ CREATE TABLE secrets_meta (
   owner_kind TEXT NOT NULL DEFAULT 'provider',
   owner_id   TEXT,
   kind       TEXT NOT NULL DEFAULT 'api_key',
-  backend    TEXT NOT NULL,                -- file_fallback (safe_storage reserved)
+  backend    TEXT NOT NULL,                -- safe_storage | file_fallback
   updated_at INTEGER NOT NULL
 ) WITHOUT ROWID;
 ```
 
-Secret *values* never enter the DB (D028/D031). The shipped backend is the
-host-core file store: AES-256-GCM ciphertexts under `secrets/`, keyed by a
-machine key that host-core generates once and keeps beside them as
-`secrets/.machine-key` (owner-only file mode). host-core records
-`file_fallback` for every write; the `safe_storage` value is reserved for an
-OS keychain backend that neither host-core nor Electron main implements today,
-so a same-user process that can read the data directory can also decrypt the
-secrets.
+Secret *values* never enter the DB (D028/D031): OS safeStorage primary,
+AES-GCM file fallback under `secrets/`.
 
 ### 4.13 audit_log
 
@@ -1182,24 +908,20 @@ is the source of truth, the index is derived and self-healing.
 | event | file step | index/DB transaction |
 |---|---|---|
 | prompt accepted | append user message line | `last_seq` alloc (RETURNING) + index row + touch `sessions.updated_at`; then insert `turns(running)` |
-| assistant/tool message end | append message line; remove the in-flight checkpoint when its id matches | validate optional `turnId` belongs to this session; if stale/missing, keep the message with a null turn link and emit a warning; otherwise insert the index row and touch session |
-| stale-turn outbox replay after an index failure | update all existing transcript lines for the message id to the latest snapshot; do not append another line | rebuild deduplicated message rows and `last_seq` from transcript order in one transaction, preserving only valid same-session turn links; FTS triggers stay synchronized |
+| assistant/tool message end | append message line; remove the in-flight checkpoint when its id matches | index row + touch session |
 | streaming reply checkpoint (`session.saveInflightMessage`, D299) | atomically replace `<id>.inflight.json`; no-op for an empty message or an id already indexed | — |
 | context checkpoint (`session.appendCompaction`) | append typed checkpoint line after its referenced message boundary | — (checkpoint is not searchable transcript content) |
 | tool succeeded (Write/Edit) | — | upsert `artifacts` + `audit_log` row, same tx as result persistence |
 | turn terminal via `session.endTurn` | `completed`/`error`: remove the in-flight checkpoint only when its id is already indexed; otherwise leave it for the outbox or boot (D327). `recoverInflight`: append the leftover as `complete` when the turn is `completed`, otherwise as `aborted`, when its final row never landed | update `turns`; for completed/error insert one notification and prune to 200 in the same tx; aborted inserts none; a promoted checkpoint gets an index row under the turn |
 | plan/goal submission | host writes the exact Markdown bytes to a new unique `<workspaceRoot>/.pi/<kind>/*.md` file | insert one `plan_approvals(pending)` row with the kind, structured title/question, artifact path/hash/size, and expiry before emitting the approval request |
 | plan/goal approval | verify the immutable artifact path/hash/size | atomically resolve `plan_approvals`, update `sessions.mode` and explicit `permission_mode`, and set `execution_state = 'queued'`; reject/expiry stay in the contract mode |
-| transcript truncate / retry / edit (`session.truncateFrom`) | host-owned suffix cut: abort leftover running turn, archive discarded regenerate tail, atomic prefix rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx via `replace_messages`: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; drop inflight checkpoint |
-| message delete / unanswered smart Stop (`session.replaceMessages`) | atomic transcript rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; smart Stop keeps its structured composer snapshot only in renderer memory |
-
+| transcript truncate / edit / unanswered smart Stop (`session.replaceMessages`) | atomic transcript rewrite (temp + rename); preserve only a checkpoint whose boundary remains | single tx: delete index rows, bulk reinsert carrying each surviving message's owning `turn_id`, reset `last_seq`; smart Stop keeps its structured composer snapshot only in renderer memory |
 | session fork (`session.fork`) | write a new transcript with remapped message/tool-call ids; copy/remap the checkpoint only when its boundary is included | single tx: clone session configuration, insert child index rows, set `last_seq`; remove child file on failure |
 | regenerate branch save | append revision line (with `revisionIndex`: a refresh line for that existing variant) | index row with `message_count` (+ `is_active` flip); a refresh only updates `message_count` |
-| turn-completion branch archive (`session.saveActiveRevision`) | append a `revision_live` reference line — the branch is still live, so its payload is the transcript — then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
-| revision switch | append a full `revision` line for the live branch's own variant (it is about to leave the transcript, so its reference is materialized), read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
+| turn-completion branch archive (`session.saveActiveRevision`) | append revision line (a refresh line when the active variant is already archived), then rewrite only the root user's transcript line for the pager stamp | index row with `message_count` (+ `is_active` flip); index rows for other messages untouched |
+| revision switch | append a refresh line for the live branch's own variant, read the target branch, atomic transcript rewrite keeping checkpoints whose anchors survive | flip `is_active`, rebuild index rows carrying each surviving message's owning `turn_id`, reset `last_seq` |
 | import | write transcript file | one tx per session: session row + index rows; on failure the file is removed |
 | session delete | remove both session files after row delete | `DELETE FROM sessions` (cascades); Electron main drops that session's outbox entries (D318) |
-| project delete (`projects.remove`) | remove each owned session's files after its row delete | one tx per session (`DELETE FROM sessions`, cascades) plus the project row and its `projectMemory` kv entry; the project folder on disk is never touched |
 | orphaned session restore (boot / `session.appendMessage`, D318) | leave the live JSONL in place | reinsert the missing `sessions` row and rebuild index rows from the file; if the file is also gone, append inserts a stub row under the existing id so the outbox can drain |
 
 Rules: user message durable (fsync'd file line) before the turn starts;
@@ -1220,9 +942,9 @@ prompt, computed from the full durable transcript merged with the live rows.
 A checkpoint is installed into the live runtime only after its append succeeds;
 therefore a failed/crashed checkpoint write leaves the previous full context or
 previous checkpoint authoritative rather than creating a memory-only state.
-An append failure after the file write leaves the transcript authoritative while
-its derived index is repaired by the next rewrite or by replaying an unindexed
-outbox message with a stale turn reference; repeated ids are deduped keep-last.
+A crash between file append and index commit leaves the message readable
+(transcript loads from the file) with only its search row missing until the
+next rewrite; transcript reads dedupe repeated ids keep-last.
 
 The renderer never needs the whole JSONL file to open a session. Its
 `session.get` request may specify a zero-based exclusive `messageBefore`, a
@@ -1232,17 +954,7 @@ projection. The full transcript remains lossless on disk and the sidecar's
 uncapped `session.get` path is unchanged for model context, edits, revisions,
 and other host-owned mutations. The renderer opens with the newest window and
 requests older windows on demand; the response's `messageStart` and
-`hasMoreBefore` fields support backward paging. Search navigation additionally
-uses `messageAround` to center a bounded original-message window on a stable ID,
-plus exclusive physical `messageEnd` and `hasMoreAfter` for forward paging. Only
-the explicitly selected user/assistant text bypasses the display cap. The
-retained pane owns that reading window separately from live/model caches;
-missing targets never fall back to a different message (ADR session-content-search).
-A nested target additionally resolves its owning Task by tool-call ID and returns
-that latest capped projection as `navigationParent`, without adding a physical
-line to the bounded page. This is derived read-only context, not a new persisted
-relationship or index. The renderer's unified reading view is shared by ordinary
-history and search; it never becomes canonical mutation or model input.
+`hasMoreBefore` fields are the only pagination state it needs.
 
 A bounded window is served through a per-session **transcript layout**: the byte
 offset of every message and compaction line, plus the file length those offsets
@@ -1304,7 +1016,7 @@ truncating at a guessed position.
 - JSON columns are read blind on hot paths (shipped to the renderer as-is);
   anything filtered or summed is a promoted column by rule.
 
-## 7. Versioning, v7 reset, and v8-to-v15 migration
+## 7. Versioning, v7 reset, and v8-to-v14 migration
 
 - `PRAGMA user_version` stays the schema authority; future structural changes
   add ordered Rust migration fns again, each in one transaction, with a
@@ -1315,9 +1027,9 @@ truncating at a guessed position.
   Sessions, providers, and settings from the old file are not carried over;
   the archive remains for manual recovery. All pre-v7 migration code
   (v1 `settings.sqlite` import, v2→v6 chain) is deleted.
-- Fresh installs run the full v15 DDL directly.
+- Fresh installs run the full v14 DDL directly.
 - **Schema v7 first reaches v8, then uses the guarded path.** The v7→v8
-  migration is followed by the same guarded v8→v15 migration; schema-v9 and
+  migration is followed by the same guarded v8→v14 migration; schema-v9 and
   schema-v10 databases take the same guarded path and receive an exact readable
   `pi.sqlite.v9.bak` / `pi.sqlite.v10.bak` before destructive work.
 - **The historical v8-to-v11 core migration is in-place and transactional.** Before migration,
@@ -1353,22 +1065,6 @@ truncating at a guessed position.
   Legacy `planApprovalPermissionMode` is removed from the app settings JSON
   during migration; all unrelated settings remain intact.
 
-- **Schema v15 is additive.** It adds the `turn_queue` table and its two
-  indexes (D386 / ADR 0213) so the Host-owned turn queue survives a restart;
-  no existing row changes, and a `pi.sqlite.v14.bak` copy precedes the step.
-- **Schema v16 is additive.** It adds the session collaboration link and
-  delivery tables, their lifecycle indexes, and the nullable
-  `turn_queue.session_message_id` binding (D409 / ADR 0239). Existing
-  conversations, turns, queue entries, and plugin data remain valid. A
-  `pi.sqlite.v15.bak` copy precedes the migration; boot recovery retains
-  durable queued deliveries but never replays interrupted work automatically.
-- **Schema v17 is additive.** It adds the nullable `providers.owner_plugin_id`
-  ownership column and its partial index (ADR 0259), so a provider row a plugin
-  declares in `contributes.providers` is distinguishable from a user-created one
-  — every pre-v17 row keeps a NULL owner. A `pi.sqlite.v16.bak` copy precedes the
-  step. The v15→v16 session-collaboration step now stamps `16` (its own version)
-  instead of the latest schema constant, so a v15 file can walk both steps in one
-  launch.
 - **Schema v14 is additive.** It adds nullable `sessions.deleted_at`, the
   partial deletion index, and `session_import_origins`. Existing sessions stay
   active and have no origin rows. The migration runs in the same guarded
@@ -1427,9 +1123,7 @@ columns for anything the host filters, joins, sums, or indexes.
 ## 10. Secrets rules (unchanged)
 
 1. The renderer never persists secrets
-2. OS safeStorage remains the target primary backend; the shipped store is the
-   encrypted-file backend (`file_fallback`) with its machine key beside the
-   ciphertexts, and Settings must state that risk
+2. OS safeStorage primary; explicit encrypted-file fallback with risk warning
 3. Secret values never in SQLite; only `secrets_meta` bookkeeping
 4. Exported sessions exclude secrets by default
 
@@ -1462,11 +1156,7 @@ columns for anything the host filters, joins, sums, or indexes.
 13. Regenerated assistant variants survive restart in
     `sessions/<id>.revisions.jsonl`; the live root user turn reloads with
     `revisionCount` / `activeRevision`, the pager can restore any archived
-    branch, and switching branches never rewrites the revisions file. A branch
-    that is still live is referenced, not copied, so repeated turns over one
-    branch cost the file nothing; a branch that leaves the transcript is stored
-    in full first, and a file written only by an older build still reads back
-    message-for-message.
+    branch, and switching branches never rewrites the revisions file
 14. Completed and failed turns atomically create one durable notification;
     repeated terminal updates do not duplicate it, aborted turns create none,
     and the newest-200 cap survives restart
@@ -1498,115 +1188,3 @@ columns for anything the host filters, joins, sums, or indexes.
     session, `(pluginId, source, externalId)` idempotency, no project or model
     binding unless an explicit host-created `projectId` is supplied,
     ownership-scoped reads/mutations, and recoverable trash before purge.
-21. Schema v16 collaboration rows preserve source/target Session IDs and
-    idempotency across retries, bind deliveries to their actual target turns,
-    persist transcript provenance, create no duplicate completion callback,
-    enforce permission ceilings and hop limits, retain queued work across a
-    restart without replay, and cancel without deleting the target session.
-
-
-
-## Active-turn steering transcript reservations
-
-An accepted steering input is journaled through Electron's existing message
-outbox with `meta.steering: true`, round-tripped as `UiMessage.steering`. Smart
-Stop preserves that input even after renderer reload loses submission state.
-If an assistant is still streaming, its provisional snapshot is queued
-first to reserve its transcript position before the new user row. The host
-stores the provisional row and an in-flight checkpoint, including an empty
-reservation so crash recovery can settle it. Further stream checkpoints remain
-valid while the indexed assistant has `status: streaming`.
-
-`session.appendMessage` retains idempotent replay for completed messages. Its
-narrow exception lets a terminal assistant replace an indexed streaming
-assistant with the same session/message id. It updates exactly that transcript
-line and search text, retaining sequence, owning turn and every other row.
-Late partial snapshots and duplicate terminal snapshots cannot overwrite the
-settled result. Recovery promotes the latest checkpoint in that same position.
-The outbox likewise keeps a newer snapshot that replaces an append while its
-host call is still pending. An optional `turnId` is retained only when the turn
-exists and belongs to the target session; a missing or cross-session turn is
-logged and omitted without rejecting or losing the message. If an older failed
-append already wrote that message to JSONL, replay updates those lines and
-rebuilds the deduplicated index in transcript order rather than appending again.
-If `messages.id` already belongs to another session, the host remaps to
-`{sessionId}:{id}` before any JSONL write; a replay of the original id is a
-no-op against that remapped row. The outbox treats
-`UNIQUE constraint failed: messages.id` as an ack and keeps draining (D444).
-A permanently rejected append whose host error carries a `PERMISSION_DENIED:`
-prefix is likewise dropped so the FIFO can continue; `PLUGIN_PERMISSION_DENIED`
-and other host failures still pause (D597). When the 1024-entry cap remains
-full after a flush attempt, enqueue logs the rejected key/session and rejects;
-it does not report that entry as queued. Generic foreign-key errors are not
-treated as acknowledgements. Steering into a claimed collaboration delivery
-turn is extra human input: it must target that delivery's session, is exempt
-from the delivery content/attachment contract, does not inherit the delivery
-origin, and has any client-supplied `session_message` stripped. No schema
-migration is required.
-
-## 12. Native Pi session authority (ADR 0254)
-
-Native Pi v3 sessions under the Pi agent session root are a second, explicitly
-source-discriminated transcript authority owned by the Node agent sidecar. They
-are never inserted into SQLite and never copied to the Desktop transcript
-directory. `session.list` merges their projections with Rust-owned
-Desktop summaries, and `session.get` routes by the opaque `native-pi:` id.
-
-Detail reads take an immutable byte snapshot, parse it into an in-memory
-`SessionManager`, and follow the current native branch. They must not call
-persistent `SessionManager.open`, because that API may repair a missing newline
-or rewrite an older format. Unknown/custom entries and unknown fields remain in
-the source bytes; context-bearing custom messages and native compaction/tree
-semantics are resolved by the pinned coding-agent SDK.
-
-A native prompt opens the original file only after exact-v3, newline, cwd,
-trust, saved-provider/auth, canonical-path, identity, and lease checks pass.
-`AgentSession` and `SessionManager` append the native entries. Desktop host turn
-and transcript append APIs are not invoked. Rename, delete, project move,
-revision, Plan/Goal, collaboration, and queue operations remain unsupported
-for native sessions in this slice. Forking is supported as described here and in
-the runtime spec.
-
-The 0.87.1 `context_edit` entry is part of the native v3 JSONL branch. It changes
-only the SDK-built model projection by omitting or replacing a target message;
-the original line and renderer history remain intact. It is not copied into the
-Desktop transcript or SQLite, and needs no Desktop schema migration. The lease
-guard covers `SessionManager.appendContextEdit` alongside the other native
-append methods.
-
-A native fork writes exactly one new v3 JSONL child in the parent's session
-directory. Branch extraction runs against an in-memory manager over the parent
-snapshot, then child title/parent saved model/thinking fallbacks are appended in
-memory. Publication is a full write to an exclusive non-jsonl temporary file in
-the same directory, followed by a same-directory hardlink to the final
-`<timestamp>_<session-id>.jsonl` name. The staged file must still match the
-captured device/inode/size/hash before the link, and the published child must
-match that same identity and hash before the child detail is projected or
-registered; a mismatch fails closed without returning a child. Cleanup removes
-only files whose device/inode and content still match what this fork wrote
-(complete files by size+hash, partial staging writes by byte prefix); foreign
-files after a failed no-clobber link are never removed. The
-parent file, its leaf, and any live runtime are never modified. The child header
-carries `parentSession` with the canonical source path; that path stays inside
-the sidecar.
-
-The first slice has no projection cache or async scan bound; every list still
-reads/parses complete files. Caching by canonical path/file identity/size/mtime
-and bounded asynchronous scanning remain deferred performance work.
-
-### Provider display order
-
-`kv(ns="app", key="providers.order")` stores an ordered array of provider IDs.
-Host-core owns updates through `providers.reorder`; missing metadata preserves
-creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
-preference does not rewrite provider configuration or require a schema migration.
-
-### Scheduled calendar provenance
-
-The optional `config_json.calendarConfigured` boolean records explicit calendar
-intent separately from the schedule object required by Hourly intervals.
-Legacy Daily/Weekly rows with a saved schedule infer calendar intent; legacy
-Hourly rows retain their fields but require explicit calendar confirmation
-when converted. Known intent survives cadence changes and database reopen.
-This additive JSON key needs no table or schema-version migration. Older
-versions ignore the key and cannot enforce the new conversion guard.

@@ -1,4 +1,3 @@
-import { readMainSourceSync } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -12,7 +11,7 @@ test("Plan and Goal artifact runtime uses the terminating submit contract", asyn
   const [runtime, sidecar, main] = await Promise.all([
     readRoot("packages/agent-runtime/src/runtime.ts"),
     readRoot("packages/agent-runtime/src/sidecar.ts"),
-    readMainSourceSync(),
+    readDesktop("electron/main/index.ts"),
   ]);
 
   // One kind-keyed table names both submit tools, so Plan and Goal cannot drift.
@@ -39,11 +38,11 @@ test("Plan and Goal artifact runtime uses the terminating submit contract", asyn
 test("Electron retains the stable Plan IPC names and protocol v11", async () => {
   const [protocol, main] = await Promise.all([
     readRoot("packages/shared/src/protocol.ts"),
-    readMainSourceSync(),
+    readDesktop("electron/main/index.ts"),
   ]);
 
   assert.match(protocol, /PROTOCOL_VERSION = 11/);
-  assert.match(protocol, /SCHEMA_VERSION = 16/);
+  assert.match(protocol, /SCHEMA_VERSION = 13/);
   assert.match(protocol, /plansPending:/);
   assert.match(protocol, /plansResolve:/);
   assert.match(protocol, /plansChanged:/);

@@ -58,7 +58,7 @@ test("the preset catalog covers the four builtin roles", () => {
 
 test("the preset catalog has unit-test coverage", () => {
   // The tests under `subagent-presets.test.ts` lock down the public surface
-  // (preset ids, non-empty tools/body, and no invented turn cap). Asserting the
+  // (preset ids, non-empty tools/body, maxTurns within clamp). Asserting the
   // file exists here guards against accidental deletion of those tests when
   // the catalog grows.
   assert.match(sharedPresetsTest, /describe\("SUBAGENT_PRESETS"/);
@@ -77,19 +77,12 @@ test("the editor applies a preset by overwriting the draft body and tools", () =
     editorSource,
     /export function applySubagentPreset\(draft: SubagentDraft, preset: SubagentPreset\)/,
   );
-  // The replacement is wholesale: tools / body / description must all be
-  // overwritten so the runtime sees the preset the user picked.
+  // The replacement is wholesale: tools / maxTurns / body / description must
+  // all be overwritten so the runtime sees the preset the user picked.
   assert.match(editorSource, /tools: \[\.\.\.preset\.tools\]/);
+  assert.match(editorSource, /maxTurns: preset\.maxTurns/);
   assert.match(editorSource, /body: preset\.body/);
   assert.match(editorSource, /description: preset\.description/);
-});
-
-test("the editor can prefill a create draft from a catalog definition", () => {
-  assert.match(editorSource, /export function draftFromDefinition\(/);
-  assert.match(editorSource, /findSubagentPreset\(definition\.name\)/);
-  assert.match(editorSource, /body: definition\.prompt/);
-  assert.match(editorSource, /initialPresetId\?: string/);
-  assert.match(editorSource, /copiedPreset && initialPresetId \? initialPresetId/);
 });
 
 test("the model picker uses the configured provider catalog", () => {
@@ -100,27 +93,17 @@ test("the model picker uses the configured provider catalog", () => {
   assert.match(editorSource, /subagentModelOrphanPin\(draft\.model, modelChoices\)/);
 });
 
-test("the model picker keeps existing pins visible", async () => {
-  // A model that is no longer configured remains selectable as an orphan row,
-  // so editing a definition does not silently clear its model pin. The option
-  // list moved into the picker component, so the orphan row is asserted there.
-  const pickerSource = await readFile(
-    new URL("../src/components/settings/SubagentModelPicker.tsx", import.meta.url),
-    "utf8",
-  );
+test("the model picker keeps existing pins visible", () => {
+  // A model that is no longer configured remains visible as an orphan option,
+  // so editing a definition does not silently clear its model pin.
   assert.match(editorSource, /subagentModelOrphanPin/);
-  assert.match(editorSource, /orphanPin=\{orphanModel\}/);
-  assert.match(pickerSource, /orphanPin/);
+  assert.match(editorSource, /orphanModel \? \(/);
 });
 
-test("the model picker offers every configured provider model, with no free-text path", () => {
-  // The picker is the only way to set a model: every option comes from the
-  // configured provider catalog, so a saved pin is always resolvable.
-  assert.match(editorSource, /subagentModelChoices\(providers\)/);
-  assert.match(editorSource, /groupSubagentModelChoices\(modelChoices\)/);
-  assert.match(editorSource, /subagentModelOrphanPin\(draft\.model, modelChoices\)/);
-  assert.doesNotMatch(editorSource, /CUSTOM_SUBAGENT_MODEL_VALUE/);
-  assert.doesNotMatch(editorSource, /modelPickCustom/);
+test("the model picker keeps custom ids available without exposing opted-out bindings", () => {
+  assert.match(editorSource, /CUSTOM_SUBAGENT_MODEL_VALUE/);
+  assert.match(editorSource, /extensions\.subagents\.modelPickCustom/);
+  assert.match(editorSource, /extensions\.subagents\.modelPickCustomHint/);
 });
 
 test("the editor styles ship with the picker", () => {
@@ -129,9 +112,6 @@ test("the editor styles ship with the picker", () => {
   assert.match(extensionsCss, /\.ext-preset-chip\.is-selected/);
   assert.match(extensionsCss, /\.ext-preset-desc/);
   assert.match(extensionsCss, /\.ext-sheet-advanced-toggle/);
-  assert.match(extensionsCss, /\.ext-sheet \.field-input,[\s\S]*?background: var\(--ds-tile\)/);
-  assert.match(extensionsCss, /\.ext-sheet \.field-input:focus,[\s\S]*?box-shadow: 0 0 0 2px/);
-  assert.match(extensionsCss, /\.ext-sheet \.ext-skill-body[\s\S]*?min-height: 166px/);
   assert.doesNotMatch(extensionsCss, /minmax\(220px/);
 });
 
@@ -176,18 +156,9 @@ test("the English catalog ships every mapped preset copy key", async () => {
 });
 
 test("the create sheet is a compact chip row with an Advanced disclosure", () => {
-  // The preset blurb travels as the help mark's label, so the row of chips
-  // stays one line high.
-  assert.match(editorSource, /\{descKey \? <HelpIcon label=\{t\(descKey\)\} \/> : null\}/);
+  assert.match(editorSource, /id="subagent-preset-desc"/);
   assert.match(editorSource, /function AdvancedFields/);
   assert.match(editorSource, /useState\(!!editing\)/);
   assert.doesNotMatch(editorSource, /extensions\.subagents\.presetApply/);
   assert.doesNotMatch(editorSource, /extensions\.subagents\.sheetSubtitle/);
-  assert.match(editorSource, /id="subagent-sheet-error" className="ext-sheet-error" role="alert"/);
-});
-
-test("the removed turn cap leaves no trace in the editor or the preset catalog", () => {
-  // ADR 0253 removed the delegate turn limit: neither source may still name it.
-  assert.doesNotMatch(editorSource, /maxTurns/);
-  assert.doesNotMatch(sharedPresets, /maxTurns/);
 });

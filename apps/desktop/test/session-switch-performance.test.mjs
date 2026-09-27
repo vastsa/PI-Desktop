@@ -1,8 +1,3 @@
-import {
-  readMainModule,
-  readStoreModule,
-  readTranscriptSource,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -10,33 +5,27 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [sessionRuntime, sessionSlice, sessionCoordination, events, sidebar, chatSurface, pane, panes, transcript, api, main, styles] =
+const [store, sidebar, chatSurface, pane, panes, transcript, api, main, styles] =
   await Promise.all([
-    readStoreModule("runtime/session-runtime.ts"),
-    readStoreModule("slices/session-slice.ts"),
-    readStoreModule("runtime/session-coordination.ts"),
-    readStoreModule("slices/events-slice.ts"),
+    read("../src/stores/app-store.ts"),
     read("../src/components/Sidebar.tsx"),
     read("../src/components/ChatSurface.tsx"),
     read("../src/components/SessionPane.tsx"),
     read("../src/lib/session-panes.ts"),
-    readTranscriptSource(),
+    read("../src/components/ChatTranscript.tsx"),
     read("../src/lib/api.ts"),
-    readMainModule("ipc/session-ipc.ts"),
+    read("../electron/main/index.ts"),
     loadStyles(),
   ]);
-const store = [sessionRuntime, sessionSlice, sessionCoordination, events].join("\n");
-const readingRuntime = await readStoreModule("runtime/transcript-reading-runtime.ts");
-const readingView = await read("../src/hooks/use-transcript-view.ts");
 
 test("session reads use a bounded tail and load older pages on demand", () => {
   assert.match(store, /SESSION_TRANSCRIPT_PAGE_SIZE = 100/);
   assert.match(store, /SESSION_TRANSCRIPT_CONTENT_LIMIT = 64 \* 1024/);
-  // The shared renderer reader owns history paging; canonical caches remain
-  // exclusively live/action inputs. Behavioral coverage lives in transcript-reading.
-  assert.match(readingRuntime, /loadTranscriptPage: async/);
-  assert.match(readingRuntime, /messageBefore:\s*direction === "before"\s*\? view\.messageStart/);
-  assert.doesNotMatch(readingRuntime, /sessionTranscriptCache|liveSessionTranscripts/);
+  assert.match(store, /loadOlderMessages: async/);
+  assert.match(store, /messageBefore: before/);
+  assert.match(store, /const merged = mergeLiveSessionMessages\(page\.messages, cached\)/);
+  assert.match(store, /messages: mergeLiveSessionMessages\(page\.messages, state\.messages\)/);
+  assert.doesNotMatch(store, /messages: \[\.\.\.page\.messages, \.\.\.state\.messages\]/);
   assert.match(api, /messageLimit\?: number/);
   assert.match(api, /contentLimit\?: number/);
   assert.match(main, /messageBefore\?: number/);
@@ -47,29 +36,29 @@ test("session reads use a bounded tail and load older pages on demand", () => {
   assert.match(transcript, /onLoadOlder\?: \(\) => Promise<void>/);
   // The near-top band is one named constant shared by the scroll check and the
   // D269 boundary observer, so the two triggers cannot drift apart.
-  assert.match(transcript, /HISTORY_REVEAL_THRESHOLD_PX/);
+  assert.match(transcript, /HISTORY_REVEAL_THRESHOLD_PX = 120/);
   assert.match(
     transcript,
-    /isHistoryRevealPosition\(el, pinnedRef\.current && !gesturing\)/,
+    /el\.scrollTop <= HISTORY_REVEAL_THRESHOLD_PX/,
   );
   // Paging is wired per retained pane (ADR 0137), so each pane requests its own
   // older pages rather than the surface requesting them for whichever session
   // happens to be active.
-  assert.match(pane, /hasMoreBefore=\{transcript\.hasMoreBefore\}/);
-  assert.match(pane, /onLoadOlder=\{\(\) => loadTranscriptPage\(sessionId, "before"\)\}/);
+  assert.match(pane, /hasMoreBefore=\{hasMoreBefore\}/);
+  assert.match(pane, /onLoadOlder=\{\(\) => loadOlderMessages\(sessionId\)\}/);
 });
 
 test("session reads are coalesced, bounded, and never globally serialized", () => {
   assert.match(store, /const SESSION_TRANSCRIPT_CACHE_LIMIT = 20/);
   assert.match(store, /const sessionDetailLoads = new Map/);
   assert.match(store, /const active = sessionDetailLoads\.get\(id\)/);
-  assert.match(sessionSlice, /const detailPromise = runtime\.loadSessionDetail\(id, \{/);
+  assert.match(store, /const detailPromise = loadSessionDetail\(id, \{/);
   assert.doesNotMatch(store, /sessionSelectionQueue/);
 });
 
 test("only the latest navigation may commit a loaded transcript", () => {
-  const selection = sessionSlice.match(
-    /selectSession: async[\s\S]*?\n    newSession: async/,
+  const selection = store.match(
+    /selectSession: async[\s\S]*?\n  newSession: async/,
   )?.[0] ?? "";
   assert.match(selection, /set\(\{ selectingSessionId: id, page: "chat" \}\)/);
   assert.match(selection, /navigationIntentIsCurrent\(intent\)/);
@@ -78,8 +67,8 @@ test("only the latest navigation may commit a loaded transcript", () => {
     /commitSelection\(selectedMessages, false, historyWindow\)/,
   );
   assert.ok(
-    selection.indexOf("const detailPromise = runtime.loadSessionDetail(id)") <
-      selection.indexOf("await runtime.queueWorkspaceAlignment"),
+    selection.indexOf("const detailPromise = loadSessionDetail(id)") <
+      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
   );
   // A warm switch must be revealed before any await, otherwise a session that is
   // already fully painted still waits for workspace alignment to show up.
@@ -89,7 +78,7 @@ test("only the latest navigation may commit a loaded transcript", () => {
   );
   assert.ok(
     selection.indexOf("const retainedMessages") <
-      selection.indexOf("await runtime.queueWorkspaceAlignment"),
+      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
     "the retained pane must be revealed before workspace alignment is awaited",
   );
   // Reusing an empty New Task slot is also a first-frame reveal: there is no
@@ -98,7 +87,7 @@ test("only the latest navigation may commit a loaded transcript", () => {
   assert.match(selection, /commitSelection\(\[\], true, EMPTY_SESSION_WINDOW\)/);
   assert.ok(
     selection.indexOf("commitSelection([], true, EMPTY_SESSION_WINDOW)") <
-      selection.indexOf("await runtime.queueWorkspaceAlignment"),
+      selection.indexOf("await alignWorkspaceLatest(summary.projectPath)"),
     "an empty destination must be revealed before workspace alignment is awaited",
   );
 });
@@ -119,7 +108,7 @@ test("each retained session keeps its own mounted pane", () => {
   // already-painted pane instead of re-pointing one transcript (ADR 0137).
   assert.match(
     chatSurface,
-    /retainedSessionIds\.map\(\(id\) => \(\s*<SessionPane\s*key=\{id\}\s*sessionId=\{id\}\s*visible=\{visible && id === visibleSessionId\}\s*\/>/,
+    /retainedSessionIds\.map\(\(id\) => \(\s*<SessionPane\s*key=\{id\}\s*sessionId=\{id\}\s*visible=\{id === visibleSessionId\}/,
   );
   assert.match(chatSurface, /const visibleSessionId = retainedSessionIds\[0\]/);
   // The retention bound lives in a pure module, so eviction is unit-testable
@@ -129,11 +118,11 @@ test("each retained session keeps its own mounted pane", () => {
   assert.match(panes, /\.slice\(0, RETAINED_SESSION_PANE_LIMIT\)/);
   assert.match(panes, /export function retainSessionPane\(/);
   assert.match(panes, /export function releaseSessionPane\(/);
-  assert.match(sessionSlice, /\.\.\.retainSessionPane\(state, id, messages\)/);
+  assert.match(store, /\.\.\.retainSessionPane\(s, id, messages\)/);
   // A pane reads the live projection only while it owns the active session.
   assert.match(
-    readingView,
-    /state\.activeSessionId === sessionId\s*\? state\.messages\s*:\s*\(?state\.retainedTranscripts\[sessionId\]/,
+    pane,
+    /const messages = isActiveProjection \? liveMessages : snapshot \?\? \[\]/,
   );
   assert.doesNotMatch(chatSurface, /SessionLoadingSkeleton/);
   assert.doesNotMatch(styles, /session-loading-skeleton/);
@@ -183,10 +172,10 @@ test("reopening a running session never lets durable detail erase its live tail"
 
 test("reopening an idle session keeps a completed live tail until the durable page has it (D324)", () => {
   const selectBlock =
-    sessionSlice.match(/selectSession: async[\s\S]*?\n    newSession: async/)?.[0] ?? "";
+    store.match(/selectSession: async[\s\S]*?\n  newSession: async/)?.[0] ?? "";
   assert.match(
     selectBlock,
-    /runningAtSelection \|\|\s*currentState\.runningSessions\[id\] === true \|\|\s*runtime\.liveSessionTranscripts\.has\(id\)/,
+    /runningAtSelection \|\|\s*currentState\.runningSessions\[id\] === true \|\|\s*liveSessionTranscripts\.has\(id\)/,
   );
   assert.match(selectBlock, /durableCoversLiveSessionMessages\(/);
   assert.doesNotMatch(

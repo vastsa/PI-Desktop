@@ -21,8 +21,6 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   ErrorCodes,
   formatFileInsert,
-  isSvgAttachment,
-  SVG_MIME_TYPE,
   MAX_INLINE_IMAGE_BYTES,
   type AgentPromptAttachment,
   type MessageAttachment,
@@ -88,8 +86,7 @@ function canonicalPath(path: string): string | undefined {
   }
 }
 
-function promptMimeType(path: string, supplied?: string, name?: string): string {
-  if (isSvgAttachment(supplied, path, name)) return SVG_MIME_TYPE;
+function promptMimeType(path: string, supplied?: string): string {
   const value = supplied?.trim().toLowerCase();
   if (value) return value;
   const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
@@ -100,8 +97,7 @@ function isImagePromptAttachment(
   attachment: AgentPromptAttachment,
   path: string,
 ): boolean {
-  const mimeType = promptMimeType(path, attachment.mimeType, attachment.name);
-  if (mimeType === SVG_MIME_TYPE) return false;
+  const mimeType = promptMimeType(path, attachment.mimeType);
   const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
   return (
     attachment.kind === "image" ||
@@ -238,7 +234,7 @@ export async function preparePromptAttachments(
       });
     }
     const name = attachment.name.trim() || source.absolute.split(/[\\/]/).at(-1) || "attachment";
-    const mimeType = promptMimeType(source.absolute, attachment.mimeType, name);
+    const mimeType = promptMimeType(source.absolute, attachment.mimeType);
     const isImage = isImagePromptAttachment(attachment, source.absolute);
     if (!isImage) {
       prepared.push({
@@ -249,9 +245,7 @@ export async function preparePromptAttachments(
           ...(mimeType !== "application/octet-stream" ? { mimeType } : {}),
           ...(Number.isFinite(attachment.size) ? { size: attachment.size } : {}),
         },
-        fallbackPath: mimeType === SVG_MIME_TYPE && source.root === "attachment"
-          ? await fallbackPathForStoredAttachment(dataRoot, sessionId, source, name)
-          : displayPromptPath(source, projectPath),
+        fallbackPath: displayPromptPath(source, projectPath),
       });
       continue;
     }

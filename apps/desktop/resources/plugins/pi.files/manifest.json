@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "pi.files",
+  "name": "Files",
+  "version": "1.1.0",
+  "description": "Browse, search, preview, and open project files in the work panel.",
+  "author": "PI-Desktop",
+  "main": "main.js",
+  "contributes": {
+    "views": [
+      {
+        "id": "tree",
+        "title": {
+          "en": "Files",
+          "zh-CN": "文件"
+        },
+        "icon": "files",
+        "entry": "views/tree.html",
+        "order": 30
+      }
+    ]
+  },
+  "permissions": ["ui.view", "fs.read"],
+  "fs": {
+    "read": {
+      "root": "workspace",
+      "scope": ["**"]
+    }
+  },
+  "engines": {
+    "piDesktop": ">=0.8.0"
+  }
+}

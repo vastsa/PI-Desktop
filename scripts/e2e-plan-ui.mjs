@@ -6,13 +6,13 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { desktopPaths, repositoryRoot, resolveElectronBinary } from "./e2e/boot.mjs";
-import { resolveHostBinary } from "./e2e/host.mjs";
 
-const root = repositoryRoot();
-const { appDir } = desktopPaths(root);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "..");
+const appDir = join(root, "apps", "desktop");
 
 const REQUIRED_CASE_IDS = [
   "E2E-106-renderer",
@@ -69,20 +69,10 @@ const LIVE_PROMPT = [
   LIVE_CHECKPOINT.markdown,
   "---END MARKDOWN---",
   `question: ${LIVE_CHECKPOINT.question}`,
-  "The BEGIN/END marker lines are prompt delimiters only; do not include them in the markdown value.",
-  "The markdown value ends at the final period; do not add a trailing newline.",
   "Do not call Read, Bash, Write, Edit, or any other tool.",
   `After approval, report exactly ${LIVE_MARKER} and do not call any tool.`,
 ].join("\n");
 
-function extractLiveMarkdown(markdown) {
-  const begin = "---BEGIN MARKDOWN---\n";
-  const end = "\n---END MARKDOWN---";
-  if (typeof markdown !== "string" || !markdown.startsWith(begin) || !markdown.endsWith(end)) {
-    return markdown;
-  }
-  return markdown.slice(begin.length, -end.length);
-}
 const results = new Map();
 
 function shortText(value, max = 700) {
@@ -127,6 +117,40 @@ function classifyExpectedDiagnostic(text, source) {
   if (!expectedDiagnostic(text)) return false;
   console.log(`EXPECTED ${source} provider-not-configured outcome - ${shortText(text)}`);
   return true;
+}
+
+function addCandidate(candidates, value) {
+  if (value && !candidates.includes(value)) candidates.push(value);
+}
+
+function resolveHostBinary() {
+  const candidates = [];
+  const configured = process.env.PI_DESKTOP_HOST_BIN?.trim();
+  if (configured) {
+    const absolute = resolve(configured);
+    addCandidate(candidates, absolute);
+    if (process.platform === "win32" && !absolute.toLowerCase().endsWith(".exe")) {
+      addCandidate(candidates, `${absolute}.exe`);
+    }
+  }
+
+  const binaryName = `pi-desktop-host-core${process.platform === "win32" ? ".exe" : ""}`;
+  addCandidate(candidates, join(root, "target", "debug", binaryName));
+  addCandidate(candidates, join(root, "..", "..", "..", "target", "debug", binaryName));
+
+  const binary = candidates.find((candidate) => existsSync(candidate));
+  if (!binary) {
+    throw new Error(`host binary missing; tried: ${candidates.join(", ")}`);
+  }
+  return resolve(binary);
+}
+
+function resolveElectronBinary() {
+  const binary = process.platform === "win32"
+    ? join(appDir, "node_modules", "electron", "dist", "electron.exe")
+    : join(appDir, "node_modules", ".bin", "electron");
+  assert(existsSync(binary), `Electron binary missing: ${binary}`);
+  return binary;
 }
 
 async function allocatePort() {
@@ -620,13 +644,13 @@ async function inspectUi(state) {
     const label = (node) => (node?.getAttribute("aria-label") || text(node)).trim();
     const modeButtons = [...document.querySelectorAll(".composer-shell button.mode-chip")]
       .filter(visible)
-      .map((node) => ({ label: text(node), disabled: Boolean(node.disabled) }));
+      .map((node) => ({ label: label(node), disabled: Boolean(node.disabled) }));
     const operatingModes = modeButtons.filter((item) =>
       ["Agent", "Plan", "智能体", "规划"].includes(item.label),
     );
     const bar = document.querySelector('[data-testid="plan-approval-bar"]');
     const approvalMain = bar?.querySelector(".plan-approval-approve-main");
-    const approvalMenu = document.querySelector(".plan-approval-menu.is-open");
+    const approvalMenu = bar?.querySelector(".plan-approval-approve-menu");
     const reject = bar?.querySelector(".plan-approval-reject");
     const prompt = document.querySelector(".composer-input");
     const model = document.querySelector(".composer-model-thinking button");
@@ -636,7 +660,7 @@ async function inspectUi(state) {
     const barText = text(bar);
     const bodyText = document.body?.innerText || "";
     const menuSelectedAsk = Boolean(
-      approvalMenu?.querySelector('[data-approval-mode="ask"][aria-checked="true"]'),
+      bar?.querySelector('[data-approval-mode="ask"][aria-checked="true"]'),
     );
     const activeRow = [...document.querySelectorAll("[data-sidebar-session-row]")]
       .find((node) =>
@@ -656,10 +680,7 @@ async function inspectUi(state) {
       permissionDisabled: permission ? Boolean(permission.disabled) : null,
       modelDisabled: model ? Boolean(model.disabled) : null,
       sendDisabled: send ? Boolean(send.disabled) : null,
-      promptReadOnly: prompt
-        ? prompt.getAttribute("aria-readonly") === "true" ||
-          prompt.getAttribute("contenteditable") === "false"
-        : null,
+      promptReadOnly: prompt ? Boolean(prompt.readOnly) : null,
       promptAriaReadOnly: prompt?.getAttribute("aria-readonly") || null,
       bar: bar && visible(bar)
         ? {
@@ -779,10 +800,12 @@ async function selectSession(state, sessionId) {
 async function submitComposerPrompt(state, prompt) {
   const result = await state.cdp.evaluate(`(() => {
     const input = document.querySelector(".composer-input");
-    if (!(input instanceof HTMLElement)) return { submitted: false, reason: "composer editor missing" };
-    if (input.getAttribute("contenteditable") === "false") return { submitted: false, reason: "composer editor is read-only" };
+    if (!(input instanceof HTMLTextAreaElement)) return { submitted: false, reason: "composer textarea missing" };
+    if (input.readOnly) return { submitted: false, reason: "composer textarea is read-only" };
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    if (!setter) return { submitted: false, reason: "textarea value setter missing" };
     input.focus();
-    input.textContent = ${JSON.stringify(prompt)};
+    setter.call(input, ${JSON.stringify(prompt)});
     input.dispatchEvent(new InputEvent("input", {
       bubbles: true,
       inputType: "insertText",
@@ -1117,11 +1140,10 @@ function assertShellStructure(snapshot, expectedMode, locale) {
 function assertPendingUi(snapshot, locale, revision) {
   assert(snapshot.bar?.status === "pending", `expected pending Plan card, got ${jsonText(snapshot.bar)}`);
   assert(snapshot.bar.title === `Plan UI ${revision}`, `pending title mismatch: ${jsonText(snapshot.bar)}`);
-  assert(snapshot.bar.question === "", `pending card rendered the submitted question: ${jsonText(snapshot.bar)}`);
+  assert(snapshot.bar.question === `Approve ${revision} checkpoint?`, `pending question mismatch: ${jsonText(snapshot.bar)}`);
   assert(snapshot.bar.artifactVisible, "pending Plan artifact opener is not visible");
   assert(snapshot.bar.artifactLabel.includes(locale === "zh-CN" ? "打开规划文件" : "Open plan artifact"), `localized artifact opener missing: ${snapshot.bar.artifactLabel}`);
-  assert(snapshot.bar.expiry === "", `pending card rendered the approval deadline: ${jsonText(snapshot.bar)}`);
-  assert(snapshot.bar.statusText === "", `pending card rendered a status label: ${jsonText(snapshot.bar)}`);
+  assert(snapshot.bar.expiry, "pending Plan expiry/countdown is not visible");
   assert(snapshot.bar.rejectLabel === (locale === "zh-CN" ? "拒绝" : "Reject"), `reject label mismatch: ${snapshot.bar.rejectLabel}`);
   assert(
     snapshot.bar.approveLabel?.includes(locale === "zh-CN" ? "每次询问" : "Ask"),
@@ -1137,7 +1159,8 @@ function assertPendingUi(snapshot, locale, revision) {
 }
 
 function assertRejectedEditable(snapshot, locale) {
-  assert(snapshot.bar === null, `rejected Plan approval surface remains visible: ${jsonText(snapshot.bar)}`);
+  assert(snapshot.bar?.status === "rejected", `expected visible rejected Plan card: ${jsonText(snapshot.bar)}`);
+  assert(snapshot.bar.rejectLabel === null && snapshot.bar.approveLabel === null, "terminal rejected card still exposes an approval action");
   assert(snapshot.promptReadOnly === false && snapshot.promptAriaReadOnly !== "true", "rejected Plan prompt remains read-only");
   assert(snapshot.modelDisabled === false, "rejected Plan model control remains gated");
   assert(snapshot.modeDisabled === false, "rejected Plan mode control remains gated");
@@ -1146,7 +1169,10 @@ function assertRejectedEditable(snapshot, locale) {
 }
 
 function assertApprovedTerminal(snapshot, locale) {
-  assert(snapshot.bar === null, `approved Plan approval surface remains visible: ${jsonText(snapshot.bar)}`);
+  const allowedStatuses = new Set(["approved", "queued", "running", "completed", "interrupted"]);
+  assert(snapshot.bar, "approved Plan checkpoint is not visible in the current renderer lifetime");
+  assert(allowedStatuses.has(snapshot.bar.status), `unexpected approved terminal status: ${jsonText(snapshot.bar)}`);
+  assert(snapshot.bar.rejectLabel === null && snapshot.bar.approveLabel === null, "approved card still exposes an approval action");
   assert(snapshot.promptReadOnly === false && snapshot.promptAriaReadOnly !== "true", "approved session input is still read-only");
   assert(snapshot.modeLabels[0] === (locale === "zh-CN" ? "智能体" : "Agent"), `approved session did not switch to Agent: ${jsonText(snapshot.modeLabels)}`);
   assert(snapshot.modeDisabled === false, "approved session mode control remains gated");
@@ -1247,11 +1273,10 @@ async function approveAndWait(state) {
   await clickSelector(state, '[data-testid="plan-approval-bar"] .plan-approval-approve-main', "Approve (Ask)");
   await waitFor(
     async () => {
-      const session = await getSession(state, state.sessionId);
       const snapshot = await inspectUi(state);
-      return session?.mode === "agent" && snapshot.bar === null ? snapshot : null;
+      return snapshot.bar && snapshot.bar.status !== "pending" ? snapshot : null;
     },
-    "approved Plan Agent mode and cleared approval surface",
+    "approved Plan terminal or execution status",
     state,
   );
   await waitFor(
@@ -1308,12 +1333,13 @@ async function runLiveAcceptance(state) {
     LIVE_TIMEOUT_MS,
   );
   assert(pending.snapshot.bar.title === LIVE_CHECKPOINT.title, `live title mismatch: ${jsonText(pending.snapshot.bar)}`);
-  assert(pending.snapshot.bar.question === "", `live approval surface rendered the submitted question: ${jsonText(pending.snapshot.bar)}`);
-  const submittedMarkdown = pending.proposal.markdown;
-  const comparableMarkdown = extractLiveMarkdown(submittedMarkdown);
+  assert(
+    pending.snapshot.bar.question === LIVE_CHECKPOINT.question,
+    `live question mismatch: ${jsonText(pending.snapshot.bar)}`,
+  );
   assert(
     pending.proposal.title === LIVE_CHECKPOINT.title &&
-      comparableMarkdown === LIVE_CHECKPOINT.markdown &&
+      pending.proposal.markdown === LIVE_CHECKPOINT.markdown &&
       pending.proposal.question === LIVE_CHECKPOINT.question,
     `live proposal metadata is not exact: ${jsonText(pending.proposal)}`,
   );
@@ -1323,10 +1349,7 @@ async function runLiveAcceptance(state) {
     `live approval did not default to Ask: ${jsonText(pending.snapshot.bar)}`,
   );
   await clickApprovalMenuAndCheckAsk(state);
-  const artifact = await verifyArtifact(state, pending.proposal, {
-    ...LIVE_CHECKPOINT,
-    markdown: submittedMarkdown,
-  });
+  const artifact = await verifyArtifact(state, pending.proposal, LIVE_CHECKPOINT);
   const transcript = await waitFor(
     async () => {
       const session = await getSession(state, state.liveSessionId);
@@ -1359,10 +1382,9 @@ async function runLiveAcceptance(state) {
   );
   const approvedSnapshot = await waitFor(
     async () => {
-      const session = await getSession(state, state.liveSessionId);
       const snapshot = await inspectUi(state);
-      return snapshot.bar === null &&
-        session?.mode === "agent" &&
+      return snapshot.bar &&
+        snapshot.bar.status !== "pending" &&
         ["Agent", "智能体"].includes(snapshot.modeLabels[0])
         ? snapshot
         : null;
@@ -1371,6 +1393,11 @@ async function runLiveAcceptance(state) {
     state,
     LIVE_TIMEOUT_MS,
   );
+  assert(
+    ["approved", "queued", "running", "completed"].includes(approvedSnapshot.bar.status),
+    `unexpected live approved status: ${jsonText(approvedSnapshot.bar)}`,
+  );
+
   const settled = await waitFor(
     async () => {
       const session = await getSession(state, state.liveSessionId);
@@ -1450,25 +1477,9 @@ async function runAcceptance(state) {
 
   const settings = await getSettings(state);
   assert(settings.defaultMode === "agent", `new-session default is not Agent: ${jsonText(settings)}`);
-  // The shell no longer creates a session at boot (temporary chats start on
-  // the first message), so create the independent Agent session the way the
-  // renderer's new-task path does: with the settings default mode.
   const sessions = await getSessions(state);
-  let defaultAgent = sessions.find((session) => session.id !== state.sessionId && session.mode === "agent");
-  if (!defaultAgent) {
-    const created = await getPreloadResult(state, "sessionCreate", [
-      {
-        title: "Independent Agent session",
-        mode: settings.defaultMode,
-        projectPath: state.workspace,
-      },
-    ]);
-    defaultAgent = created?.session;
-  }
-  assert(
-    defaultAgent?.id && defaultAgent.mode === "agent",
-    `no independent Agent session was available: ${jsonText(defaultAgent ?? sessions)}`,
-  );
+  const defaultAgent = sessions.find((session) => session.id !== state.sessionId && session.mode === "agent");
+  assert(defaultAgent, `no newly created Agent session was present: ${jsonText(sessions)}`);
   state.otherSessionId = defaultAgent.id;
   const seededSession = await getSession(state, state.sessionId);
   assert(seededSession?.mode === "plan", `seeded session is not Plan: ${jsonText(seededSession)}`);
@@ -1509,9 +1520,9 @@ async function runAcceptance(state) {
   await waitFor(
     async () => {
       const current = await inspectUi(state);
-      return current.bar === null && current.promptReadOnly === false ? current : null;
+      return current.bar?.status === "rejected" && current.bar.rejectLabel === null ? current : null;
     },
-    "rejected Plan approval surface cleared and composer editable",
+    "rejected editable Plan card",
     state,
   );
   snapshot = await inspectUi(state);
@@ -1577,9 +1588,9 @@ async function runAcceptance(state) {
   await waitFor(
     async () => {
       const current = await inspectUi(state);
-      return current.bar === null ? current : null;
+      return current.bar?.status !== "pending" ? current : null;
     },
-    "post-approval renderer approval surface cleared",
+    "post-approval renderer reconciliation",
     state,
   );
   snapshot = await inspectUi(state);
@@ -1650,7 +1661,7 @@ async function main() {
     workspace: null,
     artifactDir: null,
     hostBinary: resolveHostBinary(),
-    electronBinary: resolveElectronBinary(root).electronBinary,
+    electronBinary: resolveElectronBinary(),
     cdpPort: await allocatePort(),
     inspectorPort: await allocatePort(),
     electron: null,

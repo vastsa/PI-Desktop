@@ -8,7 +8,6 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { useHostCollection } from "../../hooks/use-host-collection";
 import {
   AgentCapabilityPage,
   AgentProjectPicker,
@@ -34,18 +33,8 @@ import {
   McpEditorSheet,
   type McpDraft,
 } from "../extensions/McpEditorSheet";
-import { McpMarketPanel } from "./McpMarketPanel";
-import {
-  IconArrowUpDown,
-  IconKey,
-  IconPencil,
-  IconPlay,
-  IconPlus,
-  IconServer,
-  IconTerminal,
-  IconTrash,
-} from "../icons";
-import { TooltipButton, cx } from "../ui";
+import { IconPencil, IconPlay, IconPlus, IconServer, IconTerminal, IconTrash } from "../icons";
+import { cx } from "../ui";
 
 const GLOBAL_MCP_PATH = "~/.agents/servers";
 
@@ -66,48 +55,15 @@ type McpEditorState = {
   level: AgentCapabilityLevel;
 };
 
-type McpCollection = {
-  global: McpServerRecord[];
-  project: McpServerRecord[];
-  statuses: McpServerStatus[];
-};
-
-const EMPTY_MCP_COLLECTION: McpCollection = { global: [], project: [], statuses: [] };
-
 export function AgentMcpPage() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const { selectedProjectPath, setSelectedProjectPath, options } = useAgentProjects();
-  const fetchServers = useCallback(async (): Promise<McpCollection> => {
-    const [global, project] = await Promise.all([
-      api.listMcpServers({
-        level: "global",
-        ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-      }),
-      selectedProjectPath
-        ? api.listMcpServers({ level: "project", projectPath: selectedProjectPath })
-        : Promise.resolve({
-            servers: [] as McpServerRecord[],
-            statuses: [] as McpServerStatus[],
-          }),
-    ]);
-    return {
-      global: global.servers ?? [],
-      project: project.servers ?? [],
-      statuses: [...(global.statuses ?? []), ...(project.statuses ?? [])],
-    };
-  }, [selectedProjectPath]);
-  const {
-    data: { global: globalServers, project: projectServers, statuses },
-    setData: setServers,
-    loading,
-    refreshing,
-    reload: load,
-  } = useHostCollection(fetchServers, EMPTY_MCP_COLLECTION, (error) =>
-    showToast(error instanceof Error ? error.message : String(error), { variant: "error" }),
-  );
-  const setStatuses = (update: (current: McpServerStatus[]) => McpServerStatus[]) =>
-    setServers((current) => ({ ...current, statuses: update(current.statuses) }));
+  const [globalServers, setGlobalServers] = useState<McpServerRecord[]>([]);
+  const [projectServers, setProjectServers] = useState<McpServerRecord[]>([]);
+  const [statuses, setStatuses] = useState<McpServerStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<CapabilityFilter>("all");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -115,17 +71,53 @@ export function AgentMcpPage() {
   const [editor, setEditor] = useState<McpEditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [authorizingId, setAuthorizingId] = useState<string | null>(null);
-  const pendingOAuthRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const { armed, setArmed } = useArmedDelete();
+  // Skeletons belong to the first paint only; later reloads dim the list instead
+  // of tearing it down, so toggling a server never blinks the page away.
+  const hydrated = useRef(false);
+
+  const load = useCallback(async () => {
+    if (hydrated.current) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const [global, project] = await Promise.all([
+        api.listMcpServers({
+          level: "global",
+          ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
+        }),
+        selectedProjectPath
+          ? api.listMcpServers({ level: "project", projectPath: selectedProjectPath })
+          : Promise.resolve({
+              servers: [] as McpServerRecord[],
+              statuses: [] as McpServerStatus[],
+            }),
+      ]);
+      setGlobalServers(global.servers ?? []);
+      setProjectServers(project.servers ?? []);
+      setStatuses([...(global.statuses ?? []), ...(project.statuses ?? [])]);
+      hydrated.current = true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+      setGlobalServers([]);
+      setProjectServers([]);
+      setStatuses([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [selectedProjectPath, showToast]);
 
   useEffect(() => {
+    void load();
+    const offPluginChanged = api.onPluginChanged(() => void load());
+    const offHostStatus = api.onHostStatus((status) => {
+      if (status.ok) void load();
+    });
     return () => {
-      pendingOAuthRef.current?.unsubscribe();
-      pendingOAuthRef.current = null;
+      offPluginChanged();
+      offHostStatus();
     };
-  }, []);
-  const [view, setView] = useState<"servers" | "market">("servers");
-  const { armed, setArmed } = useArmedDelete();
+  }, [load]);
 
   const rowKey = (level: AgentCapabilityLevel, id: string) => `${level}:${id}`;
   const levelQuery = (level: AgentCapabilityLevel) => ({
@@ -138,10 +130,8 @@ export function AgentMcpPage() {
     id: string,
     patch: Partial<McpServerRecord>,
   ) => {
-    setServers((current) => ({
-      ...current,
-      [level]: current[level].map((row) => (row.id === id ? { ...row, ...patch } : row)),
-    }));
+    const setter = level === "global" ? setGlobalServers : setProjectServers;
+    setter((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
   /** New servers land at whichever level the filter is pointing at. */
@@ -245,8 +235,6 @@ export function AgentMcpPage() {
         showToast(t("extensions.mcp.testReady", { count: result.status.toolCount }), {
           variant: "success",
         });
-      } else if (result.status.authRequired) {
-        showToast(t("extensions.mcp.authRequired"), { variant: "error" });
       } else if (result.status.state === "failed") {
         showToast(result.status.message || t("extensions.mcp.testFailed"), { variant: "error" });
       }
@@ -254,68 +242,6 @@ export function AgentMcpPage() {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
       setTestingId(null);
-    }
-  };
-
-  const authorizeServer = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
-    if (authorizingId || pendingOAuthRef.current) return;
-    setAuthorizingId(server.id);
-    let activeLoginId: string | null = null;
-    let unsubscribed = false;
-    let unsubscribe = () => {};
-
-    const finish = () => {
-      if (unsubscribed) return;
-      unsubscribed = true;
-      unsubscribe();
-      if (pendingOAuthRef.current?.unsubscribe === unsubscribe) {
-        pendingOAuthRef.current = null;
-      }
-    };
-
-    const cleanup = () => {
-      finish();
-      setAuthorizingId(null);
-    };
-
-    unsubscribe = api.onMcpOAuth((event) => {
-      if (activeLoginId && event.loginId !== activeLoginId) return;
-      if (event.serverId !== server.id) return;
-
-      if (event.kind === "done") {
-        setStatuses((current) => [
-          ...current.filter((status) => status.serverId !== server.id),
-          event.status,
-        ]);
-        showToast(t("extensions.mcp.authReady", { count: event.status.toolCount }), {
-          variant: "success",
-        });
-        cleanup();
-      } else if (event.kind === "error") {
-        showToast(event.message || t("extensions.mcp.authFailed"), { variant: "error" });
-        cleanup();
-      } else if (event.kind === "cancelled") {
-        cleanup();
-      }
-    });
-    pendingOAuthRef.current = { unsubscribe };
-
-    try {
-      showToast(t("extensions.mcp.authorizing"), { variant: "info" });
-      const result = await api.startMcpOAuth(server.id, {
-        level,
-        ...(level === "project" && selectedProjectPath
-          ? { projectPath: selectedProjectPath }
-          : {}),
-      });
-      activeLoginId = result.loginId;
-      if (!result.ok) {
-        showToast(t("extensions.mcp.authFailed"), { variant: "error" });
-        cleanup();
-      }
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
-      cleanup();
     }
   };
 
@@ -364,126 +290,24 @@ export function AgentMcpPage() {
     [options, selectedProjectPath],
   );
 
-  /** Where a move sends a row, named the way the toast should say it. */
-  const moveTarget: Partial<Record<AgentCapabilityLevel, string>> = {
-    global: t("settings.globalLevel"),
-    project: selectedProjectPath
-      ? `${t("settings.projectLevel")} · ${projectName ?? projectDisplayName(selectedProjectPath)}`
-      : undefined,
-  };
-
-  /**
-   * Move one row to the other level. The project picker owns the destination,
-   * so the same action reads "Move into <project>" on a global row and "Move to
-   * Global" on a project one.
-   *
-   * The host moves the document rather than copying it, and a destination that
-   * already holds the id or name renames the arriving server, so the toast
-   * reports the new name instead of pretending the id survived.
-   */
-  const move = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
-    const to: AgentCapabilityLevel = level === "global" ? "project" : "global";
-    const target = moveTarget[to];
-    if (!target) {
-      showToast(t("settings.selectProjectFirst"), { variant: "error" });
-      return;
-    }
-    const key = rowKey(level, server.id);
-    setBusyId(key);
-    try {
-      const result = await api.transferMcpServer({
-        id: server.id,
-        from: levelQuery(level),
-        to: levelQuery(to),
-      });
-      await load();
-      const name = server.label || server.id;
-      const arrived = result.server;
-      showToast(
-        arrived && arrived.id !== server.id
-          ? t("settings.capabilityMovedRenamed", {
-              name,
-              target,
-              newName: arrived.label || arrived.id,
-            })
-          : t("settings.capabilityMoved", { name, target }),
-        { variant: "success" },
-      );
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const renderRow = (server: McpServerRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, server.id);
     const name = server.label || server.id;
     const status = statusFor(statuses, server);
     const busy = busyId === key;
     const testing = testingId === server.id;
-    const authorizing = authorizingId === server.id;
     const isArmed = armed === key;
-    const isHttp = server.transport === "http";
-    const hasAuthHeader = Boolean(
-      server.headers &&
-      Object.keys(server.headers).some((k) => k.toLowerCase() === "authorization"),
-    );
-    const isOAuth = isHttp && (Boolean(status?.hasOauth) || !hasAuthHeader);
-    const needsAuth =
-      isHttp &&
-      !hasAuthHeader &&
-      Boolean(status?.authRequired);
     const items: CapabilityMenuItem[] = [
       {
         key: "test",
         label: t("extensions.mcp.test"),
         icon: <IconPlay size={14} />,
-        disabled: testing || authorizing,
+        disabled: testing,
         onSelect: () => {
           setMenuFor(null);
           void testConnection(server, level);
         },
       },
-      ...(isOAuth
-        ? [
-            {
-              key: "authorize",
-              label: status?.hasOauth
-                ? t("extensions.mcp.reauthorize")
-                : t("extensions.mcp.authorize"),
-              icon: <IconKey size={14} />,
-              disabled: testing || authorizing,
-              onSelect: () => {
-                setMenuFor(null);
-                void authorizeServer(server, level);
-              },
-            } satisfies CapabilityMenuItem,
-          ]
-        : []),
-      /**
-       * A move needs a destination, so a global row offers it only while the
-       * picker names a project; a project row always has Global to go back to.
-       */
-      ...(moveTarget[level === "global" ? "project" : "global"]
-        ? [
-            {
-              key: "move",
-              label:
-                level === "global"
-                  ? t("settings.capabilityMoveToProject", {
-                      project:
-                        projectName ?? projectDisplayName(selectedProjectPath ?? ""),
-                    })
-                  : t("settings.capabilityMoveToGlobal"),
-              icon: <IconArrowUpDown size={14} />,
-              onSelect: () => {
-                setMenuFor(null);
-                void move(server, level);
-              },
-            } satisfies CapabilityMenuItem,
-          ]
-        : []),
       {
         key: "remove",
         label: isArmed ? t("settings.capabilityRemoveConfirm") : t("extensions.mcp.remove"),
@@ -528,42 +352,21 @@ export function AgentMcpPage() {
                   : t(`extensions.mcp.state.${status.state}`)}
               </span>
             ) : null}
-            {needsAuth ? (
-              <span className="agent-capability-badge is-status is-failed">
-                {t("extensions.mcp.authRequired")}
-              </span>
-            ) : status?.hasOauth ? (
-              <span className="agent-capability-badge is-status is-ready">
-                {t("extensions.mcp.oauthBadge")}
-              </span>
-            ) : null}
           </>
         }
         description={server.description || t("settings.noCapabilityDescription")}
         actions={
           <>
-            {needsAuth ? (
-              <TooltipButton
-                type="button"
-                className="settings-icon-button is-action-highlight"
-                ariaLabel={t("extensions.mcp.authorize")}
-                tooltip={authorizing ? t("extensions.mcp.authorizing") : t("extensions.mcp.authorize")}
-                disabled={busy || authorizing}
-                onClick={() => void authorizeServer(server, level)}
-              >
-                <IconKey size={15} />
-              </TooltipButton>
-            ) : null}
-            <TooltipButton
+            <button
               type="button"
               className="settings-icon-button"
-              ariaLabel={t("settings.editMcpOf", { name })}
-              tooltip={t("settings.editMcp")}
+              aria-label={t("settings.editMcpOf", { name })}
+              title={t("settings.editMcp")}
               disabled={busy}
               onClick={() => openEdit(server, level)}
             >
               <IconPencil size={15} />
-            </TooltipButton>
+            </button>
             <CapabilityRowMenu
               label={t("extensions.mcp.rowActions", { name })}
               items={items}
@@ -603,33 +406,10 @@ export function AgentMcpPage() {
     </CapabilityButton>
   );
 
-  const marketButton = (
-    <CapabilityButton
-      onClick={() => setView("market")}
-    >
-      <IconServer size={14} />
-      {t("settings.mcpMarket.browse")}
-    </CapabilityButton>
-  );
-
-  if (view === "market") {
-    return (
-      <McpMarketPanel
-        installedIds={[...globalServers, ...projectServers].map((server) => server.id)}
-        onBack={() => {
-          setView("servers");
-          void load();
-        }}
-        onInstalled={() => {
-          setView("servers");
-          void load();
-        }}
-      />
-    );
-  }
-
   return (
     <AgentCapabilityPage
+      description={t("settings.mcpDescription")}
+      note={t("settings.capabilityPriority")}
       toolbar={
         <CapabilityToolbar
           filter={filter}
@@ -646,12 +426,7 @@ export function AgentMcpPage() {
               onChange={setSelectedProjectPath}
             />
           }
-          actions={
-            <>
-              {addButton}
-              {marketButton}
-            </>
-          }
+          actions={addButton}
         />
       }
     >
@@ -663,6 +438,7 @@ export function AgentMcpPage() {
         {counts.all === 0 && search.trim() ? (
           <CapabilityEmpty
             message={t("settings.capabilityNoMatches")}
+            hint={t("settings.capabilityNoMatchesHint")}
             icon={<IconServer size={18} />}
           />
         ) : (

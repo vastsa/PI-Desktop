@@ -109,14 +109,12 @@ Remote control is specified separately in
 [05-remote-agent-control](05-remote-agent-control.md). The target introduces
 a headless Agent Host module above the existing sidecars and exposes a
 transport-neutral RACP contract: WebSocket JSON-RPC is the normative v1
-binding, HTTP/JSON + SSE is its browser profile, and gRPC is reserved (D374).
+binding, HTTP/JSON + SSE is its browser profile, and gRPC is reserved (D376).
 It does not expose Electron IPC, `host.proxy`, or host-core RPC, and it does
 not change the current MVP exclusion of a remote Gateway. The first
 implementation hosts the module inside Electron Main, where desktop IPC,
-local MCP, and RACP call it. The first remote deployment (D375) packages the
-same module as a headless `pi-host` on another machine, reached from the
-desktop over an SSH tunnel; Gateway routing and browser access remain
-specified but unscheduled.
+local MCP, and RACP call it; production deployment moves the same module
+into a standalone Host beside the workspace with an outbound Gateway link.
 
 ## 4. Request path (conversation + tool)
 

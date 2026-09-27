@@ -1,38 +1,38 @@
-import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const mainSource = await readMainSource();
-const windowSource = await readMainModule("bootstrap/window.ts");
-const lifecycleSource = await readMainModule("bootstrap/app-lifecycle.ts");
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
 const stylesSource = await loadStyles();
 
-const createWindowSource = windowSource.slice(windowSource.indexOf("export async function createWindow("));
+const createWindowSource = mainSource.slice(
+  mainSource.indexOf("async function createWindow()"),
+);
 const mainWindowBlock =
   createWindowSource.match(/mainWindow = new BrowserWindow\(\{[\s\S]*?\n  \}\);/)?.[0] ?? "";
 const macOptions =
   mainWindowBlock.match(
-    /\.\.\.\(process\.platform === "darwin"[\s\S]*?\n      : \{[\s\S]*?\n        \}\),/,
+    /\.\.\.\(process\.platform === "darwin"[\s\S]*?\n      : \{\n          frame: false,\n          backgroundColor: nativeTheme\.shouldUseDarkColors \? "#181818" : "#ffffff",\n        \}\),/,
   )?.[0] ?? "";
 
 function styleBlock(selector) {
   return stylesSource.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? "";
 }
 
-function functionSource(source, name) {
-  const start = source.indexOf(`function ${name}(`);
+function functionSource(name) {
+  const start = mainSource.indexOf(`function ${name}(`);
   assert.ok(start >= 0, `expected function ${name}`);
-  const next = source.indexOf("\n  function ", start + 1);
-  return source.slice(start, next === -1 ? undefined : next);
+  const next = mainSource.indexOf("\nfunction ", start + 1);
+  return mainSource.slice(start, next === -1 ? undefined : next);
 }
 
 test("macOS main window enables native sidebar vibrancy only in its platform branch", () => {
   assert.match(macOptions, /titleBarStyle:\s*"hiddenInset"/);
-  // The position itself lives in @pi-desktop/shared so the renderer's reserve
-  // for it (styles/tokens.css) is derived from the same numbers.
-  assert.match(macOptions, /trafficLightPosition:\s*MAC_TRAFFIC_LIGHT_POSITION/);
+  assert.match(macOptions, /trafficLightPosition:\s*\{ x: 16, y: 16 \}/);
   assert.match(macOptions, /vibrancy:\s*"sidebar"/);
   assert.match(macOptions, /visualEffectState:\s*"followWindow"/);
   assert.match(macOptions, /transparent:\s*true/);
@@ -43,11 +43,10 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
     "non-mac branch must not set under-window vibrancy",
   );
 
-  // The shared opaque fallback remains in place for Windows/Linux, and comes
-  // from the built-in theme table rather than a local literal.
+  // The shared opaque fallback remains in place for Windows/Linux.
   assert.match(
     mainWindowBlock,
-    /backgroundColor:\s*builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
+    /backgroundColor:\s*nativeTheme\.shouldUseDarkColors \? "#181818" : "#ffffff"/,
   );
   assert.match(mainWindowBlock, /frame: false/);
   assert.doesNotMatch(
@@ -58,14 +57,14 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
 });
 
 test("native theme source maps preferences and only resets vibrancy on change", () => {
-  const applyNative = functionSource(lifecycleSource, "applyNativeThemeSource");
-  const applyMenu = functionSource(lifecycleSource, "applyApplicationMenuSettings");
-  const send = functionSource(mainSource, "sendToRenderer");
+  const applyNative = functionSource("applyNativeThemeSource");
+  const applyMenu = functionSource("applyApplicationMenuSettings");
+  const send = functionSource("sendToRenderer");
 
   assert.match(applyNative, /let next: "system" \| "light" \| "dark" = "system"/);
   assert.match(
     applyNative,
-    /if \(isThemeColorScheme\(preference\)\) \{\s*next = preference;/,
+    /if \(preference === "light" \|\| preference === "dark"\) \{\s*next = preference;/,
   );
   assert.match(applyNative, /preference\.startsWith\("plugin:"\)/);
   assert.match(
@@ -81,25 +80,20 @@ test("native theme source maps preferences and only resets vibrancy on change", 
   assert.match(applyNative, /if \(nativeTheme\.themeSource === next\) return;/);
   assert.match(
     applyNative,
-    /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && state\.mainWindow && !state\.mainWindow\.isDestroyed\(\)\) \{\s*state\.mainWindow\.setVibrancy\("sidebar"\);/,
+    /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && mainWindow && !mainWindow\.isDestroyed\(\)\) \{\s*mainWindow\.setVibrancy\("sidebar"\);/,
   );
 
-  // The theme mapping lives in `applyAppThemePreference` so the narrow plugin
-  // `setTheme` path can never re-derive locale, keybindings, or dev-mode menu
-  // state (ADR 0260). The full-settings path delegates to the same function.
-  const applyTheme = functionSource(lifecycleSource, "applyAppThemePreference");
-  assert.match(applyTheme, /applyNativeThemeSource\(\{\s*theme: preference \}\)/);
-  assert.match(applyMenu, /applyAppThemePreference\(settings\?\.theme\)/);
+  assert.match(applyMenu, /applyNativeThemeSource\(settings\)/);
   assert.match(
     send,
-    /if \(channel === IPC\.event\.pluginChanged\) \{\s*applicationLifecycle\?\.applyNativeThemeSource\(\{\s*theme: applicationAppearanceState\.appThemePreference,/,
+    /if \(channel === IPC\.event\.pluginChanged\) \{\s*applyNativeThemeSource\(\{ theme: appThemePreference \}\);/,
   );
 });
 
 test("the macOS startup splash shares the sidebar glass tint and sheen", () => {
   const macGlassBlock =
     stylesSource.match(
-      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar-surface,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
+      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
     )?.[0] ?? "";
   assert.match(macGlassBlock, /background-color:\s*var\(--ds-sidebar-glass-tint\)/);
   assert.match(macGlassBlock, /var\(--ds-sidebar-glass-sheen-top\)/);
@@ -113,6 +107,10 @@ test("the macOS startup splash shares the sidebar glass tint and sheen", () => {
   assert.match(baseSplashBlock, /background:\s*var\(--ds-bg-primary\)/);
   assert.doesNotMatch(baseSplashBlock, /glass/);
 
+  // The shell mounts under the splash once `ready` flips; behind glass it must
+  // stay hidden until the exit fade, then cross-fade in rather than bleed
+  // through the tint. A transition, not an animation: `.sidebar` owns its
+  // `sidebar-in` mount animation and swapping animation-name would replay it.
   assert.match(
     stylesSource,
     /:root\[data-platform="darwin"\] \.app-shell\.is-booting:has\(\.startup-splash:not\(\.is-exiting\)\)\s*>\s*:not\(\.startup-splash\)\s*\{\s*visibility:\s*hidden;/,
@@ -126,7 +124,7 @@ test("the macOS startup splash shares the sidebar glass tint and sheen", () => {
 test("only macOS sidebar and splash surfaces receive the translucent glass treatment", () => {
   const macGlassBlock =
     stylesSource.match(
-      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar-surface,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
+      /:root\[data-platform="darwin"\] \.startup-splash,\n:root\[data-platform="darwin"\] \.sidebar,\n:root\[data-platform="darwin"\] \.sidebar-rail\s*\{[^}]*\}/,
     )?.[0] ?? "";
   assert.match(macGlassBlock, /background-color:\s*var\(--ds-sidebar-glass-tint\)/);
   // Sheen, not a flat tint — this is what keeps the material reading as glass.
@@ -141,7 +139,7 @@ test("only macOS sidebar and splash surfaces receive the translucent glass treat
 
   const macAncestorBlock =
     stylesSource.match(
-      /:root\[data-platform="darwin"\],\n:root\[data-platform="darwin"\] body,\n:root\[data-platform="darwin"\] #root,\n:root\[data-platform="darwin"\] \.app-shell,\n:root\[data-platform="darwin"\] \.settings-shell\s*\{[^}]*\}/,
+      /:root\[data-platform="darwin"\],\n:root\[data-platform="darwin"\] body,\n:root\[data-platform="darwin"\] #root,\n:root\[data-platform="darwin"\] \.app-shell\s*\{[^}]*\}/,
     )?.[0] ?? "";
   assert.match(macAncestorBlock, /background:\s*transparent/);
 

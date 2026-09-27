@@ -5,16 +5,12 @@ import {
   PLUGIN_PANEL_CHROME_VERSION,
   PLUGIN_PANEL_CHROME_PAINT_THROUGH_VERSION,
   PLUGIN_PANEL_EMBEDDED_ARGUMENT,
-  PLUGIN_PANEL_WIDGET_ARGUMENT,
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
   PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL,
   PLUGIN_PANEL_WINDOW_STATE_CHANNEL,
   type PluginPanelWindowControlAction,
   type PluginPanelTheme,
 } from "../shared/plugin-panel-chrome";
-// Bundled into the preload like everything else here, so the panel reads the
-// built-in window palette from the same table main and the panel host use.
-import { builtinWindowBackground } from "@pi-desktop/shared/theme";
 
 const bridge = {
   invoke: async (channel: string, payload?: Record<string, unknown>) => {
@@ -72,14 +68,6 @@ function isEmbeddedPanel(): boolean {
   return process.argv.includes(PLUGIN_PANEL_EMBEDDED_ARGUMENT);
 }
 
-/**
- * True when this surface is a floating widget: a transparent, frameless window
- * whose whole rectangle belongs to the plugin — no titlebar band, no capsule.
- */
-function isWidgetPanel(): boolean {
-  return process.argv.includes(PLUGIN_PANEL_WIDGET_ARGUMENT);
-}
-
 function panelTheme(): PluginPanelTheme {
   const prefix = "--pi-plugin-panel-theme=";
   const raw = process.argv.find((argument) => argument.startsWith(prefix));
@@ -114,81 +102,18 @@ function pageColor(property: "backgroundColor" | "color", fallback: string): str
 }
 
 function pageSurface(theme: PluginPanelTheme): string {
-  return pageColor("backgroundColor", builtinWindowBackground(theme));
+  return pageColor("backgroundColor", theme === "light" ? "#ffffff" : "#181818");
 }
 
 function publishTitlebarHeight(): void {
   document.documentElement?.style.setProperty(
     "--pi-plugin-titlebar-height",
-    `${isEmbeddedPanel() || isWidgetPanel() ? 0 : PLUGIN_PANEL_TITLEBAR_HEIGHT}px`,
+    `${isEmbeddedPanel() ? 0 : PLUGIN_PANEL_TITLEBAR_HEIGHT}px`,
   );
 }
 
 function pluginOwnsTitlebarSpacing(): boolean {
-  // A floating widget publishes a titlebar height of 0 and draws edge to edge,
-  // so the host must not add the legacy 46px offset either.
-  return isWidgetPanel() || pluginChromeMode() !== "legacy";
-}
-
-/**
- * Keep plugin-owned panel documents aligned with the app renderer's compact
- * scrollbar contract. A docked view is a separate WebContentsView, so it
- * cannot inherit `styles/base.css`; without this host-owned rule Windows falls
- * back to its wide classic scrollbar. The external page inside Browser is a
- * different WebContentsView and intentionally keeps the page's own styling.
- */
-function installPluginScrollbarStyle(): void {
-  if (!document.documentElement || document.getElementById("pi-plugin-scrollbars")) {
-    return;
-  }
-
-  const style = document.createElement("style");
-  style.id = "pi-plugin-scrollbars";
-  style.textContent = `
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: transparent;
-      border: 1px solid transparent;
-      border-radius: 999px;
-      background-clip: content-box;
-    }
-    :hover::-webkit-scrollbar-thumb,
-    :focus-within::-webkit-scrollbar-thumb,
-    [data-scrolling]::-webkit-scrollbar-thumb {
-      background: color-mix(in oklab, currentColor 16%, transparent);
-      background-clip: content-box;
-    }
-    ::-webkit-scrollbar-thumb:hover,
-    ::-webkit-scrollbar-thumb:active {
-      background: color-mix(in oklab, currentColor 28%, transparent);
-      background-clip: content-box;
-    }
-  `;
-  document.documentElement.append(style);
-
-  const timers = new Map<HTMLElement, number>();
-  const onScroll = (event: Event) => {
-    const element =
-      event.target instanceof HTMLElement ? event.target : document.documentElement;
-    if (!element) return;
-    element.setAttribute("data-scrolling", "");
-    const pending = timers.get(element);
-    if (pending !== undefined) window.clearTimeout(pending);
-    timers.set(
-      element,
-      window.setTimeout(() => {
-        timers.delete(element);
-        element.removeAttribute("data-scrolling");
-      }, 300),
-    );
-  };
-  document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+  return pluginChromeMode() !== "legacy";
 }
 
 type PluginPanelChromeMode = "legacy" | "safe-area" | "paint-through";
@@ -376,81 +301,6 @@ function installPaintThroughDragMap(dragRegion: HTMLElement): void {
   sync();
 }
 
-/**
- * A floating widget drags through its whole window: the plugin owns every pixel
- * and normally paints a silhouette far smaller than the rectangle it lives in,
- * so the segment map covers the full surface and only interactive elements
- * punch holes in it. Same mechanics as the panel's paint-through band, one
- * rectangle taller.
- */
-function installWidgetDragMap(dragRegion: HTMLElement): void {
-  const sync = () => {
-    const width = Math.max(
-      1,
-      window.innerWidth,
-      document.documentElement?.clientWidth ?? 0,
-    );
-    const height = Math.max(
-      1,
-      window.innerHeight,
-      document.documentElement?.clientHeight ?? 0,
-    );
-    const segments = paintThroughDragSegments(
-      width,
-      height,
-      paintThroughNoDragRects(),
-    );
-    dragRegion.replaceChildren(
-      ...segments.map((segment) => {
-        const element = document.createElement("div");
-        element.className = "drag-segment";
-        element.setAttribute("aria-hidden", "true");
-        element.style.left = `${segment.left}px`;
-        element.style.top = `${segment.top}px`;
-        element.style.width = `${segment.right - segment.left}px`;
-        element.style.height = `${segment.bottom - segment.top}px`;
-        return element;
-      }),
-    );
-  };
-
-  let frame = 0;
-  const schedule = () => {
-    if (frame) return;
-    frame = window.requestAnimationFrame(() => {
-      frame = 0;
-      sync();
-    });
-  };
-
-  const observer = new MutationObserver(schedule);
-  observer.observe(document.body, {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    attributeFilter: [
-      "aria-hidden",
-      "class",
-      "data-pi-plugin-no-drag",
-      "hidden",
-      "style",
-    ],
-  });
-  window.addEventListener("resize", schedule, { passive: true });
-  window.addEventListener("scroll", schedule, { capture: true, passive: true });
-  sync();
-}
-
-/**
- * Tells the page which placement it renders in — `panel`, `widget`, or a docked
- * `view` — before page scripts run, so CSS can branch on it without a bridge
- * round trip.
- */
-function publishPanelShape(): void {
-  const shape = isWidgetPanel() ? "widget" : isEmbeddedPanel() ? "view" : "panel";
-  document.documentElement?.setAttribute("data-pi-plugin-panel-shape", shape);
-}
-
 function chromeLabels(input = panelLocale()): ChromeLabels {
   const locale = input.replaceAll("_", "-").toLowerCase();
   const traditionalChinese =
@@ -522,16 +372,6 @@ function chromeLabels(input = panelLocale()): ChromeLabels {
       safeArea: "Indication de développement · les 46 px supérieurs servent uniquement au déplacement",
     };
   }
-  if (locale.startsWith("pt")) {
-    return {
-      toolbar: "Controles de janela do painel do plugin",
-      minimize: "Minimizar",
-      maximize: "Maximizar",
-      restore: "Restaurar",
-      close: "Fechar",
-      safeArea: "Dica de desenvolvimento · os 46px superiores são apenas para arrastar",
-    };
-  }
   if (locale.startsWith("zh")) {
     return {
       toolbar: "插件面板窗口控制",
@@ -574,79 +414,16 @@ function installPanelChrome(): void {
   const body = document.body;
   if (!body || document.querySelector("pi-plugin-panel-chrome")) return;
 
-  installPluginScrollbarStyle();
-
   // Publish this before the page's DOMContentLoaded handlers run so modern
   // plugin CSS can resolve its variable without an extra reflow or a second
   // 46px offset.
   publishTitlebarHeight();
-  publishPanelShape();
 
   // A docked view has no window controls and no drag band, so it gets the full
   // surface. The variable is still published — at 0 — so a plugin's fixed
   // toolbar offset resolves to the right value in both placements.
   if (isEmbeddedPanel()) {
     document.documentElement.style.setProperty("--pi-plugin-titlebar-height", "0px");
-    return;
-  }
-
-  // A floating widget has no host chrome at all: the page owns the whole
-  // rectangle and draws its own silhouette. Drag comes from a whole-window
-  // segment map, and right-click asks the host for the widget menu instead of
-  // the capsule a panel would show.
-  if (isWidgetPanel()) {
-    const widgetTheme = panelTheme();
-    const host = document.createElement("pi-plugin-panel-chrome");
-    host.dataset.theme = widgetTheme;
-    host.dataset.chromeMode = "widget";
-    host.setAttribute("aria-hidden", "true");
-    const style = document.createElement("style");
-    style.textContent = `
-      :host {
-        color-scheme: light dark;
-        pointer-events: none;
-        position: fixed;
-        inset: 0;
-        z-index: 2147483647;
-        display: block;
-        user-select: none;
-      }
-      .drag-region {
-        -webkit-app-region: no-drag;
-        app-region: no-drag;
-        pointer-events: none;
-        position: absolute;
-        inset: 0;
-      }
-      .drag-segment {
-        -webkit-app-region: drag;
-        app-region: drag;
-        pointer-events: auto;
-        position: absolute;
-        z-index: 0;
-        user-select: none;
-      }
-    `;
-    const chrome = document.createElement("div");
-    chrome.className = "chrome";
-    const dragRegion = document.createElement("div");
-    dragRegion.className = "drag-region";
-    dragRegion.setAttribute("aria-hidden", "true");
-    chrome.append(dragRegion);
-    const shadow = host.attachShadow({ mode: "closed" });
-    shadow.append(style, chrome);
-    document.documentElement.append(host);
-    installWidgetDragMap(dragRegion);
-    // The capsule is the panel's only close affordance; a widget has none, so
-    // the host owns an equivalent menu behind the surface's context menu.
-    window.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      void ipcRenderer
-        .invoke(PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL, "contextMenu")
-        .catch(() => {
-          // Closing destroys the sender before the invocation resolves.
-        });
-    });
     return;
   }
 
@@ -975,8 +752,6 @@ function installPanelChrome(): void {
 // Pre-publish the value before page styles and DOMContentLoaded handlers run.
 // The install path repeats this defensively for pages that replace their root.
 publishTitlebarHeight();
-
-publishPanelShape();
 
 if (document.readyState === "loading") {
   window.addEventListener("DOMContentLoaded", installPanelChrome, { once: true });

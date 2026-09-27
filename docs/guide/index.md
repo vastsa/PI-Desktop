@@ -14,8 +14,6 @@ inspectable while still making everyday coding work feel direct.
 | If you want to… | Start with |
 |---|---|
 | See what the app looks like | [Screens](/guide/screenshots) |
-| Run recurring local tasks | [Scheduled tasks](/guide/automations) |
-| Add an MCP catalog and its key | [MCP market](/guide/mcp-market) |
 | Understand what is shipped | [Product scope](/spec/01-product/01-product-scope) |
 | Learn how the system fits together | [Architecture](/spec/02-architecture/01-architecture) |
 | Trace a protocol or storage boundary | [Runtime specs](/spec/03-runtime/01-ipc-protocol) |
@@ -34,12 +32,9 @@ Renderer UI  →  Electron orchestration  →  Rust host core
   transcript          pi Node sidecar          SQLite + processes
 ```
 
-The renderer owns presentation. Electron main coordinates desktop capabilities:
-window lifecycle, IPC routing, process supervision, the update client, and the
-plugin, MCP-bridge, and optional loopback MCP-control services. The Rust host
-owns tool execution and the workspace sandbox, the permission gateway, plugin
-host services, RPC, and persistence. The pi sidecar owns the agent loop and
-provider-facing model work.
+The renderer owns presentation. Electron coordinates desktop capabilities. The
+Rust host owns privileged process, filesystem, RPC, and persistence boundaries.
+The pi sidecar owns the agent loop and provider-facing model work.
 
 ## Working with the docs
 

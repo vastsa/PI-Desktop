@@ -1,12 +1,11 @@
-import { readSettingsSource, readStoreSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { settleBootstrapRequests } from "../src/lib/bootstrap-result.ts";
 
 const [storeSource, settingsPageSource] = await Promise.all([
-  readStoreSource(),
-  readSettingsSource(),
+  readFile(new URL("../src/stores/app-store.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/pages/SettingsPage.tsx", import.meta.url), "utf8"),
 ]);
 
 test("an unrelated bootstrap failure retains a later settings response", async () => {

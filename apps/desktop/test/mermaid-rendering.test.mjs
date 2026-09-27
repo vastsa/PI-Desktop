@@ -1,4 +1,3 @@
-import { readTranscriptSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -18,7 +17,10 @@ const mermaidSource = await readFile(
   new URL("../src/lib/mermaid.ts", import.meta.url),
   "utf8",
 );
-const transcriptSource = await readTranscriptSource();
+const transcriptSource = await readFile(
+  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
+  "utf8",
+);
 const stylesSource = await loadStyles();
 
 test("closed fence detection waits for the complete streamed block", () => {
@@ -84,12 +86,7 @@ test("diagram chrome is bounded, theme-aware, and reduced-motion safe", () => {
     stylesSource,
     /\.mermaid-svg > svg\s*\{[\s\S]*?width: 100%;[\s\S]*?max-width: 100%/,
   );
-  // The diagram canvas is a token in both palettes (issue #341): light used to
-  // pin #ffffff in a `:root[data-theme="light"]` override, which out-specified
-  // the base rule and skipped the variable.
-  assert.match(stylesSource, /\.mermaid-block-body\s*\{[^}]*background:\s*var\(--ds-mermaid-canvas\)/);
-  assert.equal((stylesSource.match(/^\s*--ds-mermaid-canvas:/gm) ?? []).length, 2);
-  assert.doesNotMatch(stylesSource, /:root\[data-theme="light"\] \.mermaid-block-body/);
+  assert.match(stylesSource, /:root\[data-theme="light"\] \.mermaid-block/);
   assert.match(
     stylesSource,
     /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.mermaid-loading > span/,

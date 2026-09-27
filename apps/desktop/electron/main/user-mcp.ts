@@ -6,7 +6,6 @@ import {
 } from "@pi-desktop/shared";
 import { userMcpToolName } from "@pi-desktop/plugin-sdk";
 import type { McpServerClient, McpTool } from "./plugin-mcp";
-import { McpCallRegistry } from "./mcp-call-registry.ts";
 
 /**
  * MCP servers the user configured directly, with no plugin around them.
@@ -15,8 +14,7 @@ import { McpCallRegistry } from "./mcp-call-registry.ts";
  * server is connected the first time a session that can see it is assembled,
  * and its tool list is cached afterwards, so opening a second session on the
  * same project costs nothing. Editing or disabling a server drops its
- * connection. Previously discovered names survive transport loss as routing
- * hints, never as permission to call a tool absent from the new handshake.
+ * connection, because a stale tool list is worse than a missing one.
  */
 export type UserMcpToolDescriptor = {
   /** `mcp_<serverId>_<tool>`, the name the model calls. */
@@ -30,15 +28,10 @@ export type UserMcpToolDescriptor = {
 /** The slice of {@link McpServerClient} this runtime drives. */
 export type UserMcpClient = Pick<
   McpServerClient,
-  "connect" | "callTool" | "getTools" | "isConnected" | "close" | "ping"
+  "connect" | "callTool" | "getTools" | "isConnected" | "close"
 >;
 
 export type UserMcpClientConfig = ConstructorParameters<typeof McpServerClient>[0];
-
-export type UserMcpOAuthHandler = {
-  getValidAccessToken: (serverId: string) => Promise<string | null>;
-  hasOAuth: (serverId: string) => Promise<boolean>;
-};
 
 export type UserMcpRuntimeOptions = {
   /**
@@ -51,20 +44,16 @@ export type UserMcpRuntimeOptions = {
    * servers.
    */
   createClient: (config: UserMcpClientConfig) => UserMcpClient;
-  oauth?: UserMcpOAuthHandler;
   audit?: (entry: Record<string, unknown>) => void;
   log?: (level: "info" | "warn" | "error", message: string, data?: unknown) => void;
   connectTimeoutMs?: number;
   callTimeoutMs?: number;
-  discoveryTimeoutMs?: number;
 };
 
 type Entry = {
   record: McpServerRecord;
   client: UserMcpClient;
   status: McpServerStatus;
-  connecting?: Promise<McpTool[]>;
-  oauthToken?: string | null;
 };
 
 /**
@@ -78,11 +67,6 @@ const MAX_ACTIVE_SERVERS = 16;
 
 export class UserMcpRuntime {
   private entries = new Map<string, Entry>();
-  private statusRefreshes = new Map<string, Promise<void>>();
-  private readonly calls = new McpCallRegistry();
-  // Routing identity must survive a transport clearing its own tools on close.
-  // These names are hints only: dispatch revalidates the fresh handshake list.
-  private discoveredTools = new Map<string, McpTool[]>();
   private records: McpServerRecord[] = [];
   private options: UserMcpRuntimeOptions;
 
@@ -100,9 +84,6 @@ export class UserMcpRuntime {
   setRecords(records: McpServerRecord[]): void {
     this.records = records.map((record) => ({ ...record }));
     const byId = new Map(this.records.map((record) => [record.id, record]));
-    for (const id of this.discoveredTools.keys()) {
-      if (!byId.has(id)) this.discoveredTools.delete(id);
-    }
     for (const [id, entry] of [...this.entries]) {
       const next = byId.get(id);
       if (!next || configurationChanged(entry.record, next)) {
@@ -121,40 +102,6 @@ export class UserMcpRuntime {
   /** Per-server connection state for the Extensions page. */
   listStatuses(): McpServerStatus[] {
     return this.records.map((record) => this.statusFor(record.id));
-  }
-
-  /** Confirm ready remote connections when the settings page refreshes. */
-  async refreshStatuses(): Promise<McpServerStatus[]> {
-    await Promise.all([...this.entries].map(async ([id, entry]) => {
-      if (entry.record.transport === "stdio" || entry.status.state !== "ready") return;
-      let pending = this.statusRefreshes.get(id);
-      if (!pending) {
-        pending = (async () => {
-          try {
-            await entry.client.ping();
-          } catch (error) {
-            if (this.entries.get(id) !== entry) return;
-            // A settings probe must not abort a tool call already in flight.
-            // Test connection will close this client before retrying.
-            const message = error instanceof Error ? error.message : "mcp server did not respond";
-            entry.status = {
-              ...entry.status,
-              state: "failed",
-              toolCount: 0,
-              message: message.slice(0, 500),
-              updatedAt: Date.now(),
-            };
-          }
-        })();
-        this.statusRefreshes.set(id, pending);
-      }
-      try {
-        await pending;
-      } finally {
-        if (this.statusRefreshes.get(id) === pending) this.statusRefreshes.delete(id);
-      }
-    }));
-    return this.listStatuses();
   }
 
   statusFor(serverId: string): McpServerStatus {
@@ -200,7 +147,7 @@ export class UserMcpRuntime {
     return out;
   }
 
-  /** Whether a saved server advertised this name (not a readiness check). */
+  /** Whether a tool name belongs to this runtime at all. */
   hasTool(fullName: string): boolean {
     return this.findTool(fullName) !== undefined;
   }
@@ -215,16 +162,6 @@ export class UserMcpRuntime {
     fullName: string,
     args: unknown,
     projectPath: string | null | undefined,
-    sessionId?: string,
-  ): Promise<unknown> {
-    return this.calls.run(sessionId, (signal) => this.callToolActive(fullName, args, projectPath, signal));
-  }
-
-  private async callToolActive(
-    fullName: string,
-    args: unknown,
-    projectPath: string | null | undefined,
-    signal?: AbortSignal,
   ): Promise<unknown> {
     const found = this.findTool(fullName);
     if (!found) {
@@ -239,45 +176,17 @@ export class UserMcpRuntime {
         { errorCode: "TOOL_NOT_FOUND" },
       );
     }
-    await this.connect(record);
-    // Configuration or scope can change while the handshake is in flight.
-    const current = this.records.find((entry) => entry.id === found.serverId);
-    if (!current || !isActiveInProject(current, projectPath)) {
-      throw Object.assign(
-        new Error(`mcp server ${found.serverId} is not active for this session`),
-        { errorCode: "TOOL_NOT_FOUND" },
-      );
-    }
     const entry = this.entries.get(found.serverId);
-    if (
-      !entry || configurationChanged(record, current) ||
-      entry.status.state !== "ready" || !entry.client.isConnected()
-    ) {
+    if (!entry) {
+      await this.connect(record);
+    }
+    const client = this.entries.get(found.serverId)?.client;
+    if (!client) {
       throw Object.assign(new Error(`mcp server ${found.serverId} is unavailable`), {
         errorCode: "UNAVAILABLE",
       });
     }
-    if (!entry.client.getTools().some((tool) => tool.name === found.toolName)) {
-      throw Object.assign(new Error(`unknown mcp tool: ${fullName}`), {
-        errorCode: "TOOL_NOT_FOUND",
-      });
-    }
-    // Do not retry tools/call: a failed response may have followed a mutation.
-    try {
-      return await entry.client.callTool(found.toolName, args, signal);
-    } catch (error) {
-      const msg = (error as Error).message || "";
-      if (msg.includes("401") || (error as { status?: number }).status === 401) {
-        entry.status = {
-          ...entry.status,
-          state: "failed",
-          authRequired: true,
-          message: msg.slice(0, 500),
-          updatedAt: Date.now(),
-        };
-      }
-      throw error;
-    }
+    return client.callTool(found.toolName, args);
   }
 
   /**
@@ -304,31 +213,15 @@ export class UserMcpRuntime {
     return this.statusFor(serverId);
   }
 
-  /** Drop a cached connection and tools for a server. */
-  invalidate(serverId: string): void {
-    const existing = this.entries.get(serverId);
-    if (existing) {
-      existing.client.close();
-      this.entries.delete(serverId);
-    }
-    this.discoveredTools.delete(serverId);
-  }
-
   /** Drop every connection, e.g. on quit. */
   disposeAll(): void {
-    this.calls.cancelAll();
     for (const entry of this.entries.values()) entry.client.close();
     this.entries.clear();
-    this.discoveredTools.clear();
-  }
-
-  cancelSessionCalls(sessionId: string): void {
-    this.calls.cancelSession(sessionId);
   }
 
   private findTool(fullName: string): UserMcpToolDescriptor | undefined {
-    for (const [serverId, tools] of this.discoveredTools) {
-      for (const tool of tools) {
+    for (const [serverId, entry] of this.entries) {
+      for (const tool of entry.client.getTools()) {
         if (userMcpToolName(serverId, tool.name) === fullName) {
           return {
             fullName,
@@ -344,37 +237,13 @@ export class UserMcpRuntime {
   }
 
   private async connect(record: McpServerRecord): Promise<McpTool[]> {
-    let oauthToken: string | null = null;
-    if (record.transport === "http" && this.options.oauth) {
-      try {
-        oauthToken = await this.options.oauth.getValidAccessToken(record.id);
-      } catch {
-        oauthToken = null;
-      }
-    }
-
-    let existing = this.entries.get(record.id);
-    if (existing && record.transport === "http" && existing.oauthToken !== oauthToken) {
-      existing.client.close();
-      this.entries.delete(record.id);
-      existing = undefined;
-    }
-
-    if (existing?.connecting) return existing.connecting;
+    const existing = this.entries.get(record.id);
     if (existing?.client.isConnected()) return existing.client.getTools();
     // A server that already failed its handshake this run stays failed until the
     // user edits it or asks for a test, so every session assembly does not pay
     // the connect timeout again.
     if (existing?.status.state === "failed") return [];
-
-    const entry = existing ?? this.createEntry(record, oauthToken);
-    entry.connecting = this.handshake(record, entry).finally(() => {
-      entry.connecting = undefined;
-    });
-    return entry.connecting;
-  }
-
-  private async handshake(record: McpServerRecord, entry: Entry): Promise<McpTool[]> {
+    const entry = existing ?? this.createEntry(record);
     entry.status = {
       ...entry.status,
       state: "connecting",
@@ -382,31 +251,21 @@ export class UserMcpRuntime {
     };
     try {
       const tools = await entry.client.connect();
-      // An edited/deleted record must not resurrect a discarded connection.
-      if (this.entries.get(record.id) !== entry) {
-        entry.client.close();
-        return [];
-      }
-      this.discoveredTools.set(record.id, [...tools]);
       entry.status = {
         serverId: record.id,
         state: "ready",
         toolCount: tools.length,
         toolNames: tools.map((tool) => tool.name),
         updatedAt: Date.now(),
-        authRequired: false,
       };
       return tools;
     } catch (error) {
-      const msg = (error as Error).message || "";
-      const is401 = msg.includes("401");
       entry.status = {
         serverId: record.id,
         state: "failed",
         toolCount: 0,
-        message: msg.slice(0, 500),
+        message: (error as Error).message.slice(0, 500),
         updatedAt: Date.now(),
-        authRequired: is401,
       };
       this.options.log?.("warn", "user mcp server failed to connect", {
         serverId: record.id,
@@ -416,11 +275,7 @@ export class UserMcpRuntime {
     }
   }
 
-  private createEntry(record: McpServerRecord, oauthToken?: string | null): Entry {
-    const headers = {
-      ...(record.headers ?? {}),
-      ...(oauthToken ? { Authorization: `Bearer ${oauthToken}` } : {}),
-    };
+  private createEntry(record: McpServerRecord): Entry {
     const client = this.options.createClient({
       // No plugin owns this server; `rootPath` is only the child's cwd, and the
       // user's own command may live anywhere on the machine.
@@ -434,19 +289,17 @@ export class UserMcpRuntime {
         args: record.args ?? [],
         env: record.env ?? {},
         url: record.url,
-        headers,
+        headers: record.headers ?? {},
       },
-      values: record.transport === "stdio" ? (record.env ?? {}) : headers,
+      values: record.transport === "stdio" ? (record.env ?? {}) : (record.headers ?? {}),
       audit: this.options.audit,
       auditScope: "mcp",
       connectTimeoutMs: this.options.connectTimeoutMs,
       callTimeoutMs: this.options.callTimeoutMs,
-      discoveryTimeoutMs: this.options.discoveryTimeoutMs,
     });
     const entry: Entry = {
       record,
       client,
-      oauthToken,
       status: {
         serverId: record.id,
         state: "idle",

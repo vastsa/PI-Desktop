@@ -163,13 +163,6 @@
           stop: "Stop",
           external: "Open externally",
           placeholder: "Search or enter a URL",
-          loadingTitle: "Loading page…",
-          loadingBody: "Waiting for the website to respond. You can stop or enter another address.",
-          stoppedTitle: "Loading stopped",
-          stoppedBody: "Enter an address to try again.",
-          failedTitle: "Could not open this page",
-          failedBody: "Check the address or connection, then try again.",
-          localFileBody: "Only existing files inside this project's workspace can be opened.",
           emptyTitle: "No page open",
           emptyBody: "Enter an address, or preview an HTML file from the conversation.",
         },
@@ -180,21 +173,11 @@
           stop: "停止",
           external: "在外部打开",
           placeholder: "搜索或输入网址",
-          loadingTitle: "正在加载网页…",
-          loadingBody: "正在等待网站响应，可以停止加载或输入其他地址。",
-          stoppedTitle: "已停止加载",
-          stoppedBody: "输入网址可重新打开页面。",
-          failedTitle: "无法打开此页面",
-          failedBody: "请检查网址或网络连接，然后重试。",
-          localFileBody: "只能打开此项目工作区内已存在的文件。",
           emptyTitle: "尚未打开页面",
           emptyBody: "输入地址，或从对话预览 HTML 文件。",
         },
       };
 
-      let navigationRequest = 0;
-      let displayedContext = "";
-      let navigationContext;
       const t = (key) => copy[locale]?.[key] ?? copy.en[key] ?? key;
 
       const applyCopy = () => {
@@ -222,28 +205,15 @@
       };
 
       const paint = (state) => {
-        const context = state?.sessionId && state?.tabId
-          ? JSON.stringify([state.sessionId, state.tabId]) : displayedContext;
-        const contextChanged = context !== displayedContext;
-        displayedContext = context;
-        if (contextChanged) {
-          navigationRequest += 1;
-          navigationContext = { sessionId: state.sessionId, tabId: state.tabId };
-        }
-        started = Boolean(state?.url) && !state?.loadError;
-        empty.hidden = started && !state?.isLoading;
-        const phase = state?.loadError === "ERR_ABORTED" ? "stopped" : state?.loadError ? "failed" : state?.isLoading ? "loading" : "empty";
-        emptyTitle.textContent = t(`${phase}Title`);
-        emptyBody.textContent = state?.loadError === "LOCAL_FILE_NOT_ALLOWED"
-          ? t("localFileBody") : t(`${phase}Body`);
+        started = Boolean(state?.url);
+        empty.hidden = started;
         back.disabled = !state?.canGoBack;
         forward.disabled = !state?.canGoForward;
         reload.disabled = !started;
         external.disabled = !state?.url;
         reload.title = state?.isLoading ? t("stop") : t("reload");
         reload.setAttribute("aria-label", reload.title);
-        if (contextChanged || !inputFocused) input.value = state?.url ?? "";
-        reportHole();
+        if (!inputFocused && state?.url) input.value = state.url;
       };
 
       const reportHole = () => {
@@ -262,20 +232,17 @@
         event.preventDefault();
         const value = input.value.trim();
         if (!value) return;
-        const request = ++navigationRequest;
-        paint({ url: value, isLoading: true });
-        void bridge.invoke("browser.navigate", { url: value, ...navigationContext }).then((state) => {
-          if (request === navigationRequest && state) paint(state);
-        }).catch(() => {
-          if (request === navigationRequest) paint({ url: value, loadError: "navigation failed" });
-        });
+        started = true;
+        empty.hidden = true;
+        void bridge.invoke("browser.navigate", { url: value }).then(paint);
+        reportHole();
       });
-      back.addEventListener("click", () => void bridge.invoke("browser.action", { action: "back", ...navigationContext }));
-      forward.addEventListener("click", () => void bridge.invoke("browser.action", { action: "forward", ...navigationContext }));
+      back.addEventListener("click", () => void bridge.invoke("browser.action", { action: "back" }));
+      forward.addEventListener("click", () => void bridge.invoke("browser.action", { action: "forward" }));
       reload.addEventListener("click", () => {
-        void bridge.invoke("browser.action", { action: reload.title === t("stop") ? "stop" : "reload", ...navigationContext });
+        void bridge.invoke("browser.action", { action: reload.title === t("stop") ? "stop" : "reload" });
       });
-      external.addEventListener("click", () => void bridge.invoke("browser.openExternal", navigationContext));
+      external.addEventListener("click", () => void bridge.invoke("browser.openExternal"));
       input.addEventListener("focus", () => {
         inputFocused = true;
         input.select();
@@ -291,9 +258,7 @@
       bridge.on("browser:state", paint);
       bridge.on("appearance:changed", setBaseTheme);
       bridge.invoke("app.getAppearance").then(setBaseTheme).catch(() => setBaseTheme(null));
-      const initialRequest = navigationRequest;
       void bridge.invoke("browser.getState").then((state) => {
-        if (navigationRequest !== initialRequest) return;
         paint(state);
         reportHole();
       });

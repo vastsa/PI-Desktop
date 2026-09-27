@@ -1,11 +1,9 @@
-import { readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const mainSource = await readMainSource();
-const activationSource = await readFile(
-  new URL("../electron/main/bootstrap/app-activation.ts", import.meta.url),
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
   "utf8",
 );
 
@@ -48,9 +46,7 @@ test("a launch that loses the lock quits and boots nothing", () => {
 });
 
 test("a second launch surfaces the running window instead of a new one", () => {
-  const handler = activationSource.slice(
-    activationSource.indexOf('app.on("second-instance"'),
-  );
+  const handler = mainSource.slice(mainSource.indexOf('app.on("second-instance"'));
   const body = handler.slice(0, handler.indexOf("});") + 3);
   assert.match(body, /restoreMainWindow\(\)/);
   assert.doesNotMatch(body, /new BrowserWindow|createWindow\(\)/);

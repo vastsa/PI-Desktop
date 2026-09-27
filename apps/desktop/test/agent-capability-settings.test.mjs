@@ -1,9 +1,3 @@
-import {
-  readSettingsSourceSync,
-  readPluginsSourceSync,
-  readMainSourceSync,
-  readMainModuleSync,
-} from "./helpers/source-contracts.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,17 +10,18 @@ const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(here, "../src");
 const settingsDir = join(srcDir, "components/settings");
 const read = (path) => readFileSync(join(here, path), "utf8");
-const settingsPage = readSettingsSourceSync();
-const pluginsPage = readPluginsSourceSync();
+const settingsPage = read("../src/pages/SettingsPage.tsx");
+const pluginsPage = read("../src/pages/PluginsPage.tsx");
 const layout = read("../src/components/settings/AgentCapabilityLayout.tsx");
 const skills = read("../src/components/settings/AgentSkillsPage.tsx");
 const mcp = read("../src/components/settings/AgentMcpPage.tsx");
 const subagents = read("../src/components/settings/AgentSubagentsPage.tsx");
-const subagentSettings = read("../src/components/settings/subagent-settings.ts");
-const hostCollection = read("../src/hooks/use-host-collection.ts");
 const mcpEditor = read("../src/components/extensions/McpEditorSheet.tsx");
-const electron = readMainSourceSync();
-const skillImport = readMainModuleSync("ipc/skills-ipc.ts");
+const electron = read("../electron/main/index.ts");
+const skillImport = electron.slice(
+  electron.indexOf("handle(IPC.invoke.skillImport"),
+  electron.indexOf("handle(IPC.invoke.skillUpdate"),
+);
 const styles = await loadStyles();
 
 // Keep this suite source-oriented like the neighboring desktop contracts: it
@@ -55,11 +50,10 @@ test("skills and MCP filter one list by level instead of stacking two sections",
   }
   assert.doesNotMatch(layout, /AgentCapabilitySection|AgentCapabilityColumn/);
   assert.match(layout, /agent-capability-list/);
-  assert.match(layout, /<SegmentedControl[\s\S]*?value=\{filter\}/);
+  assert.match(layout, /role="radiogroup"/);
   assert.match(layout, /settings\.capabilityFilterAll/);
   // Subagents are global-only, so they get no level filter and no project.
   assert.doesNotMatch(subagents, /AgentProjectPicker|projectPath|CapabilityFilter/);
-  assert.doesNotMatch(subagentSettings, /AgentProjectPicker|projectPath|CapabilityFilter/);
   assert.match(subagents, /settings\.globalOnly/);
   assert.match(subagents, /t\("settings\.subagentsEmpty"\)/);
   assert.doesNotMatch(subagents, /settings\.subagents\.empty|t\("subagents\.empty"\)/);
@@ -116,9 +110,8 @@ test("capability surfaces use the shared settings hierarchy", () => {
 });
 
 test("the workbench reuses the shared segmented control instead of a third copy", () => {
-  assert.match(layout, /<SegmentedControl/);
-  assert.match(layout, /className="agent-capability-segment"/);
-  assert.match(layout, /itemClassName="agent-capability-segment-btn"/);
+  assert.match(layout, /"settings-segment", "agent-capability-segment"|settings-segment agent-capability-segment/);
+  assert.match(layout, /"settings-segment-item"/);
   // providers.css defines the shared segment and imports after settings.css, so
   // a bare local class would silently lose. Every local override must compound.
   for (const decl of [
@@ -134,13 +127,12 @@ test("the workbench reuses the shared segmented control instead of a third copy"
 });
 
 test("the empty state dresses its own glyph, not the icon in its CTA button", () => {
-  // Lucide icons set inline width/height. Padding the SVG itself crushed the
-  // stroke into a blank chip, and a descendant `svg` rule also ate the CTA
-  // button's icon. Chip the host Icon on a wrapper instead.
-  assert.match(layout, /agent-capability-empty-icon/);
-  assert.match(styles, /\.agent-capability-empty-icon\s*\{/);
+  // The empty state can carry a create button, and that button carries an icon.
+  // As a descendant selector this rule also turned that 14px glyph into a 34px
+  // faint chip with its own background, which hid the icon and stretched the
+  // button. Direct child only.
+  assert.match(styles, /\.agent-capability-empty > svg\s*\{/);
   assert.doesNotMatch(styles, /\.agent-capability-empty svg\s*\{/);
-  assert.doesNotMatch(styles, /\.agent-capability-empty > svg\s*\{/);
   // The pages that pass a CTA into the empty state are the ones that regressed.
   for (const page of [mcp, subagents]) {
     assert.match(page, /action=\{addButton\}|action=\{[a-zA-Z]*[Bb]utton\}/);
@@ -214,14 +206,11 @@ test("a busy row does not lock the page and a refresh does not flash skeletons",
     // Busy is scoped to the row that is working, never to the whole list.
     assert.match(source, /busy=\{busy/);
     assert.doesNotMatch(source, /disabled=\{loading \|\| busy/);
-    // Skeletons are first paint only; later loads dim the rows they already
-    // have. The shared collection hook owns that state for all three pages.
-    assert.match(source, /useHostCollection\(/);
-    assert.doesNotMatch(source, /hydrated = useRef\(false\)/);
+    // Skeletons are first paint only; later loads dim the rows they already have.
+    assert.match(source, /hydrated = useRef\(false\)/);
+    assert.match(source, /if \(hydrated\.current\) setRefreshing\(true\)/);
     assert.match(source, /refreshing=\{refreshing\}/);
   }
-  assert.match(hostCollection, /hydrated = useRef\(false\)/);
-  assert.match(hostCollection, /if \(hydrated\.current\) setRefreshing\(true\)/);
   assert.match(styles, /\.agent-capability-panel\.is-refreshing \.agent-capability-list\s*\{/);
   assert.match(layout, /settings\.capabilityRefreshing/);
 });
@@ -265,10 +254,7 @@ test("each capability page can create, edit, and delete without leaving settings
     assert.match(source, /settings\.capabilityRemoveConfirm/);
     assert.match(source, /danger: true/);
   }
-  // The arm and its expiry live in the shared hook the settings pages
-  // re-export from the layout, so one timeout covers every armed delete.
-  assert.match(layout, /export \{ useArmedDelete \} from "\.\.\/\.\.\/hooks\/use-armed-delete"/);
-  assert.match(read("../src/hooks/use-armed-delete.ts"), /ARMED_DELETE_MS/);
+  assert.match(layout, /DELETE_CONFIRM_MS/);
   assert.match(styles, /\.agent-capability-menu button\.danger\s*\{/);
 });
 
@@ -299,11 +285,9 @@ test("revealing a skill carries the level so project skills resolve", () => {
 test("skill import is one native file and is copied through the host", () => {
   assert.notEqual(skillImport, "", "skill import handler should be present");
   assert.match(skillImport, /properties:\s*\["openFile"\]/);
-  // Scan-and-import (a separate `skillImportScan` handler) opens a directory,
-  // but the single-file skill-import branch must never do that or select many.
-  assert.doesNotMatch(skillImport, /properties:\s*\[[^\]]*multiSelections/);
+  assert.doesNotMatch(skillImport, /properties:\s*\[[^\]]*(?:multiSelections|openDirectory)/);
   assert.match(skillImport, /host\.call\("skills\.import"/);
-  assert.match(read("../../../crates/host-core/src/user_skills.rs"), /fs::copy\(source, target\)/);
+  assert.match(read("../../../crates/host-core/src/user_skills.rs"), /fs::copy\(&source_path, &target\)/);
 });
 
 test("MCP management reuses the validated modal and blocks same-level duplicates", () => {
@@ -321,13 +305,7 @@ test("capability state stays outside capability files and active merge shadows d
   const skillRegistry = read("../../../crates/host-core/src/user_skills.rs");
   assert.match(capabilities, /agent-capabilities/);
   assert.match(mcpRegistry, /\.agents\/servers/);
-  // `.agents/skills` was only ever spelled in this file's own Rust test
-  // fixtures, which now live beside the module they cover
-  // (crates/host-core/src/user_skills/tests.rs). Pin the production pair
-  // instead: the skills leaf the registry resolves, and the `.agents` root
-  // capability_dir resolves it under.
-  assert.match(capabilities, /pub const AGENTS_DIR: &str = "\.agents";/);
-  assert.match(skillRegistry, /capability_dir\([^;]*"skills"/);
+  assert.match(skillRegistry, /\.agents\/skills/);
   assert.match(mcpRegistry, /existing\.id != record\.id/);
   assert.match(mcpRegistry, /if record\.enabled \{/);
   assert.match(skillRegistry, /existing\.id != record\.id/);
@@ -335,127 +313,7 @@ test("capability state stays outside capability files and active merge shadows d
 });
 
 test("all capability paths are agents roots, not legacy capability directories", () => {
-  for (const source of [layout, skills, mcp, subagents, subagentSettings, mcpEditor, electron]) {
+  for (const source of [layout, skills, mcp, subagents, mcpEditor, electron]) {
     assert.doesNotMatch(source, /\.pi\/(?:agents|skills|mcp)/);
   }
-});
-
-test("Settings lists shipped builtin subagents with a switch of their own", () => {
-  const api = read("../src/lib/api.ts");
-  assert.match(subagentSettings, /api\.subagentCatalog/);
-  assert.match(subagentSettings, /item\.source === "builtin"/);
-  assert.match(subagentSettings, /fallbackBuiltinDefinitions/);
-  assert.match(subagentSettings, /owned\.filter\(\(row\) => row\.enabled\)/);
-  assert.match(subagentSettings, /catalog\.builtins/);
-  assert.match(subagents, /extensions\.subagents\.sourceBuiltin/);
-  assert.match(subagents, /extensions\.subagents\.copy/);
-  assert.match(subagents, /draftFromDefinition/);
-  assert.match(subagents, /copyBuiltin/);
-  assert.match(subagents, /presetId: definition\.name/);
-  assert.match(subagents, /initialPresetId=\{editor\.presetId\}/);
-  // A builtin row keeps its badge and Copy as mine, gains the switch, and still
-  // has no Reveal or Delete: there is no file behind it.
-  const builtinRow = subagents.slice(
-    subagents.indexOf("const renderBuiltin"),
-    subagents.indexOf("const renderRow"),
-  );
-  assert.notEqual(builtinRow, "", "builtin row renderer should be present");
-  assert.match(builtinRow, /IconCopy/);
-  assert.match(builtinRow, /<CapabilityToggle/);
-  assert.match(builtinRow, /checked=\{definition\.enabled\}/);
-  assert.doesNotMatch(
-    builtinRow,
-    /setUserSubagentEnabled|revealSubagent|removeUserSubagent/,
-  );
-  // The switch writes builtin activation, flipping locally first like the rows
-  // that own a document do.
-  const toggle = subagents.slice(
-    subagents.indexOf("const toggleBuiltin = async"),
-    subagents.indexOf("const openEdit = async"),
-  );
-  assert.notEqual(toggle, "", "builtin toggle should be present");
-  assert.match(toggle, /api\.setBuiltinSubagentEnabled\(handle, next\)/);
-  assert.match(toggle, /enabled: next/);
-  assert.doesNotMatch(toggle.slice(0, toggle.indexOf("catch")), /await load\(\)/);
-  assert.match(toggle, /catch[\s\S]*?enabled: builtin\.enabled/);
-  assert.match(api, /setBuiltinSubagentEnabled: \(id: string, enabled: boolean\) =>/);
-});
-
-test("a capability can be moved between the global and a project level", () => {
-  const api = read("../src/lib/api.ts");
-  const protocol = read("../../../packages/shared/src/protocol.ts");
-  const sharedTypes = read("../../../packages/shared/src/types/capabilities.ts");
-  const mcpIpc = readMainModuleSync("ipc/mcp-ipc.ts");
-  const rpc = read("../../../crates/host-core/src/rpc/mod.rs");
-  const capabilities = read("../../../crates/host-core/src/agent_capabilities.rs");
-  const mcpRegistry = read("../../../crates/host-core/src/mcp_servers.rs");
-  const skillRegistry = read("../../../crates/host-core/src/user_skills.rs");
-
-  // Both ends travel with the request, so a global source that names a project
-  // as its enablement context is never mistaken for the destination.
-  assert.match(
-    sharedTypes,
-    /export type AgentCapabilityMove = \{[\s\S]*?from: AgentCapabilityTarget;[\s\S]*?to: AgentCapabilityTarget;/,
-  );
-  assert.match(protocol, /mcpTransfer: "pi-desktop\/mcp\/transfer"/);
-  assert.match(protocol, /skillTransfer: "pi-desktop\/skill\/transfer"/);
-  assert.match(api, /transferMcpServer: \(move: AgentCapabilityMove\) =>/);
-  assert.match(api, /transferUserSkill: \(move: AgentCapabilityMove\) =>/);
-  assert.match(mcpIpc, /host\.call<\{ server: McpServerRecord \}>\("mcp\.transfer", payload\)/);
-  assert.match(
-    skillImport,
-    /host\.call<\{ skill: UserSkillRecord \}>\("skills\.transfer", payload\)/,
-  );
-  assert.match(rpc, /"mcp\.transfer" =>/);
-  assert.match(rpc, /"skills\.transfer" =>/);
-
-  // The host moves the document instead of copying it, so the source level
-  // stops listing it, and the enabled value follows it to the new level. The
-  // state entry dropped is the source owner's, never another project's.
-  assert.match(capabilities, /pub fn set_moved_capability_state\(/);
-  assert.match(
-    capabilities,
-    /state\.forget\(kind, source_level, source_id, source_project_path\)\?;/,
-  );
-  assert.match(capabilities, /pub fn move_capability_file\(/);
-  assert.match(mcpRegistry, /pub fn transfer\(/);
-  assert.match(skillRegistry, /pub fn transfer\(/);
-  // A destination that already owns the id or name keeps both by renaming.
-  assert.match(capabilities, /pub fn suffixed_capability_id\(/);
-  assert.match(capabilities, /pub fn suffixed_display_name\(/);
-  // A directory-shaped skill carries its sibling resources, so the directory is
-  // the unit, not the one markdown file.
-  assert.match(skillRegistry, /fn directory_skill_root\(/);
-  assert.match(skillRegistry, /copy_directory_tree\(dir, &target_unit, true\)/);
-  // Renaming must not reformat the document it edits.
-  assert.match(skillRegistry, /fn rewrite_document_name\(/);
-  assert.doesNotMatch(
-    skillRegistry.slice(
-      skillRegistry.indexOf("pub fn transfer("),
-      skillRegistry.indexOf("pub fn new(data_dir"),
-    ),
-    /render_document/,
-  );
-});
-
-test("the move action offers a level only when there is a destination", () => {
-  for (const source of [skills, mcp]) {
-    assert.match(source, /settings\.capabilityMoveToGlobal/);
-    assert.match(source, /settings\.capabilityMoveToProject/);
-    assert.match(source, /settings\.capabilityMovedRenamed/);
-    assert.match(source, /IconArrowUpDown/);
-    // The project picker owns the destination, so a global row has nowhere to
-    // go until a project is selected; a project row always has Global.
-    assert.match(source, /moveTarget\[level === "global" \? "project" : "global"\]/);
-    assert.match(source, /showToast\(t\("settings\.selectProjectFirst"\)/);
-  }
-});
-
-test("MCP OAuth subscribe is owned by a ref cleaned up on unmount", () => {
-  const mcpIpc = readMainModuleSync("ipc/mcp-ipc.ts");
-  assert.match(mcp, /pendingOAuthRef/);
-  assert.match(mcp, /useEffect\(\(\) => \{/);
-  assert.match(mcp, /pendingOAuthRef\.current\?\.unsubscribe\(\)/);
-  assert.match(mcp, /api\.onMcpOAuth\(/);
-  assert.match(mcpIpc, /oauth\.start\(server\.id, server\.url, server\)/);
 });

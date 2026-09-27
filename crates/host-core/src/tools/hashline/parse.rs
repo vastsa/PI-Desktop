@@ -128,23 +128,6 @@ pub fn parse_ops(ops: &str) -> Result<ParsedOps, ParseError> {
                         body,
                         register: None,
                     });
-                } else if register.is_none() {
-                    let next_non_empty = lines[idx..]
-                        .iter()
-                        .find(|line| !line.trim().is_empty())
-                        .copied();
-                    if next_non_empty.is_some_and(|line| line.starts_with('+')) {
-                        return Err(ParseError::new(
-                            "EDIT_PARSE_FAILED",
-                            format!(
-                                "PUT header `{raw}` is missing a trailing `:` before + body rows; use `{raw}:`"
-                            ),
-                        ));
-                    }
-                    return Err(ParseError::new(
-                        "EDIT_PARSE_FAILED",
-                        "PUT without a body must paste a register (`PUT <1 @name`)",
-                    ));
                 } else {
                     parsed.push(ParsedOp::Put {
                         locator,
@@ -210,6 +193,12 @@ fn parse_header(raw: &str) -> Result<(ParsedOp, bool), ParseError> {
                 return Err(ParseError::new(
                     "EDIT_PARSE_FAILED",
                     format!("unexpected token in PUT header: {raw}"),
+                ));
+            }
+            if !colon && register.is_none() {
+                return Err(ParseError::new(
+                    "EDIT_PARSE_FAILED",
+                    "PUT without a body must paste a register (`PUT <1 @name`)",
                 ));
             }
             Ok((
@@ -382,6 +371,10 @@ pub fn mv_dest(ops: &ParsedOps) -> Option<&str> {
     })
 }
 
+pub fn is_rem(ops: &ParsedOps) -> bool {
+    ops.ops.iter().any(|op| matches!(op, ParsedOp::Rem))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,21 +409,6 @@ mod tests {
             parse_ops("PUT 1.=1:\n").unwrap_err().code,
             "EDIT_PARSE_FAILED"
         );
-        assert_eq!(
-            parse_ops("PUT 1.=1\n").unwrap_err().message,
-            "PUT without a body must paste a register (`PUT <1 @name`)"
-        );
-    }
-
-    #[test]
-    fn explains_missing_put_body_delimiter() {
-        let error = parse_ops("PUT 48.=48\n+replacement\n").unwrap_err();
-
-        assert_eq!(error.code, "EDIT_PARSE_FAILED");
-        assert_eq!(
-            error.message,
-            "PUT header `PUT 48.=48` is missing a trailing `:` before + body rows; use `PUT 48.=48:`"
-        );
     }
 
     #[test]
@@ -440,6 +418,6 @@ mod tests {
         assert_eq!(parsed.header_tag.as_deref(), Some("AB12"));
         assert!(matches!(parsed.ops[0], ParsedOp::Cut { .. }));
         assert!(matches!(parsed.ops[1], ParsedOp::Mv { .. }));
-        assert!(matches!(parse_ops("REM\n").unwrap().ops[0], ParsedOp::Rem));
+        assert!(is_rem(&parse_ops("REM\n").unwrap()));
     }
 }

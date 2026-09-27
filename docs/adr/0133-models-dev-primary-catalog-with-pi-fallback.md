@@ -1,6 +1,5 @@
-# ADR 0133: Use models.dev as the primary model catalog with pi-ai fallback
 
-- Status: Superseded by ADR 0134
+- Status: Accepted
 - Date: 2026-08-29
 - Deciders: PI-Desktop core
 - Amends: ADR 0027, D136, D243

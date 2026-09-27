@@ -73,32 +73,13 @@ accept_prompt
  -> turn_end
 ```
 
-A turn reaches one of three terminal reasons — `completed`, `aborted`, or
-`error` — matching the `aborted` / `error` rows in section 1. The terminal
-reason is decided once: an abort records its decision before the cancel request
-is issued, so a later `agent_end` cannot restate an aborted turn as completed.
-Terminal events are attributed by turn identity, not by session: a terminal
-event whose turn no longer owns the session changes neither the current turn's
-state nor its resources, and late message and tool rows are still recorded as
-history. The host announces the terminal state once per started turn through
-the `session:turnEnded` plugin event (see ADR 0252,
-`docs/adr/0252-plugin-host-turn-end-event.md`).
-
-A steering input is judged by the same identity: one that names a turn which was
-cancelled, has started finalizing, or no longer owns the session is refused as a
-turn that has ended.
-
 ## 3. Transition rules
 
 1. Only one active turn per session
 2. A direct host prompt is rejected with `AGENT_BUSY` while
-   running/waiting_permission. The renderer's Send-while-running path pushes
-   the next prompt into the Host-owned turn queue (schema v15, D375 / D386 /
-   ADR 0213) through `agent/queue/push` and mirrors the durable entries from
-   `agent/event/queueChanged`; the Agent Host module releases one entry after
-   `agent_end`, holds a restored queue until the owner attaches, and moves an
-   entry to the head on `agent/queue/prioritize`, so normal user sends do not
-   surface `AGENT_BUSY`.
+   running/waiting_permission. The renderer's Send-while-running path stores
+   the next prompt in its per-session in-memory queue instead and releases it
+   only after `agent_end`, so normal user sends do not surface `AGENT_BUSY`.
 3. A graceful stop completes the current assistant/tool boundary as a normal
    `completed` turn before the renderer releases a queued prompt.
 4. Abort from running or waiting_permission is allowed. Renderer smart Stop
@@ -121,12 +102,11 @@ turn that has ended.
    calls are no-ops. Renderer terminal lifecycle events update the transcript
    and turn result card; the sidebar terminal mark is derived only from the
    corresponding unread notification, never from `agent_end` alone.
-10. Whole-session fork is idle-only. A Desktop message-scoped fork may copy
-   a completed assistant prefix during a later turn, provided no indexed row in
-   the prefix belongs to a running turn. The source continues; the child begins
-   idle with no turn or waiting-permission state. Other busy forks return host
-   `CONFLICT` / IPC `AGENT_BUSY`; native Pi keeps its ownership/idle guard.
-   No refused fork produces a partial child.
+10. Fork is allowed only while the source is idle. The child begins idle with
+   no turn or waiting-permission state. Electron returns `AGENT_BUSY` for its
+   active runtime guard and normalizes the host's persisted running-turn
+   `CONFLICT` fallback to the same IPC error. Neither path produces a partial
+   child.
 11. Supplying `throughMessageId` changes only the snapshot boundary. Assistant
     Fork/Edit still creates a new idle session id with no shared turn,
     permission wait, runtime, or provider-cache state (D134).
@@ -218,8 +198,8 @@ transcript-file line first, index transaction second.
    transcript-event or workspace-root crossover
 5. each unseen completed/failed turn produces exactly one notification record
    while a visible-current result or aborted turn produces none
-6. a fork starts as an independent idle session; a busy Desktop source can
-   fork only a completed assistant prefix outside its running turn
+6. an idle fork starts as an independent idle session; a busy source cannot
+   produce a child
 7. a message-scoped fork excludes later rows and begins with no source runtime
    or provider-cache state
 8. a running session can queue removable FIFO prompts per session; Send now

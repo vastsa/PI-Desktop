@@ -17,14 +17,12 @@ import {
   type ReactNode,
 } from "react";
 import ReactMarkdown, { type Components, type Options } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import {
-  advanceMarkdownBlocks,
-  emptyMarkdownBlockCache,
-  markdownRemarkPlugins,
-} from "../lib/markdown-blocks";
+import { lexer } from "marked";
 import { useTranslation } from "react-i18next";
 import type { ThemedToken } from "shiki";
 import "katex/dist/katex.min.css";
@@ -38,30 +36,10 @@ import {
   IconImage,
   IconWorkflow,
 } from "./icons";
-import { TooltipButton } from "./ui";
-import { ContextMenu, useContextMenu } from "./ContextMenu";
-import { MarkdownTable } from "./MarkdownTable";
-import { markdownTableData } from "../lib/markdown-table";
+import { createPortal } from "react-dom";
 import { api } from "../lib/api";
-import { openHttpUrl } from "../lib/open-http-url";
-import {
-  rehypeSourcePositions,
-  sourcePositionProps,
-  type SourcePositionProps,
-} from "../lib/markdown-source";
-import {
-  normalizeLatexMathDelimiters,
-  remarkLatexBracketDisplay,
-} from "../lib/latex-math";
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
-import { absoluteImagePath, remarkLocalImagePaths } from "../lib/markdown-image-paths";
-import { remarkNormalizeWrappedMarkdownLinkDestinations } from "../lib/markdown-link-destinations";
-import { useOpenChatFileRef } from "../hooks/use-preview-target";
-import {
-  useChatFileMenuItems,
-  type ChatFileMenuTarget,
-} from "../hooks/use-chat-file-menu";
 import {
   remarkChatFileLinks,
   resolvePreviewTarget,
@@ -88,12 +66,10 @@ import {
 /*
  * Streaming-optimized chat markdown renderer.
  *
- * The source is split with the rendering grammar, and each block renders
- * through a memoized <ReactMarkdown>. Streaming re-parses the growing tail
- * while retaining the completed prefix; a long unclosed block still has to
- * be parsed in full until its boundary is known. A source carrying link or
- * footnote definitions opts out of splitting altogether — `markdown-blocks`
- * states why, and why that trade is the right one.
+ * The source is split into top-level markdown blocks with marked's lexer and
+ * each block renders through a memoized <ReactMarkdown>. While streaming only
+ * the tail block's raw text changes, so every settled block skips re-parsing
+ * entirely — total work stays linear in message length instead of quadratic.
  */
 
 export function useCopy() {
@@ -215,21 +191,21 @@ export function HighlightedCode({
   );
 }
 
-function CodeBlock({ code, lang, ...position }: { code: string; lang: string } & SourcePositionProps) {
+function CodeBlock({ code, lang }: { code: string; lang: string }) {
   const { t } = useTranslation();
   const { copied, copy } = useCopy();
   return (
-    <div className="code-block" {...position}>
+    <div className="code-block">
       <div className="code-block-head">
         <span className="code-block-lang">{lang || "text"}</span>
-        <TooltipButton
+        <button
           className={`code-copy-btn ${copied ? "copied" : ""}`}
-          tooltip={copied ? t("chat.copied") : t("chat.copy")}
-          ariaLabel={t("chat.copy")}
+          aria-label={t("chat.copy")}
+          title={copied ? t("chat.copied") : t("chat.copy")}
           onClick={() => copy(code)}
         >
           {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
-        </TooltipButton>
+        </button>
       </div>
       <pre>
         <code>
@@ -263,7 +239,7 @@ function useNearViewport(ref: RefObject<HTMLDivElement | null>): boolean {
   return nearViewport;
 }
 
-function MermaidBlock({ code, ...position }: { code: string } & SourcePositionProps) {
+function MermaidBlock({ code }: { code: string }) {
   const { t } = useTranslation();
   const theme = useThemeMode();
   const reactId = useId();
@@ -326,7 +302,6 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
   return (
     <div
       ref={rootRef}
-      {...position}
       className={`mermaid-block${error ? " error" : ""}`}
       aria-busy={loading}
     >
@@ -337,13 +312,13 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
         </span>
         <div className="mermaid-block-actions">
           {svg && !error ? (
-            <TooltipButton
+            <button
               type="button"
               className={`mermaid-action-btn${showSource ? " active" : ""}`}
-              tooltip={
+              aria-label={
                 showSource ? t("chat.showDiagram") : t("chat.showDiagramSource")
               }
-              ariaLabel={
+              title={
                 showSource ? t("chat.showDiagram") : t("chat.showDiagramSource")
               }
               aria-pressed={showSource}
@@ -354,17 +329,17 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
               ) : (
                 <IconCode size={13} />
               )}
-            </TooltipButton>
+            </button>
           ) : null}
-          <TooltipButton
+          <button
             type="button"
             className={`mermaid-action-btn${copied ? " copied" : ""}`}
-            tooltip={copied ? t("chat.copied") : t("chat.copyDiagramSource")}
-            ariaLabel={t("chat.copyDiagramSource")}
+            aria-label={t("chat.copyDiagramSource")}
+            title={copied ? t("chat.copied") : t("chat.copyDiagramSource")}
             onClick={() => copy(code)}
           >
             {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
-          </TooltipButton>
+          </button>
         </div>
       </div>
       <div className="mermaid-block-body">
@@ -407,26 +382,9 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
 const MarkdownBlockContext = createContext({
   closedFence: false,
   renderDiagrams: true,
-  originalRaw: "",
 });
 
 const MarkdownBaseDirContext = createContext("");
-
-/**
- * File references inside one rendered markdown tree share a single menu.
- *
- * A chip, a link and a local image all name files the same way and offer the
- * same items (`useChatFileMenuItems`), so the tree owns one surface instead of
- * one per reference. The default is `null` for a tree rendered outside
- * `Markdown`; a reference there keeps the platform's own menu rather than
- * offering an action that could not run.
- */
-const MarkdownFileMenuContext = createContext<OpenMarkdownFileMenu | null>(null);
-
-type OpenMarkdownFileMenu = (
-  event: React.MouseEvent<HTMLElement>,
-  target: ChatFileMenuTarget,
-) => void;
 
 function extractCode(children: ReactNode): { code: string; lang: string } | null {
   const element = Array.isArray(children)
@@ -451,7 +409,7 @@ function PreBlock({
   node: _node,
   children,
   ...rest
-}: ComponentProps<"pre"> & SourcePositionProps & { node?: unknown }) {
+}: ComponentProps<"pre"> & { node?: unknown }) {
   const { closedFence, renderDiagrams } = useContext(MarkdownBlockContext);
   const info = extractCode(children);
   if (!info) return <pre {...rest}>{children}</pre>;
@@ -460,9 +418,9 @@ function PreBlock({
     closedFence &&
     info.lang.toLowerCase() === "mermaid"
   ) {
-    return <MermaidBlock code={info.code} {...sourcePositionProps(rest)} />;
+    return <MermaidBlock code={info.code} />;
   }
-  return <CodeBlock code={info.code} lang={info.lang} {...sourcePositionProps(rest)} />;
+  return <CodeBlock code={info.code} lang={info.lang} />;
 }
 
 /** Preview-in-panel tooltip for file and URL chat references. */
@@ -484,8 +442,8 @@ function InlineCode({
 }: ComponentProps<"code"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openFileRef = useOpenChatFileRef();
-  const openFileMenu = useContext(MarkdownFileMenuContext);
+  const openFile = useAppStore((s) => s.openFileInWorkPanel);
+  const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const text = typeof children === "string" ? children : null;
   const target =
     text && !className && !text.includes("\n")
@@ -506,15 +464,7 @@ function InlineCode({
       className="chat-code-link"
       title={target.kind === "file" ? fileTitle : urlTitle}
       onClick={() =>
-        target.kind === "file"
-          ? openFileRef(text ?? target.path, baseDir)
-          : openHttpUrl(target.url)
-      }
-      onContextMenu={
-        target.kind === "file" && openFileMenu
-          ? (event) =>
-              openFileMenu(event, { path: text ?? target.path, baseDir })
-          : undefined
+        target.kind === "file" ? openFile(target.path) : openUrl(target.url)
       }
     >
       <code className={className} {...rest}>
@@ -533,20 +483,78 @@ function Anchor({
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openFileRef = useOpenChatFileRef();
-  const openFileMenu = useContext(MarkdownFileMenuContext);
+  const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const showToast = useAppStore((s) => s.showToast);
+  const linkOpenTarget = useAppStore((s) => s.settings?.linkOpenTarget ?? "workpanel");
 
-  const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLAnchorElement | null>(null);
 
-  /*
-    Copying reports through the toast host: the menu closes the moment the item
-    runs, so there is no button left to carry its own copied state.
-  */
-  const copyLink = async (target: string) => {
+  useEffect(() => {
+    if (!menuPosition) return;
+    const close = () => setMenuPosition(null);
+    const onPointerDown = (event: PointerEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+      requestAnimationFrame(() => anchorRef.current?.focus());
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKeyDown);
+    const focusFrame = requestAnimationFrame(() => {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+        ?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuPosition]);
+
+  const onContextMenu = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!href || !/^https?:\/\//i.test(href)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const x = Math.min(e.clientX, window.innerWidth - 200);
+    const y = Math.min(e.clientY + 4, window.innerHeight - 150);
+    setMenuPosition({ top: y, left: x });
+  };
+
+  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not(:disabled)',
+      ),
+    );
+    if (!items.length) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
+            items.length;
+    items[next]?.focus();
+  };
+
+  const copyLink = async () => {
+    setMenuPosition(null);
+    if (!href) return;
     try {
-      await navigator.clipboard.writeText(target);
+      await navigator.clipboard.writeText(href);
       showToast(t("settings.linkCopied", { defaultValue: "Link copied to clipboard" }), {
         variant: "success",
       });
@@ -558,79 +566,30 @@ function Anchor({
     }
   };
 
-  /*
-    A link keeps the renderer's own menu instead of the platform's so both
-    destinations the app can send it to stay one press away. The surface is the
-    shared pointer-anchored menu, which measures before it reveals, clamps inside
-    the viewport, and owns dismissal and arrow-key navigation; only the items are
-    link-specific. A file link has one destination of its own, and that item is
-    the one the tree's menu already carries.
-  */
-  const onContextMenu = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!href) return;
-    if (!/^https?:\/\//i.test(href)) {
-      /*
-        A file link names the same reference a chip does, so it offers the same
-        action on the file's folder. `./` and `../` resolve against the markdown
-        file on screen, which is the base this row already holds.
-      */
-      const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
-      if (!rel || !openFileMenu) return;
-      openFileMenu(event, { path: rel, baseDir });
-      return;
-    }
-    const target = href;
-    openContextMenu(event, {
-      items: [
-        {
-          id: "open-external",
-          label: t("settings.linkContextMenuOpenExternal", {
-            defaultValue: "Open in default browser",
-          }),
-          icon: <IconExternal size={14} />,
-          onSelect: () => void api.browserOpenExternal(target),
-        },
-        {
-          id: "open-workpanel",
-          label: t("settings.linkContextMenuOpenWorkpanel", {
-            defaultValue: "Open in work panel",
-          }),
-          icon: <IconGlobe size={14} />,
-          onSelect: () => openUrl(target),
-        },
-        {
-          id: "copy-address",
-          label: t("settings.linkContextMenuCopy", {
-            defaultValue: "Copy link address",
-          }),
-          icon: <IconCopy size={14} />,
-          separatorBefore: true,
-          onSelect: () => void copyLink(target),
-        },
-      ],
-    });
-  };
-
-  // Plain click follows Link open destination. Modifier clicks fall through
-  // to _blank, which main routes to shell.openExternal.
-
+  // Plain click previews in the work panel (or external browser based on setting).
+  // Modified clicks fall through to _blank, which main routes to shell.openExternal.
   const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (!href) return;
     if (/^https?:\/\//i.test(href)) {
       e.preventDefault();
-      openHttpUrl(href);
+      if (linkOpenTarget === "external") {
+        void api.browserOpenExternal(href);
+      } else {
+        openUrl(href);
+      }
       return;
     }
     const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
     if (rel) {
       e.preventDefault();
-      openFileRef(rel, baseDir);
+      openFile(rel);
     }
   };
   return (
     <>
       <a
+        ref={anchorRef}
         {...rest}
         href={href}
         onClick={onClick}
@@ -640,7 +599,52 @@ function Anchor({
       >
         {children}
       </a>
-      <ContextMenu state={contextMenu} onClose={closeContextMenu} />
+      {menuPosition &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="sidebar-row-menu sidebar-floating-menu"
+            role="menu"
+            onKeyDown={onMenuKeyDown}
+            style={{
+              top: menuPosition.top,
+              left: menuPosition.left,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuPosition(null);
+                if (href) void api.browserOpenExternal(href);
+              }}
+            >
+              <IconExternal size={14} />
+              {t("settings.linkContextMenuOpenExternal", { defaultValue: "Open in default browser" })}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuPosition(null);
+                if (href) openUrl(href);
+              }}
+            >
+              <IconGlobe size={14} />
+              {t("settings.linkContextMenuOpenWorkpanel", { defaultValue: "Open in work panel" })}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => void copyLink()}
+            >
+              <IconCopy size={14} />
+              {t("settings.linkContextMenuCopy", { defaultValue: "Copy link address" })}
+            </button>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
@@ -656,11 +660,11 @@ function MarkdownImage({
   src,
   alt,
   ...rest
-}: ComponentProps<"img"> & SourcePositionProps & { node?: unknown }) {
+}: ComponentProps<"img"> & { node?: unknown }) {
   const root = useAppStore((s) => s.workspace?.path);
   const baseDir = useContext(MarkdownBaseDirContext);
-  const openFileRef = useOpenChatFileRef();
-  const openFileMenu = useContext(MarkdownFileMenuContext);
+  const openFile = useAppStore((s) => s.openFileInWorkPanel);
+  const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const fileTitle = usePreviewTitle("file");
   const urlTitle = usePreviewTitle("url");
   const source = typeof src === "string" ? src : "";
@@ -671,20 +675,10 @@ function MarkdownImage({
     !isRemote && /^attachments\/[0-9a-f]{64}$/i.test(decoded.replace(/\\/g, "/"))
       ? decoded.replace(/\\/g, "/")
       : null;
-  const localRef = (isRemote ? null : absoluteImagePath(source)) ?? rel ?? attachmentRef;
+  const localRef = rel ?? attachmentRef;
   // Always run the hook before any branch so hook order stays stable when a
   // streaming src flips between remote and local. Remote images pass null.
   const dataUrl = useReferencedImageDataUrl(isRemote ? null : localRef);
-
-  /*
-    A file the renderer can already show is still a file whose folder the user
-    may want, so a local image carries the same menu its chip fallback does.
-  */
-  const onLocalContextMenu =
-    localRef && openFileMenu
-      ? (event: React.MouseEvent<HTMLElement>) =>
-          openFileMenu(event, { path: localRef, baseDir })
-      : undefined;
   if (isRemote) {
     return (
       <img
@@ -693,7 +687,7 @@ function MarkdownImage({
         alt={alt ?? ""}
         className="chat-image-remote"
         title={urlTitle}
-        onClick={() => openHttpUrl(source)}
+        onClick={() => openUrl(source)}
       />
     );
   }
@@ -705,8 +699,7 @@ function MarkdownImage({
         alt={alt ?? ""}
         className="chat-image-local"
         title={rel ? fileTitle : source}
-        onClick={localRef ? () => openFileRef(localRef, baseDir) : undefined}
-        onContextMenu={onLocalContextMenu}
+        onClick={localRef ? () => openFile(localRef) : undefined}
       />
     );
   }
@@ -715,10 +708,8 @@ function MarkdownImage({
       <button
         type="button"
         className="chat-image-chip"
-        {...sourcePositionProps(rest)}
         title={fileTitle}
-        onClick={() => openFileRef(localRef, baseDir)}
-        onContextMenu={onLocalContextMenu}
+        onClick={() => openFile(localRef)}
       >
         <IconImage size={14} aria-hidden />
         <span>{alt || localRef.split("/").pop()}</span>
@@ -729,21 +720,15 @@ function MarkdownImage({
 }
 
 function Table({
-  node,
+  node: _node,
   children,
   ...rest
-}: ComponentProps<"table"> & { node?: Parameters<typeof markdownTableData>[0] }) {
-  const { originalRaw } = useContext(MarkdownBlockContext);
-  const data = useMemo(
-    () => node ? markdownTableData(node, originalRaw) : null,
-    [node, originalRaw],
-  );
-  const table = (
+}: ComponentProps<"table"> & { node?: unknown }) {
+  return (
     <div className="table-wrap">
       <table {...rest}>{children}</table>
     </div>
   );
-  return data ? <MarkdownTable {...data}>{table}</MarkdownTable> : table;
 }
 
 /** Inline audio player for audio URLs in markdown. */
@@ -784,24 +769,13 @@ const markdownComponents: Components = {
   table: Table,
 };
 
-// The grammar the block splitter parses with, plus the renderer-only rewrite
-// of local image paths. `remarkLocalImagePaths` transforms URLs and moves no
-// block boundary, so the splitter has no reason to run it.
-const staticRemarkPlugins = [
-  ...markdownRemarkPlugins,
-  remarkNormalizeWrappedMarkdownLinkDestinations,
-  remarkLocalImagePaths,
-];
+const staticRemarkPlugins = [remarkGfm, remarkMath];
 
-// Extend the default schema only for the media elements rendered above, plus
-// `remark-math`'s math classes on `<code>`: the default `language-*` allow list
-// drops `math-display`, which leaves `rehype-katex` rendering TeX `\[ … \]`
-// (single-line or mid-paragraph) as inline math instead of display math.
+// Extend the default schema only for the media elements rendered above.
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    code: [["className", /^language-./, "math-inline", "math-display"]],
     img: [...(defaultSchema.attributes?.img || []), "src", "alt", "title", "className"],
     audio: ["src", "controls", "preload", "className"],
     video: ["src", "controls", "preload", "className", "poster"],
@@ -819,29 +793,56 @@ const rehypePlugins = [rehypeRaw, [rehypeSanitize, sanitizeSchema], rehypeKatex]
 
 /* ---------- block splitting ---------- */
 
+function parseBlocks(source: string): string[] {
+  const blocks: string[] = [];
+  for (const token of lexer(source)) {
+    const raw = token.raw;
+    if (!raw) continue;
+    // Fold blank-line runs into the previous block so joining blocks
+    // reconstructs the source and block boundaries stay append-stable.
+    if (token.type === "space" && blocks.length > 0) {
+      blocks[blocks.length - 1] += raw;
+    } else {
+      blocks.push(raw);
+    }
+  }
+  return blocks;
+}
+
 /*
- * Splitting and its streaming reuse live in `markdown-blocks`, which owns the
- * rules a slice has to satisfy before it can be parsed on its own.
+ * Incremental re-lex: while streaming appends text, all blocks before the
+ * last are settled (markdown blocks never merge backwards across a completed
+ * boundary), so only the tail block is re-lexed each frame.
  */
 function useBlocks(source: string): string[] {
-  const cacheRef = useRef(emptyMarkdownBlockCache);
+  const cacheRef = useRef({ consumed: "", blocks: [] as string[] });
   return useMemo(() => {
-    cacheRef.current = advanceMarkdownBlocks(cacheRef.current, source);
-    return cacheRef.current.blocks;
+    const cache = cacheRef.current;
+    let stable: string[] = [];
+    let tail = source;
+    if (
+      cache.blocks.length > 0 &&
+      source.length >= cache.consumed.length &&
+      source.startsWith(cache.consumed)
+    ) {
+      stable = cache.blocks.slice(0, -1);
+      const lastStart =
+        cache.consumed.length - cache.blocks[cache.blocks.length - 1].length;
+      tail = source.slice(lastStart);
+    }
+    const blocks = tail ? [...stable, ...parseBlocks(tail)] : stable;
+    cacheRef.current = { consumed: source, blocks };
+    return blocks;
   }, [source]);
 }
 
 const Block = memo(function MarkdownBlock({
   raw,
-  originalRaw,
-  sourceOffset,
   renderDiagrams,
   workspaceRoot,
   baseDir,
 }: {
   raw: string;
-  originalRaw: string;
-  sourceOffset: number;
   renderDiagrams: boolean;
   workspaceRoot?: string | null;
   baseDir?: string;
@@ -850,30 +851,21 @@ const Block = memo(function MarkdownBlock({
     () => ({
       closedFence: isClosedFencedCodeBlock(raw),
       renderDiagrams,
-      originalRaw,
     }),
-    [raw, originalRaw, renderDiagrams],
+    [raw, renderDiagrams],
   );
   const remarkPlugins = useMemo(
     () => [
       ...staticRemarkPlugins,
-      // `originalRaw` still carries the TeX `\[ … \]` delimiters so the
-      // bracket-display plugin can promote them to display math after
-      // remark-math parses the pre-normalized `$$ … $$` form.
-      remarkLatexBracketDisplay(originalRaw),
       remarkChatFileLinks(workspaceRoot, baseDir),
     ],
-    [originalRaw, workspaceRoot, baseDir],
-  );
-  const positionedRehypePlugins = useMemo(
-    () => [...rehypePlugins!, [rehypeSourcePositions, { offset: sourceOffset }]] as Options["rehypePlugins"],
-    [sourceOffset],
+    [workspaceRoot, baseDir],
   );
   return (
     <MarkdownBlockContext.Provider value={context}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={positionedRehypePlugins}
+        rehypePlugins={rehypePlugins}
         components={markdownComponents}
       >
         {raw}
@@ -893,53 +885,18 @@ export const Markdown = memo(function Markdown({
   baseDir?: string;
 }) {
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
-
-  /*
-    One menu for every file reference in this tree. Its blocks are memoized and
-    rendered through the same component map, so the surface is asked for by the
-    reference the pointer chose and owned here, where it outlives a block that
-    streaming may replace.
-  */
-  const fileMenuItems = useChatFileMenuItems();
-  const {
-    contextMenu: fileMenu,
-    openContextMenu: openFileMenu,
-    closeContextMenu: closeFileMenu,
-  } = useContextMenu();
-  const openMarkdownFileMenu = useCallback<OpenMarkdownFileMenu>(
-    (event, target) => openFileMenu(event, { items: fileMenuItems(target) }),
-    [fileMenuItems, openFileMenu],
-  );
-  // Keep normalization length-preserving so source anchors and the bracket
-  // display plugin still address the original text. Block splitting uses the
-  // same math grammar as rendering, including unclosed streaming math blocks.
-  const normalizedSource = useMemo(
-    () => normalizeLatexMathDelimiters(source),
-    [source],
-  );
-  const blocks = useBlocks(normalizedSource);
-  let sourceOffset = 0;
+  const blocks = useBlocks(source);
   return (
-    <MarkdownFileMenuContext.Provider value={openMarkdownFileMenu}>
-      <MarkdownBaseDirContext.Provider value={baseDir ?? ""}>
-        {blocks.map((raw, i) => {
-          const start = sourceOffset;
-          sourceOffset = start + raw.length;
-          const originalRaw = source.slice(start, start + raw.length);
-          return (
-            <Block
-              key={i}
-              raw={raw}
-              originalRaw={originalRaw}
-              sourceOffset={start}
-              renderDiagrams={renderDiagrams}
-              workspaceRoot={workspaceRoot}
-              baseDir={baseDir}
-            />
-          );
-        })}
-      </MarkdownBaseDirContext.Provider>
-      <ContextMenu state={fileMenu} onClose={closeFileMenu} />
-    </MarkdownFileMenuContext.Provider>
+    <MarkdownBaseDirContext.Provider value={baseDir ?? ""}>
+      {blocks.map((raw, i) => (
+        <Block
+          key={i}
+          raw={raw}
+          renderDiagrams={renderDiagrams}
+          workspaceRoot={workspaceRoot}
+          baseDir={baseDir}
+        />
+      ))}
+    </MarkdownBaseDirContext.Provider>
   );
 });

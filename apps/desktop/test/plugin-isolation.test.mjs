@@ -52,7 +52,6 @@ function startHostProcess(pluginDir, manifest, hostApi) {
   const pending = new Map();
   const received = [];
   let nextId = 1;
-  let nextInvocationId = 1;
   const api = {
     "commands.register": () => ({ ok: true }),
     "commands.unregister": () => ({ ok: true }),
@@ -124,14 +123,7 @@ function startHostProcess(pluginDir, manifest, hostApi) {
         main: manifest.main,
         manifest,
       }),
-    call: (method, payload, timeoutMs) => request({
-      t: "call",
-      method,
-      payload,
-      ...(method === "tool.execute"
-        ? { invocationId: `test-invocation-${nextInvocationId++}` }
-        : {}),
-    }, timeoutMs),
+    call: (method, payload, timeoutMs) => request({ t: "call", method, payload }, timeoutMs),
     stop: () => child.kill(),
   };
 }

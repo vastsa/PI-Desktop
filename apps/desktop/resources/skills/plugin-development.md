@@ -119,7 +119,7 @@ user.
   `agent.tool.register`, `agent.complete`, `session.read`, `mcp.server.local`,
   `mcp.server.remote`
 - Medium: `fs.read`, `clipboard.read`, `clipboard.write`, `shell.openExternal`,
-  `background.service`, `bus.publish`, `bus.subscribe`, `models.list`, `usage.read`
+  `background.service`, `bus.publish`, `bus.subscribe`, `models.list`
 - Low: `ui.panel`, `ui.theme`, `notify` (Toast and best-effort native notifications)
 
 ### File and network range
@@ -168,8 +168,7 @@ them — `fs.write.workspace` ends up able to write nothing until the manifest s
 permission result is best-effort (`granted`, `denied`, `unknown`, or
 `unsupported`) because Electron has no cross-platform read-only native
 notification permission query. Native plugin notifications do not enter the
-durable task notification inbox. Clicking a delivered notification restores and
-focuses the main window but does not activate a session.
+durable task notification inbox.
 
 Supported host API groups are `app`, `plugin`, `commands`, `ui`, `workspace`, `fs`, `agent`,
 `services`, `bus`, `clipboard`, `shell`, `net`, and `events`. There is no host archive,

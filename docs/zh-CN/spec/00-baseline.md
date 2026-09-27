@@ -5,7 +5,7 @@
 
 - 基线版本：`0.4.16`
 - 日期：`2026-08-14`
-- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v15 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
+- 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v14 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
 - 语言政策：**英语优先**
 - 后端策略：**Rust 主机核心 + pi 代理 sidecar**
 
@@ -74,21 +74,17 @@
 > （SIL OFL 1.1）字体——Geist、Inter、Noto Sans SC 和 LXGW WenKai——
 > 随应用本地发布并附带许可证文本，系统已安装字体由 Electron
 > 主进程通过新增的白名单通道 `pi-desktop/app/systemFonts` 枚举。
-> D598 / ADR 0298 后来移除了内置字体：应用不再自带任何字体，
-> 选择器只提供「跟随系统」与系统已安装字体，每个字体栈以纯系统 CJK 回退层收尾。
 > 主机协议或存储架构没有更改。
 
 > 当前基线后的修订通过 ADR 0200 / D367 增加了 P0/P1 宿主拥有的插件会话
 > API，通过 ADR 0201 / D368 增加显式项目 id 与宿主拥有的会话刷新，并通过
 > ADR 0203 / D370（D372 收紧目录与绑定）增加默认关闭的本地 MCP 控制面。协议
-> 仍为 v11；schema v15 在 v14（插件来源 sidecar 和软删除标记）之上增加 Host 拥有的回合队列
-> （D386 / ADR 0213）。会话变更、任意重新
+> 仍为 v11；schema v14 增加插件来源 sidecar 和软删除标记。会话变更、任意重新
 > 绑定、provider/model 绑定、批量删除和标签操作仍延期；导入会话只有在显式提供
 > `projectId` 时才允许进行这项有限的项目绑定。本地控制面只绑定回环，不会重新打开
 > 被延后的远程 Gateway / WebUI 范围。
 > ADR 0205 / D373 定义未来 MVP 后 Agent Host、Gateway 和多绑定控制面的目标；
-> D374 将其修订为单一规范 WebSocket 绑定、无头 Agent Host 模块和完整本地审批词汇；
-> D375 将 SSH 隧道远端 Host 排在首位，Gateway 与浏览器访问不排期。
+> D376 将其修订为单一规范 WebSocket 绑定、无头 Agent Host 模块和完整本地审批词汇。
 > 当前基线仍排除远程 Gateway / WebUI 控制。
 
 ## 冻结的决定

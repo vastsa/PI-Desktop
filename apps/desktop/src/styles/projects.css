@@ -1,16 +1,33 @@
 /*
-  Settings → Project archive — one toolbar (sort, search, add project) and a
-  one-column workbench (D455). Nothing is expanded until a row is clicked, and
-  clicking that row again closes it.
-
-  The workbench is an iOS-style inset grouped index: a quiet section label, then
-  rows that read left-to-right as identity (glyph, name, path) and right-to-left
-  as detail (sessions, last active, disclosure). The open row is the header of
-  its own card, so its detail opens under the row and never repeats the name.
-  Separators are spacing, never rules — tiles carry the structure (D297).
+  Settings → Project archive — one quiet description line, one toolbar (sort,
+  search, add project), and one elevated panel whose pinned / projects /
+  archived groups are in-panel header strips carrying their own counts, plus
+  the project rows and their expanded detail pane.
 */
 
 /* ---------- Settings → Project archive ---------- */
+.settings-project-archive {
+  gap: 14px;
+}
+
+/* One quiet description line, same as `.agent-capability-intro` on the sibling
+   capability pages. The panel below carries the per-group counts. */
+.projects-intro {
+  display: flex;
+  max-width: 92ch;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: -12px 0 0;
+  padding: 0 1px;
+}
+
+.projects-intro-desc {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+}
 
 /*
   One toolbar owns sort, search, the live match count, and the primary action.
@@ -47,7 +64,6 @@
 }
 
 .projects-result-count {
-  flex: 0 0 auto;
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
   font-variant-numeric: tabular-nums;
@@ -92,7 +108,7 @@
 /*
   One search field for the whole index. The fill lives on the wrapper because
   the clear button sits inside it, matching `.agent-capability-search-wrap`.
-  Filled at rest, accent ring only while focused (D297/D297 search language).
+  Filled at rest, accent ring only while focused (D297).
 */
 .projects-search-wrap {
   display: inline-flex;
@@ -103,7 +119,7 @@
   align-items: center;
   gap: 6px;
   border-radius: var(--radius-full);
-  background: var(--ds-field-inset-bg);
+  background: var(--ds-tile-hover);
   padding: 0 11px;
   color: var(--ds-text-muted);
   transition:
@@ -112,8 +128,8 @@
 }
 
 .projects-search-wrap:focus-within {
-  background: var(--ds-field-inset-focus-bg);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
+  background: var(--ds-raised);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 40%, transparent);
 }
 
 .projects-search-wrap > svg {
@@ -164,14 +180,14 @@
   color: var(--ds-text-primary);
 }
 
-/* Section label above its rows: Pinned, All projects, Archived — and how many.
-   One quiet label line, never a tinted band (D297). */
+/* Group label above its rows: Pinned, Projects, Archived — and how many. It
+   is a bare label, not a banded strip (D297). */
 .projects-group-head {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 8px;
-  padding: 0 4px 6px;
+  padding: 0 4px 8px;
 }
 
 .projects-group-label {
@@ -182,14 +198,6 @@
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-:lang(zh-CN) .projects-group-label,
-:lang(zh-TW) .projects-group-label,
-:lang(zh-CN) .projects-detail-label,
-:lang(zh-TW) .projects-detail-label {
-  letter-spacing: var(--tracking-normal);
-  text-transform: none;
 }
 
 .projects-group-count {
@@ -203,25 +211,27 @@
   line-height: var(--leading-normal);
 }
 
-.projects-workbench {
+/*
+  The index is a stack of groups, each a label above soft tile rows with a
+  small gap between them (D297) — the same language as the Extensions page.
+  The shared `.settings-panel` frame is neutralised here so nothing clips the
+  row menus and no ring wraps the stack.
+*/
+.projects-list {
   display: flex;
   min-width: 0;
   flex-direction: column;
+  gap: 20px;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
 }
 
-.projects-workbench:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 80%, transparent);
-}
-
-.projects-index {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 16px;
-  outline: none;
-}
-
+/*
+  Each group is a labelled section wrapping its own `role="list"`, so the label
+  stays out of the list's required-children contract while the rows keep their
+  group name in the accessibility tree.
+*/
 .projects-group,
 .projects-group-rows {
   min-width: 0;
@@ -233,31 +243,22 @@
   gap: 4px;
 }
 
-/* One project is one tile; selecting it grows the tile into the card that
-   carries its detail below the row. */
 .projects-row-block {
   position: relative;
   border-radius: var(--radius-md-plus);
   background: var(--ds-tile);
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .projects-row-block:hover,
-.projects-row-block:focus-within {
+.projects-row-block:focus-within,
+.projects-row-block.menu-open {
   background: var(--ds-tile-hover);
 }
 
-/* The live project is the deepest tile; the row whose card is open carries a
-   quiet accent ring. Nothing else is highlighted, so a closed index is quiet. */
+/* The open project is the deepest tile; no accent bar. */
 .projects-row-block.active {
   background: var(--ds-tile-deep);
-}
-
-.projects-row-block.open {
-  background: var(--ds-tile-deep);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 34%, transparent);
 }
 
 /* Archived rows stay listed; the section label carries the state, so the row is
@@ -272,21 +273,12 @@
 
 .projects-row {
   display: flex;
-  width: 100%;
   align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 8px 14px;
-  text-align: left;
-  border-radius: var(--radius-md-plus);
-  cursor: pointer;
+  gap: 6px;
+  padding: 9px 14px 9px 8px;
 }
 
-.projects-row:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ds-accent) 80%, transparent);
-}
-
+.projects-expand,
 .projects-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -296,15 +288,47 @@
   border-radius: var(--radius-2xs);
   color: var(--ds-text-faint);
   flex: 0 0 auto;
-  cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
+    color var(--motion-duration-fast) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
+.projects-expand:hover,
 .projects-icon-btn:hover {
   background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
   color: var(--ds-text-primary);
+}
+
+.projects-expand[aria-expanded="true"] {
+  color: var(--ds-text-secondary);
+}
+
+/* Row actions stay quiet until the row is hovered, focused, or has its menu open. */
+.projects-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.projects-row-block:hover .projects-row-actions,
+.projects-row-block:focus-within .projects-row-actions,
+.projects-row-block.menu-open .projects-row-actions {
+  opacity: 1;
+}
+
+.projects-name-btn {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  text-align: left;
+  border-radius: var(--radius-md);
+  padding: 4px 6px;
 }
 
 .projects-glyph {
@@ -314,16 +338,15 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  color: var(--gray-0);
+  color: #fff;
   flex: 0 0 auto;
 }
 
 .projects-name-copy {
   min-width: 0;
   display: flex;
-  flex: 1;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
 }
 
 .projects-name-title {
@@ -332,7 +355,7 @@
   gap: 6px;
   min-width: 0;
   color: var(--ds-text-primary);
-  font-size: var(--text-md);
+  font-size: var(--text-md-plus);
   font-weight: var(--font-weight-medium-plus);
   line-height: var(--leading-tight);
 }
@@ -344,67 +367,33 @@
   white-space: nowrap;
 }
 
-/* The path is the row's second line: it is what disambiguates two projects with
-   the same display name, so it is readable without selecting the row. */
+.projects-name-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-normal);
+}
+
 .projects-name-path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ds-text-muted);
   font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
-  line-height: var(--leading-normal);
 }
 
-/* Trailing detail column, mirrored against the identity column. */
-/* Trailing detail is one line, mirrored against the identity column. */
-.projects-row-meta {
-  display: flex;
-  min-width: 0;
-  flex: 0 0 auto;
-  align-items: baseline;
-  gap: 8px;
-  margin-left: 4px;
-}
-
-.projects-name-sessions,
-.projects-updated {
-  white-space: nowrap;
-  font-size: var(--text-xs-plus);
-  line-height: var(--leading-normal);
-  font-variant-numeric: tabular-nums;
-}
-
+.projects-name-branch,
 .projects-name-sessions {
-  color: var(--ds-text-muted);
-}
-
-/*
-  Muted, not faint: `--ds-text-faint` is #afafaf in light mode, which lands at
-  2.2:1 on the card and makes a timestamp the user actually reads unreadable.
-  Quietness comes from size and the trailing column instead.
-*/
-.projects-updated {
-  color: var(--ds-text-muted);
-}
-
-/* Disclosure indicator: points at the row, turns down once its detail is open. */
-.projects-row-disclosure {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  color: var(--ds-text-muted);
-  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+  white-space: nowrap;
 }
 
-/* Keyed on the open card, not on selection: a selected row whose card was
-   closed again must point right, or the indicator lies about the state. */
-.projects-row-block.open .projects-row-disclosure {
-  transform: rotate(90deg);
+.projects-meta-dot {
+  flex: 0 0 auto;
+  color: var(--ds-text-faint);
 }
 
 .projects-tag {
@@ -426,30 +415,48 @@
   color: var(--ds-accent);
 }
 
+.projects-tag.is-pin {
+  padding: 2px;
+  color: var(--ds-text-muted);
+}
+
 .projects-tag.is-archived {
   background: var(--ds-tile-deep);
   color: var(--ds-text-muted);
 }
 
-/* ---------- Selected project card ---------- */
-
-/*
-  The detail panel is inset to the row's text column, so its sections read as
-  children of the project above them rather than as a second surface.
-*/
-.projects-inspector {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 14px 12px 54px;
-  animation: projects-detail-in var(--motion-duration-fast) var(--motion-ease-out);
+.projects-updated {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
-@keyframes projects-detail-in {
+.projects-menu-wrap {
+  position: relative;
+}
+
+.projects-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 5px);
+  z-index: 20;
+  min-width: 196px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 12px 32px rgba(0, 0, 0, 0.2);
+  padding: 5px;
+  animation: projects-menu-in var(--motion-duration-fast) var(--motion-ease-out) both;
+}
+
+@keyframes projects-menu-in {
   from {
     opacity: 0;
-    transform: translateY(-3px);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
@@ -457,48 +464,56 @@
   }
 }
 
-/* Actions sit on one quiet bar above the read-only facts. */
-.projects-detail-bar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  min-height: 26px;
-  min-width: 0;
+@media (prefers-reduced-motion: reduce) {
+  .projects-menu {
+    animation: none;
+  }
 }
 
-.projects-detail-facts {
+.projects-menu button {
   display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
+  width: 100%;
   align-items: center;
-  gap: 4px 12px;
+  gap: 9px;
+  text-align: left;
+  border-radius: var(--radius-2xs);
+  padding: 7px 10px;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.projects-detail-roots {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-
-.projects-detail-root {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 5px;
+.projects-menu button > svg {
   color: var(--ds-text-muted);
-  font-size: var(--text-xs);
+  flex: 0 0 auto;
 }
 
-.projects-detail-root.is-branch {
-  font-family: var(--font-mono);
+.projects-menu button:hover {
+  background: var(--ds-bg-hover);
 }
 
-.projects-detail-root span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.projects-menu button.danger,
+.projects-menu button.danger > svg {
+  color: var(--ds-error);
+}
+
+.projects-menu button.danger:hover {
+  background: color-mix(in oklab, var(--ds-error) 12%, transparent);
+}
+
+/* Menu sections are separated by space, not a rule (D297). */
+.projects-menu-sep {
+  height: 6px;
+}
+
+/*
+  Left padding keeps the session list under the project name column, not under
+  the glyph. The pane is a sibling of `.projects-row`, so the offset is measured
+  from the row block's own edge and nothing is subtracted: row padding 8 +
+  expand 26 + row gap 6 + name-button padding 6 + glyph 28 + name gap 11 = 85.
+*/
+.projects-row-detail {
+  padding: 0 14px 14px 85px;
 }
 
 .projects-detail-header {
@@ -506,14 +521,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 20px;
-  margin-top: 2px;
+  min-height: 26px;
+  margin-bottom: 2px;
 }
 
 .projects-detail-label {
   color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-strong);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
 }
@@ -524,12 +539,11 @@
 }
 
 .projects-detail-more {
-  align-self: flex-start;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .projects-detail-empty {
-  padding: 2px 2px 4px;
+  padding: 4px 2px 6px;
   color: var(--ds-text-muted);
   font-size: var(--text-sm-plus);
 }
@@ -556,10 +570,9 @@
   gap: 9px;
   text-align: left;
   border-radius: var(--radius-2xs);
-  padding: 6px 8px;
+  padding: 7px 8px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm-plus);
-  cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
@@ -581,7 +594,7 @@
   flex: 0 0 auto;
   margin-left: auto;
   padding-left: 10px;
-  color: var(--ds-text-faint);
+  color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -596,11 +609,6 @@
   color: var(--ds-text-muted);
 }
 
-.projects-detail-task:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ds-accent) 70%, transparent);
-}
-
 .projects-detail-task-rename {
   display: inline-flex;
   width: 26px;
@@ -611,7 +619,6 @@
   border-radius: var(--radius-2xs);
   color: var(--ds-text-muted);
   opacity: 0;
-  cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out),
@@ -627,89 +634,6 @@
 .projects-detail-task-rename:hover {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
-}
-
-/* ---------- Index menu ---------- */
-
-.projects-menu-wrap {
-  position: relative;
-}
-
-.projects-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: auto;
-  bottom: auto;
-  z-index: 20;
-  min-width: 196px;
-  border-radius: var(--radius-md-plus);
-  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
-  box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 12px 32px rgba(0, 0, 0, 0.2);
-  padding: 5px;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.projects-menu.is-open {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
-  animation: projects-menu-in var(--motion-duration-fast) var(--motion-ease-out) both;
-}
-
-@keyframes projects-menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.projects-menu button {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 9px;
-  text-align: left;
-  border-radius: var(--radius-2xs);
-  padding: 7px 10px;
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
-  cursor: pointer;
-  transition: background var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.projects-menu button > svg {
-  color: var(--ds-text-muted);
-  flex: 0 0 auto;
-}
-
-.projects-menu button:hover {
-  background: var(--ds-bg-hover);
-}
-
-.projects-menu button.danger,
-.projects-menu button.danger > svg {
-  color: var(--ds-error);
-}
-
-.projects-menu button.danger:hover {
-  background: color-mix(in oklab, var(--ds-error) 12%, transparent);
-}
-
-/* An armed delete item names its second click, so the swap stays obvious. */
-.projects-menu button.danger.is-armed {
-  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
-}
-
-/* Menu sections are separated by space, not a rule (D297). */
-.projects-menu-sep {
-  height: 6px;
 }
 
 /* Quiet in-panel empty state: centered glyph + copy, no decorative frame. */
@@ -755,7 +679,7 @@
   margin-top: 3px;
 }
 
-/* Narrow content panes stack the toolbar above the workbench. */
+/* Narrow content panes stack the toolbar instead of wrapping it mid-row. */
 @media (max-width: 720px) {
   .projects-toolbar {
     align-items: stretch;
@@ -782,94 +706,4 @@
   .projects-toolbar-actions {
     margin-left: 0;
   }
-
-  .projects-row-meta {
-    display: none;
-  }
-
-  .projects-inspector {
-    padding-left: 14px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .projects-row-block,
-  .projects-icon-btn,
-  .projects-search-wrap,
-  .projects-row-disclosure,
-  .projects-detail-task,
-  .projects-detail-task-rename {
-    transition: none;
-  }
-
-  .projects-inspector,
-  .projects-menu.is-open {
-    animation: none;
-  }
-}
-
-/*
-  Destructive project deletion reuses the project-instructions dialog shell;
-  only the width, the warning line, and the confirm button are specific here.
-  The width rule is compound because providers.css imports later.
-*/
-.dialog.project-delete-dialog {
-  width: min(100%, 480px);
-}
-
-.project-delete-dialog .project-instructions-dialog-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.project-delete-dialog-body {
-  overflow-wrap: anywhere;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.project-delete-dialog-warning {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
-  color: var(--ds-error);
-  font-size: var(--text-sm);
-  line-height: var(--leading-body);
-}
-
-.project-delete-dialog-warning svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-/*
-  The running-session line is a "these will be stopped" notice, not the
-  destructive warning above it, so it carries the warning tone.
-*/
-.project-delete-dialog-running {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
-  color: var(--ds-warning);
-  font-size: var(--text-sm);
-  line-height: var(--leading-body);
-}
-
-.project-delete-dialog-running svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.project-delete-dialog-confirm {
-  background: var(--ds-error);
-  border-color: var(--ds-error);
-  color: var(--ds-bg-primary);
-}
-
-.project-delete-dialog-confirm:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--ds-error) 85%, var(--gray-1000));
 }

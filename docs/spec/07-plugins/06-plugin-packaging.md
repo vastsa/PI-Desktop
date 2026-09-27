@@ -97,7 +97,7 @@ Minimal spec:
 
 - Source can be TypeScript
 - Compile to directly loadable js/html/css before distribution
-- Do not rely on the host to run `npm install` for ordinary `.piplug` or development plugins (MVP does not pull dependencies at install time). The explicit Plugins → Import pi extension flow is the documented exception; its bounded npm behavior is defined in `16-trusted-extensions.md` §3.2.
+- Do not rely on the host to run `npm install` on the spot (MVP does not support pulling dependencies at install time)
 
 If a plugin needs third-party libraries:
 - Bundle them into the plugin directory yourself

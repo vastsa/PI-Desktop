@@ -12,12 +12,7 @@
  */
 
 import { publishedThinkingLevels } from "./thinking-levels.js";
-import type {
-  ModelLimitSource,
-  ModelBinding,
-  ModelInfo,
-  ThinkingLevel,
-} from "./types.js";
+import type { ModelBinding, ModelInfo, ThinkingLevel } from "./types.js";
 
 /** Wire protocol a provider row speaks. Mirrors the runtime adapter list. */
 export const API_STYLES = [
@@ -142,151 +137,33 @@ export const CATALOG_DEFAULT_MAX_TOKENS = 8_192;
 /**
  * Resolve a model's effective context window.
  *
- * `source` is the stored provenance of the configured value. A `catalog`
- * binding follows the published record, so a models.dev correction reaches a
- * binding that was saved before the fix; a `user` binding is the user's own
- * number and is never replaced, even when it equals the generic fallback.
- *
- * A binding without provenance keeps its stored value. Older records cannot
- * distinguish an intentional 128k override from the generic seed, so inferring
- * catalog ownership would risk overwriting a user choice.
+ * Older provider bindings were seeded with the generic 128k fallback before a
+ * catalog record was available. Treat that value as inherited when a published
+ * model limit is now known, while preserving every non-default value as an
+ * explicit Advanced override.
  */
 export function effectiveContextWindow(
   publishedContextWindow?: number | null,
   configuredContextWindow?: number | null,
-  source?: ModelLimitSource | null,
 ): number | undefined {
-  const published = positiveTokenCount(publishedContextWindow);
-  const configured = positiveTokenCount(configuredContextWindow);
+  const published =
+    typeof publishedContextWindow === "number" &&
+    Number.isFinite(publishedContextWindow) &&
+    publishedContextWindow > 0
+      ? Math.round(publishedContextWindow)
+      : undefined;
+  const configured =
+    typeof configuredContextWindow === "number" &&
+    Number.isFinite(configuredContextWindow) &&
+    configuredContextWindow > 0
+      ? Math.round(configuredContextWindow)
+      : undefined;
 
-  if (source === "catalog") return published ?? configured;
-  if (source === "user") return configured ?? published;
   if (configured === undefined) return published;
-  return configured;
-}
-
-/**
- * Resolve a model's effective output cap.
- *
- * Output-cap provenance is independent from context-window provenance: a
- * `catalog` follows the published record and `user` is never replaced. A
- * legacy binding with no output-cap marker preserves its stored value, including
- * 8.2k: older records cannot distinguish that seed from an intentional user
- * choice. Changing a context window never changes output-cap ownership.
- */
-export function effectiveMaxTokens(
-  publishedMaxTokens?: number | null,
-  configuredMaxTokens?: number | null,
-  source?: ModelLimitSource | null,
-): number | undefined {
-  const published = positiveTokenCount(publishedMaxTokens);
-  const configured = positiveTokenCount(configuredMaxTokens);
-
-  if (source === "catalog") return published ?? configured;
-  if (source === "user") return configured ?? published;
-  if (configured === undefined) return published;
-  return configured;
-}
-
-/** Token counts are whole positive numbers; anything else means "unset". */
-function positiveTokenCount(value?: number | null): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return undefined;
+  if (published !== undefined && configured === CATALOG_DEFAULT_CONTEXT_WINDOW) {
+    return published;
   }
-  return Math.round(value);
-}
-
-/** Binding fields the limits resolver reads and rewrites. */
-type BindingLimits = Pick<ModelBinding, "contextWindow"> &
-  Partial<Pick<ModelBinding, "maxTokens" | "contextWindowSource" | "maxTokensSource">>;
-
-/**
- * Resolve a saved binding's limits against its catalog baseline for
- * `modelConfigWithBinding`.
- *
- * That runtime helper applies the historical two-argument rule, which cannot
- * tell a hand-edited 128k from the generic seed, and it takes the binding's
- * output cap as written. Callers that know where a stored value came from
- * resolve both limits first: the returned baseline and binding carry the
- * source-aware window and cap, so a saved row reads and runs with the number the
- * catalog publishes once the model resolves — a row seeded before the record
- * existed stops showing the generic 8.2k output. An exported binding keeps the
- * catalog as its provenance whenever the catalog supplied the value, so a later
- * settings save cannot freeze an inherited value into a snapshot of its own.
- *
- * A `generic` baseline is the fallback for a lookup that found no record, not
- * a published limit, so it never replaces a saved limit: a catalog snapshot
- * taken while the record still resolved stays in force.
- */
-export function resolveBindingLimits<
-  C extends { contextWindow?: number | null; maxTokens?: number | null; source?: string },
-  B extends BindingLimits,
->(catalogConfig: C, binding: B): {
-  catalogConfig: C;
-  binding: B & Partial<Pick<ModelBinding, "contextWindowSource" | "maxTokensSource">>;
-};
-export function resolveBindingLimits<
-  C extends { contextWindow?: number | null; maxTokens?: number | null; source?: string },
-  B extends BindingLimits,
->(
-  catalogConfig: C,
-  binding: B | null | undefined,
-): {
-  catalogConfig: C;
-  binding: (B & Partial<Pick<ModelBinding, "contextWindowSource" | "maxTokensSource">>) | null | undefined;
-};
-export function resolveBindingLimits(
-  catalogConfig: { contextWindow?: number | null; maxTokens?: number | null; source?: string },
-  binding: BindingLimits | null | undefined,
-): {
-  catalogConfig: { contextWindow?: number | null; maxTokens?: number | null; source?: string };
-  binding: BindingLimits | null | undefined;
-} {
-  if (!binding) return { catalogConfig, binding };
-  const publishedRecord = catalogConfig.source !== "generic";
-  const published = publishedRecord
-    ? positiveTokenCount(catalogConfig.contextWindow)
-    : undefined;
-  const publishedMax = publishedRecord
-    ? positiveTokenCount(catalogConfig.maxTokens)
-    : undefined;
-  const contextWindowSource = binding.contextWindowSource ?? "user";
-  const resolved = effectiveContextWindow(
-    published,
-    binding.contextWindow,
-    contextWindowSource,
-  );
-  // Older rows lack independent output provenance, so preserve their stored cap
-  // rather than guessing whether the generic seed was a deliberate user choice.
-  const maxTokensSource = binding.maxTokensSource ?? "user";
-  const resolvedMax = effectiveMaxTokens(publishedMax, binding.maxTokens, maxTokensSource);
-  const resolvedMaxSource = maxTokensSource;
-  if (resolved === undefined && resolvedMax === undefined) {
-    return { catalogConfig, binding };
-  }
-  const inherited = contextWindowSource === "catalog" && published !== undefined;
-  return {
-    catalogConfig: {
-      ...catalogConfig,
-      ...(resolved !== undefined ? { contextWindow: resolved } : {}),
-      ...(resolvedMax !== undefined ? { maxTokens: resolvedMax } : {}),
-    },
-    binding: {
-      ...binding,
-      ...(resolved !== undefined
-        ? {
-            contextWindow: resolved,
-            contextWindowSource: inherited ? "catalog" as const : contextWindowSource,
-          }
-        : {}),
-      ...(resolvedMax !== undefined
-        ? {
-            maxTokens: resolvedMax,
-            ...(resolvedMaxSource ? { maxTokensSource: resolvedMaxSource } : {}),
-          }
-        : {}),
-    },
-  };
+  return configured;
 }
 
 /**
@@ -295,21 +172,18 @@ export function resolveBindingLimits(
  * manual token entry; the user can still configure the endpoint explicitly.
  */
 export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
+  // Published levels seed a fresh binding. The user may add other canonical
+  // levels later when the endpoint supports more than the catalog reports.
   const thinkingLevels = sortThinkingLevels(publishedThinkingLevels(model));
   return {
     id: model.modelId,
     contextWindow:
       model.contextWindow || model.limit?.context || CATALOG_DEFAULT_CONTEXT_WINDOW,
-    // The snapshot is a catalog value, not a user answer: a later models.dev
-    // correction still reaches this binding.
-    contextWindowSource: "catalog",
     maxTokens: model.maxTokens || model.limit?.output || CATALOG_DEFAULT_MAX_TOKENS,
-    maxTokensSource: "catalog",
     thinkingLevels,
     defaultThinkingLevel: thinkingLevels.includes("medium")
       ? "medium"
       : (thinkingLevels[0] ?? null),
-    ...(model.thinkingProtocol ? { thinkingProtocol: model.thinkingProtocol } : {}),
     // Absent overrides keep following models.dev, so a catalog correction still
     // reaches an already saved binding.
     supportsImages: null,
@@ -317,32 +191,12 @@ export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
   };
 }
 
-/**
- * Binding for a hand-typed id the catalog does publish.
- *
- * The published record seeds limits and thinking levels exactly like a picked
- * model, but the stored id stays what the user typed: the id is the string a
- * request is addressed with, and a catalog spelling that differs in case or
- * separators must not silently retarget it.
- */
-export function bindingForCustomModelInfo(
-  id: string,
-  info: ModelInfo,
-): ModelBinding {
-  return { ...bindingFromModelInfo(info), id: id.trim() };
-}
-
 /** Binding for a model id the catalog does not publish. */
 export function bindingForCustomModel(id: string): ModelBinding {
   return {
     id: id.trim(),
-    // An unpublished model has no catalog value to inherit yet, so the seed
-    // stays catalog-sourced: if models.dev describes the id later, the window
-    // it publishes takes over.
     contextWindow: CATALOG_DEFAULT_CONTEXT_WINDOW,
-    contextWindowSource: "catalog",
     maxTokens: CATALOG_DEFAULT_MAX_TOKENS,
-    maxTokensSource: "catalog",
     thinkingLevels: [],
     defaultThinkingLevel: null,
     supportsImages: null,
@@ -350,46 +204,18 @@ export function bindingForCustomModel(id: string): ModelBinding {
   };
 }
 
-/**
- * Drop a fraction's trailing zeros: `200.0` reads `200` and `1.10` reads `1.1`.
- */
-function trimFraction(value: string): string {
-  if (!value.includes(".")) return value;
-  return value.replace(/0+$/, "").replace(/\.$/, "");
-}
-
-/**
- * Compact token count for dense UI.
- *
- * Published context windows sit on values a single rounded decimal cannot tell
- * apart — 1,000,000, 1,048,576 and 1,050,000 all rendered as `1M`/`1.1M`, and
- * reading 1,050,000 as `1.1M` overstated the window by 50k tokens. Two decimals
- * at the `M` scale and one at the `K` scale keep neighbouring rows distinct
- * while staying short: `1M`, `1.05M`, `1.1M`, `262.1K`.
- *
- * A count of `0` is a real value here, so callers that render an unpublished
- * limit go through `formatTokenCount` instead.
- */
-export function formatCompactTokenCount(tokens: number): string {
-  if (tokens < 1_000) return String(tokens);
-  const thousands = tokens / 1_000;
-  // Rounding can push a `K` mantissa up to 1000 (999,999 -> `1000K`), which
-  // reads as a scale error. Promote those to the `M` scale instead.
-  if (Number(thousands.toFixed(1)) < 1_000) {
-    return `${trimFraction(thousands.toFixed(1))}K`;
-  }
-  return `${trimFraction((tokens / 1_000_000).toFixed(2))}M`;
-}
-
-/**
- * Compact token count for a model limit, e.g. `200K`, `1.05M`.
- *
- * An absent or non-positive limit means the service never published one, so it
- * renders as an em dash rather than a number the user might trust.
- */
+/** Compact token count for dense UI, e.g. `200K`, `1M`. */
 export function formatTokenCount(tokens?: number): string {
   if (!tokens || tokens <= 0) return "—";
-  return formatCompactTokenCount(tokens);
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
+  }
+  if (tokens >= 1_000) {
+    const thousands = tokens / 1_000;
+    return `${Number.isInteger(thousands) ? thousands : Math.round(thousands)}K`;
+  }
+  return String(tokens);
 }
 
 /**

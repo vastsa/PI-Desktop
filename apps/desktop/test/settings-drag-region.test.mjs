@@ -1,10 +1,12 @@
-import { readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const settingsSource = await readSettingsSource();
+const settingsSource = await readFile(
+  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
+  "utf8",
+);
 const globalStyles = await loadStyles();
 
 test("settings exposes a native drag region over the content column", () => {

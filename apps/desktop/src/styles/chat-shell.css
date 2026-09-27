@@ -39,23 +39,23 @@
 .main-pane {
   position: relative;
   display: flex;
-  /* MainChat is the first-priority column and must never be compressed below
-     the shared three-column layout floor. */
-  min-width: var(--ds-main-pane-min-width, 450px);
+  min-width: 0;
   flex: 1;
   flex-direction: column;
   background: var(--ds-bg-primary);
   --chat-content-max-width: 760px;
-  --chat-composer-max-width: var(--chat-content-max-width);
-  --chat-prose-max-width: var(--chat-content-max-width);
+  --chat-composer-max-width: 768px;
   --chat-width-transition: var(--motion-duration-normal) var(--motion-ease-out);
 }
 
 /*
- * Collapsing the sidebar frees pane width; the centered band keeps the user's
- * preferred max (D439) and only compresses when the pane itself is narrower.
+ * A collapsed sidebar gives the shell more room, but the chat content should
+ * not become a wide, low-density reading surface. Keep the outer pane fluid
+ * while tightening the centered content band to preserve focus.
  */
 .app-shell.sidebar-collapsed .main-pane {
+  --chat-content-max-width: 640px;
+  --chat-composer-max-width: 640px;
   --chat-width-transition: var(--motion-duration-fast) var(--motion-ease-in);
 }
 
@@ -63,7 +63,7 @@
 .route-page {
   position: relative;
   display: flex;
-  min-width: var(--ds-main-pane-min-width, 450px);
+  min-width: 360px;
   min-height: 0;
   flex: 1;
   flex-direction: column;
@@ -163,27 +163,19 @@
 }
 
 .route-surface,
-.settings-content-enter {
-  /* No `forwards`/`both` fill: this entrance ends on the element's own state,
-     so a fill would only keep the animation "in effect" — and with it the
-     stacking context that can leave any legacy route-level fixed surface
-     underneath the opaque titlebar band. Modal surfaces use the viewport
-     overlay host, but keeping this invariant protects other fixed content. */
-  animation: route-surface-in var(--motion-duration-normal) var(--motion-ease-out);
+.settings-shell-full {
+  animation: route-surface-in var(--motion-duration-normal) var(--motion-ease-out)
+    both;
 }
 
-/*
-  Do not animate `.settings-content-inner`. An animated ancestor is a stacking
-  context, and it can become a containing block for `position: fixed`, which is
-  what made settings dialogs cover only the content pane. Keep the keyframes
-  opacity-only and keep the fill off.
-*/
 @keyframes route-surface-in {
   from {
     opacity: 0;
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -193,16 +185,6 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-}
-
-/* Destination pages have ordinary document scrolling. Keep this separate from
- * `.thread-scroll`, whose Composer reserve, follow behavior, and occlusion mask
- * are specific to the chat transcript. */
-.route-scroll {
-  min-height: 0;
-  flex: 1;
-  overflow: auto;
-  scrollbar-gutter: stable;
 }
 
 .thread-scroll {
@@ -216,26 +198,6 @@
   scrollbar-gutter: stable;
   /* Pinned-follow drives the scroll position; native anchoring fights it. */
   overflow-anchor: none;
-  /* Hide the transcript across the Composer reserve instead of covering it with
-   * an opaque dock band (issue #728, revised by D624). The gradient resolves
-   * against this scrollport's own box, so it stays anchored to the pane while
-   * the rows move through it. `- 16px` is exactly the trailing reserve
-   * `.thread-content` adds below the Composer's measured height, so a
-   * transcript pinned to its end keeps its last row fully opaque and only the
-   * rows crossing the boundary fade.
-   * The mask belongs here rather than on `.thread-wrap`: its other children -
-   * the minimap rail, the jump-to-latest button, the settle veil, and the
-   * navigation status - must stay fully painted. */
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - var(--composer-dock-height, 168px) - 16px),
-    transparent calc(100% - var(--composer-dock-height, 168px) + 2px)
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - var(--composer-dock-height, 168px) - 16px),
-    transparent calc(100% - var(--composer-dock-height, 168px) + 2px)
-  );
 }
 
 /* Floats above the docked composer fade when the user scrolls away from latest */
@@ -384,30 +346,10 @@
 .transcript-history-loading {
   min-height: 26px;
   box-sizing: border-box;
-  color: var(--ds-text-muted);
+  color: var(--ds-text-tertiary);
   font-size: var(--text-sm);
   text-align: center;
   padding: 2px 0 12px;
-}
-
-/* The tail runtime status (working / planning / run activity) mounts and clears
- * with the turn's phase, and each of those rows is its own box: without a
- * reserve, an indicator appearing between two tool rows grows `.thread-content`
- * and pushes the rows the user is already reading off the top of the viewport
- * while pinned follow re-baselines to the new bottom. The lane reserves that
- * row for the whole running turn, so the status can come and go without moving
- * anything, and it stays reserved - empty and invisible - while a concrete row,
- * a permission card, or the answer itself owns the tail. The height is exactly
- * the indicator's own box: 8px padding-top, 4px padding-bottom, the 2px/8px
- * vertical margins and one line of its `--text-sm-plus` copy, the metrics both
- * `.working-indicator` and `.planning-state-indicator` build. `flow-root` keeps
- * those margins inside the reserve instead of letting them collapse out of a
- * lane that is empty at rest. An idle transcript does not render the lane at
- * all, so a finished transcript keeps its exact layout. */
-.transcript-runtime-status {
-  box-sizing: border-box;
-  display: flow-root;
-  min-height: calc(var(--text-sm-plus) * var(--leading-body) + 22px);
 }
 
 /* Frameless Windows/Linux controls occupy the 46px titlebar band. macOS keeps
@@ -418,104 +360,6 @@
 :root[data-platform="darwin"] .thread-content {
   padding-top: var(--ds-toolbar-height);
 }
-
-
-/* Conversation width handles (D439). Rest: invisible. Hover/drag: a short
- * capsule, not a full-height glow. Dark uses a faint white ink mix; light
- * uses a fainter black mix so the same rule does not read as a bright seam. */
-.chat-width-handles {
-  position: absolute;
-  inset: 0 0 var(--composer-dock-height, 168px);
-  z-index: 7;
-  pointer-events: none;
-}
-
-.chat-width-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 12px;
-  pointer-events: auto;
-  cursor: col-resize;
-  touch-action: none;
-  user-select: none;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.chat-width-handle-left {
-  left: max(0px, calc((100% - min(100%, var(--chat-content-max-width))) / 2 - 6px));
-}
-
-.chat-width-handle-right {
-  right: max(0px, calc((100% - min(100%, var(--chat-content-max-width))) / 2 - 6px));
-}
-
-.chat-width-handle::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 2px;
-  height: 40px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 18%, transparent);
-  box-shadow: none;
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  transition:
-    opacity var(--motion-duration-fast) var(--motion-ease-out),
-    height var(--motion-duration-fast) var(--motion-ease-out),
-    background var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-:root[data-theme="light"] .chat-width-handle::before {
-  background: color-mix(in oklab, var(--ds-text-primary) 12%, transparent);
-}
-
-.chat-width-handle:hover::before,
-.chat-width-handle:focus-visible::before {
-  opacity: 1;
-}
-
-.chat-width-handle:focus-visible {
-  outline: none;
-}
-
-.chat-width-handle:focus-visible::before {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
-}
-
-.chat-width-handle.is-resizing::before,
-.chat-surface[data-chat-resizing="true"] .chat-width-handle::before {
-  opacity: 1;
-  height: 56px;
-  background: color-mix(in oklab, var(--ds-text-primary) 32%, transparent);
-}
-
-:root[data-theme="light"] .chat-width-handle.is-resizing::before,
-:root[data-theme="light"] .chat-surface[data-chat-resizing="true"] .chat-width-handle::before {
-  background: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
-}
-
-.chat-surface[data-chat-resizing="true"] .thread-content,
-.chat-surface[data-chat-resizing="true"] .composer-stack,
-.chat-surface[data-chat-resizing="true"] .home-stack-inner {
-  transition: none;
-}
-
-:root[data-chat-resizing="true"],
-:root[data-chat-resizing="true"] * {
-  cursor: col-resize !important;
-  user-select: none !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-width-handle::before {
-    transition: none;
-  }
-}
-
 
 /* Conversation minimap: packed stack of dashes on the thread's left edge,
  * centered inside the safe span between titlebar and docked composer. Dense
@@ -772,10 +616,17 @@
   white-space: pre-wrap;
 }
 
-.empty-hero .home-project-switcher {
-  display: inline-block;
-  max-width: 100%;
-  vertical-align: baseline;
+.empty-hero-subtitle {
+  max-width: 34rem;
+  margin: -2px 0 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  text-align: center;
+}
+
+:root[data-theme="light"] .empty-hero h1 {
+  color: #1a1c1f;
 }
 
 .empty-hero .project-underline {
@@ -792,176 +643,8 @@
   text-decoration-color: var(--ds-text-faint);
 }
 
-.empty-hero .project-underline:hover,
-.empty-hero .project-underline[aria-expanded="true"] {
+.empty-hero .project-underline:hover {
   color: var(--ds-text-secondary);
-}
-
-.empty-hero .project-underline:focus-visible {
-  outline: 2px solid var(--ds-focus);
-  outline-offset: 3px;
-  border-radius: var(--radius-3xs);
-}
-
-.home-project-switcher-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  width: min(280px, calc(100vw - 24px));
-  max-height: min(420px, calc(100vh - 24px));
-  padding: 6px;
-  overflow: hidden;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--ds-bg-elevated-opaque);
-  box-shadow: var(--ds-shadow-dialog);
-  color: var(--ds-text-primary);
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.home-project-switcher-menu.is-open {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
-}
-
-.home-project-switcher-search {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 32px;
-  margin: 0 0 4px;
-  padding: 0 9px;
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-inset);
-  color: var(--ds-text-muted);
-}
-
-.home-project-switcher-search svg {
-  flex: 0 0 auto;
-}
-
-.home-project-switcher-search input {
-  min-width: 0;
-  flex: 1;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  box-shadow: none;
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-}
-
-.home-project-switcher-search input::placeholder {
-  color: var(--ds-text-muted);
-}
-
-.home-project-switcher-list {
-  min-height: 0;
-  max-height: min(240px, calc(100vh - 220px));
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 2px 0;
-}
-
-.home-project-switcher-empty {
-  padding: 12px 10px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  text-align: center;
-}
-
-.home-project-switcher-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
-  line-height: var(--leading-compact);
-  text-align: left;
-  cursor: pointer;
-}
-
-.home-project-switcher-item:hover,
-.home-project-switcher-item.is-active,
-.home-project-switcher-item:focus-visible {
-  background: var(--ds-bg-hover);
-}
-
-.home-project-switcher-item:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.home-project-switcher-item svg {
-  flex: 0 0 auto;
-  color: var(--ds-text-secondary);
-}
-
-.home-project-switcher-item-name {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.home-project-switcher-check {
-  color: var(--ds-accent);
-}
-
-.home-project-switcher-divider {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--ds-border-subtle);
-}
-
-.home-project-switcher-clone {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.home-project-switcher-clone-hint {
-  margin: 0 8px 2px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-  line-height: var(--leading-compact-plus);
-}
-
-.home-project-switcher-clone-submit {
-  margin: 0 6px 4px;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
-  cursor: pointer;
-}
-
-.home-project-switcher-clone-submit:hover:not(:disabled),
-.home-project-switcher-clone-submit:focus-visible {
-  background: var(--ds-bg-active);
-}
-
-.home-project-switcher-clone-submit:disabled {
-  cursor: default;
-  opacity: 0.6;
 }
 
 .home-onboarding-checklist {

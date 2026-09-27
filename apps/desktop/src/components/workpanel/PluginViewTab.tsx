@@ -11,10 +11,8 @@ import { WorkTabEmpty } from "./WorkTabEmpty";
  * The surface itself is a main-process `WebContentsView`, the same isolated
  * page a `ui.panel` window hosts; this component renders nothing into it. It
  * measures the placeholder rect and drives visibility. The view composites
- * above renderer content, so a panel-wide blocking overlay still hides it.
- * The work-panel menu temporarily blocks the active view while open, which
- * keeps the menu inside the dock without changing plugin bounds or pushing the
- * plugin body down.
+ * above renderer content, so it must be hidden whenever this tab is not the
+ * active surface or a blocking overlay is open.
  */
 export function PluginViewTab({
   pluginId,
@@ -24,7 +22,6 @@ export function PluginViewTab({
   blocked = false,
   sessionId,
   location,
-  tabId,
 }: {
   pluginId: string;
   viewId: string;
@@ -33,13 +30,9 @@ export function PluginViewTab({
   blocked?: boolean;
   sessionId?: string;
   location?: string;
-  tabId?: string;
 }) {
   const { t } = useTranslation();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const locationRef = useRef(location);
-  locationRef.current = location;
-  const viewLocation = pluginId === "pi.browser" && viewId === "browser" ? undefined : location;
   const [failed, setFailed] = useState(false);
 
   // Create the view, and re-create it whenever the plugin's lifecycle changed
@@ -48,7 +41,7 @@ export function PluginViewTab({
   useEffect(() => {
     let current = true;
     const open = () => {
-      void api.pluginViewOpen(pluginId, viewId, { sessionId, location: locationRef.current, tabId }).then(
+      void api.pluginViewOpen(pluginId, viewId, { sessionId, location }).then(
         () => {
           if (current) setFailed(false);
         },
@@ -66,16 +59,7 @@ export function PluginViewTab({
       current = false;
       off();
     };
-  }, [pluginId, viewId, sessionId, viewLocation, tabId]);
-
-  useEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface || failed) return;
-    void api.pluginViewSetVisible(pluginId, viewId, !blocked, sessionId);
-    return () => {
-      void api.pluginViewSetVisible(pluginId, viewId, false);
-    };
-  }, [pluginId, viewId, blocked, failed, sessionId]);
+  }, [pluginId, viewId, sessionId, location]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -97,12 +81,14 @@ export function PluginViewTab({
     observer.observe(surface);
     window.addEventListener("resize", report);
     report();
+    void api.pluginViewSetVisible(pluginId, viewId, !blocked, sessionId);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", report);
       cancelAnimationFrame(frame);
+      void api.pluginViewSetVisible(pluginId, viewId, false);
     };
-  }, [pluginId, viewId, failed]);
+  }, [pluginId, viewId, blocked, failed, sessionId]);
 
   if (failed) {
     return (

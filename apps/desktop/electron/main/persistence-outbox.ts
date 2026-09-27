@@ -41,19 +41,13 @@ export class PersistenceOutbox {
     await this.loaded;
     const existing = this.entries.findIndex((item) => item.key === entry.key);
     if (existing >= 0) this.entries[existing] = entry;
-    else {
-      if (this.entries.length >= MAX_ENTRIES) await this.flush(getHost);
-      if (this.entries.length >= MAX_ENTRIES) {
-        this.logger("error", "session persistence outbox is full", {
-          key: entry.key,
-          sessionId: entry.sessionId,
-          size: this.entries.length,
-          max: MAX_ENTRIES,
-        });
-        throw new Error("session persistence outbox is full");
-      }
-      this.entries.push(entry);
-    }
+    else if (this.entries.length >= MAX_ENTRIES) {
+      this.logger("error", "session persistence outbox is full", {
+        size: this.entries.length,
+        max: MAX_ENTRIES,
+      });
+      return;
+    } else this.entries.push(entry);
     await this.persist();
     void this.flush(getHost);
   }
@@ -95,43 +89,13 @@ export class PersistenceOutbox {
           turnId: current.turnId,
         });
       } catch (error) {
-        // A duplicate message id means the host already has the row; drop it
-        // and keep draining (D318/#560).
-        if (isDuplicateMessageIdError(error)) {
-          this.logger("warn", "session persistence flush skipped duplicate message id", {
-            key: current.key,
-            data: String(error),
-          });
-        } else if (isPoisonMessageError(error)) {
-          // The host will reject this row forever (provenance / permission
-          // on this message). Drop only this entry and keep draining so one
-          // poisoned head cannot starve later transcript rows (D597).
-          this.logger("warn", "session persistence flush dropped poisoned message", {
-            key: current.key,
-            data: String(error),
-          });
-        } else if (isForeignKeyError(error)) {
-          // The parent row (session or turn) was lost — typically after a
-          // sidecar crash that restarted before the outbox could drain.
-          // The host will never accept a child row whose parent is gone,
-          // so drop it and keep draining (#996).
-          this.logger("warn", "session persistence flush dropped orphaned message", {
-            key: current.key,
-            data: String(error),
-          });
-        } else {
-          // Transient failure (host busy/overloaded/pipe dead). Keep the head
-          // and retry on the next enqueue.
-          this.logger("warn", "session persistence flush paused", {
-            key: current.key,
-            data: String(error),
-          });
-          return;
-        }
+        this.logger("warn", "session persistence flush paused", {
+          key: current.key,
+          data: String(error),
+        });
+        return;
       }
-      // A newer snapshot may have replaced this key while the host wrote it.
-      // Only remove the exact entry acknowledged by that write.
-      if (this.entries[0] === current) this.entries.shift();
+      this.entries.shift();
       await this.persist();
     }
   }
@@ -174,28 +138,4 @@ export class PersistenceOutbox {
     this.persistChain = write.catch(() => undefined);
     await write;
   }
-}
-
-function isDuplicateMessageIdError(error: unknown): boolean {
-  return /UNIQUE constraint failed: messages\.id/i.test(String(error));
-}
-
-/**
- * The host will reject this message on every retry. Match the host-core
- * provenance prefix in the JSON-RPC message body (append maps those failures
- * as INTERNAL). Do not treat PLUGIN_PERMISSION_DENIED or schema
- * INVALID_PARAMS as poison — those are a different surface, and serde
- * failures do not even put INVALID_PARAMS in the message text.
- */
-function isPoisonMessageError(error: unknown): boolean {
-  return /(?<![A-Z_])PERMISSION_DENIED:/i.test(String(error));
-}
-
-/**
- * The parent row (session or turn) no longer exists. This happens after a
- * sidecar or host-core crash where the parent was deleted or never committed.
- * Retrying is pointless — the FK will never be satisfied.
- */
-function isForeignKeyError(error: unknown): boolean {
-  return /FOREIGN KEY constraint failed/i.test(String(error));
 }

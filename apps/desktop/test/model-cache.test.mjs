@@ -1,10 +1,15 @@
-import { readStoreSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const mainSource = await readMainSource();
-const storeSource = await readStoreSource();
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
+const storeSource = await readFile(
+  new URL("../src/stores/app-store.ts", import.meta.url),
+  "utf8",
+);
 const providerModelsSource = await readFile(
   new URL("../src/components/settings/useProviderModels.ts", import.meta.url),
   "utf8",

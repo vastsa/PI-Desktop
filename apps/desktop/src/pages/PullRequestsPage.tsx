@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PullRequestSummary } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
-import { Badge, Button, TooltipButton, Panel } from "../components/ui";
+import { Badge, Button, Panel } from "../components/ui";
 import { IconExternal, IconPullRequest } from "../components/icons";
 
 type Filter = "open" | "draft" | "all";
@@ -11,7 +11,6 @@ type Filter = "open" | "draft" | "all";
 export function PullRequestsPage() {
   const { t } = useTranslation();
   const workspace = useAppStore((s) => s.workspace);
-  const workspacePath = workspace?.path ?? null;
   const openProject = useAppStore((s) => s.openProject);
   const newSession = useAppStore((s) => s.newSession);
   const setPage = useAppStore((s) => s.setPage);
@@ -19,58 +18,43 @@ export function PullRequestsPage() {
   const [pulls, setPulls] = useState<PullRequestSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadedWorkspacePath, setLoadedWorkspacePath] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("open");
-  const requestSequence = useRef(0);
 
-  const refresh = useCallback(async () => {
-    const request = ++requestSequence.current;
+  const refresh = async () => {
     setLoading(true);
     try {
       const res = await api.listPullRequests();
-      if (request !== requestSequence.current) return;
       setPulls(res.pulls || []);
       setError(res.error || null);
-      setLoadedWorkspacePath(workspacePath);
     } catch (e) {
-      if (request !== requestSequence.current) return;
       setPulls([]);
       setError(e instanceof Error ? e.message : String(e));
-      setLoadedWorkspacePath(workspacePath);
     } finally {
-      if (request === requestSequence.current) setLoading(false);
+      setLoading(false);
     }
-  }, [workspacePath]);
+  };
 
   useEffect(() => {
     void refresh();
-    return () => {
-      requestSequence.current += 1;
-    };
-  }, [refresh]);
-
-  const workspaceDataCurrent = loadedWorkspacePath === workspacePath;
-  const visiblePulls = workspaceDataCurrent ? pulls : [];
-  const visibleError = workspaceDataCurrent ? error : null;
-  const pageLoading = Boolean(workspacePath) && (loading || !workspaceDataCurrent);
+  }, [workspace?.path]);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return visiblePulls;
-    if (filter === "draft") return visiblePulls.filter((p) => p.isDraft);
-    return visiblePulls.filter((p) => !p.isDraft);
-  }, [visiblePulls, filter]);
+    if (filter === "all") return pulls;
+    if (filter === "draft") return pulls.filter((p) => p.isDraft);
+    return pulls.filter((p) => !p.isDraft);
+  }, [pulls, filter]);
 
   const counts = useMemo(() => {
-    const draft = visiblePulls.filter((p) => p.isDraft).length;
+    const draft = pulls.filter((p) => p.isDraft).length;
     return {
-      open: visiblePulls.length - draft,
+      open: pulls.length - draft,
       draft,
-      all: visiblePulls.length,
+      all: pulls.length,
     };
-  }, [visiblePulls]);
+  }, [pulls]);
 
   return (
-    <div className="route-scroll">
+    <div className="thread-scroll">
       <div className="page-frame">
         <div className="page-header">
           <div>
@@ -133,21 +117,14 @@ export function PullRequestsPage() {
               {t("project.open")}
             </Button>
           </Panel>
-        ) : pageLoading && visiblePulls.length === 0 ? (
-          <div className="page-empty page-card" role="status" aria-busy="true">
-            <span className="route-pending-indicator" aria-hidden />
-            <span className="mt-3 text-md text-text-secondary">
-              {t("app.loadingView")}
-            </span>
-          </div>
         ) : filtered.length === 0 ? (
           <Panel className="page-card page-empty">
             <div className="page-empty-icon">
               <IconPullRequest size={20} />
             </div>
             <div className="text-base-plus font-medium">{t("pulls.emptyTitle")}</div>
-            {visibleError && visibleError !== "NO_WORKSPACE" ? (
-              <div className="mt-2 max-w-md text-md text-text-secondary">{visibleError}</div>
+            {error && error !== "NO_WORKSPACE" ? (
+              <div className="mt-2 max-w-md text-md text-text-secondary">{error}</div>
             ) : null}
           </Panel>
         ) : (
@@ -179,15 +156,14 @@ export function PullRequestsPage() {
                   </div>
                 </div>
                 <div className="dest-row-actions">
-                  <TooltipButton
+                  <button
                     type="button"
-                    className="icon-btn icon-btn-square"
-                    tooltip={t("pulls.open")}
-                    ariaLabel={t("pulls.open")}
-                    onClick={() => void api.browserOpenExternal(pr.url)}
+                    className="icon-btn"
+                    title={pr.url}
+                    onClick={() => window.open(pr.url, "_blank")}
                   >
                     <IconExternal size={15} />
-                  </TooltipButton>
+                  </button>
                   <Button
                     size="sm"
                     variant="secondary"

@@ -41,13 +41,6 @@ if (!hostBin) {
   process.exit(1);
 }
 
-// dirs::home_dir uses the Windows known-folder API, not HOME/USERPROFILE.
-// Fail before any registry write; changing these variables does not isolate
-// the host from real user documents on Windows.
-if (process.platform === "win32") {
-  throw new Error("Subagent registry E2E requires Linux/macOS HOME isolation; Windows known-folder lookup ignores the fixture HOME. No registry writes were attempted.");
-}
-
 const dataDir = mkdtempSync(join(tmpdir(), "pi-subagent-data-"));
 const homeDir = mkdtempSync(join(tmpdir(), "pi-subagent-home-"));
 const projectA = mkdtempSync(join(tmpdir(), "pi-project-a-"));
@@ -166,14 +159,6 @@ try {
     JSON.stringify(document.split("\n").slice(0, 6).join(" | ")),
   );
 
-  const fallbackPins = ["primary/first", "Other Gateway/vendor/second"];
-  const updatedFallback = await call("agents.update", { id: "log-reader", fallbackModels: fallbackPins });
-  check("fallback pins persist in configured order", JSON.stringify(updatedFallback.result?.subagent?.fallbackModels) === JSON.stringify(fallbackPins));
-  const retainedFallback = await call("agents.update", { id: "log-reader", description: "Read logs." });
-  check("omitting fallbackModels preserves the list", JSON.stringify(retainedFallback.result?.subagent?.fallbackModels) === JSON.stringify(fallbackPins));
-  const invalidFallback = await call("agents.update", { id: "log-reader", fallbackModels: ["bare-model"] });
-  check("malformed fallback is rejected", invalidFallback.error?.data?.errorCode === "SUBAGENT_INVALID");
-
   const dup = await call("agents.create", {
     name: "log-reader",
     description: "A second one.",
@@ -202,74 +187,17 @@ try {
   );
   await call("agents.setEnabled", { id: "log-reader", enabled: true });
 
-  // The shipped builtins have no document, so their switch is app-local state
-  // (ADR 0270): it must survive the user-document scan, which is what the
-  // registry runs on every list, and the loader must drop the handle from the
-  // delegation catalog while still reporting the builtin row.
-  const beforeBuiltins = await call("agents.disabledBuiltins");
-  const offBuiltin = await call("agents.setBuiltinEnabled", { id: "fixer", enabled: false });
-  const disabledNow = await call("agents.disabledBuiltins");
-  check(
-    "a builtin handle is switched off without writing a document",
-    offBuiltin.result?.id === "fixer" &&
-      offBuiltin.result?.enabled === false &&
-      (beforeBuiltins.result?.disabled ?? []).includes("fixer") === false &&
-      (disabledNow.result?.disabled ?? []).includes("fixer") === true &&
-      !existsSync(join(agentsDir, "fixer.md")),
-    JSON.stringify(disabledNow.result?.disabled),
-  );
-  const fixed = await call("agents.setBuiltinEnabled", { id: "fixer", enabled: true });
-  const restoredBuiltins = await call("agents.disabledBuiltins");
-  check(
-    "switching it back on clears the stored override",
-    fixed.result?.enabled === true &&
-      !(restoredBuiltins.result?.disabled ?? []).includes("fixer"),
-    JSON.stringify(restoredBuiltins.result?.disabled),
-  );
-
   const read = await call("agents.read", { id: "log-reader" });
   check(
     "read returns the body for the editor",
     /report the first real failure/.test(read.result?.body ?? ""),
     JSON.stringify((read.result?.body ?? "").slice(0, 40)),
   );
-  const inherited = await call("agents.create", {
-    name: "Worker",
-    description: "Use the parent tool catalog.",
-    tools: ["inherit"],
-    body: "You are worker.\n",
-  });
-  const inheritedRecord = inherited.result?.subagent;
-  check(
-    "agents.create preserves tools: inherit",
-    inheritedRecord?.id === "worker" &&
-      JSON.stringify(inheritedRecord?.tools) === JSON.stringify(["inherit"]),
-    JSON.stringify(inheritedRecord),
-  );
-  const inheritedDocument = readFileSync(join(agentsDir, "worker.md"), "utf8");
-  check(
-    "the on-disk document keeps the inherit frontmatter token",
-    /^---\n/.test(inheritedDocument) && /tools: inherit\n/.test(inheritedDocument),
-    JSON.stringify(inheritedDocument.split("\n").slice(0, 5).join(" | ")),
-  );
-  const inheritedRead = await call("agents.read", { id: "worker" });
-  check(
-    "agents.read keeps the inherit token and body",
-    JSON.stringify(inheritedRead.result?.subagent?.tools) === JSON.stringify(["inherit"]) &&
-      /You are worker/.test(inheritedRead.result?.body ?? ""),
-    JSON.stringify(inheritedRead.result?.subagent),
-  );
-  const activeWithInherited = await call("agents.active", { projectPath: projectA });
-  check(
-    "tools: inherit remains active",
-    activeWithInherited.result?.subagents?.some((entry) => entry.id === "worker"),
-    activeWithInherited.result?.subagents?.map((entry) => entry.id).join(", "),
-  );
 
   // The registry allows 64 user documents; the runtime catalog remains capped
   // separately at 16 definitions when it builds the model-facing menu.
   let capError = null;
-  for (let i = 0; i < 63; i += 1) {
+  for (let i = 0; i < 64; i += 1) {
     const extra = await call("agents.create", {
       name: `filler-${i}`,
       description: "Filler.",
@@ -283,15 +211,15 @@ try {
   const full = await call("agents.list");
   check(
     "the global registry caps at 64 documents",
-    full.result?.subagents?.length === 64 && capError?.at === 62,
+    full.result?.subagents?.length === 64 && capError?.at === 63,
     `${full.result?.subagents?.length} stored, refused on filler ${capError?.at}: ${capError?.error?.message}`,
   );
 
-  for (let i = 0; i < 62; i += 1) await call("agents.remove", { id: `filler-${i}` });
+  for (let i = 0; i < 63; i += 1) await call("agents.remove", { id: `filler-${i}` });
   const trimmed = await call("agents.list");
   check(
     "remove deletes the record and its document",
-    trimmed.result?.subagents?.length === 2 && !readdirSync(agentsDir).includes("filler-0.md"),
+    trimmed.result?.subagents?.length === 1 && !readdirSync(agentsDir).includes("filler-0.md"),
     readdirSync(agentsDir).join(", "),
   );
 
@@ -309,64 +237,17 @@ try {
   const userDocuments = await readActive(projectA);
   const merged = await loadSubagentDefinitions(projectA, { userDocuments });
   const byName = new Map(merged.definitions.map((definition) => [definition.name, definition]));
-  // A switched-off builtin leaves the delegation catalog and stays available as
-  // a builtin row, which is where Settings keeps its switch (ADR 0270).
-  const withDisabledBuiltin = await loadSubagentDefinitions(projectA, {
-    userDocuments,
-    disabledBuiltins: ["fixer"],
-  });
-  check(
-    "a switched-off builtin leaves the catalog and keeps its builtin row",
-    !withDisabledBuiltin.definitions.some((definition) => definition.name === "fixer") &&
-      withDisabledBuiltin.builtins.some(
-        (definition) => definition.name === "fixer" && definition.source === "builtin",
-      ),
-    `${withDisabledBuiltin.definitions.length} definitions, ${withDisabledBuiltin.builtins.length} builtins`,
-  );
-  const builtinNames = ["explorer", "code-reviewer", "test-runner", "fixer", "ui-designer"];
   check(
     "the global registry document reaches the loader as a user definition",
     byName.get("log-reader")?.source === "user",
     `source=${byName.get("log-reader")?.source}`,
   );
   check(
-    "the five builtins remain available beside it",
-    merged.definitions.filter((definition) => definition.source === "builtin").length ===
-      builtinNames.length &&
-      builtinNames.every((name) => byName.get(name)?.source === "builtin"),
+    "the four builtins remain available beside it",
+    ["explorer", "code-reviewer", "test-runner", "fixer"].every(
+      (name) => byName.get(name)?.source === "builtin",
+    ),
     [...byName.keys()].join(", "),
-  );
-  check("fallback pins reach the runtime loader", JSON.stringify(byName.get("log-reader")?.fallbackModels) === JSON.stringify([
-    { providerId: "primary", modelId: "first" }, { providerId: "Other Gateway", modelId: "vendor/second" },
-  ]));
-  const clearedFallback = await call("agents.update", { id: "log-reader", fallbackModels: [] });
-  check("an empty fallback list clears the document field", !clearedFallback.result?.subagent?.fallbackModels?.length &&
-    !readFileSync(join(agentsDir, "log-reader.md"), "utf8").includes("fallbackModels:"));
-  const loadedWorker = byName.get("worker");
-  check(
-    "the loader preserves inheritTools for the inherit-only document",
-    loadedWorker?.source === "user" && loadedWorker.inheritTools === true &&
-      JSON.stringify(loadedWorker.tools) === JSON.stringify([]),
-    JSON.stringify({ source: loadedWorker?.source, inheritTools: loadedWorker?.inheritTools, tools: loadedWorker?.tools }),
-  );
-  const builtinExplorer = byName.get("explorer");
-  check(
-    "builtin explorer keeps its whitelist and does not inherit",
-    builtinExplorer?.source === "builtin" &&
-      JSON.stringify(builtinExplorer.tools) === JSON.stringify(["Read", "Glob", "Grep", "Bash"]) &&
-      builtinExplorer.inheritTools !== true,
-    JSON.stringify({ source: builtinExplorer?.source, tools: builtinExplorer?.tools, inheritTools: builtinExplorer?.inheritTools }),
-  );
-  const designer = byName.get("ui-designer");
-  check(
-    "the UI designer grants preview and editing and inherits permissions",
-    JSON.stringify(designer?.tools) ===
-      JSON.stringify(["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Edit", "Write"]) &&
-      (designer?.permission ?? "inherit") === "inherit",
-    JSON.stringify({
-      tools: designer?.tools,
-      permission: designer?.permission ?? "inherit",
-    }),
   );
   check(
     "the declared tools survive the round trip to the loader",
@@ -401,41 +282,9 @@ try {
   });
   check(
     "a malformed user document becomes a diagnostic without losing builtins",
-    broken.diagnostics.length === 1 &&
-      broken.definitions.length === builtinNames.length &&
-      builtinNames.every((name) => broken.definitions.some(
-        (definition) => definition.name === name && definition.source === "builtin",
-      )),
+    broken.diagnostics.length === 1 && broken.definitions.length === 4,
     `${broken.diagnostics.length} diagnostic(s), ${broken.definitions.length} definitions: ${broken.diagnostics[0]}`,
   );
-  const legacyDir = mkdtempSync(join(tmpdir(), "pi-subagent-legacy-"));
-  writeFileSync(
-    join(legacyDir, "legacy-capped.md"),
-    [
-      "---",
-      "name: legacy-capped",
-      "description: A document written before the turn limit was removed.",
-      "tools: [Read, Glob]",
-      "maxTurns: 2",
-      "max-turns: 2",
-      "---",
-      "",
-      "Read the file the task names and report what you found.",
-      "",
-    ].join("\n"),
-  );
-  const legacy = await loadSubagentDefinitions(null, { overrideDir: legacyDir });
-  const legacyDefinition = legacy.definitions.find(
-    (definition) => definition.name === "legacy-capped",
-  );
-  check(
-    "a legacy maxTurns frontmatter key is ignored without failing or warning",
-    legacyDefinition?.source === "user" &&
-      !("maxTurns" in (legacyDefinition ?? {})) &&
-      legacy.diagnostics.length === 0,
-    `${legacy.diagnostics.length} diagnostic(s): ${legacy.diagnostics.join(" / ") || "none"}`,
-  );
-  rmSync(legacyDir, { recursive: true, force: true });
 } catch (error) {
   check("the run completed", false, String(error));
 } finally {

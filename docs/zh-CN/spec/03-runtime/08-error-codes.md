@@ -35,11 +35,6 @@ type AppError = {
 2. `message` 为英文源文本（i18n 键可单独映射）
 3. UI 应该更喜欢从 `code` 派生的 i18n 密钥（如果可用）
 
-桌面测试套件（`apps/desktop/test/error-code-registry.test.mjs`）会验证
-`ErrorCodes` 的每一项都出现在本文档中，并且 host-core 从其 RPC 调度器和原生
-工具发出的每一个 `errorCode` 都已注册；§3.7 中的保留代码在有实现发出它们
-之前，刻意不出现在 `ErrorCodes` 里。
-
 ## 3. 代码注册
 
 ### 3. 1 应用程序/协议
@@ -53,34 +48,10 @@ type AppError = {
 | `APP_DEGRADED` | 是的 | 应用程序以有限的功能运行 |
 | `INTERNAL` | 也许 | 意外的内部故障 |
 | `INVALID_ARGUMENT` | 不 | 请求 schema/args 无效，包括错误 file/directory 类型的本机工具路径 |
-| `INVALID_PARAMS` | 不 | host-core RPC 参数校验失败（数字码 `1002`）；sidecar 和渲染器原样透传 |
 | `UNAUTHORIZED` | 不 | capability/auth 边界拒绝呼叫 |
 | `NOT_FOUND` | 不 | 未找到实体 |
-| `SESSION_NOT_FOUND` | 不 | 会话作用域的 RPC（包括 `tools.execute`）点名了主机没有的会话；未知 id 永远不会继承全局工作区 |
 | `CONFLICT` | 也许 | 状态冲突/资源繁忙 |
-| `UNSUPPORTED` | 不 | 该操作在此界面上没有实现，例如没有桌面窗口时的受信任扩展提示（规格 16 §9） |
-| `FORBIDDEN` | 不 | RACP：主体的角色不允许该方法（规格 19 §13） |
-| `METHOD_NOT_FOUND` | 不 | RACP：此 Host 上未知的方法，例如没有 Gateway 时的 `host/list` |
-| `IDEMPOTENCY_CONFLICT` | 不 | 队列或回合的幂等 key 以不同输入被重用（D386） |
-| `CURSOR_EXPIRED` | 不 | RACP：回放游标早于保留窗口；从快照重新订阅 |
-| `CLIENT_TOO_SLOW` | 是的 | RACP：客户端落后于事件流并被断开 |
-| `APPROVAL_EXPIRED` | 不 | RACP：审批期限在回答到达前已过 |
-| `APPROVAL_STALE` | 不 | RACP：审批已被处理或属于更早的回合 |
-| `PAYLOAD_TOO_LARGE` | 不 | RACP：帧超过协商的大小上限 |
 | `TIMEOUT` | 是的 | 通用超时 |
-| `NETWORK_POLICY_BLOCKED` | 不 | 主进程公网策略守卫拒绝了一次抓取,因为它**判定了**目标：URL 未通过公网 HTTPS 语法检查,或本地 DNS 解析返回了策略判定为非公网的地址——其中包括本地代理生成的 fake-IP 占位地址（ADR 0243）。仅桌面端使用；拒绝即判定,因此在地址改变前重试不会成功。本地解析完全没有返回答案时改用 `NETWORK_RESOLVE_FAILED`（issue #419）。自 ADR 0304 起,用户自己填写的端点可以解析到本机回环或局域网地址,因此该错误码现在只针对两类首跳：命中完全无服务语义的地址类别（云元数据、unspecified、multicast、reserved）,或第三方跳——重定向目标、目录正文、registry 记录。 |
-| `NETWORK_RESOLVE_FAILED` | 是的 | 主进程公网策略守卫无法判定目标主机：本地 DNS 解析没有返回答案,或在返回前抛错。请求仍与策略拒绝一样被拒,但没有判定任何地址,因此任何界面或日志都不得把它描述成地址校验的判定结果。与 `NETWORK_ERROR` 不同,后者是请求本身的失败。可重试：当解析器或代理开始应答同一主机时,同一请求即可成功（ADR 0243,issue #419）。 |
-| `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
-| `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
-| `LIMIT_EXCEEDED` | 不 | 载荷超过了固定的主机上限（条目数、字节数）并被拒绝 |
-| `CONFIG_SYNC_INVALID` | 不 | 同步配置、密码、路径、请求或审批输入无效 |
-| `CONFIG_SYNC_LOCKED` | 不 | 本地加密同步 vault 尚未解锁 |
-| `CONFIG_SYNC_UNSUPPORTED` | 不 | vault 格式或 WebDAV 服务器能力不受支持 |
-| `CONFIG_SYNC_REMOTE` | 也许 | 远端 WebDAV 对象、认证、配额或可用性失败 |
-| `CONFIG_SYNC_CONFLICT` | 也许 | 远端 head、vault 身份或审批 digest 冲突 |
-| `CONFIG_SYNC_CRYPTO` | 不 | 认证加密、对象身份或密文校验失败 |
-| `CONFIG_SYNC_MAPPING_REQUIRED` | 不 | 导入的项目作用域配置需要明确的本地文件夹/项目组映射 |
-| `CONFIG_SYNC_LIMIT_EXCEEDED` | 不 | 加密同步状态超过实体、对象、资源、归档或解压上限 |
 
 `HOST_UNAVAILABLE` 是为丢失或损坏的主机 process/transport 保留的，
 不是普通的入学压力。 RPC 容量返回 `HOST_OVERLOADED`，并且
@@ -97,38 +68,28 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `AGENT_NOT_FOUND` | 不 | 会话丢失 |
 | `TURN_NOT_FOUND` | 不 | 使 id 无效 |
 | `TURN_ABORTED` | 不 | 回合被 user/system 中止 |
-| `AGENT_SIDECAR_CRASHED` | 不 | Node agent sidecar 进程在回合中途死亡；所属回合以中止收尾并使用此代码，而不是无关的 Plan 审批代码（issue #1077） |
-| `AGENT_SIDECAR_OOM` | 不 | sidecar 在 JavaScript 堆触及配置上限后死亡，依据其 stderr 尾部的 V8 致命错误横幅判定；在输入缩小之前，同一回合会以同样方式失败（issue #1077） |
 | `MODEL_NOT_CONFIGURED` | 不 | 未选择可用模型，或提供商因未知而拒绝所选模型 |
-| `PROVIDER_ERROR` | 是的 | 上游提供商故障；可重试的故障（5xx 网关）最多获得四次同回合重试，而格式错误的 400/422 请求，以及适配器自身拒绝的请求选项（Google 适配器遇到自定义 `fetch`，issue #1072）都是终止的 |
+| `PROVIDER_ERROR` | 是的 | 上游提供商故障；可重试的故障（5xx 网关）最多获得四次同回合重试，格式错误的 400/422 请求是终止的 |
 | `PROVIDER_UNAUTHORIZED` | 不 | bad/missing 提供商凭证 |
 | `PROVIDER_RATE_LIMITED` | 是的 | 供应商费率有限 |
 | `CONTEXT_TOO_LARGE` | 不 | 恢复后 prompt/context 仍超出安全模型预算、发生第二个提供程序溢出或禁用自动恢复 |
 | `CONTEXT_COMPACTION_FAILED` | 不 | 自动保留尾部恢复无法准备、持久或适合检查点，或手动检查点摘要生成/持久追加失败；受保护的下一个提供程序请求不会启动 |
 | `STREAM_FAILED` | 是的 | 提供程序流在完整响应之前终止、提前关闭或以其他方式结束；最多四次同回合重试可能会在终止事件之前发生 |
-| `EMPTY_MODEL_RESPONSE` | 是的 | 模型在没有工具调用且没有可见文本的情况下结束了两次：一次是流式传输，一次是在自动重新运行后；对 Host 账本完成通知的第一条回复除外（规范 02-agent-runtime §5e、D446） |
+| `EMPTY_MODEL_RESPONSE` | 是的 | 模型在没有工具调用且没有可见文本的情况下结束了两次：一次是流式传输，一次是在自动重新运行后（规范 02-agent-runtime §5e） |
 | `PROMPT_ENHANCEMENT_EMPTY` | 不 | 一次性增强模型没有返回任何文本 |
-| `SPEECH_NOT_CONFIGURED` | 不 | 设置里没有绑定转写或朗读 |
-| `SPEECH_PROTOCOL_UNSUPPORTED` | 不 | 语音协议未知或不支持该角色 |
-| `SPEECH_INPUT_TOO_LARGE` | 不 | 语音输入超过 25 MB |
 | `SUBAGENT_IDLE_TIMEOUT` | 不 | 已撤回（D328）：空闲看门狗不再武装；代码仅为已存储结果保留 |
 | `SUBAGENT_DURATION_TIMEOUT` | 不 | 已撤回（D328）：时长看门狗不再武装；代码仅为已存储结果保留 |
-| `SUBAGENT_CONTEXT_OVERFLOW` | 不 | 委派自身的模型上下文超出其安全预算，自动的回合边界压缩与仅保留任务简报和最近消息的降级重试都没能把它带回限制以内；该失败给出可执行的恢复方式，而不是提供商的溢出文本 |
 
 ### 3. 3 工作空间/工具/权限
 
 | 代码 | 可重审的 | 意义 |
 |---|---|---|
 | `WORKSPACE_REQUIRED` | 不 | 无工作空间限制 |
-| `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策之前路径逃逸沙箱，或提示词附件位于其会话 scratch/project/attachment 根目录之外 |
-| `WORKSPACE_PATH_DENIED` | 不 | 显式的 `Read`/`Write`/`Edit` 路径命中了始终开启的安全拒绝名单（私钥、`.env` 文件、凭证包、`.git/objects`）；外部路径授权不会解除它（规格 15 §3） |
-| `READ_PATH_IS_DIRECTORY` | 不 | `Read` 拿到的是目录；结果附带一条 `Glob` 建议 |
-| `TOOL_BINARY_CONTENT` | 不 | `Read` 拒绝把二进制文件倾倒进模型上下文 |
+| `PATH_OUTSIDE_WORKSPACE` | 不 | 在显式外部路径权限决策或未经许可的兼容性调用到达解析器之前，路径逃逸沙箱 |
 | `TOOL_NOT_FOUND` | 不 | 未知工具 |
 | `TOOL_DENIED` | 不 | 权限被拒绝/模式被禁止 |
 | `TOOL_TIMEOUT` | 是的 | 工具执行超时 |
 | `TOOL_FAILED` | 也许 | 工具已执行但失败 |
-| `TOOL_ABORTED` | 不 | 工具在完成前被用户停止或回合中止取消 |
 | `MUTATION_RETRY_BUDGET_EXHAUSTED` | 是 | 重复保护在同路径 `Edit` 或 shell patch 反复失败后终止了本轮；携带 `details.kind`（`edit` 或 `patch-command`）与最后一个工具错误代码 |
 | `PROCESS_RESOURCE_EXHAUSTED` | 是的 | shell 进程无法启动，因为操作系统暂时耗尽了进程资源 |
 | `SHELL_NOT_FOUND` | 不 | 目录回退后没有有效的平台 shell 可用；消息承载指引 |
@@ -149,36 +110,6 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `PLAN_ARTIFACT_WRITE_FAILED` | 不 | 主机无法将确切的字节写入新的 `.pi/<kind>/*.md` 工件 |
 | `PLAN_EXECUTION_INTERRUPTED` | 不 | 已批准的 queued/running Plan 或 Goal 执行已停止且不重播 |
 | `PLAN_REQUIRES_INTERACTIVE_SESSION` | 不 | unattended/scheduled Plan 或 Goal 运行无法请求批准 |
-| `PLAN_NOT_FOUND` | 不 | 没有审批记录与该提案 id 匹配 |
-| `PLAN_SESSION_NOT_FOUND` | 不 | Plan/Goal RPC 点名了主机没有的会话 |
-| `PLAN_WORKSPACE_REQUIRED` | 不 | 会话没有持久化的项目；临时会话无法进入 Plan 或 Goal |
-| `PLAN_ALREADY_ACTIVE` | 不 | 会话已经有一份正在协商的契约 |
-| `PLAN_ALREADY_PENDING` | 不 | 同一回合的审批仍在等待时又收到了一次提交 |
-| `PLAN_ALREADY_RESOLVED` | 不 | 第二次 approve/reject 到达了一个已经裁决的审批 |
-| `PLAN_APPROVAL_CONFLICT` | 不 | 审批记录在版本守卫更新底下被改动 |
-| `PLAN_INVALID_ACTION` | 不 | 审批响应既不是 `approve` 也不是 `reject` |
-| `PLAN_INVALID_ARGUMENT` | 不 | submit/resolve 参数校验失败 |
-| `PLAN_PERMISSION_MODE_REQUIRED` | 不 | approve 没有选择 `ask`、`accept-edits` 或 `auto` |
-| `PLAN_PERMISSION_MODE_INVALID` | 不 | 选定的权限模式不是这三者之一 |
-| `PLAN_MARKDOWN_TOO_LARGE` | 不 | 提交的 Markdown 超出工件大小上限 |
-| `PLAN_REJECTED` | 不 | 用户拒绝了提案；本轮结束且不执行 |
-| `PLAN_SUBMIT_FAILED` | 也许 | 主机无法记录提案 |
-| `PLAN_CONFIGURATION_BLOCKED` | 不 | 提案或执行进行中时 `session.configure` 被拒绝 |
-| `PLAN_ARTIFACT_INVALID` | 不 | 检查点工件在执行前未通过校验 |
-| `PLAN_ARTIFACT_NOT_READY` | 不 | 工件尚未持久写入就被认领执行 |
-| `PLAN_ARTIFACT_PATH_UNSAFE` | 不 | 工件路径逃逸了 `<workspaceRoot>/.pi/<kind>/` |
-| `PLAN_ARTIFACT_COLLISION_LIMIT` | 不 | 主机用尽了唯一的工件名 |
-| `PLAN_ARTIFACT_HASH_MISMATCH` | 不 | 执行时工件字节与记录的哈希不再一致 |
-| `PLAN_EXECUTION_ACTIVE` | 不 | 该会话已有一个已批准的执行在运行 |
-| `PLAN_EXECUTION_NOT_FOUND` | 不 | 没有排队中的执行与认领匹配 |
-| `PLAN_EXECUTION_ALREADY_CLAIMED` | 不 | 另一个认领者抢先拿走了排队中的执行 |
-| `PLAN_EXECUTION_STALE` | 不 | 执行 epoch 与当前会话不再匹配 |
-| `PLAN_EXECUTION_STATUS_INVALID` | 不 | 当前状态不允许该状态迁移 |
-| `PLAN_EXECUTION_CONFLICT` | 不 | 执行记录在版本守卫更新底下被改动 |
-| `PLAN_EXECUTION_FAILED` | 也许 | 已批准的执行以错误结束 |
-| `PLAN_INTERNAL` | 也许 | 没有更细分类的 Plan/Goal 主机失败 |
-| `WRITE_DISABLED_IN_CHAT` | 不 | 历史遗留（D188 之前的 Chat profile）；为已存储的转录本保留注册，不再发出 |
-| `BASH_DISABLED_IN_CHAT` | 不 | 历史遗留（D188 之前的 Chat profile）；为已存储的转录本保留注册，不再发出 |
 
 `_IN_PLAN` 后缀和 `PLAN_` 前缀是历史性的：两种合约模式
 （Plan 和 Goal）共享这些代码，而不是复制 `_IN_GOAL` 集
@@ -222,7 +153,6 @@ reveal 不并入任何行，必须重新读取。
 |---|---|---|
 | `PROVIDER_SECRET_MISSING` | 不 | 启用的提供程序需要 API 密钥 |
 | `MODEL_ALIAS_TOO_LONG` | 不 | 已配置模型别名超过 60 个 Unicode 字符 |
-| `MODEL_BINDINGS_DEGRADED` | 不 | 存储模型绑定已降级；为防止数据丢失，拒绝显式替换模型数组 |
 | `SECRET_STORE_UNAVAILABLE` | 也许 | 操作系统安全存储不可用（保留） |
 | `SETTINGS_INVALID` | 不 | 设置有效负载无效（保留） |
 
@@ -230,27 +160,11 @@ reveal 不并入任何行，必须重新读取。
 
 | 代码 | 可重审的 | 意义 |
 |---|---|---|
-| `PLUGIN_NOT_FOUND` | 不 | 插件 ID 缺失 |
+| `PLUGIN_NOT_FOUND` | 不 | 插件 ID 缺失（保留） |
 | `PLUGIN_INVALID` | 不 | manifest/package 无效 |
 | `PLUGIN_LOAD_FAILED` | 也许 | enable/load 失败 |
 | `PLUGIN_DISABLED` | 不 | 插件已禁用（保留） |
-| `PLUGIN_PERMISSION_DENIED` | 不 | 插件缺少该调用所需的已声明且已授予的权限 |
-| `PLUGIN_INTEGRITY` | 不 | 包校验和或签名与目录条目不匹配 |
-| `PLUGIN_NETWORK` | 是的 | 市场下载或目录拉取失败 |
-| `PLUGIN_HOST_TOO_OLD` | 不 | 包的 `engines.piDesktop` 范围排除了当前宿主 |
-| `PLUGIN_MARKET_INVALID` | 不 | 市场目录格式错误或缺少必需的发布字段 |
-| `PLUGIN_MARKET_UNTRUSTED_HOST` | 不 | 目录或包 URL 不在可信市场主机之内 |
-| `PLUGIN_MARKET_YANKED` | 不 | 请求的发布版本已从目录中撤回 |
-| `PLUGIN_MARKET_NOT_PUBLISHED` | 不 | 平台有该版本但尚未对外提供 |
-| `PLUGIN_MARKET_ARCHIVED` | 不 | 插件已被平台下架 |
-| `PLUGIN_MARKET_NOT_FOUND` | 不 | 平台没有该插件或该版本 |
-| `PLUGIN_MARKET_RATE_LIMITED` | 是 | 下载接口要求客户端等待后重试 |
-| `PLUGIN_MARKET_NO_SOURCE` | 也许 | 没有任何分发目标能提供该包 |
-| `PLUGIN_CANCELLED` | 不 | 用户在下载过程中取消了安装 |
-| `MCP_INVALID` | 不 | 用户的 MCP 服务器定义校验失败 |
-| `SKILL_INVALID` | 不 | 用户的技能文档校验失败 |
-| `SUBAGENT_INVALID` | 不 | 用户的子代理文档校验失败 |
-| `CAPABILITY_INVALID` | 不 | Agent 能力根目录或作用域设置校验失败 |
+| `PLUGIN_PERMISSION_DENIED` | 不 | 插件缺少 declared/granted 权限（保留） |
 | `PLUGIN_COMMAND_NOT_FOUND` | 不 | 命令 ID 丢失（保留） |
 | `PLUGIN_CRASHED` | 是的 | 插件运行时崩溃（保留） |
 | `PLUGIN_CONTRACT_MISMATCH` | 不 | 不支持的 manifest/api 版本（保留） |
@@ -268,9 +182,8 @@ reveal 不并入任何行，必须重新读取。
 | `PROVIDER_TIMEOUT` | `TIMEOUT` | network/server 超时（可重试） |
 | `PROVIDER_UNSUPPORTED_CAPABILITY` | `PROVIDER_ERROR` | tools/vision 不支持 |
 | `PROVIDER_DISABLED` | `MODEL_NOT_CONFIGURED` | 提供商已禁用 |
-
-`WORKSPACE_PATH_DENIED` 和 `TOOL_BINARY_CONTENT` 在主机开始发出它们时已从
-本表移出（§3.3）。
+| `WORKSPACE_PATH_DENIED` | `PATH_OUTSIDE_WORKSPACE` | ignore/denylist 块 |
+| `TOOL_BINARY_CONTENT` | `TOOL_FAILED` | 拒绝二进制转储 |
 
 历史别名（切勿在新代码中使用）：`PROVIDER_AUTH_FAILED` →
 `PROVIDER_UNAUTHORIZED`； `PROVIDER_STREAM_INTERRUPTED` → `STREAM_FAILED`；
@@ -281,29 +194,6 @@ reveal 不并入任何行，必须重新读取。
 带有一个标记，命名哪一端幸存以及其余部分在哪里，或者报告
 同级结果字段中的有界窗口
 （请参阅 [16-工具-结果-限制](/zh-CN/spec/03-runtime/16-tool-result-limits)）。
-
-### 3.8 远程控制（RACP-WS / SSH 引导）
-
-当会话位于经 `RACP-WS` 驱动的已配对远程主机上时，由桌面端的远程主机客户端与
-`pi-host` 服务端发出（参见
-[19-远程代理控制协议](/zh-CN/spec/03-runtime/19-remote-agent-control-protocol)、
-[../05-security/02-remote-control-security](/zh-CN/spec/05-security/02-remote-control-security)、
-ADR 0285）。渲染进程除了一个标识徽章外看不到本地/远程之分；这些码通过与其他调用
-相同的错误对象浮现。
-
-| 码 | 可重试 | 含义 |
-|---|---|---|
-| `HOST_DISCONNECTED` | 是 | 远程主机连接断开；进行中的调用被拒绝，客户端按游标重连并重新订阅 |
-| `HOST_BOOTSTRAP_FAILED` | 否 | 经 SSH 配置远程 `pi-host` 失败（下载、校验和不匹配或 `install.sh`）；`details.reason` 指明阶段 |
-| `HOST_VERSION_MISMATCH` | 否 | 远程 `pi-host` 版本与桌面不匹配；桌面拒绝驱动不兼容的主机 |
-| `REMOTE_AUTH_FAILED` | 否 | 设备或配对令牌在 RACP-WS 升级时被拒 |
-| `REMOTE_CONNECTION_FAILED` | 是 | RACP-WS 传输无法连接（非回环 URL、套接字被拒） |
-| `REMOTE_FORWARD_FAILED` | 是 | 无法建立 SSH 回环端口转发 |
-| `REMOTE_PATH_NOT_FOUND` | 否 | 远程项目/工作区路径在主机上不存在 |
-| `REMOTE_PATH_FORBIDDEN` | 否 | 远程路径在主机允许的根之外 |
-| `PAIRING_FAILED` | 否 | `connection/pair` 无法铸造设备凭据 |
-| `PAIRING_TOKEN_EXPIRED` | 否 | 一次性配对令牌在配对完成前已过期 |
-| `CAPABILITY_UNAVAILABLE` | 否 | 请求的操作对应主机声明为不可用的能力（如附件、工具中继） |
 
 ## 4. 映射规则
 
@@ -323,51 +213,17 @@ Node sidecar 将提供商 SDK 错误映射到：
 
 精确的 `terminated` 提供商消息和等效的过早流关闭
 消息映射到 `STREAM_FAILED`。请求设置阶段或响应后的
-`PROVIDER_RATE_LIMITED` 使用共享的运行时预算：初始尝试之后最多 10 次重试，
+`PROVIDER_RATE_LIMITED` 使用共享的运行时预算：初始尝试之后最多五次重试，
 且设置和流式传输失败一起计数。非 429 瞬时故障——`STREAM_FAILED`、
 `NETWORK_ERROR`、`TIMEOUT` 以及可重试的 `PROVIDER_ERROR`（例如上游网关
-502/503/504）——共享它们自己的有界预算：初始尝试之后最多 10 次重试，同样
+502/503/504）——共享它们自己的有界预算：初始尝试之后最多四次重试，同样
 跨请求设置和流式传输一起计数，并且与 429 预算相互独立。两个预算都是
 可中止的。429 路径在客户端退避之前先遵循 `retry-after-ms`、`retry-after`
 秒和 HTTP 日期标头，并将等待上限设为 30 秒；非 429 路径应用相同的优先级，
 上限为 8 秒，在其他情况下依次等待 1 秒、2 秒、4 秒，然后是 8 秒。只有失败
 的请求会被重放；会话及其工具状态保持不变。来自格式错误的 400/422 请求的
 不可重试 `PROVIDER_ERROR` 永远不会进入任何预算。预算耗尽后的失败仍然是
-致命的。设置 `infiniteProviderRetry` 默认关闭；开启后只移除上述可重试网络/瞬时类别的次数上限，
-不会改变退避、`Retry-After`、取消或终止分类，并可能在用户停止回合前持续消耗 API 用量。
-
-**Synchronized update (#699):** A complete successful model response resets
-both budgets, including a tool-call response, in the main session and builtin
-subagents. Headers, partial output, and phase changes do not replenish them.
-Exhaustion reports `retryAttempt: 10` from the relevant budget counter.
-
-`NETWORK_ERROR` 以有界的 `details` 携带真正失败的传输层：
-`networkCategory`（`dns`、`tls`、`timeout`、`refused`、`unreachable`、
-`reset`、`proxy`，或在没有留下任何线索时为 `unknown`）、`networkCode`
-（errno，例如 `ENOTFOUND`、`ECONNRESET`、`EPROTO`、`UND_ERR_SOCKET`），
-以及传输层提供时的 `networkSyscall` 和 `networkHost`。只保留裸主机名——
-绝不包含 URL、端口、路径、查询串或凭据——当 `providerCode` 会重复
-`networkCode` 时省略它。刻意不引入按层划分的错误码（`DNS_ERROR`、
-`TLS_ERROR`、`SOCKET_RESET` 等）：分类字段已能区分这些层，而无需为每一层
-增加用户可见的错误码与本地化文案。
-
-诊断来自 fetch 边界处的实时 cause 链，而不只是提供程序消息：pi-ai 会把被
-拒绝的请求摊平成 `errorMessage`，等到分类运行时 undici 存放在 `error.cause`
-里的 errno 已经消失，裸 `fetch failed` 只能被记为 `networkCategory: unknown`；
-而 fetch 包装层仍持有原始 Error，并从它给出同一组经过校验的字段。捕获到的
-cause 同时确定了阶段：没有任何响应到达时故障记为 `phase: request`，这正是它
-与「响应中途断流」的区别。发往 pi-ai Google 适配器的请求不带 fetch 包装、也不会到达 `onResponse`（issue #1072），因此这两个字段都不会上报：它只保留提供商自己的消息，`Retry-After` 退回有界阶梯，下面的重建对它不生效。
-
-`networkRoute`（`direct`、`environment-proxy`、
-`http-proxy`、`socks5-proxy`）指出请求实际走的链路，代理这一跳失败无需再从
-errno 猜测。
-
-同一来源在一轮内连续两次这样失败（完全没有响应）时，下一次尝试前会重建提供
-程序传输，而不是继续复用同一个 undici 连接池。重建是进程级的、且有明确边界：
-每个连续失败序列只重建一次，每 30 秒最多一次，且 `dns` 永不触发重建（新连接池
-无法改变名字解析结果）。替换在关闭旧 dispatcher 之前安装，旧的 dispatcher 采
-用优雅关闭，因此其他会话已派发的请求仍会在它原本使用的连接池上完成。生效的
-链路会被原样复现，绝不会悄悄降级为直连。
+致命的。
 
 ### 权限超时
 UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示为拒绝 (`TOOL_DENIED`)。
@@ -397,15 +253,10 @@ UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示
 助手错误消息显示本地化摘要和稳定代码，并带有
 包含经过编辑的提供商响应的可访问详细信息披露，
 提供商 ID 和模型 ID。提供商详细信息上限为 600 个字符，并且
-公共 credential/header 值在事件发射或持久化之前进行编辑。
-详细信息披露也可能显示有界的 `phase`、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs`、`retryAttempt`、`networkCategory`、
-`networkCode`、`networkSyscall`、`networkHost`、`networkRoute`、`requestMessages`、
-`requestBytes` 和 `compactionGeneration` 字段。请求字段只有计数与字节大小，
-压缩字段是检查点世代计数器，均不携带消息内容。当瞬时提供商故障正在重试时，
-活动指示器的原因气泡会显示本地化摘要、稳定错误码，并在网络故障时显示传输层
-errno（`NETWORK_ERROR · ENOTFOUND`），因此失败层级在重试期间与日志记录中
-同样可见。
+公共 credential/header 值在事件发射之前进行编辑或
+坚持。如果有的话，详细信息披露和计时日志也可能
+显示有界 `phase`、`providerStatus`、`providerCode`、`providerWaitMs`、
+`streamMs` 和 `retryAttempt` 字段。
 
 ## 6. i18n 按键约定
 
@@ -432,31 +283,3 @@ errors.<code>.action
    到期、计划拒绝和重新启动中断路径映射到稳定
    代码；仅允许记录的预转目录后备，并且不进行任何工作
    正在重播
-
-### 证书校验失败（issue #714）
-
-当 `details.networkCode` 是已识别的证书校验错误时，`NETWORK_ERROR` 不可重试，
-包括不受信任或自签名链、证书已过期或尚未生效，以及
-`ERR_TLS_CERT_ALTNAME_INVALID`。具体证书原因优先于通用 socket/proxy 包装错误。
-即使 adapter 已将错误扁平化，捕获的 fetch 原因仍会应用这条策略。未知 TLS 错误和
-非证书协议错误继续使用原有恢复行为。
-
-transcript 保留稳定错误码、传输 errno 和原始 details，但使用本地化的证书指引，
-而不是通用连接错误摘要。它会提示用户检查证书、系统时间以及安全软件或代理使用的
-信任根，并在修改信任设置后重启。文案不会断言一定是流量拦截，也不会提供关闭 TLS
-校验的绕过方式。修复原因后，用户仍可手动继续。
-
-## 本地请求准备错误
-
-上下文校验、估算或请求准备阶段产生的结构化 `LOCAL_REQUEST_ERROR`，映射为既有
-`INTERNAL` 且 `retriable: false`。在适配器把异常压成文字前保留本地来源与阶段；
-诊断可以保留原因类型，不向界面复制请求正文、搜索结果、凭据或任意底层异常文字。
-不能靠匹配异常句子或统一禁用所有 `TypeError` 重试来分类；网络故障和取消维持原有策略。
-
-历史恢复校验可能在运行时流创建前失败。此时使用既有 RPC 错误 `data`，携带
-`errorCode`、`retriable: false` 及安全的 `details`（来源、阶段、可选原因类型）。
-不得发出模型请求，sidecar 保持可用，也不改写存储记录；容器不是存储块列表时仍按此失败。
-
-单个存储块无法回放属于另一种情况：网关丢弃 id 时本应用本身就会存下仅供展示的块，
-因此该消息的整条 replay 降级为“没有 replay”，而不是让之后每一轮请求都失败。
-回合继续执行，展示轮次不变；诊断只记录块数与阶段，不复制搜索内容、结果或凭据。

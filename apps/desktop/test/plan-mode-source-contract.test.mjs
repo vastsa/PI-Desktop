@@ -1,39 +1,25 @@
-import {
-  readAppSource,
-  readSettingsSource,
-  readStoreModuleSync,
-  readStoreSource,
-  readTranscriptSource,
-  readComposerSource,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const [apiSource, appSource, composerSource, settingsSource, commandsSource, storeSource, surfaceSource, transcriptSource, barSource, topbarSource, componentSpec, englishSource, chineseSource, planStateSource, composerCss] =
+const [apiSource, appSource, composerSource, settingsSource, commandsSource, storeSource, surfaceSource, transcriptSource, barSource, topbarSource, componentSpec, englishSource, chineseSource, planStateSource] =
   await Promise.all([
     read("../src/lib/api.ts"),
-    readAppSource(),
-    readComposerSource(),
-    readSettingsSource(),
+    read("../src/App.tsx"),
+    read("../src/components/Composer.tsx"),
+    read("../src/pages/SettingsPage.tsx"),
     read("../src/lib/commands.ts"),
-    readStoreSource(),
+    read("../src/stores/app-store.ts"),
     read("../src/components/ChatSurface.tsx"),
-    readTranscriptSource(),
+    read("../src/components/ChatTranscript.tsx"),
     read("../src/components/PlanApprovalBar.tsx"),
     read("../src/components/ConversationTopbar.tsx"),
     read("../../../docs/spec/04-ux/08-component-spec.md"),
     read("../../../packages/i18n/src/locales/en/index.ts"),
     read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
     read("../src/lib/plan-mode-state.ts"),
-    read("../src/styles/composer.css"),
   ]);
-const eventsSource = readStoreModuleSync("slices/events-slice.ts");
-const interactionSource = readStoreModuleSync("slices/interaction-slice.ts");
-const sessionSource = readStoreModuleSync("slices/session-slice.ts");
-const transcriptSliceSource = readStoreModuleSync("slices/transcript-slice.ts");
-const queueSource = readStoreModuleSync("slices/queue-slice.ts");
 const legacyModeKey = ["mode", "Chat"].join("");
 const legacyModeCommand = ["builtin.mode", "chat"].join(".");
 const legacyModeLiteral = ["mode:", '"chat"'].join(" ");
@@ -44,8 +30,8 @@ test("renderer exposes Agent, Plan, and Goal as the only operating modes", () =>
   assert.match(composerSource, /settings\.modeGoal/);
   assert.match(composerSource, /IconListChecks/);
   assert.match(composerSource, /IconTarget/);
-  assert.match(settingsSource, /value: "plan", label: t\("settings\.modePlan"\)/);
-  assert.match(settingsSource, /value: "goal", label: t\("settings\.modeGoal"\)/);
+  assert.match(settingsSource, /\["plan", "settings\.modePlan"\]/);
+  assert.match(settingsSource, /\["goal", "settings\.modeGoal"\]/);
   assert.match(commandsSource, /case "builtin\.mode\.plan"/);
   assert.match(commandsSource, /case "builtin\.mode\.goal"/);
   for (const source of [composerSource, settingsSource, commandsSource]) {
@@ -87,27 +73,26 @@ test("only pending proposals form the renderer approval gate", () => {
 });
 
 test("reject or interruption returns editable planning without changing durable mode from runtime events", () => {
-  const planEventStart = eventsSource.indexOf('if (event.type === "planning_state")');
-  const planEventBlock = eventsSource.slice(planEventStart);
+  const planEventBlock =
+    storeSource.match(/if \(event\.type === "planning_state"\)[\s\S]*?\n    \}\n    \/\/ Any session/)?.[0] ?? "";
   assert.match(planEventBlock, /planningStates:/);
   assert.match(planEventBlock, /planCheckpoints:/);
-  assert.match(planEventBlock, /runtime\.nextPlanSyncGeneration\(envelope\.sessionId\)/);
+  assert.match(planEventBlock, /nextPlanSyncGeneration\(envelope\.sessionId\)/);
   assert.match(planEventBlock, /restorePendingPlan\(envelope\.sessionId\)/);
   assert.match(planEventBlock, /pendingPlans:/);
   assert.doesNotMatch(planEventBlock, /sessions:/);
   const hostPlanEventBlock =
-    eventsSource.slice(eventsSource.indexOf("handlePlansChanged: (event) =>"));
+    storeSource.match(/handlePlansChanged: \(event\) =>[\s\S]*?\n  handleAgentEvent:/)?.[0] ?? "";
   assert.match(hostPlanEventBlock, /sessionModeForPlanningState\(\s*event\.state,/);
   // The contract kind, not the projected state, decides which mode is shown.
   assert.match(hostPlanEventBlock, /event\.kind \?\? checkpoint\?\.kind/);
   assert.match(hostPlanEventBlock, /planExecutionWasActive/);
-  assert.match(transcriptSliceSource, /state\.pendingPlans\[sessionId\]\?\.status === "pending"/);
-  assert.match(transcriptSliceSource, /state\.pendingPlans\[sessionId\]\?\.status === "pending"\) return;/);
+  assert.match(storeSource, /get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"/);
+  assert.match(storeSource, /get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"\) return;/);
   const sendPromptBlock =
-    queueSource.slice(queueSource.indexOf("sendPrompt: async"));
+    storeSource.match(/sendPrompt: async \(content, draft, requestedSessionId\)[\s\S]*?\n  compactContext:/)?.[0] ?? "";
   assert.match(sendPromptBlock, /get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"/);
   assert.match(sendPromptBlock, /await api\.prompt\(\{/);
-  // The send ships the submitted content through the prompt call.
   assert.match(sendPromptBlock, /sessionId,\s*content,/);
   assert.match(
     sendPromptBlock,
@@ -117,13 +102,15 @@ test("reject or interruption returns editable planning without changing durable 
 
 test("host ordering uses a fresh monotonic token-checked read", () => {
   assert.doesNotMatch(storeSource, /pendingPlanLoads|pendingPlanLoadGenerations|pendingPlanFollowUps/);
-  const restoreBlock = sessionSource.slice(sessionSource.indexOf("restorePendingPlan: async"));
-  assert.match(restoreBlock, /const generation = runtime\.nextPlanSyncGeneration\(sessionId\)/);
+  const restoreBlock =
+    storeSource.match(/restorePendingPlan: async \(sessionId\)[\s\S]*?\n  \},\n\n  prefetchSession:/)?.[0] ?? "";
+  assert.match(restoreBlock, /const generation = nextPlanSyncGeneration\(sessionId\)/);
   assert.match(restoreBlock, /await api\.pendingPlans\(sessionId\)/);
-  assert.match(restoreBlock, /if \(generation !== runtime\.planSyncGeneration\(sessionId\)\) return "unavailable"/);
+  assert.match(restoreBlock, /if \(generation !== planSyncGeneration\(sessionId\)\) return "unavailable"/);
   assert.match(restoreBlock, /return activeProposal \? "pending" : "terminal"/);
-  const hostBlock = eventsSource.slice(eventsSource.indexOf("handlePlansChanged: (event) =>"));
-  assert.match(hostBlock, /runtime\.nextPlanSyncGeneration\(event\.sessionId\)/);
+  const hostBlock =
+    storeSource.match(/handlePlansChanged: \(event\) =>[\s\S]*?\n  handleAgentEvent:/)?.[0] ?? "";
+  assert.match(hostBlock, /nextPlanSyncGeneration\(event\.sessionId\)/);
   assert.match(hostBlock, /withoutRecordKey\(state\.pendingPlans, event\.sessionId\)/);
 });
 
@@ -141,7 +128,6 @@ test("the component spec assigns mode ownership to Composer", () => {
   assert.doesNotMatch(topbarSpec, /Agent \| Plan|mode toggle|mode indicator/);
   assert.match(composerSpec, /combined model ×\s+reasoning-level control/);
   assert.match(composerSpec, /Composer-left Agent\/Plan\/Goal chip is the sole mode/);
-  assert.match(composerSpec, /--ds-bg-composer/);
 });
 
 test("plan approval sends exact identities and waits for host confirmation", () => {
@@ -166,56 +152,14 @@ test("plan approval sends exact identities and waits for host confirmation", () 
   assert.doesNotMatch(transcriptSource, /PlanApprovalCard|plan-approval-card/);
   assert.doesNotMatch(transcriptSource, /\bpendingPlan\b/);
   assert.match(storeSource, /openPlanArtifact/);
-  assert.match(
-    storeSource,
-    /preferredFileWorkPanelTab\(relativePath, pluginViews\)/,
-  );
+  assert.match(storeSource, /fileWorkPanelTab\(relativePath\)/);
   assert.match(barSource, /const isPending = proposal\.status === "pending"/);
-  const resolveBlock = interactionSource.slice(interactionSource.indexOf("resolvePlan: async"));
+  const resolveBlock = storeSource.match(/resolvePlan: async \(resolution\)[\s\S]*?\n  showToast:/)?.[0] ?? "";
   assert.match(resolveBlock, /await api\.resolvePlan\(resolution\)/);
   assert.match(resolveBlock, /get\(\)\.handlePlansChanged/);
   assert.doesNotMatch(resolveBlock, /planApprovalPermissionMode/);
   assert.doesNotMatch(storeSource, /planApprovalPermissionMode/);
   assert.doesNotMatch(resolveBlock, /finally[\s\S]*pendingPlans/);
-});
-
-test("the startup artifact restore resolves launchable views first", () => {
-  // The artifact's surface comes from the launchable plugin views, and the
-  // renderer only reads that list after `ready`. Opening the artifact before
-  // that read used the host file tab and then took a second tab when
-  // `selectSession` restored the same approval.
-  const bootstrapStart = storeSource.indexOf("bootstrap: async");
-  assert.ok(bootstrapStart > -1, "bootstrap is declared in the store source");
-  const bootstrap = storeSource.slice(bootstrapStart);
-  const resolvedViews = bootstrap.indexOf("await get().refreshPluginViews();");
-  // The same loop shape also runs once before the restore, so search from the
-  // refresh rather than from the top of `bootstrap`.
-  const restoreLoop = bootstrap.indexOf(
-    "for (const proposal of activePendingPlans)",
-    resolvedViews,
-  );
-
-  assert.ok(resolvedViews > -1, "bootstrap resolves the launchable views");
-  assert.ok(
-    restoreLoop > resolvedViews,
-    "the view list resolves before the pending-plan restore loop",
-  );
-  assert.ok(
-    bootstrap.indexOf("openPlanArtifact(", resolvedViews) > restoreLoop,
-    "no artifact opens before that loop",
-  );
-  // Every slice call site forwards the live list, so a stub list cannot hide
-  // the wrong surface behind a green run.
-  for (const slice of [eventsSource, sessionSource]) {
-    assert.match(slice, /openPlanArtifact\([\s\S]{0,120}?get\(\)\.pluginViews/);
-  }
-});
-
-test("plan approval bar paints the composer plate over the transparent dock", () => {
-  const barRule = composerCss.match(/\.plan-approval-bar \{[\s\S]*?\n\}/)?.[0] ?? "";
-  assert.match(barRule, /background:\s*var\(--ds-bg-composer\)/);
-  assert.match(barRule, /box-shadow:\s*var\(--ds-shadow-composer\)/);
-  assert.doesNotMatch(barRule, /--ds-tile\b/);
 });
 
 test("terminal Plan checkpoints stop rendering the approval bar", () => {
@@ -244,8 +188,8 @@ test("pending approval keeps the draft while gating every composer control", () 
   assert.match(composerSource, /aria-readonly=\{inputBlocked\}/);
   assert.match(composerSource, /enabled: !inputBlocked/);
   assert.match(composerSource, /disabled=\{controlsBlocked\}/);
-  assert.match(composerSource, /const controlsBlocked = approvalPending \|\| nativeSession;/);
-  assert.match(composerSource, /const sendBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composerSource, /const controlsBlocked = approvalPending;/);
+  assert.match(composerSource, /const sendBlocked = approvalPending \|\| pasting;/);
   assert.match(storeSource, /if \(get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"\) return/);
 });
 
@@ -266,6 +210,10 @@ test("Plan approval labels and remembered modes are locale-backed", () => {
   assert.match(chineseSource, /approvalRegion: "规划审批"/);
   assert.match(englishSource, /approvalRegion: "Goal approval"/);
   assert.match(chineseSource, /approvalRegion: "目标审批"/);
+  assert.match(englishSource, /statusQueued: "Plan queued"/);
+  assert.match(chineseSource, /statusQueued: "规划已排队"/);
+  assert.match(englishSource, /statusQueued: "Goal queued"/);
+  assert.match(chineseSource, /statusQueued: "目标已排队"/);
   assert.match(englishSource, /approveAuto: "Approve \(Auto\)"/);
   assert.match(chineseSource, /approveAuto: "批准（全自动）"/);
   assert.doesNotMatch(englishSource, /expiresAt:/);

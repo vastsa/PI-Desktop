@@ -1,9 +1,3 @@
-import {
-  readAppSource,
-  readSettingsSource,
-  readMainSource,
-  readSharedTypesSource,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -24,25 +18,23 @@ const [
   appSource,
   stylesSource,
   pkgSource,
-  buildReleaseSource,
   releaseWorkflowSource,
   enSource,
   zhSource,
   changelogSource,
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
-  readSharedTypesSource(),
+  read("../../../packages/shared/src/types.ts"),
   read("../electron/main/updater.ts"),
-  readMainSource(),
+  read("../electron/main/index.ts"),
   read("../electron/main/application-menu.ts"),
   read("../src/lib/api.ts"),
   read("../src/components/UpdateBanner.tsx"),
   read("../src/components/ReleaseNotesDialog.tsx"),
-  readSettingsSource(),
-  readAppSource(),
+  read("../src/pages/SettingsPage.tsx"),
+  read("../src/App.tsx"),
   loadStyles(),
   read("../package.json"),
-  read("../../../scripts/build-desktop-release.mjs"),
   read("../../../.github/workflows/release.yml"),
   read("../../../packages/i18n/src/locales/en/index.ts"),
   read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
@@ -93,41 +85,19 @@ test("main process registers update handlers and the auto-check lifecycle", () =
 });
 
 test("updater gates delivery mode by platform and delivery policy", () => {
-  // The pure policy tests cover platform capability and portable defaults.
-  assert.match(updaterSource, /resolveUpdateModePolicy/);
-  assert.match(updaterSource, /resolveDefaultUpdatePreference/);
-  assert.match(updaterSource, /supportsAutomaticUpdates/);
-  assert.match(updaterSource, /piDistribution/);
-  assert.match(updaterSource, /autoUpdater\.autoDownload = false/);
-  assert.match(updaterSource, /autoUpdater\.autoInstallOnAppQuit = false/);
-  assert.match(updaterSource, /autoUpdater\.autoDownload = mode === "in-app"/);
-  assert.match(updaterSource, /autoUpdater\.autoInstallOnAppQuit = mode === "in-app"/);
-  assert.match(updaterSource, /this\.applyPreference\(preference, false\)/);
-  assert.match(updaterSource, /manualReminderTracker/);
-  assert.match(updaterSource, /applyPreference\(this\.preference, false\)/);
-  assert.match(updaterSource, /resolveStoredUpdatePreference/);
-  assert.match(updaterSource, /if \(!preferenceChanged\) return/);
+  // macOS stays manual-delivery even for notarized artifacts; dev builds are
+  // disabled outright.
+  assert.match(updaterSource, /if \(!isPackaged\) return "disabled"/);
+  assert.match(updaterSource, /win32.*in-app|in-app.*win32/s);
+  assert.match(updaterSource, /PORTABLE_EXECUTABLE_FILE \? "manual"/);
+  assert.match(updaterSource, /APPIMAGE/);
+  assert.match(updaterSource, /autoInstallOnAppQuit = true/);
   assert.match(
     updaterSource,
     /allowPrerelease = false/,
     "prerelease installs must still track the stable GitHub latest release",
   );
   assert.match(updaterSource, /quitAndInstall/);
-  assert.match(
-    updaterSource,
-    /private installRequested = false/,
-    "the install request is latched so the shutdown path can see it",
-  );
-  assert.match(
-    updaterSource,
-    /isInstallingUpdate\(\): boolean/,
-    "the shutdown path must be able to ask whether this quit is an update restart",
-  );
-  assert.match(
-    updaterSource,
-    /this\.installRequested = true;[\s\S]*?autoUpdater\.quitAndInstall\(/,
-    "the latch must be set before quitAndInstall spawns the installer",
-  );
   assert.match(
     updaterSource,
     /state\.status === "downloaded"[\s\S]*return this\.state/,
@@ -178,11 +148,8 @@ test("renderer exposes the updates API, banner and settings row", () => {
   assert.match(bannerSource, /releaseNotes/);
   assert.match(bannerSource, /availableVersion}:\$\{update\.status/);
   assert.match(bannerSource, /className="update-notice"/);
-  assert.match(bannerSource, /manualReminder === true/);
   assert.match(bannerSource, /role="progressbar"/);
-  assert.match(settingsSource, /<UpdatesRow[\s\S]*currentVersion=\{version\?\.version\}/);
-  assert.match(settingsSource, /settings=\{settings\}/);
-  assert.match(settingsSource, /saveSettings=\{saveSettings\}/);
+  assert.match(settingsSource, /<UpdatesRow currentVersion=/);
   assert.match(settingsSource, /update-settings-notes/);
   assert.match(settingsSource, /updates\.whatsNew/);
   assert.match(settingsSource, /updates\.releaseNotes/);
@@ -226,13 +193,6 @@ test("check-for-updates is reachable from the application menu", () => {
       "closeReleaseNotes",
       "currentBadge",
       "availableBadge",
-      "preferenceTitle",
-      "preferenceDesc",
-      "automatic",
-      "manual",
-      "automaticUnsupported",
-      "automaticPortableWarning",
-      "preferenceSaveFailed",
     ]) {
       assert.match(source, new RegExp(`${key}:`), key);
     }
@@ -249,14 +209,9 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
   assert.ok(macTargets.includes("zip"), "mac zip target (Squirrel.Mac feed)");
   // electron-builder must never self-publish (implicit tag publishing would
   // fail on the missing token and race the softprops release step).
-  for (const script of ["dist:mac", "dist:win", "dist:linux"]) {
-    assert.match(
-      pkg.scripts[script],
-      /--publish never|build-desktop-release\.mjs/,
-      script,
-    );
+  for (const script of ["dist", "dist:mac", "dist:win", "dist:linux"]) {
+    assert.match(pkg.scripts[script], /--publish never/, script);
   }
-  assert.match(pkg.scripts.dist, /build-desktop-release\.mjs/);
   assert.equal(pkg.build.linux.executableName, "pi-desktop");
   const linuxTargets = pkg.build.linux.target.map((entry) => entry.target);
   assert.deepEqual(
@@ -281,26 +236,12 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
   // GitHub asset URLs mangle spaces; keep Windows artifact names space-free.
   assert.equal(pkg.build.nsis.artifactName, "PI-Desktop-Setup-${version}.${ext}");
   const winTargets = pkg.build.win.target.map((entry) => entry.target);
-  assert.deepEqual(winTargets, ["nsis", "zip", "portable"], "Windows release targets");
-  assert.equal(pkg.build.portable.artifactName, "PI-Desktop-Portable-${version}.${ext}", "portable artifact name");
+  assert.deepEqual(winTargets, ["nsis", "portable"], "Windows release targets");
   assert.equal(
-    pkg.build.win.artifactName,
+    pkg.build.portable.artifactName,
     "PI-Desktop-Portable-${version}.${ext}",
   );
-  assert.equal(pkg.build.extraMetadata.piDistribution, "installed");
-  assert.match(pkg.scripts["dist:win"], /build-desktop-release\.mjs win/);
-  assert.match(buildReleaseSource, /"--win",\s*"nsis"/);
-  assert.match(buildReleaseSource, /"--win",\s*"zip"/);
-  assert.match(buildReleaseSource, /"--win",\s*"portable"/);
-  assert.match(buildReleaseSource, /piDistribution=portable/);
-  assert.match(buildReleaseSource, /"--publish",\s*"never"/);
-  assert.match(buildReleaseSource, /piDistribution=installed/);
-  assert.match(buildReleaseSource, /piDistribution=zip/);
-  assert.match(
-    buildReleaseSource,
-    /shell:\s*process\.platform === "win32"/,
-    "Windows must launch the pnpm.cmd shim through a shell",
-  );
+  assert.equal(pkg.build.portable.requestExecutionLevel, "user");
   // The upload step must carry every updater feed, and the release publishes
   // all platforms unfiltered (D126/D285).
   assert.match(releaseWorkflowSource, /release\/\*\.zip/);
@@ -317,23 +258,10 @@ test("shared shipped-locale changelog is the in-app notes source of truth", () =
   assert.match(changelogSource, /version: "0\.2\.7"/);
   assert.match(
     mainSource,
-    /getLocale:\s*\(\)\s*=>\s*(?:updaterLocale|mainState\.updaterLocale)/,
+    /getLocale:\s*\(\)\s*=>\s*updaterLocale/,
     "Main supplies product locale to the updater for note selection",
   );
   assert.match(mainSource, /updater\.refreshReleaseNotes\(\)/);
   assert.match(stylesSource, /\.update-notice-notes/);
   assert.match(stylesSource, /\.update-settings-notes/);
-});
-
-test("update cache relocation and cleanup preserve the delta-update path", async () => {
-  const updateCacheSource = await read("../electron/main/update-cache.ts");
-  const maintenanceSource = await read("../electron/main/update-cache-maintenance.ts");
-  assert.match(updateCacheSource, /PI_DESKTOP_UPDATE_CACHE_DIR/);
-  assert.match(updaterSource, /new RelocatedNsisUpdater\(baseCachePath\)/);
-  assert.match(updaterSource, /relocateUpdateCacheBasePath\(this\.app, baseCachePath\)/);
-  assert.match(maintenanceSource, /readFileSync\([\s\S]*app-update\.yml/);
-  assert.match(mainSource, /reclaimRelocatedUpdateCache/);
-  assert.match(updateCacheSource, /UPDATE_INSTALLER_BASELINE_NAME/);
-  assert.match(updateCacheSource, /UPDATE_BLOCKMAP_BASELINE_NAME/);
-  assert.match(updateCacheSource, /UPDATE_DOWNLOAD_DIR_NAME/);
 });

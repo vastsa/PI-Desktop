@@ -1,8 +1,3 @@
-import {
-  readStoreModuleSync,
-  readTranscriptSourceSync,
-  readMainSourceSync,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -11,12 +6,9 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("session fork is wired through protocol, main, API, store, and sidebar", () => {
   const protocol = read("../../../packages/shared/src/protocol.ts");
-  const main = readMainSourceSync();
+  const main = read("../electron/main/index.ts");
   const api = read("../src/lib/api.ts");
-  const store = [
-    readStoreModuleSync("slices/session-slice.ts"),
-    readStoreModuleSync("runtime/session-coordination.ts"),
-  ].join("\n");
+  const store = read("../src/stores/app-store.ts");
   const sidebar = read("../src/components/Sidebar.tsx");
 
   assert.match(
@@ -40,12 +32,9 @@ test("session fork is wired through protocol, main, API, store, and sidebar", ()
 });
 
 test("assistant response fork reuses isolated session snapshots", () => {
-  const main = readMainSourceSync();
-  const store = [
-    readStoreModuleSync("slices/session-slice.ts"),
-    readStoreModuleSync("runtime/session-coordination.ts"),
-  ].join("\n");
-  const transcript = readTranscriptSourceSync();
+  const main = read("../electron/main/index.ts");
+  const store = read("../src/stores/app-store.ts");
+  const transcript = read("../src/components/ChatTranscript.tsx");
 
   assert.match(main, /throughMessageId/);
   assert.match(store, /forkAssistantMessage:\s*async \(messageId\)/);
@@ -111,27 +100,26 @@ test("a fork is recorded even when a newer navigation took over (D-fork-msg-loss
 });
 
 test("fork actions commit the child through one durable helper", () => {
-  const sessionSlice = readStoreModuleSync("slices/session-slice.ts");
-  const coordination = readStoreModuleSync("runtime/session-coordination.ts");
+  const store = read("../src/stores/app-store.ts");
 
   // Both entry points must route through the helper that records the child
   // unconditionally and only makes activation depend on the navigation intent.
-  const forkSessionBlock = sessionSlice.slice(
-    sessionSlice.indexOf("forkSession: async (id)"),
-    sessionSlice.indexOf("forkAssistantMessage: async"),
+  const forkSessionBlock = store.slice(
+    store.indexOf("forkSession: async (id)"),
+    store.indexOf("forkAssistantMessage: async"),
   );
   assert.match(
     forkSessionBlock,
-    /commitForkedSession\(result\.session,\s*\{\s*activate: runtime\.navigationIntentIsCurrent\(intent\)/,
+    /commitForkedSession\(result\.session,\s*\{\s*activate: navigationIntentIsCurrent\(intent\)/,
     "forkSession must record the child and gate only activation",
   );
-  const forkAssistantBlock = sessionSlice.slice(
-    sessionSlice.indexOf("forkAssistantMessage: async"),
-    sessionSlice.indexOf("configureActiveSession", sessionSlice.indexOf("forkAssistantMessage: async")),
+  const forkAssistantBlock = store.slice(
+    store.indexOf("forkAssistantMessage: async"),
+    store.indexOf("configureActiveSession", store.indexOf("forkAssistantMessage: async")),
   );
   assert.match(
     forkAssistantBlock,
-    /commitForkedSession\(result\.session,\s*\{\s*activate: runtime\.navigationIntentIsCurrent\(intent\)/,
+    /commitForkedSession\(result\.session,\s*\{\s*activate: navigationIntentIsCurrent\(intent\)/,
     "forkAssistantMessage must record the child and gate only activation",
   );
   // A bare early return on a stale intent is what dropped the branch before.
@@ -141,9 +129,9 @@ test("fork actions commit the child through one durable helper", () => {
   );
 
   // The helper caches the transcript so re-selection paints from memory.
-  const helper = coordination.slice(
-    coordination.indexOf("function commitForkedSession"),
-    coordination.indexOf("function revealEmptyCreatingSession"),
+  const helper = store.slice(
+    store.indexOf("function commitForkedSession"),
+    store.indexOf("/** Append a freshly installed checkpoint"),
   );
   assert.match(helper, /cacheSessionTranscript\(summary\.id,\s*messages,\s*historyWindow\)/);
   assert.match(helper, /rememberSessionCompactions\(summary\.id,\s*session\)/);

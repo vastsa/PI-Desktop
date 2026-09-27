@@ -1,4 +1,3 @@
-import { readTranscriptSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -10,7 +9,10 @@ import test from "node:test";
  * would notice them drifting apart.
  */
 
-const transcript = await readTranscriptSource();
+const transcript = await readFile(
+  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
+  "utf8",
+);
 const styles = await readFile(
   new URL("../src/styles/messages.css", import.meta.url),
   "utf8",

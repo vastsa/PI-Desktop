@@ -1,14 +1,19 @@
-import { readAppSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const sidecarSource = await readFile(
-  new URL("../../../packages/host-runtime/src/agent-sidecar.ts", import.meta.url),
+  new URL("../electron/main/agent-sidecar.ts", import.meta.url),
   "utf8",
 );
-const mainSource = await readMainSource();
-const appSource = await readAppSource();
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
+const appSource = await readFile(
+  new URL("../src/App.tsx", import.meta.url),
+  "utf8",
+);
 const apiSource = await readFile(
   new URL("../src/lib/api.ts", import.meta.url),
   "utf8",
@@ -100,6 +105,14 @@ test("agent runtime exposes BrowserPreview in every mode and prompts for it", ()
     runtimeSource,
     /BrowserPreview: \{\s*path: pathParam\([^)]*\),\s*file_path: aliasParam\("path"\),\s*\}/,
   );
-  // BrowserPreview tool description mentions live-reload behaviour.
+  // Default system prompt limits preview calls to user-visible HTML work and
+  // reuses the live-reloading surface while the page is being refined.
+  assert.match(runtimeSource, /user-visible HTML pages/);
+  assert.match(runtimeSource, /first meaningful visual edit/);
+  assert.match(runtimeSource, /Reuse that preview while iterating/);
+  assert.match(
+    runtimeSource,
+    /Skip generated, test-only, and non-visual HTML files/,
+  );
   assert.match(runtimeSource, /live-reloads/);
 });

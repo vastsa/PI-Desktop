@@ -5,7 +5,7 @@
 
 import type { Context } from "@earendil-works/pi-ai";
 import {
-  PLUGIN_COMPLETE_DEFAULT_TAIL,
+  PLUGIN_ADVISOR_DEFAULT_TAIL,
   pluginLlmContextFromTranscript,
   serializePluginLlmContext,
 } from "@pi-desktop/agent-runtime";
@@ -14,7 +14,7 @@ import type {
   PluginLlmContext,
   PluginModelInfo,
 } from "@pi-desktop/plugin-sdk";
-import type { AppSettings, ContextCompactionRecord, ThinkingLevel, UiMessage } from "@pi-desktop/shared";
+import type { ContextCompactionRecord, ThinkingLevel, UiMessage } from "@pi-desktop/shared";
 import { THINKING_LEVELS } from "@pi-desktop/shared";
 
 export function parsePluginModelKey(modelKey: string): { providerId: string; modelId: string } | null {
@@ -42,57 +42,40 @@ type ListedProvider = {
   defaultModelId?: string;
   models?: Array<{
     id: string;
-    alias?: string;
-    availableForSubagents?: boolean;
     thinkingLevels?: ThinkingLevel[];
   }>;
 };
 
-export function listReadyPluginModels(
-  providers: ListedProvider[],
-  settings: Pick<AppSettings, "defaultProviderId" | "defaultModelId"> = {},
-): PluginModelInfo[] {
+export function listReadyPluginModels(providers: ListedProvider[]): PluginModelInfo[] {
   const models: PluginModelInfo[] = [];
-  const enabled = providers.filter((provider) => provider.enabled !== false);
-  const isReady = (provider: ListedProvider) =>
-    provider.hasSecret === true || provider.hasOauth === true || provider.authKind === "none";
-  // Match session launch fallback order without advertising an unavailable default.
-  const defaultProvider = enabled.find((provider) => provider.id === settings.defaultProviderId)
-    ?? enabled.find(isReady)
-    ?? enabled[0];
-  const defaultModelId = (defaultProvider?.id === settings.defaultProviderId ? settings.defaultModelId : undefined)
-    || defaultProvider?.models?.[0]?.id
-    || defaultProvider?.defaultModelId;
-  let defaultAssigned = false;
-  for (const provider of enabled) {
-    if (!isReady(provider)) continue;
-    const bindings: NonNullable<ListedProvider["models"]> =
+  for (const provider of providers) {
+    if (provider.enabled === false) continue;
+    const ready =
+      provider.hasSecret === true ||
+      provider.hasOauth === true ||
+      provider.authKind === "none";
+    if (!ready) continue;
+    const bindings =
       provider.models?.length
         ? provider.models
         : provider.defaultModelId
-          ? [{ id: provider.defaultModelId }]
+          ? [{ id: provider.defaultModelId, thinkingLevels: provider.supportedThinkingLevels }]
           : [];
     for (const binding of bindings) {
       const modelId = String(binding.id ?? "").trim();
       if (!modelId) continue;
       const thinkingLevels =
-        binding.thinkingLevels
+        binding.thinkingLevels?.length
           ? [...binding.thinkingLevels]
           : [...(provider.supportedThinkingLevels ?? ["off"])];
-      const isDefault = !defaultAssigned && provider.id === defaultProvider?.id && modelId === defaultModelId;
-      if (isDefault) defaultAssigned = true;
       models.push({
         key: `${provider.id}/${modelId}`,
         providerId: provider.id,
         providerName: provider.name,
         modelId,
         label: `${modelId} (${provider.name})`,
-        ...(binding.alias?.trim() ? { alias: binding.alias.trim() } : {}),
-        availableForSubagents: binding.availableForSubagents === true,
-        isDefault,
         supportsReasoning:
-          thinkingLevels.some((level) => level !== "off") ||
-          (binding.thinkingLevels === undefined && provider.supportsReasoning === true),
+          thinkingLevels.some((level) => level !== "off") || provider.supportsReasoning === true,
         thinkingLevels,
       });
     }
@@ -151,13 +134,13 @@ export function pluginCompleteContext(input: PluginCompleteInput & {
   if (parts.length === 0) {
     parts.push({
       role: "user",
-      content: PLUGIN_COMPLETE_DEFAULT_TAIL,
+      content: PLUGIN_ADVISOR_DEFAULT_TAIL,
       timestamp: Date.now(),
     });
   } else if (input.includeSessionContext && (input.messages?.length ?? 0) === 0) {
     parts.push({
       role: "user",
-      content: PLUGIN_COMPLETE_DEFAULT_TAIL,
+      content: PLUGIN_ADVISOR_DEFAULT_TAIL,
       timestamp: Date.now(),
     });
   }

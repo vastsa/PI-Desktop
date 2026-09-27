@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
-  SCROLLBAR_REVEAL_HOLD_MS,
   SCROLLING_ATTRIBUTE,
   installScrollbarReveal,
 } from "../src/lib/scrollbar-reveal.ts";
@@ -37,10 +36,6 @@ function fakeRoot() {
     },
   };
 }
-
-test("the default reveal hold is short enough to hide quickly after scrolling", () => {
-  assert.equal(SCROLLBAR_REVEAL_HOLD_MS, 300);
-});
 
 test("scroll marks the scrolling element and clears it after the hold", async () => {
   const root = fakeRoot();

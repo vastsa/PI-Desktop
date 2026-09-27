@@ -9,11 +9,10 @@
  *
  * Wire protocol (both directions, one JSON message per frame):
  *   parent -> child  { t: "init", id, pluginId, pluginPath, main, manifest }
- *   parent -> child  { t: "call", id, method, payload, invocationId? } command.run | tool.execute |
+ *   parent -> child  { t: "call", id, method, payload }   command.run | tool.execute |
  *                                                        service.start | service.stop |
  *                                                        lifecycle.unload
- *   child  -> parent { t: "call", id, api, args, invocationId? } host API request
- *   parent -> child  { t: "cancel", invocationId, reason } abort one tool invocation
+ *   child  -> parent { t: "call", id, api, args }         host API request
  *   *      -> *      { t: "res", id, ok, value } | { t: "res", id, ok: false, error: { code, message } }
  *   parent -> child  { t: "event", event, ... }           push, no reply (bus.message, host events)
  *   child  -> parent { t: "log", level, message }         diagnostics, fire and forget
@@ -21,7 +20,6 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
-import { AsyncLocalStorage } from "node:async_hooks";
 
 const parentPort = process.parentPort;
 
@@ -46,56 +44,15 @@ let manifest = { id: "", name: "", version: "", main: "", schemaVersion: 1 };
 let pluginModule = null;
 
 const pending = new Map();
-const invocations = new Map();
-const invocationContext = new AsyncLocalStorage();
 let nextCallId = 1;
 
 /** Proxy a host API call to the broker and await its verdict. */
 function call(api, args = []) {
-  const invocation = invocationContext.getStore();
-  if (invocation && (invocation.controller.signal.aborted || invocations.get(invocation.id) !== invocation)) {
-    return Promise.reject(invocation.controller.signal.reason ?? toolAbortedError("Plugin tool invocation finished"));
-  }
   const id = `c${nextCallId++}`;
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject, invocationId: invocation?.id });
-    try {
-      send({ t: "call", id, api, args, ...(invocation ? { invocationId: invocation.id } : {}) });
-    } catch (error) {
-      pending.delete(id);
-      reject(error);
-    }
+    pending.set(id, { resolve, reject });
+    send({ t: "call", id, api, args });
   });
-}
-
-function toolAbortedError(reason) {
-  return Object.assign(new Error(reason), { code: "PLUGIN_TOOL_ABORTED" });
-}
-
-/**
- * The same refusal the broker returns for the audio surface, for the two
- * synchronous registration helpers that cannot reject.
- */
-function audioUnavailable(api) {
-  return Object.assign(new Error(`host api not available: ${api}`), {
-    code: "UNSUPPORTED",
-  });
-}
-
-function rejectInvocationCalls(invocationId, error) {
-  for (const [id, entry] of pending) {
-    if (entry.invocationId !== invocationId) continue;
-    pending.delete(id);
-    entry.reject(error);
-  }
-}
-
-function cancelInvocation(invocationId, reason) {
-  const invocation = invocations.get(invocationId);
-  if (!invocation || invocation.controller.signal.aborted) return;
-  const error = toolAbortedError(reason || "Plugin tool execution aborted");
-  invocation.controller.abort(error);
-  rejectInvocationCalls(invocationId, error);
 }
 
 function settle(message) {
@@ -150,7 +107,6 @@ function normalizeBytes(value) {
 // the broker only ever holds the descriptor plus a proxy back into this process.
 const commands = new Map();
 const tools = new Map();
-const speechHandles = new Map();
 // Resident services declared in the manifest. The broker decides when they run;
 // this map only holds the callables and whether they are currently up.
 const services = new Map();
@@ -164,14 +120,6 @@ function buildApi() {
     app: {
       getVersion: () => call("app.getVersion"),
       getLocale: () => call("app.getLocale"),
-      getAppearance: () => call("app.getAppearance"),
-      setTheme: (themeId) => call("app.setTheme", [themeId]),
-    },
-    themes: {
-      upsert: (input) => call("themes.upsert", [input]),
-      remove: (themeId) => call("themes.remove", [themeId]),
-      list: () => call("themes.list"),
-      setVariables: (themeId, values) => call("themes.setVariables", [themeId, values]),
     },
     plugin: {
       getId: () => pluginId,
@@ -206,35 +154,6 @@ function buildApi() {
       unregister: async (id) => {
         commands.delete(id);
         await call("commands.unregister", [id]);
-      },
-    },
-    speech: {
-      registerAdapter: async (adapter) => {
-        if (!adapter || typeof adapter.protocol !== "string" || !adapter.protocol.trim()) {
-          throw new Error("speech protocol is required");
-        }
-        if (typeof adapter.handle !== "function") {
-          throw new Error("speech handle must be a function");
-        }
-        const protocol = adapter.protocol.trim();
-        const roles = Array.isArray(adapter.roles) ? adapter.roles : [];
-        speechHandles.set(protocol, adapter.handle);
-        try {
-          await call("speech.registerAdapter", [
-            {
-              protocol,
-              label: adapter.label,
-              roles,
-            },
-          ]);
-        } catch (error) {
-          speechHandles.delete(protocol);
-          throw error;
-        }
-      },
-      unregisterAdapter: async (protocol) => {
-        speechHandles.delete(String(protocol ?? ""));
-        await call("speech.unregisterAdapter", [protocol]);
       },
     },
     ui: {
@@ -315,12 +234,6 @@ function buildApi() {
       rename: (input) => call("session.rename", [input ?? {}]),
       delete: (input) => call("session.delete", [input ?? {}]),
     },
-    // Read-only usage facts (`usage.read`). The main-process dispatch owns
-    // the permission check and parameter bounds; the host returns per-turn
-    // counters and identifiers only, so no message body crosses this bridge.
-    usage: {
-      listTurns: (input) => call("usage.listTurns", [input ?? {}]),
-    },
     /**
      * Resident background workers (spec 07 §3). Registration is local: the
      * manifest already declared the service, and the broker starts it only when
@@ -392,46 +305,6 @@ function buildApi() {
     },
     net: {
       fetch: (input) => call("net.fetch", [input]),
-      // Real-time connections (`net.websocket`). Frames arrive back as
-      // `net:websocket:message` host events, so a plugin subscribes with
-      // `pi.events.on` exactly as it does for any other host event.
-      websocket: {
-        connect: (input) => call("net.websocket.connect", [input ?? {}]),
-        send: (input) => call("net.websocket.send", [input ?? {}]),
-        close: (input) => call("net.websocket.close", [input ?? {}]),
-      },
-    },
-    /**
-     * Background audio (`audio.capture.background`, `audio.playback.background`).
-     * The host has no device backend yet, so the async calls travel to the
-     * broker and come back as a coded `UNSUPPORTED` refusal — a plugin can
-     * branch on `error.code` instead of catching a TypeError. The two
-     * registration helpers are synchronous by contract and cannot reject, so
-     * they throw the same refusal immediately rather than registering a handler
-     * that could never fire.
-     */
-    audio: {
-      getInputDevices: () => call("audio.getInputDevices"),
-      openInput: (options) => call("audio.openInput", [options ?? {}]),
-      closeInput: (streamId) => call("audio.closeInput", [streamId]),
-      getCaptureState: () => call("audio.getCaptureState"),
-      onInputFrame: () => {
-        throw audioUnavailable("audio.onInputFrame");
-      },
-      offInputFrame: () => {
-        throw audioUnavailable("audio.offInputFrame");
-      },
-      openOutput: (options) => call("audio.openOutput", [options ?? {}]),
-      writeOutput: (input) => call("audio.writeOutput", [input ?? {}]),
-      stopOutput: (streamId) => call("audio.stopOutput", [streamId]),
-      closeOutput: (streamId) => call("audio.closeOutput", [streamId]),
-    },
-    // System-wide accelerators. The arrow handlers live in the host: this
-    // object only carries requests across the boundary.
-    keyboard: {
-      registerGlobalShortcut: (input) => call("keyboard.registerGlobalShortcut", [input]),
-      unregisterGlobalShortcut: (id) => call("keyboard.unregisterGlobalShortcut", [id]),
-      listGlobalShortcuts: () => call("keyboard.listGlobalShortcuts"),
     },
     // Fed by the parent's `event` frames; bus deliveries also arrive as
     // `bus.message` here, so a plugin can watch the raw stream if it wants to.
@@ -498,7 +371,7 @@ async function handleInit(message) {
   return { pluginId };
 }
 
-async function handleParentCall(method, payload, invocationId) {
+async function handleParentCall(method, payload) {
   switch (method) {
     case "panel.invoke": {
       const invoke = pluginModule?.onPanelInvoke;
@@ -519,42 +392,21 @@ async function handleParentCall(method, payload, invocationId) {
       await run();
       return { ok: true };
     }
-    case "speech.handle": {
-      const handle = speechHandles.get(String(payload?.protocol ?? ""));
-      if (!handle) {
-        const error = new Error(`speech adapter not registered: ${payload?.protocol}`);
-        error.code = "NOT_FOUND";
-        throw error;
-      }
-      return handle(payload ?? {});
-    }
     case "tool.execute": {
-      if (typeof invocationId !== "string" || !invocationId || invocations.has(invocationId)) {
-        throw toolAbortedError("A unique host tool invocation ID is required");
-      }
       const execute = tools.get(String(payload?.name ?? ""));
       if (!execute) {
         const error = new Error(`tool not registered: ${payload?.name}`);
         error.code = "TOOL_NOT_FOUND";
         throw error;
       }
-      const invocation = { id: invocationId, controller: new AbortController() };
-      invocations.set(invocationId, invocation);
-      try {
-        const result = await invocationContext.run(invocation, () => execute(payload?.args, {
-          sessionId: payload?.sessionId,
-          turnId: payload?.turnId,
-          mode: payload?.mode,
-          modelKey: payload?.modelKey,
-          thinkingLevel: payload?.thinkingLevel,
-          signal: invocation.controller.signal,
-          log: (msg) => log("info", msg),
-        }));
-        return result ?? null;
-      } finally {
-        invocations.delete(invocationId);
-        rejectInvocationCalls(invocationId, toolAbortedError("Plugin tool invocation finished"));
-      }
+      const result = await execute(payload?.args, {
+        sessionId: payload?.sessionId,
+        turnId: payload?.turnId,
+        modelKey: payload?.modelKey,
+        thinkingLevel: payload?.thinkingLevel,
+        log: (msg) => log("info", msg),
+      });
+      return result ?? null;
     }
     case "service.start": {
       const id = String(payload?.id ?? "");
@@ -579,7 +431,6 @@ async function handleParentCall(method, payload, invocationId) {
       return { ok: true };
     }
     case "lifecycle.unload": {
-      for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");
       // Best effort: a throwing onUnload must not block teardown.
       try {
         if (pluginModule?.onUnload) await pluginModule.onUnload();
@@ -588,7 +439,6 @@ async function handleParentCall(method, payload, invocationId) {
       }
       commands.clear();
       tools.clear();
-      speechHandles.clear();
       services.clear();
       busHandlers.clear();
       eventListeners.clear();
@@ -612,10 +462,6 @@ onHostMessage((message) => {
     handleHostEvent(message);
     return;
   }
-  if (message.t === "cancel") {
-    cancelInvocation(message.invocationId, String(message.reason ?? ""));
-    return;
-  }
   if (message.t === "init") {
     void handleInit(message)
       .then((value) => send({ t: "res", id: message.id, ok: true, value }))
@@ -633,7 +479,7 @@ onHostMessage((message) => {
     return;
   }
   if (message.t === "call") {
-    void invocationContext.run(undefined, () => handleParentCall(message.method, message.payload, message.invocationId))
+    void handleParentCall(message.method, message.payload)
       .then((value) => send({ t: "res", id: message.id, ok: true, value: value ?? null }))
       .catch((error) =>
         send({

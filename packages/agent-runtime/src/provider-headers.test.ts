@@ -32,20 +32,6 @@ describe("normalizeProviderHeaders", () => {
     expect(normalizeProviderHeaders({ "X_Nope": "1" })).toBeUndefined();
   });
 
-  it("folds fullwidth values and drops what still cannot be a ByteString", () => {
-    expect(
-      normalizeProviderHeaders({
-        "X-Title": "PI\u3000Desktop",
-        "X-Key": "1234567\uFF10",
-        "X-CJK": "星",
-        "X-Control": "ab\u0000cd",
-      }),
-    ).toEqual({
-      "X-Title": "PI Desktop",
-      "X-Key": "12345670",
-    });
-  });
-
   it("collapses duplicate keys case-insensitively, last write winning", () => {
     expect(
       normalizeProviderHeaders({
@@ -136,39 +122,6 @@ describe("withProviderHeaders", () => {
       headers: { "User-Agent": "still-sdk" },
     });
     expect(base).toHaveBeenCalledOnce();
-  });
-
-  it("keeps the headers but drops the fetch for the Google adapters", () => {
-    const base = vi.fn(async () => new Response("ok"));
-    const result = withProviderHeaders(
-      { headers: { "User-Agent": "pi-desktop/0.0.0" }, fetch: base },
-      { "X-Gateway": "1" },
-      "google-generative-ai",
-    );
-
-    expect(result.headers).toMatchObject({
-      "User-Agent": "pi-desktop/0.0.0",
-      "X-Gateway": "1",
-    });
-    expect(result.fetch).toBeUndefined();
-    expect(base).not.toHaveBeenCalled();
-  });
-
-  it("clears an inherited fetch for a Google adapter with no header override", () => {
-    const base = vi.fn(async () => new Response("ok"));
-
-    const result = withProviderHeaders({ fetch: base }, undefined, "google-generative-ai");
-
-    expect(result.fetch).toBeUndefined();
-    expect(base).not.toHaveBeenCalled();
-  });
-
-  it("returns the caller's options untouched for every other adapter", () => {
-    const base = vi.fn(async () => new Response("ok"));
-    const options = { fetch: base };
-
-    expect(withProviderHeaders(options, undefined, "openai-completions")).toBe(options);
-    expect(withProviderHeaders(options, {}, "anthropic-messages")).toBe(options);
   });
 });
 

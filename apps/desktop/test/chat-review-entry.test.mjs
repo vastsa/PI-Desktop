@@ -1,9 +1,3 @@
-import {
-  readStoreSource,
-  readStoreModule,
-  readTranscriptSource,
-} from "./helpers/source-contracts.mjs";
-import { readAppSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -13,7 +7,10 @@ import {
   summarizeReviewChanges,
 } from "../src/lib/workspace-review.ts";
 
-const transcriptSource = await readTranscriptSource();
+const transcriptSource = await readFile(
+  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
+  "utf8",
+);
 const cardSource = await readFile(
   new URL("../src/components/ReviewChangeCard.tsx", import.meta.url),
   "utf8",
@@ -34,10 +31,11 @@ const responsiveStylesSource = await readFile(
   new URL("../src/styles/responsive.css", import.meta.url),
   "utf8",
 );
-const appSource = await readAppSource();
-const storeSource = await readStoreSource();
-const appStoreSource = await readStoreModule("app-store.ts");
-const eventsSource = await readStoreModule("slices/events-slice.ts");
+const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+const storeSource = await readFile(
+  new URL("../src/stores/app-store.ts", import.meta.url),
+  "utf8",
+);
 
 const baseReview = {
   version: 1,
@@ -174,9 +172,9 @@ test("chat renders one message-owned card immediately after its tool row", () =>
     storeSource,
     /rollbackWorkspaceChange:[\s\S]*api\.workspaceReviewRollback[\s\S]*withReviewChangeState/,
   );
-  assert.doesNotMatch(
-    eventsSource,
-    /shouldOpenReviewArtifact|toolWorkPanelTab\("review"\)/,
+  assert.match(
+    storeSource,
+    /const reviewArtifact = shouldOpenReviewArtifact\([\s\S]*if \(reviewArtifact\)[\s\S]*openWorkPanelTabForSession/,
   );
   assert.doesNotMatch(storeSource, /workspaceReviewSessions/);
 });

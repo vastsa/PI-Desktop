@@ -22,10 +22,9 @@
 | `agent` | 对话、中止、状态和交互式 Asktool 解决方案 |
 | `plan` | Plan 提案列出、决议和变更事件 |
 | `session` | 会话 CRUD/历史记录 |
-| `session collaboration` | 侧边栏投影使用的有界只读协作状态；变更仍通过已审查的插件网关完成 |
 | `settings` | 配置 read/write |
 | `secrets` | 秘密 write/delete/exists（绝不将明文返回到 UI 日志） |
-| `project` | 工作空间选择、逻辑项目组与查询 |
+| `project` | 工作空间选择与查询 |
 | `tool` | 权限确认回调 |
 | `shell` | 主机 shell 目录和持久默认 shell |
 | `log` | 前端可以显示的诊断信息 |
@@ -33,7 +32,7 @@
 | `commandPalette` | 命令面板搜索和执行 |
 | `workspace` | 工作区选择和遗留工作树诊断 |
 | `browser` | 工作面板嵌入预览 navigation/bounds/visibility + 状态事件 |
-| `fs` | 工作面板工作区文件 listing/reading/reveal，聊天文件引用对项目、会话临时目录与附件根的补全，以及用户点击后用系统默认应用打开（只读） |
+| `fs` | 工作面板工作区文件 listing/reading/reveal，以及用户点击后用系统默认应用打开（只读） |
 | `window` | 无框窗口状态、控件和有界工作面板宽度预留 |
 | `menu` | 列入许可名单的应用程序菜单命令和本机 editing/window 操作 |
 | `notification` | 持久收件箱 list/read/clear 和 new/activated 事件 |
@@ -49,48 +48,12 @@ event: pi-desktop/<domain>/event/<name>
 示例：
 
 - `pi-desktop/agent/prompt`
-- `pi-desktop/agent/steer`
 - `pi-desktop/agent/abort`
 - `pi-desktop/agent/event/message`
 - `pi-desktop/agent/askTool/resolve`
 - `pi-desktop/session/list`
 - `pi-desktop/project/open`
-- `pi-desktop/project/clone`
-- `pi-desktop/project/cloneCheckout`
 - `pi-desktop/project/openFolder`
-- `pi-desktop/project-group/list`
-- `pi-desktop/project-group/create`
-- `pi-desktop/project-group/rename`
-- `pi-desktop/project-group/update`
-- `pi-desktop/project-group/memory/get` / `save`
-- `pi-desktop/project-group/instructions/get` / `save`
-- `pi-desktop/session/collaboration`
-
-## 3.1 逻辑项目组
-
-逻辑项目组是渲染器使用的 ChatGPT 风格项目容器。宿主拥有其 id、显示名称、
-有序根目录、Primary 根目录、共享记忆和共享指令。首次选择的根目录是 Primary。
-
-```ts
-type ProjectGroupRoot = { path: string; name: string; position: number };
-type ProjectGroupRecord = {
-  id: string;
-  name: string;
-  primaryPath: string;
-  roots: ProjectGroupRoot[];
-  createdAt: number;
-  updatedAt: number;
-  pinned: boolean;
-  lastOpenedAt: number;
-  legacy?: boolean;
-};
-```
-
-`project-group/create` 是新增能力，不会改变当前工作区。`project-group/list` 每个逻辑
-项目组返回一行；旧的仅路径项目会作为 `legacy` 单根项目组返回。项目组记忆和指令
-由所有 Primary 路径属于该组的会话共享。Primary 路径是内置工具的默认工作区；运行时
-会公开所有已登记根目录，访问附加根目录必须使用绝对路径并经过规范化校验，其他
-外部路径仍遵循普通权限流程。
 
 ## 4. 通用响应包络
 
@@ -115,8 +78,6 @@ type AppError = {
 type AgentPromptRequest = {
  sessionId: string;
  content: string;
- /** 宿主拥有的协作投递；内容和来源由 ledger 提供。 */
- sessionMessageId?: string;
  /** Truncate durable transcript to N leading messages before append (regenerate). */
  truncateBefore?: number;
  /** Renderer snapshot used to close the prompt-to-completion notification race. */
@@ -149,14 +110,13 @@ Bash 的方言。
 type ThinkingLevel =
   | "off" | "minimal" | "low" | "medium"
   | "high" | "xhigh" | "max";
-type SessionThinkingLevel = ThinkingLevel | "omit";
 
 type SessionConfigureRequest = {
   id: string;
   mode: "plan" | "goal" | "agent";
   providerId?: string;
   modelId?: string;
-  thinkingLevel: SessionThinkingLevel;
+  thinkingLevel: ThinkingLevel;
 };
 ```
 
@@ -185,37 +145,6 @@ Root 用户轮次可能包括 `revisionRootId`、`revisionCount` 和
  输入框
 附件可供性保持隐藏，直到 main、sidecar、pi 模型
 功能和持久性都会消耗有效负载。
-
-### 5.1a 向当前回合补充指令
-
-`pi-desktop/agent/steer` 接受 `AgentSteerRequest`：
-
-```ts
-type AgentSteerRequest = {
- sessionId: string;
- expectedTurnId: string;
- content: string;
- messageId?: string;
- attachments?: AgentPromptAttachment[];
-};
-```
-
-成功时返回现有回合的 `{ accepted: true, turnId }`。主进程检查正在运行的持久回合，
-从现有 sidecar 运行时读取当前项目的附件根目录和模型图像能力，再执行普通提示所用的
-有界附件准备。sidecar 在这些 IO 完成后重新验证 `expectedTurnId`。
-目标回合不存在、已结束、正在停止、标识不匹配，或正在等待 Plan/Goal 审批时，返回
-`TURN_NOT_FOUND`，不会退回到新建回合或排队。空载荷返回 `INVALID_ARGUMENT`。
-
-内部 `agent.steeringContext` 和 `agent.steer` 只使用已存在的运行时，不执行启动配置、
-`runtimeFor` 或 `session.beginTurn`。补充指令不能改变当前模型、权限模式、工作区或
-已批准的执行；此通道中的斜杠文本按普通输入处理。
-
-已接收的输入以普通用户消息事件回显，携带当前 `turnId`、主进程准备的附件引用和
-`UiMessage.steering: true`。这个持久标记确保渲染器重载后，Smart Stop 仍保留该输入。
-用户 `message_end` 还可携带 `precedingAssistant` 流式快照，在持久化输入前为回复预留
-位置。主进程通过可重放 outbox 写入两者；主机仅以终态快照替换该临时助手行，保留其
-id、顺序和所属回合。图像字节不进入持久消息。这是新增的桌面通道和事件字段，
-不改变 RACP、主机 RPC 版本或存储架构。见 ADR active-turn-steering。
 
 ### 5.2 在下一个回合边界停止
 
@@ -270,15 +199,6 @@ type AgentCompactResponse = { accepted: boolean };
 会话。即使自动上下文保护被禁用，它也可用。
 缺少 provider/session 配置无法通过正常的 `AppError`
 信封；主动转向或压实返回 `AGENT_BUSY`。
-
-`agent.compact` 是阻塞式摘要请求，而不是状态轮询：sidecar 会把会话序列化成一个
-提示词、流式生成一次模型摘要，并且可能重试瞬时失败。因此它的传输超时由这份预算推导
-—— `(1 + 3) × 180 秒` 流空转看门狗 `+ 14 秒` 重试退避 `+ 10 秒` 余量 —— 而不是沿用
-扁平的 130 秒默认值；后者会在 sidecar 仍在总结大上下文时到期（**D614**，issue #795）。
-宿主也把传输超时视为“结果未知”而不是“失败”：调用超时后，它会重新读取该会话的持久化
-记录，若发现新检查点已落盘就报告成功，因为无论 Electron 是否收到回复，sidecar 都会
-通过 host-core 持久化。sidecar 自己给出的判定（例如 `CONTEXT_COMPACTION_FAILED`）
-绝不会用这种方式被改写。
 
 ### 5.5 Plan 和 Goal 检查点批准
 
@@ -449,7 +369,7 @@ type AgentActivity =
      reason: "manual" | "threshold" | "overflow" }
  | { phase: "recovering"; since: number }
  | { phase: "retrying"; since: number; attempt: number;
-     infinite?: boolean; retryDelayMs?: number; error?: AgentActivityError }
+     retryDelayMs?: number; error?: AgentActivityError }
  | { phase: "waiting-subagents"; since: number; subagentCount: number;
      agents?: AgentActivityAgent[] };
 
@@ -462,89 +382,6 @@ type AgentStatus = {
  activity?: AgentActivity;
 };
 ```
-
-### 5.6 回合队列（D375 / D386）
-
-Host 拥有每会话的 prompt 队列，renderer 只做镜像。运行中发送经
-`pi-desktop/agent/queue/push` 推入，无头 Agent Host 模块负责准入、排序并释放持久
-条目（`turn_queue`，架构 v18）。每次变化都以 `pi-desktop/agent/event/queueChanged`
-扇出。
-
-```ts
-type AgentQueuePushRequest = { sessionId: string; content: string; attachments?: AgentPromptAttachment[]; idempotencyKey?: string };
-type QueuedTurnSummary = { id: string; sessionId: string; content: string; attachments?: AgentPromptAttachment[]; position: number; priority?: number; createdAt: string };
-// push -> QueuedTurnSummary；list -> { entries }；remove / prioritize -> { ok: true }；reorder -> { moved: boolean }；queueChanged -> { sessionId, entries }
-```
-
-`push` 在会话已有八条时返回带 `queueFull` 的 `AGENT_BUSY`，同一 key 配不同输入时返回
-`IDEMPOTENCY_CONFLICT`。`entries` 按投递顺序返回：已优先的条目在前并按 `priority` 升序
-（即点击顺序），其余条目按 `position` 排列。`prioritize` 把条目追加到优先区块末尾而不
-触碰运行中的回合，对已经带优先级的条目返回 `CONFLICT`，对已不再排队的回合同样拒绝；
-renderer 的“立即发送”随后请求优雅停止，使该条目在下一个边界启动。`reorder` 让一个未优先
-的条目与其相邻的未优先条目互换，对已优先条目、缺失条目或区块/队列边界返回
-`moved: false`；已优先的条目永远不会被当作相邻项。`remove` 取消尚未开始的条目。恢复
-的队列在桌面以 owner 身份接入之前保持挂起，因此重启绝不无人值守地启动工作。
-
-优先区块以**相邻消息**的形式投递，而不是拆成多个回合：第一个已优先条目在边界处启动回合，
-其后每个已优先条目都通过引导通道（`pi-desktop/agent/steer`，携带运行中回合的 id）注入同一
-回合，因此转录里用户行紧挨着出现、模型只回复一次。被注入的条目离开队列，它自己的回合被标记
-为已取消，因为它从不单独运行。运行时拒绝接收的条目仍留在队列中，在下一个边界作为自己的回合
-启动。
-
-队列的投递契约由 ADR 0265 冻结。回合自身的结算对队列具有权威性：终态事件可能被丢弃
-（点名 Main 已不再拥有的回合的终态事件永远不会到达模块），也可能根本没发出，因此结算会在
-模块内关闭该回合并释放它持有的队列。
-
-### 5.7 会话协作投影
-
-渲染器通过一个只读 Electron 通道为侧边栏悬浮卡片读取协作状态：
-
-```ts
-// pi-desktop/session/collaboration({ sessionId }) -> SessionCollaborationSummary
-type SessionCollaborationSummary = {
- sessionId: string;
- title: string;
- status: "idle" | "waiting_permission" |
-   "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
- observedAt: string;
- modelKey?: string;
- createdBySession?: { sessionId: string; title: string; available?: boolean };
- createdSessions?: Array<{ sessionId: string; title: string; available?: boolean }>;
- currentTask?: {
-   messageId: string;
-   senderSession: { sessionId: string; title: string; available?: boolean };
-   text: string;
-   status: string;
-   turnId?: string;
-   createdAt: string;
- };
- result?: { messageId: string; turnId?: string; status: string; text?: string; error?: string };
- recentExchanges: Array<{
-   messageId: string;
-   direction: "incoming" | "outgoing";
-   peer: { sessionId: string; title: string; available?: boolean };
-   kind: "task" | "message" | "completion";
-   status: string;
-   preview: string;
-   createdAt: string;
- }>;
-};
-```
-
-`available` 在被引用的会话已删除或因其他原因不存在时为 `false`；此时宿主还会回退使用
-Session ID 作为标题。渲染器把不可用的引用渲染为文本，而不是可键盘聚焦的导航控件；激活
-一个会话已不存在的引用会报告可见错误，而不是提交一个空选择。独立创建的会话绝不会获得
-伪造的创建者引用。`session_collaboration_messages.source_session_id` 有意不设外键，因此
-投递记录在发送者被删除后仍然保留；此类引用报告为不可用，而不是被移除。
-
-Electron 将实时 Agent 状态叠加到宿主持久投影上，限制交换预览的大小，且只在会话行
-获得悬停或焦点时读取。渲染器不能调用宿主可变的 `session.collaboration.*` 方法。
-插件的 `desktop.control` 网关是唯一经过审查的变更入口，并将发送/取消授权绑定到
-插件当前的 Agent 工具调用。
-
-卡片的一次读取若未在其截止时间内完成即被放弃，迟到的结果被忽略，并安排下一次有界读取。
-卡片仍挂载但不可见时（窗口隐藏，或窗口没有焦点），循环以更慢的空闲间隔继续轮询，以便之后
-的焦点变化能被捕获。轮询仍然绝不重叠读取，并在卸载时停止。
 
 ## 6. Agent 事件
 
@@ -585,8 +422,7 @@ type AgentEvent =
      willRetry: boolean; fallback?: "retained_tail";
      mark?: { id: string; throughMessageId: string;
               generation: number; summaryTokens: number;
-              summarized: boolean;
-              fallback?: "retained_tail" };
+              summarized: boolean };
      error?: { code: string; message: string } }
  | { type: "error"; error: AppError }
  | { type: "status"; status: AgentStatus };
@@ -617,8 +453,7 @@ type AgentEvent =
 转录本行位于 `generation` 之后（此会话有多少个检查点
 已安装）、`summaryTokens`（摘要的估计上下文成本）以及
 `summarized`（当窗口滚动且未向模型询问时，`false`
-总结）以及 `fallback`（摘要生成失败、检查点只带恢复说明和保留尾部时为
-`"retained_tail"`；转录行将其标为摘要生成失败，而不是 N tokens 的摘要）。记录本身不被携带——它的摘要和保留尾部被携带
+总结）。记录本身不被携带——它的摘要和保留尾部被携带
 远远大于事件应有的大小——而是从
 `SessionDetail.compactions` 会话打开或分叉。
 
@@ -629,11 +464,9 @@ type AgentEvent =
 
 提供程序 `error` 事件可能包括以下中的有限诊断字段：
 `AppError.details`：`phase`（`request` 或 `stream`）、`providerStatus`、
-`providerCode`、`providerWaitMs`、`streamMs`、`retryAttempt`，以及网络故障
-时的 `networkCategory`、`networkCode`、`networkSyscall`、`networkHost`、
-`networkRoute` 和请求关联字段 `requestMessages`、`requestBytes`、`compactionGeneration`。这些字段
-都是新增且经过编辑的；它们从不携带凭据或不受限制的提供商响应，请求字段
-只有计数与字节大小。瞬时流故障可能会在内部重播
+`providerCode`、`providerWaitMs`、`streamMs` 和 `retryAttempt`。这些领域
+是添加和编辑的；他们从不携带凭证或不受限制的
+提供商响应。瞬时流故障可能会在内部重播
 同一回合，没有终端 `error` 事件或重复的辅助消息。
 第二次失败会发出终端标准化 `STREAM_FAILED` 错误。
 
@@ -655,13 +488,10 @@ type AgentEvent =
 避免快速完成先于查看上下文更新。Electron 将此提示与 Main 拥有的窗口
 visibility/focus 结合起来，在终态事件边界进行判断。缺失、null 或不匹配的
 上下文都会安全地创建公告。它还调用
-`pi-desktop/notification/showNative({ id, sessionId, title, body, source?, createdAt? })` 之后
+`pi-desktop/notification/showNative({ id, sessionId, title, body, source? })` 之后
 本地化新记录。可选的 `source` 对终端任务结果使用 `"task"`，对 asktool、
 工具权限和 Plan 审批询问使用 `"interactive"`；省略或未知值默认为
-`"task"`。任务通知带有持久记录的 `createdAt` 时，Main 会在成功的“全部已读”
-或清空操作后使用 `dismissedBefore` 水位拒绝迟到的旧事件，单条已读则使用
-持久 ID tombstone；这样渲染器或主机重放不会再次弹出已处理的通知。这个仅限
-Electron 的请求永远不会进入主机 RPC 域。
+`"task"`。这个仅限 Electron 的请求永远不会进入主机 RPC 域。
 
 ```ts
 type AppNotification = {
@@ -703,9 +533,6 @@ Main 发送两个事件：
   并重新计算确切的未读计数。最终结果已经可见
   聚焦的当前聊天、重复的终端更新和中止的回合会发出
   什么也没有。
-- 持久 `id` 是 Renderer 和 Electron 本机投递的幂等键。对于本地列表中
-  已存在 id 的重复 `notification.changed` 负载必须无操作；已确认或已清除
-  行的延迟负载会被忽略，不得重新创建行或侧边栏结果。
 - 用户点击 Electron 后的 `pi-desktop/notification/event/activated`
   本机系统通知。 Renderer 遵循其现有的会话选择
   路径，包括项目绑定会话的项目激活。
@@ -713,16 +540,6 @@ Main 发送两个事件：
 插件会话变更成功后还会发送
 `pi-desktop/session/event/changed`。渲染器通过现有的 `refreshSessions()` 链处理
 该宿主事件；插件不发送侧栏事件，跳过的导入也不会发送该事件。
-
-渲染器 store 的 `refreshSessions()` 会话列表刷新路径在每个 store 实例中，
-同一时间最多执行一个请求。请求执行期间到达的调用合并为一次后续读取；
-相应 Promise 在后续响应写入状态后才完成，
-不会把较早的读取结果当作本次刷新结果。后续读取期间的新调用组成下一批。
-每批只提交一次状态，一批失败不会阻止排队或之后的刷新。导入刷新保留各自
-刷新前的会话基线和项目显示意图，即使较早的普通刷新已观察到导入的会话。
-普通刷新不会获得导入时显示项目的行为，也不会切换当前会话、项目或页面。
-因此，并行插件 worker 的突发通知会持续更新列表，而不会在该刷新路径中发出
-相互重叠的完整列表读取请求。启动初始化和提供商刷新快照仍独立读取。
 
 Electron 拥有本机表面，而渲染器则派生本地化表面
 结构化记录中的 title/body 文本。 Electron 仅接受 `showNative`
@@ -733,18 +550,11 @@ Electron 拥有本机表面，而渲染器则派生本地化表面
 `activated` 之前恢复/显示并聚焦窗口。交互询问不会创建持久任务收件箱行；
 计划提醒和插件本机通知仍是独立合约。本机交付是尽力而为；耐用的
 收件箱仍是操作系统抑制横幅时的权威来源。在 Windows 上，
-Electron 主将 `net.aiuo.pi-desktop` 注册为进程 AppUserModelID
+Electron 主将 `com.pi-desktop.app` 注册为进程 AppUserModelID
 在准备就绪之前和创建任何窗口之前。 ID 与 NSIS 匹配
 包标识所以通知属性、通知设置、任务栏
 分组，安装的快捷方式解析为 `PI-Desktop`，而不是库存
 Electron 主机。
-
-任务本机对象按持久 notification id 保留，每个 id 最多一个活动对象。
-重放的 `showNative` 请求不得创建第二个对象。`notification.markRead`、
-`notification.markAllRead` 或 `notification.clear` 的主机变更成功后，关闭
-匹配的任务对象（并保留 id tombstone 一段时间以拒绝迟到投递）；主机变更
-失败时不得乐观地关闭对象。交互询问使用独立的临时注册表，不受任务收件箱
-变更影响。
 
 查看会话提示是建议性的和自动防故障的：丢失、陈旧、隐藏或
 未聚焦的渲染器状态会创建持久通知。发生抑制
@@ -773,8 +583,6 @@ type UiMessage = {
  id: string;
  role: "user" | "assistant" | "system" | "tool";
  content: string;
- /** 宿主认证的会话协作来源；人类输入没有此字段。 */
- sessionMessage?: SessionMessageOrigin;
  thinking?: string; // assistant reasoning, never folded into content
  usage?: MessageUsage; // provider-reported assistant usage
  responseDurationMs?: number; // model stream duration for throughput
@@ -792,15 +600,6 @@ type UiMessage = {
  // status/tool fields omitted here
 };
 
-type SessionMessageOrigin = {
- messageId: string;
- sourceSessionId: string;
- sourceTitle: string;
- targetSessionId: string;
- kind: "task" | "message" | "completion";
- replyToMessageId?: string;
-};
-
 type ToolTokenUsage = {
  argumentTokens: number;
  resultTokens: number;
@@ -815,10 +614,9 @@ type SessionDetail = SessionSummary & {
 
 Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models.dev
 记录，丰富 session list/get/create/fork/configure 结果中的有效推理能力。
-未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型。
-桌面创建会话时会把当时的默认（或 Composer 草稿覆盖）写入持久化 id；之后改
-默认模型不会改写已创建会话。没有会话的首页草稿仍跟随当前默认。快照中没有该
-ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
+未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型；
+持久化 id 保持为空，以便之后的默认模型变更仍然生效。快照中没有该 ID、或
+会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
 供应商声明不能取代目录语义。Rust 主机仅对持久化的 `thinkingLevel` 权威。
 
 全局插件启动器使用仅 Electron 允许的通道：
@@ -836,7 +634,7 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 键盘钩子检测和弦；钩子消耗了那个和弦，所以活动的
 窗口系统菜单打不开。非 Windows 主机将该方法视为
 无操作。 `responseDurationMs` 和 `responseOutputTokens` 是可选的转录本
-元数据保留在消息元数据中，因此协议 v11 和存储架构 v16
+元数据保留在消息元数据中，因此协议 v11 和存储架构 v14
 保持不变。
 
 设置字体选择器（ADR 0083）通过一个仅 Electron 的允许通道读取
@@ -859,31 +657,14 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 - `session/importScan`
 - `session/importRun(candidates) -> { imported, skipped, failed }`
 
-导入候选者携带 `projectPath: string | null` 与
-`messageCount: number | null`。扫描对每个源文件全量读取的上限为导入器的
-采样阈值；超过阈值的文件只做采样（头部 + 尾部），使多吉字节归档的扫描
-保持可交互，其 `messageCount` 为 null——导入列表对它渲染破折号，而导入
-后的会话总是在 convert 阶段计算真实的消息数。扫描标题取自第一条真实用户
-消息：已知的合成注入（仓库指令、`# Context from my IDE setup:`、
-`# Browser comments:` 等 IDE 上下文家族）会被跳过，而以 `#` 开头的真实
-粘贴内容予以保留。损坏或越界的存储时间戳回退到源文件的 mtime，绝不回退
-到导入时刻。导入成功
+导入候选者携带 `projectPath: string | null`。导入成功
 刷新会话和持久项目索引。
-
-重新生成或编辑重发会在追加新的用户回合前截断持久转录本。`agent/prompt`
-接受 `truncateFromMessageId`，并转交给主机拥有的 `session.truncateFrom`；
-未知 id 以 `NOT_FOUND` 拒绝。保留前缀不再经过 JSON-RPC（ADR 0216 / issue #211）。
-`agent/prompt` 自身只为启动配置做有界 `session.get`。
-
 
 `session/fork` 是一个协议 v5 通道，可创建独立的
 来自源会话当前活动记录的会话。当可选时
 `throughMessageId` 存在，复制的快照以该消息结束；一个
-Unknown ids return `NOT_FOUND`. A running Desktop source may fork a completed
-assistant prefix that contains no messages owned by a running turn. The host
-checks this under its RPC lock. Whole-session and active-turn forks remain
-`AGENT_BUSY`; native Pi keeps its idle/ownership guard. The source continues
-running without renderer history hydration replacing its live tail.
+未知 ID 返回 `NOT_FOUND`。 Electron 拒绝
+当该源会话处于活动状态时，使用 `AGENT_BUSY` 发出请求。
 Electron拥有本地化并提供面向用户的分支名称；主机
 后备标题是为非 UI 调用者保留的。
 主机分配新的会话 ID、消息 ID 和工具调用 ID；它复制
@@ -961,12 +742,7 @@ sidecar 用于显示每秒输出令牌的流时间。 `ToolTokenUsage`
 ### shell
 
 ```ts
-type CommandShellId =
-  | "windows-powershell"
-  | "windows-pwsh"
-  | "cmd"
-  | "git-bash"
-  | "bash";
+type CommandShellId = "windows-powershell" | "cmd" | "git-bash" | "bash";
 
 type CommandShellOption = {
   id: CommandShellId;
@@ -1060,9 +836,8 @@ StrictMode 会在挂载时把 effect 跑两遍，第二次尝试会再开一个�
 ## 9. 项目 API
 
 - `project/open()`：系统目录选择器
-- `project/clone({ url })`：选择父目录，将 URL `git clone` 进去，并返回克隆后的工作区（由渲染器激活）
-- `project/cloneCheckout({ url, parentPath })`：将公共远程 `git clone` 到显式指定的父目录，返回 `{ path, name }`，不更改当前工作空间；新建项目对话框先用它克隆，再创建逻辑项目组
 - `project/openFolder(path)`：打开系统文件中已知的项目目录
+经理
 - `project/get()`：当前工作空间
 - `project/list()`：持久的项目记录，包括导入创建的条目
 - `project/set(path)`：设置工作空间
@@ -1201,9 +976,7 @@ type PluginSummary = {
 项目级请求缺少 `projectPath` 时无效。`mcp.active` 会先按 ID 或不区分大小写
 的 label 让项目记录遮蔽全局记录，再过滤关闭项；因此关闭的项目记录仍然会
 遮蔽全局项。仅桌面的 `mcp/test` IPC 操作用于强制连接测试，并把状态返回
-MCP 编辑器。设置页的 `mcp.list` 在返回状态前会探测此前就绪的远程连接；服务器失联时，列表显示 `failed`，而不是保留过时的 `ready`。服务器恢复后，“测试连接”会重试。探测失败不会中断正在执行的工具调用；“测试连接”会先关闭旧客户端再重试。
 MCP 编辑器。
-停止会话会中止该会话正在执行的用户 MCP 工具调用，并向服务器发送 `notifications/cancelled`。其他会话共用的连接保持可用；已取消的调用不会重放。取消会结束本地等待，但服务器可能忽略通知并完成已经开始的副作用。
 
 ```ts
 type McpServerStatus = {
@@ -1242,51 +1015,6 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 进入提示，模型调用 `Skill` 时才读取正文 (D174)。缺失文件会在下一次扫描时
 从列表移除，并清理其本地状态。
 
-桌面专用技能市场通道（不是 host RPC）走 Electron IPC：
-
-- `pi-desktop/skill/market/search` — `{ query, sources[] }` →
-  `{ entries, failedSources, failureKinds, failureDetails }`。
-  主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
-  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（守卫判定了目标自身的非公网地址并拒绝）、`fake-ip`（判定的是本地代理伪造的 fake-IP 占位地址，如 Clash 默认的 `198.18.0.0/15`；在直连或读不出线路时默认仍被拒绝，显式 `allowFakeIp` 只可为透明路由器/TUN 部署放行 benchmark 占位地址）、`unresolved`（本地 DNS 解析没有返回答案，因此没有判定任何地址）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、解析到的地址、守卫自己的 `reason`、地址类别以及判定该地址的线路（`proxied`、`direct` 或传输层读不出线路时的 `unknown`，ADR 0272）；面板据此说明**被拒的是什么**，而不只是哪个源没出结果。
-  判定型拒绝与 fake-IP 拒绝都以 `NETWORK_POLICY_BLOCKED` 暴露（两者都是守卫作出的拒绝）,解析器无应答以 `NETWORK_RESOLVE_FAILED` 暴露（spec 08 §3.1）；安装面板正是按这些错误码与结构化 `reason` 分类。
-- `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
-  主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、按承载 `net.fetch` 的会话线路判定的逐跳 DNS 分类（ADR 0272）、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
-
-
-桌面专用 MCP 市场通道（不是 host RPC）走 Electron IPC：
-
-- `pi-desktop/mcp/market/search` — `{ query?, sources[], more? }` →
-  `{ entries, failedSources, exhausted }`。Main 校验源 URL，并在每一跳向 Electron session 询问线路。完整代理线路使用 session 传输；直连和未知线路默认固定解析出的公网地址，显式 `allowFakeIp` 仅限 benchmark 占位地址。重定向仍是有界 HTTPS，browse 与服务端搜索保留 cursor 状态；单个源失败不会丢弃成功源，响应和缓存均有界。
-
-### MCP OAuth（ADR 0283）
-
-HTTP MCP 服务的基于浏览器的 OAuth 2.1 认证在 Electron 主进程中通过非阻塞 IPC 与事件流处理：
-
-- `pi-desktop/mcp/oauth/start({ id, level?, projectPath? }) -> { ok: true, loginId }`
-  启动 OAuth 元数据发现与 PKCE 授权码流程。立即返回，用户的浏览器交互与回调交换在后台异步执行。
-- `pi-desktop/mcp/oauth/cancel({ loginId?, id? }) -> { ok: boolean }`
-  中止正在进行的授权尝试，关闭本地回环 HTTP 服务并清理定时器。
-- `pi-desktop/mcp/oauth/event` 向渲染层推送 `McpOAuthLoginEvent`：
-
-```ts
-type McpOAuthLoginEvent = {
-  loginId: string;
-  serverId: string;
-} & (
-  | { kind: "authUrl"; url: string; instructions?: string; opened: boolean }
-  | { kind: "progress"; message: string }
-  | { kind: "done"; status: McpServerStatus }
-  | { kind: "error"; message: string }
-  | { kind: "cancelled" }
-);
-```
-
-#### 状态与凭证存储
-- `McpServerStatus` 包含：
-  - `hasOauth: boolean` — 服务是否在 host-core 加密凭据库存储有 OAuth 凭据（`secret:mcp:<serverId>:oauth`）。
-  - `authRequired: boolean` — 连接握手或 `tools/call` 是否收到 HTTP 401 Unauthorized，提示用户需要认证/重新授权。
-- OAuth 令牌（`accessToken`, `refreshToken`, `expiresAt`, `resource`, `clientId`, `redirectUris`）仅持久化在 host-core 的加密 secret 中（`secret:mcp:<serverId>:oauth`），绝不向渲染层暴露。授权服务器端点必须是 HTTPS（仅回环 HTTP 例外）。token 端点错误响应体只记入主进程日志，不进入渲染层事件。
-
 ## 12c. 子代理 API (D202)
 
 用户拥有的子代理仅是全局 Markdown 文档：`~/.agents/subagents/<id>.md`。
@@ -1300,31 +1028,14 @@ type McpOAuthLoginEvent = {
 - `agents.read(id)` → `{ subagent, body }`
 - `agents.remove(id)`
 - `agents.setEnabled(id, enabled)`
-- `agents.disabledBuiltins` → `{ disabled: string[] }`
-- `agents.setBuiltinEnabled(id, enabled)` → `{ id, enabled }`
 
 `agents.create` 和 `agents.update` 接受的 `thinkingLevel` 可以是规范思考档位、
 `omit` 或空字符串。空字符串清除覆盖；`omit` 持久化为
 `thinkingLevel: omit`，告诉运行时不要发送提供商思考覆盖。
 
-`agents.create` 和 `agents.update` 接受的 `model` 必须是 `<provider>/<model>`
-引脚。空字符串清除引脚；缺少提供商部分的值会被拒绝并返回 `SUBAGENT_INVALID`，
-而不会被存储，因为没有任何解析器能查到它。提供商部分在应用两端都按归一化别名
-匹配，因此包含空格的显示名是合法的。
-
-`agents.disabledBuiltins` 和 `agents.setBuiltinEnabled` 承载随应用发布的内置子代理的
-启用状态，这些内置项没有可切换的文档 (ADR 0270)。句柄存放在全局级别的
-`<data>/agent-capabilities/subagent-builtins.json` —— 一个独立文件：用户文档扫描会清理
-它永远看不到的 id 的状态，而内置项从不被扫描，因此共用一个文件会让所有内置项的关闭状态
-在下一次扫描时丢失。`agents.setBuiltinEnabled` 按文档名同样的规则归一化 id，空值以
-`SUBAGENT_INVALID` 拒绝；当前没有任何内置项使用的句柄也会惰性保存而不是拒绝，因为
-host-core 不携带内置清单。
-
 Electron 的 `subagent/list` IPC 通道向设置 > 智能体 > 子代理暴露同一份全局
-列表。`subagent/catalog` 返回当前 `Task` 目录（已启用的用户文档与五个内置定义
-合并后，再减去被用户关闭的内置项），并额外返回 `builtins`：每个仍然赢得自己句柄的
-内置定义，各自带 `enabled`，供设置页把关闭的默认项渲染成带自己开关的行。运行时
-目录使用同一套来源并应用同样的排除；不会扫描 `.pi/agents` 或任何项目能力目录。
+列表。运行时目录把这些全局用户文档与内置定义合并；不会扫描 `.pi/agents`
+或任何项目能力目录。
 
 ## 12d. 能力级别与本地启用状态
 
@@ -1376,9 +1087,7 @@ Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `p
 渲染器 IPC 仅保留给 Plan 安全的预览门面和 URL 回退：
 
 - `browser/openExternal({url?})` — 白名单内的 http(s)/mailto，或省略时使用当前访客页 URL
-- 渲染器打开/关闭插件视图时可携带 `sessionId`、`tabId`。打开前检查插件贡献和作用域；
-  关闭仅释放对应标签的页面，不关闭其他标签共享的工具栏。只提供会话 id 时释放该会话的页面。
-- 事件：`browser/event/state {url, title, isLoading, canGoBack, canGoForward, loadError?, sessionId?, tabId?}`
+- 事件：`browser/event/state {url, title, isLoading, canGoBack, canGoForward}`
   （同时以 `browser:state` 推送给插件视图）
 - 代理预览事件：`browser/event/preview {sessionId, path?, url?}`。
   Electron Main 会校验工作区 `path` 位于该会话项目内，在该对话的插件视图可见时
@@ -1390,11 +1099,10 @@ Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `p
 - `fs/list({path})` → 条目首先按目录排序；忽略 `.git`，
   `node_modules`，默认忽略子集
   [15-工作区-忽略-规则](/zh-CN/spec/03-runtime/15-workspace-ignore-rules)
-- `fs/read({path, mimeType?})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大。相对路径在工作区根内解析；`attachments/<sha256>` 以及已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 下的绝对路径在 realpath 校验后也可读（D334 / ADR 0172）；同一项目组中其他文件夹里的绝对路径同样可读（ADR 0249 §5、ADR 0263）。已知图片扩展名优先于 `mimeType`；无扩展名 blob 只接受图片 MIME 白名单。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
+- `fs/read({path, mimeType?})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大。相对路径在工作区根内解析；`attachments/<sha256>` 以及已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 下的绝对路径在 realpath 校验后也可读（D334 / ADR 0172）。已知图片扩展名优先于 `mimeType`；无扩展名 blob 只接受图片 MIME 白名单。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
 - `fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`（`image` 带 `dataUrl`，或 `missing` / `notImage` / `tooLarge`）。包含范围与 `fs/read` 相同。从不返回非图片字节。仅渲染器使用，不是插件宿主 API。
 - `fs/reveal({path})` → 在 Finder 中显示。包含范围与 `fs/read` 相同。
-- `fs/open({path, mimeType?})` → 用系统默认应用打开已有的普通文件。与 `fs/read` 一样校验真实路径包含范围，拒绝通过符号链接逃逸。对于声明为 `video/mp4` 的无后缀 `attachments/<sha256>` blob，宿主在私有应用数据目录建立 `.mp4` 符号链接后再交给系统，不复制视频字节。
-- `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`（`{ match: FsChatRefMatch | null }`，match 指出应答的 `root`（`workspace` / `scratch` / `attachments`）、相对该应答根的 `relativePath`、绝对路径 `absolutePath` 与 `matchedBy`（`exact-relative` / `exact-absolute` / `path-suffix` / `basename`），以及在 `workspace` 命中时给出的 `projectRoot`（`{ path, name, primary }`，指出是哪个文件夹应答的））；`sessionId` 决定查哪个会话的临时目录。它补全智能体在聊天里打印的文件引用，因为渲染器看不到会话自己的临时目录：已经在某个已知根内指向真实文件的绝对引用直接胜出，`attachments/<sha256>` blob 直接对附件库解析；否则按优先级顺序搜索各根——整个打开的项目、再会话自己的临时目录（`<data_dir>/scratch/<sessionId>/`，ADR 0124）、最后附件库——第一个给出结果的根胜出。项目指的是打开的工作区背后的文件夹组（ADR 0249）：主文件夹先应答，其余文件夹随后按项目组自身顺序搜索（ADR 0263），因此简写落在同级文件夹里和落在主文件夹里一样自然，命中结果也指出是哪个文件夹应答的。同一个根内精确路径优先于简写；简写之间最长匹配尾优先，其次路径更浅者。文件面板的忽略集合同样生效。什么都没匹配到时返回 `match: null`；解析本身不打开任何东西（ADR 0262）。
+- `fs/open({path})` → 用系统默认应用打开。词法包含范围与 `fs/read` 相同（读取额外做 realpath）。
 - `fs/list` 仍只限工作区；外面的遍历被拒绝（`INVALID_ARGUMENT`）。
 
 ## 13b. 桌面菜单和窗口 API
@@ -1431,8 +1139,7 @@ menu/rendererReady() -> { ready: true }
 type NativeMenuAction =
   | "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll"
   | "reload" | "zoomIn" | "zoomOut" | "resetZoom"
-  | "toggleFullScreen" | "minimize" | "toggleMaximize" | "close"
-  | "restoreMainWindow" | "toggleMainWindow";
+  | "toggleFullScreen" | "minimize" | "toggleMaximize" | "close";
 
 menu/nativeAction({ action: NativeMenuAction })
   -> { maximized: boolean; fullScreen: boolean }
@@ -1542,26 +1249,6 @@ Electron 报告的右侧角）改变的是面板目标。Main 通过
 仅针对当前可见的会话设置此目标：背景工件
 无法更改可见的保留几何形状。
 
-### Tray session shortcuts (ADR tray-session-shortcuts)
-
-- `pi-desktop/tray/setSessionPreferences({ sessionMeta, archivedProjectPaths, sort })`
-  returns `{ ok: true }`. `sessionMeta` maps IDs to optional boolean `pinned`
-  and `archived` flags plus a non-negative safe integer `order`. `sort` is
-  `recent`, `created`, `oldest`, `name`, or `manual`; the renderer mirrors the
-  sidebar's effective sort. Main validates the payload, strips unrelated
-  metadata, and rejects senders other than the current main window. The setter
-  is excluded from the local MCP catalog and persists nothing.
-- Main emits `pi-desktop/tray/event/sessionActivated { sessionId: string | null }`
-  after restoring/focusing the window, waiting for post-bootstrap
-  `menu/rendererReady`, and checking that the session still exists and is not
-  archived. Renderer enters normal session selection, including cross-project
-  navigation and unread acknowledgement. A null ID closes search, returns to
-  the conversation page, and expands the sidebar for View more. Merely opening
-  the menu is read-only.
-- Main reads existing Host session/inbox APIs, observes root runtime events and
-  successful session/inbox mutations, and combines them with the ephemeral
-  organization copy. No host protocol or storage schema changes.
-
 ## 13c. Composer 输入 API（D123/D124/D197、ADR 0024/0059）
 
 仅电子通道支持输入框自动完成和剪贴板文件
@@ -1591,13 +1278,6 @@ type ComposerCommand = {
 `~/.pi/agent/prompts/*.md`（项目赢得名称冲突；短 TTL 缓存）。
 没有工作区，只有用户全局模板、内置函数和插件
 命令返回。
-
-读取失败的指令源不等于“指令列表为空”（**D613**，issue #795）。发送时的解析区分三种
-结果：已解析的内置 / 插件 / 扩展指令在本地分发；提示词模板、未知别名，以及没有可分发
-id 的指令条目仍走普通提示词路径；**无法读取指令源时则拒绝这次提交**。拒绝是刻意的
-——指令源不可用时，Composer 无法证明 `/compact` 不是内置指令，而把控制指令当作字面
-文本交给模型会被执行。拒绝会保留草稿、显示 `chat.slashCommandSourceUnavailable`，并且
-不写 TTL 缓存，因此下一次发送会重试该读取；缓存仍热时，一次数据源抖动不会影响解析。
 
 ### fs/index
 
@@ -1699,15 +1379,6 @@ prompt/enhance({
 提供商/模型和凭据，因此渲染器永远拿不到密钥。空草稿、斜杠命令草稿、缺失模型
 以及提供商失败都返回通用的 `Result` 错误包络。
 
-### speech/getStatus、speech/transcribe、speech/synthesize
-```ts
-speech/getStatus() -> SpeechStatus
-speech/transcribe({ sessionId?, path, mimeType?, language? }) -> { text }
-speech/synthesize({ sessionId?, text, voice?, format? }) -> { path, mimeType, dataUrl? }
-```
-
-宿主语音独立于聊天。绑定在 `AppSettings.speech`。音频字节不进入渲染器。见 `20-speech.md`。
-
 ### app/openFeedback（D313）
 
 ```ts
@@ -1799,11 +1470,6 @@ Electron 等待主机关闭之前会停止服务，并将清单标记为非活�
 仍会经过现有 IPC 处理器的校验、主机权限、工作区边界和错误模型。文本负载和
 `structuredContent` 都有大小上限。
 
-六个 `session/collaboration/*` 操作仅限第一方插件：它们要求经过认证的插件工具调用上下文，
-因此会出现在 `pi.desktop.listOperations` 中并可通过 `pi.desktop.invoke` 调用，但被排除在
-MCP 可见目录（`tools/list`、`pi_control_describe` 以及 `pi_desktop_invoke` 的操作枚举）之外，
-MCP 调用方无法调用它们。
-
 **变更性** 外部调用成功后，Electron Main 可以通过现有的
 `pi-desktop/session/event/changed` 事件发送附加字段：
 
@@ -1832,34 +1498,3 @@ MCP 调用方无法调用它们。
 | `WORKSPACE_REQUIRED` | 需要项目目录 |
 | `PATH_OUTSIDE_WORKSPACE` | 在明确的外部路径权限决策之前路径超出范围 |
 | `INTERNAL` | 未分类的内部错误 |
-
-### Provider ordering
-
-`pi-desktop/providers/reorder({ id, targetId, placement: "before" | "after" })`
-returns `{ ok: true }` and forwards to host `providers.reorder`. The sandboxed
-preload permits this channel through the shared IPC registry. Invalid placement
-or missing providers returns `INVALID_PARAMS`; configuration and defaults are
-unchanged. See [provider configuration](12-provider-config-schema.md).
-
-## 15. 云配置同步
-
-设置 → 云同步页面使用以下 Renderer-to-Main 通道；所有通道都会转发到 Host 所有的 `configSync.*` RPC 方法：
-
-| IPC 通道 | Host 方法 | 契约 |
-|---|---|---|
-| `pi-desktop/configSync/getState` | `configSync.getState` | 脱敏状态、类别选择、预览计数和待审批摘要 |
-| `pi-desktop/configSync/test` | `configSync.test` | 使用临时对象进行 WebDAV 能力探测；不持久化配置 |
-| `pi-desktop/configSync/configure` | `configSync.configure` | 校验 endpoint、保存加密的本地同步元数据并启用 vault |
-| `pi-desktop/configSync/syncNow` | `configSync.syncNow` | 执行一次由 Host 所有的协调周期 |
-| `pi-desktop/configSync/pause` | `configSync.pause` | 仅暂停或恢复本设备 |
-| `pi-desktop/configSync/unlock` | `configSync.unlock` | 为当前进程/设备解锁本地 vault |
-| `pi-desktop/configSync/approve` / `reject` | `configSync.approve` / `configSync.reject` | 记录绑定 digest 的本地激活决定 |
-| `pi-desktop/configSync/mapProject` | `configSync.mapProject` | 将一个不透明项目/组身份绑定到一个或多个明确选择的本地文件夹，并保留 primary-root 顺序 |
-| `pi-desktop/configSync/listHistory` | `configSync.listHistory` | 只列出脱敏的可达 revision 元数据 |
-| `pi-desktop/configSync/restore` | `configSync.restore` | 根据明确确认的历史 revision 创建新的传播 revision，并暂存本地审批/恢复信息 |
-| `pi-desktop/configSync/changePassword` | `configSync.changePassword` | CAS 重新包裹 vault key header，不返回 key 或秘密值 |
-| `pi-desktop/configSync/disconnect` | `configSync.disconnect` | 移除本地同步元数据和 key；不会删除远端 vault 数据 |
-
-输入密码只会被传给需要它的操作。原始秘密、vault key、解密资源或远端 archive 不会返回到 Renderer。`configSync.changed` 事件携带相同的脱敏状态，并由 Host 发起的变更（包括 Host scheduler）触发。Main 只是传输/生命周期协调器，不负责调度、合并、加密或应用配置。
-
-手动同步会在运行期间报告 `configSync.progress`：当前阶段（`capture`、`download`、`merge`、`upload`、`apply` 或 `cleanup`）、该阶段已完成与总量，以及已知时的字节数。因此上传大量资源对象时，界面不会无内容可显示。后台轮询不报告进度，因为只有手动路径有调用方在等待。

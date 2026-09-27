@@ -5,8 +5,7 @@
  * component uses but no locale defines passes there and then renders as the
  * raw key string in the UI. That is exactly how `settings.serviceModels` and
  * friends shipped untranslated, so this test closes the loop from the call
- * sites back to the catalogs. Canonical thinking-level values are rendered
- * directly and intentionally do not participate in this catalog contract.
+ * sites back to the catalogs.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
@@ -41,7 +40,8 @@ const files = await sources(fileURLToPath(SRC));
 const used = new Map();
 for (const file of files) {
   const text = await readFile(file, "utf8");
-  // Only dotted literals can be resolved statically.
+  // Only dotted literals: dynamic keys such as t(`thinkingLevel.${level}`)
+  // cannot be resolved statically and are covered by catalogs.test.mjs.
   for (const match of text.matchAll(/\bt\(\s*"([a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+)"/g)) {
     if (!used.has(match[1])) used.set(match[1], file);
   }

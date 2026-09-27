@@ -94,24 +94,12 @@ CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：�
 结构化 title/question 字段。 Renderer 和 sidecar 状态无法写入或
 替换一个工件。
 
-## 4.1 技能市场出网
-
-渲染层不拉取技能目录或 SKILL.md。Electron 主进程按公网策略发起 HTTPS 请求（ADR 0243 / D413，由 ADR 0272 / D436 修订）：仅 `https`、共享的公网主机语法检查、`redirect: "manual"`，以及按请求实际会走的线路逐跳判定。每一跳之前，客户端都会向承载 `net.fetch` 的会话询问它自己的代理判定（`Session.resolveProxy`）：`proxied` 线路上按线路判定，因此容忍解析器自身产物的那一类（`benchmark`，TUN fake-IP）；`direct` 或读不出线路时默认保留完整的本地分类，回环、RFC1918、ULA、link-local、mapped IPv6 以及其他所有非公网类别一律拒绝。显式 `allowFakeIp` 选项仅可为透明路由器/TUN 部署额外放行 benchmark 占位地址。安装只通过 `skills.create` 写入 markdown。内联相邻 markdown 后仍受 128 KiB 宿主上限约束。
-
-用户自己填写的源地址改由 ADR 0304 判定：可以是回环或局域网目录服务，明文 `http` 由网络宽松模式允许（`networkPolicy.mode`，默认开启）。来自目录正文内部的文档 URL、以及每一次重定向目标，仍然沿用上面的公网策略。
-
-MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一跳前向承载请求的同一 Electron session 询问代理线路。在完整的 `proxied` 线路上使用 Chromium `net.fetch`，让系统/PAC 和自定义代理能够解析 fake-IP 主机；此时容忍本地解析器的 `benchmark` fake-IP 类别，但真实私网及其他非公网类别仍然拒绝。在 `direct` 或 `unknown` 线路上保留原有 Node HTTPS 路径，把选中的公网地址固定到 socket，同时保留原主机名用于 TLS SNI 和 HTTP Host；网络宽松模式（默认开启）仅额外容忍 benchmark 答案，绝不允许其他非公网类别。重定向手动跟随、仅限 HTTPS、最多五跳，并在每次连接前重新检查。响应上限为 4 MiB，请求共享 8 秒截止时间，源、缓存和条目数量均有界。跨 origin 的用户 MCP 重定向不会转发调用方 header。
-
-手动配置的用户 MCP 仍遵循 ADR 0142，可以显式使用本地/LAN 端点；市场路径不会扩大该策略。
-
-用户自己填写的市场源地址同样由 ADR 0304 判定：可以是回环或局域网端点，明文 `http` 由网络宽松模式允许（`networkPolicy.mode`，默认开启）。源返回的任何内容——registry 记录、目录正文、重定向目标——仍然沿用上面的公网策略。
-
 ## 5. 命令执行
 
 - Bash默认需要确认（风险分级权限卡）；在
   Agent 或 Plan，显式 Auto 可以在不确认的情况下运行它
 - Bash 协议名称保持稳定，但 host-core 选择目录 shell
-（`windows-powershell`、`windows-pwsh`、`cmd`、`git-bash` 或 `bash`）来自持久化
+（`windows-powershell`、`cmd`、`git-bash` 或 `bash`）来自持久化
   `defaultCommandShell` 受平台支持。设置写入拒绝
   unavailable/wrong-platform ID。如果一个坚持的选择后来变成
   不可用，目录分辨率故意回退到第一个
@@ -151,17 +139,20 @@ MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一�
   GitHub 的最新稳定版本而不是同通道预发布 pin。
 - Feed 清单将工件与电子构建器哈希绑定。一个错误，
   无法安装提要、哈希不匹配或无效的更新程序状态。
-- 打包的 macOS、Windows NSIS 和 Linux AppImage 从 GitHub Releases 源应用内下载并安装。Linux deb/rpm 和 Windows ZIP 只检测新版本并打开固定发布页；旧 Windows 便携版 exe 在存在 `PORTABLE_EXECUTABLE_FILE` 时仍保持手动更新。
-- D126 标签版本发布 Windows NSIS 和 Linux AppImage 安装程序及其更新清单，以及 Linux deb/rpm 包和 Windows 便携版 ZIP。NSIS、AppImage 与打包的 macOS 走应用内通道。便携版 ZIP 使用通知加链接交付，并且不写入 `latest.yml`。macOS 标签工件在上传前完成 Developer ID 签名、公证和装订；回滚和分阶段推出仍是发布后续工作。
+- 打包的 macOS 仅供手动使用：它检测释放并打开固定的
+  发布页面，但从未在应用程序中下载或安装它。启用签名
+  macOS 应用内渠道需要稍后的明确决策和资格。
+- D126 标签版本发布 Windows NSIS 和 Linux AppImage 安装程序及其
+  更新清单，以及 Linux deb/rpm 包和 Windows 便携版 exe。NSIS 和 AppImage
+  工件激活现有应用内通道。便携版 exe 使用通知加链接交付，并且不写入
+  `latest.yml`。平台签约、回滚和分阶段推出资格仍处于发布后续阶段。
 - 客户端不携带 GitHub 令牌。私人或其他无法访问的提要
   关闭失败；自动故障保持在环境状态，显式检查会暴露
   错误。
-- 未签名 macOS 分发包为可信来源保留范围明确的首次启动兜底路径。DMG 是双图标安装，
-  不再放入该说明。ZIP 安装包包含文本说明和可执行助手：它只搜索
+- 未签名 macOS 分发包为可信来源提供明确的首次启动助手。它只搜索
   `/Applications/PI-Desktop.app` 和 `~/Applications/PI-Desktop.app`，并在删除前先校验
-  `CFBundleIdentifier=net.aiuo.pi-desktop`，再删除唯一的 `com.apple.quarantine` 属性并
-  打开应用。它不接受任意路径，不提升权限，也不替代 Developer ID 签名或公证。说明给出
-  手动的 `com.apple.quarantine` 命令，并说明已签名/公证版本无需执行。
+  `CFBundleIdentifier=com.pi-desktop.app`，再删除唯一的 `com.apple.quarantine` 属性并
+  打开应用。它不接受任意路径，不提升权限，也不替代 Developer ID 签名或公证。
 - 本地化产品“新增内容”文本 (D164/D345) 在 Main 中从
   已发布变更日志目录并附加到 `UpdateState.releaseNotes`。的
   渲染器无法提供注释 URL、提要或远程主体；缺少目录
@@ -214,7 +205,6 @@ MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每一�
 | 即时注入破坏性工具的使用 | 主机拥有的持久模式策略、权限确认、路径边界、秘密隔离 |
 | 依赖性中毒 | 锁定文件、几个 dep、本机模块审查 |
 | 恶意本地插件 | 声明的权限、无秘密访问、MVP 后跟踪的进程隔离 (ADR 0008) |
-| 技能市场 SSRF（用户源 URL） | 主进程公网 HTTPS 分类器 + DNS + 逐跳 redirect；渲染层 CSP 禁止该 fetch（ADR 0243） |
 
 ## 11. 安检门
 

@@ -8,13 +8,6 @@
  * prose (`store.messages`) stay plain text. Explicit `@path` tokens from the
  * composer (D124 / D320) are accepted even when quoted or absolute.
  *
- * Path tokens recognize Unicode letters and digits, so non-ASCII filenames
- * (CJK above all) link exactly like ASCII ones. Absolute and `~/` tokens are
- * captured whole and then resolved by the same workspace rules: a path under
- * the root resolves normally, and one outside it — or any home path — stays
- * plain text instead of rendering a chip that could never open. Links still
- * cannot escape the workspace (D322).
- *
  * Relative paths are workspace-rooted unless they start with `./` or `../`,
  * in which case they resolve against an optional markdown-file directory and
  * still cannot escape the workspace (D322).
@@ -38,7 +31,7 @@ const KNOWN_BARE_NAMES = new Set([
 ]);
 
 const FILE_TOKEN_RE =
-  /^(?:~\/|\/)?(?:\.{1,2}\/)?[\p{L}\p{N}_@+.-]+(?:\/[\p{L}\p{N}_@+.-]+)*(?::\d+(?::\d+)?)?$/u;
+  /^\/?(?:\.{1,2}\/)?[\w@+.-]+(?:\/[\w@+.-]+)*(?::\d+(?::\d+)?)?$/;
 
 const AT_QUOTED_RE = /^@"([^"\n]+)"$/;
 const AT_UNQUOTED_RE = /^@(\/?[^\s]+)$/;
@@ -238,32 +231,8 @@ export type ChatTextSegment =
       target: ChatPreviewTarget;
     };
 
-// Unicode-aware scan (#235). `~`- and `/`-prefixed paths are captured whole
-// so the resolver sees the real anchor: under-root absolutes resolve, while
-// outside absolutes and home paths fail resolution and stay plain text
-// instead of chipping a suffix that could never open. The extension tail
-// uses `(?![A-Za-z0-9_])` rather than `\b`: in unicode mode `\b` treats CJK
-// letters as word characters, which would stop `App.tsx文件` from linking.
 const SCAN_RE =
-  /@"[^"\n]+"|@[^\s]+|https?:\/\/(?=[^\s<>"'()[\]{}])|(?:~\/)?\/?\.{1,2}\/(?:[\p{L}\p{N}_@+.-]+\/)*[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|(?:~\/)?\/?(?:[\p{L}\p{N}_@+.-]+\/)+[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|[\p{L}\p{N}_@+-][\p{L}\p{N}_@+.-]*\.[A-Za-z0-9]{1,8}(?![A-Za-z0-9_])/gu;
-
-/** Scan once, keeping URL parentheses but stopping at a closing prose wrapper. */
-function scanUrl(text: string, start: number): string {
-  let depth = 0;
-  let end = start;
-  for (; end < text.length; end += 1) {
-    const character = text[end];
-    if (/[\s<>"'[\]{}]/u.test(character)) break;
-    if (character === "(") depth += 1;
-    else if (character === ")") {
-      if (depth === 0) break;
-      depth -= 1;
-    }
-  }
-  // Sentence punctuation belongs to the surrounding prose, regardless of
-  // whether the URL itself ends with a parenthesized path segment.
-  return text.slice(start, end).replace(/[.,!?;:，。！？；：]+$/u, "");
-}
+  /@"[^"\n]+"|@[^\s]+|https?:\/\/[^\s<>"'()[\]{}]+|\.{1,2}\/(?:[\w@+.-]+\/)*[\w@+.-]+(?::\d+(?::\d+)?)?|(?:[\w@+.-]+\/)+[\w@+.-]+(?::\d+(?::\d+)?)?|[\w@+-][\w@+.-]*\.[A-Za-z0-9]{1,8}\b/g;
 
 /**
  * Split plain chat text (user messages) into literal runs and previewable
@@ -277,13 +246,9 @@ export function splitChatText(
 ): ChatTextSegment[] {
   const segments: ChatTextSegment[] = [];
   let last = 0;
-  const scanner = new RegExp(SCAN_RE);
-  for (let match = scanner.exec(text); match; match = scanner.exec(text)) {
-    const start = match.index;
-    const raw = /^https?:\/\//i.test(match[0])
-      ? scanUrl(text, start)
-      : match[0];
-    scanner.lastIndex = start + raw.length;
+  for (const match of text.matchAll(SCAN_RE)) {
+    const raw = match[0];
+    const start = match.index ?? 0;
     const target = resolvePreviewTarget(raw, root, baseDir);
     if (!target) continue;
     if (start > last) segments.push({ kind: "text", text: text.slice(last, start) });

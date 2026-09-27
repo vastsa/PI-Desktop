@@ -21,7 +21,6 @@ describe("changelog catalog", () => {
       CHANGELOG.es,
       CHANGELOG.fr,
       CHANGELOG.ko,
-      CHANGELOG["pt-BR"],
     ]) {
       expect(catalog.map((e) => e.version)).toEqual(en.map((e) => e.version));
       for (let i = 0; i < en.length; i += 1) {
@@ -33,20 +32,12 @@ describe("changelog catalog", () => {
 
   it("lists stable releases from 0.1.1 newest-first without pre-releases", () => {
     const versions = CHANGELOG.en.map((e) => e.version);
-    expect(versions[0]).toBe("0.15.6");
+    expect(versions[0]).toBe("0.14.5");
     expect(versions.at(-1)).toBe(STABLE_FROM);
     // 0.11.1 is intentionally absent: that tag was pushed before the release
     // branch was complete, and 0.11.2 is the tag that actually ships its
     // highlights. The in-app changelog lists shipped releases, not tags.
     expect(versions).toEqual([
-      "0.15.6",
-      "0.15.5",
-      "0.15.2",
-      "0.15.1",
-      "0.15.0",
-      "0.14.9",
-      "0.14.8",
-      "0.14.6",
       "0.14.5",
       "0.14.4",
       "0.14.3",
@@ -134,9 +125,6 @@ describe("changelog catalog", () => {
   expect(resolveChangelogLocale("fr-CA")).toBe("fr");
   expect(resolveChangelogLocale("ko-KR")).toBe("ko");
   expect(resolveChangelogLocale("ko_KR")).toBe("ko");
-  expect(resolveChangelogLocale("pt")).toBe("pt-BR");
-  expect(resolveChangelogLocale("pt-BR")).toBe("pt-BR");
-  expect(resolveChangelogLocale("pt_BR")).toBe("pt-BR");
     expect(resolveChangelogLocale("en-US")).toBe("en");
     expect(resolveChangelogLocale()).toBe("en");
   });

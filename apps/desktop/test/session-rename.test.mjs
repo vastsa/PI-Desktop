@@ -1,42 +1,27 @@
-import { readStoreSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const [
-  sidebarSource,
-  projectsPageSource,
-  projectsDetailSource,
-  dialogSource,
-  storeSource,
-  apiSource,
-  hostSource,
-  rpcSource,
-  styles,
-] = await Promise.all([
-  read("../src/components/Sidebar.tsx"),
-  read("../src/pages/ProjectsPage.tsx"),
-  // The archive's task rows live in the detail panel the workbench renders.
-  read("../src/features/projects/ProjectDetailPanel.tsx"),
-  read("../src/components/SessionRenameDialog.tsx"),
-  readStoreSource(),
-  read("../src/lib/api.ts"),
-  read("../../../crates/host-core/src/sessions.rs"),
-  read("../../../crates/host-core/src/rpc/mod.rs"),
-  loadStyles(),
-]);
+const [sidebarSource, projectsSource, dialogSource, storeSource, apiSource, hostSource, rpcSource, styles] =
+  await Promise.all([
+    read("../src/components/Sidebar.tsx"),
+    read("../src/pages/ProjectsPage.tsx"),
+    read("../src/components/SessionRenameDialog.tsx"),
+    read("../src/stores/app-store.ts"),
+    read("../src/lib/api.ts"),
+    read("../../../crates/host-core/src/sessions.rs"),
+    read("../../../crates/host-core/src/rpc/mod.rs"),
+    loadStyles(),
+  ]);
 
 test("session rename is available from sidebar and project archive task rows", () => {
   assert.match(sidebarSource, /data-action="rename-session"/);
   assert.match(sidebarSource, /setRenameFor\(session\)/);
-  assert.match(projectsDetailSource, /projects-detail-task-rename/);
-  assert.match(projectsDetailSource, /onRenameSession\(session\)/);
-  assert.match(projectsDetailSource, /onContextMenu=/);
-  // The panel only forwards the intent, so the page side of the wiring is
-  // asserted too: a no-op prop would keep the panel green and the pencil dead.
-  assert.match(projectsPageSource, /onRenameSession=\{setRenameFor\}/);
+  assert.match(projectsSource, /projects-detail-task-rename/);
+  assert.match(projectsSource, /setRenameFor\(s\)/);
+  assert.match(projectsSource, /onContextMenu=/);
   assert.match(styles, /\.projects-detail-task-row\s*\{/);
 });
 
@@ -49,7 +34,6 @@ test("rename dialog is modal, localized, and caps input by Unicode code points",
   assert.match(dialogSource, /Array\.from\(event\.target\.value\)/);
   assert.match(dialogSource, /MAX_SESSION_TITLE_LENGTH/);
   assert.match(dialogSource, /t\("session\.renameSave"\)/);
-  assert.match(dialogSource, /useBlockingOverlay\(\)/);
   assert.match(styles, /\.session-rename-dialog-overlay\s*\{[^}]*z-index:\s*65;/s);
 });
 

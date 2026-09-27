@@ -16,6 +16,7 @@ export type DelegationActivityItem = Extract<
 export type SubagentOutcome =
   | "running"
   | "completed"
+  | "truncated"
   | "timed_out"
   | "aborted"
   | "failed"
@@ -43,11 +44,11 @@ export function isDelegationActivityItem(
 const DELEGATION_STATUSES = new Set<SubagentOutcome>([
   "running",
   "completed",
+  "truncated",
   "timed_out",
   "aborted",
   "failed",
   "stopped",
-  "denied",
 ]);
 
 function asDelegationStatus(value: unknown): SubagentOutcome | null {
@@ -175,12 +176,11 @@ export function delegationTimingBounds(
 }
 
 /**
- * Latest status per delegation id, from Task snapshots and lifecycle results.
+ * Latest status per delegation id, read from the lifecycle tools' results.
  *
  * `Task` returns the moment the delegate starts (ADR 0089), so its own result
- * initially says `running`. The runtime later refreshes that Task row with
- * its terminal status, independently of parent lifecycle polling.
- * TaskWait/TaskList report `details.delegations[]`; TaskStop reports
+ * says `running` for the rest of the transcript no matter how the delegate
+ * ended. TaskWait/TaskList report `details.delegations[]`; TaskStop reports
  * `details.stopped[]`. Those rows — which are deliberately not topology nodes —
  * are what tells a delegation card how its subagent actually finished.
  *
@@ -204,18 +204,6 @@ export function collectDelegationStatuses(
     ingestLifecycleStatuses(statuses, payload.delegations, false);
     ingestLifecycleStatuses(statuses, payload.stopped, true);
   }
-  // The runtime refreshes Task itself as soon as its delegate settles. This
-  // terminal snapshot outranks an older TaskList/TaskWait running snapshot,
-  // even though those lifecycle rows appear later in transcript order.
-  for (const item of items) {
-    if (!isDelegationActivityItem(item)) continue;
-    const payload = asRecord(toolResultPayload(item.message));
-    const status = asDelegationStatus(payload?.status);
-    const id = payload?.delegationId;
-    if (typeof id === "string" && id && status && status !== "running") {
-      statuses.set(id, status);
-    }
-  }
   if (options?.turnLive === false) {
     for (const item of items) {
       if (item.kind !== "tool" || !isDelegationActivityItem(item)) continue;
@@ -227,72 +215,6 @@ export function collectDelegationStatuses(
     }
   }
   return statuses;
-}
-
-/**
- * A settled subagent's failure as the runtime reported it.
- *
- * `Task` initially returns when a delegate starts (ADR 0089); its refreshed
- * terminal snapshot can carry a failure even before the parent polls.
- * `TaskWait`/`TaskList` report `details.delegations[]` and
- * `TaskStop` reports `details.stopped[]`, and those entries do carry
- * `error: { code, message }` from `SubagentRunResult.error`.
- */
-export type DelegationFailure = {
-  code: string;
-  message: string;
-};
-
-function readDelegationFailure(entry: unknown): DelegationFailure | null {
-  const record = asRecord(entry);
-  const error = asRecord(record?.error);
-  if (!error) return null;
-  const code = typeof error.code === "string" ? error.code.trim() : "";
-  const message = typeof error.message === "string" ? error.message.trim() : "";
-  if (!code && !message) return null;
-  return { code, message };
-}
-
-/**
- * Why each settled delegation failed, keyed by delegation id.
- *
- * {@link collectDelegationStatuses} says *that* a subagent ended as `failed`,
- * `timed_out`, or `aborted`; this says why, from the same lifecycle rows and
- * with the same last-write-wins rule. A delegate that fails before emitting a
- * message row has no other carrier for its reason, which is what left a failed
- * subagent's detail panel showing steps and no explanation.
- */
-export function collectDelegationFailures(
-  items: readonly AssistantActivityItem[],
-): ReadonlyMap<string, DelegationFailure> {
-  const failures = new Map<string, DelegationFailure>();
-  for (const item of items) {
-    if (item.kind !== "tool") continue;
-    // Read the row before the guard narrows `item` away: every tool item is a
-    // potential delegation node, so excluding them leaves TS with `never`.
-    const { message } = item;
-    if (isDelegationActivityItem(item)) continue;
-    const payload = asRecord(toolResultPayload(message));
-    if (!payload) continue;
-    for (const entries of [payload.delegations, payload.stopped]) {
-      if (!Array.isArray(entries)) continue;
-      for (const entry of entries) {
-        const record = asRecord(entry);
-        const id = record?.delegationId;
-        if (typeof id !== "string" || !id) continue;
-        const failure = readDelegationFailure(entry);
-        if (failure) failures.set(id, failure);
-      }
-    }
-  }
-  for (const item of items) {
-    if (!isDelegationActivityItem(item)) continue;
-    const payload = asRecord(toolResultPayload(item.message));
-    const id = payload?.delegationId;
-    const failure = readDelegationFailure(payload);
-    if (typeof id === "string" && id && failure) failures.set(id, failure);
-  }
-  return failures;
 }
 
 /** One subagent named on a lifecycle row's roster (ADR 0089). */
@@ -403,24 +325,6 @@ export function subagentOutcome(
   if (message.toolStatus === "denied") return "denied";
   return "completed";
 }
-/**
- * Whether a running delegation is still being created rather than already
- * executing.
- *
- * The parent `Task` call returns its structured handle (`delegationId`,
- * `startedAt`) only at its own `tool_end` (ADR 0089). Until that result
- * arrives the row is `toolStatus: "running"` with no delegation payload: the
- * delegate runtime is still spawning and the UI cannot resolve a stable
- * delegation id. Phrasing this stretch as a distinct "creating" state — with
- * its own label and a live elapsed ticking from the call's own timestamp —
- * keeps the transcript from reading as frozen while the create happens.
- */
-export function delegationIsCreating(message: UiMessage): boolean {
-  if (message.toolStatus !== "running") return false;
-  const payload = asRecord(toolResultPayload(message));
-  if (payload && typeof payload.delegationId === "string") return false;
-  return true;
-}
 
 export function summarizeSubagentActivity(
   items: readonly DelegationActivityItem[],
@@ -436,6 +340,7 @@ export function summarizeSubagentActivity(
     ).length,
     warnings: outcomes.filter(
       (outcome) =>
+        outcome === "truncated" ||
         outcome === "timed_out" ||
         outcome === "aborted" ||
         outcome === "stopped",

@@ -15,7 +15,6 @@ import {
   shouldRenderConversationMinimap,
   type ConversationMinimapMarker,
 } from "../lib/conversation-minimap";
-import { TooltipButton } from "./ui";
 
 /* Codex-style conversation minimap: a packed stack of dashes on the left edge
  * of the thread, one per user turn or assistant response. Moving the cursor
@@ -371,15 +370,15 @@ export const ConversationMinimap = memo(function ConversationMinimap({
       onMouseLeave={handleMouseLeave}
     >
       {hasEarlier ? (
-        <TooltipButton
+        <button
           type="button"
           ref={(node) => {
             if (node) markerEls.current.set(EARLIER_HISTORY_MARKER_ID, node);
             else markerEls.current.delete(EARLIER_HISTORY_MARKER_ID);
           }}
           className={`minimap-marker history ${loadingEarlier ? "loading" : ""}`}
-          ariaLabel={earlierLabel}
-          tooltip={earlierLabel}
+          aria-label={earlierLabel}
+          title={earlierLabel}
           aria-busy={loadingEarlier || undefined}
           disabled={loadingEarlier || !onRevealEarlier}
           onClick={onRevealEarlier}

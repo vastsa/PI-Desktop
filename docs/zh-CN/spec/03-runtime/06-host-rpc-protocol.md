@@ -19,11 +19,7 @@ MVP 传输决策 (**D001**)：
 
 - 流程：Electron 主要生成 Rust host-core sidecar
 - 通道：子进程 stdin/stdout
-- 成帧：每行一个以 LF 分隔的 JSON 对象（NDJSON）；接受 CRLF。
-  JSON 字符串内的 U+2028 与 U+2029 属于载荷，不是帧分隔符。
-  所有 Node stdio 读取器会跨输入块保留 UTF-8 字符，并在传输关闭时释放缓冲片段和监听器。
-  为兼容起见，EOF 时接受最后一帧未以换行结束的情况。
-- 非法 JSON 帧会先产出仅含字节长度、不含载荷文本的诊断，然后丢弃。后续完整帧仍可读。现有会话文本不会被改写或迁移。
+- 成帧：每行一个 JSON 对象 (NDJSON)
 - 编码：UTF-8
 - Request/response：JSON-RPC 2.0 风格
 
@@ -164,7 +160,6 @@ type HandshakeResult = {
 - `app.handshake`
 - `app.health`
 - `app.getVersion`
-- `app.getOnboarding` — 内联引导清单状态（D031）
 
 `app.health` 返回诊断 `toolBudget` 对象：
 
@@ -195,11 +190,6 @@ type ToolBudgetHealth = {
   按上次开放时间；包括通过会话导入具体化的记录
 - `projects.create({ path })` — 创建或复用持久项目记录，不切换当前工作区，
   并返回宿主生成的项目 id
-- `projects.remove({ path })` — 删除一条持久项目行，并连同附加到它的每个会话一起删除，
-  移除这些会话的转录本、scratch 和 review 文件以及该项目的持久记忆，且从不触碰磁盘上的
-  项目文件夹。幂等：未知路径返回 `{ removed: false, sessionsRemoved: 0 }`。作为已存储
-  多文件夹项目组根目录的路径会被拒绝，以便该组保留有效的 Primary 根目录；而只要其中仍有会话
-  在运行，调用就会被拒绝（1008 / `CONFLICT`），因此运行中的轮次绝不会丢失它正在写入的转录本。
 
 ### 秘密
 - `secrets.set`
@@ -226,22 +216,19 @@ type ToolBudgetHealth = {
 - `session.list`
 - `session.create` — 接受可选的 `thinkingLevel`； missing/null 默认值
 至 `off`
-- `session.fork` — accepts `sessionId`, an optional caller-provided display
-  `title`, and optional `throughMessageId`; creates
-  one independent session from the source's current active canonical
-  transcript, truncated inclusively at the selected message when supplied.
-  The child inherits project/provider/model/mode/thinking and
-  permission configuration, receives new message/tool-call ids, and starts
-  without turns, revisions, notifications, artifacts, grants, or scratch data.
-  Missing sources or anchors return `NOT_FOUND`. While a Desktop source runs,
-  only a completed assistant prefix containing no indexed messages owned by a
-  running turn is allowed. This check and publication share the host RPC lock.
-  Whole-session, non-assistant, streaming/error, or live-turn anchors return
-  `CONFLICT`, normalized by Electron to `AGENT_BUSY`. The source turn continues
-  without sharing runtime state with the child.
+- `session.fork` — 接受 `sessionId`，呼叫者提供的可选显示
+  `title`，以及可选的 `throughMessageId`；创造
+  来自源当前活动规范的一个独立会话
+  转录本，在提供时在选定的消息处被截断。
+  孩子继承 project/provider/model/mode/thinking 并且
+  权限配置，接收新的 message/tool-call id，并启动
+  无需轮流、修订、通知、工件、资助或临时数据。
+  缺少源返回 `NOT_FOUND`； Electron 拒绝活动源
+  `AGENT_BUSY` 在转发之前并标准化主机的持久化
+  运行转向 `CONFLICT` 回退到 `AGENT_BUSY`；来源不明或
+  `throughMessageId` 返回 `NOT_FOUND`
 - `session.get`
 - `session.delete`
-- `session.getScratchPath` — 会话的 scratch 目录（D114），按需创建
 - `session.rename`
 - `session.configure` — 以原子方式持久保存 `mode`、`providerId`、`modelId`，
   以及可选的 `thinkingLevel` 用于下一个 pi 回合； omitting/null
@@ -264,18 +251,13 @@ type ToolBudgetHealth = {
 ids 和非负 `tokensBefore`；它不会插入 message/search 行
   或更改可见的转录本投影
 - `session.replaceMessages` — 原子记录重写（临时文件重命名 +
-  一项索引事务，D119），用于删除消息和未得到答复的渲染器智能停止撤销；
-  仅当边界和可选的第一个保留 id 在重写前缀中仍然有效时才保留最新检查点，
-  并且跨重写携带每条幸存消息所属的 `turn_id`。只有在呼叫持续时间内拥有
-  整份记录的调用者才安全。重新生成和重试改走 `session.truncateFrom`，
-  因此保留前缀不再经过 JSON-RPC（ADR 0216）
-- `session.truncateFrom` — 主机拥有的后缀截断，供重新生成 / 重试 / 编辑重发：
-  `{ sessionId, fromMessageId?, truncateBefore? }`。身份优先；未知
-  `fromMessageId` 为 `NOT_FOUND`。在状态锁下中止残留的 running 回合、
-  归档被丢弃的重新生成尾巴、重写保留前缀，并删除进行中检查点。返回
-  `{ ok, keptCount, discardedCount, abortedTurnId, revision }`。请求和结果
-  都不携带转录本快照。协议 v11 增量方法（ADR 0216）
-
+  regenerate/edit 流使用的一项索引交易（D119）且未得到答复
+  渲染器智能停止撤消；它保留了
+  仅当其边界和可选的第一个保留的 id 时才是最新的检查点
+  在重写的前缀中仍然有效，并且它携带每个幸存消息的
+  拥有 `turn_id` 跨越重写。只有拥有以下权限的调用者才安全
+  通话期间的整个记录：快照的任何重写
+  在 RPC 锁之外采取的可以删除附加在其间的消息
 - `session.saveRevision` — 将重新生成分支归档到
   `(sessionId, rootUserId)`。带 `revisionIndex` 时，就地刷新该已有变体的
   载荷（分支自归档后又生长了），而不是新建索引；DB 行保留身份和活动
@@ -296,13 +278,6 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   存在于持久转录本中时，恢复分支之前的前缀取自转录本而非调用方。幸存
   消息保留所属的 `turn_id`
 - `session.beginTurn`
-- `session.queuePush` / `session.queueList` / `session.queueRemove` /
-  `session.queuePrioritize` / `session.queueReorder` —— Host 拥有的回合队列
-  （D386 / ADR 0213 / ADR 0265，架构 v18）；push 按主体与 key 幂等，每会话最多八条。
-  `queuePrioritize` 把条目的 `priority` 写为其会话优先区块的 `MAX + 1`（追加到区块末尾），
-  对已经带优先级的条目返回 `CONFLICT`；`queueReorder` 让一个未优先条目与其相邻的未优先
-  条目互换并返回 `{ moved }`。列出与投递顺序为：已优先条目按 `priority` 升序，其余按
-  `position` 升序
 - `session.endTurn` — 以原子方式将正在运行的回合移动到其终止状态，并且
 有条件地返回新创建的 `completed`/`error` 通知；它还会落定该会话的进行中回复
   检查点（D299）：`completed`/`error` 移除它；`recoverInflight: true`（sidecar
@@ -326,9 +301,6 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   只读取调用插件自己导入且仍处于活动状态的会话
 - `plugin.session.rename` — 重命名自己拥有的活动导入会话
 - `plugin.session.delete` — `trash` 隐藏并保留转录本；`purge` 删除并允许重新导入
-- `plugin.usage.listTurns` — 未删除会话的已完成 turn 事实页（标识符与 token
-  计数，绝不含消息正文）。由 Electron main 用 `usage.read` 鉴权。增量方法，
-  不升协议版本。
 - 插件会话变更成功后，Electron main 发送一次 `sessionsChanged` 渲染器事件，
   渲染器刷新会话列表；插件不发送此 UI 同步事件
 
@@ -403,12 +375,14 @@ off | minimal | low | medium | high | xhigh | max
 在命令启动后重试命令，并在之前获取超时的子命令
 释放执行槽。
 
-`session.appendMessage` 通过消息 ID 是幂等的。若该 id 已属于另一会话，则在写 JSONL 之前改写为 `{sessionId}:{id}`，之后重放原始 id 为无操作（D444）。Electron 主进程可以在 host-core 重启时把消息留在应用自有 outbox 里；握手成功后按顺序冲洗，并把 `UNIQUE constraint failed: messages.id` 当作确认而不是停整队。带 `PERMISSION_DENIED:` 前缀的追加同样丢弃以免毒消息卡住 FIFO（D597）。进行中检查点从不经过发件箱：检查点只对存活的主机有意义，在最终行之后重放它是错误的。
+`session.appendMessage` 通过消息 ID 是幂等的。 Electron 主要可以保留
+当 host-core 重新启动时，消息会附加到其应用程序拥有的发件箱中；
+握手成功后，发件箱会按顺序冲洗。进行中检查点从不经过发件箱：检查点只对存活的
+主机有意义，在最终行之后重放它是错误的。
 
 ### 权限
 - `permissions.evaluate`
 - `permissions.resolve`
-- `permissions.pending`（D374：待处理请求作为 Host 状态）
 - `permissions.listSessionGrants`
 - `permissions.clearSessionGrants`
 
@@ -416,61 +390,14 @@ off | minimal | low | medium | high | xhigh | max
 - `plugins.list`
 - `plugins.loadDev`
 - `plugins.installFromPath`
-- `plugins.installFromPackage` — 在校验和验证后安装 `.piplug` 归档
 - `plugins.enable`
 - `plugins.disable`
 - `plugins.uninstall`
 - `plugins.getPermissions`
-- `plugins.grantPermissions` / `plugins.revokePermissions` — 更改已授予集合；
-  运行时强制执行「已声明 ∩ 已授予」的交集
-- `plugins.setAutoUpdate`
-- `plugins.setScope` — 激活作用域（ADR 0056）
-- `plugins.resolveExecution` — 在回合开始前解析某会话所属项目激活了哪些
-  插件工具/技能/MCP 服务器
-
-### 市场
-- `market.refresh` — 从配置的 URL 拉取并缓存目录
-- `market.search` / `market.getDetail`
-- `market.install` — 下载、验证（`PLUGIN_INTEGRITY`、`PLUGIN_MARKET_*`）并安装
-  目录中的一个发布版本
-- `market.checkUpdates` / `market.applyUpdates`
-
-### 提供商与模型
-- `providers.list` / `providers.get` / `providers.create` /
-- `providers.update` / `providers.delete` 拒绝插件自有的行
-  （`ownerPluginId`）：该行每次加载都由 manifest 刷新，因此只由其所属插件的
-  生命周期改动或删除，错误信息以 `PROVIDER_OWNED_BY_PLUGIN` 开头（ADR 0259）
-- `providers.setSecret({ id, secretValue })` — 写入或清除某一行 provider 的
-  API key（`secret:provider:<id>:api_key` 与行的 `secret_ref`）。这是插件自有行
-  接受的写入：只改声明要求的凭据，绝不改 manifest 拥有的字段。`secretValue`
-  为空或省略即删除已存 key。返回 `{ provider }`，未知 id 返回 `null`
-- `providers.getSecret` — 仅限 main/host，渲染器永远无法触达
-- `providers.listModels` / `providers.cacheModels` — 已发现的模型行及其
-  宿主侧缓存（ADR 0027 / ADR 0134）
-- `providers.testConnection`
-
-### Agent 能力（技能、子代理、MCP 服务器）
-- `skills.list` / `skills.active` / `skills.read` / `skills.create` /
-  `skills.update` / `skills.remove` / `skills.import` /
-  `skills.setEnabled` / `skills.setScope` — 用户技能文档（校验失败返回
-  `SKILL_INVALID`）
-- `agents.list` / `agents.active` / `agents.read` / `agents.create` /
-  `agents.update` / `agents.remove` / `agents.setEnabled` /
-  `agents.setScope` — 用户子代理文档（`SUBAGENT_INVALID`）
-- `mcp.list` / `mcp.active` / `mcp.upsert` / `mcp.remove` /
-  `mcp.setEnabled` / `mcp.setScope` — 用户 MCP 服务器定义（`MCP_INVALID`）
-
-`*.active` 返回经激活作用域过滤后适用于给定项目的条目（未知作用域返回
-`CAPABILITY_INVALID`）。
-
-### 搜索、工件、键盘
-- `search.query` — 跨会话、项目和设置目的地的全局搜索（ADR 0034）
-- `artifacts.list` — 某会话的 Plan/Goal 检查点工件
-- `keyboard.setGlobalShortcut` — 在 Electron 无法注册插件启动器快捷键时，
-  由宿主持有的原生回退
 
 ### 审计
 - `audit.append`
+- `audit.query`（稍后可选）
 
 ### 通知 (D117)
 - `notification.list`
@@ -521,9 +448,6 @@ type NotificationListResult = {
 - `notification.markAllRead({}) -> { ok: true }` 更新中的每个未读行
   一笔交易。
 - `notification.clear({}) -> { ok: true }` 仅删除收件箱行。
-- `id` 是 Renderer 和本机投递的稳定一次性键。客户端必须丢弃已经确认/清除
-  的 id 的重复或延迟记录；清空收件箱不会让旧终端回合再次具备插入资格。
-  后续真正的终端回合会获得新的 id。
 - 不发出 `notification.created` JSON-RPC 服务器通知。 Electron
   直接从 `session.endTurn` 接收插入的记录，避免了
   终端转持久化和UI刷新之间的第二个点餐通道。
@@ -795,12 +719,7 @@ Agent 中的会话。进程纪元是内部的，不是线路或数据库
 ### 5. 2 Shell 目录
 
 ```ts
-type CommandShellId =
-  | "windows-powershell"
-  | "windows-pwsh"
-  | "cmd"
-  | "git-bash"
-  | "bash";
+type CommandShellId = "windows-powershell" | "cmd" | "git-bash" | "bash";
 
 type CommandShellOption = {
   id: CommandShellId;
@@ -859,59 +778,35 @@ params: {
 
 超时行为 (**D005**)：120 秒后未解决 → 拒绝。
 
-`permissions.pending` 把待处理请求作为 Host 状态返回（D374/D375）：
-`{ requests: PendingPermission[] }`，最早的在前，可按 `sessionId` 过滤。每一项包含与
-`permissions.request` 通知相同的字段，外加 `createdAt`、`expiresAt` 和 `remainingMs`；
-已超时的请求不会出现。在通知发出之后才接入的客户端读取此列表，并通过不变的
-`permissions.resolve` 作答；通知路径本身不变。
-
 ## 7. 错误代码
-
-JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来自
-[08-错误代码](/zh-CN/spec/03-runtime/08-error-codes) 的稳定字符串。多个字符串码
-共用同一个数字槽位；字符串才是契约，数字只是传输细节。
 
 | 代码 | 错误代码 | 意义 |
 |---|---|---|
-| 1000 | INTERNAL | 意外主机故障 |
-| 1001 | UNAUTHORIZED | missing/invalid 握手或功能 |
-| 1001 | HOST_SHUTTING_DOWN | 主机在 EOF 后正在排空，拒绝了该调用 |
-| 1002 | INVALID_PARAMS | 架构验证失败 |
-| 1002 | MODEL_ALIAS_TOO_LONG | 提供商行别名超过 60 个码点 |
-| 1002 | MODEL_BINDINGS_DEGRADED | 存储模型绑定不可读；拒绝显式替换模型数组 |
-| 1003 | NOT_FOUND | 实体缺失（遗留槽位，为旧调用方保留） |
-| 1006 | RATE_LIMITED | 某个按调用方计的预算窗口已耗尽 |
-| 1007 | NOT_FOUND | 实体缺失 |
-| 1007 | SESSION_NOT_FOUND | 点名的会话不存在；工具请求永远不会回退到全局工作区 |
-| 1008 | CONFLICT | busy/conflict 状态 |
-| 1008 | AGENT_BUSY | 该会话有一个正在运行的回合 |
+| 1000 | 内部 | 意外主机故障 |
+| 1001 | 未经授权 | missing/invalid 握手或功能 |
+| 1002 | 无效参数 | 架构验证失败 |
+| 1003 | PATH_OUTSIDE_WORKSPACE | 在明确的外部路径权限决策之前发生路径沙箱违规 |
+| 1004 | TOOL_DENIED | 许可被拒绝 |
+| 1005 | 工具超时 | 工具超出超时时间 |
+| 1006 | WORKSPACE_REQUIRED | 无工作空间限制 |
+| 1007 | 未找到 | 实体缺失 |
+| 1008 | 冲突 | busy/conflict 状态 |
 | 1009 | PLUGIN_INVALID | manifest/validation 失败 |
 | 1010 | PLUGIN_LOAD_FAILED | enable/load 失败 |
-| 1011 | PROTOCOL_MISMATCH | `app.handshake` 协议版本不匹配 |
-| 1012 | PLUGIN_INTEGRITY | 包 checksum/signature 不匹配 |
-| 1013 | PLUGIN_PERMISSION_DENIED | 插件缺少该调用所需的权限 |
-| 1014 | PLUGIN_NETWORK | 市场 download/catalog 拉取失败 |
-| 1015 | MCP_INVALID | 用户 MCP 服务器定义校验失败 |
-| 1015 | PLAN_* | 所有 Plan/Goal 检查点失败（`PLAN_APPROVAL_TIMEOUT`、`PLAN_APPROVAL_STALE`、`PLAN_APPROVAL_INTERRUPTED`、`PLAN_SESSION_NOT_FOUND`、`PLAN_WORKSPACE_REQUIRED`……）共用此槽位；由字符串码区分 |
-| 1016 | SKILL_INVALID | 用户技能文档校验失败 |
-| 1017 | SUBAGENT_INVALID | 用户子代理文档校验失败 |
-| 1018 | CAPABILITY_INVALID | Agent 能力 root/scope 设置校验失败 |
-| 1019 | PLUGIN_CANCELLED | 用户在下载过程中取消了市场安装 |
-| 1020 | PLUGIN_MARKET_NOT_PUBLISHED | 平台有该版本但尚未对外提供 |
-| 1021 | PLUGIN_MARKET_ARCHIVED | 插件已被平台下架 |
-| 1022 | PLUGIN_MARKET_NOT_FOUND | 平台没有该插件或该版本 |
-| 1023 | PLUGIN_MARKET_RATE_LIMITED | 下载接口要求客户端等待后重试 |
-| 1024 | PLUGIN_MARKET_NO_SOURCE | 没有任何分发目标能提供该包 |
+| 1011 | 协议_不匹配 | 握手版本不匹配 |
 | -32029 | HOST_OVERLOADED | RPC 调度程序容量已耗尽 |
-| -32601 | — | 未知方法 |
-| -32700 | — | 无法解析的请求行 |
-| 1002 | LIMIT_EXCEEDED | 超过 64 MiB 的 NDJSON 请求行；Electron 在写入管道前拒绝；若主机仍读到该行，则读完余下部分、尽量从截断前缀取出请求 id 再应答，stdin 读取器继续运行 |
-
-
-工具结果（`TOOL_DENIED`、`TOOL_TIMEOUT`、`PATH_OUTSIDE_WORKSPACE`、
-`WORKSPACE_PATH_DENIED`、`WRITE_DISABLED_IN_PLAN`、`SHELL_NOT_FOUND`、
-`COMMAND_SHELL_CHANGED`……）不是 JSON-RPC 错误：`tools.execute` 在结果中返回
-`ok: false` 并附带 `errorCode`（§5）。
+| 1012 | WRITE_DISABLED_IN_PLAN | Plan 和 Goal 中无法写入 |
+| 1013 | EDIT_DISABLED_IN_PLAN | 在 Plan 和 Goal 中无法进行编辑 |
+| 1014 | PLUGIN_DISABLED_IN_PLAN | 插件工具在 Plan 和 Goal 中不可用 |
+| 1015 | PLAN_APPROVAL_REQUIRED | SubmitPlan/SubmitGoal 正在等待批准 |
+| 1016 | 计划批准超时 | 绝对批准期限已过 |
+| 1017 | 计划批准_STALE | 响应与实时 proposal/session/turn/tool-call/version 不匹配 |
+| 1018 | 计划批准中断 | 等待批准失败，在 abort/recovery 期间关闭 |
+| 1019 | PLAN_REQUIRES_INTERACTIVE_SESSION | 无人值守的 Plan 或 Goal 无法运行 |
+| 1020 | PLAN_ARTIFACT_WRITE_FAILED | 无法将确切的字节写入新的 `.pi/<kind>/*.md` 工件 |
+| 1021 | 计划执行中断 | 批准的 queued/running Plan 或 Goal 执行被中断 |
+| 1022 | SHELL_NOT_FOUND | 没有有效的平台 shell 可用 |
+| 1023 | 命令_SHELL_CHANGED | 固定的 shell ID 或方言在执行前已更改 |
 
 ## 8. 并发/排序
 
@@ -979,59 +874,3 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
     产生记录的持久状态和事件
 13. Bash 验证固定 shell ID/dialect，传输 stdout/stderr，强制执行
     60s default/bounded 覆盖，并关闭整个进程树
-
-## 定时任务工具
-
-Agent 模式按需提供 ScheduledTaskList、ScheduledTaskCreate、ScheduledTaskUpdate、
-ScheduledTaskDelete。通过 tools.execute 复用现有授权、审计和定时任务领域处理器。
-查询为低风险；Ask／Accept Edits 下修改需授权。Plan／Goal 即使在 Auto 下也拒绝。
-
-Host 重新检查会话的持久化模式，按调用会话的项目限制访问，不使用前台项目或模型传入路径。
-创建时绑定该项目，查询过滤项目，修改／删除要求项目匹配。未知字段、非法周期、空标题或
-提示词、非法时间和星期在写入前拒绝；不能删除运行中的任务。创建需 title、prompt、cadence；
-每天／每周自动任务需 schedule。修改使用已存在的 ID 并保留未指定字段。界面虽只提供四个
-时段，工具仍支持具体本地时间。不新增数据库 schema 或传输协议。
-
-### 定时任务：任务级执行设置
-
-桌面端 create/update 可为单个任务保存 `workspacePath`、`permissionMode` 和成对的
-`providerId`／`modelId`。立即运行与自动运行在字段存在时均使用这些值；字段缺失时保留旧版
-项目捕获、应用默认模型和权限行为。非法权限与不完整模型组合在写入前拒绝。对话工具不暴露
-这些字段，仍限制在调用会话所属项目。见 ADR 0305。
-
-任务还可独立保存 `thinkingLevel`，取值与会话相同（包括 `off` 和 `omit`）。
-模型和推理等级直接复用主对话框的完整选择器及交互逻辑，仅将保存回调接到任务草稿。
-未配置此字段的旧任务仍以 `off` 运行；清空字段恢复旧行为，不需要数据库迁移。
-
-### 定时任务：独立分发到期任务
-
-Electron runner 无需等待其他任务的提示词准备完成，即可准入彼此独立的到期任务。
-本地执行中所有权按任务 ID 和 Host 实例记录，直到准备结束；enabled、due 和重叠
-检查仍由 Host 决定。旧 Host 的完成不会清除替代 Host 的所有权。停止 runner
-只阻止新轮询，已准入任务继续使用现有执行和失败生命周期；错误仍可观察，迟到
-90 秒的规则保持不变。
-### 定时任务：删除项目与自动任务
-
-删除项目时暂停与其绑定的定时任务，但保留任务定义、schedule、工作区绑定和运行历史。
-删除项目会话后，历史中的会话引用可能变为 null。已经准入的任务即使尚未开始会话
-轮次，也会阻止项目删除。其他项目的任务和未绑定的旧任务不受影响。用户显式恢复
-任务或点击 Run now 时可以从保留路径重新创建项目；暂停状态下的自动轮询不会这样做。
-### 定时任务：旧任务维护
-
-Agent 工具允许对缺少 schedule 的旧版自动任务修改标题、提示词或暂停，也允许回传
-未变化的 cadence。这些维护操作不会启用任务，也不会捕获前台工作区。显式启用、
-改变 cadence 或提供 schedule 时仍执行 schedule 校验；恢复任务需要明确的合法
-schedule，Manual 转 Hourly 继续使用现有默认间隔行为。
-### 定时任务：日历配置意图
-
-可选的 `config_json.calendarConfigured` 布尔值用于区分用户明确设置的每日／每周
-日历时间与 Hourly 的内部占位 schedule。缺少该字段时，旧版 Daily／Weekly
-任务视为已设置日历；旧版 Hourly 保留现有值，但转换为 Daily／Weekly 时必须明确
-提供 schedule。已确认的日历配置在切换为 Hourly 和重启后仍会保留，包括午夜。
-清空日历或改为不同的非日历占位值会清除该意图。该扩展不修改表结构；旧版本会
-忽略该字段，无法执行新的转换保护。仅修改元数据以及 Manual 转 Hourly 的行为不变。
-### 定时任务：工作区身份
-
-保存和读取工作区绑定时统一使用现有项目路径规范化规则。在 Windows 上，
-斜杠方向、大小写、末尾分隔符和扩展路径前缀的差异不会再让同项目会话看不到任务。
-缺失的旧版绑定与显式 null 仍保持不同语义；其他项目的工具不能查询或修改绑定任务。

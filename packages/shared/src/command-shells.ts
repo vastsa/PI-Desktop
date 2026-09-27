@@ -1,6 +1,5 @@
 export const COMMAND_SHELL_IDS = [
   "windows-powershell",
-  "windows-pwsh",
   "cmd",
   "git-bash",
   "bash",
@@ -66,10 +65,7 @@ export function isCommandShellId(value: unknown): value is CommandShellId {
 
 export function commandShellDialect(id: CommandShellId): CommandShellDialect {
   switch (id) {
-    // Windows PowerShell 5.1 and PowerShell 7 share the invocation contract;
-    // only the resolved executable differs.
     case "windows-powershell":
-    case "windows-pwsh":
       return "powershell";
     case "cmd":
       return "cmd";

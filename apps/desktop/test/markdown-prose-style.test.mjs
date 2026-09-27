@@ -34,15 +34,6 @@ test("chat prose keeps a refined hierarchy and quieter chrome", () => {
   assert.match(stylesSource, /\.prose-chat th\s*\{[^}]*background:\s*var\(--ds-tile-deep\)/);
   assert.match(stylesSource, /\.prose-chat tbody tr:nth-child\(even\) td\s*\{[^}]*background:\s*var\(--ds-tile\)/);
   assert.match(stylesSource, /\.prose-chat tbody tr:hover td\s*\{[^}]*background:\s*var\(--ds-tile-hover\)/);
-  // Wide GFM tables stay in the transcript: full-width wrap, wrapping cells,
-  // no nowrap headers (PR #195).
-  assert.match(stylesSource, /\.prose-chat \.table-wrap\s*\{[^}]*width:\s*100%/);
-  assert.match(stylesSource, /\.prose-chat \.table-wrap table\s*\{[^}]*width:\s*100%/);
-  assert.match(
-    stylesSource,
-    /\.prose-chat th,\s*\.prose-chat td\s*\{[^}]*overflow-wrap:\s*anywhere/,
-  );
-  assert.doesNotMatch(stylesSource, /\.prose-chat th\s*\{[^}]*white-space:\s*nowrap/);
   assert.match(stylesSource, /\.code-block\s*\{[^}]*border-radius:\s*var\(--radius-md-plus\)/);
   assert.doesNotMatch(stylesSource, /\.code-block\s*\{[^}]*border:/);
   assert.doesNotMatch(stylesSource, /\.code-block-head\s*\{[^}]*border-bottom/);
@@ -108,19 +99,14 @@ test("light theme markdown uses paper-quiet surfaces", () => {
     would happily run past the closing brace and match a declaration from some
     later rule, so a stale assertion would keep passing after the CSS moved on.
   */
-  /*
-    The light ink mixes read `--ds-text-primary`, whose light value is the
-    #1a1c1f they used to hardcode: paint-identical, and now a contributed theme
-    can move the whole light ink tier at once (issue #341).
-  */
   // Links keep the underline from the base rule and only soften its colour here.
   assert.match(
     stylesSource,
-    /:root\[data-theme="light"\] \.prose-chat a\s*\{[^}]*text-decoration-color:\s*color-mix\(in oklab,\s*var\(--ds-text-primary\) 30%/,
+    /:root\[data-theme="light"\] \.prose-chat a\s*\{[^}]*text-decoration-color:\s*color-mix\(in oklab,\s*#1a1c1f 30%/,
   );
   assert.match(
     stylesSource,
-    /:root\[data-theme="light"\] \.prose-chat code\s*\{[^}]*background:\s*color-mix\(in oklab,\s*var\(--ds-text-primary\) 6%/,
+    /:root\[data-theme="light"\] \.prose-chat code\s*\{[^}]*background:\s*color-mix\(in oklab,\s*#1a1c1f 6%/,
   );
   // Blockquotes keep their muted ink in light; the tile fill comes from the
   // theme-agnostic base rule, so the override sets colour only (D297).
@@ -128,7 +114,7 @@ test("light theme markdown uses paper-quiet surfaces", () => {
     /:root\[data-theme="light"\] \.prose-chat blockquote\s*\{[^}]*\}/,
   );
   assert.ok(lightBlockquote, "light theme should still tune the blockquote ink");
-  assert.match(lightBlockquote[0], /color:\s*color-mix\(in oklab,\s*var\(--ds-text-primary\) 72%/);
+  assert.match(lightBlockquote[0], /color:\s*color-mix\(in oklab,\s*#1a1c1f 72%/);
   assert.doesNotMatch(lightBlockquote[0], /border|background:/);
   // No light-only table shell: the tiles are tokens and need no override.
   assert.doesNotMatch(

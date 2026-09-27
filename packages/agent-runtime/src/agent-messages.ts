@@ -5,7 +5,7 @@
  * shape, so the conversions live here instead of being duplicated per loop.
  */
 
-import type { AgentMessage, JsonValue } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
 import type { MessageUsage } from "@pi-desktop/shared";
 
@@ -31,7 +31,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** JSON-clone an opaque value so it satisfies pi 0.86 `JsonValue`. */
+/** JSON-clone an opaque value so it satisfies pi 0.85 `JsonValue`. */
 export function toJsonValue(value: unknown): JsonValue | undefined {
   if (value === undefined) return undefined;
   try {
@@ -39,12 +39,6 @@ export function toJsonValue(value: unknown): JsonValue | undefined {
   } catch {
     return undefined;
   }
-}
-export function toJsonObject(value: unknown): Record<string, JsonValue> {
-  const normalized = toJsonValue(value);
-  return normalized && typeof normalized === "object" && !Array.isArray(normalized)
-    ? normalized
-    : {};
 }
 
 export function usageFromPi(
@@ -137,57 +131,4 @@ export function assistantContent(content: unknown): AssistantContent {
     }
   }
   return { text, thinking, hasText, hasThinking };
-}
-
-/**
- * Bound `text` to `maxChars`, keeping both ends and naming the cut in the
- * middle. Compaction uses this wherever a message has to fit a budget it
- * cannot: the survived text stays readable and the marker says why it is
- * shorter.
- */
-export function truncateTextWithMarker(
-  text: string,
-  maxChars: number,
-  marker: string,
-): string {
-  if (text.length <= maxChars) return text;
-  if (maxChars <= marker.length) return marker.trim().slice(0, maxChars);
-  const retainedChars = maxChars - marker.length;
-  const headChars = Math.ceil(retainedChars * 0.75);
-  const tailChars = retainedChars - headChars;
-  return `${text.slice(0, headChars)}${marker}${
-    tailChars > 0 ? text.slice(-tailChars) : ""
-  }`;
-}
-
-/**
- * Bound every text block of one message so the message's total text is at most
- * `maxChars`. Blocks without text (tool calls, images) are kept, so a truncated
- * message is still a provider-valid message with its tool calls intact.
- */
-export function truncateMessageText(
-  message: AgentMessage,
-  maxChars: number,
-  marker: string,
-): AgentMessage {
-  const content: unknown = (message as { content?: unknown }).content;
-  if (typeof content === "string") {
-    const text = truncateTextWithMarker(content, maxChars, marker);
-    return text === content ? message : ({ ...message, content: text } as AgentMessage);
-  }
-  if (!Array.isArray(content)) return message;
-  let remaining = maxChars;
-  let changed = false;
-  const blocks = content.map((block) => {
-    if (!isRecord(block) || typeof block.text !== "string") return block;
-    if (block.text.length <= remaining) {
-      remaining -= block.text.length;
-      return block;
-    }
-    changed = true;
-    const text = truncateTextWithMarker(block.text, Math.max(1, remaining), marker);
-    remaining = 0;
-    return { ...block, text };
-  });
-  return changed ? ({ ...message, content: blocks } as AgentMessage) : message;
 }

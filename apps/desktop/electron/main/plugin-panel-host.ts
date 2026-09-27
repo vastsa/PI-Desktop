@@ -1,16 +1,9 @@
-import { BrowserWindow, ipcMain, Menu, session, systemPreferences } from "electron";
+import { BrowserWindow, ipcMain, session } from "electron";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
-import { catalogs, resolveLocale } from "@pi-desktop/i18n";
-import { isNetUrlAllowed, THEME_ASSET_SCHEME } from "@pi-desktop/plugin-sdk";
-import { builtinWindowBackground } from "@pi-desktop/shared";
-import { suppressLinuxFramelessSystemMenu } from "./frameless-system-menu";
-import { PanelSenders, pageGoneWithin, resolvePanelInvocation } from "./plugin-panel-senders";
+import { isNetUrlAllowed } from "@pi-desktop/plugin-sdk";
 import {
   isPluginPanelWindowControlAction,
-  PLUGIN_PANEL_MIN_SIZE,
-  PLUGIN_PANEL_WIDGET_MIN_SIZE,
-  PLUGIN_PANEL_WIDGET_ARGUMENT,
   PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL,
   PLUGIN_PANEL_WINDOW_STATE_CHANNEL,
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
@@ -27,18 +20,6 @@ export type PluginPanelOpenRequest = {
   height: number;
   htmlPath: string;
   /**
-   * `"panel"` (default) keeps the 46px host drag band and its three-control
-   * capsule. `"widget"` opens the same sandboxed page as a transparent floating
-   * surface with neither, so a plugin can be a small orb the user keeps on
-   * screen. The plugin surface itself is unchanged: same preload bridge, same
-   * partition, same egress policy.
-   */
-  shape?: "panel" | "widget";
-  /** Floating widget placement only: keep the surface above other windows. */
-  alwaysOnTop?: boolean;
-  /** Overrides the per-shape default: panels are resizable, widgets are not. */
-  resizable?: boolean;
-  /**
    * Egress allowlist from `manifest.net.domains`. A panel is a full web page:
    * `sandbox: true` removes Node, not the network, so without this the panel is
    * an unmetered outbound channel that bypasses the `net.fetch` permission.
@@ -50,19 +31,13 @@ export type PluginPanelOpenRequest = {
   development?: boolean;
 };
 
-/**
- * Schemes a panel may always load: its own bundle, devtools plumbing, and the
- * host scheme that serves declared theme assets. The asset handler resolves
- * through the requested plugin's own declarations, so admitting it here does
- * not widen egress — it is read-only and package-scoped (ADR 0248).
- */
+/** Schemes a panel may always load: its own bundle and devtools plumbing. */
 const PANEL_LOCAL_SCHEMES = new Set([
   "file:",
   "data:",
   "blob:",
   "devtools:",
   "chrome-extension:",
-  `${THEME_ASSET_SCHEME}:`,
 ]);
 
 const DROPPED_PATH_TTL_MS = 30_000;
@@ -122,7 +97,6 @@ export function applyPluginEgressPolicy(
   });
   // A panel is denied device access by default. The only opt-in is an
   // audio-only media request for a plugin that declared ui.microphone.
-
   ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
     const mediaTypes =
       permission === "media" && "mediaTypes" in details ? details.mediaTypes : undefined;
@@ -130,27 +104,10 @@ export function applyPluginEgressPolicy(
       Array.isArray(mediaTypes) && mediaTypes.length > 0 && mediaTypes.every((type) => type === "audio");
     callback(input.allowMicrophone === true && audioOnly);
   });
-  ses.setPermissionCheckHandler((_contents, permission, _origin, details) => {
-    if (permission !== "media" || input.allowMicrophone !== true) return false;
-    // Chromium probes with "unknown" (or an empty mediaType) before the
-    // request. Denying that fails getUserMedia even when the following
-    // request is audio-only.
-    return details.mediaType !== "video";
-  });
-
+  ses.setPermissionCheckHandler((_contents, permission, _origin, details) =>
+    permission === "media" && input.allowMicrophone === true && details.mediaType === "audio",
+  );
 }
-
-/** macOS TCC: a sandboxed file:// panel often never prompts on its own. */
-async function ensureOsMicrophone(allowMicrophone?: boolean): Promise<void> {
-  if (!allowMicrophone || process.platform !== "darwin") return;
-  try {
-    if (systemPreferences.getMediaAccessStatus("microphone") === "granted") return;
-    await systemPreferences.askForMediaAccess("microphone");
-  } catch {
-    // Headless tests have no TCC surface.
-  }
-}
-
 
 /** Persisted session partition shared by a plugin's panel window and views. */
 export function pluginSessionPartition(pluginId: string): string {
@@ -175,30 +132,10 @@ export class PluginPanelHost {
    * plugin's detached panel window.
    */
   private senderResolvers: Array<(senderId: number) => string | null> = [];
-  /** Observer for failures of the fire-and-forget legacy sync bridge. */
-  private onBridgeError?: (pluginId: string, channel: string, error: unknown) => void;
-  /**
-   * Locale per floating-widget web contents. Presence in this map is also what
-   * makes a window a widget for `showWidgetMenu`, so a panel never gets a
-   * context menu it did not ask for.
-   */
-  private widgetLocales = new Map<number, string>();
-  /**
-   * Identity of the panel pages allowed to use the bridge, keyed by web
-   * contents. A page belongs to its plugin for as long as it exists, not only
-   * while `windows` still lists its surface as open, so a call that arrives
-   * while the host is closing that surface is still the panel's own call.
-   */
-  private senders = new PanelSenders();
 
-  constructor(
-    bridge: BridgeHandler,
-    onBlockedRequest?: PluginPanelBlockedRequest,
-    onBridgeError?: (pluginId: string, channel: string, error: unknown) => void,
-  ) {
+  constructor(bridge: BridgeHandler, onBlockedRequest?: PluginPanelBlockedRequest) {
     this.bridge = bridge;
     this.onBlockedRequest = onBlockedRequest;
-    this.onBridgeError = onBridgeError;
     this.ensureHandlers();
   }
 
@@ -214,16 +151,8 @@ export class PluginPanelHost {
     ipcMain.handle(
       "pi-plugin-panel-invoke",
       async (event, rawChannel: unknown, rawPayload: unknown) => {
-        const invocation = resolvePanelInvocation(
-          this.pluginIdForSender(event.sender.id),
-          event.sender.isDestroyed(),
-        );
-        if (invocation.kind === "foreign") throw new Error("invalid panel invoker");
-        // A page that is already gone can never read the answer: the call is the
-        // tail of the teardown that closed its surface. Settle it rather than
-        // dispatching into a plugin runtime that may already be stopping.
-        if (invocation.kind === "gone") return;
-        const pluginId = invocation.pluginId;
+        const pluginId = this.pluginIdForSender(event.sender.id);
+        if (!pluginId) throw new Error("invalid panel invoker");
         const channel = String(rawChannel ?? "");
         const payload =
           rawPayload && typeof rawPayload === "object"
@@ -263,13 +192,8 @@ export class PluginPanelHost {
           rawPayload && typeof rawPayload === "object"
             ? (rawPayload as Record<string, unknown>)
             : undefined;
-        // Sync IPC cannot await; kick async work and return ack. The bridge
-        // rejects when the plugin is unloaded or times out, and a panel page
-        // can call this at will, so the rejection must be observed here
-        // rather than surfacing as an unhandled rejection in main.
-        this.bridge(pluginId, channel, payload).catch((error) => {
-          this.onBridgeError?.(pluginId, channel, error);
-        });
+        // Sync IPC cannot await; kick async work and return ack.
+        void this.bridge(pluginId, channel, payload);
         event.returnValue = { ok: true, accepted: true };
       },
     );
@@ -278,13 +202,7 @@ export class PluginPanelHost {
       PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL,
       async (event, rawAction: unknown) => {
         const window = this.windowForSender(event.sender.id);
-        if (!window) {
-          // The capsule asks for `getState` on install and for `close` while the
-          // surface tears down; a page that is already gone cannot read either
-          // answer, so it is settled rather than reported as an invalid invoker.
-          if (event.sender.isDestroyed()) return;
-          throw new Error("invalid panel window control invoker");
-        }
+        if (!window) throw new Error("invalid panel window control invoker");
         if (!isPluginPanelWindowControlAction(rawAction)) {
           throw new Error("unsupported panel window control action");
         }
@@ -296,14 +214,10 @@ export class PluginPanelHost {
     );
   }
 
-  /**
-   * The plugin a bridge call belongs to. Panel identity comes from `senders`,
-   * which outlives the host's record of open windows; the resolvers cover the
-   * docked work-panel views owned by `PluginViewHost`.
-   */
   private pluginIdForSender(senderId: number): string | null {
-    const own = this.senders.pluginFor(senderId);
-    if (own) return own;
+    for (const [pluginId, win] of this.windows) {
+      if (!win.isDestroyed() && win.webContents.id === senderId) return pluginId;
+    }
     for (const resolve of this.senderResolvers) {
       const pluginId = resolve(senderId);
       if (pluginId) return pluginId;
@@ -366,53 +280,10 @@ export class PluginPanelHost {
         if (window.isMaximized()) window.unmaximize();
         else window.maximize();
         break;
-      case "contextMenu":
-        this.showWidgetMenu(window);
-        break;
       case "close":
         window.close();
         break;
     }
-  }
-
-  /**
-   * A floating widget has no capsule, so its own context menu opens the host's
-   * window menu instead. Without it the only way out of a widget would be a
-   * plugin-authored close button, and a plugin that never added one would leave
-   * a window the user cannot dismiss.
-   *
-   * Only a widget is registered in `widgetLocales`; a panel or docked view that
-   * asks for this action gets nothing, because panels keep the capsule.
-   */
-  private showWidgetMenu(window: BrowserWindow): void {
-    if (window.isDestroyed() || window.webContents.isDestroyed()) return;
-    const locale = this.widgetLocales.get(window.webContents.id);
-    if (locale === undefined) return;
-    const labels = catalogs[resolveLocale(locale)].pluginPanelWidget;
-    const menu = Menu.buildFromTemplate([
-      {
-        label: labels.alwaysOnTop,
-        type: "checkbox",
-        checked: window.isAlwaysOnTop(),
-        click: (item) => {
-          if (!window.isDestroyed()) window.setAlwaysOnTop(item.checked);
-        },
-      },
-      { type: "separator" },
-      {
-        label: labels.minimize,
-        click: () => {
-          if (!window.isDestroyed()) window.minimize();
-        },
-      },
-      {
-        label: labels.close,
-        click: () => {
-          if (!window.isDestroyed()) window.close();
-        },
-      },
-    ]);
-    menu.popup({ window });
   }
 
   /**
@@ -435,51 +306,28 @@ export class PluginPanelHost {
   async open(request: PluginPanelOpenRequest): Promise<void> {
     const existing = this.windows.get(request.pluginId);
     if (existing && !existing.isDestroyed()) {
-      this.applyEgressPolicy(existing.webContents.session, request);
-      await ensureOsMicrophone(request.allowMicrophone);
-      // The microphone prompt is asynchronous: the panel can be closed while the
-      // user answers it, and a destroyed window has no `show`. Fall through and
-      // build the requested panel instead of reusing a window that is gone.
-      if (!existing.isDestroyed()) {
-        if (existing.isMinimized()) existing.restore();
-        existing.show();
-        existing.focus();
-        return;
-      }
+      if (existing.isMinimized()) existing.restore();
+      existing.show();
+      existing.focus();
+      return;
     }
 
     const partition = pluginSessionPartition(request.pluginId);
     const ses = session.fromPartition(partition, { cache: true });
     this.applyEgressPolicy(ses, request);
-    await ensureOsMicrophone(request.allowMicrophone);
 
-
-    const widget = request.shape === "widget";
-    const minSize = widget ? PLUGIN_PANEL_WIDGET_MIN_SIZE : PLUGIN_PANEL_MIN_SIZE;
     const win = new BrowserWindow({
-      width: Math.max(minSize.width, request.width || (widget ? 220 : 480)),
-      height: Math.max(minSize.height, request.height || (widget ? 220 : 360)),
+      width: Math.max(360, request.width || 480),
+      height: Math.max(280, request.height || 360),
       title: request.title,
       show: false,
       autoHideMenuBar: true,
       // The host theme is only a fallback; the preload samples the actual
       // plugin page colors after it has loaded and paints the chrome from them.
-      backgroundColor: widget ? "#00000000" : builtinWindowBackground(request.theme),
-      // Every platform uses the same frameless surface. A panel's visible window
-      // controls are the preload's three-button capsule; a floating widget has
-      // no chrome of its own — the plugin draws its silhouette edge to edge.
+      backgroundColor: request.theme === "light" ? "#ffffff" : "#181818",
+      // Every platform uses the same frameless surface. The preload owns the
+      // only visible window controls: a fixed three-button capsule.
       frame: false,
-      transparent: widget,
-      // A transparent window would otherwise carry a rectangular native shadow
-      // around an orb that is round; a widget draws its own glow instead.
-      hasShadow: !widget,
-      resizable: request.resizable ?? !widget,
-      alwaysOnTop: widget && request.alwaysOnTop === true,
-      // A floating widget is a desktop companion, not a taskbar entry, and it
-      // has no capsule to restore from a maximized state.
-      skipTaskbar: widget,
-      maximizable: !widget,
-      ...(widget ? { fullscreenable: false } : {}),
       webPreferences: {
         session: ses,
         preload: join(__dirname, "../preload/plugin-panel.js"),
@@ -490,7 +338,6 @@ export class PluginPanelHost {
         additionalArguments: [
           `${PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX}${encodeURIComponent(request.locale)}`,
           `--pi-plugin-panel-theme=${request.theme}`,
-          ...(widget ? [PLUGIN_PANEL_WIDGET_ARGUMENT] : []),
           ...(request.development
             ? ["--pi-plugin-panel-development=1"]
             : []),
@@ -500,7 +347,6 @@ export class PluginPanelHost {
     // A panel owns its visible surface; do not add a native application menu
     // to the window around the plugin's own UI.
     win.setMenu(null);
-    suppressLinuxFramelessSystemMenu(win);
 
     // A panel gets exactly one web contents. `window.open` would otherwise mint
     // a chromeless window outside the egress policy applied above.
@@ -520,59 +366,30 @@ export class PluginPanelHost {
     // while the window is still alive; reading `webContents` later throws
     // "Object has been destroyed" and surfaces an uncaught main-process dialog.
     const webContentsId = win.webContents.id;
-    if (widget) this.widgetLocales.set(webContentsId, request.locale);
     win.on("closed", () => {
       this.pendingDrops.delete(webContentsId);
-      this.widgetLocales.delete(webContentsId);
-      this.senders.release(webContentsId);
-      // Only when this window is still the registered one: a page that closes
-      // slowly can already have been replaced by a newer panel window for the
-      // plugin, and that newer entry has to survive the predecessor's teardown.
-      if (this.windows.get(request.pluginId) === win) {
-        this.windows.delete(request.pluginId);
-      }
+      this.windows.delete(request.pluginId);
     });
 
     this.windows.set(request.pluginId, win);
-    // The page can call the bridge from its first script, so its identity is
-    // registered before the document loads and released only when the page is
-    // gone (see the `closed` handler above).
-    this.senders.register(webContentsId, request.pluginId);
     await win.loadURL(pathToFileURL(request.htmlPath).toString());
     win.show();
   }
 
-  /**
-   * Close the plugin's panel and resolve once its page is gone. Bounded, for two
-   * reasons: the page may still be finishing, and its bridge calls have to reach
-   * a live plugin runtime while it does; and a page that refuses to close
-   * (`beforeunload`) must settle the call at the budget instead of holding it
-   * forever. A refused close leaves the panel registered: it is still open.
-   */
   async close(pluginId: string): Promise<void> {
     const win = this.windows.get(pluginId);
     if (!win || win.isDestroyed()) {
       this.windows.delete(pluginId);
       return;
     }
-    // Captured while the window is alive; the close destroys its web contents,
-    // and the `closed` handler above owns the removal from `windows`.
-    const page = win.webContents;
     win.close();
-    await pageGoneWithin(page);
+    this.windows.delete(pluginId);
   }
 
-  /**
-   * Close every panel and wait for every one of those pages to be gone, so a
-   * caller can stop the plugin runtime and the host afterwards. Shutdown relies
-   * on that order: a call a closing page already sent is otherwise answered by a
-   * runtime that is already shutting down, and is reported as a bridge failure
-   * nobody can act on.
-   */
   async closeAll(): Promise<void> {
-    await Promise.allSettled(
-      [...this.windows.keys()].map((pluginId) => this.close(pluginId)),
-    );
+    for (const pluginId of [...this.windows.keys()]) {
+      await this.close(pluginId);
+    }
   }
 
   /**
@@ -585,11 +402,7 @@ export class PluginPanelHost {
     const channel = `pi-plugin-panel-event:${event}`;
     for (const win of this.windows.values()) {
       if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
-      try {
-        win.webContents.send(channel, payload);
-      } catch {
-        // One panel that cannot receive must not starve the others.
-      }
+      win.webContents.send(channel, payload);
     }
   }
 }

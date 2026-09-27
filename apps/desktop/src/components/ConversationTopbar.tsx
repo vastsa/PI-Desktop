@@ -5,7 +5,6 @@ import {
   IconNewSession,
   IconSearch,
 } from "./icons";
-import { TooltipButton } from "./ui";
 
 function projectName(path?: string | null, name?: string | null) {
   if (name) return name;
@@ -18,6 +17,15 @@ function isDefaultSessionTitle(title?: string | null) {
   const trimmed = (title || "").trim().toLowerCase();
   if (!trimmed) return true;
   return ["new task", "new chat", "新建任务", "新对话"].includes(trimmed);
+}
+
+const TOPBAR_TITLE_MAX_LENGTH = 10;
+
+function truncateTopbarTitle(title: string) {
+  const characters = Array.from(title);
+  return characters.length > TOPBAR_TITLE_MAX_LENGTH
+    ? `${characters.slice(0, TOPBAR_TITLE_MAX_LENGTH).join("")}…`
+    : title;
 }
 
 export function ConversationTopbar({
@@ -43,6 +51,7 @@ export function ConversationTopbar({
   const fullTaskTitle = isDefaultSessionTitle(activeSession?.title)
     ? t("chat.untitledTask")
     : activeSession?.title || t("chat.untitledTask");
+  const taskTitle = truncateTopbarTitle(fullTaskTitle);
   const project = projectName(workspace?.path, workspace?.name);
 
   return (
@@ -60,45 +69,45 @@ export function ConversationTopbar({
           sidebar is open the slot is zero-width and hidden from AT.
         */}
         <div className="ct-lead" aria-hidden={!sidebarCollapsed}>
-          <TooltipButton
+          <button
             type="button"
             className="ct-icon-btn"
-            tooltip={t("nav.toggleSidebar")}
-            ariaLabel={t("nav.toggleSidebar")}
+            title={t("nav.toggleSidebar")}
+            aria-label={t("nav.toggleSidebar")}
             tabIndex={sidebarCollapsed ? undefined : -1}
             onClick={onToggleSidebar}
           >
             <IconSidebar size={15} />
-          </TooltipButton>
+          </button>
         </div>
         <div
           className="ct-title-wrap"
           title={project ? `${project} · ${fullTaskTitle}` : fullTaskTitle}
         >
-          <span className="ct-title">{fullTaskTitle}</span>
+          <span className="ct-title">{taskTitle}</span>
         </div>
       </div>
 
       <div className="ct-right">
         <div className="ct-actions">
-          <TooltipButton
+          <button
             type="button"
             className="ct-icon-btn"
-            tooltip={t("nav.newTask")}
-            ariaLabel={t("nav.newTask")}
+            title={t("nav.newTask")}
+            aria-label={t("nav.newTask")}
             onClick={onNewTask}
           >
             <IconNewSession size={15} />
-          </TooltipButton>
-          <TooltipButton
+          </button>
+          <button
             type="button"
             className="ct-icon-btn"
-            tooltip={t("nav.search")}
-            ariaLabel={t("nav.search")}
+            title={t("nav.search")}
+            aria-label={t("nav.search")}
             onClick={onOpenSearch}
           >
             <IconSearch size={15} />
-          </TooltipButton>
+          </button>
         </div>
       </div>
     </div>

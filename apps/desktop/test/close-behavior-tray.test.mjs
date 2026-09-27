@@ -1,15 +1,11 @@
-import {
-  readMainSource,
-  readMainModule,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const mainSource = await readMainSource();
-const closeBehaviorSource = await readMainModule("bootstrap/close-behavior.ts");
-const windowSource = await readMainModule("bootstrap/window.ts");
-const shutdownSource = await readMainModule("bootstrap/shutdown.ts");
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
 
 test("one tray owns both minimize-to-tray and close-to-tray", () => {
   // D216's tray and D210's close-to-tray tray are the same icon. A second
@@ -35,8 +31,8 @@ test("the tray icon resolves through the packaged resource path", () => {
 test("choosing quit never destroys the resident tray", () => {
   // The tray is the only way back from a minimized (hidden) window, so
   // switching close behavior away from "tray" must leave it alone.
-  const apply = closeBehaviorSource.slice(
-    closeBehaviorSource.indexOf("const applyCloseBehavior"),
+  const apply = mainSource.slice(
+    mainSource.indexOf("function applyCloseBehavior"),
   );
   const body = apply.slice(0, apply.indexOf("\n}\n") + 2);
   assert.match(body, /if \(next === "tray"\) createTray\(\)/);
@@ -44,11 +40,11 @@ test("choosing quit never destroys the resident tray", () => {
 });
 
 test("Windows/Linux minimize stays in the taskbar while macOS may hide to tray", () => {
-  const minimize = windowSource.slice(windowSource.indexOf('window.on("minimize"'));
+  const minimize = mainSource.slice(mainSource.indexOf('window.on("minimize"'));
   const body = minimize.slice(0, minimize.indexOf("});") + 3);
   assert.match(
     body,
-    /if \(windowState\.quitting \|\| !windowState\.tray \|\| process\.platform !== "darwin"\) return;/,
+    /if \(quitting \|\| !tray \|\| process\.platform !== "darwin"\) return;/,
   );
   assert.match(body, /window\.hide\(\)/);
 
@@ -60,7 +56,7 @@ test("Windows/Linux minimize stays in the taskbar while macOS may hide to tray",
   );
   assert.match(
     windowControl.slice(0, windowControl.indexOf('case "toggleMaximize":')),
-    /mainWindow\.minimize\(\)/,
+    /window\.minimize\(\)/,
   );
 });
 
@@ -68,12 +64,12 @@ test("a stored quit preference still quits while the tray is resident", () => {
   // `window-all-closed` used to skip `app.quit()` whenever a tray existed.
   // With D216's always-present tray that meant a "quit" user could never
   // exit, so the guard now reads the user's choice instead of the tray.
-  const handler = shutdownSource.slice(
-    shutdownSource.indexOf('app.on("window-all-closed"'),
+  const handler = mainSource.slice(
+    mainSource.indexOf('app.on("window-all-closed"'),
   );
   const body = handler.slice(0, handler.indexOf("});") + 3);
   assert.doesNotMatch(body, /!tray/);
-  assert.match(body, /state\.closeBehavior === "tray" && state\.tray/);
+  assert.match(body, /closeBehavior === "tray" && tray/);
   assert.match(body, /app\.quit\(\)/);
 
   // The close path itself quits directly rather than relying on that handler.
@@ -89,7 +85,7 @@ test("permission to close does not leak into the next window", () => {
   assert.doesNotMatch(mainSource, /let allowWindowClose\b/);
   assert.match(
     mainSource,
-    /(?:const|readonly)\s+windowsAllowedToClose = new WeakSet<BrowserWindow>\(\)/,
+    /const windowsAllowedToClose = new WeakSet<BrowserWindow>\(\)/,
   );
   assert.match(mainSource, /windowsAllowedToClose\.has\(window\)/);
 });
@@ -115,45 +111,19 @@ test("close behavior is not settable on macOS", () => {
   assert.match(body, /behavior !== "tray" && behavior !== "quit"/);
 });
 
-test("explicit quit asks for confirmation except probes and update restarts", () => {
-  assert.match(closeBehaviorSource, /const confirmQuitDialog = async/);
-  assert.match(closeBehaviorSource, /labels\.tray\.confirmQuitTitle/);
-  const quitHandler = shutdownSource.slice(
-    shutdownSource.indexOf('app.on("before-quit"'),
+test("explicit quit asks for confirmation except automated probes", () => {
+  assert.match(mainSource, /async function confirmQuitDialog/);
+  assert.match(mainSource, /labels\.tray\.confirmQuitTitle/);
+  const quitHandler = mainSource.slice(
+    mainSource.indexOf('app.on("before-quit"'),
   );
   const body = quitHandler.slice(0, quitHandler.indexOf("shutdownPromise ="));
   assert.match(body, /PI_DESKTOP_BOOT_PROBE/);
-  assert.match(
-    body,
-    /!state\.quitConfirmed && !isAutomatedMode && !isUpdateRestart/,
-    "automated probes and update restarts are the only confirmation exemptions",
-  );
-  assert.match(
-    body,
-    /const isUpdateRestart = updater\.isInstallingUpdate\(\)/,
-    "the updater is asked whether this quit is an update restart",
-  );
-  // The installer for an in-app update is spawned before app.quit(); a dialog
-  // in front of that quit makes the installer time out and the update fail.
-  assert.ok(
-    body.indexOf("isUpdateRestart") < body.indexOf("confirmQuitDialog()"),
-    "the update-restart exemption must gate the dialog, not follow it",
-  );
+  assert.match(body, /!quitConfirmed && !isAutomatedMode/);
   assert.match(body, /confirmQuitDialog\(\)/);
   // Window-close Quit already chose to exit in the close-behavior dialog.
   assert.match(
-    windowSource,
-    /already chose to quit in the close-behavior dialog[\s\S]*?windowState\.quitConfirmed = true/,
+    mainSource,
+    /already chose to quit in the close-behavior dialog[\s\S]*?quitConfirmed = true/,
   );
-});
-
-test("macOS tray keeps the native status item instead of mouse-enter tracking", async () => {
-  const lifecycle = await readMainModule("bootstrap/app-lifecycle.ts");
-  const create = lifecycle.slice(lifecycle.indexOf("function createTray()"));
-  const body = create.slice(0, create.indexOf("function resetMenuRendererReady"));
-  assert.match(
-    body,
-    /if \(process\.platform !== "darwin"\) \{[\s\S]*on\("mouse-enter"[\s\S]*on\("right-click"/,
-  );
-  assert.equal((body.match(/on\("mouse-enter"/g) || []).length, 1);
 });

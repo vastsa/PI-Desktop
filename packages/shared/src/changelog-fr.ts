@@ -2,123 +2,6 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
-    "version": "0.15.6",
-    "date": "2026-09-23",
-    "highlights": [
-      "Activez la recherche native dans vos services DeepSeek, xAI et OpenAI existants sans modifier leurs paramètres de connexion.",
-      "Prend en charge GPT-6 Astra, Sol et Luna dans les catalogues de modèles OpenAI et ChatGPT/Codex.",
-    ],
-  },
-
-  {
-    "version": "0.15.5",
-    "date": "2026-09-23",
-    "highlights": [
-      "Prend en charge GPT-6 Astra, Sol et Luna dans les catalogues de modèles OpenAI et ChatGPT/Codex.",
-    ],
-  },
-
-  {
-    "version": "0.15.2",
-    "date": "2026-09-21",
-    "highlights": [
-      "Générez et modifiez des images dans le chat, choisissez un modèle et créez des lots avec la compétence intégrée imagegen.",
-      "L'activité des outils suit la largeur de la conversation et contient proprement les libellés longs.",
-      "Les pièces jointes collées sont conservées même si le collage se termine après un changement de session.",
-      "Le modèle par défaut sélectionné est conservé lors de la modification des fournisseurs, avec un repli sûr s'il est supprimé.",
-      "Les sections imbriquées de réflexion et d'activité des outils sont plus faciles à lire, parcourir et restaurer.",
-      "Améliore les mises en page du Composer, les contrôles de raisonnement et la cohérence des thèmes de l'espace de travail.",
-      "Ajoute un interrupteur optionnel dans Réglages pour réessayer les erreurs réseau et temporaires jusqu’à réussite.",
-    ],
-  },
-
-  {
-    "version": "0.15.1",
-    "date": "2026-09-19",
-    "highlights": [
-      "Appariez et gérez des hôtes distants en SSH depuis les Réglages, avec mot de passe, installation et reconnexion au lancement.",
-      "Configurez l'amélioration de prompt (gabarit, modèle et raisonnement) depuis la carte Réglages IA.",
-      "Réordonnez les modèles sélectionnés par glisser-déposer, et ajoutez un niveau « omettre la réflexion » sans surcharge fournisseur.",
-      "Redimensionnez ou réduisez la barre latérale, et rétablissez la largeur par défaut d'une barre ou d'un panneau d'un double-clic.",
-      "Gérez les projets dans une archive groupée avec inspecteur, et importez chaque type depuis son propre établi.",
-      "Analysez et importez en lot les skills et serveurs MCP d'autres outils d'agent.",
-      "L'extra de la barre de menus macOS reste sur un status item natif, avec des raccourcis de session limités dans le plateau.",
-      "Les builds macOS officiels sont signés, notariés, et gèrent les mises à jour in-app.",
-      "La DMG macOS signée s'installe en deux icônes ; la note d'ouverture non signée reste uniquement dans le ZIP.",
-      "Review ne s'ouvre que sur action explicite, et l'ouverture d'une session atterrit sur le dernier tour.",
-      "Une file d'envoi bloquée se rétablit, et les origines de steering falsifiées sont ignorées.",
-    ],
-  },
-
-  {
-    "version": "0.15.0",
-    "date": "2026-09-17",
-    "highlights": [
-      "Réordonnez, modifiez, verrouillez et promouvez les prompts en file pour qu'un message plus tardif parte ensuite.",
-      "Clonez un dépôt git depuis la boîte de dialogue de création de projet.",
-      "Faites glisser la largeur du contenu de conversation dans la colonne de chat.",
-      "Les échecs d'installation du marché des skills affichent un nouvel essai au lieu d'un bouton mort.",
-      "Les fournisseurs déclarés par un plugin apparaissent comme des lignes natives, avec clés API et agents personnalisés de confiance.",
-      "Les plugins peuvent demander des connexions temps réel, des raccourcis globaux, des permissions de capacité, et un canal officiel avec sauvegardes.",
-      "Les plugins peuvent enregistrer des variables de thème, des ressources de thème et un widget flottant transparent.",
-      "Supprime un projet avec les sessions qui lui appartiennent, après une seconde confirmation.",
-      "Les sous-agents disposent d'une liste ordonnée de modèles de repli ; un sous-agent terminé reprend depuis la même carte Task ; les builtins se basculent dans les Réglages.",
-      "Les références de fichiers des lignes d'outils ouvrent la vue ; déplier conserve la lecture ; le survol Plan est une plaque opaque.",
-    ],
-  },
-
-  {
-    "version": "0.14.9",
-    "date": "2026-09-17",
-    "highlights": [
-      "Réordonnez, modifiez, verrouillez et promouvez les prompts en file pour qu'un message plus tardif parte ensuite.",
-      "Clonez un dépôt git depuis la boîte de dialogue de création de projet.",
-      "Faites glisser la largeur du contenu de conversation dans la colonne de chat.",
-      "Les échecs d'installation du marché des skills affichent un nouvel essai au lieu d'un bouton mort.",
-      "Les fournisseurs déclarés par un plugin apparaissent comme des lignes natives, avec clés API et agents personnalisés de confiance.",
-      "Les plugins peuvent demander des connexions temps réel, des raccourcis globaux, des permissions de capacité, et un canal officiel avec sauvegardes.",
-      "Les plugins peuvent enregistrer des variables de thème, des ressources de thème et un widget flottant transparent.",
-      "Supprime un projet avec les sessions qui lui appartiennent, après une seconde confirmation.",
-      "Les sous-agents disposent d'une liste ordonnée de modèles de repli ; les builtins livrés se basculent dans les Réglages.",
-      "Les références de fichiers des lignes d'outils ouvrent la vue ; déplier conserve la lecture ; le survol Plan est une plaque opaque.",
-    ],
-  },
-
-
-  {
-    "version": "0.14.8",
-    "date": "2026-09-14",
-    "highlights": [
-      "Parcourez et installez des serveurs MCP depuis le registre officiel et des sources configurées par l'utilisateur dans le marché MCP.",
-      "Parcourez et installez des skills depuis des catalogues sélectionnés et GitHub dans le marché des Skills, avec HTTPS public et limites de taille.",
-      "Livre la vue fichiers comme plugin File Manager intégré, et laisse un plugin fourni conserver une mise à jour du marketplace.",
-      "Ajoute un mode aperçu du panneau de travail, relève le plancher de la colonne de chat à 450px et priorise MainChat dans la disposition à trois colonnes.",
-      "Découvre des sessions indépendantes, envoie des messages de collaboration appartenant à l'hôte et ouvre les liens de collaboration.",
-      "Les sous-agents peuvent hériter des outils du parent, les builtins fournis apparaissent dans Réglages, un builtin UI-designer est ajouté, et l'état de création est distinct.",
-      "Oriente un tour en cours avec Alt+Entrée et développe les fichiers texte collés dans le compositeur pour les modifier.",
-      "Refonte de la création de projet : espaces de travail multi-dossiers, mémoire du projet et éditeur visuel de mémoire.",
-      "Installe les dépendances et skills déclarées des paquets pi importés derrière une frontière de sécurité de l'hôte.",
-      "Ajoute des pastilles prédéfinies pour la fenêtre de contexte et la sortie maximale, affiche les plages de lignes Read sur les pastilles d'outils et conserve le contexte récupérable après une compaction échouée.",
-    ],
-  },
-  {
-    "version": "0.14.6",
-    "date": "2026-09-10",
-    "highlights": [
-      "Avertit lorsque cette version est plus ancienne que vos données locales ou que la version Intel tourne sur Apple Silicon, au lieu d'échouer en silence.",
-      "Ajoute un plan de contrôle MCP local du bureau ; les plugins vérifiés ne pilotent le bureau qu'après un consentement natif.",
-      "Ajoute des modèles prédéfinis de sous-agents, un sélecteur de modèles limité au fournisseur et le niveau de réflexion effectif sur les cartes de délégation.",
-      "Attribue des alias aux modèles configurés, copie les identifiants de modèle et privilégie l'API propre au modèle sur le style du fournisseur.",
-      "Remplace la correspondance textuelle d'Edit par des opérations ancrées aux lignes, avec des conseils de récupération propres à chaque erreur.",
-      "Réessaie les fournisseurs jusqu'à dix fois avec un compte à rebours visible et reprend les tours autonomes de simple progression.",
-      "Refonte de l'installateur macOS, ajout d'un exe portable Windows et d'un paquet RPM Linux, et retour des icônes de barre et de dock GNOME.",
-      "Copie les identifiants de conversation et ouvre les dossiers de session depuis la barre latérale, avec des infobulles localisées sur les actions à icône seule.",
-      "Affiche l'état du processus en direct et les intervalles calmes sur la ligne d'activité, et ajoute un bouton fixe de bascule du panneau de travail.",
-      "Applique les règles d'exclusion de l'espace de travail, résout les liens symboliques orphelins et revérifie la sortie réseau des plugins à chaque redirection.",
-      "Respecte les règles de contournement de proxy, conserve les glyphes à usage privé collés et charge les aperçus de fichiers sans bloquer l'éditeur.",
-    ],
-  },
-  {
     "version": "0.14.5",
     "date": "2026-09-09",
     "highlights": [
@@ -176,6 +59,7 @@ export const frEntries: ChangelogEntry[] = [
     "version": "0.13.11",
     "date": "2026-09-07",
     "highlights": [
+      "Activez le plug-in Advisor fourni pour qu'un deuxième modèle examine la conversation en cours.",
       "Laissez les plugins répertorier les modèles, lire le contexte de la session en cours et demander des achèvements appartenant à l'hôte sans recevoir d'informations d'identification."
     ]
   },

@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import { TooltipButton, cx } from "../ui";
+import { cx } from "../ui";
 import { IconPlus, IconX } from "../icons";
 
 export type KeyValuePair = { key: string; value: string };
@@ -60,15 +60,15 @@ export function KeyValueRows({
             aria-label={valuePlaceholder}
             onChange={(event) => setAt(index, { value: event.target.value })}
           />
-          <TooltipButton
+          <button
             type="button"
             className="kv-remove"
-            ariaLabel={t("extensions.mcp.removeRow")}
-            tooltip={t("extensions.mcp.removeRow")}
+            aria-label={t("extensions.mcp.removeRow")}
+            title={t("extensions.mcp.removeRow")}
             onClick={() => onChange(pairs.filter((_, i) => i !== index))}
           >
             <IconX size={12} />
-          </TooltipButton>
+          </button>
         </div>
       ))}
       <button

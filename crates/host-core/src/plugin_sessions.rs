@@ -231,10 +231,7 @@ fn parse_message(
         id: Uuid::new_v4().to_string(),
         role: role.to_string(),
         content: input.content.clone(),
-        command: None,
-        skill_mentions: None,
         attachments: None,
-        steering: None,
         created_at,
         thinking: None,
         status: None,
@@ -257,8 +254,6 @@ fn parse_message(
         is_error: None,
         parent_tool_call_id: None,
         agent_name: None,
-        hosted_search: None,
-        session_message: None,
     })
 }
 
@@ -762,7 +757,7 @@ fn history_from_json(raw: Option<String>) -> Value {
         .unwrap_or_else(|| json!({ "projectPath": null, "modelId": null, "providerId": null }))
 }
 
-struct SessionViewParams {
+fn session_view(
     session_id: String,
     title: String,
     source: String,
@@ -771,30 +766,7 @@ struct SessionViewParams {
     message_count: i64,
     created_at: i64,
     updated_at: i64,
-}
-
-type OwnedSessionRow = (
-    String,
-    String,
-    String,
-    i64,
-    i64,
-    i64,
-    Option<i64>,
-    Option<String>,
-);
-
-fn session_view(params: SessionViewParams) -> Value {
-    let SessionViewParams {
-        session_id,
-        title,
-        source,
-        external_id,
-        project_id,
-        message_count,
-        created_at,
-        updated_at,
-    } = params;
+) -> Value {
     json!({
         "sessionId": session_id,
         "title": title,
@@ -856,7 +828,9 @@ pub fn list(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Valu
     }
     sql.push_str(if source.is_some() && updated_after.is_some() {
         " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?4 OFFSET ?5"
-    } else if source.is_some() || updated_after.is_some() {
+    } else if source.is_some() {
+        " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?3 OFFSET ?4"
+    } else if updated_after.is_some() {
         " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?3 OFFSET ?4"
     } else {
         " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?2 OFFSET ?3"
@@ -883,16 +857,16 @@ pub fn list(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Valu
     };
     let mut items = Vec::new();
     while let Some(row) = rows.next()? {
-        items.push(session_view(SessionViewParams {
-            session_id: row.get(0)?,
-            title: row.get(1)?,
-            source: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-            external_id: row.get(3)?,
-            project_id: row.get(4)?,
-            message_count: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
-        }));
+        items.push(session_view(
+            row.get(0)?,
+            row.get(1)?,
+            row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+            row.get(6)?,
+            row.get(7)?,
+        ));
     }
     let next_cursor = (items.len() == page_limit).then(|| (offset + items.len()).to_string());
     let mut response = Map::new();
@@ -907,7 +881,18 @@ fn own_session_row(
     db: &Database,
     plugin_id: &str,
     session_id: &str,
-) -> Result<Option<OwnedSessionRow>> {
+) -> Result<
+    Option<(
+        String,
+        String,
+        String,
+        i64,
+        i64,
+        i64,
+        Option<i64>,
+        Option<String>,
+    )>,
+> {
     Ok(db
         .conn()
         .prepare_cached(

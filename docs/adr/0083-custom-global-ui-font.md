@@ -1,6 +1,6 @@
 # ADR 0083: Custom global UI font
 
-- Status: Superseded in part by ADR 0298
+- Status: Accepted for implementation
 - Date: 2026-08-14
 - Baseline: `0.4.16`
 - Protocol: v9 (one additive Electron-main IPC channel; host RPC unchanged)
@@ -34,14 +34,10 @@ layer (measured against the trigger and clamped to the viewport), so the
 settings card's `overflow` cannot clip or squeeze it; it follows the body-level
 floating-layer contract in the component spec.
 
-### 2. Bundled open-licensed families (superseded by ADR 0298)
+### 2. Bundled open-licensed families
 
-*(Historical. [ADR 0298](0298-remove-bundled-fonts.md) removed every bundled
-family, so the picker offers System default plus installed system families and
-nothing is loaded from disk.)*
-
-Four families shipped with the app as `woff2`, all under the SIL Open Font
-License 1.1 (free for commercial use and redistribution; license texts were
+Four families ship with the app as `woff2`, all under the SIL Open Font
+License 1.1 (free for commercial use and redistribution; license texts are
 shipped under `apps/desktop/src/assets/fonts/licenses/`):
 
 | Family | Script coverage | Source |
@@ -51,11 +47,10 @@ shipped under `apps/desktop/src/assets/fonts/licenses/`):
 | Noto Sans SC | CJK (variable) | google/fonts (Source Han Sans lineage) |
 | LXGW WenKai | CJK kai (regular) | lxgw/LxgwWenKai |
 
-Every stack appends a CJK fallback tier so Chinese text stays readable when the
-selected family has no CJK glyphs. The tier was (`Noto Sans SC`, `PingFang SC`,
-`Hiragino Sans GB`, `Microsoft YaHei`, `sans-serif`) and is now the system-only
-(`PingFang SC`, `Hiragino Sans GB`, `Microsoft YaHei`, `sans-serif`) after ADR
-0298. The mono stack (`--font-mono`) is unchanged.
+Every stack appends a CJK fallback tier (`Noto Sans SC`, `PingFang SC`,
+`Hiragino Sans GB`, `Microsoft YaHei`, `sans-serif`) so Chinese text stays
+readable when the selected family has no CJK glyphs. The mono stack
+(`--font-mono`) is unchanged.
 
 ### 3. System font enumeration in Electron main
 
@@ -78,25 +73,20 @@ through one new allowlisted IPC channel, `pi-desktop/app/systemFonts`.
 
 The renderer overrides `--font-sans` on `document.documentElement` from
 `AppSettings.fontFamily`; `body` and every `var(--font-sans)` consumer pick it
-up without a reload. *(Superseded by [ADR 0298](0298-remove-bundled-fonts.md):
-the `@font-face` rules, `apps/desktop/src/styles/fonts.css`, and its
-`@import` in `globals.css` are deleted, so a stored stack resolves through
-installed families.)*
+up without a reload. `@font-face` rules for the bundled families live in
+`apps/desktop/src/styles/fonts.css`, imported before the token layer.
 
 ## Consequences
 
 - Users pick a global UI font once; it persists across restarts and renders
-  offline from installed families ([ADR 0298](0298-remove-bundled-fonts.md) ships
-  no font files).
+  offline from the bundled files.
 - CJK coverage stays correct for every option via the appended fallback tier.
 - macOS enumeration resolves through the fast CoreText path in tens of
   milliseconds (the previous `system_profiler` path took 2–5 s and is now only
   a fallback); the result is cached 60 s per process and returns canonical
   family names such as `PingFang SC` rather than system_profiler's localized
   aliases such as `苹方-简`.
-- The installer carried roughly 16 MB of bundled font files; ADR 0298 removed
-  them, so `out/renderer` emits no application font face and only KaTeX's
-  `woff2` glyphs remain (see `06-delivery/06-release-runbook.md`).
+- The installer grows by roughly 16 MB from the bundled font files.
 - `@font-face` `font-weight` descriptors are exempted from the style-token
   guard because they describe font files, not UI typography.
 

@@ -1,4 +1,3 @@
-import { readMainSource, readMainModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import {
   mkdir,
@@ -16,11 +15,10 @@ const devScriptUrl = new URL(
   import.meta.url,
 );
 
-const mainSource = await readMainSource();
-const mainIndexSource = await readMainModule("index.ts");
-const brandingSource = await readMainModule("bootstrap/app-lifecycle.ts");
-const windowSource = await readMainModule("bootstrap/window.ts");
-const startupSource = await readMainModule("bootstrap/startup.ts");
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
 const iconScriptSource = await readFile(
   new URL("../../../scripts/make-icon.py", import.meta.url),
   "utf8",
@@ -36,17 +34,16 @@ const protocolSource = await readFile(
   new URL("../../../packages/shared/src/protocol.ts", import.meta.url),
   "utf8",
 );
-const windowsIcon = await readFile(
-  new URL("../build/icon.ico", import.meta.url),
-);
 
 test("Windows runtime registers the canonical native application identity", () => {
   const appId = protocolSource.match(/APP_ID = "([^"]+)"/)?.[1];
+  const readinessIndex = mainSource.indexOf("app.whenReady()");
+
   assert.equal(appId, packageJson.build.appId);
-  assert.ok(startupSource.includes("app.whenReady()"), "main process readiness hook");
-  assert.match(mainIndexSource, /app\.setName\(APP_NAME\)/);
+  assert.ok(readinessIndex > 0, "main process readiness hook");
+  assert.match(mainSource.slice(0, readinessIndex), /app\.setName\(APP_NAME\)/);
   assert.match(
-    mainIndexSource,
+    mainSource.slice(0, readinessIndex),
     /process\.platform === "win32"[\s\S]*app\.setAppUserModelId\(APP_ID\)/,
   );
 });
@@ -56,25 +53,6 @@ test("Windows packages pin PI-Desktop executable and shortcut names", () => {
   assert.equal(packageJson.build.nsis.shortcutName, "PI-Desktop");
 });
 
-test("Windows packages and windows use the canonical PI-Desktop icon", () => {
-  assert.equal(packageJson.build.win.icon, "build/icon.ico");
-  assert.deepEqual(
-    packageJson.build.win.extraResources.find((resource) => resource.to === "app-icon.ico"),
-    {
-      from: "build/icon.ico",
-      to: "app-icon.ico",
-    },
-  );
-  assert.deepEqual([...windowsIcon.subarray(0, 4)], [0, 0, 1, 0]);
-  assert.ok(windowsIcon.readUInt16LE(4) >= 4, "ICO must contain multiple sizes");
-  assert.match(iconScriptSource, /windows_icon = BUILD \/ "icon\.ico"/);
-  assert.match(iconScriptSource, /format="ICO"/);
-  assert.match(windowSource, /function windowsIconPath\(\)/);
-  assert.match(windowSource, /app\.isPackaged\s*\n?\s*\?\s*process\.resourcesPath/);
-  assert.match(windowSource, /app-icon\.ico/);
-  assert.match(windowSource, /icon: windowsIconPath\(\)/);
-});
-
 test("Linux packages align the desktop entry with the Wayland app identity", () => {
   assert.equal(packageJson.desktopName, "pi-desktop.desktop");
   assert.equal(packageJson.build.linux.syncDesktopName, true);
@@ -82,22 +60,22 @@ test("Linux packages align the desktop entry with the Wayland app identity", () 
 
 test("macOS development uses the canonical PI-Desktop Dock icon", () => {
   assert.match(
-    brandingSource,
+    mainSource,
     /process\.platform !== "darwin" \|\| !isDevelopmentBuild \|\| !app\.dock/,
   );
   assert.match(
-    brandingSource,
+    mainSource,
     /join\(app\.getAppPath\(\), "build", "icon_1024\.png"\)/,
   );
-  assert.match(brandingSource, /nativeImage\.createFromPath\(iconPath\)/);
-  assert.match(brandingSource, /if \(icon\.isEmpty\(\)\)/);
-  assert.match(brandingSource, /app\.dock\.setIcon\(icon\)/);
+  assert.match(mainSource, /nativeImage\.createFromPath\(iconPath\)/);
+  assert.match(mainSource, /if \(icon\.isEmpty\(\)\)/);
+  assert.match(mainSource, /app\.dock\.setIcon\(icon\)/);
   // Branding is the first thing readiness does, after the only statement that
   // may precede it: the bail for a launch that lost the single-instance lock
   // and must not touch the running app's Dock tile.
   assert.match(
-    startupSource,
-    /if \(!hasSingleInstanceLock\) return;\s+applyDevelopmentBranding\(\);/,
+    mainSource,
+    /app\.whenReady\(\)\.then\(async \(\) => \{(?:\n\s+\/\/[^\n]*)*\n\s+if \(!hasSingleInstanceLock\) return;\s+applyDevelopmentBranding\(\);/,
   );
 });
 
@@ -189,7 +167,7 @@ test(
         "canonical-icon",
       );
       assert.match(plist, /<string>PI-Desktop<\/string>/);
-      assert.match(plist, /<string>net\.aiuo\.pi-desktop\.dev<\/string>/);
+      assert.match(plist, /<string>com\.pi-desktop\.app\.dev<\/string>/);
       assert.equal(prepareMacDevelopmentBundle(options), brandedExecutable);
     } finally {
       await rm(root, { recursive: true, force: true });

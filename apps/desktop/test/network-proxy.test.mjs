@@ -15,7 +15,11 @@ const nodeProxy = await readFile(
   "utf8",
 );
 const hostProcess = await readFile(
-  new URL("../../../packages/host-runtime/src/host-process.ts", import.meta.url),
+  new URL("../electron/main/host-process.ts", import.meta.url),
+  "utf8",
+);
+const pluginsSource = await readFile(
+  new URL("../../../crates/host-core/src/plugins.rs", import.meta.url),
   "utf8",
 );
 const hostProxy = await readFile(
@@ -29,8 +33,6 @@ test("Electron main applies Chromium proxy and net.fetch", () => {
   assert.match(electronProxy, /session-created/);
   assert.match(electronProxy, /pi-desktop\/network\/testProxy|PROXY_TEST_URL/);
   assert.match(electronProxy, /PI_DESKTOP_PROXY_JSON/);
-  assert.match(electronProxy, /startAuthenticatedProxyRelay/);
-  assert.match(electronProxy, /proxyHasCredentials/);
 });
 
 test("sidecar reconfigures undici without a restart", () => {
@@ -42,7 +44,7 @@ test("sidecar reconfigures undici without a restart", () => {
 });
 
 test("host-core marketplace curl uses --proxy and Bash does not inherit env", () => {
-  assert.match(hostProxy, /curl_proxy_args/);
+  assert.match(pluginsSource, /curl_proxy_args/);
   assert.match(hostProxy, /"--proxy"/);
   assert.match(hostProcess, /stripProxyEnv\(process\.env\)/);
 });

@@ -1,16 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEEPSEEK_REASONING_REPLAY_PLACEHOLDER } from "@pi-desktop/shared";
 import type { ModelAuth } from "@earendil-works/pi-ai";
 import { convertMessages } from "@earendil-works/pi-ai/api/openai-completions";
-import { genericModelConfig, modelConfigWithBinding } from "./model-capabilities.js";
 import type { ModelConfig } from "./thinking-level.js";
 import {
-  adapterAcceptsCustomFetch,
   apiBindingForStyle,
   buildProviderModel,
   copilotRequestHeaders,
   createProviderModels,
-  providerRequestFetch,
   runtimeBaseUrlForApi,
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
@@ -46,26 +42,6 @@ describe("apiBindingForStyle", () => {
   it("keeps unknown styles on chat completions", () => {
     expect(apiBindingForStyle("not-a-style").api).toBe("openai-completions");
     expect(apiBindingForStyle(undefined).api).toBe("openai-completions");
-  });
-});
-
-describe("custom fetch injection", () => {
-  const wrapper = async () => new Response("ok");
-
-  it("withholds the fetch from the adapters that reject one", () => {
-    expect(adapterAcceptsCustomFetch("google-generative-ai")).toBe(false);
-    expect(adapterAcceptsCustomFetch("google-vertex")).toBe(false);
-    expect(providerRequestFetch("google-generative-ai", wrapper)).toBeUndefined();
-    expect(providerRequestFetch("google-vertex", wrapper)).toBeUndefined();
-  });
-
-  it("passes the caller's fetch to every other adapter", () => {
-    expect(adapterAcceptsCustomFetch("openai-completions")).toBe(true);
-    expect(adapterAcceptsCustomFetch("anthropic-messages")).toBe(true);
-    expect(adapterAcceptsCustomFetch(undefined)).toBe(true);
-    expect(providerRequestFetch("openai-completions", wrapper)).toBe(wrapper);
-    expect(providerRequestFetch("anthropic-messages", wrapper)).toBe(wrapper);
-    expect(providerRequestFetch(undefined, wrapper)).toBe(wrapper);
   });
 });
 
@@ -116,251 +92,6 @@ describe("Anthropic runtime endpoint", () => {
     expect(result.stopReason).toBe("error");
     expect(urls).toEqual(["https://gw.example/anthropic/v1/messages?beta=true"]);
   });
-
-  it("signs a plain Anthropic API-key row without a Bearer header", async () => {
-    const provider: RuntimeProviderConfig = {
-      ...keyedProvider,
-      id: "anthropic-api-key-row",
-      name: "Anthropic",
-      baseUrl: "https://api.anthropic.com",
-      modelId: "claude-sonnet-4-6",
-      apiStyle: "anthropic_messages",
-    };
-    const model = buildProviderModel(provider);
-    let request: Request | undefined;
-    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      request = new Request(input, init);
-      return new Response(
-        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "test response" } }),
-        { status: 400, headers: { "content-type": "application/json" } },
-      );
-    });
-
-    const result = await createProviderModels(provider, model)
-      .streamSimple(
-        model,
-        {
-          systemPrompt: "system",
-          messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-          tools: [],
-        },
-        { fetch, maxRetries: 0 },
-      )
-      .result();
-
-    expect(result.stopReason).toBe("error");
-    expect(request?.headers.get("x-api-key")).toBe("sk-test");
-    expect(request?.headers.get("Authorization")).toBeNull();
-  });
-
-  it("uses adaptive thinking for models explicitly marked adaptive", async () => {
-    const provider: RuntimeProviderConfig = {
-      ...keyedProvider,
-      id: "anthropic-adaptive",
-      name: "Anthropic adaptive",
-      baseUrl: "https://api.anthropic.com",
-      modelId: "claude-opus-5-5",
-      apiStyle: "anthropic_messages",
-      supportsReasoning: true,
-      supportedThinkingLevels: ["off", "medium"],
-      modelConfig: {
-        source: "models.dev",
-        name: "Claude Opus 5.5",
-        baseUrl: "https://api.anthropic.com",
-        reasoning: true,
-        thinkingProtocol: "adaptive",
-        thinkingLevelMap: { medium: "medium" },
-        input: ["text"],
-        contextWindow: 200_000,
-        maxTokens: 16_000,
-      },
-    };
-    const model = buildProviderModel(provider);
-    const requests: Record<string, unknown>[] = [];
-    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return new Response("bad request", { status: 400 });
-    });
-
-    await createProviderModels(provider, model)
-      .streamSimple(
-        model,
-        { systemPrompt: "system", messages: [{ role: "user", content: "hello", timestamp: Date.now() }], tools: [] },
-        { reasoning: "medium", fetch },
-      )
-      .result();
-
-    expect(model.compat).toMatchObject({ forceAdaptiveThinking: true });
-    expect(requests[0]).toMatchObject({
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
-    });
-  });
-
-  it("keeps the legacy budget request for legacy models", async () => {
-    const provider: RuntimeProviderConfig = {
-      ...keyedProvider,
-      id: "anthropic-legacy",
-      name: "Anthropic legacy",
-      baseUrl: "https://api.anthropic.com",
-      modelId: "claude-opus-4-5",
-      apiStyle: "anthropic_messages",
-      supportsReasoning: true,
-      supportedThinkingLevels: ["off", "medium"],
-      modelConfig: {
-        source: "models.dev",
-        name: "Claude Opus 4.5",
-        baseUrl: "https://api.anthropic.com",
-        reasoning: true,
-        reasoningOptions: [{ type: "effort", values: ["low", "medium", "high"] }],
-        thinkingProtocol: "legacy",
-        input: ["text"],
-        contextWindow: 200_000,
-        maxTokens: 16_000,
-      },
-    };
-    const model = buildProviderModel(provider);
-    const requests: Record<string, unknown>[] = [];
-    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return new Response("bad request", { status: 400 });
-    });
-
-    await createProviderModels(provider, model)
-      .streamSimple(
-        model,
-        { systemPrompt: "system", messages: [{ role: "user", content: "hello", timestamp: Date.now() }], tools: [] },
-        { reasoning: "medium", fetch },
-      )
-      .result();
-
-    expect(model.compat).toMatchObject({ forceAdaptiveThinking: false });
-    expect(requests[0]).toMatchObject({
-      thinking: { type: "enabled" },
-    });
-    expect((requests[0].thinking as Record<string, unknown>).budget_tokens).toEqual(expect.any(Number));
-  });
-});
-
-describe("Anthropic adaptive thinking from models.dev reasoning options", () => {
-  function anthropicProvider(
-    modelId: string,
-    reasoningOptions: ModelConfig["reasoningOptions"],
-  ): RuntimeProviderConfig {
-    return {
-      ...keyedProvider,
-      id: "anthropic",
-      name: "Anthropic",
-      baseUrl: "https://api.anthropic.com",
-      modelId,
-      apiStyle: "anthropic_messages",
-      supportsReasoning: true,
-      supportedThinkingLevels: ["low", "medium", "high"],
-      modelConfig: {
-        source: "models.dev",
-        name: modelId,
-        baseUrl: "https://api.anthropic.com",
-        reasoning: true,
-        reasoningOptions,
-        supportedThinkingLevels: ["low", "medium", "high"],
-        input: ["text"],
-        contextWindow: 1_000_000,
-        maxTokens: 128_000,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      },
-    };
-  }
-
-  async function thinkingRequest(provider: RuntimeProviderConfig) {
-    const model = buildProviderModel(provider);
-    const requests: Record<string, unknown>[] = [];
-    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return new Response("bad gateway", { status: 502 });
-    });
-    await createProviderModels(provider, model)
-      .streamSimple(
-        model,
-        {
-          systemPrompt: "system",
-          messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-          tools: [],
-        },
-        { reasoning: "medium", fetch, maxRetries: 0 },
-      )
-      .result();
-    return requests[0];
-  }
-
-  it("sends adaptive thinking to effort-only Claude models such as Opus 5.5", async () => {
-    const request = await thinkingRequest(
-      anthropicProvider("claude-opus-5-5", [
-        { type: "effort", values: ["low", "medium", "high", "xhigh", "max"] },
-      ]),
-    );
-
-    expect(request?.thinking).toMatchObject({ type: "adaptive" });
-    expect(request?.thinking).not.toHaveProperty("budget_tokens");
-    expect(request?.output_config).toEqual({ effort: "medium" });
-  });
-
-  it("sends adaptive thinking when an unidentified gateway keeps only the Anthropic wire shape", async () => {
-    const fallback = genericModelConfig("claude-opus-5-5", "https://gateway.example");
-    const modelConfig = modelConfigWithBinding(
-      {
-        ...fallback,
-        reasoningOptions: [
-          { type: "effort", values: ["low", "medium", "high", "xhigh", "max"] },
-        ],
-        thinkingLevelMap: {
-          low: "low",
-          medium: "medium",
-          high: "high",
-          xhigh: "xhigh",
-          max: "max",
-          off: null,
-        },
-      },
-      {
-        contextWindow: 1_000_000,
-        maxTokens: 128_000,
-        thinkingLevels: ["off", "low", "medium", "high"],
-      },
-    );
-    const request = await thinkingRequest({
-      ...anthropicProvider("claude-opus-5-5", modelConfig.reasoningOptions),
-      baseUrl: "https://gateway.example",
-      modelConfig,
-    });
-
-    expect(request?.thinking).toMatchObject({ type: "adaptive" });
-    expect(request?.thinking).not.toHaveProperty("budget_tokens");
-    expect(request?.output_config).toEqual({ effort: "medium" });
-  });
-
-  it("keeps budget thinking for models that publish budget_tokens", async () => {
-    const request = await thinkingRequest(
-      anthropicProvider("claude-sonnet-4-5", [{ type: "budget_tokens", min: 1024 }]),
-    );
-
-    expect(request?.thinking).toMatchObject({ type: "enabled" });
-    expect(request?.thinking).toHaveProperty("budget_tokens");
-  });
-
-  it("preserves an explicit catalog adaptive override", () => {
-    const provider = anthropicProvider("claude-opus-4-6", [
-      { type: "effort", values: ["low", "medium", "high", "max"] },
-      { type: "budget_tokens", min: 1024 },
-    ]);
-    provider.modelConfig = {
-      ...provider.modelConfig!,
-      compat: { forceAdaptiveThinking: true },
-    };
-
-    expect(buildProviderModel(provider).compat).toMatchObject({
-      forceAdaptiveThinking: true,
-    });
-  });
 });
 
 describe("buildProviderModel OpenAI-compatible role compatibility", () => {
@@ -398,7 +129,7 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
     expect(model.compat).toMatchObject({ supportsDeveloperRole: false });
     const messages = convertMessages(
       model,
-      { messages: [{ role: "system", content: "Follow the workspace rules.", timestamp: Date.now() }] } as never,
+      { systemPrompt: "Follow the workspace rules.", messages: [] },
       { supportsDeveloperRole: model.compat.supportsDeveloperRole } as any,
     );
 
@@ -420,7 +151,7 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
     expect(model.compat).toMatchObject({ supportsDeveloperRole: true });
     const messages = convertMessages(
       model,
-      { messages: [{ role: "system", content: "Use the provider's developer role.", timestamp: Date.now() }] } as never,
+      { systemPrompt: "Use the provider's developer role.", messages: [] },
       { supportsDeveloperRole: model.compat.supportsDeveloperRole } as any,
     );
 
@@ -449,126 +180,6 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
       zaiToolStream: true,
       supportsDeveloperRole: false,
     });
-  });
-
-  it("fills missing reasoning_content for DeepSeek models on aggregator URLs", () => {
-    const model = buildProviderModel({
-      ...reasoningProvider,
-      id: "row-uuid",
-      vendorKey: "siliconflow-cn",
-      baseUrl: "https://api.siliconflow.cn/v1",
-      modelId: "deepseek-ai/DeepSeek-V3.2",
-      apiStyle: "chat_completions",
-      modelConfig: {
-        ...reasoningProvider.modelConfig!,
-        name: "DeepSeek V3.2",
-        family: "deepseek",
-        baseUrl: "https://api.siliconflow.cn/v1",
-      },
-    }) as any;
-
-    expect(model.provider).toBe("row-uuid");
-    expect(model.compat).toMatchObject({
-      requiresReasoningContentOnAssistantMessages: true,
-      requiresNonEmptyReasoningReplay: true,
-      supportsDeveloperRole: false,
-    });
-    expect(model.compat.thinkingFormat).toBeUndefined();
-
-    // Empty-string path (#223): this convertMessages call uses a compat WITHOUT
-    // requiresNonEmptyReasoningReplay, so official-style "" fill still works.
-    // The SiliconFlow model itself sets requiresNonEmptyReasoningReplay (above).
-    const messages = convertMessages(
-      model,
-      {
-        messages: [
-          { role: "system", content: "Follow the workspace rules.", timestamp: Date.now() },
-          { role: "user", content: "hello", timestamp: Date.now() },
-          {
-            role: "assistant",
-            content: [{ type: "text", text: "answer without thinking" }],
-            api: "openai-completions",
-            provider: model.provider,
-            model: model.id,
-            usage: {
-              input: 1,
-              output: 1,
-              cacheRead: 0,
-              cacheWrite: 0,
-              totalTokens: 2,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-            },
-            stopReason: "stop",
-            timestamp: Date.now(),
-          },
-        ],
-      } as never,
-      {
-        supportsDeveloperRole: false,
-        requiresReasoningContentOnAssistantMessages: true,
-      } as any,
-    );
-
-    expect(messages).toEqual([
-      { role: "system", content: "Follow the workspace rules." },
-      { role: "user", content: "hello" },
-      {
-        role: "assistant",
-        content: "answer without thinking",
-        reasoning_content: "",
-      },
-    ]);
-  });
-
-  it("fills missing reasoning_content from catalog family when the model id is an endpoint", () => {
-    const model = buildProviderModel({
-      ...reasoningProvider,
-      id: "row-uuid",
-      vendorKey: "volcengine",
-      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      modelId: "ep-20250101-xyz",
-      apiStyle: "chat_completions",
-      modelConfig: {
-        ...reasoningProvider.modelConfig!,
-        name: "DeepSeek V4 Pro",
-        family: "deepseek-thinking",
-        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      },
-    }) as any;
-
-    expect(model.compat).toMatchObject({
-      requiresReasoningContentOnAssistantMessages: true,
-      requiresNonEmptyReasoningReplay: true,
-    });
-  });
-
-  it("keeps empty-string replay for official deepseek.com endpoints", () => {
-    const model = buildProviderModel({
-      ...reasoningProvider,
-      id: "row-uuid",
-      vendorKey: "deepseek",
-      baseUrl: "https://api.deepseek.com",
-      modelId: "deepseek-chat",
-      apiStyle: "chat_completions",
-    }) as any;
-
-    expect(model.compat).toMatchObject({
-      requiresReasoningContentOnAssistantMessages: true,
-    });
-    expect(model.compat.requiresNonEmptyReasoningReplay).toBeUndefined();
-  });
-
-  it("does not mark unrelated OpenAI-compatible models as DeepSeek reasoning replay", () => {
-    const model = buildProviderModel({
-      ...reasoningProvider,
-      id: "row-uuid",
-      vendorKey: "custom",
-      baseUrl: "https://api.example.com/v1",
-      modelId: "gpt-4.1",
-      apiStyle: "chat_completions",
-    }) as any;
-
-    expect(model.compat.requiresReasoningContentOnAssistantMessages).toBeUndefined();
   });
 
   it("preserves MiniMax M3 image input on its OpenAI-compatible endpoint", () => {
@@ -601,8 +212,8 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
     const messages = convertMessages(
       model,
       {
+        systemPrompt: "Read the image.",
         messages: [
-          { role: "system", content: "Read the image.", timestamp: Date.now() },
           {
             role: "user",
             content: [
@@ -612,7 +223,7 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
             timestamp: Date.now(),
           },
         ],
-      } as never,
+      },
       { supportsDeveloperRole: false } as any,
     );
 
@@ -668,66 +279,6 @@ describe("createProviderModels auth resolution", () => {
       apiKey: "second-token",
       baseUrl: "https://per-account.acme.test",
     });
-  });
-});
-
-describe("explicit extended thinking levels", () => {
-  it("sends enabled xhigh and max values instead of clamping them to high", async () => {
-    const thinkingLevels = ["off", "low", "medium", "high", "xhigh", "max"] as const;
-    const configuredModel = modelConfigWithBinding(
-      {
-        source: "generic",
-        name: "Explicit reasoning model",
-        baseUrl: "https://api.acme.test/v1",
-        reasoning: true,
-        supportedThinkingLevels: ["low", "medium", "high"],
-        thinkingLevelMap: { xhigh: null, max: null },
-        input: ["text"],
-        contextWindow: 128_000,
-        maxTokens: 8_192,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      },
-      {
-        contextWindow: 128_000,
-        maxTokens: 8_192,
-        thinkingLevels: [...thinkingLevels],
-      },
-    );
-    const provider: RuntimeProviderConfig = {
-      ...keyedProvider,
-      supportsReasoning: true,
-      supportedThinkingLevels: [...thinkingLevels],
-      modelConfig: configuredModel,
-    };
-    const requests: Record<string, unknown>[] = [];
-    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return new Response(
-        JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    });
-    const model = buildProviderModel(provider);
-
-    for (const reasoning of ["high", "xhigh", "max"] as const) {
-      await createProviderModels(provider, model)
-        .streamSimple(
-          model,
-          {
-            systemPrompt: "system",
-            messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-            tools: [],
-          },
-          { reasoning, fetch },
-        )
-        .result();
-    }
-
-    expect(requests.map((request) => request.reasoning_effort)).toEqual([
-      "high",
-      "xhigh",
-      "max",
-    ]);
   });
 });
 
@@ -822,44 +373,6 @@ describe("buildProviderModel model-level wire API", () => {
       .result();
     expect(result.stopReason).toBe("error");
     expect(urls).toEqual(["https://opencode.ai/zen/go/v1/responses"]);
-  });
-});
-
-describe("buildProviderModel native web search capability", () => {
-  const catalogModel: ModelConfig = {
-    source: "generic",
-    name: "Configured web search model",
-    baseUrl: "https://chatgpt.com/backend-api",
-    reasoning: false,
-    input: ["text"],
-    contextWindow: 128_000,
-    maxTokens: 8_192,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  };
-  const configuredModel = modelConfigWithBinding(catalogModel, {
-    contextWindow: 128_000,
-    maxTokens: 8_192,
-    thinkingLevels: ["off"],
-    nativeWebSearch: true,
-  });
-
-  it("forwards an opt-in only when the resolved wire supports it", () => {
-    const codex = buildProviderModel({
-      ...keyedProvider,
-      vendorKey: "openai-codex",
-      apiStyle: "openai_codex_responses",
-      modelConfig: configuredModel,
-    });
-    expect(codex.api).toBe("openai-codex-responses");
-    expect(codex.webSearch).toBe(true);
-
-    const completions = buildProviderModel({
-      ...keyedProvider,
-      apiStyle: "chat_completions",
-      modelConfig: configuredModel,
-    });
-    expect(completions.api).toBe("openai-completions");
-    expect(completions.webSearch).toBeUndefined();
   });
 });
 
@@ -974,179 +487,5 @@ describe("GitHub Copilot transport identity", () => {
     expect(request?.headers.get("Copilot-Integration-Id")).toBe("vscode-chat");
     expect(request?.headers.get("X-Initiator")).toBe("user");
     expect(request?.headers.get("Openai-Intent")).toBe("conversation-edits");
-    expect(request?.headers.get("Authorization")).toBe("Bearer copilot-token");
-    expect(request?.headers.get("x-api-key")).toBeNull();
-  });
-
-  it("sends Bearer auth and the complete identity on a row-scoped Claude request", async () => {
-    const claudeProvider: RuntimeProviderConfig = {
-      ...provider,
-      modelId: "claude-sonnet-4.6",
-      apiStyle: "anthropic_messages",
-      resolveAuth: async () => ({
-        apiKey: "copilot-token",
-        baseUrl: "https://api.business.githubcopilot.com",
-      }),
-    };
-    const model = buildProviderModel(claudeProvider);
-    const context = {
-      systemPrompt: "system",
-      messages: [{ role: "user" as const, content: "hello", timestamp: Date.now() }],
-      tools: [],
-    };
-    let request: Request | undefined;
-    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      request = new Request(input, init);
-      return new Response(
-        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "test response" } }),
-        { status: 400, headers: { "content-type": "application/json" } },
-      );
-    });
-
-    const result = await createProviderModels(claudeProvider, model)
-      .streamSimple(model, context, {
-        fetch,
-        maxRetries: 0,
-        headers: copilotRequestHeaders(claudeProvider, context),
-      })
-      .result();
-
-    expect(result.stopReason).toBe("error");
-    expect(request?.headers.get("Authorization")).toBe("Bearer copilot-token");
-    expect(request?.headers.get("x-api-key")).toBeNull();
-    expect(request?.headers.get("Editor-Version")).toBe("vscode/1.107.0");
-    expect(request?.headers.get("Editor-Plugin-Version")).toBe("copilot-chat/0.35.0");
-    expect(request?.headers.get("Copilot-Integration-Id")).toBe("vscode-chat");
-    expect(request?.headers.get("X-Initiator")).toBe("user");
-    expect(request?.headers.get("Openai-Intent")).toBe("conversation-edits");
-    expect(request?.url).toBe("https://api.business.githubcopilot.com/v1/messages?beta=true");
-    expect(model.provider).toBe(claudeProvider.id);
-  });
-
-  it("re-resolves the rotating Bearer token for each row-scoped Claude request", async () => {
-    const resolveAuth = vi.fn<NonNullable<RuntimeProviderConfig["resolveAuth"]>>()
-      .mockResolvedValueOnce({ apiKey: "first-token" })
-      .mockResolvedValueOnce({ apiKey: "second-token" });
-    const claudeProvider: RuntimeProviderConfig = {
-      ...provider,
-      modelId: "claude-sonnet-4.6",
-      apiStyle: "anthropic_messages",
-      resolveAuth,
-    };
-    const model = buildProviderModel(claudeProvider);
-    const models = createProviderModels(claudeProvider, model);
-    const context = {
-      systemPrompt: "system",
-      messages: [{ role: "user" as const, content: "hello", timestamp: Date.now() }],
-      tools: [],
-    };
-    const requests: Request[] = [];
-    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push(new Request(input, init));
-      return new Response(
-        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "test response" } }),
-        { status: 400, headers: { "content-type": "application/json" } },
-      );
-    });
-
-    for (let turn = 0; turn < 2; turn++) {
-      const result = await models
-        .streamSimple(model, context, {
-          fetch,
-          maxRetries: 0,
-          headers: copilotRequestHeaders(claudeProvider, context),
-        })
-        .result();
-      expect(result.stopReason).toBe("error");
-    }
-
-    expect(requests.map((request) => request.headers.get("Authorization"))).toEqual([
-      "Bearer first-token",
-      "Bearer second-token",
-    ]);
-    expect(requests.map((request) => request.headers.get("x-api-key"))).toEqual([null, null]);
-    expect(resolveAuth).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("DeepSeek-family relay reasoning replay (#296)", () => {
-  /**
-   * The non-empty-replay opt-in lives in `model.compat`, but pi-ai rebuilds
-   * compat from an explicit allowlist in `getCompat`. Only a request that goes
-   * through the adapter can prove the placeholder survives that rebuild and
-   * reaches the wire, so this asserts the captured body rather than the compat
-   * object. Guards patches/@earendil-works__pi-ai@0.87.1.patch.
-   */
-  it("fills a thinking-less assistant turn with the documented placeholder", async () => {
-    const provider: RuntimeProviderConfig = {
-      ...keyedProvider,
-      id: "air-outer",
-      name: "Air Outer",
-      // A relay, not deepseek.com, so the strict non-empty replay applies.
-      baseUrl: "https://ps.air-outer.com/v1",
-      modelId: "deepseek-v4-flash",
-      supportsReasoning: true,
-      supportedThinkingLevels: ["off", "high"],
-    };
-    const requests: Record<string, unknown>[] = [];
-    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return new Response(
-        JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    });
-    const model = buildProviderModel(provider);
-    const usage = {
-      input: 1,
-      output: 1,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 2,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    };
-    const context = {
-      systemPrompt: "system",
-      tools: [],
-      messages: [
-        { role: "user", content: "hello", timestamp: 1 },
-        {
-          role: "assistant",
-          api: "openai-completions",
-          provider: provider.id,
-          model: provider.modelId,
-          content: [
-            { type: "thinking", thinking: "let me look", thinkingSignature: "reasoning_content" },
-            { type: "text", text: "looking" },
-          ],
-          usage,
-          stopReason: "stop",
-          timestamp: 2,
-        },
-        { role: "user", content: "again", timestamp: 3 },
-        {
-          role: "assistant",
-          api: "openai-completions",
-          provider: provider.id,
-          model: provider.modelId,
-          content: [{ type: "text", text: "done" }],
-          usage,
-          stopReason: "stop",
-          timestamp: 4,
-        },
-      ],
-    };
-
-    await createProviderModels(provider, model)
-      .streamSimple(model, context as never, { reasoning: "high", fetch })
-      .result();
-
-    const assistants = (
-      requests[0].messages as Array<Record<string, unknown>>
-    ).filter((message) => message.role === "assistant");
-    expect(assistants[0].reasoning_content).toBe("let me look");
-    expect(assistants[1].reasoning_content).toBe(
-      DEEPSEEK_REASONING_REPLAY_PLACEHOLDER,
-    );
   });
 });

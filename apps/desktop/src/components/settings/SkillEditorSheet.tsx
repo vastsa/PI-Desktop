@@ -7,7 +7,7 @@ import {
   type AgentCapabilityLevel,
   type UserSkillRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, HelpIcon, Input, SettingsToggle, Textarea, TooltipButton, portalOverlay } from "../ui";
+import { Button, Field, Input, Textarea, cx } from "../ui";
 import { IconFolderOpen, IconX } from "../icons";
 
 /** Hard cap host-core enforces on a skill document. */
@@ -117,24 +117,23 @@ function ManagementScope({
   return (
     <div className="agent-mcp-scope">
       <div className="agent-mcp-scope-copy">
-        <span className="agent-mcp-scope-label">
-          {label}
-          {/* Which level the document lands in is the label's own question, so
-              the answer rides on it instead of taking a second line. */}
-          <HelpIcon
-            label={
-              level === "global"
-                ? t("settings.globalScopeDescription")
-                : t("settings.projectScopeDescription")
-            }
-          />
+        <span className="agent-mcp-scope-label">{label}</span>
+        <span className="agent-mcp-scope-hint">
+          {level === "global"
+            ? t("settings.globalScopeDescription")
+            : t("settings.projectScopeDescription")}
         </span>
       </div>
-      <SettingsToggle
-        checked={draft.enabled}
-        label={t("settings.enableCapability", { name: draft.name || draft.id })}
-        onChange={() => setDraft({ ...draft, enabled: !draft.enabled })}
-      />
+      <button
+        type="button"
+        className={cx("settings-toggle", draft.enabled && "on")}
+        role="switch"
+        aria-checked={draft.enabled}
+        aria-label={t("settings.enableCapability", { name: draft.name || draft.id })}
+        onClick={() => setDraft({ ...draft, enabled: !draft.enabled })}
+      >
+        <span className="settings-toggle-thumb" />
+      </button>
     </div>
   );
 }
@@ -195,7 +194,7 @@ export function SkillEditorSheet({
     setDraft(next);
   };
 
-  return portalOverlay(
+  return (
     <div
       className="overlay ext-sheet-overlay"
       role="presentation"
@@ -211,15 +210,14 @@ export function SkillEditorSheet({
             </h3>
             <p className="ext-sheet-sub">{t("extensions.skills.sheetSubtitle")}</p>
           </div>
-          <TooltipButton
+          <button
             type="button"
             className="ext-sheet-close"
-            ariaLabel={t("common.close")}
-            tooltip={t("common.close")}
+            aria-label={t("common.close")}
             onClick={onClose}
           >
             <IconX size={14} />
-          </TooltipButton>
+          </button>
         </div>
 
         <div className="ext-sheet-body">
@@ -256,10 +254,7 @@ export function SkillEditorSheet({
 
           <div className="ext-field-group">
             <div className="ext-field-label ext-field-label-row">
-              <span>
-                {t("extensions.skills.body")}
-                <HelpIcon label={t("extensions.skills.bodyHint")} />
-              </span>
+              <span>{t("extensions.skills.body")}</span>
               <span
                 className={
                   bytes > MAX_SKILL_BYTES
@@ -275,6 +270,7 @@ export function SkillEditorSheet({
                 })}
               </span>
             </div>
+            <p className="ext-field-hint">{t("extensions.skills.bodyHint")}</p>
             <Textarea
               className="ext-skill-body"
               value={draft.body}
@@ -287,10 +283,8 @@ export function SkillEditorSheet({
           </div>
 
           <div className="ext-field-group">
-            <div className="ext-field-label">
-              {t("settings.scope")}
-              <HelpIcon label={t("settings.scopeHint")} />
-            </div>
+            <div className="ext-field-label">{t("settings.scope")}</div>
+            <p className="ext-field-hint">{t("settings.scopeHint")}</p>
             <ManagementScope
               draft={draft}
               setDraft={setDraft}

@@ -1,7 +1,3 @@
-import {
-  readStoreModuleSync,
-  readMainSourceSync,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -66,28 +62,17 @@ test("prioritizes in-progress and selected states over terminal outcomes", () =>
   assert.equal(sidebarSessionStatus({ running: false, selected: false }), null);
 });
 
-test("opening a conversation acknowledges its outcome badge before loading details", () => {
-  const sessionSource = readStoreModuleSync("slices/session-slice.ts");
-  const catalogSource = readStoreModuleSync("slices/catalog-slice.ts");
-  const selectBlock = sessionSource.match(/selectSession: async[\s\S]*?\n    newSession:/)?.[0] ?? "";
-  const acknowledgementStart = selectBlock.indexOf(
-    "const outcomeAcknowledgement = get().acknowledgeSessionOutcome(id);",
+test("opening a conversation acknowledges its outcome badge", () => {
+  const store = fs.readFileSync(
+    new URL("../src/stores/app-store.ts", import.meta.url),
+    "utf8",
   );
-  const detailLoadStart = selectBlock.indexOf(
-    "const detailPromise = runtime.loadSessionDetail(id",
-  );
-  assert.ok(acknowledgementStart >= 0);
-  assert.ok(detailLoadStart >= 0);
-  assert.ok(
-    acknowledgementStart < detailLoadStart,
-    "session outcome acknowledgement must start before detail loading",
-  );
-  assert.match(selectBlock, /await outcomeAcknowledgement/);
+  const selectBlock = store.match(/selectSession: async[\s\S]*?\n  newSession:/)?.[0] ?? "";
+  assert.match(selectBlock, /acknowledgeSessionOutcome\(id\)/);
 
-  const ackBlock = catalogSource.slice(
-    catalogSource.indexOf("acknowledgeSessionOutcome: async"),
-  );
-  assert.match(ackBlock, /withoutRecordKey\(state\.sessionOutcomes, sessionId\)/);
+  const ackBlock =
+    store.match(/acknowledgeSessionOutcome: async[\s\S]*?\n  handleAgentEvent:/)?.[0] ?? "";
+  assert.match(ackBlock, /withoutRecordKey\(s\.sessionOutcomes, sessionId\)/);
   assert.match(ackBlock, /markNotificationRead\(item\.id\)/);
 });
 
@@ -97,13 +82,14 @@ test("renders semantic, shape-distinct sidebar status indicators", () => {
     "utf8",
   );
   const styles = loadStylesSync();
-  // The status fixture lives in the capture rig, which App only loads lazily
-  // behind __PI_CAPTURE__.
   const app = fs.readFileSync(
-    new URL("../src/capture/capture-rig.ts", import.meta.url),
+    new URL("../src/App.tsx", import.meta.url),
     "utf8",
   );
-  const main = readMainSourceSync();
+  const main = fs.readFileSync(
+    new URL("../electron/main/index.ts", import.meta.url),
+    "utf8",
+  );
 
   assert.match(sidebar, /sessionSelected[\s\S]*sessionCompleted[\s\S]*sessionFailed/);
   assert.match(sidebar, /IconCheck[\s\S]*IconCircleAlert/);

@@ -27,14 +27,6 @@ test("editing and document-like content explicitly remains selectable", () => {
   );
 });
 
-test("toast messages stay copyable inside the non-selectable shell", async () => {
-  const toastSource = await readFile(
-    new URL("../src/components/Toast.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(toastSource, /className="toast-message selectable"/);
-});
-
 test("copyable surfaces use theme-aware selection and caret colors", () => {
   assert.match(
     globalStyles,

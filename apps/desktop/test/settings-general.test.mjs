@@ -1,15 +1,12 @@
-import {
-  readSettingsSource,
-  readPluginsSource,
-  readMainSource,
-  readSharedTypesSource,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const settingsPageSource = await readSettingsSource();
+const settingsPageSource = await readFile(
+  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
+  "utf8",
+);
 const settingsSearchSource = await readFile(
   new URL("../src/lib/settings-search.ts", import.meta.url),
   "utf8",
@@ -18,15 +15,14 @@ const providersSource = await readFile(
   new URL("../src/components/settings/ModelConfigPage.tsx", import.meta.url),
   "utf8",
 );
-const defaultModelSource = await readFile(
-  new URL("../src/components/settings/default-model.ts", import.meta.url),
-  "utf8",
-);
 const scheduledSource = await readFile(
   new URL("../src/pages/ScheduledPage.tsx", import.meta.url),
   "utf8",
 );
-const pluginsPageSource = await readPluginsSource();
+const pluginsPageSource = await readFile(
+  new URL("../src/pages/PluginsPage.tsx", import.meta.url),
+  "utf8",
+);
 const marketplaceSettingsSource = await readFile(
   new URL(
     "../src/components/plugins/MarketplaceSourceSettings.tsx",
@@ -34,31 +30,16 @@ const marketplaceSettingsSource = await readFile(
   ),
   "utf8",
 );
-// API services and vendor accounts share one list (D625).
-const serviceListSource = await readFile(
-  new URL("../src/components/settings/ServiceList.tsx", import.meta.url),
-  "utf8",
-);
-const serviceRowSource = await readFile(
-  new URL("../src/components/settings/ServiceRow.tsx", import.meta.url),
-  "utf8",
-);
-const serviceRowStatusSource = await readFile(
-  new URL("../src/components/settings/service-row-status.ts", import.meta.url),
-  "utf8",
-);
-// Account lifecycle (remove with default repair, save) lives in the hook.
-const vendorAccountsHookSource = await readFile(
-  new URL("../src/components/settings/useVendorAccounts.ts", import.meta.url),
+const vendorAccountsSource = await readFile(
+  new URL("../src/components/settings/VendorAccountsSection.tsx", import.meta.url),
   "utf8",
 );
 const vendorAccountDialogSource = await readFile(
   new URL("../src/components/settings/VendorAccountDialog.tsx", import.meta.url),
   "utf8",
 );
-// Subscriptions are picked in the service chooser since D625.
-const serviceChooserSource = await readFile(
-  new URL("../src/components/settings/ServiceChooser.tsx", import.meta.url),
+const vendorPickerSource = await readFile(
+  new URL("../src/components/settings/VendorPickerDialog.tsx", import.meta.url),
   "utf8",
 );
 const oauthSource = await readFile(
@@ -93,38 +74,32 @@ const koLocaleSource = await readFile(
   new URL("../../../packages/i18n/src/locales/ko/index.ts", import.meta.url),
   "utf8",
 );
-const ptBRLocaleSource = await readFile(
-  new URL("../../../packages/i18n/src/locales/pt-BR/index.ts", import.meta.url),
-  "utf8",
-);
 const mainSource = await readFile(
   new URL("../src/main.tsx", import.meta.url),
   "utf8",
 );
-const electronMainSource = await readMainSource();
+const electronMainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
 const preloadSource = await readFile(
   new URL("../electron/preload/index.ts", import.meta.url),
   "utf8",
 );
-const sharedTypesSource = await readSharedTypesSource();
+const sharedTypesSource = await readFile(
+  new URL("../../../packages/shared/src/types.ts", import.meta.url),
+  "utf8",
+);
 const stylesSource = await loadStyles();
-const networkProxySource = await readFile(
-  new URL("../src/components/settings/NetworkProxySection.tsx", import.meta.url),
-  "utf8",
-);
-const voiceSettingsSource = await readFile(
-  new URL("../src/features/settings/voice/VoiceSettingsSection.tsx", import.meta.url),
-  "utf8",
-);
 
 test("Basics and AI tabs expose their respective app and AI controls", () => {
   const generalStart = settingsPageSource.indexOf('{tab === "general" && settings && (');
   const aiStart = settingsPageSource.indexOf('{tab === "ai" && settings && (');
-  const voiceStart = settingsPageSource.indexOf(
-    '{tab === "voice" && !tabHidden && settings && (',
+  const shortcutsStart = settingsPageSource.indexOf(
+    '{tab === "shortcuts" && settings && (',
   );
   const generalSource = settingsPageSource.slice(generalStart, aiStart);
-  const aiSource = settingsPageSource.slice(aiStart, voiceStart);
+  const aiSource = settingsPageSource.slice(aiStart, shortcutsStart);
 
   assert.match(generalSource, /<ThemeRow /);
   assert.match(generalSource, /<LanguageRow /);
@@ -139,52 +114,15 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /settings\.defaultsTitle/);
   assert.match(aiSource, /CommandShellRow/);
   assert.match(aiSource, /enterToSend: !settings\.enterToSend/);
-  assert.match(aiSource, /infiniteProviderRetry: settings\.infiniteProviderRetry !== true/);
   assert.match(aiSource, /LargePasteThresholdRow/);
-  assert.match(aiSource, /ContextUsageDisplayRow/);
-  assert.match(aiSource, /PromptEnhancementCard/);
-  assert.doesNotMatch(aiSource, /EnhancementModelCard/);
-  assert.match(
-    settingsPageSource,
-    /saveSettings\(\{ contextUsageDisplay: value \}\)/,
-  );
-  for (const key of [
-    "settings.contextUsageDisplay",
-    "settings.contextUsageDisplayRemaining",
-    "settings.contextUsageDisplayUsed",
-    "settings.infiniteProviderRetry",
-    "settings.infiniteProviderRetryDesc",
-  ]) {
-    assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
-    assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
-    assert.match(zhLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
-    assert.match(trLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
-  }
-  assert.match(sharedTypesSource, /contextUsageDisplay\?: ContextUsageDisplay/);
-  assert.match(sharedTypesSource, /infiniteProviderRetry\?: boolean/);
-  assert.match(sharedTypesSource, /ContextUsageDisplay = "remaining" \| "used"/);
-  assert.match(sharedTypesSource, /chatContentMaxWidth\?: number/);
   assert.match(settingsPageSource, /largePasteThreshold/);
   assert.match(settingsPageSource, /saveSettings\(\{ largePasteThreshold: next \}\)/);
   assert.doesNotMatch(settingsPageSource, /commandShellConfigured/);
   assert.match(
     aiSource,
-    /defaultPermissionMode: mode as GlobalPermissionMode/,
+    /defaultPermissionMode: e\.target\.value as GlobalPermissionMode/,
   );
-  assert.match(aiSource, /<SettingsMenuSelect\b/);
   assert.match(aiSource, /"accept-edits"/);
-  // The AI tab keeps the Settings picker control: a native <select> popup is
-  // platform-drawn and cannot carry the shared menu surface or its check mark.
-  assert.doesNotMatch(aiSource, /<select/);
-  // Voice owns a separate destination; the AI tab does not duplicate it.
-  assert.doesNotMatch(aiSource, /VoiceSettingsCard|VoiceSettingsSection|voice-settings/);
-  assert.match(settingsPageSource, /tab === "voice" && !tabHidden && settings && [\s\S]*?<VoiceSettingsSection/);
-  assert.match(voiceSettingsSource, /if \(!voice\.enabled\) \{/);
-  assert.match(voiceSettingsSource, /voiceMicUnavailable/);
-  assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
-  assert.doesNotMatch(stylesSource, /\.settings-speech/);
-  assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
-  assert.match(protocolSource, /speechTranscribe: "pi-desktop\/speech\/transcribe"/);
 });
 
 test("language persists as part of shared app settings", () => {
@@ -197,14 +135,10 @@ test("language persists as part of shared app settings", () => {
   assert.match(sharedTypesSource, /networkProxy\?: NetworkProxySettings/);
 });
 
-test("General Network card persists a custom HTTP or SOCKS5 proxy and the relaxed network mode", () => {
+test("General Network card persists a custom HTTP or SOCKS5 proxy", () => {
   assert.match(settingsPageSource, /<NetworkProxySection /);
-  assert.match(networkProxySource, /settings\.networkRelaxedMode/);
-  // Fake-IP tolerance belongs to the network mode now, not to the proxy payload.
-  assert.doesNotMatch(networkProxySource, /allowFakeIp/);
   assert.match(settingsSearchSource, /settings\.proxy/);
   assert.match(settingsSearchSource, /settings\.proxyCustom/);
-  assert.match(settingsSearchSource, /settings\.networkRelaxedMode/);
   assert.match(electronMainSource, /applyNetworkProxyFromAppSettings/);
   assert.match(electronMainSource, /IPC\.invoke\.networkProxyTest/);
   assert.match(protocolSource, /networkProxyTest: "pi-desktop\/network\/testProxy"/);
@@ -217,15 +151,13 @@ test("General Network card persists a custom HTTP or SOCKS5 proxy and the relaxe
   ]) {
     assert.match(source, /proxyCustom:/);
     assert.match(source, /proxyUrlPlaceholder:/);
-    assert.match(source, /networkRelaxedMode:/);
-    assert.match(source, /networkRelaxedModeDesc:/);
   }
 });
 
 test("basics gates developer tools behind a persisted developer mode", () => {
   assert.match(sharedTypesSource, /developerMode\?: boolean/);
   assert.match(settingsPageSource, /function DeveloperSection/);
-  assert.match(settingsPageSource, /<SettingsToggle\s+checked=\{enabled\}/);
+  assert.match(settingsPageSource, /role="switch"/);
   assert.match(settingsPageSource, /saveSettings\(\{ developerMode: !enabled \}\)/);
   assert.match(settingsPageSource, /api\.toggleDevTools\(true\)/);
   assert.match(settingsPageSource, /disabled=\{!enabled\}/);
@@ -243,7 +175,7 @@ test("stored language drives i18n and native labels at startup and on settings c
   assert.match(languageSource, /changeLanguage/);
   assert.match(languageSource, /resolveLocale/);
   assert.match(mainSource, /initLanguageSync\(\)/);
-  assert.match(electronMainSource, /catalogs\[resolveLocale\(locale\)\]/);
+  assert.match(electronMainSource, /catalogs\[resolveLocale\(updaterLocale\)\]/);
 });
 
 test("date copy follows the active application locale", () => {
@@ -269,7 +201,6 @@ test("model configuration keeps model defaults; AI owns app behavior defaults", 
   assert.match(providersSource, /settings\.defaultModel/);
   assert.doesNotMatch(providersSource, /enterToSend/);
   assert.doesNotMatch(providersSource, /settings\.modeAgent/);
-  assert.doesNotMatch(providersSource, /EnhancementModelCard/);
 });
 
 test("default model selector shows every configured model under its provider", () => {
@@ -283,100 +214,59 @@ test("default model selector shows every configured model under its provider", (
   assert.match(defaultModelPicker, /setDefaultModel\(provider, modelId\)/);
   assert.match(providersSource, /settings-text-action model-default-trigger/);
   assert.doesNotMatch(providersSource, /defaultModelDescription/);
-  // The accessible name follows the provider heading, which is the vendor
-  // account's own label when it has one (#785).
-  assert.match(
-    providersSource,
-    /aria-label=\{`\$\{providerDisplayName\(provider\)\} · \$\{modelId\}`\}/,
-  );
+  assert.match(providersSource, /aria-label=\{`\$\{provider\.name\} · \$\{modelId\}`\}/);
   assert.match(providersSource, /placeholder=\{t\("settings\.defaultModelSearch"\)\}/);
   assert.match(providersSource, /model-default-results/);
   assert.match(stylesSource, /\.model-default-results\s*\{[\s\S]*?overflow-y: auto;/);
   assert.match(stylesSource, /scrollbar-gutter: stable/);
 });
 
-test("model configuration lists AI services and vendor accounts together", () => {
-  // One list (D625): nothing filters OAuth rows out, and no second section.
-  assert.doesNotMatch(providersSource, /authKind !== OAUTH_AUTH_KIND/);
-  assert.doesNotMatch(providersSource, /VendorAccountsSection/);
-  assert.match(providersSource, /<ServiceList\s+providers=\{providers\}/);
-  // Readiness (a key, an OAuth account, or a no-auth provider) now lives in the
-  // shared helper, so the page must delegate to it instead of re-inlining the
-  // rule next to a second copy that can drift from the picker.
-  assert.match(providersSource, /providerServesChatModels\(/);
+test("model configuration separates AI services from independently removable vendor accounts", () => {
+  assert.match(providersSource, /authKind !== OAUTH_AUTH_KIND/);
   assert.match(
-    defaultModelSource,
-    /provider\.hasSecret \|\| !!provider\.hasOauth \|\| provider\.authKind === "none"/,
+    providersSource,
+    /provider\.hasSecret \|\| provider\.hasOauth \|\| provider\.authKind === "none"/,
   );
   assert.doesNotMatch(providersSource, /provider-config-hero/);
   assert.doesNotMatch(providersSource, /settings-section-subtitle/);
-  // An account row still lives and dies through the vendor-account editor and
-  // deleteOauthAccount, never through the provider CRUD.
+  assert.match(vendorAccountsSource, /api\.deleteOauthAccount\(account\.providerId\)/);
+  assert.match(vendorAccountsSource, /api\.updateProvider\(/);
+  assert.match(vendorAccountsSource, /oauthAccountLabel: form\.name\.trim\(\)/);
+  assert.match(vendorAccountsSource, /defaultModelId: form\.modelId\.trim\(\)/);
+  assert.match(vendorAccountsSource, /models: form\.models/);
+  assert.match(vendorAccountsSource, /api\.testProvider\(provider\.id\)/);
+  assert.match(vendorAccountsSource, /VendorAccountDialog/);
   assert.match(
-    providersSource,
-    /serviceRowKind\(provider\) === "account"\s*\?\s*setEditingAccountId\(provider\.id\)\s*:\s*setSetupFor\(provider\.id\)/,
+    vendorAccountsSource,
+    /<Button\s+variant="primary"[\s\S]*vendorAddAccount/,
   );
-  assert.match(
-    providersSource,
-    /serviceRowKind\(provider\) === "account"\s*\?\s*removeAccount\(provider\)\s*:\s*removeProvider\(provider\)/,
-  );
-  assert.match(providersSource, /<VendorAccountDialog/);
-  assert.match(providersSource, /api\.testProvider\(provider\.id\)/);
-  assert.match(vendorAccountsHookSource, /api\.deleteOauthAccount\(provider\.id\)/);
-  assert.match(vendorAccountsHookSource, /api\.updateProvider\(/);
-  assert.match(vendorAccountsHookSource, /oauthAccountLabel: form\.name\.trim\(\)/);
-  assert.match(vendorAccountsHookSource, /defaultModelId: form\.modelId\.trim\(\)/);
-  assert.match(vendorAccountsHookSource, /models: form\.models/);
+  assert.doesNotMatch(vendorAccountsSource, /settings-section-subtitle/);
+  assert.match(vendorAccountsSource, /settings-panel provider-list-panel/);
+  assert.match(vendorAccountsSource, /provider-row-list/);
+  assert.match(vendorAccountsSource, /"provider-row",\s*"vendor-account-row"/);
+  assert.doesNotMatch(vendorAccountsSource, /vendor-card/);
+  assert.match(stylesSource, /\.provider-row\.vendor-account-row\.is-disconnected/);
   assert.doesNotMatch(stylesSource, /\.vendor-card-list/);
-  assert.doesNotMatch(stylesSource, /vendor-account-row/);
   // Both credential kinds now pick from the same live, service-provided list.
   assert.match(vendorAccountDialogSource, /useProviderModels/);
   assert.match(vendorAccountDialogSource, /<ModelSelectionPanes/);
-  assert.doesNotMatch(vendorAccountDialogSource, /<ChosenModelsSummary/);
   assert.match(vendorAccountDialogSource, /modelId: persisted\[0\]\.id/);
-  assert.match(vendorAccountsHookSource, /providerIsReady/);
-  assert.match(vendorAccountsHookSource, /defaultProviderId: next\?\.id \?\? ""/);
-  assert.match(vendorAccountsHookSource, /useAppStore\.setState\(\{ settings: nextSettings \}\)/);
-  assert.match(serviceChooserSource, /existing accounts do not disable a\s+vendor/);
-  assert.match(serviceChooserSource, /vendors\.map/);
+  assert.match(vendorAccountsSource, /providerIsReady/);
+  assert.match(vendorAccountsSource, /defaultProviderId: next\?\.id \?\? ""/);
+  assert.match(vendorAccountsSource, /useAppStore\.setState\(\{ settings: nextSettings \}\)/);
+  assert.match(vendorPickerSource, /existing accounts do not disable a vendor/);
+  assert.match(vendorPickerSource, /vendors\.map/);
 });
 
-test("a service row opens its editor and keeps only a switch and one menu", () => {
-  // The row is the way in; every other action sits in the overflow menu.
-  assert.match(serviceRowSource, /<CapabilityRowMenu/);
-  assert.doesNotMatch(serviceRowSource, /IconPencil|IconTrash|IconCopy|IconPlug|IconStar/);
-  assert.match(serviceListSource, /IconPencil[\s\S]*IconTrash/);
-  // The click sits on the row so a card drag can start anywhere on it, while
-  // presses on the row's own controls never open the editor.
-  assert.match(serviceRowSource, /const OWN_CONTROLS = "button, input, select, textarea, a, label/);
-  assert.match(serviceRowSource, /event\.target !== event\.currentTarget \|\| !onOpen \|\| busy/);
-  // An account has no enable switch; a plugin's switch belongs to the plugin.
-  assert.match(serviceRowSource, /kind !== "account" \? \(/);
-  assert.match(serviceRowSource, /disabled=\{busy \|\| kind === "plugin"\}/);
-  // A plugin owns its row, so neither edit nor remove is offered for one.
-  assert.match(serviceListSource, /if \(kind !== "plugin"\) \{\s*items\.push\(\{\s*key: "edit"/);
-  assert.match(serviceListSource, /if \(kind !== "plugin"\) \{\s*const isArmed/);
-  // Removal is confirmed inside the menu rather than by a second row button.
-  assert.match(serviceListSource, /useArmedDelete\(\)/);
-  assert.match(serviceListSource, /settings\.capabilityRemoveConfirm/);
-  // D297: the plugin key entry is set apart by spacing, never by a rule.
-  const keyEntry = stylesSource.match(/\.model-provider-key-entry\s*\{([^}]*)\}/)?.[1];
-  assert.ok(keyEntry, ".model-provider-key-entry rule is missing");
-  assert.doesNotMatch(keyEntry, /border/);
-});
-
-test("vendor account rows keep the summary to one account name", () => {
-  // The account sits in the title beside its vendor; the meta line holds only
-  // what service-row-status derives, never the default model id.
-  assert.match(
-    serviceRowSource,
-    /<span className="model-provider-row-account">\{title\.account\}<\/span>/,
-  );
-  assert.doesNotMatch(serviceRowSource, /defaultModelId|font-mono/);
-  assert.match(
-    serviceRowStatusSource,
-    /return provider\.hasOauth \? \[models\] : \[t\("settings\.vendorDisconnectedDesc"\)\]/,
-  );
+test("vendor account rows keep the summary line to one account name", () => {
+  const accountMeta =
+    vendorAccountsSource.match(
+      /<div className="provider-row-meta">[\s\S]*?<\/div>/,
+    )?.[0] ?? "";
+  assert.match(accountMeta, /vendor-account-label/);
+  assert.match(accountMeta, /\{accountName\}/);
+  assert.match(accountMeta, /\{duplicateLabel\}/);
+  assert.doesNotMatch(accountMeta, /defaultModelId|provider-meta-dot|font-mono/);
 });
 
 test("OAuth account identity is provider-scoped across IPC and pi-ai", () => {
@@ -447,7 +337,6 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
   assert.doesNotMatch(generalEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.commandShell/);
-  assert.match(aiEntry, /settings\.promptEnhancementModelTitle/);
   assert.match(settingsSearchSource, /keywordKeys/);
   assert.match(settingsSearchSource, /settings\.projectArchive/);
   assert.doesNotMatch(stylesSource, /\.token-usage-page/);
@@ -492,21 +381,8 @@ test("marketplace source settings live inside the Plugins marketplace surface", 
   assert.match(pluginsPageSource, /<MarketplaceSourceSettings/);
   assert.match(marketplaceSettingsSource, /api\.marketRefresh\(true\)/);
   assert.match(marketplaceSettingsSource, /settings\.marketProvider/);
-  assert.match(marketplaceSettingsSource, /<SettingsMenuSelect/);
-  assert.doesNotMatch(marketplaceSettingsSource, /<Select/);
   assert.doesNotMatch(settingsPageSource, /ExtensionMarketSection/);
   assert.doesNotMatch(settingsPageSource, /tab === "extensions"/);
-});
-
-test("settings compact pickers hug the current label on the shared menu select", () => {
-  assert.match(
-    stylesSource,
-    /\.settings-language-anchor,\s*\.settings-theme-anchor,\s*\.settings-menu-select-anchor,\s*\.settings-font\s*\{[^}]*width:\s*max-content/s,
-  );
-  assert.match(
-    stylesSource,
-    /\.settings-language-trigger,\s*\.settings-theme-trigger,\s*\.settings-menu-select-trigger,\s*\.settings-font-trigger\s*\{[^}]*width:\s*max-content/s,
-  );
 });
 
 test("native select menus keep readable theme colors across the app on Windows", () => {

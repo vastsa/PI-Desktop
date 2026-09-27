@@ -1,8 +1,3 @@
-import {
-  readAppSourceSync,
-  readMainModuleSync,
-  readMainSourceSync,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,9 +13,9 @@ import {
  * Plugin-contributed work panel views (ADR 0104).
  *
  * The surface itself is a native WebContentsView, so the behavior that can be
- * asserted here is the addressing scheme, the blank-page launcher's handling
- * of a view as a tool, and the host-side contracts that keep a view as
- * isolated as the detached panel window it shares a session partition with.
+ * asserted here is the addressing scheme, the menu's classification of a view
+ * as a tool, and the host-side contracts that keep a view as isolated as the
+ * detached panel window it shares a session partition with.
  */
 
 const read = (path) => readFileSync(resolve(path), "utf8");
@@ -29,10 +24,7 @@ const viewTabSource = read("src/components/workpanel/PluginViewTab.tsx");
 const viewHostSource = read("electron/main/plugin-view-host.ts");
 const panelHostSource = read("electron/main/plugin-panel-host.ts");
 const preloadSource = read("electron/preload/plugin-panel.ts");
-const mainSource = readMainSourceSync();
-const pluginIpcSource = readMainModuleSync("ipc/plugin-ipc.ts");
-const pluginServicesSource = readMainModuleSync("services/plugin-services.ts");
-const pluginLifecycleSource = `${pluginIpcSource}\n${pluginServicesSource}`;
+const mainSource = read("electron/main/index.ts");
 
 test("a plugin view is addressed by plugin id and view id", () => {
   const tab = pluginWorkPanelTab("acme.git", "changes");
@@ -40,8 +32,8 @@ test("a plugin view is addressed by plugin id and view id", () => {
   assert.equal(tab.resource, "acme.git/changes");
   assert.equal(tab.id, "plugin:acme.git/changes");
 
-  // Re-opening the same view must land on the same tab id, so the launcher
-  // reuses the live page instead of stacking a second copy.
+  // Re-opening the same view must land on the same tab id, so the menu reuses
+  // the live page instead of stacking a second copy.
   assert.equal(pluginWorkPanelTab("acme.git", "changes").id, tab.id);
   assert.notEqual(pluginWorkPanelTab("other.git", "changes").id, tab.id);
   assert.notEqual(pluginWorkPanelTab("acme.git", "history").id, tab.id);
@@ -63,8 +55,8 @@ test("view refs round-trip, and malformed ones are refused", () => {
 });
 
 test("a plugin view counts as a tool, not a transcript resource", () => {
-  // Tools are the panel's stable launcher entry points; only what the
-  // transcript opened belongs under "open resources".
+  // Tools are the panel's stable entry points and live in the upper menu
+  // groups; only what the transcript opened belongs under "open resources".
   assert.equal(isToolWorkPanelTab(pluginWorkPanelTab("pi.browser", "browser")), true);
   assert.equal(isToolWorkPanelTab(pluginWorkPanelTab("acme.git", "changes")), true);
   assert.equal(isToolWorkPanelTab(toolWorkPanelTab("review")), false);
@@ -74,42 +66,29 @@ test("a plugin view counts as a tool, not a transcript resource", () => {
   );
 });
 
-test("the blank page launcher renders plugin views from the data-driven list", () => {
-  assert.match(panelSource, /workPanelTools\(t, pluginViews\)/);
-  assert.match(panelSource, /panel\.toolsAndPanels/);
-  assert.match(panelSource, /pluginViews\.map\(\(view\) =>/);
-  // Rows carry the same affordances as the host-owned Review row, so a plugin
+test("the panel menu renders plugin views as their own group", () => {
+  assert.match(panelSource, /panel\.pluginViews/);
+  assert.match(panelSource, /aria-labelledby="work-panel-menu-plugin-views"/);
+  assert.match(panelSource, /pluginViews\.map\(\(view, index\) =>/);
+  // Rows must carry the same affordances as the built-in tool rows so a plugin
   // surface is not visibly second-class.
-  assert.match(panelSource, /className="work-panel-launcher-row"/);
-  assert.match(panelSource, /data-work-panel-launcher-item=\{item\.id\}/);
-  assert.doesNotMatch(panelSource, /role="menuitemradio"|work-panel-new-menu/);
+  assert.match(panelSource, /role="menuitemradio"/);
+  assert.match(panelSource, /work-panel-open-dot/);
+  assert.match(panelSource, /data-work-panel-plugin-view=\{view\.ref\}/);
+  // Focus restoration counts menu rows, so the resource group's index has to
+  // include the plugin-view group drawn above it.
+  assert.match(
+    panelSource,
+    /pluginViews\.length \+ index/,
+  );
 });
 
 test("plugin views reach the panel body and the empty state", () => {
   assert.match(panelSource, /activeTab\?\.kind === "plugin"/);
   assert.match(panelSource, /<PluginViewTab/);
-  // The revealed-but-empty panel and an explicit New tab list the same
-  // entries, so a user who has only plugin views installed is not shown a
-  // dead end.
-  assert.match(panelSource, /tools\.map[\s\S]*work-panel-launcher-row/);
-  assert.match(panelSource, /activeTab\?\.kind === "new"/);
-  assert.doesNotMatch(panelSource, /openPluginView\(view\)/);
-});
-
-test("the native surface keeps its full bounds while the launcher is active", () => {
-  assert.match(panelSource, /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/s);
-  assert.doesNotMatch(panelSource, /avoid: pluginSurface/);
-  assert.doesNotMatch(panelSource, /menuOpen|work-panel-new-menu|placeWorkPanelMenu/);
-  assert.doesNotMatch(viewTabSource, /occludedById/);
-  assert.match(viewTabSource, /y: rect\.y/);
-  assert.match(viewTabSource, /height: rect\.height/);
-  // Visibility and bounds are separate effects: only panel-wide blocking and
-  // lifecycle transitions hide the native page, so creating a New tab cannot
-  // alter the active surface's measured rectangle.
-  assert.match(
-    viewTabSource,
-    /pluginViewSetVisible\(pluginId, viewId, !blocked, sessionId\)[\s\S]*pluginViewSetBounds/s,
-  );
+  // The revealed-but-empty panel lists the same entries the menu offers, so a
+  // user who has only plugin views installed is not shown a dead end.
+  assert.match(panelSource, /work-panel-empty-tool[\s\S]*openPluginView\(view\)/);
 });
 
 test("an unknown icon token degrades instead of rendering plugin markup", () => {
@@ -217,12 +196,9 @@ test("only one view is attached at a time and the cache is bounded", () => {
 test("views are dropped when the plugin behind them goes away", () => {
   assert.match(viewHostSource, /closePlugin\(pluginId: string\)/);
   for (const reason of ["crash", "reload", "disable", "uninstall"]) {
-    const source = reason === "crash" || reason === "reload"
-      ? pluginServicesSource
-      : pluginIpcSource;
-    const index = source.indexOf(`reason: "${reason}"`);
+    const index = mainSource.indexOf(`reason: "${reason}"`);
     assert.ok(index > 0, `expected a ${reason} notification`);
-    const before = source.slice(Math.max(0, index - 900), index);
+    const before = mainSource.slice(Math.max(0, index - 700), index);
     assert.match(
       before,
       /pluginViews\.closePlugin\(/,
@@ -257,11 +233,11 @@ test("the view list is filtered by permission, scope, and entry existence", () =
     /isBrowserView = pluginId === BROWSER_PLUGIN_ID && viewId === BROWSER_VIEW_ID/,
   );
   assert.match(openBody, /isBrowserView && sessionId/);
-  assert.match(openBody, /browserHost\.setChromeSession\(sessionId,.*location\)/);
+  assert.match(openBody, /isBrowserView && location/);
 });
 
 test("opening a different project refreshes the scope-filtered view list", () => {
-  const appSource = readAppSourceSync();
+  const appSource = read("src/App.tsx");
   assert.match(
     appSource,
     /refreshPluginViews\(\)[\s\S]*api\.onPluginChanged\(refresh\)[\s\S]*\}, \[ready, projectPath\]\)/,
@@ -275,6 +251,5 @@ test("host panel events reach docked views as well as detached windows", () => {
   assert.match(mainSource, /broadcastPluginPanelEvent\("appearance:changed"/);
   assert.match(mainSource, /broadcastPluginPanelEvent\("workspace:changed"/);
   assert.match(mainSource, /plugins\.broadcastEvent\("workspace:changed"/);
-  assert.match(mainSource, /plugins\.broadcastEvent\("appearance:changed"/);
   assert.match(mainSource, /function setCurrentWorkspacePath/);
 });

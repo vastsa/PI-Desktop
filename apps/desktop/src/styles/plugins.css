@@ -229,7 +229,7 @@
   height: 32px;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--ds-field-inset-bg);
+  background: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
   color: var(--ds-text-primary);
   padding: 0 30px 0 31px;
   font-size: var(--text-md);
@@ -240,11 +240,16 @@
 }
 
 .plugins-search:focus-visible {
-  background: var(--ds-field-inset-focus-bg);
+  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 45%, transparent);
 }
 
+:root[data-theme="light"] .plugins-search {
+  background: #f3f3f3;
+}
+
 :root[data-theme="light"] .plugins-search:focus-visible {
+  background: #ffffff;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--ds-accent) 35%, transparent);
 }
 
@@ -677,6 +682,35 @@
   color: var(--ds-text-primary);
 }
 
+.plugins-icon-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 5px);
+  z-index: 40;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: var(--ds-shadow-composer);
+  padding: 3px 7px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.plugins-icon-btn[data-tip]:hover::after,
+.plugins-icon-btn[data-tip]:focus-visible::after {
+  opacity: 1;
+}
+
+.plugins-icon-btn[data-tip]:disabled::after {
+  content: none;
+}
+
 .plugins-icon-btn.is-bordered {
   width: 32px;
   height: 32px;
@@ -692,27 +726,22 @@
 }
 
 .plugins-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: auto;
-  bottom: auto;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 5px);
   z-index: 20;
   min-width: 208px;
   border-radius: var(--radius-md-plus);
   background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
   box-shadow: 0 0 0 0.5px var(--ds-border-default), 0 12px 32px rgba(0, 0, 0, 0.2);
   padding: 5px;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
+  animation: plugins-menu-in var(--motion-duration-fast) var(--motion-ease-out) both;
 }
 
-.plugins-menu.is-open {
-  opacity: 1;
-  pointer-events: auto;
-  animation: plugins-menu-in var(--motion-duration-fast) var(--motion-ease-out) both;
-  visibility: visible;
+/* Rows near the viewport bottom open upwards so the menu stays in view. */
+.plugins-menu.is-up {
+  top: auto;
+  bottom: calc(100% + 5px);
 }
 
 @keyframes plugins-menu-in {
@@ -849,18 +878,6 @@
 .plugins-setting-control > .field-select {
   min-width: 0;
   flex: 1 1 auto;
-}
-
-/* One plugin setting list mixes string/number rows (field-height inputs),
-   switches and enum rows, so an enum dropdown takes the same field metric as
-   the input in the row above it instead of the Settings-row pill size. */
-.plugins-setting-control > .settings-menu-select-anchor {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.plugins-setting-control .settings-menu-select-trigger {
-  height: var(--ds-field-height);
 }
 
 .plugins-setting-json {
@@ -1037,12 +1054,6 @@
   text-align: left;
 }
 
-/* Keep the keyboard focus ring inside the tile's overflow clip. */
-.plugins-card-hit:focus-visible {
-  outline-offset: -3px;
-  border-radius: var(--radius-lg);
-}
-
 .plugins-card-head {
   display: flex;
   align-items: center;
@@ -1191,9 +1202,8 @@
 
 .plugins-market-settings-control {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 0 240px;
   min-width: 0;
-  max-width: min(240px, 100%);
   justify-content: flex-end;
 }
 
@@ -1201,13 +1211,6 @@
 .plugins-market-settings-control .field-input {
   width: 100%;
   min-width: 0;
-}
-
-/* Same list, same right column: the provider dropdown sits directly above the
-   custom-URL input row, so it takes the shared field metric rather than the
-   compact Settings-row pill size. */
-.plugins-market-settings-control .settings-menu-select-trigger {
-  height: var(--ds-field-height);
 }
 
 @media (max-width: 720px) {
@@ -1258,15 +1261,10 @@
 }
 
 /* Detail sheet: a right-side overlay instead of a nested-border sidebar. */
-#pi-desktop-overlays > .plugins-sheet-layer {
-  pointer-events: auto;
-}
-
 .plugins-sheet-layer {
   position: fixed;
   inset: 0;
-  /* z-dialog: the sheet is a dialog surface, so it stays under leaf popups. */
-  z-index: 40;
+  z-index: 60;
   display: flex;
   justify-content: flex-end;
 }
@@ -1320,10 +1318,11 @@
   app-region: no-drag;
 }
 
-/* The sheet keeps `--ds-toolbar-height` at the top on every platform: on
-   Windows/Linux the renderer-drawn window controls own that corner at
-   z-index 200 and stay above any overlay; on macOS the same reserve keeps
-   the title row out of the native traffic-light cluster. */
+/* The route surface keeps a transform after its entry animation, so this
+   fixed layer stacks inside it and the opaque titlebar band still paints over
+   the top of the sheet. Reserve the band on every platform: on macOS it would
+   otherwise clip the title row, and on Windows/Linux the conversation pane owns
+   the band's top-right 120px — exactly where the close button lands. */
 .plugins-sheet {
   padding-top: var(--ds-toolbar-height);
 }
@@ -1421,6 +1420,14 @@
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
+}
+
+.plugins-sheet-section-hint {
+  color: var(--ds-text-faint);
+  font-size: var(--text-3xs);
+  font-weight: var(--font-weight-normal);
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .plugins-sheet-desc {
@@ -1647,7 +1654,7 @@
 /* A version the distribution side withdrew. It stays selectable so its reason
    can be read, but it reads as removed rather than merely unavailable. */
 .plugins-version-withdrawn {
-  color: var(--ds-error);
+  color: var(--ds-danger);
 }
 
 .plugins-version.withdrawn .plugins-version-top strong {
@@ -1755,23 +1762,21 @@
   line-height: var(--leading-body);
 }
 
-/* The shared overlay host is inert until a portaled surface opts back in. */
-#pi-desktop-overlays > .plugins-modal-backdrop {
-  pointer-events: auto;
-}
-
 /* Permission review dialog: the last stop before granting capabilities. */
 .plugins-modal-backdrop {
   position: fixed;
   inset: 0;
-  /* z-dialog: leaf popups (z-index 60) and toasts (50) stay above the veil. */
-  z-index: 40;
+  z-index: 80;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--ds-modal-veil);
+  background: color-mix(in oklab, var(--ds-bg-primary) 78%, transparent);
   animation: plugins-fade-in var(--motion-duration-fast) var(--motion-ease-out) both;
+}
+
+:root[data-theme="light"] .plugins-modal-backdrop {
+  background: color-mix(in oklab, #1a1c1f 32%, transparent);
 }
 
 .plugins-modal {
@@ -1816,7 +1821,6 @@
 }
 
 .plugins-modal-title {
-  overflow-wrap: anywhere;
   margin: 0;
   color: var(--ds-text-primary);
   font-size: var(--text-base-plus);
@@ -1825,7 +1829,6 @@
 }
 
 .plugins-modal-subtitle {
-  overflow-wrap: anywhere;
   margin: 3px 0 0;
   color: var(--ds-text-muted);
   font-size: var(--text-sm-plus);
@@ -1919,172 +1922,4 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 14px 18px 18px;
-}
-
-/* Manual install and update: one dialog follows the host's reports — the phase
-   it is in, the mirror being tried, the bytes that arrived — and ends either on
-   its own success or as a failure report naming the mirrors that were tried. */
-.plugins-install-modal {
-  width: min(560px, 100%);
-}
-
-.plugins-modal-icon.is-success {
-  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
-  color: var(--ds-success);
-}
-
-.plugins-modal-icon.is-error {
-  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
-  color: var(--ds-error);
-}
-
-.plugins-install-phase {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.plugins-install-phase-label {
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
-  font-weight: var(--font-weight-medium-plus);
-}
-
-.plugins-install-mirror-label {
-  overflow: hidden;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plugins-install-bar {
-  position: relative;
-  height: 6px;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
-}
-
-.plugins-install-bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--ds-accent);
-  transition: width var(--motion-duration-normal) var(--motion-ease-out);
-}
-
-/* No size was announced, so the bar reports activity instead of a fraction:
-   the same sliding mark the session switch uses for an open-ended wait. */
-.plugins-install-bar.is-indeterminate .plugins-install-bar-fill {
-  width: 28%;
-  animation: plugins-install-slide 720ms var(--motion-ease-standard) infinite;
-  transform: translateX(-110%);
-}
-
-@keyframes plugins-install-slide {
-  to {
-    transform: translateX(460%);
-  }
-}
-
-.plugins-install-figures {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-}
-
-.plugins-install-outcome {
-  overflow-wrap: anywhere;
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-}
-
-.plugins-install-outcome.is-success {
-  color: var(--ds-success);
-}
-
-.plugins-install-failure {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.plugins-install-error {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: var(--ds-error);
-  font-size: var(--text-sm-plus);
-  line-height: var(--leading-body);
-}
-
-.plugins-install-tried {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border-radius: var(--radius-md-plus);
-  padding: 10px 12px;
-  background: var(--plugins-tile);
-}
-
-.plugins-install-tried-title {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-}
-
-.plugins-install-mirrors {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.plugins-install-mirror-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-  cursor: pointer;
-}
-
-.plugins-install-mirror-source {
-  flex: 0 0 auto;
-  color: var(--ds-text-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.plugins-install-mirror-error {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.plugins-install-mirror-url {
-  display: block;
-  margin: 4px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .plugins-install-bar-fill,
-  .plugins-install-bar.is-indeterminate .plugins-install-bar-fill {
-    animation: none;
-    transition: none;
-  }
 }

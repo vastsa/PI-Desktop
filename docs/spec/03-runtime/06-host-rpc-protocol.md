@@ -16,14 +16,7 @@ MVP transport decision (**D001**):
 
 - Process: Electron main spawns Rust host-core sidecar
 - Channel: child process stdin/stdout
-- Framing: one JSON object per LF-delimited line (NDJSON); CRLF is accepted.
-  U+2028 and U+2029 inside JSON strings are payload, never frame delimiters.
-  All Node stdio readers preserve UTF-8 characters across input chunks and
-  release buffered fragments/listeners on transport close. A final unterminated
-  frame is accepted at EOF for compatibility.
-- Invalid JSON frames produce a diagnostic containing only the byte length,
-  never payload text, before being discarded. Later complete frames remain
-  readable. Existing session text is not rewritten or migrated.
+- Framing: one JSON object per line (NDJSON)
 - Encoding: UTF-8
 - Request/response: JSON-RPC 2.0 style
 
@@ -166,13 +159,12 @@ Rules:
    advertises `"a2a"`. A v10 host or client is rejected before the UI becomes
    interactive, so a mixed pair cannot call a missing domain.
 
-Protocol v11 is paired with host-core storage schema v16. Schema v12 had added
+Protocol v11 is paired with host-core storage schema v14. Schema v12 had added
 the A2A tables (`a2a_tasks`, `a2a_messages`, `a2a_artifacts`,
 `a2a_push_configs`) via `migrate_v11_to_v12`; `migrate_v12_to_v13` drops those
 tables, and v14 adds the plugin-session ownership sidecar and soft-delete
-column. Schema v15 adds the Host-owned turn queue, and schema v16 adds the
-session collaboration ledger and its turn-queue binding. A fresh database
-creates neither A2A tables nor unowned plugin-session rows. The schema version is an
+column. A fresh database creates neither A2A tables nor unowned plugin-session
+rows. The schema version is an
 internal persistence invariant, not an additional JSON-RPC field; the
 checkpoint architecture remains host-owned.
 
@@ -182,7 +174,6 @@ checkpoint architecture remains host-owned.
 - `app.handshake`
 - `app.health`
 - `app.getVersion`
-- `app.getOnboarding` — inline onboarding checklist state (D031)
 
 `app.health` returns a diagnostic `toolBudget` object:
 
@@ -213,44 +204,6 @@ type ToolBudgetHealth = {
   by last-opened time; includes records materialized by session imports
 - `projects.create({ path })` — upserts a durable project record without
   changing the active workspace and returns the host-generated project id
-- `projects.remove({ path })` — deletes one durable project row together with
-  every session attached to it, removing those sessions' transcript, scratch,
-  and review files and the project's durable memory, and never touching the
-  project folder on disk. Idempotent: an unknown path returns
-  `{ removed: false, sessionsRemoved: 0 }`. A path that is a root of a stored
-  multi-folder project group is refused so the group keeps a valid primary root,
-  and the call is refused (1008 / `CONFLICT`) while any attached session has a
-  running turn, so a live turn never loses the transcript it is writing.
-- `project.memory.get({ path })` — returns the durable memory for the canonical
-  project path, or an empty record when no memory has been saved
-- `project.memory.set({ path, entries })` — normalizes and stores visual memory
-  entries, derives readable `content`, and validates the 32 KiB limit. The
-  derived value is injected into that project's next runtime context as
-  user-provided context. `{ path, content }` remains supported for legacy
-  callers and returns a memory record without structured entries.
-- `project.groups.list` — returns one host-owned logical group per named
-  project. Existing path-only records are compatibility `legacy` groups.
-- `project.group.create({ name, folders })` — validates the display name and
-  local directories, stores the ordered roots, and returns the new group
-  without changing the active workspace. A non-legacy root cannot belong to a
-  second group.
-- `project.group.rename({ groupId, name })` — persists the group display name.
-- `project.group.update({ groupId, name, folders })` — edits the group name and
-  ordered roots. The primary root must remain first; duplicate roots are
-  removed, roots owned by another non-legacy group are rejected, and a root
-  with existing chats cannot be detached. Removed roots are retained as
-  suppressed historical paths rather than reappearing as standalone legacy
-  groups.
-- `project.group.memory.get/set({ groupId, entries })` — reads or normalizes
-  shared group memory using the existing 32 KiB entry limit.
-- `project.group.instructions.get/set({ groupId, content })` — reads or stores
-  shared group instructions using a bounded host-owned value.
-- `project.group.context({ path })` — resolves the group containing a primary or
-  member root and returns its shared instructions and memory for runtime launch.
-  Legacy groups return no group context so the path-scoped compatibility APIs
-  remain authoritative. Builtin tools default to the primary root; absolute
-  paths under registered additional roots use the same canonical containment
-  resolver and never become arbitrary external access.
 
 ### Secrets
 - `secrets.set`
@@ -280,10 +233,8 @@ to later refresh and inference; the vendor picker does not collect them.
 ### Sessions
 - `session.list` — returns summaries with host-authoritative `messageCount`
   alongside the existing session metadata
-- `session.create` — accepts optional `thinkingLevel` and optional
-  `inheritPermissionFromSessionId`; when present, the host copies the existing
-  session's persisted permission mode atomically, while omission preserves the
-  existing `inherit` default. Missing/null thinking level defaults to `off`.
+- `session.create` — accepts optional `thinkingLevel`; missing/null defaults
+  to `off`
 - `session.fork` — accepts `sessionId`, an optional caller-provided display
   `title`, and optional `throughMessageId`; creates
   one independent session from the source's current active canonical
@@ -291,12 +242,10 @@ to later refresh and inference; the vendor picker does not collect them.
   The child inherits project/provider/model/mode/thinking and
   permission configuration, receives new message/tool-call ids, and starts
   without turns, revisions, notifications, artifacts, grants, or scratch data.
-  Missing sources or anchors return `NOT_FOUND`. While a Desktop source runs,
-  only a completed assistant prefix containing no indexed messages owned by a
-  running turn is allowed. This check and publication share the host RPC lock.
-  Whole-session, non-assistant, streaming/error, or live-turn anchors return
-  `CONFLICT`, normalized by Electron to `AGENT_BUSY`. The source turn continues
-  without sharing runtime state with the child.
+  Missing sources return `NOT_FOUND`; Electron rejects active sources with
+  `AGENT_BUSY` before forwarding and normalizes the host's persisted
+  running-turn `CONFLICT` fallback to `AGENT_BUSY`; an unknown source or
+  `throughMessageId` returns `NOT_FOUND`
 - `session.get` — accepts an optional renderer read window:
   `messageBefore` is the exclusive zero-based end offset, `messageLimit` is
   the positive page size, and `contentLimit` is the positive character budget
@@ -307,39 +256,18 @@ to later refresh and inference; the vendor picker does not collect them.
   positions, clamped against the cached transcript layout rather than the
   deduplicated session index counter, and a window is served by seeking to its
   first selected line instead of scanning the history before it.
-  Optional `messageAround` centers that window on a stable message ID resolved
-  against the canonical file, requires `messageLimit`, and excludes
-  `messageBefore`. Missing IDs return no session. The focused user/assistant
-  message retains its complete text; neighboring text and tool fields stay
-  capped. Bounded reads also return exclusive physical `messageEnd` and
-  `hasMoreAfter` to support contiguous forward pages (ADR session-content-search).
-  When the selected message has `parentToolCallId`, optional `navigationParent`
-  contains the latest matching Task tool-call projection from the same canonical
-  transcript. It is capped separately and does not widen the window or alter its
-  cursors. Ordinary and uncapped reads omit this navigation-only field.
 - `session.delete`
-- `session.getScratchPath` — the session's scratch directory (D114), created
-  on demand
 - `session.rename({ id, title })` trims and validates the title at the host
   boundary. It accepts 1–80 Unicode code points and returns `{ ok: boolean }`;
   blank or overlong titles are `INVALID_PARAMS`. A successful rename changes
   only session metadata and does not update `updated_at`, transcript content,
   message count, or historical notification title snapshots.
 - `session.configure` — atomically persists `mode`, `providerId`, `modelId`,
-  and optional `thinkingLevel` (`off|minimal|low|medium|high|xhigh|max|omit`)
-  for the next pi turn; omitting/null
+  and optional `thinkingLevel` for the next pi turn; omitting/null
   `thinkingLevel` preserves the current value; invalid modes or levels return
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running
   Plan or Goal record
-- `session.moveProject({ sessionId, projectPath })` moves an idle session to a
-  project and returns `{ session }` carrying the canonical project path. It
-  upserts the project row and updates only `sessions.project_id` and
-  `updated_at`; transcript, revisions, artifacts, notifications, and scratch
-  data stay with the session. Blank ids or paths are `INVALID_PARAMS`, an
-  unknown session is `NOT_FOUND`, and a session with a running turn is
-  `CONFLICT` so a live agent never switches instruction roots mid-turn.
-  Additive RPC; no protocol version bump.
 - `session.appendMessage`
 - `session.saveInflightMessage` — Electron-main-only checkpoint of the
   assistant reply currently streaming, including the finished `message_end`
@@ -359,26 +287,13 @@ to later refresh and inference; the vendor picker does not collect them.
   ids and non-negative `tokensBefore`; it does not insert a message/search row
   or change the visible transcript projection
 - `session.replaceMessages` — atomic transcript rewrite (temp-file rename +
-  one index transaction, D119) used by message delete and unanswered
+  one index transaction, D119) used by regenerate/edit flows and unanswered
   renderer smart-stop undo; it preserves the
   newest checkpoint only while both its boundary and optional first-kept id
   remain valid in the rewritten prefix, and it carries each surviving message's
   owning `turn_id` across the rewrite. It is only safe from a caller that owns
   the whole transcript for the duration of the call: any rewrite from a snapshot
-  taken outside the RPC lock can delete a message appended in between.
-  Regenerating and retrying use `session.truncateFrom` instead so the kept
-  prefix never crosses the JSON-RPC pipe (ADR 0216)
-- `session.truncateFrom` — host-owned suffix cut for regenerate / retry /
-  edit-resend: `{ sessionId, fromMessageId?, truncateBefore? }`. Identity
-  wins; an unknown `fromMessageId` is `NOT_FOUND`. Under the state lock it
-  aborts a leftover running turn, archives the discarded regenerate tail
-  (refreshing the stamped variant, or minting an inactive one), rewrites the
-  kept prefix, and drops the in-flight checkpoint. Returns
-  `{ ok, keptCount, discardedCount, abortedTurnId, revision }` where `revision`
-  is the pager stamp for the upcoming user prompt, or null when the discarded
-  tail has no user root. No transcript snapshot is in the request or the
-  result. Additive on protocol v11 (ADR 0216)
-
+  taken outside the RPC lock can delete a message appended in between
 - `session.saveRevision` — archive a regenerate branch under
   `(sessionId, rootUserId)`. With `revisionIndex`, refresh that existing
   variant's payload in place (the branch grew since it was archived) instead
@@ -401,21 +316,7 @@ to later refresh and inference; the vendor picker does not collect them.
   last archive is lost. When the family is present in the durable transcript,
   the prefix in front of the restored branch is taken from there rather than
   from the caller. Surviving messages keep their owning `turn_id`
-- `session.beginTurn({ sessionId, providerId?, modelId?, sessionMessageId? })` —
-  starts one durable turn. When `sessionMessageId` is present, host-core
-  atomically verifies that the queued collaboration delivery targets this
-  session, rechecks its permission ceiling, claims the delivery, and binds the
-  new turn to its message id. A collaboration turn cannot be started from
-  caller-supplied replacement text.
-- `session.queuePush` / `session.queueList` / `session.queueRemove` /
-  `session.queuePrioritize` / `session.queueReorder` — the Host-owned turn queue
-  (D386 / ADR 0213 / ADR 0265, schema v18); push is idempotent per principal and
-  key, bounded at eight entries per session. `queuePrioritize` appends an entry
-  to the end of its session's priority block (`priority = MAX + 1`) and refuses
-  an already promoted entry with `CONFLICT`; `queueReorder` swaps one
-  non-promoted entry with its adjacent non-promoted neighbour and reports
-  `{ moved }`. Listing and delivery order is `priority ASC` for promoted entries
-  followed by `position ASC` for the rest
+- `session.beginTurn`
 - `session.endTurn` — atomically moves a running turn to its terminal state and
   conditionally returns the newly created notification for `completed`/`error`;
   returns no notification when `createNotification=false`, for `aborted`, or
@@ -442,47 +343,9 @@ Electron main after plugin permission and manifest-source checks:
 - `plugin.session.rename` — rename an owned active imported session
 - `plugin.session.delete` — `trash` hides and retains the transcript; `purge`
   removes it and permits re-import
-- `plugin.usage.listTurns` — keyset page of completed-turn facts (identifiers
-  and token counters, never a message body) for non-deleted sessions. Gated
-  in Electron main by `usage.read`. Additive; no protocol version bump.
 - Successful plugin session mutations cause Electron main to emit one
   `sessionsChanged` renderer event; the renderer refreshes the session list,
   and plugins do not emit this UI synchronization event.
-
-Host-internal session collaboration methods are additive to protocol v11 and
-are called by Electron main only after the reviewed plugin gateway has checked
-the plugin permission and active Agent tool invocation. They are not renderer
-or general MCP operations:
-
-- `session.collaboration.spawn` — create a bounded Agent worker session that
-  inherits the source project's, thinking, and permission configuration, create
-  its first `task` delivery, and return the real target `sessionId` plus the
-  message record. Worker creation is limited per parent and plugin; a worker
-  cannot create another worker.
-- `session.collaboration.send` — enqueue a `task` or `message` delivery to an
-  existing Agent session. The host binds `sourceSessionId` and `sourceTurnId`
-  to the current plugin tool invocation, enforces idempotency, a target inbox
-  bound, the source permission ceiling, and a bounded autonomous hop count.
-- `session.collaboration.message` — read one durable delivery by message id for
-  Electron's dispatch and provenance paths.
-- `session.collaboration.status` / `session.collaboration.result` — return a
-  bounded status/result projection without loading a complete worker
-  transcript. `result` may select a delivery by `messageId` or `turnId`.
-- `session.collaboration.pending` — list queued completion callbacks for the
-  Electron drain; `fail` records a dispatch failure and creates the requested
-  failure callback once; `settle` derives the result from the persisted turn
-  and creates at most one completion callback.
-- `session.collaboration.cancel` — cancel queued deliveries or interrupt their
-  exact currently-bound turns while retaining the target session and history.
-
-The ledger is durable across a host restart. A queued entry with its
-`turn_queue.session_message_id` remains held for a new Agent Host controller;
-an unclaimed or running delivery is marked `interrupted` by the startup fence
-and is never replayed automatically. Transcript provenance is host-derived and
-cannot be forged or removed by `session.appendMessage` or transcript
-replacement. Steering (`UiMessage.steering`) into a claimed delivery turn is
-additional human input in that session: it does not receive the delivery
-origin, and a client-supplied `session_message` is stripped (D597).
 
 The host rejects unknown roles, non-RFC3339 or non-monotonic timestamps, and
 oversized/deep payloads. Tool values are sanitized for host-reserved keys. The
@@ -568,23 +431,18 @@ resource exhaustion (`EAGAIN` / `WouldBlock`) with bounded backoff, never
 retries a command after it has started, and reaps timed-out children before
 releasing the execution slot.
 
-`session.appendMessage` is idempotent by message id. An id already indexed in
-another session is remapped to `{sessionId}:{id}` before the JSONL write, and
-a later replay of the original id is a no-op (D444). Electron main may keep
+`session.appendMessage` is idempotent by message id. Electron main may keep
 message appends in its application-owned outbox while host-core is restarting;
-the outbox flushes in order after a successful handshake and treats
-`UNIQUE constraint failed: messages.id` as an ack rather than pausing the
-queue. A `PERMISSION_DENIED:` append is dropped the same way so a poison head
-cannot stall the FIFO (D597). A missing sessions row is restored from the live JSONL (or created as a
-stub under the same id when the file is gone) so a queued outbox can drain
-(D318). `session.delete` drops that session's outbox entries. In-flight
-checkpoints never go through the outbox: a checkpoint is only meaningful
-against a live host, and replaying one after the final row would be wrong.
+the outbox flushes in order after a successful handshake. A missing sessions
+row is restored from the live JSONL (or created as a stub under the same id
+when the file is gone) so a queued outbox can drain (D318). `session.delete`
+drops that session's outbox entries. In-flight checkpoints never go through
+the outbox: a checkpoint is only meaningful against a live host, and replaying
+one after the final row would be wrong.
 
 ### Permissions
 - `permissions.evaluate`
 - `permissions.resolve`
-- `permissions.pending` (D374: open requests as Host state)
 - `permissions.listSessionGrants`
 - `permissions.clearSessionGrants`
 
@@ -592,102 +450,14 @@ against a live host, and replaying one after the final row would be wrong.
 - `plugins.list`
 - `plugins.loadDev`
 - `plugins.installFromPath`
-- `plugins.installFromPackage` — install a `.piplug` archive after checksum
-  verification
 - `plugins.enable`
 - `plugins.disable`
 - `plugins.uninstall`
 - `plugins.getPermissions`
-- `plugins.grantPermissions` / `plugins.revokePermissions` — change the
-  granted set; the runtime enforces the intersection of declared and granted
-- `plugins.setAutoUpdate`
-- `plugins.setScope` — activation scope (ADR 0056)
-- `plugins.resolveExecution` — resolve which plugin tools/skills/MCP servers
-  are active for a session's project before a turn starts
-
-### Marketplace
-- `market.refresh` — fetch and cache the catalog from the configured URL
-- `market.search` / `market.getDetail`
-- `market.install` — download, verify (`PLUGIN_INTEGRITY`,
-  `PLUGIN_MARKET_*`), and install one catalog release
-- `market.checkUpdates` / `market.applyUpdates`
-
-### Providers and models
-- `providers.list` / `providers.get` / `providers.create` /
-  `providers.update` / `providers.delete`
-- a plugin-owned row (`ownerPluginId`) is refreshed from its manifest on every
-  load, so `providers.update` / `providers.delete` refuse it with a
-  `PROVIDER_OWNED_BY_PLUGIN` error; only the owning plugin's lifecycle changes
-  or removes it (ADR 0259)
-- `providers.setSecret({ id, secretValue })` — stores or clears one provider's
-  API key (`secret:provider:<id>:api_key` and the row's `secret_ref`). It is the
-  write a plugin-owned row accepts: only the credential the declaration asks for
-  changes, never a field the manifest owns. An empty or omitted `secretValue`
-  deletes the stored key. Returns `{ provider }`, or `null` for an unknown id
-- `providers.getSecret` — main/host only, never reachable from the renderer
-- `providers.listModels` / `providers.cacheModels` — discovered model rows
-  and their host-side cache (ADR 0027 / ADR 0134)
-- `providers.testConnection`
-
-### Agent capabilities (skills, subagents, MCP servers)
-- `skills.list` / `skills.active` / `skills.read` / `skills.create` /
-  `skills.update` / `skills.remove` / `skills.import` /
-  `skills.setEnabled` / `skills.setScope` / `skills.transfer` — user skill
-  documents (`SKILL_INVALID` on validation failure)
-- `agents.list` / `agents.active` / `agents.read` / `agents.create` /
-  `agents.update` / `agents.remove` / `agents.setEnabled` /
-  `agents.setScope` — user subagent documents (`SUBAGENT_INVALID`)
-- `mcp.list` / `mcp.active` / `mcp.upsert` / `mcp.remove` /
-  `mcp.setEnabled` / `mcp.setScope` / `mcp.transfer` — user MCP server
-  definitions (`MCP_INVALID`)
-
-`skills.transfer` and `mcp.transfer` take `{ id, from, to }`, each end a
-`{ level, projectPath? }` target (`projectPath` is required for the project
-level), and return `{ skill }` / `{ server }` for the document where it landed.
-A transfer moves the document between the two levels rather than copying it, so
-the source level stops listing the entry. A destination that already owns the
-same id gives the arriving document a `-2`/`-3` id suffix; one that owns the
-same display name / label, compared case-insensitively, gives it a matching
-` (2)`/` (3)` display suffix. The existing entry stays untouched. Enablement
-travels with the document: the source level drops every state entry for the old
-id, including its project overrides, and the destination stores the value the
-source was showing (a project target keeps that project's state, a global
-target the global default). Naming the source's own directory as the
-destination is a no-op.
-
-`*.active` returns the entries that apply to the given project after
-activation-scope filtering (`CAPABILITY_INVALID` for an unknown scope).
-
-### Search, artifacts, keyboard
-- `search.query` — legacy indexed-message hits; existing response and limit remain compatible
-- `search.sessions({ query, offset? }) -> { hits, nextOffset }` — global session
-  discovery with title/project metadata and indexed user/assistant text. Trimmed
-  literal queries have a 500-character limit (`INVALID_ARGUMENT` above it).
-  Each 30-session page includes `session`, `projectName`, `metadataMatch`, the
-  full matching `messageCount`, and at most two `matches` containing
-  `messageId`, `role`, `createdAt`, and a `snippet` containing the matching
-  sentence or line. Long sentences are capped to a match-centered 180-character
-  window, extended when needed to preserve the complete literal query.
-  `nextOffset: null` marks the last page. Sort by updated time descending and
-  session ID ascending; exclude soft-deleted sessions. Empty queries return no
-  hits because the renderer owns its recent-session presentation.
-- `search.context({ sessionId, messageId, query, direction? })` — resolve a
-  stable message ID in the owning, non-deleted session's JSONL layout. Default
-  `direction: "around"` returns up to 21 nearby message text projections;
-  `"before"` / `"after"` returns up to 20 messages excluding the anchor. Return
-  `messages`, `hasMoreBefore`, `hasMoreAfter`, `previousMatchId`, and
-  `nextMatchId`. Adjacent matching IDs follow transcript sequence order and
-  have no 100-message cutoff. Context comes from canonical JSONL and is capped
-  at 64 Ki characters per message; the target is centered on the query. Tool
-  bodies, thinking, and attachments are omitted. Missing/deleted targets return
-  `NOT_FOUND`; invalid directions or identifiers return `INVALID_ARGUMENT`.
-  See [ADR session-content-search](../../adr/session-content-search.md).
-- `artifacts.list` — Plan/Goal checkpoint artifacts for a session
-- `keyboard.setGlobalShortcut` — host-owned native fallback for the plugin
-  launcher chord where Electron cannot register it
 
 ### Audit
 - `audit.append`
+- `audit.query` (optional later)
 
 ### Notification (D117)
 - `notification.list`
@@ -738,10 +508,6 @@ type NotificationListResult = {
 - `notification.markAllRead({}) -> { ok: true }` updates every unread row in
   one transaction.
 - `notification.clear({}) -> { ok: true }` deletes inbox rows only.
-- `id` is the stable exactly-once key for renderer and native delivery. A
-  client must discard duplicate or delayed records for an id it has already
-  acknowledged/cleared; clearing the inbox never makes an old terminal turn
-  eligible for insertion again. A later terminal turn receives a new id.
 - No `notification.created` JSON-RPC server notification is emitted. Electron
   receives the inserted record directly from `session.endTurn`, avoiding a
   second ordering channel between terminal turn persistence and UI refresh.
@@ -1013,12 +779,7 @@ field.
 ### 5.2 Shell catalog
 
 ```ts
-type CommandShellId =
-  | "windows-powershell"
-  | "windows-pwsh"
-  | "cmd"
-  | "git-bash"
-  | "bash";
+type CommandShellId = "windows-powershell" | "cmd" | "git-bash" | "bash";
 
 type CommandShellOption = {
   id: CommandShellId;
@@ -1077,61 +838,35 @@ params: {
 
 Timeout behavior (**D005**): after 120s unresolved → deny.
 
-`permissions.pending` returns the open requests as Host state (D374/D375):
-`{ requests: PendingPermission[] }`, oldest first, optionally scoped by
-`sessionId`. Each entry carries the same fields as the `permissions.request`
-notification plus `createdAt`, `expiresAt`, and `remainingMs`. Requests past
-the timeout are omitted. A client that attaches after the notification was
-emitted reads this list and answers through the unchanged
-`permissions.resolve`; the notification path itself does not change.
-
 ## 7. Error codes
-
-JSON-RPC errors carry a numeric `code` plus `data.errorCode`, the stable
-string from [08-error-codes](08-error-codes.md). Several string codes share a
-numeric slot; the string is the contract, the number is transport detail.
 
 | code | errorCode | meaning |
 |---|---|---|
 | 1000 | INTERNAL | unexpected host failure |
 | 1001 | UNAUTHORIZED | missing/invalid handshake or capability |
-| 1001 | HOST_SHUTTING_DOWN | the host is draining after EOF and refused the call |
 | 1002 | INVALID_PARAMS | schema validation failed |
-| 1002 | MODEL_ALIAS_TOO_LONG | provider row alias exceeds 60 code points |
-| 1002 | MODEL_BINDINGS_DEGRADED | stored model bindings are unreadable; explicit model-array replacement is refused |
-| 1003 | NOT_FOUND | entity missing (legacy slot, kept for old callers) |
-| 1006 | RATE_LIMITED | a per-caller budget window was exhausted |
+| 1003 | PATH_OUTSIDE_WORKSPACE | path sandbox violation before an explicit outside-path permission decision |
+| 1004 | TOOL_DENIED | permission denied |
+| 1005 | TOOL_TIMEOUT | tool exceeded timeout |
+| 1006 | WORKSPACE_REQUIRED | no workspace bound |
 | 1007 | NOT_FOUND | entity missing |
-| 1007 | SESSION_NOT_FOUND | the named session does not exist; tool requests never fall back to the global workspace |
 | 1008 | CONFLICT | busy/conflict state |
-| 1008 | AGENT_BUSY | the session has a running turn |
 | 1009 | PLUGIN_INVALID | manifest/validation failure |
 | 1010 | PLUGIN_LOAD_FAILED | enable/load failure |
-| 1011 | PROTOCOL_MISMATCH | `app.handshake` protocol version mismatch |
-| 1012 | PLUGIN_INTEGRITY | package checksum/signature mismatch |
-| 1013 | PLUGIN_PERMISSION_DENIED | plugin lacks the permission the call needs |
-| 1014 | PLUGIN_NETWORK | marketplace download/catalog fetch failed |
-| 1015 | MCP_INVALID | user MCP server definition failed validation |
-| 1015 | PLAN_* | every Plan/Goal checkpoint failure (`PLAN_APPROVAL_TIMEOUT`, `PLAN_APPROVAL_STALE`, `PLAN_APPROVAL_INTERRUPTED`, `PLAN_SESSION_NOT_FOUND`, `PLAN_WORKSPACE_REQUIRED`, …) shares this slot; the string code distinguishes them |
-| 1016 | SKILL_INVALID | user skill document failed validation |
-| 1017 | SUBAGENT_INVALID | user subagent document failed validation |
-| 1018 | CAPABILITY_INVALID | agent capability root/scope setting failed validation |
-| 1019 | PLUGIN_CANCELLED | the user cancelled a marketplace install while it was downloading |
-| 1020 | PLUGIN_MARKET_NOT_PUBLISHED | the platform has the version and is not offering it yet |
-| 1021 | PLUGIN_MARKET_ARCHIVED | the plugin was withdrawn from the platform |
-| 1022 | PLUGIN_MARKET_NOT_FOUND | the platform does not have that plugin or version |
-| 1023 | PLUGIN_MARKET_RATE_LIMITED | the download endpoint asked the client to wait |
-| 1024 | PLUGIN_MARKET_NO_SOURCE | no distribution target can serve the package |
+| 1011 | PROTOCOL_MISMATCH | handshake version mismatch |
 | -32029 | HOST_OVERLOADED | RPC dispatcher capacity exhausted |
-| -32601 | — | unknown method |
-| -32700 | — | unparseable request line |
-| 1002 | LIMIT_EXCEEDED | an NDJSON request line over 64 MiB; Electron rejects the write before it reaches the pipe; if the host still sees it, the remainder of the line is drained, the reply keeps the request id when it can be peeked from the prefix, and the stdin reader keeps running |
-
-
-Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
-`WORKSPACE_PATH_DENIED`, `WRITE_DISABLED_IN_PLAN`, `SHELL_NOT_FOUND`,
-`COMMAND_SHELL_CHANGED`, …) are not JSON-RPC errors: `tools.execute` returns
-`ok: false` with `errorCode` in the result (§5).
+| 1012 | WRITE_DISABLED_IN_PLAN | Write is unavailable in Plan and Goal |
+| 1013 | EDIT_DISABLED_IN_PLAN | Edit is unavailable in Plan and Goal |
+| 1014 | PLUGIN_DISABLED_IN_PLAN | plugin tools are unavailable in Plan and Goal |
+| 1015 | PLAN_APPROVAL_REQUIRED | SubmitPlan/SubmitGoal is waiting for approval |
+| 1016 | PLAN_APPROVAL_TIMEOUT | absolute approval deadline expired |
+| 1017 | PLAN_APPROVAL_STALE | response does not match the live proposal/session/turn/tool-call/version |
+| 1018 | PLAN_APPROVAL_INTERRUPTED | pending approval failed closed during abort/recovery |
+| 1019 | PLAN_REQUIRES_INTERACTIVE_SESSION | unattended Plan or Goal cannot run |
+| 1020 | PLAN_ARTIFACT_WRITE_FAILED | exact bytes could not be written to a new `.pi/<kind>/*.md` artifact |
+| 1021 | PLAN_EXECUTION_INTERRUPTED | approved queued/running Plan or Goal execution was interrupted |
+| 1022 | SHELL_NOT_FOUND | no effective platform shell is available |
+| 1023 | COMMAND_SHELL_CHANGED | pinned shell ID or dialect changed before execution |
 
 ## 8. Concurrency / ordering
 
@@ -1199,86 +934,3 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
     produce the documented durable statuses and events
 13. Bash validates the pinned shell ID/dialect, streams stdout/stderr, enforces
     the 60s default/bounded override, and shuts down the complete process tree
-
-## Scheduled automation tools
-
-Agent mode advertises on-demand ScheduledTaskList, ScheduledTaskCreate,
-ScheduledTaskUpdate and ScheduledTaskDelete tools. They run through
-`tools.execute`, including existing permissions and audit records, and reuse
-the scheduled RPC domain handlers. List is low risk; mutations require normal
-approval in Ask/Accept Edits. Plan/Goal deny all four even under Auto.
-
-The Host rechecks durable session mode and derives project scope from the
-calling session, never the foreground workspace or model-supplied paths.
-Create binds that scope; list filters it; update/delete require matching scope.
-Unknown fields, invalid cadence, empty title/prompt, invalid time and invalid
-weekday selections are rejected before mutation. Delete refuses active runs.
-Create requires title, prompt and cadence; automatic daily/weekly tasks require
-a schedule. Update takes an existing ID and partial fields, preserving all
-unspecified configuration. Exact local times remain supported despite the
-UI's four period presets. No new DB schema or transport is introduced.
-
-### Scheduled tasks: task-owned execution settings
-
-Desktop create/update may save `workspacePath`, `permissionMode` and a paired
-`providerId`/`modelId` on one task. Run now and automatic execution use those
-values when present. Missing fields preserve legacy project capture, app-default
-model resolution and permission behavior. Invalid permission values and partial
-model pairs are rejected before mutation. Conversation tools do not expose these
-fields and remain bound to the calling session's project. See ADR 0305.
-
-Tasks also persist optional `thinkingLevel` using the existing session values
-(including `off` and `omit`). The full Composer model/reasoning picker and
-controller are reused with a task-draft configuration callback. Both manual and
-automatic runs apply the saved level. Missing or cleared levels retain the
-legacy `off` behavior; no database migration is required.
-
-### Scheduled tasks: independent task dispatch
-
-The Electron runner admits independent due tasks without awaiting another task's prompt setup. Local in-flight ownership is keyed by task ID and Host instance until setup settles; Host remains authoritative for enabled, due and overlap checks. A replaced Host's completion cannot clear its successor's local ownership. Stop prevents new polls; admitted work keeps the existing execution/failure lifecycle. Failures remain observable and the 90-second late policy is unchanged.
-### Scheduled tasks: project removal and automations
-
-Removing a project pauses its bound scheduled tasks without deleting their definitions, schedule, workspace binding or run history. Session references in history may become null when the project's conversations are removed. Already admitted task runs block removal even before a conversation turn starts. Tasks belonging to other projects and unbound legacy tasks are unaffected. Explicit resume or Run now may recreate a project from the preserved path; automatic polling cannot do so while paused.
-### Scheduled tasks: legacy task maintenance
-
-Agent tools allow title, prompt and pause updates on legacy automatic tasks without a schedule, including an echoed unchanged cadence. These edits do not arm the task or capture the foreground workspace. Explicit enabling, a cadence change or a supplied schedule still follows schedule validation. Resume requires an explicit valid schedule; Manual-to-Hourly retains its existing default interval behavior.
-### Scheduled tasks: calendar intent
-
-The optional config_json.calendarConfigured boolean distinguishes an explicitly configured Daily/Weekly calendar from Hourly's internal schedule placeholder. Without the key, legacy Daily/Weekly schedules are treated as configured; legacy Hourly schedules retain their values but require an explicit schedule when converting to Daily/Weekly. Known calendar intent survives Hourly and restart, including midnight. Clearing or replacing the calendar with a different non-calendar placeholder clears intent. This additive extension needs no table/schema migration; older versions ignore it and cannot enforce the new conversion guard. Metadata-only edits and Manual-to-Hourly remain unchanged.
-### Scheduled tasks: workspace identity
-
-Stored workspace bindings use the existing project canonicalization contract on both write and read. On Windows, slash direction, case, trailing separators and extended path prefixes do not hide a task from its own project's conversation. The distinction between missing legacy bindings and explicit null remains unchanged. Foreign-project tools cannot list or mutate bound tasks.
-
-### Cloud configuration sync
-
-The Host exposes the `configSync.getState`, `configSync.test`,
-`configSync.configure`, `configSync.syncNow`, `configSync.pause`,
-`configSync.unlock`, `configSync.approve`, `configSync.reject`,
-`configSync.mapProject`, `configSync.listHistory`, `configSync.restore`,
-`configSync.changePassword`, and
-`configSync.disconnect` methods through the existing Electron Host bridge.
-These methods operate on the Host-owned encrypted vault and the explicit
-portable-domain adapter registry. They do not expose raw secrets or local
-filesystem bindings to the Renderer.
-
-`configSync.test` performs a capability probe against a temporary remote
-object and reports whether reliable strong conditional writes are available.
-`configSync.syncNow` and the five-minute automatic poll serialize per vault,
-reconcile against the last acknowledged base, publish immutable encrypted
-objects followed by a conditional head update, and retain unresolved
-conflicts/security-sensitive imports as pending state. A failed head
-precondition restarts from the newly read head; it never overwrites blindly.
-
-`configSync.listHistory` returns revision IDs, creation timestamps, parent IDs,
-and counts without decrypting data in the Renderer. `configSync.restore` requires
-an explicit propagation acknowledgement, writes an encrypted local recovery
-point, publishes a new head with a CAS, and keeps executable/security-sensitive
-entities pending until local approval. `configSync.changePassword` updates the
-wrapped-key header with a strong-ETag CAS; it does not revoke copied old vault
-keys.
-
-The public result is a redacted state snapshot. `configSync.changed` is a Host
-notification carrying that same snapshot. Approval and rejection require the
-current entity digest, so a security-relevant edit cannot reuse an older local
-decision. Disconnect deletes only local credentials, vault keys, metadata and
-staging files; remote objects remain intact.

@@ -17,6 +17,7 @@ export function ReviewTab() {
       <WorkTabEmpty
         icon={IconDiff}
         title={t("panel.review.noChanges")}
+        body={t("panel.review.noChangesHint")}
       />
     );
   }

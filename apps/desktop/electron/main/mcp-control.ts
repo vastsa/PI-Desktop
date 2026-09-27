@@ -3,7 +3,6 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { isIP } from "node:net";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { SESSION_COLLABORATION_OPERATIONS } from "./session-collaboration-control";
 
 /** A small JSON Schema subset used by MCP's tools/list response. */
 export type McpJsonSchema = {
@@ -24,26 +23,13 @@ export type McpControlOperation = {
   description: string;
   risk: McpControlRisk;
   argumentShape: string[] | string;
-  /**
-   * Operation requires an authenticated first-party plugin context, so it is
-   * excluded from the external MCP surface (tools/list, pi_control_describe and
-   * the pi_desktop_invoke enum) while staying callable by plugins.
-   */
-  pluginOnly?: boolean;
 };
 
 export type McpControlInvokeInput = {
   operation: string;
   args?: readonly unknown[];
   confirm?: boolean;
-  /** Internal origin used to keep plugin background work from stealing focus. */
-  source?: "mcp" | "plugin";
-  /** Supplied only by PluginRuntime, never copied from plugin/MCP arguments. */
-  pluginContext?: { pluginId: string; sessionId?: string; turnId?: string; invocationId?: string };
-  signal?: AbortSignal;
 };
-
-export type McpControlInvocationSource = NonNullable<McpControlInvokeInput["source"]>;
 
 export type McpControlController = {
   operations: readonly McpControlOperation[];
@@ -139,7 +125,6 @@ const SESSION_MUTATION_IDS = new Set([
   "session/delete",
   "session/rename",
   "session/configure",
-  "session/moveProject",
   "session/summarizeTitle",
   "session/replaceMessages",
   "session/saveRevision",
@@ -210,11 +195,9 @@ const CONTROL_OPERATION_SPECS: OperationSpec[] = [
   spec("sessionCreate", "session/create", "Create a durable session.", "write", ["input"]),
   spec("sessionFork", "session/fork", "Fork a session.", "write", ["input"]),
   spec("sessionGet", "session/get", "Read a session and its transcript.", "read", ["input"]),
-  spec("sessionOpen", "session/open", "Open a durable session in the desktop.", "write", ["sessionId"]),
   spec("sessionDelete", "session/delete", "Delete a session.", "dangerous", ["id"]),
   spec("sessionRename", "session/rename", "Rename a session.", "write", ["id", "title"]),
   spec("sessionConfigure", "session/configure", "Configure a session for its next turn, including permission mode.", "dangerous", ["id", "config"]),
-  spec("sessionMoveProject", "session/moveProject", "Move an idle session to another project.", "write", ["input"]),
   spec("sessionListRevisions", "session/listRevisions", "List transcript revisions.", "read", ["input"]),
   spec("sessionGetScratchPath", "session/getScratchPath", "Return a session scratch path.", "read", ["input"]),
   spec("sessionImportScan", "session/importScan", "Scan supported external session sources.", "read", []),
@@ -239,7 +222,7 @@ const CONTROL_OPERATION_SPECS: OperationSpec[] = [
   spec("fsRead", "fs/read", "Read an allowed workspace or session file.", "read", ["input"]),
   spec("fsReadImageDataUrl", "fs/readImageDataUrl", "Read an allowed image as a data URL.", "read", ["input"]),
   spec("fsIndex", "fs/index", "Index files in the active workspace.", "read", ["input"]),
-  spec("composerCommands", "composer/commands", "List composer commands and skills.", "read", []),
+  spec("composerCommands", "composer/commands", "List composer command templates.", "read", []),
   spec("closeBehaviorGet", "window/closeBehavior/get", "Read close behavior.", "read", []),
   spec("pullsList", "pulls/list", "List pull requests for the active workspace.", "read", []),
   spec("scheduledList", "scheduled/list", "List scheduled tasks.", "read", []),
@@ -261,10 +244,6 @@ const CONTROL_OPERATION_SPECS: OperationSpec[] = [
   spec("marketSearch", "market/search", "Search the plugin marketplace.", "read", ["query"]),
   spec("marketGetDetail", "market/getDetail", "Read marketplace plugin details.", "read", ["input"]),
   spec("commandPaletteSearch", "commandPalette/search", "Search command-palette commands.", "read", ["query"]),
-  // Trusted extensions (spec 16 §10.2): reads and session-scoped command runs
-  // are exposed; enablement, paths, and removal stay local (blocked below).
-  spec("extensionsCommandRun", "extensions/commands/run", "Run a trusted extension command in a session.", "write", ["input"]),
-  spec("extensionsUiRespond", "extensions/ui/respond", "Answer a pending trusted extension prompt.", "dangerous", ["response"]),
 ];
 
 const coreTool = (
@@ -467,7 +446,6 @@ export const MCP_CONTROL_BLOCKED_CHANNEL_KEYS = [
   "composerPasteFiles",
   "clipboardRecordPaste",
   "menuRendererReady",
-  "traySetSessionPreferences",
   "providersCreate",
   "providersUpdate",
   "providersDelete",
@@ -479,8 +457,6 @@ export const MCP_CONTROL_BLOCKED_CHANNEL_KEYS = [
   "settingsSet",
   "mcpUpsert",
   "mcpImport",
-  // Importing a pi extension opens a native picker and grants agent.extension.
-  "pluginImportExtension",
 ] as const;
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -617,7 +593,6 @@ export function mcpControlRendererEvent(
   operation: McpControlOperation,
   result: unknown,
   args: readonly unknown[],
-  source?: McpControlInvocationSource,
 ): McpControlRendererEvent | null {
   const payload = result as {
     session?: { id?: string; projectPath?: string | null } | null;
@@ -626,17 +601,8 @@ export function mcpControlRendererEvent(
   const sessionId = payload?.session?.id?.trim();
   if (operation.id === "session/create" || operation.id === "session/fork") {
     if (!sessionId) return null;
-    if (source === "plugin") return { reason: "plugin.session" };
     return {
       reason: "mcp.session",
-      selectSessionId: sessionId,
-      projectPath: payload?.session?.projectPath ?? null,
-    };
-  }
-  if (operation.id === "session/open") {
-    if (!sessionId) return null;
-    return {
-      reason: source === "plugin" ? "plugin.session.open" : "mcp.session.open",
       selectSessionId: sessionId,
       projectPath: payload?.session?.projectPath ?? null,
     };
@@ -649,7 +615,6 @@ export function mcpControlRendererEvent(
       ? (args[0] as { sessionId: string }).sessionId.trim()
       : "";
   if (operation.id === "agent/prompt" && promptedSessionId) {
-    if (source === "plugin") return { reason: "plugin.prompt" };
     return { reason: "mcp.prompt", selectSessionId: promptedSessionId };
   }
   if (operation.id === "project/set") {
@@ -673,16 +638,13 @@ export function mcpControlRendererEvent(
 export function createMcpControlController(options: {
   channels: Readonly<Record<string, string>>;
   invoke: IpcInvoke;
-  invokeSessionCollaboration?: (input: McpControlInvokeInput) => Promise<unknown>;
   onOperationComplete?: (
     operation: McpControlOperation,
     result: unknown,
     args: readonly unknown[],
-    source?: McpControlInvocationSource,
   ) => void | Promise<void>;
 }): McpControlController {
-  const operations = [...createMcpControlOperations(options.channels),
-    ...(options.invokeSessionCollaboration ? SESSION_COLLABORATION_OPERATIONS : [])];
+  const operations = createMcpControlOperations(options.channels);
   const operationById = new Map(operations.map((operation) => [operation.id, operation]));
   return {
     operations,
@@ -709,10 +671,8 @@ export function createMcpControlController(options: {
         });
       }
       const sanitized = args.map((value) => stripSecretMaterial(value)) as unknown[];
-      const result = operation.channel === "internal:session-collaboration"
-        ? await options.invokeSessionCollaboration!({ ...input, args: sanitized })
-        : await options.invoke(operation.channel, sanitized);
-      await options.onOperationComplete?.(operation, result, sanitized, input.source);
+      const result = await options.invoke(operation.channel, sanitized);
+      await options.onOperationComplete?.(operation, result, sanitized);
       return result;
     },
   };
@@ -770,7 +730,7 @@ export class McpControlServer {
       invoke: options.invoke,
       onOperationComplete: options.onOperationComplete,
     });
-    this.operations = this.controller.operations.filter((operation) => !operation.pluginOnly);
+    this.operations = [...this.controller.operations];
     for (const operation of this.operations) this.operationById.set(operation.id, operation);
     this.toolsList = this.buildTools();
   }

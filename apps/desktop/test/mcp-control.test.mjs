@@ -520,39 +520,12 @@ test("renderer refresh events fire only for mutating control operations", () => 
     { reason: "mcp.session", selectSessionId: "s1", projectPath: "/tmp/p" },
   );
   assert.deepEqual(
-    mcpControlRendererEvent(
-      sessionOp("session/create"),
-      { session: { id: "s2", projectPath: "/tmp/p" } },
-      [],
-      "plugin",
-    ),
-    { reason: "plugin.session" },
-  );
-  assert.deepEqual(
     mcpControlRendererEvent(sessionOp("session/configure"), { session: { id: "s1" } }, ["s1", { mode: "agent" }]),
     { reason: "mcp.session" },
   );
   assert.deepEqual(
     mcpControlRendererEvent(sessionOp("agent/prompt"), { accepted: true }, [{ sessionId: "s1" }]),
     { reason: "mcp.prompt", selectSessionId: "s1" },
-  );
-  assert.deepEqual(
-    mcpControlRendererEvent(
-      sessionOp("agent/prompt"),
-      { accepted: true },
-      [{ sessionId: "s1" }],
-      "plugin",
-    ),
-    { reason: "plugin.prompt" },
-  );
-  assert.deepEqual(
-    mcpControlRendererEvent(
-      sessionOp("session/open"),
-      { session: { id: "s1", projectPath: "/tmp/p" } },
-      [],
-      "plugin",
-    ),
-    { reason: "plugin.session.open", selectSessionId: "s1", projectPath: "/tmp/p" },
   );
 });
 
@@ -570,134 +543,4 @@ test("the reviewed catalog never includes picker or secret-write channels", () =
   });
   const ids = operations.map((operation) => operation.id).sort();
   assert.deepEqual(ids, ["app/getVersion", "project/set", "session/configure"].sort());
-});
-
-test("plugin-only session collaboration operations stay off the external MCP surface", async (t) => {
-  const dataDir = mkdtempSync(join(tmpdir(), "pi-mcp-plugin-only-"));
-  const calls = [];
-  const pluginCalls = [];
-  const controller = createMcpControlController({
-    channels: fixtureChannels,
-    invoke: async (channel, args) => {
-      calls.push({ channel, args });
-      return { ok: true, channel };
-    },
-    invokeSessionCollaboration: async (input) => {
-      pluginCalls.push(input);
-      return { sessions: [] };
-    },
-  });
-
-  const collaborationIds = [
-    "session/collaboration/spawn",
-    "session/collaboration/send",
-    "session/collaboration/status",
-    "session/collaboration/list",
-    "session/collaboration/result",
-    "session/collaboration/cancel",
-  ];
-  assert.deepEqual(
-    controller.operations.map((operation) => operation.id).filter((id) => id.startsWith("session/collaboration/")),
-    collaborationIds,
-  );
-
-  const pluginResult = await controller.invoke({
-    operation: "session/collaboration/list",
-    args: [],
-    source: "plugin",
-    pluginContext: { pluginId: "fixture-plugin" },
-  });
-  assert.deepEqual(pluginResult, { sessions: [] });
-  assert.equal(pluginCalls.length, 1);
-  assert.equal(pluginCalls[0].pluginContext.pluginId, "fixture-plugin");
-
-  const catalogCount = createMcpControlOperations(fixtureChannels).length;
-  const hiddenCount = controller.operations.length - catalogCount;
-  assert.equal(hiddenCount, collaborationIds.length);
-
-  const server = new McpControlServer({
-    dataDir,
-    port: 0,
-    channels: fixtureChannels,
-    controller,
-    invoke: async () => ({}),
-  });
-  t.after(() => server.stop());
-  const info = await server.start();
-  assert.ok(info);
-
-  const initialized = await post(info.url, info.token, {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: { protocolVersion: "2025-06-18" },
-  });
-  const sessionId = initialized.response.headers.get("mcp-session-id");
-  assert.ok(sessionId);
-
-  const listed = await post(
-    info.url,
-    info.token,
-    { jsonrpc: "2.0", id: 2, method: "tools/list" },
-    { "Mcp-Session-Id": sessionId },
-  );
-  const toolNames = listed.body.result.tools.map((tool) => tool.name);
-  for (const id of collaborationIds) {
-    assert.equal(toolNames.includes(id), false);
-  }
-  const invokeTool = listed.body.result.tools.find((tool) => tool.name === "pi_desktop_invoke");
-  const exposedIds = invokeTool.inputSchema.properties.operation.enum;
-  for (const id of collaborationIds) {
-    assert.equal(exposedIds.includes(id), false);
-  }
-  assert.equal(exposedIds.length, catalogCount);
-
-  const described = await post(
-    info.url,
-    info.token,
-    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "pi_control_describe", arguments: {} } },
-    { "Mcp-Session-Id": sessionId },
-  );
-  const describedIds = described.body.result.structuredContent.map((entry) => entry.id);
-  for (const id of collaborationIds) {
-    assert.equal(describedIds.includes(id), false);
-  }
-  assert.equal(describedIds.length, catalogCount);
-
-  const hidden = await post(
-    info.url,
-    info.token,
-    {
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/call",
-      params: { name: "pi_desktop_invoke", arguments: { operation: "session/collaboration/list", args: [] } },
-    },
-    { "Mcp-Session-Id": sessionId },
-  );
-  assert.equal(hidden.body.result.isError, true);
-  assert.equal(hidden.body.result.structuredContent.error.code, "NOT_FOUND");
-  assert.equal(
-    hidden.body.result.structuredContent.error.message,
-    "operation is not exposed: session/collaboration/list",
-  );
-  assert.equal(pluginCalls.length, 1);
-
-  const known = await post(
-    info.url,
-    info.token,
-    {
-      jsonrpc: "2.0",
-      id: 5,
-      method: "tools/call",
-      params: { name: "pi_desktop_invoke", arguments: { operation: "app/getVersion", args: [] } },
-    },
-    { "Mcp-Session-Id": sessionId },
-  );
-  assert.equal(known.body.result.isError, undefined);
-  assert.deepEqual(known.body.result.structuredContent, {
-    operation: "app/getVersion",
-    result: { ok: true, channel: "pi-desktop/app/getVersion" },
-  });
-  assert.deepEqual(calls.at(-1), { channel: "pi-desktop/app/getVersion", args: [] });
 });

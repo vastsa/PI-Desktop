@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { UpdateState } from "@pi-desktop/shared";
 import { api } from "../lib/api";
 import { useUpdateState } from "../hooks/use-update-state";
-import { Button, TooltipButton } from "./ui";
+import { Button } from "./ui";
 import { IconClose, IconCloudDown, IconExternal } from "./icons";
-
-const shownManualReminderVersions = new Set<string>();
 
 /**
  * Ambient update notice in the main pane's top safe area. Appears when an
@@ -18,27 +16,6 @@ const shownManualReminderVersions = new Set<string>();
 export function UpdateBanner() {
   const { t } = useTranslation();
   const update = useUpdateState();
-  const manualReminderVersion =
-    update?.status === "available" &&
-    update.mode === "manual" &&
-    update.manualReminder === true
-      ? update.availableVersion
-      : undefined;
-  const [presentedManualReminder, setPresentedManualReminder] = useState<
-    string | null
-  >(() =>
-    manualReminderVersion && shownManualReminderVersions.has(manualReminderVersion)
-      ? manualReminderVersion
-      : null,
-  );
-  useEffect(() => {
-    if (!manualReminderVersion) return;
-    if (shownManualReminderVersions.has(manualReminderVersion)) {
-      setPresentedManualReminder(manualReminderVersion);
-      return;
-    }
-    shownManualReminderVersions.add(manualReminderVersion);
-  }, [manualReminderVersion]);
   const [dismissedState, setDismissedState] = useState<string | null>(null);
 
   if (!update?.availableVersion) return null;
@@ -48,10 +25,7 @@ export function UpdateBanner() {
   const visible =
     update.status === "downloaded" ||
     update.status === "downloading" ||
-    (update.status === "available" &&
-      update.mode === "manual" &&
-      update.manualReminder === true &&
-      presentedManualReminder !== update.availableVersion);
+    (update.status === "available" && update.mode === "manual");
   if (!visible) return null;
 
   const message = bannerMessage(update, t);
@@ -119,15 +93,14 @@ export function UpdateBanner() {
         </div>
       </div>
 
-      <TooltipButton
+      <button
         type="button"
-        tooltip={t("updates.dismiss")}
-        ariaLabel={t("updates.dismiss")}
+        aria-label={t("updates.dismiss")}
         className="update-notice-dismiss"
         onClick={() => setDismissedState(stateKey)}
       >
         <IconClose className="size-3.5" />
-      </TooltipButton>
+      </button>
     </div>
   );
 }

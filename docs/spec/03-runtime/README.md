@@ -21,7 +21,3 @@
 | [17-asktool-questions.md](17-asktool-questions.md) | Interactive multi-question tool |
 | [18-line-anchored-edit-contract.md](18-line-anchored-edit-contract.md) | Line-anchored Edit contract |
 | [19-remote-agent-control-protocol.md](19-remote-agent-control-protocol.md) | Remote Agent Control Protocol |
-| [20-speech.md](20-speech.md) | Host speech (ASR/TTS) |
-
-- [Image generation and editing](21-image-generation.md)
-- [Portable configuration sync](22-config-sync.md)

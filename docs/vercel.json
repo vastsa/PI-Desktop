@@ -1,11 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vitepress",
-  "installCommand": "npx --yes pnpm@10.34.5 install",
-  "buildCommand": "npx --yes pnpm@10.34.5 build",
+  "buildCommand": "pnpm build",
   "outputDirectory": ".vitepress/dist",
-  "cleanUrls": true,
-  "git": {
-    "deploymentEnabled": false
-  }
+  "cleanUrls": true
 }

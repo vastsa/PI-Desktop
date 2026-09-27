@@ -46,10 +46,9 @@ composer, `/` opens the command menu and `@` opens the file reference menu.
 
 ## Work panels
 
-An agent Write/Edit never opens the panel. The panel appears when the user opens
-it, or when a file, URL, browser-preview, or plan-approval artifact opens its
-tab. The frames below are the panels without an active workspace, which is the
-state a conversation starts in.
+The work panel opens beside the conversation when the agent produces an
+artifact. The frames below are the panels without an active workspace, which is
+the state a conversation starts in.
 
 ![The review panel](../public/screenshots/app/en/panel-review.webp)
 

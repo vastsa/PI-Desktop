@@ -11,8 +11,7 @@
 :root[data-platform="darwin"],
 :root[data-platform="darwin"] body,
 :root[data-platform="darwin"] #root,
-:root[data-platform="darwin"] .app-shell,
-:root[data-platform="darwin"] .settings-shell {
+:root[data-platform="darwin"] .app-shell {
   background: transparent;
 }
 
@@ -33,7 +32,8 @@
 /*
  * On macOS the splash is glass, so the shell that mounts under it as soon as
  * `ready` flips would bleed through the tint. Hide it until the exit fade,
- * then cross-fade without replaying the dock's explicit toggle animation.
+ * then cross-fade with a transition — not an animation, because `.sidebar`
+ * owns `sidebar-in` and swapping animation-name would replay it after boot.
  */
 :root[data-platform="darwin"] .app-shell.is-booting:has(.startup-splash:not(.is-exiting))
   > :not(.startup-splash) {
@@ -187,98 +187,6 @@
   }
 }
 
-/*
- * Startup recovery — the surface the startup watchdog falls back to when the
- * renderer never receives its initial state (issue #831).
- *
- * It sits above the splash and is opaque by design: the window has no data to
- * show, so there is nothing behind it worth seeing. Unlike the splash it must be
- * operable — every control on it works without any backend — so it is draggable
- * like the splash while its action row opts back out.
- */
-.startup-recovery {
-  position: fixed;
-  inset: 0;
-  z-index: 1400; /* above the splash (1300) it replaces */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--ds-bg-primary);
-  -webkit-app-region: drag;
-  animation: startup-splash-in var(--motion-duration-slow) var(--motion-ease-out) both;
-}
-
-/*
- * The renderer-drawn window controls (Windows/Linux, no native chrome) are
- * hidden until the shell is ready, so a window sitting on this surface would
- * have no close control at all. Keep them above it: the surface's own Quit
- * action must not be the only way out of a stuck startup.
- */
-.app-shell:has(> .startup-recovery) > .window-controls {
-  z-index: 1500;
-}
-
-.startup-recovery-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  width: min(100%, 420px);
-  text-align: center;
-  -webkit-app-region: no-drag;
-}
-
-.startup-recovery-mark {
-  display: flex;
-  width: 56px;
-  height: 56px;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--ds-composer-radius);
-  background: var(--ds-tile-deep);
-}
-
-.startup-recovery-title {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--leading-tighter);
-}
-
-.startup-recovery-body {
-  margin: 0;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-md);
-  line-height: var(--leading-body);
-  overflow-wrap: anywhere;
-}
-
-.startup-recovery-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .startup-recovery {
-    animation-duration: 0.01ms !important;
-    animation-delay: 0ms !important;
-  }
-}
-
-.sidebar-surface,
-.sidebar-rail {
-  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
-  background-image: var(--ds-bg-sidebar-image, none);
-  background-repeat: no-repeat;
-  background-size: cover;
-}
-
 .sidebar {
   width: var(--ds-sidebar-width);
   min-width: 0;
@@ -290,9 +198,14 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
-}
-
-.sidebar.is-entering {
+  background: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  /* No seam against the main pane (D297): the sidebar's own surface tone is
+     the only edge cue on every platform, as it already was on macOS glass. */
+  /*
+   * Animate the flex allocation with the dock motion. A transform-only
+   * animation leaves MainChat at its final width before the first frame,
+   * making sidebar collapse feel like a layout jump.
+   */
   animation: sidebar-in var(--motion-duration-normal) var(--motion-ease-out) both;
 }
 
@@ -339,12 +252,6 @@
 :root[data-sidebar-resizing="true"],
 :root[data-sidebar-resizing="true"] * {
   cursor: col-resize !important;
-  user-select: none !important;
-}
-
-:root[data-project-reordering="true"],
-:root[data-project-reordering="true"] * {
-  cursor: grabbing !important;
   user-select: none !important;
 }
 
@@ -421,6 +328,7 @@
   flex: 0 0 56px;
   display: flex;
   flex-direction: column;
+  background: var(--ds-bg-sidebar, var(--ds-bg-primary));
 }
 
 /*
@@ -431,11 +339,10 @@
  * The main pane and titlebars remain opaque `bg-primary`.
  */
 :root[data-platform="darwin"] .startup-splash,
-:root[data-platform="darwin"] .sidebar-surface,
+:root[data-platform="darwin"] .sidebar,
 :root[data-platform="darwin"] .sidebar-rail {
   background-color: var(--ds-sidebar-glass-tint);
-  background-image: var(--ds-bg-sidebar-image, none),
-    linear-gradient(
+  background-image: linear-gradient(
       180deg,
       var(--ds-sidebar-glass-sheen-top),
       transparent 220px
@@ -461,20 +368,40 @@
   display: flex;
   align-items: center;
   margin-right: auto;
-  /* The row already pads 12px, so the title only adds the difference between
-     that and the traffic-light reserve. Platforms with no native traffic
-     lights, and fullscreen, resolve to the row's own padding. */
-  padding-left: max(0px, calc(var(--ds-window-lead-inset) - 12px));
+  padding-left: 64px; /* traffic lights (76px) minus main-titlebar padding */
 }
 
-/* Preview- and route-band actions take the shared chrome-control geometry from
-   the `.ct-icon-btn` group below (28px square, `--radius-md`, transparent seat,
-   hover wash). Only the press feedback belongs to the lane itself. */
+:root[data-platform="win32"] .main-titlebar-left,
+:root[data-platform="linux"] .main-titlebar-left {
+  padding-left: 0;
+}
+
+:root[data-platform="darwin"][data-fullscreen="true"] .main-titlebar-left {
+  padding-left: 0;
+}
+
 .title-nav-btn {
+  display: inline-flex;
+  height: 22px;
+  width: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-2xs);
+  color: color-mix(in oklab, var(--ds-text-primary) 55%, transparent);
+  background: var(--ds-tile);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out),
     transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.title-nav-btn:hover:not(:disabled) {
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-hover);
+}
+
+.title-nav-btn:disabled {
+  opacity: 0.28;
 }
 
 .title-nav-btn.active {
@@ -593,23 +520,11 @@
   line-height: var(--leading-compact);
 }
 
-/* One geometry and one seat for every chrome icon control: the topbar's dock
-   toggle, the viewport-fixed work-panel toggle, the preview/route-band lane
-   actions, and the work-panel header's create and maximize controls. The seat is
-   transparent at rest, so the icon alone carries the control and only the pointer
-   hover wash paints a surface under it; keyboard focus keeps the global outline.
-   `flex: 0 0` keeps them square when a crowded band would otherwise squeeze
-   them. */
 .conversation-topbar .ct-icon-btn,
-.app-work-panel-toggle,
-.main-titlebar .title-nav-btn,
-.window-chrome-row .title-nav-btn,
-.work-panel-new-tab,
-.work-panel-maximize {
+.app-work-panel-toggle {
   display: inline-flex;
-  height: var(--ds-work-panel-toggle-size);
-  width: var(--ds-work-panel-toggle-size);
-  flex: 0 0 var(--ds-work-panel-toggle-size);
+  height: 28px;
+  width: 28px;
   align-items: center;
   justify-content: center;
   border: none;
@@ -622,21 +537,13 @@
 }
 
 .conversation-topbar .ct-icon-btn:hover:not(:disabled),
-.app-work-panel-toggle:hover:not(:disabled),
-.main-titlebar .title-nav-btn:hover:not(:disabled),
-.window-chrome-row .title-nav-btn:hover:not(:disabled),
-.work-panel-new-tab:hover:not(:disabled),
-.work-panel-maximize:hover:not(:disabled) {
+.app-work-panel-toggle:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
 .conversation-topbar .ct-icon-btn:disabled,
-.app-work-panel-toggle:disabled,
-.main-titlebar .title-nav-btn:disabled,
-.window-chrome-row .title-nav-btn:disabled,
-.work-panel-new-tab:disabled,
-.work-panel-maximize:disabled {
+.app-work-panel-toggle:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -652,10 +559,7 @@
 .conversation-topbar .ct-actions {
   display: inline-flex;
   align-items: center;
-  gap: 0;
-  padding: 2px;
-  border-radius: var(--radius-md);
-  background: var(--ds-tile);
+  gap: 2px;
 }
 
 /* Keep the sole work-panel toggle anchored to the viewport while the in-flow
@@ -664,67 +568,33 @@
 .app-work-panel-toggle {
   position: fixed;
   top: 9px;
-  right: var(--ds-work-panel-toggle-inset);
+  right: 12px;
   z-index: 30;
   pointer-events: auto;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
-/* The open state is the glyph swap plus the engaged ink — the same transparent
-   seat as every other chrome icon control, so the toggle never floats over the
-   panel header as a raised pill. */
 .app-work-panel-toggle[aria-pressed="true"] {
+  background: var(--ds-bg-active);
   color: var(--ds-text-primary);
-}
-
-.app-work-panel-toggle-icon {
-  position: relative;
-  display: inline-flex;
-  width: 15px;
-  height: 15px;
-}
-
-.app-work-panel-toggle-icon > svg {
-  position: absolute;
-  inset: 0;
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.app-work-panel-toggle[aria-pressed="false"] .app-work-panel-toggle-icon > svg:last-child,
-.app-work-panel-toggle[aria-pressed="true"] .app-work-panel-toggle-icon > svg:first-child {
-  opacity: 0;
 }
 
 :root[data-platform="win32"] .app-work-panel-toggle,
 :root[data-platform="linux"] .app-work-panel-toggle {
-  right: calc(
-    var(--ds-window-controls-width) + var(--ds-work-panel-toggle-inset)
-  );
+  right: calc(var(--ds-window-controls-width) + 12px);
 }
 
-/* The macOS traffic lights own the window's top-left corner. Everything below
- * reads `--ds-window-lead-inset`: the cluster's right edge (native geometry,
- * injected at boot from @pi-desktop/shared — see window-chrome.ts) plus the
- * breathing room kept before the first shell control. Fullscreen hides the
- * buttons, so the reserve falls back to the ordinary 8px gutter; Windows and
- * Linux keep the 0px default from tokens.css and use their renderer-drawn
- * controls instead.
- *
+/* macOS traffic lights occupy the top-left ~76px; only reserve that space
+ * when the sidebar is collapsed and the main pane reaches the window edge.
  * Only the inset moves per platform — the collapsed padding below derives the
  * title's offset from it, so the two can never drift apart. */
-:root[data-platform="darwin"] {
-  --ds-window-lead-inset: calc(
-    var(--ds-traffic-light-edge) + var(--ds-traffic-light-gap)
-  );
-}
-
-:root[data-platform="darwin"][data-fullscreen="true"] {
-  --ds-window-lead-inset: 8px;
-}
-
 :root[data-platform="darwin"] .conversation-topbar.ct-collapsed {
-  --ct-lead-inset: var(--ds-window-lead-inset);
+  --ct-lead-inset: 76px;
+}
+
+:root[data-platform="darwin"][data-fullscreen="true"] .conversation-topbar.ct-collapsed {
+  --ct-lead-inset: 8px;
 }
 
 /*
@@ -744,9 +614,9 @@
    * The title's edge is `padding-left`; this button must stay exactly 36px to
    * its left (28px button + .ct-left's 8px gap) at EVERY frame, not just at the
    * two endpoints. Deriving `left` from the same inset keeps both ranges
-   * identical (112px on darwin, 36px elsewhere), so the pair interpolates in
-   * lockstep. Offsetting instead of transitioning 12px->88px matters: that range
-   * is only 76px against padding's 112px, and the icon drifts onto the title
+   * identical (100px on darwin, 36px elsewhere), so the pair interpolates in
+   * lockstep. Offsetting instead of transitioning 12px->76px matters: that range
+   * is only 64px against padding's 100px, and the icon drifts onto the title
    * mid-flight. Expanded it lands off the pane's left edge, where it is
    * invisible anyway, and slides in rather than materialising over the title.
    */
@@ -757,7 +627,7 @@
   align-items: center;
   /*
    * Out of flow, so .ct-left's no-drag box no longer covers it: .ct-left starts
-   * at the padding edge (x=124 collapsed) while this sits at x=88. Without its
+   * at the padding edge (x=112 collapsed) while this sits at x=76. Without its
    * own carve-out the button falls inside the top bar's drag region, which on
    * macOS swallows the click and keeps the arrow cursor instead of the pointer.
    */
@@ -826,11 +696,9 @@
 }
 
 .notification-popover {
-  position: fixed;
-  top: auto;
+  position: absolute;
+  bottom: calc(100% + 8px);
   left: 0;
-  right: auto;
-  bottom: auto;
   z-index: 60;
   display: flex;
   width: min(360px, calc(100vw - 24px));
@@ -845,6 +713,8 @@
 
 /* Portaled to document.body so the main pane cannot paint over the dialog. */
 .notification-popover-portaled {
+  position: fixed;
+  right: auto;
   z-index: 60;
 }
 
@@ -1056,7 +926,6 @@
 @media (max-width: 480px) {
   .notification-popover {
     position: fixed;
-    top: auto;
     bottom: 8px;
     right: 8px;
     left: 8px;
@@ -1072,7 +941,7 @@
   position: fixed;
   top: 0;
   right: 0;
-  z-index: 1000; /* above every renderer surface and draggable titlebar */
+  z-index: 200; /* above titlebar (10) and work panel chrome */
   display: flex;
   align-items: center;
   width: var(--ds-window-controls-width);
@@ -1085,25 +954,10 @@
   /* Continuous with the adjacent titlebar: no side seam (D297). */
 }
 
-/* Electron resolves app-region hit testing across siblings. The controls must
- * be a later compositor layer than Settings, plugin content, or a work-panel
- * drag header. Direct-child overlays (search, toasts, splash) must still win. */
-.app-shell > .window-controls {
-  z-index: 1100;
-}
-
-.app-shell > .search-overlay,
-.app-shell > .toast-viewport {
-  z-index: 1200;
-}
-
-.app-shell > .startup-splash {
-  z-index: 1300;
-}
-
-/* Follow the adjacent titlebar surface when the dock occupies the right edge. */
-.app-shell:has(.work-panel) > .window-controls {
-  background: var(--ds-bg-dock-raised);
+/* The main shell keeps one control band mounted inside MainPane, but its
+ * viewport-fixed position must not follow MainPane while the work panel reflows. */
+.window-controls.window-controls-in-pane {
+  position: fixed;
 }
 
 .window-control-btn {
@@ -1158,11 +1012,15 @@
 }
 
 :root[data-platform="darwin"] .sidebar-header {
-  padding-left: var(--ds-window-lead-inset);
+  padding-left: 76px;
 }
 
 :root[data-platform="darwin"] .sidebar-header > .brand {
   display: none;
+}
+
+:root[data-platform="darwin"][data-fullscreen="true"] .sidebar-header {
+  padding-left: 8px;
 }
 
 .sidebar-header-actions {
@@ -1208,47 +1066,4 @@
   -webkit-user-drag: none;
   -webkit-user-select: none;
   user-select: none;
-}
-
-.app-shell.work-panel-maximized {
-  --preview-chrome-inset: 8px;
-  --preview-chrome-action-lane: calc(var(--ds-control-size) + 8px);
-}
-
-.app-shell.work-panel-maximized.sidebar-collapsed {
-  --preview-chrome-action-lane: var(--ds-preview-action-lane-width);
-}
-
-:root[data-platform="darwin"] .app-shell.work-panel-maximized.sidebar-collapsed {
-  --preview-chrome-inset: var(--ds-window-lead-inset);
-}
-
-/* Match the scenic backdrop's child-layer specificity so preview navigation
- * stays above the work panel while non-control pixels remain pass-through. */
-.app-shell > :where(.app-chat-shell) > .window-chrome-row {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 200;
-  display: flex;
-  height: var(--ds-toolbar-height);
-  align-items: center;
-  padding-left: var(--preview-chrome-inset);
-  pointer-events: none;
-}
-
-.window-chrome-row.sidebar-expanded {
-  left: var(--ds-sidebar-width);
-}
-
-.window-chrome-row button {
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.window-chrome-drag {
-  flex: 1 1 auto;
-  align-self: stretch;
 }

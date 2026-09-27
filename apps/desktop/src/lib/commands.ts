@@ -1,7 +1,6 @@
-import i18n from "i18next";
 import { api } from "./api";
 import { useAppStore } from "../stores/app-store";
-import { trustedExtensionCommandName, type Mode } from "@pi-desktop/shared";
+import type { Mode } from "@pi-desktop/shared";
 
 /**
  * First-party command execution shared by the command palette and the
@@ -44,23 +43,7 @@ export async function runPaletteCommand(commandId: string): Promise<void> {
       }
       break;
     }
-    default: {
-      // Trusted extension commands run inside the active session's sidecar
-      // (spec 16 §8); without a session there is nothing to run them in.
-      const extensionCommand = trustedExtensionCommandName(commandId);
-      if (extensionCommand !== undefined) {
-        await runExtensionCommand(extensionCommand, "");
-        return;
-      }
+    default:
       await api.executeCommand(commandId);
-    }
   }
-}
-
-export async function runExtensionCommand(name: string, args: string): Promise<void> {
-  const store = useAppStore.getState();
-  if (!store.activeSessionId) {
-    throw new Error(i18n.t("plugins.agentExtension.commandNeedsSession"));
-  }
-  await api.runExtensionCommand({ sessionId: store.activeSessionId, name, args });
 }

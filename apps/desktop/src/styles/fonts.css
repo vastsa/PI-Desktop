@@ -1,0 +1,38 @@
+/*
+  Bundled open-licensed UI fonts (SIL OFL 1.1 — commercial use and
+  redistribution are permitted). License texts ship in
+  src/assets/fonts/licenses/. The Settings font picker writes a CSS stack
+  whose first family is one of these; the @font-face rules below stay loaded
+  so a persisted selection renders offline and across restarts.
+*/
+@font-face {
+  font-family: "Geist";
+  src: url("../assets/fonts/geist.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("../assets/fonts/inter.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("../assets/fonts/noto-sans-sc.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LXGW WenKai";
+  src: url("../assets/fonts/lxgw-wenkai.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

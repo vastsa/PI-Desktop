@@ -14,7 +14,6 @@ Main risks:
 4. Hijacking agent tools
 5. Phishing via the UI
 6. Spending the user's model quota, or sending the conversation to another model (`agent.complete` / `session.read`)
-7. Triggering work in another durable session or spoofing its sender/provenance
 
 ## 2. Default-deny principle
 
@@ -36,21 +35,6 @@ Main risks:
 4. The plugin-private data directory is separate from the host core library
 5. Session transcripts from `session.getLlmContext` are a bounded projection of
    the in-flight tool session only (D336 / D019)
-6. Session collaboration is available only through the reviewed
-   `desktop.control` catalog. The broker derives the source plugin, Session ID,
-   turn ID, and invocation ID from the active Agent tool call; plugin payloads
-   cannot provide those identities. Host-core owns the target Session ID,
-   delivery ledger, permission ceiling, turn binding, callback, cancellation,
-   and transcript provenance.
-
-### Host-rendered scenic Settings destinations
-
-`contributes.scenicThemes` is data only. The host validates both grants,
-same-plugin theme ownership, declared preview assets, and the exact bounded
-`--nexus-backdrop-blur` variable before it renders cards in Extensions. A plugin
-cannot supply Settings HTML, CSS, JavaScript, selectors, DOM, arbitrary actions,
-or direct renderer IPC. The host owns the transparent canvas, layout, focus,
-native controls, titlebar, Apply action, and lifecycle fallback to General.
 
 Clipboard history is host-owned and remains in the Electron main process only.
 It is never written to the plugin data directory or the host database. The host
@@ -60,27 +44,6 @@ through `clipboard.read`, which is also the permission used by `readText`;
 every `getHistory` call is audited with its returned entry count. The bounded
 in-memory retention limits the privacy exposure to the current app run and is
 cleared on exit.
-
-### 3.2 Session collaboration boundary
-
-The Session Orchestrator may create bounded worker sessions, address existing
-Agent sessions, inspect bounded status/result projections, and cancel work when
-the user grants `desktop.control`. This capability deliberately does not grant
-the plugin direct `session.create`, `agent.prompt`, host RPC, SQLite, transcript
-file, or MCP-token access. A send or spawn call must run inside the plugin's
-currently executing Agent tool invocation; calls from a service, panel, or
-ordinary plugin code without that context fail closed. A plugin panel may
-request cancellation for that plugin's own deliveries as an explicit user
-control, but cancellation cannot create or retarget a delivery.
-
-Host-core snapshots the source permission ceiling and rejects targets above it,
-rechecks the target mode before beginning the turn, and enforces inbox,
-worker, and autonomous-hop limits. Existing target sessions retain their own
-project/model/context configuration. Completion callbacks are host-authored,
-at-most-once session messages and cannot authorize tools or trigger another
-callback. Restart recovery retains a durable queued delivery but never starts
-an interrupted turn unattended. Session-message provenance is immutable across
-transcript replacement and regeneration.
 
 ### Goals
 1. Plugin main runs in a separate process
@@ -93,29 +56,10 @@ A theme contribution (`ui.theme`) is the one case where plugin-authored content
 runs inside the host renderer, so it crosses a sanitizer in the main process
 before it is ever sent to the UI:
 
-- Only CSS the browser applies is inspected: comment bodies and string literals
-  are blanked first, with one space per masked character so any offset still
-  points at the source, and each `url(...)` argument is kept verbatim and judged
-  by its target. A sheet that merely *mentions* a banned token in a comment or a
-  string is therefore accepted
-- Rejected: `@import`, any `url()` target that is neither a `data:` URI nor a
-  declared theme asset, a `url(` the parser cannot resolve, `javascript:`,
-  `expression(`, and markup sequences (`<style`, `</style`, `<!--`); an empty
-  sheet is refused too
+- Rejected: `@import`, any `url()` target that is not a `data:` URI, a `url(`
+  the parser cannot resolve, `javascript:`, `expression(`, and markup sequences
+  (`<style`, `</style`, `<!--`); an empty sheet is refused too
 - Capped at 256KB per file, 8 themes per plugin
-- A theme may declare `assets` using whitelisted image/font extensions: either
-  package-relative paths (resolved inside the plugin root; traversal and `node_modules`
-  references are rejected) or absolute paths. The total is capped at 4MB.
-  Each matching `url()` is rewritten to `plugin-asset://<pluginId>/<path>`
-  and served read-only through the loaded plugin's registered list with `nosniff`;
-  the registration is revoked when the plugin unloads. `pi.themes.upsert` may
-  register the same kind of path at runtime. An unregistered reference is refused,
-  and the raw path never reaches the renderer
-- `contributes.windowAppearance` (`#rrggbb` / `#rrggbbaa`) requires
-  `ui.window.appearance` and applies only while one of that plugin's themes is
-  the selected one; leaving the theme restores the host background, because the
-  colour is derived from the live catalog rather than remembered. macOS keeps
-  `vibrancy` and is never sent one
 - The CSS is read from disk at load time and delivered whole over IPC; the
   renderer injects it into a single dedicated `<style>` element appended after
   the app's own stylesheets, so it can override tokens but never inject markup
@@ -272,9 +216,7 @@ registered under the same `plugin_*` namespace as hand-written plugin tools and
 therefore inherit the tool timeout, the audit trail, and the per-plugin disable
 switch. They are always registered at `risk: "medium"`: their schema and
 description come from a third-party server, so the host cannot trust a
-self-declared risk level. A server's catalog is registered whole — the count is
-bounded only by the protocol guards in §8.1 — while at most 8 servers per plugin
-are admitted.
+self-declared risk level. At most 64 tools per server and 8 servers per plugin.
 
 Plan is an additional host policy boundary for agent tools:
 
@@ -310,23 +252,12 @@ outbound path the host owns answers to it.
   runs a `webRequest` filter, refuses every device permission, and denies
   `window.open`, which would otherwise mint a window outside the filtered session
 - **`pi.net.fetch`.** Checks the allowlist and follows redirects by hand, because
-  an allowed host that 30x-es to an undeclared one would carry the request out.
-  The runtime's hop loop is the only fetch path: Electron main supplies no
-  alternative `fetch` service, so nothing can follow a redirect without the
-  per-hop re-check
+  an allowed host that 30x-es to an undeclared one would carry the request out
 - **Remote MCP endpoints.** Answer to the same list, not to their permission alone.
   HTTP endpoints may be on a trusted LAN, but plain HTTP is unencrypted and is
   called out during configuration or plugin permission review. The MCP client
   follows redirects manually, allows at most five HTTP(S) hops, and re-checks
   the allowlist before every hop.
-- **`pi.net.websocket`.** A `ws://` or `wss://` target whose host is not in
-  `manifest.net.domains` is refused at the egress chokepoint before the
-  transport is asked to open anything, and the host — which owns the socket,
-  not the plugin — closes every socket the plugin still holds when it unloads,
-  is disabled, or crashes. Sockets are bounded per plugin (4), inbound and
-  outbound frames are capped at 1 MiB, an oversized frame closes the connection
-  instead of being buffered, and a send queue above 4 MiB is refused rather
-  than grown. Frames are addressed to the owning plugin only.
 
 An absent, empty, or malformed list means no egress at all, and a bare `*` is
 refused at install so nobody declares their way out. This is what makes a
@@ -335,11 +266,7 @@ generous `fs.read` scope affordable (§6).
 Still open, tracked separately: `agent.prompt.inject` (skill text can ask a
 shell-capable agent to do the carrying), `shell.openExternal`, a `bus.publish`
 relayed to a net-capable plugin, and raw `fetch` inside the plugin process — the
-last one needs the sandboxed plugin runtime from ADR 0008 D009. `pi.net.fetch`
-narrows none of that: the host applies the allowlist, follows redirects by hand,
-and audits the call, but it never retries, throttles, or re-issues a request. An
-upstream `429` reaches the plugin as `429` plus whatever `Retry-After` the server
-sent, and what the plugin does about it is the plugin's own policy.
+last one needs the sandboxed plugin runtime from ADR 0008 D009.
 
 ## 8.1 MCP server egress and credentials
 
@@ -349,13 +276,8 @@ manifest did not name:
 
 - `transport: "stdio"` spawns a local executable (`mcp.server.local`). The
   `command` must be a bare PATH name or a plugin-relative path; absolute paths
-  are refused at validation time. The child gets a minimal environment — the
-  declared `env` entries plus the shared allowlist (`child-process-env.ts`)
-  and the extra profile/toolchain keys `npx`/`uvx` need (`PATHEXT`, `ComSpec`,
-  `FNM_DIR`, …). Unix PATH is the login-shell PATH (D600). Bare `npx`/`uvx`
-  resolve to real binaries; official Windows Node uses `node.exe` +
-  `npx-cli.js`, and remaining `.cmd` shims start through `cmd.exe` with quoted
-  literal args (D624). Provider keys and other host state still never cross.
+  are refused at validation time. The child gets a minimal environment — only
+  the declared `env` entries plus what the host needs to run a process.
 - `transport: "http"` reaches a remote endpoint (`mcp.server.remote`). The `url`
   may use `http` or `https`; non-loopback HTTP is unencrypted and should only be
   used on a trusted network. Plugin endpoints must also be covered by
@@ -365,76 +287,9 @@ manifest did not name:
   `{ "setting": "<key>" }`. The host environment is never passed through, and a
   literal secret in the manifest is a review smell, not a supported pattern
   (D018).
-- Connection budget: 10s to complete `initialize`, 100s per `tools/call`, 4MB
-  per stdio line. Remote HTTP requests use the budget of the operation they
-  carry, so a successful handshake does not impose its 10s limit on a later
-  tool call. `tools/list` is followed to its last page under the per-server
-  guards of §8.1 — 2048 tools, 100 pages, a cursor that repeats or is malformed,
-  and 30s for the whole traversal — and a server that breaks one is refused
-  rather than contributing a prefix of its catalog, because MCP tools reach the
-  deferred on-demand entries behind `ToolSearch`, not as an always-present list.
-  Servers are connected lazily and torn down when the plugin unloads or is
-  disabled.
-  Stopping the calling session cancels that session's in-flight MCP request and
-  sends `notifications/cancelled` to the server. A shared server connection and
-  calls owned by other sessions remain active.
-
-## 8.2 Desktop control and device access
-
-`desktop.control` hands a plugin the reviewed operation catalog the local MCP
-control plane exposes (ADR 0203 / D370): project, session, Agent, and
-workspace operations, each tagged `read`, `write`, or `dangerous`. The
-plugin-only exception covers the six `session/collaboration/*` operations: they
-are callable through the plugin gateway but deliberately absent from the
-MCP-visible catalog, because they need an authenticated plugin invocation
-context and no renderer mutation channel exists for them. The plugin sees ids,
-descriptions, and risk, never Electron channel names or the MCP bearer token,
-and every invocation crosses the same IPC validation, lifecycle checks,
-completion event, and audit entry as an MCP call.
-
-A `dangerous` operation is decided by the user, not by the caller. The
-controller's `confirm: true` is only the plugin's acknowledgement (MCP treats
-it the same way, D372). After it, the host shows a native dialog that names
-the catalog operation id, the catalog description, and a bounded argument
-preview, and it deliberately shows no text the plugin or a model behind it
-authored, so a prompt-injected transcript cannot relabel `session/delete` as
-something benign. Escape and dismissal are refusals. A headless host with no
-dialog service refuses every dangerous operation outright.
-
-`ui.microphone` allows only the `media` permission, for audio, inside the
-plugin's isolated panel session. Camera and every other device permission stay
-denied, and the plugin receives no native handle: capture stays page-owned.
-
-`audio.capture.background` and `audio.playback.background` gate a callable
-surface: the ten `pi.audio.*` methods exist in the plugin host process and keep
-their permission requirement, but this branch has no device backend, so an
-authorized call is refused with a coded `UNSUPPORTED` refusal that is audited
-under `audio.<method>` with `ok: false`, and no device is opened (the two
-synchronous registration helpers `onInputFrame` / `offInputFrame` throw the
-same code instead of registering a handler that could never fire). When the
-host service lands, the host owns the device: a plugin exchanges PCM16 frames
-and never receives a `MediaStream`, a device handle, an OS device path, or a
-Node stream, one input stream per plugin is allowed, and disable, unload,
-crash, or permission revocation stops capture and drops queued playback
-instead of leaving an orphaned device or timer.
-
-`keyboard.globalShortcut` is implemented and stays inside the host's
-registration model. The host owns Electron's `globalShortcut`; a plugin never
-receives a keyboard hook, `before-input-event`, raw input device, or key event
-stream, so there is no keylogger-shaped surface and no way to see the keys the
-user types. A plugin may only map an accelerator to one of its own registered
-commands, and an accelerator the OS reserves, that PI-Desktop itself currently
-spends (the plugin-launcher and window-toggle bindings, `Alt+Space` and
-`Alt+Shift+W` by default; a user rebinding one frees it for plugins), or that
-another plugin holds is refused with
-`LIMIT_EXCEEDED` (at most 8 per plugin) instead of being taken over. A trigger
-runs exactly that one command. Register, unregister, and trigger are audited
-with the plugin id and the result — a registration and a trigger also name the
-accelerator and command — and typed input is never recorded. Every entry is
-released on disable, unload, and crash.
-
-Across all four capabilities, an undeclared or ungranted permission denies the
-call and is audited before any device, accelerator, or socket is reached.
+- Connection budget: 10s to complete `initialize`, 100s per `tools/call`, 8
+  `tools/list` pages, 4MB per stdio line. Servers are connected lazily and torn
+  down when the plugin unloads or is disabled.
 
 ## 9. Auditing and emergency response
 
@@ -485,10 +340,8 @@ Current enforcement:
 5. Marketplace/package install requires explicit permission acceptance in UI
 6. Auto-update refuses silent permission expansion
 7. Plugin main runs in a dedicated `utilityProcess` per plugin (ADR 0008) with a
-   minimal environment from the shared `child-process-env.ts` allowlist (PATH,
-   toolchain dirs, `HOME` / `USER` / `USERPROFILE`; no provider keys); all
-   `pi.*` calls cross an allowlist + permission gateway in the host, and a
-   plugin crash only tears down that plugin
+   minimal environment; all `pi.*` calls cross an allowlist + permission gateway
+   in the host, and a plugin crash only tears down that plugin
 8. Contributed theme CSS is sanitized in the main process before it reaches the
    renderer (§3.1)
 9. Bus routing is host-owned with declared topics and hard caps (§5.1)
@@ -498,25 +351,6 @@ Current enforcement:
     owns (§8.0)
 12. Plugin deletions go to the OS trash, are non-recursive, and are rate-braked
     (§6.1)
-13. `manifest.main` and `ui.panel` are validated as relative paths at install
-    and resolved with the same inside-the-plugin containment as skills and
-    theme CSS before the host loads them
-14. A `dangerous` desktop operation from a plugin needs the user's answer to a
-    host-owned native dialog after the plugin's own `confirm: true`; the
-    dialog shows only catalog text (§8.2)
-15. `ui.microphone` grants audio capture only, inside the isolated panel
-    session (§8.2)
-16. `keyboard.globalShortcut` is host-owned: the registry refuses an
-    OS-reserved, host-owned, or other-plugin accelerator, a shortcut can only
-    run the owning plugin's own command, and every entry dies on the same
-    teardown path as the plugin's commands and tools (§8.2)
-
-`audio.capture.background` and `audio.playback.background` are declared and
-present in the plugin API: the methods are gated by those permissions and an
-authorized call is refused with a coded `UNSUPPORTED` refusal that is audited,
-because this host has no device backend yet, so nothing reaches a device.
-`net.websocket` is implemented: connections are host-owned, allowlist-checked,
-bounded, and released with the plugin (§8.1).
 
 Not enforced yet:
 

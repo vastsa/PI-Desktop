@@ -1,11 +1,5 @@
 import { readFile } from "node:fs/promises";
-import {
-  MODEL_VENDOR_PREFIXES,
-  NAMED_ENDPOINT_PRESETS,
-  catalogModelIdsMatch,
-  stripReleaseSuffix,
-  stripVariantSuffix,
-} from "@pi-desktop/shared";
+import { modelIdsMatch } from "@pi-desktop/shared";
 import type {
   ModelCost,
   ModelCostTier,
@@ -18,13 +12,11 @@ import type {
   ModelProviderMetadata,
   ModelReasoningOption,
   ThinkingLevel,
-  ThinkingProtocol,
 } from "@pi-desktop/shared";
-import { genericModelConfig, type ModelConfig } from "@pi-desktop/agent-runtime";
+import type { ModelConfig } from "@pi-desktop/agent-runtime";
 
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";
 export const MODELS_DEV_TIMEOUT_MS = 10_000;
-const LOOKUP_MEMO_LIMIT = 1_024;
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 8_192;
 const DEFAULT_THINKING_LEVELS: ThinkingLevel[] = ["low", "medium", "high"];
@@ -77,7 +69,6 @@ export type ModelsDevModel = {
   reasoning: boolean;
   reasoningPublished: boolean;
   reasoningOptions?: ModelReasoningOption[];
-  thinkingProtocol?: ThinkingProtocol;
   thinkingLevels: ThinkingLevel[];
   modalities: ModelModalities;
   modalitiesPublished: boolean;
@@ -274,16 +265,6 @@ function thinkingLevelMapFromModelsDev(
       if (level && typeof value === "string") map[level] = value;
     }
   }
-  // models.dev effort ladders often omit an off/none value (e.g. grok-4.6).
-  // Pin off=null so adapters omit reasoning when thinking is turned off,
-  // instead of synthesizing effort: "none" which upstream rejects (#603).
-  if (
-    Object.keys(map).length > 0 &&
-    map.off === undefined &&
-    !levels.includes("off")
-  ) {
-    map.off = null;
-  }
   return Object.keys(map).length > 0 ? map : undefined;
 }
 
@@ -418,12 +399,6 @@ function modelFromRaw(
   const reasoningPublished = typeof raw.reasoning === "boolean";
   const reasoning = raw.reasoning === true;
   const reasoningOptions = parseReasoningOptions(raw.reasoning_options);
-  const thinkingProtocol: ThinkingProtocol | undefined =
-    providerKey === "anthropic" && reasoning &&
-    reasoningOptions?.some((option) => option.type === "effort") &&
-    !reasoningOptions.some((option) => option.type === "budget_tokens")
-      ? "adaptive"
-      : undefined;
   const limit = parseLimit(raw.limit);
   const experimental = publishedExperimental(raw.experimental);
   const providerMetadata = publishedMetadata(raw.provider);
@@ -450,7 +425,6 @@ function modelFromRaw(
     reasoning,
     reasoningPublished,
     ...(reasoningOptions ? { reasoningOptions } : {}),
-    ...(thinkingProtocol ? { thinkingProtocol } : {}),
     thinkingLevels: thinkingLevelsFromModelsDev(reasoning, raw.reasoning_options),
     modalities: modalityResult.modalities,
     modalitiesPublished: modalityResult.published,
@@ -516,6 +490,28 @@ function normalizedModelId(value: string): string {
   return value.trim().toLowerCase();
 }
 
+const MODEL_VENDOR_PREFIXES = new Set([
+  "anthropic",
+  "amazon",
+  "aws",
+  "cohere",
+  "deepseek",
+  "deepseek-ai",
+  "gemini",
+  "google",
+  "meta",
+  "minimax",
+  "mistral",
+  "moonshot",
+  "moonshotai",
+  "openai",
+  "qwen",
+  "z-ai",
+  "zai",
+  "zhipuai",
+  "x-ai",
+  "xai",
+]);
 
 function modelVendorPrefixes(model: ModelsDevModel): string[] {
   const prefixes = new Set<string>();
@@ -614,26 +610,6 @@ function providerKeyCandidates(value: string | undefined): string[] {
 }
 
 /**
- * Publishers this app ships a provider for: the models.dev keys behind the
- * first-class presets and the known endpoints, which mirror the providers pi-ai
- * supports.
- *
- * They are the publishers read first when nothing identifies the row's own
- * publisher. A relay's list can name an id a hundred arbitrary resellers also
- * carry, and a reseller's own flags describe *its* deployment, not the one this
- * row talks to; the vendors and gateways the app actually ships describe the
- * model. Resellers outside this set are still read when none of these states the
- * id, because the alternative is dropping a published model to the generic
- * 128k text-only shape.
- */
-const SUPPORTED_PUBLISHER_KEYS: ReadonlySet<string> = new Set(
-  [
-    ...NAMED_ENDPOINT_PRESETS.map((preset) => preset.vendorKey),
-    ...Object.keys(KNOWN_PROVIDER_BASE_URLS),
-  ].flatMap((key) => providerKeyCandidates(key)),
-);
-
-/**
  * Canonical form of a provider base URL: lowercase origin without a trailing
  * slash and without the trailing API version segment, so a row configured with
  * `.../v1` still matches the documented models.dev endpoint.
@@ -659,22 +635,6 @@ export function apiMatches(left: string | undefined, right: string | undefined):
   return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
 }
 
-
-/**
- * Hostname of a base URL, lowercased, or undefined when it has none.
- *
- * Only the host is read: two paths on one host can be the same publisher's
- * different API surfaces, which is exactly what `apiMatches` cannot see.
- */
-function hostOfUrl(value: string | undefined): string | undefined {
-  const raw = nonEmptyString(value);
-  if (!raw) return undefined;
-  try {
-    return new URL(raw).host.toLowerCase() || undefined;
-  } catch {
-    return undefined;
-  }
-}
 function isTextAgentModel(model: ModelsDevModel): boolean {
   return model.modalities.input.includes("text") && model.modalities.output.includes("text");
 }
@@ -726,7 +686,6 @@ export function modelInfoFromModelsDev(
     ...(model.attachment !== undefined ? { attachment: model.attachment } : {}),
     reasoning: model.reasoning,
     ...(model.reasoningOptions !== undefined ? { reasoningOptions: model.reasoningOptions } : {}),
-    ...(model.thinkingProtocol !== undefined ? { thinkingProtocol: model.thinkingProtocol } : {}),
     ...(thinkingLevelMap !== undefined ? { thinkingLevelMap } : {}),
     ...(model.toolCall !== undefined ? { toolCall: model.toolCall } : {}),
     ...(model.structuredOutput !== undefined ? { structuredOutput: model.structuredOutput } : {}),
@@ -793,7 +752,6 @@ export function modelConfigFromModelsDev(
   if (model.family !== undefined) config.family = model.family;
   if (model.attachment !== undefined) config.attachment = model.attachment;
   if (model.reasoningOptions !== undefined) config.reasoningOptions = model.reasoningOptions;
-  if (model.thinkingProtocol !== undefined) config.thinkingProtocol = model.thinkingProtocol;
   const thinkingLevelMap = thinkingLevelMapFromModelsDev(model.reasoningOptions, thinkingLevels);
   if (thinkingLevelMap) config.thinkingLevelMap = thinkingLevelMap;
   if (model.toolCall !== undefined) config.toolCall = model.toolCall;
@@ -814,435 +772,8 @@ export function modelConfigFromModelsDev(
   return config;
 }
 
-/**
- * Sidecar model config for one provider row: the catalog record when the
- * lookup resolves one, otherwise the generic shape.
- *
- * An Anthropic Messages row the catalog cannot identify (a custom gateway URL
- * serving an id several publishers list) still needs the right thinking wire
- * shape: Opus 4.7+ and the Claude 5 family reject budget thinking with a 400.
- * Whether a Claude id takes adaptive or budget thinking is a property of the
- * model, which Anthropic's own record states, not of the deployment. So only
- * the exact Anthropic id's reasoning options transfer; limits and modalities
- * stay generic because they describe the deployment (#990).
- */
-export function catalogModelConfigFor(
-  catalog: Pick<ModelsDevCatalog, "findModel" | "anthropicThinkingFor">,
-  input: { vendorKey?: string; baseUrl?: string; apiStyle?: string; modelId: string },
-): ModelConfig {
-  const model = catalog.findModel(input);
-  if (!model) {
-    const generic = genericModelConfig(input.modelId, input.baseUrl ?? "");
-    const thinking = input.apiStyle === "anthropic_messages"
-      ? catalog.anthropicThinkingFor(input.modelId)
-      : undefined;
-    return thinking ? { ...generic, ...thinking } : generic;
-  }
-  const config = modelConfigFromModelsDev(model, input.baseUrl);
-  /*
-    A record that states no reasoning shape cannot speak for an Anthropic
-    Messages row: a record borrowed from another publisher has its own options
-    dropped, and a reseller's record describes the reseller's API. Anthropic's
-    own record is what says whether this id takes adaptive or budget thinking,
-    and losing that would put a rejected shape on the wire (#990).
-  */
-  const thinking = input.apiStyle === "anthropic_messages" && !config.reasoningOptions?.length
-    ? catalog.anthropicThinkingFor(input.modelId)
-    : undefined;
-  return thinking ? { ...config, ...thinking } : config;
-}
-
-type IndexedModel = { model: ModelsDevModel; provider: ModelsDevProvider };
-
-/**
- * Per-generation candidate index built from a loaded catalog. Bounding the
- * lookup by the number of distinct model ids in the catalog (not by the number
- * of distinct queries) keeps the work of a single session-list read constant
- * regardless of how many distinct bindings it contains: no per-query eviction
- * can force an earlier key to be rescanned. It is rebuilt only when the
- * provider map is replaced and is cleared on a failed or fresh load.
- */
-class ModelsDevLookupIndex {
-  private readonly byModelId = new Map<string, IndexedModel[]>();
-
-  constructor(providers: ReadonlyMap<string, ModelsDevProvider>) {
-    for (const provider of providers.values()) {
-      for (const model of provider.models) {
-        /*
-          Every published model is indexed, including the audio-only ones the
-          listing drops: `modelsForProvider` decides which models a row
-          *offers*, while this index answers for an ID a row already lists, and
-          an endpoint that serves a TTS or ASR id has a published record for
-          it. Filtering here is what left such a row on the generic seed.
-        */
-        const entry: IndexedModel = { model, provider };
-        for (const key of registrationKeys(model.modelId)) {
-          let bucket = this.byModelId.get(key);
-          if (!bucket) {
-            bucket = [];
-            this.byModelId.set(key, bucket);
-          }
-          if (!bucket.includes(entry)) bucket.push(entry);
-        }
-      }
-    }
-  }
-
-  candidates(requested: string): readonly IndexedModel[] {
-    const keys = lookupCandidateKeys(requested);
-    if (keys.length === 0) return EMPTY_CANDIDATES;
-    if (keys.length === 1) {
-      return this.byModelId.get(keys[0]) ?? EMPTY_CANDIDATES;
-    }
-    const result: IndexedModel[] = [];
-    const seen = new Set<IndexedModel>();
-    for (const key of keys) {
-      const bucket = this.byModelId.get(key);
-      if (!bucket) continue;
-      for (const entry of bucket) {
-        if (!seen.has(entry)) {
-          seen.add(entry);
-          result.push(entry);
-        }
-      }
-    }
-    return result;
-  }
-}
-
-/** Generate the exact lowercase last `/`-segment used by the catalog matcher. */
-function candidateKeys(modelId: string): string[] {
-  const normalized = normalizedModelId(modelId);
-  if (!normalized) return [];
-  const slash = normalized.lastIndexOf("/");
-  const leaf = slash >= 0 ? normalized.slice(slash + 1) : normalized;
-  return leaf ? [leaf] : [];
-}
-
-function registrationKeys(modelId: string): string[] {
-  return candidateKeys(modelId);
-}
-
-function lookupCandidateKeys(requested: string): string[] {
-  return candidateKeys(requested);
-}
-
-const EMPTY_CANDIDATES: readonly IndexedModel[] = [];
-
-type OfficialProviderFamily = "anthropic" | "openai" | "google" | "xai";
-
-const OFFICIAL_PROVIDER_FAMILIES: Readonly<Record<string, OfficialProviderFamily>> = {
-  anthropic: "anthropic",
-  openai: "openai",
-  google: "google",
-  "google-ai-studio": "google",
-  "google-vertex": "google",
-  xai: "xai",
-  "x-ai": "xai",
-};
-
-function explicitModelSourceFamily(modelId: string): OfficialProviderFamily | undefined {
-  const firstSegment = normalizedModelId(modelId).split("/", 1)[0];
-  return OFFICIAL_PROVIDER_FAMILIES[firstSegment];
-}
-
-function isOfficialSourceProvider(entry: IndexedModel): boolean {
-  const providerFamily = OFFICIAL_PROVIDER_FAMILIES[normalizedProviderKey(entry.provider.providerKey)];
-  if (!providerFamily) return false;
-  const explicitSource = explicitModelSourceFamily(entry.model.modelId);
-  return !explicitSource || explicitSource === providerFamily;
-}
-
-function capabilitySignature(model: ModelsDevModel): string {
-  return JSON.stringify({
-    attachment: model.attachment ?? null,
-    temperature: model.temperature ?? null,
-    toolCall: model.toolCall ?? null,
-    structuredOutput: model.structuredOutput ?? null,
-    modalities: {
-      input: [...model.modalities.input].sort(),
-      output: [...model.modalities.output].sort(),
-    },
-    reasoning: model.reasoning,
-    reasoningOptions: model.reasoningOptions ?? null,
-    thinkingLevels: model.thinkingLevels,
-  });
-}
-
-function modelWithSharedCapabilities(
-  entries: readonly ModelsDevModel[],
-): ModelsDevModel | undefined {
-  if (entries.length === 0) return undefined;
-  const signature = capabilitySignature(entries[0]);
-  if (entries.some((model) => capabilitySignature(model) !== signature)) return undefined;
-  return borrowedModel(entries);
-}
-
-/**
- * Middle value of the numbers the publishers state. Even counts take the lower
- * of the two middles, so a borrow never rounds a window up on its own.
- */
-function medianOf(values: readonly (number | undefined)[]): number | undefined {
-  const present = values.filter((value): value is number => value !== undefined);
-  if (present.length === 0) return undefined;
-  const sorted = [...present].sort((left, right) => left - right);
-  const middle = sorted.length >> 1;
-  return sorted.length % 2 === 1
-    ? sorted[middle]
-    : sorted[middle - 1];
-}
-
-/**
- * Record to borrow for an id the row's own catalog provider does not publish.
- *
- * models.dev indexes a gateway's copy of a model under the vendor that owns
- * the weights, so an endpoint serving `Vendor/Model` ids can have no record of
- * its own while several other publishers state the identical id. Borrowing
- * that record is what keeps such a model's context window, tool support and
- * vision visible instead of dropping the row to the generic 128k text-only
- * shape.
- *
- * Two rules keep the result honest about what the endpoint will accept:
- *
- * - Tool support follows the majority of the publishers that state it. One
- *   dissenting reseller must not decide the claim for a deployment it does not
- *   describe, and neither may one agreeing reseller: an id a relay lists can be
- *   stated by a hundred publishers, which is what left whole model lists on the
- *   generic seed before. An even split states no majority and claims nothing.
- * - Every other capability is the *intersection*, so the borrow may only
- *   under-claim. Reasoning, image input and image/PDF attachment are reported
- *   only when every publisher states them, and a user who knows the endpoint
- *   does more can still turn them on in Advanced. Limits are the medians the
- *   publishers state, so neither one host's cap nor one host's round-up
- *   decides them.
- */
-/**
- * Whether two ids name one model under different spellings.
- *
- * A publisher-prefixed copy (`anthropic/claude-sonnet-4-5` for
- * `claude-sonnet-4-5`, `mify/mimo-v2.5-pro-0731` for `mimo-v2.5-pro`) and a
- * dated or variant spelling of one id are the same model, so their records may
- * be compared with each other. Two unrelated routes that happen to share a leaf
- * (`provider-a/foo` vs `gateway/foo`) are not: that relation is a coincidence of
- * naming, and nothing may treat it as identity.
- *
- * `catalogModelIdsMatch` stays the matcher of record; this only decides which of
- * its matches a borrow without a provider identity may average.
- */
-function sameModelSpelling(catalogId: string, requested: string): boolean {
-  const left = catalogId.trim().toLowerCase();
-  const right = requested.trim().toLowerCase();
-  if (!left || !right) return false;
-  if (left === right) return true;
-  /*
-    Either side may carry a route prefix the other does not: a relay lists
-    `test/mimo-v2.5` where the catalog publishes `mimo-v2.5`, and a catalog that
-    publishes a routed copy answers for the bare id. Two *different* route paths
-    that merely share a leaf still never match.
-  */
-  if (left.endsWith(`/${right}`) || right.endsWith(`/${left}`)) return true;
-  const plain = (id: string) => stripReleaseSuffix(stripVariantSuffix(id));
-  const plainLeft = plain(left);
-  const plainRight = plain(right);
-  if (!plainLeft || !plainRight) return false;
-  return (
-    plainLeft === plainRight ||
-    plainLeft.endsWith(`/${plainRight}`) ||
-    plainRight.endsWith(`/${plainLeft}`)
-  );
-}
-
-/**
- * Record to use when nothing identifies the row's provider.
- *
- * A relay or a gateway the catalog cannot place still serves models the catalog
- * knows, and asking for one of them by id used to answer nothing at all. What
- * every publisher of that model agrees on can be claimed instead: the same
- * intersection and median `borrowedModel` computes for an anchored row.
- *
- * One thing is deliberately not claimed. Which *wire shape* a deployment accepts
- * for reasoning is a property of that deployment — the same model behind an
- * OpenAI-compatible gateway and behind Anthropic's own API takes different
- * reasoning fields — so a record borrowed this way drops its `reasoningOptions`
- * rather than speaking for an endpoint no publisher describes. `catalogModelConfigFor`
- * still applies Anthropic's own shape to an Anthropic Messages row that is left
- * without one.
- */
-function unanchoredConsensus(entries: readonly ModelsDevModel[]): ModelsDevModel | undefined {
-  const consensus = borrowedModel(entries);
-  return consensus ? { ...consensus, reasoningOptions: undefined } : undefined;
-}
-
-/**
- * Which publisher's records answer for an id the row's own publisher lacks.
- *
- * Two preferences, in order. The app's supported publishers are read first:
- * they are the vendors and gateways this app ships a provider for, so their
- * records describe the model behind an id a relay lists, while a reseller's own
- * flags describe its own deployment. Within that tier a record published under
- * exactly this id outranks one reached through another spelling of it:
- * `XiaomiMiMo/MiMo-V2.5` is the same model as `mimo-v2.5`, but a publisher that
- * lists only its text half must not narrow what the model's own record states
- * about vision. Only when none of them states the model does the pool widen to
- * every publisher that does — siblings included, as this borrow has always read
- * them — because a relay-only id would otherwise be shown as a generic 128k
- * text-only row although the catalog publishes it.
- */
-function borrowPool(
-  entries: readonly IndexedModel[],
-  requested: string,
-): readonly ModelsDevModel[] {
-  /*
-    A record under this id, or under the same id with a variant or release stamp
-    stripped: `mimo-v2.5` answers for `mimo-v2.5-thinking`.
-  */
-  const closestId = (value: string) =>
-    normalizedModelId(stripReleaseSuffix(stripVariantSuffix(value)));
-  const requestedClosest = closestId(requested);
-  const exact = (entry: IndexedModel) => {
-    const id = normalizedModelId(entry.model.modelId);
-    return id === requested || closestId(id) === requestedClosest;
-  };
-  const supported = (entry: IndexedModel) =>
-    SUPPORTED_PUBLISHER_KEYS.has(normalizedProviderKey(entry.provider.providerKey));
-  const tiers = [
-    entries.filter((entry) => supported(entry) && exact(entry)),
-    entries.filter(supported),
-    entries,
-  ];
-  const pool = tiers.find((tier) => tier.length > 0) ?? [];
-  return pool.map((entry) => entry.model);
-}
-
-/**
- * Markers a deployment appends to a published id to name its own variant of it:
- * a canary label, a context size, a preview channel. `test/mimo-v2.5-pro-test`
- * and `gemini-2.5-pro-1m` are the published models with such a marker appended.
- *
- * Only a marker on this list is read that way. `-asr`, `-pro` or `-mini` name
- * models of their own, so an unpublished id that carries one of those stays
- * unknown instead of borrowing a sibling model's limits.
- */
-const DEPLOYMENT_MARKER_SUFFIXES: ReadonlySet<string> = new Set([
-  "test",
-  "staging",
-  "canary",
-  "dev",
-  "alpha",
-  "beta",
-  "rc",
-  "exp",
-  "experimental",
-  "preview",
-  "free",
-  "trial",
-  "thinking",
-  "think",
-  "agent",
-  "latest",
-  "1k",
-  "2k",
-  "4k",
-  "32k",
-  "64k",
-  "128k",
-  "200k",
-  "256k",
-  "512k",
-  "1m",
-  "2m",
-  "4m",
-]);
-
-/** The id without one trailing deployment marker, or the id unchanged. */
-function dropDeploymentMarker(value: string): string {
-  const match = /^(.*)[-_:]([a-z0-9]+)$/i.exec(value);
-  if (!match) return value;
-  return DEPLOYMENT_MARKER_SUFFIXES.has(match[2].toLowerCase()) ? match[1] : value;
-}
-
-/**
- * Published ids to read when nothing the catalog publishes matches the id the
- * service serves: the id behind a route prefix, and that id without one
- * deployment marker. Each is looked up as a whole published id, so nothing here
- * follows a chain of aliases.
- */
-function fallbackLookupIds(requested: string): string[] {
-  const ids: string[] = [];
-  const push = (value: string) => {
-    if (value && value !== requested && !ids.includes(value)) ids.push(value);
-  };
-  const leaf = requested.slice(requested.lastIndexOf("/") + 1);
-  push(leaf);
-  push(dropDeploymentMarker(leaf));
-  push(dropDeploymentMarker(requested));
-  return ids;
-}
-
-/**
- * The value most entries that state one agree on, or undefined when they split.
- *
- * A single dissenting publisher must not decide a claim, and a single agreeing
- * one must not either: an id in a relay's list can be stated by a hundred
- * resellers, and one reseller's flag is not evidence about the deployment this
- * row talks to. An even split states no majority, so nothing is claimed.
- */
-function majorityOf(values: readonly (boolean | undefined)[]): boolean | undefined {
-  const stated = values.filter((value): value is boolean => value !== undefined);
-  if (stated.length === 0) return undefined;
-  const yes = stated.filter(Boolean).length;
-  if (yes * 2 > stated.length) return true;
-  if (yes * 2 < stated.length) return false;
-  return undefined;
-}
-
-function borrowedModel(entries: readonly ModelsDevModel[]): ModelsDevModel | undefined {
-  if (entries.length === 0) return undefined;
-  const toolCall = majorityOf(entries.map((model) => model.toolCall));
-  const every = (pick: (model: ModelsDevModel) => boolean | undefined): boolean | undefined =>
-    entries.every((model) => pick(model) === true) ? true
-      : entries.every((model) => pick(model) === false) ? false
-      : undefined;
-  const base = entries[0];
-  const keptModality = (modality: ModelModality): boolean =>
-    entries.every((model) => model.modalities.input.includes(modality));
-  const inputModalities = base.modalities.input.filter(keptModality);
-  const outputModalities = base.modalities.output.filter((modality) =>
-    entries.every((model) => model.modalities.output.includes(modality)),
-  );
-  const context = medianOf(entries.map((model) => model.limit.context));
-  const output = medianOf(entries.map((model) => model.limit.output));
-  const source = entries.find(
-    (model) =>
-      (context === undefined || model.limit.context === context) &&
-      (output === undefined || model.limit.output === output),
-  ) ?? base;
-  const reasoning = every((model) => model.reasoning) === true;
-  return {
-    ...source,
-    // Capabilities that must never be asserted on one publisher's word alone.
-    toolCall,
-    reasoning,
-    thinkingLevels: reasoning ? source.thinkingLevels : [],
-    structuredOutput: every((model) => model.structuredOutput),
-    attachment: every((model) => model.attachment),
-    modalities: {
-      input: inputModalities.length > 0 ? inputModalities : ["text"],
-      output: outputModalities.length > 0 ? outputModalities : ["text"],
-    },
-    limit: {
-      ...(context !== undefined ? { context } : {}),
-      ...(output !== undefined ? { output } : {}),
-    },
-  };
-}
-
 export class ModelsDevCatalog {
   private providers = new Map<string, ModelsDevProvider>();
-  private lookupIndex: ModelsDevLookupIndex | undefined;
-  /** Host → publishers, derived from the current provider map. */
-  private hostIndex: Map<string, ModelsDevProvider[]> | undefined;
-  private readonly lookupMemo = new Map<string, ModelsDevModel | undefined>();
   private loadPromise: Promise<boolean> | undefined;
   private loaded = false;
   private source: ModelsDevCatalogStatus["source"] = "empty";
@@ -1273,10 +804,6 @@ export class ModelsDevCatalog {
         const parsed = parseModelsDevCatalog(raw);
         if (parsed.length === 0) throw new Error("models.dev snapshot contained no providers");
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
-        // Replacing the provider map invalidates the derived lookup index.
-        this.lookupIndex = undefined;
-        this.hostIndex = undefined;
-        this.lookupMemo.clear();
         this.loaded = true;
         this.source = "bundled";
         this.lastError = undefined;
@@ -1315,10 +842,6 @@ export class ModelsDevCatalog {
         const parsed = parseModelsDevCatalog(await response.json());
         if (parsed.length === 0) throw new Error("models.dev catalog contained no usable providers");
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
-        // Replacing the provider map invalidates the derived lookup index.
-        this.lookupIndex = undefined;
-        this.hostIndex = undefined;
-        this.lookupMemo.clear();
         this.loaded = true;
         this.source = "remote";
         this.fetchedAt = new Date(this.now()).toISOString();
@@ -1351,213 +874,49 @@ export class ModelsDevCatalog {
   }
 
   private providerFor(input: { vendorKey?: string; baseUrl?: string }): ModelsDevProvider | undefined {
-    const candidates = new Set(providerKeyCandidates(input.vendorKey));
-    const apiProviders = [...this.providers.values()].filter((provider) =>
+    const byApi = [...this.providers.values()].find((provider) =>
       apiMatches(input.baseUrl, provider.api),
     );
-    if (apiProviders.length > 0) {
-      // A shared API endpoint does not identify which publisher owns a custom
-      // model. Never pick the first provider simply because it was indexed first.
-      return apiProviders.find((provider) =>
-        candidates.has(normalizedProviderKey(provider.providerKey)),
-      ) ?? (apiProviders.length === 1 ? apiProviders[0] : undefined);
+    if (byApi) return byApi;
+    const candidates = new Set(providerKeyCandidates(input.vendorKey));
+    for (const provider of this.providers.values()) {
+      if (candidates.has(normalizedProviderKey(provider.providerKey))) return provider;
     }
     const knownKey = Object.entries(KNOWN_PROVIDER_BASE_URLS).find(([, urls]) =>
       urls.some((url) => apiMatches(input.baseUrl, url)),
     )?.[0];
-    if (knownKey) {
-      const knownCandidates = new Set(providerKeyCandidates(knownKey));
-      const knownProvider = [...this.providers.values()].find((provider) =>
-        knownCandidates.has(normalizedProviderKey(provider.providerKey)),
-      );
-      if (knownProvider) return knownProvider;
-    }
-    const byKey = [...this.providers.values()].find((provider) =>
-      candidates.has(normalizedProviderKey(provider.providerKey)),
+    if (!knownKey) return undefined;
+    const knownCandidates = new Set(providerKeyCandidates(knownKey));
+    return [...this.providers.values()].find((provider) =>
+      knownCandidates.has(normalizedProviderKey(provider.providerKey)),
     );
-    return byKey ?? this.providerForUniqueHost(input.baseUrl);
-  }
-
-  /**
-   * Publisher that uniquely owns this host, when nothing else identified the row.
-   *
-   * A custom endpoint on a published host is still that publisher's deployment:
-   * a user who types `https://open.bigmodel.cn/api/v1` for the Responses API is
-   * on Zhipu, not on an anonymous gateway. The catalog's own `api` host is the
-   * evidence, and it is only used when exactly one provider publishes from it,
-   * so a shared or unknown host still resolves to nothing — missing metadata
-   * stays ahead of wrong metadata.
-   *
-   * Built lazily from the current provider map and cleared with the lookup
-   * index, so it can never describe a previous catalog generation.
-   */
-  private providerForUniqueHost(baseUrl: string | undefined): ModelsDevProvider | undefined {
-    const host = hostOfUrl(baseUrl);
-    if (!host) return undefined;
-    if (!this.hostIndex) {
-      const index = new Map<string, ModelsDevProvider[]>();
-      for (const provider of this.providers.values()) {
-        const providerHost = hostOfUrl(provider.api);
-        if (!providerHost) continue;
-        const bucket = index.get(providerHost);
-        if (bucket) bucket.push(provider);
-        else index.set(providerHost, [provider]);
-      }
-      this.hostIndex = index;
-    }
-    const bucket = this.hostIndex.get(host);
-    return bucket?.length === 1 ? bucket[0] : undefined;
   }
 
   findModel(input: { vendorKey?: string; baseUrl?: string; modelId: string }): ModelsDevModel | undefined {
     const requested = normalizedModelId(input.modelId);
     if (!requested) return undefined;
-    // Resolve through the index of the current catalog generation. The candidate
-    // set is bounded by the catalog's model count, never by the number of
-    // distinct lookups a single read performs, so no eviction policy can force
-    if (!this.lookupIndex) this.lookupIndex = new ModelsDevLookupIndex(this.providers);
-    // Memoize the exact lookup so repeated reads of the same binding never re-touch
-    // the matched model. The memo is bounded and cleared wholesale on pressure;
-    // even if many distinct keys clear it mid-read, re-resolution goes through the
-    // small candidate index, never a full catalog scan.
-    const memoKey = `${input.vendorKey ?? ""}\u0000${input.baseUrl ?? ""}\u0000${requested}`;
-    if (this.lookupMemo.has(memoKey)) return this.lookupMemo.get(memoKey);
     const preferredProvider = this.providerFor(input);
-    // Keep the same tie-breaking order as the scanned lookup: preferred-provider
-    // entries first, then the remaining providers in provider-map order.
-    const preferred: IndexedModel[] = [];
-    const rest: IndexedModel[] = [];
-    for (const entry of this.lookupIndex.candidates(requested)) {
-      (entry.provider === preferredProvider ? preferred : rest).push(entry);
-    }
-    const candidates: Array<{ model: ModelsDevModel; provider: ModelsDevProvider; score: number }> = [];
-    for (const { model, provider } of [...preferred, ...rest]) {
-      // A known endpoint must not inherit another provider's capabilities.
-      if (preferredProvider && provider !== preferredProvider) continue;
-      if (!catalogModelIdsMatch(model.modelId, requested)) continue;
-      const exact = model.modelId.toLowerCase() === requested;
-      let score = exact ? 20 : 10;
-      if (provider === preferredProvider) score += 100;
-      if (apiMatches(input.baseUrl, provider.api)) score += 80;
-      if (modelMatchesProvider(model, input.vendorKey)) score += 60;
-      candidates.push({ model, provider, score });
+    const providers = preferredProvider
+      ? [preferredProvider, ...[...this.providers.values()].filter((item) => item !== preferredProvider)]
+      : [...this.providers.values()];
+    const candidates: Array<{ model: ModelsDevModel; score: number }> = [];
+    for (const provider of providers) {
+      for (const model of provider.models) {
+        if (!isTextAgentModel(model) || !modelIdsMatch(model.modelId, requested)) continue;
+        let score = model.modelId.toLowerCase() === requested ? 20 : 10;
+        if (provider === preferredProvider) score += 100;
+        if (apiMatches(input.baseUrl, provider.api)) score += 80;
+        if (modelMatchesProvider(model, input.vendorKey)) score += 60;
+        candidates.push({ model, score });
+      }
     }
     candidates.sort((left, right) =>
       right.score - left.score || left.model.modelId.length - right.model.modelId.length,
     );
-    // 0 → unmatched; 1 → enrich; ≥2 prefer unique official/source provider
-    // agreeing with model source; else shared identical capabilities; else unmatched.
-    const official = candidates.filter(isOfficialSourceProvider);
-    const result = candidates.length === 1
-      ? candidates[0].model
-      : official.length === 1
-        ? official[0].model
-        : modelWithSharedCapabilities(candidates.map(({ model }) => model));
-    /* The row's own catalog provider did not publish this id. Borrowing needs a
-       known provider identity to anchor on: the row resolved to a catalog
-       provider whose own records are authoritative, so anything missing from it
-       can be checked against the other publishers of the exact id instead of
-       dropping the model to the generic shape.
-
-       This only fills a miss the lookup already had — a record the preferred
-       provider does publish stays authoritative. Without that anchor the scores
-       prove nothing about identity, and an unknown endpoint keeps the existing
-       behaviour: a unique unambiguous match, official disambiguation, shared
-       capabilities, or nothing. Deployment-marker / variant-suffix fallbacks
-       are intentionally not applied here (approved #1047 matching rules). */
-    const borrowed = result ??
-      (preferredProvider ? this.borrowedAcrossProviders(input) : undefined);
-    // Cache the result (a miss included) so a repeated miss is also O(1) and
-    // cannot grow the candidate index with query-dependent keys.
-    this.lookupMemo.set(memoKey, borrowed);
-    if (this.lookupMemo.size > LOOKUP_MEMO_LIMIT) this.lookupMemo.clear();
-    return borrowed;
+    return candidates[0]?.model;
   }
 
-  /**
-   * Exact-id fallback across catalog providers, used only when the row resolved
-   * to a catalog provider that published nothing for the id.
-   *
-   * A gateway's copy of a model is indexed under the vendor that owns the
-   * weights, so an endpoint serving `Vendor/Model` ids routinely has no record
-   * of its own while other publishers state the identical id. Their record is
-   * what keeps that model's window, tool support and vision visible.
-   *
-   * Three rules keep this from borrowing anything identity-sensitive:
-   *
-   * - A provider sharing the row's own endpoint is an alias for the row, not an
-   *   independent source. Its failure to publish the id is an answer about this
-   *   deployment, so nothing is borrowed past it.
-   * - The publishers this app ships a provider for answer before arbitrary
-   *   resellers do, in the same order the unanchored borrow uses: an id a
-   *   supported publisher states describes the model, while a reseller's copy
-   *   describes its own deployment of it.
-   * - Only an identical id transfers, and only as a whole published id: a
-   *   record the index reaches through an alias — a bare route leaf behind a
-   *   prefix, a vendor-prefixed variant — describes a *different* id.
-   *
-   * `lookupId` reads the record of a published id the served name reduces to
-   * (`test/mimo-v2.5-pro-test` → `mimo-v2.5-pro`); it is only used when nothing
-   * published answered for the served id itself.
-   */
-  private borrowedAcrossProviders(
-    input: { vendorKey?: string; baseUrl?: string; modelId: string },
-    lookupId?: string,
-  ): ModelsDevModel | undefined {
-    // `findModel` already rejected an empty id; normalize here so the compare
-    // below is case-insensitive against the catalog's own normalization.
-    const requested = lookupId ?? normalizedModelId(input.modelId);
-    const matches: IndexedModel[] = [];
-    const seen = new Set<string>();
-    for (const candidate of this.lookupIndex?.candidates(requested) ?? []) {
-      const { model, provider } = candidate;
-      // The row's endpoint owns its own answers, including a negative one.
-      if (apiMatches(input.baseUrl, provider.api)) continue;
-      if (normalizedModelId(model.modelId) !== requested) continue;
-      const key = `${provider.providerKey}\u0000${model.modelId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      matches.push({ model, provider });
-    }
-    return borrowedModel(borrowPool(matches, requested));
-  }
-
-  /**
-   * Thinking wire metadata Anthropic publishes for exactly this id, or nothing.
-   * Aliases and other publishers' copies never answer: only Anthropic's own
-   * record states which thinking shape a Claude model accepts.
-   */
-  anthropicThinkingFor(
-    modelId: string,
-  ): Pick<ModelConfig, "reasoningOptions" | "thinkingLevelMap"> | undefined {
-    const requested = normalizedModelId(modelId);
-    const model = this.providers.get("anthropic")?.models.find(
-      (candidate) => normalizedModelId(candidate.modelId) === requested,
-    );
-    if (!model?.reasoning || !model.reasoningOptions?.length) return undefined;
-    const thinkingLevelMap = thinkingLevelMapFromModelsDev(
-      model.reasoningOptions,
-      model.thinkingLevels,
-    );
-    return {
-      reasoningOptions: model.reasoningOptions,
-      ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-    };
-  }
-
-  modelsForProvider(input: {
-    vendorKey?: string;
-    baseUrl?: string;
-    providerId: string;
-    /**
-     * Include the models this provider publishes next to its chat models —
-     * embedding, speech, image and reranking endpoints. The settings picker
-     * asks for them because it renders the service's own catalog of what the
-     * credential can call; session and agent paths keep the default, which is
-     * the text models they can actually run.
-     */
-    includeNonChat?: boolean;
-  }): ModelInfo[] {
+  modelsForProvider(input: { vendorKey?: string; baseUrl?: string; providerId: string }): ModelInfo[] {
     const preferredProvider = this.providerFor(input);
     const providers = preferredProvider
       ? [preferredProvider]
@@ -1569,8 +928,7 @@ export class ModelsDevCatalog {
       provider.models
         .filter((model) => {
           const key = normalizedModelId(model.modelId);
-          if (seen.has(key)) return false;
-          if (!input.includeNonChat && !isTextAgentModel(model)) return false;
+          if (!isTextAgentModel(model) || seen.has(key)) return false;
           if (!preferredProvider && !modelMatchesProvider(model, input.vendorKey)) return false;
           seen.add(key);
           return true;

@@ -1,6 +1,6 @@
 //! In-memory per-session snapshot store (spec 18 §4).
 
-use super::tag::{split_lines, NormalizedFile};
+use super::tag::{NormalizedFile, split_lines};
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;

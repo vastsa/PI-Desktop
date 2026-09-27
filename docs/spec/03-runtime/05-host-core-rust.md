@@ -25,8 +25,7 @@ It does **not** replace pi. It provides safe host capabilities to:
 7. Plugin registry/install/lifecycle services
 8. Contribution registration bookkeeping (with TS side)
 9. Persistence adapters (sessions/settings metadata, `plan_approvals` artifact
-   and execution fields, durable notification inbox, and session
-   collaboration ledger)
+   and execution fields, and the durable notification inbox)
 10. Secrets storage integration points
 11. Audit logging for sensitive actions
 
@@ -85,7 +84,6 @@ Domains:
 - `plugins.*`
 - `session.*` (adapter level)
 - `notification.*` (adapter level; durable inbox)
-- `session.collaboration.*` (host-internal delivery ledger and turn binding)
 - `plans.*` (approval broker and recovery)
 - `shell.*` (catalog and default selection)
 - `settings.*` (adapter level)
@@ -123,10 +121,6 @@ notification.list
 8. Secrets never returned to renderer logs
 9. Crash in plugin, shell, or approval path fails closed and does not grant or
    replay execution
-10. Session collaboration is host-authenticated: source identity comes from
-    the active plugin invocation, target permission ceilings are rechecked at
-    turn admission, callbacks are at-most-once, and restart recovery never
-    replays an interrupted delivery
 
 ## 7. Packaging
 
@@ -156,7 +150,3 @@ notification.list
 9. Shell selection/fallback, stale ID/dialect rejection, stdout/stderr
    streaming, 60s timeout, bounded override, and process-tree abort are
    host-enforced
-10. Session collaboration delivery, provenance, idempotency, callback
-    settlement, cancellation, permission ceilings, hop limits, and schema v16
-    recovery are durable and test-covered without changing the core `Task`
-    family

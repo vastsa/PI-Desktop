@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   GLOBAL_SCOPE,
@@ -7,7 +7,6 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
-import { useHostCollection } from "../../hooks/use-host-collection";
 import {
   AgentCapabilityPage,
   AgentProjectPicker,
@@ -33,18 +32,14 @@ import {
   type SkillDraft,
 } from "./SkillEditorSheet";
 import {
-  IconArrowUpDown,
   IconBookOpen,
   IconDownload,
-  IconFileText,
   IconFolderOpen,
   IconPencil,
   IconPlus,
   IconTrash,
 } from "../icons";
-import { SkillMarketPanel } from "./SkillMarketPanel";
 
-import { TooltipButton } from "../ui";
 const GLOBAL_SKILLS_PATH = "~/.agents/skills";
 
 function projectSkillsPath(projectPath: string | null): string {
@@ -57,46 +52,61 @@ type SkillEditorState = {
   level: AgentCapabilityLevel;
 };
 
-type SkillCollection = {
-  global: UserSkillRecord[];
-  project: UserSkillRecord[];
-};
-
-const EMPTY_SKILL_COLLECTION: SkillCollection = { global: [], project: [] };
-
 export function AgentSkillsPage() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const { selectedProjectPath, setSelectedProjectPath, options } = useAgentProjects();
-  const fetchSkills = useCallback(async (): Promise<SkillCollection> => {
-    const [global, project] = await Promise.all([
-      api.listUserSkills({
-        level: "global",
-        ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-      }),
-      selectedProjectPath
-        ? api.listUserSkills({ level: "project", projectPath: selectedProjectPath })
-        : Promise.resolve({ skills: [] as UserSkillRecord[] }),
-    ]);
-    return { global: global.skills ?? [], project: project.skills ?? [] };
-  }, [selectedProjectPath]);
-  const {
-    data: { global: globalSkills, project: projectSkills },
-    setData: setSkills,
-    loading,
-    refreshing,
-    reload: load,
-  } = useHostCollection(fetchSkills, EMPTY_SKILL_COLLECTION, (error) =>
-    showToast(error instanceof Error ? error.message : String(error), { variant: "error" }),
-  );
+  const [globalSkills, setGlobalSkills] = useState<UserSkillRecord[]>([]);
+  const [projectSkills, setProjectSkills] = useState<UserSkillRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<CapabilityFilter>("all");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editor, setEditor] = useState<SkillEditorState | null>(null);
-  const [view, setView] = useState<"skills" | "market">("skills");
   const [saving, setSaving] = useState(false);
   const { armed, setArmed } = useArmedDelete();
+  // First paint gets skeletons; everything after keeps the rows on screen.
+  const hydrated = useRef(false);
+
+  const load = useCallback(async () => {
+    if (hydrated.current) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const [global, project] = await Promise.all([
+        api.listUserSkills({
+          level: "global",
+          ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
+        }),
+        selectedProjectPath
+          ? api.listUserSkills({ level: "project", projectPath: selectedProjectPath })
+          : Promise.resolve({ skills: [] as UserSkillRecord[] }),
+      ]);
+      setGlobalSkills(global.skills ?? []);
+      setProjectSkills(project.skills ?? []);
+      hydrated.current = true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+      setGlobalSkills([]);
+      setProjectSkills([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [selectedProjectPath, showToast]);
+
+  useEffect(() => {
+    void load();
+    const offPluginChanged = api.onPluginChanged(() => void load());
+    const offHostStatus = api.onHostStatus((status) => {
+      if (status.ok) void load();
+    });
+    return () => {
+      offPluginChanged();
+      offHostStatus();
+    };
+  }, [load]);
 
   const rowKey = (level: AgentCapabilityLevel, id: string) => `${level}:${id}`;
 
@@ -105,10 +115,10 @@ export function AgentSkillsPage() {
     id: string,
     patch: Partial<UserSkillRecord>,
   ) => {
-    setSkills((current) => ({
-      ...current,
-      [level]: current[level].map((row) => (row.id === id ? { ...row, ...patch } : row)),
-    }));
+    const apply = (rows: UserSkillRecord[]) =>
+      rows.map((row) => (row.id === id ? { ...row, ...patch } : row));
+    if (level === "global") setGlobalSkills(apply);
+    else setProjectSkills(apply);
   };
 
   const levelQuery = (level: AgentCapabilityLevel) => ({
@@ -235,19 +245,15 @@ export function AgentSkillsPage() {
     }
   };
 
-  const importSkill = async (
-    level: AgentCapabilityLevel = targetLevel,
-    sourceKind: "file" | "dir" = "file",
-  ) => {
+  const importSkill = async (level: AgentCapabilityLevel = targetLevel) => {
     if (level === "project" && !selectedProjectPath) {
       showToast(t("settings.selectProjectFirst"), { variant: "error" });
       return;
     }
-    setBusyId(sourceKind === "dir" ? "import-dir" : "import");
+    setBusyId("import");
     try {
       const result = await api.importUserSkill({
         level,
-        sourceKind,
         ...(level === "project" && selectedProjectPath
           ? { projectPath: selectedProjectPath }
           : {}),
@@ -289,58 +295,6 @@ export function AgentSkillsPage() {
     [options, selectedProjectPath],
   );
 
-  /** Where a move sends a row, named the way the toast should say it. */
-  const moveTarget: Partial<Record<AgentCapabilityLevel, string>> = {
-    global: t("settings.globalLevel"),
-    project: selectedProjectPath
-      ? `${t("settings.projectLevel")} · ${projectName ?? projectDisplayName(selectedProjectPath)}`
-      : undefined,
-  };
-
-  /**
-   * Move one row to the other level. The project picker owns the destination,
-   * so the same action reads "Move into <project>" on a global row and "Move to
-   * Global" on a project one.
-   *
-   * The host moves the document rather than copying it, and a destination that
-   * already holds the id or display name renames the arriving skill, so the
-   * toast reports the new name instead of pretending the id survived.
-   */
-  const move = async (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
-    const to: AgentCapabilityLevel = level === "global" ? "project" : "global";
-    const target = moveTarget[to];
-    if (!target) {
-      showToast(t("settings.selectProjectFirst"), { variant: "error" });
-      return;
-    }
-    const key = rowKey(level, skill.id);
-    setBusyId(key);
-    try {
-      const result = await api.transferUserSkill({
-        id: skill.id,
-        from: levelQuery(level),
-        to: levelQuery(to),
-      });
-      await load();
-      const name = skill.name || skill.id;
-      const arrived = result.skill;
-      showToast(
-        arrived && arrived.id !== skill.id
-          ? t("settings.capabilityMovedRenamed", {
-              name,
-              target,
-              newName: arrived.name || arrived.id,
-            })
-          : t("settings.capabilityMoved", { name, target }),
-        { variant: "success" },
-      );
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const renderRow = (skill: UserSkillRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, skill.id);
     const name = skill.name || skill.id;
@@ -356,29 +310,6 @@ export function AgentSkillsPage() {
           void reveal(skill, level);
         },
       },
-      /**
-       * A move needs a destination, so a global row offers it only while the
-       * picker names a project; a project row always has Global to go back to.
-       */
-      ...(moveTarget[level === "global" ? "project" : "global"]
-        ? [
-            {
-              key: "move",
-              label:
-                level === "global"
-                  ? t("settings.capabilityMoveToProject", {
-                      project:
-                        projectName ?? projectDisplayName(selectedProjectPath ?? ""),
-                    })
-                  : t("settings.capabilityMoveToGlobal"),
-              icon: <IconArrowUpDown size={14} />,
-              onSelect: () => {
-                setMenuFor(null);
-                void move(skill, level);
-              },
-            } satisfies CapabilityMenuItem,
-          ]
-        : []),
       {
         key: "remove",
         label: isArmed ? t("settings.capabilityRemoveConfirm") : t("extensions.skills.remove"),
@@ -416,16 +347,16 @@ export function AgentSkillsPage() {
         description={skill.description || t("settings.noCapabilityDescription")}
         actions={
           <>
-            <TooltipButton
+            <button
               type="button"
               className="settings-icon-button"
-              ariaLabel={t("extensions.skills.rowActions", { name })}
-              tooltip={t("extensions.skills.edit")}
+              aria-label={t("extensions.skills.rowActions", { name })}
+              title={t("extensions.skills.edit")}
               disabled={busy}
               onClick={() => void openEdit(skill, level)}
             >
               <IconPencil size={15} />
-            </TooltipButton>
+            </button>
             <CapabilityRowMenu
               label={t("extensions.skills.rowActions", { name })}
               items={items}
@@ -455,61 +386,24 @@ export function AgentSkillsPage() {
       ? t("settings.capabilityCreateInProject")
       : t("settings.capabilityCreateInGlobal");
   const importButton = (level: AgentCapabilityLevel) => (
-    <>
-      <CapabilityButton
-        busy={busyId === "import"}
-        title={
-          level === "project"
-            ? t("settings.capabilityImportToProject")
-            : t("settings.capabilityImportToGlobal")
-        }
-        onClick={() => void importSkill(level, "file")}
-      >
-        <IconDownload size={14} />
-        {t("settings.importSkillFile")}
-      </CapabilityButton>
-      <CapabilityButton
-        busy={busyId === "import-dir"}
-        title={
-          level === "project"
-            ? t("settings.capabilityImportToProject")
-            : t("settings.capabilityImportToGlobal")
-        }
-        onClick={() => void importSkill(level, "dir")}
-      >
-        <IconDownload size={14} />
-        {t("settings.importSkillDir")}
-      </CapabilityButton>
-    </>
-  );
-
-  const marketButton = (
     <CapabilityButton
-      onClick={() => setView("market")}
+      busy={busyId === "import"}
+      title={
+        level === "project"
+          ? t("settings.capabilityImportToProject")
+          : t("settings.capabilityImportToGlobal")
+      }
+      onClick={() => void importSkill(level)}
     >
-      <IconFileText size={14} />
-      {t("settings.sklm.browse")}
+      <IconDownload size={14} />
+      {t("settings.importSkill")}
     </CapabilityButton>
   );
 
-  if (view === "market") {
-    return (
-      <SkillMarketPanel
-        installedIds={[...globalSkills, ...projectSkills].map((skill) => skill.id)}
-        onBack={() => {
-          setView("skills");
-          void load();
-        }}
-        onInstalled={() => {
-          setView("skills");
-          void load();
-        }}
-      />
-    );
-  }
-
   return (
     <AgentCapabilityPage
+      description={t("settings.skillsDescription")}
+      note={t("settings.capabilityPriority")}
       toolbar={
         <CapabilityToolbar
           filter={filter}
@@ -527,13 +421,10 @@ export function AgentSkillsPage() {
             />
           }
           actions={
-            <>
-              <CapabilityButton variant="primary" title={newSkillTitle} onClick={openCreate}>
-                <IconPlus size={14} />
-                {t("settings.newSkill")}
-              </CapabilityButton>
-              {marketButton}
-            </>
+            <CapabilityButton variant="primary" title={newSkillTitle} onClick={openCreate}>
+              <IconPlus size={14} />
+              {t("settings.newSkill")}
+            </CapabilityButton>
           }
         />
       }
@@ -546,6 +437,7 @@ export function AgentSkillsPage() {
         {counts.all === 0 && search.trim() ? (
           <CapabilityEmpty
             message={t("settings.capabilityNoMatches")}
+            hint={t("settings.capabilityNoMatchesHint")}
             icon={<IconBookOpen size={18} />}
           />
         ) : (

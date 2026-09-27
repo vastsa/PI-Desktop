@@ -1,10 +1,5 @@
 import type { ComposerDraftSnapshot } from "./composer-smart-stop";
 
-type CachedComposerDraft = ComposerDraftSnapshot & {
-  /** Workspace that owned relative file references when the draft was captured. */
-  workspacePath?: string;
-};
-
 /**
  * Renderer-memory composer drafts (D301).
  *
@@ -25,9 +20,7 @@ export type ComposerDraftFileInput = {
   token?: string;
 };
 
-const cache = new Map<string, CachedComposerDraft>();
-const revisions = new Map<string, number>();
-let revisionCounter = 0;
+const cache = new Map<string, ComposerDraftSnapshot>();
 
 export function draftKeyForSession(sessionId: string | null | undefined): string {
   return sessionId ?? HOME_DRAFT_KEY;
@@ -42,10 +35,9 @@ export function snapshotComposerDraft(
   text: string,
   fileReferences: readonly ComposerDraftFileInput[],
   key: string,
-  workspacePath?: string,
-): CachedComposerDraft {
+): ComposerDraftSnapshot {
   const owner = draftOwnerSessionId(key);
-  const snapshot: CachedComposerDraft = {
+  return {
     text,
     fileReferences: fileReferences
       .filter((fileReference) => (fileReference.sessionId ?? "") === owner)
@@ -57,56 +49,25 @@ export function snapshotComposerDraft(
         ...(token ? { token } : {}),
       })),
   };
-  if (workspacePath !== undefined) snapshot.workspacePath = workspacePath;
-  return snapshot;
 }
 
-export function readComposerDraft(key: string): CachedComposerDraft | undefined {
+export function readComposerDraft(key: string): ComposerDraftSnapshot | undefined {
   return cache.get(key);
-}
-
-/** Read a stable per-key version, assigning a unique baseline when first seen. */
-export function readComposerDraftRevision(key: string): number {
-  let revision = revisions.get(key);
-  if (revision === undefined) {
-    revision = ++revisionCounter;
-    revisions.set(key, revision);
-  }
-  return revision;
-}
-
-/** Mark a real draft edit with a globally unique, monotonically increasing version. */
-export function markComposerDraftEdited(key: string): number {
-  const revision = ++revisionCounter;
-  revisions.set(key, revision);
-  return revision;
 }
 
 export function writeComposerDraft(
   key: string,
   snapshot: ComposerDraftSnapshot,
-  workspacePath?: string,
 ): void {
-  const existing = cache.get(key);
-  const next: CachedComposerDraft = {
-    ...snapshot,
-    fileReferences: snapshot.fileReferences.map((reference) => ({ ...reference })),
-  };
-  if (workspacePath !== undefined) {
-    next.workspacePath = workspacePath;
-  } else if (existing?.workspacePath !== undefined && next.workspacePath === undefined) {
-    next.workspacePath = existing.workspacePath;
-  }
-  cache.set(key, next);
+  cache.set(key, snapshot);
 }
 
 export function captureComposerDraft(
   key: string,
   text: string,
   fileReferences: readonly ComposerDraftFileInput[],
-  workspacePath?: string,
-): CachedComposerDraft {
-  const snapshot = snapshotComposerDraft(text, fileReferences, key, workspacePath);
+): ComposerDraftSnapshot {
+  const snapshot = snapshotComposerDraft(text, fileReferences, key);
   cache.set(key, snapshot);
   return snapshot;
 }
@@ -139,7 +100,10 @@ export function adoptHomeDraftForSession(sessionId: string): void {
   cache.delete(HOME_DRAFT_KEY);
   if (!home) return;
   if (!home.text && home.fileReferences.length === 0) return;
-  writeComposerDraft(sessionId, home);
+  cache.set(sessionId, {
+    text: home.text,
+    fileReferences: home.fileReferences.map((reference) => ({ ...reference })),
+  });
 }
 
 export function scheduleHomeDraftAdopt(sessionId: string): void {
@@ -159,14 +123,10 @@ export function pruneComposerDrafts(keep: Iterable<string>): void {
   for (const key of cache.keys()) {
     if (!retain.has(key)) cache.delete(key);
   }
-  for (const key of revisions.keys()) {
-    if (!retain.has(key)) revisions.delete(key);
-  }
 }
 
 /** Test-only: drop every slot so cases cannot leak into one another. */
 export function resetComposerDraftCache(): void {
   cache.clear();
-  revisions.clear();
   scheduledHomeAdoptSessionId = null;
 }

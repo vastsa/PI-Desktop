@@ -1,4 +1,3 @@
-import { readAppSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -8,16 +7,11 @@ const sidebarSource = await readFile(
   new URL("../src/components/Sidebar.tsx", import.meta.url),
   "utf8",
 );
-const hoverSource = await readFile(
-  new URL("../src/features/sessions/SessionHoverCard.tsx", import.meta.url),
-  "utf8",
-);
-const hoverHookSource = await readFile(
-  new URL("../src/features/sessions/useSessionHoverCard.ts", import.meta.url),
-  "utf8",
-);
 const globalStyles = await loadStyles();
-const appSource = await readAppSource();
+const appSource = await readFile(
+  new URL("../src/App.tsx", import.meta.url),
+  "utf8",
+);
 const panelSource = await readFile(
   new URL("../src/components/workpanel/WorkPanel.tsx", import.meta.url),
   "utf8",
@@ -31,17 +25,17 @@ test("home sidebar exposes only the supported destination entries", () => {
   assert.match(sidebarSource, /data-nav="plugins"/);
   assert.doesNotMatch(sidebarSource, /data-nav="projects"/);
   assert.doesNotMatch(sidebarSource, /data-nav="pulls"/);
-  assert.match(sidebarSource, /data-nav="scheduled"/);
+  assert.doesNotMatch(sidebarSource, /data-nav="scheduled"/);
   assert.doesNotMatch(sidebarSource, /t\("nav\.(?:pullRequests|scheduled)"\)/);
 });
 
 test("sidebar brand returns to the chat home", () => {
   const brandButton = sidebarSource.match(
-    /<TooltipButton\s+type="button"\s+className="brand no-drag"[\s\S]*?<\/TooltipButton>/,
+    /<button\s+type="button"\s+className="brand no-drag"[\s\S]*?<\/button>/,
   )?.[0] ?? "";
 
   assert.match(brandButton, /data-nav="home"/);
-  assert.match(brandButton, /ariaLabel=\{t\("nav\.home"\)\}/);
+  assert.match(brandButton, /aria-label=\{t\("nav\.home"\)\}/);
   assert.match(brandButton, /onClick=\{\(\) => setPage\("chat"\)\}/);
   assert.match(brandButton, /<BrandLogo size=\{20\}/);
   assert.match(brandButton, /t\("app\.shellName"\)/);
@@ -75,22 +69,22 @@ test("work panel collapse control is the viewport-fixed shell toggle", () => {
     globalStyles,
     /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*0;/,
   );
-  // The reservation is platform-scoped; the base header rule stays neutral.
-  assert.doesNotMatch(
-    globalStyles,
-    /^\.work-panel-header\s*\{[^}]*margin-right:/ms,
-  );
+  assert.doesNotMatch(globalStyles, /\.work-panel-header\s*\{[^}]*margin-right:/s);
 });
 
 test("macOS hides sidebar branding and keeps header actions beside traffic lights", () => {
   assert.doesNotMatch(sidebarSource, /sidebar-macos-drag-row/);
   assert.match(
     globalStyles,
-    /:root\[data-platform="darwin"\] \.sidebar-header\s*\{[^}]*padding-left:\s*var\(--ds-window-lead-inset\);/s,
+    /:root\[data-platform="darwin"\] \.sidebar-header\s*\{[^}]*padding-left:\s*76px;/s,
   );
   assert.match(
     globalStyles,
     /:root\[data-platform="darwin"\] \.sidebar-header > \.brand\s*\{[^}]*display:\s*none;/s,
+  );
+  assert.match(
+    globalStyles,
+    /:root\[data-platform="darwin"\]\[data-fullscreen="true"\] \.sidebar-header\s*\{[^}]*padding-left:\s*8px;/s,
   );
   assert.match(
     globalStyles,
@@ -122,16 +116,14 @@ test("sidebar shows a bounded standalone session list before retained projects",
   assert.match(standaloneSessions, /t\("nav\.sessions"/);
   assert.match(standaloneSessions, /data-action="new-standalone-session"/);
   assert.match(standaloneSessions, /createSession\(\{ projectPath: null \}\)/);
-  assert.match(standaloneSessions, /renderSessionRows\(temporarySessionHistory/);
+  assert.match(standaloneSessions, /renderSessionRows\(temporarySessions/);
   assert.ok(
     sidebarSource.indexOf('data-sidebar-session-section="temporary"') <
       sidebarSource.indexOf('data-action="new-project"'),
   );
   assert.match(
     globalStyles,
-    // `[^}]*`, not `[\s\S]*?`: the assertion must read this block, not a
-    // `max-height` in some later partial of the concatenated stylesheet.
-    /\.sidebar-session-group-body\.standalone\s*\{[^}]*max-height:\s*146px;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/,
+    /\.sidebar-session-group-body\.standalone\s*\{[\s\S]*?max-height:\s*140px;[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;/,
   );
   assert.doesNotMatch(sidebarSource, /data-sidebar-project-group="temporary"/);
 });
@@ -197,14 +189,17 @@ test("sidebar floating menus open to the anchor's right", () => {
 });
 
 test("portaled sort menu does not stretch to the viewport edge", () => {
-  const basePopoverRule = globalStyles.match(
-    /\.sidebar-row-menu,\n\.sidebar-popover\s*\{[^}]*\}/s,
-  )?.[0] ?? "";
+  const defaultPopoverRuleIndex = globalStyles.indexOf(
+    ".sidebar-popover {\n  top: calc(100% + 4px);\n  right: 0;\n}",
+  );
+  const floatingPopoverRuleIndex = globalStyles.indexOf(
+    ".sidebar-popover.sidebar-floating-menu",
+  );
   const floatingPopoverRule =
     globalStyles.match(/\.sidebar-popover\.sidebar-floating-menu\s*\{[^}]*\}/s)?.[0] ?? "";
 
-  assert.match(basePopoverRule, /position:\s*fixed;/);
-  assert.doesNotMatch(basePopoverRule, /position:\s*absolute;/);
+  assert.ok(defaultPopoverRuleIndex >= 0);
+  assert.ok(floatingPopoverRuleIndex > defaultPopoverRuleIndex);
   assert.match(floatingPopoverRule, /top:\s*auto;/);
   assert.match(floatingPopoverRule, /right:\s*auto;/);
   assert.match(globalStyles, /\.sidebar-floating-menu\s*\{[^}]*width:\s*max-content;/s);
@@ -249,21 +244,14 @@ test("project rows expose folder actions and full-path hover", () => {
   assert.doesNotMatch(sidebarSource, /api\.openSessionFolder\(/);
   assert.match(
     sidebarSource,
-    /className="sidebar-session-group-title project-toggle"[\s\S]*?tooltip=\{entry\.path\}[\s\S]*?tooltipDelayMs=\{500\}[\s\S]*?aria-describedby=\{`\$\{projectId\}-path-description`\}/,
+    /className="sidebar-session-group-title project-toggle"[\s\S]*?aria-describedby=\{`\$\{projectId\}-path-description`\}[\s\S]*?onMouseEnter=\{\(event\) => showProjectPath\(entry, event\.currentTarget\)\}[\s\S]*?onFocus=\{\(event\) => showProjectPath\(entry, event\.currentTarget\)\}/,
   );
-  assert.match(sidebarSource, /<TooltipButton/);
-  assert.match(globalStyles, /\.ui-tooltip-path\s*\{[^}]*width:\s*max-content/);
-  assert.match(globalStyles, /\.ui-tooltip-path\s*\{[^}]*max-width:\s*min\(420px,\s*calc\(100vw - 16px\)\)/);
+  assert.match(sidebarSource, /className="sidebar-project-path-tooltip"/);
+  assert.match(sidebarSource, /role="tooltip"/);
   assert.match(sidebarSource, /className="sr-only">\s*\{entry\.path\}/);
-});
-
-test("sidebar row menus omit project reassignment and switching actions", () => {
-  assert.doesNotMatch(sidebarSource, /data-action="move-session-to-project"/);
-  assert.doesNotMatch(sidebarSource, /t\("nav\.moveToProject"/);
-  assert.doesNotMatch(sidebarSource, /t\("project\.switch"/);
   assert.match(
-    sidebarSource,
-    /if \(!entry\.active && !\(await selectProject\(entry\.path\)\)\) return;/,
+    globalStyles,
+    /\.sidebar-project-path-tooltip\s*\{[^}]*position:\s*fixed;[^}]*max-width:[^;]*;[^}]*overflow-wrap:\s*anywhere;/s,
   );
 });
 
@@ -275,95 +263,6 @@ test("session rows use the hover card instead of a native title tooltip", () => 
   assert.match(sessionMain, /showSessionHoverCard\(/);
   assert.doesNotMatch(sessionMain, /title=\{taskTitle\(session\.title\)\}/);
   assert.doesNotMatch(sessionMain, /\btitle=\{/);
-  assert.match(hoverSource, /className="sidebar-session-hover-card"/);
-  assert.match(hoverSource, /className="sidebar-session-hover-card-title"/);
-  assert.match(sessionMain, /onFocusCapture=/);
-  assert.match(sessionMain, /aria-describedby=/);
-  assert.match(hoverHookSource, /\}, 500\)/);
-  assert.match(hoverHookSource, /event\.key === "Escape"/);
-  assert.match(hoverHookSource, /addEventListener\("scroll", hide, true\)/);
-  assert.match(hoverHookSource, /addEventListener\("visibilitychange", onVisibility\)/);
-});
-
-test("session hover cards expose readable models and keyboard-navigable session links", () => {
-  assert.match(hoverSource, /role="dialog"/);
-  assert.match(hoverSource, /summary\?\.modelName \|\| summary\?\.providerName/);
-  assert.doesNotMatch(hoverSource, /modelKey\?\.includes\("\/"\)/);
-  assert.doesNotMatch(hoverSource, /sidebar-session-hover-card-id/);
-  assert.doesNotMatch(hoverSource, /sessionCollaboration\.checkedAt/);
-  assert.doesNotMatch(hoverSource, /sessionCollaboration\.provider/);
-  assert.doesNotMatch(hoverSource, /nav\.hoverCardLocalTask/);
-  assert.match(hoverSource, /data-session-link=\{summary\.createdBySession\.sessionId\}/);
-  assert.match(hoverSource, /summary\.createdSessions\.slice\(0, 8\)/);
-  assert.match(hoverSource, /type="button"/);
-  assert.match(hoverSource, /onClick=\{\(\) => openSessionReference/);
-  assert.match(hoverSource, /onFocusCapture=\{keepVisible\}/);
-  assert.match(hoverHookSource, /setTimeout\(\(\) => \{[\s\S]*?hide\(\);[\s\S]*?\}, 160\)/);
-  assert.match(globalStyles, /\.sidebar-session-hover-card\s*\{[\s\S]*?pointer-events:\s*auto;/);
-  assert.match(globalStyles, /\.sidebar-session-hover-card-session-link:focus-visible\s*\{[\s\S]*?outline:/);
-});
-
-test("related session links show only active running state", () => {
-  assert.match(sidebarSource, /<SessionHoverCard[\s\S]*?runningSessions=\{runningSessions\}/);
-  assert.match(sidebarSource, /<SessionHoverCard[\s\S]*?pendingPermissions=\{pendingPermissions\}/);
-  assert.match(hoverSource, /sessionReferenceIsRunning\(reference, runningSessions, pendingPermissions\)/);
-  assert.match(hoverSource, /data-session-running="true"/);
-  assert.match(globalStyles, /\.sidebar-session-hover-card-session-link-status\s*\{[\s\S]*?--ds-warning/);
-  assert.match(globalStyles, /\.sidebar-session-hover-card-session-link-status::before\s*\{[\s\S]*?sidebar-status-breathe/);
-});
-
-test("hidden row actions stay out of the row's click path", () => {
-  // Resting state: the invisible control is not a pointer target at all.
-  assert.match(
-    globalStyles,
-    /\.thread-item-more\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*\}/s,
-  );
-  assert.match(
-    globalStyles,
-    /\.thread-item:focus-within \.thread-item-more,\s*\n\.thread-item-more:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
-  );
-  // Without hover there is no reveal, so a no-hover pointer gets the controls
-  // visible and tappable instead of an invisible gutter.
-  assert.match(
-    globalStyles,
-    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
-  );
-  // The row itself stays clickable where the hidden control used to swallow
-  // the click, and spelled-out controls never double-fire the row.
-  assert.match(sidebarSource, /if \(target\?\.closest\("button, \[data-action\]"\)\) return;/);
-  assert.match(sidebarSource, /className=\{`thread-item[\s\S]*?onClick=\{\(event\) => \{/);
-});
-
-test("a blurred window releases latched row hover and actions", () => {
-  assert.match(sidebarSource, /const \[windowFocused, setWindowFocused\] = useState\(true\)/);
-  assert.match(sidebarSource, /window\.addEventListener\("focus", onWindowFocus\)/);
-  assert.match(sidebarSource, /window\.addEventListener\("blur", onWindowBlur\)/);
-  assert.match(sidebarSource, /data-window-blur=\{windowFocused \? undefined : "true"\}/);
-  assert.match(
-    globalStyles,
-    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover:not\(\.active\),\s*\.sidebar\[data-window-blur="true"\] \.project-group:not\(\.is-drop-target\) > \.sidebar-session-group-header:hover\s*\{[^}]*background:\s*transparent;/s,
-  );
-  assert.match(
-    globalStyles,
-    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover \.thread-item-more:not\(\[aria-expanded="true"\]\),[\s\S]*?opacity:\s*0;\s*\n\s*pointer-events:\s*none;/,
-  );
-});
-
-test("sidebar rows share one hover surface and workspace context never paints selection", () => {
-  assert.match(
-    globalStyles,
-    /\.thread-item,\s*\.sidebar-session-group-header\s*\{[^}]*border-radius:\s*var\(--radius-sm\);[^}]*transition:/,
-  );
-  assert.match(
-    globalStyles,
-    /\.thread-item:hover,\s*\.thread-item.active,\s*\.project-group > \.sidebar-session-group-header:hover\s*\{[^}]*background:\s*var\(--ds-bg-hover\);/,
-  );
-  assert.match(globalStyles, /\.thread-item.active\s*\{[^}]*background:\s*var\(--ds-bg-active\);/);
-  assert.match(globalStyles, /\.sidebar-session-group-title\s*\{[^}]*background:\s*transparent;[^}]*color:\s*inherit;/);
-  assert.doesNotMatch(globalStyles, /\.project-group\.active/);
-  assert.doesNotMatch(globalStyles, /\.sidebar-session-group-title\.project-toggle:hover/);
-  assert.match(sidebarSource, /data-current-workspace=\{entry\.active \? "true" : undefined\}/);
-  assert.match(globalStyles, /:focus-visible\s*\{[^}]*outline:\s*1\.5px solid/);
-  assert.match(globalStyles, /\.project-group\.is-drop-target > \.sidebar-session-group-header\s*\{[^}]*outline:[^}]*background:/);
-  assert.match(globalStyles, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.thread-item,\s*\.sidebar-session-group-header\s*\{\s*transition-duration:\s*0\.01ms !important;/);
+  assert.match(sidebarSource, /className="sidebar-session-hover-card"/);
+  assert.match(sidebarSource, /className="sidebar-session-hover-card-title"/);
 });

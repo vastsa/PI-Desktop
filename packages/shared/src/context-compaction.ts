@@ -1,23 +1,7 @@
 import type {
-  ContextCompactionFallback,
   ContextCompactionMark,
   ContextCompactionRecord,
 } from "./types.js";
-
-/**
- * Identity of the checkpoint governing a session's next model request, or
- * `null` when the session has never compacted. A host that lost the reply to a
- * manual compaction compares it before and after the call: the sidecar persists
- * its checkpoint through host-core regardless, so a missing reply is not
- * evidence that the compaction failed (issue #795).
- */
-export function compactionRecordId(session: unknown): string | null {
-  if (typeof session !== "object" || session === null) return null;
-  const compaction = (session as { compaction?: unknown }).compaction;
-  if (typeof compaction !== "object" || compaction === null) return null;
-  const id = (compaction as { id?: unknown }).id;
-  return typeof id === "string" ? id : null;
-}
 
 /**
  * The generation counter rides inside the checkpoint's opaque `details` value:
@@ -47,28 +31,14 @@ export function checkpointSummarized(details: unknown): boolean {
   return value !== "fresh_window";
 }
 
-/**
- * Whether the checkpoint is the retained-tail recovery written after summary
- * generation failed (ADR 0049). Its `summary` is a carried-forward earlier
- * summary plus a fixed recovery notice, never a fresh model summary.
- */
-export function checkpointFallback(
-  details: unknown,
-): ContextCompactionFallback | undefined {
-  const value = (details as { fallback?: unknown } | null | undefined)?.fallback;
-  return value === "retained_tail" ? value : undefined;
-}
-
 export function contextCompactionMark(
   record: ContextCompactionRecord,
 ): ContextCompactionMark {
-  const fallback = checkpointFallback(record.details);
   return {
     id: record.id,
     throughMessageId: record.throughMessageId,
     generation: checkpointGeneration(record.details),
     summaryTokens: estimateSummaryTokens(record.summary ?? ""),
     summarized: checkpointSummarized(record.details),
-    ...(fallback ? { fallback } : {}),
   };
 }

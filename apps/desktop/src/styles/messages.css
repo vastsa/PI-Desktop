@@ -11,14 +11,6 @@
   /* Skip layout/paint for far-offscreen rows in long transcripts. */
   content-visibility: auto;
   contain-intrinsic-size: auto 140px;
-  /* Paint containment clips descendants to the padding box, which squared off
-     the deliberate bleed of the disclosure row chrome: the activity header
-     pulls its hover fill 3px past the column edge and a run row's head 4px, so
-     the icon can sit on the text's alignment line while the fill keeps its
-     padding, and the focus ring reaches 3.5px beyond its own box. 8px covers
-     the widest of them. .tool-activity-group clips the same chrome and carries
-     the same margin. */
-  overflow-clip-margin: 8px;
 }
 
 .message-row.user {
@@ -53,14 +45,14 @@
 .message-row.assistant .message-col,
 .message-row.system .message-col,
 .message-row.tool .message-col {
-  width: min(100%, var(--chat-prose-max-width, 720px));
+  width: min(100%, 720px);
   align-items: flex-start;
 }
 
 /* Decision cards are soft tiles (D297): risk rides in the tint and the risk
    pill rather than a coloured rail. */
 .permission-card {
-  width: min(100%, var(--chat-prose-max-width, 720px));
+  width: min(100%, 720px);
   margin: 10px 0;
   padding: 14px 16px;
   border-radius: var(--radius-md);
@@ -68,7 +60,7 @@
 }
 
 .asktool-card {
-  width: min(100%, var(--chat-prose-max-width, 720px));
+  width: min(100%, 720px);
   margin: 10px 0;
   padding: 14px 16px;
   border-radius: var(--radius-md);
@@ -174,8 +166,6 @@
   scroll-padding-block: 2px;
 }
 
-/* The card rides the composer plate below, so its option rows are inlaid fills
-   on that plate rather than the raised layer of an in-flow surface (D297). */
 .asktool-option {
   display: flex;
   width: 100%;
@@ -184,7 +174,8 @@
   min-height: 30px;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  background: var(--ds-tile-deep);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-secondary);
   cursor: pointer;
   font: inherit;
@@ -195,7 +186,7 @@
 
 .asktool-option:hover,
 .asktool-option.selected {
-  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-tile-deep));
+  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-raised));
   color: var(--ds-text-primary);
 }
 
@@ -227,7 +218,8 @@
   padding: 6px 8px;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--ds-tile-deep);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-primary);
   font: inherit;
   font-size: var(--text-md);
@@ -264,7 +256,7 @@
 .working-indicator {
   box-sizing: border-box;
   display: flex;
-  width: min(100%, var(--chat-prose-max-width, 720px));
+  width: min(100%, 720px);
   align-items: center;
   gap: 7px;
   margin: 2px 0 8px;
@@ -327,26 +319,11 @@
 
 .run-activity-retry-reason {
   position: relative;
-  /* The plate hangs this far above the trigger; the bridge below covers it. */
-  --run-activity-error-gap: 8px;
   display: inline-flex;
   min-width: 0;
   align-items: center;
   cursor: help;
   outline: none;
-}
-
-/* The pointer has to cross the gap between the trigger and the plate to reach
-   the plate's scrollbar. That band belongs to the indicator row, not to the
-   trigger, so `:hover` dropped there and the plate closed mid-reach. The bridge
-   is part of the trigger, which keeps the path hovered. */
-.run-activity-retry-reason::before {
-  content: "";
-  position: absolute;
-  top: calc(-1 * var(--run-activity-error-gap));
-  left: 0;
-  right: 0;
-  height: var(--run-activity-error-gap);
 }
 
 .run-activity-retry-reason:focus-visible {
@@ -356,55 +333,30 @@
 
 /* The retry reason borrows the assistant error card's hierarchy without
    adding a second transcript row. It is hover/focus-only so the active row
-   remains compact at rest. The in-flow `.message-error` wash is transparent;
-   this floating tooltip mixes the same tint over an opaque elevated plate.
-   The plate hangs above the tail status row inside `.thread-scroll`, whose
-   `overflow: auto` clips it at the scrollport edge, and the conversation bar
-   paints over the same band one stacking level higher, so an unbounded plate
-   lost the first lines of a long provider message (ADR 0196) - the part a
-   reader needs. Cap it to the room the tail row leaves: the window minus the
-   conversation bar, minus the composer reserve `.thread-content` already
-   holds (16px above `--composer-dock-height`), minus the 46px status row and
-   this plate's own 8px gap. The remainder scrolls, the way
-   `.message-error-details pre` already handles long error text. */
+   remains compact at rest. */
 .run-activity-error-popover.message-error {
   position: absolute;
-  bottom: calc(100% + var(--run-activity-error-gap));
+  bottom: calc(100% + 8px);
   left: 0;
   z-index: 8;
   display: block;
   width: min(360px, calc(100vw - 32px));
   padding: 10px 12px;
-  max-height: calc(100vh - var(--ds-toolbar-height, 46px) - var(--composer-dock-height, 228px) - 70px);
-  /* RunActivityIndicator measures the room the tail row actually leaves and
-     publishes it here; the calc is only the first-paint fallback. */
-  max-height: var(--run-activity-error-max-height, calc(100dvh - var(--ds-toolbar-height, 46px) - var(--composer-dock-height, 228px) - 70px));
-  /* The plate itself does not scroll: Chromium paints a scrollbar outside a
-     rounded corner, so the bar crossed the radius. The body below the heading
-     owns the scrolling instead. */
-  overflow: hidden;
-  background: color-mix(in oklab, var(--ds-error) 10%, var(--ds-bg-elevated-opaque));
   box-shadow: var(--ds-shadow-dialog);
   opacity: 0;
   pointer-events: none;
   transform: translateY(4px);
   visibility: hidden;
-  /* Leaving the trigger keeps the plate for one short beat, so a reader
-     reaching for the scrollbar is not punished for the trip. */
   transition:
-    opacity var(--motion-duration-fast) var(--motion-ease-out) 240ms,
-    transform var(--motion-duration-fast) var(--motion-ease-out) 240ms,
-    visibility 0s linear calc(var(--motion-duration-fast) + 240ms);
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out),
+    visibility 0s linear var(--motion-duration-fast);
 }
 
 .run-activity-retry-reason:hover .run-activity-error-popover,
 .run-activity-retry-reason:focus-visible .run-activity-error-popover {
   opacity: 1;
-  /* The capped plate is scrollable, so the revealed state has to take the
-     pointer. Hovering the plate keeps this trigger's `:hover` alive - the
-     plate is its child - so a long provider message can be scrolled and
-     selected instead of losing its first lines above the scrollport. */
-  pointer-events: auto;
+  pointer-events: none;
   transform: translateY(0);
   visibility: visible;
   transition-delay: 0s;
@@ -418,11 +370,6 @@
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
-  /* Body-only scrolling (measured by RunActivityIndicator): the heading above
-     stays put while a long provider message scrolls inside the plate. */
-  max-height: var(--run-activity-error-body-max-height, none);
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -478,7 +425,7 @@
 .planning-state-indicator {
   box-sizing: border-box;
   display: flex;
-  width: min(100%, var(--chat-prose-max-width, 720px));
+  width: min(100%, 720px);
   align-items: center;
   gap: 7px;
   margin: 2px 0 8px;
@@ -562,7 +509,7 @@
   --review-change-rail: var(--ds-text-muted);
   position: relative;
   box-sizing: border-box;
-  width: min(calc(100% - 24px), var(--chat-prose-max-width, 720px));
+  width: min(calc(100% - 24px), 720px);
   margin: 0 0 2px 24px;
 }
 
@@ -798,7 +745,7 @@
 }
 
 .turn-outcome-card {
-  width: min(100%, var(--chat-prose-max-width, 720px));
+  width: min(100%, 720px);
   margin: 12px 0 8px;
   border-radius: var(--radius-md);
   background: var(--ds-tile);
@@ -1006,16 +953,6 @@
   opacity: 1;
 }
 
-.message-timestamp {
-  font-size: var(--text-xs);
-  color: var(--ds-text-muted);
-  line-height: var(--leading-compact);
-  white-space: nowrap;
-  user-select: none;
-  padding: 0 4px;
-  align-self: center;
-}
-
 .icon-btn:active:not(:disabled),
 .title-nav-btn:active:not(:disabled),
 .nav-item:active:not(:disabled),
@@ -1073,6 +1010,39 @@
   padding-inline: 5px;
 }
 
+/* 8px matches other floating layers (composer menus, autocomplete). A 5px
+   gap let the tooltip border sit on --ds-bg-hover (6% dark / 5% light) so
+   the label looked clipped (#74). The compact raised shadow stays inside
+   that gap; the composer's 20px glow would still wash over the chip. */
+.copy-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 8;
+  transform: translateX(-50%);
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-raised-shadow);
+  padding: 3px 7px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.copy-btn[data-tip]:hover::after,
+.copy-btn[data-tip]:focus-visible::after {
+  opacity: 1;
+}
+
+.copy-btn[data-tip]:disabled::after {
+  content: none;
+}
 
 .message-meta {
   display: inline-flex;
@@ -1401,96 +1371,50 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Compact in-flow editor. Outer composer shadow clips: the row uses
-   content-visibility (paint containment) and has no horizontal padding, and
-   the transcript scroller clips overflow. Separate from the pane with the
-   same 8% mix as a user bubble (`--ds-tile-deep`); focus uses an inset ring
-   so it stays inside the plate. The textarea is unboxed; actions sit in a
-   28px footer. */
 .message-edit {
   display: flex;
-  width: min(100%, var(--chat-prose-max-width, 720px));
-  margin: 0;
+  width: min(100%, 720px);
   flex-direction: column;
-  border: 0;
-  border-radius: var(--ds-composer-radius, var(--radius-xl));
-  background: var(--ds-tile-deep);
-  box-shadow: none;
-  isolation: isolate;
-}
-
-.message-edit:focus-within {
-  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ds-focus) 28%, transparent);
+  gap: 8px;
 }
 
 /* A prompt being edited needs typing room, so the user column drops its
    narrow chat-plate clamp for as long as the editor is open. */
 .message-row.user .message-col:has(.message-edit) {
   width: 100%;
-  max-width: min(100%, var(--chat-prose-max-width, 720px));
+  max-width: min(100%, 720px);
 }
 
 .message-row.user .message-bubble:has(.message-edit) {
   width: 100%;
-  max-width: 100%;
-  border-radius: 0;
   background: transparent;
   padding: 0;
 }
 
 .message-edit-input {
-  display: block;
   width: 100%;
-  min-height: 3lh;
-  max-height: min(12lh, 50vh);
-  resize: none;
-  overflow-y: auto;
+  min-height: 112px;
+  max-height: 50vh;
+  resize: vertical;
   border: 0;
-  background: transparent;
-  padding: 12px 14px 8px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
+  padding: 10px 12px;
   color: var(--ds-text-primary);
   font: inherit;
-  font-size: var(--text-base);
   line-height: var(--leading-chat);
   outline: none;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
 }
 
-.message-edit-input:focus,
-.message-edit-input:focus-visible {
-  outline: none;
-  box-shadow: none;
+.message-edit-input:focus {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
 }
 
 .message-edit-actions {
   display: flex;
-  align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  padding: 4px 8px 8px;
-}
-
-.message-edit-cancel {
-  height: 28px;
-  min-height: 28px;
-  padding: 0 10px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-compact);
-  white-space: nowrap;
-}
-
-.send-btn.message-edit-submit {
-  width: auto;
-  min-width: 28px;
-  flex: 0 0 auto;
-  padding: 0 12px;
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-compact);
-  white-space: nowrap;
 }
 
 .message-revision-label {
@@ -1505,7 +1429,7 @@
 }
 
 .message-bubble {
-  max-width: min(100%, var(--chat-prose-max-width, 720px));
+  max-width: min(100%, 720px);
   border-radius: var(--radius-lg-plus);
   padding: 10px 14px;
   line-height: var(--leading-chat);
@@ -1518,68 +1442,6 @@
   word-break: normal;
   min-width: 0;
   line-height: inherit;
-}
-
-.message-row.session-message .message-col {
-  width: min(100%, var(--chat-prose-max-width, 720px));
-  max-width: 100%;
-  align-items: stretch;
-}
-
-.message-row.session-message .message-bubble {
-  background: var(--ds-bg-hover);
-  border-radius: var(--radius-md-plus);
-  color: var(--ds-text-primary);
-}
-
-.session-message-origin {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  margin-bottom: 6px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-}
-
-.session-message-kind {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: var(--font-weight-medium);
-}
-
-.session-message-source {
-  padding: 2px 0;
-  min-width: 0;
-  background: transparent;
-  border: 0;
-  color: var(--ds-accent);
-  font: inherit;
-  text-align: start;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-
-.session-message-source:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.session-message-source:focus-visible {
-  outline: 2px solid var(--ds-accent);
-  outline-offset: 3px;
-  border-radius: var(--radius-sm);
-}
-
-.session-message-session-id {
-  flex-basis: 100%;
-  color: var(--ds-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  line-height: var(--leading-compact);
-  overflow-wrap: anywhere;
 }
 
 .message-attachments {
@@ -1620,15 +1482,16 @@
   min-width: 0;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
   padding: 3px;
-  background: var(--ds-tile);
+  background: var(--ds-bg-secondary);
   cursor: pointer;
   overflow: hidden;
 }
 
 .message-attachment-image:hover {
-  background: var(--ds-raised);
+  border-color: var(--ds-border-default);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 18%, transparent);
 }
 
@@ -1656,8 +1519,7 @@
    (D319) and the nested `.subagent-run`. */
 
 .message-error {
-  /* The message column owns the dynamic chat width; do not add a second cap. */
-  width: 100%;
+  width: min(100%, 680px);
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--ds-error) 7%, transparent);
   padding: 10px 12px;
@@ -1708,27 +1570,6 @@
 .message-error-actions {
   flex: 0 0 auto;
   justify-content: flex-end;
-}
-
-.message-error-dismiss {
-  display: inline-flex;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  color: var(--ds-text-muted);
-}
-
-.message-error-dismiss:hover {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
-.message-error-dismiss:focus-visible {
-  outline: 2px solid var(--ds-accent);
-  outline-offset: 2px;
 }
 
 .message-error-toggle {
@@ -1827,25 +1668,12 @@
   /* Skip layout/paint for collapsed groups far offscreen (D247). */
   content-visibility: auto;
   contain-intrinsic-size: auto 40px;
-  /* Clips the same disclosure chrome as .message-row — at the column's left
-     edge, and at its right for a run row's head — so it relaxes its clip by
-     the same amount; with either one left tight the fill is squared off. */
-  overflow-clip-margin: 8px;
 }
 
-/*
- * A disclosure header is a row, not a chip. A content-sized `inline-flex`
- * header (the whole process, an ordinary group, a subagent card) stopped at
- * its own label, so the tool call never used the conversation width: it stayed
- * narrow next to full-width prose and did not change when the band was dragged
- * wider, and a long label overran the chip because only the level-specific
- * overrides below carried an ellipsis. The row claims the band like every
- * other transcript row; the label ellipsizes and the caret trails it.
- */
 .tool-activity-header {
-  display: flex;
-  width: 100%;
+  display: inline-flex;
   min-width: 0;
+  max-width: 100%;
   min-height: 26px;
   align-items: center;
   gap: 5px;
@@ -1868,14 +1696,9 @@
   color: var(--ds-text-muted);
 }
 
-/* Long labels ellipsize inside the band-wide header instead of overrunning it. */
 .tool-activity-label {
-  min-width: 0;
-  flex: 0 1 auto;
-  overflow: hidden;
+  flex: none;
   font-weight: var(--font-weight-medium);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tool-activity-count {
@@ -1889,7 +1712,7 @@
 
 /* Live tail while running: last thought line / current tool, single line. */
 .tool-activity-preview {
-  max-width: min(100%, var(--chat-prose-max-width, 720px));
+  max-width: min(100%, 720px);
   margin: 1px 0 0 26px;
   overflow: hidden;
   color: var(--ds-text-muted);
@@ -1898,17 +1721,15 @@
   white-space: nowrap;
 }
 
-/* The caret closes the row, so a short label keeps it at the trailing edge. */
 .tool-activity-caret {
   display: inline-flex;
   flex: none;
-  margin-inline-start: auto;
   color: var(--ds-text-muted);
   opacity: 0.65;
   transition: transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.tool-activity-group.open > .tool-activity-header > .tool-activity-caret {
+.tool-activity-group.open .tool-activity-caret {
   transform: rotate(90deg);
 }
 
@@ -1920,7 +1741,7 @@
     opacity var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.tool-activity-group.open > .tool-activity-collapse {
+.tool-activity-group.open .tool-activity-collapse {
   grid-template-rows: 1fr;
   opacity: 1;
 }
@@ -1928,12 +1749,6 @@
 .tool-activity-collapse-inner {
   min-height: 0;
   overflow: hidden;
-  /* This scroller's padding box is the clip edge, and overflow-clip-margin
-     does not apply to scroll containers, so a run row's 4px hover-fill
-     overhang is given layout room instead. The negative margin keeps the
-     content box — and therefore every row inside — the size it was. */
-  padding-right: 8px;
-  margin-right: -8px;
 }
 
 .tool-activity-body {
@@ -1954,13 +1769,18 @@
   background: var(--ds-tile);
 }
 
-/* The subagent card only re-dresses the shared header row: its material is the
-   card itself, so the row loses the radius and the bleed. */
 .tool-activity-group.has-subagents .tool-activity-header {
+  display: flex;
+  width: 100%;
+  max-width: none;
   min-height: 42px;
   margin: 0;
   border-radius: 0;
   padding: 10px 16px;
+}
+
+.tool-activity-group.has-subagents .tool-activity-caret {
+  margin-inline-start: auto;
 }
 
 .subagent-activity-metrics {
@@ -1969,10 +1789,8 @@
   color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-activity-group.has-subagents .tool-activity-preview {
@@ -2172,53 +1990,22 @@
   background: var(--ds-text-muted);
 }
 
-.subagent-topology-node.outcome-creating .subagent-topology-status-icon {
-  background: var(--ds-purple);
-  animation: subagent-creating-pulse 1.4s var(--motion-ease-standard) infinite;
-}
-
-.subagent-topology-node.outcome-creating .subagent-topology-node-status {
-  color: var(--ds-purple);
-}
-
-@keyframes subagent-creating-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .subagent-topology-node.outcome-creating .subagent-topology-status-icon {
-    animation: none;
-  }
-}
-
 .subagent-topology-node-title-row {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
   align-items: baseline;
-  gap: 3px 8px;
+  gap: 8px;
 }
 
 .subagent-topology-node-title {
   min-width: 0;
-  flex: 1 1 12ch;
+  flex: 1;
   overflow: hidden;
   color: var(--ds-text-primary);
-  display: -webkit-box;
   font-size: var(--text-sm-plus);
   font-weight: var(--font-weight-semibold);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-  white-space: normal;
-  word-break: break-word;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .subagent-topology-node-model {
@@ -2240,19 +2027,13 @@
   white-space: nowrap;
 }
 
-.subagent-topology-node-summary {
-  display: -webkit-box;
-  min-width: 0;
+.subagent-topology-node-summary,
+.subagent-topology-node-steps {
   overflow: hidden;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-  white-space: normal;
-  word-break: break-word;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .subagent-topology-node-summary {
@@ -2260,14 +2041,9 @@
 }
 
 .subagent-topology-node-steps {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  word-break: break-word;
   margin-top: 3px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  line-height: var(--leading-normal);
 }
 
 .subagent-topology-node > .tool-row-body,
@@ -2318,11 +2094,7 @@
   }
 }
 
-/* A tool row claims the conversation column whatever its parent displays as:
-   the disclosure header is the row's only width-bearing box. */
 .tool-row {
-  width: 100%;
-  min-width: 0;
   margin: 3px 0;
 }
 
@@ -2511,7 +2283,7 @@
   flex: none;
   margin-left: 2px;
   color: var(--ds-text-muted);
-  opacity: 0.65;
+  opacity: 0;
   transition: transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
@@ -2523,9 +2295,7 @@
   opacity: 1;
 }
 
-.tool-row.open > .tool-row-header > .tool-row-caret,
-.tool-row.open > .tool-row-head > .tool-row-header > .tool-row-caret,
-.tool-row.open > .tool-row-head > .tool-row-caret {
+.tool-row.open .tool-row-caret {
   transform: rotate(90deg);
 }
 
@@ -2597,12 +2367,6 @@
   margin: 4px 0 6px 24px;
   padding: 4px 0 8px 12px;
   color: var(--ds-text-secondary);
-}
-
-/* Tool details stay in the tool row's level rather than adding a second inset. */
-.tool-row:not(.thinking):not(.subagent-topology-node) > .tool-row-body {
-  margin-left: 0;
-  padding-left: 0;
 }
 
 .disclosure-collapse-rail {
@@ -2795,7 +2559,7 @@
   margin: 0;
   overflow: auto;
   border-radius: var(--radius-md);
-  background: var(--ds-tool-row-bg);
+  background: var(--ds-tile);
   padding: 10px 12px;
   color: var(--ds-text-secondary);
   font-family: var(--font-mono);
@@ -2871,7 +2635,6 @@
  */
 .tool-file-item {
   display: block;
-  flex: none;
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -3017,185 +2780,5 @@
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-/* Search navigation uses the original message tree and its rendered text. */
-.message-row.transcript-search-target {
-  content-visibility: visible;
-}
-
-::highlight(transcript-search) {
-  color: var(--ds-text-primary);
-  background-color: color-mix(in srgb, var(--ds-accent) 35%, transparent);
-}
-
-.transcript-search-source-match {
-  background-color: color-mix(in srgb, var(--ds-accent) 25%, transparent);
-  outline: 2px solid color-mix(in srgb, var(--ds-accent) 65%, transparent);
-  outline-offset: 2px;
-}
-
-.transcript-load-later {
-  display: block;
-  margin: 16px auto;
-  padding: 8px 12px;
-  color: var(--ds-text-muted);
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-elevated-opaque);
-}
-
-.transcript-navigation-loading {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
-  background: var(--ds-bg-elevated-opaque);
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs);
-}
-
-/* Process, activity groups and item details own independent disclosure levels. */
-.turn-process {
-  width: 100%;
-  margin: 0 0 8px;
-  min-width: 0;
-}
-
-.turn-process.open > .tool-activity-header > .tool-activity-caret,
-.process-activity-group.open > .tool-activity-header > .tool-activity-caret {
-  transform: rotate(90deg);
-}
-
-.turn-process-body {
-  position: relative;
-  padding-left: 18px;
-}
-
-.turn-process-body[hidden],
-.process-activity-body[hidden] {
-  display: none;
-}
-
-.turn-process-body > .assistant-turn-fragment {
-  color: var(--ds-text-secondary);
-  margin-block: 8px;
-}
-
-.process-activity-group {
-  width: 100%;
-  min-width: 0;
-  margin-block: 6px;
-}
-
-.process-activity-body {
-  position: relative;
-  min-width: 0;
-}
-
-.process-activity-group.grouped > .process-activity-body {
-  margin-block: 3px 6px;
-  padding-inline-start: 12px;
-}
-
-/* The nested process levels share the base header row: no level-specific
-   width, label or caret overrides are needed now that the row claims the
-   band itself (see `.tool-activity-header`). */
-
-.thinking-compact {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-block: 6px;
-}
-
-.turn-process-error {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  font-size: var(--text-xs-plus);
-  color: var(--ds-error);
-}
-
-/* Provider-hosted web search round. The row reuses the tool-row idiom; only
- * the body payload needs its own rules. */
-.hosted-search-query {
-  margin: 2px 0 6px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.hosted-search-sources {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.hosted-search-sources a {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  max-width: 100%;
-  min-width: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-  text-decoration: none;
-}
-
-.hosted-search-sources a:hover {
-  text-decoration: underline;
-}
-
-/* The title ellipsizes inside the row: an inline-flex anchor would otherwise
-   let a long source name push the host label past the band. */
-.hosted-search-source-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hosted-search-source-host {
-  color: var(--ds-text-tertiary);
-  flex: none;
-}
-
-.hosted-search-more {
-  display: inline-block;
-  margin-top: 4px;
-  color: var(--ds-text-tertiary);
-  font-size: var(--text-sm);
-}
-
-/* ── Smooth streaming cursor ── */
-
-@keyframes smooth-stream-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.assistant-turn-fragment.smooth-cursor .prose-chat > :last-child::after {
-  content: "";
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background: var(--ds-text-primary);
-  animation: smooth-stream-blink 1s step-end infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .assistant-turn-fragment.smooth-cursor .prose-chat > :last-child::after {
-    animation: none;
-    opacity: 0.7;
   }
 }

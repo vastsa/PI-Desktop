@@ -1,5 +1,4 @@
 export * from "./host-client.js";
-export * from "./custom-system-prompt.js";
 export * from "./model-capabilities.js";
 export * from "./mode-prompts.js";
 export * from "./runtime.js";
@@ -13,16 +12,7 @@ export * from "./prompt-enhancement.js";
 export * from "./provider-headers.js";
 export * from "./project-instructions.js";
 export * from "./project-instructions-prompt.js";
-export * from "./project-memory-prompt.js";
 export * from "./subagent.js";
-export { classifySidecarCrash, sidecarCrashErrorCode } from "./sidecar-crash.js";
-export type { SidecarCrash, SidecarCrashKind } from "./sidecar-crash.js";
 export * from "./subagent-definitions.js";
 export * from "./session-title-summarize.js";
-export * from "./stream-coalescer.js";
-export * from "./extensions/index.js";
-export { startAuthenticatedProxyRelay } from "./authenticated-proxy-relay.js";
-export type { AuthenticatedProxyRelay } from "./authenticated-proxy-relay.js";
-
-export * from "./speech/index.js";
-export * from "./image-generation/index.js";
+export * from "./timing.js";

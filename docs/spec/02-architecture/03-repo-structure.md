@@ -36,9 +36,6 @@ PI-Desktop/
 │ ├── shared/                 # IPC/protocol contracts, error codes, changelog
 │ ├── i18n/                   # shipped UI catalogs plus locale helpers
 │ ├── agent-runtime/          # pi sidecar and runtime wrapper (bundled into the app)
-│ ├── agent-host/             # headless Agent Host module: admission, queue, approvals, event log
-│ ├── host-runtime/           # Electron-independent runtime: stdio transports, supervisor, turn lifecycle
-│ ├── racp/                   # RACP-WS server and client, device-token pairing
 │ ├── plugin-sdk/             # plugin author types and validators
 │ └── plugin-devkit/          # pi-plugin CLI: scaffold, check, pack, publish
 ├── examples/
@@ -62,22 +59,6 @@ PI-Desktop/
 ├── Cargo.toml                # Rust workspace
 └── README.md · README.zh-CN.md
 ```
-
-## Split-domain facades
-
-Large entry points remain compatibility facades while their implementation is
-owned by domain modules. Electron main wires `ipc/`, `runtime/`, `bootstrap/`,
-and `services/`; renderer page entry points delegate to `features/app`,
-`features/plugins`, and `features/settings`; and host-core facades delegate to
-the `plugins/`, `db/`, `providers/`, and `plans/` submodules. The shared
-`types.ts` entry point re-exports the domain files under `shared/src/types/`.
-
-The facade paths preserve existing imports and public contracts. New logic
-belongs in the domain module that owns its state or process boundary.
-
-Source budgets are reported and enforced by
-[`scripts/check-architecture.mjs`](../../architecture/README.md). Its
-allowlist records only existing extraction debt with a reason.
 
 ## 2. Package responsibilities
 
@@ -107,7 +88,7 @@ Node wrapper over pi:
 ### `packages/shared`
 Cross-boundary contracts:
 - IPC channel names
-- DTO types, split by domain under `src/types/` and re-exported from `types.ts`
+- DTO types
 - error codes
 - protocol versioning
 - changelog entries surfaced in the app
@@ -128,9 +109,7 @@ Cross-boundary contracts:
 
 ## 3. Runtime data (not in git)
 
-`PI_DESKTOP_DATA_DIR` overrides the default location: `~/.pi-desktop` for a
-packaged installation, `~/.pi-desktop-dev` for a development build, which is
-how `pnpm dev` runs beside the packaged app (D599).
+`PI_DESKTOP_DATA_DIR` overrides the default location.
 
 ```text
 ~/.pi-desktop/

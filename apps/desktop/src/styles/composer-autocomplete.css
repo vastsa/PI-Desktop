@@ -11,36 +11,20 @@
  * ============================================================ */
 
 .composer-autocomplete {
-  position: fixed;
-  top: 0;
+  position: absolute;
   left: 0;
-  right: auto;
-  bottom: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
   z-index: 40;
   display: flex;
   flex-direction: column;
-  width: min(100%, calc(100vw - 24px));
   max-height: min(380px, calc(100vh - 160px));
-  max-width: calc(100vw - 24px);
   border-radius: var(--radius-lg);
   background: var(--ds-bg-elevated-opaque);
   box-shadow: var(--ds-shadow-dialog);
   border: 1px solid var(--ds-border-subtle);
   color: var(--ds-text-primary);
   overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.composer-autocomplete-anchor {
-  display: contents;
-}
-
-.composer-autocomplete.is-open {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
 }
 
 .composer-ac-list {
@@ -78,8 +62,7 @@
 }
 
 .composer-ac-desc {
-  /* Descriptions use remaining space without shrinking the command name. */
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -111,15 +94,13 @@
   flex: 0 0 auto;
 }
 
-/* Typed slash invocation rendered as a chip in the transcript (D123).
-   Skill invocations carry the user's whole typed body, so the chip wraps
-   like .message-user-text instead of truncating. */
+/* Typed slash invocation rendered as a chip in the transcript (D123). */
 .chat-command-chip {
   display: inline-block;
   max-width: 100%;
-  vertical-align: top;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 2px 8px;
   border-radius: var(--radius-md);
   background: var(--ds-tile-deep);

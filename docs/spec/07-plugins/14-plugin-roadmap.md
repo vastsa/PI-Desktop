@@ -18,12 +18,6 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 
 ### R2 — Agent Extension (partial ✅)
 - Full agentTools pipeline ✅
-- Official `pi.session-orchestrator` worker-session plugin ✅ — real durable
-  sessions, host-owned bidirectional delivery, turn-bound results,
-  at-most-once completion callbacks, bounded status projections, and
-  parent-scoped persistence; it composes the reviewed `desktop.control`
-  operations while the durable ledger remains in host-core (ADR 0237 / ADR
-  0239)
 - Skills contribution is activated: declared skills reach the model as a `# Skills`
   catalog in the system prompt when `agent.prompt.inject` is granted, and the model
   loads a body on demand through the `Skill` tool ✅ (ADR 0039, D174)
@@ -64,18 +58,6 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - Theme plugins ✅ — plugins ship CSS files (D175)
 - Enterprise private sources (still planned)
 - Marketplace reviews / quality score (optional, still planned)
-
-### R7 — Agent extensions (v1.1 ✅, D387 / D388)
-- v1: ExtensionAPI adapter in the Agent sidecar; tools, commands, lifecycle and
-  provider hooks, basic UI prompts
-- v1.1: modules are a plugin contribution (`contributes.agentExtensions`, permission
-  `agent.extension`); "Import pi extension" turns a pi CLI extension into a
-  development plugin; no separate registry or settings tab
-- v2: custom session entries, `sessionManager` read shim, editor read/write,
-  shortcuts, markdown transformers; marketplace distribution once signing lands
-- v3: pi CLI `settings.json` hints, unified skill/prompt discovery, remote-control
-  prompt routing
-- Spec: [16-trusted-extensions.md](16-trusted-extensions.md); ADR 0214, ADR 0215
 
 ## 3. Mapping to product milestones
 

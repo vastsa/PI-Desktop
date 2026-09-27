@@ -1,8 +1,8 @@
 # ADR 0205: Remote Agent Control Uses a Dedicated Host Boundary
 
-- Status: Accepted for implementation (post-MVP); amended by D374 and D375
+- Status: Accepted for implementation (post-MVP); amended by D376
 - Date: 2026-09-09
-- Decision: D373 (amended by D374 and D375)
+- Decision: D373 (amended by D376)
 - Related: ADR 0004, ADR 0011, ADR 0203, ADR 0165,
   `02-architecture/05-remote-agent-control.md`,
   `03-runtime/19-remote-agent-control-protocol.md`,
@@ -115,7 +115,7 @@ Rejected. ADR 0165 removed it because subagent coordination was not a product
 requirement. The remote control protocol is client-to-host control, not
 subagent messaging.
 
-## Amendment (D374)
+## Amendment (D376)
 
 Date: 2026-09-10. A pre-implementation review found that the D373 draft was
 right about its layering but did not match the desktop it has to wrap, and
@@ -172,101 +172,9 @@ required more than v1 can carry. The following changes apply to decisions 3,
     is the non-browser path; URL tokens remain forbidden in both.
 11. **Identity source and tenancy.** The Gateway may validate either an
     OIDC/OAuth 2.0 provider or first-party product account tokens; the choice
-    is recorded when rollout R3 starts (superseded by D375 item 10, which
-    fixes the PI account service). The first deployment is
+    is recorded when rollout R3 starts. The first deployment is
     single-tenant; `tenantId` stays in every route and cross-tenant tests
     run once a multi-tenant harness exists.
 12. **Catalog additions.** `host/list`, `project/list`, `session/history`,
     host-scope event subscriptions, and `turn/cancel` are added; deferred
     local operations are listed by name so no binding invents a substitute.
-
-## Amendment (D375)
-
-Date: 2026-09-10. Recorded demand, not transport breadth, now orders the
-milestones. Issues #176 and #140 ask to operate a project on a remote Linux
-or WSL machine from the local desktop; issue #100 asks for task and approval
-notifications on messaging channels with simple commands back; no recorded
-request asks for a browser or phone client of the desktop. The design-gate
-answers below were chosen by the maintainer the same day.
-
-1. **First remote topology: the desktop as Remote Client of a `pi-host`
-   over an SSH tunnel.** The `pi-host` bundle packages the headless module,
-   the Node sidecar, and the platform's host-core binary at the desktop's
-   version. A bootstrap script uploaded over the user's own SSH session
-   downloads it from GitHub Releases, verifies the published SHA-256, starts
-   it bound to loopback, and pairs it with the desktop. It is reached
-   through an SSH port forward on the `RACP-WS` header profile; plain
-   `ws://` is accepted only when bind and peer are loopback and a device
-   token is presented. A machine without outbound access to GitHub is not
-   supported in the first version.
-2. **Desktop RACP client adapter.** Electron Main presents a remote Host to
-   the renderer through the existing `lib/api.ts` surface; the renderer
-   stays transport-agnostic and hides uncovered features by capability.
-3. **Remote-host profile (RACP v1.1).** `session/configure`, `session/fork`,
-   `session/rename`, `session/delete`, `session/compact`, `workspace/list`,
-   `workspace/read`, `workspace/diff`, and the `terminal/open`,
-   `terminal/input`, `terminal/resize`, `terminal/close` operations join the
-   catalog, so mode, model, the work panel's files and diff, and a terminal
-   on the remote machine work against a remote session.
-4. **Reverse tool relay in the same milestone.** The paired desktop
-   advertises its user-configured MCP servers and workspace-free plugin
-   tools with `tools/advertise`; the Host merges them into the remote
-   session's catalog and executes them through the `tool/execute` server
-   request on the desktop, under the desktop's own plugin permissions, after
-   the Host's permission decision. Plugin tools that require workspace or
-   filesystem access are excluded. R2 ships as one milestone.
-5. **Remote session ownership split.** Transcript, tools, workspace,
-   permissions, provider secrets, `~/.agents` definitions, MCP servers
-   configured on the Host, and scheduled tasks live on the remote Host.
-   Provider configuration for the remote Host is written over the SSH
-   bootstrap channel, never through RACP.
-6. **Ceiling exemption as Host policy.** A desktop device paired through the
-   SSH bootstrap holds `owner` and is exempt from the remote permission
-   ceiling by default, because SSH access already exceeds anything the
-   ceiling withholds; the Host policy `applyCeilingToPairedDevices`
-   re-applies it.
-7. **Persisted turn queue.** Queued turns and their idempotency keys are
-   persisted by Rust host-core, restored in order after a restart, and held
-   until a controller attaches. The schema bump is recorded by its own ADR
-   when R1 starts.
-8. **Remote approval lifetime.** While a remote subscriber is attached the
-   default approval lifetime is 30 minutes, operator-adjustable within a
-   bound; the local 120-second default is unchanged.
-9. **Second scheduled milestone: outbound messaging integration.** An
-   adapter beside the Host relays redacted event summaries to a webhook
-   first, then Telegram and Slack through outbound channels, and maps a fixed
-   command vocabulary to turn and approval operations under the linked
-   principal's roles. It opens no listener and never blocks a turn.
-10. **Gateway identity source.** When the Gateway is scheduled, it validates
-    first-party tokens of the PI account service specified in the pi-backend
-    repository; OIDC federation is not planned.
-11. **Unscheduled.** The Gateway with its Host link, the browser profile with
-    its cookie authentication, and the reserved gRPC binding keep their
-    specifications and are scheduled only by a later product decision.
-12. **Acceptance.** E2E-231 and E2E-232 are the acceptance targets of the
-    scheduled milestones; E2E-227 and E2E-228 apply when their milestones are
-    scheduled.
-
-## Amendment (D385)
-
-Date: 2026-09-10. The maintainer requires remote control to be user-local by
-construction: no project-operated identity, account, or relay service may be
-in the path, and a user's client must never authenticate through a service
-the project runs.
-
-1. **No first-party identity.** D375 item 10 is withdrawn. The only
-   credential a client holds is a device token issued by the user's own Host
-   at pairing. OIDC federation and the pi-backend account service are out of
-   scope for remote control.
-2. **Gateway only as a self-hosted relay.** PI does not operate a Gateway.
-   If the Gateway topology is ever scheduled, the user runs it on their own
-   infrastructure and it admits clients with Host-issued device credentials;
-   its route context carries the Host id, not a tenant of the project's.
-3. **Outbound connections are the user's own.** The Host connects only to
-   the user's SSH hosts, the messaging channels the user configured with
-   their own bot tokens or webhooks, the model providers the user configured,
-   and the read-only, checksum-verified GitHub Releases download of
-   `pi-host`.
-4. **Unchanged.** The SSH-tunnel topology, device pairing, the messaging
-   integration, and every RACP shape already satisfy this rule; the
-   specifications change wording, not structure.

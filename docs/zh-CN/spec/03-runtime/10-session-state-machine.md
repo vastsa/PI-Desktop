@@ -76,27 +76,10 @@ accept_prompt
  -> turn_end
 ```
 
-回合会到达三种终止原因之一 —— `completed`、`aborted` 或 `error` —— 与
-第 1 节状态表中 `aborted` / `error` 两行一致。终止原因只决定一次：
-中止会在取消请求发出之前记录其决定，因此之后的 `agent_end` 无法把已中止的
-回合改述为已完成。终止事件按回合身份归属，而不是按会话：某个终止事件
-所属的回合若已不再拥有该会话，它既不改变当前回合的状态，也不释放其资源，
-迟到的消息行和工具行仍作为历史记录。宿主在每次已开始的回合中通过
-`session:turnEnded` 插件事件宣告一次终止状态（见 ADR 0252，
-`docs/adr/0252-plugin-host-turn-end-event.md`）。
-
-转向输入按同一身份判定：命名了一个已取消、已开始收尾或已不再拥有该会话的回合的输入，
-会以「回合已结束」被拒绝。
-
 ## 3. 转换规则
 
 1. 每个会话只有一个有效回合
-2. 新提示被 `AGENT_BUSY` 拒绝，而 running/waiting_permission 期间 renderer 的
-   运行中发送路径经 `agent/queue/push` 把下一条 prompt 推入 Host 拥有的回合队列
-   （架构 v15，D375 / D386 / ADR 0213），并从 `agent/event/queueChanged` 镜像持久
-   条目；Agent Host 模块在 `agent_end` 之后释放一条，恢复的队列挂起到 owner 接入，
-   `agent/queue/prioritize` 把条目移到队列头部，因此正常的用户发送不会看到
-   `AGENT_BUSY`。
+2. 新提示被 `AGENT_BUSY` 拒绝，而 running/waiting_permission
 3. 允许中止运行或 waiting_permission。 Renderer 智能停止
    删除未应答的 root 用户行并恢复其 session/turn-scoped
    预序列化输入框快照；曾经助理文字、思考或任何
@@ -113,11 +96,11 @@ accept_prompt
    插入 `task.failed`，并且结果已在焦点当前中可见
    聊天或任何 `aborted` 回合不会插入任何通知 (D117)。重复终端
    调用是无操作的。
-9. Whole-session fork is idle-only. A running Desktop source may fork a
-   completed assistant prefix with no indexed rows owned by a running turn.
-   The parent continues and the child starts idle. Other busy forks return
-   host `CONFLICT` / IPC `AGENT_BUSY`; native Pi keeps its existing idle and
-   ownership guards. Refusal never produces a partial child.
+9. 仅当源空闲时才允许分叉。孩子开始无所事事
+   没有回合或等待许可状态。 Electron 返回 `AGENT_BUSY` 的
+主动运行时保护并规范主机的持续运行轮流
+   `CONFLICT` 回退到相同的 IPC 错误。两条路径均不产生部分
+   孩子。
 10. 提供 `throughMessageId` 仅更改快照边界。助理
     Fork/Edit 仍然创建一个新的空闲会话 ID，没有共享轮次，
     权限等待、运行时或提供商缓存状态 (D134)。
@@ -194,8 +177,8 @@ accept_prompt
    转录事件或工作空间根交叉
 5. 每个未见过的 completed/failed 回合恰好产生一条通知记录
    而可见当前结果或中止的回合不会产生任何结果
-6. A fork starts as an independent idle session; a busy Desktop source may
-   fork only a completed assistant prefix outside its running turn
+6. 空闲分叉作为独立的空闲会话启动；繁忙的信号源无法
+   生一个孩子
 7. 消息范围的分叉排除后面的行并且从没有源运行时开始
    或提供商缓存状态
 8. Plan、Goal 和 Agent 使用 1 个 pi Agent； Composer-左模式芯片、UI

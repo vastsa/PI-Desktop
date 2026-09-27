@@ -11,8 +11,6 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
-mod fork_files;
-
 pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 
 /// Maximum number of Unicode scalar values accepted for a user-defined title.
@@ -41,11 +39,8 @@ pub fn is_contract_mode(mode: &str) -> bool {
 
 /// Values accepted by the persisted per-session thinking selector.  Keep this
 /// list in the host boundary so old clients cannot write arbitrary provider
-/// options into the session row. `omit` is a client choice to send no thinking
-/// override; it is not a catalog/binding capability (ADR 0295).
-pub const THINKING_LEVELS: [&str; 8] = [
-    "off", "minimal", "low", "medium", "high", "xhigh", "max", "omit",
-];
+/// options into the session row.
+pub const THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 pub fn is_valid_thinking_level(level: &str) -> bool {
     THINKING_LEVELS.contains(&level)
@@ -148,20 +143,8 @@ pub struct UiMessage {
     pub id: String,
     pub role: String,
     pub content: String,
-    /// Original text for a slash template or Skill invocation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub command: Option<String>,
-    /// Validated Skill tokens in `command`, with UTF-16 offsets for the renderer.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skill_mentions: Option<Vec<SkillMention>>,
-    /// Host-authenticated agent-to-agent origin, never a human authorization.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_message: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<MessageAttachment>>,
-    /// Accepted input to an existing turn, preserved by Stop after renderer reload.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub steering: Option<bool>,
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<String>,
@@ -215,18 +198,6 @@ pub struct UiMessage {
     /// Subagent definition name that produced the row.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
-    /// Provider-hosted web search activity for this assistant turn. Persisted
-    /// as an additive `hostedSearch` transcript block; no SQL migration.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hosted_search: Option<Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillMention {
-    pub start: usize,
-    pub end: usize,
-    pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,18 +206,10 @@ pub struct SessionDetail {
     #[serde(flatten)]
     pub summary: SessionSummary,
     pub messages: Vec<UiMessage>,
-    /// Owning Task for a nested messageAround target, outside the page cursors.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub navigation_parent: Option<UiMessage>,
     /// Zero-based offset of the first returned message when the caller asked
     /// for a window. Omitted for the full-history form.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_start: Option<i64>,
-    /// Exclusive physical end of a bounded read, including deduplicated lines.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_end: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub has_more_after: Option<bool>,
     /// True when older messages exist outside the returned window.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_more_before: Option<bool>,
@@ -261,10 +224,8 @@ pub struct SessionDetail {
     pub compactions: Vec<CompactionRecord>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct SessionReadOptions {
-    /// Center a bounded UI read on this stable message ID.
-    pub message_around: Option<String>,
     /// Exclusive message sequence before which the window ends. When omitted,
     /// the window is taken from the end of the canonical transcript.
     pub message_before: Option<i64>,
@@ -298,18 +259,6 @@ fn is_default_title(title: &str) -> bool {
 /// the search index row (None for tool rows, matching the FTS triggers).
 pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String>) {
     let mut meta_obj = serde_json::Map::new();
-    if let Some(command) = &message.command {
-        meta_obj.insert("command".into(), json!(command));
-    }
-    if let Some(mentions) = &message.skill_mentions {
-        meta_obj.insert("skillMentions".into(), json!(mentions));
-    }
-    if let Some(origin) = &message.session_message {
-        meta_obj.insert("sessionMessage".into(), origin.clone());
-    }
-    if let Some(steering) = message.steering {
-        meta_obj.insert("steering".into(), json!(steering));
-    }
     if let Some(status) = &message.status {
         meta_obj.insert("status".into(), json!(status));
     }
@@ -365,18 +314,6 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
     let mut blocks = Vec::with_capacity(2 + message.attachments.as_ref().map_or(0, Vec::len));
     if let Some(thinking) = &message.thinking {
         blocks.push(json!({ "type": "thinking", "text": thinking }));
-    }
-    if let Some(hosted_search) = &message.hosted_search {
-        let mut block = serde_json::Map::new();
-        block.insert("type".into(), json!("hostedSearch"));
-        if let Value::Object(fields) = hosted_search {
-            for (key, value) in fields {
-                if key != "type" {
-                    block.insert(key.clone(), value.clone());
-                }
-            }
-        }
-        blocks.push(Value::Object(block));
     }
     let text = if message.role == "tool" {
         let mut block = serde_json::Map::new();
@@ -451,15 +388,6 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
         _ => Vec::new(),
     };
     let meta = record.meta.unwrap_or(Value::Null);
-    let command = meta
-        .get("command")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let skill_mentions = meta
-        .get("skillMentions")
-        .and_then(|value| serde_json::from_value(value.clone()).ok());
-    let session_message = meta.get("sessionMessage").cloned();
-    let steering = meta.get("steering").and_then(Value::as_bool);
     let status = meta
         .get("status")
         .and_then(|v| v.as_str())
@@ -514,34 +442,24 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
         })
         .collect::<Vec<_>>();
     let thinking = (!thinking.is_empty()).then(|| thinking.concat());
-    let hosted_search = blocks
-        .iter()
-        .find(|b| b.get("type").and_then(|t| t.as_str()) == Some("hostedSearch"))
-        .map(|b| {
-            let mut fields = b.clone();
-            if let Value::Object(map) = &mut fields {
-                map.remove("type");
-            }
-            fields
-        });
     let is_error = record.is_error.then_some(true);
     let attachments = blocks
         .iter()
         .filter_map(|block| {
-            if block.get("type").and_then(|t| t.as_str()) != Some("attachment") {
-                return None;
-            }
-            Some(MessageAttachment {
-                kind: block.get("kind").and_then(|v| v.as_str())?.to_string(),
-                name: block.get("name").and_then(|v| v.as_str())?.to_string(),
-                reference: block.get("ref").and_then(|v| v.as_str())?.to_string(),
-                mime_type: block
-                    .get("mimeType")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                size: block.get("size").and_then(|v| v.as_i64()),
+            (block.get("type").and_then(|t| t.as_str()) == Some("attachment")).then(|| {
+                Some(MessageAttachment {
+                    kind: block.get("kind").and_then(|v| v.as_str())?.to_string(),
+                    name: block.get("name").and_then(|v| v.as_str())?.to_string(),
+                    reference: block.get("ref").and_then(|v| v.as_str())?.to_string(),
+                    mime_type: block
+                        .get("mimeType")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    size: block.get("size").and_then(|v| v.as_i64()),
+                })
             })
         })
+        .flatten()
         .collect::<Vec<_>>();
     let attachments = (!attachments.is_empty()).then_some(attachments);
 
@@ -560,11 +478,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             id: record.id,
             role: record.role,
             content: text,
-            command: command.clone(),
-            skill_mentions: skill_mentions.clone(),
-            session_message,
             attachments: None,
-            steering,
             created_at: record.created_at,
             thinking,
             status,
@@ -596,7 +510,6 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             is_error,
             parent_tool_call_id,
             agent_name,
-            hosted_search: hosted_search.clone(),
         }
     } else {
         let content = blocks
@@ -611,11 +524,7 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             id: record.id,
             role: record.role,
             content,
-            command,
-            skill_mentions,
-            session_message,
             attachments,
-            steering,
             created_at: record.created_at,
             thinking,
             status,
@@ -638,7 +547,6 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
             is_error,
             parent_tool_call_id,
             agent_name,
-            hosted_search,
         }
     }
 }
@@ -782,7 +690,7 @@ fn record_to_ui_for_display(mut record: MessageRecord, limit: usize) -> UiMessag
     message
 }
 
-pub(crate) fn dedupe_records(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
+fn dedupe_records(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
     let mut ordered: Vec<MessageRecord> = Vec::with_capacity(records.len());
     let mut by_id: std::collections::HashMap<String, usize> =
         std::collections::HashMap::with_capacity(records.len());
@@ -798,7 +706,7 @@ pub(crate) fn dedupe_records(records: Vec<MessageRecord>) -> Vec<MessageRecord> 
     ordered
 }
 
-pub(crate) fn record_index_text(record: &MessageRecord) -> Option<String> {
+fn record_index_text(record: &MessageRecord) -> Option<String> {
     if record.role == "tool" {
         return None;
     }
@@ -1028,31 +936,7 @@ pub fn restore_orphaned_session(db: &Database, session_id: &str) -> Result<bool>
     if !path.exists() {
         return Ok(false);
     }
-    let read = transcripts::read_transcript_with_compactions(db.data_dir(), session_id)?;
-    let mut records = dedupe_records(read.messages);
-    let mut remapped = false;
-    for record in &mut records {
-        if let Some(owner) = message_owner(db, &record.id)? {
-            if owner != session_id {
-                record.id = namespaced_message_id(session_id, &record.id);
-                remapped = true;
-            }
-        }
-    }
-    if remapped {
-        let header = records
-            .first()
-            .map(|record| record.created_at.clone())
-            .unwrap_or_else(|| ms_to_ts(now_ms()));
-        transcripts::write_transcript_with_compactions(
-            db.data_dir(),
-            session_id,
-            &header,
-            &records,
-            &read.compactions,
-        )?;
-        invalidate_transcript_layout(session_id);
-    }
+    let records = dedupe_records(transcripts::read_transcript(db.data_dir(), session_id)?);
     let created_at = records
         .first()
         .map(|record| ts_to_ms(&record.created_at))
@@ -1147,7 +1031,7 @@ const SUMMARY_SELECT: &str =
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
-pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
+fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
     Ok(SessionSummary {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -1221,20 +1105,6 @@ pub fn create_session(
     create_session_with_thinking(db, title, mode, provider_id, model_id, project_path, None)
 }
 
-/// Inputs for creating a durable session. Keeping the optional permission mode
-/// in this value lets the host validate and persist the full configuration in
-/// one database operation without widening the legacy constructor signature.
-#[derive(Debug, Default)]
-pub struct SessionCreateOptions {
-    pub title: Option<String>,
-    pub mode: Option<String>,
-    pub provider_id: Option<String>,
-    pub model_id: Option<String>,
-    pub project_path: Option<String>,
-    pub thinking_level: Option<String>,
-    pub permission_mode: Option<String>,
-}
-
 pub fn create_session_with_thinking(
     db: &Database,
     title: Option<String>,
@@ -1244,46 +1114,12 @@ pub fn create_session_with_thinking(
     project_path: Option<String>,
     thinking_level: Option<String>,
 ) -> Result<SessionSummary> {
-    create_session_with_options(
-        db,
-        SessionCreateOptions {
-            title,
-            mode,
-            provider_id,
-            model_id,
-            project_path,
-            thinking_level,
-            permission_mode: None,
-        },
-    )
-}
-
-/// Create a session with all optional configuration applied atomically.
-///
-/// Omitting `permission_mode` preserves the historical `inherit` default. The
-/// extra input is used by trusted desktop orchestration so a new worker can be
-/// created with its parent's permission ceiling in the same host transaction.
-pub fn create_session_with_options(
-    db: &Database,
-    options: SessionCreateOptions,
-) -> Result<SessionSummary> {
-    let SessionCreateOptions {
-        title,
-        mode,
-        provider_id,
-        model_id,
-        project_path,
-        thinking_level,
-        permission_mode,
-    } = options;
     let now = now_ms();
     let id = Uuid::new_v4().to_string();
     let title = title.unwrap_or_else(|| "New task".into());
     let mode = normalize_mode(mode.as_deref());
     let thinking_level = thinking_level.unwrap_or_else(default_thinking_level);
     validate_thinking_level(&thinking_level)?;
-    let permission_mode = permission_mode.unwrap_or_else(default_permission_mode);
-    validate_permission_mode(&permission_mode)?;
     let project_id = match project_path
         .as_deref()
         .filter(|path| !path.trim().is_empty())
@@ -1299,8 +1135,8 @@ pub fn create_session_with_options(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+                created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
         )?
         .execute(params![
             id,
@@ -1310,7 +1146,6 @@ pub fn create_session_with_options(
             model_id,
             mode,
             thinking_level,
-            permission_mode,
             now
         ])?;
     Ok(SessionSummary {
@@ -1322,7 +1157,7 @@ pub fn create_session_with_options(
         provider_id,
         mode,
         thinking_level,
-        permission_mode,
+        permission_mode: default_permission_mode(),
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
     })
@@ -1363,10 +1198,7 @@ fn layout_cache() -> &'static Mutex<HashMap<String, transcripts::TranscriptLayou
 
 /// Return an up-to-date layout for one session, reusing the cached offsets and
 /// scanning only what was appended since.
-pub(crate) fn session_layout(
-    db: &Database,
-    session_id: &str,
-) -> Result<transcripts::TranscriptLayout> {
+fn session_layout(db: &Database, session_id: &str) -> Result<transcripts::TranscriptLayout> {
     let cached = layout_cache()
         .lock()
         .ok()
@@ -1410,7 +1242,7 @@ pub fn get_session_with_options(
         return Ok(None);
     };
 
-    let (records, compactions, message_start, has_more_before, message_end, has_more_after) =
+    let (records, compactions, message_start, has_more_before) =
         if let Some(raw_limit) = options.message_limit.filter(|limit| *limit > 0) {
             let limit = raw_limit.min(1_000) as usize;
             // Window coordinates are physical transcript lines, so they must be
@@ -1420,18 +1252,9 @@ pub fn get_session_with_options(
             // silently dropped the newest messages of a long session.
             let layout = session_layout(db, id)?;
             let total = layout.message_count();
-            let before = if let Some(message_id) = options.message_around.as_deref() {
-                let Some(position) =
-                    transcripts::find_message_position(db.data_dir(), id, &layout, message_id)?
-                else {
-                    return Ok(None);
-                };
-                (position + limit / 2 + 1).min(total)
-            } else {
-                match options.message_before {
-                    Some(value) => (value.max(0) as usize).min(total),
-                    None => total,
-                }
+            let before = match options.message_before {
+                Some(value) => (value.max(0) as usize).min(total),
+                None => total,
             };
             let start = before.saturating_sub(limit);
             let read = transcripts::read_transcript_window_with_layout(
@@ -1446,66 +1269,25 @@ pub fn get_session_with_options(
                 read.compactions,
                 Some(start as i64),
                 Some(start > 0),
-                Some(before as i64),
-                Some(before < total),
             )
         } else {
             let read = transcripts::read_transcript_with_compactions(db.data_dir(), id)?;
-            (
-                dedupe_records(read.messages),
-                read.compactions,
-                None,
-                None,
-                None,
-                None,
-            )
+            (dedupe_records(read.messages), read.compactions, None, None)
         };
     // Content comes from the transcript file; SQLite only indexes it. A
     // renderer window may additionally request a display cap so a single
     // pasted or tool-produced multi-megabyte message never crosses the UI IPC
     // boundary. The uncapped path remains lossless for model reconstruction.
-    let messages: Vec<UiMessage> = match options.content_limit {
+    let messages = match options.content_limit {
         Some(limit) => records
             .into_iter()
-            .map(|record| {
-                // An explicit search jump must retain the focused message's
-                // original text, including hits beyond the normal display cap.
-                // Neighbors and tool payloads keep their presentation limits.
-                let focused = options.message_around.as_deref() == Some(record.id.as_str())
-                    && matches!(record.role.as_str(), "user" | "assistant");
-                let content = focused.then(|| record_index_text(&record)).flatten();
-                let mut message = record_to_ui_for_display(record, limit);
-                if let Some(content) = content {
-                    message.content = content;
-                }
-                message
-            })
+            .map(|record| record_to_ui_for_display(record, limit))
             .collect(),
         None => records.into_iter().map(record_to_ui).collect(),
     };
-    let parent_call_id = options.message_around.as_deref().and_then(|target| {
-        messages
-            .iter()
-            .find(|message| message.id == target)
-            .and_then(|message| message.parent_tool_call_id.as_deref())
-    });
-    let navigation_parent = match parent_call_id {
-        Some(call_id) => {
-            transcripts::read_tool_call(db.data_dir(), id, &session_layout(db, id)?, call_id)?.map(
-                |record| match options.content_limit {
-                    Some(limit) => record_to_ui_for_display(record, limit),
-                    None => record_to_ui(record),
-                },
-            )
-        }
-        None => None,
-    };
     Ok(Some(SessionDetail {
         summary,
-        navigation_parent,
         message_start,
-        message_end,
-        has_more_after,
         has_more_before,
         messages,
         compaction: compactions.last().cloned(),
@@ -1514,29 +1296,12 @@ pub fn get_session_with_options(
 }
 
 /// Create an independent session from the source session's current canonical
-/// transcript and referenced pasted inputs. Regenerate revisions, turns,
-/// artifacts, notifications, other scratch data, and live runtime state are
-/// intentionally not copied.
+/// transcript. Regenerate revisions, turns, artifacts, notifications, scratch
+/// data, and live runtime state are intentionally not copied.
 pub enum ForkSessionResult {
     Created(Box<SessionDetail>),
     NotFound,
     Busy,
-}
-
-/// Whether the session currently owns a running turn.
-///
-/// A running turn owns its project's instructions, tools, and working
-/// directory, so moving or deleting that project is refused while it runs.
-/// A fork may copy a completed prefix without touching that live ownership.
-pub fn session_has_running_turn(db: &Database, id: &str) -> Result<bool> {
-    let running: bool = db.conn().query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM turns WHERE session_id = ?1 AND status = 'running'
-         )",
-        params![id],
-        |row| row.get(0),
-    )?;
-    Ok(running)
 }
 
 /// Create an independent session from the source transcript, optionally
@@ -1552,80 +1317,40 @@ pub fn fork_session_through(
     let Some(source) = get_session(db, source_id)? else {
         return Ok(ForkSessionResult::NotFound);
     };
-    let running = session_has_running_turn(db, source_id)?;
-    let anchor = through_message_id
-        .map(str::trim)
-        .filter(|id| !id.is_empty());
-    if running && anchor.is_none() {
+    let has_running_turn: bool = db.conn().query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM turns WHERE session_id = ?1 AND status = 'running'
+         )",
+        params![source_id],
+        |row| row.get(0),
+    )?;
+    if has_running_turn {
         return Ok(ForkSessionResult::Busy);
     }
     let mut source_records =
         dedupe_records(transcripts::read_transcript(db.data_dir(), source_id)?);
-    if let Some(message_id) = anchor {
+    if let Some(message_id) = through_message_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let Some(position) = source_records
             .iter()
             .position(|record| record.id == message_id)
         else {
             return Ok(ForkSessionResult::NotFound);
         };
-        if running {
-            let record = &source_records[position];
-            // An assistant message can be complete while its tool loop is still
-            // running. Reject any prefix containing rows owned by a live turn,
-            // not merely a streaming anchor. The RPC holds the host state lock
-            // across this check and publication, including transcript appends.
-            let settled_prefix: bool = db.conn().query_row(
-                "SELECT EXISTS (
-                    SELECT 1 FROM messages anchor
-                    WHERE anchor.session_id = ?1 AND anchor.id = ?2
-                    AND NOT EXISTS (
-                        SELECT 1 FROM messages m JOIN turns t ON t.id = m.turn_id
-                        WHERE m.session_id = ?1 AND t.status = 'running'
-                          AND m.seq <= anchor.seq
-                    )
-                 )",
-                params![source_id, message_id],
-                |row| row.get(0),
-            )?;
-            if record.role != "assistant"
-                || record.is_error
-                || !matches!(
-                    record
-                        .meta
-                        .as_ref()
-                        .and_then(|meta| meta.get("status"))
-                        .and_then(Value::as_str),
-                    None | Some("complete")
-                )
-                || record
-                    .meta
-                    .as_ref()
-                    .and_then(|meta| meta.get("error"))
-                    .is_some_and(|error| !error.is_null())
-                || !settled_prefix
-            {
-                return Ok(ForkSessionResult::Busy);
-            }
-        }
         source_records.truncate(position + 1);
     }
     let source_compactions = transcripts::read_compactions(db.data_dir(), source_id)?;
-    let (mut records, message_ids, tool_call_ids) = clone_records_for_fork(source_records);
+    let (records, message_ids, tool_call_ids) = clone_records_for_fork(source_records);
     // Each checkpoint is remapped on its own: a message-scoped fork can cut the
     // anchor of a later checkpoint while the earlier ones stay intact.
-    let mut compactions: Vec<CompactionRecord> = source_compactions
+    let compactions: Vec<CompactionRecord> = source_compactions
         .into_iter()
         .filter_map(|record| clone_compaction_for_fork(record, &message_ids, &tool_call_ids))
         .collect();
-    let id = Uuid::new_v4().to_string();
-    let files = fork_files::preserve(
-        db.data_dir(),
-        source_id,
-        &id,
-        &mut records,
-        &mut compactions,
-    )?;
     let texts = records.iter().map(record_index_text).collect::<Vec<_>>();
+    let id = Uuid::new_v4().to_string();
     let now = now_ms();
     let created_at = ms_to_ts(now);
     let requested_title = title.map(str::trim).filter(|value| !value.is_empty());
@@ -1634,16 +1359,13 @@ pub fn fork_session_through(
         .unwrap_or_else(|| format!("{} (branch)", source.summary.title));
 
     invalidate_transcript_layout(&id);
-    if let Err(error) = transcripts::write_transcript_with_compactions(
+    transcripts::write_transcript_with_compactions(
         db.data_dir(),
         &id,
         &created_at,
         &records,
         &compactions,
-    ) {
-        transcripts::remove_session_files(db.data_dir(), &id);
-        return Err(error);
-    }
+    )?;
     let indexed = (|| -> Result<()> {
         let tx = db.conn().unchecked_transaction()?;
         let inserted = tx
@@ -1671,7 +1393,6 @@ pub fn fork_session_through(
         transcripts::remove_session_files(db.data_dir(), &id);
         return Err(error);
     }
-    files.commit();
 
     let summary = SessionSummary {
         id,
@@ -1689,10 +1410,7 @@ pub fn fork_session_through(
     let messages = records.into_iter().map(record_to_ui).collect();
     Ok(ForkSessionResult::Created(Box::new(SessionDetail {
         summary,
-        navigation_parent: None,
         message_start: None,
-        message_end: None,
-        has_more_after: None,
         has_more_before: None,
         messages,
         compaction: compactions.last().cloned(),
@@ -1803,41 +1521,6 @@ pub fn rename_session(db: &Database, id: &str, title: &str) -> Result<bool> {
     Ok(n > 0)
 }
 
-/// Outcome of moving a session to a different project.
-pub enum MoveSessionProjectResult {
-    Moved(Box<SessionSummary>),
-    NotFound,
-    Busy,
-}
-
-/// Move an idle session to another project.
-///
-/// Only the session's project association and `updated_at` change: transcript,
-/// revisions, artifacts, notifications, scratch data, and runtime state belong
-/// to the session rather than the project and stay untouched. A session with a
-/// running turn is rejected so a live agent never switches instruction roots
-/// mid-turn.
-pub fn move_session_project(
-    db: &Database,
-    id: &str,
-    project_path: &str,
-) -> Result<MoveSessionProjectResult> {
-    if get_session(db, id)?.is_none() {
-        return Ok(MoveSessionProjectResult::NotFound);
-    }
-    if session_has_running_turn(db, id)? {
-        return Ok(MoveSessionProjectResult::Busy);
-    }
-    let project_id = db.ensure_project(project_path, false)?;
-    db.conn()
-        .prepare_cached("UPDATE sessions SET project_id = ?1, updated_at = ?2 WHERE id = ?3")?
-        .execute(params![project_id, now_ms(), id])?;
-    let Some(moved) = get_session(db, id)? else {
-        return Ok(MoveSessionProjectResult::NotFound);
-    };
-    Ok(MoveSessionProjectResult::Moved(Box::new(moved.summary)))
-}
-
 /// Per-message records plus their extracted index text, in input order.
 fn records_and_texts(messages: &[UiMessage]) -> (Vec<MessageRecord>, Vec<Option<String>>) {
     let mut records = Vec::with_capacity(messages.len());
@@ -1856,87 +1539,14 @@ pub fn append_message(
     message: &UiMessage,
     turn_id: Option<&str>,
 ) -> Result<()> {
-    let message = crate::session_collaboration::prepare_append(db, session_id, message, turn_id)?;
     let session_created = ensure_session_for_append(db, session_id)?;
-    let (mut record, text) = ui_to_record(&message);
-    let had_turn_reference = turn_id.is_some();
-    let turn_id = valid_turn_reference(db, session_id, turn_id)?;
-    let stale_turn_reference = had_turn_reference && turn_id.is_none();
+    let (record, text) = ui_to_record(message);
     // Electron may replay an outbox entry after a host restart. Message ids
-    // are globally unique, so an existing row in this session is already the
-    // durable result. Provider toolCallIds are not globally unique: a collision
-    // with another session is remapped before any transcript write (D444).
-    // A steering input reserves its preceding streaming assistant's position;
-    // only a terminal assistant snapshot may replace that provisional row.
+    // are globally unique, so an existing row is already the durable result.
     if message_indexed(db, session_id, &record.id)? {
-        if message.role == "assistant"
-            && message.status.as_deref() != Some("streaming")
-            && streaming_assistant_indexed(db, session_id, &record.id)?
-        {
-            invalidate_transcript_layout(session_id);
-            if !transcripts::update_message(db.data_dir(), session_id, &record)? {
-                return Err(anyhow!(
-                    "streaming assistant is missing from its transcript"
-                ));
-            }
-            db.conn().execute(
-                "UPDATE messages SET text = ?3, is_error = ?4 WHERE session_id = ?1 AND id = ?2",
-                params![session_id, record.id, text, record.is_error],
-            )?;
-        } else {
-            return Ok(());
-        }
-    } else {
-        if let Some(owner) = message_owner(db, &record.id)? {
-            if owner != session_id {
-                let original_id = record.id.clone();
-                record.id = namespaced_message_id(session_id, &record.id);
-                if message_indexed(db, session_id, &record.id)? {
-                    return Ok(());
-                }
-                // Old hosts wrote JSONL then failed UNIQUE. Replaying that
-                // leftover must not append a second remapped line (D444).
-                if transcript_contains_id(db, session_id, &original_id)? {
-                    return Ok(());
-                }
-            } else {
-                return Ok(());
-            }
-        }
-        let transcript_repaired =
-            stale_turn_reference && repair_unindexed_transcript_message(db, session_id, &record)?;
-        if !transcript_repaired {
-            append_record(
-                db,
-                session_id,
-                &session_created,
-                &record,
-                text.as_deref(),
-                turn_id.as_deref(),
-            )?;
-        }
-    }
-    if message.role == "assistant" && message.status.as_deref() == Some("streaming") {
-        // Even an empty reservation needs a checkpoint so a crash can settle
-        // it as aborted. Later stream checkpoints replace this snapshot.
-        let existing = transcripts::read_inflight(db.data_dir(), session_id)?;
-        if existing.as_ref().is_none_or(|checkpoint| {
-            ts_to_ms(&checkpoint.message.created_at) < ts_to_ms(&record.created_at)
-        }) {
-            transcripts::write_inflight(
-                db.data_dir(),
-                session_id,
-                &transcripts::InflightRecord {
-                    schema: transcripts::INFLIGHT_SCHEMA,
-                    session_id: session_id.to_string(),
-                    saved_at: ms_to_ts(now_ms()),
-                    turn_id: turn_id.clone(),
-                    message: record,
-                },
-            )?;
-        }
         return Ok(());
     }
+    append_record(db, session_id, &session_created, &record, text.as_deref(), turn_id)?;
     // The final assistant row supersedes any checkpoint of the same message
     // (D299). A checkpoint for a different id belongs to a newer fragment and
     // stays until its own final row or the turn end settles it.
@@ -1961,170 +1571,6 @@ fn message_indexed(db: &Database, session_id: &str, message_id: &str) -> Result<
         )
         .optional()?;
     Ok(existing.is_some())
-}
-
-/// Session that currently owns this globally unique message id, if any.
-fn message_owner(db: &Database, message_id: &str) -> Result<Option<String>> {
-    let owner: Option<String> = db
-        .conn()
-        .query_row(
-            "SELECT session_id FROM messages WHERE id = ?1",
-            params![message_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    Ok(owner)
-}
-
-fn namespaced_message_id(session_id: &str, message_id: &str) -> String {
-    format!("{session_id}:{message_id}")
-}
-
-fn transcript_contains_id(db: &Database, session_id: &str, message_id: &str) -> Result<bool> {
-    Ok(transcripts::read_transcript(db.data_dir(), session_id)?
-        .iter()
-        .any(|record| record.id == message_id))
-}
-
-fn valid_turn_reference(
-    db: &Database,
-    session_id: &str,
-    turn_id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(turn_id) = turn_id else {
-        return Ok(None);
-    };
-    let owner: Option<String> = db
-        .conn()
-        .query_row(
-            "SELECT session_id FROM turns WHERE id = ?1",
-            params![turn_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    if owner.as_deref() == Some(session_id) {
-        return Ok(Some(turn_id.to_string()));
-    }
-    tracing::warn!(
-        %session_id,
-        %turn_id,
-        turn_session_id = owner.as_deref().unwrap_or("(missing)"),
-        "omitting invalid turn reference from transcript message"
-    );
-    Ok(None)
-}
-
-/// Reconcile an old outbox replay whose transcript line landed before its
-/// SQLite index insert failed. Keep the file as source of truth and restore
-/// index sequence from its keep-last, unique-message projection.
-fn repair_unindexed_transcript_message(
-    db: &Database,
-    session_id: &str,
-    record: &MessageRecord,
-) -> Result<bool> {
-    let mut records = dedupe_records(transcripts::read_transcript(db.data_dir(), session_id)?);
-    let Some(position) = records.iter().position(|existing| existing.id == record.id) else {
-        return Ok(false);
-    };
-    if !transcripts::update_message(db.data_dir(), session_id, record)? {
-        return Ok(false);
-    }
-    records[position] = record.clone();
-    invalidate_transcript_layout(session_id);
-    rebuild_session_message_index(db, session_id, &records)?;
-    tracing::warn!(
-        %session_id,
-        message_id = %record.id,
-        "reconciled transcript message after an unindexed outbox replay"
-    );
-    Ok(true)
-}
-
-fn rebuild_session_message_index(
-    db: &Database,
-    session_id: &str,
-    records: &[MessageRecord],
-) -> Result<()> {
-    let existing_turns: std::collections::HashMap<String, String> = {
-        let mut stmt = db.conn().prepare_cached(
-            "SELECT m.id, m.turn_id, t.session_id
-             FROM messages m JOIN turns t ON t.id = m.turn_id
-             WHERE m.session_id = ?1 AND m.turn_id IS NOT NULL",
-        )?;
-        let rows = stmt.query_map(params![session_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?;
-        let mut turns = std::collections::HashMap::new();
-        for row in rows {
-            let (message_id, turn_id, turn_session_id) = row?;
-            if turn_session_id == session_id {
-                turns.insert(message_id, turn_id);
-            }
-        }
-        turns
-    };
-    let last_seq = i64::try_from(records.len())
-        .map_err(|_| anyhow!("transcript has too many messages to index"))?;
-    let conn = db.conn();
-    let tx = conn.unchecked_transaction()?;
-    tx.prepare_cached("DELETE FROM messages WHERE session_id = ?1")?
-        .execute(params![session_id])?;
-    for (seq, record) in records.iter().enumerate() {
-        let seq =
-            i64::try_from(seq).map_err(|_| anyhow!("transcript has too many messages to index"))?;
-        let text = record_index_text(record);
-        insert_index_row(
-            &tx,
-            session_id,
-            seq,
-            existing_turns.get(&record.id).map(String::as_str),
-            record,
-            text.as_deref(),
-        )?;
-    }
-    let changed = tx
-        .prepare_cached("UPDATE sessions SET last_seq = ?1, updated_at = ?2 WHERE id = ?3")?
-        .execute(params![last_seq, now_ms(), session_id])?;
-    if changed == 0 {
-        return Err(anyhow!("session not found while rebuilding message index"));
-    }
-    tx.commit()?;
-    Ok(())
-}
-
-fn streaming_assistant_indexed(db: &Database, session_id: &str, message_id: &str) -> Result<bool> {
-    let layout = session_layout(db, session_id)?;
-    let mut end = layout.message_count();
-    while end > 0 {
-        let start = end.saturating_sub(64);
-        let window = transcripts::read_transcript_window_with_layout(
-            db.data_dir(),
-            session_id,
-            &layout,
-            start,
-            Some(end - start),
-        )?;
-        if let Some(record) = window
-            .messages
-            .iter()
-            .rev()
-            .find(|record| record.id == message_id)
-        {
-            return Ok(record.role == "assistant"
-                && record
-                    .meta
-                    .as_ref()
-                    .and_then(|meta| meta.get("status"))
-                    .and_then(Value::as_str)
-                    == Some("streaming"));
-        }
-        end = start;
-    }
-    Ok(false)
 }
 
 /// Append one canonical record: transcript line first, then the index row.
@@ -2178,13 +1624,11 @@ pub fn save_inflight_message(
         || message
             .thinking
             .as_deref()
-            .is_some_and(|thinking| !thinking.trim().is_empty());
+            .map_or(false, |thinking| !thinking.trim().is_empty());
     if !has_text {
         return Ok(false);
     }
-    if message_indexed(db, session_id, &message.id)?
-        && !streaming_assistant_indexed(db, session_id, &message.id)?
-    {
+    if message_indexed(db, session_id, &message.id)? {
         transcripts::remove_inflight(db.data_dir(), session_id)?;
         return Ok(false);
     }
@@ -2225,8 +1669,7 @@ pub fn recover_inflight_message(
             return Ok(None);
         }
     };
-    let indexed = message_indexed(db, session_id, &inflight.message.id)?;
-    if indexed && !streaming_assistant_indexed(db, session_id, &inflight.message.id)? {
+    if message_indexed(db, session_id, &inflight.message.id)? {
         transcripts::remove_inflight(db.data_dir(), session_id)?;
         return Ok(None);
     }
@@ -2257,23 +1700,14 @@ pub fn recover_inflight_message(
     meta.insert("status".into(), json!(promoted_status));
     record.meta = Some(Value::Object(meta));
     let text = record_index_text(&record);
-    if indexed {
-        append_message(
-            db,
-            session_id,
-            &record_to_ui(record.clone()),
-            inflight.turn_id.as_deref(),
-        )?;
-    } else {
-        append_record(
-            db,
-            session_id,
-            &session_created,
-            &record,
-            text.as_deref(),
-            inflight.turn_id.as_deref(),
-        )?;
-    }
+    append_record(
+        db,
+        session_id,
+        &session_created,
+        &record,
+        text.as_deref(),
+        inflight.turn_id.as_deref(),
+    )?;
     Ok(Some(record_to_ui(record)))
 }
 
@@ -2329,98 +1763,8 @@ fn compaction_valid_for_records(compaction: &CompactionRecord, records: &[Messag
     })
 }
 
-/// Store in full every regenerate family this rewrite is about to drop.
-///
-/// A branch that is still live is referenced rather than copied, so its
-/// reference line only resolves while its root is in the transcript. A rewrite
-/// that removes the root — deleting the turn that owns the family, a regenerate
-/// or edit that cuts a later family away, a revision switch that restores a
-/// prefix from before it — would otherwise leave the file naming a suffix that
-/// no longer exists. Every dropped family is written out first, from `before`,
-/// exactly as a revision switch writes the branch it pages away from.
-///
-/// A rewrite that only shortens a live branch is left alone: the reference then
-/// describes the transcript as the user just made it, which is the same
-/// authority the durable transcript has everywhere else.
-///
-/// `already_stored` names families the caller has just written itself, so the
-/// payload is not written twice.
-fn archive_dropped_live_branches(
-    db: &Database,
-    session_id: &str,
-    before: &[UiMessage],
-    kept: &[UiMessage],
-    already_stored: &[String],
-) -> Result<()> {
-    for root in dropped_revision_roots(db, session_id, kept, already_stored)? {
-        archive_live_branch(db, session_id, &root, before)?;
-    }
-    Ok(())
-}
-
-/// The families indexed for this session whose root `kept` no longer holds: the
-/// branches a rewrite from the current transcript would strand. Index rows only,
-/// so a rewrite that drops nothing pays no transcript read.
-fn dropped_revision_roots(
-    db: &Database,
-    session_id: &str,
-    kept: &[UiMessage],
-    already_stored: &[String],
-) -> Result<Vec<String>> {
-    let conn = db.conn();
-    let mut stmt = conn.prepare_cached(
-        "SELECT DISTINCT root_user_id FROM message_revisions WHERE session_id = ?1",
-    )?;
-    let rows = stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
-    let mut dropped = Vec::new();
-    for row in rows {
-        let root = row?;
-        if already_stored.iter().any(|stored| stored == &root) {
-            continue;
-        }
-        if live_branch_start(kept, &root).is_none() {
-            dropped.push(root);
-        }
-    }
-    Ok(dropped)
-}
-
-/// Rewrite a session's whole transcript from `messages`, leaving every
-/// regenerate family the rewrite would drop stored in full.
 pub fn replace_messages(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<()> {
-    rewrite_transcript(db, session_id, messages, &[])
-}
-
-/// Rewrite the transcript and reseat the index rows.
-///
-/// `already_stored` names families the caller stored on its own way here, so
-/// [`archive_dropped_live_branches`] does not write them a second time.
-fn rewrite_transcript(
-    db: &Database,
-    session_id: &str,
-    messages: &[UiMessage],
-    already_stored: &[String],
-) -> Result<()> {
-    // The guard writes from the OLD transcript, so it has to read it before the
-    // rewrite below replaces it — and only when a family is actually dropped.
-    if !dropped_revision_roots(db, session_id, messages, already_stored)?.is_empty() {
-        if let Some(detail) = get_session(db, session_id)? {
-            archive_dropped_live_branches(
-                db,
-                session_id,
-                &detail.messages,
-                messages,
-                already_stored,
-            )?;
-        }
-    }
-    rewrite_transcript_body(db, session_id, messages)
-}
-
-/// The rewrite itself, with no regard for the revisions the caller drops.
-fn rewrite_transcript_body(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<()> {
     let session_created = session_created_at(db, session_id)?;
-    crate::session_collaboration::validate_replacement(db, session_id, messages)?;
     let (records, texts) = records_and_texts(messages);
     let compactions: Vec<CompactionRecord> =
         transcripts::read_compactions(db.data_dir(), session_id)?
@@ -2471,171 +1815,6 @@ fn rewrite_transcript_body(db: &Database, session_id: &str, messages: &[UiMessag
         .execute(params![records.len() as i64, now_ms(), session_id])?;
     tx.commit()?;
     Ok(())
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TruncateRevisionMeta {
-    pub root_user_id: String,
-    pub revision_count: i64,
-    pub active_revision: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TruncateFromResult {
-    pub ok: bool,
-    pub kept_count: i64,
-    pub discarded_count: i64,
-    pub aborted_turn_id: Option<String>,
-    pub revision: Option<TruncateRevisionMeta>,
-}
-
-/// Cut the live transcript at a named message (or a count) under the RPC lock.
-///
-/// Regenerating from Electron used to ship the kept prefix back through
-/// `session.replaceMessages`. That JSON-RPC line is one NDJSON record, so an
-/// 80 MB transcript both exceeds the 64 MiB stdin cap and races the 130 s
-/// client deadline. This call reads, archives the discarded tail, and rewrites
-/// the prefix inside host-core. No transcript snapshot crosses the process
-/// boundary.
-pub fn truncate_from(
-    db: &Database,
-    session_id: &str,
-    from_message_id: Option<&str>,
-    truncate_before: Option<i64>,
-) -> Result<TruncateFromResult> {
-    let Some(detail) = get_session(db, session_id)? else {
-        return Err(anyhow!("NOT_FOUND: session not found"));
-    };
-    let messages = detail.messages;
-    let cut = match from_message_id.map(str::trim).filter(|id| !id.is_empty()) {
-        Some(message_id) => messages
-            .iter()
-            .position(|message| message.id == message_id)
-            .ok_or_else(|| anyhow!("NOT_FOUND: truncateFromMessageId is not in this session"))?,
-        None => match truncate_before {
-            Some(count) if count >= 0 => (count as usize).min(messages.len()),
-            Some(_) => {
-                return Err(anyhow!(
-                    "INVALID_PARAMS: truncateBefore must be non-negative"
-                ));
-            }
-            None => {
-                return Err(anyhow!(
-                    "INVALID_PARAMS: fromMessageId or truncateBefore required"
-                ));
-            }
-        },
-    };
-    let discarded = &messages[cut..];
-    if discarded
-        .first()
-        .is_some_and(|message| message.session_message.is_some())
-    {
-        return Err(anyhow!(
-            "PERMISSION_DENIED: session messages cannot be edited or regenerated"
-        ));
-    }
-    let kept = &messages[..cut];
-
-    let aborted_turn_id = abort_running_turn(db, session_id)?;
-    let revision = archive_discarded_regenerate_branch(db, session_id, discarded)?;
-    // The regenerate root's branch is already stored above; every OTHER family
-    // the cut takes away is not, and the guard in `rewrite_transcript` stores
-    // those. Skipping the one that is done keeps it from being written twice.
-    let already_stored: Vec<String> = revision
-        .iter()
-        .map(|meta| meta.root_user_id.clone())
-        .collect();
-    rewrite_transcript(db, session_id, kept, &already_stored)?;
-    let _ = transcripts::remove_inflight(db.data_dir(), session_id);
-    Ok(TruncateFromResult {
-        ok: true,
-        kept_count: kept.len() as i64,
-        discarded_count: discarded.len() as i64,
-        aborted_turn_id,
-        revision,
-    })
-}
-
-fn abort_running_turn(db: &Database, session_id: &str) -> Result<Option<String>> {
-    let turn_id: Option<String> = db
-        .conn()
-        .query_row(
-            "SELECT id FROM turns WHERE session_id = ?1 AND status = 'running'",
-            params![session_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let Some(turn_id) = turn_id else {
-        return Ok(None);
-    };
-    end_turn_settling(
-        db,
-        &turn_id,
-        "aborted",
-        Some("TURN_ABORTED"),
-        None,
-        false,
-        false,
-    )?;
-    Ok(Some(turn_id))
-}
-
-/// Archive the discarded regenerate tail the way Electron main used to, but
-/// without copying the branch across the JSON-RPC pipe.
-///
-/// The tail is about to be cut out of the transcript, so this always writes the
-/// payload in full: a live reference would stop resolving the moment
-/// `truncate_from` replaces the file.
-fn archive_discarded_regenerate_branch(
-    db: &Database,
-    session_id: &str,
-    discarded: &[UiMessage],
-) -> Result<Option<TruncateRevisionMeta>> {
-    let Some(root_user) = discarded
-        .iter()
-        .find(|message| message.role == "user" && !message.id.trim().is_empty())
-    else {
-        return Ok(None);
-    };
-    if discarded.is_empty() {
-        return Ok(None);
-    }
-    let stable_root = root_user
-        .revision_root_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-        .unwrap_or(root_user.id.as_str())
-        .to_string();
-    let existing = list_message_revisions(db, session_id, &stable_root)?;
-    let stamped = root_user.active_revision.unwrap_or(0);
-    let target = if stamped > 0 {
-        existing
-            .iter()
-            .find(|revision| revision.revision_index == stamped)
-    } else {
-        existing.iter().find(|revision| revision.is_active)
-    };
-    if let Some(target) = target {
-        refresh_message_revision(
-            db,
-            session_id,
-            &stable_root,
-            target.revision_index,
-            discarded,
-        )?;
-    } else {
-        save_message_revision(db, session_id, &stable_root, discarded, false)?;
-    }
-    let count = list_message_revisions(db, session_id, &stable_root)?.len() as i64;
-    Ok(Some(TruncateRevisionMeta {
-        root_user_id: stable_root,
-        revision_count: count + 1,
-        active_revision: count + 1,
-    }))
 }
 
 /// Persist the rollback state on the tool message that owns a review snapshot.
@@ -2765,11 +1944,7 @@ pub fn save_message_revision(
 
 /// Owning turn per message id, for the messages of one branch. The turn is
 /// index-row state, so an archived branch carries it explicitly.
-fn owning_turns_for(
-    db: &Database,
-    session_id: &str,
-    messages: &[UiMessage],
-) -> Result<HashMap<String, String>> {
+fn owning_turns_for(db: &Database, session_id: &str, messages: &[UiMessage]) -> Result<HashMap<String, String>> {
     let mut stmt = db.conn().prepare_cached(
         "SELECT id, turn_id FROM messages
          WHERE session_id = ?1 AND turn_id IS NOT NULL",
@@ -2849,82 +2024,6 @@ pub fn refresh_message_revision(
     })
 }
 
-/// Record a branch that is still live as revision `revision_index` of its user
-/// root, without copying its messages: while the branch is live the transcript
-/// *is* the payload, so the file gets its identity and turn attribution, and
-/// the index row gets the count the pager reads.
-///
-/// The line is written before the index transaction, like every other
-/// transcript write, so a crash between the two costs an index row rather than
-/// content.
-fn save_live_branch_revision(
-    db: &Database,
-    session_id: &str,
-    root_user_id: &str,
-    revision_index: i64,
-    branch: &[UiMessage],
-) -> Result<MessageRevisionSummary> {
-    let conn = db.conn();
-    let existing: Option<(i64, bool)> = conn
-        .query_row(
-            "SELECT created_at, is_active FROM message_revisions
-             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
-            params![session_id, root_user_id, revision_index],
-            |row| Ok((row.get(0)?, row.get::<_, i64>(1)? != 0)),
-        )
-        .optional()?;
-    let created = existing.map_or_else(now_ms, |(created, _)| created);
-    let is_active = existing.is_none_or(|(_, is_active)| is_active);
-    transcripts::append_live_revision(
-        db.data_dir(),
-        session_id,
-        &transcripts::LiveRevisionRecord {
-            root_user_id: root_user_id.to_string(),
-            revision_index,
-            created_at: ms_to_ts(created),
-        },
-    )?;
-    let tx = conn.unchecked_transaction()?;
-    if existing.is_some() {
-        tx.prepare_cached(
-            "UPDATE message_revisions SET message_count = ?4
-             WHERE session_id = ?1 AND root_user_id = ?2 AND revision_index = ?3",
-        )?
-        .execute(params![
-            session_id,
-            root_user_id,
-            revision_index,
-            branch.len() as i64
-        ])?;
-    } else {
-        tx.prepare_cached(
-            "UPDATE message_revisions SET is_active = 0
-             WHERE session_id = ?1 AND root_user_id = ?2",
-        )?
-        .execute(params![session_id, root_user_id])?;
-        tx.prepare_cached(
-            "INSERT INTO message_revisions (
-                id, session_id, root_user_id, revision_index, is_active, message_count, created_at
-             ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)",
-        )?
-        .execute(params![
-            Uuid::new_v4().to_string(),
-            session_id,
-            root_user_id,
-            revision_index,
-            branch.len() as i64,
-            created
-        ])?;
-    }
-    tx.commit()?;
-    Ok(MessageRevisionSummary {
-        revision_index,
-        is_active,
-        created_at: ms_to_ts(created),
-        message_count: branch.len() as i64,
-    })
-}
-
 /// Where a revision family starts in the live transcript: the root itself, or
 /// (after a regenerate gave the live prompt a new id) the first user message
 /// stamped with that family key.
@@ -2943,10 +2042,6 @@ fn live_branch_start(messages: &[UiMessage], root_user_id: &str) -> Option<usize
 /// before a switch replaces it. Anything appended since the last archive
 /// (later prompts, error-ended turns that never hit agent_end) would otherwise
 /// vanish the moment the user pages away and back.
-///
-/// This is also what turns a live reference back into a stored payload: while
-/// the branch is live the revisions file holds no copy of it, and this call
-/// writes one before the switch below takes the branch away.
 ///
 /// Returns the branch start in `live` when the family is present at all.
 fn archive_live_branch(
@@ -3063,27 +2158,28 @@ pub fn save_active_branch_revision(
     let already_archived = existing
         .iter()
         .any(|revision| revision.revision_index == desired_active);
-    let branch = &messages[root_index..];
-    // The branch is still live, so the transcript already holds its payload and
-    // this records a reference to it. Refreshing a stored copy here is what made
-    // the file quadratic: the copy grew with the branch, so a session that ran N
-    // turns wrote O(N²) bytes to restate what the transcript already said. A
-    // branch leaves the transcript only through `archive_live_branch` or
-    // `archive_discarded_regenerate_branch`, and both write the full copy first.
-    let mut active = if already_archived {
-        save_live_branch_revision(db, session_id, &root_user_id, desired_active, branch)?;
+    let mut active = if desired_active > 0 {
         desired_active
     } else {
-        let next = existing
-            .iter()
-            .map(|revision| revision.revision_index)
-            .max()
-            .unwrap_or(0)
-            + 1;
-        save_live_branch_revision(db, session_id, &root_user_id, next, branch)?;
-        next
+        existing.len() as i64 + 1
     };
-    let archived = !already_archived;
+    let mut archived = false;
+    if already_archived {
+        // The branch grew past its stored copy (this turn appended to it).
+        // Refresh the payload so paging away and back restores all of it.
+        refresh_message_revision(
+            db,
+            session_id,
+            &root_user_id,
+            desired_active,
+            &messages[root_index..],
+        )?;
+    } else {
+        let saved =
+            save_message_revision(db, session_id, &root_user_id, &messages[root_index..], true)?;
+        active = saved.revision_index;
+        archived = true;
+    }
     let total = list_message_revisions(db, session_id, &root_user_id)?.len() as i64;
     if active < 1 {
         active = total;
@@ -3140,33 +2236,11 @@ pub fn activate_message_revision(
         None => prefix,
     };
 
-    let payload =
+    let revision =
         transcripts::read_revision(db.data_dir(), session_id, root_user_id, revision_index)?
             .ok_or_else(|| anyhow!("revision payload missing from revisions file"))?;
-    let archived_turns = payload.turns().clone();
-    let branch: Vec<UiMessage> = match payload {
-        transcripts::RevisionPayload::Stored(record) => {
-            record.messages.into_iter().map(record_to_ui).collect()
-        }
-        // The branch never left the transcript, so its messages are the live
-        // suffix rooted at its user turn — the same slice `archive_live_branch`
-        // measured one call ago, and the reason no copy of it is on disk.
-        transcripts::RevisionPayload::Live(record) => {
-            // The line names the family it belongs to; the slice below is only
-            // that family's if the two agree.
-            if record.root_user_id != root_user_id || record.revision_index != revision_index {
-                return Err(anyhow!(
-                    "revision payload names {}/{} not {root_user_id}/{revision_index}",
-                    record.root_user_id,
-                    record.revision_index
-                ));
-            }
-            let start = live_start.ok_or_else(|| {
-                anyhow!("revision payload missing from transcript for {root_user_id}")
-            })?;
-            live.get(start..).unwrap_or_default().to_vec()
-        }
-    };
+    let archived_turns = revision.turns;
+    let branch: Vec<UiMessage> = revision.messages.into_iter().map(record_to_ui).collect();
 
     let conn = db.conn();
     let total: i64 = conn.query_row(
@@ -3208,17 +2282,6 @@ pub fn activate_message_revision(
             .into_iter()
             .filter(|record| compaction_valid_for_records(record, &records))
             .collect();
-    // The switch drops everything the restored variant does not contain. Any
-    // other family whose root is in that prefix was referenced rather than
-    // copied while it was live, so it has to be stored in full before the
-    // transcript stops holding it. The target family was archived above.
-    archive_dropped_live_branches(
-        db,
-        session_id,
-        &live,
-        &combined,
-        &[root_user_id.to_string()],
-    )?;
     invalidate_transcript_layout(session_id);
     transcripts::write_transcript_with_compactions(
         db.data_dir(),
@@ -3422,15 +2485,7 @@ pub fn end_turn(
     usage: Option<&Value>,
     create_notification: bool,
 ) -> Result<EndTurnResult> {
-    end_turn_settling(
-        db,
-        turn_id,
-        status,
-        error_code,
-        usage,
-        create_notification,
-        false,
-    )
+    end_turn_settling(db, turn_id, status, error_code, usage, create_notification, false)
 }
 
 /// `end_turn` that also settles the session's in-flight reply checkpoint
@@ -3492,12 +2547,12 @@ pub fn end_turn_settling(
     // the aborted final row is still on its way and removes it on arrival,
     // and the boot sweep settles a row that never came.
     let recovered = match session_id.as_deref() {
-        Some(session_id) if recover_inflight => recover_inflight_message(db, session_id, true)?,
+        Some(session_id) if recover_inflight => {
+            recover_inflight_message(db, session_id, true)?
+        }
         Some(session_id) if status != "aborted" => {
             if let Some(inflight) = transcripts::read_inflight(db.data_dir(), session_id)? {
-                if message_indexed(db, session_id, &inflight.message.id)?
-                    && !streaming_assistant_indexed(db, session_id, &inflight.message.id)?
-                {
+                if message_indexed(db, session_id, &inflight.message.id)? {
                     transcripts::remove_inflight(db.data_dir(), session_id)?;
                 }
             }
@@ -3607,10 +2662,7 @@ fn resolve_history_range(
     bucket: &str,
 ) -> (i64, i64) {
     let now = chrono::Local::now();
-    let end = end_date
-        .filter(|v| *v > 0)
-        .and_then(local_from_ms)
-        .unwrap_or(now);
+    let end = end_date.filter(|v| *v > 0).and_then(local_from_ms).unwrap_or(now);
     let start = start_date
         .filter(|v| *v > 0)
         .and_then(local_from_ms)
@@ -3644,7 +2696,8 @@ fn filled_history_keys(start_ms: i64, end_ms: i64, bucket: &str) -> Vec<(String,
             let end_y = end.year();
             let end_m = end.month();
             loop {
-                if let chrono::LocalResult::Single(dt) | chrono::LocalResult::Ambiguous(dt, _) =
+                if let chrono::LocalResult::Single(dt)
+                | chrono::LocalResult::Ambiguous(dt, _) =
                     chrono::Local.with_ymd_and_hms(year, month, 1, 0, 0, 0)
                 {
                     keys.push((dt.format("%Y-%m").to_string(), dt.timestamp_millis()));
@@ -3720,7 +2773,7 @@ impl UsageBucketAcc {
         self.input + self.output + self.cache_read + self.cache_write
     }
 
-    fn to_json(self, date: &str) -> Value {
+    fn to_json(&self, date: &str) -> Value {
         json!({
             "date": date,
             "timestamp": self.timestamp,
@@ -3841,7 +2894,6 @@ pub fn get_token_usage_history(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::simple_canonicalize;
 
     fn test_db() -> Database {
         let dir = std::env::temp_dir().join(format!("pi-desktop-test-{}", Uuid::new_v4()));
@@ -3854,10 +2906,7 @@ mod tests {
             id: id.into(),
             role: "user".into(),
             content: content.into(),
-            command: None,
-            skill_mentions: None,
             attachments: None,
-            steering: None,
             created_at: ts.into(),
             thinking: None,
             status: None,
@@ -3880,8 +2929,6 @@ mod tests {
             is_error: None,
             parent_tool_call_id: None,
             agent_name: None,
-            hosted_search: None,
-            session_message: None,
         }
     }
 
@@ -3903,139 +2950,6 @@ mod tests {
             model_id: Some("model-1".into()),
             created_at: "2026-07-28T00:00:03Z".into(),
         }
-    }
-
-    #[test]
-    fn append_message_without_a_live_same_session_turn_keeps_the_message() {
-        let db = test_db();
-        let source = create_session(&db, None, None, None, None, None).unwrap();
-        let target = create_session(&db, None, None, None, None, None).unwrap();
-        let source_turn = begin_turn(&db, &source.id, None, None).unwrap();
-        let missing = user_msg("missing-turn-message", "kept", "2026-07-28T00:00:00Z");
-        let cross_session = user_msg(
-            "cross-session-turn-message",
-            "also kept",
-            "2026-07-28T00:00:01Z",
-        );
-
-        append_message(&db, &target.id, &missing, Some("missing-turn"))
-            .expect("a stale optional turn must not block transcript persistence");
-        append_message(&db, &target.id, &cross_session, Some(&source_turn))
-            .expect("a turn owned by another session must not block transcript persistence");
-
-        let links: Vec<(String, Option<String>)> = db
-            .conn()
-            .prepare("SELECT id, turn_id FROM messages WHERE session_id = ?1 ORDER BY seq")
-            .unwrap()
-            .query_map(params![target.id], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap()
-            .collect::<rusqlite::Result<_>>()
-            .unwrap();
-        assert_eq!(
-            links,
-            vec![(missing.id.clone(), None), (cross_session.id.clone(), None),]
-        );
-        assert_eq!(
-            get_session(&db, &target.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .iter()
-                .map(|message| message.id.as_str())
-                .collect::<Vec<_>>(),
-            vec![missing.id.as_str(), cross_session.id.as_str()]
-        );
-    }
-
-    #[test]
-    fn replay_after_a_failed_index_insert_updates_transcript_without_duplicate_or_reordering() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let turn_id = begin_turn(&db, &session.id, None, None).unwrap();
-        let before = user_msg("before", "before", "2026-07-28T00:00:00Z");
-        let replay = user_msg("replay", "latest replay snapshot", "2026-07-28T00:00:01Z");
-        let old_replay = user_msg("replay", "old failed snapshot", "2026-07-28T00:00:01Z");
-        let after = user_msg("after", "after", "2026-07-28T00:00:02Z");
-        append_message(&db, &session.id, &before, Some(&turn_id)).unwrap();
-
-        // Older hosts wrote the transcript line before the index transaction;
-        // repeated retries could leave multiple stale copies while the index stayed absent.
-        let (record, _) = ui_to_record(&old_replay);
-        let created_at = session_created_at(&db, &session.id).unwrap();
-        transcripts::append_message(db.data_dir(), &session.id, &created_at, &record).unwrap();
-        transcripts::append_message(db.data_dir(), &session.id, &created_at, &record).unwrap();
-        append_message(&db, &session.id, &after, Some(&turn_id)).unwrap();
-
-        append_message(&db, &session.id, &replay, Some("missing-turn"))
-            .expect("replaying an old outbox entry must reconcile the existing transcript line");
-
-        let indexed: Vec<(String, i64, Option<String>)> = db
-            .conn()
-            .prepare("SELECT id, seq, turn_id FROM messages WHERE session_id = ?1 ORDER BY seq")
-            .unwrap()
-            .query_map(params![session.id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })
-            .unwrap()
-            .collect::<rusqlite::Result<_>>()
-            .unwrap();
-        assert_eq!(
-            indexed,
-            vec![
-                (before.id.clone(), 0, Some(turn_id.clone())),
-                (replay.id.clone(), 1, None),
-                (after.id.clone(), 2, Some(turn_id.clone())),
-            ]
-        );
-        let last_seq: i64 = db
-            .conn()
-            .query_row(
-                "SELECT last_seq FROM sessions WHERE id = ?1",
-                params![session.id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(last_seq, 3);
-
-        let transcript = transcripts::read_transcript(db.data_dir(), &session.id).unwrap();
-        assert_eq!(
-            transcript
-                .iter()
-                .filter(|record| record.id == replay.id)
-                .count(),
-            2,
-            "replay updates existing lines but does not append another copy"
-        );
-        let restored = get_session(&db, &session.id).unwrap().unwrap();
-        assert_eq!(
-            restored
-                .messages
-                .iter()
-                .map(|message| message.id.as_str())
-                .collect::<Vec<_>>(),
-            vec![before.id.as_str(), replay.id.as_str(), after.id.as_str()]
-        );
-        assert_eq!(restored.messages[1].content, replay.content);
-        assert_eq!(
-            search_messages(&db, &replay.content, 10)
-                .unwrap()
-                .iter()
-                .map(|hit| hit.message_id.as_str())
-                .collect::<Vec<_>>(),
-            vec![replay.id.as_str()]
-        );
-
-        let next = user_msg("next", "after repair", "2026-07-28T00:00:03Z");
-        append_message(&db, &session.id, &next, Some(&turn_id)).unwrap();
-        let next_seq: i64 = db
-            .conn()
-            .query_row(
-                "SELECT seq FROM messages WHERE session_id = ?1 AND id = ?2",
-                params![session.id, next.id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(next_seq, 3);
     }
 
     #[test]
@@ -4244,48 +3158,6 @@ mod tests {
             None,
         )
         .is_err());
-        let omitted = configure_session_with_thinking(
-            &db,
-            &session.id,
-            "chat",
-            None,
-            None,
-            Some("omit"),
-            None,
-        )
-        .unwrap()
-        .unwrap();
-        assert_eq!(omitted.thinking_level, "omit");
-    }
-
-    #[test]
-    fn create_session_permission_mode_is_optional_and_validated() {
-        let db = test_db();
-        let default_session = create_session(&db, None, None, None, None, None).unwrap();
-        assert_eq!(default_session.permission_mode, "inherit");
-
-        let worker = create_session_with_options(
-            &db,
-            SessionCreateOptions {
-                title: Some("Worker".into()),
-                mode: Some("agent".into()),
-                thinking_level: Some("high".into()),
-                permission_mode: Some("ask".into()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert_eq!(worker.permission_mode, "ask");
-        assert_eq!(worker.thinking_level, "high");
-
-        assert!(create_session_with_options(
-            &db,
-            SessionCreateOptions {
-                permission_mode: Some("unrestricted".into()),
-                ..Default::default()
-            },
-        )
-        .is_err());
     }
 
     #[test]
@@ -4314,11 +3186,19 @@ mod tests {
             .unwrap();
         assert_eq!(after, before);
 
-        assert!(rename_session(&db, &session.id, &"界".repeat(MAX_SESSION_TITLE_CHARS),).is_ok());
+        assert!(rename_session(
+            &db,
+            &session.id,
+            &"界".repeat(MAX_SESSION_TITLE_CHARS),
+        )
+        .is_ok());
         assert!(rename_session(&db, &session.id, "   ").is_err());
-        assert!(
-            rename_session(&db, &session.id, &"x".repeat(MAX_SESSION_TITLE_CHARS + 1),).is_err()
-        );
+        assert!(rename_session(
+            &db,
+            &session.id,
+            &"x".repeat(MAX_SESSION_TITLE_CHARS + 1),
+        )
+        .is_err());
         assert!(!rename_session(&db, "missing", "Valid").unwrap());
     }
 
@@ -4340,7 +3220,8 @@ mod tests {
         )
         .unwrap();
 
-        let canonical = simple_canonicalize(&project)
+        let canonical = project
+            .canonicalize()
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
@@ -4500,10 +3381,7 @@ mod tests {
             id: "m2".into(),
             role: "tool".into(),
             content: "ok".into(),
-            command: None,
-            skill_mentions: None,
             attachments: None,
-            steering: None,
             created_at: "2025-05-01T00:00:02Z".into(),
             thinking: None,
             status: Some("complete".into()),
@@ -4526,8 +3404,6 @@ mod tests {
             is_error: None,
             parent_tool_call_id: None,
             agent_name: None,
-            hosted_search: None,
-            session_message: None,
         };
         append_message(&db, &session.id, &tool, None).unwrap();
         // Host recovery may replay the Electron persistence outbox; a message
@@ -4604,94 +3480,6 @@ mod tests {
     }
 
     #[test]
-    fn append_message_remaps_ids_owned_by_another_session() {
-        let db = test_db();
-        let first = create_session(&db, None, None, None, None, None).unwrap();
-        let second = create_session(&db, None, None, None, None, None).unwrap();
-        let colliding = user_msg("call_421522", "first", "2026-09-16T15:42:41Z");
-        append_message(&db, &first.id, &colliding, None).unwrap();
-        append_message(&db, &second.id, &colliding, None).unwrap();
-
-        let first_detail = get_session(&db, &first.id).unwrap().unwrap();
-        let second_detail = get_session(&db, &second.id).unwrap().unwrap();
-        assert_eq!(first_detail.messages[0].id, "call_421522");
-        assert_eq!(
-            second_detail.messages[0].id,
-            format!("{}:call_421522", second.id)
-        );
-        assert_eq!(second_detail.messages[0].content, "first");
-
-        append_message(&db, &second.id, &colliding, None).unwrap();
-        assert_eq!(
-            get_session(&db, &second.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            1
-        );
-        assert_eq!(
-            transcripts::read_transcript(db.data_dir(), &second.id)
-                .unwrap()
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn append_message_does_not_duplicate_a_unique_failed_jsonl_leftover() {
-        let db = test_db();
-        let first = create_session(&db, None, None, None, None, None).unwrap();
-        let second = create_session(&db, None, None, None, None, None).unwrap();
-        let colliding = user_msg("call_421522", "leftover", "2026-09-16T15:42:41Z");
-        append_message(&db, &first.id, &colliding, None).unwrap();
-        let (record, _) = ui_to_record(&colliding);
-        transcripts::append_message(db.data_dir(), &second.id, &second.created_at, &record)
-            .unwrap();
-        append_message(&db, &second.id, &colliding, None).unwrap();
-        assert_eq!(
-            transcripts::read_transcript(db.data_dir(), &second.id)
-                .unwrap()
-                .len(),
-            1
-        );
-        assert_eq!(
-            get_session(&db, &second.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn restore_orphaned_session_remaps_ids_owned_by_another_session() {
-        let db = test_db();
-        let first = create_session(&db, None, None, None, None, None).unwrap();
-        let second = create_session(&db, None, None, None, None, None).unwrap();
-        let colliding = user_msg("call_421522", "orphan", "2026-09-16T15:42:41Z");
-        append_message(&db, &first.id, &colliding, None).unwrap();
-        let (record, _) = ui_to_record(&colliding);
-        transcripts::append_message(db.data_dir(), &second.id, &second.created_at, &record)
-            .unwrap();
-        db.conn()
-            .execute("DELETE FROM sessions WHERE id = ?1", params![second.id])
-            .unwrap();
-        assert!(restore_orphaned_session(&db, &second.id).unwrap());
-        let restored = get_session(&db, &second.id).unwrap().unwrap();
-        assert_eq!(restored.messages.len(), 1);
-        assert_eq!(
-            restored.messages[0].id,
-            format!("{}:call_421522", second.id)
-        );
-        assert_eq!(
-            get_session(&db, &first.id).unwrap().unwrap().messages[0].id,
-            "call_421522"
-        );
-    }
-
-    #[test]
     fn user_attachments_roundtrip_as_canonical_blocks() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
@@ -4733,11 +3521,7 @@ mod tests {
             append_message(
                 &db,
                 &session.id,
-                &user_msg(
-                    &format!("m{index}"),
-                    &format!("body {index}"),
-                    "2025-05-01T00:00:00Z",
-                ),
+                &user_msg(&format!("m{index}"), &format!("body {index}"), "2025-05-01T00:00:00Z"),
                 None,
             )
             .unwrap();
@@ -4754,7 +3538,6 @@ mod tests {
                 &db,
                 &session.id,
                 SessionReadOptions {
-                    message_around: None,
                     message_before: before,
                     message_limit: Some(2),
                     content_limit: None,
@@ -4775,10 +3558,7 @@ mod tests {
         // matters: the pre-change clamp against `last_seq` dropped the newest
         // ones entirely.
         for id in ["m0", "m1", "m2", "m3"] {
-            assert!(
-                collected.iter().any(|seen| seen == id),
-                "missing {id} in {collected:?}"
-            );
+            assert!(collected.iter().any(|seen| seen == id), "missing {id} in {collected:?}");
         }
         // The retried line is physically last, so it is the newest line the tail
         // window returns; the keep-last content wins and the renderer merges the
@@ -4787,7 +3567,6 @@ mod tests {
             &db,
             &session.id,
             SessionReadOptions {
-                message_around: None,
                 message_before: None,
                 message_limit: Some(2),
                 content_limit: None,
@@ -4843,7 +3622,6 @@ mod tests {
             &db,
             &session.id,
             SessionReadOptions {
-                message_around: None,
                 message_before: None,
                 message_limit: Some(2),
                 content_limit: None,
@@ -4866,7 +3644,6 @@ mod tests {
                 &db,
                 &session.id,
                 SessionReadOptions {
-                    message_around: None,
                     message_before: Some(start),
                     message_limit: Some(2),
                     content_limit: None,
@@ -4905,7 +3682,6 @@ mod tests {
             &db,
             &session.id,
             SessionReadOptions {
-                message_around: None,
                 message_before: None,
                 message_limit: Some(1),
                 content_limit: Some(128),
@@ -4931,10 +3707,7 @@ mod tests {
             id: "assistant-1".into(),
             role: "assistant".into(),
             content: "final answer".into(),
-            command: None,
-            skill_mentions: None,
             attachments: None,
-            steering: None,
             created_at: "2025-05-01T00:00:01Z".into(),
             thinking: Some("first plan\nsecond plan".into()),
             status: Some("complete".into()),
@@ -4964,8 +3737,6 @@ mod tests {
             is_error: None,
             parent_tool_call_id: None,
             agent_name: None,
-            hosted_search: None,
-            session_message: None,
         };
         append_message(&db, &session.id, &assistant, None).unwrap();
 
@@ -5006,126 +3777,6 @@ mod tests {
         assert_eq!(usage.total_tokens, 48);
         assert_eq!(detail.messages[0].response_duration_ms, Some(2_000));
         assert_eq!(detail.messages[0].response_output_tokens, Some(34));
-    }
-
-    #[test]
-    fn assistant_hosted_search_roundtrips_as_canonical_blocks() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let assistant = UiMessage {
-            id: "assistant-search-1".into(),
-            role: "assistant".into(),
-            content: "answer with sources".into(),
-            command: None,
-            skill_mentions: None,
-            attachments: None,
-            steering: None,
-            created_at: "2025-05-01T00:00:01Z".into(),
-            thinking: None,
-            status: Some("complete".into()),
-            model_id: Some("model-1".into()),
-            provider_id: Some("provider-1".into()),
-            usage: None,
-            response_duration_ms: None,
-            response_output_tokens: None,
-            error: None,
-            revision_root_id: None,
-            revision_count: None,
-            active_revision: None,
-            tool_name: None,
-            tool_call_id: None,
-            tool_status: None,
-            tool_args: None,
-            tool_result: None,
-            tool_completed_at: None,
-            tool_duration_ms: None,
-            is_error: None,
-            parent_tool_call_id: None,
-            agent_name: None,
-            hosted_search: Some(json!({
-                "status": "completed",
-                "rounds": [
-                    {
-                        "id": "srvtoolu_01",
-                        "status": "completed",
-                        "query": "pi-desktop release notes",
-                        "sources": [
-                            { "url": "https://example.com/a", "title": "A" }
-                        ]
-                    }
-                ],
-                "replay": [
-                    {
-                        "type": "hostedSearch",
-                        "phase": "server_tool_use",
-                        "blockId": "srvtoolu_01",
-                        "name": "web_search",
-                        "input": { "query": "pi-desktop release notes" }
-                    }
-                ]
-            })),
-            session_message: None,
-        };
-        append_message(&db, &session.id, &assistant, None).unwrap();
-
-        let records = transcripts::read_transcript(db.data_dir(), &session.id).unwrap();
-        assert_eq!(records.len(), 1);
-        let blocks = &records[0].blocks;
-        assert_eq!(
-            blocks[0],
-            json!({
-                "type": "hostedSearch",
-                "status": "completed",
-                "rounds": [
-                    {
-                        "id": "srvtoolu_01",
-                        "status": "completed",
-                        "query": "pi-desktop release notes",
-                        "sources": [
-                            { "url": "https://example.com/a", "title": "A" }
-                        ]
-                    }
-                ],
-                "replay": [
-                    {
-                        "type": "hostedSearch",
-                        "phase": "server_tool_use",
-                        "blockId": "srvtoolu_01",
-                        "name": "web_search",
-                        "input": { "query": "pi-desktop release notes" }
-                    }
-                ]
-            })
-        );
-
-        let detail = get_session(&db, &session.id).unwrap().unwrap();
-        assert_eq!(
-            detail.messages[0].hosted_search,
-            Some(json!({
-                "status": "completed",
-                "rounds": [
-                    {
-                        "id": "srvtoolu_01",
-                        "status": "completed",
-                        "query": "pi-desktop release notes",
-                        "sources": [
-                            { "url": "https://example.com/a", "title": "A" }
-                        ]
-                    }
-                ],
-                "replay": [
-                    {
-                        "type": "hostedSearch",
-                        "phase": "server_tool_use",
-                        "blockId": "srvtoolu_01",
-                        "name": "web_search",
-                        "input": { "query": "pi-desktop release notes" }
-                    }
-                ]
-            }))
-        );
-        // The additive block must not disturb text reconstruction.
-        assert_eq!(detail.messages[0].content, "answer with sources");
     }
 
     #[test]
@@ -5378,134 +4029,6 @@ mod tests {
     }
 
     #[test]
-    fn fork_index_failure_removes_copied_inputs_and_transcript() {
-        let db = test_db();
-        let source = create_session(&db, None, None, None, None, None).unwrap();
-        let pasted = crate::scratch::session_dir(db.data_dir(), &source.id)
-            .unwrap()
-            .join("pasted");
-        std::fs::create_dir_all(&pasted).unwrap();
-        let file = pasted.join("note.txt");
-        std::fs::write(&file, "keep source").unwrap();
-        append_message(
-            &db,
-            &source.id,
-            &user_msg(
-                "input",
-                &format!("@{}", file.display()),
-                "2025-05-01T00:00:00Z",
-            ),
-            None,
-        )
-        .unwrap();
-        let files_before = std::fs::read_dir(db.data_dir().join("sessions"))
-            .unwrap()
-            .count();
-        db.conn().execute_batch("CREATE TRIGGER fail_fork BEFORE INSERT ON sessions BEGIN SELECT RAISE(ABORT, 'injected index failure'); END;").unwrap();
-        let result = fork_session_through(&db, &source.id, None, None);
-        assert!(result.is_err());
-        assert_eq!(
-            std::fs::read_dir(db.data_dir().join("sessions"))
-                .unwrap()
-                .count(),
-            files_before
-        );
-        assert_eq!(
-            std::fs::read_dir(crate::scratch::base_dir(db.data_dir()))
-                .unwrap()
-                .count(),
-            1
-        );
-        assert_eq!(std::fs::read_to_string(file).unwrap(), "keep source");
-    }
-
-    #[test]
-    fn fork_preserves_referenced_pasted_files_independently() {
-        let db = test_db();
-        let source =
-            create_session(&db, Some("Attachments".into()), None, None, None, None).unwrap();
-        let scratch = crate::scratch::session_dir(db.data_dir(), &source.id).unwrap();
-        let pasted = scratch.join("pasted");
-        std::fs::create_dir_all(&pasted).unwrap();
-        let first = pasted.join("first note.txt");
-        let later = pasted.join("later.png");
-        std::fs::write(&first, "original reference bytes").unwrap();
-        std::fs::write(&later, b"image bytes").unwrap();
-        std::fs::write(pasted.join("unused.txt"), "do not copy").unwrap();
-        let first_text = format!("Read @\"{}\"", first.display());
-        append_message(
-            &db,
-            &source.id,
-            &user_msg("paste-1", &first_text, "2025-05-01T00:00:00Z"),
-            None,
-        )
-        .unwrap();
-        append_message(
-            &db,
-            &source.id,
-            &user_msg(
-                "paste-2",
-                &format!("@{}", later.display()),
-                "2025-05-01T00:00:01Z",
-            ),
-            None,
-        )
-        .unwrap();
-        let ForkSessionResult::Created(child) =
-            fork_session_through(&db, &source.id, None, Some("paste-1")).unwrap()
-        else {
-            panic!("expected child")
-        };
-        let child_scratch = crate::scratch::session_dir(db.data_dir(), &child.summary.id).unwrap();
-        let child_file = child_scratch.join("pasted").join("first note.txt");
-        assert_eq!(
-            std::fs::read_to_string(&child_file).unwrap(),
-            "original reference bytes"
-        );
-        assert_eq!(
-            child.messages[0].content,
-            format!("Read @\"{}\"", child_file.display())
-        );
-        assert!(!child_scratch.join("pasted/later.png").exists());
-        assert!(!child_scratch.join("pasted/unused.txt").exists());
-        assert_eq!(
-            get_session(&db, &source.id).unwrap().unwrap().messages[0].content,
-            first_text
-        );
-        delete_session(&db, &source.id).unwrap();
-        crate::scratch::remove_session_dir(db.data_dir(), &source.id);
-        assert_eq!(
-            std::fs::read_to_string(&child_file).unwrap(),
-            "original reference bytes"
-        );
-        assert_eq!(
-            get_session(&db, &child.summary.id)
-                .unwrap()
-                .unwrap()
-                .messages[0]
-                .content,
-            child.messages[0].content
-        );
-        let ForkSessionResult::Created(grandchild) =
-            fork_session_through(&db, &child.summary.id, None, None).unwrap()
-        else {
-            panic!("expected grandchild")
-        };
-        let grandchild_file = crate::scratch::session_dir(db.data_dir(), &grandchild.summary.id)
-            .unwrap()
-            .join("pasted")
-            .join("first note.txt");
-        assert_eq!(
-            std::fs::read_to_string(&grandchild_file).unwrap(),
-            "original reference bytes"
-        );
-        assert_eq!(
-            grandchild.messages[0].content,
-            format!("Read @\"{}\"", grandchild_file.display())
-        );
-    }
-
-    #[test]
     fn fork_session_clones_active_transcript_and_configuration() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("pi.sqlite");
@@ -5647,107 +4170,6 @@ mod tests {
     }
 
     #[test]
-    fn completed_reply_fork_during_later_turn_preserves_the_running_source() {
-        let db = test_db();
-        let source = create_session(&db, Some("Source".into()), None, None, None, None).unwrap();
-        let first = begin_turn(&db, &source.id, None, None).unwrap();
-        let mut reply = user_msg("reply", "finished reply", "2025-05-01T00:00:01Z");
-        reply.role = "assistant".into();
-        append_message(
-            &db,
-            &source.id,
-            &user_msg("first", "first prompt", "2025-05-01T00:00:00Z"),
-            Some(&first),
-        )
-        .unwrap();
-        append_message(&db, &source.id, &reply, Some(&first)).unwrap();
-        end_turn(&db, &first, "completed", None, None, false).unwrap();
-        let running = begin_turn(&db, &source.id, None, None).unwrap();
-        // Admission can precede persistence of the next user row.
-        let ForkSessionResult::Created(early) =
-            fork_session_through(&db, &source.id, None, Some("reply")).unwrap()
-        else {
-            panic!("completed history should fork during a later turn");
-        };
-        assert_eq!(early.messages.len(), 2);
-        append_message(
-            &db,
-            &source.id,
-            &user_msg("second", "second prompt", "2025-05-01T00:00:02Z"),
-            Some(&running),
-        )
-        .unwrap();
-        let mut current = reply.clone();
-        current.id = "current".into();
-        current.content = "intermediate completed response in a running tool loop".into();
-        append_message(&db, &source.id, &current, Some(&running)).unwrap();
-        let before = get_session(&db, &source.id).unwrap().unwrap();
-        let ForkSessionResult::Created(child) =
-            fork_session_through(&db, &source.id, None, Some("reply")).unwrap()
-        else {
-            panic!("completed history should fork while the source streams");
-        };
-        assert_eq!(child.messages.len(), 2);
-        assert_eq!(child.messages[1].content, "finished reply");
-        assert_ne!(child.messages[1].id, "reply");
-        assert!(session_has_running_turn(&db, &source.id).unwrap());
-        assert!(!session_has_running_turn(&db, &child.summary.id).unwrap());
-        assert_eq!(
-            get_session(&db, &source.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            before.messages.len()
-        );
-        for anchor in [
-            None,
-            Some(""),
-            Some("first"),
-            Some("second"),
-            Some("current"),
-        ] {
-            assert!(matches!(
-                fork_session_through(&db, &source.id, None, anchor).unwrap(),
-                ForkSessionResult::Busy
-            ));
-        }
-        assert!(matches!(
-            fork_session_through(&db, &source.id, None, Some("missing")).unwrap(),
-            ForkSessionResult::NotFound
-        ));
-        // The original turn can still finish after the child was published.
-        current.id = "final".into();
-        current.content = "source finished independently".into();
-        append_message(&db, &source.id, &current, Some(&running)).unwrap();
-        end_turn(&db, &running, "completed", None, None, false).unwrap();
-        assert_eq!(
-            get_session(&db, &source.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            5
-        );
-        assert_eq!(
-            get_session(&db, &child.summary.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            2
-        );
-        // A child has no copied turn ids, but its completed history remains forkable.
-        let child_turn = begin_turn(&db, &child.summary.id, None, None).unwrap();
-        assert!(matches!(
-            fork_session_through(&db, &child.summary.id, None, Some(&child.messages[1].id))
-                .unwrap(),
-            ForkSessionResult::Created(_)
-        ));
-        end_turn(&db, &child_turn, "aborted", None, None, false).unwrap();
-    }
-
-    #[test]
     fn message_scoped_fork_stops_at_selected_assistant_response() {
         let db = test_db();
         let source = create_session(&db, Some("Source".into()), None, None, None, None).unwrap();
@@ -5835,58 +4257,6 @@ mod tests {
 
         end_turn(&db, &first, "aborted", None, None, false).unwrap();
         assert!(begin_turn(&db, &session.id, None, None).is_ok());
-    }
-
-    #[test]
-    fn move_session_project_reassigns_only_the_project_and_rejects_running_turns() {
-        let db = test_db();
-        let source = std::env::temp_dir().join(format!("pi-move-source-{}", Uuid::new_v4()));
-        let target = std::env::temp_dir().join(format!("pi-move-target-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(&source).unwrap();
-        std::fs::create_dir_all(&target).unwrap();
-        let session = create_session(
-            &db,
-            Some("Move me".into()),
-            Some("agent".into()),
-            Some("provider".into()),
-            Some("model".into()),
-            Some(source.to_string_lossy().to_string()),
-        )
-        .unwrap();
-
-        // The host stores the same canonical spelling it derives here: resolved,
-        // with forward slashes.
-        let target_path = crate::db::canonical_project_path(&target.to_string_lossy())
-            .expect("canonical project path");
-        let moved = move_session_project(&db, &session.id, &target.to_string_lossy()).unwrap();
-        let MoveSessionProjectResult::Moved(summary) = moved else {
-            panic!("an idle session must move to the requested project");
-        };
-        assert_eq!(summary.project_path.as_deref(), Some(target_path.as_str()));
-        // Title, provider, model, and message count stay with the session.
-        assert_eq!(summary.title, "Move me");
-        assert_eq!(summary.provider_id.as_deref(), Some("provider"));
-        assert_eq!(summary.model_id.as_deref(), Some("model"));
-        assert_eq!(summary.message_count, 0);
-
-        // A running turn blocks the move so the live agent cannot switch
-        // instruction roots mid-turn.
-        let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
-            MoveSessionProjectResult::Busy
-        ));
-        end_turn(&db, &turn, "aborted", None, None, false).unwrap();
-        assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
-            MoveSessionProjectResult::Moved(_)
-        ));
-
-        assert!(matches!(
-            move_session_project(&db, "missing-session", &source.to_string_lossy()).unwrap(),
-            MoveSessionProjectResult::NotFound
-        ));
-        assert!(move_session_project(&db, &session.id, "   ").is_err());
     }
 
     #[test]
@@ -6046,15 +4416,12 @@ mod tests {
         assert_eq!(detail.messages[0].active_revision, Some(2));
         assert_eq!(detail.messages[0].revision_root_id.as_deref(), Some("u1"));
 
-        // The branch carries the final answer, so switching back to it later
-        // restores a complete turn. It is still live, so what the file holds is
-        // a reference to the transcript suffix rather than a second copy of it.
-        let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 2)
+        // The archived branch carries the final answer, so switching back to it
+        // later restores a complete turn.
+        let branch = transcripts::read_revision(db.data_dir(), &session.id, "u1", 2)
             .unwrap()
             .expect("branch payload");
-        assert!(matches!(payload, transcripts::RevisionPayload::Live(_)));
-        let branch = &detail.messages[live_branch_start(&detail.messages, "u1").unwrap()..];
-        assert_eq!(branch.last().unwrap().id, "a9");
+        assert_eq!(branch.messages.last().unwrap().id, "a9");
 
         // A one-line stamp must not reseat the index: seq order and the owning
         // turn stay intact.
@@ -6149,300 +4516,20 @@ mod tests {
             .unwrap();
         assert!(!saved.archived, "no new index is minted");
         assert_eq!(saved.revision_count, 1);
-        // The branch is still live, so the refresh records a reference and the
-        // messages stay in the transcript instead of being copied into the
-        // revisions file again on every turn.
-        let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
+        let branch = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
             .unwrap()
             .unwrap();
-        assert!(matches!(payload, transcripts::RevisionPayload::Live(_)));
-        let live = get_session(&db, &session.id).unwrap().unwrap().messages;
-        let branch = &live[live_branch_start(&live, "u1").unwrap()..];
         assert_eq!(
-            branch.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            branch
+                .messages
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["u1", "u2", "a2"],
         );
         let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
         assert_eq!(listed[0].message_count, 3);
         assert!(listed[0].is_active);
-    }
-
-    /// The reason a live branch is referenced and not copied: a branch that is
-    /// still in the transcript must cost the revisions file nothing, however
-    /// many turns run over it. Copying it per turn is what made a real session
-    /// reach 107 MB for 1152 messages — every turn rewrote a tail that had grown
-    /// since the turn before, which is O(N²) bytes for content the transcript
-    /// already held.
-    #[test]
-    fn a_live_branch_is_referenced_and_never_copied() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
-        let mut root = user_msg("u1", "start", "2025-05-01T00:00:00Z");
-        root.revision_count = Some(1);
-        root.active_revision = Some(1);
-        append_message(&db, &session.id, &root, Some(&turn)).unwrap();
-
-        // Ten finished turns, each appending a sizeable answer, each archived
-        // exactly the way a real turn ends.
-        for index in 0..10 {
-            let mut answer = user_msg(
-                &format!("a{index}"),
-                &"x".repeat(20_000),
-                "2025-05-01T00:01:00Z",
-            );
-            answer.role = "assistant".into();
-            append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
-            assert!(
-                save_active_branch_revision(&db, &session.id)
-                    .unwrap()
-                    .is_some(),
-                "the stamped root archives on every turn"
-            );
-        }
-
-        let path = transcripts::revisions_path(db.data_dir(), &session.id).unwrap();
-        let written = std::fs::metadata(&path).unwrap().len();
-        assert!(
-            written < 8 * 1024,
-            "ten turns over a 200 KB branch wrote {written} bytes; \
-             a live branch must be referenced, not copied"
-        );
-
-        // The branch is still one revision, still counted, and still resolves
-        // to every message the transcript holds.
-        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].message_count, 11);
-        assert!(matches!(
-            transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
-                .unwrap()
-                .unwrap(),
-            transcripts::RevisionPayload::Live(_)
-        ));
-        let live = get_session(&db, &session.id).unwrap().unwrap().messages;
-        let branch = &live[live_branch_start(&live, "u1").unwrap()..];
-        assert_eq!(branch.len(), 11);
-        assert_eq!(branch.last().unwrap().id, "a9");
-        // The reference carries no turn map: a live branch's rows are the
-        // session's own index rows, so a restore reads their turns from there.
-        // That is what keeps the reference constant-sized instead of one entry
-        // per branch message on every turn.
-        let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
-            .unwrap()
-            .unwrap();
-        assert!(payload.turns().is_empty());
-        let line_bytes = {
-            let raw = std::fs::read_to_string(
-                transcripts::revisions_path(db.data_dir(), &session.id).unwrap(),
-            )
-            .unwrap();
-            raw.lines().last().unwrap().len()
-        };
-        assert!(
-            line_bytes < 160,
-            "the newest reference is {line_bytes} bytes; it must not grow with the branch"
-        );
-
-        // And the restore still re-attaches every message to its turn.
-        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
-        assert_eq!(restored.len(), 11);
-        let with_turn: i64 = db
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM messages
-                 WHERE session_id = ?1 AND turn_id = ?2",
-                params![session.id, turn],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(with_turn, 11, "all eleven rows keep their owning turn");
-    }
-
-    /// Deleting the turn that owns a regenerate family takes its branch out of
-    /// the transcript, so the reference written while that branch was live has
-    /// to become a stored payload in the same breath. Otherwise the file names
-    /// a suffix that no longer exists and paging back to the variant fails.
-    #[test]
-    fn dropping_a_branch_root_stores_its_live_reference_first() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
-        let mut root = user_msg("u1", "start", "2025-05-01T00:00:00Z");
-        root.revision_count = Some(1);
-        root.active_revision = Some(1);
-        append_message(&db, &session.id, &root, Some(&turn)).unwrap();
-        let mut answer = user_msg("a1", "the answer", "2025-05-01T00:01:00Z");
-        answer.role = "assistant".into();
-        append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
-        save_active_branch_revision(&db, &session.id)
-            .unwrap()
-            .unwrap();
-        assert!(matches!(
-            transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
-                .unwrap()
-                .unwrap(),
-            transcripts::RevisionPayload::Live(_)
-        ));
-
-        // The user deletes the turn. No revision call of its own runs for it.
-        let mut other = user_msg("u2", "another question", "2025-05-01T00:02:00Z");
-        other.role = "assistant".into();
-        replace_messages(&db, &session.id, &[other]).unwrap();
-
-        let stored = match transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
-            .unwrap()
-            .expect("the dropped branch was stored before the rewrite")
-        {
-            transcripts::RevisionPayload::Stored(record) => record,
-            transcripts::RevisionPayload::Live(_) => {
-                panic!("a branch that left the transcript must be stored")
-            }
-        };
-        assert_eq!(
-            stored
-                .messages
-                .iter()
-                .map(|m| m.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["u1", "a1"]
-        );
-    }
-
-    /// Two user turns each own a regenerate family and both are referenced, then
-    /// an edit cuts the earlier one away. The later family's root leaves the
-    /// transcript in that same rewrite, so its reference has to be stored in
-    /// full — it is not the branch the truncate archives itself.
-    #[test]
-    fn truncate_from_stores_a_later_familys_reference_first() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
-        let mut first = user_msg("u1", "one", "2025-05-01T00:00:00Z");
-        first.revision_count = Some(1);
-        first.active_revision = Some(1);
-        append_message(&db, &session.id, &first, Some(&turn)).unwrap();
-        let mut first_answer = user_msg("a1", "first answer", "2025-05-01T00:00:01Z");
-        first_answer.role = "assistant".into();
-        append_message(&db, &session.id, &first_answer, Some(&turn)).unwrap();
-        save_active_branch_revision(&db, &session.id)
-            .unwrap()
-            .unwrap();
-
-        let mut second = user_msg("u2", "two", "2025-05-01T00:01:00Z");
-        second.revision_count = Some(1);
-        second.active_revision = Some(1);
-        append_message(&db, &session.id, &second, Some(&turn)).unwrap();
-        let mut second_answer = user_msg("a2", "second answer", "2025-05-01T00:01:01Z");
-        second_answer.role = "assistant".into();
-        append_message(&db, &session.id, &second_answer, Some(&turn)).unwrap();
-        save_active_branch_revision(&db, &session.id)
-            .unwrap()
-            .unwrap();
-
-        let second_index =
-            list_message_revisions(&db, &session.id, "u2").unwrap()[0].revision_index;
-        assert!(matches!(
-            transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
-                .unwrap()
-                .unwrap(),
-            transcripts::RevisionPayload::Live(_)
-        ));
-
-        // Editing the FIRST turn cuts the whole second turn away from the
-        // transcript, and only the first family is the regenerate root.
-        truncate_from(&db, &session.id, Some("u1"), None).unwrap();
-
-        let stored =
-            match transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
-                .unwrap()
-                .expect("the later family was stored before its root left the transcript")
-            {
-                transcripts::RevisionPayload::Stored(record) => record,
-                transcripts::RevisionPayload::Live(_) => {
-                    panic!("a branch that left the transcript must be stored")
-                }
-            };
-        assert_eq!(
-            stored
-                .messages
-                .iter()
-                .map(|m| m.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["u2", "a2"]
-        );
-    }
-
-    /// The other half of the same hazard: a revision switch restores a prefix
-    /// from before a later family, and that later family leaves the transcript
-    /// without the switch ever naming it.
-    #[test]
-    fn activate_message_revision_stores_a_later_familys_reference_first() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
-        // Family u1 has two variants: the first does not contain u2 at all.
-        let mut first = user_msg("u1", "one", "2025-05-01T00:00:00Z");
-        first.revision_count = Some(2);
-        first.active_revision = Some(2);
-        append_message(&db, &session.id, &first, Some(&turn)).unwrap();
-        let mut first_answer = user_msg("a1", "v1 answer", "2025-05-01T00:00:01Z");
-        first_answer.role = "assistant".into();
-        save_message_revision(
-            &db,
-            &session.id,
-            "u1",
-            &[first.clone(), first_answer.clone()],
-            false,
-        )
-        .unwrap();
-        append_message(&db, &session.id, &first_answer, Some(&turn)).unwrap();
-
-        let mut second = user_msg("u2", "two", "2025-05-01T00:01:00Z");
-        second.revision_count = Some(1);
-        second.active_revision = Some(1);
-        append_message(&db, &session.id, &second, Some(&turn)).unwrap();
-        let mut second_answer = user_msg("a2", "second answer", "2025-05-01T00:01:01Z");
-        second_answer.role = "assistant".into();
-        append_message(&db, &session.id, &second_answer, Some(&turn)).unwrap();
-        save_active_branch_revision(&db, &session.id)
-            .unwrap()
-            .unwrap();
-
-        let second_index =
-            list_message_revisions(&db, &session.id, "u2").unwrap()[0].revision_index;
-        assert!(matches!(
-            transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
-                .unwrap()
-                .unwrap(),
-            transcripts::RevisionPayload::Live(_)
-        ));
-
-        // Variant 1 of u1 predates u2, so restoring it drops u2 entirely.
-        let restored = activate_message_revision(&db, &session.id, "u1", 1, &[]).unwrap();
-        assert_eq!(
-            restored.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
-            vec!["u1", "a1"]
-        );
-
-        let stored =
-            match transcripts::read_revision(db.data_dir(), &session.id, "u2", second_index)
-                .unwrap()
-                .expect("the later family was stored before the switch dropped it")
-            {
-                transcripts::RevisionPayload::Stored(record) => record,
-                transcripts::RevisionPayload::Live(_) => {
-                    panic!("a branch that left the transcript must be stored")
-                }
-            };
-        assert_eq!(
-            stored
-                .messages
-                .iter()
-                .map(|m| m.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["u2", "a2"]
-        );
     }
 
     /// The incident shape: a branch archived on agent_end kept growing (later
@@ -6580,14 +4667,8 @@ mod tests {
         let original = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
             .unwrap()
             .unwrap();
-        let stored = match original {
-            transcripts::RevisionPayload::Stored(record) => record,
-            transcripts::RevisionPayload::Live(_) => {
-                panic!("variant 1 was archived before the switch and stays stored")
-            }
-        };
         assert_eq!(
-            stored.messages.last().unwrap().id,
+            original.messages.last().unwrap().id,
             "a1",
             "variant 1 is intact"
         );
@@ -6633,137 +4714,6 @@ mod tests {
         assert_eq!(owning.as_deref(), Some(turn.as_str()));
     }
 
-    #[test]
-    fn truncate_from_drops_the_tail_and_archives_the_discarded_branch() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let turn = begin_turn(&db, &session.id, Some("p1"), Some("m1")).unwrap();
-        append_message(
-            &db,
-            &session.id,
-            &user_msg("u0", "earlier", "2025-05-01T00:00:00Z"),
-            Some(&turn),
-        )
-        .unwrap();
-        let mut root = user_msg("u1", "do it", "2025-05-01T00:00:01Z");
-        root.revision_root_id = Some("u1".into());
-        root.revision_count = Some(1);
-        root.active_revision = Some(1);
-        append_message(&db, &session.id, &root, Some(&turn)).unwrap();
-        let mut answer = user_msg("a1", "old answer", "2025-05-01T00:00:02Z");
-        answer.role = "assistant".into();
-        append_message(&db, &session.id, &answer, Some(&turn)).unwrap();
-
-        let result = truncate_from(&db, &session.id, Some("u1"), None).unwrap();
-        assert_eq!(result.kept_count, 1);
-        assert_eq!(result.discarded_count, 2);
-        assert_eq!(result.aborted_turn_id.as_deref(), Some(turn.as_str()));
-        let revision = result.revision.unwrap();
-        assert_eq!(revision.root_user_id, "u1");
-        assert_eq!(revision.revision_count, 2);
-        assert_eq!(revision.active_revision, 2);
-
-        let detail = get_session(&db, &session.id).unwrap().unwrap();
-        assert_eq!(
-            detail
-                .messages
-                .iter()
-                .map(|m| m.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["u0"]
-        );
-        let status: String = db
-            .conn()
-            .query_row(
-                "SELECT status FROM turns WHERE id = ?1",
-                params![turn],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(status, "aborted");
-        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].message_count, 2);
-        assert!(!listed[0].is_active);
-        let owning: Option<String> = db
-            .conn()
-            .query_row(
-                "SELECT turn_id FROM messages WHERE session_id = ?1 AND id = 'u0'",
-                params![session.id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(owning.as_deref(), Some(turn.as_str()));
-    }
-
-    #[test]
-    fn truncate_from_rejects_an_unknown_message() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        append_message(
-            &db,
-            &session.id,
-            &user_msg("u1", "hello", "2025-05-01T00:00:00Z"),
-            None,
-        )
-        .unwrap();
-        let error = truncate_from(&db, &session.id, Some("gone"), None).unwrap_err();
-        assert!(error.to_string().contains("NOT_FOUND"));
-        assert_eq!(
-            get_session(&db, &session.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn truncate_from_refreshes_the_stamped_revision() {
-        let db = test_db();
-        let session = create_session(&db, None, None, None, None, None).unwrap();
-        let mut original = user_msg("u1", "do it", "2025-05-01T00:00:00Z");
-        original.revision_root_id = Some("u1".into());
-        original.active_revision = Some(1);
-        let mut original_answer = user_msg("a0", "stale", "2025-05-01T00:00:01Z");
-        original_answer.role = "assistant".into();
-        save_message_revision(
-            &db,
-            &session.id,
-            "u1",
-            &[original.clone(), original_answer],
-            true,
-        )
-        .unwrap();
-        append_message(&db, &session.id, &original, None).unwrap();
-        let mut grown = user_msg("a1", "grown answer", "2025-05-01T00:00:02Z");
-        grown.role = "assistant".into();
-        append_message(&db, &session.id, &grown, None).unwrap();
-
-        truncate_from(&db, &session.id, Some("u1"), None).unwrap();
-        let listed = list_message_revisions(&db, &session.id, "u1").unwrap();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].message_count, 2);
-        let payload = transcripts::read_revision(db.data_dir(), &session.id, "u1", 1)
-            .unwrap()
-            .unwrap();
-        let stored = match payload {
-            transcripts::RevisionPayload::Stored(record) => record,
-            transcripts::RevisionPayload::Live(_) => {
-                panic!("a branch that left the transcript must be stored in full")
-            }
-        };
-        assert_eq!(
-            stored
-                .messages
-                .iter()
-                .map(|m| m.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["u1", "a1"]
-        );
-    }
-
     fn streaming_assistant(id: &str, content: &str) -> UiMessage {
         let mut message = user_msg(id, content, "2025-05-01T00:00:01Z");
         message.role = "assistant".into();
@@ -6779,40 +4729,14 @@ mod tests {
         let db = Database::open(&path).unwrap();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        append_message(
-            &db,
-            &session.id,
-            &user_msg("u1", "hello", "2025-05-01T00:00:00Z"),
-            Some(&turn),
-        )
-        .unwrap();
+        append_message(&db, &session.id, &user_msg("u1", "hello", "2025-05-01T00:00:00Z"), Some(&turn))
+            .unwrap();
 
         // Two checkpoints of the same reply: the file is replaced, not appended.
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "par")
-        )
-        .unwrap());
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
-        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
-        assert_eq!(
-            get_session(&db, &session.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            1
-        );
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "par")).unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
         drop(db);
 
         // A new process: the boot sweep aborts the turn, then the checkpoint
@@ -6823,9 +4747,7 @@ mod tests {
         assert_eq!(recovered[0].0, session.id);
         assert_eq!(recovered[0].1.content, "partial");
         assert_eq!(recovered[0].1.status.as_deref(), Some("aborted"));
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
 
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 2);
@@ -6834,9 +4756,7 @@ mod tests {
         assert_eq!(messages[1].status.as_deref(), Some("aborted"));
         let owning: Option<String> = db
             .conn()
-            .query_row("SELECT turn_id FROM messages WHERE id = 'a1'", [], |r| {
-                r.get(0)
-            })
+            .query_row("SELECT turn_id FROM messages WHERE id = 'a1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(owning.as_deref(), Some(turn.as_str()));
         // Running it again finds nothing to do.
@@ -6848,35 +4768,17 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
 
         let mut final_row = streaming_assistant("a1", "partial and complete");
         final_row.status = Some("complete".into());
         append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
 
         // A checkpoint call that was already in flight when the final row landed.
-        assert!(!save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
-        assert!(recover_inflight_message(&db, &session.id, true)
-            .unwrap()
-            .is_none());
+        assert!(!save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(recover_inflight_message(&db, &session.id, true).unwrap().is_none());
 
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 1);
@@ -6889,20 +4791,12 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a2", "second")
-        )
-        .unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a2", "second")).unwrap());
 
         let mut earlier = streaming_assistant("a1", "first");
         earlier.status = Some("complete".into());
         append_message(&db, &session.id, &earlier, Some(&turn)).unwrap();
-        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
     }
 
     #[test]
@@ -6912,16 +4806,8 @@ mod tests {
         let mut empty = streaming_assistant("a1", "   ");
         empty.thinking = None;
         assert!(!save_inflight_message(&db, &session.id, None, &empty).unwrap());
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            None,
-            &user_msg("u1", "x", "2025-05-01T00:00:00Z")
-        )
-        .is_err());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert!(save_inflight_message(&db, &session.id, None, &user_msg("u1", "x", "2025-05-01T00:00:00Z")).is_err());
     }
 
     #[test]
@@ -6929,13 +4815,7 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
 
         let ended = end_turn_settling(&db, &turn, "completed", None, None, false, false).unwrap();
         assert!(ended.updated);
@@ -6946,19 +4826,17 @@ mod tests {
                 .exists(),
             "outbox may still be draining; do not drop the only copy (D327)"
         );
-        assert!(get_session(&db, &session.id)
-            .unwrap()
-            .unwrap()
-            .messages
-            .is_empty());
+        assert!(get_session(&db, &session.id).unwrap().unwrap().messages.is_empty());
 
         assert!(
             recover_inflight_messages(&db, false).unwrap().is_empty(),
             "boot leaves a completed leftover for the outbox"
         );
-        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
+        assert!(
+            transcripts::inflight_path(db.data_dir(), &session.id)
+                .unwrap()
+                .exists()
+        );
 
         let recovered = recover_inflight_messages(&db, true).unwrap();
         assert_eq!(recovered.len(), 1);
@@ -6975,13 +4853,7 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
         let mut final_row = streaming_assistant("a1", "partial and complete");
         final_row.status = Some("complete".into());
         append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
@@ -6989,9 +4861,7 @@ mod tests {
         let ended = end_turn_settling(&db, &turn, "completed", None, None, false, false).unwrap();
         assert!(ended.updated);
         assert!(ended.recovered.is_none());
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].content, "partial and complete");
@@ -7003,31 +4873,14 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
 
-        let ended = end_turn_settling(
-            &db,
-            &turn,
-            "aborted",
-            Some("TURN_ABORTED"),
-            None,
-            false,
-            true,
-        )
-        .unwrap();
+        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, true).unwrap();
         assert!(ended.updated);
         let recovered = ended.recovered.expect("checkpoint promoted");
         assert_eq!(recovered.id, "a1");
         assert_eq!(recovered.status.as_deref(), Some("aborted"));
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
         let messages = get_session(&db, &session.id).unwrap().unwrap().messages;
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].content, "partial");
@@ -7036,14 +4889,7 @@ mod tests {
         let mut late = streaming_assistant("a1", "partial");
         late.status = Some("aborted".into());
         append_message(&db, &session.id, &late, Some(&turn)).unwrap();
-        assert_eq!(
-            get_session(&db, &session.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            1
-        );
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
     }
 
     #[test]
@@ -7051,57 +4897,25 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            Some(&turn),
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
+        assert!(save_inflight_message(&db, &session.id, Some(&turn), &streaming_assistant("a1", "partial")).unwrap());
 
-        let ended = end_turn_settling(
-            &db,
-            &turn,
-            "aborted",
-            Some("TURN_ABORTED"),
-            None,
-            false,
-            false,
-        )
-        .unwrap();
+        let ended = end_turn_settling(&db, &turn, "aborted", Some("TURN_ABORTED"), None, false, false).unwrap();
         assert!(ended.updated);
         assert!(ended.recovered.is_none());
-        assert!(transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
+        assert!(transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
 
         let mut final_row = streaming_assistant("a1", "partial");
         final_row.status = Some("aborted".into());
         append_message(&db, &session.id, &final_row, Some(&turn)).unwrap();
-        assert!(!transcripts::inflight_path(db.data_dir(), &session.id)
-            .unwrap()
-            .exists());
-        assert_eq!(
-            get_session(&db, &session.id)
-                .unwrap()
-                .unwrap()
-                .messages
-                .len(),
-            1
-        );
+        assert!(!transcripts::inflight_path(db.data_dir(), &session.id).unwrap().exists());
+        assert_eq!(get_session(&db, &session.id).unwrap().unwrap().messages.len(), 1);
     }
 
     #[test]
     fn delete_session_removes_the_checkpoint_file() {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
-        assert!(save_inflight_message(
-            &db,
-            &session.id,
-            None,
-            &streaming_assistant("a1", "partial")
-        )
-        .unwrap());
+        assert!(save_inflight_message(&db, &session.id, None, &streaming_assistant("a1", "partial")).unwrap());
         let path = transcripts::inflight_path(db.data_dir(), &session.id).unwrap();
         assert!(path.exists());
         assert!(delete_session(&db, &session.id).unwrap());
@@ -7123,21 +4937,14 @@ mod tests {
             "reasoningTokens": 20
         });
 
-        let ended =
-            end_turn_settling(&db, &turn, "completed", None, Some(&usage), false, false).unwrap();
+        let ended = end_turn_settling(&db, &turn, "completed", None, Some(&usage), false, false).unwrap();
         assert!(ended.updated);
         let ended_at: i64 = db
             .conn()
-            .query_row(
-                "SELECT ended_at FROM turns WHERE id = ?1",
-                params![turn],
-                |r| r.get(0),
-            )
+            .query_row("SELECT ended_at FROM turns WHERE id = ?1", params![turn], |r| r.get(0))
             .unwrap();
 
-        let history =
-            get_token_usage_history(&db, Some(ended_at - 1_000), Some(ended_at + 1_000), "day")
-                .unwrap();
+        let history = get_token_usage_history(&db, Some(ended_at - 1_000), Some(ended_at + 1_000), "day").unwrap();
         let totals = history.get("totals").unwrap();
         assert_eq!(totals.get("inputTokens").unwrap().as_i64(), Some(120));
         assert_eq!(totals.get("outputTokens").unwrap().as_i64(), Some(80));
@@ -7184,10 +4991,7 @@ mod tests {
             .iter()
             .find(|item| item.get("turnCount").and_then(|v| v.as_i64()) == Some(1))
             .expect("iso week");
-        assert_eq!(
-            active.get("date").and_then(|v| v.as_str()),
-            Some("2026-W01")
-        );
+        assert_eq!(active.get("date").and_then(|v| v.as_str()), Some("2026-W01"));
     }
 
     #[test]
@@ -7197,14 +5001,6 @@ mod tests {
         let items = history.get("items").unwrap().as_array().unwrap();
         assert!(items.len() >= 365);
         assert!(items.len() <= 53 * 7 + 1);
-        assert_eq!(
-            history
-                .get("totals")
-                .unwrap()
-                .get("turnCount")
-                .unwrap()
-                .as_i64(),
-            Some(0)
-        );
+        assert_eq!(history.get("totals").unwrap().get("turnCount").unwrap().as_i64(), Some(0));
     }
 }

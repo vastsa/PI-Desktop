@@ -49,7 +49,6 @@ crates/host-core (tool execution + permissions)
 ```ts
 interface AgentRuntime {
  prompt(input: PromptInput): Promise<{ turnId: string }>
- steer(input: RuntimePrompt, expectedTurnId: string, message: UiMessage): { accepted: boolean; turnId: string }
  requestGracefulStop(): { requested: boolean }
  abort(turnId?: string): Promise<void>
  getStatus(): RuntimeStatus
@@ -63,24 +62,6 @@ interface AgentRuntime {
 模型请求之前正常地发出 `agent_end`。它不会取消进行中的提供商流或正在运行的
 工具。空闲的运行时返回 `{ requested: false }`；立即生效的 `abort()` 仍然是另
 一条独立的取消路径。
-
-### 4.0 当前回合补充指令
-
-`steer` 在改变任何状态之前验证当前回合标识，再通过 pi-agent-core 原生 steering 队列的
-`all` 模式加入用户输入。当前提供商请求和已启动的一批工具先完成；所有已接收输入在
-同一个持久回合的下一次模型请求边界进入上下文。进行中的请求不会被改写或中止。
-与普通提示相同，主进程负责附件验证和转录持久化。
-
-pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入早于最初用户消息被消费，
-也遵循这一规则。如果输入在 pi 最后一次检查队列后才获准进入，运行时抑制终态事件，
-等 pi 释放执行后沿用同一回合继续，不再次公开发出 `agent_start`。现有上下文和提供商
-恢复流程优先于这次继续执行。补充指令也会唤醒正在空闲等待后台委托的父代理，
-不会取消这些委托。
-
-中止、优雅停止、致命错误和终态落定都会关闭接收入口。已接收但尚未消费的输入保留在
-转录和上下文历史中，并从 pi steering 队列移除，避免在后续回合独立执行。
-普通 follow-up 仍留在独立的 Host FIFO 中，直到当前持久回合最终落定。
-补充指令失败不得终止当前运行。
 
 ## 5. 提示流程
 
@@ -98,8 +79,8 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
    之内的图片才会被读进内存；更大的图片走流式哈希/复制以及既有的安全路径回退
 7. 为本回合快照有效的 shell ID 与方言
 8. 用解析出的会话配置和有效思考级别启动 pi 回合；HTTP 429 的建连与流式失败
-   使用运行时自有的静默 10 次重试预算，其他瞬时的 transport/provider 失败则在
-   建连与流式两个阶段之间共享一份运行时自有的 10 次重试有界预算
+   使用运行时自有的静默五次重试预算，其他瞬时的 transport/provider 失败则在
+   建连与流式两个阶段之间共享一份运行时自有的四次重试有界预算
    （D127、D186、D245、D258）
 9. 将规范化的回答与思考事件流式传输到 UI
 10. 工具调用时，携带持久的 `sessionId` 委托给 Rust 主机桥；由主机解析会话
@@ -126,10 +107,10 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
 ### 5d。有界提供商流恢复和诊断（D186、D245、D259、ADR 0091、ADR 0128）
 
 提供程序请求设置和流式传输交付是两个独立的故障阶段，但
-HTTP 429 处理是一个响应恢复策略。此路径禁用了 pi-ai 的嵌套
+HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 适配器重试，因此运行时可以在两个阶段之间共享一个预算。
 
-`PROVIDER_RATE_LIMITED` 在初始尝试之后最多重试 10 次，总共 11 次
+`PROVIDER_RATE_LIMITED` 在初始尝试之后最多重试五次，总共六次
 提供程序尝试。设置阶段的 429 在提供程序流适配器内部重试。
 流中的 429 会从下一个模型上下文中删除失败的助手，并在同一
 回合中调用 `continue()`。两个阶段占用同一个计数器，因此设置阶段的
@@ -151,8 +132,8 @@ HTTP 429 处理是一个响应恢复策略。此路径禁用了 pi-ai 的嵌套
 运行时从 fetch 捕获失败的响应状态和标头，因为 pi-ai 的普通响应
 回调仅涵盖已建立的响应。
 
-非 429 瞬时故障共享它们自己的有界响应恢复预算：在初始尝试之后
-最多重试 10 次，总共 11 次提供程序尝试。该预算由请求设置和流式
+非 429 瞬时故障共享它们自己的有界逻辑回合预算：在初始尝试之后
+最多重试四次，总共五次提供程序尝试。该预算由请求设置和流式
 传输交付共享，因此在两个阶段之间移动的故障无法重置或倍增它，
 并且它与 429 预算相互独立。它只接受 `NETWORK_ERROR`、`TIMEOUT`、
 `STREAM_FAILED` 和可重试的 `PROVIDER_ERROR`——包括在标头到达之前
@@ -160,13 +141,6 @@ HTTP 429 处理是一个响应恢复策略。此路径禁用了 pi-ai 的嵌套
 请求、上下文以及其他不可重试的错误不会进入任何提供程序重放路径，
 并且来自格式错误的 400/422 请求的不可重试 `PROVIDER_ERROR` 仍然是
 终止的。
-
-**Synchronized update (#699):** Both budgets reset after a complete, non-error,
-non-aborted model response, including tool-call responses, in the main session
-and builtin subagents. Headers, partial output, and phase changes never reset
-them. New requests start at retry 1; persistent outages remain bounded at ten
-retries per class. Exhaustion diagnostics use the applicable budget counter,
-not temporary retry activity. See the English source section 5d and ADR 0206.
 
 在把 HTTP 400/422 那种消息以 `(no body)` 结尾的流前 `PROVIDER_ERROR` 抛给上层
 之前，运行时最多做一次静默的修复尝试：移除生成的输出上限字段
@@ -190,31 +164,16 @@ not temporary retry activity. See the English source section 5d and ADR 0206.
 子代理和一次性 composer 提示增强使用相同的错误码、预算大小和
 优先级。
 
-应用设置 `infiniteProviderRetry` 默认关闭。开启后，主会话及其内置子代理只跳过可重试
-网络/瞬时故障（含 `PROVIDER_RATE_LIMITED`）的次数上限。退避、`Retry-After`、可见重试状态和
-停止路径不变。不可重试错误、上下文恢复、压缩、工具执行和一次性补全仍走原有有界预算。
-开启后可能在用户停止回合前持续消耗 API 用量。
-设置读取对此开关返回明确布尔值：缺省或关闭均规范化为 `false`。修改并保存其他设置不得因此校验失败或启用重试；非布尔值写入仍被拒绝。
-
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs`、`retryAttempt`、网络诊断
-（`networkCategory`、`networkCode`、`networkSyscall`、`networkHost`、
-`networkRoute`）以及请求关联字段（`requestMessages`、`requestBytes`、
-`compactionGeneration`）。
-对于持续的 429，
-`retryAttempt` 为 `10`；对于持续的非 429 瞬时故障，它也为 `10`。凭据与不受限制的
-响应正文永远不会进入事件或日志。每次重试都会新建请求、流和 `AbortController`；
-重试唯一共享的状态是进程级 undici dispatcher。当同一来源在一轮内连续两次没有
-任何响应、且新尝试仍无法到达它时，下一次尝试前会重建一次传输（每 30 秒最多一次，
-`dns` 除外），避免重试继续复用连接已死的连接池。重建先安装替换、再优雅关闭旧
-的 dispatcher，并复现已配置的链路，因此其他会话正在进行的请求仍会在原连接池上
-完成，代理也不会被悄悄丢弃。
+`providerWaitMs`、`streamMs` 和 `retryAttempt`。对于持续的 429，
+`retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
+响应正文永远不会进入事件或日志。
 
 ### 5e。静默回合恢复
 
-以没有工具调用且没有可见辅助文本结束的普通回合是不可见的
+以没有工具调用且没有可见辅助文本结束的回合是不可见的
 对用户：推理永远不会呈现，因此结论只写在那里
 没有到达。 255 个录制的会话中有 15 个以这种方式结束了一个回合，并且
 用户唯一的办法就是输入“继续”。
@@ -251,26 +210,7 @@ not temporary retry activity. See the English source section 5d and ADR 0206.
 可重试的 `EMPTY_MODEL_RESPONSE`，它为转录本提供正常的重试
 行动。在这两种情况下都不会保留空的助理消息。
 
-Host 账本完成通知（ADR 0239、D446）是唯一例外：其提示已经允许无需确认。
-Main 按 ID 从账本读取排队消息、检查目标会话，再构造来源元数据。只有
-`kind: completion`、目标为当前会话、消息 ID 和回复目标 ID 均非空时，运行时
-才接受静默。静默的通知回复正常发出完成消息和终止生命周期，不重试、不报告
-`EMPTY_MODEL_RESPONSE`。提供商错误和中止仍按原规则处理，同一次尝试的
-provider 重试保留例外；原任务及结果不被改写，完成通知不会要求再次回调。
-
-例外只覆盖通知自己的那条回复：本次运行第一条结算的 assistant 回复会消耗它，
-无论该回复是静默、有文本还是工具批次。因此紧随工具结果之后的回复按本节普通
-规则处理；被接受的 steering 消息一旦进入模型上下文，例外立即撤销，所以对
-用户的回复保留完整的重跑与报错路径。每次新运行都按提示的来源信息重新计算。
-普通用户输入、task/message 投递、复制的来源文本和恢复的历史记录都不能开启它。
-
-被接受的静默回复仍然不值得重发。Main 会把它持久化为一条空的已完成行（转录
-隐藏该行，host 不存文本），但运行时不把它写入自己的条目和 pi 的转录状态，
-上下文投影也会丢弃没有内容块的 assistant，与恢复转录时的处理完全一致。因此
-下一次 provider 请求不会带上空的 assistant 消息。
-
-决定 D193 与 D446（ADR 0239 修订段）；参见 E2E-146 与
-E2E-SESSION-completion-notice-allows-silence。
+决定D193；参见 E2E-146。
 
 ### 5. 1 上下文检查点保护（D158/D203、ADR 0030/0049/0061/0064）
 
@@ -305,8 +245,7 @@ pi 0.84.4+ 只在循环将要在同一次运行中开启另一个助手回合时
 4. 处于或高于硬边界，或者当模型名为 `new_context` 时，
 压缩在下一个提供程序请求之前同步运行。在
    在 summary 系列中，生成摘要是强制的；运行时会拿摘要输入对照模型窗口做
-   预检、缩减一次，再把仍放不下的范围切成若干分片分别摘要，因此超出单次请求的
-   提示由多次请求完成（ADR 0302）。自动摘要失败时先尝试一个确定性的保留尾部
+   预检，并跳过放不下的请求。自动摘要失败时先尝试一个确定性的保留尾部
    检查点，而手动压缩仍然报告
    `CONTEXT_COMPACTION_FAILED`
 5. 成功生成或确定性恢复首先追加
@@ -322,24 +261,14 @@ pi 0.84.4+ 只在循环将要在同一次运行中开启另一个助手回合时
 重新估计，通过 host-core 附加，更新活动检查点，以及
 发出 `compaction_end`。阻塞路径将两者背靠背组成。
 
-**在检查点中幸存下来的内容。** 成功检查点留下的模型上下文是
+**在检查点中幸存下来的内容。** 压缩后的模型上下文是
 摘要以及最多一条**用户**消息；助手和工具消息是
 从模型上下文中删除并保留在可见的转录本中。圆周率
 `prepareCompaction` 仍然选择切点，因此其回合边界和
 保留分割回合处理，但运行时会折叠分割回合
 前缀和最近的尾部返回到摘要输入中，因此摘要涵盖
 整个紧凑的范围内，没有任何东西跨越边界而未被覆盖。
-
-**保留尾部回退**是例外，因为没有摘要覆盖它负责的范围：它保留真实的近期窗口——
-压缩范围内最新的连续消息，包含所有角色，上限为 keep-recent 目标，以及在
-携带摘要与恢复提示之后安全预算剩余的空间——并把
-`details.retainedTailShape` 记录为 `recent_window`，使重建时回放整个窗口，
-而不是收窄回一条用户消息（ADR 0302，issue #827）。它会丢弃 pi 本来就会从
-重建上下文中移除的助手消息（error、aborted、deferred），以及工具调用不在窗口内的
-工具结果，因为提供商拒绝调用缺失的结果。`active_turn` 回退还会在窗口本身装不下时，
-把当前任务的用户消息放在窗口之前，因此续写不会丢失目标。
-
-保留模式由请求这次压缩的生命周期决定；它决定一次**成功**检查点留下什么：
+保留模式由请求这次压缩的生命周期决定：
 
 - 当提供商必须在工具结果、`toolUse` 回合或溢出恢复后继续当前任务时，使用
   `active_turn`；仅保留压缩范围内最新的用户消息，最多为下面的保留限额；
@@ -349,19 +278,13 @@ pi 0.84.4+ 只在循环将要在同一次运行中开启另一个助手回合时
 - 在终止回合边界、发送新用户提示之前或手动压缩时，使用
   `completed_turn`；保留尾部为空。摘要是已完成工作的权威内容，检查点后的
   下一条用户提示是唯一的新任务。
-- 保留尾部回退在两种模式下都携带近期窗口，因为替代方案是空上下文；
-  模式仍然决定它是否还要保留当前任务的用户消息。
 - `fresh_window` 系列仍是 ADR 0064 规定的无摘要例外，并始终携带空尾部。
 
-`retainedTailMode` 与尾部形状存储在检查点不透明的 `details` 中，因此重启会保留
-同一任务边界与同样的尾部处理方式。没有形状标记的检查点——包括每个成功检查点，
-以及标记出现之前写入的记录——仍会归一化为只保留最新的用户消息，因此重启无法
-恢复一串看起来可执行的旧请求。放弃助理消息也会丢弃其工具调用，回退还会丢弃
-它没有保留的调用所对应的结果，因此没有孤立的工具调用或不匹配的结果可以到达
-提供商。保留的尾部用持久化之前的摘要重新估计，并且在继续之前再次估计，
-所以超大的请求仍然无法通过警卫。回退还会记录 `details.failureReason`——
-`no_new_history`、`summary_budget`、`summary_provider` 或 `checkpoint_oversized`——
-一个封闭词表，而不是可能带有端点细节的提供商错误文本。
+`retainedTailMode` 存储在检查点不透明的 `details` 中，因此重启会保留同一任务
+边界。没有该字段的旧检查点会归一化为只保留最新的用户消息。放弃助理
+消息也会丢弃其工具调用，因此没有孤立的工具调用可以到达
+提供商。保留的尾部用持久化之前的摘要重新估计
+并且在继续之前，所以超大的请求仍然无法通过警卫。
 
 **两个压缩系列。** 两者运行相同的生命周期 - 预算
 重新估计、host-core 追加、`compaction_end`、转录本行、警告：
@@ -392,38 +315,16 @@ Headroom 是 16,384 个代币储备底线的最大值，模型最大输出
 8,000–64,000 个代币，然后上限为硬预算的一半；它决定了在哪里
 边界倒塌了，而不是幸存下来的东西。活动用户消息保留限制为
 20,000 个代币，上限为硬预算的一半，因此仅靠保留无法填补
-小窗口，没有留下摘要的空间。回退窗口的上限是硬预算的 25%，以及在
-携带摘要与恢复提示之后剩余的空间，因此恢复无法安装一个会被警卫拒绝的检查点。
-这些值都不是
+小窗口，没有留下摘要的空间。这些值都不是
 可配置。
 
-**估算校准（D606）。** 上述每个阈值都对着同一个数字比较，而该数字会按请求的真实开销校正。pi 的 `estimateContextTokens`
-以最后一条助手用量为锚，其余一律按 `chars / 4` 估算：该常数会低估中文文本，且在没有锚点时完全不含系统提示与工具结构，
-而下一次请求仍要为它们付费。两类误差分开处理——逐字符偏差以「猜测尾部」上的比例表示（与量级无关）；无锚点残差只在与之
-量级相当的样本（0.5×–2×）上按比例应用，否则只加上观测到的固定开销（上限 32,000 词元）。
-
-校正是不对称的，因为这个数字决定压缩：向上修正只要有三个观测即生效；向下修正需要三个方向一致的样本、每次最多 15 %，
-且永远不能把数值压到原始估算的 85 % 以下——因此处在硬限制 1.18×（`1 / 0.85`）的投影仍会触发压缩。偏离校准预测
-0.5×–3× 之外的报告视为误报；连续两次误报会冻结向下修正，直到出现可用报告。
-
-
 传入的用户提示先于第一个提供商参与预算
-请求。自动摘要请求在有界的 pi-ai 重试策略下重试瞬时的提供商失败
-（3 次重试，2s/4s/8s 退避，Stop 可取消）；配额、鉴权等确定性失败立即返回。
-预检守卫按 pi 实际序列化的提示（工具结果已截断）估算大小，而不是按原始消息；
-若该提示仍超出窗口，会恰好尝试一次缩减输入（工具结果截为短前缀、去掉思考块、
-不删除任何消息）。若连缩减后的输入也放不下，就把范围切成若干连续分片，使每片都能放下：
-最多 16 次请求，每次通过 pi 的 update-the-summary 提示携带上一片的摘要，
-该范围的文件列表只追加在最后一次请求上，检查点报告这些请求的用量总和。
-因此预算决定一次摘要需要多少次请求，而不是决定是否调用模型（ADR 0302）；
-只有空范围或超过该请求上限的范围才会放弃摘要（ADR 0282）。
-如果在自动阈值或溢出恢复期间正常压缩仍然失败，
-运行时会持久化一个简短的恢复检查点，携带之前的摘要（如可用）
-以及上面描述的受限近期窗口。的
+请求。如果在自动阈值或溢出期间正常压缩失败
+恢复时，运行时会与之前的恢复检查点保持一个简短的恢复检查点
+摘要（如果可用）和一个适用的积极限制尾部。的
 完整的转录本保持持久且可见，而下一个模型请求
 仅接收恢复检查点和尾部。生命周期事件标记
-这作为 `fallback: "retained_tail"`，检查点的 mark 也携带同样的 `fallback`，
-因此渲染器可以显示警告并把转录行标为摘要生成失败，
+这作为 `fallback: "retained_tail"` 因此渲染器可以显示警告
 而不是虚假的成功。如果无法准备、持久或保留后备
 低于安全预算，用户行和助理错误仍然持久并且
 没有提供商请求开始。提供商报告的上下文溢出是最后一个
@@ -437,16 +338,6 @@ Headroom 是 16,384 个代币储备底线的最大值，模型最大输出
 失去防护，无法恢复。手动 `/compact` 仍然存在
 会话空闲时可用。检查点生成是可中止的并且
 计为运行状态，直到持久持久性完成。
-
-检查点携带的文件清单由 pi 自己的收集器从被摘要的区间里读出，它只认小写拼写
-`read` / `write` / `edit`——也就是 pi 自己工具的名字。PI-Desktop 注册的是
-`Read` / `Write` / `Edit`，因此运行时**只在交给 pi 的准备阶段**转换这三个名字
-（`withPiFileOpToolNames`）：存储内容不变，其它工具名一律保持我们注册的拼写。
-缺少这一步时，检查点的 `readFiles` / `modifiedFiles` 与摘要里的 `<read-files>` 段
-恒为空（D618）。
-
-委托（第 5f 节）对照它自己解析出的模型走同一条推导，并在它自己的回合边界上压缩，
-但没有属于它自己的持久检查点链（ADR 0299）。
 
 ## 5b.运营模式及规划状态
 
@@ -537,9 +428,7 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
 ## 5c。思维能力与流契约
 
 - 规范级别为 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、
-  和 `max`。会话（及子智能体）选择器还接受 `omit`，它不是目录/绑定能力：
-  运行时把智能体记账保持为 `off`，走低层 provider 流，不合成思考覆盖
-  （ADR 0194 / ADR 0295）。
+  和 `max`。
 - 随包的 models.dev 发布快照对于已发布的推理支持具有权威性，
   思维层面的映射、限制、输入模式、定价、标题和适配器
   每个已解决的已知模型的兼容性。
@@ -566,20 +455,6 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
   恢复为错误结果；辅助行丢失的工具行
   获得合成的仅呼叫辅助运营商，以便 call/result 对保留
 格式良好，适用于每个提供商 API。
-- 每个请求里的工具调用 id 必须唯一。转录是仅追加的快照流，容忍重试造成的重复追加，因此同一次调用可能两次进入组装后的
-  上下文——同一个行 id（宿主按 keep-last 读取时已折叠），或者两个不同的行 id（宿主无法折叠）。因此上线前的最后一个视图
-  对每个 `toolCall` id 只保留第一次出现，丢弃其后重复的调用或结果，使提供商校验的「一调用一结果」配对保持完整；没有重复的
-  请求原样返回。一旦发生丢弃，会在 `agent` 日志通道上报告一次，带上会话与 id（D608）。Anthropic 系端点（含 DeepSeek）
-  会以 `tool_use ids must be unique` 拒绝整个回合（issue #718），使该会话无法继续。
-- 守卫按“上线的 id”比较调用与结果，即 Responses item id 之前、以 `|` 分隔的那一段；当一条辅助消息里的工具调用全部已被更早的消息占有时，
-  整条消息被丢弃，因为保留它剩下的文本会把一条消息塞进调用与回答它的结果之间。若一条消息在复写已占用调用的同时还带一个新调用，则保留该
-  消息及其新调用；目前没有写入方会产生这种部分复写，守卫也不会重排消息来填补它留下的空隙（D620）。
-- 智能体循环拥有自己的上下文数组。`prepareNextTurn` 交给 pi 的是实时状态的副本（委托侧的回合边界同样如此），与 pi 自己的
-  `createContextSnapshot()` 在 `prompt()`/`continue()` 里的做法一致：pi 的循环会把每个流式辅助消息与每个工具结果 push 进它拿到的
-  数组，而它的 `message_end` 监听器又把同一消息 push 回 `state.messages`，因此交出活数组会把一个回合中较晚迭代的每条消息都存两份。
-  下一回合的首个请求正是用该数组组装的，其中“带文本与工具调用的辅助消息”的重复项会残留为只剩文本的克隆，卡在调用与结果之间——pi-ai
-  随后会为这个仍处于待配对的调用合成一条输出，与真实结果并列，端点以 `Duplicate tool output for call_id` 拒绝整个回合。在委托运行时，
-  同样的重复还会让下一个边界的估算翻倍，并让备用模型拿到的末行无法被 `continue()` 续跑（D620）。
 - 视觉运行时只从会话绑定的附件、scratch 与项目根目录中水合持久化的图片引用。
   处于 10 MB 内联安全上限之内的图片会成为临时的 pi-ai 图片块；超限或不可用的
   图片则退化为安全的 `@path` 回退。超限历史的水合会直接复制文件，不会先把内容
@@ -605,11 +480,10 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
 会话 Agent 可以把可拆分的工作交给在独立上下文中后台运行的委托，
 并按需取回报告。
 
-**目录。** 定义是来自两个来源的 Markdown 文档：`agent-runtime` 中内嵌的五个
-内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），以及
+**目录。** 定义是来自两个来源的 Markdown 文档：`agent-runtime` 中内嵌的四个
+内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`），以及
 `~/.agents/subagents/*.md` 下的全局用户文档。没有项目级子代理目录，`.pi/agents`
-不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤，
-内置定义则由加载器按同一份应用本地状态过滤（ADR 0270）。
+不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤。
 Electron main 每次启动加载全局目录，并在 sidecar 参数中传递
 `subagents` / `subagentProviders`，因此编辑定义会在下一次提示时生效。目录上限
 为 `MAX_SUBAGENT_DEFINITIONS`（16）；格式错误或不可读文档只产生启动诊断，
@@ -620,9 +494,9 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 委托使用会话的有效权限模式；因此父会话为 `auto` 时，明确的外部路径也不会再次
 弹出授权卡。只有内置定义和用户定义可以声明非 `inherit` 作用域；项目定义随仓库
 一起到来，声明会在解析时被丢弃并留下警告，其委托仍在会话的有效模式下运行 ——
-想要该作用域的用户把文档复制到自己的 agents 目录。可写的内置 `fixer` 与
-`ui-designer` 也默认继承父会话：`auto` 下跟随父会话自动放行，而 `ask` 和
-`accept-edits` 仍保留各自的审批边界。显式声明的内置或用户作用域仍然是一次有意的覆盖。
+想要该作用域的用户把文档复制到自己的 agents 目录。唯一可写的内置 `fixer` 也
+默认继承父会话：`auto` 下跟随父会话自动放行，而 `ask` 和 `accept-edits` 仍保留
+各自的审批边界。显式声明的内置或用户作用域仍然是一次有意的覆盖。
 
 **工具（ADR 0089）。** 委托是四个工具的生命周期，仅在 Agent 模式下且目录
 非空时构建，四个工具都属于 Agent 核心集而不是第 7.1 节的按需目录：
@@ -637,15 +511,8 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   运行中覆盖该委托的模型。解析优先级：Task.model 参数 → 定义 frontmatter 的
   引脚 → 会话模型。父 agent 会在系统提示中看到一份模型摘要，列出提供商设置里
   所有标记为 `availableForSubagents` 的模型。若委托目录为空，提示会告诉模型
-  省略 `model`，使用定义的固定模型，无固定模型时继承会话模型；显式给出的键如果正好就是当前会话的
+  省略 `model` 并继承会话模型；显式给出的键如果正好就是当前会话的
   provider/model，同样按继承处理。其他显式模型键必须已配置并已为委托启用。
-  Electron 单独传递 `subagentModelKeys` 与 `subagentProviders`：后者可含仅供定义
-  固定使用的模型，只有前者授权缓存覆盖并生成模型摘要。缺省列表为空；按需解析成功
-  写入独立覆盖缓存，不得覆盖定义固定模型或改变运行时复用判断。按需匹配使用与
-  固定模型相同的唯一 id/vendor/name 规则。许可列表变化会在下一次启动时替换空闲运行时。
-  省略 `model`，或 `Task.model` 重复该定义自己的固定模型键时，定义仍可使用未勾选自动调度的固定模型。Task 的定义目录展示
-  每项默认模型，并提示省略或重复该键以保留默认值。参见
-  [ADR subagent-model-opt-in](/adr/subagent-model-opt-in)。
   当某个模型键没有被预先解析时，运行时会请求 Electron main 通过
   `provider.resolveSubagentModel` RPC 按需解析。已启动的 `Task` 结果详情会记录
   本次运行实际使用的 `modelId`。
@@ -666,18 +533,12 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 **委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
 使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，
 以及与父级相同的主机连接，并遵循与父级相同的有界提供程序重试策略。
-委托没有轮次上限：它会在自己结束时、父级调用 `TaskStop` 时、用户 Stop 时结束，
-或因父级终态错误而被中止（ADR 0253）。仍声明 `maxTurns` 的文档会正常加载，该键
-会像其他任何无法识别的 frontmatter 键一样被忽略。
-`maxTokens` 是可选的按定义输出上限（最大 200000）；省略、`none` 或 `0` 表示跟随模型
-已发布的上限。它会覆盖为该委托构建的模型上的 `maxTokens`，因此适配器派生出的
-`max_tokens` / `max_completion_tokens` / `max_output_tokens` 都会带上它；它只约束该
-委托自身的响应 —— 会话自己的请求仍沿用模型绑定。超过天花板的值属于笔误，会被钳制
-而不会转发给 provider。
-内置的 `explorer` 声明 `Read`、
-`Glob`、`Grep` 和 `Bash`，而 `code-reviewer` 保持只读；`fixer` 与 `ui-designer`
-会在工作区内写入，`ui-designer` 另外声明 `BrowserPreview`，以便在报告前检查渲染结果。
-其状态为 `completed`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
+`maxTurns` 是可选的按定义兜底（最大 80）；省略、`none` 或 `0` 表示不限轮数。
+内置委托各自声明与其工作量相称的值 —— `explorer` 60、`code-reviewer` 50、
+`test-runner` 40、`fixer` 80 —— 因此始终无法收敛的委托会以 `truncated`
+连同其部分报告结束，而不是一直跑到时长上限。内置的 `explorer` 声明 `Read`、
+`Glob`、`Grep` 和 `Bash`，而 `code-reviewer` 保持只读。其状态为 `completed`、
+`truncated`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
 `stopped`；终态通过 `TaskWait` 呈现，其文本是报告（上限为
 `MAX_SUBAGENT_REPORT_CHARS`，12k），其 details 携带 `delegationId`、`agent`、
 `status`、`startedAt`、结算后的 `completedAt`、`turns`、`toolCalls`，以及失败或
@@ -687,63 +548,17 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 
 **委托生命周期（D328）。** 运行时不再用空闲或总时长掐死委托。
 `idle-timeout` / `max-duration` 仍会解析以便旧文档能加载，但不会被武装。
-委托一直跑到自己结束、失败、被 `TaskStop`，或用户
+委托一直跑到自己结束、碰到显式 `maxTurns`、失败、被 `TaskStop`，或用户
 Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行中只能看到
 一行心跳（谁、状态、已用时、轮数、最后工具）。
 
 当父级在委托仍在跑时停止调用工具，运行时吞掉这次 `agent_end`，保持持久
 回合打开，等委托完成后再把报告塞回父级。父级收工不会中止它们。
 
-致命的 provider/stream 错误（包括耗尽的 HTTP 429）、父级中止，仍分别保留它们既有的
-`failed` 和 `aborted` 结果。
+致命的 provider/stream 错误（包括耗尽的 HTTP 429）、父级中止以及显式的
+`maxTurns`，仍分别保留它们既有的 `failed`、`aborted` 和 `truncated` 结果。
 父级终态错误还会中止残留委托、跳过续跑提示，并把会话恢复为空闲，这样
 “继续”不会变成 `AGENT_BUSY`（D352）。
-
-**可恢复的委托（ADR 0279）。** `Task` 接受一个可选的 `resume` 参数，携带同一会话中
-某个已结算委托的 `delegationId`。恢复后的委托是一个新的 `SubagentRun`，以该链此前的
-消息为种子 —— 最初的 `task` 简述，加上这条链产出的每一行 —— 然后再以新的 `task`
-提示它，于是一个已经读过或改过某个文件的委托会从那份上下文继续，而不是从零开始。
-种子完全由 transcript 支撑：链的行恰好是那些 `parentToolCallId` 属于该链某个 `Task`
-调用的行，它们用委托自己的绑定（固定的委托模型未必是会话模型）转换成 provider 消息。
-不保活任何内存对象，也不引入新的事件类型、存储 schema 或工具参数。
-
-一条链是共享同一个委托会话的那些 `Task` 调用的序列：第一次调用，加上此后每一个把更早
-的 `delegationId` 当作 `resume` 传入的调用。运行时在启动时从持久化的 transcript 重建
-链索引 —— 每个 `Task` 行都在 `toolResult.details` 里带着自己的 `delegationId` 与结算
-状态、在 `toolArgs.resume` 里带着被恢复的 id，并在重建时归一化 agent 名 —— 因此可恢复性
-能挺过一次 sidecar 重启。链的身份（`delegateSessionId`）始终留在内部；父级只会传
-`delegationId`，由反向映射解析它。
-
-只有 `completed` 与 `failed` 的链可恢复；`stopped` 和 `aborted` 的运行是终态，只能靠
-新建委托重来；而应用在它还在工作时被关掉的那种运行会重建成 `interrupted`，同样不可
-恢复。只读工具输出超过 `MAX_RESUMABLE_READ_LINES`（50000）的链会从可复用清单里消失，
-且不做链内裁剪，因此恢复绝不会悄悄丢掉历史。注册表按定义名最多保留
-`MAX_RESUMABLE_CHAINS_PER_AGENT`（2）条可复用链，并在每次委托结算时淘汰最久未活动的
-那些；仍在工作的链永不淘汰，所以这个上限只算可复用链，活跃链可以让它暂时超出。
-
-恢复严格限定在同一会话内，且从不排队：对正在运行的委托做恢复是一个工具错误，提示父级
-先用 `TaskWait` 收敛；一条链在任何时刻最多只有一条活跃记录。`model` 与 `resume` 同时
-给出会被拒绝，而恢复后的运行会沿用该链记录的绑定：优先使用链解析出的
-`providerId/modelId` 键，从 transcript 重建的链则按模型 id 匹配；当什么都匹配不上时，
-运行会继续使用定义当前的绑定，并把先前的模型 id 记进它生命周期 details 的
-`modelChangedFrom`。有意换模型意味着新建一个委托。未知 id、属于另一个定义的 id、
-不可恢复的状态、超出读预算的链，以及行已经不在的链，各自返回一个说明原因的工具错误；
-对未知 id，还会一并列出当前可复用的 id。
-
-On-demand grants expire at each new parent prompt or approved plan/goal execution;
-late responses cannot restore expired grants. Resume reauthorizes a remembered key
-when necessary. Model-id matching is limited to the current definition's pin and
-fallbacks, session inheritance, and current override grants; other definitions'
-private pins are excluded. A denied known key never selects another account by
-model id (#841).
-
-父级通过系统提示发现可复用的链：那里列出每条链最新的 `delegationId`、它的目标，以及它
-读过的文件最多 `MAX_RESUMABLE_LISTED_FILES`（8）个（超出部分带 `(+N more)` 后缀）。
-清单会在委托结算时围绕既有的提示段落重新组装。对 `MAX_SUBAGENT_CONCURRENCY`、
-`TaskWait`、`TaskList`、`TaskStop` 以及生命周期快照而言，恢复来的运行就是一个普通
-委托。`Task` 的立即返回结果与生命周期 details 会增加 `resumedFrom` 以便追溯；
-transcript 把一条链渲染成它最新 `Task` 卡片下的一段连续多轮对话，不带单独的
-“已恢复”标记。
 
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 在每次启动时于
 Electron main 里解析一次——凭据与 models.dev 快照都在那里——匹配提供商 id、
@@ -752,36 +567,6 @@ Electron main 里解析一次——凭据与 models.dev 快照都在那里——
 该引脚的工具错误，绝不回退到会话模型。定义中的 `thinkingLevel` 会按第 5c 节
 同样的"就近支持"规则，对照解析出的模型做钳制；特殊值 `omit` 故意
 不发送思考覆盖，把控制权留给提供商适配器自己的默认行为。
-`agents.create` 和 `agents.update` 只接受这种 `<provider>/<model>` 形状的引脚；
-缺少提供商部分的值会被拒绝并返回 `SUBAGENT_INVALID`，而不是被写入，因为运行时
-永远无法解析它。只有斜杠是结构性字符——提供商部分按归一化别名匹配，
-因此包含空格的显示名是合法的。
-
-
-**上下文预算与压缩（ADR 0299）。** 委托拥有与会话相同的窗口保护，并且以相同方式
-推导。预算取自该次运行实际解析出的模型 —— `Task.model` 覆盖、定义引脚，或继承
-的会话模型 —— 走第 5.1 节那条共享推导，因此 `hardLimit` 就是该窗口减去同样的
-请求余量，而按定义声明的 `maxTokens` 上限作为输出预算参与其中。在委托的回合边界
-上，该次运行会重新估计它自己的上下文；达到或超过 `hardLimit` 时，就在下一次提供商
-请求之前同步压缩，保留模式按与会话相同的生命周期规则选择：仍有待处理工具结果的
-边界按活动回合保留，已完成的边界按完成回合保留。没有任何预计算，也没有第二道阈值。
-
-当摘要无法生成，或压缩后的上下文仍然超出预算时，该次运行降级：只保留原始任务简报
-加最近的若干条消息，丢弃其余历史，继续运行，并记录它已被降级，因此报告与生命周期
-details 会说明该委托丢失了历史，而不是把一个不完整的答案当作完整答案呈现。若连这样
-也放不下，该次运行以 `SUBAGENT_CONTEXT_OVERFLOW`（不可重试）失败，点名父级可以改变
-什么 —— 缩小任务范围、改用窗口更大的模型、一次读取更少内容 —— 而不是把提供商的
-溢出文本转发出去。
-
-有序备选模型在被尝试之前会对照它自己窗口重新评估：预算装不下已携带上下文的备选
-会被跳过，并以该理由记入 `modelFailures`，而不是被重试进同一个失败。恢复来的链在
-预算之内播种 —— `seedDelegateMessages` 保留原始任务简报与最近的轮次，并优先丢弃最旧
-的工具结果 —— 因此一次恢复从 `hardLimit` 之下开始，而不是在它的第一次请求上就溢出。
-
-委托压缩只影响委托的模型上下文。它不改写任何持久化的转录行，不写入 host-core 检查点，
-也不添加压缩行、警告 toast 或上下文检查器条目；委托保留它完整的可见行，父级依旧只看到
-报告。压缩完全自动：`new_context` 对委托仍然被拒绝，因为执行它会设置父级运行时的待压缩
-标记。
 
 **事件与上下文。** 委托发出的每个事件都在信封上携带 `parentToolCallId` 和
 `agentName`，Electron main 会把这两者一并复制到持久化的行上。运行时重建模型
@@ -865,10 +650,9 @@ Composer 增强使用与 agent 请求相同的已解析提供商绑定和重试�
 
 ### 6.2 OpenCode 会话路由标头
 
-对话、子代理、上下文压缩摘要、提示增强以及插件的一次性补全，只要其提供商满足
-下列任一条件——`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或
-`opencode-go`、pi-ai 提供商 id 为上述值之一，或 base URL 的主机为
-`opencode.ai`——都会发送：
+对话、子代理、提示增强以及插件的一次性补全，只要其提供商满足下列任一条件——
+`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或 `opencode-go`、
+pi-ai 提供商 id 为上述值之一，或 base URL 的主机为 `opencode.ai`——都会发送：
 
 - `x-opencode-session`：持久的对话 id；调用方没有会话时则为一个按次生成的 UUID
 - `x-opencode-client: pi-desktop`
@@ -877,16 +661,9 @@ Composer 增强使用与 agent 请求相同的已解析提供商绑定和重试�
 调用方自带的标头会覆盖 client 与 User-Agent 默认值。空的会话标头会由对话 id
 补回，使 OpenCode Go 不会返回 `MissingSessionID`。提供商行上的 `headers` 映射
 在这次合并之后应用（标头加上一层 fetch 包装），因此自定义值优先于 OpenCode
-默认值，也优先于适配器的最后写入。Google 适配器只接收合并后的 `headers`、
-不带该包装，因为它们会拒绝任何其他 `fetch`（issue #1072）。保留键无法冲掉
-`x-opencode-session`。这属于
+默认值，也优先于适配器的最后写入。保留键无法冲掉 `x-opencode-session`。这属于
 agent 运行时的职责，与官方 Pi 编码 agent 的归属层保持一致；pi-ai 的 `sessionId`
 流选项并不会发出 `x-opencode-session`。
-
-上下文压缩摘要同样是这一类提供商请求，但 harness 会自行组装其流选项，不会经过
-会话的 stream 函数，因此 agent 运行时把这次标头合并应用到交给压缩的模型集合
-上。该请求携带会话自己的对话 id，而不是 harness 否则会生成的按次 id，这样摘要
-就与它所压缩的对话落在同一个网关后端。
 
 
 ## 7. 系统提示组成
@@ -944,15 +721,13 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
 该模式的核心集：
 
 - Agent：`Read`、`Bash`、`Edit` 和 `Write`（匹配 pi 的编码代理核心）
-- Agent：只要技能目录非空，`Skill` 也在核心集中（D404、ADR 0230）——`# Skills`
-  段落与用户输入的 `/skill-id` 都要求模型调用它，而模式中缺失的工具根本无法被调用
 - Agent：当子代理目录非空时，`Task`、`TaskWait`、`TaskList` 和
   `TaskStop` 也是如此 (§5f) — 模型必须寻找的能力是它不会使用的能力，
   委托生命周期值得每个请求的额外模式
 - Plan：`Read`、`Glob`、`Grep`、`BrowserPreview` 和 `Bash`
 - 两种模式：`ToolSearch`（当至少存在一种延迟功能时）
 
-在Agent模式下，`Glob`和`Grep`加入`BrowserPreview`、插件工具，
+在Agent模式下，`Glob`和`Grep`加入`BrowserPreview`、插件工具、`Skill`，
 以及延迟集中的插件开发助手。两种合约模式均保留
 他们的 read/inspection 核心可用，而该类的提交工具
 （`SubmitPlan` 或 `SubmitGoal`）仅在规划状态期间公开，并且
@@ -962,20 +737,18 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
 模式则不然。目录是有限的，因此具有许多工具的插件无法
 重新创建原来的提示膨胀。
 该模型使用确切的名称或简短的功能查询调用 `ToolSearch`。
-sidecar 最多激活四个匹配项，并将名称写入 canonical
-`details.addedToolNames` 字段，再用这些名称重建下一轮上下文
-模式。具有本机延迟工具搜索的提供商可在该负载点接收定义；其他
-提供商通常会收到活动定义。
+sidecar 激活最多四场比赛，通过返回他们的名字
+pi-agent-core 的 `addedToolNames`，并用这些重建下一轮上下文
+模式。具有本机延迟工具搜索的提供商可在以下位置接收定义：
+该负载点；其他提供商通常会收到活动定义。
 
-每个新用户提示前都会清除延迟激活集，再从有效上下文重建。成功的
-`ToolSearch` 结果读取 canonical `details.addedToolNames`；为兼容历史
-数据，也接受 `details.activated` 和顶层 `addedToolNames`。成功的延迟
-工具结果会贡献其工具名。仅恢复当前模式延迟目录中仍存在的名称；失败、
-中断、缺少结果的占位行以及助手/用户文本不会激活工具。工具注册表、主机
-权限路径、工具超时和工作区包含规则保持不变。`ToolSearch` 是 sidecar 的
-本地工具，不跨越主机 RPC 边界。激活标记保留在持久化工具结果中，因此
-只要证据仍在有效上下文，运行时重启或新提示都可以复用能力；证据被压缩
-或消失后仍需重新搜索。
+延迟激活会在每个新用户提示之前重置，因此之前的任务
+无法使不相关的第一个请求携带不断增长的工具集。工具
+注册表、主机权限路径、工具超时和工作区包含规则
+保持不变。 `ToolSearch` 是 sidecar 的本地变量，不跨越
+主机 RPC 边界。其激活标记保留在持久化工具中
+结果，尽管重新启动，恢复的转录仍然是提供商有效的
+在重用延迟功能之前，运行时仍然需要重新搜索。
 
 对于用户可见的 HTML 可交付成果，默认系统提示要求代理
 创建页面或创建第一个页面后激活 `BrowserPreview` 一次
@@ -1074,8 +847,10 @@ sidecar 无法选择不同的根。在一次提示期间，路径解析
 源路径标记在 `# Project instructions` 下。
 sidecar 从不直接读取工作区指令。改变的根链
 在下一个提示时重新创建空闲运行时；嵌套指令已解决
-当相关文件工具运行时再次。解析器的超时和 fallback 是运行时保护措施；
-它们不会输出独立的 timing 日志记录。
+当相关文件工具运行时再次。 sidecar 计时线记录
+`instructionResolveMs`、`instructionCacheHit` 和 `instructionFallback`
+与 `hostRttMs` 分开，因此慢速预检不能被误认为是慢速预检
+指挥机构。
 
 设置为固定全局路径提供专门的管理。项目
 查看项目列表菜单为其相应的项目提供了 `AGENTS.md` 编辑器
@@ -1138,15 +913,3 @@ sidecar 序列化针对相同标准化路径的 IPC/`sequential` 调用
 
 跟踪差距（MVP 后积压）：更丰富的系统提示组成 (§7) 和
 provider/model 目录发现超出当前有线路径。
-
-### Provider certificate trust（issue #714）
-
-桌面 sidecar 使用 Node 的 `--use-system-ca` 启动，同时保留内置根证书和继承的
-`NODE_EXTRA_CA_CERTS`。它使用操作系统信任库，但不会关闭证书链或主机名校验。
-更新本地信任库或额外 CA 启动环境后，需要重启桌面应用。无头 pi-host 启动行为以及
-System/Direct/Custom 代理路由保持不变。
-
-在主 session 和内置 delegate 中，明确的证书校验错误在初始化和流恢复阶段都视为
-终态。结构化原因会穿过 adapter 的错误扁平化，保留在最终错误行中，也不会触发
-provider transport 重建。`EPROTO` 等协议错误继续使用原有重试行为。详见
-[证书信任 ADR](../../../adr/provider-system-certificates.md)。

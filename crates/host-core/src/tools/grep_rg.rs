@@ -23,9 +23,6 @@ pub struct SystemGrep<'a> {
     pub pattern: &'a str,
     pub search_dir: &'a Path,
     pub workspace_root: &'a Path,
-    /// Root whose `.pi-desktopignore` applies (workspace root, or the search
-    /// root for scratch/external searches).
-    pub ignore_root: &'a Path,
     pub root_kind: ToolRoot,
     pub scoped: bool,
     pub include: Option<&'a str>,
@@ -36,7 +33,7 @@ pub struct SystemGrep<'a> {
 
 #[cfg(test)]
 thread_local! {
-    static TEST_RG: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+    static TEST_RG: std::cell::RefCell<Option<PathBuf>> = std::cell::RefCell::new(None);
 }
 
 #[cfg(test)]
@@ -63,7 +60,7 @@ pub fn try_system_rg(req: SystemGrep<'_>) -> Option<Value> {
 fn resolve_rg() -> Option<PathBuf> {
     #[cfg(test)]
     {
-        TEST_RG.with(|rg| rg.borrow().clone())
+        return TEST_RG.with(|rg| rg.borrow().clone());
     }
     #[cfg(not(test))]
     {
@@ -97,7 +94,6 @@ fn grep_with_rg(rg: &Path, req: SystemGrep<'_>) -> Option<Value> {
     if req.scoped {
         args.push("--no-ignore-parent".into());
     }
-    args.extend(super::ignore_rules::rg_args(req.ignore_root, req.scoped));
     if let Some(include) = req.include {
         args.push("--glob".into());
         args.push(include.to_string());
@@ -109,9 +105,6 @@ fn grep_with_rg(rg: &Path, req: SystemGrep<'_>) -> Option<Value> {
 
     let mut child = Command::new(rg)
         .args(&args)
-        // `--ignore-file` patterns are matched relative to the working
-        // directory, so anchor it at the ignore root.
-        .current_dir(req.ignore_root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -182,11 +175,6 @@ fn consume_rg_line(line: &str, search_dir: &Path, parsed: &mut BTreeMap<PathBuf,
     let mut path = PathBuf::from(path_text);
     if path.is_relative() {
         path = search_dir.join(path);
-    }
-    // Belt and braces for the security denylist: `.env.*` cannot be expressed
-    // as an rg exclude glob without flipping the run into whitelist mode.
-    if super::ignore_rules::is_sensitive_path(&path) {
-        return;
     }
     let line_no = data.get("line_number").and_then(Value::as_u64).unwrap_or(0) as usize;
     let text = data

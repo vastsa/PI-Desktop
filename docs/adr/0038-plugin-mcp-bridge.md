@@ -37,14 +37,10 @@ differently.
 3. The client lives in `apps/desktop/electron/main/plugin-mcp.ts` and speaks
    protocol `2025-06-18`: `initialize`, `tools/list`, `tools/call`. Framing is
    NDJSON over stdio pipes, or streamable HTTP with SSE responses. Budgets: 10s
-   to complete the handshake, 100s per call, 4MB per stdio line, 8 servers per
-   plugin. 2048 tools, 100 `tools/list` pages, 30s for the whole traversal, and
-   a cursor that repeats or is malformed — a server that breaks any bound is
-   refused instead of truncated. host-core's 150s dispatch deadline carries the
-   whole leg — handshake, traversal, and call — so the client reports its own
-   timeout first.
-   Connection is lazy — declaring a server costs nothing
-   until a tool is called — and teardown follows unload.
+   to complete the handshake, 100s per call (under the 110s plugin tool budget,
+   itself under host-core's 120s), 8 `tools/list` pages, 4MB per stdio line, 64
+   tools per server, 8 servers per plugin. Connection is lazy — declaring a
+   server costs nothing until a tool is called — and teardown follows unload.
 4. Discovered tools register into the **existing** plugin tool map as
    `plugin_<pluginIdSafe>_<serverId>_<toolName>`, so no new routing exists
    anywhere between the model and the server.
@@ -53,15 +49,10 @@ differently.
    from that source is not evidence.
 6. Credentials resolve **only** from the plugin's own settings through
    `{ "setting": "<key>" }` (D018). A stdio child receives `PATH`, temp/locale
-   and profile/toolchain variables (`HOME`, `USERPROFILE`, `PATHEXT`, `ComSpec`,
-   `FNM_DIR`, …), `PI_PLUGIN_ID`, and the declared values — not the host
-   environment, which holds provider keys. Unix PATH is the login-shell PATH
-   (D600). Bare `npx`/`uvx` resolve to real binaries: official Node
-   (`node.exe` + `npx-cli.js`) first, then fnm/nvm/Volta, then a Windows
-   `.cmd` shim through `cmd.exe /d /s /c` with quoted literal args (D624,
-   issue #789). `command` must be a bare PATH name or stay inside the plugin
-   directory; `url` may use `http` or `https`, with non-loopback HTTP subject
-   to ADR 0142 and the plugin network allowlist.
+   variables, `PI_PLUGIN_ID`, and the declared values — not the host
+   environment, which holds provider keys. `command` must be a bare PATH name or
+   stay inside the plugin directory; `url` may use `http` or `https`, with
+   non-loopback HTTP subject to ADR 0142 and the plugin network allowlist.
 
 ## Consequences
 
@@ -69,12 +60,8 @@ differently.
   agent with correct namespacing, auditing, and timeouts.
 - Reviewing what a plugin can reach means reading its manifest: every endpoint
   and executable is declared text, not a runtime decision.
-- Catalog size is a protocol guard, not a prompt budget: a server with 300 tools
-  contributes all 300, because MCP tools reach the model as deferred on-demand
-  entries behind `ToolSearch` and only the prompt block that advertises them is
-  capped. A server that breaks a guard (count, pages, cursor, time) is refused
-  and contributes nothing, rather than flooding the prompt with a prefix of its
-  catalog.
+- The tool cap and the page cap are silent truncations by design — a server with
+  200 tools contributes 64 and logs the drop rather than flooding the prompt.
 - Because MCP tools sit in the same map as hand-written plugin tools, disabling
   the plugin removes both, and a crashed plugin loses both.
 - A remote server sees tool arguments. No amount of host-side care changes that;
@@ -104,11 +91,3 @@ credentials out of the plugin's reach.
 
 Rejected. Risk drives host-core's confirmation flow. A value chosen by the
 inspected party cannot gate the inspection.
-
-## Amendment: stdio launcher resolution
-
-GUI launches inherit a PATH that may not include fnm/nvm/uv shims. Windows
-`npx` from the official Node installer is `npx.cmd` (plus a Git-Bash `npx`
-script), which `spawn({ shell: false })` cannot start. Resolution stays in
-Electron main, arguments stay literal, and remaining `.cmd` files go through
-`cmd.exe` rather than `shell: true`.

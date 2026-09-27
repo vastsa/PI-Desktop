@@ -41,18 +41,11 @@ let filesCache: {
   truncated: boolean;
 } | null = null;
 
-const COMMAND_GROUP_ORDER = {
-  template: 0,
-  builtin: 1,
-  plugin: 2,
-  extension: 3,
-  skill: 4,
-} as const;
+const COMMAND_GROUP_ORDER = { template: 0, builtin: 1, plugin: 2 } as const;
 
 function filterCommands(
   commands: ComposerCommand[],
   query: string,
-  skillsOnly = false,
 ): AutocompleteItem[] {
   const matched: Array<{
     command: ComposerCommand;
@@ -60,7 +53,6 @@ function filterCommands(
     sortText: string;
   }> = [];
   for (const command of commands) {
-    if (skillsOnly && command.kind !== "skill") continue;
     const byName = fuzzyMatchCommand(query, command.name);
     if (byName) {
       matched.push({ command, match: byName, sortText: command.name });
@@ -107,27 +99,13 @@ function filterFiles(entries: FsIndexEntry[], query: string): AutocompleteItem[]
 }
 
 /**
- * Result of resolving one typed "/name" at send time.
- *
- * `unavailable` is the branch that keeps a failed source read from looking like
- * "no such command": the composer can only guess whether `/compact` is a
- * builtin it must not send to the model, so it refuses the submission instead
- * of degrading a control command into prompt text (issue #795).
- */
-export type ComposerCommandResolution =
-  | { status: "resolved"; command: ComposerCommand }
-  | { status: "unknown" }
-  | { status: "unavailable"; error: Error };
-
-/**
- * Resolve a typed "/name" against the merged command and skill list at send
- * time (builtin/plugin dispatch and skill validation); templates, non-command
- * names, and unknown names stay on the prompt path. Reuses the menu's TTL cache
- * when warm, so a warm cache keeps resolving through a source blip.
+ * Resolve a typed "/name" against the merged command list at send time
+ * (builtin/plugin dispatch); templates and unknown names return as-is/null
+ * and stay on the prompt path. Reuses the menu's TTL cache when warm.
  */
 export async function resolveComposerCommand(
   name: string,
-): Promise<ComposerCommandResolution> {
+): Promise<ComposerCommand | null> {
   const key = useAppStore.getState().workspace?.path ?? "";
   if (
     !commandsCache ||
@@ -137,17 +115,11 @@ export async function resolveComposerCommand(
     try {
       const res = await api.composerCommands();
       commandsCache = { key, at: Date.now(), commands: res.commands };
-    } catch (error) {
-      // Deliberately leaves the cache cold: the next attempt re-reads the
-      // source, which is what makes the refusal retriable.
-      return {
-        status: "unavailable",
-        error: error instanceof Error ? error : new Error(String(error)),
-      };
+    } catch {
+      return null;
     }
   }
-  const command = commandsCache.commands.find((c) => c.name === name);
-  return command ? { status: "resolved", command } : { status: "unknown" };
+  return commandsCache.commands.find((c) => c.name === name) ?? null;
 }
 
 export function useComposerAutocomplete({
@@ -253,7 +225,7 @@ export function useComposerAutocomplete({
   const items = useMemo<AutocompleteItem[]>(() => {
     if (!trigger || dismissed) return [];
     if (trigger.mode === "slash") {
-      return commands ? filterCommands(commands, trigger.query, trigger.tokenStart > 0) : [];
+      return commands ? filterCommands(commands, trigger.query) : [];
     }
     return files ? filterFiles(files.entries, trigger.query) : [];
   }, [trigger, dismissed, commands, files]);

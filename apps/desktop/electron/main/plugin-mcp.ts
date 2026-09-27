@@ -1,13 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
-import { minimalChildEnv } from "./child-process-env.ts";
-import {
-  MCP_STDIO_HOST_ENV_KEYS,
-  decodeMcpStderr,
-  resolveMcpStdioLaunch,
-} from "./mcp-stdio-launch.ts";
-import { userLookupPath } from "./user-login-path.ts";
 
 /** MCP revision we advertise during the handshake. */
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
@@ -15,23 +8,14 @@ export const MCP_PROTOCOL_VERSION = "2025-06-18";
 export const MCP_CONNECT_TIMEOUT_MS = 10_000;
 /** Kept under the plugin tool budget so the MCP error wins the race. */
 export const MCP_CALL_TIMEOUT_MS = 100_000;
-/**
- * Protocol bound, not a prompt budget: MCP tools reach the model as on-demand
- * entries behind `ToolSearch` rather than as an always-present list, so the
- * only thing that needs a ceiling is a server streaming forever. Sized like
- * Codex's per-server MCP catalog bound; a real catalog never approaches it.
- */
-export const MAX_MCP_TOOLS_PER_SERVER = 2_048;
+/** A chatty server must not flood the model's tool list. */
+export const MAX_MCP_TOOLS_PER_SERVER = 64;
 /** Keep an MCP endpoint from bouncing requests through an unbounded chain. */
 const MAX_MCP_REDIRECTS = 5;
-/** `tools/list` pages one server may span before its handshake is refused. */
-const MAX_TOOL_PAGES = 100;
-/** A whole `tools/list` traversal must finish inside this budget. */
-export const MCP_TOOL_DISCOVERY_TIMEOUT_MS = 30_000;
+/** `tools/list` pages to follow before giving up on a cursor loop. */
+const MAX_TOOL_PAGES = 8;
 /** Guard against a server streaming an unbounded line at us. */
 const MAX_STDIO_LINE_BYTES = 4 * 1024 * 1024;
-/** Guard against a remote MCP server streaming an unbounded response body. */
-const MAX_HTTP_RESPONSE_BYTES = 4 * 1024 * 1024;
 
 export type McpTool = {
   name: string;
@@ -53,7 +37,7 @@ export type JsonRpcMessage = {
  * the client speak the same JSON-RPC dialect over a pipe or over HTTP.
  */
 export type McpTransport = {
-  send: (message: JsonRpcMessage, timeoutMs?: number, signal?: AbortSignal) => Promise<void>;
+  send: (message: JsonRpcMessage) => Promise<void>;
   close: () => void;
 };
 
@@ -75,38 +59,18 @@ function mcpError(code: string, message: string): McpError {
  * and shell secrets, so only the values the caller declared cross over (D018).
  * `pluginId` is absent for a server the user configured directly, which has no
  * plugin identity to announce.
- *
- * PATH is the login-shell PATH (ADR 0045 / D600), not the Finder/Dock GUI
- * PATH, so a market-installed `uvx`/`npx` server can spawn (issue #571). The
- * identity variables cross for the same reason the toolchain ones do: the child
- * is third-party code that resolves `~` through `$HOME` (issue #717). Windows
- * also needs `PATHEXT` / `ComSpec` / `FNM_DIR` so official Node and fnm shims
- * resolve (issue #789).
  */
 export function mcpProcessEnv(
   pluginId: string | undefined,
   values: Record<string, string>,
-  hostEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...(pluginId ? { PI_PLUGIN_ID: pluginId } : {}),
-    NODE_ENV: hostEnv.NODE_ENV ?? process.env.NODE_ENV ?? "production",
+    NODE_ENV: process.env.NODE_ENV ?? "production",
   };
-  if (hostEnv === process.env) {
-    Object.assign(env, minimalChildEnv());
-    for (const key of MCP_STDIO_HOST_ENV_KEYS) {
-      if (env[key]) continue;
-      const value = process.env[key];
-      if (value) env[key] = value;
-    }
-    const path = userLookupPath(process.env.PATH ?? "");
-    if (path) env.PATH = path;
-  } else {
-    for (const key of MCP_STDIO_HOST_ENV_KEYS) {
-      const value = hostEnv[key];
-      if (value) env[key] = value;
-    }
-    if (!env.PATH && env.Path) env.PATH = env.Path;
+  for (const key of ["PATH", "SystemRoot", "windir", "TEMP", "TMP", "TMPDIR", "LANG"]) {
+    const value = process.env[key];
+    if (value) env[key] = value;
   }
   return { ...env, ...values };
 }
@@ -159,61 +123,29 @@ function createStdioTransport(
   handlers: McpTransportHandlers,
 ): McpTransport {
   const spawnImpl = options.spawnImpl ?? nodeSpawn;
-  const resolved = resolveMcpCommand(options.rootPath, options.command, options.commandPolicy);
-  const launch = resolveMcpStdioLaunch({
-    command: resolved,
-    args: options.args,
-    env: options.env,
-    hostEnv: {
-      ...process.env,
-      PATH: options.env.PATH ?? process.env.PATH,
+  const child: ChildProcess = spawnImpl(
+    resolveMcpCommand(options.rootPath, options.command, options.commandPolicy),
+    options.args,
+    {
+      cwd: options.rootPath,
+      env: options.env,
+      stdio: ["pipe", "pipe", "pipe"],
+      // Never route through a shell: arguments stay literal.
+      shell: false,
     },
-  });
-  const child: ChildProcess = spawnImpl(launch.command, launch.args, {
-    cwd: options.rootPath,
-    env: launch.env,
-    stdio: ["pipe", "pipe", "pipe"],
-    detached: process.platform !== "win32",
-    // Arguments stay literal. Known launchers rewrite to a PE binary; remaining
-    // Windows `.cmd` shims go through `cmd.exe /d /s /c` with quoted args.
-    shell: false,
-    windowsHide: launch.windowsHide,
-    windowsVerbatimArguments: launch.windowsVerbatimArguments,
-  });
+  );
 
   let closed = false;
   let buffer = "";
   let lastStderr = "";
-  let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const signalChildTree = (signal: NodeJS.Signals = "SIGTERM") => {
-    if (process.platform !== "win32" && child.pid) {
-      try {
-        process.kill(-child.pid, signal);
-        return;
-      } catch {
-        // The process group may already be gone; fall back to the direct child.
-      }
-    }
-    child.kill(signal);
-  };
-
-  const stopChild = () => {
-    closed = true;
-    child.stdin?.destroy();
-    child.stdout?.destroy();
-    child.stderr?.destroy();
-    signalChildTree();
-    forceKillTimer ??= setTimeout(() => signalChildTree("SIGKILL"), 1_000);
-    forceKillTimer.unref?.();
-  };
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (chunk: string) => {
     buffer += chunk;
     if (buffer.length > MAX_STDIO_LINE_BYTES) {
       buffer = "";
       handlers.onClose("mcp server sent an oversized message");
-      stopChild();
+      child.kill();
       return;
     }
     let index = buffer.indexOf("\n");
@@ -231,23 +163,13 @@ function createStdioTransport(
       index = buffer.indexOf("\n");
     }
   });
-  child.stderr?.on("data", (chunk: Buffer | string) => {
-    lastStderr = decodeMcpStderr(
-      chunk,
-      process.platform,
-      Boolean(launch.windowsVerbatimArguments),
-    )
-      .trimEnd()
-      .slice(-500);
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk: string) => {
+    lastStderr = String(chunk).trimEnd().slice(-500);
   });
   child.on("error", (error: Error) => {
     closed = true;
-    const code = (error as NodeJS.ErrnoException).code;
-    handlers.onClose(
-      code === "ENOENT"
-        ? `command not found: ${options.command}. Install it or add it to PATH.`
-        : error.message,
-    );
+    handlers.onClose(error.message);
   });
   child.on("exit", (code) => {
     closed = true;
@@ -263,7 +185,10 @@ function createStdioTransport(
       }
       child.stdin.write(`${JSON.stringify(message)}\n`);
     },
-    close: stopChild,
+    close: () => {
+      closed = true;
+      child.kill();
+    },
   };
 }
 
@@ -285,54 +210,6 @@ function parseSseMessages(body: string): JsonRpcMessage[] {
   return out;
 }
 
-
-async function readBoundedHttpBody(response: Response): Promise<string> {
-  const contentLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_HTTP_RESPONSE_BYTES) {
-    try {
-      await response.body?.cancel();
-    } catch {
-      // The response is already rejected; cancellation is best effort.
-    }
-    throw mcpError("LIMIT_EXCEEDED", "mcp server response is too large");
-  }
-  if (!response.body) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      bytes += value.byteLength;
-      if (bytes > MAX_HTTP_RESPONSE_BYTES) {
-        await reader.cancel();
-        throw mcpError("LIMIT_EXCEEDED", "mcp server response is too large");
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const body = new Uint8Array(bytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(body);
-}
-
-function headersForMcpRequest(
-  headers: Record<string, string>,
-  initialUrl: string,
-  currentUrl: string,
-): Record<string, string> {
-  if (new URL(initialUrl).origin === new URL(currentUrl).origin) return { ...headers };
-  return {};
-}
-
 function createHttpTransport(
   options: {
     url: string;
@@ -349,111 +226,73 @@ function createHttpTransport(
   }
   let closed = false;
   let sessionId: string | undefined;
-  const activeControllers = new Set<AbortController>();
 
   return {
-    send: async (message, timeoutMs = options.timeoutMs, signal) => {
+    send: async (message) => {
       if (closed) throw mcpError("UNAVAILABLE", "mcp session is closed");
       const controller = new AbortController();
-      const abort = () => controller.abort();
-      if (signal?.aborted) abort();
-      else signal?.addEventListener("abort", abort, { once: true });
-      activeControllers.add(controller);
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+      let response: Response;
       let url = options.url;
       try {
         for (let hop = 0; ; hop += 1) {
           options.assertUrlAllowed?.(url);
-          const requestHeaders = headersForMcpRequest(options.headers, options.url, url);
-          const currentOrigin = new URL(url).origin;
-          const initialOrigin = new URL(options.url).origin;
-          const response = await fetchImpl(url, {
+          response = await fetchImpl(url, {
             method: "POST",
             headers: {
-              ...requestHeaders,
+              ...options.headers,
               "content-type": "application/json",
               accept: "application/json, text/event-stream",
               "mcp-protocol-version": MCP_PROTOCOL_VERSION,
-              ...(currentOrigin === initialOrigin && sessionId
-                ? { "mcp-session-id": sessionId }
-                : {}),
+              ...(sessionId ? { "mcp-session-id": sessionId } : {}),
             },
             body: JSON.stringify(message),
             redirect: "manual",
             signal: controller.signal,
           });
-          if (response.status >= 300 && response.status <= 399) {
-            const location = response.headers.get("location");
-            try {
-              await response.body?.cancel();
-            } catch {
-              // The redirect body is not part of the MCP response.
-            }
-            if (!location) {
-              throw mcpError("HTTP_REDIRECT", "redirect without a location header");
-            }
-            if (hop >= MAX_MCP_REDIRECTS) {
-              throw mcpError("HTTP_REDIRECT", `too many redirects: ${options.url}`);
-            }
-            let nextUrl: URL;
-            try {
-              nextUrl = new URL(location, url);
-            } catch {
-              throw mcpError("HTTP_REDIRECT", `invalid redirect from ${url}`);
-            }
-            if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
-              throw mcpError("HTTP_REDIRECT", `unsupported redirect from ${url}`);
-            }
-            if (nextUrl.origin !== initialOrigin) sessionId = undefined;
-            url = nextUrl.toString();
-            continue;
+          if (response.status < 300 || response.status > 399) break;
+          const location = response.headers.get("location");
+          if (!location) break;
+          if (hop >= MAX_MCP_REDIRECTS) {
+            throw mcpError("HTTP_REDIRECT", `too many redirects: ${options.url}`);
           }
-          if (!response.ok) {
-            try {
-              await response.body?.cancel();
-            } catch {
-              // The status is sufficient for the structured MCP error.
-            }
-            throw mcpError("HTTP_ERROR", `mcp server returned ${response.status}`);
+          let nextUrl: URL;
+          try {
+            nextUrl = new URL(location, url);
+          } catch {
+            throw mcpError("HTTP_REDIRECT", `invalid redirect from ${url}`);
           }
-          const nextSession = response.headers.get("mcp-session-id");
-          if (nextSession && new URL(url).origin === initialOrigin) sessionId = nextSession;
-          // Notifications and client responses have no JSON-RPC reply. Some
-          // servers include a plain-text "Accepted" body with their HTTP 202.
-          if (response.status === 202 && (message.method === undefined || message.id === undefined)) {
-            try {
-              await response.body?.cancel();
-            } catch {
-              // The acknowledgement body is not part of the MCP response.
-            }
-            return;
+          if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
+            throw mcpError("HTTP_REDIRECT", `unsupported redirect from ${url}`);
           }
-          const contentType = response.headers.get("content-type") ?? "";
-          const body = await readBoundedHttpBody(response);
-          if (!body.trim()) return;
-          const messages = contentType.includes("text/event-stream")
-            ? parseSseMessages(body)
-            : (() => {
-                const parsed = JSON.parse(body) as JsonRpcMessage | JsonRpcMessage[];
-                return Array.isArray(parsed) ? parsed : [parsed];
-              })();
-          for (const entry of messages) handlers.onMessage(entry);
-          return;
+          url = nextUrl.toString();
         }
       } finally {
         clearTimeout(timer);
-        signal?.removeEventListener("abort", abort);
-        activeControllers.delete(controller);
       }
+      const nextSession = response.headers.get("mcp-session-id");
+      if (nextSession) sessionId = nextSession;
+      if (!response.ok) {
+        throw mcpError("HTTP_ERROR", `mcp server returned ${response.status}`);
+      }
+      const contentType = response.headers.get("content-type") ?? "";
+      const body = await response.text();
+      if (!body.trim()) return;
+      const messages = contentType.includes("text/event-stream")
+        ? parseSseMessages(body)
+        : (() => {
+            const parsed = JSON.parse(body) as JsonRpcMessage | JsonRpcMessage[];
+            return Array.isArray(parsed) ? parsed : [parsed];
+          })();
+      for (const entry of messages) handlers.onMessage(entry);
     },
     close: () => {
       closed = true;
-      for (const controller of activeControllers) controller.abort();
-      activeControllers.clear();
       handlers.onClose("mcp session closed");
     },
   };
 }
+
 export type McpServerClientOptions = {
   /** Owning plugin, when there is one. User-configured servers have none. */
   pluginId?: string;
@@ -469,8 +308,6 @@ export type McpServerClientOptions = {
   auditScope?: string;
   connectTimeoutMs?: number;
   callTimeoutMs?: number;
-  /** Budget for the whole `tools/list` traversal, however many pages it spans. */
-  discoveryTimeoutMs?: number;
   /** Test seams. */
   spawnImpl?: typeof nodeSpawn;
   fetchImpl?: typeof fetch;
@@ -524,31 +361,14 @@ export class McpServerClient {
     return this.connecting;
   }
 
-  async callTool(toolName: string, args: unknown, signal?: AbortSignal): Promise<unknown> {
-    if (signal?.aborted) throw mcpError("TOOL_ABORTED", "mcp tool call aborted");
-    const connecting = this.connect();
-    if (signal) {
-      let rejectAbort!: (error: Error) => void;
-      const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
-      const abort = () => rejectAbort(mcpError("TOOL_ABORTED", "mcp tool call aborted"));
-      signal.addEventListener("abort", abort, { once: true });
-      if (signal.aborted) abort();
-      try {
-        await Promise.race([connecting, aborted]);
-      } finally {
-        signal.removeEventListener("abort", abort);
-      }
-    } else {
-      await connecting;
-    }
-    if (signal?.aborted) throw mcpError("TOOL_ABORTED", "mcp tool call aborted");
+  async callTool(toolName: string, args: unknown): Promise<unknown> {
+    await this.connect();
     const started = Date.now();
     try {
       const result = (await this.request(
         "tools/call",
         { name: toolName, arguments: args ?? {} },
         this.opts.callTimeoutMs ?? MCP_CALL_TIMEOUT_MS,
-        signal,
       )) as { content?: unknown; isError?: boolean } | null;
       if (result && typeof result === "object" && result.isError) {
         throw mcpError("TOOL_FAILED", describeMcpContent(result.content) || "mcp tool failed");
@@ -559,11 +379,6 @@ export class McpServerClient {
       this.audit(false, toolName, Date.now() - started, error);
       throw error;
     }
-  }
-
-  /** Probe a live connection without changing its discovered tool catalog. */
-  async ping(timeoutMs = 5_000): Promise<void> {
-    await this.request("ping", {}, timeoutMs);
   }
 
   close(): void {
@@ -653,50 +468,30 @@ export class McpServerClient {
     );
   }
 
-  /**
-   * Read the server's whole catalog.
-   *
-   * The tool count is bounded only by the protocol guards below, because the
-   * model never receives this as a list: MCP tools land in the on-demand
-   * catalog behind `ToolSearch`, and the prompt block that advertises them is
-   * what truncates. What has to stay bounded is the traversal itself — pages,
-   * items, cursors, and total time — and a server that exceeds any of those is
-   * refused rather than silently contributing a prefix of its catalog.
-   */
   private async listTools(timeoutMs: number): Promise<McpTool[]> {
     const collected: McpTool[] = [];
-    const seenCursors = new Set<string>();
-    const deadline =
-      Date.now() + (this.opts.discoveryTimeoutMs ?? MCP_TOOL_DISCOVERY_TIMEOUT_MS);
     let cursor: string | undefined;
-    for (let page = 0; ; page += 1) {
-      if (page >= MAX_TOOL_PAGES) {
-        throw mcpError(
-          "LIMIT_EXCEEDED",
-          `mcp tools/list exceeded ${MAX_TOOL_PAGES} pages (${collected.length} tools so far)`,
-        );
-      }
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        throw mcpError(
-          "TIMEOUT",
-          `mcp tools/list did not finish inside its budget (${collected.length} tools so far)`,
-        );
-      }
+    for (let page = 0; page < MAX_TOOL_PAGES; page += 1) {
       const result = (await this.request(
         "tools/list",
         cursor ? { cursor } : {},
-        Math.min(timeoutMs, remaining),
+        timeoutMs,
       )) as { tools?: unknown; nextCursor?: unknown } | null;
       const tools = Array.isArray(result?.tools) ? result?.tools : [];
       for (const raw of tools as Array<Record<string, unknown>>) {
         const name = typeof raw?.name === "string" ? raw.name.trim() : "";
         if (!name) continue;
         if (collected.length >= MAX_MCP_TOOLS_PER_SERVER) {
-          throw mcpError(
-            "LIMIT_EXCEEDED",
-            `mcp server advertises more than ${MAX_MCP_TOOLS_PER_SERVER} tools`,
-          );
+          this.opts.audit?.({
+            pluginId: this.opts.pluginId,
+            api: this.auditApi("tools.truncated"),
+            ok: false,
+            errorCode: "LIMIT_EXCEEDED",
+            serverId: this.serverId,
+            limit: MAX_MCP_TOOLS_PER_SERVER,
+            ts: Date.now(),
+          });
+          return collected;
         }
         collected.push({
           name,
@@ -704,56 +499,31 @@ export class McpServerClient {
           inputSchema: raw.inputSchema,
         });
       }
-      const next = result?.nextCursor;
-      // Absent and empty both mean "that was the last page"; anything else has
-      // to be a cursor this client can follow, so a malformed one is refused
-      // rather than mistaken for the end of a catalog.
-      if (next === undefined || next === null || next === "") return collected;
-      if (typeof next !== "string") {
-        throw mcpError("INVALID_RESPONSE", "mcp server returned a non-string tools/list cursor");
-      }
-      if (seenCursors.has(next)) {
-        throw mcpError("INVALID_RESPONSE", "mcp server repeated a tools/list cursor");
-      }
-      seenCursors.add(next);
+      const next = typeof result?.nextCursor === "string" ? result.nextCursor : "";
+      if (!next || next === cursor) return collected;
       cursor = next;
     }
+    return collected;
   }
 
-  private request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+  private request(method: string, params: unknown, timeoutMs: number): Promise<unknown> {
     const transport = this.transport;
     if (!transport) {
       return Promise.reject(mcpError("UNAVAILABLE", "mcp server is not connected"));
     }
-    if (signal?.aborted) return Promise.reject(mcpError("TOOL_ABORTED", "mcp tool call aborted"));
     const id = this.nextId++;
     return new Promise<unknown>((resolvePromise, rejectPromise) => {
-      const removeAbort = () => signal?.removeEventListener("abort", abort);
-      const abort = () => {
-        if (!this.pending.delete(id)) return;
-        clearTimeout(timer);
-        removeAbort();
-        rejectPromise(mcpError("TOOL_ABORTED", "mcp tool call aborted"));
-        void transport.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: id, reason: "cancelled" } }).catch(() => undefined);
-      };
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        removeAbort();
         rejectPromise(mcpError("TIMEOUT", `mcp ${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
-      this.pending.set(id, {
-        resolve: (value) => { removeAbort(); resolvePromise(value); },
-        reject: (error) => { removeAbort(); rejectPromise(error); },
-        timer,
-      });
-      signal?.addEventListener("abort", abort, { once: true });
-      if (signal?.aborted) abort();
-      void transport.send({ jsonrpc: "2.0", id, method, params }, timeoutMs, signal).catch((error: Error) => {
+      this.pending.set(id, { resolve: resolvePromise, reject: rejectPromise, timer });
+      void transport.send({ jsonrpc: "2.0", id, method, params }).catch((error: Error) => {
         const entry = this.pending.get(id);
         if (!entry) return;
         this.pending.delete(id);
         clearTimeout(entry.timer);
-        entry.reject(error);
+        rejectPromise(error);
       });
     });
   }

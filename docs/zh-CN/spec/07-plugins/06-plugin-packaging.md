@@ -100,7 +100,7 @@ Load Development Plugin → choose directory → validate → register(source=de
 
 - 来源可以是 TypeScript
 - 分发前编译为可直接加载的 js/html/css
-- 不要依赖主机为普通 `.piplug` 或开发插件当场运行 `npm install`（MVP 不会在安装时拉取依赖项）。明确的“插件 → 导入 pi 扩展”流程是文档规定的例外；其有界 npm 行为见 `16-trusted-extensions.md` §3.2。
+- 不要依赖主机当场运行 `npm install`（MVP 不支持在安装时拉取依赖项）
 
 如果插件需要第三方库：
 - 自己将它们捆绑到插件目录中

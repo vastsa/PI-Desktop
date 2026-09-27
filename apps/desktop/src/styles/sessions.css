@@ -5,153 +5,65 @@
   sidebar-threads.css.
 */
 
-/* -------------------------------------------------------------------------
- * Settings > Import. One workbench per kind — sessions, model configuration,
- * skills, MCP servers: a segmented kind switcher, one toolbar (select-all with
- * both counts, kind options, rescan, import selected), then one list panel
- * whose group headers are quiet label lines and whose rows are individual
- * tiles. The rhythm matches the agent capability destinations.
- */
-
-.import-page {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 14px;
-}
-
-/*
-  Kind switcher. The shared `.settings-segment` already carries both theme
-  pairs and the raised active pill; only the page-scale pills are local.
-  Compound selectors on purpose: providers.css defines `.settings-segment-item`
-  further down the cascade, so a bare `.import-segment-btn` would lose to it.
-*/
-.settings-segment.import-segment {
-  align-self: flex-start;
-  max-width: 100%;
-  flex-wrap: wrap;
-}
-
-.settings-segment-item.import-segment-btn {
-  padding: 5px 12px;
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  white-space: nowrap;
-}
-
-/* Tab panels stay mounted so a scan result survives a switch. */
-.import-view {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.import-view[hidden] {
-  display: none;
-}
-
-.import-workbench {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* One action row per kind: both counts on the left, options and actions right. */
+/* Session import (settings) */
 .import-toolbar {
   display: flex;
-  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  padding: 0 1px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 6px;
 }
 
 .import-select-all {
-  display: inline-flex;
-  min-width: 0;
+  display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
-}
-
-.import-count {
-  display: inline-flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
   color: var(--ds-text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
 }
 
-.import-count-selected {
-  color: var(--ds-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.import-count-selected::before {
-  color: var(--ds-text-faint);
-  content: "· ";
+.import-toolbar-actions,
+.import-group-by {
+  display: flex;
+  align-items: center;
 }
 
 .import-toolbar-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
+  gap: 10px;
 }
 
-/*
-  The shared `.btn` runs a step larger than the selects beside it, so give it
-  toolbar geometry here rather than resizing every other page. `min-height`
-  instead of `height` so a wrapped label grows the button instead of spilling
-  out of it.
-*/
-.import-toolbar-actions > .btn {
-  min-height: 28px;
-  padding: 4px 11px;
-  font-size: var(--text-sm);
-}
-
-.import-option {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
+.import-group-by {
   gap: 7px;
-}
-
-.import-option-label {
   color: var(--ds-text-muted);
   font-size: var(--text-sm);
   white-space: nowrap;
 }
 
-.import-option-select .settings-menu-select-trigger {
+.import-group-select.settings-pill-select {
+  min-width: 116px;
   height: 28px;
-}
-
-/* D297: the list dissolves into the page — each row is its own tile. */
-.settings-panel.import-panel {
-  gap: 6px;
-  background: transparent;
-  overflow: visible;
 }
 
 .import-groups {
   display: flex;
-  min-width: 0;
   flex-direction: column;
-  gap: 12px;
 }
 
-/* Quiet label line above its rows: which source, where it lives, how many. */
+/* Groups are separated by space; each header is a soft band, not a rule. */
+.import-group + .import-group {
+  margin-top: 6px;
+}
+
 .import-group-header {
   display: flex;
-  min-width: 0;
   align-items: center;
   gap: 8px;
-  padding: 0 10px 6px;
+  margin: 0 6px;
+  border-radius: var(--radius-sm);
+  padding: 8px 8px;
+  background: var(--ds-tile);
 }
 
 .import-group-toggle {
@@ -168,11 +80,6 @@
   text-align: left;
 }
 
-.import-group-toggle:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
-}
-
 .import-group-chevron {
   display: inline-flex;
   flex-shrink: 0;
@@ -186,78 +93,42 @@
 }
 
 .import-group-name {
-  flex: 0 0 auto;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-2xs);
+  flex-shrink: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md-plus);
   font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .import-group-path {
   min-width: 0;
-  flex: 1;
   overflow: hidden;
-  color: var(--ds-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
 }
 
 .import-group-count {
-  flex: 0 0 auto;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
-  padding: 1px 7px;
+  margin-left: auto;
+  flex-shrink: 0;
   color: var(--ds-text-muted);
-  font-size: var(--text-3xs);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--leading-normal);
+  font-size: var(--text-sm);
 }
 
-.import-group-body {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* One candidate: checkbox, identity, badge. */
 .import-row {
   display: flex;
-  min-width: 0;
   align-items: center;
   gap: 10px;
-  border-radius: var(--radius-md);
-  background: var(--ds-tile);
-  padding: 6px 10px;
+  margin: 0 6px;
+  border-radius: var(--radius-sm);
+  padding: 8px 8px 8px 28px;
   cursor: pointer;
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .import-row:hover {
   background: var(--ds-tile-hover);
-}
-
-/* Selection is tonal, never a color: the checkbox already says which rows. */
-.import-row:has(input:checked) {
-  background: var(--ds-tile-deep);
-}
-
-.import-row:has(input:focus-visible),
-.import-group-header > input:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
-}
-
-.import-row > input[type="checkbox"],
-.import-group-header > input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  margin: 0;
 }
 
 .import-row-main {
@@ -270,55 +141,15 @@
 
 .import-row-title {
   overflow: hidden;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-compact);
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md-plus);
 }
 
 .import-row-meta {
-  overflow: hidden;
   color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-normal);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Pre-scan state: what the scan reads, then the action that starts it. */
-.import-idle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  border-radius: var(--radius-lg);
-  background: var(--ds-tile);
-  padding: 26px 20px;
-  text-align: center;
-}
-
-.import-idle-glyph {
-  display: inline-flex;
-  color: var(--ds-text-faint);
-}
-
-/* The idle action, with the help icon that says what a scan will cover. */
-.import-idle-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* A scan that found nothing keeps its action in the toolbar above. */
-.import-empty {
-  margin: 0;
-  border-radius: var(--radius-lg);
-  background: var(--ds-tile);
-  padding: 16px 14px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs-plus);
 }
 
 /* Sidebar session management controls */
@@ -348,7 +179,7 @@
   background: var(--ds-warning);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-warning) 15%, transparent);
   content: "";
-  animation: sidebar-status-breathe 1.6s ease-in-out 2;
+  animation: sidebar-status-breathe 1.6s ease-in-out infinite;
 }
 
 .thread-item-status.permission::before {
@@ -445,8 +276,6 @@
   border-radius: var(--radius-2xs);
   color: var(--ds-text-muted);
   opacity: 0;
-  /* The hidden control is not a pointer target until its row reveals it. */
-  pointer-events: none;
   transition:
     opacity var(--motion-duration-fast) var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -459,34 +288,14 @@
 .thread-item.active .thread-item-more:hover,
 .thread-item-more[aria-expanded="true"] {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .thread-item:focus-within .thread-item-more,
 .thread-item-more:focus-visible {
   opacity: 1;
-  pointer-events: auto;
-}
-
-/* The header add control shares the same reveal, and stays click-through until
- * the header is hovered or focused. */
-.sidebar-session-group-add {
-  pointer-events: none;
-}
-
-/* Without hover there is nothing to reveal the row controls with, so a no-hover
- * pointer gets them visible and tappable outright. */
-@media (hover: none) {
-  .sidebar-row-actions .thread-item-more,
-  .sidebar-menu-wrap .thread-item-more,
-  .sidebar-session-group-add {
-    opacity: 1;
-    pointer-events: auto;
-  }
 }
 
 .thread-item-more:hover,
-.thread-item-more:focus-visible,
 .thread-item-more[aria-expanded="true"] {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
@@ -494,11 +303,7 @@
 
 .sidebar-row-menu,
 .sidebar-popover {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: auto;
-  bottom: auto;
+  position: absolute;
   z-index: 60;
   min-width: 172px;
   padding: 5px;
@@ -506,6 +311,11 @@
   border-radius: var(--radius-md-plus);
   background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
   box-shadow: var(--ds-shadow-dialog);
+}
+
+.sidebar-row-menu {
+  top: calc(100% + 3px);
+  right: 0;
 }
 
 .sidebar-floating-menu {
@@ -549,11 +359,6 @@
   color: var(--ds-error);
 }
 
-/* An armed delete item names its second click, so the swap stays obvious. */
-.sidebar-row-menu button.danger.is-armed {
-  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
-}
-
 .sidebar-row-menu button svg,
 .sidebar-popover button svg {
   flex: 0 0 auto;
@@ -587,14 +392,7 @@
   line-height: var(--leading-heading);
 }
 
-.session-rename-dialog-heading {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-
 .session-rename-dialog-title svg {
-  flex-shrink: 0;
   color: var(--ds-text-muted);
 }
 
@@ -655,9 +453,7 @@
   align-items: center;
   justify-content: space-between;
   min-height: 24px;
-  /* The label opens a section, so its own top padding carries the 8px
-     section-to-section gap; the list below it supplies the 2px back. */
-  padding: 8px 4px 0;
+  padding: 4px 4px 0;
   border-radius: var(--radius-sm);
 }
 
@@ -672,9 +468,7 @@
 /* CJK has no case and wide tracking splits glyphs unnaturally. */
 :lang(zh-CN) .sidebar-list-label,
 :lang(zh-CN) .dest-section-label,
-:lang(zh-CN) .shortcut-group-label,
-:lang(zh-CN) .import-group-name,
-:lang(zh-TW) .import-group-name {
+:lang(zh-CN) .shortcut-group-label {
   letter-spacing: var(--tracking-normal);
   text-transform: none;
 }
@@ -730,6 +524,11 @@
   min-width: min(176px, calc(100vw - 16px));
 }
 
+.sidebar-popover {
+  top: calc(100% + 4px);
+  right: 0;
+}
+
 .sidebar-sort-menu {
   min-width: min(210px, calc(100vw - 16px));
 }
@@ -778,15 +577,42 @@
   height: 6px;
 }
 
-/* Compact hover card for session rows. Related-session references stay
-   real buttons so the card remains usable with a keyboard. */
+.sidebar-session-group-title.project-toggle {
+  gap: 5px;
+}
+
+.sidebar-session-group-title.project-toggle:hover,
+.sidebar-session-group-title.project-toggle:focus-visible {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.sidebar-project-path-tooltip {
+  position: fixed;
+  z-index: 70;
+  max-width: min(420px, calc(100vw - 16px));
+  padding: 5px 8px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: var(--ds-shadow-dialog);
+  color: var(--ds-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+/* WorkBuddy-style rich hover card for session rows.
+   Title block at the top, then a row of tag chips, then icon-prefixed
+   metadata rows. The whole surface stays non-interactive (pointer-events:
+   none) so the underlying row keeps receiving pointer events. */
 .sidebar-session-hover-card {
   position: fixed;
   z-index: 71;
   width: min(320px, calc(100vw - 16px));
-  max-height: calc(100vh - 16px);
-  overflow: auto;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-md);
   background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
@@ -795,10 +621,10 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   line-height: var(--leading-tight);
-  pointer-events: auto;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   animation: sidebar-hover-card-in var(--motion-duration-fast)
     var(--motion-ease-out) both;
 }
@@ -820,164 +646,6 @@
   font-weight: var(--font-weight-semibold);
   line-height: var(--leading-tight);
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.sidebar-session-hover-card-status {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--ds-text-secondary);
-  align-self: center;
-}
-
-.sidebar-session-hover-card-status[data-status="running"],
-.sidebar-session-hover-card-status[data-status="queued"] {
-  color: var(--ds-accent);
-}
-
-.sidebar-session-hover-card-status[data-status="failed"] {
-  color: var(--ds-error);
-}
-
-.sidebar-session-hover-card-status[data-status="waiting_permission"] {
-  color: var(--ds-warning);
-}
-
-.sidebar-session-hover-card-section {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.sidebar-session-hover-card-section-label {
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--ds-text-secondary);
-}
-
-.sidebar-session-hover-card-session-links {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.sidebar-session-hover-card-session-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  padding: 3px 5px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ds-text-primary);
-  cursor: pointer;
-  font: inherit;
-  text-align: start;
-}
-
-.sidebar-session-hover-card-session-link:hover {
-  background: var(--ds-bg-hover);
-}
-
-.sidebar-session-hover-card-session-link:focus-visible {
-  outline: 2px solid var(--ds-accent);
-  outline-offset: 1px;
-}
-
-/* A reference the host marked gone keeps its identity but is not a link. */
-.sidebar-session-hover-card-session-link-unavailable,
-.sidebar-session-hover-card-session-link-unavailable:hover {
-  background: transparent;
-  color: var(--ds-text-muted);
-  cursor: default;
-}
-
-.sidebar-session-hover-card-session-link-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-session-hover-card-session-link-trailing {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-}
-
-.sidebar-session-hover-card-session-link-status {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-  color: var(--ds-warning);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--leading-tight);
-  white-space: nowrap;
-}
-
-.sidebar-session-hover-card-session-link-status::before {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--ds-warning);
-  content: "";
-  animation: sidebar-status-breathe 1.6s ease-in-out 2;
-}
-
-.sidebar-session-hover-card-preview,
-.sidebar-session-hover-card-peer {
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.sidebar-session-hover-card-peer {
-  color: var(--ds-text-secondary);
-  font-size: var(--text-xs);
-  -webkit-line-clamp: 1;
-}
-
-.sidebar-session-hover-card-exchanges {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.sidebar-session-hover-card-exchanges li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sidebar-session-hover-card {
-    animation: none;
-  }
-
-  .sidebar-session-hover-card-session-link-status::before {
-    animation: none;
-  }
 }
 
 .sidebar-session-hover-card-tags {
@@ -1005,13 +673,6 @@
   color: var(--ds-text-primary);
 }
 
-.sidebar-session-hover-card-model {
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-tight);
-  overflow-wrap: anywhere;
-}
-
 .sidebar-session-hover-card-meta {
   display: flex;
   flex-direction: column;
@@ -1020,7 +681,8 @@
 }
 
 .sidebar-session-hover-card-meta-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 14px auto 1fr;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -1030,14 +692,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 14px;
   color: var(--ds-text-faint);
 }
 
-.sidebar-session-hover-card-meta-value {
-  color: var(--ds-text-secondary);
+.sidebar-session-hover-card-meta-label {
+  color: var(--ds-text-faint);
   font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.sidebar-session-hover-card-meta-value {
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
+  text-align: end;
   min-width: 0;
 }
 
@@ -1057,27 +725,6 @@
 .sidebar-session-group-header:hover .sidebar-menu-wrap .thread-item-more,
 .sidebar-session-group-header:focus-within .sidebar-menu-wrap .thread-item-more {
   opacity: 1;
-  pointer-events: auto;
-}
-
-/* Keyboard focus paints the header actions like the other sidebar controls. */
-.sidebar-session-group-add:focus-visible {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
-/* A blurred window keeps :hover latched on the row or header under the cursor,
- * so the hover reveals collapse back to their resting, pointer-inert state. */
-.sidebar[data-window-blur="true"] .thread-item:hover .thread-item-more:not([aria-expanded="true"]),
-.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .thread-item-more:not([aria-expanded="true"]),
-.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .sidebar-session-group-add {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* An open menu trigger stays visible; its wrapper is inert while blurred. */
-.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .sidebar-menu-wrap {
-  pointer-events: none;
 }
 
 .sidebar-project-active-dot {
@@ -1089,23 +736,11 @@
   background: var(--ds-accent);
 }
 
+.project-group.active > .sidebar-session-group-header {
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--ds-accent) 4%, transparent);
+}
+
 .project-menu {
   top: calc(100% + 3px);
-}
-
-/* Sidebar drag/drop: a session row moves between project groups. */
-.thread-item.is-dragging {
-  opacity: 0.5;
-}
-
-.project-group.is-drop-target {
-  border-radius: var(--radius-sm);
-  outline: 1px solid var(--ds-accent);
-  outline-offset: -1px;
-}
-
-.sidebar-session-groups.is-drop-target {
-  border-radius: var(--radius-sm);
-  outline: 1px dashed var(--ds-border-strong);
-  outline-offset: -2px;
 }

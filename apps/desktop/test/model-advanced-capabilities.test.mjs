@@ -1,8 +1,3 @@
-import {
-  readComposerSource,
-  readMainModule,
-  readMainSource,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -12,11 +7,6 @@ const pickerSource = await readFile(
   new URL("../src/components/settings/ModelSelectionPanes.tsx", import.meta.url),
   "utf8",
 );
-const imageModelRowSource = await readFile(
-  new URL("../src/components/settings/ImageGenerationModelRow.tsx", import.meta.url),
-  "utf8",
-);
-const composerSource = await readComposerSource();
 const capabilitiesSource = await readFile(
   new URL(
     "../../../packages/agent-runtime/src/model-capabilities.ts",
@@ -28,34 +18,25 @@ const catalogSource = await readFile(
   new URL("../../../packages/shared/src/model-catalog.ts", import.meta.url),
   "utf8",
 );
-const mainSource = await readMainSource();
-const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts");
+const mainSource = await readFile(
+  new URL("../electron/main/index.ts", import.meta.url),
+  "utf8",
+);
 const sidecarSource = await readFile(
   new URL("../../../packages/agent-runtime/src/sidecar.ts", import.meta.url),
   "utf8",
 );
 const styles = await loadStyles();
 
-test("advanced settings choose the default thinking level among omit and the enabled ones", () => {
+test("advanced settings choose the default thinking level among the enabled ones", () => {
   // Offering the published ladder instead of the enabled subset would store a
-  // default the runtime clamps away on the next request. omit is a client
-  // selector, so it sits on the default picker rather than the capability chips.
+  // default the runtime clamps away on the next request.
   assert.match(pickerSource, /settings\.defaultThinkingLevel/);
   assert.match(pickerSource, /const enabledLevels = sortThinkingLevels\(/);
-  assert.match(pickerSource, /bindingDefaultThinkingMenuLevels\(enabledLevels\)\.map/);
-  assert.match(pickerSource, /defaultThinkingLevel: id as SessionThinkingLevel/);
-  assert.match(pickerSource, /bindingDefaultThinkingMenuLevels\(enabledLevels\)\.length > 1 \?/);
-});
-
-test("advanced settings expose the model thinking protocol", () => {
-  assert.match(pickerSource, /settings\.thinkingProtocol/);
-  assert.match(pickerSource, /settings\.thinkingProtocolLegacy/);
-  assert.match(pickerSource, /settings\.thinkingProtocolAdaptive/);
-  assert.match(
-    pickerSource,
-    /binding\.thinkingProtocol\s*\?\?\s*info\?\.thinkingProtocol\s*\?\?\s*"legacy"/,
-  );
-  assert.match(pickerSource, /thinkingProtocol: id as ThinkingProtocol/);
+  assert.match(pickerSource, /enabledLevels\.map\(\(level\) => \(/);
+  assert.match(pickerSource, /defaultThinkingLevel: event\.target/);
+  // Nothing to choose when a binding enables one level or none.
+  assert.match(pickerSource, /enabledLevels\.length > 1 \?/);
 });
 
 test("the capability checkboxes show and follow the published value", () => {
@@ -63,9 +44,13 @@ test("the capability checkboxes show and follow the published value", () => {
   assert.match(pickerSource, /settings\.documentInput/);
   assert.match(pickerSource, /supportsImages: next/);
   assert.match(pickerSource, /supportsDocuments: next/);
-  // A deliberate checkbox change pins the selected value even when it equals
-  // today's catalog value; later catalog corrections must not undo that choice.
-  assert.match(pickerSource, /onChange\(event\.target\.checked\)/);
+  // Agreeing with models.dev stores "follow the catalog" instead of an
+  // equal-valued override, so a later catalog correction still lands and no
+  // separate reset control is needed.
+  assert.match(
+    pickerSource,
+    /onChange\(event\.target\.checked === published \? null : event\.target\.checked\)/,
+  );
   assert.match(
     pickerSource,
     /const effective = typeof value === "boolean" \? value : published/,
@@ -85,28 +70,6 @@ test("the capability row carries no explanatory copy or extra controls", () => {
   assert.doesNotMatch(styles, /provider-chosen-capability-(reset|state|hint)/);
 });
 
-
-test("image generation selection hides the summary when nothing can be chosen", () => {
-  assert.match(
-    pickerSource,
-    /className="provider-chosen-capability-rows">[\s\S]*?settings\.setImageModel/,
-  );
-  assert.doesNotMatch(
-    pickerSource,
-    /className="provider-chosen-advanced-toggle"[^\n]*settings\.setImageModel/,
-  );
-  assert.match(pickerSource, /imageModelIds\?\.some\([\s\S]*?modelId\.toLowerCase\(\) === binding\.id\.toLowerCase\(\)/);
-  assert.match(pickerSource, /onImageModelChange\(binding\.id, event\.target\.checked\)/);
-  assert.match(imageModelRowSource, /imageGenerationBindings\(settings\.imageGenerationModels, null\)/);
-  assert.match(imageModelRowSource, /if \(!options\.some\(\(option\) => !option\.disabled\)\) return null;/);
-  assert.match(imageModelRowSource, /if \(candidates\.length === 0\) return null;/);
-  assert.match(imageModelRowSource, /imageModelUnavailable/);
-});
-
-test("the Composer model rows use the provider binding for vision badges", () => {
-  assert.match(composerSource, /composerModelBadges\(model, group\.provider\)/);
-});
-
 test("capability overrides reach the transport modality arrays", () => {
   assert.match(capabilitiesSource, /function modalityOverride\(/);
   assert.match(capabilitiesSource, /nextInput\.add\("image"\)/);
@@ -122,8 +85,8 @@ test("capability overrides reach the transport modality arrays", () => {
 test("the capability controls and default selector are styled", () => {
   assert.match(styles, /\.provider-chosen-capability-rows \{/);
   assert.match(styles, /\.provider-chosen-capability \{/);
-  assert.match(styles, /\.provider-chosen-thinking-select \.settings-menu-select-trigger \{/);
-  assert.match(styles, /\.provider-chosen-thinking-select \.settings-menu-select-trigger:focus-visible \{/);
+  assert.match(styles, /\.provider-chosen-thinking-select \{/);
+  assert.match(styles, /\.provider-chosen-thinking-select:focus-visible \{/);
 });
 
 test("selected thinking chips keep high contrast in both themes", () => {
@@ -138,7 +101,7 @@ test("selected thinking chips keep high contrast in both themes", () => {
 test("thinking levels use a compact accessible grouped control", () => {
   assert.match(
     pickerSource,
-    /className="provider-chosen-thinking-head">[\s\S]*?thinkingManualOverrideHint[\s\S]*?<\/div>\s*<div[\s\S]*?className="provider-chosen-thinking-chips"/,
+    /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-hint[\s\S]*?<\/div>\s*<div[\s\S]*?className="provider-chosen-thinking-chips"/,
   );
   assert.match(pickerSource, /role="group"/);
   assert.match(styles, /\.provider-chosen-thinking-head \{/);
@@ -207,46 +170,28 @@ test("every image gate reads the override-shaped model config", () => {
 });
 
 test("a model the catalog does not describe still reports its binding overrides", () => {
-  // Both enrichment helpers use the same catalog-or-generic resolver and then
-  // apply the binding, matching the launch path; returning undefined instead
-  // would report no image support for a hand-typed id whose transport does
-  // inline images.
-  const providerBlock = providerCatalogSource.slice(
-    providerCatalogSource.indexOf("const enrichProvider ="),
-    providerCatalogSource.indexOf("const normalizeThinkingLevel ="),
-  );
-  const sessionBlock = providerCatalogSource.slice(
-    providerCatalogSource.indexOf("const enrichSession ="),
-    providerCatalogSource.indexOf(
-      "\n  return {\n    bindingForModel",
-      providerCatalogSource.indexOf("const enrichSession ="),
-    ),
-  );
-  for (const block of [providerBlock, sessionBlock]) {
-    assert.match(block, /modelConfigWithBinding\(/);
-    assert.match(block, /catalogModelConfigFor\(modelsDevCatalog/);
-    assert.match(block, /bindingForModel\(provider, modelId\)/);
-  }
+  // Both enrichment helpers fall back to the generic shape and then apply the
+  // binding, matching the launch path; returning undefined instead would report
+  // no image support for a hand-typed id whose transport does inline images.
+  const enrichments = mainSource.match(
+    /modelConfigWithBinding\(\s*\n\s*modelsDevModel\s*\n?\s*\?\s*modelConfigFromModelsDev/g,
+  ) ?? [];
+  assert.equal(enrichments.length, 2);
   assert.doesNotMatch(
-    providerCatalogSource,
+    mainSource,
     /const modelConfig = catalogModelConfig\s*\n\s*\? modelConfigWithBinding/,
   );
 });
 
 test("the advanced body is a compact sheet without helper paragraphs", () => {
   // The generic Field + hint paragraph made the disclosure a stacked form dump
-  // inside a half-pane. Labels stay 2xs, the alias hint is the help mark beside
-  // the label, and the default selector sits on the thinking label row.
+  // inside a half-pane. Labels stay 2xs, the alias hint is a title tooltip, and
+  // the default selector sits on the thinking label row.
   assert.match(pickerSource, /className="provider-chosen-field"/);
-  assert.match(
-    pickerSource,
-    /<HelpIcon label=\{t\("settings\.modelAliasHint"\)\} \/>/,
-  );
-  assert.doesNotMatch(pickerSource, /hint=\{t\("settings\.modelAliasHint"\)\}/);
+  assert.match(pickerSource, /title=\{t\("settings.modelAliasHint"\)\}/);
+  assert.doesNotMatch(pickerSource, /hint=\{t\("settings.modelAliasHint"\)\}/);
   assert.match(pickerSource, /aria-controls=\{advancedId\}/);
-  // Every row starts folded so chosen models stay scannable (D625).
-  assert.match(pickerSource, /useState<string \| null>\(null\)/);
-  assert.doesNotMatch(pickerSource, /models\[0\]\?\.id \?\? null/);
+  assert.match(pickerSource, /models\[0\]\?\.id \?\? null/);
   assert.match(
     pickerSource,
     /className="provider-chosen-thinking-head">[\s\S]*?provider-chosen-thinking-default[\s\S]*?provider-chosen-thinking-chips/,
@@ -271,17 +216,13 @@ test("the offered default and the saved default use one order", () => {
   // The panel lists enabled levels in canonical order; the save path must fall
   // back to the same first entry, or the user is shown one default and another
   // is persisted for a binding whose levels were toggled out of order.
+  const orderings = pickerSource.match(/sortThinkingLevels\(/g) ?? [];
+  assert.ok(orderings.length >= 3, `expected 3+ orderings, saw ${orderings.length}`);
+  assert.match(pickerSource, /: \(sortThinkingLevels\(next\)\[0\] \?\? null\)/);
   assert.match(
     pickerSource,
     /const thinkingLevels = sortThinkingLevels\(binding\.thinkingLevels\)/,
   );
   assert.match(pickerSource, /const enabled = thinkingLevels/);
-  assert.match(
-    pickerSource,
-    /resolveBindingDefaultThinkingLevel\(\s*binding\.defaultThinkingLevel,\s*enabled,/,
-  );
-  assert.match(
-    pickerSource,
-    /resolveBindingDefaultThinkingLevel\(\s*binding\.defaultThinkingLevel,\s*sortThinkingLevels\(next\),/,
-  );
+  assert.match(pickerSource, /: \(enabled\[0\] \?\? null\)/);
 });

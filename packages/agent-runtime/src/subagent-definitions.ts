@@ -59,8 +59,9 @@ export function subagentDefinitionDir(_workspaceRoot: string): string {
 export const BUILTIN_SUBAGENT_DOCUMENTS: readonly string[] = [
   `---
 name: explorer
-description: Fast codebase search and pattern matching — find files, locate implementations and answer "where is X?" / "how does Y work?". Use when answering needs a sweep over many files and you only want the conclusion. Has Bash — use it when the task needs CLI commands (gh, git, npm, cargo, etc.).
+description: Fast codebase search and pattern matching — find files, locate implementations and answer "where is X?" / "how does Y work?". Use when answering needs a sweep over many files and you only want the conclusion.
 tools: [Read, Glob, Grep, Bash]
+maxTurns: 60
 ---
 
 You are Explorer — a fast codebase navigation specialist.
@@ -84,16 +85,12 @@ than a guess.
 </answer>`,
   `---
 name: code-reviewer
-description: Review specific code or a specific change for defects. Use for a second opinion on correctness, edge cases and missing tests before you commit. Has NO Bash or shell access — cannot run CLI commands (gh, git, npm, etc.). If the task needs shell commands, use explorer or fixer instead.
+description: Review specific code or a specific change for defects. Use for a second opinion on correctness, edge cases and missing tests before you commit.
 tools: [Read, Glob, Grep]
+maxTurns: 50
 ---
 
 Review only what the task names, and read enough surrounding code to judge it.
-
-- You have NO shell or terminal access. Do not attempt to run commands.
-  If the task requires CLI output (gh, git log, npm, cargo, etc.), report
-  that limitation in one sentence and stop — do not pad the report with
-  unrelated code reading.
 
 - Prefer defects that change behavior: wrong results, unhandled failures,
   broken invariants, races, resource leaks, missing test coverage.
@@ -108,6 +105,7 @@ the cases you checked — an empty review with no evidence is not a review.`,
 name: test-runner
 description: Run a specific test or build command and report what failed and why. Use when a command's output is long and only the failures matter.
 tools: [Read, Glob, Grep, Bash]
+maxTurns: 40
 ---
 
 Run the command the task names. Do not invent a different one, and do not fix
@@ -125,6 +123,7 @@ raw output out of the report except for the lines that carry the failure.`,
 name: fixer
 description: Implement a complete multi-file change from a spec. Use when a feature or fix spans several files and the work is separable — it can write files inside the workspace while you keep working.
 tools: [Read, Glob, Grep, Edit, Write, Bash]
+maxTurns: 80
 ---
 
 You are Fixer — a fast, focused implementation specialist. The main agent
@@ -152,60 +151,6 @@ Report in this shape:
 <verification>
 - Tests: [passed / failed / skipped: reason]
 - Validation: [passed / failed / skipped: reason]
-</verification>`,
-  `---
-name: ui-designer
-description: Design and implement a web interface from a brief — visual system, motion and complete interaction states, inspected in the browser preview or project browser tests. Use for building or restyling a UI when the visual work should run in its own context.
-tools: [Read, Glob, Grep, BrowserPreview, Bash, Edit, Write]
----
-
-You are UI designer — a senior UI/UX designer and frontend engineer. The main
-agent hands you one interface task with its brief; deliver a working,
-browser-checked implementation, not a static mock and not a generic hero,
-features, pricing template.
-
-- Read the files you will touch and the project's existing design system
-  first. Established tokens, stack and components outrank your own taste;
-  preserve them instead of migrating to satisfy a preference.
-- When the project has no UI to match, write a small design contract before
-  coding: mission, semantic color/typography/spacing/radius/motion tokens on
-  a 4px/8px rhythm, and the Do/Don't rules you will hold the result to.
-- Build the whole interaction: semantic controls with real actions, visible
-  keyboard focus, and the loading, empty, error, success, disabled and
-  selected states the flow can reach. Keep grid tracks stable so long
-  content reflows without overlap; never hide a layout defect behind
-  overflow clipping. No TODOs, pseudo-handlers or invented backend behavior
-  — label fixture data as demo data.
-- Motion carries state changes, never decorates: immediate hover and press
-  feedback, spring-like entrances with a small stagger for lists, and
-  reduced-motion variants. Do not use \`transition: all\`, a generic
-  \`0.3s ease\`, or constant-speed linear movement for stateful UI, and do
-  not add an animation dependency for what one CSS transition covers.
-- The brief is your confirmation; there is no user to ask mid-run. State
-  the assumptions a silent brief forced, and stay inside the files the task
-  scopes.
-- Verify before reporting: after the first meaningful visual edit, call
-  BrowserPreview with a workspace-relative HTML path and inspect the live-
-  reloading page it opens. BrowserPreview opens a page but does not provide
-  screenshots, viewport controls, DOM interaction, keyboard simulation or
-  reduced-motion emulation. Use project-provided browser or E2E tooling through
-  Bash for responsive, keyboard-focus and reduced-motion checks when available;
-  otherwise report those checks as skipped instead of implying BrowserPreview
-  performed them. Fix what you observe and re-check. Run the project's build or
-  typecheck when it covers your change. A result you did not look at is not
-  evidence.
-
-Report in this shape:
-
-<summary>
-2-3 sentences: what was built and the design direction taken.
-</summary>
-<changes>
-- path/file.tsx: what changed
-</changes>
-<verification>
-- Browser: [what was opened and checked, issues fixed, issues remaining]
-- Build: [passed / failed / skipped: reason]
 </verification>`,
 ];
 
@@ -279,12 +224,6 @@ export type LoadSubagentOptions = {
   overrideDir?: string;
   /** Documents already scanned by host-core from `~/.agents/subagents`. */
   userDocuments?: readonly UserSubagentDocument[];
-  /**
-   * Handles whose shipped definition the user turned off (D202 activation for
-   * builtins, which are constants rather than documents). Their definitions
-   * stay out of `definitions` but still reach `builtins`.
-   */
-  disabledBuiltins?: readonly string[];
 };
 
 function loadUserSubagents(documents: readonly UserSubagentDocument[]): {
@@ -309,22 +248,13 @@ function loadUserSubagents(documents: readonly UserSubagentDocument[]): {
 
 /**
  * Definitions offered to a session: the user's global documents and the
- * builtins, minus the builtins the user turned off. Load failures degrade to
- * diagnostics: a malformed document must not cost the session its other
- * delegates, let alone its turn.
- *
- * `builtins` carries every shipped definition that still wins its handle,
- * whether or not it is switched on, so Settings can render an off builtin as a
- * row with its own switch; `definitions` is what `Task` may actually offer.
+ * builtins. Load failures degrade to diagnostics: a malformed document must not
+ * cost the session its other delegates, let alone its turn.
  */
 export async function loadSubagentDefinitions(
   workspaceRoot: string | null | undefined,
   options: LoadSubagentOptions = {},
-): Promise<{
-  definitions: SubagentDefinition[];
-  builtins: SubagentDefinition[];
-  diagnostics: string[];
-}> {
+): Promise<{ definitions: SubagentDefinition[]; diagnostics: string[] }> {
   const builtin = builtinSubagents();
   const dir =
     options.overrideDir ??
@@ -349,28 +279,12 @@ export async function loadSubagentDefinitions(
       `dropped subagents past the catalog cap: ${merged.dropped.join(", ")}`,
     );
   }
-  // A switched-off builtin is excluded from the delegation catalog and from
-  // nothing else: a user document of the same name still shadows it, and a
-  // handle the user re-enables needs no document of its own to come back.
-  const disabled = new Set(options.disabledBuiltins ?? []);
-  const builtins = merged.definitions.filter(
-    (definition) => definition.source === "builtin",
-  );
-  return {
-    definitions: merged.definitions.filter(
-      (definition) =>
-        !(definition.source === "builtin" && disabled.has(definition.name)),
-    ),
-    builtins,
-    diagnostics,
-  };
+  return { definitions: merged.definitions, diagnostics };
 }
 
 /** The stored-provider fields a pin can be resolved against. */
 export type SubagentProviderSource = {
   id: string;
-  enabled?: boolean;
-  headers?: Record<string, string>;
   name: string;
   vendorKey?: string;
   baseUrl?: string;
@@ -389,13 +303,12 @@ function providerAlias(value: string): string {
  *
  * Stored provider ids are UUIDs, so a hand-written definition almost never
  * names one. The vendor key (`anthropic`) and the display name are what a
- * person actually writes, and both are accepted. Vendor or name aliases that
- * match more than one row are not guessed.
+ * person actually writes, and both are accepted.
  */
-export function findSubagentProviderSource<T extends SubagentProviderSource>(
+function findProvider(
   providerId: string,
-  providers: readonly T[],
-): T | undefined {
+  providers: readonly SubagentProviderSource[],
+): SubagentProviderSource | undefined {
   const alias = providerAlias(providerId);
   const exact = providers.find((provider) => provider.id === providerId);
   if (exact) return exact;
@@ -407,24 +320,6 @@ export function findSubagentProviderSource<T extends SubagentProviderSource>(
     (provider) => providerAlias(provider.name) === alias,
   );
   return nameMatches.length === 1 ? nameMatches[0] : undefined;
-}
-
-/** Why `findSubagentProviderSource` returned nothing: missing vs ambiguous. */
-export function subagentProviderLookupError(
-  providerId: string,
-  providers: readonly Pick<SubagentProviderSource, "id" | "name" | "vendorKey">[],
-): string {
-  const alias = providerAlias(providerId);
-  const vendorMatches = providers.filter(
-    (provider) => providerAlias(provider.vendorKey ?? "") === alias,
-  );
-  const nameMatches = providers.filter(
-    (provider) => providerAlias(provider.name) === alias,
-  );
-  if (vendorMatches.length > 1 || nameMatches.length > 1) {
-    return `provider alias "${providerId}" matches multiple accounts; use the exact provider id`;
-  }
-  return `no provider matches "${providerId}"`;
 }
 
 /**
@@ -459,23 +354,21 @@ export async function resolveSubagentProviders(input: {
   const allowed = subagentPinnedProviders(input.definitions);
   const secrets = new Map<string, string | undefined>();
 
-  const pins = input.definitions.flatMap((definition) =>
-    [definition.model, ...(definition.fallbackModels ?? [])]
-      .flatMap((pin) => pin ? [{ name: definition.name, pin }] : []),
-  );
-  for (const { name, pin } of pins) {
+  for (const definition of input.definitions) {
+    const pin = definition.model;
+    if (!pin) continue;
     const key = subagentModelKey(pin);
     if (resolved[key]) continue;
     if (!allowed.includes(pin.providerId)) {
       diagnostics.push(
-        `${name}: too many pinned providers, ignoring "${key}"`,
+        `${definition.name}: too many pinned providers, ignoring "${key}"`,
       );
       continue;
     }
-    const provider = findSubagentProviderSource(pin.providerId, input.providers);
-    if (!provider || provider.enabled === false) {
+    const provider = findProvider(pin.providerId, input.providers);
+    if (!provider) {
       diagnostics.push(
-        `${name}: no enabled provider matches "${pin.providerId}"`,
+        `${definition.name}: no enabled provider matches "${pin.providerId}"`,
       );
       continue;
     }
@@ -489,7 +382,7 @@ export async function resolveSubagentProviders(input: {
     }
     const apiKey = secrets.get(provider.id) ?? "";
     if (!apiKey && !isVendorAccount && provider.authKind !== "none") {
-      diagnostics.push(`${name}: provider "${provider.name}" has no API key`);
+      diagnostics.push(`${definition.name}: provider "${provider.name}" has no API key`);
       continue;
     }
     // A vendor account resolves the pinned model against the signed-in
@@ -504,7 +397,7 @@ export async function resolveSubagentProviders(input: {
       }
       if (!binding) {
         diagnostics.push(
-          `${name}: vendor account "${provider.name}" does not offer "${pin.modelId}"`,
+          `${definition.name}: vendor account "${provider.name}" does not offer "${pin.modelId}"`,
         );
         continue;
       }
@@ -523,8 +416,6 @@ export async function resolveSubagentProviders(input: {
     resolved[key] = {
       id: provider.id,
       name: provider.name,
-      ...(provider.vendorKey ? { vendorKey: provider.vendorKey } : {}),
-      ...(provider.headers ? { headers: { ...provider.headers } } : {}),
       ...(binding?.baseUrl ?? provider.baseUrl
         ? { baseUrl: binding?.baseUrl ?? provider.baseUrl }
         : {}),

@@ -1,4 +1,3 @@
-import { readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -8,7 +7,10 @@ const rowSource = await readFile(
   new URL("../src/components/settings/LanguageRow.tsx", import.meta.url),
   "utf8",
 );
-const settingsPageSource = await readSettingsSource();
+const settingsPageSource = await readFile(
+  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
+  "utf8",
+);
 const styles = await loadStyles();
 
 /** Grouped language/theme rules put a sibling selector before `{`. */
@@ -46,9 +48,9 @@ test("the Auto row shows the OS-detected native name", () => {
   assert.doesNotMatch(rowSource, /autoLabel} · \$\{detectedInfo/);
 });
 
-test("the language trigger hugs the current label without a native field chrome", () => {
-  assert.match(styles, pickerRule("\\.settings-language-anchor", "width:\\s*max-content;"));
-  assert.match(styles, pickerRule("\\.settings-language-trigger", "width:\\s*max-content;"));
+test("the language trigger fills the settings control column without a native field chrome", () => {
+  assert.match(styles, pickerRule("\\.settings-language-anchor", "width:\\s*100%;"));
+  assert.match(styles, pickerRule("\\.settings-language-trigger", "width:\\s*100%;"));
   assert.match(styles, pickerRule("\\.settings-language-search input", "outline:\\s*none;"));
   assert.match(styles, pickerRule("\\.settings-language-search input", "padding:\\s*0;"));
 });

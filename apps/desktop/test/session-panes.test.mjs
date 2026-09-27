@@ -1,4 +1,3 @@
-import { readStoreSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -11,7 +10,7 @@ import {
 } from "../src/lib/session-panes.ts";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
-const store = await readStoreSource();
+const store = await read("../src/stores/app-store.ts");
 
 const empty = { retainedSessionIds: [], retainedTranscripts: {} };
 const say = (id) => [{ id: `${id}-1`, role: "user", content: id }];

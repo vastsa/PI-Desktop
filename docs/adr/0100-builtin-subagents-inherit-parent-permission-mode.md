@@ -1,5 +1,3 @@
-# ADR 0100: Make builtin subagents inherit the parent permission mode
-
 - Status: Accepted
 - Date: 2026-08-18
 - Deciders: PI-Desktop core

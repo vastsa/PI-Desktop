@@ -1,7 +1,3 @@
-import {
-  readMainModuleSync,
-  readMainSourceSync,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -13,12 +9,7 @@ const desktopRoot = join(here, "..");
 
 const watcherSrc = readFileSync(join(desktopRoot, "electron/main/plugin-watcher.ts"), "utf8");
 const runtimeSrc = readFileSync(join(desktopRoot, "electron/main/plugin-runtime.ts"), "utf8");
-const mainSrc = readMainSourceSync();
-const pluginIpcSrc = readMainModuleSync("ipc/plugin-ipc.ts");
-const sidecarSrc = readMainModuleSync("runtime/sidecar.ts");
-const lifecycleSrc = readMainModuleSync("runtime/lifecycle.ts");
-const shutdownSrc = readMainModuleSync("bootstrap/shutdown.ts");
-const pluginServicesSrc = readMainModuleSync("services/plugin-services.ts");
+const mainSrc = readFileSync(join(desktopRoot, "electron/main/index.ts"), "utf8");
 
 function slice(source, from, to) {
   const start = source.indexOf(from);
@@ -74,7 +65,7 @@ test("hot reload can never widen the permissions the user approved", () => {
   // adds a glob is asking for more than the user approved.
   assert.match(reload, /widenedFsScope\(dev\.fs, declaredAccess\.fs\)/);
   // An unreadable manifest grants nothing.
-  const declared = slice(runtimeSrc, "function readDeclaredAccess(", "\nexport function widenedFsScope");
+  const declared = slice(runtimeSrc, "function readDeclaredAccess(", "\nfunction widenedFsScope");
   assert.match(declared, /PLUGIN_INVALID: manifest\.json missing/);
 });
 
@@ -96,44 +87,37 @@ test("a broken plugin stays watched so the next save can fix it", () => {
 });
 
 test("every path that loads a dev plugin arms the watcher", () => {
-  // A reviewed load (folder picker, template scaffold) and the paths that load
-  // without a review (agent tool import, startup restore, re-enable) all end in
-  // the same watch call, so none of them can be hot-reloaded unapproved.
-  assert.match(pluginIpcSrc, /if \(loaded\.plugin\?\.id\) plugins\.watchDevPlugin\(loaded\.plugin\.id\)/);
-  assert.match(
-    pluginIpcSrc,
-    /const loadDevPlugin = async \(\s*path: string,\s*grantedPermissions: string\[\] = \[\],\s*reason: "loadDev" \| "reload",\s*\)/,
-  );
-  assert.match(sidecarSrc, /plugins\.watchDevPlugin\(manifest\.id\)/);
-  assert.match(lifecycleSrc, /if \(plugin\.source === "dev"\) plugins\.watchDevPlugin\(plugin\.id\)/);
-  assert.match(pluginIpcSrc, /if \(res\.plugin\.source === "dev"\) plugins\.watchDevPlugin\(id\)/);
+  // Folder picker, template scaffold, agent tool, startup restore, re-enable.
+  assert.match(mainSrc, /if \(loaded\.plugin\?\.id\) plugins\.watchDevPlugin\(loaded\.plugin\.id\)/);
+  assert.match(mainSrc, /plugins\.watchDevPlugin\(created\.id\)/);
+  assert.match(mainSrc, /plugins\.watchDevPlugin\(manifest\.id\)/);
+  assert.match(mainSrc, /if \(p\.source === "dev"\) plugins\.watchDevPlugin\(p\.id\)/);
+  assert.match(mainSrc, /if \(res\.plugin\.source === "dev"\) plugins\.watchDevPlugin\(id\)/);
 });
 
-test("manual reload measures the manifest against the approval, not the registry", () => {
-  const reload = slice(mainSrc, "handle(IPC.invoke.pluginReload,", "handle(\n    IPC.invoke.pluginReloadConfirm");
-  assert.match(reload, /const listed = await host\.call<\{ plugins: any\[\] \}>\("plugins\.list"\)/);
+test("manual reload uses the registry path and refreshes the dev permission ceiling", () => {
+  const reload = slice(mainSrc, "handle(IPC.invoke.pluginReload", "// Scaffold a starter plugin");
+  assert.match(reload, /host\.call<\{ plugins: any\[\] \}>\("plugins\.list"\)/);
   assert.match(reload, /find\(\(candidate\) => candidate\?\.id === id\)/);
-  // The comparison is the recorded approval, which is what the user answered.
-  assert.match(reload, /const \{ added, widened \} = beyondApproval\(id, plugin\.path\)/);
-  // A manifest that grew is a question, not a load: the plugin keeps running
-  // under the old approval until the user answers.
-  assert.ok(
-    reload.indexOf("reviewFor(plugin.path, \"reload\"") < reload.indexOf("plugins.loadFromPath"),
-    "the review must be returned before anything is loaded",
+  assert.match(
+    reload,
+    /plugins\.loadFromPath\(plugin\.path, plugin\.permissions \?\? \[\], \{\s*development: plugin\.source === "dev",\s*\}\)/,
   );
   assert.match(reload, /if \(plugin\.source === "dev"\) plugins\.watchDevPlugin\(id\)/);
   assert.match(reload, /reason: "reload", pluginId: id/);
 });
 
 test("watchers are released on teardown and reloads reach the renderer", () => {
+  const quitStart = mainSrc.indexOf('app.on("before-quit"');
+  const quitEnd = mainSrc.indexOf('app.on("activate"', quitStart);
+  assert.ok(quitStart >= 0 && quitEnd > quitStart, "before-quit handler missing");
+  const quit = mainSrc.slice(quitStart, quitEnd);
   // Quit tears the whole plugin subsystem down; watch disposal rides along
   // inside it rather than being called on its own.
-  assert.match(shutdownSrc, /plugins\.disposeAll\(\)/);
+  assert.match(quit, /plugins\.disposeAll\(\)/);
   const disposeAll = slice(runtimeSrc, "async disposeAll(", "\n  }");
   assert.match(disposeAll, /this\.disposeWatchers\(\)/);
-  const reported = pluginServicesSrc.slice(
-    pluginServicesSrc.indexOf("onPluginReloaded:"),
-  );
+  const reported = slice(mainSrc, "onPluginReloaded:", "\n  },");
   assert.match(reported, /IPC\.event\.toast/);
   assert.match(reported, /IPC\.event\.pluginChanged,\s*\{ reason: "reload", pluginId \}/);
   assert.match(reported, /Reload failed/);

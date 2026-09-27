@@ -2,123 +2,6 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
-    "version": "0.15.6",
-    "date": "2026-09-23",
-    "highlights": [
-      "Kayıtlı bağlantı ayarlarını değiştirmeden mevcut DeepSeek, xAI ve OpenAI hizmetlerinde yerel aramayı etkinleştirin.",
-      "OpenAI ve ChatGPT/Codex model kataloglarında GPT-6 Astra, Sol ve Luna desteği eklenir.",
-    ],
-  },
-
-  {
-    "version": "0.15.5",
-    "date": "2026-09-23",
-    "highlights": [
-      "OpenAI ve ChatGPT/Codex model kataloglarında GPT-6 Astra, Sol ve Luna desteği eklenir.",
-    ],
-  },
-
-  {
-    "version": "0.15.2",
-    "date": "2026-09-21",
-    "highlights": [
-      "Sohbette görsel oluşturun ve düzenleyin; tek bir görsel modeli ve yerleşik imagegen becerisiyle toplu üretim yapın.",
-      "Araç etkinlikleri konuşma genişliğini izler ve uzun etkinlik etiketleri düzgünce sığdırılır.",
-      "Oturum değiştirdikten sonra yapıştırma tamamlansa bile yapıştırılan dosya ekleri korunur.",
-      "Sağlayıcıları düzenlerken seçili varsayılan model korunur; model kaldırılırsa güvenli bir yedek kullanılır.",
-      "İç içe düşünme ve araç etkinliği bölümlerini okumak, gezinmek ve kurtarmak kolaylaşır.",
-      "Composer düzenleri, akıl yürütme kontrolleri ve çalışma alanı tema tutarlılığı iyileştirilir.",
-      "Ayarlara, ağ ve geçici sağlayıcı hatalarını başarılı olana kadar yeniden deneyen isteğe bağlı bir anahtar ekler.",
-    ],
-  },
-
-  {
-    "version": "0.15.1",
-    "date": "2026-09-19",
-    "highlights": [
-      "Ayarlar'dan SSH ile uzak ana bilgisayarları eşleyin ve yönetin; parola girişi, kurulum ve açılışta yeniden bağlanma dahildir.",
-      "Yapay zeka ayar kartından istem geliştirmeyi (şablon, model ve akıl yürütme) yapılandırın.",
-      "Seçili modelleri sürükleyerek yeniden sıralayın; sağlayıcıya düşünme düzeyi göndermeyen bir atlama düzeyi ekleyin.",
-      "Kenar çubuğunu boyutlandırın veya daraltın; çift tıklayınca kenar çubuğu veya panel varsayılan genişliğine döner.",
-      "Projeleri gruplu bir arşiv ve denetçiyle yönetin; her türü kendi çalışma tezgahından içe aktarın.",
-      "Diğer ajan araçlarındaki skill ve MCP sunucularını tarayıp toplu içe aktarın.",
-      "macOS menü çubuğu eklentisi yerel bir durum öğesinde kalır; tepside sınırlı oturum kısayolları vardır.",
-      "Resmi macOS derlemeleri imzalanır, noter onaylanır ve uygulama içi güncellemeyi destekler.",
-      "İmzalı macOS DMG iki simgeyle kurulur; imzasız açılış notu yalnızca ZIP'te kalır.",
-      "Review yalnızca siz isteyince açılır; oturum açınca en son tura iner.",
-      "Takılı bir gönderim kuyruğunu kurtarır ve sahte steering kökenlerini yok sayar.",
-    ],
-  },
-
-  {
-    "version": "0.15.0",
-    "date": "2026-09-17",
-    "highlights": [
-      "Kuyruktaki istemleri yeniden sıralayın, düzenleyin, kilitleyin ve bir sonrakinin hemen çalışması için öne alın.",
-      "Proje oluşturma iletişim kutusundan bir git deposunu klonlayın.",
-      "Sohbet sütunu içinde konuşma içerik genişliğini sürükleyin.",
-      "Skill pazarı kurulum hataları ölü bir düğme yerine yeniden deneme gösterir.",
-      "Eklentinin bildirdiği sağlayıcılar yerel satır olarak görünür; API anahtarları ve güvenilir özel ajanlar dahildir.",
-      "Eklentiler gerçek zamanlı bağlantı, genel kısayol, yetenek izinleri ve yedekli resmi kanal kullanabilir.",
-      "Eklentiler tema değişkenleri, tema varlıkları ve saydam yüzen bir widget kaydedebilir.",
-      "Bir projeyi sahip olduğu oturumlarla birlikte, ikinci bir onaydan sonra siler.",
-      "Alt ajanlara sıralı bir model geri dönüş listesi verir; bitmiş bir alt ajan aynı Task kartından sürdürülür; gelen yerleşikler Ayarlar'dan açılıp kapatılır.",
-      "Araç satırlarındaki dosya başvuruları doğru görünümü açar; ayrıntıları açmak okuma konumunu korur; Plan vurgusu opaktır.",
-    ],
-  },
-
-  {
-    "version": "0.14.9",
-    "date": "2026-09-17",
-    "highlights": [
-      "Kuyruktaki istemleri yeniden sıralayın, düzenleyin, kilitleyin ve bir sonrakinin hemen çalışması için öne alın.",
-      "Proje oluşturma iletişim kutusundan bir git deposunu klonlayın.",
-      "Sohbet sütunu içinde konuşma içerik genişliğini sürükleyin.",
-      "Skill pazarı kurulum hataları ölü bir düğme yerine yeniden deneme gösterir.",
-      "Eklentinin bildirdiği sağlayıcılar yerel satır olarak görünür; API anahtarları ve güvenilir özel ajanlar dahildir.",
-      "Eklentiler gerçek zamanlı bağlantı, genel kısayol, yetenek izinleri ve yedekli resmi kanal kullanabilir.",
-      "Eklentiler tema değişkenleri, tema varlıkları ve saydam yüzen bir widget kaydedebilir.",
-      "Bir projeyi sahip olduğu oturumlarla birlikte, ikinci bir onaydan sonra siler.",
-      "Alt ajanlara sıralı bir model geri dönüş listesi verir; gelen yerleşik ajanlar Ayarlar'dan açılıp kapatılır.",
-      "Araç satırlarındaki dosya başvuruları doğru görünümü açar; ayrıntıları açmak okuma konumunu korur; Plan vurgusu opaktır.",
-    ],
-  },
-
-
-  {
-    "version": "0.14.8",
-    "date": "2026-09-14",
-    "highlights": [
-      "MCP pazarında resmi kayıttan ve kullanıcı tanımlı kaynaklardan MCP sunucularını tarayıp yükleyin.",
-      "Skill pazarında seçilmiş ve GitHub kaynaklarından skill tarayıp yükleyin; kurulum herkese açık HTTPS ve boyut sınırlarıyla yapılır.",
-      "Dosya görünümünü birlikte gelen File Manager eklentisi olarak sunar; paketlenmiş bir eklenti pazar güncellemesini koruyabilir.",
-      "Çalışma paneli önizleme modu ekler, sohbet sütununun tabanını 450px'e yükseltir ve üç sütunlu düzende MainChat'i öne alır.",
-      "Bağımsız oturumları keşfeder, host'a ait işbirliği iletileri gönderir ve işbirliği bağlantılarını açar.",
-      "Alt ajanlar ebeveyn araçlarını devralabilir, Ayarlar'da birlikte gelen yerleşikler listelenir, bir UI tasarımcı yerleşiği eklenir ve oluşturma durumu ayrı gösterilir.",
-      "Alt+Enter ile süren turu yönlendirin ve yapıştırılan metin dosyalarını düzenlemek için bestecide genişletin.",
-      "Proje oluşturmayı yeniden tasarlar: çok klasörlü çalışma alanları, projeye ait bellek ve görsel bellek düzenleyici.",
-      "İçe aktarılan pi paketlerinin bildirdiği bağımlılıkları ve skill'leri host güvenlik sınırının ardında yükler.",
-      "Model bağlam penceresi ve en yüksek çıktı için hazır yongalar ekler, araç yongalarında Read satır aralıklarını gösterir ve başarısız sıkıştırmadan sonra bağlamı kurtarılabilir tutar.",
-    ],
-  },
-  {
-    "version": "0.14.6",
-    "date": "2026-09-10",
-    "highlights": [
-      "Bu sürüm yerel verilerinizden eskiyse veya Apple Silicon üzerinde Intel sürümü çalışıyorsa sessizce başarısız olmak yerine uyarır.",
-      "Yerel bir MCP masaüstü denetim düzlemi ekler; incelenmiş eklentiler masaüstünü yalnızca yerel onaydan sonra yönetir.",
-      "Alt ajan ön ayar şablonları, sağlayıcıya bağlı model seçici ve yetkilendirme kartlarında etkin düşünme düzeyi ekler.",
-      "Yapılandırılmış modellere takma ad verin, model kimliklerini kopyalayın ve modelin kendi API biçimini sağlayıcı geneli stile tercih edin.",
-      "Edit aracındaki metin eşlemeyi satıra bağlı işlemlerle değiştirir ve hataya özel kurtarma rehberliği sunar.",
-      "Sağlayıcıları görünür geri sayımla on kereye kadar yeniden dener ve yalnızca ilerleme içeren otonom turları kurtarır.",
-      "macOS yükleyicisini yeniden tasarlar, Windows taşınabilir exe ve Linux RPM paketi ekler, GNOME tepsi ve dock simgelerini geri getirir.",
-      "Kenar çubuğundan konuşma kimliklerini kopyalayın ve oturum klasörlerini açın; yalnızca simgeli eylemlerde yerelleştirilmiş ipuçları.",
-      "Etkinlik satırında canlı süreç durumu ve sessiz aralıkları gösterir, görünüm alanına sabit bir çalışma paneli anahtarı ekler.",
-      "Çalışma alanı yok sayma kurallarını uygular, kopuk sembolik bağlantıları çözer ve her yönlendirmede eklenti ağ çıkışını yeniden denetler.",
-      "Proxy atlama kurallarına uyar, yapıştırılan özel kullanım glifleri korur ve dosya önizlemelerini düzenleyiciyi engellemeden yükler.",
-    ],
-  },
-  {
     "version": "0.14.5",
     "date": "2026-09-09",
     "highlights": [
@@ -176,6 +59,7 @@ export const trEntries: ChangelogEntry[] = [
     "version": "0.13.11",
     "date": "2026-09-07",
     "highlights": [
+      "İkinci bir modelin mevcut konuşmayı incelemesini sağlamak için birlikte verilen Danışman eklentisini etkinleştirin.",
       "Eklentilerin modelleri listelemesine, oturum içi oturum bağlamını okumasına ve kimlik bilgileri almadan ana bilgisayarın sahip olduğu tamamlamaları talep etmesine izin verin."
     ]
   },

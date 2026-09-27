@@ -1,19 +1,12 @@
 # ADR 0105: Ship Files as a bundled plugin; keep Review in the host
 
-- Status: Superseded by [ADR 0241](0241-vendored-updatable-file-view-plugin.md)
+- Status: Accepted (amended 2026-08-19; terminal clause superseded by ADR 0108)
 - Date: 2026-08-19
 - Deciders: PI-Desktop core
 - Related: [ADR 0019](0019-work-panel-subsystems.md) ·
   [ADR 0104](0104-plugin-contributed-work-panel-views.md) ·
   [ADR 0108](0108-remove-built-in-interactive-terminal.md) ·
   [07-plugins/13-plugin-permissions-matrix](../spec/07-plugins/13-plugin-permissions-matrix.md)
-
-> Superseded by ADR 0241. Files is no longer a bundled first-party plugin: the
-> work panel's file view is now a vendored, updatable third-party plugin
-> (`pi.file-manager`). The reasoning below still holds and is what the
-> replacement inherits — the view is an ordinary plugin on the public
-> `contributes.views` channel, and Review stays with the transcript. The
-> terminal clause was already superseded by ADR 0108.
 
 ## Context
 
@@ -30,9 +23,8 @@ has a different ownership boundary.
 2. The bundled plugin is enabled by default, cannot be uninstalled, and can be
    disabled by the user. Its filesystem access uses the public permission-gated
    read APIs.
-3. Only the Files *tool* migrates. Transcript-owned `file:<path>` resources
-   stay as they are. Review remains the user-opened surface over the same
-   transcript-owned evidence and is never opened by a tool result (D451).
+3. Only the Files *tool* migrates. Transcript-owned `file:<path>` resources and
+   Review artifacts remain host-rendered and message/session scoped.
 4. Browser chrome and agent CDP ship as bundled plugin `pi.browser` (ADR 0170).
    The guest `WebContentsView` and debugger remain host window machinery,
    reached only through the public `pi.browser.*` API.
@@ -44,9 +36,8 @@ has a different ownership boundary.
 
 - The shipped plugin is a real consumer of the public contributed-view and
   filesystem APIs; gaps in those APIs are caught by a first-party feature.
-- The launcher lists the Review row plus Browser and in-scope plugin views.
-  File resources are opened by conversation artifacts; Review opens only on
-  explicit user action (D451).
+- The launcher lists Browser and active plugin views. Review and file resources
+  are opened by conversation artifacts.
 - The plugin trust boundary stays unchanged: no plugin permission can spawn an
   interactive shell.
 

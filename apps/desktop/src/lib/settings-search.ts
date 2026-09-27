@@ -16,9 +16,6 @@ export type SettingsTabId =
   | "subagents"
   | "import"
   | "projects"
-  | "sync"
-  | "remoteHosts"
-  | "voice"
   | "about";
 
 export type SettingsNavGroupId =
@@ -44,15 +41,6 @@ export type SettingsNavEntry = {
   group: SettingsNavGroupId;
   /** i18n keys of the rows inside the tab; search matches their translations. */
   keywordKeys: string[];
-  /**
-   * Destination only exists while `AppSettings.developerMode` is on; the
-   * rail, the page, and settings search drop it together.
-   */
-  developerOnly?: true;
-  /** Surface is omitted from packaged builds; development builds retain it. */
-  developmentOnly?: true;
-  /** Localized Experimental badge shown beside the rail row and page title. */
-  experimentalBadgeKey?: string;
 };
 
 export const SETTINGS_NAV: SettingsNavEntry[] = [
@@ -71,20 +59,12 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.closeBehaviorTitle",
       "settings.closeBehaviorTray",
       "settings.closeBehaviorQuit",
-      "settings.power",
-      "settings.keepAwakeWhileRunning",
-      "settings.keepAwakeWhileRunningDesc",
       "settings.network",
       "settings.proxy",
       "settings.proxySystem",
       "settings.proxyDirect",
       "settings.proxyCustom",
       "settings.proxyUrl",
-      "settings.networkRelaxedMode",
-      "settings.networkRelaxedModeDesc",
-      "settings.networkRelaxedModeStrictDesc",
-      "settings.preventScreenSleep",
-      "settings.preventScreenSleepDesc",
     ],
   },
   {
@@ -99,48 +79,11 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAcceptEdits",
       "settings.permissionModeAuto",
       "settings.defaultsTitle",
-      "settings.imageModel",
       "settings.mode",
       "settings.commandShell",
       "settings.linkOpenTarget",
       "settings.enterToSend",
-      "settings.infiniteProviderRetry",
-      "settings.infiniteProviderRetryDesc",
-      "settings.smoothStreaming",
-      "settings.smoothStreamingDesc",
-      "settings.thinkingDisplayMode",
-      "settings.thinkingDisplayDetailed",
-      "settings.thinkingDisplayCompact",
-      "settings.contextUsageDisplay",
-      "settings.contextUsageDisplayRemaining",
-      "settings.contextUsageDisplayUsed",
-      "settings.promptEnhancementTitle",
-      "settings.promptEnhancementDesc",
-      "settings.promptEnhancementCustomTemplate",
-      "settings.promptEnhancementEdit",
-      "settings.promptEnhancementUserTemplate",
-      "settings.promptEnhancementModelTitle",
-      "settings.promptEnhancementModel",
-      "settings.promptEnhancementModelFollow",
-      "settings.promptEnhancementThinking",
       "settings.largePasteThreshold",
-    ],
-  },
-  {
-    id: "voice",
-    labelKey: "settings.nav.voice",
-    titleKey: "settings.voice",
-    group: "preferences",
-    developerOnly: true,
-    developmentOnly: true,
-    experimentalBadgeKey: "settings.voiceExperimental",
-    keywordKeys: [
-      "settings.voiceEnable",
-      "settings.voiceMicrophone",
-      "settings.voiceLanguages",
-      "settings.voiceChineseVariant",
-      "settings.voiceModel",
-      "settings.voiceLocalModels",
     ],
   },
   {
@@ -178,9 +121,6 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.apiKey",
       "settings.baseUrl",
       "settings.apiStyle",
-      // Subscription accounts share the service list (D625).
-      "settings.vendorAccounts",
-      "settings.vendorSubscription",
     ],
   },
   {
@@ -189,10 +129,12 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.skills",
     group: "agent",
     keywordKeys: [
+      "settings.skillsDescription",
       "settings.skillsGlobalPath",
       "settings.skillsProjectPath",
       "settings.globalScopeDescription",
       "settings.projectScopeDescription",
+      "settings.capabilityPriority",
       "settings.importSkill",
       "settings.capabilityFilterGlobal",
       "settings.capabilityFilterProject",
@@ -208,6 +150,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.mcp",
     group: "agent",
     keywordKeys: [
+      "settings.mcpDescription",
       "settings.mcpGlobalPath",
       "settings.mcpProjectPath",
       "settings.globalScopeDescription",
@@ -227,6 +170,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.subagents",
     group: "agent",
     keywordKeys: [
+      "settings.subagentsDescription",
       "settings.subagentsGlobalPath",
       "settings.subagentsOnlyGlobal",
       "settings.globalScopeDescription",
@@ -234,13 +178,6 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "extensions.subagents.edit",
       "extensions.subagents.remove",
       "extensions.subagents.reveal",
-      "extensions.subagents.copy",
-      "extensions.subagents.sourceBuiltin",
-      "extensions.subagents.presetExplorerName",
-      "extensions.subagents.presetReviewerName",
-      "extensions.subagents.presetTestRunnerName",
-      "extensions.subagents.presetFixerName",
-      "extensions.subagents.presetUiDesignerName",
       "extensions.subagents.tools",
     ],
   },
@@ -269,48 +206,6 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.searchPlaceholder",
       "project.archive",
       "project.restore",
-      "project.delete",
-    ],
-  },
-  {
-    id: "sync",
-    labelKey: "settings.nav.sync",
-    titleKey: "settings.configSync.title",
-    group: "system",
-    developerOnly: true,
-    developmentOnly: true,
-    experimentalBadgeKey: "settings.configSync.experimental",
-    keywordKeys: [
-      "settings.configSync.connectionTitle",
-      "settings.configSync.endpoint",
-      "settings.configSync.statusTitle",
-      "settings.configSync.categoriesTitle",
-      "settings.configSync.approvalsTitle",
-      "settings.configSync.syncNow",
-    ],
-  },
-  {
-    id: "remoteHosts",
-    labelKey: "settings.nav.remoteHosts",
-    titleKey: "settings.remoteHosts.title",
-    group: "system",
-    developerOnly: true,
-    developmentOnly: true,
-    experimentalBadgeKey: "settings.remoteHosts.experimental",
-    keywordKeys: [
-      "settings.remoteHosts.title",
-      "settings.remoteHosts.addTitle",
-      "settings.remoteHosts.addSsh",
-      "settings.remoteHosts.addPair",
-      "settings.remoteHosts.pair",
-      "settings.remoteHosts.fieldUrl",
-      "settings.remoteHosts.fieldPairingToken",
-      "settings.remoteHosts.sshHost",
-      "settings.remoteHosts.sshAuthMode",
-      "settings.remoteHosts.sshPassword",
-      "settings.remoteHosts.statusOnline",
-      "settings.remoteHosts.statusOffline",
-      "settings.remoteHosts.experimental",
     ],
   },
   {
@@ -323,39 +218,12 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.logs",
       "settings.feedback",
       "updates.title",
-      "updates.preferenceTitle",
       "settings.developer",
       "settings.developerMode",
       "settings.devTools",
     ],
   },
 ];
-
-/**
- * Destinations the current mode offers. Unavailable destinations are omitted
- * from navigation and search rather than disabled.
- */
-export function visibleSettingsNav(
-  developerMode: boolean,
-  includeDevelopmentOnly = true,
-): SettingsNavEntry[] {
-  return SETTINGS_NAV.filter(
-    (entry) =>
-      (entry.developerOnly !== true || developerMode) &&
-      (entry.developmentOnly !== true || includeDevelopmentOnly),
-  );
-}
-
-/** True when a stale selection points to a destination the current mode hides. */
-export function isSettingsDestinationHidden(
-  tab: SettingsTabId,
-  developerMode: boolean,
-  includeDevelopmentOnly = true,
-): boolean {
-  return !visibleSettingsNav(developerMode, includeDevelopmentOnly).some(
-    (entry) => entry.id === tab,
-  );
-}
 
 export type SettingsSearchHit = {
   tab: SettingsTabId;
@@ -364,27 +232,15 @@ export type SettingsSearchHit = {
   rowKey: string | null;
 };
 
-export type SettingsSearchOptions = {
-  limit?: number;
-  /** Search mirrors the rail, so developer-only tabs stay out of results. */
-  developerMode?: boolean;
-  /** Packaged builds omit experimental surfaces, even with developer mode on. */
-  includeDevelopmentOnly?: boolean;
-};
-
 export function searchSettings(
   query: string,
   t: (key: string) => string,
-  {
-    limit = 8,
-    developerMode = false,
-    includeDevelopmentOnly = true,
-  }: SettingsSearchOptions = {},
+  limit = 8,
 ): SettingsSearchHit[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const hits: SettingsSearchHit[] = [];
-  for (const entry of visibleSettingsNav(developerMode, includeDevelopmentOnly)) {
+  for (const entry of SETTINGS_NAV) {
     if (t(entry.labelKey).toLowerCase().includes(q)) {
       hits.push({ tab: entry.id, tabLabelKey: entry.labelKey, rowKey: null });
     }

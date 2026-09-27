@@ -6,10 +6,8 @@ import {
   calculateTokenRate,
   calculateContextUsage,
   contextOccupancyTokens,
-  contextUsageView,
   estimateResponseOutputTokens,
   estimateToolTokenUsage,
-  resolveContextUsageDisplay,
   resolveContextWindow,
   toolTokenUsage,
   usageTokenTotal,
@@ -31,31 +29,6 @@ test("context usage exposes the remaining ring percentage", () => {
   assert.equal(context.usedPercent, 78);
   assert.equal(context.remainingPercent, 22);
   assert.equal(context.remainingRatio, 28 / 128);
-});
-
-test("context usage display preference picks the ring's leading figure", () => {
-  const context = calculateContextUsage(
-    { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
-    128,
-  );
-
-  const remaining = contextUsageView(context, "remaining");
-  assert.equal(remaining.percent, 22);
-  assert.equal(remaining.tokens, 28);
-  assert.equal(remaining.ratio, 28 / 128);
-
-  const used = contextUsageView(context, "used");
-  assert.equal(used.percent, 78);
-  assert.equal(used.tokens, 100);
-  assert.equal(used.ratio, 100 / 128);
-});
-
-test("an absent or unrecognised display value keeps the remaining default", () => {
-  assert.equal(resolveContextUsageDisplay(undefined), "remaining");
-  assert.equal(resolveContextUsageDisplay("used"), "used");
-  assert.equal(resolveContextUsageDisplay("remaining"), "remaining");
-  assert.equal(resolveContextUsageDisplay("bogus"), "remaining");
-  assert.equal(resolveContextUsageDisplay(null), "remaining");
 });
 
 test("context window prefers the selected model catalog over provider fallback", () => {
@@ -87,7 +60,6 @@ test("context window prefers the selected model catalog over provider fallback",
         {
           id: "gpt-5.6-luna",
           contextWindow: 128_000,
-          contextWindowSource: "catalog",
           maxTokens: 8_192,
           thinkingLevels: [],
         },
@@ -105,57 +77,8 @@ test("context window prefers the selected model catalog over provider fallback",
   );
   assert.equal(
     resolveContextWindow("provider", "unknown-model", providerModels, providers),
-    128_000,
+    64_000,
   );
-});
-
-test("context window does not use metadata for a different full wire id", () => {
-  const providerModels = {
-    provider: [{
-      modelId: "model",
-      displayName: "Bare model",
-      providerId: "provider",
-      contextWindow: 512_000,
-      capabilities: ["text"],
-      source: "discovered",
-    }],
-  };
-  const providers = [{
-    id: "provider",
-    models: [{ id: "tenant/model", thinkingLevels: [] }],
-  }];
-
-  assert.equal(
-    resolveContextWindow("provider", "tenant/model", providerModels, providers),
-    128_000,
-  );
-  assert.equal(
-    resolveContextWindow("provider", "model", providerModels, providers),
-    512_000,
-  );
-});
-
-test("context window matches full wire ids when provider is not selected", () => {
-  const providerModels = {
-    first: [{
-      modelId: "model",
-      displayName: "Bare model",
-      providerId: "first",
-      contextWindow: 512_000,
-      capabilities: ["text"],
-      source: "discovered",
-    }],
-    second: [{
-      modelId: "tenant/model",
-      displayName: "Routed model",
-      providerId: "second",
-      contextWindow: 256_000,
-      capabilities: ["text"],
-      source: "discovered",
-    }],
-  };
-
-  assert.equal(resolveContextWindow(undefined, "tenant/model", providerModels, []), 256_000);
 });
 
 test("context window uses the selected binding before the model list loads", () => {
@@ -178,22 +101,6 @@ test("context window uses the selected binding before the model list loads", () 
     resolveContextWindow("provider", "gpt-5.6-luna", {}, providers),
     1_050_000,
   );
-});
-
-test("context window does not borrow a sibling route's configured binding", () => {
-  const providers = [{
-    id: "provider",
-    contextWindow: 64_000,
-    models: [
-      { id: "model", contextWindow: 16_000, contextWindowSource: "user" },
-      { id: " PROXY/MODEL ", contextWindow: 32_000, contextWindowSource: "user" },
-    ],
-  }];
-  assert.equal(resolveContextWindow("provider", "proxy/model", {}, providers), 32_000);
-  assert.equal(resolveContextWindow("provider", "model", {}, providers), 16_000);
-  providers[0].models = [providers[0].models[0]];
-  assert.equal(resolveContextWindow("provider", "proxy/model", {}, providers), 128_000);
-  assert.equal(resolveContextWindow("other-provider", "model", {}, providers), 128_000);
 });
 
 test("context usage falls back to input and output when total is absent", () => {

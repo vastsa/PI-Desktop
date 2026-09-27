@@ -5,7 +5,7 @@
  * session). The sheet lists the same configured, runnable models as the
  * Composer rather than asking the user to type that string.
  */
-import { modelWireIdsEqual as sameComposerModelId, type ProviderPublic } from "@pi-desktop/shared";
+import { modelIdsMatch, type ProviderPublic } from "@pi-desktop/shared";
 import { defaultModelOptions } from "./default-model";
 
 export type SubagentModelChoice = {
@@ -54,19 +54,7 @@ function providerAlias(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-/**
- * Split a pin into its provider half and model half, or null when it is not a
- * pin at all.
- *
- * Only the slash is structural. The provider half is matched by a normalized
- * alias at both ends of the app (`findProvider` in `agent-runtime` and
- * `providerAlias` here), so a display name is a valid spelling — and a custom
- * endpoint's display name may contain spaces. The editor validates drafts with
- * this same function so the picker can never offer an option it would reject.
- */
-export function subagentModelPinParts(
-  pin: string,
-): { providerPart: string; modelId: string } | null {
+function pinParts(pin: string): { providerPart: string; modelId: string } | null {
   const trimmed = pin.trim();
   const slash = trimmed.indexOf("/");
   if (slash < 1 || slash === trimmed.length - 1) return null;
@@ -77,13 +65,13 @@ export function subagentModelPinParts(
 }
 
 export function pinMatchesChoice(pin: string, choice: SubagentModelChoice): boolean {
-  const parts = subagentModelPinParts(pin);
+  const parts = pinParts(pin);
   if (!parts) return false;
-  if (!sameComposerModelId(parts.modelId, choice.modelId)) return false;
+  if (!modelIdsMatch(parts.modelId, choice.modelId)) return false;
   if (parts.providerPart === choice.providerId) return true;
   const alias = providerAlias(parts.providerPart);
   if (!alias) return false;
-  const canonicalProviderPart = subagentModelPinParts(choice.value)?.providerPart;
+  const canonicalProviderPart = pinParts(choice.value)?.providerPart;
   if (canonicalProviderPart && providerAlias(canonicalProviderPart) === alias) {
     return true;
   }
@@ -134,6 +122,17 @@ export function subagentModelChoices(
   for (const { provider, modelId } of defaultModelOptions(
     runnableProviders,
   )) {
+    // Delegation is an explicit per-binding opt-in. The Composer can use every
+    // runnable model, but a subagent must not be able to select a binding that
+    // the user has not exposed to AI delegation in Models.
+    if (
+      !provider.models?.some(
+        (binding) =>
+          modelIdsMatch(binding.id, modelId) && binding.availableForSubagents === true,
+      )
+    ) {
+      continue;
+    }
     const value = `${uniqueProviderPart(provider, runnableProviders)}/${modelId}`;
     if (seen.has(value.toLowerCase())) continue;
     seen.add(value.toLowerCase());

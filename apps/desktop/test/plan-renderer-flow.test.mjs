@@ -1,8 +1,3 @@
-import {
-  readStoreModuleSync,
-  readStoreSourceSync,
-  readComposerSourceSync,
-} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -13,16 +8,16 @@ const readDesktop = (relativePath) =>
 
 const [store, planState, approvalBar, composer, packageJson] =
   await Promise.all([
-    readStoreSourceSync(),
+    readDesktop("src/stores/app-store.ts"),
     readDesktop("src/lib/plan-mode-state.ts"),
     readDesktop("src/components/PlanApprovalBar.tsx"),
-    readComposerSourceSync(),
+    readDesktop("src/components/Composer.tsx"),
     readDesktop("package.json"),
   ]);
-const eventsSource = readStoreModuleSync("slices/events-slice.ts");
 
 test("rejection clears only the live gate and a later proposal replaces the checkpoint", () => {
-  const hostPlanBlock = eventsSource.slice(eventsSource.indexOf("handlePlansChanged: (event) =>"));
+  const hostPlanBlock =
+    store.match(/handlePlansChanged: \(event\) =>[\s\S]*?\n  handleAgentEvent:/)?.[0] ?? "";
   assert.match(hostPlanBlock, /mergePlanCheckpoint/);
   assert.match(hostPlanBlock, /planCheckpoints: checkpoint/);
   assert.match(hostPlanBlock, /const pendingPlans = activeProposal/);
@@ -56,8 +51,8 @@ test("pending input is retained but every composer/model mutation control is gat
   assert.match(composer, /aria-readonly=\{inputBlocked\}/);
   assert.match(composer, /enabled: !inputBlocked/);
   assert.match(composer, /disabled=\{controlsBlocked\}/);
-  assert.match(composer, /const controlsBlocked = approvalPending \|\| nativeSession;/);
-  assert.match(composer, /const sendBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composer, /const controlsBlocked = approvalPending;/);
+  assert.match(composer, /const sendBlocked = approvalPending \|\| pasting;/);
   assert.match(store, /pendingPlans\[sessionId\]\?\.status === "pending"/);
   assert.match(store, /pendingPlans\[resolution\.sessionId\]/);
 });

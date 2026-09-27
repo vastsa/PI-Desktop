@@ -1,9 +1,7 @@
 import {
   effectiveContextWindow,
-  modelWireIdsEqual,
-  type ContextUsageDisplay,
+  modelIdsMatch,
   type MessageUsage,
-  type ModelBinding,
   type ModelInfo,
   type ProviderPublic,
   type ToolTokenUsage,
@@ -56,27 +54,16 @@ function providerContextWindow(provider: ProviderPublic | undefined): number | u
   return value > 0 ? value : undefined;
 }
 
-/**
- * The saved binding for a model, reduced to the fields the window resolver
- * needs. The provenance travels with the value, so a catalog snapshot follows
- * models.dev while a hand-edited number stays the user's.
- */
 function bindingContextWindow(
   provider: ProviderPublic | undefined,
   modelId: string | undefined,
-): Pick<ModelBinding, "contextWindow" | "contextWindowSource"> | undefined {
+): number | undefined {
   if (!provider || !modelId) return undefined;
   const binding = provider.models?.find((candidate) =>
-    candidate.id.trim().toLowerCase() === modelId.trim().toLowerCase(),
+    modelIdsMatch(candidate.id, modelId),
   );
-  if (!binding) return undefined;
-  const value = positiveTokenCount(binding.contextWindow);
-  return value > 0
-    ? {
-        contextWindow: value,
-        contextWindowSource: binding.contextWindowSource,
-      }
-    : undefined;
+  const value = positiveTokenCount(binding?.contextWindow);
+  return value > 0 ? value : undefined;
 }
 
 export function resolveContextWindow(
@@ -88,24 +75,19 @@ export function resolveContextWindow(
   const provider = providers.find((candidate) => candidate.id === providerId);
   const catalogModel = modelId
     ? providerId
-      ? providerModels[providerId]?.find((model) => modelWireIdsEqual(model.modelId, modelId))
+      ? providerModels[providerId]?.find((model) => modelIdsMatch(model.modelId, modelId))
       : Object.values(providerModels)
           .flat()
-          .find((model) => modelWireIdsEqual(model.modelId, modelId))
+          .find((model) => modelIdsMatch(model.modelId, modelId))
     : undefined;
   const catalogWindow = modelContextWindow(catalogModel);
-  const configured = bindingContextWindow(provider, modelId);
   const configuredWindow = effectiveContextWindow(
     catalogWindow,
-    configured?.contextWindow,
-    configured?.contextWindowSource,
+    bindingContextWindow(provider, modelId),
   );
   if (configuredWindow) return configuredWindow;
 
-  // An enriched provider window may describe a different configured model.
-  const providerWindow = !modelId || !provider?.models?.length
-    ? providerContextWindow(provider)
-    : undefined;
+  const providerWindow = providerContextWindow(provider);
   return providerWindow ?? DEFAULT_CONTEXT_WINDOW;
 }
 
@@ -136,49 +118,6 @@ export function calculateContextUsage(
     usedPercent,
     remainingPercent: 100 - usedPercent,
   };
-}
-
-/**
- * Which figure the composer ring and its summary lead with (D398). Absent or
- * unrecognised values keep the remaining-capacity default, so a persisted
- * typo never blanks the trigger.
- */
-export function resolveContextUsageDisplay(value: unknown): ContextUsageDisplay {
-  return value === "used" ? "used" : "remaining";
-}
-
-export type ContextUsageView = {
-  display: ContextUsageDisplay;
-  /** Percentage the trigger, heading, and popover lead with. */
-  percent: number;
-  /** Token count matching `percent`. */
-  tokens: number;
-  /** Ring arc fill, 0–1, matching `percent`. */
-  ratio: number;
-};
-
-/**
- * Pick the leading percentage/token pair for the configured display mode.
- * Capacity colors stay on `ContextUsage.remainingPercent` in both modes, so
- * "used 78%" still warns when only 22% is left.
- */
-export function contextUsageView(
-  usage: ContextUsage,
-  display: ContextUsageDisplay,
-): ContextUsageView {
-  return display === "used"
-    ? {
-        display,
-        percent: usage.usedPercent,
-        tokens: usage.usedTokens,
-        ratio: usage.usedRatio,
-      }
-    : {
-        display,
-        percent: usage.remainingPercent,
-        tokens: usage.remainingTokens,
-        ratio: usage.remainingRatio,
-      };
 }
 
 function serializedLength(value: unknown): number {

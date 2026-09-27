@@ -47,9 +47,8 @@ export function createFrameBatcher<T>(
   };
 
   return {
-    enqueue(key: string, value: T, merge?: (previous: T, next: T) => T) {
-      const existing = pending.get(key);
-      pending.set(key, existing && merge ? merge(existing, value) : value);
+    enqueue(key: string, value: T) {
+      pending.set(key, value);
       schedule();
     },
     flushNow() {

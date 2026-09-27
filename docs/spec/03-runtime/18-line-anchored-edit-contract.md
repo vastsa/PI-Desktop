@@ -465,7 +465,7 @@ occurrence, because repeating one of those means the model is guessing.
 |---|---|
 | `EDIT_TAG_MISMATCH`, then `EDIT_LINES_UNSEEN` | Neither counts: two different honest failures, each with its own grace |
 | `EDIT_TAG_MISMATCH` twice | The second counts as attempt 1 |
-| `EDIT_PARSE_FAILED` three times | Attempt 3 — the turn stops |
+| `EDIT_PARSE_FAILED` twice | Attempt 2 — the turn stops |
 | A failure, then a successful `Edit`, then a failure | Attempt 1 — a write that landed clears that path's history |
 
 Counting a grace is per code, not per call, so a stale tag followed by unseen
@@ -475,14 +475,10 @@ When the count does reach the limit the tool result carries `terminate: true`
 and the agent loop stops after that batch. Stopping there must not leave a turn
 that merely ends: the runtime finalizes the assistant row with
 `MUTATION_RETRY_BUDGET_EXHAUSTED` — retriable, `details.kind` of `edit` or
-`patch-command`, plus the last error code and a class-specific `details.recovery`
-hint — and emits a matching error event, so the user sees that the agent stopped
-on purpose and keeps the continue affordance. For `EDIT_PARSE_FAILED`, the hint
-corrects the operation syntax without asking for another `Read`: a `PUT` with
-body rows must end its header with `:`, for example `PUT 48.=48:`. Stale-tag and
-unseen-line failures continue to direct the model to re-read or use the complete
-reveal. A terminated turn with no message is indistinguishable from a model that
-chose to say nothing.
+`patch-command`, plus the last error code — and emits a matching error event, so
+the user sees that the agent stopped on purpose and keeps the continue
+affordance. A terminated turn with no message is indistinguishable from a model
+that chose to say nothing.
 
 ## 10. Drift recovery
 

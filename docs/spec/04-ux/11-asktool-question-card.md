@@ -5,13 +5,10 @@ dialog. It is mounted in the same dock area as the Plan and Goal approval card,
 immediately above the composer input, so a paused question stays available at
 the active decision point instead of moving into transcript history.
 
-It rides the composer plate — `--ds-bg-composer` with `--ds-shadow-composer`,
-like the Plan and Goal approval bar — rather than the in-flow `--ds-tile` wash,
-and its option rows and custom input are inlaid `--ds-tile-deep` fills on that
-plate (D297, D435). The message width, typography, and button tokens still come
-from the conversation so a paused question remains part of it. The card shell
-stays slim — 14 px × 16 px padding, matching the permission card's compact
-footprint, with no accent rail (D297). The question text uses the compact card
+It uses the existing message width, border, background, and button tokens so
+that a paused question remains visually part of the conversation. The card
+shell stays slim — 14 px × 16 px padding and a 2 px accent rail, matching the
+permission card's compact footprint. The question text uses the compact card
 body size (`--text-md`, 13 px) at medium weight — the same scale as the
 permission card's title and prompt in the same dock area — so it reads as the
 card's primary focal point without competing with the surrounding transcript.
@@ -70,11 +67,3 @@ contains scroll chaining, and preserves keyboard scroll padding. The question
 header, question text, custom-answer input, and Skip / Next / Submit actions
 remain visible while the user scrolls through the options. This behavior also
 applies on narrow screens; the card does not rely on page-level scrolling.
-
-## Request transitions
-
-The question index, draft answers, and submission state belong to the displayed
-request. Switching chats or advancing the pending queue mounts a fresh card at
-question one with empty answers and enabled actions. State from the previous
-request must not leak into the destination request. Unsubmitted card drafts are
-local to the mounted card and are reset when it is replaced.

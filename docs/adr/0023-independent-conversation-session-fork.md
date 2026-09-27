@@ -28,14 +28,7 @@ pass startup handshake and fail only when the new command is invoked.
   `NOT_FOUND`.
 - The child inherits project, provider, model, mode, thinking, and permission
   mode. It does not inherit turns, regenerate revisions, notifications,
-  artifacts, session grants, arbitrary scratch outputs, pin state, or live
-  runtime state.
-- Referenced existing files under the source session's `scratch/<id>/pasted/`
-  directory are copied into the child's own input directory. Canonical message
-  and retained compaction references are rewritten before indexing. This keeps
-  pasted/imported inputs usable after source deletion without granting access
-  to another session's scratch directory. Already-expired inputs remain missing;
-  unrelated scratch outputs and unreferenced files are not inherited.
+  artifacts, session grants, scratch data, pin state, or live runtime state.
 - No parent/child lineage is stored. This is an independent conversation copy,
   not a message tree and not a replacement for linear regenerate history.
 - Assistant response Fork uses the bounded snapshot directly. Assistant Edit
@@ -43,18 +36,11 @@ pass startup handshake and fail only when the new command is invoked.
   child's existing linear revision store, and activates the edited tail. The
   source transcript, revisions, runtime, and provider-cache state remain
   untouched.
-- Whole-session fork remains idle-only. A Desktop message-scoped fork may
-  copy a completed assistant prefix while a later turn runs (issue #837).
-  Under the same host RPC lock as append/publication, the host checks that no
-  indexed message at or before the anchor belongs to a running turn. It rejects
-  non-assistant, streaming/error, and live-turn anchors with `CONFLICT`, mapped
-  to `AGENT_BUSY` by Electron. Native Pi ownership rules remain unchanged.
-  The renderer sends only the anchor id, without hydrating or replacing the
-  source transcript. This preserves live updates and avoids stopping the parent.
-  Disabling the button would leave the requested concurrent workflow unavailable;
-  removing all busy guards would allow copying a partially executed tool loop.
-- A handled file or index failure removes the child transcript and copied
-  inputs and leaves no visible child. Process crashes continue to follow the transcript store's
+- Fork is available only while the source is idle. Electron exposes
+  `AGENT_BUSY`; the host retains a persisted running-turn `CONFLICT` guard that
+  Electron normalizes at the IPC boundary.
+- A handled file or index failure removes the child transcript and leaves no
+  visible child. Process crashes continue to follow the transcript store's
   existing orphan-file recovery policy.
 
 ## Consequences
@@ -62,8 +48,7 @@ pass startup handshake and fail only when the new command is invoked.
 - Renderer and host binaries from protocol v4 are rejected during startup
   instead of failing lazily when Create branch is selected.
 - Source and child can evolve, reconfigure, persist, and delete independently.
-- Fork storage cost is proportional to the active transcript and its referenced
-  pasted inputs.
+- Fork storage cost is proportional to the active transcript size.
 - Message-scoped Fork/Edit storage cost is proportional to the canonical
   prefix through the selected response plus any child-only revision payloads.
 - Every child has a new session id and first creates/reseeds its own pi runtime;

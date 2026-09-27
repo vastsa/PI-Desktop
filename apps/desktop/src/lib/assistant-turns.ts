@@ -1,10 +1,8 @@
 import type {
   ContextCompactionMark,
-  HostedSearchRound,
   MessageUsage,
   UiMessage,
 } from "@pi-desktop/shared";
-import { hostedSearchRounds } from "@pi-desktop/shared";
 import { isDelegationStartTool } from "./tool-display";
 
 export type AssistantActivityItem =
@@ -14,12 +12,6 @@ export type AssistantActivityItem =
       message: UiMessage;
       /** Present on a `Task` call: what the delegate it spawned did. */
       delegate?: SubagentRun;
-    }
-  | {
-      kind: "hostedSearch";
-      message: UiMessage;
-      /** One provider search round of the message; each round is a row. */
-      round: HostedSearchRound;
     };
 
 /** One row a delegate produced, in the order the delegate produced it. */
@@ -72,7 +64,6 @@ function isVisibleMessage(message: UiMessage): boolean {
     message.role === "assistant" &&
     !(message.content || "").trim() &&
     !messageThinking(message) &&
-    !message.hostedSearch &&
     !message.error
   );
 }
@@ -83,20 +74,18 @@ function isDelegationStartActivity(item: AssistantActivityItem): boolean {
   return item.kind === "tool" && isDelegationStartTool(item.message.toolName);
 }
 
-/** Delegate rows grouped by the `Task` call that produced them, chains merged. */
+/** Delegate rows grouped by the `Task` call that produced them. */
 function collectSubagentRuns(
   messages: readonly UiMessage[],
 ): Map<string, SubagentRun> {
-  const latestCall = chainLatestCalls(messages);
   const runs = new Map<string, SubagentRun>();
   for (const message of messages) {
     const parent = message.parentToolCallId;
     if (!parent) continue;
-    const key = latestCall(parent);
-    let run = runs.get(key);
+    let run = runs.get(parent);
     if (!run) {
       run = { items: [] };
-      runs.set(key, run);
+      runs.set(parent, run);
     }
     if (message.agentName && !run.agentName) run.agentName = message.agentName;
     if (message.role === "tool") {
@@ -112,77 +101,6 @@ function collectSubagentRuns(
     }
   }
   return runs;
-}
-
-/**
- * The delegation-chain structure of one transcript (ADR 0279).
- *
- * `callByDelegationId` maps each Task result's `delegationId` to the call that
- * returned it; `childOf` links a resumed call to the call it resumed. Shared
- * by the delegation card grouping and the subagent transcript tab so both read
- * the same chain semantics from one place.
- */
-export function delegationChainMaps(messages: readonly UiMessage[]): {
-  callByDelegationId: Map<string, string>;
-  childOf: Map<string, string>;
-} {
-  const callByDelegationId = new Map<string, string>();
-  const childOf = new Map<string, string>();
-  for (const message of messages) {
-    if (message.role !== "tool" || !isDelegationStartTool(message.toolName)) {
-      continue;
-    }
-    const toolCallId = message.toolCallId;
-    if (!toolCallId) continue;
-    const result = message.toolResult;
-    const details =
-      result && typeof result === "object" && !Array.isArray(result)
-        ? (result as { details?: unknown }).details
-        : undefined;
-    const delegationId =
-      details && typeof details === "object" && !Array.isArray(details)
-        ? (details as { delegationId?: unknown }).delegationId
-        : undefined;
-    if (typeof delegationId === "string" && delegationId) {
-      callByDelegationId.set(delegationId, toolCallId);
-    }
-    const args = message.toolArgs;
-    const resume =
-      args && typeof args === "object" && !Array.isArray(args)
-        ? (args as { resume?: unknown }).resume
-        : undefined;
-    const prior =
-      typeof resume === "string" && resume.trim()
-        ? callByDelegationId.get(resume.trim())
-        : undefined;
-    if (prior) childOf.set(prior, toolCallId);
-  }
-  return { callByDelegationId, childOf };
-}
-
-// Map each Task call to the last call of its chain (ADR 0279): a resumed
-// delegation is one delegate session continued by a later Task call, so the
-// chain's rows all belong on the latest card, where they read as one
-// continuing conversation rather than a card per call.
-function chainLatestCalls(
-  messages: readonly UiMessage[],
-): (toolCallId: string) => string {
-  const { childOf } = delegationChainMaps(messages);
-  const latest = new Map<string, string>();
-  return (toolCallId: string): string => {
-    const cached = latest.get(toolCallId);
-    if (cached) return cached;
-    let current = toolCallId;
-    const seen = new Set<string>([current]);
-    for (;;) {
-      const next = childOf.get(current);
-      if (!next || seen.has(next)) break;
-      seen.add(next);
-      current = next;
-    }
-    latest.set(toolCallId, current);
-    return current;
-  };
 }
 
 /**
@@ -266,9 +184,6 @@ export function buildTranscriptEntries(
     const current = ensureTurn(message);
     const thinking = messageThinking(message);
     if (thinking) pushActivity({ kind: "thinking", message });
-    for (const round of hostedSearchRounds(message.hostedSearch)) {
-      pushActivity({ kind: "hostedSearch", message, round });
-    }
     if ((message.content || "").trim() || !thinking || message.error) {
       current.parts.push({ kind: "message", message });
       if (!current.anchorId && (message.content || "").trim()) {
@@ -329,133 +244,6 @@ export function subagentRunsEqual(
       item.kind === next.items[index].kind &&
       item.message === next.items[index].message,
   );
-}
-
-export function reuseReadonlyMap<K, V>(
-  previous: ReadonlyMap<K, V> | undefined,
-  next: ReadonlyMap<K, V>,
-  valuesEqual: (left: V, right: V) => boolean = Object.is,
-): ReadonlyMap<K, V> {
-  if (!previous || previous.size !== next.size) return next;
-  for (const [key, value] of next) {
-    if (!previous.has(key) || !valuesEqual(previous.get(key) as V, value)) {
-      return next;
-    }
-  }
-  return previous;
-}
-
-function reuseActivityItem(
-  previous: AssistantActivityItem | undefined,
-  next: AssistantActivityItem,
-): AssistantActivityItem {
-  if (!previous || previous.kind !== next.kind || previous.message !== next.message) {
-    return next;
-  }
-  if (previous.kind === "tool" && next.kind === "tool") {
-    if (subagentRunsEqual(previous.delegate, next.delegate)) return previous;
-    if (!next.delegate || !previous.delegate) return next;
-    const items = next.delegate.items.map((item, index) => {
-      const prior = previous.delegate?.items[index];
-      return prior && prior.kind === item.kind && prior.message === item.message
-        ? prior
-        : item;
-    });
-    const delegate =
-      previous.delegate.agentName === next.delegate.agentName &&
-      previous.delegate.items.length === items.length &&
-      items.every((item, index) => item === previous.delegate!.items[index])
-        ? previous.delegate
-        : { ...next.delegate, items };
-    return delegate === previous.delegate ? previous : { ...next, delegate };
-  }
-  return previous;
-}
-
-function reuseTurnPart(
-  previous: AssistantTurnPart | undefined,
-  next: AssistantTurnPart,
-): AssistantTurnPart {
-  if (!previous || previous.kind !== next.kind) return next;
-  if (previous.kind === "message" && next.kind === "message") {
-    return previous.message === next.message ? previous : next;
-  }
-  if (previous.kind === "activity" && next.kind === "activity") {
-    if (previous.endedAt !== next.endedAt) {
-      const items = next.items.map((item, index) =>
-        reuseActivityItem(previous.items[index], item),
-      );
-      return { ...next, items };
-    }
-    const items = next.items.map((item, index) =>
-      reuseActivityItem(previous.items[index], item),
-    );
-    if (
-      items.length === previous.items.length &&
-      items.every((item, index) => item === previous.items[index])
-    ) {
-      return previous;
-    }
-    return { ...next, items };
-  }
-  return next;
-}
-
-function reuseTranscriptEntry(
-  previous: TranscriptEntry | undefined,
-  next: TranscriptEntry,
-): TranscriptEntry {
-  if (!previous || previous.kind !== next.kind) return next;
-  if (previous.kind === "message" && next.kind === "message") {
-    return previous.message === next.message ? previous : next;
-  }
-  if (previous.kind === "compaction" && next.kind === "compaction") {
-    return previous.mark === next.mark ||
-      (previous.mark.id === next.mark.id &&
-        previous.mark.throughMessageId === next.mark.throughMessageId &&
-        previous.mark.generation === next.mark.generation &&
-        previous.mark.summaryTokens === next.mark.summaryTokens &&
-        previous.mark.summarized === next.mark.summarized &&
-        previous.mark.fallback === next.mark.fallback)
-      ? previous
-      : next;
-  }
-  if (previous.kind === "assistant-turn" && next.kind === "assistant-turn") {
-    if (previous.id !== next.id) return next;
-    const parts = next.parts.map((part, index) =>
-      reuseTurnPart(previous.parts[index], part),
-    );
-    if (
-      previous.anchorId === next.anchorId &&
-      parts.length === previous.parts.length &&
-      parts.every((part, index) => part === previous.parts[index])
-    ) {
-      return previous;
-    }
-    return { ...next, parts };
-  }
-  return next;
-}
-
-/**
- * Keep object identity for unchanged transcript rows so memoized activity
- * groups can bail out when only the live tail token changed.
- */
-export function reuseTranscriptEntries(
-  previous: readonly TranscriptEntry[] | undefined,
-  next: TranscriptEntry[],
-): TranscriptEntry[] {
-  if (!previous || previous.length === 0) return next;
-  const shared = next.map((entry, index) =>
-    reuseTranscriptEntry(previous[index], entry),
-  );
-  if (
-    shared.length === previous.length &&
-    shared.every((entry, index) => entry === previous[index])
-  ) {
-    return previous as TranscriptEntry[];
-  }
-  return shared;
 }
 
 export function assistantTurnMessages(

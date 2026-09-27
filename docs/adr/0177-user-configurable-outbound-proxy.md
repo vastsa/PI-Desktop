@@ -59,12 +59,7 @@ A single Settings control should apply one proxy to app-owned traffic.
 
 7. **Secrets.** Proxy userinfo lives in the settings JSON next to other
    non-API-key preferences. Logs redact passwords. host-core never
-   `set_var`s the URL onto its process env. Chromium `proxyRules` cannot
-   include userinfo (it fails with `net::ERR_NO_SUPPORTED_PROXIES`) and
-   cannot speak SOCKS5 username/password, so Electron main points Chromium
-   at a `127.0.0.1` SOCKS5 relay that injects the stored credentials
-   (issue #490). Node, undici, and curl keep the canonical URL with
-   userinfo.
+   `set_var`s the URL onto its process env.
 
 ## Consequences
 

@@ -1,11 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { HighlightedCode, useCopy } from "./Markdown";
 import { IconCheck, IconCircleAlert, IconCopy, IconInfo } from "./icons";
-import { TooltipButton, cx } from "./ui";
+import { cx } from "./ui";
 import { toWorkspaceRel } from "../lib/chat-links";
 import { useOpenPreviewTarget } from "../hooks/use-preview-target";
-import { useChatFileMenu } from "../hooks/use-chat-file-menu";
-import { ContextMenu } from "./ContextMenu";
 import { useAppStore } from "../stores/app-store";
 import type { ToolBlock, ToolChip } from "../lib/tool-presentation";
 
@@ -59,14 +57,14 @@ function BlockHead({ label, copy }: { label: string; copy: string }) {
   return (
     <div className="tool-row-section-head">
       <span>{label}</span>
-      <TooltipButton
+      <button
         className={cx("tool-row-copy", copied && "copied")}
-        tooltip={copied ? t("chat.copied") : t("chat.copy")}
-        ariaLabel={`${t("chat.copy")} ${label}`}
+        aria-label={`${t("chat.copy")} ${label}`}
+        title={copied ? t("chat.copied") : t("chat.copy")}
         onClick={() => run(copy)}
       >
         {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
-      </TooltipButton>
+      </button>
     </div>
   );
 }
@@ -86,7 +84,6 @@ function FileList({ paths }: { paths: string[] }) {
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
-  const { fileMenu, openFileMenu, closeFileMenu } = useChatFileMenu();
   return (
     <div className="tool-file-list">
       {paths.map((path, index) => {
@@ -99,19 +96,17 @@ function FileList({ paths }: { paths: string[] }) {
           );
         }
         return (
-          <TooltipButton
+          <button
             type="button"
             className="tool-file-item is-linked"
             key={`${path}-${index}`}
-            tooltip={t("chat.previewFile")}
+            title={t("chat.previewFile")}
             onClick={() => openTarget({ kind: "file", path: rel })}
-            onContextMenu={(event) => openFileMenu(event, { path: rel })}
           >
             {path}
-          </TooltipButton>
+          </button>
         );
       })}
-      <ContextMenu state={fileMenu} onClose={closeFileMenu} />
     </div>
   );
 }
@@ -121,7 +116,6 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
   const { t } = useTranslation();
   const root = useAppStore((s) => s.workspace?.path);
   const openTarget = useOpenPreviewTarget();
-  const { fileMenu, openFileMenu, closeFileMenu } = useChatFileMenu();
   return (
     <div className="tool-match-list">
       {block.groups.map((group, index) => {
@@ -129,17 +123,14 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
         return (
           <div className="tool-match-group" key={`${group.path}-${index}`}>
             {rel ? (
-              <TooltipButton
+              <button
                 type="button"
                 className="tool-match-path is-linked"
-                tooltip={t("chat.previewFile")}
+                title={t("chat.previewFile")}
                 onClick={() => openTarget({ kind: "file", path: rel })}
-                onContextMenu={(event) =>
-                  openFileMenu(event, { path: rel })
-                }
               >
                 {group.path}
-              </TooltipButton>
+              </button>
             ) : (
               <span className="tool-match-path">{group.path}</span>
             )}
@@ -152,7 +143,6 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
           </div>
         );
       })}
-      <ContextMenu state={fileMenu} onClose={closeFileMenu} />
     </div>
   );
 }
@@ -266,7 +256,6 @@ const CHIP_LABEL_KEYS: Record<ToolChip["role"], string> = {
   replacements: "chat.toolChipReplacements",
   truncated: "chat.toolChipTruncated",
   scratch: "chat.toolChipScratch",
-  lines: "chat.toolChipLines",
   size: "chat.toolChipSize",
 };
 
@@ -283,11 +272,7 @@ export function ToolChips({ chips }: { chips: ToolChip[] }) {
         >
           {t(CHIP_LABEL_KEYS[chip.role], {
             ...("count" in chip ? { count: chip.count } : {}),
-            ...("text" in chip
-              ? chip.role === "lines"
-                ? { range: chip.text }
-                : { size: chip.text }
-              : {}),
+            ...("text" in chip ? { size: chip.text } : {}),
           })}
         </span>
       ))}

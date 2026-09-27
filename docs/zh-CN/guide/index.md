@@ -12,8 +12,6 @@ PI-Desktop 是一个本地优先的 AI 编程代理桌面客户端。它让工�
 | 你想了解… | 从这里开始 |
 |---|---|
 | 应用界面长什么样 | [界面截图](/zh-CN/guide/screenshots) |
-| 如何运行周期任务 | [定时任务](/zh-CN/guide/automations) |
-| 如何添加 MCP 目录并填写密钥 | [MCP 市场](/zh-CN/guide/mcp-market) |
 | 当前交付了什么 | [产品范围](/zh-CN/spec/01-product/01-product-scope) |
 | 系统如何协作 | [系统架构](/zh-CN/spec/02-architecture/01-architecture) |
 | 协议和存储边界 | [运行时规格](/zh-CN/spec/03-runtime/01-ipc-protocol) |
@@ -32,9 +30,8 @@ Renderer UI  →  Electron orchestration  →  Rust host core
   transcript          pi Node sidecar          SQLite + processes
 ```
 
-Renderer 负责呈现；Electron main 协调桌面能力：窗口生命周期、IPC 路由、进程监管、
-更新客户端，以及插件、MCP 桥接和可选的回环 MCP 控制服务；Rust host 负责工具执行与
-工作区沙箱、权限网关、插件宿主服务、RPC 与持久化；pi sidecar 负责代理循环和模型工作。
+Renderer 负责呈现，Electron 协调桌面能力，pi sidecar 负责代理循环和模型工作，
+Rust host 负责特权进程、文件系统、RPC 与持久化边界。
 
 ## 文档语言说明
 

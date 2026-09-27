@@ -70,19 +70,14 @@ OpenCode Go 以一个名为 `opencode_go` 的 API 风格预设暴露。它仍然
 `https://opencode.ai/zen/go/v1`，使用 Bearer API key 认证，从 `/models` 发现
 模型，并通过 pi-ai 的 OpenAI Chat Completions 适配器发送对话回合。它不会另建
 第二条传输链路，也不会形成封闭的模型许可名单。Agent 运行时会在每一次 LLM
-请求上注入 OpenCode 路由标头（会话回合、子代理、上下文压缩摘要、提示增强以及
-插件的一次性调用）：`x-opencode-session` 是持久的对话 id（调用方没有会话时则是
-按次生成的 UUID），`x-opencode-client` 为 `pi-desktop`，`User-Agent` 为
+请求上注入 OpenCode 路由标头（会话回合、子代理、提示增强以及插件的一次性
+调用）：`x-opencode-session` 是持久的对话 id（调用方没有会话时则是按次生成的
+UUID），`x-opencode-client` 为 `pi-desktop`，`User-Agent` 为
 `pi-desktop/<APP_VERSION>`，除非该行设置了 `headers["User-Agent"]`。base URL
 主机为 `opencode.ai` 的自定义 OpenAI 兼容行也会收到同样的标头。系统不依赖
 pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth 账户）都可以
 设置可选的 `headers`；留空则保持适配器默认值。一层 fetch 包装是最后的写入方，
-因此 Codex 与 Anthropic 无法覆盖它们。pi-ai 的 Google 适配器
-（`google-generative-ai`、`google-vertex`）会拒绝任何不是 `globalThis.fetch`
-的 `fetch`，因此发往它们的请求不带 fetch，只通过合并后的 `headers` 送达 SDK
-客户端；调用方传入的 `fetch` 会被清除而非包装（issue #1072）。由于这些适配器既看不到包装、也从不调用
-`onResponse`，这样的行不上报捕获到的 HTTP 状态与传输原因：`Retry-After`
-退回有界退避阶梯，issue-234 的传输诊断与重建对它不生效。
+因此 Codex 与 Anthropic 无法覆盖它们。
 
 当 OAuth 厂商围绕本地 provider 行 id 重建运行时模型时，运行时仍保留 pi-ai
 原生传输元数据，不会把该行当作普通 OpenAI 端点。GitHub Copilot 请求会保留
@@ -91,41 +86,13 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 `X-Initiator`、`Openai-Intent` 与图像请求标头。本地行 id 仍然拥有认证绑定与
 对话记录身份；用户设置的提供商 headers 仍是最后的覆盖层。
 
-Copilot 的 Anthropic Messages（Claude）请求将每次请求解析的 OAuth 令牌作为
-`Authorization: Bearer` 标头认证发送，不携带 `X-Api-Key`，因为 pi-ai 仅在
-`model.provider` 为 `github-copilot` 时选择 Copilot Bearer 认证。
-OpenAI 风格的 Copilot 线路 API 仍将令牌作为请求密钥签名；所有线路均保留
-逐请求认证解析与账户专属的 `baseUrl`。
-
 智谱 / GLM 与 Z.AI 是命名的 OpenAI 兼容端点预设，收录在一份由 models.dev
 支撑的、简短的第一方厂商服务列表中（含小米）。添加提供商时的「服务」选择器
 会持久化匹配的 models.dev `vendorKey`，并使用已发布的端点，在命名服务这条
 路径上不显示名称、Base URL 或 API 格式。对话回合仍然使用选定的 pi-ai 适配器
 （`chat_completions`、`responses`、`anthropic_messages`、
 `google_generative_ai` 或 `opencode_go`）。智谱 / Z.AI 的 Completions 请求
-使用 `thinkingFormat: "zai"` 与 `zaiToolStream: true`。DeepSeek 系 Completions
-在 `vendorKey`、Base URL、模型 ID 或目录 `family` 能识别为 DeepSeek 时设置
-`requiresReasoningContentOnAssistantMessages: true`。pi-ai 只根据
-`provider === "deepseek"` 或 `deepseek.com` URL 自动检测，而 PI-Desktop 把 UUID
-存成 `model.provider`，因此聚合网关与自定义端点会在无思考内容的助手回合漏掉
-`reasoning_content`。非官方 DeepSeek 端点还会设置 `requiresNonEmptyReasoningReplay`，
-用文档化的非空占位符而不是 `""` 填补缺失推理（OpenCode / 第三方中转在压缩后拒绝空回传；
-见 ADR 0256 / #296）。官方 `deepseek.com` 行仍使用空串回填（#223）。该覆盖不改
-`thinkingFormat`。
-
-当 models.dev 记录发布了推理 `effort` 选项且没有 `budget_tokens` 选项时
-（例如 Opus 4.7+、Opus 5.x、Fable），Anthropic Messages 请求会设置
-`forceAdaptiveThinking: true`。这些模型会以 HTTP 400 拒绝
-`thinking.type=enabled`，而 models.dev 不携带 pi-ai 的 compat 记录，缺少该标志时
-pi-ai 会回落到 budget 思考。仍发布 `budget_tokens` 的模型保持 budget 思考，显式的
-目录 `compat` 记录会被保留。
-
-目录无法识别的 Anthropic Messages 行（例如某个自定义网关 URL 提供多家发布方都列出的
-模型 ID）仍回退到通用模型形状，但当 Anthropic 自己的 models.dev 记录中存在完全相同的
-模型 ID 时，会采用该记录的 `reasoning_options` 及派生的 `thinkingLevelMap`。Claude
-模型接受哪种思考形状是模型本身的属性，而非部署的属性，因此只迁移这两个字段；上下文与
-模态限制保持通用值，别名、改名后的 ID、其他 wire API，以及通过 Anthropic 协议提供的
-非 Claude 模型均不受影响（#990）。
+使用 `thinkingFormat: "zai"` 与 `zaiToolStream: true`。
 
 ## 5. 内置供应商矩阵（发货意图）
 
@@ -202,44 +169,30 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
 6. 输入与输出模态数组保留 `text`、`image`、`audio`、`video` 和 `pdf`。文本
    agent 选择器暴露能处理文本的模型，同时在文件中保留全部原始记录以备将来的
    界面使用。只有当模型接受图片输入时，图片才会作为临时图片内容块发送。PDF
-   能力会在模型元数据中呈现并保留；由于 pi-ai 0.87.1 没有原生的 PDF 内容块，
+   能力会在模型元数据中呈现并保留；由于 pi-ai 0.85 没有原生的 PDF 内容块，
    PDF 附件仍然是有界的文件引用，而不会被错误地编码成图片。
 7. 用户编辑过的 `ModelBinding` 值仍属于显式的提供商配置：它们控制选定的请求
    上限、启用的思考级别、应用到新的主页草稿与新持久化会话的默认思考级别
-   （会被钳制到已启用集合上；已匹配目录的模型在默认值未设置时取已启用中最强的
-   那个，未匹配模型则从 `off` 开始），以及附件能力覆盖。`models.dev` 提供已发布的
-   元数据，并为新添加的已知模型
+   （会被钳制到已启用集合上；只有在默认值未设置时才取已启用中最强的那个），
+   以及附件能力覆盖。`models.dev` 提供已发布的元数据，并为新添加的已知模型
    播下初始的思考级别选择；它不是对用户为该端点显式启用的级别的运行时闸门。
    出于兼容考虑，仍然带着旧的通用 `128,000` 上下文种子的 binding 会跟随新
    发布的 `limit.context`；非默认的 Advanced 值仍保持显式。这样目录刷新之后，
    sidecar 与上下文检查器仍处在同一个有效窗口上。
 8. 设置为每个 binding 渲染七个规范思考级别。对已知的推理模型，已发布的级别
    一开始就是选中的。非推理或未知模型显示同样的选项但不选中，并附一行简短的
-   手动覆盖说明。`defaultThinkingLevel` 从 `omit` 加上该 binding 已启用的级别
-   中选取，因此存下来的默认值要么是 `omit`，要么属于那个显式集合。
+   手动覆盖说明。`defaultThinkingLevel` 从该 binding 已启用的级别中选取，
+   因此存下来的默认值始终属于那个显式集合。
 9. `supportsImages` 与 `supportsDocuments` 是三态覆盖。缺省或 `null` 表示跟随
    已发布的 models.dev 模态，因此目录的更正仍然能作用到已保存的 binding；
    `true` 或 `false` 是用户的显式回答，并在目录变动后继续有效。与思考级别
    不同，这两个覆盖不会被收窄到已发布的能力，因为经过代理或自托管的端点
    经常接受其目录条目未列出的输入。启用图片输入会打开临时图片内容块；启用
-   PDF 输入只记录该能力，不改变编码方式——pi-ai 0.87.1 没有 PDF 内容块，
+   PDF 输入只记录该能力，不改变编码方式——pi-ai 0.85 没有 PDF 内容块，
    PDF 仍是有界的文件引用。
-10. 设置里的复选框展示相对于已发布基线的有效答案。未修改或为 `null` 时跟随目录；
-    用户一旦更改复选框，所选布尔值就会显式固定，即使它与当前目录值相同。目录刷新
-    不会撤销用户主动做出的选择。
-10a. `nativeWebSearch` 是两态主动开启（缺省即关闭；models.dev 不发布托管工具能力，
-    因此没有目录默认值）。启用后，当模型解析到 `anthropic-messages`、
-    `openai-responses`、`azure-openai-responses` 或 `openai-codex-responses`
-    （存储的 apiStyle 为 `anthropic_messages`、`responses` 或
-    `openai_codex_responses`，或从 Chat Completions 解析到已确认的官方搜索路径）时，适配器附加提供商托管搜索工具
-    （`web_search_20250305` / `web_search`），将活动写入
-    `UiMessage.hostedSearch`，并在后续回合（含重启后）回放原始数据（ADR 0297）。
-    OpenAI OAuth 使用独立的 Codex Responses 适配器和 ChatGPT 订阅端点，不是公开的
-    `/v1/responses`；搜索工具写入 Codex 请求体顶层 `tools`。设置仍需用户逐模型
-    勾选；运行时还会按最终解析的 wire API 校验，旧配置不会把工具带给不支持的适配器。
-    不支持工具的网关会显示提供商错误，用户可取消勾选。搜索由提供商执行，没有
-    本地抓取或权限询问。压缩仍按既有前缀/尾部策略保留；摘要请求含被压缩前缀的
-    搜索回放，但生成的文本摘要不是原始搜索块的无损副本。
+10. 设置里的复选框展示的是相对于已发布基线的有效答案；把某一项设回已发布的
+    值，存下来的是"跟随目录"，而不是一个取值相同的覆盖。因此与 models.dev
+    保持一致本身就是重置，不需要另外的重置控件，也不需要逐项能力的解释文案。
 11. `ModelInfo` 是设置界面用来对照的已发布记录，因此已存储的 binding 不得
     塑造它的能力或推理字段。有效上限、推理与思考级别都通过那个确切的 binding
     解析；有效的传输模态数组还会额外套用显式的附件覆盖。
@@ -317,12 +270,9 @@ type UserModelConfig = {
 type ModelBinding = {
   id: string
   contextWindow: number
-  /** `contextWindow` 的来源；早于该标记的记录没有此字段，按历史规则解析
-   * （见 `13-model-catalog-and-selection.md` §9.1）。 */
-  contextWindowSource?: "catalog" | "user"
   maxTokens: number
   thinkingLevels: ThinkingLevel[]
-  defaultThinkingLevel: SessionThinkingLevel | null
+  defaultThinkingLevel: ThinkingLevel | null
   availableForSubagents?: boolean // opt-in for AI-driven delegation
 }
 
@@ -344,8 +294,8 @@ type ThinkingLevel =
 上面这些兼容性字段，是为老客户端保留的持久化模式兼容面。PI-Desktop 不再把
 它们当作运行时的模型覆盖来读取。`ModelInfo` 的推理支持与受支持的思考级别
 描述的是解析出的 models.dev 记录；有效的 provider/会话能力则来自那个确切的
-`ModelBinding`。未知的自由格式 id 以通用形态起步，不带任何推断出的推理能力；
-空的绑定等级数组是通用种子，非空的显式 binding 才会主动启用或禁用相应级别。
+`ModelBinding`。未知的自由格式 id 以通用形态起步，不带任何推断出的推理能力，
+但显式的 binding 可以主动启用相应级别。
 
 提供商对话框会为每个选中的模型持久化一条 `ModelBinding`。第一条 binding 是
 当前对话以及旧版运行时消费方的有效模型。对话级别的模型切换与跨数组路由仍属
@@ -355,14 +305,7 @@ type ThinkingLevel =
 `ModelBinding.availableForSubagents`（布尔值，默认 false）：这是一个选择加入
 的标志，让该模型可用于 AI 驱动的子代理委托。启用后，该模型会出现在注入父
 agent 系统提示的委托目录中。父 agent 随后就能通过 Task 工具的 `model` 参数
-选中它。为某个定义解析固定模型不代表授予此许可。启动载荷通过独立的
-`subagentModelKeys` 传递允许覆盖的模型键；仅供定义固定使用的绑定仍只通过
-正常的固定模型解析生效，包括 `Task.model` 重复该定义自己的固定键。按需匹配使用唯一
-provider id/vendor/name 查找，不得用另一账号凭据覆盖固定模型。多个账号的 vendor/model 别名冲突时，已勾选账号改用
-确切的提供商 ID 作为覆盖键。优先级保持 Task.model → 定义固定模型 → 会话模型
-（D278；ADR subagent-model-opt-in）。该许可约束所有让 AI 为委派工作挑选模型的入口，
-而不只是 `Task.model`：`session/collaboration/spawn` 的 `modelKey` 指向未勾选的模型时
-以 `PERMISSION_DENIED` 拒绝，省略该键或写出默认模型自己的键仍按继承处理。
+选中它。
 
 ## 8. 秘密
 
@@ -403,41 +346,14 @@ sidecar 请求
 因此 sidecar 永远拿不到刷新令牌，拿到的访问令牌也只属于其会话绑定的那个
 提供商。
 
-这类行的模型发现读取已登录账户自己的模型列表；连接测试仍通过解析认证来证明
-账户。请求失败，或返回的不是模型列表时，才回退到 pi-ai（`models.getAvailable`，
-含厂商自己的 `filterModels`）。各厂商打自己的接口：ChatGPT Plus/Pro
-（`openai-codex`）是 `GET {base}/codex/models`，因此 `gpt-6-luna` 这类账户
-已经提供、pin 里还没有的 id 也能出现；普通 `{ data: [...] }` 不当成 Codex
-列表。Copilot 是带 IDE 身份头和 `X-GitHub-Api-Version` 的 `GET {base}/models`，
-只保留 `model_picker_enabled === true` 且未被策略禁用的 id，pin 不认识的 id
-只有在其家族已经对应唯一线路 API 时才加入。Anthropic 用 OAuth 身份头请求
-`GET {base}/v1/models`。Kimi、Meta、xAI、OpenRouter 请求 `GET {base}/models`
-（Kimi 走 Anthropic 风格的 `/v1`）。Radius 继续用网关目录刷新，不再另打一遍。
-图像、视频、语音和嵌入模型会被丢掉。models.dev 不认识的 id 只从同档位的 pin
-兄弟继承限额，xAI 按 `grok-4.7`、`grok-4.6`、`grok-4.5`、`grok-4.3` 的固定新到旧顺序，
-不按 pin 顺序。models.dev 不能把账户列表里没有的 id 加进去。一个厂商可以
-跨越多种线路 API，因此行的 `apiStyle` 跟随所选模型。
-
-### Anthropic token 端点限流
-
-固定版本 pi-ai 0.87.1 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
-有限策略：只重试明确的 HTTP 429，最多总共三次请求。先等待至少 1 秒、再
-等待至少 2 秒；若 `Retry-After` 给出更长的秒数或 HTTP 日期，则遵守该时间。
-服务器要求的等待超出剩余预算时结束本次尝试，不缩短等待后提前重试。
-缺失或无效提示使用有限的指数退避。
-
-请求、响应体读取和等待共用一个 30 秒 helper 截止时间及原始调用方 signal；
-更早的调用方截止时间优先。pi-ai 现有刷新操作在凭据存储锁内有 15 秒限制。
-取消同样中断等待。补丁不把刷新移出该锁：失败保留已有凭据，成功旋转后
-仅写入一次新授权。
-
-网络失败、响应体中断、5xx 和 `invalid_grant` 均不重放，因为非幂等 token
-请求的结果可能不确定。明确的 `invalid_grant` 即使标为 429 也立即结束。
-HTTP/token JSON 失败显示有限恢复说明，不包含原始响应体、URL 或嵌套堆栈。
-登录失败提示稍后关闭弹窗并重新发起登录；刷新失败提示等待后重试，持续失败
-时重新登录。仅凭 HTTP 429 不能证明授权码是否已被使用，因此不声称其已失效。
-
-沿用现有依赖补丁机制，OAuth 端点、PKCE、凭据归属、IPC 和存储 schema 不变。
+这类行的模型发现读取已认证的目录（`models.getAvailable`，它已应用厂商
+自己的 `filterModels`），而不是探测 `/models`；连接测试通过解析认证来
+证明账户。对 ChatGPT Plus/Pro（`openai-codex`）这类静态 OAuth 厂商，该
+目录是已固定的 pi-ai 模型列表，而不是实时 `/models` 探测，因此 `gpt-6-astra`
+这类新账户模型只有在 pin 包含它之后才会出现。models.dev 在 ID 可用后仍
+提供元数据，但不能把 ID 加进已认证列表。一个厂商可以跨越多种线路 API ——
+Copilot 同时提供 Anthropic、Chat Completions 与 Responses 模型 —— 因此行
+的 `apiStyle` 跟随所选模型。
 
 ## 9. 模型目录服务
 
@@ -621,17 +537,6 @@ UI 可能会显示层级提示，但默认情况下不得硬阻止未知模型�
 
 目录条目还可以额外固定模型级 wire API（例如 `api: "openai-responses"`）。存在时它优先于 provider 级 `apiStyle`，因此 `opencode_go` 下的 responses-only 模型会走 Responses adapter 而非 Chat Completions；没有模型级固定时保持 provider 级风格不变。
 
-### 16.1 Responses 流终止（pi-ai 补丁）
-
-OpenAI Responses 适配器必须把 `response.completed`（以及
-`response.incomplete`）视为流的终点：完成响应收尾后即停止消费流，
-而不是继续等待服务端的 TCP FIN。上游 pi-ai 会一直迭代直到服务端关闭
-连接，在保持空闲连接不关的反向代理后面会导致整个回合挂起。在该修复
-随上游发布之前，`patches/` 通过 pnpm patch 修改
-`@earendil-works/pi-ai@0.87.1`，在终态事件处跳出事件循环（消费方停止
-迭代时 OpenAI SDK 会中止底层请求）。待 pi-ai 发布包含该修复的版本后
-移除补丁。
-
 ## 17. 多提供商产品规则
 
 1. 允许多个提供商具有相同的供应商密钥（例如两个 OpenRouter 帐户）。
@@ -681,30 +586,3 @@ OpenAI Responses 适配器必须把 `response.completed`（以及
 - 自动发现每个供应商门户的付费计划
 - 不支持 pi-ai 的专有非 HTTP SDK
 - 云同步的提供商配置文件
-
-## 托管搜索消息与预算契约
-
-- 搜索内容和进度事件必须拥有正式适配器类型，不能伪装成客户端工具调用。
-  搜索结果和 Responses 搜索项不要求 `name` 或 `arguments`；既有回放记录保持兼容：
-  本应用写出的、缺少回放 id 的记录为该消息降级为“没有 replay”，而不是让回合失败，
-  升级前的历史因此仍可用。
-- 回放与 token 估算共享搜索阶段的解释规则。有效 usage 只覆盖其前缀一次；
-  usage 为零或失效时，全量估算必须包含搜索回放数据，不重复计算展示轮次和流式临时字段。
-  估算不是服务端计费保证。
-- 相同上下文重建保留系统前缀语义；真实指令或工具声明变化仍影响 usage 有效性。
-  系统分段、工具增加和移除不能在重建时丢弃。
-- 搜索后本地工具续跑、Task、普通续聊和重启恢复均须验证；依赖升级必须运行
-  离线适配器与打包 sidecar 回归，不能只验证界面。
-
-同一搜索投影适用于主代理与原生 pi 会话的上下文/压缩估算及输出预算。
-已知目标模型时，估算遵守该适配器既有的模型切换回放边界。压缩序列化把搜索投影传入摘要请求，
-不伪装成客户端工具调用。被压缩前缀转为生成的文本摘要；保留尾部中的原始搜索仍按既有规则回放，
-不承诺摘要无损保留原始搜索块。
-
-### 搜索配置引导
-
-搜索开关与运行时共用请求路由判断。官方 DeepSeek、xAI 和旧 OpenAI Chat Completions
-配置开启搜索后，内部使用已确认的搜索接口，不增加第二个服务，不改写连接设置。
-其他模型及关闭搜索的请求继续使用原协议，搜索默认关闭。路由只匹配精确来源和路径，
-不根据展示名称或模型名推断。最终适配器继续负责搜索解析和历史回放。
-未集成格式显示“应用尚未适配”，不冒充厂商能力结论。详见提供商配置规格。

@@ -19,12 +19,6 @@ Isolate plugin data from the host's core data to avoid cross-contamination and u
  └── ...
 ```
 
-Bundled marketplace fallback packages use the owning plugin manager's data
-root (`plugins/market/packages`), just like its catalog and download cache.
-Catalog construction never re-reads the process-wide `PI_DESKTOP_DATA_DIR`;
-independent host instances must not share package paths through that mutable
-default. Package size and checksum validation remain mandatory.
-
 ## 3. registry.json (logical model)
 
 ```ts
@@ -94,12 +88,10 @@ Plugins cannot directly access:
 - provider key
 - other plugins' private registry data
 
-The reviewed `desktop.control` gateway now offers the bounded session
-collaboration projection and mutation catalog. It does not expose host tables,
-transcript files, credentials, Electron IPC, or the MCP bearer token. The host
-derives source identity from the active Agent tool invocation, persists the
-delivery and provenance ledger in host-core, and audits the plugin operation;
-plugin-private state is never treated as authorization or session identity.
+If a "controlled session summary API" is offered in the future, it must:
+- Have a separate permission
+- Be disabled by default
+- Be auditable
 
 ## 8. Uninstall cleanup policy
 

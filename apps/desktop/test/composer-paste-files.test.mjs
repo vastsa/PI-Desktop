@@ -3,19 +3,17 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { readComposerSource } from "./helpers/composer-source.mjs";
-import { readMainSource } from "./helpers/main-source.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [composer, api, main, attachments, saver, protocol, history, picker] = await Promise.all([
-  readComposerSource(),
+const [composer, api, main, attachments, saver, protocol, sidecar, picker] = await Promise.all([
+  read("../src/components/Composer.tsx"),
   read("../src/lib/api.ts"),
-  readMainSource(),
+  read("../electron/main/index.ts"),
   read("../electron/main/prompt-attachments.ts"),
   read("../electron/main/composer-paste.ts"),
   read("../../../packages/shared/src/protocol.ts"),
-  read("../../../packages/agent-runtime/src/attachment-history.ts"),
+  read("../../../packages/agent-runtime/src/sidecar.ts"),
   read("../electron/main/composer-picker.ts"),
 ]);
 
@@ -53,16 +51,6 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.doesNotMatch(composer, /<textarea/);
   assert.doesNotMatch(composer, /setSelectionRange\(/);
   assert.match(composer, /await materializeDraftSession\(\)/);
-});
-
-test("expanding a pasted text chip preserves it when the bounded read fails", () => {
-  assert.match(composer, /if \(result\.kind !== "text" \|\| result\.content === undefined\)/);
-  assert.match(composer, /showToast\(message, \{ variant: "error" \}\)/);
-  assert.match(
-    composer,
-    /if \([\s\S]*?liveReference\.sessionId !== sourceSessionId[\s\S]*?liveReference\.path !== reference\.path[\s\S]*?\) \{\s*return;/,
-  );
-  assert.match(composer, /if \(index === -1\) return;/);
 });
 
 test("chip sentinels stay unique inside the private-use range", () => {
@@ -138,7 +126,7 @@ test("picker attachments materialize a session before importing paths", () => {
 
 test("composer opens one unified file picker directly from the plus button", () => {
   const leftStart = composer.indexOf('<div className="composer-left">');
-  const plusIndex = composer.indexOf('tooltip={t("chat.addFiles")}', leftStart);
+  const plusIndex = composer.indexOf('title={t("chat.addFiles")}', leftStart);
   const modeIndex = composer.indexOf("composer-mode-chip", leftStart);
   assert.ok(leftStart >= 0 && plusIndex > leftStart && modeIndex > leftStart);
   assert.ok(plusIndex < modeIndex, "upload must precede the agent mode chip");
@@ -146,26 +134,6 @@ test("composer opens one unified file picker directly from the plus button", () 
   assert.match(composer, /const pickAndAttach = async \(\) =>/);
   assert.match(composer, /const result = await api\.pickFiles\(\);/);
   assert.doesNotMatch(composer, /plusOpen|plusRef|composer-plus-menu|pickAndAttach\("photos"\)/);
-});
-
-test("composer ignores repeated picker clicks while selection is in flight", () => {
-  assert.match(composer, /const pickerInFlight = useRef\(false\)/);
-  assert.match(composer, /if \(pickerInFlight\.current \|\| isInputBlocked\) return;/);
-  assert.match(
-    composer,
-    /pickerInFlight\.current = true;\s*setPasting\(true\);[\s\S]*?await api\.pickFiles\(\)/,
-  );
-  assert.match(
-    composer,
-    /pickerInFlight\.current = false;\s*setPasting\(false\);/,
-  );
-  assert.match(main, /let composerPickerActive = false/);
-  assert.match(
-    main,
-    /if \(composerPickerActive\) return \{ token: null, canceled: true \};/,
-  );
-  assert.match(main, /BrowserWindow\.fromWebContents\(event\.sender\)/);
-  assert.match(main, /dialog\.showOpenDialog\(owner, options\)/);
 });
 
 test("pasted bytes stay in the session scratch directory", () => {
@@ -268,9 +236,9 @@ test("large image attachments avoid whole-file startup reads", () => {
   assert.match(attachments, /const inline = supportsVision && size <= MAX_INLINE_IMAGE_BYTES/);
   assert.match(attachments, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
   assert.doesNotMatch(attachments, /const bytes = readFileSync\(source\.absolute\)/);
-  assert.match(history, /const size = \(await stat\(canonical\)\)\.size/);
-  assert.match(history, /const canInline =[\s\S]*size <= MAX_INLINE_IMAGE_BYTES/);
-  assert.match(history, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
+  assert.match(sidecar, /const size = \(await stat\(canonical\)\)\.size/);
+  assert.match(sidecar, /shouldInline && size <= MAX_INLINE_IMAGE_BYTES/);
+  assert.match(sidecar, /await copyFile\(source, target, fsConstants\.COPYFILE_EXCL\)/);
 });
 
 test("paste results separate display names from unique storage paths", async () => {

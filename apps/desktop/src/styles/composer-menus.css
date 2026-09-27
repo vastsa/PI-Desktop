@@ -8,6 +8,7 @@
 :root[data-theme="dark"] .composer-shell {
   /* Codex elevated-primary: #212121f5 / gray-800 96% (not flat solid) */
   background: var(--ds-bg-elevated-primary);
+  background-color: #212121f5;
   box-shadow: var(--ds-shadow-composer);
   border: 0;
   outline: 0;
@@ -15,9 +16,9 @@
 
 :root[data-theme="dark"] .composer-input::placeholder,
 :root[data-theme="dark"] .composer-placeholder {
-  /* Codex dark placeholder ink (--ds-placeholder-ink). */
-  color: var(--ds-placeholder-ink);
-  -webkit-text-fill-color: var(--ds-placeholder-ink);
+  /* Codex dark placeholder ~42% white */
+  color: color-mix(in oklab, var(--gray-0) 42%, transparent);
+  -webkit-text-fill-color: color-mix(in oklab, var(--gray-0) 42%, transparent);
   opacity: 1;
 }
 
@@ -37,10 +38,6 @@
 
 .composer-model-thinking {
   position: relative;
-  /* Keep the label-sized trigger inside its shrinking toolbar slot. */
-  display: flex;
-  min-width: 0;
-  flex: 0 1 auto;
 }
 
 /* Permission-mode chip menu (D115): anchored left above the mode chips. */
@@ -49,11 +46,9 @@
 }
 
 .composer-permission-menu {
-  position: fixed;
-  top: 0;
+  position: absolute;
   left: 0;
-  right: auto;
-  bottom: auto;
+  bottom: calc(100% + 8px);
   z-index: 40;
   width: min(120px, calc(100vw - 24px));
   max-height: min(520px, calc(100vh - 92px));
@@ -64,82 +59,44 @@
   box-shadow: var(--ds-shadow-dialog);
   border: 1px solid var(--ds-border-subtle);
   color: var(--ds-text-primary);
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
 }
 
 .composer-model-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: auto;
-  bottom: auto;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
   z-index: 40;
   width: min(240px, calc(100vw - 24px));
   max-height: min(520px, calc(100vh - 92px));
   overflow-y: auto;
-  padding: 5px;
-  border-radius: var(--radius-xl);
-  background: color-mix(in oklab, var(--ds-bg-elevated-opaque) 82%, transparent);
-  backdrop-filter: saturate(1.6) blur(40px);
-  -webkit-backdrop-filter: saturate(1.6) blur(40px);
-  box-shadow:
-    0 0 0 0.5px var(--ds-elevation-stroke),
-    var(--ds-shadow-dialog);
-  border: none;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-dialog);
+  border: 1px solid var(--ds-border-subtle);
   color: var(--ds-text-primary);
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.composer-permission-menu.is-open,
-.composer-model-menu.is-open {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
 }
 
 .composer-model-thinking-menu {
   z-index: 60;
-  /*
-    One label per row plus two capability icons: wide enough for that and no
-    wider, so the panel stays a menu rather than a second window.
-  */
-  width: min(280px, calc(100vw - 24px));
-}
-
-.composer-model-thinking-menu.is-open {
+  width: min(300px, calc(100vw - 24px));
   animation: composer-menu-in var(--motion-duration-fast) var(--motion-ease-out);
   transform-origin: bottom right;
 }
 
 .composer-model-thinking-chip {
-  max-width: min(280px, calc(100vw - 24px));
+  max-width: min(300px, calc(100vw - 24px));
   min-width: 0;
-  height: 26px !important;
-  padding: 0 8px !important;
+  padding: 0 9px !important;
   gap: 4px !important;
-  border-radius: var(--radius-full) !important;
   color: var(--ds-text-secondary) !important;
-  font-size: var(--text-sm);
-  line-height: var(--leading-none);
+  line-height: var(--leading-compact);
   overflow: hidden;
-  transition:
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .composer-model-thinking-chip:hover {
   background: var(--ds-bg-hover) !important;
   color: var(--ds-text-primary) !important;
-}
-
-/* The menu measures this button on release. A press-scale transition would
-   cache a transient anchor rect until the first selection repositions it. */
-.composer-model-thinking-chip:active:not(:disabled) {
-  transform: none;
 }
 
 .composer-model-thinking-icon {
@@ -184,11 +141,11 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 30px;
+  min-height: 34px;
   align-items: center;
-  gap: 7px;
-  border-radius: var(--radius-sm);
-  padding: 0 8px;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  padding: 0 10px;
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
   line-height: var(--leading-compact);
@@ -221,7 +178,7 @@
   min-width: 0;
   margin-left: auto;
   overflow: hidden;
-  color: var(--ds-text-muted);
+  color: var(--ds-accent);
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -233,231 +190,41 @@
 
 /* Menu groups are separated by a breath of space, not a rule (D297). */
 .composer-menu-separator {
-  height: 1px;
-  margin: 2px 8px;
-  background: var(--ds-border-subtle);
+  height: 6px;
 }
 
 .composer-model-thinking-menu .composer-model-search {
-  margin: 3px 3px 5px;
+  margin: 4px 4px 6px;
 }
 
 .composer-model-thinking-menu .composer-plus-item {
-  min-height: 28px;
-  padding: 5px 8px;
+  min-height: 34px;
+  padding: 7px 10px;
 }
 
-/* Reasoning slider (issue #417): the menu root carries the slider itself, so a
-   level is one drag instead of opening a list of levels.
-
-   Stop/label alignment contract: the rail and the labels are full-width
-   n-column grids, so dot i, label i and the thumb at index i all sit on the
-   same column center W/(2n) + i·W/n. The range input overlays the rail at
-   full width and is inset on both sides by half a column minus half the thumb
-   (W/(2n) - r) — that inset is what moves the native thumb's first/last stops
-   inward from the radius edge onto the grid's first/last column centers. The
-   input's own track is transparent — the rail line and dots are drawn on the
-   grids instead — so the thumb glides over the dots. The thumb radius lives
-   in --thinking-thumb-radius so the formula stays correct if it changes. */
-.composer-thinking-slider {
-  --thinking-thumb-radius: 7px;
-  --thinking-dot-radius: 2px;
-  --thinking-track-height: 4px;
-  --thinking-track-center: 7px; /* (18 - 4) / 2 inside the 18px input */
-  --thinking-inset: calc(100% / (2 * var(--stop-count, 1)) - var(--thinking-thumb-radius));
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 6px 4px;
-}
-
-/* Rail: full-width positioning context for the dots row and the input. */
-.composer-thinking-rail {
-  position: relative;
-  height: 18px;
-}
-
-/* The rail line spans the stop-to-stop distance: it starts and ends half a
-   column in from the edges so its tips land on the first/last dot centers.
-   The muted base rail is ::before and the accent fill is ::after, a separate
-   layer whose width transitions smoothly between stops. */
-.composer-thinking-rail::before,
-.composer-thinking-rail::after {
-  content: "";
-  pointer-events: none;
-  position: absolute;
-  top: var(--thinking-track-center);
-  left: calc(100% / (2 * var(--stop-count, 1)));
-  height: var(--thinking-track-height);
-  border-radius: var(--radius-full);
-}
-
-.composer-thinking-rail::before {
-  right: calc(100% / (2 * var(--stop-count, 1)));
-  background: var(--ds-border-subtle);
-}
-
-.composer-thinking-rail::after {
-  /* Cover the first dot's full rounded cap without moving the target end. */
-  left: calc(100% / (2 * var(--stop-count, 1)) - var(--thinking-dot-radius));
-  width: calc(var(--composer-thinking-progress, 0%) + var(--thinking-dot-radius));
-  background: var(--ds-accent);
-  transition: width var(--motion-duration-normal) var(--motion-ease-out);
-}
-
-/* One dot per stop, centered on the rail at each full-width column center. */
-.composer-thinking-dots {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--stop-count, 1), minmax(0, 1fr));
-  align-items: center;
-  pointer-events: none;
-}
-
-.composer-thinking-dot {
-  justify-self: center;
-  width: calc(2 * var(--thinking-dot-radius));
-  height: calc(2 * var(--thinking-dot-radius));
-  border-radius: var(--radius-full);
-  background: var(--ds-text-muted);
-  opacity: 0.55;
-  transition:
-    background-color var(--motion-duration-fast) var(--motion-ease-out),
-    opacity var(--motion-duration-fast) var(--motion-ease-out),
-    transform var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-/* The thumb covers the selected dot; accent keeps a partial cover readable. */
-.composer-thinking-dot.active {
-  background: var(--ds-accent);
-  opacity: 1;
-}
-
-.composer-thinking-dot[data-hovered]:not([data-filled]):not(.active) {
-  position: relative;
-  z-index: 1;
-  background: var(--ds-accent);
-  opacity: 1;
-  transform: scale(1.3);
-}
-
-/* The accessible control overlays the rail at full width; the inset padding
-   moves the thumb stops onto the column centers. Its track stays transparent
-   so the rail line and dots show through under the thumb. */
-.composer-thinking-range {
-  z-index: 3;
-  -webkit-appearance: none;
-  appearance: none;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 18px;
-  margin: 0;
-  padding: 0 var(--thinking-inset);
-  background: transparent;
-  cursor: pointer;
-}
-
-.composer-thinking-range:focus-visible {
-  border-radius: var(--radius-sm);
-  outline: 2px solid var(--ds-accent);
-  outline-offset: 2px;
-}
-
-.composer-thinking-range::-webkit-slider-runnable-track {
-  height: var(--thinking-track-height);
-  background: transparent;
-}
-
-.composer-thinking-range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: calc((var(--thinking-track-height) - 14px) / 2);
-  border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-}
-
-.composer-thinking-range::-moz-range-track {
-  height: var(--thinking-track-height);
-  background: transparent;
-}
-
-.composer-thinking-range::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-}
-
-/* Decoration never changes the native range's hit target or accessible value.
-   Equal-width, gapless columns share the same center formula as the input. */
-.composer-thinking-thumb {
-  z-index: 2;
-  position: absolute;
-  top: 2px;
-  left: calc(100% / (2 * var(--stop-count, 1)) + var(--composer-thinking-progress, 0%));
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--ds-bg-elevated-opaque);
-  border-radius: var(--radius-full);
-  background: var(--ds-accent);
-  transform: translateX(-50%);
-  pointer-events: none;
-  transition: left var(--motion-duration-normal) var(--motion-ease-out);
-}
-
-
-.composer-thinking-slider[data-dragging] .composer-thinking-thumb,
-.composer-thinking-slider[data-dragging] .composer-thinking-rail::after {
-  transition: none;
-}
-
-/* Labels form the same full-width n-column grid as the dots, so label i
-   centers under dot i and the thumb at index i. Long words ellipsize inside
-   the column; every label stays visible. */
-.composer-thinking-ticks {
-  display: grid;
-  grid-template-columns: repeat(var(--stop-count, 1), minmax(0, 1fr));
-}
-
-.composer-thinking-tick {
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  border-radius: var(--radius-sm);
+.composer-thinking-heading {
+  padding: 4px 10px 7px;
   color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs-plus);
   line-height: var(--leading-compact);
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.composer-thinking-tick[data-hovered],
-.composer-thinking-tick:focus-visible {
-  color: var(--ds-text-primary);
-}
-
-.composer-thinking-tick.active {
-  color: var(--ds-accent);
-  font-weight: var(--font-weight-strong);
+.composer-thinking-list {
+  display: flex;
+  max-height: 264px;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
 @keyframes composer-menu-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.97);
+    transform: translateY(4px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
@@ -465,29 +232,6 @@
   .composer-model-thinking-menu {
     animation: none;
   }
-
-  .composer-thinking-thumb,
-  .composer-thinking-rail::after,
-  .composer-thinking-dot,
-  .composer-thinking-tick {
-    transition: none;
-  }
-}
-
-/* Light mode: the glassmorphism layer needs an opaque white base because
-   82% white-on-white is invisible. Use a solid background with a subtle
-   border and a stronger shadow instead of backdrop-filter translucency. */
-:root[data-theme="light"] .composer-model-menu {
-  background: var(--ds-bg-elevated-opaque);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: var(--ds-shadow-model-menu);
-}
-
-:root[data-theme="light"] .composer-model-group-label {
-  background: var(--ds-bg-elevated-opaque);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .composer-model-heading {
@@ -500,7 +244,7 @@
 /* Provider→models groups: the list scrolls on its own so the search field and
    provider headings stay reachable with many discovered models. */
 .composer-model-list {
-  max-height: 280px;
+  max-height: 264px;
   overflow-y: auto;
 }
 
@@ -508,12 +252,10 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 6px 8px 2px;
-  background: color-mix(in oklab, var(--ds-bg-elevated-opaque) 82%, transparent);
-  backdrop-filter: saturate(1.6) blur(40px);
-  -webkit-backdrop-filter: saturate(1.6) blur(40px);
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
+  padding: 7px 10px 3px;
+  background: var(--ds-bg-elevated-opaque);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
   font-weight: var(--font-weight-strong);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
@@ -524,75 +266,43 @@
   text-transform: none;
 }
 
-/* Model rows share the provider heading's compact inset. Normal-weight option
-   text stays distinct from the stronger provider heading. */
+/* Model rows sit at one tab stop below their provider heading, so groups keep
+   a clear parent → child hierarchy without changing the option's label. The
+   smaller normal-weight text keeps the provider heading as the visual anchor. */
 .composer-model-group .composer-model-option {
-  padding-left: 8px;
+  padding-left: 22px;
   font-size: var(--text-sm);
   font-weight: var(--font-weight-normal);
 }
 
-/*
-  The full wire id is the identity, and it stays whole: a long route name wraps
-  instead of hiding the part that distinguishes two configured models. The id,
-  its friendly name and the badges share one line — id first, name next, badges
-  on the trailing edge — because the stacked column that preceded it pushed
-  every row's content into the left half of the menu and left the rest empty.
-*/
+/* A model row carries its published capability markers and context window on
+   the same line as the name, so a model can be chosen on what it can do rather
+   than on its name alone. The meta cluster never squeezes the name: the name
+   truncates first and the markers keep their intrinsic width. */
 .composer-model-option-main {
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
-}
-
-/*
-  One label, never the wire id and a name together: the user's alias when the
-  binding carries one, the catalog's name otherwise. Which of the two is on
-  screen is visible in the label's own shape, and a long name wraps instead of
-  hiding the part that distinguishes two configured models. The wire id stays
-  the row's title.
-*/
-.composer-model-label {
-  min-width: 0;
-  flex: 0 1 auto;
-  max-width: 100%;
-  color: var(--ds-text-primary);
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-/* A name the user set is a label of its own, and reads as one: the catalog name
-   stays plain text while an alias carries its own chip. Colour cannot tell the
-   two apart here — the app's accent is the text colour itself — so the shape
-   carries the meaning. */
-.composer-model-label.is-alias {
-  padding: 1px 6px;
-  border-radius: var(--radius-full);
-  background: var(--ds-tile-deep);
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .composer-model-option-meta {
   display: flex;
   flex: 0 0 auto;
-  /* Pinned to the row's trailing edge: the capability icons and the window are
-     what a row shows on the right. */
-  margin-left: auto;
   align-items: center;
   gap: 4px;
 }
 
-/* Capability markers are icons, not words: a row carries up to two of them, and
-   the spelled-out labels were the widest thing in it. The accessible name stays
-   the translated label, so nothing is lost to a screen reader. */
 .composer-model-option-badge {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--ds-tile-deep);
+  padding: 0 4px;
   color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  text-transform: lowercase;
 }
 
 .composer-model-option-ctx {
@@ -601,9 +311,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+.composer-thinking-list .composer-plus-item > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-plus-item.active {
   background: var(--ds-bg-active);
-  border-radius: var(--radius-sm);
 }
 
 .composer-plus-item.active span:last-child {
@@ -627,11 +342,11 @@
 .composer-model-search {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  margin: 4px 3px 5px;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
+  gap: 7px;
+  height: 30px;
+  margin: 6px 4px;
+  padding: 0 9px;
+  border-radius: var(--radius-md);
   background: var(--ds-bg-inset);
   color: var(--ds-text-muted);
 }
@@ -656,7 +371,7 @@
 }
 
 .composer-model-empty {
-  padding: 12px 8px;
+  padding: 16px 10px;
   color: var(--ds-text-muted);
   font-size: var(--text-sm);
   text-align: center;
@@ -665,11 +380,9 @@
 /* Plan approval mode menu. The split trigger lives in composer.css; this
    partial owns the floating menu surface and its keyboard-highlight states. */
 .plan-approval-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: auto;
-  bottom: auto;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
   z-index: 25;
   width: max-content;
   min-width: 150px;
@@ -679,15 +392,6 @@
   border-radius: var(--radius-sm);
   background: var(--ds-bg-elevated-opaque);
   box-shadow: var(--ds-shadow-dialog);
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.plan-approval-menu.is-open {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
 }
 
 .plan-approval-menu-item {
