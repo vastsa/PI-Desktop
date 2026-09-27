@@ -84,7 +84,9 @@ test("project title toggles its conversation group without forcing it open", () 
   assert.match(projectTitleBlock, /aria-expanded=\{!collapsedProject\}/);
   assert.match(projectTitleBlock, /data-action="toggle-project-collapse"/);
   // Expansion rides the folder glyph's open/closed shape, not a chevron.
-  assert.match(projectTitleBlock, /sidebar-project-folder/);
+  assert.match(projectTitleBlock, /sidebar-project-glyph/);
+  assert.match(projectTitleBlock, /<IconFolder size=\{13\}/);
+  assert.match(projectTitleBlock, /<IconFolderOpen size=\{13\}/);
   assert.doesNotMatch(projectTitleBlock, /IconChevronDown/);
   assert.match(projectTitleBlock, /setCollapsed\(entry\.path, !collapsedProject\)/);
   assert.doesNotMatch(projectTitleBlock, /setCollapsed\(entry\.path, false\)/);

@@ -319,6 +319,67 @@
   flex: 0 0 auto;
 }
 
+/* The pinned project group and the list below it are the two halves a project
+   row can be dragged between, so each is a drop zone in its own right. The
+   highlight has to be readable as "everything here will be pinned" rather than
+   as another row-level drop line, which is why it outlines the whole half and
+   tints it instead of drawing an insertion rule between two rows.
+
+   Both halves re-declare the 1px column gap their children used to inherit
+   from `.sidebar-session-groups`: a wrapper breaks the flex gap, and without
+   this the groups would run together inside the half while staying 1px apart
+   across the boundary. */
+.sidebar-pinned-projects,
+.sidebar-listed-projects {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.sidebar-pinned-projects {
+  flex: 0 0 auto;
+}
+
+/* The pinned group sits outside the projects scroller so it reads as a
+   top-level section rather than a subgroup of projects — which means it needs
+   its own bound, or a handful of pinned projects would push the projects
+   themselves off the bottom of the sidebar. */
+.sidebar-pinned-projects-body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 1px;
+  /* Same 2px the projects scroller carries between its own toolbar and its
+     first group. Without it the two sections put their label at the same
+     height but their first row 2px apart. */
+  padding-top: 2px;
+  max-height: min(320px, 40vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+/* An expanded group carries 7px of air below its last row, which is what keeps
+   a following group from crowding it. At the foot of this group that air lands
+   against the projects section instead, and the section's own label padding
+   then stacks on top of it — so an expanded pinned project ended up separated
+   from "项目" by twice the distance a collapsed one gets. The last group hands
+   its air over to the section boundary, which is what already separates them. */
+.sidebar-pinned-projects-body > :last-child .sidebar-session-group-list,
+.sidebar-pinned-projects-body > :last-child .sidebar-session-group-list:last-child {
+  padding-bottom: 0;
+}
+
+.sidebar-pinned-projects.is-pin-drop-target,
+.sidebar-listed-projects.is-pin-drop-target {
+  background: color-mix(in oklab, var(--ds-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--ds-accent);
+}
+
 .sidebar-session-group-body.pinned {
   /* Eight compact 28px rows plus their seven 1px gaps, and the 2px label
      inset. */

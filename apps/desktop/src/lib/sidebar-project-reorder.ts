@@ -41,3 +41,31 @@ export function projectGroupKeyFromPoint(
   const rect = group.getBoundingClientRect();
   return { key, top: rect.top, height: rect.height };
 }
+
+/** Which half of the projects list a point is over. */
+export type ProjectPinZone = "pinned" | "rest";
+
+/**
+ * Reads the project pin zone under the cursor.
+ *
+ * `projectGroupKeyFromPoint` only finds a row, and a row cannot answer the
+ * question a cross-bucket drag has to ask: there is no row to drop onto when
+ * the list being entered is empty. The zone is therefore a property of the two
+ * list containers rather than of anything inside them, so a drag can find it
+ * anywhere over the list — including its padding and its label.
+ */
+export function projectPinZoneFromPoint(
+  clientX: number,
+  clientY: number,
+  doc: Pick<Document, "elementFromPoint"> = document,
+): ProjectPinZone | null {
+  const node = doc.elementFromPoint(clientX, clientY);
+  if (!node || typeof (node as Element).closest !== "function") return null;
+  const zone = (node as Element).closest("[data-sidebar-project-pin-zone]");
+  const value = zone?.getAttribute("data-sidebar-project-pin-zone");
+  return value === "pinned" || value === "rest" ? value : null;
+}
+
+export function projectPinZoneOf(project: { pinned?: boolean }): ProjectPinZone {
+  return project.pinned ? "pinned" : "rest";
+}

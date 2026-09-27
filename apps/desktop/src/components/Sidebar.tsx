@@ -34,9 +34,12 @@ import {
 } from "../lib/composer-drop";
 import {
   projectGroupKeyFromPoint,
+  projectPinZoneFromPoint,
+  projectPinZoneOf,
   projectReorderInsertAfter,
   projectReorderShouldArm,
   sameProjectReorderBucket,
+  type ProjectPinZone,
 } from "../lib/sidebar-project-reorder";
 import {
   sidebarSessionStatus,
@@ -128,6 +131,9 @@ type ProjectReorderPointerState = {
   dropTop: number;
   dropHeight: number;
   insertAfter: boolean;
+  /** Set when the drag is hovering the other half of the list, i.e. offering
+      to pin or unpin rather than to reorder. */
+  pinZone: ProjectPinZone | null;
   onMove: (event: PointerEvent) => void;
   onUp: (event: PointerEvent) => void;
   onCancel: (event: PointerEvent) => void;
@@ -312,6 +318,9 @@ export function Sidebar({
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ key: string; insertAfter: boolean } | null>(null);
+  // The list half a cross-bucket drag is currently over, or null when the
+  // pointer is inside the bucket the row came from and the drop is a reorder.
+  const [pinnedDropZone, setPinnedDropZone] = useState<ProjectPinZone | null>(null);
   const [windowFocused, setWindowFocused] = useState(true);
 
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -326,6 +335,10 @@ export function Sidebar({
     targetKey: string,
     insertAfter: boolean,
   ) => void>(() => {});
+  // The pointer listeners are registered once and live for the whole drag, so
+  // they must not close over the store action from the render that armed them.
+  const toggleProjectPinnedRef = useRef(toggleProjectPinned);
+  toggleProjectPinnedRef.current = toggleProjectPinned;
 
   const finishSidebarResize = useCallback((cancelled: boolean, collapse = false) => {
     const state = sidebarResizeRef.current;
@@ -800,6 +813,19 @@ export function Sidebar({
 
   projectEntriesRef.current = projectEntries;
 
+  // Pinning moves a project out of the main list and into the group above it,
+  // so the two are rendered from disjoint slices. `projectEntries` already
+  // sorts pinned ahead of the rest and then applies the chosen sort within
+  // that order, so slicing keeps each half in the order the user expects.
+  const pinnedProjectEntries = useMemo(
+    () => projectEntries.filter((entry) => entry.meta.pinned),
+    [projectEntries],
+  );
+  const listedProjectEntries = useMemo(
+    () => projectEntries.filter((entry) => !entry.meta.pinned),
+    [projectEntries],
+  );
+
   const finishProjectReorderPress = useCallback((opts?: { keepClickSuppressed?: boolean }) => {
     const state = projectReorderRef.current;
     if (state) {
@@ -811,6 +837,7 @@ export function Sidebar({
     if (!opts?.keepClickSuppressed) suppressProjectTitleClickRef.current = false;
     setDraggingProjectKey(null);
     setDropIndicator(null);
+    setPinnedDropZone(null);
     document.documentElement.removeAttribute("data-project-reordering");
   }, []);
 
@@ -880,7 +907,17 @@ export function Sidebar({
         const destination = target
           ? projectEntriesRef.current.find((entry) => entry.key === target.key)
           : undefined;
-        if (
+        // A row dragged over the *other* half of the list is offering to move
+        // between buckets, which reads as a drop on the group rather than as a
+        // reorder. That case is decided on the zone under the pointer, not on
+        // a row, so it still works when the half being entered is empty.
+        const zone = source ? projectPinZoneFromPoint(moveEvent.clientX, moveEvent.clientY) : null;
+        if (zone && source && zone !== projectPinZoneOf(source.meta)) {
+          current.dropKey = null;
+          current.pinZone = zone;
+          setDropIndicator(null);
+          setPinnedDropZone(zone);
+        } else if (
           target &&
           source &&
           destination &&
@@ -896,10 +933,14 @@ export function Sidebar({
           current.dropTop = target.top;
           current.dropHeight = target.height;
           current.insertAfter = insertAfter;
+          current.pinZone = null;
+          setPinnedDropZone(null);
           setDropIndicator({ key: target.key, insertAfter });
         } else {
           current.dropKey = null;
+          current.pinZone = null;
           setDropIndicator(null);
+          setPinnedDropZone(null);
         }
       };
 
@@ -908,7 +949,16 @@ export function Sidebar({
         if (!current || current.pointerId !== upEvent.pointerId) return;
         if (current.armed) {
           upEvent.preventDefault();
-          if (current.dropKey) {
+          if (current.pinZone) {
+            const source = projectEntriesRef.current.find(
+              (entry) => entry.key === current.projectKey,
+            );
+            if (source) {
+              toggleProjectPinnedRef.current(source.path, current.pinZone === "pinned");
+            }
+            current.pinZone = null;
+            setPinnedDropZone(null);
+          } else if (current.dropKey) {
             reorderProjectEntriesRef.current(
               current.projectKey,
               current.dropKey,
@@ -939,6 +989,7 @@ export function Sidebar({
         dropTop: 0,
         dropHeight: 0,
         insertAfter: false,
+        pinZone: null,
         onMove,
         onUp,
         onCancel,
@@ -1966,20 +2017,20 @@ export function Sidebar({
           >
             {/* Disclosure rides the folder glyph itself: an open folder reads as
                 "expanded" and a closed one as "collapsed", so the row needs no
-                separate chevron. Pinned keeps its own star next to it. */}
-            {collapsedProject ? (
-              <IconFolder size={13} className="sidebar-project-folder" aria-hidden />
-            ) : (
-              <IconFolderOpen size={13} className="sidebar-project-folder" aria-hidden />
-            )}
-            {entry.meta.pinned ? (
-              <IconStar
-                size={13}
-                fill="currentColor"
-                className="sidebar-project-pin"
-                aria-hidden
-              />
-            ) : null}
+                separate chevron.
+
+                The wrapper — not the folder — is the leading flex item, so the
+                box stays 13px and the title holds one left edge whatever the
+                row carries. Pinning is no longer marked here: a pinned project
+                lives in its own group above the list, so the row would only be
+                saying something the list already says. */}
+            <span className="sidebar-project-glyph" aria-hidden>
+              {collapsedProject ? (
+                <IconFolder size={13} aria-hidden />
+              ) : (
+                <IconFolderOpen size={13} aria-hidden />
+              )}
+            </span>
             <span>{entry.name}</span>
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
           </TooltipButton>
@@ -2467,6 +2518,23 @@ export function Sidebar({
           </div>
         </section>
 
+        {pinnedProjectEntries.length > 0 ? (
+          <section
+            className={`sidebar-pinned-projects ${pinnedDropZone === "pinned" ? "is-pin-drop-target" : ""}`}
+            data-sidebar-project-pin-zone="pinned"
+            aria-labelledby="sidebar-pinned-projects-label"
+          >
+            <div className="sidebar-list-toolbar sidebar-list-toolbar-secondary">
+              <span id="sidebar-pinned-projects-label" className="sidebar-list-label">
+                {t("nav.pinnedProjects")}
+              </span>
+            </div>
+            <div className="sidebar-pinned-projects-body" onScroll={() => closeMenus(false)}>
+              {pinnedProjectEntries.map(renderProjectGroup)}
+            </div>
+          </section>
+        ) : null}
+
         <div
           className="sidebar-list-toolbar"
           data-sidebar-section="projects"
@@ -2517,7 +2585,14 @@ export function Sidebar({
           onDragLeave={onProjectsAreaDragLeave}
           onDrop={onProjectsAreaDrop}
         >
-          {projectEntries.length > 0 ? projectEntries.map(renderProjectGroup) : (
+          {listedProjectEntries.length > 0 ? (
+            <div
+              className={`sidebar-listed-projects ${pinnedDropZone === "rest" ? "is-pin-drop-target" : ""}`}
+              data-sidebar-project-pin-zone="rest"
+            >
+              {listedProjectEntries.map(renderProjectGroup)}
+            </div>
+          ) : projectEntries.length === 0 ? (
             <section className="sidebar-session-group" aria-labelledby="sidebar-project-group-label">
               <div className="sidebar-session-group-header">
                 <button type="button" id="sidebar-project-group-label" className="sidebar-session-group-title" onClick={() => void openProjectPicker()}>
@@ -2526,7 +2601,7 @@ export function Sidebar({
                 </button>
               </div>
             </section>
-          )}
+          ) : null}
         </div>
 
         <div className="sidebar-footer no-drag">

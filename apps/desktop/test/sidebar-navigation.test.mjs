@@ -150,26 +150,27 @@ test("sidebar project and session lists stay coordinated with the global type sc
   );
 });
 
-test("pinned project rows add a filled star beside the folder glyph", () => {
-  // The folder glyph now reports disclosure, so pinning adds a star instead of
-  // replacing the icon and leaving the expansion state unreadable.
+test("a project row leads with one fixed-width folder box and no pin badge", () => {
+  // The folder reports disclosure, so there is no chevron. The wrapper — not
+  // the folder — is the flex item, so the box is 13px and the title keeps one
+  // left edge. Pinning is not marked on the row at all: a pinned project lives
+  // in its own group above the list, so a badge here would only repeat it.
   assert.match(
     sidebarSource,
-    /collapsedProject \? \([\s\S]*?<IconFolder size=\{13\} className="sidebar-project-folder" aria-hidden \/>[\s\S]*?\) : \([\s\S]*?<IconFolderOpen size=\{13\} className="sidebar-project-folder" aria-hidden \/>/,
-  );
-  assert.match(
-    sidebarSource,
-    /entry\.meta\.pinned \? \([\s\S]*?<IconStar\s+size=\{13\}\s+fill="currentColor"[\s\S]*?className="sidebar-project-pin"[\s\S]*?\) : null/,
+    /<span className="sidebar-project-glyph" aria-hidden>[\s\S]*?collapsedProject \? \([\s\S]*?<IconFolder size=\{13\} aria-hidden \/>[\s\S]*?\) : \([\s\S]*?<IconFolderOpen size=\{13\} aria-hidden \/>[\s\S]*?<\/span>/,
   );
   assert.doesNotMatch(sidebarSource, /sidebar-disclosure-icon/);
+  assert.doesNotMatch(sidebarSource, /className="sidebar-project-pin"/);
+  assert.doesNotMatch(sidebarSource, /sidebar-project-folder/);
+
   assert.match(
     globalStyles,
-    /\.sidebar-project-pin\s*\{[^}]*flex:\s*0 0 auto;[^}]*color:\s*var\(--ds-accent\);/s,
+    /\.sidebar-project-glyph\s*\{[^}]*position:\s*relative;[^}]*width:\s*13px;[^}]*flex:\s*0 0 13px;/s,
   );
-  assert.match(
-    globalStyles,
-    /\.sidebar-project-folder\s*\{[^}]*flex:\s*0 0 auto;/s,
-  );
+  // The badge and its old rule are both gone; the star/pin glyph is not
+  // smuggled back in beside the folder.
+  assert.doesNotMatch(globalStyles, /\.sidebar-project-pin/);
+  assert.doesNotMatch(globalStyles, /\.sidebar-project-folder/);
 });
 
 test("sidebar section toolbars open create actions from context menus", () => {
@@ -449,4 +450,84 @@ test("sidebar rows share one hover surface and workspace context never paints se
   assert.match(globalStyles, /:focus-visible\s*\{[^}]*outline:\s*1\.5px solid/);
   assert.match(globalStyles, /\.project-group\.is-drop-target > \.sidebar-session-group-header\s*\{[^}]*outline:[^}]*background:/);
   assert.match(globalStyles, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.thread-item,\s*\.sidebar-session-group-header\s*\{\s*transition-duration:\s*0\.01ms !important;/);
+});
+
+test("pinned projects render as their own group above the list", () => {
+  // Pinning moves a project out of the main list, so the two are drawn from
+  // disjoint slices of one sorted list rather than filtered at render time —
+  // that way each half keeps the order the chosen sort gave it.
+  assert.match(
+    sidebarSource,
+    /const pinnedProjectEntries = useMemo\(\s*\(\) => projectEntries\.filter\(\(entry\) => entry\.meta\.pinned\)/,
+  );
+  assert.match(
+    sidebarSource,
+    /const listedProjectEntries = useMemo\(\s*\(\) => projectEntries\.filter\(\(entry\) => !entry\.meta\.pinned\)/,
+  );
+
+  // Both halves carry the zone a cross-bucket drag resolves against. It has to
+  // sit on the containers: the half being entered can be empty, and a row-level
+  // marker would leave nothing to hit.
+  assert.match(
+    sidebarSource,
+    /className=\{`sidebar-pinned-projects[^`]*`\}\s*\n\s*data-sidebar-project-pin-zone="pinned"/,
+  );
+  assert.match(
+    sidebarSource,
+    /className=\{`sidebar-listed-projects[^`]*`\}\s*\n\s*data-sidebar-project-pin-zone="rest"/,
+  );
+  assert.match(sidebarSource, /pinnedProjectEntries\.map\(renderProjectGroup\)/);
+  // Beside the projects section, not inside it. Nested, it read as "projects,
+  // which contain a pinned subgroup" and the two labels stacked.
+  assert.match(
+    sidebarSource,
+    /data-sidebar-project-pin-zone="pinned"[\s\S]*?<\/section>\s*\) : null\}\s*<div\s*\n\s*className="sidebar-list-toolbar"\s*\n\s*data-sidebar-section="projects"/,
+  );
+  // It is outside the projects scroller, so it carries its own bound rather
+  // than letting pinned projects push the projects off the bottom.
+  assert.match(sidebarSource, /className="sidebar-pinned-projects-body"/);
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects-body\s*\{[^}]*padding-top:\s*2px;[^}]*max-height:[^}]*overflow-y:\s*auto;/s,
+  );
+  // Its last group gives up the 7px of air an expanded group normally owns,
+  // so the section below is the same distance away whether the group is open
+  // or shut.
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects-body > :last-child \.sidebar-session-group-list[\s\S]*?padding-bottom:\s*0;/,
+  );
+  // Both halves re-declare the 1px gap the flex container used to give them.
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects,\s*\.sidebar-listed-projects\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*1px;/s,
+  );
+  assert.match(sidebarSource, /listedProjectEntries\.map\(renderProjectGroup\)/);
+  assert.match(sidebarSource, /t\("nav\.pinnedProjects"\)/);
+
+  // A row no longer carries a pin badge: being in the group is the marker.
+  assert.doesNotMatch(sidebarSource, /className="sidebar-project-pin"/);
+});
+
+test("dragging a project across the list boundary pins or unpins it", () => {
+  // Reorder already refuses to cross a pin boundary, so the same boundary is
+  // where a pin or unpin is offered instead — decided on release, from the
+  // zone the pointer is over rather than from a row, so an empty half still
+  // accepts a drop.
+  assert.match(sidebarSource, /projectPinZoneFromPoint\(/);
+  assert.match(sidebarSource, /zone !== projectPinZoneOf\(source\.meta\)/);
+  assert.match(
+    sidebarSource,
+    /toggleProjectPinnedRef\.current\(source\.path, current\.pinZone === "pinned"\)/,
+  );
+  // The action is read through a ref: the pointer listeners are registered once
+  // and live for the whole drag, so a captured store action would go stale.
+  assert.match(sidebarSource, /const toggleProjectPinnedRef = useRef\(toggleProjectPinned\)/);
+  // The highlight is transient state and has to be dropped on every way a drag
+  // can end, or a released row leaves a zone lit.
+  assert.match(sidebarSource, /setPinnedDropZone\(null\)/);
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects\.is-pin-drop-target,\s*\.sidebar-listed-projects\.is-pin-drop-target\s*\{/s,
+  );
 });

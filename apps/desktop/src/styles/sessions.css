@@ -479,9 +479,17 @@
   color: var(--ds-accent);
 }
 
-.sidebar-project-pin {
-  flex: 0 0 auto;
-  color: var(--ds-accent);
+/* The project row's leading glyph: one 13px box holding the folder. The
+   wrapper, not the folder, is the flex item, so the box is 13px whatever the
+   row carries and the title keeps a single left edge. Pinning is marked by the
+   row living in its own group above the list, not by a badge here. */
+.sidebar-project-glyph {
+  position: relative;
+  display: inline-flex;
+  width: 13px;
+  flex: 0 0 13px;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-row-actions,
@@ -1095,12 +1103,6 @@
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
   min-width: 0;
-}
-
-/* Disclosure rides the folder glyph itself. The open/closed shapes carry the
-   state, so this affordance never rotates. */
-.sidebar-project-folder {
-  flex: 0 0 auto;
 }
 
 .sidebar-session-group-header:hover .sidebar-session-group-add,
