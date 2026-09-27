@@ -10,7 +10,7 @@ const SPEED = 80;
 /** Rest between passes, in seconds. */
 const PAUSE = 0.33;
 
-type Sheen = { animation: Animation; cycleMs: number };
+type Sheen = { animation: Animation; cycleMs: number; width: number };
 
 /**
  * Draws the running sweep on every running row's title.
@@ -36,10 +36,16 @@ type Sheen = { animation: Animation; cycleMs: number };
  * hook's job.
  *
  * The keyframe offsets are computed rather than fixed, so the rest is the same
- * second on every row regardless of how long the title is. One observer covers
- * the whole list rather than one per row: measuring a handful of elements
- * costs far less than the per-frame paint the animation already does, and it
- * keeps the work out of the row components.
+ * second on every row regardless of how long the title is.
+ *
+ * The observed container has to be the sidebar body, not the projects list.
+ * Pinned and temporary sessions are siblings of that scroller rather than
+ * descendants of it, and a hook scoped to it leaves their titles with no
+ * measured width and therefore no animation at all — which surfaces as "the
+ * sheen only works inside projects" rather than as a missing scope. One
+ * observer for the whole body also costs less than one per row: measuring a
+ * handful of elements is far cheaper than the per-frame paint the animation
+ * already does, and it keeps the work out of the row components.
  */
 export function useRunningTitleSheen(
   container: RefObject<HTMLElement | null>,
@@ -68,6 +74,14 @@ export function useRunningTitleSheen(
       // gradient to use.
       title.style.setProperty("--sheen-band", `${BAND}px`);
       title.style.setProperty("--sheen-width", `${width}px`);
+
+      // Re-collecting walks every row, and a mutation fires on ordinary list
+      // churn, so an unchanged row is left strictly alone — rebuilding its
+      // animation would cost a cancel and a create to arrive at the same
+      // place, and the phase carry-over only makes that visible as a brief
+      // stutter.
+      const existing = sheens.get(title);
+      if (existing && existing.width === width) return;
 
       // Reduced motion still gets the resting appearance: the stylesheet
       // parks the band off-screen without this, so the title reads at its own
@@ -102,11 +116,11 @@ export function useRunningTitleSheen(
       }
 
       previous?.animation.cancel();
-      sheens.set(title, { animation, cycleMs });
+      sheens.set(title, { animation, cycleMs, width });
     };
 
-    // The container is watched alongside the rows: the sidebar is
-    // drag-resizable and no row re-renders when the rail changes width.
+    // The body is watched alongside the rows: the sidebar is drag-resizable
+    // and no row re-renders when the rail changes width.
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         if (entry.target === root) {
@@ -120,13 +134,48 @@ export function useRunningTitleSheen(
     });
 
     const collect = () => {
+      const live = new Set(root.querySelectorAll<HTMLElement>(TITLE_SELECTOR));
+      // A row that left the list is gone from the DOM, so nothing will ever
+      // report on it again; drop it rather than keep a detached node and its
+      // running animation alive.
+      for (const [title, sheen] of sheens) {
+        if (live.has(title)) continue;
+        sheen.animation.cancel();
+        sheens.delete(title);
+      }
       observer.disconnect();
       observer.observe(root);
-      for (const title of root.querySelectorAll<HTMLElement>(TITLE_SELECTOR)) {
+      for (const title of live) {
         observer.observe(title);
         paint(title);
       }
     };
+
+    // Rows are keyed by session id, but the same key under a different parent
+    // is a different node: pinning a session that is already running moves it
+    // out of its project group and into the pinned list, and the running set —
+    // and therefore this effect — never re-runs. The replacement arrives with
+    // no width and no animation and quietly never gets one, while the node
+    // that was observed detaches and stops reporting sizes at all.
+    //
+    // Child-list watching is what closes that, and it also covers groups added
+    // while the sidebar is open. It costs nothing at rest: the lists only
+    // mutate when rows move, and this hook's own writes touch `style`, which
+    // is not a child-list change, so the two observers cannot drive each other
+    // round. Re-collecting on every render instead would put DOM work on the
+    // sidebar's render path for a change that almost never happens.
+    let queued = false;
+    const mutations = new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      // Coalesced: a re-sort can add and remove many nodes in one tick, and
+      // the result only depends on the set that survives it.
+      requestAnimationFrame(() => {
+        queued = false;
+        collect();
+      });
+    });
+    mutations.observe(root, { childList: true, subtree: true });
 
     const onMotionChange = () => {
       for (const title of sheens.keys()) paint(title);
@@ -138,6 +187,7 @@ export function useRunningTitleSheen(
 
     return () => {
       reduceMotion.removeEventListener("change", onMotionChange);
+      mutations.disconnect();
       observer.disconnect();
       for (const [title, sheen] of sheens) {
         sheen.animation.cancel();

@@ -279,14 +279,17 @@ export function Sidebar({
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
   const update = useUpdateState();
-  // The running sheen is sized from each row's measured title, so the list
-  // container is what gets watched. See the hook for why CSS cannot do it.
-  const sessionGroupsRef = useRef<HTMLDivElement | null>(null);
+  // The running sheen is sized from each row's measured title, so the element
+  // holding every session list is what gets watched. That has to be the body,
+  // not the projects scroller: pinned and temporary sessions are siblings of
+  // that scroller, and watching it alone left them without a sweep entirely.
+  // See the hook for why the width has to be measured at all.
+  const sidebarBodyRef = useRef<HTMLDivElement | null>(null);
   const runningSessionIds = useMemo(
     () => Object.keys(runningSessions).filter((id) => runningSessions[id]),
     [runningSessions],
   );
-  useRunningTitleSheen(sessionGroupsRef, runningSessionIds);
+  useRunningTitleSheen(sidebarBodyRef, runningSessionIds);
 
   const [sortOpen, setSortOpen] = useState(false);
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
@@ -2420,7 +2423,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="sidebar-body no-drag">
+      <div ref={sidebarBodyRef} className="sidebar-body no-drag">
 
         {pinnedSessions.length > 0 ? (
           <section
@@ -2561,7 +2564,6 @@ export function Sidebar({
         </div>
 
         <div
-          ref={sessionGroupsRef}
           className={`sidebar-session-groups min-h-0 flex-1 overflow-auto px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
           onScroll={() => {
             if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);

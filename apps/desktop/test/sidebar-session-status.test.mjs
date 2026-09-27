@@ -239,15 +239,36 @@ test("the running sheen is sized from each row's measured title, not a share of 
   // A title changing mid-run is ordinary, so the pass continues from where it
   // was instead of snapping back to the left edge.
   assert.match(hook, /animation\.currentTime = \(elapsed \/ previous\.cycleMs\) \* cycleMs;/);
+  // Rows keyed by session id are still new nodes when the same session moves
+  // between lists, and the running set does not change when it does — so the
+  // observed set has to be rebuilt on child-list mutations or the replacement
+  // silently never gets a sweep.
+  assert.match(hook, /new MutationObserver\(/);
+  assert.match(hook, /mutations\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.match(hook, /mutations\.disconnect\(\)/);
+  // Our own writes touch `style`, never childList, so the two observers
+  // cannot drive each other; the frame guard coalesces a re-sort that adds and
+  // removes many nodes in one tick.
+  assert.match(hook, /requestAnimationFrame\(\(\) => \{/);
+  // Re-collecting must not churn animations, and must not retain the detached
+  // nodes it replaced.
+  assert.match(hook, /if \(existing && existing\.width === width\) return;/);
+  assert.match(hook, /if \(live\.has\(title\)\) continue;/);
+
   // Reduced motion is a live preference, not just a load-time one.
   assert.match(hook, /prefers-reduced-motion: reduce/);
   assert.match(hook, /reduceMotion\.addEventListener\("change"/);
   assert.match(hook, /animation\.cancel\(\)/);
 
-  // Wired to the list that holds the rows, and to the running set so the
-  // observed elements are rebuilt when rows start or stop running.
-  assert.match(sidebar, /useRunningTitleSheen\(sessionGroupsRef, runningSessionIds\)/);
-  assert.match(sidebar, /ref=\{sessionGroupsRef\}/);
+  // Wired to the sidebar body, not the projects scroller. Pinned and temporary
+  // sessions are siblings of that scroller, so a hook scoped to it would leave
+  // every other session list without a sweep while the projects list looked
+  // fine — the sheen would appear to be project-only rather than missing.
+  assert.match(sidebar, /useRunningTitleSheen\(sidebarBodyRef, runningSessionIds\)/);
+  assert.match(sidebar, /<div ref=\{sidebarBodyRef\} className="sidebar-body no-drag">/);
+  // The running set is watched so the observed elements are rebuilt when rows
+  // start or stop running.
+  assert.doesNotMatch(sidebar, /sessionGroupsRef/);
   assert.match(sidebar, /Object\.keys\(runningSessions\)\.filter/);
 
   // The band the hook writes has to match the one the sheet falls back to, or
