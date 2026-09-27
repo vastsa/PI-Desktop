@@ -197,15 +197,14 @@
   overflow: hidden;
 }
 
-/* Nested session rows read as children through the indent alone; the tree
-   rail is gone (D297). */
+/* Nested session rows run the full sidebar width like every other row — the
+   row, its group header and the standalone lists all share one left and one
+   right edge. */
 .sidebar-session-group-body.project {
   /* A one-row grid: the fold is a real fraction of the measured content, and
      `opacity` stays 1 — the rows are clipped, never faded. */
   display: grid;
   grid-template-rows: 1fr;
-  margin-left: 13px;
-  padding-left: 9px;
   transition: grid-template-rows var(--motion-duration-normal) var(--motion-ease-out);
 }
 
@@ -230,11 +229,6 @@
   gap: 1px;
   padding-top: 2px;
   padding-bottom: 7px;
-}
-
-.sidebar-session-group-body.temporary {
-  margin-left: 13px;
-  padding-left: 9px;
 }
 
 .sidebar-time-group-header {
@@ -275,7 +269,7 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   /* 2px below the section label, matching every label-to-content pair. */
-  padding: 2px 2px 0;
+  padding: 2px 0 0;
 }
 
 .sidebar-standalone-sessions {
@@ -303,7 +297,7 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   /* 2px below the section label, matching every label-to-content pair. */
-  padding: 2px 2px 0;
+  padding: 2px 0 0;
 }
 
 .sidebar-pinned-sessions .thread-item-title {
