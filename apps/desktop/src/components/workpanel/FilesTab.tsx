@@ -12,7 +12,7 @@ import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Markdown } from "../Markdown";
 import { fileDirOf } from "../../lib/chat-links";
-import { Button, cx } from "../ui";
+import { cx } from "../ui";
 import { TooltipButton } from "../ui";
 import {
   ensureLang,
@@ -72,13 +72,6 @@ function langForPath(path: string): string | null {
 
 function isMarkdownPath(path: string): boolean {
   return /\.(?:md|markdown)$/i.test(path);
-}
-
-function isMp4(path: string, mimeType?: string): boolean {
-  return /\.mp4$/i.test(path) || (
-    /(?:^|[\\/])attachments[\\/][0-9a-f]{64}$/i.test(path) &&
-    mimeType?.toLowerCase() === "video/mp4"
-  );
 }
 
 function formatSize(size: number): string {
@@ -156,13 +149,11 @@ export function FilesTab() {
   const { t } = useTranslation();
   const workspace = useAppStore((s) => s.workspace);
   const fileRequest = useAppStore((s) => s.workPanelFileRequest);
-  const showToast = useAppStore((s) => s.showToast);
   const root = workspace?.path ?? null;
 
   const [dirs, setDirs] = useState<Record<string, DirState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
-  const [selectedMimeType, setSelectedMimeType] = useState<string | undefined>();
   const [file, setFile] = useState<FsReadResult | null>(null);
   const [fileError, setFileError] = useState(false);
 
@@ -177,7 +168,6 @@ export function FilesTab() {
     setDirs({});
     setExpanded(new Set());
     setSelected(null);
-    setSelectedMimeType(undefined);
     setFile(null);
     setFileError(false);
   }, [root]);
@@ -215,32 +205,34 @@ export function FilesTab() {
     [dirs, loadDir],
   );
 
-  const openFile = useCallback(async (rel: string, mimeType?: string) => {
-    setSelected(rel);
-    setSelectedMimeType(mimeType);
-    setFile(null);
-    setFileError(false);
-    try {
-      setFile(await api.fsRead(rel, mimeType));
-    } catch {
-      setFileError(true);
-    }
-  }, []);
-
-  const openMp4 = useCallback(async () => {
-    if (!selected) return;
-    try {
-      await api.fsOpen(selected, selectedMimeType);
-    } catch {
-      showToast(t("panel.files.openFailed"), { variant: "error" });
-    }
-  }, [selected, selectedMimeType, showToast, t]);
+  const openFile = useCallback(
+    async (rel: string, mimeType?: string, position?: { line?: number; column?: number }) => {
+      setSelected(rel);
+      setFile(null);
+      setFileError(false);
+      try {
+        setFile(await api.fsRead(rel, mimeType));
+        if (position?.line != null) {
+          // 1-based chat line refs map onto the editor's line nodes.
+          requestAnimationFrame(() => {
+            const lineNode = document.querySelector(
+              `.work-files-preview [data-line="${position.line}"]`,
+            );
+            lineNode?.scrollIntoView({ block: "center" });
+          });
+        }
+      } catch {
+        setFileError(true);
+      }
+    },
+    [],
+  );
 
   // Chat-initiated previews: open the file and expand its ancestor folders
   // so "back" lands on a tree that reveals it. Attachment blobs and absolute
   // scratch paths live outside the workspace tree.
   useEffect(() => {
-    if (!fileRequest) return;
+    if (!fileRequest || !root) return;
     if (fileRequest.seq === handledFileRequestSeq) return;
     handledFileRequestSeq = fileRequest.seq;
     const path = fileRequest.path;
@@ -249,7 +241,7 @@ export function FilesTab() {
       path.startsWith("/") ||
       /^[A-Za-z]:[\\/]/.test(path) ||
       path.startsWith("\\\\");
-    if (root && !isExternal) {
+    if (!isExternal) {
       const parts = path.split("/").slice(0, -1);
       const ancestors: string[] = [];
       let acc = "";
@@ -260,7 +252,10 @@ export function FilesTab() {
       setExpanded((prev) => new Set([...prev, ...ancestors]));
       for (const dir of ancestors) void loadDir(dir);
     }
-    void openFile(path, fileRequest.mimeType);
+    void openFile(path, fileRequest.mimeType, {
+      line: fileRequest.line,
+      column: fileRequest.column,
+    });
   }, [fileRequest, root, loadDir, openFile]);
 
   const renderDir = (rel: string, depth: number): React.ReactNode => {
@@ -325,6 +320,16 @@ export function FilesTab() {
     });
   };
 
+  if (!root) {
+    return (
+      <WorkTabEmpty
+        icon={IconFolder}
+        title={t("panel.files.noWorkspace")}
+        body={t("panel.files.noWorkspaceHint")}
+      />
+    );
+  }
+
   if (selected !== null) {
     return (
       <div className="file-viewer">
@@ -336,7 +341,6 @@ export function FilesTab() {
             ariaLabel={t("panel.files.back")}
             onClick={() => {
               setSelected(null);
-              setSelectedMimeType(undefined);
               setFile(null);
             }}
           >
@@ -379,26 +383,10 @@ export function FilesTab() {
                   ? t("panel.files.tooLarge")
                   : t("panel.files.binary")
               }
-            >
-              {isMp4(selected, selectedMimeType) && (
-                <Button type="button" onClick={() => void openMp4()}>
-                  {t("chat.openFile")}
-                </Button>
-              )}
-            </WorkTabEmpty>
+            />
           )}
         </div>
       </div>
-    );
-  }
-
-  if (!root) {
-    return (
-      <WorkTabEmpty
-        icon={IconFolder}
-        title={t("panel.files.noWorkspace")}
-        body={t("panel.files.noWorkspaceHint")}
-      />
     );
   }
 

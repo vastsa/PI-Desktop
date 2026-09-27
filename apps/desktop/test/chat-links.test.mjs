@@ -6,6 +6,7 @@ import {
   isHttpUrl,
   linkifyMdastTree,
   parseFileRef,
+  parseFileRefPosition,
   remarkChatFileLinks,
   resolvePreviewTarget,
   splitChatText,
@@ -23,6 +24,31 @@ test("parseFileRef accepts pathy tokens and strips line refs", () => {
   assert.equal(parseFileRef("docs/Makefile"), "docs/Makefile");
   assert.equal(parseFileRef("./README.md"), "./README.md");
   assert.equal(parseFileRef("../adr/0163.md"), "../adr/0163.md");
+});
+
+test("parseFileRefPosition keeps :line[:col] that parseFileRef strips", () => {
+  assert.deepEqual(parseFileRefPosition("src/main.rs:42"), { line: 42 });
+  assert.deepEqual(parseFileRefPosition("src/main.rs:42:7"), { line: 42, column: 7 });
+  assert.equal(parseFileRefPosition("src/main.rs"), null);
+  assert.equal(parseFileRefPosition("src/main.rs:0"), null);
+});
+
+test("resolvePreviewTarget carries line/col on file chips (#681)", () => {
+  assert.deepEqual(resolvePreviewTarget("src/a.ts:42", ROOT), {
+    kind: "file",
+    path: "src/a.ts",
+    line: 42,
+  });
+  assert.deepEqual(resolvePreviewTarget("src/a.ts:42:7", ROOT), {
+    kind: "file",
+    path: "src/a.ts",
+    line: 42,
+    column: 7,
+  });
+  assert.deepEqual(resolvePreviewTarget("src/a.ts", ROOT), {
+    kind: "file",
+    path: "src/a.ts",
+  });
 });
 
 test("parseFileRef accepts bare names only with known extensions", () => {
@@ -91,6 +117,7 @@ test("resolvePreviewTarget classifies urls and workspace files", () => {
   assert.deepEqual(resolvePreviewTarget("src/a.ts:10", ROOT), {
     kind: "file",
     path: "src/a.ts",
+    line: 10,
   });
   assert.deepEqual(resolvePreviewTarget("./README.md", ROOT, "docs"), {
     kind: "file",

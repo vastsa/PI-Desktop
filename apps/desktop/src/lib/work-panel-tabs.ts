@@ -2,19 +2,19 @@ export type WorkPanelTabKind =
   | "new"
   | "review"
   | "file"
-  | "plugin"
-  | "subagent";
+  | "plugin";
 
 export type WorkPanelTab = {
   id: string;
-  /** Display name captured at open time, used by labels that have no resource. */
-  label?: string;
   kind: WorkPanelTabKind;
   resource?: string;
   /** Guest URL or workspace path for the Browser plugin view (D333). */
   location?: string;
   /** Stored attachment mimeType for extension-less `attachments/<sha256>` images. */
   mimeType?: string;
+  /** Optional 1-based line/column for host file tabs (chat `path:line` refs). */
+  line?: number;
+  column?: number;
 };
 
 export type WorkPanelTabsState = {
@@ -24,7 +24,13 @@ export type WorkPanelTabsState = {
 
 export type WorkPanelContext = WorkPanelTabsState & {
   open: boolean;
-  fileRequest: { path: string; seq: number; mimeType?: string } | null;
+  fileRequest: {
+    path: string;
+    seq: number;
+    mimeType?: string;
+    line?: number;
+    column?: number;
+  } | null;
 };
 
 let newWorkPanelTabSequence = 0;
@@ -64,7 +70,7 @@ export function switchWorkPanelContextState(
 }
 
 export function toolWorkPanelTab(
-  kind: Exclude<WorkPanelTabKind, "new" | "file" | "plugin" | "subagent">,
+  kind: Exclude<WorkPanelTabKind, "new" | "file" | "plugin">,
 ): WorkPanelTab {
   return { id: kind, kind };
 }
@@ -95,40 +101,16 @@ export function pluginWorkPanelTab(pluginId: string, viewId: string): WorkPanelT
   return { id: `plugin:${resource}`, kind: "plugin", resource };
 }
 
-/**
- * A subagent transcript tab (ADR 0062 delegations).
- *
- * Keyed by the delegation id, so re-opening the same delegate reuses its tab
- * and parallel delegates coexist as independent tabs. The agent name is
- * captured at open time so the strip can label the tab even before the
- * delegate produced any row.
- */
-export function subagentWorkPanelTab(
-  delegationId: string,
-  agentName?: string,
-): WorkPanelTab {
-  return {
-    id: `subagent:${delegationId}`,
-    kind: "subagent",
-    resource: delegationId,
-    ...(agentName ? { label: agentName } : {}),
-  };
-}
-
 export const BROWSER_PLUGIN_TAB = {
   pluginId: "pi.browser",
   viewId: "browser",
 } as const;
 
 export function browserPluginTab(location?: string): WorkPanelTab {
-  const base = pluginWorkPanelTab(BROWSER_PLUGIN_TAB.pluginId, BROWSER_PLUGIN_TAB.viewId);
-  if (!location) return base;
-  const target = location.trim();
-  return { ...base, id: `${base.id}:${Date.now().toString(36)}-${++newWorkPanelTabSequence}`, location: target, label: browserTabLabel(target) };
-}
-
-export function browserTabLabel(location: string): string {
-  try { return new URL(location).host || location; } catch { return location.split(/[\\/]/).at(-1) || location; }
+  return {
+    ...pluginWorkPanelTab(BROWSER_PLUGIN_TAB.pluginId, BROWSER_PLUGIN_TAB.viewId),
+    ...(location ? { location } : {}),
+  };
 }
 
 /**
@@ -208,8 +190,7 @@ export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
   return (
     Boolean(tab) &&
     (tab.kind === "new" || tab.kind === "review" ||
-      tab.kind === "file" || tab.kind === "plugin" ||
-      tab.kind === "subagent")
+      tab.kind === "file" || tab.kind === "plugin")
   );
 }
 
@@ -267,13 +248,19 @@ export function normalizeWorkPanelFilePath(path: string): string {
   return absolute ? `/${normalized}` : normalized;
 }
 
-export function fileWorkPanelTab(path: string, mimeType?: string): WorkPanelTab {
+export function fileWorkPanelTab(
+  path: string,
+  mimeType?: string,
+  position?: { line?: number; column?: number },
+): WorkPanelTab {
   const resource = normalizeWorkPanelFilePath(path);
   return {
     id: `file:${resource}`,
     kind: "file",
     resource,
     ...(mimeType ? { mimeType } : {}),
+    ...(position?.line != null ? { line: position.line } : {}),
+    ...(position?.column != null ? { column: position.column } : {}),
   };
 }
 
@@ -324,31 +311,6 @@ export function activateWorkPanelTabState(
     : state;
 }
 
-/** Move one tab before or after another without changing the active tab. */
-export function reorderWorkPanelTabsState(
-  state: WorkPanelTabsState,
-  sourceTabId: string,
-  targetTabId: string,
-  insertAfter: boolean,
-): WorkPanelTabsState {
-  const sourceIndex = state.tabs.findIndex((tab) => tab.id === sourceTabId);
-  const targetIndex = state.tabs.findIndex((tab) => tab.id === targetTabId);
-  if (
-    sourceIndex < 0 ||
-    targetIndex < 0 ||
-    sourceTabId === targetTabId
-  ) {
-    return state;
-  }
-
-  const tabs = [...state.tabs];
-  const [source] = tabs.splice(sourceIndex, 1);
-  const nextTargetIndex = tabs.findIndex((tab) => tab.id === targetTabId);
-  if (!source || nextTargetIndex < 0) return state;
-  tabs.splice(nextTargetIndex + (insertAfter ? 1 : 0), 0, source);
-  return { tabs, activeTabId: state.activeTabId };
-}
-
 export function closeWorkPanelTabState(
   state: WorkPanelTabsState,
   tabId: string,
@@ -362,28 +324,4 @@ export function closeWorkPanelTabState(
     tabs,
     activeTabId: tabs[Math.min(index, tabs.length - 1)]?.id ?? null,
   };
-}
-
-/**
- * Display labels for the subagent tabs in strip order.
- *
- * Delegates with the same agent name would otherwise render identical tab
- * labels, so a repeated base label gains a 1-based `#n` suffix within its
- * label group; a label that occurs once stays unnumbered. Other tab kinds are
- * unique by construction and are not passed here.
- */
-export function subagentTabDisplayLabels(
-  baseLabels: readonly string[],
-): string[] {
-  const counts = new Map<string, number>();
-  for (const label of baseLabels) {
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  const seen = new Map<string, number>();
-  return baseLabels.map((label) => {
-    if ((counts.get(label) ?? 0) <= 1) return label;
-    const index = (seen.get(label) ?? 0) + 1;
-    seen.set(label, index);
-    return `${label}#${index}`;
-  });
 }

@@ -55,6 +55,25 @@ function stripLineRef(path: string): string {
   return path.replace(/:\d+(?::\d+)?$/, "");
 }
 
+/** Trailing `:line[:col]` on a file token, if any. */
+export function parseFileRefPosition(
+  text: string,
+): { line: number; column?: number } | null {
+  const match = text.trim().match(/:(\d+)(?::(\d+))?$/);
+  if (!match) return null;
+  const line = Number(match[1]);
+  if (!Number.isFinite(line) || line < 1) return null;
+  const column = match[2] !== undefined ? Number(match[2]) : undefined;
+  return column !== undefined && Number.isFinite(column) && column >= 1
+    ? { line, column }
+    : { line };
+}
+
+/** `path` encoded for a plugin-view location: keep it free of `#L` / `:line`. */
+export function fileLocationPlain(path: string): string {
+  return stripLineRef(path);
+}
+
 function leafName(path: string): string {
   const normalized = path.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized.slice(normalized.lastIndexOf("/") + 1) || path;
@@ -182,7 +201,7 @@ export function toWorkspaceRel(
 }
 
 export type ChatPreviewTarget =
-  | { kind: "file"; path: string }
+  | { kind: "file"; path: string; line?: number; column?: number }
   | { kind: "url"; url: string };
 
 /** Resolve one raw chat token into a previewable target, or null. */
@@ -196,14 +215,23 @@ export function resolvePreviewTarget(
   const at = unwrapAtFileRef(trimmed);
   if (at) {
     // Scratch/attachment @refs stay absolute so fs/open can contain them.
-    if (at.startsWith("/")) return { kind: "file", path: at };
-    const rel = toWorkspaceRel(at, root, baseDir);
-    return rel ? { kind: "file", path: rel } : null;
+    const position = parseFileRefPosition(at);
+    const cleaned = stripLineRef(at);
+    if (cleaned.startsWith("/")) {
+      return {
+        kind: "file",
+        path: cleaned,
+        ...(position ?? {}),
+      };
+    }
+    const rel = toWorkspaceRel(cleaned, root, baseDir);
+    return rel ? { kind: "file", path: rel, ...(position ?? {}) } : null;
   }
   const file = parseFileRef(trimmed);
   if (!file) return null;
   const rel = toWorkspaceRel(file, root, baseDir);
-  return rel ? { kind: "file", path: rel } : null;
+  const position = parseFileRefPosition(trimmed);
+  return rel ? { kind: "file", path: rel, ...(position ?? {}) } : null;
 }
 
 /** Tool-call args → preview target (Read/Write/Edit paths, fetch URLs). */
