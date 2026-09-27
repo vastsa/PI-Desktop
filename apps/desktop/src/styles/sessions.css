@@ -369,9 +369,15 @@
 
 /* A running row says so by sheening its own title. The dot that used to sit
    at the leading edge is gone, so the run now reads inside the row rather
-   than beside it, and the title's own box is the stage the light travels
-   across. The plain colour is the fallback: without background-clip the run
-   shows as a brighter, still title. */
+   than beside it, and the light travels across the glyph outlines themselves
+   rather than across a box behind them.
+
+   The gradient is twice the title's width and the sweep stays within 0–100%,
+   which is what keeps every glyph painted. At 0% the background spans
+   0→2W, at 100% it spans −W→W, and every position between spans more than
+   the element needs. Running past that range parks part of the background
+   outside the element, and the transparent text colour this technique needs
+   then renders every glyph the background misses as invisible. */
 .thread-item.running .thread-item-title {
   color: var(--ds-text-primary);
 }
@@ -381,13 +387,12 @@
     background-image: linear-gradient(
       100deg,
       var(--ds-text-secondary) 0%,
-      var(--ds-text-secondary) 38%,
       var(--ds-text-primary) 50%,
-      var(--ds-text-secondary) 62%,
       var(--ds-text-secondary) 100%
     );
-    background-size: 200% 100%;
     background-repeat: no-repeat;
+    background-size: 200% 100%;
+    background-position: 0% 0;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -397,11 +402,11 @@
 
 @keyframes sidebar-title-sheen {
   from {
-    background-position: 160% 0;
+    background-position: 0% 0;
   }
 
   to {
-    background-position: -60% 0;
+    background-position: 100% 0;
   }
 }
 
@@ -433,8 +438,8 @@
   .thread-item-status.permission::before {
     animation: none;
   }
-  /* The sheen cannot travel, so the run keeps its bright half as a still
-     highlight — the same brighter title the fallback paints. */
+  /* The sheen cannot travel, so the run holds a still highlight at the middle
+     of the sweep — still the glyph-shaped one, never a bare colour. */
   .thread-item.running .thread-item-title {
     animation: none;
     background-position: 50% 0;

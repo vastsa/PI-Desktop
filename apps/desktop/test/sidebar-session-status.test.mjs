@@ -110,9 +110,25 @@ test("renders semantic, shape-distinct sidebar status indicators", () => {
   // The run is a sheen travelling across the title, and the selected row is
   // the row background — neither paints a `.thread-item-status` dot.
   assert.match(sidebar, /\$\{running \? "running" : ""\}/);
+  // The highlight is clipped to the glyph outlines, so the light travels
+  // across the letterforms rather than across a box behind them.
   assert.match(
     styles,
     /\.thread-item\.running \.thread-item-title[\s\S]*background-clip: text[\s\S]*sidebar-title-sheen/,
+  );
+  assert.doesNotMatch(styles, /\.thread-item\.running \.thread-item-title::after/);
+  // That technique paints glyphs from the background and needs a transparent
+  // text colour, so the sweep must stay within 0–100%: with a 200%-wide
+  // gradient, 0% spans 0→2W and 100% spans −W→W, and every position between
+  // covers more than the element. Leaving that range parks part of the
+  // background outside the element and renders those glyphs invisible.
+  assert.match(
+    styles,
+    /@keyframes sidebar-title-sheen \{[\s\S]*?background-position: 0% 0;[\s\S]*?background-position: 100% 0;/,
+  );
+  assert.match(
+    styles,
+    /background-size: 200% 100%;[\s\S]*?background-position: 0% 0;[\s\S]*?background-clip: text;/,
   );
   assert.doesNotMatch(styles, /thread-item-status\.(running|selected)/);
   assert.match(styles, /thread-item-status\.permission::before[\s\S]*--ds-purple/);
