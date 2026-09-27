@@ -860,7 +860,8 @@ descendant choices and reopening restores them; opening a parent never expands a
 children. User interaction with a child claims its ancestors without toggling them,
 so completion cannot close around opened, focused or selected content. Choices use
 stable turn/group/item identities and remain while the retained session pane lives,
-including mode changes and row remounts; pane eviction, deletion or renderer restart
+including mode changes, row remounts, and older pages loaded above a partially
+loaded turn; pane eviction, deletion or renderer restart
 reapplies defaults rather than persisting disclosure state to messages or settings.
 
 Search/navigation reveals the process and the activity group that own the named

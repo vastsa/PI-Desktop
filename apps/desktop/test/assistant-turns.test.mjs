@@ -12,6 +12,7 @@ const {
   assistantTurnResponseOutputIsEstimated,
   assistantTurnUsage,
   buildTranscriptEntries,
+  carryTranscriptIdentity,
   reuseTranscriptEntries,
   subagentRunsEqual,
 } = await import("../src/lib/assistant-turns.ts");
@@ -529,4 +530,82 @@ test("reuses unchanged activity parts when only the tail thinking token changes"
   assert.equal(sharedThink.kind, "activity");
   assert.notEqual(sharedThink, firstThink);
   assert.equal(sharedThink.items[0].message, nextThinking);
+});
+
+function readTool(id) {
+  return message(id, "tool", "ok", { toolName: "Read", toolCallId: id });
+}
+
+test("paging older history into a cut turn keeps the turn and leading group names", () => {
+  // One long turn: the latest page starts inside its first tool run.
+  const older = [message("user", "user", "Audit the repo"), readTool("r1"), readTool("r2")];
+  const loaded = [
+    readTool("r3"),
+    readTool("r4"),
+    message("mid", "assistant", "Continuing."),
+    readTool("r5"),
+    message("done", "assistant", "Done."),
+  ];
+  const latest = buildTranscriptEntries(loaded).entries;
+  assert.equal(latest[0].id, "r3");
+  assert.equal(latest[0].parts[0].id, "r3-tool");
+
+  const paged = buildTranscriptEntries([...older, ...loaded]).entries;
+  // The projection alone renames the turn and its leading group.
+  assert.equal(paged[1].id, "r1");
+  assert.equal(paged[1].parts[0].id, "r1-tool");
+
+  const carried = carryTranscriptIdentity(latest, paged);
+  assert.equal(carried[0], paged[0]);
+  assert.equal(carried[1].id, "r3");
+  assert.equal(carried[1].parts[0].id, "r3-tool");
+  assert.deepEqual(
+    carried[1].parts[0].items.map((item) => item.message.id),
+    ["r1", "r2", "r3", "r4"],
+  );
+  // Groups that did not move keep their own names and objects.
+  assert.equal(carried[1].parts[2], paged[1].parts[2]);
+
+  // Later projections of the same window keep the carried names.
+  const again = carryTranscriptIdentity(
+    carried,
+    buildTranscriptEntries([...older, ...loaded, message("more", "assistant", "More.")]).entries,
+  );
+  assert.equal(again[1].id, "r3");
+  assert.equal(again[1].parts[0].id, "r3-tool");
+});
+
+test("carried names stay unique when a compaction splits a turn", () => {
+  const messages = [
+    message("user", "user", "Go"),
+    readTool("a1"),
+    message("a2", "assistant", "Halfway."),
+    readTool("b1"),
+    message("b2", "assistant", "Done."),
+  ];
+  const before = buildTranscriptEntries(messages).entries;
+  const split = buildTranscriptEntries(messages, [
+    { id: "compaction", throughMessageId: "a2", generation: 1 },
+  ]).entries;
+  const carried = carryTranscriptIdentity(before, split);
+  const turnIds = carried
+    .filter((entry) => entry.kind === "assistant-turn")
+    .map((entry) => entry.id);
+  assert.deepEqual(turnIds, ["a1", "b1"]);
+});
+
+test("identity carry is a no-op for an unchanged or first projection", () => {
+  const entries = buildTranscriptEntries([
+    message("user", "user", "Hi"),
+    readTool("t1"),
+    message("answer", "assistant", "Hello."),
+  ]).entries;
+  assert.equal(carryTranscriptIdentity(undefined, entries), entries);
+  assert.equal(carryTranscriptIdentity([], entries), entries);
+  const rebuilt = buildTranscriptEntries([
+    message("user", "user", "Hi"),
+    readTool("t1"),
+    message("answer", "assistant", "Hello."),
+  ]).entries;
+  assert.equal(carryTranscriptIdentity(entries, rebuilt), rebuilt);
 });

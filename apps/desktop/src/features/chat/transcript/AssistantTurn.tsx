@@ -66,6 +66,7 @@ function assistantTurnPropsEqual(
   if (
     previous.isActive !== next.isActive ||
     previous.runtimeActivity !== next.runtimeActivity ||
+    previous.entry.id !== next.entry.id ||
     previous.entry.anchorId !== next.entry.anchorId ||
     previous.entry.parts.length !== next.entry.parts.length
   ) {
@@ -79,6 +80,7 @@ function assistantTurnPropsEqual(
     }
     if (part.kind === "activity" && nextPart.kind === "activity") {
       return (
+        part.id === nextPart.id &&
         part.endedAt === nextPart.endedAt &&
         part.items.length === nextPart.items.length &&
         part.items.every((item, itemIndex) =>
@@ -372,7 +374,8 @@ export const AssistantTurn = memo(function AssistantTurn({
     part.kind === "activity" ? (
       <ActivityGroup
         embedded
-        key={`activity-${part.items[0].message.id}-${part.items[0].kind}${part.items[0].kind === "hostedSearch" ? `-${part.items[0].round.id}` : ""}`}
+        key={`activity-${part.id}`}
+        identity={part.id}
         items={part.items}
         endedAt={part.endedAt}
         isActive={part === activePart}

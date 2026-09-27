@@ -23,6 +23,7 @@ import type {
   AssistantActivityItem,
 } from "../../../lib/assistant-turns";
 import {
+  activityItemIdentity,
   messageThinking as thinkingText,
   subagentRunsEqual,
 } from "../../../lib/assistant-turns";
@@ -150,6 +151,8 @@ export function runActivityLabel(
 
 type ActivityGroupProps = {
   items: ActivityItem[];
+  /** The turn part's identity; kept when older history joins the group. */
+  identity?: string;
   embedded?: boolean;
   isActive: boolean;
   endedAt?: string;
@@ -185,6 +188,7 @@ function activityGroupPropsEqual(
   next: ActivityGroupProps,
 ) {
   if (
+    previous.identity !== next.identity ||
     previous.embedded !== next.embedded ||
     previous.isActive !== next.isActive ||
     previous.endedAt !== next.endedAt ||
@@ -212,6 +216,7 @@ function activityGroupPropsEqual(
 
 export const ActivityGroup = memo(function ActivityGroup({
   items,
+  identity,
   embedded: _embedded = false,
   isActive,
   endedAt,
@@ -251,11 +256,10 @@ export const ActivityGroup = memo(function ActivityGroup({
   const revealRequest = searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
     ? searchTarget.requestId : undefined;
   const visibleItems = visibleActivityItems(items, compact, isActive);
-  const first = items[0];
   const disclosure = useAutomaticDisclosure(
     hasSubagentTopology ? live : visibleItems.length <= 1 || (!compact && live),
     revealRequest,
-    disclosureKey("activity", first?.message.id ?? "", first?.kind ?? "", first?.kind === "hostedSearch" ? first.round.id : ""),
+    disclosureKey("activity", identity ?? (items[0] ? activityItemIdentity(items[0]) : "")),
   );
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure, claim: claimDisclosure, titleRef } = disclosure;
   const [now, setNow] = useState(Date.now);

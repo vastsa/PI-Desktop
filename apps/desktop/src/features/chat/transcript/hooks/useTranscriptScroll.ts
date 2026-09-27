@@ -15,6 +15,7 @@ import type {
 import type { PendingPermission } from "../../../../lib/pending-permissions";
 import {
   buildTranscriptEntries,
+  carryTranscriptIdentity,
   reuseTranscriptEntries,
   transcriptEntryMessages,
   type TranscriptEntry,
@@ -468,7 +469,10 @@ export function useTranscriptScroll({
       previousEntriesRef.current = [];
     }
     const built = buildTranscriptEntries(renderedMessages, renderedCompactions);
-    const entries = reuseTranscriptEntries(previousEntriesRef.current, built.entries);
+    const entries = reuseTranscriptEntries(
+      previousEntriesRef.current,
+      carryTranscriptIdentity(previousEntriesRef.current, built.entries),
+    );
     previousEntriesRef.current = entries;
     return { entries, visible: built.visible };
   }, [renderedMessages, renderedCompactions, sessionId]);

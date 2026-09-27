@@ -46,6 +46,11 @@ export type AssistantTurnPart =
   | { kind: "message"; message: UiMessage }
   | {
       kind: "activity";
+      /**
+       * Row identity: the first item's, unless an earlier projection already
+       * named this group (see `carryTranscriptIdentity`).
+       */
+      id: string;
       items: AssistantActivityItem[];
       endedAt?: string;
     };
@@ -65,6 +70,11 @@ export type TranscriptEntry =
 export function messageThinking(message: UiMessage): string {
   if (typeof message.thinking !== "string") return "";
   return message.thinking.trim() ? message.thinking : "";
+}
+
+/** One message can yield a thinking row and several search rows. */
+export function activityItemIdentity(item: AssistantActivityItem): string {
+  return `${item.message.id}-${item.kind}${item.kind === "hostedSearch" ? `-${item.round.id}` : ""}`;
 }
 
 function isVisibleMessage(message: UiMessage): boolean {
@@ -241,7 +251,7 @@ export function buildTranscriptEntries(
       last.items.push(item);
       return;
     }
-    current.parts.push({ kind: "activity", items: [item] });
+    current.parts.push({ kind: "activity", id: activityItemIdentity(item), items: [item] });
   };
 
   const appendMessage = (message: UiMessage) => {
@@ -381,6 +391,7 @@ function reuseTurnPart(
     return previous.message === next.message ? previous : next;
   }
   if (previous.kind === "activity" && next.kind === "activity") {
+    if (previous.id !== next.id) return next;
     if (previous.endedAt !== next.endedAt) {
       const items = next.items.map((item, index) =>
         reuseActivityItem(previous.items[index], item),
@@ -456,6 +467,93 @@ export function reuseTranscriptEntries(
     return previous as TranscriptEntry[];
   }
   return shared;
+}
+
+function firstMemberId(entry: AssistantTurnEntry): string | undefined {
+  const first = entry.parts[0];
+  return first?.kind === "message" ? first.message.id : first?.items[0]?.message.id;
+}
+
+function turnMemberIds(entry: AssistantTurnEntry): string[] {
+  return entry.parts.flatMap((part) =>
+    part.kind === "message"
+      ? [part.message.id]
+      : part.items.map((item) => item.message.id),
+  );
+}
+
+function carryActivityIds(
+  prior: AssistantTurnEntry,
+  parts: AssistantTurnPart[],
+): AssistantTurnPart[] {
+  const priorGroups = new Map<string, string>();
+  for (const part of prior.parts) {
+    if (part.kind !== "activity") continue;
+    for (const item of part.items) priorGroups.set(activityItemIdentity(item), part.id);
+  }
+  let changed = false;
+  const carried = parts.map((part) => {
+    if (part.kind !== "activity") return part;
+    const members = part.items.map(activityItemIdentity);
+    const name = members.map((member) => priorGroups.get(member)).find(Boolean);
+    if (!name || name === part.id || !members.includes(name)) return part;
+    changed = true;
+    return { ...part, id: name };
+  });
+  return changed ? carried : parts;
+}
+
+/**
+ * Keep turn and activity-group identities across reading-window growth.
+ *
+ * A projection names a turn and an activity group after their first loaded
+ * message. A long turn is often cut by the reading window, so paging in older
+ * history renamed it and its leading group: React remounted both and the pane's
+ * disclosure choices stopped applying, folding a process the reader had opened.
+ * A row keeps the name the previous projection gave it while that name is still
+ * one of its own members, which also keeps names unique within the projection.
+ */
+export function carryTranscriptIdentity(
+  previous: readonly TranscriptEntry[] | undefined,
+  next: TranscriptEntry[],
+): TranscriptEntry[] {
+  if (!previous || previous.length === 0) return next;
+  const priorByFirst = new Map<string, AssistantTurnEntry>();
+  for (const entry of previous) {
+    if (entry.kind !== "assistant-turn") continue;
+    const first = firstMemberId(entry);
+    if (first !== undefined) priorByFirst.set(first, entry);
+  }
+  // Only a new or front-extended turn misses its first member; index the
+  // previous members lazily so a streaming tick stays proportional to turns.
+  let priorByMember: Map<string, AssistantTurnEntry> | undefined;
+  const findPrior = (entry: AssistantTurnEntry) => {
+    const first = firstMemberId(entry);
+    const direct = first === undefined ? undefined : priorByFirst.get(first);
+    if (direct) return direct;
+    if (!priorByMember) {
+      priorByMember = new Map();
+      for (const prior of priorByFirst.values()) {
+        for (const id of turnMemberIds(prior)) priorByMember.set(id, prior);
+      }
+    }
+    for (const id of turnMemberIds(entry)) {
+      const prior = priorByMember.get(id);
+      if (prior) return prior;
+    }
+    return undefined;
+  };
+  let changed = false;
+  const carried = next.map((entry) => {
+    if (entry.kind !== "assistant-turn") return entry;
+    const prior = findPrior(entry);
+    if (!prior || prior.id === entry.id || !turnMemberIds(entry).includes(prior.id)) {
+      return entry;
+    }
+    changed = true;
+    return { ...entry, id: prior.id, parts: carryActivityIds(prior, entry.parts) };
+  });
+  return changed ? carried : next;
 }
 
 export function assistantTurnMessages(

@@ -14887,8 +14887,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   on completion. Singletons have no group. Detailed auto-opens only an eligible
   literal final tool/search item of the last activity group; it does not scan past
   thinking, and failed/denied leaves stay closed. Parent/child/sibling states remain
-  independent, pane-owned user choices survive updates, mode changes and remounts,
-  and renderer restart reapplies defaults. Search reveals the process and activity
+  independent, pane-owned user choices survive updates, mode changes, remounts and
+  older pages loaded above a turn the reading window cut, and renderer restart
+  reapplies defaults. Search reveals the process and activity
   group that own the named message once per request; item-level targeting is not
   part of this change, and Compact reasoning requires an
   explicit switch to Detailed. Saved mode survives restart and a missing/unknown
@@ -14896,6 +14897,11 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Validation scope for the 2026-09-20 change:** Nested disclosure and activity
   group presentation only; precise item-level transcript search targeting is out
   of scope and keeps the existing message-level search behavior.
+- **Long-transcript paging (#1110):** In a session longer than one transcript
+  page, open the process and the leading activity group of the turn the latest
+  page cuts, then scroll up until the older page loads. Both keep their state and
+  are not remounted. `apps/desktop/test/assistant-turns.test.mjs` covers the
+  projection identity this relies on.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
 

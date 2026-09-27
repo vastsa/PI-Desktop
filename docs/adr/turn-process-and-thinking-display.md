@@ -56,8 +56,9 @@ sibling groups do not form an accordion. Manual interaction with an item claims
 the containing group and process as user-owned without toggling either ancestor;
 completion must not close a container around content the user opened, focused,
 or selected. Manual choices survive streaming, completion, mode changes,
-reparenting from singleton to group, and row remounts while the owning retained
-session pane remains alive. Pane eviction, session deletion, or renderer restart
+reparenting from singleton to group, row remounts, and older history paged in
+above a turn the reading window cut, while the owning retained session pane
+remains alive. A turn or group keeps its identity when earlier members load. Pane eviction, session deletion, or renderer restart
 releases this presentation memory; it is not stored in messages or host settings.
 
 Search/navigation reveals the ancestor path its target needs: the process, then
