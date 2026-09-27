@@ -1,7 +1,6 @@
 import { session, shell, WebContentsView, type BrowserWindow } from "electron";
 import { join } from "node:path";
 import { parseAllowedExternalUrl } from "./safe-open-external";
-import { PanelSenders, pageGoneWithin } from "./plugin-panel-senders";
 import {
   PLUGIN_VIEW_LOCATION_EVENT,
   PLUGIN_VIEW_LOCATION_PARAM,
@@ -9,6 +8,10 @@ import {
   planLocationDelivery,
   viewEntryUrl,
 } from "./plugin-view-location";
+import {
+  scaleBoundsToDip,
+  type PluginViewBounds,
+} from "./plugin-view-bounds";
 import {
   applyPluginEgressPolicy,
   pluginSessionPartition,
@@ -70,12 +73,7 @@ export type PluginViewOpenRequest = {
   location?: string;
 };
 
-export type PluginViewBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
+export type { PluginViewBounds };
 
 type LiveView = {
   key: string;
@@ -105,15 +103,10 @@ export class PluginViewHost {
   /** The one view currently attached to the window, if any. */
   private visibleKey: string | null = null;
   private bounds: PluginViewBounds = { x: 0, y: 0, width: 0, height: 0 };
+  /** Last CSS-pixel rect from the renderer, so zoom changes can rescale. */
+  private lastCssBounds: PluginViewBounds | null = null;
   private clock = 0;
   private onBlockedRequest?: PluginPanelBlockedRequest;
-  /**
-   * Identity of the pages allowed to use the bridge, keyed by web contents. A
-   * view keeps its plugin for as long as its page exists, not only while it is
-   * cached in `views`, so a call that arrives while the view is being dropped
-   * still belongs to its own plugin.
-   */
-  private senders = new PanelSenders();
 
   constructor(onBlockedRequest?: PluginPanelBlockedRequest) {
     this.onBlockedRequest = onBlockedRequest;
@@ -153,7 +146,42 @@ export class PluginViewHost {
   setWindow(window: BrowserWindow | null): void {
     if (this.window === window) return;
     this.detachVisible();
+    this.unbindZoom();
     this.window = window;
+    this.bindZoom();
+  }
+
+  private zoomListener: (() => void) | null = null;
+
+  private bindZoom(): void {
+    const contents = this.window && !this.window.isDestroyed() ? this.window.webContents : null;
+    if (!contents || contents.isDestroyed()) return;
+    // Ctrl+- / Ctrl+= change CSS↔DIP scale; re-apply the last measured rect.
+    const onChange = () => {
+      if (this.lastCssBounds) {
+        this.bounds = scaleBoundsToDip(this.lastCssBounds, this.currentZoomFactor());
+      }
+      const visible = this.visibleKey ? this.views.get(this.visibleKey) : null;
+      visible?.view.setBounds(this.bounds);
+      this.emitSurface();
+    };
+    try {
+      contents.on("zoom-changed", onChange);
+    } catch {
+      // Older Electron builds may not emit zoom-changed; resize still remeasures.
+    }
+    this.zoomListener = () => {
+      try {
+        contents.removeListener("zoom-changed", onChange);
+      } catch {
+        // contents already destroyed
+      }
+    };
+  }
+
+  private unbindZoom(): void {
+    this.zoomListener?.();
+    this.zoomListener = null;
   }
 
   /** Whether a live web contents exists for this view. */
@@ -166,7 +194,11 @@ export class PluginViewHost {
    * calls from docked views on the same channel it serves panel windows.
    */
   pluginIdForSender(senderId: number): string | null {
-    return this.senders.pluginFor(senderId);
+    for (const entry of this.views.values()) {
+      const wc = entry.view.webContents;
+      if (!wc.isDestroyed() && wc.id === senderId) return entry.pluginId;
+    }
+    return null;
   }
 
   /**
@@ -199,12 +231,6 @@ export class PluginViewHost {
       loaded: false,
     };
     this.views.set(key, entry);
-    // A docked view can call the bridge from its first script, so its identity is
-    // registered before the document loads and released only when the page is
-    // gone — never when the host merely drops the cached surface around it.
-    const senderId = view.webContents.id;
-    this.senders.register(senderId, request.pluginId);
-    view.webContents.once("destroyed", () => this.senders.release(senderId));
     view.webContents.once("did-finish-load", () => {
       entry.loaded = true;
     });
@@ -247,15 +273,26 @@ export class PluginViewHost {
   }
 
   setBounds(bounds: PluginViewBounds): void {
-    this.bounds = {
-      x: Math.max(0, Math.round(Number(bounds.x) || 0)),
-      y: Math.max(0, Math.round(Number(bounds.y) || 0)),
-      width: Math.max(0, Math.round(Number(bounds.width) || 0)),
-      height: Math.max(0, Math.round(Number(bounds.height) || 0)),
+    // Renderer measures the placeholder with getBoundingClientRect() (CSS
+    // pixels). Electron WebContentsView.setBounds expects unscaled DIPs, so a
+    // non-100% window zoom factor would shift and clip the docked view.
+    this.lastCssBounds = {
+      x: Number(bounds.x) || 0,
+      y: Number(bounds.y) || 0,
+      width: Number(bounds.width) || 0,
+      height: Number(bounds.height) || 0,
     };
+    this.bounds = scaleBoundsToDip(this.lastCssBounds, this.currentZoomFactor());
     const visible = this.visibleKey ? this.views.get(this.visibleKey) : null;
     visible?.view.setBounds(this.bounds);
     this.emitSurface();
+  }
+
+  private currentZoomFactor(): number {
+    const contents = this.window && !this.window.isDestroyed() ? this.window.webContents : null;
+    if (!contents || contents.isDestroyed()) return 1;
+    const zoom = Number(contents.getZoomFactor());
+    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   }
 
   /**
@@ -289,6 +326,11 @@ export class PluginViewHost {
     this.destroy(pluginViewKey(pluginId, viewId));
   }
 
+  dispose(): void {
+    this.unbindZoom();
+    this.detachVisible();
+  }
+
   /** Drop every view a plugin owns — disable, uninstall, reload, or crash. */
   closePlugin(pluginId: string): void {
     for (const [key, entry] of [...this.views]) {
@@ -296,20 +338,8 @@ export class PluginViewHost {
     }
   }
 
-  /**
-   * Drop every view and wait, bounded, for the pages to be gone, so a caller
-   * that is about to stop the plugin runtime knows no view page can still call
-   * it. Shutdown sequences this before that stop.
-   */
-  async dispose(): Promise<void> {
-    await Promise.allSettled(
-      [...this.views.values()].map(async (entry) => {
-        // Captured while the view is alive; `destroy` closes the page below.
-        const page = entry.view.webContents;
-        this.destroy(entry.key);
-        await pageGoneWithin(page);
-      }),
-    );
+  dispose(): void {
+    for (const key of [...this.views.keys()]) this.destroy(key);
   }
 
   private destroy(key: string): void {
