@@ -10027,16 +10027,19 @@ This test plan spec is accepted when:
 
 #### E2E-CONTEXT-work-panel-breakdown-and-packs
 
-- **Preconditions**: The Pi-Context trusted user extension is enabled; an active
-  conversation has completed at least one model response.
+- **Preconditions**: Pi-Context is imported and enabled as a trusted
+  agent-extension plugin; an active conversation has completed at least one
+  model response.
 - **Steps**:
   1) Press `Cmd/Ctrl + J`, click `+`, and select Context.
   2) Confirm the singleton Context tab shows token totals and category rows. If
      the extension snapshot has not arrived yet, confirm the temporary fallback
      contains Messages and Free without blanking the panel.
-  3) Complete another turn and confirm the Pi-Context `context:snapshot` event
-     replaces the fallback with its Messages, system, tool, skill, MCP, bundle,
-     and Free categories without displaying raw JSON in the floating status line.
+  3) Confirm its extension row has no `getAgentDir` / `buildSessionContext`
+     factory error. Complete another turn and confirm the Pi-Context
+     `context:snapshot` event replaces the fallback with its Messages, system,
+     tool, skill, MCP, bundle, and Free categories without displaying raw JSON
+     in the floating status line.
   4) Enter a pack name, then run Export and Handoff. Run Import with an existing
      pack and confirm each action is dispatched to the active session's trusted
      extension command.
@@ -10072,6 +10075,26 @@ This test plan spec is accepted when:
 - **Milestone**: M5+
 - **Status**: `test:e2e:composer-autocomplete` covers three UI selections and
   chips at 320px and 640px. Live provider Skill-tool execution remains manual.
+
+#### E2E-SKILL-extension-command-loads-active-skills
+
+- **Preconditions**: The multi-skill package is imported as an enabled Agent
+  extension plugin, and three Skill documents are available in the isolated
+  project or user Skill catalog.
+- **Steps**: 1) Run `/skills A,B,C` in an active Agent session. 2) Confirm the
+  sidecar reads the three Skill files via the pinned Pi SDK scanner and
+  frontmatter helpers, then sends one combined user message. 3) Disable the
+  extension and repeat the native `/A /B /C` path; verify the core Skill tool
+  still validates each id and no extra plugin grant is inferred.
+- **Expected**: No `loadSkills`, `parseFrontmatter`, or `stripFrontmatter`
+  handler error appears; the extension path remains opt-in and scoped to the
+  plugin's activation, while native multi-Skill selection remains available.
+- **Specs linked**: `07-plugins/16-trusted-extensions.md` §4.2,
+  `04-ux/04-builtin-commands.md` §8
+- **Acceptance**: A (core shell)
+- **Milestone**: M5+
+- **Status**: Runner unit coverage for SDK helpers; the live three-Skill
+  provider journey remains manual.
 
 #### E2E-129: A run row shows its command once and copies it from the head
 

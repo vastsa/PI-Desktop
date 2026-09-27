@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -544,6 +544,66 @@ export default function (pi: any) {
     await runner.runCommand("branch", "");
     await flush();
     expect(log.ui).toContainEqual({ kind: "setStatus", key: "branch-size", text: "1" });
+  });
+
+  it("provides Pi-Context's agent-dir and active-branch helpers through the coding-agent shim", async () => {
+    const ext = spec(
+      "context-helpers",
+      `import { getAgentDir, buildSessionContext, estimateTokens, formatSkillsForPrompt } from "@earendil-works/pi-coding-agent";
+export default function (pi: any) {
+  pi.registerCommand("context-compat", { handler: async (_args: string, ctx: any) => {
+    ctx.ui.setStatus("compat", JSON.stringify({
+      dirType: typeof getAgentDir(),
+      roles: buildSessionContext(ctx.sessionManager.getBranch()).messages.map((message: any) => message.role),
+      tokens: estimateTokens({ role: "user", content: "hello", timestamp: 0 }),
+      hasSkill: formatSkillsForPrompt([{ name: "demo", description: "test", filePath: "/tmp/SKILL.md" }]).includes("demo"),
+    }));
+  }});
+}`,
+    );
+    const { bridge, log } = fakeBridge();
+    bridge.getBranch = () => [
+      { type: "message", id: "1", parentId: null, timestamp: new Date(0).toISOString(), message: { role: "user", content: "hello", timestamp: 0 } },
+    ];
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    await runner.runCommand("context-compat", "");
+    await flush();
+    expect(log.ui).toContainEqual({
+      kind: "setStatus",
+      key: "compat",
+      text: JSON.stringify({ dirType: "string", roles: ["user"], tokens: 2, hasSkill: true }),
+    });
+  });
+
+  it("lets multi-skill discover actual skills through the pinned Pi SDK helpers", async () => {
+    const skillsDir = join(root, "skills");
+    mkdirSync(join(skillsDir, "demo"), { recursive: true });
+    writeFileSync(join(skillsDir, "demo", "SKILL.md"), "---\nname: demo\ndescription: Test skill\n---\nRead this skill.\n");
+    const ext = spec(
+      "skill-helpers",
+      `import { loadSkills, loadSkillsFromDir, parseFrontmatter, stripFrontmatter } from "@earendil-works/pi-coding-agent";
+export default function (pi: any) {
+  pi.registerCommand("skill-helpers", { handler: async (_args: string, ctx: any) => {
+    const dir = ctx.cwd + "/skills";
+    ctx.ui.setStatus("skill-helpers", JSON.stringify({
+      direct: loadSkillsFromDir({ dir, source: "user" }).skills.map((skill: any) => skill.name),
+      all: loadSkills({ cwd: ctx.cwd, agentDir: ctx.cwd, skillPaths: [dir], includeDefaults: false }).skills.map((skill: any) => skill.name),
+      name: parseFrontmatter("---\\nname: demo\\ndescription: Test\\n---\\nBody").frontmatter.name,
+      body: stripFrontmatter("---\\nname: demo\\ndescription: Test\\n---\\nBody"),
+    }));
+  }});
+}`,
+    );
+    const { bridge, log } = fakeBridge();
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    await runner.runCommand("skill-helpers", "");
+    await flush();
+    expect(log.ui).toContainEqual({
+      kind: "setStatus", key: "skill-helpers",
+      text: JSON.stringify({ direct: ["demo"], all: ["demo"], name: "demo", body: "Body" }),
+    });
   });
 
   it("bridges custom extension events through the existing hidden status channel", async () => {

@@ -8,11 +8,15 @@
  * `@earendil-works/pi-coding-agent` and an inert stub for
  * `@earendil-works/pi-tui` so a top-level import never fails.
  */
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import * as typebox from "typebox";
 import * as typeboxCompile from "typebox/compile";
 import * as typeboxValue from "typebox/value";
 import * as piAgentCore from "@earendil-works/pi-agent-core";
 import * as piAi from "@earendil-works/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
+import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 
 export type ExtensionFactory = (api: unknown) => unknown;
 
@@ -66,6 +70,40 @@ export function createTuiStub(onUse: StubSymbolReporter): Record<string, unknown
 export function createCodingAgentShim(): Record<string, unknown> {
   return {
     defineTool: <T>(tool: T): T => tool,
+    getAgentDir: () => {
+      const configured = process.env.PI_CODING_AGENT_DIR;
+      if (configured?.startsWith("~/") || configured?.startsWith("~\\")) {
+        return join(homedir(), configured.slice(2));
+      }
+      return configured ? resolve(configured) : join(homedir(), ".pi", "agent");
+    },
+    // Desktop getBranch() already projects the active model context, so no
+    // session-tree or compaction traversal is needed here.
+    buildSessionContext: (entries: unknown[]) => ({
+      messages: Array.isArray(entries)
+        ? entries.flatMap((entry) =>
+            entry && typeof entry === "object" &&
+            (entry as { type?: string }).type === "message" &&
+            (entry as { message?: unknown }).message
+              ? [(entry as { message: unknown }).message]
+              : [],
+          )
+        : [],
+      thinkingLevel: "off",
+      model: null,
+    }),
+    estimateTokens: (message: Message) => estimateMessageTokens(message),
+    // Only used for category estimates in the desktop adapter; the host
+    // owns the real model-facing Skill prompt.
+    formatSkillsForPrompt: (skills: Array<{
+      name: string;
+      description?: string;
+      filePath?: string;
+      disableModelInvocation?: boolean;
+    }>) => skills
+      .filter((skill) => !skill.disableModelInvocation)
+      .map((skill) => `${skill.name} ${skill.description ?? ""} ${skill.filePath ?? ""}`)
+      .join("\n"),
     /** Result type guards from the pi CLI's built-in tools. Trusted extensions
      * run beside the desktop's own tools, so these never match here. */
     isBashToolResult: () => false,
@@ -149,6 +187,13 @@ export async function loadExtensionFactory(
   entry: string,
   virtualModules: Record<string, unknown>,
 ): Promise<ExtensionFactory | undefined> {
+  // The SDK scanners are needed only while loading an Agent-side extension.
+  // Importing the full coding-agent package at module scope would execute its
+  // terminal runtime in Electron Main, which also imports discovery helpers.
+  const { loadSkills, loadSkillsFromDir, parseFrontmatter, stripFrontmatter } =
+    await import("@earendil-works/pi-coding-agent");
+  const shim = virtualModules["@earendil-works/pi-coding-agent"] as Record<string, unknown> | undefined;
+  if (shim) Object.assign(shim, { loadSkills, loadSkillsFromDir, parseFrontmatter, stripFrontmatter });
   // Lazy so Electron main, which bundles this package for discovery, never
   // pulls jiti into its own bundle; the sidecar bundle inlines it.
   const { createJiti } = await import("jiti/static");

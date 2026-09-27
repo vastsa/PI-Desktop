@@ -17,8 +17,13 @@ part of the launch path; ADR 0215 makes active plugin contributions authoritativ
 1. An **enabled plugin contribution** may load Pi-Context into the Agent
    sidecar. A junction in the CLI extensions directory alone never enables it.
 2. The sidecar projects only the current model-context messages as a read-only
-   `sessionManager.getBranch()` view; it does not expose SQLite or change
-   persisted session semantics.
+   `sessionManager.getBranch()` view. Its lightweight coding-agent import shim
+   provides `getAgentDir`, `buildSessionContext` over those active messages,
+   pi-ai-backed `estimateTokens`, a lightweight skill formatter for category
+   estimates, and the pinned Pi SDK's read-only skill scanners and frontmatter
+   helpers. Those SDK helpers are loaded lazily in the sidecar, not eagerly in
+   Electron Main. The terminal UI is not loaded into the renderer and SQLite
+   stays in host-core. Persisted session semantics are unchanged.
 3. Only `pi.events.emit("context:snapshot", snapshot)` crosses the existing
    trusted-extension status transport, with a 256,000-character JSON limit.
    The renderer validates the shape, binds it to its originating session, and

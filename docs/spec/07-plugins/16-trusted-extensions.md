@@ -236,8 +236,16 @@ never in Electron main, the renderer, or a plugin host process.
   define.
 - Import aliases: `pi-ai`, `pi-agent-core`, and `typebox` resolve to the
   sidecar's copies; `@earendil-works/pi-coding-agent` resolves to a runtime
-  shim that exports `defineTool` and the tool-result type guards. `@earendil-works/pi-tui`
-  resolves to a stub module that exports every symbol as an inert
+  shim that exports `defineTool`, the tool-result type guards, `getAgentDir`
+  (including `PI_CODING_AGENT_DIR`), `buildSessionContext` over the already
+  active `getBranch()` messages, `estimateTokens` through pi-ai's message
+  estimator, a lightweight `formatSkillsForPrompt` for category estimates,
+  and the pinned Pi SDK's `loadSkills`, `loadSkillsFromDir`,
+  `parseFrontmatter`, and `stripFrontmatter` for read-only skill discovery.
+  These helpers are imported only when an Agent-side extension loads; Electron
+  Main must not eagerly evaluate the terminal SDK. This is not the full Pi
+  session-tree or model-facing Skill prompt API.
+  `@earendil-works/pi-tui` resolves to a stub module that exports every symbol as an inert
   value so a top-level import never fails. Using a stubbed symbol raises a
   diagnostic at call time.
 
