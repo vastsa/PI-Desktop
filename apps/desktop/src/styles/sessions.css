@@ -369,44 +369,57 @@
 
 /* A running row says so by sheening its own title. The dot that used to sit
    at the leading edge is gone, so the run now reads inside the row rather
-   than beside it, and the light travels across the glyph outlines themselves
-   rather than across a box behind them.
+   than beside it, and the streak travels across the glyph outlines
+   themselves rather than across a box behind them.
 
-   The gradient is twice the title's width and the sweep stays within 0–100%,
-   which is what keeps every glyph painted. At 0% the background spans
-   0→2W, at 100% it spans −W→W, and every position between spans more than
-   the element needs. Running past that range parks part of the background
-   outside the element, and the transparent text colour this technique needs
-   then renders every glyph the background misses as invisible. */
-.thread-item.running .thread-item-title {
-  color: var(--ds-text-primary);
-}
+   The title keeps whatever colour the row already gives it — a dim streak
+   travels over it, it does not change colour itself. An earlier pass made
+   the gradient a dim base with one bright band, which darkened the whole
+   title just to light a slice of it. The base stops below are `currentColor`
+   so the streak rides the row's real colour through its hover and selected
+   states instead of a colour pinned at rest. */
 
 @supports (background-clip: text) or (-webkit-background-clip: text) {
   .thread-item.running .thread-item-title {
     background-image: linear-gradient(
       100deg,
-      var(--ds-text-secondary) 0%,
-      var(--ds-text-primary) 50%,
-      var(--ds-text-secondary) 100%
+      currentColor 0%,
+      currentColor 45%,
+      var(--ds-text-muted) 50%,
+      currentColor 55%,
+      currentColor 100%
     );
     background-repeat: no-repeat;
-    background-size: 200% 100%;
-    background-position: 0% 0;
+    /* 2.4 titles wide, so the streak clears the element at both ends of the
+       sweep. At 2x the dim band still straddled the right edge at the start
+       and the left edge at the end, and the loop reset jumped the banded
+       part of the title from one side to the other — the flicker. The
+       background itself still spans the element throughout: 100% puts it at
+       −1.4W→W, 0% at 0→2.4W, and the positions between cover more. */
+    background-size: 240% 100%;
+    background-position: 100% 0;
     -webkit-background-clip: text;
     background-clip: text;
-    color: transparent;
-    animation: sidebar-title-sheen 1.9s var(--motion-ease-out) infinite;
+    /* The fill is emptied, not the `color` property: the base stops resolve
+       `currentColor` against `color`, so clearing it would clear the title. */
+    -webkit-text-fill-color: transparent;
+    /* Linear, not eased: an ease-out decelerates into the dead end and then
+       snaps back, which reads as a stutter on a title this short. */
+    animation: sidebar-title-sheen 2.3s linear infinite;
   }
 }
 
+/* The streak travels left to right, the direction a reader enters a line.
+   Dragging the background rightward, from 100% to 0%, is what carries the
+   band from beyond the left edge to beyond the right one; running it the
+   other way would sweep back-to-front. */
 @keyframes sidebar-title-sheen {
   from {
-    background-position: 0% 0;
+    background-position: 100% 0;
   }
 
   to {
-    background-position: 100% 0;
+    background-position: 0% 0;
   }
 }
 
@@ -438,7 +451,7 @@
   .thread-item-status.permission::before {
     animation: none;
   }
-  /* The sheen cannot travel, so the run holds a still highlight at the middle
+  /* The streak cannot travel, so the run holds a still dim band at the middle
      of the sweep — still the glyph-shaped one, never a bare colour. */
   .thread-item.running .thread-item-title {
     animation: none;

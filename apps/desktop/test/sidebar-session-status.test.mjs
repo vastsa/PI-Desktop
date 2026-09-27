@@ -117,19 +117,44 @@ test("renders semantic, shape-distinct sidebar status indicators", () => {
     /\.thread-item\.running \.thread-item-title[\s\S]*background-clip: text[\s\S]*sidebar-title-sheen/,
   );
   assert.doesNotMatch(styles, /\.thread-item\.running \.thread-item-title::after/);
-  // That technique paints glyphs from the background and needs a transparent
-  // text colour, so the sweep must stay within 0–100%: with a 200%-wide
-  // gradient, 0% spans 0→2W and 100% spans −W→W, and every position between
-  // covers more than the element. Leaving that range parks part of the
-  // background outside the element and renders those glyphs invisible.
+  // The title keeps the colour the row already gives it and a dim streak
+  // travels over it. The base stops read `currentColor` so the streak rides
+  // the row's real colour through hover and selection, and the travelling
+  // band is the dimmer token — a bright band over a dim base darkened the
+  // whole title just to light one slice of it.
   assert.match(
     styles,
-    /@keyframes sidebar-title-sheen \{[\s\S]*?background-position: 0% 0;[\s\S]*?background-position: 100% 0;/,
+    /linear-gradient\(\s*100deg,\s*currentColor 0%,\s*currentColor 45%,\s*var\(--ds-text-muted\) 50%,\s*currentColor 55%,\s*currentColor 100%\s*\)/,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.thread-item\.running \.thread-item-title \{[^}]*var\(--ds-text-primary\)/s,
+  );
+  // The glyph fill has to go transparent for the clipped background to show,
+  // but `currentColor` resolves against `color`, so the fill is emptied
+  // through `-webkit-text-fill-color` and `color` is left alone.
+  assert.match(styles, /-webkit-text-fill-color: transparent;/);
+  assert.doesNotMatch(
+    styles,
+    /\.thread-item\.running \.thread-item-title \{[^}]*(?<![\w-])color: transparent/s,
+  );
+  // The streak crosses left to right, the direction a reader enters a line,
+  // so the keyframes drag the background rightward: 100% puts the band beyond
+  // the left edge, 0% beyond the right one.
+  assert.match(
+    styles,
+    /@keyframes sidebar-title-sheen \{[\s\S]*?background-position: 100% 0;[\s\S]*?background-position: 0% 0;/,
   );
   assert.match(
     styles,
-    /background-size: 200% 100%;[\s\S]*?background-position: 0% 0;[\s\S]*?background-clip: text;/,
+    /background-size: 240% 100%;[\s\S]*?background-position: 100% 0;[\s\S]*?background-clip: text;/,
   );
+  // A 2x gradient left the bright band straddling an edge at both ends of the
+  // sweep, so every loop reset jumped the lit half of the title sideways —
+  // the flicker. 2.4x carries the streak clear of the element at the turn,
+  // and a linear timing keeps the speed constant instead of decelerating
+  // into the dead end and snapping back.
+  assert.match(styles, /animation: sidebar-title-sheen 2\.3s linear infinite;/);
   assert.doesNotMatch(styles, /thread-item-status\.(running|selected)/);
   assert.match(styles, /thread-item-status\.permission::before[\s\S]*--ds-purple/);
   assert.match(styles, /thread-item-status\.completed[\s\S]*--ds-success/);
