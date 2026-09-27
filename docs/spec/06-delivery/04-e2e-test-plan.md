@@ -4842,6 +4842,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Preconditions**: A built Electron desktop, the bundled models.dev catalog,
   and a fresh temporary profile with no configured providers. The probe uses
   only a synthetic `authKind: none` provider and never starts an Agent turn.
+  Host data, Electron `userData`, `HOME`/`USERPROFILE`, and the Pi agent root
+  are all rooted under that temporary profile; user MCP definitions must not
+  enter the probe.
 - **Steps**: 1) Create 800 empty durable sessions through the Rust Host API,
   distributed over up to thirteen known model IDs. 2) After fixture creation,
   request eight session lists concurrently through the renderer preload bridge.
@@ -4852,7 +4855,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   IPC round trip reaches one second. The probe records individual list/heartbeat
   durations and the largest Main gap. The ordinary sandboxed boot, platform
   window, and menu assertions still pass. The profile is discarded afterwards;
-  existing user profiles and running desktop processes are untouched.
+  existing user profiles and running desktop processes are untouched. The
+  Electron process receives an explicit `--user-data-dir` inside the temporary
+  profile, so Chromium cache and the single-instance lock cannot use the
+  installed release's `userData`.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
 - **Acceptance**: C (sessions), Quality

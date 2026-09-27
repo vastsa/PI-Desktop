@@ -9,7 +9,7 @@
  * (target/debug or target/release, or PI_DESKTOP_HOST_BIN).
  */
 import { spawn } from "node:child_process";
-import { rmSync, existsSync, readFileSync } from "node:fs";
+import { rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   createTempDataDir,
@@ -47,12 +47,17 @@ for (const preloadPath of [
 }
 
 const dataDir = createTempDataDir("pi-desktop-boot-");
+const homeDir = join(dataDir, "home");
+mkdirSync(homeDir, { recursive: true });
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(electronBin, ["."], {
+const child = spawn(electronBin, [".", `--user-data-dir=${join(dataDir, "electron-user-data")}`], {
   cwd: appDir,
   env: {
     ...env,
+    HOME: homeDir,
+    USERPROFILE: homeDir,
+    PI_CODING_AGENT_DIR: join(homeDir, ".pi", "agent"),
     PI_DESKTOP_DATA_DIR: dataDir,
     PI_DESKTOP_BOOT_PROBE: "1",
     PI_DESKTOP_START_MAXIMIZED: process.platform === "darwin" ? "0" : "1",

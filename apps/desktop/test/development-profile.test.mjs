@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
@@ -125,6 +126,14 @@ test("a development build takes its own userData before the single-instance lock
     /const isDevelopmentBuild =\s*\n?\s*process\.env\.PI_DESKTOP_DEV === "1" \|\| !app\.isPackaged;/,
   );
   assert.ok(development > 0 && development < apply);
+});
+
+test("boot E2E isolates Chromium userData alongside its temporary database", () => {
+  const source = readFileSync(join(here, "../../../scripts/e2e-electron-boot.mjs"), "utf8");
+  assert.match(source, /--user-data-dir=\$\{join\(dataDir, "electron-user-data"\)\}/);
+  assert.match(source, /HOME: homeDir/);
+  assert.match(source, /USERPROFILE: homeDir/);
+  assert.match(source, /PI_CODING_AGENT_DIR: join\(homeDir, "\.pi", "agent"\)/);
 });
 
 test("main resolves one data directory and publishes it to everything below", () => {
