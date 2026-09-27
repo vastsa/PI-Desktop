@@ -50,20 +50,16 @@ test("read task notifications leave no sidebar indicator", () => {
   assert.deepEqual(outcomes, {});
 });
 
-test("prioritizes in-progress and selected states over terminal outcomes", () => {
+test("keeps only the indicators a row still paints", () => {
+  // A running row says so by sheening its title, and the selected row by its
+  // own background, so neither takes the dot the other three share.
+  assert.equal(sidebarSessionStatus({ outcome: "failed" }), "failed");
+  assert.equal(sidebarSessionStatus({ outcome: "completed" }), "completed");
   assert.equal(
-    sidebarSessionStatus({ running: true, selected: true, outcome: "failed" }),
-    "running",
+    sidebarSessionStatus({ outcome: "completed", hasPendingPermission: true }),
+    "permission",
   );
-  assert.equal(
-    sidebarSessionStatus({ running: false, selected: true, outcome: "failed" }),
-    "selected",
-  );
-  assert.equal(
-    sidebarSessionStatus({ running: false, selected: false, outcome: "completed" }),
-    "completed",
-  );
-  assert.equal(sidebarSessionStatus({ running: false, selected: false }), null);
+  assert.equal(sidebarSessionStatus({}), null);
 });
 
 test("opening a conversation acknowledges its outcome badge before loading details", () => {
@@ -105,15 +101,26 @@ test("renders semantic, shape-distinct sidebar status indicators", () => {
   );
   const main = readMainSourceSync();
 
-  assert.match(sidebar, /sessionSelected[\s\S]*sessionCompleted[\s\S]*sessionFailed/);
+  assert.match(
+    sidebar,
+    /sessionCompleted[\s\S]*sessionFailed[\s\S]*sessionPermission/,
+  );
+  assert.doesNotMatch(sidebar, /"nav\.sessionRunning"|"nav\.sessionSelected"/);
   assert.match(sidebar, /IconCheck[\s\S]*IconCircleAlert/);
-  assert.match(styles, /thread-item-status\.running::before[\s\S]*--ds-warning/);
-  assert.match(styles, /thread-item-status\.selected::before[\s\S]*--ds-accent/);
+  // The run is a sheen travelling across the title, and the selected row is
+  // the row background — neither paints a `.thread-item-status` dot.
+  assert.match(sidebar, /\$\{running \? "running" : ""\}/);
+  assert.match(
+    styles,
+    /\.thread-item\.running \.thread-item-title[\s\S]*background-clip: text[\s\S]*sidebar-title-sheen/,
+  );
+  assert.doesNotMatch(styles, /thread-item-status\.(running|selected)/);
+  assert.match(styles, /thread-item-status\.permission::before[\s\S]*--ds-purple/);
   assert.match(styles, /thread-item-status\.completed[\s\S]*--ds-success/);
   assert.match(styles, /thread-item-status\.failed[\s\S]*--ds-error/);
   assert.match(
     styles,
-    /prefers-reduced-motion: reduce[\s\S]*thread-item-status\.running::before[\s\S]*animation: none/,
+    /prefers-reduced-motion: reduce[\s\S]*\.thread-item\.running \.thread-item-title[\s\S]*animation: none/,
   );
   assert.match(
     app,

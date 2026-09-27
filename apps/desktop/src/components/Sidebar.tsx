@@ -1066,25 +1066,17 @@ export function Sidebar({
 
   const renderSessionStatus = (status: SidebarSessionStatus) => {
     const labelKey =
-      status === "running"
-        ? "nav.sessionRunning"
-        : status === "selected"
-          ? "nav.sessionSelected"
-          : status === "completed"
-            ? "nav.sessionCompleted"
-            : status === "failed"
-              ? "nav.sessionFailed"
-              : "nav.sessionPermission";
+      status === "completed"
+        ? "nav.sessionCompleted"
+        : status === "failed"
+          ? "nav.sessionFailed"
+          : "nav.sessionPermission";
     const fallback =
-      status === "running"
-        ? "In progress"
-        : status === "selected"
-          ? "Selected"
-          : status === "completed"
-            ? "Completed"
-            : status === "failed"
-              ? "Failed"
-              : "Permission required";
+      status === "completed"
+        ? "Completed"
+        : status === "failed"
+          ? "Failed"
+          : "Permission required";
     const label = t(labelKey, { defaultValue: fallback });
     return (
       <span className={`thread-item-status ${status}`} aria-label={label} title={label}>
@@ -1696,15 +1688,13 @@ export function Sidebar({
     const running = Boolean(runningSessions[session.id]);
     const hasPendingPermission = (pendingPermissions[session.id]?.length ?? 0) > 0;
     const status = sidebarSessionStatus({
-      running,
-      selected: active,
       outcome: sessionOutcomes[session.id],
       hasPendingPermission,
     });
     return (
       <div
         key={session.id}
-        className={`thread-item ${active ? "active" : ""} ${archived ? "archived" : ""} ${draggingSessionId === session.id ? "is-dragging" : ""} ${selectedIds.has(session.id) ? "selected" : ""}`}
+        className={`thread-item ${active ? "active" : ""} ${running ? "running" : ""} ${archived ? "archived" : ""} ${draggingSessionId === session.id ? "is-dragging" : ""} ${selectedIds.has(session.id) ? "selected" : ""}`}
         data-sidebar-session-row={session.id}
         draggable={!running}
         onDragStart={(event) => {

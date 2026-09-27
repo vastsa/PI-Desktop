@@ -341,16 +341,6 @@
   transform: translateY(-50%);
 }
 
-.thread-item-status.running::before {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-full);
-  background: var(--ds-warning);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-warning) 15%, transparent);
-  content: "";
-  animation: sidebar-status-breathe 1.6s ease-in-out 2;
-}
-
 .thread-item-status.permission::before {
   width: 7px;
   height: 7px;
@@ -359,14 +349,6 @@
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-purple) 15%, transparent);
   content: "";
   animation: sidebar-status-pulse-purple 1.2s ease-in-out infinite;
-}
-
-.thread-item-status.selected::before {
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--ds-accent);
-  border-radius: var(--radius-full);
-  content: "";
 }
 
 .thread-item-status.completed {
@@ -383,6 +365,44 @@
 
 .thread-item-status.failed svg {
   stroke-width: 2.25;
+}
+
+/* A running row says so by sheening its own title. The dot that used to sit
+   at the leading edge is gone, so the run now reads inside the row rather
+   than beside it, and the title's own box is the stage the light travels
+   across. The plain colour is the fallback: without background-clip the run
+   shows as a brighter, still title. */
+.thread-item.running .thread-item-title {
+  color: var(--ds-text-primary);
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .thread-item.running .thread-item-title {
+    background-image: linear-gradient(
+      100deg,
+      var(--ds-text-secondary) 0%,
+      var(--ds-text-secondary) 38%,
+      var(--ds-text-primary) 50%,
+      var(--ds-text-secondary) 62%,
+      var(--ds-text-secondary) 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: sidebar-title-sheen 1.9s var(--motion-ease-out) infinite;
+  }
+}
+
+@keyframes sidebar-title-sheen {
+  from {
+    background-position: 160% 0;
+  }
+
+  to {
+    background-position: -60% 0;
+  }
 }
 
 @keyframes sidebar-status-breathe {
@@ -410,11 +430,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thread-item-status.running::before {
-    animation: none;
-  }
   .thread-item-status.permission::before {
     animation: none;
+  }
+  /* The sheen cannot travel, so the run keeps its bright half as a still
+     highlight — the same brighter title the fallback paints. */
+  .thread-item.running .thread-item-title {
+    animation: none;
+    background-position: 50% 0;
   }
 }
 
