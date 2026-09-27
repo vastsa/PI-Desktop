@@ -329,14 +329,16 @@
 
 .thread-item-status {
   display: inline-flex;
-  width: 12px;
+  /* Same box as .thread-item-slot so a transient status lands on the project
+     folder's x instead of hanging further left than the row's own glyph. */
+  width: 13px;
   height: 12px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   color: var(--ds-text-muted);
   position: absolute;
-  left: 4px;
+  left: 8px;
   top: 50%;
   transform: translateY(-50%);
 }
@@ -381,6 +383,20 @@
 
 @supports (background-clip: text) or (-webkit-background-clip: text) {
   .thread-item.running .thread-item-title {
+    /* A running row says so by sheening its own title. The dot that used to sit
+   at the leading edge is gone, so the run now reads inside the row rather
+   than beside it, and the streak travels across the glyph outlines
+   themselves rather than across a box behind them.
+
+   The title keeps whatever colour the row already gives it — a dim streak
+   travels over it, it does not change colour itself. An earlier pass made
+   the gradient a dim base with one bright band, which darkened the whole
+   title just to light a slice of it. The base stops below are `currentColor`
+   so the streak rides the row's real colour through its hover and selected
+   states instead of a colour pinned at rest. */
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .thread-item.running .thread-item-title {
     background-image: linear-gradient(
       100deg,
       currentColor 0%,
@@ -406,20 +422,6 @@
     /* Linear, not eased: an ease-out decelerates into the dead end and then
        snaps back, which reads as a stutter on a title this short. */
     animation: sidebar-title-sheen 2.3s linear infinite;
-  }
-}
-
-/* The streak travels left to right, the direction a reader enters a line.
-   Dragging the background rightward, from 100% to 0%, is what carries the
-   band from beyond the left edge to beyond the right one; running it the
-   other way would sweep back-to-front. */
-@keyframes sidebar-title-sheen {
-  from {
-    background-position: 100% 0;
-  }
-
-  to {
-    background-position: 0% 0;
   }
 }
 
@@ -1082,13 +1084,10 @@
   min-width: 0;
 }
 
-.sidebar-disclosure-icon {
+/* Disclosure rides the folder glyph itself. The open/closed shapes carry the
+   state, so this affordance never rotates. */
+.sidebar-project-folder {
   flex: 0 0 auto;
-  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.sidebar-disclosure-icon.collapsed {
-  transform: rotate(-90deg);
 }
 
 .sidebar-session-group-header:hover .sidebar-session-group-add,

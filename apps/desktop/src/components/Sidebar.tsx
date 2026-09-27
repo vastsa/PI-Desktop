@@ -73,11 +73,11 @@ import {
   IconPlug,
   IconBranch,
   IconCheck,
-  IconChevronDown,
   IconCopy,
   IconCircleAlert,
   IconNewSession,
   IconFolder,
+  IconFolderOpen,
   IconMore,
   IconNewProject,
   IconPin,
@@ -1758,13 +1758,19 @@ export function Sidebar({
           aria-current={active ? "page" : undefined}
           aria-describedby={sessionHoverCard?.session.id === session.id ? `session-hover-${session.id}` : undefined}
         >
-          {pinned ? (
-            <IconPin size={11} className="thread-item-pin" aria-hidden />
-          ) : null}
+          {/* Fixed-width leading slot, empty for a plain row. Reserving it
+              anyway is what keeps a session title on the project name's x
+              whether or not this row carries a pin; transient status glyphs
+              render above and borrow the same box. */}
+          <span className="thread-item-slot" aria-hidden>
+            {!status && pinned ? <IconPin size={11} className="thread-item-pin" /> : null}
+          </span>
+          <span className="thread-item-title">{taskTitle(session.title)}</span>
+          {/* A text badge cannot fit the fixed icon slot, so the Pi source
+              rides after the title as metadata instead of shifting the row. */}
           {session.source === "pi-native" ? (
             <span className="thread-item-source" title="Native Pi session">Pi</span>
           ) : null}
-          <span className="thread-item-title">{taskTitle(session.title)}</span>
           {options?.global ? (
             <span className="thread-item-project">
               {owningProject}
@@ -1949,10 +1955,14 @@ export function Sidebar({
               })();
             }}
           >
-            <IconChevronDown
-              size={13}
-              className={`sidebar-disclosure-icon ${collapsedProject ? "collapsed" : ""}`}
-            />
+            {/* Disclosure rides the folder glyph itself: an open folder reads as
+                "expanded" and a closed one as "collapsed", so the row needs no
+                separate chevron. Pinned keeps its own star next to it. */}
+            {collapsedProject ? (
+              <IconFolder size={13} className="sidebar-project-folder" aria-hidden />
+            ) : (
+              <IconFolderOpen size={13} className="sidebar-project-folder" aria-hidden />
+            )}
             {entry.meta.pinned ? (
               <IconStar
                 size={13}
@@ -1960,9 +1970,7 @@ export function Sidebar({
                 className="sidebar-project-pin"
                 aria-hidden
               />
-            ) : (
-              <IconFolder size={13} aria-hidden />
-            )}
+            ) : null}
             <span>{entry.name}</span>
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
           </TooltipButton>

@@ -19,7 +19,9 @@
   align-items: center;
   gap: 2px;
   overflow: hidden;
-  padding: 0 2px 0 0;
+  /* Mirrors .sidebar-session-group-header so session rows and project rows
+     share the same 2px + 6px inset on both edges. */
+  padding: 0 2px;
 }
 
 .thread-item-main {
@@ -28,9 +30,24 @@
   flex: 1;
   align-items: center;
   gap: 5px;
-  padding: 5px 6px 5px 20px;
+  /* Same inset as the project title, so the slot below starts on the project
+     folder's x (2px row inset + 6px) and the title then lands on the project
+     name's x (8px + 13px slot + 5px gap = 26px). */
+  padding: 5px 6px;
   text-align: left;
   color: inherit;
+}
+
+/* One fixed-width glyph slot per session row. The width never changes, so a
+   pinned row, a plain row and a row borrowed by a status all start their
+   title at the same x instead of shuffling sideways. */
+.thread-item-slot {
+  display: inline-flex;
+  width: 13px;
+  flex: 0 0 13px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-muted);
 }
 
 .thread-item-title {
@@ -39,6 +56,19 @@
   line-height: var(--leading-row);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Source badge rides after the title. It is metadata about the row, not a
+   leading affordance, and a text badge has no fixed width to sit in the icon
+   slot — moving it here keeps every title on one x. */
+.thread-item-source {
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  background: var(--ds-bg-tertiary);
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
 }
 
 .thread-item:hover,

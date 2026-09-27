@@ -79,11 +79,13 @@ test("durable empty sessions render and title heuristics do not filter them", ()
 
 test("project title toggles its conversation group without forcing it open", () => {
   const projectTitleBlock = sidebarSource.match(
-    /className="sidebar-session-group-title project-toggle"[\s\S]*?<IconFolder/,
+    /className="sidebar-session-group-title project-toggle"[\s\S]*?<span>\{entry\.name\}<\/span>/,
   )?.[0] ?? "";
   assert.match(projectTitleBlock, /aria-expanded=\{!collapsedProject\}/);
   assert.match(projectTitleBlock, /data-action="toggle-project-collapse"/);
-  assert.match(projectTitleBlock, /sidebar-disclosure-icon/);
+  // Expansion rides the folder glyph's open/closed shape, not a chevron.
+  assert.match(projectTitleBlock, /sidebar-project-folder/);
+  assert.doesNotMatch(projectTitleBlock, /IconChevronDown/);
   assert.match(projectTitleBlock, /setCollapsed\(entry\.path, !collapsedProject\)/);
   assert.doesNotMatch(projectTitleBlock, /setCollapsed\(entry\.path, false\)/);
   assert.doesNotMatch(sidebarSource, /className="project-collapse-toggle"/);

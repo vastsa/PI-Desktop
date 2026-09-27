@@ -150,14 +150,25 @@ test("sidebar project and session lists stay coordinated with the global type sc
   );
 });
 
-test("pinned project rows replace the folder glyph with a filled star", () => {
+test("pinned project rows add a filled star beside the folder glyph", () => {
+  // The folder glyph now reports disclosure, so pinning adds a star instead of
+  // replacing the icon and leaving the expansion state unreadable.
   assert.match(
     sidebarSource,
-    /entry\.meta\.pinned \? \([\s\S]*?<IconStar\s+size=\{13\}\s+fill="currentColor"[\s\S]*?className="sidebar-project-pin"[\s\S]*?\) : \([\s\S]*?<IconFolder size=\{13\} aria-hidden \/>/,
+    /collapsedProject \? \([\s\S]*?<IconFolder size=\{13\} className="sidebar-project-folder" aria-hidden \/>[\s\S]*?\) : \([\s\S]*?<IconFolderOpen size=\{13\} className="sidebar-project-folder" aria-hidden \/>/,
   );
+  assert.match(
+    sidebarSource,
+    /entry\.meta\.pinned \? \([\s\S]*?<IconStar\s+size=\{13\}\s+fill="currentColor"[\s\S]*?className="sidebar-project-pin"[\s\S]*?\) : null/,
+  );
+  assert.doesNotMatch(sidebarSource, /sidebar-disclosure-icon/);
   assert.match(
     globalStyles,
     /\.sidebar-project-pin\s*\{[^}]*flex:\s*0 0 auto;[^}]*color:\s*var\(--ds-accent\);/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.sidebar-project-folder\s*\{[^}]*flex:\s*0 0 auto;/s,
   );
 });
 
@@ -263,6 +274,39 @@ test("sidebar row menus omit project reassignment and switching actions", () => 
   assert.match(
     sidebarSource,
     /if \(!entry\.active && !\(await selectProject\(entry\.path\)\)\) return;/,
+  );
+});
+
+test("session rows line their title up with the project name in every state", () => {
+  const sessionMain = sidebarSource.match(
+    /className="thread-item-main"[\s\S]*?<\/button>/,
+  )?.[0] ?? "";
+
+  // A reserved but unpainted slot: a plain row keeps its bare leading edge,
+  // while the row stays on the same x as a project name either way.
+  assert.match(sessionMain, /className="thread-item-slot"/);
+  assert.match(sessionMain, /!status && pinned \? <IconPin size=\{11\}/);
+  assert.doesNotMatch(sessionMain, /thread-item-glyph/);
+  // A text badge has no fixed width for the slot, so it follows the title.
+  assert.match(
+    sessionMain,
+    /<span className="thread-item-title">[\s\S]*?<span className="thread-item-source"/,
+  );
+  assert.match(
+    globalStyles,
+    /\.thread-item-slot\s*\{[^}]*width:\s*13px;[^}]*flex:\s*0 0 13px;/s,
+  );
+  // The title inset matches the project title's, so 2px + 6px puts the slot on
+  // the folder's x and 8px + 13px + 5px puts the title on the project name's x.
+  assert.match(
+    globalStyles,
+    /\.thread-item-main\s*\{[^}]*padding:\s*5px 6px;/s,
+  );
+  // The permission / completed / failed glyphs borrow that same box, so they
+  // read as the project folder's own leading affordance.
+  assert.match(
+    globalStyles,
+    /\.thread-item-status\s*\{[^}]*width:\s*13px;[^}]*left:\s*8px;/s,
   );
 });
 
