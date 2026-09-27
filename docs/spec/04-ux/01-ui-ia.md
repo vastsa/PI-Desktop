@@ -113,11 +113,15 @@ destination, chat as the home surface, tools and permissions inline.
   and `Cmd/Ctrl + J` both toggle the active session's retained panel context —
   revealing it without creating a resource tab and collapsing it without
   discarding one; the create trigger remains unavailable while the panel is
-  closed. Context is a singleton native tab that shows Pi-Context category
-  snapshots received through the trusted-extension status bridge, falling back
-  to the active session's messages/free usage until a snapshot arrives. It can
-  run the extension's export, import, and handoff commands without moving agent
-  execution into the renderer. Closing the final tab keeps the panel open and
+  closed. Context is a singleton native tab that reads the last validated
+  Pi-Context snapshot for its session from an always-mounted, bounded renderer
+  cache, including when opened after the turn. Its summary separates used and
+  remaining capacity; category rows show shares of used context, while zero and
+  deferred categories stay compact. When no snapshot exists (including after a
+  renderer reload), it clearly labels last-request usage as an estimate rather
+  than presenting two invented breakdown categories. It can run the extension's
+  export, import, and handoff commands without moving agent execution into the
+  renderer. Closing the final tab keeps the panel open and
   shows the New launcher. No agent or tool result opens, activates, or resizes
   the panel: Review is reached only through an explicit user action, so a
   successful workspace Write/Edit leaves the panel exactly as the user left it

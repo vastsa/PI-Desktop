@@ -26,12 +26,18 @@ part of the launch path; ADR 0215 makes active plugin contributions authoritativ
    stays in host-core. Persisted session semantics are unchanged.
 3. Only `pi.events.emit("context:snapshot", snapshot)` crosses the existing
    trusted-extension status transport, with a 256,000-character JSON limit.
-   The renderer validates the shape, binds it to its originating session, and
-   does not render the serialized event as a human-readable status line.
-4. The native Context work-panel tab offers usage categories and invokes the
-   existing export/import/handoff extension commands. Until the next snapshot,
-   it displays a separate last-request usage estimate rather than inventing
-   category totals. Plugin permissions and project activation remain unchanged.
+   The always-mounted renderer status listener validates and retains the latest
+   snapshot per session in a bounded in-memory cache; older events cannot
+   replace newer snapshots. The work panel reads that cache even when opened
+   after the turn. The cache is not persisted across renderer reloads and raw
+   event JSON is never rendered in the human-readable status line.
+4. The native Context work-panel tab shows one capacity summary (used and
+   remaining) and a breakdown whose bars represent shares of used context.
+   Zero and deferred categories remain available without dominating the list.
+   Without a snapshot it labels last-request usage as an estimate, not a
+   fabricated Messages/Free breakdown. Export/import/handoff still invoke the
+   existing sidecar commands. Plugin permissions and project activation remain
+   unchanged.
 
 ## Consequences
 

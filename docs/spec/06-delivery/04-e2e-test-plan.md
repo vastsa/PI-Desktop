@@ -10031,24 +10031,27 @@ This test plan spec is accepted when:
   agent-extension plugin; an active conversation has completed at least one
   model response.
 - **Steps**:
-  1) Press `Cmd/Ctrl + J`, click `+`, and select Context.
-  2) Confirm the singleton Context tab shows token totals and category rows. If
-     the extension snapshot has not arrived yet, confirm the temporary fallback
-     contains Messages and Free without blanking the panel.
+  1) Complete a turn while the work panel is closed; then press `Cmd/Ctrl + J`,
+     click `+`, and select Context. Confirm the singleton tab immediately shows
+     that session's last Pi-Context snapshot without requiring another turn.
+  2) Confirm the capacity summary separates used and remaining tokens; nonzero
+     category rows show shares of used context. Zero and deferred categories
+     are still discoverable without a full-width 100% Free bar.
   3) Confirm its extension row has no `getAgentDir` / `buildSessionContext`
-     factory error. Complete another turn and confirm the Pi-Context
-     `context:snapshot` event replaces the fallback with its Messages, system,
-     tool, skill, MCP, bundle, and Free categories without displaying raw JSON
-     in the floating status line.
+     factory error. Complete another turn and confirm the newer snapshot
+     replaces the previous one without displaying raw JSON in the status line.
+     An older event for the same session must not replace the newer snapshot.
   4) Enter a pack name, then run Export and Handoff. Run Import with an existing
      pack and confirm each action is dispatched to the active session's trusted
      extension command.
   5) Switch sessions while an event is in flight and confirm the older session's
-     snapshot does not replace the visible session.
+     snapshot does not replace the visible session. Reload the renderer: without
+     a fresh snapshot, show an explicit last-request estimate and guidance, not
+     a fabricated Messages/Free breakdown.
 - **Expected**: Context is a closeable, session-retained native work-panel tab.
-  Structured extension data remains bounded to the matching session, the generic
-  status line stays human-readable, and pack operations run in the sidecar rather
-  than the renderer.
+  Structured extension data stays bounded to its session, the generic status
+  line stays human-readable, and pack operations run in the sidecar rather than
+  the renderer.
 - **Specs linked**: `01-product/01-product-scope.md`, `04-ux/01-ui-ia.md`,
   `07-plugins/16-trusted-extensions.md`
 - **Acceptance**: A (core shell), H (localization)
@@ -10056,6 +10059,24 @@ This test plan spec is accepted when:
 - **Status**: Electron/Chromium probe in `test:e2e:composer-autocomplete`
   covers empty state, category snapshot, and export dispatch. Live sidecar-to-host
   extension events and pack round trips remain manual.
+
+#### E2E-APP-dev-feature-version-stays-separate-from-release
+
+- **Preconditions**: The installed release remains at `0.15.8`; a dedicated
+  worktree build uses the prerelease `0.15.9-dev.1` and an isolated Host data
+  directory plus Electron `userData`.
+- **Steps**: 1) Start only the development build and read its About/version
+  surface and sidebar build label. 2) Check that the root/workspace manifests,
+  shared `APP_VERSION`, and Rust workspace version all agree on the prerelease.
+  3) Confirm the installed release still reports `0.15.8`, keeps its own
+  database/profile, and does not receive development update prompts.
+- **Expected**: The two running applications and their version labels are
+  distinguishable without overwriting or migrating the installed release's
+  files or state.
+- **Acceptance**: A (startup), Security (profile isolation)
+- **Milestone**: M5+
+- **Status**: Version-surface and startup checks automated; side-by-side visual
+  confirmation remains manual.
 
 #### E2E-SKILL-repeat-selection-keeps-menu-open
 
