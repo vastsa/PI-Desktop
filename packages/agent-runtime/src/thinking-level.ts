@@ -6,6 +6,7 @@ import type {
   ModelModalities,
   ModelProviderMetadata,
   ModelReasoningOption,
+  ThinkingProtocol,
   ThinkingLevel,
 } from "@pi-desktop/shared";
 
@@ -28,6 +29,7 @@ export type ModelConfig = {
   attachment?: boolean;
   reasoning: boolean;
   reasoningOptions?: ModelReasoningOption[];
+  thinkingProtocol?: ThinkingProtocol;
   supportedThinkingLevels?: readonly ThinkingLevel[];
   thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
   toolCall?: boolean;

@@ -126,6 +126,9 @@ pub struct ModelBinding {
     #[serde(default)]
     pub thinking_levels: Vec<String>,
     pub default_thinking_level: Option<String>,
+    /// Provider request protocol used when thinking is enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_protocol: Option<String>,
     /// Attachment capability overrides. `None` follows the published catalog
     /// capability, so a models.dev correction still reaches a saved binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]

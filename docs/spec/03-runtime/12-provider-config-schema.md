@@ -99,6 +99,10 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
             "type": ["string", "null"],
             "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
           },
+          "thinkingProtocol": {
+            "enum": ["legacy", "adaptive"],
+            "description": "Provider request protocol used when thinking is enabled; absent preserves legacy behavior."
+          },
           "supportsImages": { "type": ["boolean", "null"] },
           "supportsDocuments": { "type": ["boolean", "null"] },
           "availableForSubagents": { "type": "boolean", "default": false }

@@ -205,7 +205,12 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    follows a newly published `limit.context`; a non-default Advanced value
    remains explicit. This keeps the sidecar and context inspector on the same
    effective window after a catalog refresh.
-8. Settings renders the seven canonical thinking levels for every binding.
+8. Settings renders the seven canonical thinking levels for every binding and
+   exposes the model's thinking protocol as `legacy` or `adaptive`. Missing
+   protocol metadata preserves the legacy request path. Anthropic models whose
+   catalog reasoning options publish an `effort` control are seeded as
+   `adaptive`; the runtime passes that choice to pi-ai so it emits
+   `thinking.type=adaptive` and `output_config.effort`.
    Published levels begin selected for a known reasoning model. A non-reasoning
    or unknown model shows the same choices unselected, with a short manual
    override note. `defaultThinkingLevel` is chosen from the levels the binding
@@ -308,6 +313,7 @@ type ModelBinding = {
   maxTokens: number
   thinkingLevels: ThinkingLevel[]
   defaultThinkingLevel: ThinkingLevel | null
+  thinkingProtocol?: "legacy" | "adaptive"
   availableForSubagents?: boolean // opt-in for AI-driven delegation
 }
 

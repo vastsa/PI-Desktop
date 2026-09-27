@@ -9,6 +9,8 @@ export const THINKING_LEVELS = [
   "max",
 ] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+export const THINKING_PROTOCOLS = ["legacy", "adaptive"] as const;
+export type ThinkingProtocol = (typeof THINKING_PROTOCOLS)[number];
 /** Per-subagent selector values; omit leaves the provider's default untouched. */
 export const SUBAGENT_THINKING_LEVELS = [...THINKING_LEVELS, "omit"] as const;
 export type SubagentThinkingLevel = (typeof SUBAGENT_THINKING_LEVELS)[number];
@@ -79,6 +81,8 @@ export type ModelBinding = {
   /** Explicit endpoint levels; an empty or off-only set disables thinking. */
   thinkingLevels: ThinkingLevel[];
   defaultThinkingLevel: ThinkingLevel | null;
+  /** Provider request protocol used when thinking is enabled. */
+  thinkingProtocol?: ThinkingProtocol;
   /**
    * User override for image input. `null` or absent follows the published
    * models.dev capability; `true` forces image transport on for an endpoint the
@@ -158,6 +162,7 @@ export type ModelInfo = {
   reasoning?: boolean;
   reasoningOptions?: ModelReasoningOption[];
   thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
+  thinkingProtocol?: ThinkingProtocol;
   toolCall?: boolean;
   structuredOutput?: boolean;
   temperature?: boolean;

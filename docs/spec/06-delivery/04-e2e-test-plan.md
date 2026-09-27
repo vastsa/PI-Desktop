@@ -32,6 +32,26 @@
 - Keep validation evidence tied to the executable commit currently integrated
   into `main`.
 
+### E2E-PROVIDER-adaptive-thinking-protocol
+
+- **Preconditions:** Isolated provider settings fixture with an Anthropic
+  Messages provider and models `claude-opus-5-5` and a legacy Claude model;
+  no live credentials.
+- **Steps:** Open a configured model's Advanced settings, inspect the
+  thinking-protocol row, save an adaptive model with `medium`, then submit a
+  request through the local Anthropic transport fixture. Repeat with the
+  legacy model.
+- **Expected:** The adaptive model sends `thinking.type=adaptive` and
+  `output_config.effort=medium`; the legacy model sends the existing
+  budget-based thinking shape. Omitting the new field on an old binding keeps
+  legacy behavior after reload.
+- **Specs:** 03-runtime/11-provider-model-system; 03-runtime/12-provider-config-schema.
+- **Acceptance:** Provider/model protocol selection and wire compatibility.
+- **Milestone:** Maintenance.
+- **Status:** Protocol coverage is automated in the agent-runtime provider
+  binding tests; desktop settings coverage remains part of the provider model
+  configuration E2E fixture.
+
 ## 2. Non-goals
 
 - Full UI-driven automated coverage; protocol and source-contract automation is

@@ -21,6 +21,7 @@ import {
   type ModelBinding,
   type ModelInfo,
   type ThinkingLevel,
+  type ThinkingProtocol,
 } from "@pi-desktop/shared";
 import {
   CONTEXT_WINDOW_PRESETS,
@@ -746,6 +747,23 @@ export function ModelSelectionPanes({
                         })}
                       </div>
                     </div>
+                    <label className="provider-chosen-field">
+                      <span className="provider-chosen-field-label">
+                        {t("settings.thinkingProtocol")}
+                      </span>
+                      <select
+                        className="provider-chosen-thinking-select"
+                        value={binding.thinkingProtocol ?? info?.thinkingProtocol ?? "legacy"}
+                        onChange={(event) =>
+                          updateBinding(binding.id, {
+                            thinkingProtocol: event.target.value as ThinkingProtocol,
+                          })
+                        }
+                      >
+                        <option value="legacy">{t("settings.thinkingProtocolLegacy")}</option>
+                        <option value="adaptive">{t("settings.thinkingProtocolAdaptive")}</option>
+                      </select>
+                    </label>
                     <div className="provider-chosen-capabilities">
                       <span className="provider-chosen-thinking-label">
                         {t("settings.modelCapabilities")}

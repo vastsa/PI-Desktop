@@ -309,6 +309,7 @@ test("models.dev records retain all published model parameters and modalities", 
   assert.deepEqual(config.input, ["text", "image"]);
   assert.deepEqual(config.modalities, info.modalities);
   assert.deepEqual(config.supportedThinkingLevels, ["low", "medium", "high", "xhigh", "max"]);
+  assert.equal(config.thinkingProtocol, "adaptive");
   assert.deepEqual(config.thinkingLevelMap, {
     low: "low",
     medium: "medium",

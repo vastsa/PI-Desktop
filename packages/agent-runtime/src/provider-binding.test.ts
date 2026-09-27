@@ -93,6 +93,93 @@ describe("Anthropic runtime endpoint", () => {
     expect(result.stopReason).toBe("error");
     expect(urls).toEqual(["https://gw.example/anthropic/v1/messages?beta=true"]);
   });
+
+  it("uses adaptive thinking for models explicitly marked adaptive", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "anthropic-adaptive",
+      name: "Anthropic adaptive",
+      baseUrl: "https://api.anthropic.com",
+      modelId: "claude-opus-5-5",
+      apiStyle: "anthropic_messages",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "medium"],
+      modelConfig: {
+        source: "models.dev",
+        name: "Claude Opus 5.5",
+        baseUrl: "https://api.anthropic.com",
+        reasoning: true,
+        thinkingProtocol: "adaptive",
+        thinkingLevelMap: { medium: "medium" },
+        input: ["text"],
+        contextWindow: 200_000,
+        maxTokens: 16_000,
+      },
+    };
+    const model = buildProviderModel(provider);
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response("bad request", { status: 400 });
+    });
+
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        { systemPrompt: "system", messages: [{ role: "user", content: "hello", timestamp: Date.now() }], tools: [] },
+        { reasoning: "medium", fetch },
+      )
+      .result();
+
+    expect(model.compat).toMatchObject({ forceAdaptiveThinking: true });
+    expect(requests[0]).toMatchObject({
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+    });
+  });
+
+  it("keeps the legacy budget request for legacy models", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "anthropic-legacy",
+      name: "Anthropic legacy",
+      baseUrl: "https://api.anthropic.com",
+      modelId: "claude-opus-4-5",
+      apiStyle: "anthropic_messages",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "medium"],
+      modelConfig: {
+        source: "models.dev",
+        name: "Claude Opus 4.5",
+        baseUrl: "https://api.anthropic.com",
+        reasoning: true,
+        thinkingProtocol: "legacy",
+        input: ["text"],
+        contextWindow: 200_000,
+        maxTokens: 16_000,
+      },
+    };
+    const model = buildProviderModel(provider);
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response("bad request", { status: 400 });
+    });
+
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        { systemPrompt: "system", messages: [{ role: "user", content: "hello", timestamp: Date.now() }], tools: [] },
+        { reasoning: "medium", fetch },
+      )
+      .result();
+
+    expect(model.compat).toMatchObject({ forceAdaptiveThinking: false });
+    expect(requests[0]).toMatchObject({
+      thinking: { type: "enabled" },
+    });
+    expect((requests[0].thinking as Record<string, unknown>).budget_tokens).toEqual(expect.any(Number));
+  });
 });
 
 describe("buildProviderModel OpenAI-compatible role compatibility", () => {
