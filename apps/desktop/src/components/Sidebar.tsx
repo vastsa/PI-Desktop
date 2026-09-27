@@ -1685,7 +1685,14 @@ export function Sidebar({
         ?? projectName(normalizedProjectPath, projectMetaFor(normalizedProjectPath, projectMeta).name)
       : t("nav.hoverCardTemporarySpace");
     const active = page === "chat" && selectedSessionId === session.id;
+    const pinned = sessionPinned(session, meta);
     const archived = sessionArchived(session, meta);
+    const pinAction = pinned
+      ? t("nav.unpinTask", { defaultValue: "Unpin" })
+      : t("nav.pinTask", { defaultValue: "Pin" });
+    const archiveAction = archived
+      ? t("nav.restoreTask", { defaultValue: "Restore" })
+      : t("nav.archiveTask", { defaultValue: "Archive" });
     const running = Boolean(runningSessions[session.id]);
     const hasPendingPermission = (pendingPermissions[session.id]?.length ?? 0) > 0;
     const status = sidebarSessionStatus({
@@ -1761,7 +1768,7 @@ export function Sidebar({
           aria-current={active ? "page" : undefined}
           aria-describedby={sessionHoverCard?.session.id === session.id ? `session-hover-${session.id}` : undefined}
         >
-          {sessionPinned(session, meta) ? (
+          {pinned ? (
             <IconPin size={11} className="thread-item-pin" aria-hidden />
           ) : null}
           {session.source === "pi-native" ? (
@@ -1777,7 +1784,7 @@ export function Sidebar({
         <div className="sidebar-row-actions">
           <TooltipButton
             type="button"
-            className="thread-item-more"
+            className="thread-item-action thread-item-more"
             data-action="session-menu"
             tooltip={t("nav.sessionActions", { defaultValue: "Session actions" })}
             ariaLabel={t("nav.sessionActions", { defaultValue: "Session actions" })}
@@ -1794,6 +1801,32 @@ export function Sidebar({
             }}
           >
             <IconMore size={14} />
+          </TooltipButton>
+          <TooltipButton
+            type="button"
+            className="thread-item-action"
+            data-action="toggle-session-pin"
+            tooltip={pinAction}
+            ariaLabel={pinAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleSessionPin(session);
+            }}
+          >
+            <IconPin size={14} />
+          </TooltipButton>
+          <TooltipButton
+            type="button"
+            className="thread-item-action"
+            data-action="toggle-session-archive"
+            tooltip={archiveAction}
+            ariaLabel={archiveAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              void archiveSession(session);
+            }}
+          >
+            {archived ? <IconArchiveRestore size={14} /> : <IconArchive size={14} />}
           </TooltipButton>
         </div>
       </div>
@@ -1951,7 +1984,7 @@ export function Sidebar({
           <div className="sidebar-menu-wrap">
             <TooltipButton
               type="button"
-              className="thread-item-more project-more"
+              className="thread-item-action thread-item-more project-more"
               tooltip={t("project.openActions", { name: entry.name })}
               ariaLabel={t("project.openActions", { name: entry.name })}
               aria-haspopup="menu"

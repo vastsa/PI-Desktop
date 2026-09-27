@@ -228,10 +228,10 @@ test("sidebar action icons stay quiet until their toolbar or row is hovered", ()
     globalStyles,
     /\.sidebar-list-toolbar:hover \.sidebar-toolbar-button,[\s\S]*?\.sidebar-list-toolbar:focus-within \.sidebar-toolbar-button,[\s\S]*?opacity:\s*1;/,
   );
-  assert.match(globalStyles, /\.thread-item:hover \.thread-item-more,/);
+  assert.match(globalStyles, /\.thread-item:hover \.thread-item-action,/);
   assert.match(
     globalStyles,
-    /\.sidebar-session-group-header:hover \.thread-item-more,[\s\S]*?\.sidebar-session-group-header:focus-within \.thread-item-more,/,
+    /\.sidebar-session-group-header:hover \.thread-item-action,[\s\S]*?\.sidebar-session-group-header:focus-within \.thread-item-action,/,
   );
   assert.match(
     globalStyles,
@@ -315,22 +315,55 @@ test("hidden row actions stay out of the row's click path", () => {
   // Resting state: the invisible control is not a pointer target at all.
   assert.match(
     globalStyles,
-    /\.thread-item-more\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*\}/s,
+    /\.thread-item-action\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*\}/s,
   );
   assert.match(
     globalStyles,
-    /\.thread-item:focus-within \.thread-item-more,\s*\n\.thread-item-more:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
+    /\.thread-item:focus-within \.thread-item-action,\s*\n\.thread-item-action:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
   );
   // Without hover there is no reveal, so a no-hover pointer gets the controls
   // visible and tappable instead of an invisible gutter.
   assert.match(
     globalStyles,
-    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
+    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-action,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
   );
   // The row itself stays clickable where the hidden control used to swallow
   // the click, and spelled-out controls never double-fire the row.
   assert.match(sidebarSource, /if \(target\?\.closest\("button, \[data-action\]"\)\) return;/);
   assert.match(sidebarSource, /className=\{`thread-item[\s\S]*?onClick=\{\(event\) => \{/);
+});
+
+test("session rows reveal inline pin and archive actions ahead of the overflow menu", () => {
+  const rowActions =
+    sidebarSource.match(/<div className="sidebar-row-actions">[\s\S]*?<\/div>/)?.[0] ?? "";
+
+  // The cluster reads overflow, pin, archive from the left, and the overflow
+  // trigger keeps the `session-menu` anchor the row context menu is anchored to.
+  assert.match(
+    rowActions,
+    /data-action="session-menu"[\s\S]*?data-action="toggle-session-pin"[\s\S]*?data-action="toggle-session-archive"/,
+  );
+  // One shared class reveals all three, so a fourth control needs no new rule.
+  assert.equal(rowActions.match(/thread-item-action/g)?.length, 3);
+  // Each trigger runs the same action the row menu item runs, and stops the
+  // click before it reaches the row that opens the session.
+  assert.match(rowActions, /toggleSessionPin\(session\)/);
+  assert.match(rowActions, /void archiveSession\(session\)/);
+  assert.equal(rowActions.match(/event\.stopPropagation\(\)/g)?.length, 3);
+  // The archive trigger swaps its glyph so the state is readable without
+  // opening a menu, and both labels follow the row state.
+  assert.match(
+    rowActions,
+    /\{archived \? <IconArchiveRestore size=\{14\} \/> : <IconArchive size=\{14\} \/>\}/,
+  );
+  assert.match(
+    sidebarSource,
+    /const pinAction = pinned[\s\S]*?nav\.unpinTask[\s\S]*?nav\.pinTask/,
+  );
+  assert.match(
+    sidebarSource,
+    /const archiveAction = archived[\s\S]*?nav\.restoreTask[\s\S]*?nav\.archiveTask/,
+  );
 });
 
 test("a blurred window releases latched row hover and actions", () => {
@@ -344,7 +377,7 @@ test("a blurred window releases latched row hover and actions", () => {
   );
   assert.match(
     globalStyles,
-    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover \.thread-item-more:not\(\[aria-expanded="true"\]\),[\s\S]*?opacity:\s*0;\s*\n\s*pointer-events:\s*none;/,
+    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover \.thread-item-action:not\(\[aria-expanded="true"\]\),[\s\S]*?opacity:\s*0;\s*\n\s*pointer-events:\s*none;/,
   );
 });
 

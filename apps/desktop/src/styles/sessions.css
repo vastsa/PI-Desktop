@@ -436,7 +436,7 @@
   flex: 0 0 auto;
 }
 
-.thread-item-more {
+.thread-item-action {
   display: inline-flex;
   width: 24px;
   height: 24px;
@@ -453,17 +453,17 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.thread-item:hover .thread-item-more,
-.sidebar-session-group-header:hover .thread-item-more,
-.sidebar-session-group-header:focus-within .thread-item-more,
-.thread-item.active .thread-item-more:hover,
-.thread-item-more[aria-expanded="true"] {
+.thread-item:hover .thread-item-action,
+.sidebar-session-group-header:hover .thread-item-action,
+.sidebar-session-group-header:focus-within .thread-item-action,
+.thread-item.active .thread-item-action:hover,
+.thread-item-action[aria-expanded="true"] {
   opacity: 1;
   pointer-events: auto;
 }
 
-.thread-item:focus-within .thread-item-more,
-.thread-item-more:focus-visible {
+.thread-item:focus-within .thread-item-action,
+.thread-item-action:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
@@ -477,17 +477,17 @@
 /* Without hover there is nothing to reveal the row controls with, so a no-hover
  * pointer gets them visible and tappable outright. */
 @media (hover: none) {
-  .sidebar-row-actions .thread-item-more,
-  .sidebar-menu-wrap .thread-item-more,
+  .sidebar-row-actions .thread-item-action,
+  .sidebar-menu-wrap .thread-item-action,
   .sidebar-session-group-add {
     opacity: 1;
     pointer-events: auto;
   }
 }
 
-.thread-item-more:hover,
-.thread-item-more:focus-visible,
-.thread-item-more[aria-expanded="true"] {
+.thread-item-action:hover,
+.thread-item-action:focus-visible,
+.thread-item-action[aria-expanded="true"] {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
@@ -1054,8 +1054,8 @@
 .sidebar-session-group-header:focus-within .sidebar-session-group-add,
 .sidebar-session-group-header:hover .sidebar-menu-wrap,
 .sidebar-session-group-header:focus-within .sidebar-menu-wrap,
-.sidebar-session-group-header:hover .sidebar-menu-wrap .thread-item-more,
-.sidebar-session-group-header:focus-within .sidebar-menu-wrap .thread-item-more {
+.sidebar-session-group-header:hover .sidebar-menu-wrap .thread-item-action,
+.sidebar-session-group-header:focus-within .sidebar-menu-wrap .thread-item-action {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1068,8 +1068,8 @@
 
 /* A blurred window keeps :hover latched on the row or header under the cursor,
  * so the hover reveals collapse back to their resting, pointer-inert state. */
-.sidebar[data-window-blur="true"] .thread-item:hover .thread-item-more:not([aria-expanded="true"]),
-.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .thread-item-more:not([aria-expanded="true"]),
+.sidebar[data-window-blur="true"] .thread-item:hover .thread-item-action:not([aria-expanded="true"]),
+.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .thread-item-action:not([aria-expanded="true"]),
 .sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .sidebar-session-group-add {
   opacity: 0;
   pointer-events: none;
