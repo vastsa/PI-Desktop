@@ -945,6 +945,49 @@ test("models.dev parsing keeps the per-model wire API with a responses-only fall
   assert.equal(config.api, "openai-responses");
 });
 
+test("gpt-6-astra on OpenAI uses Responses and omits off→none", () => {
+  const [openai, gateway] = parseModelsDevCatalog({
+    openai: {
+      name: "OpenAI",
+      models: {
+        "gpt-6-astra": {
+          id: "gpt-6-astra",
+          reasoning: true,
+          reasoning_options: [{
+            type: "effort",
+            values: ["none", "low", "medium", "high", "xhigh", "max"],
+          }],
+        },
+        "gpt-6-sol": {
+          id: "gpt-6-sol",
+          reasoning: true,
+          reasoning_options: [{ type: "effort", values: ["none", "low", "high"] }],
+        },
+      },
+    },
+    llmgateway: {
+      name: "LLM Gateway",
+      models: {
+        "gpt-6-astra": { id: "gpt-6-astra", reasoning: true },
+      },
+    },
+  });
+  const astra = openai.models.find((model) => model.modelId === "gpt-6-astra");
+  const sol = openai.models.find((model) => model.modelId === "gpt-6-sol");
+  assert.equal(astra.modelApi, "openai-responses");
+  assert.equal(sol.modelApi, undefined);
+  assert.equal(
+    gateway.models.find((model) => model.modelId === "gpt-6-astra").modelApi,
+    undefined,
+  );
+  const config = modelConfigFromModelsDev(astra, "https://api.openai.com/v1");
+  assert.equal(config.api, "openai-responses");
+  assert.equal(config.thinkingLevelMap?.off, null);
+  assert.equal(config.thinkingLevelMap?.high, "high");
+  const info = modelInfoFromModelsDev(astra, "row");
+  assert.equal(info.thinkingLevelMap?.off, null);
+});
+
 test("models.dev parsing retains every model in a provider", () => {
   const models = Object.fromEntries(
     Array.from({ length: 627 }, (_, index) => [

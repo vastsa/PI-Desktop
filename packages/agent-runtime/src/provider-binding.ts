@@ -40,6 +40,10 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { genericModelConfig } from "./model-capabilities.js";
+import {
+  gpt6AstraRequiresResponsesApi,
+  withGpt6AstraThinkingOffOmitted,
+} from "./openai-model-quirks.js";
 import type { ModelConfig } from "./thinking-level.js";
 
 export type RuntimeProviderConfig = {
@@ -192,10 +196,21 @@ export function apiBindingForProviderModel(provider: RuntimeProviderConfig): Api
 }
 
 function providerRequestTransport(provider: RuntimeProviderConfig) {
-  const apiStyle = resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle;
+  const catalogStyle = resolveApiStyle(provider.modelConfig?.api);
+  const apiStyle =
+    catalogStyle ??
+    (gpt6AstraRequiresResponsesApi({
+      modelId: provider.modelId,
+      vendorKey: provider.vendorKey,
+    })
+      ? "responses"
+      : provider.apiStyle);
   return nativeWebSearchTransport({
     apiStyle,
-    baseUrl: provider.baseUrl ?? provider.modelConfig?.baseUrl ?? apiBindingForStyle(apiStyle).defaultBaseUrl,
+    baseUrl:
+      provider.baseUrl ??
+      provider.modelConfig?.baseUrl ??
+      apiBindingForStyle(apiStyle).defaultBaseUrl,
     enabled: provider.modelConfig?.webSearch === true,
   });
 }
@@ -255,9 +270,12 @@ export function buildProviderModel(
 ): Model<Api> {
   const binding = apiBindingForProviderModel(provider);
   const catalog = provider.modelConfig;
-  const catalogModel = catalog
-    ? (({ source: _source, ...model }) => model)(catalog)
-    : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl);
+  const catalogModel = withGpt6AstraThinkingOffOmitted(
+    provider.modelId,
+    catalog
+      ? (({ source: _source, ...model }) => model)(catalog)
+      : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl),
+  );
   const baseUrl = runtimeBaseUrlForApi(
     binding.api,
     providerRequestTransport(provider).baseUrl ?? binding.defaultBaseUrl,

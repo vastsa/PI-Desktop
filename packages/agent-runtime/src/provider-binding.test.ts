@@ -639,6 +639,57 @@ describe("buildProviderModel model-level wire API", () => {
     expect(model.compat).toMatchObject({ supportsStrictMode: true });
   });
 
+  it("routes gpt-6-astra on OpenAI through Responses and nulls off", () => {
+    const model = buildProviderModel({
+      ...keyedProvider,
+      id: "openai",
+      name: "OpenAI",
+      vendorKey: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      modelId: "gpt-6-astra",
+      apiStyle: "chat_completions",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "low", "medium", "high", "xhigh", "max"],
+      modelConfig: {
+        source: "models.dev",
+        name: "GPT-6 Astra",
+        baseUrl: "https://api.openai.com/v1",
+        reasoning: true,
+        thinkingLevelMap: { off: "none", high: "high" },
+        input: ["text", "image"],
+        contextWindow: 1_050_000,
+        maxTokens: 128_000,
+      },
+    }) as any;
+    expect(model.api).toBe("openai-responses");
+    expect(model.thinkingLevelMap).toMatchObject({ off: null, high: "high" });
+  });
+
+  it("leaves gpt-6-astra on completions under third-party gateways", () => {
+    const model = buildProviderModel({
+      ...keyedProvider,
+      id: "llmgateway",
+      name: "LLM Gateway",
+      vendorKey: "llmgateway",
+      baseUrl: "https://llmgateway.example/v1",
+      modelId: "gpt-6-astra",
+      apiStyle: "chat_completions",
+      modelConfig: {
+        source: "models.dev",
+        name: "GPT-6 Astra",
+        baseUrl: "https://llmgateway.example/v1",
+        reasoning: true,
+        thinkingLevelMap: { off: "none", high: "high" },
+        input: ["text"],
+        contextWindow: 1_050_000,
+        maxTokens: 128_000,
+      },
+    }) as any;
+    expect(model.api).toBe("openai-completions");
+    // Still omit off→none so Chat Completions + tools does not synthesize effort.
+    expect(model.thinkingLevelMap.off).toBeNull();
+  });
+
   it("keeps the provider-wide style when the catalog pins no wire API", () => {
     const model = buildProviderModel({
       ...responsesCatalogProvider,
