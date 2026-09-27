@@ -55,12 +55,22 @@ export type ComposerPrefill = {
   token: number;
 };
 
+/**
+ * One inline mention the composer owns.
+ *
+ * Files and agents share this shape because both are an `@token` in the draft
+ * and both serialize back to `@token` for the model. `kind` is the
+ * discriminant: an agent's `path` is the `Task` handle it names rather than a
+ * filesystem location, so it must never reach the attachment or image paths.
+ */
 export type ComposerFileReference = {
   id: string;
   sessionId: string;
   path: string;
   name: string;
-  kind: "image" | "file";
+  kind: "image" | "file" | "agent";
+  /** Delegate description, shown as the chip tooltip (agents only). */
+  description?: string;
   mimeType?: string;
   token?: string;
 };

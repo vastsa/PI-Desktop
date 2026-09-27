@@ -48,7 +48,7 @@ test("accepted files become compact references while directories keep completion
   );
   assert.match(
     composer,
-    /createFileReference\(\s*acceptedFileReference\.path,[\s\S]*?token,/,
+    /createFileReference\(\s*acceptedFileReference!?\.path,[\s\S]*?token,/,
   );
   assert.match(composer, /applyEditorDraft\(\s*nextText,/);
   // Workspace switches still drop relative `@` chips, not every token-backed
@@ -72,7 +72,12 @@ test("composer renders atomic inline chips and serializes paths on send", () => 
   assert.match(composer, /chip\.dataset\.token = token/);
   assert.match(composer, /composer-chip-name/);
   assert.match(composer, /nameSpan\.textContent = reference\.name/);
-  assert.match(composer, /chip\.title = reference\.path/);
+  // A file chip titles itself with its path; a delegate titles itself with its
+  // description. The file branch is the one that has to keep its old meaning.
+  assert.match(
+    composer,
+    /chip\.title = agent \? [^:]+ : reference\.path/,
+  );
   assert.match(
     composer,
     /serializeComposerFileReferences\(text, activeFileReferences\)/,

@@ -60,3 +60,40 @@ test("legacy sends without a snapshot keep the text-only fallback", () => {
     draft: { text: "plain prompt", fileReferences: [] },
   });
 });
+
+test("a rewritten turn restores what the user typed, not the model's prompt", () => {
+  // Issue: stopping a turn that was resent by edit has no local snapshot, so
+  // the fallback reads the transcript row. That row's `content` is what the
+  // MODEL was given — for a template, a Skill or an `@agent` mention that is
+  // the expanded prompt, not the words in the box. The user's text is in
+  // `command`, and restoring `content` typed a model instruction into their
+  // composer for them to send again.
+  const typed = "@explorer 查一下临时会话的实现逻辑";
+  const rewritten =
+    'Call the `Task` tool with the agent below before answering this request. …\n' +
+    'Agent: "explorer"\n\n' +
+    "查一下临时会话的实现逻辑";
+  const result = resolveComposerSmartStop([
+    { ...message("user", rewritten), command: typed },
+  ]);
+
+  assert.equal(result.kind, "restore");
+  assert.equal(result.draft.text, typed);
+  assert.doesNotMatch(result.draft.text, /Call the `Task` tool/);
+});
+
+test("a rewritten template turn restores the typed form too", () => {
+  // Same defect, older trigger: a `/template` expansion has the same shape,
+  // so the fallback must not read `content` for any rewritten turn.
+  const result = resolveComposerSmartStop([
+    { ...message("user", "expanded body the model saw"), command: "/ship the docs" },
+  ]);
+  assert.equal(result.draft.text, "/ship the docs");
+});
+
+test("an unrewritten turn still restores its content", () => {
+  // `command` is absent on an ordinary prompt, so the fallback must keep
+  // using `content` there — otherwise the feature regresses for plain text.
+  const result = resolveComposerSmartStop([message("user", "plain question")]);
+  assert.equal(result.draft.text, "plain question");
+});

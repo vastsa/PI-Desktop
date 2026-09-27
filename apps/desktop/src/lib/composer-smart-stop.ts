@@ -1,7 +1,10 @@
 export type ComposerDraftFileReference = {
   path: string;
   name: string;
-  kind?: "image" | "file";
+  /** `agent` is a delegate mention, not a file (see ComposerFileReference). */
+  kind?: "image" | "file" | "agent";
+  /** Delegate description carried through a draft restore. */
+  description?: string;
   mimeType?: string;
   /** Visible inline token for a generated large-text paste reference. */
   token?: string;
@@ -19,6 +22,8 @@ export type ComposerPrefill = ComposerDraftSnapshot & {
 type AbortMessage = {
   role: string;
   content: string;
+  /** The text the user typed, when a rewrite expanded `content` (ADR 0024). */
+  command?: string;
   thinking?: string;
   steering?: boolean;
 };
@@ -58,11 +63,18 @@ export function resolveComposerSmartStop<T extends AbortMessage>(
     return { kind: "settle" };
   }
 
+  // Without a local snapshot — the turn was started by a path that records
+  // none, such as an edit-and-resend — recover the text from the transcript.
+  // A rewritten turn keeps the words the user typed in `command` and the
+  // expanded prompt in `content` (ADR 0024, ADR 0308), so only `command`
+  // belongs back in the composer. An ordinary prompt has no `command`, and its
+  // `content` is the text itself.
+  const lastUser = lastUserIndex >= 0 ? messages[lastUserIndex] : undefined;
   return {
     kind: "restore",
     kept: lastUserIndex >= 0 ? messages.slice(0, lastUserIndex) : [...messages],
     draft: submitted?.draft ?? {
-      text: lastUserIndex >= 0 ? messages[lastUserIndex].content : "",
+      text: lastUser ? (lastUser.command ?? lastUser.content) : "",
       fileReferences: [],
     },
   };

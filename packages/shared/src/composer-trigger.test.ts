@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCompletion,
+  buildAgentDispatchInstruction,
   detectTrigger,
   fileReferenceLabel,
+  findAgentMentions,
   formatCommandInsert,
   formatFileInsert,
   normalizeLargePasteThreshold,
@@ -274,3 +276,94 @@ describe("compact file references", () => {
     expect(normalizeLargePasteThreshold(601)).toBe(601);
   });
 });
+
+describe("findAgentMentions — @agent delegation", () => {
+  const catalog = new Set(["explorer", "code-reviewer"]);
+
+  it("resolves a boundary @token that names a delegated agent", () => {
+    expect(findAgentMentions("@explorer 修一下登录", catalog)).toEqual([
+      { start: 0, end: 9, name: "explorer" },
+    ]);
+    expect(findAgentMentions("please ask @code-reviewer about this", catalog)).toEqual([
+      { start: 11, end: 25, name: "code-reviewer" },
+    ]);
+  });
+
+  it("never treats a path as an agent mention", () => {
+    // `@` inside a token is not a boundary, and a slash means a path.
+    expect(findAgentMentions("user@explorer", catalog)).toEqual([]);
+    expect(findAgentMentions("@docs/explorer", catalog)).toEqual([]);
+    expect(findAgentMentions('@"explorer notes"', catalog)).toEqual([]);
+  });
+
+  it("keeps sentence punctuation out of the resolved name", () => {
+    const [mention] = findAgentMentions("@explorer,", catalog);
+    expect(mention).toEqual({ start: 0, end: 9, name: "explorer" });
+    expect(findAgentMentions("@explorer.", catalog)[0].name).toBe("explorer");
+  });
+
+  it("yields to a real file of the same name", () => {
+    // An agent and a file both serialize to `@token`; the file wins.
+    expect(findAgentMentions("@explorer", catalog, new Set(["explorer"]))).toEqual([]);
+    expect(findAgentMentions("@explorer", catalog, new Set(["src/explorer"]))).toEqual([
+      { start: 0, end: 9, name: "explorer" },
+    ]);
+  });
+
+  it("leaves unknown names as ordinary text", () => {
+    expect(findAgentMentions("@nosuchagent do it", catalog)).toEqual([]);
+  });
+
+  it("reports each agent once, in the order mentioned", () => {
+    expect(
+      findAgentMentions("@code-reviewer then @explorer then @code-reviewer", catalog).map(
+        (mention) => mention.name,
+      ),
+    ).toEqual(["code-reviewer", "explorer"]);
+  });
+});
+
+describe("serializeInlineComposerFileReferences — agent mentions", () => {
+  const TOKEN = "\uE001";
+  const agent = { path: "explorer", token: TOKEN, kind: "agent" as const };
+  const file = { path: "src/a.ts", token: TOKEN, kind: "file" as const };
+
+  it("keeps a mention readable as a token when text precedes it", () => {
+    // The send-time resolver only reads an @token at a start or after
+    // whitespace, so `look@explorer` would never resolve and the delegation
+    // would silently not happen.
+    expect(serializeInlineComposerFileReferences(`look${TOKEN}into this`, [agent])).toBe(
+      "look @explorer into this",
+    );
+  });
+
+  it("adds no space where one is not needed", () => {
+    expect(serializeInlineComposerFileReferences(`${TOKEN}go`, [agent])).toBe("@explorer go");
+    expect(serializeInlineComposerFileReferences(`see ${TOKEN}go`, [agent])).toBe(
+      "see @explorer go",
+    );
+  });
+
+  it("leaves file output byte-for-byte unchanged", () => {
+    // Files never gained a leading space; that output predates the mention.
+    expect(serializeInlineComposerFileReferences(`read${TOKEN}now`, [file])).toBe(
+      "read@src/a.ts now",
+    );
+  });
+});
+
+describe("buildAgentDispatchInstruction", () => {
+  it("names one agent and asks for Task before answering", () => {
+    const instruction = buildAgentDispatchInstruction(["explorer"]);
+    expect(instruction).toContain("Call the `Task` tool");
+    expect(instruction).toContain('Agent: "explorer"');
+    expect(instruction).toContain("TaskWait");
+  });
+
+  it("asks for one call per agent when several are mentioned", () => {
+    const instruction = buildAgentDispatchInstruction(["explorer", "code-reviewer"]);
+    expect(instruction).toContain("once per agent");
+    expect(instruction).toContain('Agents: "explorer", "code-reviewer"');
+  });
+});
+

@@ -55,6 +55,69 @@ export function createFileReference(
   };
 }
 
+/**
+ * Build the mention for a delegate picked from the `@` menu.
+ *
+ * The agent's `path` is the `Task` handle: the composer serializes an inline
+ * mention back to `@token`, and that is exactly what the prompt rewrite
+ * resolves against the delegation catalog. No file is touched.
+ */
+export function createAgentReference(
+  name: string,
+  sessionId = "",
+  metadata?: { token?: string; description?: string },
+): ComposerFileReference {
+  composerFileReferenceSequence += 1;
+  return {
+    id: `composer-agent-${composerFileReferenceSequence}`,
+    sessionId,
+    path: name,
+    name: `@${name}`,
+    kind: "agent",
+    ...(metadata?.description ? { description: metadata.description } : {}),
+    ...(metadata?.token ? { token: metadata.token } : {}),
+  };
+}
+
+/** True for a delegate mention, which must stay out of the attachment path. */
+export function isAgentReference(reference: ComposerFileReference): boolean {
+  return reference.kind === "agent";
+}
+
+/** The persisted shape of a mention, as a draft snapshot stores it. */
+type DraftMention = {
+  path: string;
+  name: string;
+  kind?: "image" | "file" | "agent";
+  description?: string;
+  mimeType?: string;
+  token?: string;
+};
+
+/**
+ * Rehydrate one mention from a draft snapshot.
+ *
+ * A delegate must come back as a delegate: routing it through
+ * `createFileReference` would restyle it as a file chip and put it back on the
+ * attachment path, which is exactly the mix-up `kind` exists to prevent.
+ */
+export function restoreComposerReference(
+  reference: DraftMention,
+  sessionId = "",
+): ComposerFileReference {
+  if (reference.kind === "agent") {
+    return createAgentReference(reference.path, sessionId, {
+      ...(reference.token ? { token: reference.token } : {}),
+      ...(reference.description ? { description: reference.description } : {}),
+    });
+  }
+  return createFileReference(reference.path, reference.name, sessionId, {
+    kind: reference.kind,
+    ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
+    ...(reference.token ? { token: reference.token } : {}),
+  });
+}
+
 const CHIP_TOKEN_BASE = 0xe000;
 const CHIP_TOKEN_END = 0xf8ff;
 let chipTokenSequence = 0;
@@ -233,11 +296,16 @@ const CHIP_ICON_SVG: Record<string, string> = {
     '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   video:
     '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+  // Matches the bot badge the subagent settings and the @ menu use, so a
+  // delegate reads the same in the draft as it does in the menu.
+  agent:
+    '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
   file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 };
 
 function chipIconKey(reference: ComposerFileReference): string {
+  if (isAgentReference(reference)) return "agent";
   const mime = reference.mimeType ?? "";
   if (reference.kind === "image" || mime.startsWith("image/")) return "image";
   const name = reference.name;
@@ -256,6 +324,9 @@ function chipSvg(key: string, size = 13): string {
 }
 
 export function isEditableTextReference(reference: ComposerFileReference): boolean {
+  // A delegate has no file to expand into, and expanding one would delete the
+  // mention the user just made.
+  if (isAgentReference(reference)) return false;
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
 
@@ -276,11 +347,15 @@ function buildChipElement(
   chip.className = "composer-chip";
   chip.contentEditable = "false";
   chip.dataset.token = token;
-  chip.title = reference.path;
+  const agent = isAgentReference(reference);
+  chip.title = agent ? reference.description ?? `@${reference.path}` : reference.path;
   const editableText = isEditableTextReference(reference);
   const activate = editableText ? () => onExpandText(token) : undefined;
   chip.setAttribute("role", activate ? "button" : "listitem");
-  chip.setAttribute("aria-label", `${reference.name} — ${reference.path}`);
+  chip.setAttribute(
+    "aria-label",
+    agent ? `${reference.name} — agent` : `${reference.name} — ${reference.path}`,
+  );
   if (activate) {
     chip.tabIndex = 0;
     chip.dataset.action = "expand-text-reference";
@@ -328,7 +403,7 @@ export function paintEditorValue(
   el: HTMLElement,
   value: string,
   referenceByToken: Map<string, ComposerFileReference>,
-  removeLabelFor: (name: string) => string,
+  removeLabelFor: (reference: ComposerFileReference) => string,
   onRemove: (token: string) => void,
   onExpandText: (token: string) => void,
 ): void {
@@ -349,7 +424,7 @@ export function paintEditorValue(
           buildChipElement(
             reference,
             char,
-            removeLabelFor(reference.name),
+            removeLabelFor(reference),
             onRemove,
             onExpandText,
           ),

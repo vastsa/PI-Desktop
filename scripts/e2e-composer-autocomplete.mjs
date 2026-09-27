@@ -54,12 +54,14 @@ app.whenReady().then(async () => {
     const checks = [];
     for (const [viewport, width] of [[1040, 320], [1680, 640]]) {
       window.setContentSize(viewport, 760);
-      for (const fileMode of [false, true]) {
-        checks.push(await window.webContents.executeJavaScript("globalThis.autocompleteLayoutProbe(" + width + "," + fileMode + ")"));
+      // slash, "@" file-only, and "@" with the Agents group (ADR 0308).
+      for (const [fileMode, agentMode] of [[false, false], [true, false], [true, true]]) {
+        const label = fileMode ? (agentMode ? "agents" : "file") : "slash";
+        checks.push(await window.webContents.executeJavaScript("globalThis.autocompleteLayoutProbe(" + width + "," + fileMode + "," + agentMode + ")"));
         if (process.env.PI_E2E_ARTIFACT_DIR) {
           const fs = require("node:fs");
           fs.mkdirSync(process.env.PI_E2E_ARTIFACT_DIR, { recursive: true });
-          fs.writeFileSync(path.join(process.env.PI_E2E_ARTIFACT_DIR, "autocomplete-" + width + "-" + fileMode + ".png"), (await window.webContents.capturePage()).toPNG());
+          fs.writeFileSync(path.join(process.env.PI_E2E_ARTIFACT_DIR, "autocomplete-" + width + "-" + label + ".png"), (await window.webContents.capturePage()).toPNG());
         }
       }
     }
