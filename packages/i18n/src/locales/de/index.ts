@@ -1,6 +1,9 @@
 import type { EnglishCatalog } from "../en/index.js";
 
 export const de = {
+  composer: {
+    nativePlatformReadOnly: "Der Verlauf aus nativem Pi ist in dieser Edition schreibgeschützt. Starten Sie einen Desktop-Chat mit einem Modell der AI Aggregation Platform, um fortzufahren.",
+  },
   "app": {
     "shellName": "PI-Desktop",
     "tagline": "Lokaler AI-Codierungspartner",
@@ -224,6 +227,14 @@ export const de = {
     sessionMissing: "Diese Sitzung existiert nicht mehr",
   },
   "chat": {
+    video: {
+      player: "Video",
+      save: "Video speichern…",
+      saved: "Video gespeichert",
+      saveFailed: "Video konnte nicht gespeichert werden. Bitte erneut versuchen.",
+      previewFailed: "Video kann nicht abgespielt werden. Prüfe, ob die Datei existiert und das Format unterstützt wird.",
+      retry: "Vorschau erneut laden",
+    },
     "tableActions": "Tabellenaktionen",
     "copyTableMarkdown": "Tabelle als Markdown kopieren",
     "exportTableCsv": "Tabelle als CSV herunterladen",
@@ -589,6 +600,35 @@ export const de = {
     "dismiss": "Verwerfen"
   },
   "settings": {
+    presetAiPlatform: "AI Aggregation Platform",
+    platformAccountTitle: "Plattformkonto & API-Token",
+    platformOnboardingAccount: "Auf ai.yykkj.com registrieren oder anmelden.",
+    platformOnboardingRecharge: "Das Kontoguthaben im Website-Wallet aufladen.",
+    platformOnboardingToken: "Auf der Website einen API-Token erstellen, unten beim Plattformanbieter einfügen und Modelle auswählen.",
+    platformVideoModel: "Videogenerierungsmodell",
+    platformMediaDefaultsHint: "Bild- und Videomodelle sind automatisch enthalten. Keine separate Einrichtung nötig. Verfügbarkeit und Kosten hängen von Ihrem Plattform-Token und Guthaben ab.",
+    platformCredentialHint: "Den Plattform-API-Token einmal für Modell- und Medienanfragen speichern. Die Website-Anmeldung ist separat; Codex-Zugangsdaten werden nie verwendet.",
+    platformRegisterLogin: "Registrieren / Anmelden",
+    platformWallet: "Wallet / Aufladen",
+    platformConfigure: "API-Token einrichten",
+    platformWebPayment: "Aufladung und Zahlung erfolgen auf der sicheren Website. Kontoguthaben und Zahlungsstatus dort prüfen; diese App erstellt keine Bestellungen und bestätigt keine Zahlungen.",
+    platformLinkError: "Die Website konnte nicht geöffnet werden. Erneut versuchen oder ai.yykkj.com im Browser aufrufen.",
+    platformUsageProvider: "Token-Anbieter",
+    platformChooseProvider: "Anbieter zur Anzeige des Token-Kontingents wählen",
+    platformNoToken: "Einen Plattformanbieter mit gespeichertem API-Token aktivieren, um dessen Kontingent anzuzeigen.",
+    platformTokenUsage: "API-Token-Kontingent",
+    platformRefreshUsage: "Kontingent aktualisieren",
+    platformUsageLoading: "Token-Kontingent wird geladen…",
+    platformUsageError: "Token-Kontingent konnte nicht geladen werden. Gespeicherten Token und Verbindung prüfen, dann aktualisieren.",
+    platformTokenGranted: "Token-Limit",
+    platformTokenUsed: "Token-Verbrauch",
+    platformTokenAvailable: "Verbleibendes Kontingent",
+    platformUnlimited: "Unbegrenztes Token-Kontingent",
+    platformTokenExpires: "Gültig bis",
+    platformTokenNotWallet: "Dies ist das API-Token-Kontingent, nicht Ihr Kontoguthaben. Unbegrenzte Tokens benötigen weiterhin ausreichend Guthaben. Das Kontoguthaben finden Sie auf der Website.",
+    platformQuotaAmount: "{{amount}} Kontingenteinheiten",
+    platformShowToken: "API-Token anzeigen",
+    platformHideToken: "API-Token verbergen",
     "power": "Energie",
     "keepAwakeWhileRunning": "Computer wach halten",
     "keepAwakeWhileRunningDesc": "Verhindert den Ruhezustand bei Inaktivität, solange PI-Desktop läuft. Der Bildschirm kann sich ausschalten; manuelles Schlafen und Zuklappen bleiben möglich.",

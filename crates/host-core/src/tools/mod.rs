@@ -1070,7 +1070,7 @@ pub async fn execute_tool_with_path_access(
     let result: Result<Value, hashline::ToolError> = match tool_name {
         // Authorize the desktop-owned image request through the normal host gate.
         // Only the trusted desktop runner performs the external call.
-        "GenerateImages" => Ok(serde_json::json!({ "authorized": true })),
+        "GenerateImages" | "PlatformMedia" => Ok(serde_json::json!({ "authorized": true })),
         "Read" => tool_read(
             workspace,
             scratch,

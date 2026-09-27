@@ -39,7 +39,13 @@ sidecar.setHost({
   onNotification: () => () => {},
   onExit: () => () => {},
 });
-sidecar.setLocalTool("GenerateImages", createImageGenerationTool({ dataDir, getHost: () => host }));
+sidecar.setLocalTool("GenerateImages", createImageGenerationTool({
+  dataDir, getHost: () => host,
+  fetchImpl: (url, init) => {
+    assert.equal(new URL(url).origin, "https://ai.yykkj.com");
+    return fetch(`http://127.0.0.1:${server.address().port}${new URL(url).pathname}`, init);
+  },
+}));
 try {
   await host.start();
   const project = join(dataDir, "project");
@@ -49,8 +55,10 @@ try {
     name: "Image fixture",
     type: "openai_compatible",
     protocol: "openai_compatible",
-    authKind: "none",
-    baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
+    vendorKey: "ai-aggregation-platform",
+    authKind: "api_key_and_base_url",
+    secretValue: "fixture-key",
+    baseUrl: "https://ai.yykkj.com/v1",
     defaultModelId: "image-fixture",
     apiStyle: "chat_completions",
   });
@@ -113,11 +121,11 @@ try {
   assert.deepEqual(recovered.session.messages[0].toolResult.details, generated.content);
   assert.deepEqual(await readFile(source), png);
   await host.call("settings.set", { imageGeneration: null });
-  assert.equal(
-    (await execute(session.id, [{ prompt: "unset" }])).errorCode,
-    "IMAGE_NOT_CONFIGURED",
-  );
-  assert.equal(requests, 4);
+  const automatic = await execute(session.id, [{ prompt: "Starry ocean, automatic platform image default" }]);
+  assert.equal(automatic.ok, true, JSON.stringify(automatic));
+  assert.equal(automatic.content.modelId, "gpt-image-2.5-flare");
+  assert.deepEqual(await readFile(automatic.content.results[0].path), png);
+  assert.equal(requests, 5);
   console.log(
     JSON.stringify({
       ok: true,
@@ -127,7 +135,7 @@ try {
         "edit-result",
         "host-plan-denial",
         "settings-and-transcript-restart",
-        "clear-binding",
+        "cleared-binding-uses-platform-default",
       ],
     }),
   );

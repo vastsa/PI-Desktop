@@ -38,6 +38,7 @@ import type {
   FsChatRefResolveResult,
   FsEntry,
   FsImageDataUrlResult,
+  FsVideoSource,
   FsIndexResult,
   FsReadResult,
   HostHealth,
@@ -676,6 +677,8 @@ export const api = {
     invoke<CommandShellCatalog>(IPC.invoke.commandShellList),
   reorderProviders: (input: ProviderReorderInput) =>
     invoke<{ ok: boolean }>(IPC.invoke.providersReorder, input),
+  platformTokenUsage: (providerId: string) =>
+    invoke<import("@pi-desktop/shared").PlatformTokenUsage>(IPC.invoke.platformTokenUsage, providerId),
   listProviders: () =>
     invoke<{ providers: ProviderPublic[] }>(IPC.invoke.providersList),
   createProvider: (input: ProviderCreateInput) =>
@@ -1359,6 +1362,9 @@ export const api = {
       ref,
       ...(mimeType ? { mimeType } : {}),
     }),
+  fsVideoSource: (path: string) => invoke<FsVideoSource>(IPC.invoke.fsVideoSource, { path }),
+  fsVideoRelease: (url: string) => invoke(IPC.invoke.fsVideoRelease, { url }),
+  fsVideoSave: (url: string) => invoke<{ canceled: boolean }>(IPC.invoke.fsVideoSave, { url }),
   fsReveal: (path: string) => invoke(IPC.invoke.fsReveal, { path }),
   fsOpen: (path: string, mimeType?: string) =>
     invoke(IPC.invoke.fsOpen, { path, mimeType }),

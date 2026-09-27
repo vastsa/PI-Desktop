@@ -1,3 +1,4 @@
+import { platformMediaDescription, platformMediaParameters } from "./platform-media-tool.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
@@ -2876,6 +2877,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const externalPathHint =
       " An explicit path outside the workspace and session scratch roots requires permission unless the effective mode is Auto.";
     const describe = (toolName: string): string => {
+      if (toolName === "PlatformMedia") return platformMediaDescription;
       if (toolName === "GenerateImages") return imageGenerationDescription;
       if (scheduledToolDescriptions[toolName]) return scheduledToolDescriptions[toolName];
       switch (toolName) {
@@ -2929,6 +2931,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // One entry per tool: the shapes diverge enough that a chain of ternaries
     // stopped being readable.
     const parameters: Record<string, Parameters<typeof Type.Object>[0]> = {
+      PlatformMedia: platformMediaParameters,
       GenerateImages: imageGenerationParameters,
       Read: {
         path: pathParam(
@@ -3076,7 +3079,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             })
           : undefined;
         const abort = () => {
-          if ((!isBash && toolName !== "GenerateImages") || abortRequested || settled) return;
+          if ((!isBash && toolName !== "GenerateImages" && toolName !== "PlatformMedia") || abortRequested || settled) return;
           abortRequested = true;
           abortPromise = this.host
             .call("tools.abort", {
@@ -3389,7 +3392,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ]
         : ["Read", "Glob", "Grep", "BrowserPreview", "Bash"];
     if (this.mode === "agent") {
-      tools.push("PluginScaffold", "PluginPack", "GenerateImages", ...Object.keys(scheduledToolParameters));
+      tools.push("PluginScaffold", "PluginPack", "GenerateImages", "PlatformMedia", ...Object.keys(scheduledToolParameters));
     }
     const builtins = tools.map(exec);
 

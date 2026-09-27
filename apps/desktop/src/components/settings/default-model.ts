@@ -7,7 +7,7 @@
  * is not configured, so these helpers keep the two notions apart: what a
  * provider itself offers, and what is safe to display for it.
  */
-import { isImageGenerationModel, modelWireIdsEqual as sameComposerModelId, type ImageGenerationBindings, type ProviderPublic } from "@pi-desktop/shared";
+import { platformMediaKind, isImageGenerationModel, modelWireIdsEqual as sameComposerModelId, type ImageGenerationBindings, type ProviderPublic } from "@pi-desktop/shared";
 
 export type DefaultModelOption = {
   provider: ProviderPublic;
@@ -25,7 +25,7 @@ export function defaultModelOptions(
       .filter(Boolean);
     const ids = modelIds.length > 0 ? modelIds : [defaultModelIdOf(provider)?.trim() ?? ""];
     return [...new Set(ids)].filter((modelId) => !!modelId &&
-      !isImageGenerationModel(imageGeneration, provider.id, modelId),
+      !platformMediaKind(modelId) && !isImageGenerationModel(imageGeneration, provider.id, modelId),
     ).map((modelId) => ({ provider, modelId }));
   });
 }
@@ -33,7 +33,7 @@ export function defaultModelOptions(
 /** The provider's own default: the first non-empty binding, then legacy fallback. */
 export function defaultModelIdOf(provider: ProviderPublic): string | undefined {
   return (
-    provider.models?.find((binding) => binding.id.trim())?.id.trim() ||
+    provider.models?.find((binding) => binding.id.trim() && !platformMediaKind(binding.id))?.id.trim() ||
     provider.defaultModelId?.trim() ||
     undefined
   );

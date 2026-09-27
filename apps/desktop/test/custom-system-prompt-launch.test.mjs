@@ -21,8 +21,8 @@ test.after(() => {
 
 const shell = { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true };
 const provider = {
-  id: "fixture-provider", vendorKey: "fixture", name: "Fixture", enabled: true,
-  authKind: "none", baseUrl: "http://127.0.0.1:1/v1", apiStyle: "openai-chat",
+  id: "fixture-provider", vendorKey: "ai-aggregation-platform", name: "Fixture", enabled: true,
+  authKind: "api_key_and_base_url", baseUrl: "https://ai.yykkj.com/v1", apiStyle: "chat_completions",
   models: [{ id: "parent", thinkingLevels: ["off"] }],
 };
 
@@ -33,7 +33,7 @@ function launchRuntime() {
       call: async (method) => {
         if (method === "commandShells.list") return { configuredId: "bash", effective: shell, fallback: false, choices: [shell] };
         if (method === "providers.list") return { providers: [provider] };
-        if (method === "providers.getSecret") return {};
+        if (method === "providers.getSecret") return { value: "dummy" };
         if (method === "agents.active") return { subagents: [] };
         if (method === "skills.active") return { skills: [] };
         if (method === "mcp.active") return { servers: [] };
@@ -64,7 +64,8 @@ async function launchParams(runtime) {
 // this suite covers the real user path through the launch: files on disk in
 // <workspace>/.pi reach sidecarParams and win per kind, and removing them
 // reverts to whatever the global layer provides.
-test("launch discovers project custom system prompt files (issue #542)", async () => {
+test("launch discovers project custom system prompt files (issue #542)", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => { throw new Error("Launch must not use the network"); });
   const runtime = launchRuntime();
 
   // Baseline: no project files yet; may be undefined or the developer's real
@@ -85,4 +86,5 @@ test("launch discovers project custom system prompt files (issue #542)", async (
   // Deleting the project files reverts the launch to the global-only state.
   rmSync(join(workspace, ".pi"), { recursive: true, force: true });
   assert.deepEqual((await launchParams(runtime)).customSystemPrompt, baseline);
+  assert.equal(fetch.mock.callCount(), 0);
 });

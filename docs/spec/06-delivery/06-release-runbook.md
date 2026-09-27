@@ -5,6 +5,16 @@
 > macOS signing/notarization remains the detailed qualification lane below.
 > Cross-references: [milestones](01-mvp-milestones.md) · [process model](../03-runtime/07-process-model.md) · [security](../05-security/01-security.md)
 
+## Local platform-fork build lane
+
+The AI Aggregation Platform checkout also provides `scripts/build-macos.sh` and
+`scripts/build-windows.ps1`; see [local app builds](../../local-app-build.md).
+They build native release artifacts without uploading, developer certificates,
+notarization or an upstream update feed. They retain the existing app/profile
+identity and are for isolated local testing, not the upstream release lane below.
+Prerequisites, CLI-only checks, optional per-process Cargo mirror and output paths
+are documented alongside the scripts. No server or database change is involved.
+
 ## 1. Build lanes
 
 | Lane | Command | Signing | Use |

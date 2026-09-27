@@ -46,7 +46,7 @@ test("native compact and session-addressed queue endpoints reject before host or
 // Real slices/IPC with synthetic state; no Electron process or native home.
 const { register } = await import("node:module");
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { IPC, isImageGenerationModel, imageGenerationBindings } = await import("@pi-desktop/shared");
+const { IPC, platformMediaKind, isImageGenerationModel, imageGenerationBindings } = await import("@pi-desktop/shared");
 const { registerAgentIpc } = await import("../electron/main/ipc/agent-ipc.ts");
 const { searchSessionsAcrossSources } = await import("../electron/main/services/session-search.ts");
 const { createEventsSlice } = await import("../src/stores/slices/events-slice.ts");
@@ -138,7 +138,7 @@ test("queue remove/prioritize preserve the Desktop opaque host turnId contract",
   assert.deepEqual(calls, [["remove", "host-turn"], ["prioritize", "host-turn"]]);
 });
 
-test("native prompt only dispatches sidecar and cannot create a host queue entry", async () => {
+test("native prompt cannot dispatch an independent credential chain or create a host queue entry", async () => {
   const handlers = new Map();
   const forbidden = () => assert.fail("native prompt reached Desktop host/queue");
   const backend = new Proxy({}, { get: () => forbidden });
@@ -148,18 +148,16 @@ test("native prompt only dispatches sidecar and cannot create a host queue entry
     getHost: () => backend, getAgentHostBridge: () => backend, setNotificationViewingSessionId() {},
     getSidecar: () => ({ call: async (...args) => { calls.push(args); return { accepted: true, turnId: "native-turn" }; } }),
   });
-  await handlers.get(IPC.invoke.agentPrompt)({ sessionId: "native-pi:fixture", content: "prompt", messageId: "optimistic" });
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][0], "agent.prompt");
-  assert.equal(calls[0][1].userMessageId, "optimistic");
+  await assert.rejects(handlers.get(IPC.invoke.agentPrompt)({ sessionId: "native-pi:fixture", content: "prompt", messageId: "optimistic" }), { errorCode: "PLATFORM_PROVIDER_REQUIRED" });
+  assert.equal(calls.length, 0);
 });
 
 
 test("native model readiness never depends on a Desktop provider but read-only fails closed", () => {
   const expression = composer.match(/const modelReady = ([\s\S]*?);/)[1];
-  const evaluateReady = new Function("isImageGenerationModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", `return ${expression}`);
+  const evaluateReady = new Function("platformMediaKind", "isImageGenerationModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", `return ${expression}`);
   const ready = (nativeSession, activeSessionSummary, provider, modelId, settings) =>
-    evaluateReady(isImageGenerationModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId);
+    evaluateReady(platformMediaKind, isImageGenerationModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, undefined, undefined), true);
   assert.equal(ready(true, { capabilities: { canPrompt: false } }, { enabled: true, hasSecret: true }, "model"), false);
   assert.equal(ready(true, {}, undefined, undefined), false);

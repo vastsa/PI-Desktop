@@ -21,10 +21,10 @@ const rule = (selector) => {
   return match[1];
 };
 
-test("a new service starts on a searchable chooser, not a closed menu (D625)", () => {
-  assert.match(setupSource, /<ServiceChooser/);
-  assert.match(setupSource, /const chooserOpen = choosing \|\| !service/);
-  assert.match(setupSource, /\{chooserOpen \? chooserView : formView\}/);
+test("platform setup opens directly while the upstream searchable chooser remains unwired", () => {
+  assert.doesNotMatch(setupSource, /ServiceChooser|chooserOpen|chooserView/);
+  assert.match(setupSource, /\{formView\}/);
+  assert.match(setupSource, /<ProviderConnectionFields/);
   assert.doesNotMatch(setupSource, /<ServicePicker/);
   assert.doesNotMatch(setupSource, /<optgroup/);
   assert.match(chooserSource, /settings\.searchService/);
@@ -37,7 +37,7 @@ test("a new service starts on a searchable chooser, not a closed menu (D625)", (
   assert.doesNotMatch(catalogSource, /\bapi\.\w+\(/);
 });
 
-test("subscriptions and API services share the chooser, custom endpoint first", () => {
+test("the retained upstream chooser keeps subscriptions and custom endpoints outside platform setup", () => {
   assert.match(chooserSource, /\[customServiceOption\(t\), \.\.\.namedServiceOptions\(t\)\]/);
   // The custom endpoint is the group's first tile, ahead of every named host.
   const customAt = chooserSource.indexOf("customServiceOption(t)");
@@ -51,9 +51,8 @@ test("subscriptions and API services share the chooser, custom endpoint first", 
   // One vendor can hold several accounts, so existing ones never disable it.
   assert.match(chooserSource, /existing accounts do not disable a\s+vendor/);
   assert.match(chooserSource, /vendors\.map/);
-  // Editing only changes the API service; subscriptions are not offered.
-  assert.match(setupSource, /vendors=\{editing \? null : vendors\}/);
-  assert.match(setupSource, /onPickSubscription=\{editing \? undefined : onPickSubscription\}/);
+  // Neither creation nor editing mounts the chooser or offers subscription login.
+  assert.doesNotMatch(setupSource, /onPickSubscription|vendors=|<ServiceChooser/);
   assert.doesNotMatch(chooserSource, /presetGroupInternational|presetGroupChina/);
   assert.doesNotMatch(chooserSource, /NAMED_PRESET_GROUPS/);
   assert.doesNotMatch(catalogSource, /NAMED_PRESET_GROUPS/);
@@ -91,13 +90,12 @@ test("chooser tiles are toned in-flow surfaces without strokes (D297)", () => {
   }
 });
 
-test("the chosen service is a settled chip with a Change action", () => {
+test("the platform service chip displays a fixed endpoint without a Change action", () => {
   assert.match(fieldsSource, /provider-service-chip/);
-  assert.match(fieldsSource, /settings\.changeService/);
-  assert.match(fieldsSource, /onClick=\{onChangeService\}/);
-  // A <label> wrapper would forward clicks on the row to the button.
-  assert.match(fieldsSource, /Not a Field/);
-  assert.match(setupSource, /settings\.changeServiceTitle/);
+  assert.match(fieldsSource, /settings\.presetAiPlatform/);
+  assert.match(fieldsSource, /provider-service-chip-host">\{AI_PLATFORM_BASE_URL\}/);
+  assert.doesNotMatch(fieldsSource, /settings\.changeService|onChangeService|type="url"/);
+  assert.doesNotMatch(setupSource, /settings\.changeServiceTitle/);
 });
 
 test("the shared service menu still portals above dialogs for model pickers", () => {
@@ -114,10 +112,10 @@ test("the shared service menu still portals above dialogs for model pickers", ()
   assert.match(menuSource, /anchorRef\?\.current \?\? triggerRef\.current/);
 });
 
-test("named add-path discovery waits for a key and does not flash loading", () => {
+test("platform discovery requires an entered or saved key and does not flash loading", () => {
   assert.match(setupSource, /discoveryActive/);
-  assert.match(setupSource, /Boolean\(apiKey\.trim\(\)\)/);
-  assert.match(setupSource, /custom \|\| Boolean\(apiKey\.trim\(\)\) \|\| Boolean\(provider\)/);
+  assert.match(setupSource, /allowedProvider && Boolean\(apiKey\.trim\(\) \|\| provider\?\.hasSecret\)/);
+  assert.doesNotMatch(setupSource, /custom \|\| Boolean\(apiKey/);
   // Loading is painted inside the debounced run, not when the effect starts.
   const runAt = hookSource.indexOf("const run = async");
   const loadingAt = hookSource.indexOf('status: "loading"');

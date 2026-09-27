@@ -1,3 +1,4 @@
+import { createPlatformMediaTool } from "../services/platform-media-service";
 import { IPC, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
 import {
   findSubagentProviderSource,
@@ -481,6 +482,7 @@ export function createSidecarRuntime({
 
     return {
       id: provider.id,
+      vendorKey: provider.vendorKey,
       name: provider.name,
       ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
       modelId,
@@ -494,6 +496,7 @@ export function createSidecarRuntime({
   });
   // Agent-driven work panel preview (D100): open a workspace HTML file in
   // the embedded browser; live reload keeps it current through later edits.
+  s.setLocalTool("PlatformMedia", createPlatformMediaTool({ dataDir, getHost: () => runtimeState.host }));
   s.setLocalTool("GenerateImages", createImageGenerationTool({
     dataDir,
     getHost: () => runtimeState.host,

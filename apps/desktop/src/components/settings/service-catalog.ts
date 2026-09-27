@@ -5,7 +5,7 @@
  * the preset's canonical name, id, vendor key, aliases, base URL and host, so
  * "kimi", "moonshot" and "api.moonshot.cn" all land on the same entry.
  */
-import { NAMED_ENDPOINT_PRESETS, type NamedEndpointPreset } from "@pi-desktop/shared";
+import { AI_PLATFORM_API_STYLES, AI_PLATFORM_VENDOR_KEY, isAIPlatformProvider, NAMED_ENDPOINT_PRESETS, type NamedEndpointPreset, type ProviderPublic } from "@pi-desktop/shared";
 
 export const CUSTOM_SERVICE = "custom";
 
@@ -40,9 +40,11 @@ function presetOption(preset: NamedEndpointPreset, translate: Translate): Servic
   };
 }
 
-/** Every named endpoint preset, in the order the shared table lists them. */
+/** Only the platform endpoint is offered in this distribution. */
 export function namedServiceOptions(translate: Translate): ServiceOption[] {
-  return NAMED_ENDPOINT_PRESETS.map((preset) => presetOption(preset, translate));
+  return NAMED_ENDPOINT_PRESETS
+    .filter((preset) => preset.id === AI_PLATFORM_VENDOR_KEY)
+    .map((preset) => presetOption(preset, translate));
 }
 
 /** Any OpenAI- or Anthropic-compatible address the presets do not cover. */
@@ -64,4 +66,16 @@ export function filterServiceOptions<T extends { haystack: string }>(
   const needle = query.trim().toLowerCase();
   if (!needle) return [...options];
   return options.filter((option) => option.haystack.includes(needle));
+}
+
+/** Platform model transports; subscription-only adapters stay unreachable. */
+export { AI_PLATFORM_API_STYLES as PLATFORM_API_STYLES } from "@pi-desktop/shared";
+
+export function isPlatformApiStyle(style?: string): style is typeof AI_PLATFORM_API_STYLES[number] {
+  return AI_PLATFORM_API_STYLES.some((allowed) => allowed === style);
+}
+
+/** Plugin and subscription rows cannot supply this distribution's API token. */
+export function isPlatformProvider(provider: ProviderPublic): boolean {
+  return isAIPlatformProvider(provider) && !provider.ownerPluginId && !provider.hasOauth;
 }

@@ -55,6 +55,7 @@ export type NativePiReadOnlyReason =
   | "legacy-format"
   | "missing-cwd"
   | "missing-trailing-newline"
+  | "platform-provider-required"
   | "provider-unavailable"
   | "project-untrusted";
 
@@ -312,7 +313,7 @@ export function nativePiService(options: { agentDir?: string; sessionRoot?: stri
   const key = `${agentDir}\0${sessionRoot}`;
   let service = nativeServices.get(key);
   if (!service) {
-    service = new NativePiSessionService({ agentDir, sessionRoot });
+    service = new NativePiSessionService({ agentDir, sessionRoot, readOnly: true });
     nativeServices.set(key, service);
   }
   return service;
@@ -453,6 +454,7 @@ class NativePiRuntime {
 
 export class NativePiSessionService {
   private readonly root: string;
+  private readonly readOnly: boolean;
   private readonly agentDir: string;
   private readonly records = new Map<string, NativeSessionRecord>();
   private readonly runtimes = new Map<string, NativePiRuntime>();
@@ -464,7 +466,10 @@ export class NativePiSessionService {
     agentDir?: string;
     sessionRoot?: string;
     modelRuntimeFactory?: () => Promise<ModelRuntime>;
+    /** Native history stays readable without opening an independent credential chain. */
+    readOnly?: boolean;
   } = {}) {
+    this.readOnly = options.readOnly === true;
     this.agentDir = resolve(options.agentDir ?? join(homedir(), ".pi", "agent"));
     this.root = resolve(options.sessionRoot ?? join(this.agentDir, "sessions"));
     this.modelRuntimeFactory =
@@ -485,7 +490,7 @@ export class NativePiSessionService {
     } catch {
       return [];
     }
-    const modelRuntime = await this.modelRuntimeFactory().catch(() => undefined);
+    const modelRuntime = this.readOnly ? undefined : await this.modelRuntimeFactory().catch(() => undefined);
     this.modelRuntime = modelRuntime;
     const trustStore = new ProjectTrustStore(this.agentDir);
     const summaries = await Promise.all(
@@ -507,7 +512,7 @@ export class NativePiSessionService {
           const updatedAt = branch.at(-1)?.timestamp ?? createdAt;
           const cwd = typeof header.cwd === "string" ? header.cwd : "";
           this.records.set(id, { id, path, nativeId: header.id, cwd });
-          let reason = this.structuralReadOnlyReason(snap, header, cwd);
+          let reason: NativePiReadOnlyReason | undefined = this.readOnly ? "platform-provider-required" : this.structuralReadOnlyReason(snap, header, cwd);
           if (!reason && hasTrustRequiringProjectResources(cwd) && trustStore.get(cwd) !== true) {
             reason = "project-untrusted";
           }
@@ -633,7 +638,7 @@ export class NativePiSessionService {
           : message.content,
     }));
     const context = manager.buildSessionContext();
-    let reason = this.structuralReadOnlyReason(snap, header, record.cwd);
+    let reason: NativePiReadOnlyReason | undefined = this.readOnly ? "platform-provider-required" : this.structuralReadOnlyReason(snap, header, record.cwd);
     if (!reason && hasTrustRequiringProjectResources(record.cwd) && new ProjectTrustStore(this.agentDir).get(record.cwd) !== true) {
       reason = "project-untrusted";
     }
@@ -896,7 +901,7 @@ export class NativePiSessionService {
     messages: UiMessage[],
     title: string,
   ): SessionDetail {
-    let reason = this.structuralReadOnlyReason(snap, header, record.cwd);
+    let reason: NativePiReadOnlyReason | undefined = this.readOnly ? "platform-provider-required" : this.structuralReadOnlyReason(snap, header, record.cwd);
     if (!reason && hasTrustRequiringProjectResources(record.cwd) && new ProjectTrustStore(this.agentDir).get(record.cwd) !== true) {
       reason = "project-untrusted";
     }
@@ -932,6 +937,9 @@ export class NativePiSessionService {
   }
 
   async prompt(id: string, content: string, notify: NativePiRuntimeNotifier, userMessageId?: string): Promise<{ accepted: true; turnId: string }> {
+    if (this.readOnly) throw Object.assign(new Error("Native Pi history is read-only in the platform edition"), {
+      errorCode: "PLATFORM_PROVIDER_REQUIRED",
+    });
     let runtime = this.runtimes.get(id);
     if (runtime?.isRunning || this.opening.has(id)) {
       throw Object.assign(new Error("session already has an active turn"), { errorCode: "AGENT_BUSY" });

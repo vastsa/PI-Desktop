@@ -186,12 +186,13 @@ describe("withOpenCodeSessionHeaders", () => {
 describe("completeOneShot OpenCode headers", () => {
   const provider: RuntimeProviderConfig = {
     id: "row-uuid",
-    name: "OpenCode Go",
-    vendorKey: "opencode-go",
-    baseUrl: "https://opencode.ai/zen/go/v1",
+    name: "Platform",
+    vendorKey: "ai-aggregation-platform",
+    baseUrl: "https://ai.yykkj.com/v1",
+    authKind: "api_key_and_base_url",
     modelId: "glm-5.3-flash",
     apiKey: "sk-test",
-    apiStyle: "opencode_go",
+    apiStyle: "chat_completions",
     supportsReasoning: false,
     supportedThinkingLevels: ["off"],
   };
@@ -226,27 +227,12 @@ describe("completeOneShot OpenCode headers", () => {
     return stream;
   }
 
-  it("sends the conversation id on OpenCode Go one-shot completions", async () => {
-    let captured: SimpleStreamOptions | undefined;
-    const result = await completeOneShot(
-      provider,
-      { systemPrompt: "s", messages: [] },
-      "off",
-      {
-        sessionId: "session-9",
-        stream: (_model, _context, options) => {
-          captured = options;
-          return streamFor(assistantOk());
-        },
-      },
-    );
-    expect(result.text).toBe("ok");
-    expect(captured?.sessionId).toBe("session-9");
-    expect(captured?.headers).toMatchObject({
-      [OPENCODE_SESSION_HEADER]: "session-9",
-      [OPENCODE_CLIENT_HEADER]: OPENCODE_CLIENT_VALUE,
-      "User-Agent": OPENCODE_USER_AGENT,
-    });
+  it("refuses an old OpenCode endpoint before a one-shot stream is opened", async () => {
+    const stream = vi.fn(() => streamFor(assistantOk()));
+    await expect(completeOneShot({ ...provider, vendorKey: "opencode-go",
+      baseUrl: "https://opencode.ai/zen/go/v1", apiStyle: "opencode_go",
+    }, { messages: [] }, "off", { stream })).rejects.toMatchObject({ errorCode: "PLATFORM_PROVIDER_REQUIRED" });
+    expect(stream).not.toHaveBeenCalled();
   });
 
   it("does not attach OpenCode headers to a generic Completions provider", async () => {
@@ -255,8 +241,8 @@ describe("completeOneShot OpenCode headers", () => {
       {
         ...provider,
         apiStyle: "chat_completions",
-        vendorKey: "openai",
-        baseUrl: "https://api.openai.com/v1",
+        vendorKey: "ai-aggregation-platform",
+        baseUrl: "https://ai.yykkj.com/v1",
       },
       { systemPrompt: "s", messages: [] },
       "off",
@@ -297,7 +283,7 @@ describe("completeOneShot OpenCode headers", () => {
                 stopReason: "error" as const,
                 errorMessage: "fetch failed",
               };
-              void options?.fetch?.("https://provider.invalid", {}).then(
+              void options?.fetch?.("https://ai.yykkj.com/v1/chat/completions", {}).then(
                 () => {
                   stream.push({ type: "error", reason: "error", error: failed });
                   stream.end(failed);

@@ -14,6 +14,7 @@ import {
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
   imageGenerationBindings,
+  platformMediaKind,
   isImageGenerationModel,
   normalizeLargePasteThreshold,
   stripInlineComposerFileReferenceTokens,
@@ -398,7 +399,7 @@ export function Composer({
     : !!provider &&
       provider.enabled &&
       !!modelId &&
-      !isImageGenerationModel(imageGenerationCandidates, provider.id, modelId) &&
+      !platformMediaKind(modelId) && !isImageGenerationModel(imageGenerationCandidates, provider.id, modelId) &&
       (provider.hasSecret || provider.authKind === "none");
   const enterToSend = settings?.enterToSend ?? true;
   const hasDraftContent = Boolean(value.trim() || activeFileReferences.length);
@@ -538,7 +539,7 @@ export function Composer({
         ) : null}
         {nativeReadOnly ? (
           <div className="composer-status" role="status">
-            Native Pi session is read-only: {activeSessionSummary?.readOnlyReason ?? "continuation unavailable"}.
+            {activeSessionSummary?.readOnlyReason === "platform-provider-required" ? t("composer.nativePlatformReadOnly") : `Native Pi session is read-only: ${activeSessionSummary?.readOnlyReason ?? "continuation unavailable"}.`}
           </div>
         ) : null}
         <ComposerStatus

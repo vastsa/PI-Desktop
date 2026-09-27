@@ -1,7 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 
 export const imageGenerationDescription =
-  "Generate raster images using the image model configured in Settings > Models. items supports distinct prompts and count variants; at most 10 images total. Each image may incur a charge. Generate only the requested number, report partial failures, and do not retry without the user's request. Results contain local image paths: display successful images with Markdown image links. For edits, provide images as local paths from the session, attachments, or project. Use previous result paths to refine generated images; preserve originals.";
+  "Generate raster images through AI Aggregation Platform. With a platform API key configured, image models are included automatically (default gpt-image-2.5-flare); no separate image setup is required. An explicit image default in Settings > Models is respected. Prefer PlatformMedia for model selection, receipts, billing and multimodal video. items supports distinct prompts and count variants; at most 10 images total. Each image may incur a charge. Generate only the requested number, report partial failures, and do not retry without the user's request. Results contain local image paths: display successful images with Markdown image links. For edits, provide images as local paths from the session, attachments, or project. Use previous result paths to refine generated images; preserve originals.";
 export const imageGenerationParameters = {
   items: Type.Array(
     Type.Object({

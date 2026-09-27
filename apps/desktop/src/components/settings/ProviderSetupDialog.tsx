@@ -1,22 +1,15 @@
-/**
- * One dialog to add or edit an AI service, in two views (D625).
- *
- * A new service opens on the service chooser; picking a tile moves to the
- * form. Named services: paste a key and the recommended models are chosen as
- * soon as the service answers. Custom: name, URL, key and API format on the
- * common path. The service's own list is on the left and the models this
- * credential will run on the right, both visible from the first paint: a
- * recommended model is a starting point, never the only thing on screen.
- */
-import { useEffect, useRef, useState } from "react";
+/** Platform API token setup with the existing discovery and model selection flow. */
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  NAMED_ENDPOINT_PRESETS,
-  OPENCODE_GO_API_STYLE,
-  normalizeApiStyle,
+  AI_PLATFORM_BASE_URL,
+  AI_PLATFORM_NAME,
+  AI_PLATFORM_VENDOR_KEY,
+  PLATFORM_IMAGE_MODELS,
+  platformMediaKind,
+  platformMediaModelBindings,
   type CatalogApiStyle,
   type ModelBinding,
-  type OAuthVendor,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -26,37 +19,9 @@ import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 import { ConnectionStatus, ProviderConnectionFields } from "./ProviderConnectionFields";
-import { ServiceChooser } from "./ServiceChooser";
-import { CUSTOM_SERVICE } from "./service-catalog";
+import { isPlatformApiStyle, isPlatformProvider } from "./service-catalog";
 import { useRecommendedModelSelection } from "./useRecommendedModelSelection";
 import type { ProviderCopyDraft } from "./provider-copy";
-import {
-  API_STYLE_LABEL_KEYS,
-  isAccountOnlyApiStyle,
-  needsCustomApiStyleChoice,
-  providerSetupPreset,
-} from "./provider-api-style";
-
-import {
-  endpointsEqual,
-  getBaseUrlIssue,
-  normalizeBaseUrlInput,
-  resolveEndpointDraft,
-} from "./provider-endpoint-guidance";
-import { ProviderEndpointGuidance } from "./ProviderEndpointGuidance";
-
-function serviceIdFor(provider?: ProviderPublic | null): string {
-  if (!provider) return "";
-  return providerSetupPreset(provider)?.id ?? CUSTOM_SERVICE;
-}
-
-function initialName(provider?: ProviderPublic | null): string {
-  return provider?.name ?? providerSetupPreset(provider)?.name ?? "";
-}
-
-function initialBaseUrl(provider?: ProviderPublic | null): string {
-  return providerSetupPreset(provider)?.baseUrl ?? provider?.baseUrl ?? "";
-}
 
 export type ProviderSetupDialogProps = {
   provider?: ProviderPublic | null;
@@ -64,10 +29,6 @@ export type ProviderSetupDialogProps = {
   onClose: () => void;
   imageModelIds?: string[];
   onSaved: (provider: ProviderPublic, models: ModelBinding[], imageModelIds?: string[]) => void | Promise<void>;
-  /** Vendors a new row can sign in to instead of pasting a key. */
-  vendors?: OAuthVendor[] | null;
-  /** Leaves this dialog for the vendor's browser sign-in. */
-  onPickSubscription?: (vendor: OAuthVendor) => void;
 };
 
 export function ProviderSetupDialog({
@@ -76,82 +37,37 @@ export function ProviderSetupDialog({
   onClose,
   onSaved,
   imageModelIds,
-  vendors,
-  onPickSubscription,
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
   const [imageModelDraft, setImageModelDraft] = useState<string[] | undefined>();
   const editing = !!provider;
-  const apiKeyRef = useRef<HTMLInputElement>(null);
-  const [service, setService] = useState(() => initialDraft
-    ? initialDraft.apiStyle === OPENCODE_GO_API_STYLE
-      ? NAMED_ENDPOINT_PRESETS.find((preset) => preset.apiStyle === OPENCODE_GO_API_STYLE)?.id ?? CUSTOM_SERVICE
-      : CUSTOM_SERVICE
-    : serviceIdFor(provider));
-  const [name, setName] = useState(() => initialDraft?.name ?? initialName(provider));
-  const [baseUrl, setBaseUrl] = useState(() => initialDraft?.baseUrl ?? initialBaseUrl(provider));
+  const [name, setName] = useState(() => initialDraft?.name ?? provider?.name ?? AI_PLATFORM_NAME);
   const [apiKey, setApiKey] = useState("");
-  const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() =>
-    initialDraft?.apiStyle ?? normalizeApiStyle(provider?.apiStyle),
-  );
+  const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() => {
+    const style = initialDraft?.apiStyle ?? provider?.apiStyle;
+    return isPlatformApiStyle(style) ? style : "chat_completions";
+  });
   const [headerPairs, setHeaderPairs] = useState(() => recordToPairs(provider?.headers));
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [models, setModels] = useState<ModelBinding[]>(initialDraft?.models ?? provider?.models ?? []);
+  const [models, setModelsState] = useState<ModelBinding[]>(() =>
+    platformMediaModelBindings(initialDraft?.models ?? provider?.models ?? []));
+  const setModels = useCallback((next: ModelBinding[] | ((current: ModelBinding[]) => ModelBinding[])) => {
+    setModelsState(current => platformMediaModelBindings(typeof next === "function" ? next(current) : next));
+  }, []);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [testResult, setTestResult] = useState("");
-  const [baseUrlTouched, setBaseUrlTouched] = useState(false);
-  // A format the user picked by hand outranks every inference about this row.
-  const [apiStyleTouched, setApiStyleTouched] = useState(false);
-  const [choosing, setChoosing] = useState(false);
-  const chooserOpen = choosing || !service;
-
-  const namedPreset = NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service);
-  const named = Boolean(namedPreset);
-  const custom = service === CUSTOM_SERVICE;
-  const resolvedName = namedPreset ? name.trim() || namedPreset.name : name;
-  const resolvedBaseUrl = namedPreset?.baseUrl ?? baseUrl;
-  /*
-    Endpoint resolution decides the format when the endpoint itself names one:
-    a pasted operation, a published service address, or a known host. A format
-    that already has an owner — the user's own pick, a named preset's, or the
-    one stored on the row being edited — is never overridden. Inference is for
-    a row that does not have an answer yet.
-  */
-  const endpointDraft = resolveEndpointDraft(
-    resolvedBaseUrl,
-    namedPreset?.apiStyle ?? apiStyle,
-    named || editing || Boolean(initialDraft) || apiStyleTouched,
-  );
-  const resolvedApiStyle: CatalogApiStyle = endpointDraft.apiStyle;
-  // Said out loud next to the format selector: an automatic decision the user
-  // cannot see would be exactly the hidden rewrite this row must not have.
-  const endpointFormatNote = endpointDraft.autoDetected
-    ? t("settings.apiStyleAutoDetected", {
-        format: t(API_STYLE_LABEL_KEYS[resolvedApiStyle]),
-      })
-    : undefined;
-  const baseUrlIssue = getBaseUrlIssue(resolvedBaseUrl);
-  const baseUrlError =
-    baseUrlTouched && baseUrlIssue ? t("settings.baseUrlInvalid") : undefined;
-  const requiresApiStyleChoice = custom && needsCustomApiStyleChoice(apiStyle, provider?.apiStyle);
-  const accountOnlyApiStyle = isAccountOnlyApiStyle(apiStyle);
-  const requestBaseUrl = normalizeBaseUrlInput(resolvedBaseUrl, resolvedApiStyle);
-  // Named add-path waits for a key so picking a vendor does not 401-probe.
-  // Editing reuses the stored secret. Custom still probes a valid URL alone.
-  const discoveryActive =
-    Boolean(service) &&
-    !requiresApiStyleChoice &&
-    !baseUrlIssue &&
-    (custom || Boolean(apiKey.trim()) || Boolean(provider));
+  // Never reuse a secret belonging to an unrelated legacy or plugin provider.
+  const allowedProvider = !provider || isPlatformProvider(provider);
+  const discoveryActive = allowedProvider && Boolean(apiKey.trim() || provider?.hasSecret);
   const headers = pairsToRecord(headerPairs);
   const discovery = useProviderModels(
     discoveryActive,
     {
-      baseUrl: requestBaseUrl,
+      baseUrl: AI_PLATFORM_BASE_URL,
       apiKey,
-      apiStyle: resolvedApiStyle,
+      apiStyle,
       headers,
     },
     provider,
@@ -159,28 +75,13 @@ export function ProviderSetupDialog({
   const recommended = useRecommendedModelSelection({
     // A copy keeps the models it was copied with.
     enabled: !provider && !initialDraft?.models?.length,
-    serviceKey: `${service}|${requestBaseUrl}|${resolvedApiStyle}`,
+    serviceKey: `${AI_PLATFORM_VENDOR_KEY}|${apiStyle}`,
     discovery,
     setModels,
-    namedService: named,
+    namedService: true,
   });
   // Every edit made through the picker or the summary ends preselection.
   const selection = useModelSelection(discovery, models, recommended.setModels);
-
-  /*
-    The address that answered is what the field shows and the row saves. Only a
-    field still holding the address the answer belongs to is updated: a URL
-    typed since that probe belongs to the user, and a named preset carries its
-    own address. Comparing against the address the answer was produced for —
-    not against the field's rewritten form — is what keeps a fresh paste from
-    being reverted to the previous result.
-  */
-  const discoveredBaseUrl = discovery.effectiveBaseUrl;
-  const adoptedFrom = discovery.resolvedFrom;
-  useEffect(() => {
-    if (named || !discoveredBaseUrl || !adoptedFrom) return;
-    setBaseUrl((current) => (endpointsEqual(current, adoptedFrom) ? discoveredBaseUrl : current));
-  }, [named, discoveredBaseUrl, adoptedFrom]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -189,66 +90,14 @@ export function ProviderSetupDialog({
         setAdvancedOpen(false);
         return;
       }
-      // Changing an existing row's service backs out to its form.
-      if (choosing && service) {
-        setChoosing(false);
-        return;
-      }
       onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [advancedOpen, choosing, onClose, saving, service]);
-
-  const nameRef = useRef<HTMLInputElement>(null);
-  const focusAfterServiceChange = (next: string) => {
-    window.setTimeout(() => {
-      if (next === CUSTOM_SERVICE) nameRef.current?.focus();
-      else if (next) apiKeyRef.current?.focus();
-    }, 0);
-  };
-
-  const onServiceChange = (next: string) => {
-    const previous = namedPreset;
-    setService(next);
-    setBaseUrlTouched(false);
-    // A format picked for the previous service does not carry over: the new
-    // service's own format, or the new address, decides again.
-    setApiStyleTouched(false);
-    const preset = NAMED_ENDPOINT_PRESETS.find((item) => item.id === next);
-    if (!preset) {
-      if (next === CUSTOM_SERVICE && apiStyle === OPENCODE_GO_API_STYLE) {
-        setApiStyle("chat_completions");
-      }
-      focusAfterServiceChange(next);
-      return;
-    }
-    const currentName = name.trim();
-    if (!currentName || currentName === previous?.name) setName(preset.name);
-    setBaseUrl(preset.baseUrl);
-    setApiStyle(preset.apiStyle);
-    focusAfterServiceChange(next);
-  };
-
-  const pickService = (next: string) => {
-    setChoosing(false);
-    if (next === service) {
-      focusAfterServiceChange(next);
-      return;
-    }
-    // A key belongs to the service it was pasted for.
-    if (!provider) setApiKey("");
-    onServiceChange(next);
-  };
-
-  const commitBaseUrl = () => {
-    setBaseUrlTouched(true);
-    const normalized = normalizeBaseUrlInput(baseUrl, resolvedApiStyle);
-    if (normalized !== baseUrl) setBaseUrl(normalized);
-  };
+  }, [advancedOpen, onClose, saving]);
 
   const testConnection = async () => {
-    if (!provider) return;
+    if (!provider || !allowedProvider) return;
     setTesting(true);
     setTestResult("");
     try {
@@ -273,30 +122,18 @@ export function ProviderSetupDialog({
   };
 
   const save = async () => {
-    const providerName = resolvedName.trim();
-    const providerBaseUrl = normalizeBaseUrlInput(resolvedBaseUrl, resolvedApiStyle);
-    if (
-      requiresApiStyleChoice ||
-      !providerName ||
-      !providerBaseUrl ||
-      getBaseUrlIssue(providerBaseUrl) ||
-      models.length === 0
-    ) {
-      setBaseUrlTouched(true);
-      return;
-    }
-    const persisted = selection.bindingsToPersist;
+    const providerName = name.trim();
+    if (!allowedProvider || !providerName || !isPlatformApiStyle(apiStyle) ||
+      !discoveryActive || models.length === 0 || saving) return;
+    const persisted = platformMediaModelBindings(selection.bindingsToPersist);
     // Removing a configured model releases its image binding even when the
     // capability checkbox was untouched. Ordinary provider edits keep their
     // existing save path when the image selection did not change.
-    const imageSelection = imageModelDraft ?? imageModelIds;
+    const imageSelection = [...new Set([...(imageModelDraft ?? imageModelIds ?? []), ...PLATFORM_IMAGE_MODELS])];
     const remainingImageModels = imageSelection?.filter((imageModelId) =>
       persisted.some((model) => model.id.toLowerCase() === imageModelId.toLowerCase()),
     );
-    const imageModelIdsToSave = imageModelDraft !== undefined ||
-      remainingImageModels?.length !== imageSelection?.length
-      ? remainingImageModels
-      : undefined;
+    const imageModelIdsToSave = remainingImageModels;
     setSaving(true);
     setError("");
     try {
@@ -304,29 +141,27 @@ export function ProviderSetupDialog({
         const result = await api.updateProvider({
           id: provider.id,
           name: providerName,
-          // A row whose stored wire format differs from the published preset is
-          // no longer that preset, but its catalog identity is still its own.
-          vendorKey: namedPreset?.vendorKey ?? provider?.vendorKey ?? "custom",
-          baseUrl: providerBaseUrl,
-          defaultModelId: persisted[0]?.id,
+          vendorKey: AI_PLATFORM_VENDOR_KEY,
+          baseUrl: AI_PLATFORM_BASE_URL,
+          defaultModelId: persisted.find(model => !platformMediaKind(model.id))?.id,
           models: persisted,
-          apiStyle: resolvedApiStyle,
+          apiStyle,
           headers,
-          ...(apiKey ? { secretValue: apiKey } : {}),
+          ...(apiKey.trim() ? { secretValue: apiKey.trim() } : {}),
         });
         await onSaved(result.provider ?? provider, persisted, imageModelIdsToSave);
       } else {
         const result = await api.createProvider({
           name: providerName,
-          vendorKey: namedPreset?.vendorKey ?? "custom",
+          vendorKey: AI_PLATFORM_VENDOR_KEY,
           type: "openai_compatible",
           protocol: "openai_compatible",
-          baseUrl: providerBaseUrl,
+          baseUrl: AI_PLATFORM_BASE_URL,
           authKind: "api_key_and_base_url",
-          defaultModelId: persisted[0]?.id,
+          defaultModelId: persisted.find(model => !platformMediaKind(model.id))?.id,
           models: persisted,
-          secretValue: apiKey || undefined,
-          apiStyle: resolvedApiStyle,
+          secretValue: apiKey.trim(),
+          apiStyle,
           headers,
         });
         await onSaved(result.provider, persisted, imageModelIdsToSave);
@@ -348,14 +183,8 @@ export function ProviderSetupDialog({
     });
   };
 
-  const canSave =
-    !saving &&
-    !requiresApiStyleChoice &&
-    !!service &&
-    !!resolvedName.trim() &&
-    !!resolvedBaseUrl.trim() &&
-    !baseUrlIssue &&
-    models.length > 0;
+  const canSave = !saving && allowedProvider && discoveryActive &&
+    !!name.trim() && isPlatformApiStyle(apiStyle) && models.length > 0;
 
   const formView = (
     <>
@@ -366,7 +195,7 @@ export function ProviderSetupDialog({
           {initialDraft ? <HelpIcon label={t("settings.copyProviderHint")} /> : null}
         </h3>
         <div className="provider-setup-head-actions">
-          {named || custom ? (
+          {allowedProvider ? (
             <Button
               variant="ghost"
               size="sm"
@@ -403,55 +232,15 @@ export function ProviderSetupDialog({
       <div className="provider-setup-body">
         {error ? <div className="provider-setup-error">{error}</div> : null}
 
-        <ProviderEndpointGuidance
-          baseUrl={resolvedBaseUrl}
-          apiStyle={resolvedApiStyle}
-          disabled={saving}
-          onApply={(suggestion) => {
-            const preset = NAMED_ENDPOINT_PRESETS.find((item) =>
-              item.baseUrl === suggestion.baseUrl && item.apiStyle === suggestion.apiStyle,
-            );
-            setService(preset?.id ?? CUSTOM_SERVICE);
-            setBaseUrl(suggestion.baseUrl);
-            setApiStyle(suggestion.apiStyle);
-            setError("");
-            setTestResult("");
-          }}
-        />
-
         <div className="provider-setup-credentials">
           <ProviderConnectionFields
-            named={named}
-            custom={custom}
             editing={editing}
             saving={saving}
-            serviceLabel={namedPreset ? t(namedPreset.labelKey) : t("settings.presetCustomEndpoint")}
-            serviceBaseUrl={namedPreset?.baseUrl ?? ""}
-            onChangeService={() => setChoosing(true)}
-            apiKeyRef={apiKeyRef}
-            nameRef={nameRef}
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
-            name={name}
-            onNameChange={setName}
-            baseUrl={baseUrl}
-            onBaseUrlChange={(value) => {
-              setBaseUrl(value);
-              setError("");
-            }}
-            commitBaseUrl={commitBaseUrl}
-            baseUrlError={baseUrlError}
             apiStyle={apiStyle}
-            onApiStyleChange={(value) => {
-              // A hand-picked format is the user's answer and outranks the
-              // endpoint's own suggestion from here on.
-              setApiStyleTouched(true);
-              setApiStyle(value);
-            }}
-            apiStyleNote={endpointFormatNote}
-            accountOnlyApiStyle={accountOnlyApiStyle}
-            requiresApiStyleChoice={requiresApiStyleChoice}
-            status={<ConnectionStatus active={discoveryActive} discovery={discovery} named={named} />}
+            onApiStyleChange={setApiStyle}
+            status={<ConnectionStatus active={discoveryActive} discovery={discovery} named />}
           />
 
           {testResult ? (
@@ -461,46 +250,24 @@ export function ProviderSetupDialog({
           ) : null}
         </div>
 
+        <p className="text-sm text-text-secondary">{t("settings.platformMediaDefaultsHint")}</p>
         <ModelSelectionPanes
           discovery={discovery}
           selection={selection}
           listTitle={t("settings.serviceModels")}
           busy={saving}
           onReload={discovery.reload}
-          apiStyle={resolvedApiStyle}
-          imageModelIds={imageModelDraft ?? imageModelIds}
+          apiStyle={apiStyle}
+          imageModelIds={[...new Set([...(imageModelDraft ?? imageModelIds ?? []), ...PLATFORM_IMAGE_MODELS])]}
           onImageModelChange={updateImageModelDraft}
           lookupContext={{
-            baseUrl: requestBaseUrl,
-            vendorKey: namedPreset?.vendorKey ?? provider?.vendorKey ?? "custom",
+            baseUrl: AI_PLATFORM_BASE_URL,
+            vendorKey: AI_PLATFORM_VENDOR_KEY,
             providerId: provider?.id,
           }}
           autoPicked={recommended.autoPicked}
         />
       </div>
-    </>
-  );
-
-  const chooserView = (
-    <>
-      <div className="provider-setup-head">
-        <h3 id="provider-setup-title" className="provider-setup-title">
-          {editing ? t("settings.changeServiceTitle") : t("settings.addProviderTitle")}
-        </h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={service ? () => setChoosing(false) : onClose}
-        >
-          {t("settings.cancel")}
-        </Button>
-      </div>
-      <ServiceChooser
-        vendors={editing ? null : vendors}
-        current={service}
-        onPickService={pickService}
-        onPickSubscription={editing ? undefined : onPickSubscription}
-      />
     </>
   );
 
@@ -520,10 +287,10 @@ export function ProviderSetupDialog({
         aria-labelledby="provider-setup-title"
         onClick={(event) => event.stopPropagation()}
       >
-        {chooserOpen ? chooserView : formView}
+        {formView}
       </div>
 
-      {advancedOpen && (named || custom) ? (
+      {advancedOpen && allowedProvider ? (
         <div
           className="overlay provider-advanced-overlay"
           role="presentation"
@@ -549,7 +316,7 @@ export function ProviderSetupDialog({
             </div>
             <div className="provider-advanced-body">
               <div className="provider-setup-advanced">
-                {named ? (
+                {allowedProvider ? (
                   <Field label={t("settings.name")}>
                     <Input
                       value={name}

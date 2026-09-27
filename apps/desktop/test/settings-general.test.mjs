@@ -295,14 +295,13 @@ test("default model selector shows every configured model under its provider", (
   assert.match(stylesSource, /scrollbar-gutter: stable/);
 });
 
-test("model configuration lists AI services and vendor accounts together", () => {
-  // One list (D625): nothing filters OAuth rows out, and no second section.
-  assert.doesNotMatch(providersSource, /authKind !== OAUTH_AUTH_KIND/);
+test("model configuration lists only platform services and preserves unreachable upstream account editors", () => {
+  assert.match(providersSource, /allProviders\.filter\(isPlatformProvider\)/);
+  assert.doesNotMatch(providersSource, /useVendorAccounts|<OAuthLoginDialog|<VendorAccountDialog/);
   assert.doesNotMatch(providersSource, /VendorAccountsSection/);
   assert.match(providersSource, /<ServiceList\s+providers=\{providers\}/);
-  // Readiness (a key, an OAuth account, or a no-auth provider) now lives in the
-  // shared helper, so the page must delegate to it instead of re-inlining the
-  // rule next to a second copy that can drift from the picker.
+  // Platform eligibility filters the list first. The shared model-readiness
+  // helper still owns key/model availability for default selection.
   assert.match(providersSource, /providerServesChatModels\(/);
   assert.match(
     defaultModelSource,
@@ -310,17 +309,11 @@ test("model configuration lists AI services and vendor accounts together", () =>
   );
   assert.doesNotMatch(providersSource, /provider-config-hero/);
   assert.doesNotMatch(providersSource, /settings-section-subtitle/);
-  // An account row still lives and dies through the vendor-account editor and
-  // deleteOauthAccount, never through the provider CRUD.
-  assert.match(
-    providersSource,
-    /serviceRowKind\(provider\) === "account"\s*\?\s*setEditingAccountId\(provider\.id\)\s*:\s*setSetupFor\(provider\.id\)/,
-  );
-  assert.match(
-    providersSource,
-    /serviceRowKind\(provider\) === "account"\s*\?\s*removeAccount\(provider\)\s*:\s*removeProvider\(provider\)/,
-  );
-  assert.match(providersSource, /<VendorAccountDialog/);
+  assert.match(providersSource, /onEdit=\{\(provider\) => setSetupFor\(provider\.id\)\}/);
+  assert.match(providersSource, /onRemove=\{\(provider\) => void removeProvider\(provider\)\}/);
+  assert.match(providersSource, /<PlatformAccountCard providers=\{providers\}/);
+  // The upstream account implementation remains intact without being mounted:
+  // account deletion/default repair must not regress as a side effect of gating.
   assert.match(providersSource, /api\.testProvider\(provider\.id\)/);
   assert.match(vendorAccountsHookSource, /api\.deleteOauthAccount\(provider\.id\)/);
   assert.match(vendorAccountsHookSource, /api\.updateProvider\(/);
@@ -329,7 +322,7 @@ test("model configuration lists AI services and vendor accounts together", () =>
   assert.match(vendorAccountsHookSource, /models: form\.models/);
   assert.doesNotMatch(stylesSource, /\.vendor-card-list/);
   assert.doesNotMatch(stylesSource, /vendor-account-row/);
-  // Both credential kinds now pick from the same live, service-provided list.
+  // The retained account dialog continues to use the shared model picker.
   assert.match(vendorAccountDialogSource, /useProviderModels/);
   assert.match(vendorAccountDialogSource, /<ModelSelectionPanes/);
   assert.doesNotMatch(vendorAccountDialogSource, /<ChosenModelsSummary/);

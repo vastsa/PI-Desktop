@@ -1,11 +1,9 @@
 /**
- * Endpoint resolution as the setup form uses it.
+ * Retained upstream endpoint resolution and the fixed platform setup boundary.
  *
- * A user should be able to paste `api.example.com` and get a working row; the
- * address that really answered must be the one shown and saved; and a format
- * the user picked by hand must never be changed behind their back. These tests
- * pin those three promises, plus the regression it protects: a named service's
- * own wire format is not re-derived from its URL.
+ * Generic resolution helpers preserve their existing contracts, but platform
+ * setup never adopts another endpoint or infers a different transport from a
+ * discovery answer. Explicit API format and configured wire IDs stay intact.
  */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -92,40 +90,39 @@ test("a resolved address is stable, so adopting it cannot loop", () => {
   });
 });
 
-test("the form adopts the address that answered and says what it detected", () => {
-  assert.match(setupSource, /resolveEndpointDraft\(/);
-  assert.match(setupSource, /discovery\.effectiveBaseUrl/);
-  // The answer belongs to the address it was produced for, so a URL typed since
-  // that probe is never reverted to an earlier result.
-  assert.match(setupSource, /const adoptedFrom = discovery\.resolvedFrom;/);
-  assert.match(setupSource, /endpointsEqual\(current, adoptedFrom\) \? discoveredBaseUrl : current/);
-  assert.match(setupSource, /\[named, discoveredBaseUrl, adoptedFrom\]/);
-  assert.match(setupSource, /settings\.apiStyleAutoDetected/);
+test("platform discovery cannot replace the displayed or saved endpoint", () => {
+  assert.match(setupSource, /baseUrl: AI_PLATFORM_BASE_URL/);
+  assert.doesNotMatch(setupSource, /resolveEndpointDraft\(|discovery\.effectiveBaseUrl|setBaseUrl/);
+  assert.doesNotMatch(setupSource, /ProviderEndpointGuidance|settings\.apiStyleAutoDetected/);
+  // The retained generic resolver still handles old endpoint data; its result
+  // is deliberately not wired into this edition's setup form.
+  const draft = resolveEndpointDraft("https://relay.example/v1/responses", "chat_completions", false);
+  assert.equal(draft.effectiveBaseUrl, "https://relay.example/v1");
 });
 
-test("a format that already has an owner is never re-derived from the address", () => {
-  // A stored row's format is the user's answer for that row; inference is for a
-  // row that does not have one yet.
-  assert.match(setupSource, /named \|\| editing \|\| Boolean\(initialDraft\) \|\| apiStyleTouched/);
-  // Which is what keeps this a no-op on an existing custom row.
+test("a saved or copied supported format is preserved without endpoint inference", () => {
+  assert.match(setupSource, /initialDraft\?\.apiStyle \?\? provider\?\.apiStyle/);
+  assert.match(setupSource, /isPlatformApiStyle\(style\) \? style : "chat_completions"/);
+  assert.doesNotMatch(setupSource, /resolvedApiStyle|namedPreset\?\.apiStyle/);
   const saved = resolveEndpointDraft("https://api.openai.com/v1", "chat_completions", true);
   assert.equal(saved.apiStyle, "chat_completions");
   assert.equal(saved.autoDetected, false);
-  // Without that owner the same address is resolved, which is the new-row path.
   assert.equal(resolveEndpointDraft("https://api.openai.com/v1", "chat_completions", false).apiStyle, "responses");
 });
 
-test("a hand-picked format outranks the endpoint from then on", () => {
-  assert.match(setupSource, /const \[apiStyleTouched, setApiStyleTouched\] = useState\(false\)/);
-  assert.match(setupSource, /setApiStyleTouched\(true\);/);
-  // Picking another service starts the choice over.
-  assert.match(setupSource, /setApiStyleTouched\(false\);/);
+test("a hand-picked platform format drives discovery and persistence directly", () => {
+  assert.match(setupSource, /onApiStyleChange=\{setApiStyle\}/);
+  assert.match(setupSource, /apiStyle=\{apiStyle\}/);
+  assert.doesNotMatch(setupSource, /setApiStyleTouched|setChoosing|pickService|endpointDraft/);
+  // Persisted wire IDs and endpoint format remain distinct fields.
+  assert.match(setupSource, /models: persisted,\s+apiStyle,/);
 });
 
 test("the saved model ids stay the ids the endpoint served", () => {
+  // Platform media defaults are added; unrelated endpoint wire IDs stay intact.
   // Metadata may be borrowed through an alias, but a binding is addressed
   // with the wire id, so the form must not rewrite one.
-  assert.match(setupSource, /const persisted = selection\.bindingsToPersist;/);
+  assert.match(setupSource, /const persisted = platformMediaModelBindings\(selection\.bindingsToPersist\);/);
   assert.match(setupSource, /models: persisted,/);
   assert.doesNotMatch(setupSource, /\.id\s*=\s*(?!==)/);
 });

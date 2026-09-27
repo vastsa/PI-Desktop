@@ -1,4 +1,6 @@
 import {
+  isAIPlatformProvider,
+  platformMediaModelBindings,
   ErrorCodes as SharedErrorCodes,
   SESSION_THINKING_LEVELS,
   defaultCommandShellForPlatform,
@@ -111,6 +113,7 @@ export function createProviderCatalogRuntime({
     provider: T,
     selectedModelId?: string,
   ): T & ThinkingCapabilities & { supportsVision: boolean } => {
+    if (isAIPlatformProvider(provider)) provider = { ...provider, models: platformMediaModelBindings(provider.models) };
     const modelId =
       selectedModelId ||
       provider.modelId ||
@@ -280,7 +283,7 @@ export function createProviderCatalogRuntime({
       { includeDisabled },
     );
     await modelsDevCatalog.ensureLoaded();
-    return result.providers;
+    return result.providers.filter(isAIPlatformProvider);
   };
 
   const enrichProviderList = async <T extends RuntimeProvider>(result: {
@@ -289,7 +292,7 @@ export function createProviderCatalogRuntime({
     await modelsDevCatalog.ensureLoaded();
     return {
       ...result,
-      providers: result.providers.map((provider) => enrichProvider(provider)),
+      providers: result.providers.filter(isAIPlatformProvider).map((provider) => enrichProvider(provider)),
     };
   };
 

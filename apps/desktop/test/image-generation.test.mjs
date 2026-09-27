@@ -41,10 +41,11 @@ test("configure, batch generate, edit a result, replace binding, clear; files su
         return {
           provider: {
             id: "image-provider",
+            vendorKey: "ai-aggregation-platform",
             enabled: true,
             authKind: "api_key_and_base_url",
             models: [{ id: "image-one" }, { id: "image-two" }],
-            baseUrl: `http://127.0.0.1:${server.address().port}`,
+            baseUrl: "https://ai.yykkj.com/v1",
           },
         };
       if (method === "providers.getSecret") return { value: "fixture-key" };
@@ -53,7 +54,10 @@ test("configure, batch generate, edit a result, replace binding, clear; files su
       throw new Error(method);
     },
   };
-  const options = { dataDir, getHost: () => host };
+  const options = { dataDir, getHost: () => host, fetchImpl: (url, init) => {
+    assert.equal(new URL(url).origin, "https://ai.yykkj.com");
+    return fetch(`http://127.0.0.1:${server.address().port}${new URL(url).pathname}`, init);
+  } };
   const call = (args) =>
     createImageGenerationTool(options)({
       sessionId: "session",
@@ -87,8 +91,11 @@ test("configure, batch generate, edit a result, replace binding, clear; files su
   await call({ items: [{ prompt: "replacement" }] });
   assert.equal(JSON.parse(requests.at(-1).body).model, "image-two");
   settings.imageGeneration = null;
-  assert.equal((await call({ items: [{ prompt: "unset" }] })).errorCode, "IMAGE_NOT_CONFIGURED");
-  assert.equal(requests.length, 6);
+  settings.defaultProviderId = "image-provider";
+  const automatic = await call({ items: [{ prompt: "automatic platform default" }] });
+  assert.equal(automatic.ok, true);
+  assert.equal(automatic.content.modelId, "gpt-image-2.5-flare");
+  assert.equal(requests.length, 7);
   assert.equal(settings.defaultModelId, "chat");
 });
 

@@ -31,15 +31,19 @@ test("replacement and clearing recompute candidates without removing provider mo
   assert.deepEqual(composerModelsForProvider(legacy, undefined, image), []);
 });
 
-test("runtime rejects an image binding retained by an existing conversation", async () => {
+test("runtime rejects an image binding retained by an existing conversation", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => { throw new Error("Launch must not use the network"); });
   register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
   const { createSessionLaunchRuntime } = await import("../electron/main/runtime/session-launch.ts");
   const shell = { id: "cmd", label: "Command Prompt", dialect: "cmd", available: true, isDefault: true };
   const runtime = createSessionLaunchRuntime({
     runtimeState: { host: { call: async (method) => {
       if (method === "commandShells.list") return { configuredId: null, effective: shell, fallback: false, choices: [shell] };
-      if (method === "providers.list") return { providers: [{ ...providers[0], authKind: "none" }] };
-      if (method === "providers.getSecret") return {};
+      if (method === "providers.list") return { providers: [{
+        ...providers[0], name: "Platform", vendorKey: "ai-aggregation-platform",
+        authKind: "api_key_and_base_url", baseUrl: "https://ai.yykkj.com/v1", apiStyle: "chat_completions",
+      }] };
+      if (method === "providers.getSecret") return { value: "dummy" };
       throw new Error(`Unexpected host call: ${method}`);
     } } },
     modelsDevCatalog: { ensureLoaded: async () => {} },
@@ -48,4 +52,5 @@ test("runtime rejects an image binding retained by an existing conversation", as
     runtime.resolveAgentRuntimeLaunch("session", { providerId: "images", modelId: image.modelId }, { imageGeneration: image }),
     error => error.errorCode === "MODEL_NOT_CONFIGURED" && /image model/.test(error.message),
   );
+  assert.equal(fetch.mock.callCount(), 0);
 });

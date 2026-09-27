@@ -1,4 +1,5 @@
 import { app, BrowserWindow, crashReporter, Menu, safeStorage } from "electron";
+import { VIDEO_SCHEME } from "../video-preview";
 import { createScheduledRunner } from "../runtime/scheduled-runner";
 import {
   APP_NAME,
@@ -121,7 +122,10 @@ export type StartupDependencies = {
 export function registerApplicationStartup(deps: StartupDependencies): void {
   // Electron only accepts scheme privileges before the app is ready, and this
   // runs from the composition root, before the `whenReady` promise can settle.
-  registerPluginAssetScheme();
+  registerPluginAssetScheme([{
+    scheme: VIDEO_SCHEME,
+    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
+  }]);
   // Crashpad ships with Electron, so the reporter needs no native dependency.
   // Dumps stay local (`uploadToServer: false`) under the installation data
   // directory so a `PI_DESKTOP_DATA_DIR` profile does not share them. Started

@@ -1,4 +1,8 @@
+import { platformTokenUsage } from "../services/platform-account-service";
 import {
+  assertAIPlatformProvider,
+  AI_PLATFORM_VENDOR_KEY,
+  platformMediaModelBindings,
   IPC,
   ErrorCodes,
   inferEndpointProfile,
@@ -98,6 +102,10 @@ export function registerProviderIpc({
       return fn(...args);
     });
   };
+  handle(IPC.invoke.platformTokenUsage, async (providerId: string) => {
+    if (!host) throw new Error("host unavailable");
+    return platformTokenUsage(host, providerId);
+  });
   handle(IPC.invoke.providersList, async () => {
     return enrichProviderList({ providers: await listRuntimeProviders() });
   });
@@ -164,18 +172,24 @@ export function registerProviderIpc({
   );
   handle(IPC.invoke.providersCreate, async (input: unknown) => {
     if (!host) throw new Error("host unavailable");
+    assertAIPlatformProvider(input as RuntimeProvider);
     const result = await host.call<{ provider: RuntimeProvider }>(
       "providers.create",
-      input,
+      { ...(input as RuntimeProvider), models: platformMediaModelBindings((input as RuntimeProvider).models) },
     );
     await modelsDevCatalog.ensureLoaded();
     return { ...result, provider: enrichProvider(result.provider) };
   });
   handle(IPC.invoke.providersUpdate, async (input: unknown) => {
     if (!host) throw new Error("host unavailable");
+    const update = input as Partial<RuntimeProvider>;
+    const previous = await host.call<{ provider?: RuntimeProvider }>("providers.get", { id: update.id });
+    if (!previous.provider) throw new Error("Provider not found");
+    assertAIPlatformProvider(previous.provider);
+    assertAIPlatformProvider({ ...previous.provider, ...update });
     const result = await host.call<{ provider?: RuntimeProvider | null }>(
       "providers.update",
-      input,
+      { ...update, models: platformMediaModelBindings(update.models ?? previous.provider.models) },
     );
     await modelsDevCatalog.ensureLoaded();
     return result.provider
@@ -186,6 +200,9 @@ export function registerProviderIpc({
     IPC.invoke.providersSetSecret,
     async (input: { id: string; secretValue?: string }) => {
       if (!host) throw new Error("host unavailable");
+      const previous = await host.call<{ provider?: RuntimeProvider }>("providers.get", { id: input.id });
+      if (!previous.provider) throw new Error("Provider not found");
+      assertAIPlatformProvider(previous.provider);
       const result = await host.call<{ provider?: RuntimeProvider | null }>(
         "providers.setSecret",
         input,
@@ -210,12 +227,15 @@ export function registerProviderIpc({
     if (!local.ok) return { ...local, network: "skipped" };
     const detail = await host.call<{
       provider?: {
+        vendorKey?: string;
         baseUrl?: string;
         authKind?: string;
         apiStyle?: string;
         headers?: Record<string, string>;
       };
     }>("providers.get", { id });
+    if (!detail.provider) throw new Error("Provider not found");
+    assertAIPlatformProvider(detail.provider);
     // A vendor account proves itself by resolving auth — refreshing the token
     // if it has expired — not by probing /models with a key it does not have.
     if (detail.provider?.authKind === OAUTH_AUTH_KIND) {
@@ -284,13 +304,10 @@ export function registerProviderIpc({
   // Vendor-account login. The renderer drives the conversation but never sees
   // credential material: it gets progress events and a provider row id.
   handle(IPC.invoke.providersOauthVendors, async () => {
-    return { vendors: await vendorOAuth.listVendors() };
+    return { vendors: [] };
   });
   handle(IPC.invoke.providersOauthStart, async (vendorId: unknown) => {
-    if (typeof vendorId !== "string" || !vendorId) {
-      throw new Error("vendorId required");
-    }
-    return vendorOAuth.start(vendorId);
+    throw new Error("Vendor account login is unavailable in the platform-only edition");
   });
   handle(IPC.invoke.providersOauthRespond, async (input: unknown) => {
     const request = (input ?? {}) as OAuthRespondInput;
@@ -335,6 +352,12 @@ export function registerProviderIpc({
         : undefined;
       const baseUrl = (req.baseUrl ?? provider?.baseUrl ?? "").trim();
       const apiStyle = req.apiStyle ?? provider?.apiStyle ?? "chat_completions";
+      if (req.providerId && !provider) throw new Error("Platform provider not found");
+      if (provider) assertAIPlatformProvider(provider);
+      assertAIPlatformProvider({
+        vendorKey: AI_PLATFORM_VENDOR_KEY, baseUrl, apiStyle,
+        authKind: "api_key_and_base_url", headers: req.headers ?? provider?.headers,
+      });
       /*
         Static endpoint resolution, the same layer the settings dialog uses:
         which URL this row will really address, which wire style the evidence

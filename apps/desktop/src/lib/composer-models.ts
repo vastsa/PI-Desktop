@@ -1,5 +1,6 @@
 import {
   bindingSupportsImages,
+  platformMediaKind,
   isImageGenerationModel,
   type ImageGenerationBindings,
   modelMatchesFilter,
@@ -38,7 +39,7 @@ export function composerModelsForProvider(
   imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
   return configuredModelIds(provider).filter((modelId) =>
-    !isImageGenerationModel(imageGeneration, provider.id, modelId),
+    !platformMediaKind(modelId) && !isImageGenerationModel(imageGeneration, provider.id, modelId),
   ).map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),

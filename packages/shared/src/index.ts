@@ -69,3 +69,6 @@ export * from "./prompt-enhancement.js";
 export * from "./native-web-search.js";
 export * from "./native-web-search-transport.js";
 export * from "./header-value.js";
+
+export * from "./ai-platform.js";
+export * from "./platform-media.js";

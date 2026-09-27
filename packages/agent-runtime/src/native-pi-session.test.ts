@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
-import { NativePiSessionService } from "./native-pi-session.js";
+import { NativePiSessionService, nativePiService } from "./native-pi-session.js";
 import {
   acquireNativePiSessionLease,
   guardNativePiSessionManager,
@@ -1113,5 +1113,28 @@ describe("native settlement and reclaim boundaries", () => {
     writeFileSync(lockPath, JSON.stringify({ ...record, pid: 2147483647 }));
     writeFileSync(f.file, f.text.replace('"hello"', '"changed"'));
     expect((await service.list())[0].readOnlyReason).toBe("busy");
+  });
+});
+
+
+describe("platform native history boundary", () => {
+  it("lists readable history without opening independent credentials", async () => {
+    const paths = fixture();
+    const modelRuntimeFactory = vi.fn(() => { throw new Error("Native credentials must not be opened"); });
+    const service = new NativePiSessionService({ ...paths, readOnly: true, modelRuntimeFactory });
+    const summaries = await service.list();
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].capabilities?.canPrompt).toBe(false);
+    expect(summaries[0].readOnlyReason).toBe("platform-provider-required");
+    expect(service.detail(summaries[0].id)?.capabilities?.canPrompt).toBe(false);
+    await expect(service.prompt(summaries[0].id, "do not send", () => {})).rejects.toMatchObject({ errorCode: "PLATFORM_PROVIDER_REQUIRED" });
+    expect(modelRuntimeFactory).not.toHaveBeenCalled();
+  });
+
+  it("the production singleton never allows native credential continuation", async () => {
+    const paths = fixture();
+    const service = nativePiService(paths);
+    await expect(service.prompt("native-pi:unknown", "do not send", () => {})).rejects.toMatchObject({ errorCode: "PLATFORM_PROVIDER_REQUIRED" });
+    service.disposeAll();
   });
 });

@@ -1335,7 +1335,10 @@ fn bash_cancellation_requested(receiver: &Option<tokio::sync::watch::Receiver<bo
 }
 
 async fn clear_bash_cancellation(state: &Arc<Mutex<AppState>>, p: &ToolsExecuteParams) {
-    if !matches!(p.tool_name.as_str(), "Bash" | "GenerateImages") {
+    if !matches!(
+        p.tool_name.as_str(),
+        "Bash" | "GenerateImages" | "PlatformMedia"
+    ) {
         return;
     }
     let mut st = state.lock().await;
@@ -3475,8 +3478,10 @@ async fn handle_request(
 
             // Register before permission evaluation so tools.abort can cancel
             // an approval wait as well as an already-spawned process.
-            let cancellation_receiver = if matches!(p.tool_name.as_str(), "Bash" | "GenerateImages")
-            {
+            let cancellation_receiver = if matches!(
+                p.tool_name.as_str(),
+                "Bash" | "GenerateImages" | "PlatformMedia"
+            ) {
                 let mut st = state.lock().await;
                 match st.register_bash_cancellation(&p.session_id, &p.tool_call_id) {
                     Ok(receiver) => Some(receiver),

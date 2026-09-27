@@ -198,6 +198,7 @@ export const IPC = {
      * crosses this channel.
      */
     remoteHostBootstrap: "pi-desktop/remoteHost/bootstrap",
+    platformTokenUsage: "pi-desktop/platform/tokenUsage",
     providersList: "pi-desktop/providers/list",
     providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
@@ -330,6 +331,9 @@ export const IPC = {
     browserGetState: "pi-desktop/browser/getState",
     fsList: "pi-desktop/fs/list",
     fsRead: "pi-desktop/fs/read",
+    fsVideoSource: "pi-desktop/fs/videoSource",
+    fsVideoRelease: "pi-desktop/fs/videoRelease",
+    fsVideoSave: "pi-desktop/fs/videoSave",
     fsReadImageDataUrl: "pi-desktop/fs/readImageDataUrl",
     statsGetTokenUsageHistory: "pi-desktop/stats/getTokenUsageHistory",
     fsReveal: "pi-desktop/fs/reveal",

@@ -3,7 +3,7 @@
  *
  * The catalog-browsing redesign was rejected: a bundled list of thousands of
  * models is not a useful entry point, and a three-stage wizard is too many
- * clicks. The flow these tests pin is: one form takes the base URL and key, the
+ * clicks. The flow these tests pin is: one form takes a key for the fixed platform, the
  * AI service is asked which models it serves, models.dev only enriches what
  * came back, and the user picks from that live list.
  */
@@ -47,11 +47,13 @@ test("adding an AI service is a single form, not a staged wizard", () => {
   assert.doesNotMatch(setupSource, /settings\.setupStage/);
   assert.doesNotMatch(setupSource, /settings\.next"/);
   assert.doesNotMatch(setupSource, /settings\.back"/);
-  // Picking a service is the only step before the form, and it is a tile
-  // click, not a Next button: name, base URL and key share one view.
+  // Platform setup opens directly with a fixed service and the token field.
+  // The name remains editable in Advanced without a service chooser.
   assert.match(setupSource, /<ProviderConnectionFields/);
-  assert.match(fieldsSource, /settings\.name/);
-  assert.match(fieldsSource, /settings\.baseUrl/);
+  assert.match(fieldsSource, /settings\.presetAiPlatform/);
+  assert.match(fieldsSource, /AI_PLATFORM_BASE_URL/);
+  assert.match(setupSource, /settings\.name/);
+  assert.doesNotMatch(setupSource, /ServiceChooser|chooserView|onPickSubscription/);
   assert.match(fieldsSource, /settings\.apiKey/);
   assert.match(setupSource, /settings\.saveProvider/);
 });
@@ -97,16 +99,23 @@ test("token limits are adopted from the published record, never typed by default
   assert.match(pickerSource, /expandedModelId/);
 });
 
-test("custom API format is a common-path choice, named services skip it", () => {
+test("platform API format is a common-path choice with only supported transports", () => {
   assert.match(fieldsSource, /settings\.apiStyle/);
-  assert.match(fieldsSource, /API_STYLES/);
-  assert.match(fieldsSource, /custom \? \(/);
+  assert.match(fieldsSource, /PLATFORM_API_STYLES/);
+  assert.match(fieldsSource, /isPlatformApiStyle\(value\)/);
+  assert.doesNotMatch(fieldsSource, /custom \? \(/);
   assert.match(setupSource, /provider-advanced-dialog/);
   assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
 });
 
-test("editing a provider with an unknown persisted API style stays renderable", () => {
-  assert.match(setupSource, /normalizeApiStyle\(provider\?\.apiStyle\)/);
+test("unknown copied API styles render with a safe default while incompatible stored rows stay blocked", () => {
+  assert.match(setupSource, /initialDraft\?\.apiStyle \?\? provider\?\.apiStyle/);
+  assert.match(setupSource, /isPlatformApiStyle\(style\) \? style : "chat_completions"/);
+  assert.match(setupSource, /allowedProvider = !provider \|\| isPlatformProvider\(provider\)/);
+  assert.match(setupSource, /discoveryActive = allowedProvider &&/);
+  assert.match(setupSource, /canSave = !saving && allowedProvider &&/);
+  // The retained upstream normalization helpers still support old stored data;
+  // normalizing a value does not make an incompatible row eligible here.
   const style = normalizeApiStyle("future_api_format");
   assert.equal(style, "chat_completions");
   assert.equal(
@@ -388,7 +397,7 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
 });
 
 test("new chat default skips an image-only first model", () => {
-  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!selectedImageIds\.some\(\(id\) => sameWireId\(id, model\.id\)\)/);
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!platformMediaKind\(model\.id\) && !selectedImageIds\.some\(\(id\) => sameWireId\(id, model\.id\)\)/);
   assert.match(pageSource, /if \(!keepsCurrentDefault && firstModelId\)/);
 });
 

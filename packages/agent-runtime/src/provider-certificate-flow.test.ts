@@ -6,7 +6,8 @@ import { SubagentRun } from "./subagent.js";
 
 const provider: RuntimeProviderConfig = {
   id: "certificate-fixture", name: "Certificate fixture",
-  baseUrl: "https://provider.invalid/v1", modelId: "fixture-model",
+  vendorKey: "ai-aggregation-platform",
+  baseUrl: "https://ai.yykkj.com/v1", modelId: "fixture-model",
   apiKey: "fixture-key", authKind: "api_key", apiStyle: "chat_completions",
   supportsReasoning: false, supportedThinkingLevels: ["off"],
 };

@@ -15478,3 +15478,70 @@ renderer's durable transcript reads. No real model or provider is contacted.
 - **Acceptance:** Cache-path, migration, and cleanup unit tests pass; Windows task-candidate validation confirms the updater feed transport, installer handoff, and filesystem behavior without a live release feed.
 - **Milestone:** M6+
 - **Status:** Unit and source-contract covered (`update-cache.test.mjs`, `auto-update.test.mjs`); Windows installer/E2E validation remains required.
+
+## E2E-PLATFORM-fixed-provider-media-wallet (local fork)
+
+### Media defaults / configured-but-unavailable regression
+
+- Save a platform API key with only conversation models returned by discovery.
+  Both image models and MiniMax-H3 must already be selected and included in the
+  saved provider; they must not appear in conversation/delegation selectors.
+- Open an existing platform profile with the media IDs in the provider list but
+  no `settings.imageGeneration`. Its image default must be visible immediately.
+  Call the historical `GenerateImages` tool: it must generate with
+  `gpt-image-2.5-flare`, not return `IMAGE_NOT_CONFIGURED`.
+- Repeat with no media IDs stored at all; derived built-ins must work without a
+  settings write. Verify explicit image selection, session/default account
+  separation, missing-key/disabled/foreign-provider failures and one POST per
+  requested image. After restart, clearing the explicit binding returns to the
+  platform default rather than breaking generation.
+- Exercise `PlatformMedia` through its real Python subprocess with the selected
+  account's image default, an explicit model override, and a foreign account's
+  image preference that must not be inherited.
+- Gates: `platform-media-defaults.test.mjs`, `platform-provider-ipc.test.mjs`,
+  `platform-settings-browser.test.mjs`, `platform-settings-page.test.mjs`,
+  `platform-media.test.mjs`, shared/runtime media routing tests, and
+  `node scripts/e2e-image-generation.mjs` (5 local fixture requests).
+
+- **Preconditions:** Isolated desktop profile; Node/pnpm, Rust host and Python 3.9+;
+  deterministic HTTP fixtures, no live credential or paid call.
+- **Steps:** Add the platform provider, reject a foreign endpoint and OAuth, resolve
+  models, make a one-shot completion through the real adapter; call PlatformMedia
+  through host authorization; generate/edit images, submit/poll/download video,
+  resume receipts, correlate billing; inspect token usage and wallet navigation.
+- **Expected:** Only ai.yykkj.com receives inference auth, per-image n=1, local
+  output/receipts survive errors, no POST retry, permissions/cancel preserved; token
+  allowance is not wallet balance and browser return is not payment confirmation.
+- **Specs:** [Platform edition](../03-runtime/ai-platform-edition.md).
+- **Acceptance:** `pnpm test:platform`, JS build/typechecks and Rust permission tests;
+  native Windows/live-charge/signed-installer checks separately recorded.
+- **Milestone:** Local platform fork.
+- **Status:** See [verification record](../../platform-verification.md); fixtures
+  are not real provider/payment acceptance.
+
+| Fork traceability | Contract | Verification |
+| --- | --- | --- |
+| E2E-PLATFORM-fixed-provider-media-wallet | AI platform edition | test:platform, Rust permissions, manual live/Windows checklist |
+
+### Platform video delivery regression
+
+After building the desktop, run `node scripts/e2e-video-preview.mjs` from the request worktree. It uses an
+isolated Electron window/profile and the packaged local MP4 fixture, not a user's
+running app or paid upstream. Exercise an old scratch-file Markdown download link
+outside the project, inline embedding, actual metadata/playback/seek, Save video,
+cancel, save failure, missing file, decoder-error retry and lease release. The
+production CSP, real video IPC, host containment and streaming service are used;
+only the native save-dialog selection is stubbed. Saved bytes must equal the
+original, and a released URL must return 404. Platform-native Windows dialogs and
+codecs still require Windows acceptance.
+
+### Native local packaging scripts
+
+Run `pnpm test:app-build` for native OS/CPU matching, frozen dependency selection,
+explicit Rust target packaging, separate Windows distribution markers, fail-fast
+stage execution, cwd/space handling and non-publishing/signing isolation. On macOS
+run `bash scripts/build-macos.sh --check`, then `--dir` (or the default DMG/ZIP
+build); inspect the packaged Rust executable, bundled skills/runtime, application
+identity and absence of `app-update.yml`. On Windows x64 repeat with the PowerShell
+entry point and check actual NSIS/ZIP/portable artifacts. A Windows dry-run or plan
+test on macOS is not a Windows build or installer acceptance.

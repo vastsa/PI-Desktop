@@ -1,6 +1,9 @@
 import type { EnglishCatalog } from "../en/index.js";
 
 export const ptBR = {
+  composer: {
+    nativePlatformReadOnly: "O histórico do Pi nativo é somente leitura nesta edição. Para continuar, inicie uma conversa no aplicativo de desktop com um modelo da AI Aggregation Platform.",
+  },
   app: {
     shellName: "PI-Desktop",
     tagline: "Parceiro local de programação com IA",
@@ -223,6 +226,14 @@ export const ptBR = {
     sessionMissing: "Essa sessão não existe mais"
   },
   chat: {
+    video: {
+      player: "Vídeo",
+      save: "Salvar vídeo…",
+      saved: "Vídeo salvo",
+      saveFailed: "Não foi possível salvar o vídeo. Tente novamente.",
+      previewFailed: "Não foi possível reproduzir o vídeo. Verifique se o arquivo existe e se o formato é compatível.",
+      retry: "Tentar prévia novamente",
+    },
     tableActions: "Ações da tabela",
     copyTableMarkdown: "Copiar tabela como Markdown",
     exportTableCsv: "Baixar tabela como CSV",
@@ -587,6 +598,35 @@ export const ptBR = {
     dismiss: "Dispensar"
   },
   settings: {
+    presetAiPlatform: "AI Aggregation Platform",
+    platformAccountTitle: "Conta da plataforma e token de API",
+    platformOnboardingAccount: "Cadastre-se ou entre em ai.yykkj.com.",
+    platformOnboardingRecharge: "Recarregue sua conta na carteira do site.",
+    platformOnboardingToken: "Crie um token de API no site, cole-o no provedor da plataforma abaixo e selecione os modelos.",
+    platformVideoModel: "Modelo de geração de vídeo",
+    platformMediaDefaultsHint: "Os modelos de imagem e vídeo são incluídos automaticamente, sem configuração separada. A disponibilidade e os custos dependem do token e do saldo na plataforma.",
+    platformCredentialHint: "Salve o token de API uma única vez para solicitações de modelos e mídia. O login no site é separado; as credenciais do Codex nunca são usadas.",
+    platformRegisterLogin: "Cadastrar / Entrar",
+    platformWallet: "Carteira / Recarregar",
+    platformConfigure: "Configurar token de API",
+    platformWebPayment: "A recarga e o pagamento ocorrem no site seguro. Consulte lá o saldo e o status do pagamento; este aplicativo não cria pedidos nem confirma pagamentos.",
+    platformLinkError: "Não foi possível abrir o site. Tente novamente ou acesse ai.yykkj.com no navegador.",
+    platformUsageProvider: "Provedor do token",
+    platformChooseProvider: "Escolha um provedor para ver a cota do token",
+    platformNoToken: "Ative um provedor da plataforma com um token de API salvo para ver sua cota.",
+    platformTokenUsage: "Cota do token de API",
+    platformRefreshUsage: "Atualizar cota",
+    platformUsageLoading: "Carregando cota do token…",
+    platformUsageError: "Não foi possível carregar a cota. Verifique o token salvo e a conexão e atualize.",
+    platformTokenGranted: "Limite do token",
+    platformTokenUsed: "Cota utilizada",
+    platformTokenAvailable: "Cota restante",
+    platformUnlimited: "Cota do token ilimitada",
+    platformTokenExpires: "Expira em",
+    platformTokenNotWallet: "Esta é a cota do token de API, não o saldo da sua conta. Tokens ilimitados também exigem saldo suficiente. Consulte os fundos da conta no site.",
+    platformQuotaAmount: "{{amount}} unidades de cota",
+    platformShowToken: "Mostrar token de API",
+    platformHideToken: "Ocultar token de API",
     power: "Energia",
     keepAwakeWhileRunning: "Manter o computador ativo",
     keepAwakeWhileRunningDesc: "Impede a suspensão por inatividade enquanto o PI-Desktop estiver aberto. A tela pode apagar; a suspensão manual e ao fechar a tampa continuam funcionando.",

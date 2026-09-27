@@ -1,3 +1,4 @@
+// Preserved upstream adapter behavior. Product enforcement is tested in ai-platform.test.ts.
 import { describe, expect, it, vi } from "vitest";
 import { DEEPSEEK_REASONING_REPLAY_PLACEHOLDER } from "@pi-desktop/shared";
 import type { ModelAuth } from "@earendil-works/pi-ai";
@@ -13,7 +14,7 @@ import {
   providerRequestFetch,
   runtimeBaseUrlForApi,
   type RuntimeProviderConfig,
-} from "./provider-binding.js";
+} from "./provider-binding-upstream.js";
 
 const keyedProvider: RuntimeProviderConfig = {
   id: "acme",

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { estimateContextTokens as estimateAgentContextTokens, estimateTokens, type Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
@@ -125,10 +125,11 @@ import type {
 const provider: RuntimeProviderConfig = {
   id: "local",
   name: "Local",
-  baseUrl: "http://127.0.0.1:11434/v1",
+  vendorKey: "ai-aggregation-platform",
+  baseUrl: "https://ai.yykkj.com/v1",
   modelId: "local-model",
-  apiKey: "",
-  authKind: "none",
+  apiKey: "dummy",
+  authKind: "api_key_and_base_url",
   supportsReasoning: true,
   supportedThinkingLevels: ["off", "low", "medium", "high"],
   modelConfig: {
@@ -143,6 +144,11 @@ const provider: RuntimeProviderConfig = {
     maxTokens: 32_000,
   },
 };
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new Error("Network forbidden in runtime fixtures")));
+});
+afterEach(() => vi.unstubAllGlobals());
 
 const commandShell: CommandShellOption = {
   id: "bash",
@@ -436,7 +442,7 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
-  it("accepts no-auth providers and reuses only an exact pi configuration", async () => {
+  it("accepts platform API-key providers and reuses only an exact pi configuration", async () => {
     const runtime = createRuntime();
 
     expect(runtimeMatches(runtime)).toBe(true);
@@ -472,39 +478,22 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
-  it("keeps a vendor-account runtime across turns despite a fresh auth resolver", async () => {
-    // The sidecar injects a new `resolveAuth` closure on every launch. If that
-    // counted as a configuration change, an OAuth session would rebuild its
-    // runtime — and lose its warm state — once per turn.
+  it("rejects vendor-account launches without resolving credentials on any turn", () => {
+    const resolveAuth = vi.fn(async () => ({ apiKey: "token-turn-1" }));
     const oauthProvider: RuntimeProviderConfig = {
       ...provider,
       apiKey: "",
       authKind: "oauth",
-      resolveAuth: async () => ({ apiKey: "token-turn-1" }),
+      resolveAuth,
     };
-    const runtime = createRuntime({ provider: oauthProvider });
-
-    expect(
-      runtimeMatches(runtime, {
-        provider: {
-          ...oauthProvider,
-          resolveAuth: async () => ({ apiKey: "token-turn-2" }),
-        },
-      }),
-    ).toBe(true);
-    // Everything else about the row still has to match.
-    expect(
-      runtimeMatches(runtime, {
-        provider: { ...oauthProvider, modelId: "another-model" },
-      }),
-    ).toBe(false);
-    expect(
-      runtimeMatches(runtime, {
-        provider: { ...oauthProvider, headers: { "User-Agent": "Custom/1" } },
-      }),
-    ).toBe(false);
-
-    await runtime.dispose();
+    const nextResolveAuth = vi.fn(async () => ({ apiKey: "token-turn-2" }));
+    for (const resolver of [resolveAuth, nextResolveAuth]) {
+      expect(() => createRuntime({ provider: { ...oauthProvider, resolveAuth: resolver } })).toThrow(
+        expect.objectContaining({ errorCode: "PLATFORM_PROVIDER_REQUIRED" }),
+      );
+      expect(resolver).not.toHaveBeenCalled();
+    }
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("guides mutation tools away from patch repair loops", async () => {
@@ -3110,7 +3099,7 @@ describe("DesktopAgentRuntime thinking configuration", () => {
       id: "responses",
       name: "Responses",
       apiStyle: "responses",
-      baseUrl: "https://example.invalid/v1",
+      baseUrl: "https://ai.yykkj.com/v1",
       apiKey: "test-key",
       supportsReasoning: true,
       supportedThinkingLevels: ["off", "high"],
@@ -3180,7 +3169,7 @@ describe("DesktopAgentRuntime thinking configuration", () => {
       cacheRead: 0.0036,
       cacheWrite: 0,
     });
-    expect(model.headers).toEqual({ "X-Catalog-Model": "mimo-v2.5-pro" });
+    expect(model.headers).toBeUndefined();
     expect((runtime as any).thinkingLevel).toBe("off");
 
     await runtime.dispose();
@@ -3265,12 +3254,11 @@ describe("DesktopAgentRuntime thinking configuration", () => {
     const runtime = createRuntime({
       provider: {
         ...provider,
-        vendorKey: "deepseek",
-        baseUrl: "https://relay.example/v1",
         modelId: "deepseek-v4",
         modelConfig: {
           ...provider.modelConfig!,
           baseUrl: "https://relay.example/v1",
+          compat: { thinkingFormat: "deepseek" },
         },
       },
       history: [
@@ -6961,7 +6949,7 @@ describe("DesktopAgentRuntime subagents", () => {
   });
 
   it("inherits the session model when the parent echoes it as an override", async () => {
-    const current = { ...provider, vendorKey: "openai", modelId: "gpt-4o-mini" };
+    const current = { ...provider, modelId: "gpt-4o-mini" };
     const runtime = createRuntime({ provider: current, subagents: [explorer] });
     const tool = taskTool(runtime);
     subagentRuns.calls.length = 0;
@@ -6973,7 +6961,7 @@ describe("DesktopAgentRuntime subagents", () => {
     const result = await tool.execute("task-1", {
       agent: "explorer",
       task: "Inspect the project.",
-      model: "openai/gpt-4o-mini",
+      model: "ai-aggregation-platform/gpt-4o-mini",
     });
 
     expect(subagentRuns.calls).toHaveLength(1);
@@ -8841,24 +8829,11 @@ describe("DesktopAgentRuntime compaction request headers", () => {
     return calls;
   }
 
-  it("sends the session's OpenCode header on the summary request", async () => {
-    const runtime = createRuntime({ provider: openCodeProvider });
-    const calls = captureSummaryRequest(runtime);
-
-    const result = await (runtime as any).generateCompaction(
-      preparation(),
-      new AbortController().signal,
+  it("refuses OpenCode routing before any session or compaction request", () => {
+    expect(() => createRuntime({ provider: openCodeProvider })).toThrow(
+      expect.objectContaining({ errorCode: "PLATFORM_PROVIDER_REQUIRED" }),
     );
-
-    expect(result.ok).toBe(true);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.sessionId).toBe("session-1");
-    expect(calls[0]?.headers).toMatchObject({
-      "x-opencode-session": "session-1",
-      "x-opencode-client": "pi-desktop",
-      "X-Team": "platform",
-    });
-    await runtime.dispose();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("sends a provider row's own headers without adding OpenCode's", async () => {
@@ -10131,13 +10106,9 @@ describe("DesktopAgentRuntime delegation wait settlement safety", () => {
   }, 1_000);
 });
 
-/**
- * The Google adapters reject any `fetch` that is not `globalThis.fetch`, so a
- * turn bound for them must reach the adapter without one while still carrying
- * the provider's own headers (issue #1072).
- */
-describe("DesktopAgentRuntime Google Generative AI transport (#1072)", () => {
-  it("streams a turn through the native endpoint with the provider's headers", async () => {
+describe("DesktopAgentRuntime rejects native Google transport in the platform edition", () => {
+  it("refuses the saved vendor endpoint before requesting credentials or transport", () => {
+    const resolveAuth = vi.fn(async () => ({ apiKey: "dummy-google" }));
     const googleProvider: RuntimeProviderConfig = {
       ...provider,
       id: "google",
@@ -10146,69 +10117,15 @@ describe("DesktopAgentRuntime Google Generative AI transport (#1072)", () => {
       apiStyle: "google_generative_ai",
       baseUrl: "https://generativelanguage.googleapis.com/v1beta",
       modelId: "gemini-3.8-flash",
-      apiKey: "AIza-test",
+      apiKey: "dummy-google",
       authKind: "api_key",
+      resolveAuth,
       headers: { "X-Team": "platform" },
-      modelConfig: {
-        source: "generic",
-        name: "Gemini 3.8 Flash",
-        baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-        reasoning: true,
-        input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 1_000_000,
-        maxTokens: 65_536,
-      },
     };
-    const runtime = createRuntime({ provider: googleProvider, thinkingLevel: "off" });
-    const agent = (runtime as any).agent;
-    const requests: Array<{ url: string; headers: Record<string, string> }> = [];
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-      const headers: Record<string, string> = {};
-      new Headers(init?.headers).forEach((value, key) => {
-        headers[key.toLowerCase()] = value;
-      });
-      requests.push({
-        url: input instanceof Request ? input.url : String(input),
-        headers,
-      });
-      const chunk = (body: unknown) => `data: ${JSON.stringify(body)}\n\n`;
-      return new Response(
-        chunk({
-          candidates: [{ content: { role: "model", parts: [{ text: "hello" }] }, index: 0 }],
-        }) +
-          chunk({
-            candidates: [
-              { content: { role: "model", parts: [] }, finishReason: "STOP", index: 0 },
-            ],
-            usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1, totalTokenCount: 4 },
-          }),
-        { status: 200, headers: { "content-type": "text/event-stream" } },
-      );
-    });
-
-    try {
-      const stream = agent.streamFunction(
-        agent.state.model,
-        {
-          systemPrompt: "system",
-          messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-          tools: [],
-        },
-        {},
-      );
-      const result = await stream.result();
-
-      expect(result.stopReason).toBe("stop");
-      expect(result.content).toEqual([{ type: "text", text: "hello" }]);
-      expect(requests).toHaveLength(1);
-      expect(requests[0].url).toBe(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse",
-      );
-      expect(requests[0].headers["x-team"]).toBe("platform");
-    } finally {
-      vi.unstubAllGlobals();
-      await runtime.dispose();
-    }
-  }, 20_000);
+    expect(() => createRuntime({ provider: googleProvider })).toThrow(
+      expect.objectContaining({ errorCode: "PLATFORM_PROVIDER_REQUIRED" }),
+    );
+    expect(resolveAuth).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 });

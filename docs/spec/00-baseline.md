@@ -1,5 +1,9 @@
 # PI-Desktop Baseline Freeze
 
+> Local fork override: [AI Aggregation Platform edition](03-runtime/ai-platform-edition.md)
+> and its [ADR](../adr/ai-platform-edition.md) replace multi-provider inference
+> and native Pi continuation in this checkout. Process and storage ownership stay unchanged.
+
 - Baseline Version: `0.4.18`
 - Date: `2026-09-14`
 - Status: `Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v16 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + edge-specific work-panel/chat resize ownership + models.dev model catalog with a bundled release snapshot + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font + ChatGPT-style logical project groups)`

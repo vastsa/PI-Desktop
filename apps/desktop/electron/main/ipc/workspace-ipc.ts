@@ -49,6 +49,7 @@ import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { ClipboardHistory } from "../clipboard-history";
 import type { PluginRuntime } from "../plugin-runtime";
+import { registerVideoPreviewIpc } from "./video-preview-ipc";
 import type { IpcRegistrar } from "./types";
 
 type WorkspaceRecord = { path: string; name: string };
@@ -831,6 +832,11 @@ export function registerWorkspaceIpc({
       );
     },
   );
+
+  registerVideoPreviewIpc(registrar, async (ref) => {
+    const root = await optionalWorkspaceRoot();
+    return resolveRealOpenablePath(ref, root, await fsExtraRoots(root));
+  }, getMainWindow);
 
   handle(
     IPC.invoke.fsReadImageDataUrl,

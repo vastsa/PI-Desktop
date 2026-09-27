@@ -28,9 +28,15 @@ function provider(): RuntimeProviderConfig {
   return {
     id: "test-provider",
     modelId: "test-model",
-    apiStyle: "openai-completions",
-    apiKey: "test-key",
-  } as RuntimeProviderConfig;
+    name: "Test provider",
+    vendorKey: "ai-aggregation-platform",
+    baseUrl: "https://ai.yykkj.com/v1",
+    authKind: "api_key_and_base_url",
+    apiStyle: "chat_completions",
+    apiKey: "fixture-key",
+    supportsReasoning: false,
+    supportedThinkingLevels: ["off"],
+  };
 }
 
 /** Limits whose hard limit the small fixture rows in this file never reach. */

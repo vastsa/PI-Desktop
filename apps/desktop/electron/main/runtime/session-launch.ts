@@ -1,3 +1,4 @@
+import { assertAIPlatformProvider, isAIPlatformProvider, platformMediaKind } from "@pi-desktop/shared";
 import { join } from "node:path";
 import {
   ErrorCodes as SharedErrorCodes,
@@ -20,6 +21,7 @@ import {
 import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
+  findSubagentProviderSource,
   loadCustomSystemPrompt,
   loadInstructionChain,
   loadSubagentDefinitions,
@@ -271,6 +273,9 @@ export function createSessionLaunchRuntime({
       { includeDisabled: false },
     );
     const requestedProviderId = overrides.providerId ?? session.providerId;
+    const pinnedProvider = providers.providers.find((item) => item.id === requestedProviderId);
+    if (pinnedProvider) assertAIPlatformProvider(pinnedProvider);
+    providers.providers = providers.providers.filter(isAIPlatformProvider);
     const extensionAgentKey = requestedProviderId
       ? trustedExtensionAgentKeyFromProviderId(requestedProviderId)
       : undefined;
@@ -295,6 +300,7 @@ export function createSessionLaunchRuntime({
     }
     // Plugin-owned agents resolve credentials and transport inside the trusted
     // extension; the host never reads or injects a secret for them.
+    assertAIPlatformProvider(provider);
     const isExtensionAgent = Boolean(extensionAgentKey);
     const isVendorAccount = !isExtensionAgent && provider.authKind === OAUTH_AUTH_KIND;
     const secret = isExtensionAgent || isVendorAccount
@@ -315,19 +321,19 @@ export function createSessionLaunchRuntime({
       (provider.id === settings.defaultProviderId
         ? settings.defaultModelId
         : undefined) ||
-      provider.models?.[0]?.id ||
+      provider.models?.find(binding => !platformMediaKind(binding.id))?.id ||
       provider.defaultModelId;
     if (!modelId) {
       throw Object.assign(new Error("No model selected for provider"), {
         errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
       });
     }
-    if (isImageGenerationModel(
+    if (platformMediaKind(modelId) || isImageGenerationModel(
       imageGenerationBindings(settings.imageGenerationModels, settings.imageGeneration),
       provider.id,
       modelId,
     )) {
-      throw Object.assign(new Error("The image model cannot be used for conversation; select a chat model"), {
+      throw Object.assign(new Error("The image model or video model cannot be used for conversation; select a chat model"), {
         errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
       });
     }
@@ -510,9 +516,15 @@ export function createSessionLaunchRuntime({
     const subagentModelKeys: string[] = [];
     for (const row of providers.providers) {
       if (!row.enabled) continue;
+      const alias = row.vendorKey ?? row.name;
+      // Use the same identity rule as definition pins. An ambiguous alias
+      // must not acquire credentials later through the opt-in catalog.
+      const providerKey = findSubagentProviderSource(alias, providers.providers)?.id === row.id
+        ? alias
+        : row.id;
       for (const binding of row.models ?? []) {
-        if (!binding.availableForSubagents) continue;
-        let key = `${row.vendorKey ?? row.name}/${binding.id}`;
+        if (!binding.availableForSubagents || platformMediaKind(binding.id)) continue;
+        let key = `${providerKey}/${binding.id}`;
         // Two provider rows can share a vendor alias. Opting in one row must
         // not authorize the credential-bearing pin resolved from another row.
         if (subagentBindings.providers[key]?.id && subagentBindings.providers[key].id !== row.id) {
@@ -522,6 +534,7 @@ export function createSessionLaunchRuntime({
           subagentModelKeys.push(key);
           continue; // already resolved, and independently opted in
         }
+        assertAIPlatformProvider(row);
         const isVendorAccount = row.authKind === OAUTH_AUTH_KIND;
         let apiKey = "";
         if (!isVendorAccount && row.authKind !== "none") {

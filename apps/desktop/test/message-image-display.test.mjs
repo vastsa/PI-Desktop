@@ -53,7 +53,7 @@ test("user message image attachments render as thumbnails", () => {
 });
 
 test("local markdown images render inline with a chip fallback", () => {
-  assert.match(markdown, /useReferencedImageDataUrl\(isRemote \? null : localRef\)/);
+  assert.match(markdown, /useReferencedImageDataUrl\(isRemote \|\| isVideoReference\(source\) \? null : localRef\)/);
   assert.match(markdown, /className="chat-image-local"/);
   assert.match(markdown, /className="chat-image-chip"/);
   assert.match(markdown, /attachmentRef/);

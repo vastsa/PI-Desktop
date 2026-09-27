@@ -1,5 +1,5 @@
 import { createServer, type ServerResponse } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { AgentEventEnvelope } from "@pi-desktop/shared";
 import { Type } from "typebox";
@@ -10,7 +10,14 @@ import { PROVIDER_RATE_LIMIT_MAX_RETRIES, PROVIDER_TRANSIENT_MAX_RETRIES } from 
 
 type Request = { model: string; messages: Array<{ role: string; content: unknown }>; reasoning_effort?: string };
 const cleanups: Array<() => Promise<void>> = [];
-afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
+const transportFetch = globalThis.fetch;
+afterEach(async () => {
+  try {
+    for (const cleanup of cleanups.splice(0)) await cleanup();
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
 
 function answer(res: ServerResponse, model: string, tool = false) {
   const delta = tool
@@ -31,6 +38,7 @@ async function fixture(options: {
 } = {}) {
   const requests: Request[] = [];
   const headers: Array<string | undefined> = [];
+  const paths: Array<string | undefined> = [];
   let edits = 0;
   const server = createServer(async (req, res) => {
     let raw = "";
@@ -38,6 +46,7 @@ async function fixture(options: {
     const request = JSON.parse(raw) as Request;
     requests.push(request);
     headers.push(req.headers.authorization);
+    paths.push(req.url);
     options.onRequest?.(request);
     const status = options.failureStatus?.[request.model]
       ?? ((options.fail ?? ["primary"]).includes(request.model) ? 404 : undefined);
@@ -57,10 +66,19 @@ async function fixture(options: {
   }));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("missing fixture address");
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    const request = new globalThis.Request(input, init);
+    expect(request.url).toBe("https://ai.yykkj.com/v1/chat/completions");
+    expect(request.redirect).toBe("error");
+    const localUrl = new URL(request.url);
+    localUrl.protocol = "http:";
+    localUrl.host = `127.0.0.1:${address.port}`;
+    return transportFetch(new globalThis.Request(localUrl, request));
+  });
   const provider = (modelId: string): RuntimeProviderConfig => ({
     id: modelId, name: modelId, modelId,
-    baseUrl: `http://127.0.0.1:${address.port}/v1`,
-    apiKey: `fixture-${modelId}`, authKind: "api_key_and_base_url", apiStyle: "openai-chat",
+    vendorKey: "ai-aggregation-platform", baseUrl: "https://ai.yykkj.com/v1",
+    apiKey: "fixture-key", authKind: "api_key_and_base_url", apiStyle: "chat_completions",
     supportsReasoning: false, supportedThinkingLevels: ["off"],
   });
   const events: AgentEventEnvelope[] = [];
@@ -75,7 +93,7 @@ async function fixture(options: {
     fallbackModels: [{ key: "secondary/secondary", provider: provider("secondary") }],
     onEvent: (event) => events.push(event), ...overrides,
   }).run();
-  return { run, provider, requests, headers, events, edits: () => edits };
+  return { run, provider, requests, headers, paths, events, edits: () => edits };
 }
 
 describe("subagent model fallback over real transport", () => {
@@ -95,7 +113,8 @@ describe("subagent model fallback over real transport", () => {
     expect(result.report).toContain("Completed with retained work.");
     expect(result.error).toBeUndefined();
     expect(f.requests.map((request) => request.model)).toEqual(attempts);
-    expect(f.headers).toEqual(attempts.map((id) => `Bearer fixture-${id}`));
+    expect(f.headers).toEqual(attempts.map(() => "Bearer fixture-key"));
+    expect(f.paths).toEqual(attempts.map(() => "/v1/chat/completions"));
     expect(changes).toEqual(attempts.slice(1));
     expect(result.modelFailures ?? []).toEqual(failedModels.map((id) =>
       expect.objectContaining({ model: `${id}/${id}`, code: "MODEL_NOT_CONFIGURED" })));
@@ -118,7 +137,8 @@ describe("subagent model fallback over real transport", () => {
     expect(result.status).toBe("completed");
     expect(result.modelId).toBe(finalModel);
     expect(f.requests.map((request) => request.model)).toEqual(attempts);
-    expect(f.headers).toEqual(attempts.map((id) => `Bearer fixture-${id}`));
+    expect(f.headers).toEqual(attempts.map(() => "Bearer fixture-key"));
+    expect(f.paths).toEqual(attempts.map(() => "/v1/chat/completions"));
     expect(f.edits()).toBe(1);
     for (const request of f.requests.slice(1)) {
       expect(request.messages.filter((message) => message.role === "user")).toHaveLength(1);

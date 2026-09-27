@@ -56,8 +56,10 @@ test("credentials use explicit rows for predictable field alignment", () => {
   assert.match(setupSource, /<ProviderConnectionFields/);
   assert.match(fieldsSource, /provider-setup-fields/);
   assert.match(fieldsSource, /provider-setup-service-row/);
-  assert.match(fieldsSource, /provider-setup-custom-identity-row/);
-  assert.match(fieldsSource, /provider-setup-custom-auth-row/);
+  assert.match(fieldsSource, /provider-setup-fields is-named/);
+  assert.match(fieldsSource, /provider-setup-key/);
+  assert.match(fieldsSource, /<PasswordInput/);
+  assert.doesNotMatch(fieldsSource, /provider-setup-custom-identity-row|provider-setup-custom-auth-row/);
   const fields = block(".provider-setup-fields");
   assert.ok(fields.includes("display: flex"));
   assert.ok(fields.includes("flex-direction: column"));
@@ -69,51 +71,36 @@ test("credentials use explicit rows for predictable field alignment", () => {
   assert.doesNotMatch(styles, /\.provider-setup-form\s*\{/);
 });
 
-test("custom API format sits beside the key, not in a disclosure", () => {
+test("platform API format remains on the common path beside fixed connection details", () => {
   assert.doesNotMatch(setupSource, /<details/);
   assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
   assert.match(setupSource, /provider-advanced-dialog/);
   assert.match(setupSource, /settings\.advancedSettings/);
   assert.match(fieldsSource, /settings\.apiStyle"/);
-  assert.match(fieldsSource, /CUSTOM_PROVIDER_API_STYLES\.map/);
+  assert.match(fieldsSource, /PLATFORM_API_STYLES\.map/);
+  assert.match(fieldsSource, /isPlatformApiStyle\(value\)/);
+  assert.doesNotMatch(fieldsSource, /CUSTOM_PROVIDER_API_STYLES|custom \? \(/);
   assert.doesNotMatch(fieldsSource, /settings\.apiStyleDerived/);
   assert.match(fieldsSource, /provider-service-chip/);
-  // The format choice belongs to the custom rows only.
-  assert.ok(
-    fieldsSource.indexOf("{custom ? (") < fieldsSource.indexOf("settings.apiStyle\""),
-    "API format must sit inside the custom rows",
-  );
   assert.match(pickerSource, /provider-chosen-advanced-toggle/);
 });
 
-test("custom Name and Base URL sit on one row without helper copy", () => {
-  assert.match(fieldsSource, /type="url"/);
-  assert.match(fieldsSource, /inputMode="url"/);
-  assert.match(fieldsSource, /autoComplete="url"/);
-  // Placeholder is enough; a hint under the URL would un-align the name field.
-  assert.doesNotMatch(fieldsSource, /settings\.baseUrlHint/);
-  assert.match(fieldsSource, /onBlur={commitBaseUrl}/);
-  assert.match(setupSource, /commitBaseUrl=\{commitBaseUrl\}/);
-  assert.match(setupSource, /normalizeBaseUrlInput\(resolvedBaseUrl, resolvedApiStyle\)/);
-  assert.match(setupSource, /!baseUrlIssue/);
-  assert.match(fieldsSource, /aria-invalid={Boolean\(baseUrlError\)}/);
-  assert.match(fieldsSource, /provider-base-url-error/);
-
-  const customIdentity = block(".provider-setup-custom-identity-row");
-  assert.ok(customIdentity.includes("grid-template-columns: minmax(180px, 0.8fr)"));
-  const customAuth = block(".provider-setup-custom-auth-row");
-  assert.ok(customAuth.includes("grid-template-columns: minmax(0, 1.25fr)"));
-  const baseUrl = block(".provider-setup-base-url");
-  assert.doesNotMatch(baseUrl, /grid-column/);
-  assert.match(baseUrl, /min-width: 0/);
-  assert.match(styles, /\.provider-setup-base-url \.field-input\[aria-invalid="true"\]/);
-  assert.match(styles, /\.provider-setup-field-error\s*\{[\s\S]*overflow-wrap: anywhere/);
-
-  const customBlock = fieldsSource.slice(fieldsSource.indexOf("{custom ? ("));
-  assert.ok(
-    customBlock.indexOf("settings.name") < customBlock.indexOf("provider-setup-base-url"),
-    "Name must precede Base URL so they occupy the same 2-column row",
-  );
+test("the platform endpoint is displayed as fixed text while the name stays editable in Advanced", () => {
+  assert.match(fieldsSource, /provider-service-chip-host">\{AI_PLATFORM_BASE_URL\}/);
+  assert.doesNotMatch(fieldsSource, /type="url"|inputMode="url"|onBaseUrlChange|onChangeService/);
+  assert.match(fieldsSource, /settings\.platformCredentialHint/);
+  assert.match(fieldsSource, /settings\.apiKeyKeepHint/);
+  // Both discovery and persistence use the same fixed endpoint; an editable
+  // name must never become a route or expose an endpoint-switching control.
+  assert.match(setupSource, /baseUrl: AI_PLATFORM_BASE_URL/);
+  assert.doesNotMatch(setupSource, /setBaseUrl|ProviderEndpointGuidance|ServiceChooser/);
+  const advanced = setupSource.slice(setupSource.indexOf('className="provider-advanced-body"'));
+  assert.match(advanced, /settings\.name/);
+  assert.match(advanced, /value=\{name\}/);
+  assert.match(advanced, /setName\(event\.target\.value\)/);
+  assert.match(setupSource, /name: providerName/);
+  assert.match(fieldsSource, /autoComplete="off"/);
+  assert.match(fieldsSource, /disabled=\{saving\}/);
 });
 
 test("a failed model list uses a classified error, not a raw dump plus empty copy", () => {
@@ -337,8 +324,8 @@ test("Advanced offers presets plus JSON import and copy without redundant helper
   assert.match(headersViewport, /max-height: min\(220px, 30vh\)/);
   assert.match(headersViewport, /overflow-y: auto/);
   assert.match(headersViewport, /overscroll-behavior: contain/);
-  // Named and custom both expose Advanced; API format stays beside the key.
-  assert.match(setupSource, /named \|\| custom/);
+  // Eligible platform rows retain Advanced; their API format stays on the common path.
+  assert.match(setupSource, /advancedOpen && allowedProvider/);
   assert.match(fieldsSource, /settings\.apiStyle"/);
 });
 

@@ -12,6 +12,8 @@ import { useEffect, useMemo, useState, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import {
   THINKING_LEVELS,
+  AI_PLATFORM_VENDOR_KEY,
+  platformMediaKind,
   bindingDefaultThinkingMenuLevels,
   bindingForCustomModel,
   bindingForCustomModelInfo,
@@ -234,6 +236,7 @@ export function ModelSelectionPanes({
   autoPicked = false,
 }: ModelSelectionPanesProps) {
   const { t } = useTranslation();
+  const platformDefaults = lookupContext?.vendorKey === AI_PLATFORM_VENDOR_KEY;
   const { rows, models, publishedLevelsById, setModels } = selection;
   const [modelQuery, setModelQuery] = useState("");
   const [chosenQuery, setChosenQuery] = useState("");
@@ -449,7 +452,7 @@ export function ModelSelectionPanes({
                 type="checkbox"
                 className="provider-models-check"
                 checked={selected.has(row.id.toLowerCase())}
-                disabled={busy}
+                disabled={busy || (platformDefaults && !!platformMediaKind(row.id))}
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
@@ -462,7 +465,9 @@ export function ModelSelectionPanes({
                 ) : null}
               </span>
               <span className="provider-models-row-limits">
-                {formatTokenCount(row.contextWindow)} · {formatTokenCount(row.maxTokens)}
+                {platformDefaults && platformMediaKind(row.id)
+                  ? t(platformMediaKind(row.id) === "image" ? "settings.imageModel" : "settings.platformVideoModel")
+                  : <>{formatTokenCount(row.contextWindow)} · {formatTokenCount(row.maxTokens)}</>}
               </span>
             </label>
           </li>
@@ -578,6 +583,7 @@ export function ModelSelectionPanes({
         ) : (
           <ul className="provider-chosen-list">
             {visibleChosen.map((binding) => {
+              const mediaKind = platformDefaults ? platformMediaKind(binding.id) : undefined;
               // The catalog is a baseline, not a capability gate. Always show
               // the canonical ladder so a proxy or newly released model can be
               // configured before models.dev catches up.
@@ -617,6 +623,7 @@ export function ModelSelectionPanes({
                     <button
                       type="button"
                       className="provider-chosen-reorder"
+                      disabled={!!mediaKind}
                       aria-label={t("settings.reorderModel", { name: binding.id })}
                       title={t("settings.reorderModel", { name: binding.id })}
                       {...reorder.handleEvents(binding.id)}
@@ -630,12 +637,14 @@ export function ModelSelectionPanes({
                       <span className="provider-chosen-row-alias">{binding.alias.trim()}</span>
                     ) : null}
                     <span className="provider-chosen-row-limits">
-                      {formatTokenCount(binding.contextWindow)} ·{" "}
-                      {formatTokenCount(binding.maxTokens)}
+                      {mediaKind
+                        ? t(mediaKind === "image" ? "settings.imageModel" : "settings.platformVideoModel")
+                        : <>{formatTokenCount(binding.contextWindow)} · {formatTokenCount(binding.maxTokens)}</>}
                     </span>
                     <button
                       type="button"
                       className="provider-chosen-advanced-toggle"
+                      hidden={!!mediaKind}
                       aria-expanded={expanded}
                       aria-controls={advancedId}
                       onClick={() =>
@@ -651,7 +660,7 @@ export function ModelSelectionPanes({
                       className="provider-chosen-remove"
                       ariaLabel={t("settings.removeModel")}
                       tooltip={t("settings.removeModel")}
-                      disabled={busy}
+                      disabled={busy || !!mediaKind}
                       onClick={() =>
                         setModels((current) =>
                           current.filter((entry) => entry.id !== binding.id),
@@ -665,7 +674,7 @@ export function ModelSelectionPanes({
                   <div
                     className="provider-chosen-row-body"
                     id={advancedId}
-                    hidden={!expanded}
+                    hidden={!expanded || !!mediaKind}
                   >
                     <label className="provider-chosen-field">
                       <span className="provider-chosen-field-label">

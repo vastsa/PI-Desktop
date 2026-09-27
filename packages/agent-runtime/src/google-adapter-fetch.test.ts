@@ -1,100 +1,45 @@
-import { describe, expect, it, vi } from "vitest";
-import { normalizeContext } from "@earendil-works/pi-ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { completeOneShot } from "./one-shot-complete.js";
 import { subagentModelBinding } from "./subagent-model-binding.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 
-/**
- * The Google adapter refuses any `fetch` that is not `globalThis.fetch`
- * (issue #1072). Every request path must therefore reach it without one, while
- * the request still carries the provider's own headers.
- */
 const googleProvider: RuntimeProviderConfig = {
-  id: "google",
-  name: "Google Gemini",
-  vendorKey: "google",
-  apiStyle: "google_generative_ai",
-  baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-  modelId: "gemini-3.8-flash",
-  apiKey: "AIza-test",
-  authKind: "api_key",
-  supportsReasoning: true,
-  supportedThinkingLevels: ["off", "high"],
-  headers: { "X-Team": "platform" },
+  id: "google", name: "Google Gemini", vendorKey: "google",
+  apiStyle: "google_generative_ai", baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+  modelId: "gemini-3.8-flash", apiKey: "AIza-fixture", authKind: "api_key",
+  supportsReasoning: false, supportedThinkingLevels: ["off"],
 };
+afterEach(() => vi.unstubAllGlobals());
 
-type Captured = { url: string; headers: Record<string, string> };
-
-function googleStreamResponse(): Response {
-  const chunk = (body: unknown) => `data: ${JSON.stringify(body)}\n\n`;
-  return new Response(
-    chunk({ candidates: [{ content: { role: "model", parts: [{ text: "hello" }] }, index: 0 }] }) +
-      chunk({
-        candidates: [{ content: { role: "model", parts: [] }, finishReason: "STOP", index: 0 }],
-        usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1, totalTokenCount: 4 },
-      }),
-    { status: 200, headers: { "content-type": "text/event-stream" } },
-  );
-}
-
-async function withStubbedGoogle<T>(
-  run: (captured: Captured[]) => Promise<T>,
-): Promise<T> {
-  const captured: Captured[] = [];
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-    const headers: Record<string, string> = {};
-    new Headers(init?.headers).forEach((value, key) => {
-      headers[key.toLowerCase()] = value;
-    });
-    captured.push({ url: input instanceof Request ? input.url : String(input), headers });
-    return googleStreamResponse();
+describe("Gemini model access in the platform edition", () => {
+  it("refuses an old Google one-shot configuration before the native adapter can send", async () => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    await expect(completeOneShot(googleProvider, { messages: [] }, "off"))
+      .rejects.toMatchObject({ errorCode: "PLATFORM_PROVIDER_REQUIRED" });
+    expect(fetcher).not.toHaveBeenCalled();
   });
-  try {
-    return await run(captured);
-  } finally {
-    vi.unstubAllGlobals();
-  }
-}
-
-describe("Google Generative AI requests", () => {
-  it("completes a one-shot completion through the native endpoint", async () => {
-    const result = await withStubbedGoogle(async (captured) => {
-      const oneShot = await completeOneShot(
-        googleProvider,
-        { systemPrompt: "s", messages: [{ role: "user", content: "hi", timestamp: Date.now() }] },
-        "off",
-      );
-      return { oneShot, captured };
-    });
-
-    expect(result.oneShot.text).toBe("hello");
-    expect(result.captured).toHaveLength(1);
-    expect(result.captured[0].url).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse",
-    );
-    expect(result.captured[0].headers["x-team"]).toBe("platform");
-  });
-
-  it("streams a subagent turn through the native endpoint", async () => {
-    const binding = subagentModelBinding(
-      { provider: googleProvider, thinkingLevel: "off", sessionId: "session-1" },
+  it("refuses native Google subagent bindings before request construction", () => {
+    expect(() => subagentModelBinding(
+      { provider: googleProvider, thinkingLevel: "off", sessionId: "s" },
       { claim: () => undefined },
-    );
-
-    const text = await withStubbedGoogle(async (captured) => {
-      const result = await binding
-        .streamFn(
-          binding.model,
-          normalizeContext({
-            messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
-          }),
-          {},
-        )
-        .result();
-      expect(captured).toHaveLength(1);
-      return result.content;
-    });
-
-    expect(text).toEqual([{ type: "text", text: "hello" }]);
+    )).toThrow(/only supports AI Aggregation Platform/);
+  });
+  it("runs Gemini through the platform's OpenAI-compatible route with independent auth", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+      'data: {"id":"fixture","choices":[{"index":0,"delta":{"role":"assistant","content":"hello"},"finish_reason":null}]}\n\n' +
+      'data: {"id":"fixture","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      { headers: { "content-type": "text/event-stream" } },
+    ));
+    vi.stubGlobal("fetch", fetcher);
+    const result = await completeOneShot({
+      ...googleProvider, vendorKey: "ai-aggregation-platform", apiStyle: "chat_completions",
+      baseUrl: "https://ai.yykkj.com/v1", apiKey: "fixture-platform-key",
+    }, { messages: [{ role: "user", content: "hi", timestamp: 0 }] }, "off");
+    expect(result.text).toBe("hello");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(String(url)).toBe("https://ai.yykkj.com/v1/chat/completions");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer fixture-platform-key");
+    expect(JSON.parse(String(init?.body)).model).toBe(googleProvider.modelId);
   });
 });

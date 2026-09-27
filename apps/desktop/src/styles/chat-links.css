@@ -116,6 +116,7 @@
 
 /* Video player in chat messages */
 .chat-video {
+  display: block;
   margin: 0.65em 0;
   max-width: min(100%, 560px);
   border-radius: var(--radius-md-plus);
@@ -134,4 +135,16 @@
  * (e.g. the theme card grid) inside the same panel. */
 .settings-row.settings-row-plain {
   border-bottom: 0;
+}
+
+.chat-video-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+}
+.chat-video-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

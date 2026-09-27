@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
+import { PLATFORM_MEDIA_TIMEOUT_MS, DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
 import type { ProcessExitHandler, StderrHandler } from "./host-process.js";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
@@ -270,12 +270,13 @@ export class AgentSidecar {
     const controller = new AbortController();
     this.localToolControllers.set(key, controller);
     const imageGeneration = params.toolName === "GenerateImages";
+    const platformMedia = params.toolName === "PlatformMedia";
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
         (async () => {
-          if (imageGeneration) {
-            imageGenerationPrompts(input.args);
+          if (imageGeneration || platformMedia) {
+            if (imageGeneration) imageGenerationPrompts(input.args);
             if (!this.host) throw new Error("host unavailable");
             const gate = await this.host.call<LocalToolResult>("tools.execute", params);
             if (!gate.ok) return gate;
@@ -287,7 +288,7 @@ export class AgentSidecar {
           timer = setTimeout(() => {
             controller.abort();
             reject(new Error("host-local tool timeout"));
-          }, imageGeneration ? IMAGE_BATCH_TIMEOUT_MS + 130_000 : DEFAULT_RPC_TIMEOUT_MS);
+          }, platformMedia ? PLATFORM_MEDIA_TIMEOUT_MS + 160_000 : imageGeneration ? IMAGE_BATCH_TIMEOUT_MS + 130_000 : DEFAULT_RPC_TIMEOUT_MS);
           this.localToolTimers.add(timer);
         }),
       ]);

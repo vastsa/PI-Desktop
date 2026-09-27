@@ -3,6 +3,9 @@ import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { generateImageBatch } from "@pi-desktop/agent-runtime";
 import {
+  assertAIPlatformProvider,
+  PLATFORM_IMAGE_MODELS,
+  platformMediaModelBindings,
   imageGenerationPrompts,
   parseImageGenerationBinding,
   type AppSettings,
@@ -32,25 +35,33 @@ export function createImageGenerationTool(options: {
     const host = options.getHost();
     if (!host) return failure("HOST_UNAVAILABLE", "Host unavailable.");
     const settings = await host.call<AppSettings>("settings.get");
-    const binding = parseImageGenerationBinding(settings.imageGeneration);
+    let binding = parseImageGenerationBinding(settings.imageGeneration);
+    if (!binding) {
+      const { session } = await host.call<{ session?: { providerId?: string } }>("session.get", { id: sessionId });
+      if (!session) return failure("SESSION_NOT_FOUND", "The image session no longer exists.");
+      const providerId = session.providerId ?? settings.defaultProviderId;
+      if (providerId) binding = { providerId, modelId: PLATFORM_IMAGE_MODELS[0] };
+    }
     if (!binding)
       return failure(
         "IMAGE_NOT_CONFIGURED",
-        "Configure an image generation model in Settings > Models > Image generation model before generating images. Do not substitute another model.",
+        "Configure an AI Aggregation Platform API key in Settings > Models and select its service for this conversation. Image and video models are included automatically.",
       );
     const { provider } = await host.call<{ provider?: ProviderPublic }>("providers.get", {
       id: binding.providerId,
     });
     if (
       !provider?.enabled ||
+      provider.id !== binding.providerId ||
       !provider.baseUrl ||
-      !provider.models.some((model) => model.id === binding.modelId)
+      !platformMediaModelBindings(provider.models).some((model) => model.id === binding.modelId)
     ) {
       return failure(
         "IMAGE_MODEL_UNAVAILABLE",
         "The configured image model is unavailable. Update Settings > Models > Image generation model.",
       );
     }
+    assertAIPlatformProvider(provider);
     if (provider.authKind === "oauth")
       return failure(
         "IMAGE_AUTH_UNSUPPORTED",

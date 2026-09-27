@@ -91,6 +91,11 @@ function harness(realCatalog) {
       resolveBindingLimits: () => ({}),
     },
     "../oauth": { OAUTH_AUTH_KIND: "oauth" },
+    "../services/platform-account-service": {
+      platformTokenUsage: async () => {
+        throw new Error("the lookup must not retrieve platform account usage");
+      },
+    },
     "../model-discovery": {
       probeProviderEndpoint: async () => {
         throw new Error("the lookup must not probe the network");

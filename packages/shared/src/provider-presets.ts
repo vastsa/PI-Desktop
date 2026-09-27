@@ -1,5 +1,6 @@
 /** Shared identifiers and connection defaults for first-class provider presets. */
 
+import { AI_PLATFORM_VENDOR_KEY, AI_PLATFORM_NAME, AI_PLATFORM_BASE_URL } from "./ai-platform.js";
 import type { CatalogApiStyle } from "./model-catalog.js";
 
 export const OPENCODE_GO_API_STYLE = "opencode_go" as const;
@@ -21,6 +22,7 @@ export type NamedEndpointPreset = {
 };
 
 export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
+  { id: AI_PLATFORM_VENDOR_KEY, vendorKey: AI_PLATFORM_VENDOR_KEY, name: AI_PLATFORM_NAME, baseUrl: AI_PLATFORM_BASE_URL, apiStyle: "chat_completions", labelKey: "settings.presetAiPlatform" },
   {
     id: "openai",
     vendorKey: "openai",

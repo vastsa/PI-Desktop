@@ -129,3 +129,6 @@ export type FsChatRefMatch = {
 export type FsChatRefResolveResult = {
   match: FsChatRefMatch | null;
 };
+
+/** Ephemeral local playback capability; no video bytes cross IPC. */
+export type FsVideoSource = { url: string; name: string; mimeType: string };

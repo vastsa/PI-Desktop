@@ -1,6 +1,9 @@
 import type { EnglishCatalog } from "../en/index.js";
 
 export const fr = {
+  composer: {
+    nativePlatformReadOnly: "L’historique de Pi natif est en lecture seule dans cette édition. Pour continuer, démarrez une discussion dans l’application de bureau avec un modèle AI Aggregation Platform.",
+  },
   "app": {
     "shellName": "PI-Desktop",
     "tagline": "Partenaire de codage IA local",
@@ -224,6 +227,14 @@ export const fr = {
     sessionMissing: "Cette session n'existe plus",
   },
   "chat": {
+    video: {
+      player: "Vidéo",
+      save: "Enregistrer la vidéo…",
+      saved: "Vidéo enregistrée",
+      saveFailed: "Impossible d’enregistrer la vidéo. Réessayez.",
+      previewFailed: "Impossible de lire la vidéo. Vérifiez que le fichier existe et que le format est pris en charge.",
+      retry: "Réessayer l’aperçu",
+    },
     "tableActions": "Actions du tableau",
     "copyTableMarkdown": "Copier le tableau en Markdown",
     "exportTableCsv": "Télécharger le tableau en CSV",
@@ -589,6 +600,35 @@ export const fr = {
     "dismiss": "Ignorer"
   },
   "settings": {
+    presetAiPlatform: "AI Aggregation Platform",
+    platformAccountTitle: "Compte de la plateforme et jeton API",
+    platformOnboardingAccount: "Inscrivez-vous ou connectez-vous sur ai.yykkj.com.",
+    platformOnboardingRecharge: "Rechargez votre compte dans le portefeuille du site.",
+    platformOnboardingToken: "Créez un jeton API sur le site, collez-le dans le fournisseur de la plateforme ci-dessous, puis choisissez vos modèles.",
+    platformVideoModel: "Modèle de génération vidéo",
+    platformMediaDefaultsHint: "Les modèles d’image et de vidéo sont inclus automatiquement, sans configuration séparée. La disponibilité et les frais dépendent du jeton et du solde de la plateforme.",
+    platformCredentialHint: "Enregistrez une seule fois le jeton API pour les requêtes de modèles et de médias. La connexion au site est distincte ; les identifiants Codex ne sont jamais utilisés.",
+    platformRegisterLogin: "Inscription / Connexion",
+    platformWallet: "Portefeuille / Recharger",
+    platformConfigure: "Configurer le jeton API",
+    platformWebPayment: "La recharge et le paiement ont lieu sur le site sécurisé. Consultez-y le solde et le statut du paiement ; cette application ne crée pas de commandes et ne confirme pas les paiements.",
+    platformLinkError: "Impossible d’ouvrir le site. Réessayez ou accédez à ai.yykkj.com dans votre navigateur.",
+    platformUsageProvider: "Fournisseur du jeton",
+    platformChooseProvider: "Choisissez un fournisseur pour afficher le quota de son jeton",
+    platformNoToken: "Activez un fournisseur de la plateforme avec un jeton API enregistré pour afficher son quota.",
+    platformTokenUsage: "Quota du jeton API",
+    platformRefreshUsage: "Actualiser le quota",
+    platformUsageLoading: "Chargement du quota du jeton…",
+    platformUsageError: "Impossible de charger le quota. Vérifiez le jeton enregistré et la connexion, puis actualisez.",
+    platformTokenGranted: "Limite du jeton",
+    platformTokenUsed: "Quota utilisé",
+    platformTokenAvailable: "Quota restant",
+    platformUnlimited: "Quota du jeton illimité",
+    platformTokenExpires: "Expiration",
+    platformTokenNotWallet: "Il s’agit du quota du jeton API, pas du solde de votre compte. Les jetons illimités nécessitent aussi un solde suffisant. Consultez les fonds du compte sur le site.",
+    platformQuotaAmount: "{{amount}} unités de quota",
+    platformShowToken: "Afficher le jeton API",
+    platformHideToken: "Masquer le jeton API",
     "power": "Alimentation",
     "keepAwakeWhileRunning": "Garder l'ordinateur éveillé",
     "keepAwakeWhileRunningDesc": "Empêche la veille due à l'inactivité pendant l'exécution de PI-Desktop. L'écran peut s'éteindre ; la veille manuelle et la fermeture du capot restent possibles.",

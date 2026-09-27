@@ -24,10 +24,11 @@ vi.mock("./subagent-context.js", async (importOriginal) => {
 const provider: RuntimeProviderConfig = {
   id: "local",
   name: "Local",
-  baseUrl: "http://127.0.0.1:11434/v1",
+  vendorKey: "ai-aggregation-platform",
+  baseUrl: "https://ai.yykkj.com/v1",
   modelId: "local-model",
-  apiKey: "",
-  authKind: "none",
+  apiKey: "fixture-key",
+  authKind: "api_key_and_base_url",
   supportsReasoning: false,
   supportedThinkingLevels: ["off"],
 };

@@ -16,6 +16,8 @@ import type { LoadedSkillDocument } from "./skill-document";
 /** Bundled skill teaching the plugin-development loop. */
 export const PLUGIN_DEV_SKILL_FILE = "plugin-development.md";
 export const PLUGIN_DEV_SKILL_ID = "pi-desktop/plugin-development";
+export const PLATFORM_SKILL_ID = "pi-desktop/ai-aggregation-platform";
+const PLATFORM_SKILL_FILE = "ai-aggregation-platform.md";
 export const IMAGE_GENERATION_SKILL_ID = "pi-desktop/imagegen";
 const IMAGE_GENERATION_SKILL_FILE = "image-generation.md";
 
@@ -89,10 +91,10 @@ export type BuiltinSkillInput = {
  * fresh so a packaged update takes effect without a restart.
  */
 export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
-  const ids = [IMAGE_GENERATION_SKILL_ID];
+  const ids = [PLATFORM_SKILL_ID, IMAGE_GENERATION_SKILL_ID];
   if (isPluginWorkspace(input.workspacePath, input.pluginPaths)) ids.push(PLUGIN_DEV_SKILL_ID);
   return ids.flatMap((id) => {
-    const file = id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE;
+    const file = id === PLATFORM_SKILL_ID ? PLATFORM_SKILL_FILE : id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE;
     const raw = readBuiltinSkill(file);
     if (!raw?.raw.trim()) return [];
     const parsed = parseSkillFrontmatter(raw.raw);
@@ -105,8 +107,8 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
  * host does not ship, which is the caller's cue to try the plugin registry.
  */
 export function loadBuiltinSkillBody(id: string): LoadedSkillDocument | null {
-  if (id !== PLUGIN_DEV_SKILL_ID && id !== IMAGE_GENERATION_SKILL_ID) return null;
-  const raw = readBuiltinSkill(id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE);
+  if (id !== PLUGIN_DEV_SKILL_ID && id !== IMAGE_GENERATION_SKILL_ID && id !== PLATFORM_SKILL_ID) return null;
+  const raw = readBuiltinSkill(id === PLATFORM_SKILL_ID ? PLATFORM_SKILL_FILE : id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE);
   if (!raw?.raw.trim()) return null;
   const parsed = parseSkillFrontmatter(raw.raw);
   if (!parsed.body) return null;

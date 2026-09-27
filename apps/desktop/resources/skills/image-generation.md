@@ -5,9 +5,13 @@ description: Generate or edit raster images, illustrations, photos, banners, and
 
 # Image generation
 
-Use the desktop `GenerateImages` tool. The user selects its provider and model
-under Settings → Models → Image generation model; this is independent of the chat
-model. If ToolSearch is available and GenerateImages is not loaded, discover it
+Prefer the platform Skill `pi-desktop/ai-aggregation-platform` and `PlatformMedia`
+for new image work, model selection, receipts and billing. The compatibility
+`GenerateImages` tool also works without a separate image binding. The platform
+service includes `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` automatically.
+An explicit image default in Settings → Models takes precedence; otherwise use
+`gpt-image-2.5-flare` with the current conversation's platform service. Do not
+ask a user who already saved a platform API key to configure image models again. If ToolSearch is available and GenerateImages is not loaded, discover it
 there first. Do not install an SDK, run an API script, ask for a key in chat, or
 substitute the conversation model.
 
@@ -41,8 +45,8 @@ Example: two cover variants and one distinct icon:
 
 Generation may incur cost. Do not retry failed or timed-out items automatically,
 including after cancellation: the provider may already have processed them.
-Report partial success and wait for a user request before retrying. If no image
-model is configured, direct the user to Settings → Models; do not select one silently.
+Report partial success and wait for a user request before retrying. If the platform service or key is missing, direct the user to Settings → Models.
+A model list missing media IDs is not evidence that platform media is unconfigured.
 
 ## Deliver the result
 

@@ -47,8 +47,9 @@ function notFound(): Response {
  * from treating the reference as mixed content, and the fetch/CORS pair is what
  * a stylesheet `url()` and a cross-origin webfont need.
  */
-export function registerPluginAssetScheme(): void {
+export function registerPluginAssetScheme(additionalSchemes: Electron.CustomScheme[] = []): void {
   protocol.registerSchemesAsPrivileged([
+    ...additionalSchemes,
     {
       scheme: THEME_ASSET_SCHEME,
       privileges: {

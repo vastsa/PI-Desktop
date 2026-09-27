@@ -2,9 +2,8 @@
  * Model configuration tab: default model, the AI service list, and the
  * models.dev enrichment snapshot status.
  *
- * API services, plugin-declared services and vendor subscription accounts
- * share one list (D625). An account row still lives and dies through the
- * vendor-account editor and `deleteOauthAccount`, never the provider CRUD.
+ * Only platform API services are offered in this distribution. Legacy
+ * provider/account implementations remain separate from this entry point.
  *
  * The default picker lists each configured model, while provider rows use
  * `models[0]` as the provider's quick default. Editing the default provider
@@ -14,6 +13,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  platformImageDefaults,
+  platformMediaKind,
+  platformMediaModelBindings,
   type ImageGenerationBinding,
   type ModelBinding,
   type ProviderPublic,
@@ -35,12 +37,10 @@ import { providerServesChatModels } from "./default-model";
 import { planImageGenerationDefaults } from "./image-generation-default";
 import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-copy";
 import { ImageGenerationModelRow } from "./ImageGenerationModelRow";
-import { OAuthLoginDialog } from "./OAuthLoginDialog";
+import { PlatformAccountCard } from "./PlatformAccountCard";
+import { isPlatformProvider } from "./service-catalog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { ServiceList } from "./ServiceList";
-import { serviceRowKind } from "./service-row-status";
-import { useVendorAccounts } from "./useVendorAccounts";
-import { VendorAccountDialog, type VendorAccountForm } from "./VendorAccountDialog";
 
 type CatalogStatus = {
   loaded: boolean;
@@ -81,7 +81,7 @@ function chatModelOptions(providers: readonly ProviderPublic[], imageModels: rea
     const ids = provider.models?.length
       ? provider.models.map((model) => model.id)
       : [provider.defaultModelId ?? ""];
-    return ids.filter((id) => !!id.trim() && !isImageCandidate(imageModels, provider.id, id))
+    return ids.filter((id) => !!id.trim() && !platformMediaKind(id) && !isImageCandidate(imageModels, provider.id, id))
       .map((modelId) => ({ provider, modelId }));
   });
 }
@@ -99,7 +99,8 @@ function displayedChatModelId(
 
 export function ModelConfigPage() {
   const { t, i18n } = useTranslation();
-  const providers = useAppStore((s) => s.providers);
+  const allProviders = useAppStore((s) => s.providers);
+  const providers = useMemo(() => allProviders.filter(isPlatformProvider).map(provider => ({ ...provider, models: platformMediaModelBindings(provider.models) })), [allProviders]);
   const settings = useAppStore((s) => s.settings);
   const refreshProviders = useAppStore((s) => s.refreshProviders);
   const showToast = useAppStore((s) => s.showToast);
@@ -114,19 +115,6 @@ export function ModelConfigPage() {
   const [changingImageModel, setChangingImageModel] = useState(false);
   const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
-  const {
-    vendors,
-    accountFor,
-    login,
-    busyAccountId,
-    savingAccount,
-    startLogin,
-    finishLogin,
-    closeLogin,
-    removeAccount,
-    saveAccount,
-  } = useVendorAccounts();
-  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -140,10 +128,11 @@ export function ModelConfigPage() {
     })();
   }, []);
 
-  const imageGenerationCandidates = useMemo(
-    () => imageCandidates(settings?.imageGenerationModels, settings?.imageGeneration),
-    [settings?.imageGenerationModels, settings?.imageGeneration],
+  const mediaDefaults = useMemo(
+    () => platformImageDefaults(settings ?? {}, providers),
+    [settings, providers],
   );
+  const imageGenerationCandidates = mediaDefaults.imageGenerationModels;
   const providerReady = (provider: ProviderPublic) =>
     providerServesChatModels(provider, imageGenerationCandidates);
 
@@ -164,9 +153,6 @@ export function ModelConfigPage() {
     providers.find((provider) => provider.id === settings.defaultProviderId) ?? null;
   const editingProvider =
     setupFor ? providers.find((provider) => provider.id === setupFor) ?? null : null;
-  const editingAccount = editingAccountId
-    ? providers.find((provider) => provider.id === editingAccountId) ?? null
-    : null;
   const effectiveDefaultModelId = settings.defaultModelId?.trim() ||
     defaultProvider?.models?.[0]?.id || defaultProvider?.defaultModelId;
   const defaultProviderReady = defaultProvider !== null && providerReady(defaultProvider) &&
@@ -176,6 +162,7 @@ export function ModelConfigPage() {
 
 
   const setDefaultModel = async (provider: ProviderPublic, modelId: string) => {
+    if (platformMediaKind(modelId)) return;
     if (isImageCandidate(
       imageCandidates(
         useAppStore.getState().settings?.imageGenerationModels,
@@ -217,7 +204,7 @@ export function ModelConfigPage() {
       .filter((entry) => entry.providerId === saved.id)
       .map((entry) => entry.modelId);
     const firstModelId = models.find((model) =>
-      !selectedImageIds.some((id) => sameWireId(id, model.id)),
+      !platformMediaKind(model.id) && !selectedImageIds.some((id) => sameWireId(id, model.id)),
     )?.id;
     const replacementChatModelId =
       settings.defaultProviderId === saved.id && firstModelId &&
@@ -237,10 +224,17 @@ export function ModelConfigPage() {
             (!imageModelIds.some((id) => sameWireId(id, current.imageGeneration?.modelId ?? "")) ||
               !models.some((model) => sameWireId(model.id, current.imageGeneration?.modelId ?? ""))),
         );
+        const currentDefault = providers.find(provider => provider.id === current.defaultProviderId);
+        const keepsChatDefault = currentDefault && providerReady(currentDefault) &&
+          chatModelOptions([currentDefault], imageGenerationCandidates).some(({ modelId }) =>
+            sameWireId(modelId, current.defaultModelId ?? ""));
         const nextSettings = {
           ...current,
           ...plan,
           ...(replacementChatModelId ? { defaultModelId: replacementChatModelId } : {}),
+          ...(!editingProvider && !copyDraft && !keepsChatDefault && firstModelId
+            ? { defaultProviderId: saved.id, defaultModelId: firstModelId }
+            : {}),
         };
         await api.setSettings(nextSettings);
         useAppStore.setState({ settings: nextSettings });
@@ -286,12 +280,9 @@ export function ModelConfigPage() {
     setChangingImageModel(true);
     try {
       const current = await api.getSettings();
-      const candidates = imageCandidates(
-        current.imageGenerationModels,
-        current.imageGeneration,
-      );
+      const candidates = platformImageDefaults(current, providers).imageGenerationModels;
       if (!isImageCandidate(candidates, binding.providerId, binding.modelId)) return;
-      const nextSettings = { ...current, imageGeneration: binding };
+      const nextSettings = { ...current, imageGeneration: binding, imageGenerationModels: candidates };
       await api.setSettings(nextSettings);
       useAppStore.setState({ settings: nextSettings });
       showToast(t("settings.imageModelSelected"), { variant: "success" });
@@ -358,10 +349,6 @@ export function ModelConfigPage() {
     }
   };
 
-  const saveEditingAccount = async (provider: ProviderPublic, form: VendorAccountForm) => {
-    if (await saveAccount(provider, form)) setEditingAccountId(null);
-  };
-
   const testProvider = async (provider: ProviderPublic) => {
     setTestingId(provider.id);
     try {
@@ -424,6 +411,7 @@ export function ModelConfigPage() {
 
   return (
     <div className="settings-stack model-config-page">
+      <PlatformAccountCard providers={providers} onConfigure={() => { setCopyDraft(null); setSetupFor(""); }} />
       <section className="settings-card-block">
         <div className="model-config-section-head">
           <h3 className="settings-card-heading">{t("settings.defaultsTitle")}</h3>
@@ -549,11 +537,20 @@ export function ModelConfigPage() {
           </div>
           {imageGenerationCandidates.length > 0 ? (
             <ImageGenerationModelRow
-              settings={settings}
+              settings={{ ...settings, ...mediaDefaults }}
               providers={providers}
               busy={changingImageModel}
               onChange={setImageGenerationDefault}
             />
+          ) : null}
+          {providers.length > 0 ? (
+            <div className="settings-row model-default-row">
+              <div className="settings-row-copy">
+                <div className="settings-row-title">{t("settings.platformVideoModel")}</div>
+                <div className="settings-row-detail">MiniMax-H3</div>
+                <p className="text-sm text-text-secondary">{t("settings.platformMediaDefaultsHint")}</p>
+              </div>
+            </div>
           ) : null}
         </div>
       </section>
@@ -600,23 +597,15 @@ export function ModelConfigPage() {
               providers={providers}
               defaultProviderId={settings.defaultProviderId}
               isReady={providerReady}
-              accountFor={accountFor}
+              accountFor={() => null}
               busy={
                 busyId !== null ||
                 testingId !== null ||
-                setupFor !== null ||
-                editingAccountId !== null ||
-                busyAccountId !== null ||
-                savingAccount ||
-                login !== null
+                setupFor !== null
               }
-              isRowBusy={(id) => busyId === id || testingId === id || busyAccountId === id}
+              isRowBusy={(id) => busyId === id || testingId === id}
               testingId={testingId}
-              onEdit={(provider) =>
-                serviceRowKind(provider) === "account"
-                  ? setEditingAccountId(provider.id)
-                  : setSetupFor(provider.id)
-              }
+              onEdit={(provider) => setSetupFor(provider.id)}
               onMakeDefault={(provider) =>
                 void setDefaultModel(
                   provider,
@@ -634,11 +623,7 @@ export function ModelConfigPage() {
                 setSetupFor("");
               }}
               onToggleEnabled={(provider) => void toggleEnabled(provider)}
-              onRemove={(provider) =>
-                void (serviceRowKind(provider) === "account"
-                  ? removeAccount(provider)
-                  : removeProvider(provider))
-              }
+              onRemove={(provider) => void removeProvider(provider)}
               onSaveKey={saveProviderKey}
             />
           )}
@@ -687,39 +672,9 @@ export function ModelConfigPage() {
                 .map((binding) => binding.modelId)
             : undefined}
           onSaved={afterSaved}
-          vendors={vendors}
-          onPickSubscription={(vendor) => {
-            setSetupFor(null);
-            setCopyDraft(null);
-            // Started here, not in the dialog: a click happens once, where
-            // StrictMode would run a mount effect twice and open two browsers.
-            startLogin(vendor);
-          }}
         />
       ) : null}
 
-      {editingAccount ? (
-        <VendorAccountDialog
-          provider={editingAccount}
-          initialName={
-            accountFor(editingAccount.id)?.account.accountLabel ||
-            editingAccount.oauthAccountLabel ||
-            editingAccount.name
-          }
-          saving={savingAccount}
-          onClose={() => setEditingAccountId(null)}
-          onSave={(form) => void saveEditingAccount(editingAccount, form)}
-        />
-      ) : null}
-
-      {login ? (
-        <OAuthLoginDialog
-          vendor={login.vendor}
-          session={login.session}
-          onDone={finishLogin}
-          onClose={closeLogin}
-        />
-      ) : null}
     </div>
   );
 }

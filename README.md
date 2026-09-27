@@ -1,3 +1,47 @@
+## AI Aggregation Platform edition (local fork)
+
+This edition uses **https://ai.yykkj.com** as its only inference provider. Sign
+up/sign in, recharge and create an API token on that site, then enter the token
+in **Settings > Models**. No Codex credentials are used. The bundled Skill adds
+image creation/editing, MiniMax-H3 multimodal video, task recovery and billing
+checks through executable scripts. Install **Python 3.9+** for media (Windows:
+`py -3` or Python on PATH); no pip dependencies are required. The wallet opens in
+your browser; native in-app payment is not yet implemented.
+
+The service automatically includes `gpt-image-2.5-flare`,
+`gpt-image-2.5-sunburst` and `MiniMax-H3`. Existing profiles do not need to add
+them again or configure a separate image binding. Media models are not chat
+models; token permissions, balance and actual server availability still apply.
+
+Development: Node >=22.19, pnpm >=10 and Rust stable are required. Run
+`pnpm install --frozen-lockfile`, then `pnpm dev` from this checkout. Use a separate
+`PI_DESKTOP_DATA_DIR` when testing against other PI-Desktop installations.
+Run `pnpm test:platform` for the offline integration checks. See
+[the edition contract](docs/spec/03-runtime/ai-platform-edition.md) and
+[verification notes](docs/platform-verification.md) for remaining release gates.
+Local app build entry points (run on the corresponding native OS):
+
+```bash
+# macOS: .app + DMG + ZIP
+bash scripts/build-macos.sh
+```
+
+```powershell
+# Windows x64: NSIS installer + portable EXE + ZIP
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
+```
+
+Use `--check` / `-Check` for prerequisites, `--dir` / `-Dir` for unpacked apps,
+and `--cargo-mirror` / `-CargoMirror` if crates.io is unreachable. Outputs are in
+`apps/desktop/release/local/<platform>-<arch>/`. See
+[local app build instructions](docs/local-app-build.md) for requirements,
+Python runtime setup, test-profile isolation and signing limitations.
+
+No installers have been published for this edition. Upstream download badges
+below do not install this fork. Fork-specific app identity, signing and update
+feeds must be configured before distributing installers.
+Upstream PI-Desktop attribution and license are retained below.
+
 <div align="center">
 
 <img src="docs/image/readme/logo.png" alt="PI-Desktop" width="108" />

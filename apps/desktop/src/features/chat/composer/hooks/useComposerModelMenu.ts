@@ -5,6 +5,7 @@ import type {
 } from "@pi-desktop/shared";
 import {
   imageGenerationBindings,
+  platformMediaKind,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
   isImageGenerationModel,
@@ -240,6 +241,7 @@ export function useComposerModelMenu({
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
     thinkingQueueRef.current?.invalidate();
     await thinkingQueueRef.current?.idle();
+    if (platformMediaKind(nextModelId)) return;
     if (isImageGenerationModel(
       imageGenerationBindings(
         useAppStore.getState().settings?.imageGenerationModels,

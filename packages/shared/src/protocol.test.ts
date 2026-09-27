@@ -59,6 +59,9 @@ describe("Plan protocol contracts", () => {
       "pi-desktop/stats/getTokenUsageHistory",
     );
     expect(IPC_WHITELIST.has(IPC.invoke.statsGetTokenUsageHistory)).toBe(true);
+    for (const channel of [IPC.invoke.fsVideoSource, IPC.invoke.fsVideoRelease, IPC.invoke.fsVideoSave]) {
+      expect(IPC_WHITELIST.has(channel)).toBe(true);
+    }
     expect(IPC.invoke.fsReadImageDataUrl).toBe("pi-desktop/fs/readImageDataUrl");
     expect(IPC_WHITELIST.has(IPC.invoke.fsReadImageDataUrl)).toBe(true);
     expect(IPC.invoke.networkProxyTest).toBe("pi-desktop/network/testProxy");

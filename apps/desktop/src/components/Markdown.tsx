@@ -40,6 +40,8 @@ import {
 } from "./icons";
 import { TooltipButton } from "./ui";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
+import { MarkdownVideo } from "./MarkdownVideo";
+import { isVideoReference, remarkLocalVideoPaths } from "../lib/markdown-video";
 import { MarkdownTable } from "./MarkdownTable";
 import { markdownTableData } from "../lib/markdown-table";
 import { api } from "../lib/api";
@@ -611,6 +613,10 @@ function Anchor({
     });
   };
 
+  if (href && isVideoReference(href)) {
+    return <MarkdownVideo source={href} label={children} baseDir={baseDir} />;
+  }
+
   // Plain click follows Link open destination. Modifier clicks fall through
   // to _blank, which main routes to shell.openExternal.
 
@@ -674,7 +680,7 @@ function MarkdownImage({
   const localRef = (isRemote ? null : absoluteImagePath(source)) ?? rel ?? attachmentRef;
   // Always run the hook before any branch so hook order stays stable when a
   // streaming src flips between remote and local. Remote images pass null.
-  const dataUrl = useReferencedImageDataUrl(isRemote ? null : localRef);
+  const dataUrl = useReferencedImageDataUrl(isRemote || isVideoReference(source) ? null : localRef);
 
   /*
     A file the renderer can already show is still a file whose folder the user
@@ -685,6 +691,9 @@ function MarkdownImage({
       ? (event: React.MouseEvent<HTMLElement>) =>
           openFileMenu(event, { path: localRef, baseDir })
       : undefined;
+  if (isVideoReference(source)) {
+    return <MarkdownVideo source={source} label={alt} baseDir={baseDir} />;
+  }
   if (isRemote) {
     return (
       <img
@@ -760,18 +769,14 @@ function AudioBlock({
   );
 }
 
-/** Inline video player for video URLs in markdown. */
-function VideoBlock({
-  node: _node,
-  src,
-  ...rest
-}: ComponentProps<"video"> & { node?: unknown }) {
-  const source = typeof src === "string" ? src : "";
-  return (
-    <div className="chat-video">
-      <video controls preload="metadata" src={source} {...rest} />
-    </div>
-  );
+/** HTML video embeds share the same contained local-file playback path. */
+function VideoBlock({ src, children, poster }: ComponentProps<"video"> & { node?: unknown }) {
+  const baseDir = useContext(MarkdownBaseDirContext);
+  // Preserve existing <source> embeds and browser-supported data/blob media.
+  if (!src || /^(?:data|blob):/i.test(src)) {
+    return <span className="chat-video"><video controls preload="metadata" src={src} poster={poster}>{children}</video></span>;
+  }
+  return <MarkdownVideo source={src} baseDir={baseDir} />;
 }
 
 const markdownComponents: Components = {
@@ -790,6 +795,7 @@ const markdownComponents: Components = {
 const staticRemarkPlugins = [
   ...markdownRemarkPlugins,
   remarkNormalizeWrappedMarkdownLinkDestinations,
+  remarkLocalVideoPaths,
   remarkLocalImagePaths,
 ];
 

@@ -2,12 +2,15 @@ import { createServer } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentEventEnvelope } from "@pi-desktop/shared";
 import { DesktopAgentRuntime } from "../runtime.js";
 import { clearTrustedExtensionCache } from "./runner.js";
 
-afterEach(() => clearTrustedExtensionCache());
+afterEach(() => {
+  clearTrustedExtensionCache();
+  vi.restoreAllMocks();
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -27,8 +30,9 @@ describe("Desktop extension lifecycle", () => {
       mode: "agent",
       thinkingLevel: "off",
       provider: {
-        id: "fixture", name: "Fixture", apiKey: "", authKind: "none",
-        baseUrl: "http://127.0.0.1:1/v1", modelId: "fixture",
+        id: "fixture", name: "Fixture", apiKey: "fixture-key", authKind: "api_key_and_base_url",
+        vendorKey: "ai-aggregation-platform",
+        baseUrl: "https://ai.yykkj.com/v1", modelId: "fixture",
         supportsReasoning: false, supportedThinkingLevels: ["off"],
       },
       commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
@@ -56,10 +60,10 @@ describe("Desktop extension lifecycle", () => {
     const root = mkdtempSync(join(tmpdir(), "pi-hooks-lifecycle-"));
     const entered = deferred<void>();
     const answer = deferred<{ kind: "confirm"; value: boolean }>();
-    let requests = 0;
+    const requests: Array<{ path: string | undefined; authorization: string | undefined }> = [];
     let wait = true;
-    const server = createServer((_request, response) => {
-      requests += 1;
+    const server = createServer((request, response) => {
+      requests.push({ path: request.url, authorization: request.headers.authorization });
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end([
         `data: ${JSON.stringify({ id: "test", choices: [{ index: 0, delta: { role: "assistant", content: "Recovered" }, finish_reason: null }] })}`,
@@ -70,6 +74,16 @@ describe("Desktop extension lifecycle", () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Missing fixture address");
+    const transportFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const request = new Request(input, init);
+      expect(request.url).toBe("https://ai.yykkj.com/v1/chat/completions");
+      expect(request.redirect).toBe("error");
+      const localUrl = new URL(request.url);
+      localUrl.protocol = "http:";
+      localUrl.host = `127.0.0.1:${address.port}`;
+      return transportFetch(new Request(localUrl, request));
+    });
     const entry = join(root, "extension.ts");
     writeFileSync(entry, `export default function (pi) {
       pi.on("${event}", async (_event, ctx) => {
@@ -94,8 +108,9 @@ describe("Desktop extension lifecycle", () => {
       mode: "agent",
       thinkingLevel: "off",
       provider: {
-        id: "fixture", name: "Fixture", apiKey: "", authKind: "none",
-        baseUrl: `http://127.0.0.1:${address.port}/v1`, modelId: "fixture",
+        id: "fixture", name: "Fixture", apiKey: "fixture-key", authKind: "api_key_and_base_url",
+        vendorKey: "ai-aggregation-platform",
+        baseUrl: "https://ai.yykkj.com/v1", modelId: "fixture",
         supportsReasoning: false, supportedThinkingLevels: ["off"],
       },
       commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
@@ -109,12 +124,14 @@ describe("Desktop extension lifecycle", () => {
       await entered.promise;
       await runtime[action]();
       await rejected;
-      expect(requests).toBe(0);
+      expect(requests).toHaveLength(0);
       answer.resolve({ kind: "confirm", value: true });
       if (action === "abort") {
         wait = false;
         await runtime.prompt("Try again");
-        expect(requests).toBe(1);
+        expect(requests).toEqual([{
+          path: "/v1/chat/completions", authorization: "Bearer fixture-key",
+        }]);
         expect(JSON.stringify(events)).toContain("Recovered");
       }
     } finally {

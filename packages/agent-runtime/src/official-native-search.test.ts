@@ -1,6 +1,7 @@
+// Upstream search routing is retained for adapter maintenance, not enabled by this edition.
 import { describe, expect, it } from "vitest";
 import type { Message } from "@earendil-works/pi-ai";
-import { buildProviderModel, createProviderModels, apiBindingForProviderModel, type RuntimeProviderConfig } from "./provider-binding.js";
+import { buildProviderModel, createProviderModels, apiBindingForProviderModel, type RuntimeProviderConfig } from "./provider-binding-upstream.js";
 import { modelConfigWithBinding } from "./model-capabilities.js";
 
 describe("official search through the existing service", () => {
