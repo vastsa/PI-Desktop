@@ -128,6 +128,7 @@ export const de = {
   },
   "nav": {
     "pinnedSessions": "Angeheftet",
+    "pinnedProjects": "Angeheftet",
     "home": "Startseite",
     "newTask": "Neue Aufgabe",
     "newProject": "Neues Projekt",

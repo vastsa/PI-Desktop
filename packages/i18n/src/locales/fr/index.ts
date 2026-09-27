@@ -128,6 +128,7 @@ export const fr = {
   },
   "nav": {
     "pinnedSessions": "Épinglées",
+    "pinnedProjects": "Épinglées",
     "home": "Accueil",
     "newTask": "Nouvelle tâche",
     "newProject": "Nouveau projet",

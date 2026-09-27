@@ -137,6 +137,7 @@ export const ko = {
   },
   nav: {
     "pinnedSessions": "고정됨",
+    "pinnedProjects": "고정됨",
     home: "홈",
     newTask: "새 작업",
     newProject: "새 프로젝트",
