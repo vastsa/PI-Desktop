@@ -945,10 +945,13 @@ export class TrustedExtensionRunner {
           try {
             const text = JSON.stringify(payload);
             if (text !== undefined && text.length <= 256_000) {
+              const signal = this.lifecycle.signal;
               void bridge.requestUi(extension.spec, {
                 kind: "setStatus",
                 key: `event:${eventName}`,
                 text,
+              }).catch((error: unknown) => {
+                if (!signal.aborted) this.report(extension.spec.id, "handler_error", errorMessage(error), `events.emit:${eventName}`);
               });
             }
           } catch (error) {

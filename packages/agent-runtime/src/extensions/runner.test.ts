@@ -629,6 +629,29 @@ export default function (pi: any) {
     });
   });
 
+  it("reports a failed Context snapshot UI request instead of leaving a rejected promise", async () => {
+    const ext = spec(
+      "events-reject",
+      `export default function (pi: any) {
+  pi.on("turn_end", () => pi.events.emit("context:snapshot", { contextWindow: 128000, totalTokens: 32 }));
+}`,
+    );
+    const { bridge } = fakeBridge();
+    bridge.requestUi = async () => { throw new Error("renderer unavailable"); };
+    const runner = new TrustedExtensionRunner({ specs: [ext], bridge });
+    await runner.load();
+    await runner.emit("turn_end", { type: "turn_end" });
+    await flush();
+    expect(runner.getDiagnostics()).toContainEqual(
+      expect.objectContaining({
+        kind: "handler_error",
+        member: "events.emit:context:snapshot",
+        message: "renderer unavailable",
+      }),
+    );
+    await runner.dispose();
+  });
+
   it("drops unrelated and oversized custom events before the host status bridge", async () => {
     const ext = spec(
       "bounded-events",
