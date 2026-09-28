@@ -206,8 +206,8 @@ await call("settings.set", { defaultProviderId: providerId, defaultModelId: "stu
 for (const [name, dir] of Object.entries(pluginDirs)) {
   await call("plugins.loadDev", { path: dir });
   if (name === "proj") {
-    await call("plugins.setScope", { id: "e2e.proj", scope: { mode: "projects", projects: [realpathSync(project)] } });
+    await call("plugins.setScope", { id: "e2e.proj", scope: { mode: "projects", projects: [realpathSync.native(project)] } });
   }
 }
-console.log(JSON.stringify({ providerId, project: realpathSync(project), agentDir, dataDir }));
+console.log(JSON.stringify({ providerId, project: realpathSync.native(project), agentDir, dataDir }));
 host.stdin.end(); host.kill();

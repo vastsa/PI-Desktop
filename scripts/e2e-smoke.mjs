@@ -64,10 +64,9 @@ function skip(id, detail) {
 // The Host stores a project path in its canonical spelling
 // (`db::canonical_project_path`): the directory is resolved and the separators are
 // normalized, so `projects.list` reports forward slashes on every platform.
-// Compare list output against that spelling — a native `realpathSync` path never
-// equals it on Windows, which is how the project "removed / still there" clauses
-// passed for the wrong reason.
-const storedProjectPath = (path) => realpathSync(path).replace(/\\/g, "/");
+// Compare list output against that spelling — `realpathSync.native` expands
+// Windows short names before normalizing separators.
+const storedProjectPath = (path) => realpathSync.native(path).replace(/\\/g, "/");
 
 class Host {
   constructor(bin, dataDir) {
