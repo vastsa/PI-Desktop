@@ -150,6 +150,17 @@
   color: var(--ds-accent);
 }
 
+/*
+  An external agent runs this session from a program on the machine and edits
+  the project with its own tools, so the chip swaps the bot for a terminal and
+  takes the warning tone the access notice in Settings uses. This is the only
+  signal left below 450px, where the chip collapses to its icon, so it has to
+  read as different rather than as decoration.
+*/
+.composer-model-thinking-icon.is-external-agent {
+  color: var(--ds-warning);
+}
+
 .composer-model-thinking-model,
 .composer-model-thinking-level {
   min-width: 0;

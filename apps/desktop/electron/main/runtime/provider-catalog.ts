@@ -6,6 +6,7 @@ import {
   resolveBindingLimits,
   validateNetworkProxy,
   validateSpeechSettings,
+  type AcpAgentConfig,
   type CommandShellId,
   type ModelBinding,
   type SessionThinkingLevel,
@@ -46,6 +47,11 @@ export type RuntimeProvider = {
   headers?: Record<string, string>;
   enabled?: boolean;
   supportsVision?: boolean;
+  /**
+   * External ACP agent. When present the session is executed by that program
+   * and the model-binding fields above do not apply.
+   */
+  acp?: AcpAgentConfig;
 };
 
 export type RuntimeSession = {

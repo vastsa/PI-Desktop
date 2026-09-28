@@ -627,6 +627,22 @@ export function createSessionLaunchRuntime({
         customSystemPrompt,
         projectInstructions,
         projectMemory,
+        // An ACP row is executed by a program on this machine, not by a model
+        // behind a base URL. The sidecar builds the session from this and skips
+        // the pi provider entirely, so `provider` below is not consulted.
+        ...(provider.acp
+          ? {
+              acp: {
+                command: provider.acp.command,
+                args: provider.acp.args,
+                // The agent session is scoped to the project, which is also
+                // where it runs its tools. Falling back to the scratch dir would
+                // hand every agent an empty workspace.
+                cwd: projectPath ?? process.cwd(),
+                ...(provider.acp.modelId ? { modelId: provider.acp.modelId } : {}),
+              },
+            }
+          : {}),
         provider: {
           id: provider.id,
           name: provider.name,

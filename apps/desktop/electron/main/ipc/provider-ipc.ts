@@ -4,6 +4,7 @@ import {
   inferEndpointProfile,
   normalizeApiStyle,
   resolveBindingLimits,
+  type AcpAgentConfig,
   type ModelBinding,
   type ProviderReorderInput,
   type OAuthRespondInput,
@@ -56,7 +57,23 @@ type RuntimeProvider = {
   headers?: Record<string, string>;
   enabled?: boolean;
   supportsVision?: boolean;
+  /** External ACP agent; present instead of a model endpoint's credentials. */
+  acp?: AcpAgentConfig;
 };
+
+/**
+ * Serde cannot tell an absent `acp` from a JSON `null`, so both would mean
+ * "leave the stored agent alone" and a provider could never stop being an agent.
+ * host-core clears on an empty command instead, matching how an empty header map
+ * clears headers. The dialog says "remove" with `null`; this turns that into the
+ * shape host-core can act on and leaves a real config untouched.
+ */
+function withAcpClearShape(input: unknown): unknown {
+  if (typeof input !== "object" || input === null) return input;
+  const record = input as Record<string, unknown>;
+  if (!("acp" in record) || record.acp !== null) return input;
+  return { ...record, acp: { command: "", args: [] } };
+}
 
 export type ProviderIpcDependencies = {
   registrar: IpcRegistrar;
@@ -175,7 +192,7 @@ export function registerProviderIpc({
     if (!host) throw new Error("host unavailable");
     const result = await host.call<{ provider?: RuntimeProvider | null }>(
       "providers.update",
-      input,
+      withAcpClearShape(input),
     );
     await modelsDevCatalog.ensureLoaded();
     return result.provider

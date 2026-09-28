@@ -43,6 +43,86 @@ pub(crate) fn config_headers(raw: &str) -> Option<BTreeMap<String, String>> {
     }
 }
 
+/// An external Agent Client Protocol agent this provider row stands for.
+///
+/// The row is still a provider row: it is what the settings list, the composer
+/// and the session ledger already know how to point at. What changes is that
+/// the work is executed by a program on this machine instead of by a model
+/// behind a base URL, so the row carries a command instead of credentials.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpAgentConfig {
+    /// Executable name or absolute path. Never passed to a shell.
+    pub command: String,
+    /// Arguments before any host-supplied ones, typically `["acp"]`.
+    pub args: Vec<String>,
+    /// Model to select once the agent opens a session, when the user pinned one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+}
+
+/// Read the `acp` object out of a stored provider config.
+///
+/// A row without a usable command is treated as no agent at all rather than as
+/// a broken one: the alternative is a provider that looks configured and fails
+/// on the first prompt.
+pub(crate) fn config_acp(raw: &str) -> Option<AcpAgentConfig> {
+    let config = config_value(raw)?;
+    let object = config.get("acp")?.as_object()?;
+    let command = object.get("command")?.as_str()?.trim();
+    if command.is_empty() {
+        return None;
+    }
+    let args = object
+        .get("args")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(|text| text.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let model_id = object
+        .get("modelId")
+        .and_then(|value| value.as_str())
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty());
+    Some(AcpAgentConfig {
+        command: command.to_string(),
+        args,
+        model_id,
+    })
+}
+
+/// Write or clear the `acp` object of a stored provider config.
+///
+/// An empty command clears the agent rather than storing a broken one, which
+/// matches how headers are cleared by an empty map. Serde cannot tell an absent
+/// `acp` from a JSON `null`, so "not supplied" and "remove it" have to share a
+/// representation; an empty value is the one the host can send for both.
+pub(crate) fn config_with_acp(raw: &str, acp: Option<&AcpAgentConfig>) -> Result<String> {
+    let mut config = ensure_config_object(raw)?;
+    let object = config
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("provider config_json must be a JSON object"))?;
+    let command = acp.map(|agent| agent.command.trim()).unwrap_or("");
+    if command.is_empty() {
+        object.remove("acp");
+    } else {
+        let agent = acp.expect("a non-empty command came from a present config");
+        object.insert(
+            "acp".into(),
+            serde_json::json!({
+                "command": command,
+                "args": agent.args,
+                "modelId": agent.model_id,
+            }),
+        );
+    }
+    Ok(config.to_string())
+}
+
 /// Fold and drop the `headers` object of a provider payload before it is
 /// deserialized into a write input. A bundle from a peer on an older build, or
 /// a backup taken before the header rule was tightened, can carry a value this

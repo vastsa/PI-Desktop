@@ -7,8 +7,11 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
+  IconTerminal,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
+import { useAppStore } from "../../../stores/app-store";
+import { externalAgentForSession } from "../../../lib/session-backend";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
 import { ThinkingLevelSlider } from "./ThinkingLevelSlider";
 
@@ -59,6 +62,20 @@ export function ComposerModelPicker({
     onMenuKeyDown,
   } = controller;
 
+  // A session on an agent row is run by a program on this machine, not by the
+  // built-in agent, and that program edits the project with its own tools. The
+  // chip says so where a prompt is about to be sent: the icon swaps because at
+  // narrow widths this chip collapses to the icon alone, and the tooltip
+  // carries the sentence for everyone else.
+  const providers = useAppStore((s) => s.providers);
+  const externalAgent = externalAgentForSession(selectedProviderId, providers);
+  const backendNote = externalAgent
+    ? t("chat.externalAgentRuns", { command: externalAgent.command })
+    : "";
+  const description = [backendNote, modelLabel, `${t("chat.reasoningLevel")}: ${thinkingLabel}`]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <AnchoredMenu
       className="composer-model-thinking"
@@ -76,8 +93,8 @@ export function ComposerModelPicker({
           ref={ref}
           type="button"
           className={`icon-btn composer-model-thinking-chip ${open ? "active" : ""}`}
-          tooltip={`${modelLabel} · ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
-          ariaLabel={`${t("chat.model")}: ${modelLabel}. ${t("chat.reasoningLevel")}: ${thinkingLabel}`}
+          tooltip={description}
+          ariaLabel={`${t("chat.model")}: ${description}`}
           aria-haspopup="menu"
           aria-expanded={open}
           disabled={controlsBlocked}
@@ -91,8 +108,11 @@ export function ComposerModelPicker({
             setOpen((current) => !current);
           }}
         >
-          <span className="composer-model-thinking-icon" aria-hidden="true">
-            <IconBot size={14} />
+          <span
+            className={`composer-model-thinking-icon${externalAgent ? " is-external-agent" : ""}`}
+            aria-hidden="true"
+          >
+            {externalAgent ? <IconTerminal size={14} /> : <IconBot size={14} />}
           </span>
           <span className="composer-model-thinking-model">{modelLabel}</span>
           {thinkingLevel !== "off" ? (

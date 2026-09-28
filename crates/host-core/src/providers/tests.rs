@@ -16,6 +16,7 @@ fn reasoning_override_roundtrips_and_preserves_provider_config() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Custom".into(),
             vendor_key: None,
             provider_type: None,
@@ -63,6 +64,7 @@ fn reasoning_override_roundtrips_and_preserves_provider_config() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id.clone(),
             name: None,
             vendor_key: None,
@@ -115,6 +117,7 @@ fn reasoning_override_roundtrips_and_preserves_provider_config() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id,
             name: Some("Renamed".into()),
             vendor_key: None,
@@ -152,6 +155,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Multi-model".into(),
             vendor_key: None,
             provider_type: None,
@@ -245,6 +249,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Legacy".into(),
             vendor_key: None,
             provider_type: None,
@@ -362,6 +367,7 @@ fn alias_survives_provider_create_and_update() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Aliased".into(),
             vendor_key: None,
             provider_type: None,
@@ -388,6 +394,7 @@ fn alias_survives_provider_create_and_update() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id.clone(),
             name: None,
             vendor_key: None,
@@ -457,6 +464,7 @@ fn over_long_alias_leaves_stored_secrets_untouched() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Too long".into(),
             vendor_key: None,
             provider_type: None,
@@ -486,6 +494,7 @@ fn over_long_alias_leaves_stored_secrets_untouched() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Aliased".into(),
             vendor_key: None,
             provider_type: None,
@@ -516,6 +525,7 @@ fn over_long_alias_leaves_stored_secrets_untouched() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id.clone(),
             name: None,
             vendor_key: None,
@@ -555,6 +565,7 @@ fn over_long_alias_is_rejected_by_the_write_paths() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Too long".into(),
             vendor_key: None,
             provider_type: None,
@@ -582,6 +593,7 @@ fn over_long_alias_is_rejected_by_the_write_paths() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Aliased".into(),
             vendor_key: None,
             provider_type: None,
@@ -606,6 +618,7 @@ fn over_long_alias_is_rejected_by_the_write_paths() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id,
             name: None,
             vendor_key: None,
@@ -639,6 +652,7 @@ fn limit_overrides_roundtrip_and_clear_with_zero() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Limits".into(),
             vendor_key: None,
             provider_type: None,
@@ -668,6 +682,7 @@ fn limit_overrides_roundtrip_and_clear_with_zero() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id.clone(),
             name: None,
             vendor_key: None,
@@ -703,6 +718,7 @@ fn provider_without_override_omits_reasoning_capability() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "No override".into(),
             vendor_key: None,
             provider_type: None,
@@ -737,6 +753,7 @@ fn thinking_levels_override_normalizes_and_can_clear() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Sparse".into(),
             vendor_key: None,
             provider_type: None,
@@ -772,6 +789,7 @@ fn thinking_levels_override_normalizes_and_can_clear() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id.clone(),
             name: None,
             vendor_key: None,
@@ -818,6 +836,7 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Catalog".into(),
             vendor_key: None,
             provider_type: None,
@@ -915,6 +934,7 @@ fn an_oauth_credential_alone_makes_the_provider_ready() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Claude".into(),
             vendor_key: Some("anthropic".into()),
             provider_type: None,
@@ -957,6 +977,7 @@ fn an_oauth_credential_alone_makes_the_provider_ready() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             id: provider.id.clone(),
             name: Some("Claude Max".into()),
             vendor_key: None,
@@ -1015,6 +1036,7 @@ fn a_provider_can_hold_both_an_api_key_and_a_vendor_account() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Both".into(),
             vendor_key: Some("anthropic".into()),
             provider_type: None,
@@ -1059,6 +1081,7 @@ fn header_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 
 fn blank_update(id: String) -> ProviderUpdateInput {
     ProviderUpdateInput {
+        acp: None,
         id,
         name: None,
         vendor_key: None,
@@ -1088,6 +1111,7 @@ fn headers_roundtrip_migrate_user_agent_clear_and_reject() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Headers".into(),
             vendor_key: None,
             provider_type: None,
@@ -1151,6 +1175,7 @@ fn headers_roundtrip_migrate_user_agent_clear_and_reject() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             headers: Some(BTreeMap::new()),
             ..blank_update(provider.id.clone())
         },
@@ -1174,6 +1199,7 @@ fn headers_roundtrip_migrate_user_agent_clear_and_reject() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             headers: Some(header_map(&[("X-Custom", "bad\r\nX-Injected: 1")])),
             ..blank_update(provider.id.clone())
         },
@@ -1188,6 +1214,7 @@ fn headers_roundtrip_migrate_user_agent_clear_and_reject() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             headers: Some(header_map(&[("Authorization", "Bearer secret")])),
             ..blank_update(provider.id)
         },
@@ -1227,6 +1254,7 @@ fn a_stored_array_survives_an_entry_that_lost_a_field() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Stored array".into(),
             vendor_key: None,
             provider_type: None,
@@ -1313,6 +1341,7 @@ fn degraded_model_array_cannot_be_overwritten_by_update() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Protected array".into(),
             vendor_key: None,
             provider_type: None,
@@ -1362,6 +1391,7 @@ fn degraded_model_array_cannot_be_overwritten_by_update() {
         &db,
         &secrets,
         ProviderUpdateInput {
+            acp: None,
             models: Some(vec![binding_with_limits("alpha", 128_000, 8_192)]),
             secret_value: Some("new-secret".into()),
             ..blank_update(provider.id.clone())
@@ -1400,6 +1430,7 @@ fn header_values_fold_fullwidth_and_reject_non_latin1() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Custom".into(),
             vendor_key: None,
             provider_type: None,
@@ -1430,6 +1461,7 @@ fn header_values_fold_fullwidth_and_reject_non_latin1() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Star".into(),
             vendor_key: None,
             provider_type: None,
@@ -1532,6 +1564,7 @@ fn provider_api_keys_fold_fullwidth_on_write_and_read() {
         &db,
         &secrets,
         ProviderCreateInput {
+            acp: None,
             name: "Custom".into(),
             vendor_key: None,
             provider_type: None,
