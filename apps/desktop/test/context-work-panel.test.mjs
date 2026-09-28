@@ -34,14 +34,21 @@ test("the work-panel launcher renders the native Context panel", () => {
   assert.match(workPanelSource, /toolWorkPanelTab\("context"\)/);
 });
 
-test("the Context panel consumes snapshots, falls back to session usage, and runs pack commands", () => {
-  assert.match(contextPanelSource, /api\.onExtensionStatus/);
-  assert.match(contextPanelSource, /CONTEXT_SNAPSHOT_STATUS_KEY/);
-  assert.match(contextPanelSource, /fallbackContextSnapshot/);
+test("the Context panel replays session snapshots from the always-mounted listener", () => {
+  assert.match(extensionPromptHostSource, /recordContextSnapshot\(event\)/);
+  assert.match(contextPanelSource, /useSyncExternalStore/);
+  assert.match(contextPanelSource, /getContextSnapshot\(activeSessionId\)/);
+  assert.doesNotMatch(contextPanelSource, /api\.onExtensionStatus/);
   assert.match(contextPanelSource, /context-export/);
   assert.match(contextPanelSource, /context-import/);
   assert.match(contextPanelSource, /context-handoff/);
-  assert.doesNotMatch(contextPanelSource, /if \(!snapshot\) \{\s*return \(/);
+});
+
+test("fallback is labelled as an estimate and detailed rows do not include a Free bar", () => {
+  assert.match(contextPanelSource, /contextSnapshotView/);
+  assert.match(contextPanelSource, /context-panel-estimate/);
+  assert.match(contextPanelSource, /context-panel-breakdown/);
+  assert.doesNotMatch(contextPanelSource, /fallbackContextSnapshot/);
 });
 
 test("structured extension events never render as raw status text", () => {

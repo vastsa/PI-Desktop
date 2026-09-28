@@ -31,9 +31,13 @@ part of the launch path; ADR 0215 makes active plugin contributions authoritativ
    replace newer snapshots. The work panel reads that cache even when opened
    after the turn. The cache is not persisted across renderer reloads and raw
    event JSON is never rendered in the human-readable status line.
-4. The native Context work-panel tab shows one capacity summary (used and
-   remaining) and a breakdown whose bars represent shares of used context.
-   Zero and deferred categories remain available without dominating the list.
+4. The native Context work-panel tab shows one capacity summary (model-reported
+   used and remaining) and a non-overlapping estimated breakdown. Messages,
+   System prompt, and Memory files share the estimated category total;
+   Skills, tools, MCP, commands, bundles, and custom agents are nested within
+   System prompt and share that estimate instead. A mismatch between category
+   estimates and model usage is labelled, not hidden. Zero and deferred
+   categories remain available without dominating the list.
    Without a snapshot it labels last-request usage as an estimate, not a
    fabricated Messages/Free breakdown. Export/import/handoff still invoke the
    existing sidecar commands. Plugin permissions and project activation remain

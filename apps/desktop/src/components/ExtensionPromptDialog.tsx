@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { TrustedExtensionUiPrompt } from "@pi-desktop/shared";
 import { api } from "../lib/api";
+import { CONTEXT_SNAPSHOT_STATUS_KEY } from "../lib/context-panel";
+import { recordContextSnapshot } from "../lib/context-snapshot-store";
 import { useAppStore } from "../stores/app-store";
 import { Button, TooltipButton } from "./ui";
 import { IconClose, IconPlug } from "./icons";
@@ -28,8 +30,12 @@ export function ExtensionPromptHost() {
       setQueue((prev) => (prev.some((p) => p.promptId === prompt.promptId) ? prev : [...prev, prompt]));
     });
     const offStatus = api.onExtensionStatus((event) => {
-      // `pi.events.emit()` payloads share this transport but are renderer data,
-      // not human-facing status copy.
+      // Keep the session's last breakdown while its work-panel tab is closed.
+      if (event.key === CONTEXT_SNAPSHOT_STATUS_KEY) {
+        recordContextSnapshot(event);
+        return;
+      }
+      // Other extension events are renderer data, not human-facing status copy.
       if (event.key.startsWith("event:")) return;
       setStatus((prev) => {
         const session = { ...(prev[event.sessionId] ?? {}) };

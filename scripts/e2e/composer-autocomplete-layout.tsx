@@ -7,6 +7,7 @@ import { en } from "@pi-desktop/i18n";
 import { IPC } from "@pi-desktop/shared";
 import { ComposerAutocomplete } from "../../apps/desktop/src/components/ComposerAutocomplete";
 import { ContextPanel } from "../../apps/desktop/src/components/workpanel/ContextPanel";
+import { ExtensionPromptHost } from "../../apps/desktop/src/components/ExtensionPromptDialog";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 import { type AutocompleteItem, useComposerAutocomplete } from "../../apps/desktop/src/hooks/use-composer-autocomplete";
 
@@ -70,6 +71,17 @@ function MultiSkillFixture({ width }: { width: number }) {
   </I18nextProvider>;
 }
 
+function ContextFixture({ showPanel }: { showPanel: boolean }) {
+  return <I18nextProvider i18n={i18n}>
+    <ExtensionPromptHost />
+    {showPanel ? (
+      <div style={{ width: 320, height: 620, display: "flex" }}>
+        <ContextPanel />
+      </div>
+    ) : null}
+  </I18nextProvider>;
+}
+
 const settle = async () => {
   await document.fonts.ready;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -78,6 +90,7 @@ declare global {
   var autocompleteLayoutProbe: (width: number, fileMode?: boolean) => Promise<unknown>;
   var autocompleteMultiSkillProbe: (width: number) => Promise<unknown>;
   var contextPanelProbe: () => Promise<unknown>;
+  var contextEstimateProbe: () => Promise<unknown>;
 }
 globalThis.contextPanelProbe = async () => {
   if (!i18n.isInitialized) await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
@@ -93,29 +106,80 @@ globalThis.contextPanelProbe = async () => {
       return { ok: true, data: { ok: true } };
     },
   } });
-  useAppStore.setState({ activeSessionId: "context-s1", messages: [], providers: [], providerModels: {}, sessionCompactions: {} });
-  flushSync(() => root.render(<I18nextProvider i18n={i18n}><ContextPanel /></I18nextProvider>));
+  const usageMessage = {
+    id: "dev-usage", role: "assistant" as const, content: "Hi", createdAt: new Date(0).toISOString(),
+    status: "complete" as const, modelId: "m", providerId: "p",
+    usage: { inputTokens: 15, outputTokens: 0, totalTokens: 15 },
+  };
+  useAppStore.setState({ activeSessionId: "context-s1", messages: [usageMessage], providers: [], providerModels: {}, sessionCompactions: {} });
+  flushSync(() => root.render(<ContextFixture showPanel />));
   await settle();
-  const actionsBeforeUsage = !!document.querySelector("#context-pack-name");
+  const estimated = !!document.querySelector(".context-panel-estimate") &&
+    document.querySelectorAll(".context-panel-category").length === 0;
+  const actionsBeforeSnapshot = !!document.querySelector("#context-pack-name");
+  const importNeedsName = [...document.querySelectorAll<HTMLButtonElement>(".context-panel-action-buttons button")]
+    .find((button) => button.textContent?.includes("Import"))?.disabled === true;
+  flushSync(() => root.render(<ContextFixture showPanel={false} />));
+  await settle();
   listeners.get(IPC.event.extensionsStatus)?.({
     sessionId: "context-s1", extensionId: "pi-context",
     key: "event:context:snapshot",
     text: JSON.stringify({ at: 1, modelId: "m", modelName: "Model", provider: "p", contextWindow: 1000,
-      totalTokens: 300, categories: [
+      totalTokens: 400, categories: [
         { key: "messages", label: "Messages", tokens: 300, percent: 30 },
-        { key: "free", label: "Free", tokens: 700, percent: 70 },
+        { key: "systemPrompt", label: "System prompt", tokens: 100, percent: 10 },
+        { key: "skills", label: "Skills", tokens: 50, percent: 5 },
+        { key: "mcpTools", label: "MCP tools", tokens: 25, percent: 2.5 },
+        { key: "mcpDeferred", label: "MCP deferred", tokens: 150, percent: 15, deferred: true },
+        { key: "free", label: "Free", tokens: 600, percent: 60 },
       ], expanded: null, unknownTotal: false }),
   });
+  flushSync(() => root.render(<ContextFixture showPanel />));
   await settle();
-  const labels = [...document.querySelectorAll<HTMLElement>(".context-panel-category-label")].map((node) => node.textContent);
+  const labels = [...document.querySelectorAll<HTMLElement>(".context-panel-category-label span:first-child")].map((node) => node.textContent);
+  const topLevelCount = document.querySelectorAll(".context-panel-breakdown > .context-panel-categories .context-panel-category").length;
+  const detailCount = document.querySelectorAll(".context-panel-system-details .context-panel-category").length;
+  const remaining = document.querySelector(".context-panel-summary-stats")?.textContent ?? "";
+  const source = document.querySelector(".context-panel-source")?.textContent ?? "";
   const exportButton = [...document.querySelectorAll<HTMLButtonElement>(".context-panel-action-buttons button")].find((button) => button.textContent?.includes("Export"));
   exportButton?.click();
   await settle();
-  return { ok: actionsBeforeUsage && labels.some((label) => label?.includes("Messages")) &&
-    labels.some((label) => label?.includes("Free")) &&
+  useAppStore.setState({ activeSessionId: "context-s2", messages: [] });
+  await settle();
+  const secondSessionClean = document.querySelectorAll(".context-panel-category").length === 0;
+  useAppStore.setState({ activeSessionId: "context-s1", messages: [usageMessage] });
+  await settle();
+  const restored = document.querySelectorAll(".context-panel-category").length === 4;
+  const panel = document.querySelector<HTMLElement>(".context-panel");
+  const panelWidth = panel?.getBoundingClientRect().width ?? 0;
+  const fitsNarrowPanel = panelWidth > 0 && panelWidth <= 320 &&
+    (panel?.scrollWidth ?? 0) <= (panel?.clientWidth ?? 0) + 1;
+  return { ok: estimated && actionsBeforeSnapshot && importNeedsName && fitsNarrowPanel &&
+    labels.join(",") === "Messages,System prompt,Skills,MCP tools" &&
+    topLevelCount === 2 && detailCount === 2 && remaining.includes("600") &&
+    source.includes("Pi-Context") && secondSessionClean && restored &&
     dispatched.some((entry) => entry.channel === IPC.invoke.extensionsCommandRun &&
       (entry.args[0] as { name?: string })?.name === "context-export"),
-    actionsBeforeUsage, labels, dispatched: dispatched.length };
+    estimated, actionsBeforeSnapshot, importNeedsName, labels, topLevelCount, detailCount, remaining,
+    secondSessionClean, restored, fitsNarrowPanel, panelWidth, dispatched: dispatched.length };
+};
+
+globalThis.contextEstimateProbe = async () => {
+  useAppStore.setState({
+    activeSessionId: "context-estimate",
+    messages: [{
+      id: "estimate-message", role: "assistant", content: "Hi",
+      createdAt: new Date(0).toISOString(), status: "complete",
+      modelId: "m", providerId: "p",
+      usage: { inputTokens: 15, outputTokens: 0, totalTokens: 15 },
+    }],
+  });
+  await settle();
+  const source = document.querySelector(".context-panel-source")?.textContent ?? "";
+  const percent = document.querySelector(".context-panel-capacity strong")?.textContent ?? "";
+  const categories = document.querySelectorAll(".context-panel-category").length;
+  return { ok: source.includes("Estimate only") && percent === "<1%" && categories === 0,
+    source, percent, categories };
 };
 
 globalThis.autocompleteMultiSkillProbe = async (width) => {

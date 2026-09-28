@@ -10034,9 +10034,12 @@ This test plan spec is accepted when:
   1) Complete a turn while the work panel is closed; then press `Cmd/Ctrl + J`,
      click `+`, and select Context. Confirm the singleton tab immediately shows
      that session's last Pi-Context snapshot without requiring another turn.
-  2) Confirm the capacity summary separates used and remaining tokens; nonzero
-     category rows show shares of used context. Zero and deferred categories
-     are still discoverable without a full-width 100% Free bar.
+  2) Confirm the capacity summary separates model-reported used and remaining
+     tokens. Non-overlapping top-level categories share the estimated category
+     total; Skills/MCP/tool details nest under System prompt and share its
+     estimate, never double-counting it. A material estimate/usage mismatch is
+     explained. Zero and deferred categories remain discoverable without a
+     full-width 100% Free bar.
   3) Confirm its extension row has no `getAgentDir` / `buildSessionContext`
      factory error. Complete another turn and confirm the newer snapshot
      replaces the previous one without displaying raw JSON in the status line.
@@ -10057,8 +10060,9 @@ This test plan spec is accepted when:
 - **Acceptance**: A (core shell), H (localization)
 - **Milestone**: M5+
 - **Status**: Electron/Chromium probe in `test:e2e:composer-autocomplete`
-  covers empty state, category snapshot, and export dispatch. Live sidecar-to-host
-  extension events and pack round trips remain manual.
+  covers the estimate-only fallback, snapshot received before panel mount,
+  per-session replay, 320px layout, disabled unnamed Import, and Export dispatch.
+  Live sidecar-to-host event and pack round trips remain manual.
 
 #### E2E-APP-dev-feature-version-stays-separate-from-release
 

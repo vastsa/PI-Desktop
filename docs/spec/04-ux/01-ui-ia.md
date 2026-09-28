@@ -115,8 +115,11 @@ destination, chat as the home surface, tools and permissions inline.
   discarding one; the create trigger remains unavailable while the panel is
   closed. Context is a singleton native tab that reads the last validated
   Pi-Context snapshot for its session from an always-mounted, bounded renderer
-  cache, including when opened after the turn. Its summary separates used and
-  remaining capacity; category rows show shares of used context, while zero and
+  cache, including when opened after the turn. Its summary separates model-
+  reported used and remaining capacity; top-level category rows show shares of
+  the non-overlapping estimated total, while Skills/MCP/tool/command/bundle
+  details nest under System prompt and show shares of that estimate. A material
+  mismatch between estimates and reported usage is called out. Zero and
   deferred categories stay compact. When no snapshot exists (including after a
   renderer reload), it clearly labels last-request usage as an estimate rather
   than presenting two invented breakdown categories. It can run the extension's
