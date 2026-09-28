@@ -11,23 +11,24 @@ import { getContextSnapshot, subscribeContextSnapshots } from "../../lib/context
 import { latestTurnContextInspector } from "../../lib/latest-turn-context";
 import { runExtensionCommand } from "../../lib/commands";
 import { useAppStore } from "../../stores/app-store";
-import { Button } from "../ui";
+import { Button, Input } from "../ui";
 
 const EMPTY_COMPACTIONS: [] = [];
 
 const CONTEXT_COMMANDS = [
-  ["context-export", "Export", "Save the current context as a pack"],
-  ["context-import", "Import", "Load a named context pack"],
-  ["context-handoff", "Handoff", "Save a pack before switching models"],
+  ["context-export", "panel.context.export", "panel.context.exportHint"],
+  ["context-import", "panel.context.import", "panel.context.importHint"],
+  ["context-handoff", "panel.context.handoff", "panel.context.handoffHint"],
 ] as const;
 
 function CategoryRows({ rows }: { rows: ContextBreakdownRow[] }) {
+  const { t } = useTranslation();
   return (
     <div className="context-panel-categories" role="list">
       {rows.map((category) => (
         <div className="context-panel-category" role="listitem" key={category.key}>
           <div className="context-panel-category-label">
-            <span>{category.label}</span>
+            <span>{t(`panel.context.categories.${category.key}`, { defaultValue: category.label })}</span>
             <span>{formatCompactTokenCount(category.tokens)} · {category.shareLabel}</span>
           </div>
           <div className="context-panel-meter" aria-hidden="true">
@@ -171,12 +172,12 @@ export function ContextPanel() {
           {breakdown.inactive.length > 0 ? (
             <details className="context-panel-inactive">
               <summary>{t("panel.context.inactive", { defaultValue: "Not in context" })} · {breakdown.inactive.length}</summary>
-              <ul>{breakdown.inactive.map((category) => <li key={category.key}>{category.label}</li>)}</ul>
+              <ul>{breakdown.inactive.map((category) => <li key={category.key}>{t(`panel.context.categories.${category.key}`, { defaultValue: category.label })}</li>)}</ul>
             </details>
           ) : null}
           {breakdown.deferred.map((category) => (
             <p className="context-panel-deferred" key={category.key}>
-              {category.label} · {t("panel.context.onDemand", { defaultValue: "available on demand" })}
+              {t(`panel.context.categories.${category.key}`, { defaultValue: category.label })} · {t("panel.context.onDemand", { defaultValue: "available on demand" })}
             </p>
           ))}
         </section>
@@ -194,27 +195,25 @@ export function ContextPanel() {
         <label htmlFor="context-pack-name">
           {t("panel.context.packName", { defaultValue: "Pack name" })}
         </label>
-        <input
+        <Input
           id="context-pack-name"
-          className="field-input"
           value={packName}
           onChange={(event) => setPackName(event.target.value)}
           placeholder={t("panel.context.packPlaceholder", { defaultValue: "Optional for Export and Handoff" })}
-          spellCheck={false}
         />
         <div className="context-panel-action-buttons">
-          {CONTEXT_COMMANDS.map(([command, label, hint]) => (
+          {CONTEXT_COMMANDS.map(([command, labelKey, hintKey]) => (
             <Button
               key={command}
               type="button"
               size="sm"
-              title={hint}
+              title={t(hintKey)}
               disabled={!activeSessionId || busy || (command === "context-import" && !packName.trim())}
               onClick={() => void runPackCommand(command)}
             >
               {busy && runningCommand?.name === command
                 ? t("common.loading", { defaultValue: "Working…" })
-                : label}
+                : t(labelKey)}
             </Button>
           ))}
         </div>

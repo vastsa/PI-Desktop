@@ -51,6 +51,14 @@ test("fallback is labelled as an estimate and detailed rows do not include a Fre
   assert.doesNotMatch(contextPanelSource, /fallbackContextSnapshot/);
 });
 
+test("Context pack actions use translated labels and the shared text input", () => {
+  assert.match(contextPanelSource, /<Input/);
+  assert.doesNotMatch(contextPanelSource, /<input\b/);
+  for (const key of ["export", "exportHint", "import", "importHint", "handoff", "handoffHint"]) {
+    assert.match(contextPanelSource, new RegExp(`panel\\.context\\.${key}`));
+  }
+});
+
 test("structured extension events never render as raw status text", () => {
   assert.match(extensionPromptHostSource, /event\.key\.startsWith\("event:"\)/);
 });

@@ -31,6 +31,23 @@ test("every shipped catalog matches English keys and interpolation variables", (
   }
 });
 
+test("Context panel copy and category names are localized in every shipped catalog", () => {
+  const keys = [
+    "title", "snapshotSource", "estimateSource", "currentSession", "tokens", "usedCapacity",
+    "used", "remaining", "noUsage", "breakdown", "estimatedTokens", "estimateMismatch",
+    "systemDetails", "shareOfSystem", "inactive", "onDemand", "estimateHint",
+    "packs", "packsHint", "packName", "packPlaceholder",
+    "export", "exportHint", "import", "importHint", "handoff", "handoffHint",
+    ...["messages", "systemPrompt", "systemTools", "skills", "mcpTools", "mcpDeferred",
+      "commands", "memoryFiles", "customAgents", "bundles"].map((key) => `categories.${key}`),
+  ].map((key) => `panel.context.${key}`);
+  for (const [id, catalog] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalog);
+    for (const key of keys) assert.equal(typeof flat[key], "string", `${id} ${key}`);
+    if (id !== "en") assert.notEqual(flat["panel.context.packs"], english["panel.context.packs"], id);
+  }
+});
+
 test("canonical thinking levels are not translated catalog entries", () => {
   const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
   const effortKeys = [

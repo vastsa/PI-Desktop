@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
-import { en } from "@pi-desktop/i18n";
+import { en, ptBR } from "@pi-desktop/i18n";
 import { IPC } from "@pi-desktop/shared";
 import { ComposerAutocomplete } from "../../apps/desktop/src/components/ComposerAutocomplete";
 import { ContextPanel } from "../../apps/desktop/src/components/workpanel/ContextPanel";
@@ -165,6 +165,14 @@ globalThis.contextPanelProbe = async () => {
 };
 
 globalThis.contextEstimateProbe = async () => {
+  i18n.addResourceBundle("pt-BR", "translation", ptBR);
+  await i18n.changeLanguage("pt-BR");
+  await settle();
+  const labels = [...document.querySelectorAll<HTMLElement>(".context-panel-category-label span:first-child")].map((node) => node.textContent);
+  const packs = document.querySelector(".context-panel-actions h3")?.textContent ?? "";
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>(".context-panel-action-buttons button")].map((button) => button.textContent);
+  const localized = labels.join(",") === "Mensagens,Prompt do sistema,Habilidades,Ferramentas MCP" &&
+    packs === "Pacotes de contexto" && buttons.join(",") === "Exportar,Importar,Transferir";
   useAppStore.setState({
     activeSessionId: "context-estimate",
     messages: [{
@@ -178,8 +186,8 @@ globalThis.contextEstimateProbe = async () => {
   const source = document.querySelector(".context-panel-source")?.textContent ?? "";
   const percent = document.querySelector(".context-panel-capacity strong")?.textContent ?? "";
   const categories = document.querySelectorAll(".context-panel-category").length;
-  return { ok: source.includes("Estimate only") && percent === "<1%" && categories === 0,
-    source, percent, categories };
+  return { ok: localized && source.includes("Apenas estimativa") && percent === "<1%" && categories === 0,
+    localized, labels, packs, buttons, source, percent, categories };
 };
 
 globalThis.autocompleteMultiSkillProbe = async (width) => {

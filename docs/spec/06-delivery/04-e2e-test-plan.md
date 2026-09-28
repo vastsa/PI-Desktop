@@ -10061,26 +10061,9 @@ This test plan spec is accepted when:
 - **Milestone**: M5+
 - **Status**: Electron/Chromium probe in `test:e2e:composer-autocomplete`
   covers the estimate-only fallback, snapshot received before panel mount,
-  per-session replay, 320px layout, disabled unnamed Import, and Export dispatch.
-  Live sidecar-to-host event and pack round trips remain manual.
-
-#### E2E-APP-dev-feature-version-stays-separate-from-release
-
-- **Preconditions**: The installed release remains at `0.15.8`; a dedicated
-  worktree build uses the prerelease `0.15.9-dev.1` and an isolated Host data
-  directory plus Electron `userData`.
-- **Steps**: 1) Start only the development build and read its About/version
-  surface and sidebar build label. 2) Check that the root/workspace manifests,
-  shared `APP_VERSION`, and Rust workspace version all agree on the prerelease.
-  3) Confirm the installed release still reports `0.15.8`, keeps its own
-  database/profile, and does not receive development update prompts.
-- **Expected**: The two running applications and their version labels are
-  distinguishable without overwriting or migrating the installed release's
-  files or state.
-- **Acceptance**: A (startup), Security (profile isolation)
-- **Milestone**: M5+
-- **Status**: Version-surface and startup checks automated; side-by-side visual
-  confirmation remains manual.
+  per-session replay, 320px layout, pt-BR categories and pack actions,
+  disabled unnamed Import, and Export dispatch. Live sidecar-to-host event
+  and pack round trips remain manual.
 
 #### E2E-SKILL-repeat-selection-keeps-menu-open
 
