@@ -216,3 +216,92 @@ test("latest turn inspector keeps last-request usage beside the turn sum", () =>
   assert.equal(inspector?.turnUsage.cacheReadTokens, 51_500);
   assert.equal(inspector?.turnUsage.inputTokens, 57_300);
 });
+
+test("latest turn inspector leads with the checkpoint estimate after compaction", () => {
+  const inspector = latestTurnContextInspector(
+    [
+      message("u1", "user", "overflow"),
+      message("a1", "assistant", "done", {
+        providerId: "provider",
+        modelId: "catalog-model",
+        usage: { inputTokens: 150_000, outputTokens: 2_000, totalTokens: 152_000 },
+      }),
+    ],
+    providerModels,
+    providers,
+    [
+      {
+        id: "mark-1",
+        generation: 1,
+        summaryTokens: 40,
+        tokensAfter: 24_000,
+        throughMessageId: "a1",
+        summarized: true,
+      },
+    ],
+  );
+
+  assert.equal(inspector?.estimatedOccupancyTokens, 24_000);
+  // The real usage stays available for the popover's provider rows.
+  assert.equal(inspector?.usage.totalTokens, 152_000);
+});
+
+test("latest turn inspector drops the estimate once newer usage arrives", () => {
+  const inspector = latestTurnContextInspector(
+    [
+      message("u1", "user", "overflow"),
+      message("a1", "assistant", "done", {
+        providerId: "provider",
+        modelId: "catalog-model",
+        usage: { inputTokens: 150_000, outputTokens: 2_000, totalTokens: 152_000 },
+      }),
+      message("u2", "user", "after compaction"),
+      message("a2", "assistant", "fresh", {
+        providerId: "provider",
+        modelId: "catalog-model",
+        usage: { inputTokens: 26_000, outputTokens: 900, totalTokens: 26_900 },
+      }),
+    ],
+    providerModels,
+    providers,
+    [
+      {
+        id: "mark-1",
+        generation: 1,
+        summaryTokens: 40,
+        tokensAfter: 24_000,
+        throughMessageId: "a1",
+        summarized: true,
+      },
+    ],
+  );
+
+  assert.equal(inspector?.estimatedOccupancyTokens, undefined);
+  assert.equal(inspector?.usage.totalTokens, 26_900);
+});
+
+test("latest turn inspector ignores marks without an estimate", () => {
+  const inspector = latestTurnContextInspector(
+    [
+      message("u1", "user", "overflow"),
+      message("a1", "assistant", "done", {
+        providerId: "provider",
+        modelId: "catalog-model",
+        usage: { inputTokens: 150_000, outputTokens: 2_000, totalTokens: 152_000 },
+      }),
+    ],
+    providerModels,
+    providers,
+    [
+      {
+        id: "mark-1",
+        generation: 1,
+        summaryTokens: 40,
+        throughMessageId: "a1",
+        summarized: true,
+      },
+    ],
+  );
+
+  assert.equal(inspector?.estimatedOccupancyTokens, undefined);
+});

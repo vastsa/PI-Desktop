@@ -40,6 +40,7 @@ export function ContextUsageInspector({
   responseDurationMs,
   responseOutputTokens,
   responseOutputEstimated = false,
+  estimatedOccupancyTokens,
 }: {
   usage: MessageUsage;
   turnUsage: MessageUsage;
@@ -48,6 +49,12 @@ export function ContextUsageInspector({
   responseDurationMs?: number;
   responseOutputTokens?: number;
   responseOutputEstimated?: boolean;
+  /**
+   * Post-compaction occupancy from the newest checkpoint, while it is newer
+   * than the latest usage-bearing message. The ring leads with it; the
+   * popover's provider rows keep the last real request.
+   */
+  estimatedOccupancyTokens?: number;
 }) {
   const { t } = useTranslation();
   const panelId = useId();
@@ -63,7 +70,18 @@ export function ContextUsageInspector({
   const [open, setOpen] = useState(false);
   const [popoverPosition, setPopoverPosition] =
     useState<ContextInspectorPlacement | null>(null);
-  const context = calculateContextUsage(usage, contextWindow);
+  // A freshly compacted window has no request usage of its own: lead with the
+  // checkpoint's estimate until the next provider response lands.
+  const context =
+    estimatedOccupancyTokens !== undefined
+      ? calculateContextUsage(
+          { totalTokens: estimatedOccupancyTokens } as MessageUsage,
+          contextWindow,
+        )
+      : calculateContextUsage(usage, contextWindow);
+  // The estimate is not a measurement: mark it, so the number reads as an
+  // estimate rather than pretending to be the last request's real usage.
+  const occupancyPrefix = estimatedOccupancyTokens !== undefined ? "≈" : "";
   // The display preference flips the leading figure only; capacity colors
   // still follow remaining space so the warning state keeps one meaning.
   const usageDisplay = useAppStore((state) =>
@@ -98,7 +116,7 @@ export function ContextUsageInspector({
   // tooltip contract while `percent`/`count` stay numeric.
   const ariaArguments = {
     percent: display.percent,
-    count: formatCompactTokenCount(display.tokens),
+    count: occupancyPrefix + formatCompactTokenCount(display.tokens),
     state:
       display.display === "used"
         ? t("chat.usageContextAriaUsed")
@@ -261,14 +279,14 @@ export function ContextUsageInspector({
         <strong className="context-inspector-heading-value">
           {display.display === "used"
             ? t("chat.usageContextSpent", {
-                count: formatCompactTokenCount(display.tokens),
+                count: occupancyPrefix + formatCompactTokenCount(display.tokens),
               })
             : t("chat.usageContextLeft", {
-                count: formatCompactTokenCount(display.tokens),
+                count: occupancyPrefix + formatCompactTokenCount(display.tokens),
               })}
         </strong>
         <strong className="context-inspector-heading-percent">
-          {display.percent}%
+          {occupancyPrefix}{display.percent}%
         </strong>
       </div>
       <div className="context-inspector-window">
@@ -400,7 +418,7 @@ export function ContextUsageInspector({
           />
         </svg>
         <span className="context-inspector-ring-value">
-          {display.percent}%
+          {occupancyPrefix}{display.percent}%
         </span>
       </TooltipButton>
       {popover && typeof document !== "undefined"
