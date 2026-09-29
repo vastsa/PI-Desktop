@@ -127,6 +127,8 @@ export const IPC = {
     sessionRename: "pi-desktop/session/rename",
     sessionSummarizeTitle: "pi-desktop/session/summarizeTitle",
     sessionConfigure: "pi-desktop/session/configure",
+    /** Plugin-only, separately granted model selection; not a renderer control operation. */
+    sessionConfigureModel: "pi-desktop/session/configureModel",
     sessionImportScan: "pi-desktop/session/importScan",
     sessionImportRun: "pi-desktop/session/importRun",
     modelConfigImportScan: "pi-desktop/modelConfig/importScan",

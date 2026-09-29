@@ -788,6 +788,28 @@ plugin never receives the MCP bearer token. Invocation reuses the controller,
 IPC handler, lifecycle checks, completion event, and audit boundary; a plugin
 cannot reach arbitrary Electron IPC.
 
+`session/configureModel` is a plugin-only catalog operation, not an external
+MCP operation. It requires both `desktop.control` and the separately approved
+`session.model.configure` permission in the manifest and current grants:
+
+```ts
+await pi.desktop.invoke({
+  operation: "session/configureModel",
+  args: [sessionId, { providerId, modelId, thinkingLevel: "high" }],
+})
+```
+
+The host accepts only these selection fields for an idle session: the required
+provider and model, plus an optional `thinkingLevel` that must be one of the
+host's published levels. It never changes the session mode or the tool
+permission mode. This grant allows subsequent turns to use another provider and
+incur quota without a per-call native dialog. Revocation disables further
+calls. The legacy `session/configure` remains dangerous and still requires
+per-call native consent.
+Electron's trusted renderer has its own session configuration API;
+the plugin-only restriction applies to the plugin/MCP gateway, not to IPC
+as an independent authorization boundary. See ADR 0310.
+
 A `dangerous` operation (session delete, permission-mode change, tool
 approval) needs two answers. `confirm: true` is the plugin's acknowledgement
 and is required first (`CONFIRMATION_REQUIRED` otherwise). The host then asks

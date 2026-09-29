@@ -2090,6 +2090,7 @@ sklm: {
       "renderer.extension": "在聊天插槽绘制界面",
       "provider.register": "将服务添加到模型列表",
       "desktop.control": "控制桌面操作",
+      "session.model.configure": "预授权切换会话模型",
       "models.list": "列出已登录的模型",
       "session.read": "读取当前发给模型的对话",
       "net.fetch": "访问网络",
@@ -2130,6 +2131,8 @@ sklm: {
       "provider.register": "把此插件定义的服务添加到设置的服务列表。接口地址和模型由插件提供，API 密钥则留在 PI-Desktop 中。",
       "desktop.control":
         "允许插件调用经过审查的 PI-Desktop 操作目录；破坏性操作仍需 confirm=true，插件永远拿不到 MCP bearer token。",
+      "session.model.configure":
+        "一次授权后允许此插件切换任意本机会话的模型与思考档位，无需每次确认；不可更改会话模式或工具权限。后续对话可能发送至选定模型并消耗服务额度。",
       "models.list": "可以看到你已登录的模型，但拿不到密钥。",
       "session.read": "可以读取当前这次工具调用所在会话发给模型的对话，包括工具结果。",
       "net.fetch": "可发起出站网络请求。",

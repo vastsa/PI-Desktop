@@ -48,6 +48,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   // Its code runs in the app's own document, so the grant is the boundary.
   "renderer.extension": "high",
   "desktop.control": "high",
+  "session.model.configure": "high",
   "session.read": "high",
   "browser.cdp": "high",
   // Reading is a tier below writing because what makes a read dangerous is

@@ -192,3 +192,44 @@ test("desktop control fails closed without its permission", async (t) => {
     (error) => error.code === "PERMISSION_DENIED",
   );
 });
+
+test("model-only grants must be declared and approved in addition to desktop control", async (t) => {
+  const calls = [];
+  const prompts = [];
+  const runtime = createRuntime(t, calls, {
+    desktopControl: {
+      operations: [
+        { id: "session/configureModel", channel: "model", description: "Select a session model", risk: "write" },
+        { id: "session/configure", channel: "config", description: "Configure a session", risk: "dangerous" },
+      ],
+      invoke: async (input) => { calls.push(input); return { session: { id: input.args[0], ...input.args[1] } }; },
+    },
+    confirmDesktopControl: async (request) => { prompts.push(request); return false; },
+  });
+  const source = `module.exports = { onPanelInvoke: async (channel, payload) => {
+    if (channel === "list") return pi.desktop.listOperations();
+    try { return { ok: true, value: await pi.desktop.invoke(payload) }; }
+    catch (error) { return { ok: false, code: error.code }; }
+  } };`;
+  const oldPath = writePlugin("demo.model.old", ["desktop.control"], source);
+  await runtime.loadFromPath(oldPath, ["desktop.control"]);
+  assert.deepEqual((await runtime.invokePanelBridge("demo.model.old", "list")).map((op) => op.id), ["session/configure"]);
+  const request = { operation: "session/configureModel", args: ["s2", { providerId: "p", modelId: "m" }] };
+  assert.equal((await runtime.invokePanelBridge("demo.model.old", "run", request)).code, "PERMISSION_DENIED");
+  const newPath = writePlugin("demo.model.new", ["desktop.control", "session.model.configure"], source);
+  await runtime.loadFromPath(newPath, ["desktop.control"]);
+  assert.equal((await runtime.invokePanelBridge("demo.model.new", "run", request)).code, "PERMISSION_DENIED");
+  await runtime.unload("demo.model.new");
+  await runtime.loadFromPath(newPath, ["desktop.control", "session.model.configure"]);
+  assert.deepEqual((await runtime.invokePanelBridge("demo.model.new", "list")).map((op) => op.id), ["session/configureModel", "session/configure"]);
+  const selected = await runtime.invokePanelBridge("demo.model.new", "run", request);
+  assert.deepEqual(selected.value.session, { id: "s2", providerId: "p", modelId: "m" });
+  assert.equal(prompts.length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].pluginContext.pluginId, "demo.model.new");
+  assert.equal((await runtime.invokePanelBridge("demo.model.new", "run", {
+    operation: "session/configure", args: ["s2", { mode: "agent", permissionMode: "auto" }], confirm: true,
+  })).code, "PERMISSION_DENIED");
+  assert.equal(prompts.length, 1);
+  assert.equal(calls.length, 1);
+});

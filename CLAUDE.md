@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-09-26.1
+Policy-Sync: 2026-09-26.2
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -64,21 +64,28 @@ Branch names: `feat/...`, `fix/...`, `docs/...`, `refactor/...`, `chore/...`.
 ```text
 1. branch + worktree from origin/main
 2. implement in the worktree
-3. targeted static/unit/integration checks
-4. review the full diff
+3. available targeted static/unit/integration checks
+4. review the full diff and record unavailable required E2E as NOT RUN
 5. commit
 6. fetch + rebase/refresh against latest origin/main (private branch)
 7. resolve conflicts in the worktree
-8. task-candidate E2E in the same worktree
-9. push branch
-10. open/update PR
-11. PR integration validation
-12. merge into remote main through repository gates
+8. task-candidate E2E where the environment permits
+9. push branch for CI prevalidation with any NOT RUN E2E disclosed
+10. open/update PR; keep it draft while required gates remain open
+11. PR integration validation and completion of required E2E
+12. merge into remote main only when all required gates pass
 13. synchronize local main
 14. remove your worktree and merged local branch
 ```
 
 Do **not** insert `merge task → local main` between refresh and task-candidate E2E. The task branch itself is the local integration candidate after incorporating latest `origin/main`. Do not open or update a PR that is behind `origin/main`. Run `pnpm check:pr-base` before opening or updating a PR.
+
+When the worktree lacks a necessary toolchain or platform, a CI-first draft PR
+may carry a required E2E marked `NOT RUN` (suite, reason, alternative checks,
+remaining risk). A failed required E2E blocks push and PR. `NOT RUN` never
+means passed: no merge, release, or deployment before the relevant E2E passes
+on a known candidate and base, and PR integration validation is complete.
+Compilation or a downloadable artifact alone is not desktop/user-path E2E.
 
 Record E2E evidence:
 

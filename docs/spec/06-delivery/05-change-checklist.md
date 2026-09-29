@@ -122,11 +122,11 @@ After implementation (or alongside it):
   cross-component regression risk makes them necessary.
 - [ ] The smallest necessary targeted local checks passed, or local validation
   was assessed as unnecessary with no separate approval or waiver required.
-- [ ] Relevant E2E suites were selected and passed on a candidate that contains
-  latest `origin/main` before the request branch was pushed and a PR/MR was
-  opened, or before a commit-only delivery was declared complete; required
-  validation needs no separate user request. Documentation-only changes retain
-  their existing exemption.
+- [ ] Relevant E2E suites passed on a candidate containing latest
+  `origin/main` before merge or deployment. If unavailable before push, the
+  draft PR records `NOT RUN` (suite, reason, alternative checks, remaining
+  risk); CI prevalidation alone does not satisfy the gate. Documentation-only
+  changes retain their existing exemption.
 - [ ] Task-candidate E2E used the host development environment already
   provisioned in the primary checkout; no `pnpm install`/`npm install` or
   second dependency/runtime environment was created solely for E2E. Any
@@ -161,10 +161,10 @@ explicit branch-only or draft-only requests retain their narrower scope:
 
 - [ ] Before a PR/MR is opened or updated, `origin/main` is an ancestor of the
   request head (`pnpm check:pr-base`). A PR behind `origin/main` is not opened.
-- [ ] For a code-bearing change: the relevant E2E gate ran against a candidate
-  that contains latest `origin/main` before the branch push and PR/MR creation,
-  or before a commit-only delivery was declared complete, or its `NOT RUN`
-  limitation is recorded with reason, alternative validation, and remaining risk.
+- [ ] For a code-bearing change: relevant E2E passed on the latest candidate
+  before merge/deployment, or a CI-first draft PR clearly records `NOT RUN`
+  with reason, alternative validation, and remaining risk. Failed E2E blocks
+  push; unrun E2E blocks merge, release, and deployment.
 - [ ] Commit-only delivery did not publish remotely without separate
   authorization.
 - [ ] For authorized remote delivery: the request branch was pushed, its PR/MR
@@ -242,7 +242,7 @@ user's delivery scope:
 | 2 | Code/doc implements the planned change | Step 4 of [development loop](03-ai-development-workflow.md#2-development-loop) |
 | 3 | All impacted specs updated | [R1 — Spec-sync](03-ai-development-workflow.md#r1--spec-first--spec-sync) |
 | 4 | E2E scenarios documented (or confirmed not needed) | [R3 — E2E coverage doc](03-ai-development-workflow.md#r3--e2e-coverage-doc) |
-| 5 | Targeted local checks follow the existing risk standard; for a code-bearing change the relevant E2E gate passed on a candidate that contains latest `origin/main` (`pnpm check:pr-base`) before the branch push, the PR/MR, or a commit-only completion (or its `NOT RUN` limitation is recorded); after the remote merge the affected suites were rerun when the landed executable content changed; required tests need no separate user request | Steps 7, 10, and 11 of development loop |
+| 5 | Targeted local checks follow the existing risk standard; for a code-bearing change the relevant E2E gate passes on a candidate containing latest `origin/main` before merge or deployment. A CI-first draft PR records `NOT RUN` with reason and risk, never treats compilation as E2E, and cannot merge while the gate remains open; after remote merge affected suites rerun when landed executable content changed | Steps 7, 10, and 11 of development loop |
 | 6 | Change committed with conventional message | [R2 — Commit-per-change](03-ai-development-workflow.md#r2--commit-per-change) |
 | 7 | BOARD updated if milestone deliverable completed | Step 9 of development loop |
 | 8 | No secrets or local data in commit | [§4.4 Never commit](03-ai-development-workflow.md#44-never-commit) |

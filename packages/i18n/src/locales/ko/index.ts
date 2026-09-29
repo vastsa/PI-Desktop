@@ -2121,6 +2121,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "renderer.extension": "채팅 슬롯에 UI 그리기",
       "provider.register": "모델 목록에 프로바이더 추가",
       "desktop.control": "데스크톱 제어",
+      "session.model.configure": "매번 묻지 않고 세션 모델 전환",
       "models.list": "인증된 모델 목록 표시",
       "session.read": "모델에 전송되는 현재 대화 읽기",
       "net.fetch": "네트워크 사용",
@@ -2168,6 +2169,8 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
         "이 플러그인이 정의한 프로바이더를 설정의 프로바이더 목록에 추가합니다. 플러그인은 엔드포인트와 모델을 제공하며, API 키는 PI-Desktop에 남습니다.",
       "desktop.control":
         "플러그인이 검토된 PI-Desktop 제어 카탈로그를 호출할 수 있습니다. 파괴적 작업에는 여전히 confirm=true가 필요하며 MCP bearer token은 노출되지 않습니다.",
+      "session.model.configure":
+        "이 일회성 승인 후 이 플러그인이 모든 로컬 세션의 모델과 사고 수준을 변경할 수 있습니다. 세션 모드나 도구 권한은 변경할 수 없습니다. 선택한 모델이 이후 대화를 받아 프로바이더 할당량을 사용할 수 있습니다.",
       "models.list": "로그인한 모델을 볼 수 있지만 키는 받지 않습니다.",
       "session.read":
         "현재 도구 호출이 처리 중인 대화와 도구 결과를 읽을 수 있습니다.",

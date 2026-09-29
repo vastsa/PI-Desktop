@@ -75,3 +75,49 @@ jobs:
 
       - name: Test
         run: cargo test -p host-core --locked
+
+  windows-host-core:
+    name: Windows host-core build / test / RPC E2E / candidate ZIP
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build candidate host-core binary
+        run: cargo build --release -p host-core --locked
+
+      - name: Test host-core on Windows
+        run: cargo test -p host-core --locked
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies for host RPC harness
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared RPC harness dependency
+        run: pnpm --filter @pi-desktop/shared build
+
+      - name: Verify isolated session model RPC (not Desktop UI E2E)
+        env:
+          PI_DESKTOP_HOST_BIN: target/release/pi-desktop-host-core.exe
+        run: node scripts/e2e-session-model-control.mjs
+
+      # GitHub Actions provides the uploaded executable as a downloadable ZIP.
+      - name: Upload RPC-tested host-core candidate (not a Desktop installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-core-windows-candidate-${{ github.sha }}
+          path: target/release/pi-desktop-host-core.exe
+          if-no-files-found: error
+          retention-days: 1

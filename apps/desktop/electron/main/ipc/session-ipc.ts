@@ -27,6 +27,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginRuntime } from "../plugin-runtime";
 import { readSessionCollaboration } from "../services/session-collaboration";
 import { searchSessionsAcrossSources } from "../services/session-search";
+import { parseSessionModelChange } from "../session-model-control";
 import type { IpcRegistrar } from "./types";
 
 type RuntimeSession = {
@@ -559,6 +560,27 @@ export function registerSessionIpc({
       return { ...result, session };
     },
   );
+  handle(IPC.invoke.sessionConfigureModel, async (...args: unknown[]) => {
+    const { id, providerId, modelId, thinkingLevel } = parseSessionModelChange(args);
+    rejectNativeMutation(id, "model selection");
+    if (!host) throw new Error("host unavailable");
+    const result = await host.call<{ session?: RuntimeSession | null }>(
+      "session.configureModel",
+      thinkingLevel === undefined
+        ? { id, providerId, modelId }
+        : { id, providerId, modelId, thinkingLevel },
+    );
+    if (!result.session) return result;
+    const { providers, defaults } = await sessionCapabilityContext();
+    const session = enrichSession(result.session, providers, defaults);
+    plugins.broadcastEvent("session:modelChanged", [{
+      sessionId: id,
+      modelKey: session.providerId && session.modelId
+        ? `${session.providerId}/${session.modelId}` : null,
+      thinkingLevel: session.thinkingLevel,
+    }]);
+    return { ...result, session };
+  });
 
   handle(IPC.invoke.sessionImportScan, async () => {
     const { sessions, truncated } = await scanAllSources();

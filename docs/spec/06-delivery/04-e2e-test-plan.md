@@ -383,19 +383,20 @@ Each scenario is documented in this format:
 ## E2E Main Integration Validation
 
 Every code-bearing change must pass the E2E suites relevant to its regression
-surface on a candidate that already contains the latest `origin/main`, before
-the request branch is pushed and the pull request is opened. Code-bearing
-changes include Renderer, Electron Main, Preload, Agent Runtime, Rust
-host-core, sessions, transcripts, plans, plugins, MCP, permissions,
-provider/model runtime, persistence, process lifecycle, packaging/runtime
-startup, and build or CI behavior that affects application execution.
-Documentation-only changes are exempt when they do not alter executable
-behavior.
+surface on a candidate that contains the latest `origin/main` before merge or
+deployment. Code-bearing changes include Renderer, Electron Main, Preload,
+Agent Runtime, Rust host-core, sessions, transcripts, plans, plugins, MCP,
+permissions, provider/model runtime, persistence, process lifecycle,
+packaging/runtime startup, and build or CI behavior that affects application
+execution. Documentation-only changes are exempt when they do not alter
+executable behavior.
 
 Run the selected suites from the request worktree after `pnpm check:pr-base`
-passes. An E2E run on a branch that is behind `origin/main` is exploratory and
-does not satisfy this gate. Do not merge the task into local `main` to create
-the candidate.
+passes. When a required toolchain or platform is unavailable, record the suite,
+reason, alternative checks, and remaining risk as `NOT RUN`; a draft PR may
+trigger cloud CI before E2E, but neither compile success nor an artifact
+satisfies the E2E gate. A failed required E2E blocks push until classified and
+fixed. Do not merge the task into local `main` to create the candidate.
 
 ### E2E environment reuse
 
@@ -441,10 +442,10 @@ agent execution, plugins, persistence integration, and shared runtime
 contracts. A required suite that cannot run because of a missing display,
 platform, credential, hardware resource, or other environment capability must
 be recorded as `NOT RUN` with its reason, alternative validation, and remaining
-risk. The pull request may still be opened with that record so the change can
-be validated in a capable environment, but the gate is not satisfied and
-delivery remains incomplete until the suite passes against the integrated
-`main` that carries the change.
+risk. A draft pull request may open for CI prevalidation with that record, but
+the gate is not satisfied and the change must not merge or deploy until the
+suite passes on a candidate containing the latest `origin/main` and the PR
+integration candidate has been validated.
 
 Required results must apply to the executable commit the gate ran on, and any
 later commit that changes the landed executable content requires a rerun of
@@ -456,13 +457,12 @@ unexecuted suite passed.
 ## E2E Failure Policy
 
 A failed required E2E blocks the branch push, the pull request, and declaring
-the integrated delivery complete until the failure is classified as an
-implementation regression, test regression, environment failure, or known
-flaky infrastructure. Fix the product or test defect and rerun the affected
-suite against the integrated `main`. Do not delete scenarios, weaken
-assertions, or add retries that hide a deterministic failure. When a scenario
-is not automated on the required platform, keep its status documented and
-identify the platform validation still needed.
+delivery complete until the failure is classified as an implementation
+regression, test regression, environment failure, or known flaky
+infrastructure and is fixed. Rerun the affected suite on the candidate before
+merge. Do not delete scenarios, weaken assertions, or add retries that hide a
+deterministic failure. When a scenario is not automated on the required
+platform, keep its status documented and identify the validation still needed.
 
 ## 7. MVP Scenario Catalog
 
@@ -12899,6 +12899,33 @@ are withdrawn with ADR 0165.
   (`blocks_dangling_symlink_escape`,
   `dangling_symlink_inside_workspace_resolves_to_its_target`,
   `dangling_symlink_loop_is_rejected`)
+
+#### E2E-236A: Preauthorized plugin model and thinking-level selection stays model-only
+
+- **Preconditions:** A compatible candidate host in an isolated profile, two
+  idle local sessions with different modes and an enabled configured model; a
+  plugin declaring `desktop.control` and `session.model.configure`, with the
+  latter initially not approved. No live provider call is needed.
+- **Steps:** Attempt `session/configureModel` before approval; approve the new
+  permission in plugin review; select a different configured model for the
+  second session; change its thinking level through the same operation; read
+  both sessions and the model-change event. Attempt a nonexistent model, an
+  unpublished thinking level, and payloads containing `permissionMode` or
+  `mode`; revoke the grant and retry. Separately call legacy `session/configure`
+  with `confirm: true` and deny its native prompt.
+- **Expected:** Before approval and after revocation, model-only calls fail.
+  Approval lets the selected session's model and thinking level change without
+  a per-call native prompt, while the other session, both permission modes, the
+  modes, and the other session's thinking level remain unchanged. Invalid or
+  widened requests do not write. Legacy `session/configure` still prompts and
+  denial writes nothing. An older installed host remains unsupported;
+  browser/mobile acceptance additionally requires remote takeover and a
+  compatible deployed host.
+- **Coverage:** `plugin-desktop-control.test.mjs`, `mcp-control.test.mjs`,
+  host-core model RPC/session tests, and isolated headless host RPC checks
+  (`scripts/e2e-session-model-control.mjs`, run in Windows CI). Plugin grant,
+  native prompt, desktop UI, and browser/mobile acceptance remain pending
+  until a compatible host is built and deployed.
 
 #### E2E-236: Plugin desktop control needs the user's native consent
 

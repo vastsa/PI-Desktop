@@ -2456,6 +2456,68 @@ async fn handle_request(
             .ok_or_else(|| rpc_err(1007, "session not found", "NOT_FOUND"))?;
             Ok(json!({ "session": session }))
         }
+        "session.configureModel" => {
+            let fields = params.as_object().ok_or_else(|| {
+                rpc_err(1002, "model selection must be an object", "INVALID_PARAMS")
+            })?;
+            // The preauthorized selection is deliberately narrow: the model and
+            // the optional per-session thinking level. Mode and permission mode
+            // stay on the dangerous configuration path.
+            let allowed = ["id", "providerId", "modelId", "thinkingLevel"];
+            if !["id", "providerId", "modelId"]
+                .iter()
+                .all(|field| fields.contains_key(*field))
+                || fields.keys().any(|key| !allowed.contains(&key.as_str()))
+            {
+                return Err(rpc_err(
+                    1002,
+                    "model selection permits id, providerId, modelId and thinkingLevel only",
+                    "INVALID_PARAMS",
+                ));
+            }
+            let required = |key: &str| -> std::result::Result<&str, JsonRpcError> {
+                fields
+                    .get(key)
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| rpc_err(1002, format!("{key} required"), "INVALID_PARAMS"))
+            };
+            let id = required("id")?;
+            let provider_id = required("providerId")?;
+            let model_id = required("modelId")?;
+            let thinking_level = thinking_level_param(&params)?;
+            let st = state.lock().await;
+            let provider = providers::get_provider(&st.db, &st.secrets, provider_id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                .ok_or_else(|| rpc_err(1002, "provider is not available", "INVALID_PARAMS"))?;
+            if !provider.enabled
+                || !(provider.has_secret || provider.auth_kind == "none")
+                || !provider.models.iter().any(|model| model.id == model_id)
+            {
+                return Err(rpc_err(
+                    1002,
+                    "model is not available on this provider",
+                    "INVALID_PARAMS",
+                ));
+            }
+            let session = sessions::configure_session_model(
+                &st.db,
+                id,
+                provider_id,
+                model_id,
+                thinking_level.as_deref(),
+            )
+            .map_err(|e| {
+                let message = e.to_string();
+                if message.starts_with("PLAN_") {
+                    plan_rpc_err(message)
+                } else {
+                    rpc_err(1000, message, "INTERNAL")
+                }
+            })?
+            .ok_or_else(|| rpc_err(1007, "session not found", "NOT_FOUND"))?;
+            Ok(json!({ "session": session }))
+        }
         "session.delete" => {
             let id = params
                 .get("id")
@@ -6650,6 +6712,87 @@ mod tests {
         .await
         .unwrap();
         created["provider"]["id"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn configure_model_permits_only_the_narrow_selection_and_known_models() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let session =
+            sessions::create_session(&app_state.db, None, None, None, None, None).unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let provider_id = create_test_provider(state.clone(), tx.clone()).await;
+        for extra in [
+            json!({"permissionMode": "auto"}),
+            json!({"mode": "goal"}),
+            json!({"thinkingLevel": "high", "mode": "goal"}),
+            json!({"thinkingLevel": "high", "permissionMode": "auto"}),
+            json!({"title": "renamed"}),
+        ] {
+            let mut input =
+                json!({"id": session.id, "providerId": provider_id, "modelId": "gpt-image-2.5"});
+            input
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let error = handle_request(state.clone(), "session.configureModel", input, tx.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
+        for level in [json!("maximal"), json!(5), json!("")] {
+            let error = handle_request(
+                state.clone(),
+                "session.configureModel",
+                json!({
+                    "id": session.id,
+                    "providerId": provider_id,
+                    "modelId": "gpt-image-2.5",
+                    "thinkingLevel": level
+                }),
+                tx.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
+        let invalid = handle_request(
+            state.clone(),
+            "session.configureModel",
+            json!({"id": session.id, "providerId": provider_id, "modelId": "not-bound"}),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(invalid.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        let missing = handle_request(
+            state.clone(),
+            "session.configureModel",
+            json!({"id": "missing", "providerId": provider_id, "modelId": "gpt-image-2.5"}),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(missing.data.unwrap()["errorCode"], "NOT_FOUND");
+        let selected = handle_request(
+            state,
+            "session.configureModel",
+            json!({
+                "id": session.id,
+                "providerId": provider_id,
+                "modelId": "gpt-image-2.5",
+                "thinkingLevel": "high"
+            }),
+            tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(selected["session"]["modelId"], "gpt-image-2.5");
+        assert_eq!(selected["session"]["thinkingLevel"], "high");
+        assert_eq!(selected["session"]["permissionMode"], "inherit");
+        assert_eq!(selected["session"]["mode"], json!(session.mode));
     }
 
     #[tokio::test]

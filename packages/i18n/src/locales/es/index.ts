@@ -2105,6 +2105,7 @@ sklm: {
       "renderer.extension": "Dibujar interfaz en los slots del chat",
       "provider.register": "Agregar proveedores a la lista de modelos",
       "desktop.control": "Controlar el escritorio",
+      "session.model.configure": "Cambiar el modelo de la sesión sin preguntar cada vez",
       "models.list": "Listar modelos autenticados",
       "session.read": "Leer la conversación actual enviada al modelo",
       "net.fetch": "Usar la red",
@@ -2143,6 +2144,8 @@ sklm: {
       "renderer.extension": "Carga el módulo de renderizado de este complemento en la ventana de la app para dibujar componentes en los slots de la interfaz (barras de acción de mensajes, extras de respuesta, tarjetas de herramientas, renderizadores de bloques de código, controles del compositor). El módulo se ejecuta en el mismo documento que PI-Desktop. Activa solo código de confianza.",
       "provider.register": "Agregue los proveedores que define este complemento a la lista de proveedores de Configuración. El complemento aporta el punto final y los modelos; su clave API permanece en PI-Desktop.",
       "desktop.control": "Permite invocar el catálogo de control de PI-Desktop revisado; las operaciones destructivas siguen requiriendo confirm=true y el token bearer de MCP no se expone.",
+      "session.model.configure":
+        "Permite que este complemento cambie el modelo y el nivel de razonamiento de cualquier sesión local tras esta autorización única. No puede cambiar el modo de la sesión ni los permisos de herramientas. El modelo elegido puede recibir turnos posteriores y consumir su cuota del proveedor.",
       "models.list": "Puede ver en qué modelos se ha registrado. No recibe llaves.",
       "session.read": "Puede leer la conversación en la que está operando la llamada de herramienta actual, incluidos los resultados de la herramienta.",
       "net.fetch": "Puede realizar solicitudes de red salientes.",

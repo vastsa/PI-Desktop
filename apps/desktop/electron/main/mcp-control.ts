@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SESSION_COLLABORATION_OPERATIONS } from "./session-collaboration-control";
+import { parseSessionModelChange } from "./session-model-control";
 
 /** A small JSON Schema subset used by MCP's tools/list response. */
 export type McpJsonSchema = {
@@ -450,6 +451,7 @@ const CORE_TOOL_SPECS = [
 export const MCP_CONTROL_CATALOG_CHANNEL_KEYS = CONTROL_OPERATION_SPECS.map((entry) => entry.channelKey);
 
 export const MCP_CONTROL_BLOCKED_CHANNEL_KEYS = [
+  "sessionConfigureModel", // Plugin-only; the generic MCP catalog must not expose this channel.
   "secretsSet",
   "secretsDelete",
   "secretsHas",
@@ -657,7 +659,7 @@ export function mcpControlRendererEvent(
   if (operation.id === "project/clear") {
     return { reason: "mcp.project", projectPath: null };
   }
-  if (SESSION_MUTATION_IDS.has(operation.id) || operation.id === "plans/resolve") {
+  if (SESSION_MUTATION_IDS.has(operation.id) || operation.id === "session/configureModel" || operation.id === "plans/resolve") {
     return { reason: "mcp.session" };
   }
   return null;
@@ -681,6 +683,14 @@ export function createMcpControlController(options: {
   ) => void | Promise<void>;
 }): McpControlController {
   const operations = [...createMcpControlOperations(options.channels),
+    ...(options.channels.sessionConfigureModel ? [{
+      id: "session/configureModel",
+      channel: options.channels.sessionConfigureModel,
+      description: "Select a session model without changing its mode or permissions.",
+      risk: "write" as const,
+      argumentShape: ["id", "selection"],
+      pluginOnly: true,
+    }] : []),
     ...(options.invokeSessionCollaboration ? SESSION_COLLABORATION_OPERATIONS : [])];
   const operationById = new Map(operations.map((operation) => [operation.id, operation]));
   return {
@@ -695,6 +705,9 @@ export function createMcpControlController(options: {
           code: "NOT_FOUND",
         });
       }
+      if (operation.pluginOnly && (input.source !== "plugin" || !input.pluginContext?.pluginId)) {
+        throw Object.assign(new Error("operation requires a plugin context"), { code: "PERMISSION_DENIED" });
+      }
       const args = input.args === undefined ? [] : input.args;
       if (!Array.isArray(args)) {
         throw Object.assign(new Error("args must be an array"), { code: "INVALID_PARAMS" });
@@ -707,7 +720,14 @@ export function createMcpControlController(options: {
           code: "CONFIRMATION_REQUIRED",
         });
       }
-      const sanitized = args.map((value) => stripSecretMaterial(value)) as unknown[];
+      const sanitized = operation.id === "session/configureModel"
+        ? (() => {
+            const { id, providerId, modelId, thinkingLevel } = parseSessionModelChange(args);
+            return [id, thinkingLevel === undefined
+              ? { providerId, modelId }
+              : { providerId, modelId, thinkingLevel }];
+          })()
+        : args.map((value) => stripSecretMaterial(value)) as unknown[];
       const result = operation.channel === "internal:session-collaboration"
         ? await options.invokeSessionCollaboration!({ ...input, args: sanitized })
         : await options.invoke(operation.channel, sanitized);

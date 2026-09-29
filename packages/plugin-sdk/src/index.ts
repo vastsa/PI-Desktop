@@ -1304,6 +1304,7 @@ export const PLUGIN_PERMISSIONS = [
   "renderer.extension",
   "provider.register",
   "desktop.control",
+  "session.model.configure",
   "models.list",
   "project.create",
   "session.read",

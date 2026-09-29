@@ -2056,6 +2056,7 @@ export const ptBR = {
       "renderer.extension": "Desenhar interface nos slots do chat",
       "provider.register": "Adicionar provedores à lista de modelos",
       "desktop.control": "Controlar a área de trabalho",
+      "session.model.configure": "Trocar o modelo da sessão sem perguntar sempre",
       "models.list": "Listar modelos autenticados",
       "session.read": "Ler a conversa atual enviada ao modelo",
       "net.fetch": "Usar a rede",
@@ -2095,6 +2096,8 @@ export const ptBR = {
         "Carrega o módulo de renderização deste plugin na janela do aplicativo para desenhar componentes de slot (barras de ações de mensagens, extras de entrada, cartões de ferramentas, renderizadores de blocos de código, controles do compositor). O módulo é executado no mesmo documento do PI-Desktop. Ative somente código em que você confia.",
       "provider.register": "Adiciona os provedores que este plugin define à lista de provedores em Configurações. O plugin fornece o endpoint e os modelos; sua chave de API permanece no PI-Desktop.",
       "desktop.control": "Permite que o plugin invoque o catálogo de controle revisado do PI-Desktop. Operações destrutivas ainda exigem confirm=true; o token bearer do MCP nunca é exposto.",
+      "session.model.configure":
+        "Permite que este plugin altere o modelo e o nível de raciocínio de qualquer sessão local depois desta autorização única. Não pode alterar o modo da sessão nem as permissões de ferramentas. O modelo escolhido pode receber turnos seguintes e consumir sua cota do provedor.",
       "models.list": "Pode ver em quais modelos você está conectado. Não recebe suas chaves de API.",
       "session.read": "Pode ler a conversa em que a chamada de ferramenta atual está sendo executada, incluindo os resultados das ferramentas.",
       "net.fetch": "Pode fazer solicitações de rede externas.",

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Policy-Sync: 2026-09-26.1
+Policy-Sync: 2026-09-26.2
 
 Mandatory rules for AI coding agents working in PI-Desktop.
 
@@ -289,28 +289,36 @@ behind `origin/main`.
 ```text
 1. create dedicated branch + worktree from current origin/main
 2. implement in the request worktree
-3. run targeted static/unit/integration checks
-4. review the task diff
+3. run available targeted static/unit/integration checks
+4. review the task diff and record any unavailable required E2E as NOT RUN
 5. commit the task
 6. refresh the task branch against latest origin/main (`pnpm check:pr-base`)
 7. resolve conflicts inside the task worktree
-8. run required task-candidate E2E in the task worktree
-9. push the request branch
-10. open/update the PR/MR
-11. validate the PR integration candidate
-12. merge into remote main through repository gates
+8. run task-candidate E2E where the environment permits
+9. push the request branch for CI prevalidation (a NOT RUN E2E is disclosed)
+10. open/update the PR/MR, keeping it draft while required gates remain open
+11. validate the PR integration candidate and complete required E2E
+12. merge into remote main only after all required gates pass
 13. synchronize local main
 14. remove the worktree and merged local branch
 ```
 
 Do not insert `merge task → local main` between steps 6 and 8. The task
-branch itself becomes the local integration candidate by incorporating
-the latest `origin/main`. Do not open or update a PR that is behind
-`origin/main`.
+branch itself becomes the local integration candidate by incorporating the
+latest `origin/main`. Do not open or update a PR that is behind `origin/main`.
 
-A task-candidate E2E result is valid only when its tested commit and
-base revision are known. The PR integration gate then protects against
-`main` changing between local candidate validation and final merge.
+When the task worktree lacks a required toolchain or platform, CI-first
+prevalidation may proceed only with the missing E2E recorded as `NOT RUN`
+(suite, reason, alternative checks, and remaining risk). A **failed** required
+E2E blocks push and PR until classified and fixed. A `NOT RUN` result is not a
+pass: the PR remains draft and must not merge, release, or deploy until the
+required E2E passes on a known commit and base revision, with a capable
+isolated environment and the PR integration candidate validated. Neither
+GitHub Actions compilation nor an artifact replaces desktop/user-path E2E.
+
+A task-candidate E2E result is valid only when its tested commit and base
+revision are known. The PR integration gate then protects against `main`
+changing between candidate validation and final merge.
 
 ---
 

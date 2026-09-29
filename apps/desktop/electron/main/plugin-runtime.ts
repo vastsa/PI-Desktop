@@ -4926,7 +4926,9 @@ export class PluginRuntime {
             count: operations.length,
             ts: Date.now(),
           });
-          return operations.map(({ id, description, risk }) => ({ id, description, risk }));
+          return operations
+            .filter((entry) => entry.id !== "session/configureModel" || loaded.permissions.has("session.model.configure"))
+            .map(({ id, description, risk }) => ({ id, description, risk }));
         },
         invoke: async (rawInput: unknown) => {
           this.assertPermission(loaded, "desktop.control");
@@ -4961,6 +4963,9 @@ export class PluginRuntime {
                 );
               }
             }
+          }
+          if (operation === "session/configureModel") {
+            this.assertPermission(loaded, "session.model.configure");
           }
           const operationInfo = this.services.desktopControl.operations.find(
             (candidate) => candidate.id === operation,

@@ -2105,6 +2105,7 @@ sklm: {
       "renderer.extension": "Dessiner l'interface dans les emplacements du chat",
       "provider.register": "Ajouter des fournisseurs à la liste de modèles",
       "desktop.control": "Contrôler le bureau",
+      "session.model.configure": "Changer le modèle de session sans demander à chaque fois",
       "models.list": "Liste des modèles authentifiés",
       "session.read": "Lire la conversation en cours envoyée au modèle",
       "net.fetch": "Utiliser le réseau",
@@ -2143,6 +2144,8 @@ sklm: {
       "renderer.extension": "Charge le module de rendu de ce plugin dans la fenêtre de l'app pour dessiner des composants d'interface (barres d'actions des messages, extras de réponse, cartes d'outils, rendus de blocs de code, contrôles du composeur). Le module s'exécute dans le même document que PI-Desktop. N'activez que du code de confiance.",
       "provider.register": "Ajoute les fournisseurs définis par ce plugin à la liste des fournisseurs des Paramètres. Le plugin fournit le point de terminaison et les modèles ; votre clé API reste dans PI-Desktop.",
       "desktop.control": "Permet d'appeler le catalogue PI-Desktop contrôlé ; les opérations destructrices exigent toujours confirm=true et le bearer token MCP n'est pas exposé.",
+      "session.model.configure":
+        "Permet à ce plugin de changer le modèle et le niveau de réflexion de n'importe quelle session locale après cette autorisation unique. Il ne peut modifier ni le mode de session ni les autorisations d'outils. Le modèle choisi peut recevoir les tours suivants et consommer votre quota de fournisseur.",
       "models.list": "Peut voir pour quels modèles vous vous êtes connecté. Il ne reçoit pas de clés.",
       "session.read": "Peut lire la conversation sur laquelle l'appel d'outil actuel fonctionne, y compris les résultats de l'outil.",
       "net.fetch": "Peut effectuer des requêtes réseau sortantes.",

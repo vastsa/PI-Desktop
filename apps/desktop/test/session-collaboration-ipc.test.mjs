@@ -27,6 +27,9 @@ const collaboration = load("../electron/main/services/session-collaboration.ts",
   "../agent-host-bridge": {},
   "../plugin-agent-complete": {},
 });
+const sessionModelControl = load("../electron/main/session-model-control.ts", {
+  "@pi-desktop/shared": await import("@pi-desktop/shared"),
+});
 const { registerSessionIpc } = load("../electron/main/ipc/session-ipc.ts", {
   electron: { shell: {} },
   "node:fs": fs,
@@ -35,6 +38,7 @@ const { registerSessionIpc } = load("../electron/main/ipc/session-ipc.ts", {
   "../importers": {},
   "../services/session-collaboration": collaboration,
   "../services/session-search": { searchSessionsAcrossSources: async () => ({ hits: [], nextOffset: null }) },
+  "../session-model-control": sessionModelControl,
 });
 const summary = {
   sessionId: "worker-session-id",

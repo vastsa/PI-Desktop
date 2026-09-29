@@ -2124,6 +2124,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "renderer.extension": "Draw UI in chat slots",
       "provider.register": "Add providers to the model list",
       "desktop.control": "Control the desktop",
+      "session.model.configure": "Switch session models without asking each time",
       "models.list": "List authenticated models",
       "session.read": "Read the current conversation sent to the model",
       "net.fetch": "Use the network",
@@ -2173,6 +2174,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
         "Adds the providers this plugin defines to Settings' provider list. The plugin supplies the endpoint and models; your API key stays in PI-Desktop.",
       "desktop.control":
         "Lets the plugin invoke the reviewed PI-Desktop control catalog. Destructive operations still require confirm=true; the MCP bearer token is never exposed.",
+      "session.model.configure":
+        "Lets this plugin change the model and thinking level of any local session after this one-time grant. It cannot change session mode or tool permissions. The selected model may receive subsequent conversation turns and use your provider quota.",
       "models.list": "Can see which models you have signed in for. It does not receive keys.",
       "session.read":
         "Can read the conversation the current tool call is operating on, including tool results.",

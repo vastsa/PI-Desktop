@@ -2090,6 +2090,7 @@ sklm: {
       "renderer.extension": "在聊天插槽繪製介面",
       "provider.register": "將服務新增到模型列表",
       "desktop.control": "控制桌面操作",
+      "session.model.configure": "預先授權切換工作階段模型",
       "models.list": "列出已登入的模型",
       "session.read": "讀取當前發給模型的對話",
       "net.fetch": "訪問網路",
@@ -2129,6 +2130,8 @@ sklm: {
       "renderer.extension": "把該外掛的渲染模組載入應用視窗，在訊息操作列、回覆追加區、工具卡、程式碼區塊、輸入區等插槽繪製介面。模組與 PI-Desktop 同文件執行，只啟用你信任的程式碼。",
       "provider.register": "把此外掛定義的服務新增到設定的服務列表。介面地址和模型由外掛提供，API 金鑰則留在 PI-Desktop 中。",
       "desktop.control": "允許外掛呼叫經過審查的 PI-Desktop 操作目錄；破壞性操作仍需 confirm=true，外掛永遠拿不到 MCP bearer token。",
+      "session.model.configure":
+        "一次授權後允許此外掛切換任意本機工作階段的模型與思考層級，無須每次確認；無法變更工作階段模式或工具權限。後續對話可能傳送至選定模型並消耗服務額度。",
       "models.list": "可以看到你已登入的模型，但拿不到金鑰。",
       "session.read": "可以讀取當前這次工具呼叫所在會話發給模型的對話，包括工具結果。",
       "net.fetch": "可發起出站網路請求。",

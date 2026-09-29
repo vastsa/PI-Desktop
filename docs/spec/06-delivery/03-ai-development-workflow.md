@@ -212,8 +212,8 @@ an unambiguous pull request number for this repository.
 ### R7 — Code-bearing changes require relevant E2E after main integration
 
 > **Every code-bearing change must pass relevant E2E on a candidate that
-> already contains the latest `origin/main`, before its request branch is
-> pushed or a PR/MR is opened.**
+> contains the latest `origin/main` before merge or deployment. A draft PR
+> may run CI first only when unavailable E2E is recorded as `NOT RUN`.**
 
 This rule applies to changes that modify executable or runtime-affecting
 content, including `apps/`, `packages/`, `crates/`, runtime scripts, build or
@@ -234,11 +234,11 @@ not require a separate user request to run tests.
 
 If a required suite cannot run in the current environment, record the suite,
 reason, alternative validation, and remaining risk as `NOT RUN`. The branch
-push and PR/MR may still proceed with that record so the change can be
-validated in a capable environment, but the gate is not satisfied and delivery
-remains incomplete until the suite passes against a candidate that contains
-latest `origin/main`. A failed required suite blocks the push, the PR/MR, and
-declaring the change delivered until the failure is classified and fixed.
+push and draft PR/MR may proceed for CI prevalidation with that record, but
+the gate is not satisfied and the PR must not merge, release, or deploy until
+the suite passes against a candidate that contains latest `origin/main` and
+PR integration validation completes. A failed required suite blocks the push,
+the PR/MR, and delivery until the failure is classified and fixed.
 
 After the PR/MR merges into remote `main`, rerun the affected suites when the
 landed executable content differs from the commit the gate ran on (landing
@@ -279,9 +279,9 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 7. Run targeted local checks necessary for the change's risk
 8. Commit with conventional message
 9. Update BOARD if milestone-related
-10. Refresh against latest `origin/main` (`pnpm check:pr-base`) and run
-    task-candidate E2E in the worktree (R7); when remote delivery is authorized,
-    push branch + open PR/MR to main only after that gate
+10. Refresh against latest `origin/main` (`pnpm check:pr-base`); run available
+    task-candidate E2E in the worktree (R7), recording unavailable suites as
+    `NOT RUN`; push a CI-first branch and open a draft PR/MR if needed
 11. Merge the PR/MR into remote `main` through the remote gates when remote
     delivery is authorized, synchronize local `main`, verify, and clean up
 12. If launch was requested: build and start from integrated main
@@ -299,10 +299,10 @@ Every change follows this sequence. Steps may be iterated if the implementation 
 | **4. Implement** | Write code, config, or assets. | Changed files. |
 | **5. Spec-sync** | Update specs per the impact list. Add ADR if architectural. Update `decisions-log.md` if an implementation default changes. | Updated docs/spec/\* and/or docs/adr/\*. |
 | **6. E2E doc** | When R3 applies, add or update scenario entries in `04-e2e-test-plan.md` and link to acceptance criteria IDs (A–H). Otherwise, confirm no scenario update is needed. | Updated e2e test plan, or confirmed not applicable. |
-| **7. Validate** | Use change risk and regression scope to select the smallest useful local checks. The relevant E2E gate for a code-bearing change runs in the request worktree after `origin/main` is incorporated (`pnpm check:pr-base`) and before any branch push or PR/MR; a suite that cannot run is recorded as `NOT RUN` and keeps delivery incomplete. | Targeted check and E2E results, or an explicit environment limitation. |
+| **7. Validate** | Use change risk and regression scope to select useful local checks. Required E2E runs after `origin/main` is incorporated (`pnpm check:pr-base`); when it cannot run, record `NOT RUN` and keep the PR draft until the gate passes. | Targeted check and E2E results, or an explicit environment limitation. |
 | **8. Commit** | Git commit with conventional message (see §4). | One or more commits. |
 | **9. BOARD** | If the change completes a milestone deliverable, update `docs/project/BOARD.md`. | Updated board. |
-| **10. Refresh + gate** | Refresh against latest `origin/main`, confirm it is an ancestor of HEAD (`pnpm check:pr-base`), then run task-candidate E2E in the worktree. When remote publishing is authorized, push the request branch and open a PR/MR targeting `main` only after that gate. | Verified candidate with the E2E gate result, or a recorded `NOT RUN` limitation; reviewable remote change or a local-only delivery route. |
+| **10. Refresh + gate** | Refresh against latest `origin/main`, confirm it is an ancestor of HEAD (`pnpm check:pr-base`), then run available task-candidate E2E in the worktree. When authorized, push and open a draft PR for CI prevalidation with unavailable suites clearly recorded as `NOT RUN`; do not merge or deploy until the required gate passes. | Verified candidate or recorded `NOT RUN` limitation, and a reviewable draft or local-only route. |
 | **11. Remote merge + cleanup** | For authorized remote delivery, merge the PR/MR into remote `main` through the required gates (including the PR-base check) and synchronize local `main`; rerun the affected suites when the landed executable content differs from the commit the gate ran on. Verify the expected commits and remove the merged worktree and branch. | Requested integration complete, or an explicit blocker / narrower user-requested handoff. |
 | **12. Launch** | When requested, build and start from the integrated `main` checkout and its development environment. | Running app includes the delivered change. |
 
@@ -320,11 +320,11 @@ Every change follows this sequence. Steps may be iterated if the implementation 
   address that risk. A full local suite is not the default.
 - E2E scenario documentation and E2E execution are separate concerns. R3 still
   requires scenario updates for user-visible or protocol-visible behavior.
-- Every code-bearing change must run at least one relevant E2E suite on a
-  candidate that contains latest `origin/main` before its branch is pushed or
-  a PR/MR is opened, and must run the union of suites required by the affected
-  regression surfaces. The available commands are defined by the root
-  `package.json` and the selection matrix in `04-e2e-test-plan.md`.
+- Every code-bearing change must run the relevant E2E suites on a candidate
+  containing latest `origin/main` before merge or deployment. If a required
+  suite is unavailable before push, a CI-first draft PR may proceed with
+  `NOT RUN` evidence; it remains blocked from merge and release until all
+  required suites pass. Suite selection follows `04-e2e-test-plan.md`.
 - Task-candidate E2E may use the request worktree's source, but it must use the
   host dependency/runtime environment described in R4. Do not reinstall the
   repository environment for each run; only missing or incompatible host

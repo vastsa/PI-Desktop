@@ -332,6 +332,17 @@ to later refresh and inference; the vendor picker does not collect them.
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running
   Plan or Goal record
+- `session.configureModel({ id, providerId, modelId, thinkingLevel? })` — a
+  separate, strictly bounded host operation for approved plugin model
+  selection. The three nonblank string fields are accepted, plus an optional
+  `thinkingLevel` from the host's published list; any additional field
+  (including `mode` or `permissionMode`) returns `INVALID_PARAMS`. Provider
+  must be enabled, available, and the model configured on it. The operation
+  applies the existing Plan/active-turn configuration gate, then atomically
+  updates the provider, model, and (when requested) thinking-level columns;
+  session mode, tool permission mode, and transcript remain unchanged. Missing
+  sessions return `NOT_FOUND`. The older `session.configure` contract is not
+  relaxed. The operation is additive and requires a compatible host build.
 - `session.moveProject({ sessionId, projectPath })` moves an idle session to a
   project and returns `{ session }` carrying the canonical project path. It
   upserts the project row and updates only `sessions.project_id` and
