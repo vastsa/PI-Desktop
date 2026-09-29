@@ -7299,3 +7299,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   covers native DMG and ZIP archive inspection.
 - D634 amends D457 / ADR 0296 and supersedes the macOS distribution provisions
   of ADR 0232 / ADR 0204. See ADR 0309.
+
+## 2026-09-29 — Catch up missed scheduled occurrences (D635)
+
+- A scheduled task missed while the app was not running is dispatched once after
+  startup, when the task's newest miss is still inside its catch-up window.
+  Anything older is rearmed into the future instead of replayed.
+- `catchUp` (on by default) and `catchUpWindowMinutes` (three hours for hourly
+  tasks, one day for daily and weekly, clamped to 5-10080) use the task's
+  existing `config_json` boundary. One miss produces at most one run, and at most
+  two catch-ups start per poll, so downtime never builds a backlog.
+- D635 amends the scheduled-automation provisions of ADR
+  scheduled-desktop-automations. See ADR 0310.

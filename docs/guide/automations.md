@@ -24,9 +24,12 @@ permission mode and model in the task form. These choices are saved only for tha
 task, so changing another task or the app default does not retarget it. Auto can
 run restricted actions without asking; use it only for tasks you trust.
 
-Keep PI-Desktop running. Quitting the app stops scheduling. Missed occurrences
-are skipped; startup never launches a backlog. A task does not overlap its own
-unfinished run. Pause stops future occurrences without cancelling a running
+Keep PI-Desktop running. Quitting the app stops scheduling. An occurrence missed
+while the app was closed is caught up once shortly after startup, as long as it
+is still inside the task's catch-up window (three hours for hourly tasks, one day
+for daily and weekly ones); anything older is dropped rather than replayed, at
+most two tasks start per poll, and one miss never produces two runs. A task does
+not overlap its own unfinished run. Pause stops future occurrences without cancelling a running
 conversation. Open that conversation to respond to permission requests or stop
 the turn using the normal conversation controls.
 

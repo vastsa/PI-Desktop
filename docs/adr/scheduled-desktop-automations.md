@@ -1,6 +1,6 @@
 # ADR: Desktop-owned automation dispatch with Host-owned schedules
 
-- Status: Accepted for implementation; amended by ADR 0305
+- Status: Accepted for implementation; amended by ADR 0305 and ADR 0310
 - Date: 2026-09-20
 
 ## Context
@@ -42,8 +42,12 @@ home sidebar; other destinations and navigation ownership remain unchanged.
 ## Consequences
 
 The app must remain running. A due occurrence more than 90 seconds late is
-skipped, never replayed in a burst. An active run suppresses an overlapping
-occurrence. Startup interrupts orphaned runs and arms only future occurrences.
+skipped unless it is the newest miss of that task and still inside the task's
+catch-up window, in which case it is dispatched once (ADR 0310); at most two
+catch-ups start per poll, so downtime still never replays a burst. An active run
+suppresses an overlapping occurrence. Startup interrupts orphaned runs, keeps an
+in-window miss armed for that one catch-up, and arms every other occurrence into
+the future.
 Daily/weekly times follow the host's local timezone. Weekly schedules accept
 a nonempty unique selection of weekdays, falling back to the legacy single
 weekday when absent. Hourly tasks instead wait one elapsed hour after saving,

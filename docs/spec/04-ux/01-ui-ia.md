@@ -260,8 +260,10 @@ completed, failed or interrupted status. Automatic runs never steal foreground
 focus. See [desktop automations](../../adr/scheduled-desktop-automations.md).
 
 The application must remain running. The host polls every 30 seconds and skips
-occurrences more than 90 seconds late or overlapping a running task. Startup
-rearms future occurrences only. Hourly schedules wait a full hour after saving,
+an occurrence that overlaps a running task. An occurrence missed while the app was
+not running is caught up once when the task's newest miss is still inside its
+catch-up window, at most two tasks per poll; anything older is rearmed into the
+future instead of replayed. Hourly schedules wait a full hour after saving,
 enabling, startup or the preceding automatic admission; Run now leaves the
 automatic occurrence unchanged. Legacy cadence-only tasks require explicit
 schedule configuration. New tasks explicitly save the selected project, Ask
