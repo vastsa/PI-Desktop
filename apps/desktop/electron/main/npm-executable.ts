@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { accessSync, constants, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, extname, isAbsolute, join } from "node:path";
+import { userLookupPath } from "./user-login-path.js";
 
 /** Injectable so installer tests never run npm. */
 export type DependencyCommandRunner = (
@@ -53,7 +54,7 @@ export const defaultDependencyRunner: DependencyCommandRunner = (
     stdio: ["ignore", "pipe", "pipe"],
     // Never inherit auth tokens, NODE_OPTIONS, npm config or user proxies.
     env: {
-      PATH: process.env.PATH ?? "",
+      PATH: userLookupPath(process.env.PATH ?? ""),
       HOME: process.env.HOME ?? process.env.USERPROFILE ?? "",
       TMPDIR: process.env.TMPDIR ?? process.env.TEMP ?? "",
       LANG: process.env.LANG ?? "en_US.UTF-8",
@@ -156,7 +157,7 @@ export async function prepareNpmExecutable(
     if (npmPath !== undefined) {
       requireFile(npmPath, true); // stat follows symlinks; keep the selected directory.
       const directory = dirname(npmPath);
-      tool.env.PATH = `${directory}${delimiter}${process.env.PATH ?? ""}`;
+      tool.env.PATH = `${directory}${delimiter}${userLookupPath(process.env.PATH ?? "")}`;
       if (process.platform === "win32") {
         const extension = extname(npmPath).toLowerCase();
         if (extension === ".cmd" || extension === ".bat") {

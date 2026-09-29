@@ -104,6 +104,12 @@ test("selected npm uses its directory PATH for both stages, without inheriting s
   }
 });
 
+test("npm executable env inherits userLookupPath for GUI environments", () => {
+  const src = readFileSync(new URL("../electron/main/npm-executable.ts", import.meta.url), "utf8");
+  assert.match(src, /import \{ userLookupPath \} from "\.\/user-login-path\.js"/);
+  assert.match(src, /PATH: userLookupPath\(process\.env\.PATH \?\? ""\)/);
+});
+
 test("symlinked npm keeps the selected bin directory, not the real npm-cli directory", { skip: windows }, async (t) => {
   const f = fixture(t);
   const target = join(f.root, "npm-cli.js");
