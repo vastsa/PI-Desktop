@@ -44,6 +44,8 @@
 
 /* Path/URL tokens inside plain user-message text. */
 .chat-text-link {
+  -webkit-user-select: text;
+  user-select: text;
   background: none;
   border: none;
   padding: 0;
