@@ -47,9 +47,12 @@ with a `context_length` and capability flags landed on the generic
    approaches it. Beyond the bound, `balancedSelection` keeps rows round-robin
    per publisher segment (the id before its first `/`; ids without a route form
    one group), one per publisher per pass in publisher order, then re-sorts, so
-   a bounded list reads like an unbounded one and no publisher is lost because
-   its ids sort late. The rule reads only the id's shape. The settings dialog
-   keeps filtering client-side; the durable cache stores the whole answer.
+   a bounded list reads like an unbounded one. Every publisher keeps at least
+   its first `floor(bound / publishers)` rows, so no publisher is lost because
+   its ids sort late unless there are more publishers than the bound itself;
+   rows beyond the bound are still not returned. The rule reads only the id's
+   shape. The settings dialog keeps filtering client-side; the durable cache
+   stores the whole answer.
 4. **A served row's own statement fills the generic shape, narrowly.**
    `servedModelMetadata` reads the two OpenAI-compatible list shapes in use
    (a `capabilities` object with `input_modalities`, plus `context_length`;

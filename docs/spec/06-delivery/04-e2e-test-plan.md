@@ -8787,6 +8787,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   no overlays) and `openai-compatible-gateway-flow.test.ts` (streamed tool-call
   deltas, tool execution, `role: "tool"` replay, final usage, truncated and
   malformed streams through the real agent loop against a fixture).
+  `pnpm test:e2e:composer-model-selection` additionally switches the real
+  composer model menu from the fixture provider to an Eden AI row, between two
+  of its routed ids including the three-segment one, and back, asserting each
+  committed `(providerId, modelId)` verbatim.
 - **Scope**: Host persistence, live Eden AI calls, Eden AI's own streaming and
   tool-call behavior per upstream model, EU eligibility enforcement, and visual
   layout are not asserted. Live checks use the opt-in
@@ -8795,7 +8799,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Specs linked**: `03-runtime/12-provider-config-schema.md`,
   `03-runtime/13-model-catalog-and-selection.md`, `guide/edenai.md`, ADR 0313.
 - **Acceptance**: B (model configuration and key storage).
-- **Status**: Draft; results are recorded in the delivering change.
+- **Status**: Offline units and both Electron probes passed on 2026-09-30
+  (provider setup in English and Simplified Chinese; composer switching) from
+  base main `373a6913a`. Live Eden AI verification NOT RUN: no authorized
+  credential was available.
 
 #### E2E-PROVIDER-copy-config-without-credentials: Copy configuration into an independent provider
 

@@ -291,3 +291,64 @@ test("an ordinary large gateway list is returned whole", () => {
   assert.ok(body.length < MAX_DISCOVERED_MODELS);
   assert.equal(normalizeModelList("chat_completions", { data: body }).length, body.length);
 });
+
+test("the bound's exact guarantee: floor(bound / publishers) rows per publisher, late single-model publishers included", () => {
+  // Eight publishers, a bound of 20: each keeps its first two rows before any
+  // publisher gets a third, so a single-model publisher that sorts last survives.
+  const rows = [
+    ...catalog({ alpha: 10, beta: 7, gamma: 1, delta: 5, epsilon: 3 }),
+    { id: "zulu/only-model" },
+    { id: "yankee/m-1" },
+    { id: "yankee/m-2" },
+    { id: "yankee/m-3" },
+  ];
+  const sorted = rows.map((row) => ({ modelId: row.id })).sort((a, b) => a.modelId.localeCompare(b.modelId));
+  const kept = balancedSelection(sorted, 20);
+  assert.equal(kept.length, 20);
+  const count = (publisher) => kept.filter((m) => m.modelId.startsWith(`${publisher}/`)).length;
+  assert.equal(count("zulu"), 1);
+  assert.equal(count("gamma"), 1);
+  assert.equal(count("yankee"), 3);
+  assert.equal(count("epsilon"), 3);
+  for (const publisher of ["alpha", "beta", "delta"]) assert.ok(count(publisher) >= 2, publisher);
+  // Every kept row is a real input row, exactly once.
+  const ids = kept.map((m) => m.modelId);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(ids.every((id) => sorted.some((m) => m.modelId === id)));
+});
+
+test("more publishers than the bound keeps the alphabetically first publishers, one row each", () => {
+  // The documented limit of the rule: a bound cannot hold a row from every
+  // publisher when there are more publishers than rows allowed.
+  const sorted = Array.from({ length: 30 }, (_, i) => ({
+    modelId: `pub-${String(i).padStart(2, "0")}/model`,
+  }));
+  const kept = balancedSelection(sorted, 12);
+  assert.deepEqual(
+    kept.map((m) => m.modelId),
+    sorted.slice(0, 12).map((m) => m.modelId),
+  );
+});
+
+test("routed ids with several segments group by their first segment only, and duplicates never survive the bound", () => {
+  const body = [
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `deepinfra/meta-llama/model-${i}` })),
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `deepinfra/qwen/model-${i}` })),
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `openai/model-${i}` })),
+    { id: "openai/model-0" },
+    { id: "deepinfra/qwen/model-0" },
+    { id: "bare-model" },
+  ];
+  const models = normalizeModelList("chat_completions", { data: body });
+  // Under the bound: de-duplicated, whole, sorted.
+  assert.equal(models.length, 19);
+  assert.equal(new Set(models.map((m) => m.modelId)).size, 19);
+  // Over a small bound, `deepinfra/...` is one publisher (12 rows), `openai` another, and
+  // the bare id its own group: 3 groups, bound 7 → 3 + 3 + 1.
+  const sorted = models.slice();
+  const kept = balancedSelection(sorted, 7);
+  assert.equal(kept.filter((m) => m.modelId.startsWith("deepinfra/")).length, 3);
+  assert.equal(kept.filter((m) => m.modelId.startsWith("openai/")).length, 3);
+  assert.equal(kept.filter((m) => m.modelId === "bare-model").length, 1);
+  assert.equal(new Set(kept.map((m) => m.modelId)).size, kept.length);
+});

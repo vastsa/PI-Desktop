@@ -132,11 +132,14 @@ pathological or hostile answer, and no service behind a shipped preset comes
 near it (OpenRouter publishes about 460 ids, Eden AI about 1,100). Beyond the
 bound, rows are kept round-robin per publisher segment — the part of a routed
 id before its first `/`, or one shared group for ids with no route — one row
-per publisher per pass in publisher order, then re-sorted, so a large publisher
-whose ids sort early cannot crowd out a small one whose ids sort late and a
-bounded list still reads like an unbounded one. The rule reads only the id's
-shape, never a vendor name. Ids are never rewritten, including ids with several
-`/` segments (ADR 0313).
+per publisher per pass in publisher order, then re-sorted, so a bounded list
+still reads like an unbounded one. The guarantee is exact: every publisher
+keeps at least its first `floor(bound / publishers)` rows, so a publisher with
+fewer rows than that keeps everything and only the largest publishers absorb
+the cut. A bound is still a bound: rows beyond it are not returned, and a list
+with more publishers than the bound holds only the alphabetically first `bound`
+publishers. The rule reads only the id's shape, never a vendor name. Ids are
+never rewritten, including ids with several `/` segments (ADR 0313).
 
 A row may also state facts about its own model, and two are read when no
 published record resolves for the id: the context window (`context_length`, or

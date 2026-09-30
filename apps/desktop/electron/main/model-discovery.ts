@@ -128,9 +128,14 @@ function publisherOf(modelId: string): string {
  * Rows arrive sorted and de-duplicated. They are grouped by publisher segment
  * and taken round-robin, one per publisher per pass in publisher order, until
  * the bound is reached; the survivors are then sorted again so the output order
- * is the same as an unbounded list. Every publisher with at least one row keeps
- * at least one, small publishers keep everything, and the largest ones absorb
- * the cut. The rule reads only the id's shape, never a vendor name.
+ * is the same as an unbounded list. What this guarantees: a list under the
+ * bound is returned whole; over it, every publisher keeps its first
+ * `floor(bound / publishers)` rows at least, so a publisher with fewer rows
+ * than that keeps everything and only the largest ones absorb the cut. What it
+ * does not guarantee: a bound smaller than the number of publishers can hold
+ * only the alphabetically first `bound` publishers, and no bound can keep a
+ * model that did not fit. The rule reads only the id's shape, never a vendor
+ * name.
  */
 export function balancedSelection<T extends { modelId: string }>(
   sorted: readonly T[],
