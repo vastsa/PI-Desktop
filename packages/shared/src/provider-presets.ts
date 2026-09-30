@@ -313,6 +313,32 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     labelKey: "settings.presetVercelGateway",
     aliases: ["vercel-ai-gateway"],
   },
+  /*
+    Eden AI is an OpenAI-compatible gateway whose model ids are `provider/model`
+    (`openai/gpt-latest`, `deepinfra/meta-llama/Llama-3.3-70B-Instruct`). Both
+    rows share one vendor: the EU row is the same service on the host Eden AI
+    filters to EU-eligible providers, and a request there for a model that is
+    not EU-eligible is refused by the gateway rather than re-routed. Neither
+    row claims data residency; that is Eden AI's statement to make.
+  */
+  {
+    id: "edenai",
+    vendorKey: "edenai",
+    name: "Eden AI",
+    baseUrl: "https://api.edenai.run/v3",
+    apiStyle: "chat_completions",
+    labelKey: "settings.presetEdenAi",
+    aliases: ["eden-ai", "eden"],
+  },
+  {
+    id: "edenai-eu",
+    vendorKey: "edenai",
+    name: "Eden AI (EU endpoint)",
+    baseUrl: "https://api.eu.edenai.run/v3",
+    apiStyle: "chat_completions",
+    labelKey: "settings.presetEdenAiEu",
+    aliases: ["eden-ai-eu", "eden-eu"],
+  },
   {
     id: "alibaba-token-plan",
     vendorKey: "alibaba-token-plan",

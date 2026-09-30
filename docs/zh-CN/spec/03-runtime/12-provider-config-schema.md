@@ -249,7 +249,16 @@ API 密钥；自定义端点在常见路径上并排显示 API 密钥与接口�
 使用 models.dev 提供商键。
 
 国际：OpenAI、Anthropic、Google Gemini、OpenRouter、Groq、xAI、Mistral、
-Together、Fireworks、OpenCode Go、Z.AI。
+Together、Fireworks、OpenCode Go、Z.AI、Eden AI（`edenai`，
+`https://api.edenai.run/v3`）与 Eden AI（欧盟端点）（预设 `edenai-eu`，共用
+`vendorKey` `edenai`，`https://api.eu.edenai.run/v3`）。
+
+Eden AI 不是 pi-ai 内置提供商，而是走 OpenAI Chat Completions 路径的应用侧预设
+（ADR 0313）。其模型 ID 带路由前缀（`provider/model`），按原样存储并发送。
+两行共用一个 vendor：欧盟行是同一服务在 Eden AI 过滤为"欧盟可用"提供商与模型的
+主机上；该主机对不在此集合内的 ID 直接拒绝而不改路由。`matchNamedPreset`
+先按精确主机解析已保存的行，因此欧盟行不会被当作全球行。两个预设均不对数据
+驻留作任何声明。
 
 国内：DeepSeek、通义千问、月之暗面、智谱 / Coding Plan、硅基流动、火山方舟、
 MiniMax（`anthropic_messages`，`https://api.minimaxi.com/anthropic/v1`）、

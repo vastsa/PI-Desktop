@@ -166,6 +166,7 @@ wire APIs, and non-Claude ids served over the Anthropic protocol are unchanged
 - Cohere
 - Perplexity
 - OpenRouter
+- Eden AI (gateway; global and EU endpoints, routed `provider/model` ids)
 - Moonshot / Kimi
 - Zhipu / GLM
 - MiniMax

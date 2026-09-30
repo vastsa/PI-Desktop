@@ -64,3 +64,7 @@ repository rules.
 ## StepFun Plan
 
 See [StepFun Plan setup](stepfun.md) for the subscription endpoint and model configuration.
+
+## Eden AI
+
+See [Eden AI setup](edenai.md) for the global and EU gateway endpoints, routed model ids, and what the model list does and does not tell the app.

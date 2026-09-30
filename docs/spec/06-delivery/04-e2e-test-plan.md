@@ -8759,6 +8759,44 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   calls, and visual layout are not asserted by this fixture.
 - **Specs linked**: `03-runtime/12-provider-config-schema.md`, `guide/stepfun.md`.
 
+#### E2E-PROVIDER-edenai-gateway-setup: Save an Eden AI preset with routed model ids
+
+- **Preconditions**: Isolated Electron profile, English and Simplified Chinese,
+  a synthetic API key, and a stubbed `https://api.edenai.run/v3` model list
+  that answers two routed ids including a three-segment one
+  (`deepinfra/meta-llama/Llama-3.3-70B-Instruct`) with a served context window;
+  no live provider.
+- **Steps**: Open Add AI service, confirm the **Eden AI** tile shows
+  `api.edenai.run/v3` and the **Eden AI (EU endpoint)** tile shows
+  `api.eu.edenai.run/v3`, select Eden AI, enter the test key, wait for model
+  discovery, explicitly select the three-segment id, then save.
+- **Expected**: The connection summary shows `api.edenai.run/v3`. Discovery
+  receives that URL, `chat_completions` and the entered key. Save retains the
+  URL and format, `vendorKey: "edenai"`, the routed id verbatim, and a binding
+  whose `contextWindow` is the served window with
+  `contextWindowSource: "catalog"`.
+- **Automation**: `pnpm test:e2e:provider-api-style` renders the production
+  form with only the API boundary stubbed. Offline units:
+  `provider-presets.test.ts` (both presets, host-first matching, no vendor
+  compat overlays), `provider-endpoint.test.ts` (bare host completes to `/v3`),
+  `service-catalog.test.mjs` (discoverability), `model-discovery.test.mjs`
+  (served metadata parsing, deep routed ids, publisher-balanced bound),
+  `provider-served-metadata.test.mjs` (the real list handler on an Eden-shaped
+  answer, cache round trip, published record precedence),
+  `provider-binding.test.ts` (openai-completions, verbatim id, `/v3` base URL,
+  no overlays) and `openai-compatible-gateway-flow.test.ts` (streamed tool-call
+  deltas, tool execution, `role: "tool"` replay, final usage, truncated and
+  malformed streams through the real agent loop against a fixture).
+- **Scope**: Host persistence, live Eden AI calls, Eden AI's own streaming and
+  tool-call behavior per upstream model, EU eligibility enforcement, and visual
+  layout are not asserted. Live checks use the opt-in
+  `PI_DESKTOP_TEST_API_KEY` / `PI_DESKTOP_TEST_BASE_URL` /
+  `PI_DESKTOP_TEST_MODEL` lane and are recorded per run.
+- **Specs linked**: `03-runtime/12-provider-config-schema.md`,
+  `03-runtime/13-model-catalog-and-selection.md`, `guide/edenai.md`, ADR 0313.
+- **Acceptance**: B (model configuration and key storage).
+- **Status**: Draft; results are recorded in the delivering change.
+
 #### E2E-PROVIDER-copy-config-without-credentials: Copy configuration into an independent provider
 
 - **Preconditions**: Settings contains an ordinary provider with a saved API

@@ -124,6 +124,35 @@ contract changes are required.
 An OAuth vendor account skips step 2 — it has no key to probe with, and pi-ai
 already knows which models the subscription allows.
 
+#### Served lists: size and self-description
+
+A service's list is returned whole and the dialog filters it client-side; a
+safety bound of `MAX_DISCOVERED_MODELS` (2,000 rows) exists only for a
+pathological or hostile answer, and no service behind a shipped preset comes
+near it (OpenRouter publishes about 460 ids, Eden AI about 1,100). Beyond the
+bound, rows are kept round-robin per publisher segment — the part of a routed
+id before its first `/`, or one shared group for ids with no route — one row
+per publisher per pass in publisher order, then re-sorted, so a large publisher
+whose ids sort early cannot crowd out a small one whose ids sort late and a
+bounded list still reads like an unbounded one. The rule reads only the id's
+shape, never a vendor name. Ids are never rewritten, including ids with several
+`/` segments (ADR 0313).
+
+A row may also state facts about its own model, and two are read when no
+published record resolves for the id: the context window (`context_length`, or
+`context_window` as Zhipu's Responses list spells it) and tool support (a
+`capabilities.supports_function_calling: true` flag, or `tools` inside a
+`supported_parameters` list). Only a positive statement counts — a flag that is
+`false`, missing, or not a boolean adds nothing, and a window that is not a
+positive whole number is dropped. The served window seeds the binding through
+`bindingFromModelInfo` with `contextWindowSource: "catalog"`, so the effective
+runtime window follows it for a model the catalog cannot place; the tool flag
+labels the row and ranks the recommendation. The durable model cache stores the
+same two facts and a cache read shows them again. Image-input and reasoning
+flags are parsed but not promoted: each changes the request shape and stays
+behind the binding's explicit user choice (§11.1, §11.2). A published record
+always outranks what the list says about a known id.
+
 The picker never dumps the raw host error into the model list. A failed probe
 with no rows shows a classified one-line summary (auth, missing list, rate
 limit, timeout, network, invalid response, or HTTP status) plus a short hint
