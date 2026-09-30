@@ -1,54 +1,59 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import type {
   AppSettings,
   GlobalPermissionMode,
   PluginScenicThemesDestinationMeta,
   ShortcutPlatform,
 } from "@pi-desktop/shared";
-import { useAppStore } from "../../stores/app-store";
-import { api } from "../../lib/api";
-import {
-  isSettingsDestinationHidden,
-  SETTINGS_NAV_GROUP_LABELS,
-  visibleSettingsNav,
-  type SettingsNavGroupId,
-} from "../../lib/settings-search";
-import { pluginViewIcon } from "../../lib/plugin-view-icons";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   IconArchive,
   IconBookOpen,
   IconBot,
   IconChevronLeft,
+  IconCloudDown,
   IconDownload,
   IconFileText,
   IconGlobe,
   IconInfo,
   IconKeyboard,
+  IconMic,
   IconPalette,
   IconSearch,
   IconServer,
   IconSliders,
   IconSparkles,
-  IconCloudDown,
-  IconMic,
 } from "../../components/icons";
-import { Badge, Button, cx, SegmentedControl, SettingsToggle } from "../../components/ui";
-import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
-import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
+import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
+import { AgentSkillsPage } from "../../components/settings/AgentSkillsPage";
+import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
+import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
-import { ThinkingDisplayModeRow } from "../../components/settings/ThinkingDisplayModeRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
+import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { LanguageRow } from "../../components/settings/LanguageRow";
+import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
+import { NetworkProxySection } from "../../components/settings/NetworkProxySection";
+import { NotificationSoundRow } from "../../components/settings/NotificationSoundRow";
+import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
+import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { ThemeRow } from "../../components/settings/ThemeRow";
-import { NetworkProxySection } from "../../components/settings/NetworkProxySection";
+import { ThinkingDisplayModeRow } from "../../components/settings/ThinkingDisplayModeRow";
+import { Badge, Button, cx, SegmentedControl, SettingsToggle } from "../../components/ui";
+import { api } from "../../lib/api";
+import { pluginViewIcon } from "../../lib/plugin-view-icons";
+import {
+  isSettingsDestinationHidden,
+  SETTINGS_NAV_GROUP_LABELS,
+  type SettingsNavGroupId,
+  visibleSettingsNav,
+} from "../../lib/settings-search";
 import { ProjectsPage } from "../../pages/ProjectsPage";
-import { AgentSkillsPage } from "../../components/settings/AgentSkillsPage";
-import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
-import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
-import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
-import { VoiceSettingsSection } from "./voice/VoiceSettingsSection";
+import { useAppStore } from "../../stores/app-store";
+import { AgentInstructionsSection, UpdatesRow } from "./agent-sections";
+import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
+import { ImportSection } from "./import-page";
 import {
   CommandShellRow,
   ContextUsageDisplayRow,
@@ -57,12 +62,8 @@ import {
   SettingsCard,
   SettingsRow,
 } from "./primitives";
-import { AgentInstructionsSection, UpdatesRow } from "./agent-sections";
-import { ImportSection } from "./import-page";
 import { PromptEnhancementCard } from "./prompt-enhancement-card";
-import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
-import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
-import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
+import { VoiceSettingsSection } from "./voice/VoiceSettingsSection";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -416,6 +417,7 @@ export function SettingsPage() {
                 <LanguageRow settings={settings} saveSettings={saveSettings} />
                 <FontFamilyRow settings={settings} saveSettings={saveSettings} />
                 <FontSizeRow settings={settings} saveSettings={saveSettings} />
+                <NotificationSoundRow settings={settings} saveSettings={saveSettings} />
               </SettingsCard>
 
               <NetworkProxySection settings={settings} saveSettings={saveSettings} />

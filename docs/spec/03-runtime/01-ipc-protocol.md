@@ -848,9 +848,12 @@ Main sends two events:
   path, including project activation for a project-bound session.
 - `pi-desktop/notification/event/sound` is a payload-free, one-way cue for a
   plugin-native notification that Electron successfully showed. Renderer plays
-  the shared soft chime; the event carries no notification content and creates
-  no inbox row. Native task, interactive, and plugin banners are silent so the
-  in-app chime is not doubled by a platform-specific sound.
+  the configured notification sound; the event carries no notification content
+  and creates no inbox row. The absent or `system` sound preference uses the
+  built-in short system chime. A `custom` preference plays the selected,
+  self-contained audio data and falls back to that chime when the browser
+  cannot load or start it. Native task, interactive, and plugin banners remain
+  silent so the in-app sound is not doubled by a platform-specific sound.
 
 Plugin-owned session mutations additionally emit
 `pi-desktop/session/event/changed` after a successful write. The renderer
