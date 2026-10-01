@@ -8801,8 +8801,19 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Acceptance**: B (model configuration and key storage).
 - **Status**: Offline units and both Electron probes passed on 2026-09-30
   (provider setup in English and Simplified Chinese; composer switching) from
-  base main `373a6913a`. Live Eden AI verification NOT RUN: no authorized
-  credential was available.
+  base main `373a6913a`. Live verification on 2026-10-01 with a maintainer's
+  production Eden AI key, through the built `DesktopAgentRuntime` with only
+  the host edge stubbed, PASSED a complete tool round trip (Read requested,
+  executed once, result replayed, correct final answer, no errors) on the
+  global host for `openai/gpt-latest`, `anthropic/claude-sonnet-latest`,
+  `vertex/gemini-flash-latest` and `mistral/mistral-large-latest`. Usage
+  parsed in every run, including OpenAI cached prompt tokens, Anthropic cache
+  write/read tokens and Gemini reasoning tokens. Streaming granularity varied
+  by family (Anthropic arrived in one update, Mistral in nine). A sandbox key
+  returns mock content and cannot exercise tools. NOT RUN: a tool turn on the
+  EU host, reasoning levels, image input, and the host-core lane
+  (`e2e-smoke.mjs` needs the Rust binary; `e2e-agent-live.mjs` has a stale
+  `HostClient` import that predates this change).
 
 #### E2E-PROVIDER-copy-config-without-credentials: Copy configuration into an independent provider
 

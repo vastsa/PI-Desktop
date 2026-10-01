@@ -76,12 +76,18 @@ agreement with them.
 ## Limits and things to verify yourself
 
 - Streaming, tool calls, structured output and reasoning parameters are
-  documented by Eden AI for its Chat Completions API. PI-Desktop's own tests
-  prove what it sends and how it reads a conforming answer; whether a given
-  upstream model streams tool calls correctly through the gateway is a
-  per-model question. Try a short tool-using turn before relying on a model.
+  documented by Eden AI for its Chat Completions API. A complete agent tool
+  round trip was verified live on the global host for `openai/gpt-latest`,
+  `anthropic/claude-sonnet-latest`, `vertex/gemini-flash-latest` and
+  `mistral/mistral-large-latest`. Other models, the EU host, reasoning levels
+  and image input were not exercised live; try a short tool-using turn before
+  relying on a model you have not used through Eden AI before.
 - Eden AI's model list marks many entries `supports_native_streaming: false`.
-  The meaning of that flag is not documented; PI-Desktop ignores it.
+  The meaning of that flag is not documented. In the live runs Anthropic's
+  reply arrived in a single update while Mistral's streamed in several, so
+  expect coarser streaming on some families; PI-Desktop handles both.
+- A sandbox key returns mock content and never calls tools. Use a production
+  key, which can carry a spending cap, to test agent behavior.
 - The list publishes no maximum output length, so raise the output limit in
   the model's Advanced settings when a model supports more than 8,192 tokens.
 - Eden AI charges the underlying provider's price plus its platform fee; see
