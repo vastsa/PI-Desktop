@@ -645,8 +645,11 @@ export function registerProviderIpc({
             // Only what the endpoint actually served is cached; a configured id
             // it never offered must not be recorded as discovered.
             await cacheForCurrentProvider(models);
+            // The live answer replaces the list wholesale: configured bindings
+            // the endpoint stopped serving must not be re-added (#1257). The
+            // settings form still reads the stored bindings from the provider.
             return {
-              models: withConfiguredBindings(models),
+              models,
               source: "remote" as const,
               ...resolution,
             };

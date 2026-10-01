@@ -57,7 +57,7 @@ test("a catalog-derived list is reported as such, not as the service's answer", 
   // widened with the user's configured bindings, but only the rows the endpoint
   // actually served are cached, which the next test pins.
   const liveReturn = handler.slice(handler.indexOf("await cacheForCurrentProvider(models);"));
-  assert.match(liveReturn.slice(0, 240), /source: "remote" as const/);
+  assert.match(liveReturn.slice(0, 400), /source: "remote" as const/);
 });
 
 test("only a live answer is written back to the model cache", () => {
@@ -78,6 +78,18 @@ test("every returned model is enriched through the published Pi catalog regardle
   assert.match(handler, /const modelsDevModel = .*modelsDevCatalog\.publishedModelFor/);
   assert.match(handler, /outcome\.models\.map\(\(model\) => decorate\(model\)\)/);
   assert.match(handler, /catalogModels\.map\(\(model\) => decorate\(model\)\)/);
+});
+
+test("a live answer no longer re-adds configured bindings the endpoint dropped", () => {
+  // Issue #1257: a key that lost model entitlement upstream must see the dead
+  // models disappear after a refresh. Only the catalog and fallback branches —
+  // which answer without the endpoint — keep the configured ids visible.
+  const cacheCallAt = handler.indexOf("await cacheForCurrentProvider(models);");
+  const liveBranch = handler.slice(cacheCallAt, handler.indexOf('source: "remote" as const', cacheCallAt));
+  assert.ok(!liveBranch.includes("withConfiguredBindings"),
+    "the live branch must return exactly what the endpoint served");
+  assert.ok(handler.slice(handler.indexOf("modelsDevCatalog.modelsForProvider(")).includes("withConfiguredBindings("),
+    "the catalog fallback keeps configured bindings so offline editing stays usable");
 });
 
 test("the stored secret is resolved before probing, so edits need no retyped key", () => {
