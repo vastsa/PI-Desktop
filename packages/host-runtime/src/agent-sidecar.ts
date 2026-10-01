@@ -56,6 +56,9 @@ const HOST_PROXY_ALLOWED = new Set([
   "session.appendMessage",
   "session.appendCompaction",
   "session.replaceMessages",
+  // Read-only: a compaction checkpoint copies the session checklist (#1177).
+  // Writes stay on `tools.execute` TodoWrite, authorized by host-core.
+  "todos.get",
   "workspace.get",
   "plans.enter",
   "plans.submit",

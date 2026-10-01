@@ -515,6 +515,13 @@ deletes per 60 seconds. P2/P3 methods are not present in protocol v11.
   Electron Main IPC, keeps them by session id, and ignores revisions older than
   or equal to the cached revision. Remote RACP sessions are local-only for this
   vertical slice because RACP v1 has no Todo snapshot operation.
+- The agent sidecar may call `todos.get` through its host proxy; it is the
+  only Todo method on that allowlist and is read-only. When the runtime
+  installs a compaction checkpoint it reads its own session once and stores
+  `{ revision, updatedAt, todos }` in `details.todoSnapshot` only while pending
+  or in-progress items remain. The model context renders that copy after the
+  checkpoint summary; the stored summary, the renderer, and the transcript do
+  not use it. A failed read installs the checkpoint without the copy (ADR 0312).
 
 ### Stats
 

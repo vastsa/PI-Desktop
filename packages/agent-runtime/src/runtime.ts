@@ -140,6 +140,7 @@ import type {
   Entry,
   MessageEntry,
 } from "./pi-runtime-types.js";
+import { checkpointTodoSnapshot } from "./checkpoint-todos.js";
 import {
   initialSystemTranscript,
   CONTEXT_BUDGET_SECTION,
@@ -925,6 +926,14 @@ const CONTEXT_REMINDER_MAX_TOKENS = 32_000;
 const CONTEXT_REMINDER_RATIO = 0.15;
 /** Close enough to the boundary that the next turn is likely to cross it. */
 const CONTEXT_FALLBACK_REMINDER_TOKENS = 2_000;
+
+/**
+ * Approved execution runs in Agent mode, where the session checklist is the
+ * user's progress view (#1177). TodoWrite is deferred, so the line says how to
+ * reach it.
+ */
+const APPROVED_EXECUTION_CHECKLIST_INSTRUCTION =
+  "Track multi-step execution in the session checklist: activate TodoWrite with ToolSearch if it is deferred, keep the checklist current as you work, and finish with every item completed or cancelled.";
 
 function contextBudgetReminder(remaining: number): string {
   return [
@@ -6956,27 +6965,59 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     });
   }
 
-  private async persistCheckpoint(
+  /**
+   * Carry the host's session checklist in the checkpoint, so the model keeps
+   * the steps a summary would otherwise erase (#1177). The checkpoint never
+   * depends on it: a host without `todos.get`, a session that keeps no
+   * checklist, or a failed read installs the checkpoint without one.
+   */
+  private async checkpointWithTodos(
     checkpoint: ContextCompactionRecord,
+  ): Promise<ContextCompactionRecord> {
+    let snapshot: ReturnType<typeof checkpointTodoSnapshot>;
+    try {
+      snapshot = checkpointTodoSnapshot(
+        await this.host.call("todos.get", { sessionId: this.sessionId }),
+      );
+    } catch {
+      // Older hosts and native Pi sessions answer with an error; compaction
+      // must not fail over a convenience copy.
+      return checkpoint;
+    }
+    if (!snapshot) return checkpoint;
+    return {
+      ...checkpoint,
+      details: {
+        ...(isRecord(checkpoint.details) ? checkpoint.details : {}),
+        todoSnapshot: snapshot,
+      },
+    };
+  }
+
+  private async persistCheckpoint(
+    summarized: ContextCompactionRecord,
     reason: ContextCompactionReason,
     willRetry: boolean,
     mustFitSafeBudget: boolean,
     fallback?: ContextCompactionFallback,
   ): Promise<CheckpointPersistResult> {
     const systemMessage = systemTranscriptCheckpoint(this.agent.state.messages);
-    checkpoint = {
-      ...checkpoint,
-      details: { ...(isRecord(checkpoint.details) ? checkpoint.details : {}), ...(systemMessage ? { systemMessageJson: JSON.stringify(systemMessage) } : {}) },
+    const withSystem: ContextCompactionRecord = {
+      ...summarized,
+      details: { ...(isRecord(summarized.details) ? summarized.details : {}), ...(systemMessage ? { systemMessageJson: JSON.stringify(systemMessage) } : {}) },
     };
-    const compactedBudget = this.contextBudget(
-      this.liveSessionContext(checkpoint).messages,
-    );
-    if (
-      mustFitSafeBudget &&
-      compactedBudget.tokens >= compactedBudget.hardLimit
-    ) {
-      return "oversized";
-    }
+    const fits = (candidate: ContextCompactionRecord) => {
+      const budget = this.contextBudget(
+        this.liveSessionContext(candidate).messages,
+      );
+      return !mustFitSafeBudget || budget.tokens < budget.hardLimit;
+    };
+    if (!fits(withSystem)) return "oversized";
+    // The checklist copy is dropped rather than letting it push a checkpoint
+    // that fits on its own over the safe budget.
+    const withTodos = await this.checkpointWithTodos(withSystem);
+    const checkpoint =
+      withTodos !== withSystem && fits(withTodos) ? withTodos : withSystem;
     try {
       await this.host.call("session.appendCompaction", {
         sessionId: this.sessionId,
@@ -8266,6 +8307,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             execution.plan,
             "</approved-goal-markdown>",
             "Choose your own approach with the normal Agent tools. Then verify every acceptance criterion yourself, running the checks the contract names rather than assuming they pass.",
+            APPROVED_EXECUTION_CHECKLIST_INSTRUCTION,
             "Keep working while a criterion is still unmet and you have an untried approach. Stop early only if a boundary in the contract blocks you or a criterion cannot be verified; say which one and why.",
             "Finish with a report that walks the acceptance criteria one by one, each marked met or unmet with the evidence you observed.",
           ].join("\n")
@@ -8279,6 +8321,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             execution.plan,
             "</approved-plan-markdown>",
             "Implement the approved plan with the normal Agent tools, then report the result.",
+            APPROVED_EXECUTION_CHECKLIST_INSTRUCTION,
           ].join("\n");
     const internalId = `approved-${kind}:${execution.id}`;
     const internalMessage: AgentMessage = {
