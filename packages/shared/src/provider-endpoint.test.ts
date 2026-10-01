@@ -327,3 +327,32 @@ describe("endpoint presets stay the registry's source of truth", () => {
     }
   });
 });
+
+describe("Eden AI endpoints", () => {
+  it("completes a bare Eden AI host with the registry's /v3 path and Chat Completions", () => {
+    for (const host of ["api.edenai.run", "https://api.eu.edenai.run"]) {
+      const profile = inferEndpointProfile({ baseUrl: host });
+      expect(profile, host).toBeDefined();
+      expect(profile!.apiStyle).toBe("chat_completions");
+      expect(profile!.providerKey).toBe("edenai");
+      expect(profile!.candidates.map((candidate) => candidate.baseUrl)).toContain(
+        `https://${host.replace(/^https:\/\//, "")}/v3`,
+      );
+      for (const candidate of profile!.candidates) {
+        expect(new URL(candidate.baseUrl).origin).toBe(profile!.origin);
+      }
+    }
+  });
+
+  it("keeps a typed /v3 path as the first candidate and probes its own model list", () => {
+    const profile = inferEndpointProfile({
+      baseUrl: "https://api.edenai.run/v3",
+      apiStyle: "chat_completions",
+      explicitApiStyle: true,
+    });
+    expect(profile!.candidates[0]?.baseUrl).toBe("https://api.edenai.run/v3");
+    expect(discoveryProbeUrl(profile!.candidates[0]!.baseUrl, profile!.candidates[0]!.discoveryStyle)).toBe(
+      "https://api.edenai.run/v3/models",
+    );
+  });
+});

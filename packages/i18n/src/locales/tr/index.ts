@@ -1369,6 +1369,8 @@ sklm: {
     presetMinimaxIntl: "MiniMax (Uluslararası)",
     presetMoonshotIntl: "Moonshot AI (Uluslararası)",
     presetVercelGateway: "Vercel AI Gateway",
+    presetEdenAi: "Eden AI",
+    presetEdenAiEu: "Eden AI (AB uç noktası)",
     presetAlibabaTokenPlan: "Qwen Token Plan",
     presetAlibabaTokenPlanCn: "Qwen Token Plan (China)",
     presetXiaomiTokenPlanCn: "Xiaomi Token Plan (China)",

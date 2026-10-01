@@ -1198,3 +1198,64 @@ describe("DeepSeek-family relay reasoning replay (#296)", () => {
     );
   });
 });
+
+describe("Eden AI gateway rows (named OpenAI-compatible presets)", () => {
+  const edenRow = (baseUrl: string, modelId: string): RuntimeProviderConfig => ({
+    id: "eden-row-uuid",
+    name: "Eden AI",
+    vendorKey: "edenai",
+    baseUrl,
+    modelId,
+    apiKey: "eden-fixture-key",
+    authKind: "api_key_and_base_url",
+    apiStyle: "chat_completions",
+    supportsReasoning: false,
+    supportedThinkingLevels: ["off"],
+    modelConfig: genericModelConfig(modelId, baseUrl),
+  });
+
+  it("binds the global and EU hosts to pi-ai's openai-completions adapter with the id verbatim", () => {
+    for (const [baseUrl, modelId] of [
+      ["https://api.edenai.run/v3", "anthropic/claude-sonnet-latest"],
+      ["https://api.eu.edenai.run/v3", "deepinfra/meta-llama/Llama-3.3-70B-Instruct"],
+    ] as const) {
+      const model = buildProviderModel(edenRow(baseUrl, modelId)) as any;
+      expect(model.api).toBe("openai-completions");
+      expect(model.baseUrl).toBe(baseUrl);
+      expect(model.id).toBe(modelId);
+      expect(model.provider).toBe("edenai");
+      // Only the system-role rule applies; no vendor overlay leaks onto the gateway.
+      expect(model.compat).toEqual({ supportsDeveloperRole: false });
+      expect(model.compat).not.toHaveProperty("thinkingFormat");
+      expect(model.compat).not.toHaveProperty("requiresReasoningContentOnAssistantMessages");
+    }
+  });
+
+  it("posts to the gateway's /chat/completions with the routed id and the stored key", async () => {
+    const row = edenRow("https://api.edenai.run/v3", "openai/gpt-latest");
+    const model = buildProviderModel(row);
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(String(url)).toBe("https://api.edenai.run/v3/chat/completions");
+      expect(body.model).toBe("openai/gpt-latest");
+      expect(body.stream).toBe(true);
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer eden-fixture-key");
+      return new Response(
+        'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"openai/gpt-latest","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}\n\n' +
+          'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"openai/gpt-latest","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}\n\n' +
+          "data: [DONE]\n\n",
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    const models = createProviderModels(row, model);
+    const stream = models.streamSimple(
+      model,
+      { messages: [{ role: "user", content: "hi", timestamp: Date.now() }] } as never,
+      { fetch: fetchImpl as never },
+    );
+    const done = await stream.result();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(done.stopReason).toBe("stop");
+    expect(done.usage.output).toBe(1);
+  });
+});

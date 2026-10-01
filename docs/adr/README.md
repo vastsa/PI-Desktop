@@ -347,6 +347,7 @@ Each ADR includes:
 | 0313 | [Default Live Work to the Current Composer Session](0313-live-voice-default-session-target.md) | Accepted |
 | 0315 | [A spoken answer selects among an open asktool question's own options](0315-live-voice-spoken-asktool-answers.md) | Accepted for implementation (amends the Live Voice Work Session decision path for AskTool only) |
 | 0316 | [The Live Voice call bar is a docked desktop widget window](0316-live-voice-docked-widget.md) | Accepted |
+| 0317 | [Eden AI as named endpoint presets, with publisher-balanced discovery](0313-edenai-endpoint-presets-and-balanced-discovery.md) | Accepted for implementation |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |

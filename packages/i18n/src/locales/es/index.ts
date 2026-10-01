@@ -1366,6 +1366,8 @@ sklm: {
     "presetMinimaxIntl": "MiniMax (Internacional)",
     "presetMoonshotIntl": "Moonshot AI (Internacional)",
     "presetVercelGateway": "Vercel AI Gateway",
+    "presetEdenAi": "Eden AI",
+    "presetEdenAiEu": "Eden AI (endpoint UE)",
     "presetAlibabaTokenPlan": "Qwen Token Plan",
     "presetAlibabaTokenPlanCn": "Qwen Token Plan (China)",
     "presetXiaomiTokenPlanCn": "Xiaomi Token Plan (China)",

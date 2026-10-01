@@ -23,6 +23,30 @@ import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { IpcRegistrar } from "./types";
 /**
+ * The two served facts a generic row may carry into its settings record.
+ *
+ * A live row states them through `servedModelMetadata`; a cached row states
+ * them through the `capabilities` and `contextWindow` the cache stored from the
+ * last live answer. Both spell "the service said so", never "the catalog says
+ * so", and a value that is not a positive whole number is not a window.
+ */
+function servedRowMetadata(model: {
+  contextWindow?: number;
+  toolCall?: boolean;
+  capabilities?: string[];
+}): { contextWindow?: number; toolCall: boolean } {
+  const window = model.contextWindow;
+  const contextWindow =
+    typeof window === "number" && Number.isFinite(window) && window > 0
+      ? Math.round(window)
+      : undefined;
+  return {
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    toolCall: model.toolCall === true || model.capabilities?.includes("tools") === true,
+  };
+}
+
+/**
  * One line explaining why a candidate sweep found nothing: every endpoint that
  * was tried and what it answered. The list is the explanation the settings
  * dialog shows, so a failed discovery never has to be a silent 404.
@@ -399,6 +423,8 @@ export function registerProviderIpc({
           input?: readonly ("text" | "image")[];
           contextWindow?: number;
           maxTokens?: number;
+          /** A live row's own statement that it accepts tools (`servedModelMetadata`); only `true` counts. */
+          toolCall?: boolean;
           source?: "bundled" | "discovered" | "user";
         },
         // Vendor accounts can span wire APIs, so a model may need a style of
@@ -422,6 +448,21 @@ export function registerProviderIpc({
         });
         const modelConfig = catalogModelConfig;
         const operationMetadata = modelsDevCatalog.settingsMetadataFor?.({ providerId: provider?.id, vendorKey: catalogVendorKey, baseUrl: catalogBaseUrl, modelId: model.modelId });
+        /*
+          What the service said about a row the catalog cannot place. A published
+          record always wins, so this only fills the generic shape: the window the
+          list stated (it sizes compaction and output budgets) and whether the
+          model takes tools (it ranks the recommendation and labels the row). A
+          cached row carries the same two facts back through `capabilities` and
+          `contextWindow`. Image and reasoning claims are deliberately not
+          promoted here: each changes the request shape and is gated by the
+          binding's explicit user choice, so a gateway flag alone must not turn
+          them on.
+        */
+        const served =
+          modelsDevModel || operationMetadata || catalogModelConfig.source !== "generic"
+            ? undefined
+            : servedRowMetadata(model);
         const info = modelsDevModel
           ? modelInfoFromModelsDev(modelsDevModel, provider?.id ?? "")
           : operationMetadata ?? {
@@ -438,8 +479,10 @@ export function registerProviderIpc({
                 : {}),
               capabilities: [
                 "text",
+                ...(served?.toolCall ? ["tools" as const] : []),
                 ...(catalogModelConfig.source !== "generic" && catalogModelConfig.reasoning ? ["reasoning" as const] : []),
               ] as Array<"text" | "tools" | "vision" | "reasoning" | "json">,
+              ...(served?.toolCall ? { toolCall: true } : {}),
               supportedThinkingLevels: [...(catalogModelConfig.supportedThinkingLevels ?? [])],
               source: model.source ?? ("discovered" as const),
             };
@@ -448,7 +491,7 @@ export function registerProviderIpc({
           modelId: model.modelId,
           displayName: info.displayName || modelConfig.name,
           providerId: provider?.id ?? "",
-          contextWindow: operationMetadata?.contextWindow ?? modelConfig.contextWindow,
+          contextWindow: operationMetadata?.contextWindow ?? served?.contextWindow ?? modelConfig.contextWindow,
           maxTokens: operationMetadata?.maxTokens ?? modelConfig.maxTokens,
           // Published modalities, taken before the binding is applied. This
           // record is what the settings panel compares its checkboxes against,

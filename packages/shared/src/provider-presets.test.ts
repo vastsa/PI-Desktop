@@ -284,3 +284,62 @@ describe("pi-ai built-in API-key services", () => {
     }
   });
 });
+
+describe("Eden AI endpoint presets", () => {
+  const international = {
+    id: "edenai",
+    vendorKey: "edenai",
+    name: "Eden AI",
+    baseUrl: "https://api.edenai.run/v3",
+    apiStyle: "chat_completions",
+  };
+  const eu = {
+    id: "edenai-eu",
+    vendorKey: "edenai",
+    name: "Eden AI (EU endpoint)",
+    baseUrl: "https://api.eu.edenai.run/v3",
+    apiStyle: "chat_completions",
+  };
+
+  it("offers the international and EU hosts as two rows of one vendor", () => {
+    expect(NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === "edenai")).toMatchObject(international);
+    expect(NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === "edenai-eu")).toMatchObject(eu);
+    expect(NAMED_ENDPOINT_PRESETS.filter((preset) => preset.vendorKey === "edenai")).toHaveLength(2);
+  });
+
+  it("resolves a saved row by its exact host, so the EU row never reads as the global one", () => {
+    expect(matchNamedPreset({ baseUrl: "https://api.edenai.run/v3" })).toMatchObject(international);
+    expect(matchNamedPreset({ baseUrl: "https://api.eu.edenai.run/v3/" })).toMatchObject(eu);
+    // A shared vendor key alone names the global row; the URL decides otherwise.
+    expect(matchNamedPreset({ vendorKey: "edenai" })).toMatchObject(international);
+    expect(
+      matchNamedPreset({ vendorKey: "edenai", baseUrl: "https://api.eu.edenai.run/v3" }),
+    ).toMatchObject(eu);
+  });
+
+  it("answers the spellings a user or an import is likely to carry", () => {
+    for (const key of ["edenai", "eden-ai", "eden", "EdenAI"]) {
+      expect(matchNamedPreset({ vendorKey: key })?.id, key).toBe("edenai");
+    }
+    for (const key of ["edenai-eu", "eden-ai-eu", "eden-eu"]) {
+      expect(matchNamedPreset({ vendorKey: key })?.id, key).toBe("edenai-eu");
+    }
+  });
+
+  it("keeps the gateway on the plain Chat Completions path without vendor compat overlays", () => {
+    for (const baseUrl of [international.baseUrl, eu.baseUrl]) {
+      expect(zhipuRequestCompat({ vendorKey: "edenai", baseUrl })).toBeUndefined();
+      expect(
+        deepseekRequestCompat({ vendorKey: "edenai", baseUrl, modelId: "openai/gpt-latest" }),
+      ).toBeUndefined();
+      // A DeepSeek model routed through the gateway still gets the replay
+      // overlay the model family needs; that rule reads the model id, not the host.
+      expect(
+        deepseekRequestCompat({ vendorKey: "edenai", baseUrl, modelId: "deepseek/deepseek-reasoner" }),
+      ).toEqual({
+        requiresReasoningContentOnAssistantMessages: true,
+        requiresNonEmptyReasoningReplay: true,
+      });
+    }
+  });
+});

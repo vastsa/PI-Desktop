@@ -59,6 +59,19 @@ globalThis.providerApiStyleProbe = async () => {
         supportedThinkingLevels: ["low", "medium", "high"], contextWindow: 1000000, maxTokens: 65536,
       }], source: "remote" };
     }
+    if (input.baseUrl === "https://api.edenai.run/v3") {
+      // Eden AI addresses models as `provider/model`; the served window fills
+      // a generic row, so the fixture answers the way the main handler does.
+      return { models: [
+        { modelId: "openai/gpt-latest", displayName: "openai/gpt-latest", providerId: "edenai-fixture",
+          source: "discovered", capabilities: ["text", "tools"], toolCall: true,
+          supportedThinkingLevels: [], contextWindow: 400000, maxTokens: 8192 },
+        { modelId: "deepinfra/meta-llama/Llama-3.3-70B-Instruct",
+          displayName: "deepinfra/meta-llama/Llama-3.3-70B-Instruct", providerId: "edenai-fixture",
+          source: "discovered", capabilities: ["text", "tools"], toolCall: true,
+          supportedThinkingLevels: [], contextWindow: 131072, maxTokens: 8192 },
+      ], source: "remote" };
+    }
     return { models: [], source: "remote" };
   };
   /* The root container only mounts React; every production surface under test
@@ -218,6 +231,48 @@ globalThis.providerApiStyleProbe = async () => {
       assert(savedStepfun.models?.length === 1 && savedStepfun.models[0].id === "step-5-preview",
         `${locale}: StepFun saved the wrong model selection`);
       results.push(`${locale}:stepfun-plan-choose-key-discover-select-save`);
+      render();
+      // Eden AI: a named OpenAI-compatible gateway whose ids carry a route.
+      const beforeEdenCreate = creates.length;
+      const beforeEdenDiscovery = discoveries.length;
+      const edenTile = document.querySelector<HTMLElement>('[data-service-id="edenai"]');
+      assert(edenTile?.textContent?.includes("api.edenai.run/v3"), `${locale}: Eden AI chooser hides its host`);
+      assert(document.querySelector('[data-service-id="edenai-eu"]')?.textContent?.includes("api.eu.edenai.run/v3"),
+        `${locale}: Eden AI EU chooser hides its host`);
+      click(edenTile);
+      await frame();
+      assert(document.querySelector(".provider-service-chip-host")?.textContent === "api.edenai.run/v3",
+        `${locale}: Eden AI connection summary hides the host`);
+      const edenKeyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
+      assert(edenKeyInput, `${locale}: Eden AI key input missing`);
+      flushSync(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!
+          .call(edenKeyInput, "edenai-fixture-key");
+        edenKeyInput!.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await until(() => discoveries.length > beforeEdenDiscovery, "Eden AI discovery");
+      const edenDiscovery = discoveries.at(-1)!;
+      assert(edenDiscovery.baseUrl === "https://api.edenai.run/v3" &&
+        edenDiscovery.apiStyle === "chat_completions" && edenDiscovery.apiKey === "edenai-fixture-key",
+        `${locale}: Eden AI discovery used the wrong route or credentials`);
+      const routedId = "deepinfra/meta-llama/Llama-3.3-70B-Instruct";
+      const edenCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+        .find((input) => input.closest("label")?.textContent?.includes(routedId));
+      await until(() => Boolean(edenCheckbox()), "Eden AI discovered routed model");
+      if (edenCheckbox()!.checked) click(edenCheckbox());
+      click(edenCheckbox());
+      assert(edenCheckbox()!.checked, `${locale}: Eden AI routed model was not selected`);
+      await until(() => !control("settings.saveProvider").disabled, "Eden AI save enabled");
+      click(control("settings.saveProvider"));
+      await until(() => creates.length === beforeEdenCreate + 1, "Eden AI saved");
+      const savedEden = creates.at(-1)!;
+      assert(savedEden.vendorKey === "edenai" && savedEden.baseUrl === "https://api.edenai.run/v3" &&
+        savedEden.apiStyle === "chat_completions", `${locale}: Eden AI saved the wrong preset`);
+      const savedRouted = savedEden.models?.find((model) => model.id === routedId);
+      assert(savedRouted, `${locale}: Eden AI dropped the routed model id`);
+      assert(savedRouted!.contextWindow === 131072 && savedRouted!.contextWindowSource === "catalog",
+        `${locale}: Eden AI binding did not take the served window`);
+      results.push(`${locale}:edenai-choose-key-discover-select-save`);
       render();
       // A new service opens on the chooser (D625, D626); the custom endpoint
       // leads the API-key tiles, and picking it moves to the form.

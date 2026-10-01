@@ -408,7 +408,21 @@ Meta (`responses`), MiniMax (International) (`anthropic_messages` at
 (`moonshotai` at `https://api.moonshot.ai/v1`), NVIDIA (alias `nim`), OpenCode
 Zen (`opencode` at `https://opencode.ai/zen/v1`, alias `opencode-zen`), Vercel
 AI Gateway (`vercel` at `https://ai-gateway.vercel.sh/v1`, alias
-`vercel-ai-gateway`).
+`vercel-ai-gateway`), Eden AI (`edenai` at `https://api.edenai.run/v3`,
+aliases `eden-ai` / `eden`) and Eden AI (EU endpoint) (preset `edenai-eu`,
+same `vendorKey` `edenai`, at `https://api.eu.edenai.run/v3`, aliases
+`eden-ai-eu` / `eden-eu`).
+
+Eden AI is not a pi-ai built-in provider; it is an app-only preset on the
+OpenAI Chat Completions path (ADR 0313). Its model ids are routed,
+`provider/model` (`openai/gpt-latest`,
+`deepinfra/meta-llama/Llama-3.3-70B-Instruct`), and are stored and sent
+verbatim. The two rows share one vendor: the EU row is the same service on the
+host Eden AI filters to the providers and models it marks EU-eligible, and a
+request there for an id outside that set is refused by the gateway rather than
+re-routed. `matchNamedPreset` resolves a saved row by its exact host first, so
+an EU row never reads as the global one; the shared `vendorKey` alone names the
+global row. Neither preset states anything about data residency.
 
 `builtinProviders()` from pi-ai is the source for this list: every built-in
 provider is either reachable through one of the presets above or is an

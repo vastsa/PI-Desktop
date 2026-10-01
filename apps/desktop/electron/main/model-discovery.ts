@@ -21,7 +21,27 @@ import {
   type DiscoveryStyle,
 } from "@pi-desktop/shared";
 
-export type DiscoveredModel = {
+/**
+ * Metadata a model-list row states about itself, when it states any.
+ *
+ * Only what the service published travels here, and only positively: a flag
+ * that is `false`, missing, or malformed adds nothing, so a served row can
+ * never claim less than the generic shape and never claims more than it said.
+ * An absent field therefore reads the same as an explicit `false` downstream,
+ * which is the conservative direction for a coding agent.
+ */
+export type ServedModelMetadata = {
+  /** Positive token count the service published for the model's window. */
+  contextWindow?: number;
+  /** The service says the model accepts tool declarations and returns tool calls. */
+  toolCall?: true;
+  /** Input kinds the service listed, lower-cased and de-duplicated. */
+  inputModalities?: string[];
+  /** The service says the model produces reasoning. */
+  reasoning?: true;
+};
+
+export type DiscoveredModel = ServedModelMetadata & {
   modelId: string;
   displayName: string;
 };
@@ -29,7 +49,24 @@ export type DiscoveredModel = {
 export const DISCOVERY_TIMEOUT_MS = 10_000;
 /** Total budget for one endpoint-resolution sweep; its candidates share it. */
 export const DISCOVERY_TOTAL_BUDGET_MS = 12_000;
-const MAX_MODELS = 500;
+/**
+ * Safety bound on one normalized list, not a product limit.
+ *
+ * No gateway this app ships a preset for comes near it (OpenRouter publishes
+ * about 460 ids, Eden AI about 1,100), so an ordinary answer is returned whole
+ * and the settings dialog filters it client-side. The bound exists for a
+ * pathological or hostile response, and `balancedSelection` decides which rows
+ * survive it so an alphabetical head cannot silently drop every model from a
+ * publisher whose ids sort late.
+ */
+export const MAX_DISCOVERED_MODELS = 2_000;
+/**
+ * Widest context window a served row may claim. Wider values are read as
+ * malformed and dropped: a model-list field is data from the network, and an
+ * absurd window would only widen the agent's compaction budget past anything
+ * the request could carry.
+ */
+const MAX_SERVED_CONTEXT_WINDOW = 100_000_000;
 const MAX_REDIRECTS = 3;
 const RESERVED_DISCOVERY_HEADERS = new Set([
   "authorization",
@@ -74,14 +111,118 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/**
+ * The publisher segment of a routed id: `openai` for `openai/gpt-latest`, the
+ * empty string for an id with no route. Ids with several segments
+ * (`deepinfra/meta-llama/Llama-3.3-70B-Instruct`) keep their first segment as
+ * the publisher; the rest is the model's own name and is never split further.
+ */
+function publisherOf(modelId: string): string {
+  const slash = modelId.indexOf("/");
+  return slash > 0 ? modelId.slice(0, slash) : "";
+}
+
+/**
+ * Bound an over-long list without dropping whole publishers.
+ *
+ * Rows arrive sorted and de-duplicated. They are grouped by publisher segment
+ * and taken round-robin, one per publisher per pass in publisher order, until
+ * the bound is reached; the survivors are then sorted again so the output order
+ * is the same as an unbounded list. What this guarantees: a list under the
+ * bound is returned whole; over it, every publisher keeps its first
+ * `floor(bound / publishers)` rows at least, so a publisher with fewer rows
+ * than that keeps everything and only the largest ones absorb the cut. What it
+ * does not guarantee: a bound smaller than the number of publishers can hold
+ * only the alphabetically first `bound` publishers, and no bound can keep a
+ * model that did not fit. The rule reads only the id's shape, never a vendor
+ * name.
+ */
+export function balancedSelection<T extends { modelId: string }>(
+  sorted: readonly T[],
+  bound: number,
+): T[] {
+  if (sorted.length <= bound) return [...sorted];
+  const groups = new Map<string, T[]>();
+  for (const model of sorted) {
+    const publisher = publisherOf(model.modelId);
+    const group = groups.get(publisher);
+    if (group) group.push(model);
+    else groups.set(publisher, [model]);
+  }
+  const queues = [...groups.keys()].sort((a, b) => a.localeCompare(b)).map((key) => groups.get(key)!);
+  const kept: T[] = [];
+  let cursor = 0;
+  while (kept.length < bound) {
+    const queue = queues[cursor % queues.length];
+    const next = queue[Math.floor(cursor / queues.length)];
+    if (next) kept.push(next);
+    cursor += 1;
+  }
+  return kept.sort((a, b) => a.modelId.localeCompare(b.modelId));
+}
+
 function dedupeSort(models: DiscoveredModel[]): DiscoveredModel[] {
   const seen = new Map<string, DiscoveredModel>();
   for (const model of models) {
     if (model.modelId && !seen.has(model.modelId)) seen.set(model.modelId, model);
   }
-  return [...seen.values()]
-    .sort((a, b) => a.modelId.localeCompare(b.modelId))
-    .slice(0, MAX_MODELS);
+  const sorted = [...seen.values()].sort((a, b) => a.modelId.localeCompare(b.modelId));
+  return balancedSelection(sorted, MAX_DISCOVERED_MODELS);
+}
+
+function positiveInteger(value: unknown, max: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const rounded = Math.round(value);
+  return rounded > 0 && rounded <= max ? rounded : undefined;
+}
+
+function lowerCaseStrings(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry === "string" && entry.trim()) out.add(entry.trim().toLowerCase());
+  }
+  return out.size > 0 ? [...out] : undefined;
+}
+
+/**
+ * What a model-list row states about its own model. Pure.
+ *
+ * Two published shapes are read, because two gateway families use them and
+ * both are OpenAI-compatible list rows rather than anything vendor-specific:
+ *
+ *  - a `capabilities` object of boolean flags plus an `input_modalities` list,
+ *    with the window in `context_length` (Eden AI's `/models`);
+ *  - an `architecture.input_modalities` list plus a `supported_parameters`
+ *    list naming `tools` and `reasoning`, with the window in `context_length`
+ *    (OpenRouter's `/models`).
+ *
+ * `context_window` is read as a second spelling of the window because Zhipu's
+ * Responses list uses it. Anything else on the row is ignored: the row is data
+ * from the network, and only fields with one unambiguous meaning are trusted.
+ */
+export function servedModelMetadata(item: Record<string, unknown> | null): ServedModelMetadata {
+  if (!item) return {};
+  const metadata: ServedModelMetadata = {};
+  const contextWindow =
+    positiveInteger(item.context_length, MAX_SERVED_CONTEXT_WINDOW) ??
+    positiveInteger(item.context_window, MAX_SERVED_CONTEXT_WINDOW);
+  if (contextWindow !== undefined) metadata.contextWindow = contextWindow;
+
+  const capabilities = asRecord(item.capabilities);
+  const architecture = asRecord(item.architecture);
+  const parameters = lowerCaseStrings(item.supported_parameters) ?? [];
+  if (capabilities?.supports_function_calling === true || parameters.includes("tools")) {
+    metadata.toolCall = true;
+  }
+  if (capabilities?.supports_reasoning === true || parameters.includes("reasoning")) {
+    metadata.reasoning = true;
+  }
+  const inputModalities =
+    lowerCaseStrings(capabilities?.input_modalities) ??
+    lowerCaseStrings(architecture?.input_modalities);
+  if (inputModalities) metadata.inputModalities = inputModalities;
+  return metadata;
 }
 
 /**
@@ -132,7 +273,9 @@ export function normalizeModelList(
         typeof item?.display_name === "string" && item.display_name
           ? item.display_name
           : modelId;
-      return [{ modelId, displayName }];
+      // Served metadata rides along only when the row stated some, so a plain
+      // `{ id }` row still normalizes to exactly an id and a name.
+      return [{ modelId, displayName, ...servedModelMetadata(item) }];
     }),
   );
 }

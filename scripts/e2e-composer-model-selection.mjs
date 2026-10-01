@@ -107,6 +107,21 @@ app.whenReady().then(async () => {
     ],
   );
   console.log("PASS Composer applies a switched model default and preserves same-model manual thinking");
+  // Switching to a gateway provider, between two of its routed ids, and back
+  // commits each (providerId, modelId) exactly as configured (ADR 0313).
+  const edenId = "edenai-fixture";
+  const deepRoute = "deepinfra/meta-llama/Llama-3.3-70B-Instruct";
+  assert.deepEqual(result.switches, [
+    { provider: edenId, model: "openai/gpt-latest" },
+    { provider: edenId, model: deepRoute },
+    { provider: "fixture-provider", model: "model-a" },
+  ]);
+  assert.deepEqual(result.switchWrites, [
+    { providerId: edenId, modelId: "openai/gpt-latest" },
+    { providerId: edenId, modelId: deepRoute },
+    { providerId: "fixture-provider", modelId: "model-a" },
+  ]);
+  console.log("PASS Composer switches between Eden AI routed models and across providers verbatim");
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

@@ -31,6 +31,7 @@ This log freezes previously open questions into concrete decisions.
 | D634 | Remove bundled macOS first-launch guidance | **Amend D457 / ADR 0296 and the macOS distribution provisions of ADR 0232 / ADR 0204: neither macOS DMG nor ZIP ships `PI-Desktop-macOS-open.command`, `PI-Desktop-macOS-opening-help.txt`, or another bundled quarantine-clearing helper or opening note. The ZIP contains `PI-Desktop.app` at its root; the DMG remains a two-icon install. This applies to signed releases and local or opt-in unsigned debug builds. See ADR 0309 and E2E-196b.** | The signed release lane has eliminated the user need for an unsigned first-launch workaround; shipping it beside debug builds risks suggesting a Gatekeeper bypass. |
 | D635 | Work-area-capped 800×560 window minimum | **Supersede the 1040×700 window minimum in D156 / D447 (and the matching clauses of ADR 0029 / ADR 0238) and the `1040..10000` `window/setWorkPanelChatWidth` range (ADR 0146): Electron enforces an 800×560 minimum, capped per dimension to the current display work area by `clampMinimumSizeToWorkArea`. The chat-width IPC and renderer accept `800..10000`. On narrow windows the existing `workPanelLayout` budget caps the docked panel so MainChat keeps its 450px floor, collapsing the sidebar first. See US-UI-19 and E2E-167.** | At 150% Windows scaling the work area is about 1280×672 DIP, so a fixed minimum could exceed the screen and leave the window unfittable. |
 | D636 | Local permission approvals have no automatic deadline | **Amend D005 / ADR 0011 and supersede the local tool-permission timeout clauses in the runtime and UX specs: a permission-gated `tools.execute` request remains pending in host-core, the renderer, and the transport until the user chooses Allow once, Allow for session, or Deny, or the request is cancelled / the process shuts down. Remove the 120-second countdown and timeout fields from the local permission contract. Tool-specific execution budgets and the separate RACP/Plan approval lifetimes remain unchanged. See ADR 0310, issue #1214, and E2E-017.** | A visible permission request could be missed while the user worked elsewhere; automatic denial after 120 seconds silently prevented the requested action. Keeping cancellation and execution budgets preserves control and resource safety without turning inattention into a decision. |
+| D637 | Eden AI named presets and publisher-balanced discovery | **Add `edenai` and `edenai-eu` named endpoint presets on the OpenAI-compatible Chat Completions path with routed `provider/model` ids sent verbatim and neutral EU wording; return served model lists whole under a 2,000-row bound with publisher round-robin beyond it; let a served row's context window and tool flag fill the generic shape when no published record resolves. See ADR 0313.** | An alphabetical 500-row head dropped every `openai/`, `vertex/` and `xai/` id from Eden AI's 1,132-row list, and unmatched gateway ids ran with a guessed 128k window although the list stated the real one |
 | D450 | Signed macOS GitHub Releases | **Amend D078 / ADR 0022: GitHub tag releases Developer ID-sign, notarize (`notarytool` via electron-builder 26), staple, and Gatekeeper-verify macOS DMG/ZIP before upload, using identity `Developer ID Application: XingYu Liu (DUV63RKYTW)` / team `DUV63RKYTW` from Actions secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). Missing secrets fail the job. Local unsigned packaging without a certificate remains. `workflow_dispatch` may set `sign_macos: false` only for unsigned debug artifacts. Packaged macOS uses in-app `electron-updater` (ZIP + merged `latest-mac.yml`); Linux deb/rpm and Windows portable ZIP stay notify-and-link. No afterPack/afterSign adhoc codesign (ADR 0278).** | Production DMGs must open without a Gatekeeper warning, and signed macOS installs can download and restart into a new tag. See ADR 0289, E2E-196c, E2E-067A. |
 
 ## B. Secondary implementation defaults
@@ -7334,3 +7335,20 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   Tool-specific command/plugin execution budgets and the independent Plan/Goal
   and RACP approval lifetimes are unchanged. See ADR 0310, issue #1214, and
   E2E-017.
+
+## 2026-09-30 — Eden AI named presets and publisher-balanced discovery (D637)
+
+- D637 adds two named endpoint presets on the OpenAI-compatible path: Eden AI
+  (`edenai`, `https://api.edenai.run/v3`) and Eden AI (EU endpoint)
+  (`edenai-eu`, same `vendorKey`, `https://api.eu.edenai.run/v3`), both
+  `chat_completions`. Routed `provider/model` ids are stored and sent verbatim.
+  The EU row is described as Eden AI's EU host with EU-eligible routing and
+  makes no data-residency claim. No new API style, IPC method, host RPC, schema
+  version, dependency, or pi-ai patch.
+- Model discovery returns a served list whole under a safety bound of 2,000
+  rows; beyond it, rows are kept round-robin per publisher segment and
+  re-sorted, so an alphabetical head can no longer drop whole publishers. A
+  served row's `context_length` / `context_window` and tool-support flag fill
+  the generic shape when no published record resolves; image and reasoning
+  flags are not promoted. See ADR 0313, `guide/edenai.md`, and
+  E2E-PROVIDER-edenai-gateway-setup.

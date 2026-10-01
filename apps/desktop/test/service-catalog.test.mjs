@@ -87,3 +87,17 @@ test("endpoint labels retain routes and ports without showing credentials or que
     "api.example:8443/plan/v1");
   assert.equal(endpointLabel("https://api.example/"), "api.example");
 });
+
+test("Eden AI is offered as two rows and searchable by name, alias, vendor and host", () => {
+  const rows = namedServiceOptions(translate).filter((option) => option.id.startsWith("edenai"));
+  assert.deepEqual(rows.map((option) => option.id), ["edenai", "edenai-eu"]);
+  assert.equal(rows[0].endpoint, "api.edenai.run/v3");
+  assert.equal(rows[1].endpoint, "api.eu.edenai.run/v3");
+  for (const query of ["Eden", "edenai", "eden-ai", "api.edenai.run"]) {
+    assert.ok(ids(query).includes("edenai"), query);
+  }
+  // "eu" narrows to the EU host without dropping the global row's other matches.
+  assert.ok(ids("api.eu.edenai.run").includes("edenai-eu"));
+  assert.ok(!ids("api.eu.edenai.run").includes("edenai"));
+  assert.deepEqual(ids("eden-eu"), ["edenai-eu"]);
+});
