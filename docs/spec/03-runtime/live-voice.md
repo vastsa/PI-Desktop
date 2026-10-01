@@ -30,7 +30,7 @@ A separately scoped Live Work call may also resolve the bound session's single
 open AskTool question, and only by selecting among the option labels that
 question itself offered; permission and Plan/Goal approvals remain desktop-UI
 decisions (see [Live Voice Work Session Integration](live-work-session.md) and
-[ADR 0314](../../adr/0314-live-voice-spoken-asktool-answers.md)).
+[ADR 0315](../../adr/0315-live-voice-spoken-asktool-answers.md)).
 
 ## Ownership and security
 

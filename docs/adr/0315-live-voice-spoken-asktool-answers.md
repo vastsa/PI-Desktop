@@ -1,4 +1,4 @@
-# ADR 0314: A Spoken Answer Selects Among an Open asktool Question's Own Options
+# ADR 0315: A Spoken Answer Selects Among an Open asktool Question's Own Options
 
 - Status: Accepted for implementation
 - Date: 2026-10-01

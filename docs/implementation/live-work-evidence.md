@@ -322,7 +322,7 @@ therefore remains partial evidence for W2-025 and W2-096.
   worktree was created for this change, so this is local evidence only.
 - A work call can now resolve the bound session's single open AskTool question
   through the Host input path, selecting only among that question's own option
-  labels ([ADR 0314](../adr/0314-live-voice-spoken-asktool-answers.md)).
+  labels ([ADR 0315](../adr/0315-live-voice-spoken-asktool-answers.md)).
   Permission, Plan, and Goal approvals remain desktop-UI decisions.
 - A reloaded renderer rebuilds its pending AskTool and permission cards from
   Host state (`IPC.invoke.pendingInteractive` →
