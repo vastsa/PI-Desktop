@@ -11,6 +11,9 @@ import {
   type LivePreparedCall,
   type LiveStatus,
   type LiveTranscriptEvent,
+  type LiveWorkCancelQueuedOperationResult,
+  type LiveWorkStopOperationResult,
+  type LiveVoiceWidgetAction,
 } from "@pi-desktop/shared";
 import type { LiveCallView } from "@pi-desktop/shared";
 
@@ -39,9 +42,23 @@ export const liveVoiceApi = {
     | { kind: "session"; sessionId: string }
     | { kind: "project"; projectPath: string }
   >(IPC.invoke.liveVoiceResolveWorkSelection, input),
+  stopWorkOperation: (input: { callId: string; operationId: string }) => invoke<LiveWorkStopOperationResult>(IPC.invoke.liveVoiceStopWorkOperation, input),
+  cancelQueuedWorkOperation: (input: { callId: string; operationId: string }) => invoke<LiveWorkCancelQueuedOperationResult>(IPC.invoke.liveVoiceCancelQueuedOperation, input),
+  // The docked widget window: main pushes the owner's call view in, and the
+  // widget asks the owner frame (through main) to run the actions it owns.
+  setWidgetPresentation: (input: { visible: boolean; width: number; height: number }) =>
+    invoke<{ ok: true }>(IPC.invoke.liveVoiceWidgetVisibility, input),
+  requestWidgetAction: (action: LiveVoiceWidgetAction) =>
+    invoke<{ ok: true }>(IPC.invoke.liveVoiceWidgetAction, { action }),
+  reportWidgetOwnerState: (input: { callId: string; errorCode: string | null; decisionWaiting: boolean }) =>
+    invoke<{ ok: true }>(IPC.invoke.liveVoiceWidgetOwnerState, input),
   onView: (listener: (view: LiveCallView) => void) => subscribe(IPC.event.liveVoiceChanged, listener),
   onControl: (listener: (event: LiveControlEvent) => void) => subscribe(IPC.event.liveVoiceControl, listener),
   onTranscript: (listener: (event: LiveTranscriptEvent) => void) => subscribe(IPC.event.liveVoiceTranscript, listener),
+  onWidgetState: (listener: (state: { call: LiveCallView | null; errorCode?: string; decisionWaiting?: boolean }) => void) =>
+    subscribe(IPC.event.liveVoiceWidgetState, listener),
+  onWidgetAction: (listener: (event: { action: LiveVoiceWidgetAction }) => void) =>
+    subscribe(IPC.event.liveVoiceWidgetAction, listener),
 };
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {

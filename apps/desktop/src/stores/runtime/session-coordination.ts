@@ -203,6 +203,7 @@ export function createSessionCoordination({
     });
     rememberSessionCompactions(summary.id, session);
     void get().restorePendingPlan(summary.id);
+    void get().restorePendingInteractive(summary.id);
   }
 
   function revealEmptyCreatingSession(intent: number): void {

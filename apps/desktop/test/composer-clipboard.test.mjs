@@ -80,3 +80,51 @@ test("clipboard line endings normalize to the editor LF draft model", () => {
   assert.equal(normalizeClipboardLineEndings("no breaks"), "no breaks");
   assert.equal(normalizeClipboardLineEndings(""), "");
 });
+
+test("paintEditorValue preserves line breaks across DOM rendering", async () => {
+  const { paintEditorValue, readEditorValue } = await import("../src/features/chat/composer/editor.ts");
+  // Simple mock DOM container
+  const container = {
+    childNodes: [],
+    replaceChildren() {
+      this.childNodes = [];
+    },
+    appendChild(node) {
+      this.childNodes.push(node);
+      return node;
+    },
+  };
+  globalThis.document = {
+    createTextNode(text) {
+      return { nodeType: 3, nodeValue: text };
+    },
+    createElement(tagName) {
+      return {
+        nodeType: 1,
+        tagName: tagName.toUpperCase(),
+        classList: { contains: () => false },
+        childNodes: [],
+      };
+    },
+  };
+  globalThis.Node = {
+    ELEMENT_NODE: 1,
+    TEXT_NODE: 3,
+  };
+
+  paintEditorValue(
+    container,
+    "line 1\n\nline 2",
+    new Map(),
+    () => "",
+    () => {},
+    () => {},
+  );
+
+  assert.equal(container.childNodes.length, 4);
+  assert.equal(container.childNodes[0].nodeValue, "line 1");
+  assert.equal(container.childNodes[1].tagName, "BR");
+  assert.equal(container.childNodes[2].tagName, "BR");
+  assert.equal(container.childNodes[3].nodeValue, "line 2");
+  assert.equal(readEditorValue(container), "line 1\n\nline 2");
+});

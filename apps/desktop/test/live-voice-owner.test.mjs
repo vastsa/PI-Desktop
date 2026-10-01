@@ -12,15 +12,15 @@ const { build } = createRequire(new URL("../../../packages/agent-runtime/package
 test("built Live Voice trusts only the main window's actual packaged renderer entry", async (t) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pi-live-owner-")));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const output = join(root, "out/main/index.cjs");
+  const output = join(root, "out/main/index.mjs");
   await build({
     entryPoints: [fileURLToPath(new URL("../electron/main/live-voice/owner.ts", import.meta.url))],
     outfile: output,
     bundle: true,
     platform: "node",
-    format: "cjs",
+    format: "esm",
   });
-  const { isTrustedRendererUrl, liveOwnerFromInvoke, liveOwnerFrame } = require(output);
+  const { isTrustedRendererUrl, liveOwnerFromInvoke, liveOwnerFrame } = await import(pathToFileURL(output).href);
   const url = pathToFileURL(join(root, "out/renderer/index.html")).href;
   assert.equal(isTrustedRendererUrl(url), true);
   for (const other of [

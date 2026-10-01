@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { LiveWorkSelectionOption } from "@pi-desktop/shared";
+import type { LiveWorkSelectionOption, SessionSource } from "@pi-desktop/shared";
 import type { LiveWorkIntent } from "./intent.js";
 
 export type LiveWorkAdmission =
@@ -37,6 +37,8 @@ export type LiveWorkOperation = {
   callId: string;
   workBindingRevision: number;
   workSessionId: string;
+  workSessionLabel?: string;
+  workSessionSource?: SessionSource;
   providerRequestId: string;
   sequence: number;
   instruction: string;
@@ -126,7 +128,7 @@ export class LiveWorkOperationLedger {
     private readonly createUserMessageId: () => string = randomUUID,
   ) {}
 
-  registerCandidate(providerRequestId: string, instruction: string): RegisterCandidateResult {
+  registerCandidate(providerRequestId: string, instruction: string, workSessionId = this.scope.workSessionId): RegisterCandidateResult {
     if (!this.isValidRequest(providerRequestId, instruction)) return { status: "invalid" };
     const existing = this.operations.get(providerRequestId);
     if (existing) {
@@ -139,6 +141,7 @@ export class LiveWorkOperationLedger {
     }
     const operation: LiveWorkOperation = {
       ...this.scope,
+      workSessionId,
       operationId: this.createOperationId(),
       providerRequestId,
       sequence: this.nextSequence++,
@@ -149,6 +152,15 @@ export class LiveWorkOperationLedger {
     };
     this.operations.set(providerRequestId, operation);
     return { status: "created", operation: { ...operation } };
+  }
+
+  retarget(providerRequestId: string, workSessionId: string, label: string, source: SessionSource): LiveWorkOperation | undefined {
+    const operation = this.operations.get(providerRequestId);
+    if (!operation || !workSessionId.trim() || operation.admission === "dispatching") return undefined;
+    operation.workSessionId = workSessionId;
+    operation.workSessionLabel = label.slice(0, 180);
+    operation.workSessionSource = source;
+    return { ...operation };
   }
 
   get(providerRequestId: string): LiveWorkOperation | undefined {

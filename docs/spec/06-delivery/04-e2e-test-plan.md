@@ -72,13 +72,16 @@
 ### E2E-LIVE-VOICE-four-stage-ui
 
 - **Title:** Disabled, preparation, compact call, and deliberate details.
-- **Preconditions:** Isolated development-build Electron profile with developer
-  mode on, Live Voice initially disabled, deterministic local provider/media
-  fixtures, and local work-session fixtures. No real account, microphone,
-  speaker, paid endpoint, or user's running Desktop instance is used.
+- **Preconditions:** Isolated Electron profile with Live Voice initially
+  disabled, deterministic local provider/media fixtures, and local work-session
+  fixtures. No real account, microphone, speaker, paid endpoint, or user's
+  running Desktop instance is used.
 - **Steps:**
-  1. Confirm neither Live nor Work Composer icon exists while disabled. Enable
-     Live Voice only from Settings → Voice; verify exactly one idle voice icon.
+  1. Confirm neither Live nor Work Composer icon exists while disabled. Every
+     account card shows only its provider picker until that account is bound.
+     Enable Live Voice only from Settings → Voice; verify exactly one idle
+     voice icon and that the card keeps its Model configuration link on the
+     heading line beside the help mark.
   2. Open preparation and expand/collapse work options without starting. Verify
      no prepare request, microphone acquisition, media initialization, provider
      connection, or work dispatch occurs. Make the selected binding unavailable
@@ -91,7 +94,10 @@
   4. Open Details, inspect transcript/provider/work state, and dismiss it with
      Close, outside press, and Escape. Keep the call connected; use the bar to
      resume blocked sound, observe a rejected resume, and recover explicitly.
-  5. Navigate between chat, Settings, Plugins, and sessions. End or disable the
+  5. Navigate between chat, Settings, Plugins, and sessions. The call chrome is
+     a docked desktop widget window, so drag it by its own bar, verify the
+     position survives that navigation and is clamped back inside the work area,
+     and verify the main window draws no call bar. End or disable the
      feature with delayed Main termination and renderer cleanup, in either
      completion order. Keep Ending visible and prevent another Start until both
      settle. Exercise unconfirmed release and verify visible blocked recovery.
@@ -114,7 +120,7 @@
 - **Specs:** [Live Voice](../03-runtime/live-voice.md),
   [Live Work](../03-runtime/live-work-session.md),
   [Component spec](../04-ux/08-component-spec.md#1171-live-voice-preparation-compact-call-bar-and-details),
-  [Settings IA](../04-ux/06-settings-ia.md#voice-experimental).
+  [Settings IA](../04-ux/06-settings-ia.md#voice).
 - **Acceptance:** C / E / Security / Quality.
 - **Milestone:** Post-MVP experimental interaction maintenance.
 - **Coverage:** Targeted controller/presentation regression tests and
@@ -128,41 +134,58 @@
 
 ### E2E-LIVE-WORK-session-admission
 
-- **Preconditions:** Isolated Live provider fixture, a local AgentHost session,
-  and a deterministic fake intent resolver. The provider candidate must enter
-  through the existing Live adapter callback; do not use a real account or
-  paid endpoint.
-- **Steps:** Start a voice-only call and verify a work candidate is rejected
-  without a work scope. Start a second call after opting into work requests and
-  explicitly selecting a local session, with context sharing disabled. Submit
-  one declared work request, deliver its receipt, route it through the
-  classifier, and inspect the Host
-  admission and `voiceOrigin`. Exercise a busy independent request through the
-  Host queue, a stale steer, an exact-turn stop, and a terminal event arriving
-  before the submit promise resolves. Query a recorded terminal result and
-  verify the query does not create another Host turn. Request project/session
-  lists, verify they contain labels and opaque call-scoped references only,
-  open a listed session, and create a session from a listed project through
-  the panel action. Confirm both actions leave the active work binding fixed.
-  Queue a result while provider generation, user speech, and local playback are
-  active; verify it is sent only after all three are idle and the quiet window
-  passes. Exercise silent mode, an explicit query while silent, and stale
-  feedback downgrade. End the Live call after Host admission.
-- **Expected:** Work remains bound to the originally selected local session;
-  no prior messages are read when context sharing is disabled; the existing
-  AgentHost performs prompt, steer, queue, and stop operations; duplicate
-  provider IDs do not dispatch twice; terminal state comes from Host events;
-  result queries project only the exact operation summary; ending Live does
-  not cancel accepted work. Project/session choices never expose raw paths or
-  IDs, selection references expire and remain call-scoped, opening is
-  navigation only, and creating requires a listed project plus a panel action.
-  Automatic feedback observes provider speaking state and local playback
-  activity, while task execution and feedback delivery remain separate. A
-  renderer signal is not evidence that a person heard the result.
-- **Coverage:** `apps/desktop/test/live-voice-service.test.mjs` covers voice-only
-  rejection and explicit work-scope forwarding. `packages/host-runtime/src/live-work/coordinator.test.ts`
-  covers receipt ordering, routing, stale steer, replay, call close, and early
-  terminal correlation. `packages/host-runtime/src/live-work/context.test.ts`
+- **Preconditions:** Isolated Live provider fixture, Desktop/Native Pi/Remote
+  session catalog fixtures, and a deterministic fake intent resolver. Provider
+  candidates enter through the existing Live adapter callback; do not use a
+  real account or paid endpoint.
+- **Steps:** Start a call from a Composer with an active Desktop session and
+  verify that session is the default target without a work-access checkbox or
+  pre-call voice selection. Repeat with Native Pi and Remote Composer sessions.
+  Start with no current session and verify the call remains unbound until the
+  user lists sessions and chooses one by voice. Reject missing and duplicate
+  session identities. With context sharing disabled, submit one work request
+  and verify no history read; then test the separate bounded-context consent.
+  Switch targets by voice during a call, submit before and after the switch, and
+  verify the two operations remain associated with their respective sessions.
+  Deliver each receipt, route through the classifier, and inspect backend
+  admission and `voiceOrigin`. Exercise backend-specific queue/steer/stop
+  capabilities, approval denial, stale turn, offline Remote Host, and a
+  terminal event arriving before submit resolves. Query an exact terminal
+  result without creating another Host turn. Request project/session lists,
+  verify labels and opaque call-scoped references, then test opening and
+  creating only through their existing panel actions. With a submission
+  waiting on the user, confirm the compact bar keeps a waiting line and
+  Details shows the pending ask question with an action that opens that exact
+  session; verify another session's pending request stays unattributed. Then
+  answer the open asktool question by voice and confirm the session's card
+  resolves through the Host input path; retry with a label the question never
+  offered, with a partial answer, and with two open questions, and confirm each
+  is refused without a write and without being retried.
+  Exercise feedback while
+  generation, user speech, and playback are active; finish by ending Live after
+  Host admission.
+- **Expected:** The initial target is the current Composer session when present;
+  voice switching affects subsequent requests only. Main validates each target
+  against a fresh multi-backend catalog, and ambiguity/unavailability fails
+  closed. Context reads occur only after independent consent and remain bounded
+  to the current target. Each backend retains its own admission, permission,
+  approval, and capability rules; unsupported operations and offline targets
+  are reported honestly. Duplicate provider IDs do not dispatch twice,
+  terminal state comes from authoritative backend events, result queries project
+  only the exact operation summary, and ending Live does not cancel accepted
+  work. Selection references expose no raw paths or IDs and remain call-scoped.
+  Automatic feedback and task execution remain separate; a renderer signal is
+  not evidence that a person heard the result.
+- **Coverage:** `apps/desktop/test/live-work-scope.test.mjs` covers the fresh
+  Desktop/Native Pi/Remote catalog, source-specific prompt/stop/queue routing,
+  offline Remote failure, initial Native/Remote event subscriptions without a
+  local AgentHost bridge, project/workspace identity, opaque refs, and
+  ambiguous-target rejection. `apps/desktop/test/live-voice-ipc-media.test.mjs`
+  covers separate target/context consent and rejects raw operation/session/turn
+  IDs. `apps/desktop/test/live-voice-service.test.mjs` covers owner-scoped
+  stop/cancel routing by call and operation IDs. `packages/host-runtime/src/live-work/coordinator.test.ts`
+  covers receipt ordering, routing, stale steer, replay, call close, target
+  switching, exact-turn stop and old-session queue cancellation. `packages/host-runtime/src/live-work/context.test.ts`
   covers bounded context projection. `packages/agent-host/src/agent-host.test.ts`
   covers history-free state, queue insertion, and voice provenance.
   `packages/voice-runtime/src/live/protocol.test.ts` covers provider-specific
@@ -173,6 +196,13 @@
   cover provider/user/local playback gating and separate delivery status.
   `apps/desktop/test/live-work-scope.test.mjs` covers selection reference
   scope/expiry, and `live-work-operations.test.mjs` covers the panel actions.
+  `apps/desktop/test/live-work-decision.test.mjs` covers the waiting-decision
+  projection, its session scoping, bounded plain-text rendering and the panel
+  action that opens the bound session.
+  `packages/host-runtime/src/live-work/ask-answer.test.ts` covers the spoken
+  answer intent and its routing (resolved, refused, unknown and never resent),
+  and `apps/desktop/test/spoken-answer.test.mjs` covers the option-only
+  matching, the bounded read-out and the delivery budget.
   `voice-runtime/src/live/playback-monitor.test.ts` covers local audio signal
   detection. This is targeted automated coverage, not the complete
   W2-001—W2-096 matrix or real-provider E2E.
@@ -755,14 +785,17 @@ identify the platform validation still needed.
   development lane, workspace package build outputs are absent or older than
   their TypeScript sources.
 - **Steps**: 1) Launch PI-Desktop. In the development lane, use `pnpm dev`.
-  2) Observe main window appears.
+  2) Observe main window appears. In the macOS development lane, confirm the
+  menu-bar tray icon appears.
 - **Expected**: Development launch rebuilds all workspace dependencies before
   host-core and Electron startup. Window first shows the branded startup splash
   while bootstrap runs, then reveals the main shell in English with the current
   locale catalog; no compile error, missing-menu runtime error, or crash;
-  version info visible. Key lifecycle and error records are written to the
-  categorized logs. GitHub auto-update is not started until after `ensureWindow`, and a hung
-  feed cannot keep updater status on `checking` for Chromium's ~60s timeout.
+  version info visible. The macOS development bundle contains both tray icon
+  resources, and the tray starts without a missing-icon warning. Key lifecycle
+  and error records are written to the categorized logs. GitHub auto-update is
+  not started until after `ensureWindow`, and a hung feed cannot keep updater
+  status on `checking` for Chromium's ~60s timeout.
 - **Specs linked**: `03-runtime/07-process-model.md`, `04-ux/01-ui-ia.md`,
   `03-runtime/09-logging-and-observability.md`
 - **Acceptance**: A (app startup)
@@ -837,7 +870,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.
 - **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with no stepper or Next/Back buttons. The first control is Service — a searchable menu (Choose a service, Custom endpoint, then a flat vendor list from models.dev including Xiaomi), not a native select, region grouping, or vendor-card grid. Open it, type to filter client-side, then choose **Custom endpoint**. Confirm Name and Base URL appear on one row with no helper paragraph under the URL (placeholder only), API Key and API format appear side by side on the next row (not behind Advanced), and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, that its compact text tracks the published value instead of a coarser rounded one (a 1,050,000 window reads `1.05M`, never `1.1M`), and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm each numeric field has a five-chip preset ladder for common values, clicking a chip writes the value, hand editing remains possible, and a non-preset value leaves the ladder unselected. Set max output to 8,192 while its context window still follows the catalog. On a model whose published image input is enabled, toggle image input off and then back on before saving, so the explicit choice equals the current catalog value. Confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
-- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. Newly fetched or checked model rows stay collapsed until the user opens Advanced, so every selected model ID remains visible in the right pane after a multi-select. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. The explicitly selected 8,192 output remains pinned independently of the catalog-sourced context window, and the image-input choice remains explicitly enabled after it is toggled back to the published value; neither is reinterpreted as "follow catalog" on save/reopen. Later catalog corrections change only values whose own source is `catalog`. Limit text renders through one shared compact formatter, so neighbouring published windows stay distinguishable (`1M` / `1.05M` / `1.1M`) and a compact limit never reads above its published value. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
+- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. Newly fetched or checked model rows stay collapsed until the user opens Advanced, so every selected model ID remains visible in the right pane after a multi-select. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. The explicitly selected 8,192 output remains pinned independently of the catalog-sourced context window, and the image-input choice remains explicitly enabled after it is toggled back to the published value; neither is reinterpreted as "follow catalog" on save/reopen. Later catalog corrections change only values whose own source is `catalog`. Limit text renders through one shared compact formatter, so neighbouring published windows stay distinguishable (`1M` / `1.05M` / `1.1M`) and a compact limit never reads above its published value. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm one classified sentence reaches the app toast while the left pane keeps its single “no list” label (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit the same reason is toasted while the rows stay. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -880,7 +913,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: One provider saved with two model bindings; one fixture provider row exists with only the legacy `default_model_id` and no `config_json.models`; one fixture row carries an unknown or legacy `apiStyle` string.
 - **Steps**: 1) Reopen the saved provider; confirm the single form opens with its cached model list painted immediately, and that the API key field explains an unchanged key is kept. 2) Confirm the live probe then refreshes that list without a retyped key, because the stored secret is reused. 3) Confirm both existing bindings are still chosen and check-marked, with their limits, thinking chips and defaults intact. 4) Enable a level the fixture catalog does not publish, edit one row's limits and save. 5) Reopen the fixture provider and confirm its legacy model appears as one chosen row with 128,000 context, 8,192 max output and all seven thinking choices available but unselected. 6) Reopen the unknown-style fixture and confirm the editor renders with Chat Completions selected instead of an error boundary; save it and confirm the repaired style is persisted. 7) Save the fixture provider without changing the model. 8) Select the second binding as the app default, reopen the provider and save unchanged; confirm the app default stays on that binding. Save another provider and confirm the app default is unchanged. Reopen the default provider, remove the selected binding, and save; confirm the app default falls back to the first remaining binding. 9) Take the service offline or revoke the key, reopen the provider, and confirm the cached rows stay visible with a compact classified discovery error rather than an empty list or a raw host dump.
-- **Expected**: Editing never drops an unmodified binding. An explicitly enabled level remains saved even when the catalog does not publish it, so the Composer reads the same binding rather than silently narrowing it; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. An unknown or legacy `apiStyle` is treated as a compatibility input: the editor falls back to Chat Completions, remains usable, and repairs the stored value on save. Saving the default provider preserves `settings.defaultModelId` while the selected model remains configured; only removal of that model falls back to the first remaining binding. Editing another provider never changes the app default. A failed live probe degrades to the cached list plus a compact classified error, never to a blank picker or a raw HTTP/JSON dump, and a catalog fallback is never written into the model cache.
+- **Expected**: Editing never drops an unmodified binding. An explicitly enabled level remains saved even when the catalog does not publish it, so the Composer reads the same binding rather than silently narrowing it; a binding whose model discovery is unavailable keeps its stored levels untouched. Legacy read materializes one binding without losing the old model ID; the subsequent write stores `config_json.models` and keeps `defaultModelId` equal to the first binding for older readers. An unknown or legacy `apiStyle` is treated as a compatibility input: the editor falls back to Chat Completions, remains usable, and repairs the stored value on save. Saving the default provider preserves `settings.defaultModelId` while the selected model remains configured; only removal of that model falls back to the first remaining binding. Editing another provider never changes the app default. A failed live probe degrades to the cached list, one classified toast sentence and a one-line pane label, never to a blank picker or a raw HTTP/JSON dump, and a catalog fallback is never written into the model cache. Deleting a configured model and saving forgets that model's cached parameters, so the pane no longer paints the deleted id from cache and a later re-add starts from what the service or the catalog says. A probe that no longer publishes a model drops its cached row the same way, unless the row is the user's own (a hand-typed id, a configured binding), and a save that moves the base URL or the API format drops the answer the previous endpoint produced.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, ADR 0114
 - **Acceptance**: F (provider persistence and migration)
 - **Milestone**: M2
@@ -1171,7 +1204,7 @@ identify the platform validation still needed.
   label while the probe is in flight, and then shows rows. 3) Click Fetch list
   again. Confirm it keeps the current rows on screen and replaces them with the
   live answer. 4) Take the service offline and click Fetch list; confirm the
-  classified error appears and the previous rows remain. 5) Restore the
+  classified error reaches the toast and the previous rows remain. 5) Restore the
   service, click Fetch list, and confirm the live list returns. 6) Repeat in
   the vendor-account editor.
 - **Expected**: The header action probes the service immediately, including
@@ -1439,11 +1472,13 @@ identify the platform validation still needed.
 
 - **Preconditions**: A session can produce both a deliberately delayed first
   token and a streaming response.
-- **Steps**: 1) Send ordinary text and stop before assistant text, thinking, or
-  a tool row begins. 2) Confirm the user row is undone and the text returns to
-  the composer. 3) Send again, wait for partial output, then stop during the
-  stream. 4) Observe the transcript and composer.
-- **Expected**: The unanswered send is undone and its draft restored. The
+- **Steps**: 1) Send ordinary text and click Stop immediately, including while
+  the prompt is still being admitted. 2) Confirm the user row is undone and
+  the text returns to the composer after that first Stop. 3) Send again, wait
+  for partial output, then stop during the stream. 4) Observe the transcript
+  and composer.
+- **Expected**: The first Stop is honored even if prompt admission is still in
+  progress; the unanswered send is undone and its draft restored. The
   streaming send stops with its partial response preserved and no draft
   restoration or duplicate user turn. The session remains usable.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`

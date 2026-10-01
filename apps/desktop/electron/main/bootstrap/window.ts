@@ -2,6 +2,7 @@ import { app, BrowserWindow, nativeTheme, screen, type Tray } from "electron";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { getModuleDirectory } from "../module-path";
 import {
   APP_NAME,
   builtinWindowBackground,
@@ -196,7 +197,7 @@ export async function createWindow({
         }
       : {}),
     webPreferences: {
-      preload: join(__dirname, "../preload/index.cjs"),
+      preload: join(getModuleDirectory(import.meta.url), "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -2042,6 +2043,8 @@ export async function createWindow({
       window.webContents.openDevTools({ mode: "detach" });
     }
   } else {
-    await window.loadFile(join(__dirname, "../renderer/index.html"));
+    await window.loadFile(
+      join(getModuleDirectory(import.meta.url), "../renderer/index.html"),
+    );
   }
 }

@@ -526,3 +526,16 @@ test("native select menus keep readable theme colors across the app on Windows",
     /:root\[data-theme="light"\]\s*\{[^}]*color-scheme:\s*light;/s,
   );
 });
+
+test("Live Voice account cards show their options only after a provider is chosen", async () => {
+  const source = await readFile(
+    new URL("../src/features/settings/voice/LiveVoiceSettings.tsx", import.meta.url),
+    "utf8",
+  );
+  // A card with no provider account bound is the picker and nothing else: the
+  // model, voice, and protocol rows belong to a chosen binding instead of
+  // rendering as empty disabled controls.
+  assert.match(source, /\{current && adapter !== "codex-live" \? \(/);
+  assert.match(source, /\{current && adapter === "openai-realtime" \? \(/);
+  assert.doesNotMatch(source, /disabled=\{!current/);
+});

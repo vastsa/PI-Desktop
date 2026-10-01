@@ -56,7 +56,7 @@ export function DeveloperSection({
 export function CloseBehaviorSection() {
   const { t } = useTranslation();
   const [behavior, setBehavior] = useState<CloseBehavior | null>(null);
-  const [saveError, setSaveError] = useState(false);
+  const showToast = useAppStore((state) => state.showToast);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,12 +80,11 @@ export function CloseBehaviorSection() {
   ];
 
   const choose = async (next: CloseBehavior) => {
-    setSaveError(false);
     try {
       await api.setCloseBehavior(next);
       setBehavior(next);
     } catch {
-      setSaveError(true);
+      showToast(t("settings.closeBehaviorSaveError"), { variant: "error" });
     }
   };
 
@@ -102,11 +101,6 @@ export function CloseBehaviorSection() {
           label={t("settings.closeBehaviorTitle")}
         />
       </SettingsRow>
-      {saveError ? (
-        <span className="settings-command-shell-state error" role="status">
-          {t("settings.closeBehaviorSaveError")}
-        </span>
-      ) : null}
     </SettingsCard>
   );
 }

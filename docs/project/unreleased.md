@@ -64,3 +64,21 @@
 - OpenAI Codex OAuth models can now opt into provider-hosted native web search.
   The feature remains off by default and search history is replayed only for
   the same Codex model.
+
+- A Live Voice call bound to a work session now shows a waiting request instead
+  of only saying it must be handled on the desktop: the compact bar keeps a
+  waiting line, and Call Details shows the question, the tool awaiting
+  permission, or the plan awaiting approval together with an action that opens
+  that exact session. The decision itself still belongs to the session's own
+  card, so answering or approving from the call remains impossible.
+
+- A Live Voice work call can now answer the bound session's open AskTool
+  question by voice: the question and its own options are read out, and the
+  spoken answer may only select among those options. Permission, Plan, and Goal
+  approvals remain desktop decisions, and an answer that does not match an
+  offered option (or a session without exactly one open question) is refused
+  and sent back to the card instead of guessing.
+
+- Reloading the desktop renderer no longer drops the AskTool and permission
+  cards a session is still waiting on: the pending interactive requests are
+  read back from Host state and the cards come back.

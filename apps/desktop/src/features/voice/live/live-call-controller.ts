@@ -115,7 +115,7 @@ export class LiveCallController {
     }
   }
 
-  async start(options: { workTarget?: { workSessionId: string; contextEnabled: boolean } } = {}): Promise<void> {
+  async start(options: { workTarget?: { workSessionId: string }; shareSelectedSessionContext?: boolean } = {}): Promise<void> {
     if (this.snapshot.starting || this.snapshot.stopping || isLive(this.snapshot.call?.phase)) return;
     if (this.snapshot.call?.error?.code === "LIVE_MEDIA_RELEASE_UNCONFIRMED" || this.snapshot.errorCode === "LIVE_MEDIA_RELEASE_UNCONFIRMED") {
       this.patch({ errorCode: "LIVE_MEDIA_RELEASE_UNCONFIRMED" });
@@ -128,6 +128,8 @@ export class LiveCallController {
     const selected = cachedStatus.bindings.find((item) => item.bindingId === selectedId && item.selectable);
     if (!selected) throw liveError("LIVE_NOT_CONFIGURED");
 
+    const currentSessionId = options.workTarget?.workSessionId ?? useAppStore.getState().activeSessionId;
+    const workTarget = currentSessionId ? { workSessionId: currentSessionId } : undefined;
     const requestId = crypto.randomUUID();
     const resources: StartResources = { requestId, abort: new AbortController(), captureEpoch: 0, completedControlActions: new Set() };
     this.resources.set(requestId, resources);
@@ -144,7 +146,8 @@ export class LiveCallController {
         bindingId: selected.bindingId,
         expectedSettingsRevision: cachedStatus.settingsRevision,
         initialMuted: true,
-        ...(options.workTarget ? { workTarget: options.workTarget } : {}),
+        ...(workTarget ? { workTarget } : {}),
+        ...(options.shareSelectedSessionContext !== undefined ? { shareSelectedSessionContext: options.shareSelectedSessionContext } : {}),
       });
       void prepareRequest.then((prepared) => {
         if (resources.abort.signal.aborted || generation !== this.generation) {
@@ -160,10 +163,8 @@ export class LiveCallController {
       }, () => {
         resources.microphoneRequestSettled = true;
       });
-      if (selected.adapterId !== "codex-live" || options.workTarget) {
-        resources.context = new AudioContext({ sampleRate: 48_000 });
-        void resources.context.resume().catch(() => undefined);
-      }
+      resources.context = new AudioContext({ sampleRate: 48_000 });
+      void resources.context.resume().catch(() => undefined);
       if (!prepareRequest || !micRequest) throw liveError("LIVE_MEDIA_UNSUPPORTED");
       const [stream, freshStatus, prepared] = await Promise.all([
         abortableMicrophone(micRequest, resources.abort.signal),

@@ -851,12 +851,6 @@
   font-size: var(--text-xs-plus);
   line-height: var(--leading-compact-plus);
 }
-
-.review-change-rollback-note.is-warning {
-  flex: 1;
-  color: var(--ds-warning);
-}
-
 .review-change-diff .diff-line-sign {
   width: 24px;
   padding-block: 3px;

@@ -167,3 +167,36 @@ test("provider error sentinels do not enter public call views or controls", asyn
   assert.equal(state.adapters.length, 0);
   assert.equal(state.releasedMic.length, 1);
 });
+
+test("a failed call logs one root cause with its code while the view keeps only the code", async (t) => {
+  const { LiveCallService } = await loadModules(t);
+  const secret = "Bearer fixture-secret-SDP-private-workspace";
+  const records = [];
+  let service;
+  const { deps, state } = dependencies({
+    log: (level, message, data) => records.push({ level, message, data }),
+    sendControl: (_owner, control) => {
+      state.controls.push(control);
+      if (control.kind === "release-media") {
+        queueMicrotask(() => service.reportMedia(owner, { callId: control.callId, kind: "released" }));
+      }
+    },
+  });
+  deps.authResolver.resolve = async () => { throw Object.assign(new Error(secret), { errorCode: "LIVE_AUTH_REQUIRED" }); };
+  service = new LiveCallService(deps);
+  t.after(() => service.endForLifecycle("app-quit", owner, true));
+  const prepared = await prepare(service);
+  await assert.rejects(service.connect(owner, { callId: prepared.callId, offerSdp: "v=0\r\n" }), { errorCode: "LIVE_AUTH_REQUIRED" });
+
+  const status = await service.status();
+  assert.equal(status.call.error.code, "LIVE_AUTH_REQUIRED");
+  assert.equal(JSON.stringify({ prepared, status, events: state.events, controls: state.controls }).includes(secret), false);
+
+  const failures = records.filter((record) => record.message === "live voice call failed");
+  assert.equal(failures.length, 1, "one root-cause record, not one per teardown step");
+  assert.equal(failures[0].level, "warn");
+  assert.equal(failures[0].data.code, "LIVE_AUTH_REQUIRED");
+  assert.equal(failures[0].data.adapterId, "codex-live");
+  assert.equal(failures[0].data.stage, "handshake");
+  assert.equal(failures[0].data.reason, secret, "the raw reason stays in the log channel, which redacts it");
+});

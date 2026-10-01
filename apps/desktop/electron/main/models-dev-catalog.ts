@@ -201,10 +201,28 @@ export class ModelsDevCatalog {
 
   modelConfigFor(input: CatalogTarget, unpublishedConfig?: ModelConfig): ModelConfig {
     const model = this.findModel(input);
-    if (model) return { ...(this.effectiveConfigs.get(model) ?? modelConfigFromPi(model)), ...(input.baseUrl ? { baseUrl: input.baseUrl } : {}) };
+    const binding = input.providerId ? this.accountRows.get(input.providerId)?.models?.find((entry) => entry.id.trim().toLowerCase() === input.modelId.trim().toLowerCase()) : undefined;
+    if (model) {
+      // A wrapped account provider already applied its binding inside
+      // `configureAccount`. An unidentified relay has no wrapper to apply it,
+      // so the stored row is resolved here — otherwise a `user` pin on a relay
+      // hit would be silently replaced by the published number while still
+      // claiming `user` provenance (spec §9.1: a user limit is never replaced).
+      const projected = this.effectiveConfigs.get(model);
+      let config = projected;
+      if (!config) {
+        const baseline = modelConfigFromPi(model);
+        if (binding) {
+          const limits = resolveBindingLimits(baseline, binding);
+          config = modelConfigWithBinding(limits.catalogConfig, limits.binding);
+        } else {
+          config = baseline;
+        }
+      }
+      return { ...config, ...(input.baseUrl ? { baseUrl: input.baseUrl } : {}) };
+    }
     // Hand-typed custom IDs have no published metadata. Preserve historical
     // explicit limits without pretending that the generic seed is a catalog.
-    const binding = input.providerId ? this.accountRows.get(input.providerId)?.models?.find((entry) => entry.id.trim().toLowerCase() === input.modelId.trim().toLowerCase()) : undefined;
     const limits = resolveBindingLimits(unpublishedConfig ?? genericModelConfig(input.modelId, input.baseUrl ?? ""), binding);
     return modelConfigWithBinding(limits.catalogConfig, limits.binding);
   }

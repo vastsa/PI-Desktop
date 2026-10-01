@@ -26,6 +26,12 @@ are rejected or cause a protocol error unless the user explicitly starts a
 separately scoped Live Work call; its execution and permission contract is
 defined in [Live Voice Work Session Integration](live-work-session.md).
 
+A separately scoped Live Work call may also resolve the bound session's single
+open AskTool question, and only by selecting among the option labels that
+question itself offered; permission and Plan/Goal approvals remain desktop-UI
+decisions (see [Live Voice Work Session Integration](live-work-session.md) and
+[ADR 0315](../../adr/0315-live-voice-spoken-asktool-answers.md)).
+
 ## Ownership and security
 
 Electron Main owns the one-call slot, selected account, credential resolution,
@@ -61,15 +67,27 @@ persisted settings:
    access, creates media resources, or contacts a voice provider. It identifies
    the exact selected binding and its readiness reason; another ready binding
    does not make an unavailable selected binding usable. Start is explicit and
-   starts muted. Optional work access is collapsed initially and requires its
-   own opt-in plus a valid local target; expanding it is not authorization.
+   starts muted. The current Composer session is the default work target when
+   present; there is no per-call work-access checkbox or mandatory target
+   preselection. The user may switch targets by voice after the call starts.
+   Optional bounded session-context sharing remains a separate, default-off
+   consent and grants no work permission.
 3. **Call in progress:** a stable global compact bar shows startup with Cancel,
    connected state with mute/unmute, End and Details, and stopping with an
-   explicit Ending state. It is mounted in persistent AppShell chrome outside
-   the visibility-gated chat and Composer subtree, so in-app navigation cannot
-   hide the call controls.
+   explicit Ending state. The bar is drawn by its own frameless, transparent,
+   always-on-top desktop widget window rather than by AppShell: it floats above
+   other applications, keeps the call visible while the user works elsewhere,
+   and in-app navigation cannot hide the call controls because they are not
+   inside the app window. The widget owns no part of the call: its presses are
+   forwarded to the main window, which stays the owner of the microphone, the
+   media and the call-scoped work, and a failure only that frame can observe is
+   reported back so the bar names it.
    Playback blocking and errors, including playback-resume failure, are visible
-   directly in the bar instead of requiring Details. Non-terminal action or
+   directly in the bar instead of requiring Details. The bar pairs the
+   localized message with the verbatim `LIVE_*` error code, so a failure whose
+   code has no localized message is still attributable from a screenshot or
+   bug report; the raw reason behind that code never reaches a view and stays
+   in the redacted `provider` log instead. Non-terminal action or
    missing-work-binding warnings do not falsely say the call has stopped.
 4. **Details open:** an explicitly opened secondary surface contains the
    transient transcript, provider identity, and any scoped work actions and
@@ -87,9 +105,10 @@ Turning the feature off removes idle entry points, not pending cleanup
 visibility. In-app page/session navigation is distinct from renderer
 navigation or loss, which keeps its existing termination policy.
 
-The configurable Live Voice toggle shortcut deliberately starts a voice-only
-call directly from idle and ends an active call, preserving the existing
-shortcut contract. It does not inherit a preparation surface's work choice.
+The configurable Live Voice toggle shortcut deliberately starts a call
+directly from idle and ends an active call, preserving the existing shortcut
+contract. Its initial work target is the current Composer session, when
+present; it does not inherit a preparation surface's context consent.
 The startup-cancel shortcut (Escape by default) cancels startup only if an open
 popup has not consumed that key. Escape never ends a connected call.
 
@@ -126,9 +145,9 @@ stops all local tracks, playback and ports before releasing the lease.
 
 ## Settings and compatibility
 
-Voice is available in both development and packaged builds without developer
-mode. Its Experimental badge remains an availability caveat, not an access
-restriction. Live Voice remains off by default, and enabling the setting does
+Voice is a regular Preferences destination in both development and packaged
+builds: no Experimental badge, no developer mode, no build gate. Live Voice
+remains off by default, and enabling the setting does
 not start microphone capture. Composer offers an Open settings action when
 setup or account recovery is needed. Cloud sync and Remote Hosts retain their
 separate development-only gates.
@@ -136,15 +155,19 @@ separate development-only gates.
 Account-list loading, failure with explicit retry, and an empty compatible
 account list are distinct states. A loading failure never clears saved bindings.
 The settings page links to the existing Model configuration destination for
-account login and management. Call errors distinguish missing authentication,
+account login and management, from the enable card's heading line rather than
+from a control among its rows. Call errors distinguish missing authentication,
 account access denial, unsupported protocol, network/rate limits and microphone
 failures without displaying provider response content or credentials.
 
 The Voice settings destination exposes only Live Voice: users can bind an
 existing compatible Provider, choose the next-call binding, and set model, voice
-and Realtime profile. A currently active binding cannot be rewritten while its
-call is running. Turning Live Voice off ends the call. Provider credentials stay
-in the existing Provider/secret or VendorOAuth systems. Legacy local Dictation
+and Realtime profile. An account card with no bound provider shows only its
+picker; the next-call, model, voice and profile rows appear with the binding
+rather than as empty disabled controls. A currently active binding cannot be
+rewritten while its call is running. Turning Live Voice off ends the call.
+Provider credentials stay in the existing Provider/secret or VendorOAuth
+systems. Legacy local Dictation
 settings and its Composer entry are hidden; existing `voice` values and the
 underlying Dictation capability remain unchanged and are not deleted or rewritten
 by the UI. Old settings with no `liveVoice` value read as disabled with no

@@ -359,10 +359,35 @@
 }
 
 /* The heading's help mark sits beside the heading rather than inside it: a
-   nested button would join the heading's accessible name. */
+   nested button would join the heading's accessible name.
+   The 10px gap below the heading belongs to this flex row: a margin inside it
+   would extend the icon's centering box and lift the question mark off the
+   heading text. */
 .settings-card-heading-help {
   display: flex;
   align-items: center;
+  margin-bottom: 10px;
+}
+
+.settings-card-heading-help .settings-card-heading {
+  margin-bottom: 0;
+}
+
+/* A card heading that carries a card-level action keeps heading, help mark and
+   action on one line, centered on each other. */
+.settings-card-heading-row.settings-card-heading-with-action {
+  align-items: center;
+}
+
+.settings-card-heading-row.settings-card-heading-with-action .settings-card-heading-help {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.settings-card-heading-row.settings-card-heading-with-action
+  .settings-card-heading-help
+  .settings-card-heading {
+  margin-bottom: 0;
 }
 
 .settings-card-heading-row {
@@ -501,8 +526,7 @@
   overflow-wrap: anywhere;
 }
 
-.settings-config-sync-message.error,
-.settings-config-sync-error {
+.settings-config-sync-message.error {
   color: var(--ds-danger);
 }
 
@@ -766,13 +790,6 @@
   color: var(--ds-text-muted);
   font-size: var(--text-md);
   line-height: var(--leading-compact);
-}
-
-.settings-remote-host-empty-detail {
-  flex: 1 1 100%;
-  color: var(--ds-text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs-plus);
 }
 
 .settings-remote-host-pulse {

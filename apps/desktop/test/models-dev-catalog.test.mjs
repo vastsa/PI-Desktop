@@ -185,6 +185,86 @@ test("unknown relays match the exact model leaf without rewriting the requested 
   assert.equal(catalog.findModel({ ...input, modelId: "route/claude-fixture-latest" }), undefined);
 });
 
+/*
+  An unidentified relay keeps answering from the ID family's owner instead of
+  from whichever reseller it happens to serve. Each family below publishes an
+  owner record next to a reseller copy that states a far narrower window, so the
+  assertion proves the owner won. A leaf no owner states stays unmatched: a
+  reseller's numbers must never decide a window for a deployment they do not
+  describe.
+*/
+test("an unknown relay answers an open-weight leaf from its owning publisher", () => {
+  const relay = { vendorKey: "custom", baseUrl: "https://relay.example/v1" };
+  const families = [
+    ["mimo-v2.6-pro", "xiaomi"],
+    ["glm-5.3", "zai"],
+    ["deepseek-v4-pro", "deepseek"],
+    ["kimi-k3", "moonshotai"],
+    ["MiniMax-M3", "minimax"],
+  ];
+  for (const [id, owner] of families) {
+    const catalog = new ModelsDevCatalog({ providers: [
+      fixtureProvider(owner, [{ id, contextWindow: 999_999, maxTokens: 77_777 }]),
+      fixtureProvider("openrouter", [{ id, contextWindow: 200_000, maxTokens: 8_192 }]),
+    ] });
+    const found = catalog.findModel({ ...relay, modelId: `route/${id}` });
+    assert.equal(found?.provider, owner, id);
+    assert.equal(found?.contextWindow, 999_999, id);
+  }
+  // Several resellers publish conflicting copies and no owner states the leaf:
+  // adopting any one of them would invent a window for this deployment.
+  const noOwner = new ModelsDevCatalog({ providers: [
+    fixtureProvider("openrouter", [{ id: "reseller-only", contextWindow: 200_000, maxTokens: 8_192 }]),
+    fixtureProvider("vercel-ai-gateway", [{ id: "reseller-only", contextWindow: 900_000, maxTokens: 64_000 }]),
+  ] });
+  assert.equal(noOwner.findModel({ ...relay, modelId: "reseller-only" }), undefined);
+});
+
+test("relay IDs accept route prefixes and only whitelisted deployment suffixes", () => {
+  const catalog = new ModelsDevCatalog({ providers: [
+    fixtureProvider("deepseek", [{ id: "deepseek-v4.1-flash", contextWindow: 1_000_000 }]),
+    fixtureProvider("xiaomi", [
+      { id: "mimo-v2.5-pro", contextWindow: 1_048_576 },
+      { id: "mimo-v2.6-flash", contextWindow: 1_048_576 },
+      // Keep the user's `fash` example literal: matching strips only `-test`,
+      // it does not autocorrect a model-name typo to `flash`.
+      { id: "mimo-v2.6-fash", contextWindow: 1_048_576 },
+    ]),
+  ] });
+  const relay = { vendorKey: "custom", baseUrl: "https://relay.example/v1" };
+  for (const id of ["pro/deepseek-v4.1-flash", "deepseek/deepseek-v4.1-flash"]) {
+    assert.equal(catalog.findModel({ ...relay, modelId: id })?.id, "deepseek-v4.1-flash", id);
+  }
+  assert.equal(catalog.findModel({ ...relay, modelId: "mimo-v2.5-pro-1m" })?.id, "mimo-v2.5-pro");
+  assert.equal(catalog.findModel({ ...relay, modelId: "mimo-v2.6-flash-test" })?.id, "mimo-v2.6-flash");
+  assert.equal(catalog.findModel({ ...relay, modelId: "mimo-v2.6-fash-test" })?.id, "mimo-v2.6-fash");
+  // Semantic and release suffixes are not deployment labels, and a typo is
+  // never repaired unless that exact base ID is itself published.
+  assert.equal(catalog.findModel({ ...relay, modelId: "mimo-v2.6-flash-thinking" }), undefined);
+  assert.equal(catalog.findModel({ ...relay, modelId: "mimo-v2.6-flash-2026" }), undefined);
+  assert.equal(catalog.findModel({ ...relay, modelId: "mimo-v2.6-flaash-test" }), undefined);
+});
+
+/*
+  A relay row has no wrapped provider to apply its binding, so `modelConfigFor`
+  resolves the stored row itself. Without that a hand-pinned window would be
+  replaced by the published number while still claiming `user` provenance.
+*/
+test("a relay hit resolves the stored binding instead of dropping it", () => {
+  const catalog = new ModelsDevCatalog({ providers: [fixtureProvider("xiaomi", [{ id: "mimo-v2.6-pro", contextWindow: 1_048_576, maxTokens: 131_072 }])] });
+  const row = {
+    id: "relay", vendorKey: "custom", baseUrl: "https://relay.example/v1",
+    models: [binding({ id: "mimo-v2.6-pro", contextWindow: 500_000, contextWindowSource: "user", maxTokens: 32_100, maxTokensSource: "user" })],
+  };
+  catalog.configureAccount(row);
+  const input = { providerId: "relay", vendorKey: "custom", baseUrl: row.baseUrl, modelId: "mimo-v2.6-pro" };
+  const pinned = catalog.modelConfigFor(input);
+  assert.equal(pinned.contextWindow, 500_000);
+  assert.equal(pinned.maxTokens, 32_100);
+  // The catalog record still answers: only the pin differs from it.
+  assert.notEqual(pinned.source, "generic");
+});
+
 test("a stored extended level cannot invent native Pi support", () => {
   const catalog = new ModelsDevCatalog({ providers: [fixtureProvider("example", [{ id: "chat", reasoning: true, thinkingLevelMap: { off: null, low: "low", high: "high" } }])] });
   const row = { id: "account", vendorKey: "example", models: [binding({ thinkingLevels: ["low", "max"] })] };

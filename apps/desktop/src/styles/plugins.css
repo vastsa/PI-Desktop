@@ -107,42 +107,6 @@
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 35%, transparent);
 }
 
-/* Pending-update banner: shown only while updates exist. */
-.plugins-alert {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-radius: var(--radius-lg);
-  padding: 12px 14px;
-  background: color-mix(in oklab, var(--ds-success) 10%, transparent);
-}
-
-.plugins-alert-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--ds-success) 18%, transparent);
-  color: var(--ds-success);
-}
-
-.plugins-alert-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.plugins-alert-title {
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium-plus);
-}
-
 /* Toolbar: segmented tabs on the left, count + pill search on the right. */
 .plugins-toolbar {
   display: flex;
@@ -419,6 +383,8 @@
   color: var(--ds-text-faint);
 }
 
+/* A plugin that failed to load keeps its own reason on the row: the row stays
+   broken until the user fixes it, so the message is state, not an announcement. */
 .plugins-row-error {
   margin: 0;
   color: var(--ds-error);

@@ -1,6 +1,6 @@
 import type { LiveWorkSelectionOption, UiMessage } from "@pi-desktop/shared";
 
-import type { LiveWorkCandidate, WorkSnapshot } from "./coordinator.js";
+import type { LiveWorkCandidate, LiveWorkPendingQuestion, WorkSnapshot } from "./coordinator.js";
 import type { LiveWorkAdmission, LiveWorkExecution } from "./operation-ledger.js";
 
 const MAX_CLASSIFIER_CONTEXT_BYTES = 12 * 1024;
@@ -15,6 +15,7 @@ export function buildLiveWorkClassifierInput(input: {
   snapshot: WorkSnapshot;
   contextEnabled: boolean;
   recentMessages?: LiveWorkContextMessage[];
+  pendingQuestion?: LiveWorkPendingQuestion;
   recentOperations?: Array<{
     operationId: string;
     admission: LiveWorkAdmission;
@@ -27,6 +28,7 @@ export function buildLiveWorkClassifierInput(input: {
     workState: { mode: WorkSnapshot["mode"]; state: WorkSnapshot["state"]; activeTurn: boolean; queuedCount: number };
     recentContext?: Array<{ role: "user" | "assistant"; text: string }>;
     availableSelections?: LiveWorkSelectionOption[];
+    pendingQuestion?: LiveWorkPendingQuestion;
   } = {
     request: input.candidate.instruction,
     workState: {
@@ -51,6 +53,11 @@ export function buildLiveWorkClassifierInput(input: {
   if (latestSelectionOperation?.selections?.length) {
     payload.availableSelections = latestSelectionOperation.selections.slice(0, 20);
   }
+
+  // The pending question is what a spoken answer has to be checked against:
+  // without its own option labels in the input, the classifier could only
+  // guess, so it travels with the request.
+  if (input.pendingQuestion) payload.pendingQuestion = input.pendingQuestion;
 
   if (input.contextEnabled) {
     const messages = (input.recentMessages ?? [])

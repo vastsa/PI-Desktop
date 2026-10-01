@@ -112,8 +112,8 @@ contract changes are required.
 1. The stored secret is resolved, so an edit needs no retyped key.
 2. `discoverProviderModels` asks the service (`/models` or the per-style
    equivalent). A non-empty answer wins, is enriched per model through
-   `modelsDevCatalog.findModel`, is written back to the model cache, and is
-   reported as `source: "remote"`.
+   `modelsDevCatalog.findModel`, replaces what the model cache held for that
+   provider, and is reported as `source: "remote"`.
 3. Only if the endpoint published nothing usable —no route, an auth error, or an
    empty list— does `modelsForProvider` supply the vendor's published models,
    reported as `source: "catalog"` together with any discovery error so the UI
@@ -123,6 +123,31 @@ contract changes are required.
 
 An OAuth vendor account skips step 2 — it has no key to probe with, and pi-ai
 already knows which models the subscription allows.
+
+The cache belongs to the configuration it was recorded for: saving a provider
+without a binding it used to have deletes that model's cached row, so a deleted
+model's recorded limits, capabilities and display name are not handed back to
+the next add of the same id, and the id leaves the picker's cache-first paint.
+Only the ids a save dropped are touched — the rest of the discovered list is the
+service's answer, and a model the service still publishes is recorded again by
+the next probe, described by the service rather than by a stale answer.
+
+The answer also replaces the previous one. A probe that no longer publishes a
+model drops that model's row, so the pane stops painting a model the endpoint
+retired and a hand-typed id stops inheriting its old limits; a row whose source
+is not discovery — the user's own — is never dropped this way, and a configured
+binding stays visible even when the service stops listing it. Cached rows carry
+no endpoint of their own, so a save that moves the base URL or the wire format
+drops the answer the previous endpoint produced, and the next probe records the
+new one. A failed or empty probe is not an answer: it never reaches the cache,
+so it can neither replace nor narrow what is stored.
+
+The picker never dumps the raw host error into the model list. A failed probe
+that leaves no rows shows a one-line "the list is missing" label in the empty
+pane, while the classified reason (auth, missing list, rate limit, timeout,
+network, invalid response, or HTTP status) is reported once through the app
+toast stack. A refused probe that still has cached rows keeps those rows and
+reports the same reason as a toast.
 
 #### Served lists: size and self-description
 
@@ -155,12 +180,6 @@ same two facts and a cache read shows them again. Image-input and reasoning
 flags are parsed but not promoted: each changes the request shape and stays
 behind the binding's explicit user choice (§11.1, §11.2). A published record
 always outranks what the list says about a known id.
-
-The picker never dumps the raw host error into the model list. A failed probe
-with no rows shows a classified one-line summary (auth, missing list, rate
-limit, timeout, network, invalid response, or HTTP status) plus a short hint
-to add an ID manually. A failed probe that still has cached rows keeps those
-rows and shows the same summary as a compact banner.
 
 ### Subagent editor
 
@@ -496,7 +515,11 @@ thinking ladder for explicit manual opt-in.
 The Pi adapter preserves the configured wire ID. Unknown endpoints may attach
 metadata from an exact, case-insensitive final `/` segment. A unique official
 publisher compatible with the ID family wins; conflicting capability/thinking
-candidates remain unknown. No thinking/date/deployment suffix is stripped.
+candidates remain unknown. Exact served IDs are checked first. Only a narrow
+whitelist of deployment-added environment/context labels (for example `-test`
+and `-1m`) may be removed as a fallback to a published base ID. Thinking,
+preview, and dated-release suffixes are not stripped, and spelling is never
+fuzzy-corrected.
 
 Known provider lookup and aliases stay authoritative. An ambiguous known
 same-endpoint miss does not borrow from arbitrary publishers. There is no

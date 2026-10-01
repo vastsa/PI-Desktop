@@ -44,7 +44,14 @@ export async function startLiveVoiceFixture(root) {
         const message = JSON.parse(String(data));
         if (message.type === "session.update") {
           assert.equal(message.session.model, "live-voice-fixture");
-          assert.equal(message.session.tools?.length ?? 0, 0, "voice-only calls must not expose work tools");
+          const tools = message.session.tools ?? [];
+          assert.equal(tools.length, 1, "a Composer-bound work call exposes exactly one declared tool");
+          assert.deepEqual(tools.map((tool) => ({ type: tool.type, name: tool.name })), [
+            { type: "function", name: "delegate_to_work_session" },
+          ]);
+          assert.deepEqual(Object.keys(tools[0]?.parameters?.properties ?? {}), ["instruction"]);
+          assert.deepEqual(tools[0]?.parameters?.required, ["instruction"]);
+          assert.equal(tools[0]?.parameters?.additionalProperties, false);
           profile = message.session.type === "realtime" ? "realtime-ga" : "realtime-compat-v1";
           if (!held) {
             stats.configured++;

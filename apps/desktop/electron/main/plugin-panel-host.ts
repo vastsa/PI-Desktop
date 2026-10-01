@@ -8,6 +8,7 @@ import {
 } from "@pi-desktop/plugin-sdk";
 import { builtinWindowBackground } from "@pi-desktop/shared";
 import { suppressLinuxFramelessSystemMenu } from "./frameless-system-menu";
+import { getModuleDirectory } from "./module-path";
 import { PanelSenders, pageGoneWithin, resolvePanelInvocation } from "./plugin-panel-senders";
 import { PanelOperationSerializer } from "./plugin-panel-senders";
 import {
@@ -496,7 +497,10 @@ export class PluginPanelHost {
         ...(widget ? { fullscreenable: false } : {}),
         webPreferences: {
           session: ses,
-          preload: join(__dirname, "../preload/plugin-panel.js"),
+          preload: join(
+            getModuleDirectory(import.meta.url),
+            "../preload/plugin-panel.js",
+          ),
           contextIsolation: true,
           nodeIntegration: false,
           sandbox: true,

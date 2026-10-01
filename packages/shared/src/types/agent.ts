@@ -241,6 +241,17 @@ export type AskToolRequest = {
   questions: AskToolQuestion[];
 };
 
+/**
+ * Every interactive request one session is currently waiting on. Host state,
+ * not connection state: a renderer that reloaded reads this instead of holding
+ * a card that no longer exists, and it stays empty for a session with nothing
+ * pending.
+ */
+export type PendingInteractiveRequests = {
+  asks: AskToolRequest[];
+  permissions: ToolPermissionRequest[];
+};
+
 /** `null` means the user skipped that question or declined the whole prompt. */
 export type AskToolResolution = {
   requestId: string;

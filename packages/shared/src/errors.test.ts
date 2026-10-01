@@ -37,6 +37,7 @@ describe("result helpers", () => {
       "EMPTY_MODEL_RESPONSE",
       "SUBAGENT_OUTPUT_TRUNCATED",
       "EDIT_TAG_REQUIRED",
+      "EDIT_LEGACY_MATCH_FAILED",
       "EDIT_TAG_MISMATCH",
       "EDIT_TAG_UNKNOWN",
       "EDIT_LINES_UNSEEN",

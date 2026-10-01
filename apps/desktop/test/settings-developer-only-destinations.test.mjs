@@ -30,6 +30,18 @@ const composerToolbar = readFileSync(
   "utf8",
 );
 
+const liveVoiceSettings = readFileSync(
+  new URL(
+    "../src/features/settings/voice/LiveVoiceSettings.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const settingsPrimitives = readFileSync(
+  new URL("../src/features/settings/primitives.tsx", import.meta.url),
+  "utf8",
+);
+
 const identity = (key) => key;
 const experimentalIds = ["sync", "remoteHosts"];
 
@@ -52,8 +64,12 @@ test("Live Voice is reachable in every build without developer mode", () => {
       }
     }
   }
-  assert.equal(SETTINGS_NAV.find((entry) => entry.id === "voice")?.experimentalBadgeKey,
-    "settings.voiceExperimental");
+  // Voice is a regular Preferences destination now: no Experimental badge on
+  // the rail row or the page title.
+  assert.equal(
+    SETTINGS_NAV.find((entry) => entry.id === "voice")?.experimentalBadgeKey,
+    undefined,
+  );
 });
 
 test("developer mode retains the experimental destinations in development", () => {
@@ -122,4 +138,16 @@ test("settings routes, global search, and composer use build visibility", () => 
   assert.doesNotMatch(composer, /VoiceOverlay|voiceEnabled/);
   assert.match(composerToolbar, /<LiveVoiceControls\b/);
   assert.doesNotMatch(composerToolbar, /VoiceMicButton|voicePhase|onVoiceToggle|onVoiceCancel/);
+});
+
+test("Live Voice keeps its Model configuration link on the card heading", () => {
+  // The link belongs to the enable card's heading line, not to a floating
+  // control inside the row stack.
+  assert.match(settingsPrimitives, /settings-card-heading-with-action/);
+  assert.match(settingsPrimitives, /action\?: ReactNode/);
+  assert.match(
+    liveVoiceSettings,
+    /action=\{[\s\S]*className="settings-text-action"[\s\S]*settings\.configuration/,
+  );
+  assert.doesNotMatch(liveVoiceSettings, /live-voice-actions/);
 });

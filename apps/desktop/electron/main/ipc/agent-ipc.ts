@@ -1,4 +1,4 @@
-import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, type VoiceOrigin, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
+import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type PromptEnhancementRequest, type SessionSummarizeTitleRequest, type VoiceOrigin, canonicalThinkingLevel, type ThinkingLevel } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
 import { expandSlashInvocation, enhancePromptDraft, summarizeSessionTitle, visionFromModelConfig, type ComposerTemplate, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
@@ -710,7 +710,12 @@ export function registerAgentIpc({
 
   handle(IPC.invoke.agentAbort, async (req: { sessionId: string; turnId?: string }) => {
     if (!sidecar) throw new Error("sidecar unavailable");
-    const releaseSessionOperation = req.turnId ? await acquireSessionOperation(req.sessionId) : undefined;
+    // Prompt admission holds this same session operation until the sidecar has
+    // accepted the turn. Waiting here closes the startup window where the
+    // renderer already shows Stop but activeTurns/runtime are not ready yet.
+    // Without the wait, agent.abort can return successfully while finding no
+    // runtime, and the prompt then starts after the user's first click.
+    const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
     try {
     const abortedTurnId = activeTurns.get(req.sessionId);
     if (req.turnId && abortedTurnId !== req.turnId) return { ok: false, aborted: false };
@@ -837,6 +842,22 @@ export function registerAgentIpc({
       sessionId,
       requestId,
     });
+  });
+
+  /**
+   * Interactive cards a reloaded renderer rebuilds instead of losing: the ask
+   * questions the current agent runtime still holds plus Host-owned permission
+   * requests. Native Pi sessions own their own input path and answer empty.
+   */
+  handle(IPC.invoke.pendingInteractive, async (input: { sessionId?: string } = {}) => {
+    const sessionId = String(input.sessionId ?? "").trim();
+    if (!sessionId) {
+      throw Object.assign(new Error("sessionId required"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+    }
+    const empty: PendingInteractiveRequests = { asks: [], permissions: [] };
+    if (sessionId.startsWith("native-pi:")) return empty;
+    const bridge = getAgentHostBridge();
+    return bridge ? bridge.pendingInteractiveRequests(sessionId) : empty;
   });
 
   handle(IPC.invoke.plansPending, async (input: { sessionId?: string } = {}) => {

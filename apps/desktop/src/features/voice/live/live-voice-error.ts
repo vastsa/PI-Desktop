@@ -11,6 +11,7 @@ const errorKeys: Record<string, string> = {
   LIVE_RATE_LIMITED: "errors.PROVIDER_RATE_LIMITED",
   LIVE_NETWORK_ERROR: "errors.NETWORK_ERROR",
   LIVE_TIMEOUT: "errors.TIMEOUT",
+  LIVE_NETWORK_POLICY_UNSUPPORTED: "errors.NETWORK_POLICY_BLOCKED",
 };
 
 export function liveVoiceErrorKey(code: string): string {

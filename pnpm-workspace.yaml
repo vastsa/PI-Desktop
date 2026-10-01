@@ -9,6 +9,9 @@ allowBuilds:
   esbuild: true
   node-pty: true
   protobufjs: true
+  # koffi (FFI of transcribe-cpp) loads the prebuilt @koromix/koffi-<platform>
+  # binary; its from-source install script was never approved and is not needed.
+  koffi: false
 # Drop this list once the pinned @earendil-works packages are older than
 # pnpm's supply-chain age gate (packages published within the last day).
 minimumReleaseAgeExclude:
@@ -17,6 +20,8 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.99.1'
   - '@earendil-works/pi-telemetry@0.99.1'
   - '@earendil-works/pi-coding-agent@0.99.1'
+  - '@earendil-works/pi-codemode@0.99.1'
+  - '@earendil-works/pi-mcp@0.99.1'
   - '@earendil-works/pi-tui@0.99.1'
 # Advisory fixes for transitives whose parents still resolve the vulnerable
 # version. Drop each one once its parent ships a release that resolves the
@@ -53,3 +58,7 @@ patchedDependencies:
 # every range to its floor — silently downgrading dependencies instead of
 # refreshing them. Pin the intent: `pnpm update` means "newest within range".
 resolutionMode: highest
+# shamefully-hoist also lives in .npmrc, but pnpm 12 applies it only from
+# here; without it public hoisting is empty and examples/ plugins cannot
+# resolve root-level react in tests.
+shamefullyHoist: true

@@ -73,6 +73,7 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
   useBlockingOverlay();
   const { t } = useTranslation();
   const appKeybindings = useAppStore((state) => state.settings?.keybindings);
+  const showToast = useAppStore((state) => state.showToast);
   const settings = plugin.settings ?? [];
   const [draft, setDraft] = useState<Record<string, unknown>>(() =>
     Object.fromEntries(settings.map((setting) => [setting.key, initialValue(setting)])),
@@ -136,7 +137,7 @@ export function PluginSettingsSheet({ plugin, platform, onClose, onSaved }: Prop
       await onSaved();
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      showToast(cause instanceof Error ? cause.message : String(cause), { variant: "error" });
     } finally {
       setSaving(false);
     }

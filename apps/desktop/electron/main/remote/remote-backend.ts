@@ -66,6 +66,7 @@ const HANDLED_CHANNELS: ReadonlySet<string> = new Set([
   IPC.invoke.agentPrompt,
   IPC.invoke.agentQueuePush,
   IPC.invoke.agentQueueList,
+  IPC.invoke.agentQueueRemove,
   IPC.invoke.agentStop,
   IPC.invoke.agentAbort,
   IPC.invoke.agentCompact,
@@ -170,6 +171,15 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
           position: turn.queuePosition ?? 0,
           createdAt: new Date().toISOString(),
         } satisfies QueuedTurnSummary;
+      }
+      case IPC.invoke.agentQueueRemove: {
+        const request = args[0] as { turnId?: unknown };
+        const turnId = typeof request.turnId === "string" ? request.turnId.trim() : "";
+        if (!turnId || turnId.length > 256) {
+          throw Object.assign(new Error("queued turn id is invalid"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+        }
+        await client.request("turn/cancel", { turnId, context: context() });
+        return { ok: true };
       }
       case IPC.invoke.agentQueueList: {
         const remoteSessionId = remoteIdFor(args);

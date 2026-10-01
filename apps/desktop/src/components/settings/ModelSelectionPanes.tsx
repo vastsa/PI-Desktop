@@ -44,7 +44,6 @@ import {
   customModelSeedBinding,
   type CustomModelLookupContext,
 } from "./model-custom-lookup";
-import { ModelsFetchErrorMessage } from "./ModelsFetchErrorMessage";
 import type { ProviderModelsState } from "./useProviderModels";
 import { useModelReorder } from "./useModelReorder";
 
@@ -403,14 +402,17 @@ export function ModelSelectionPanes({
     if (!discovered?.info) void enrichCustomModel(binding);
   };
 
-  const fetchFailed = discovery.status === "error";
-  const emptyFetchError = fetchFailed && rows.length === 0;
+  // A failed probe leaves an empty pane: the pane says the list is missing and
+  // the toast says why, so the list no longer hosts a classified error box.
+  const emptyFetchError = discovery.status === "error" && rows.length === 0;
 
   const modelListBody =
     discovery.status === "idle" ? (
       <div className="provider-models-placeholder">{t("settings.modelsEmptyHint")}</div>
     ) : emptyFetchError ? (
-      <ModelsFetchErrorMessage error={discovery.error} variant="placeholder" />
+      <div className="provider-models-placeholder is-error">
+        {t("settings.modelsFetchFailed")}
+      </div>
     ) : rows.length === 0 ? (
       <div className="provider-models-placeholder">
         {discovery.status === "loading"
@@ -541,10 +543,6 @@ export function ModelSelectionPanes({
             />
           </div>
         </div>
-
-        {fetchFailed && !emptyFetchError ? (
-          <ModelsFetchErrorMessage error={discovery.error} variant="banner" />
-        ) : null}
 
         {modelListBody}
       </div>

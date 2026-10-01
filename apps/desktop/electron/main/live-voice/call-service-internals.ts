@@ -11,6 +11,8 @@ import type {
   LiveWorkFeedback,
   LiveProviderReceipt,
   LiveVoiceSettings,
+  LiveWorkCancelQueuedOperationResult,
+  LiveWorkStopOperationResult,
 } from "@pi-desktop/shared";
 import { validateLiveVoiceSettings } from "@pi-desktop/shared";
 import type { LiveWorkFeedbackScheduler } from "@pi-desktop/host-runtime";
@@ -47,8 +49,8 @@ export type LiveCallServiceDeps = {
   acquireBackgroundThrottlingLease?: (callId: string) => () => void;
   now?: () => number;
   scheduleWorkFeedbackWake?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
-  resolveWorkBinding?: (target: NonNullable<LivePrepareRequest["workTarget"]>) => Promise<LiveWorkBinding>;
-  openWorkScope?: (callId: string, binding: LiveWorkBinding) => void;
+  resolveWorkBinding?: (target: NonNullable<LivePrepareRequest["workTarget"]> & { contextEnabled: boolean }) => Promise<LiveWorkBinding>;
+  openWorkScope?: (callId: string, binding?: LiveWorkBinding) => void;
   closeWorkScope?: (callId: string) => void;
   resolveWorkSelection?: (input: { callId: string; workBindingRevision: number; selectionRef: string }) => Promise<
     | { kind: "session"; sessionId: string }
@@ -58,7 +60,16 @@ export type LiveCallServiceDeps = {
     candidate: { callId: string; workBindingRevision: number; workSessionId: string; providerRequestId: string; instruction: string },
     deliverReceipt: (receipt: LiveProviderReceipt) => Promise<LiveReceiptDelivery>,
   ) => Promise<void>;
+  stopWorkOperation?: (input: { callId: string; operationId: string }) => Promise<LiveWorkStopOperationResult>;
+  cancelQueuedWorkOperation?: (input: { callId: string; operationId: string }) => Promise<LiveWorkCancelQueuedOperationResult>;
   onWorkOperation?: (callId: string, operation: LiveWorkOperationView, delegationId?: string) => void;
+  /**
+   * Optional Main-side sink for terminal call failures. Nothing under
+   * live-voice/ used to log, and IPC errors were only returned to the
+   * renderer, so a collapsed generic toast could never be traced back to
+   * the error code that produced it.
+   */
+  log?: (level: "warn" | "error", message: string, data: Record<string, unknown>) => void;
 };
 
 export type Slot = {
@@ -88,6 +99,8 @@ export type Slot = {
   error?: { code: string; stage?: string; retriable: boolean };
   notice?: { code: string; retriable: boolean };
   workBinding?: LiveWorkBinding;
+  workBindingRevision: number;
+  workContextConsent: boolean;
   workScopeOpened: boolean;
   workOperations: LiveWorkOperationView[];
   workFeedbackScheduler: LiveWorkFeedbackScheduler;
@@ -137,10 +150,10 @@ export function validatePrepareRequest(request: LivePrepareRequest): void {
   if (!request || typeof request !== "object" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(request.requestId) || typeof request.bindingId !== "string" || request.bindingId.length > 256 || !Number.isSafeInteger(request.expectedSettingsRevision) || typeof request.initialMuted !== "boolean") {
     throw liveError("LIVE_PROTOCOL_ERROR");
   }
+  if (request.shareSelectedSessionContext !== undefined && typeof request.shareSelectedSessionContext !== "boolean") throw liveError("LIVE_PROTOCOL_ERROR");
   if (request.workTarget !== undefined && (
     !request.workTarget || typeof request.workTarget.workSessionId !== "string" ||
-    !request.workTarget.workSessionId.trim() || request.workTarget.workSessionId.length > 256 ||
-    typeof request.workTarget.contextEnabled !== "boolean"
+    !request.workTarget.workSessionId.trim() || request.workTarget.workSessionId.length > 256
   )) throw liveError("LIVE_PROTOCOL_ERROR");
 }
 

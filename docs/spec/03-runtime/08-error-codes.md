@@ -195,6 +195,7 @@ loses that. See
 | code | retriable | meaning |
 |---|---|---|
 | `EDIT_TAG_REQUIRED` | no | `tag` missing or not 4 hex digits |
+| `EDIT_LEGACY_MATCH_FAILED` | yes after a `Read` | legacy `old_string` was not found or matched multiple times; model must re-read or provide unique context |
 | `EDIT_TAG_MISMATCH` | yes after a `Read` | tag does not hash the live file and drift recovery declined; carries the live tag and current content at the anchors |
 | `EDIT_TAG_UNKNOWN` | yes after a `Read` | tag is well-formed but the session recorded no such content for the path |
 | `EDIT_LINES_UNSEEN` | yes | anchors reference lines the session never displayed; carries the revealed content |

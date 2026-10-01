@@ -196,18 +196,14 @@
   gap: 8px;
 }
 
-.live-voice-status-host {
+/* Details has no trigger row in this window any more: the docked widget's
+   button opens it, so it hangs from a fixed point above the composer. */
+.live-voice-details-anchor {
   position: fixed;
-  z-index: 35;
   left: 50%;
-  bottom: 20px;
-  width: max-content;
-  max-width: calc(100vw - 32px);
-  transform: translateX(-50%);
-}
-
-.live-voice-status-host[data-chat="true"] {
   bottom: calc(var(--composer-dock-height, 168px) + 12px);
+  width: 1px;
+  height: 1px;
 }
 
 .live-voice-call-bar {
@@ -271,8 +267,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-voice-status-host .voice-spinner,
-  .live-voice-status-host .voice-mic-active,
+  .live-voice-widget .voice-spinner,
+  .live-voice-widget .voice-mic-active,
   .live-voice-preparation .voice-spinner {
     animation: none;
   }
@@ -309,6 +305,22 @@
   min-width: 0;
 }
 
+/* The bound work session is blocked on a decision the call bar cannot take. */
+.live-voice-decision {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklab, var(--ds-warning) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--ds-warning) 12%, transparent);
+}
+
+.live-voice-decision-title {
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+}
+
 .live-voice-work-selections {
   display: grid;
   gap: 8px;
@@ -331,6 +343,18 @@
 .live-voice-error {
   color: var(--ds-error);
   font-size: var(--text-sm);
+}
+
+/* The error code stays verbatim: it is what a log line or bug report needs,
+   and translating it would break the lookup the spec documents. */
+.live-voice-error-code {
+  display: block;
+  margin-top: 2px;
+  color: var(--ds-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .live-voice-transcripts {

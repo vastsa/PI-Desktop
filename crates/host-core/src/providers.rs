@@ -34,8 +34,9 @@ pub(crate) use repository::{delete_provider_row, provider_exists, provider_owner
 
 pub(crate) use catalog::{
     config_model_bindings, config_thinking_levels_override, config_with_model_bindings,
-    ensure_model_bindings_update_safe, normalize_model_bindings, CANONICAL_THINKING_LEVELS,
-    DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, PROVIDER_SELECT,
+    ensure_model_bindings_update_safe, forget_cached_models, forget_missing_discovered_models,
+    normalize_model_bindings, CANONICAL_THINKING_LEVELS, DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_MAX_TOKENS, PROVIDER_SELECT,
 };
 pub(crate) use credentials::{
     build_provider_config_json, config_headers, config_oauth_account_label,

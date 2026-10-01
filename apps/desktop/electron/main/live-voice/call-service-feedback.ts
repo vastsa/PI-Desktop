@@ -1,6 +1,7 @@
 import type { LiveWorkFeedback, LiveWorkOperationView } from "@pi-desktop/shared";
-import { LiveWorkFeedbackScheduler, type LiveWorkIntent, type ScheduledLiveWorkFeedback } from "@pi-desktop/host-runtime";
+import { LiveWorkFeedbackScheduler, type LiveWorkIntent, type LiveWorkPendingQuestion, type ScheduledLiveWorkFeedback } from "@pi-desktop/host-runtime";
 import type { LiveReceiptDelivery } from "./types";
+import { spokenQuestion } from "./spoken-answer";
 import type { LiveCallServiceDeps, Slot } from "./call-service-internals";
 
 type FeedbackStatus = "pending" | "sent" | "context-only" | "undelivered";
@@ -23,9 +24,10 @@ export class LiveWorkFeedbackManager {
     delegationId?: string,
     resultSummary?: string,
     intent?: LiveWorkIntent,
+    pendingQuestion?: LiveWorkPendingQuestion,
   ): void {
     if (delegationId) slot.workFeedbackTargets.set(operation.operationId, delegationId);
-    const draft = feedbackDraft(operation, resultSummary, intent);
+    const draft = feedbackDraft(operation, resultSummary, intent, pendingQuestion);
     if (!draft) return;
 
     const terminalKey = draft.kind === "result" && operation.turnId
@@ -66,7 +68,7 @@ export class LiveWorkFeedbackManager {
 
   setPolicy(callId: string, policy: "normal" | "silent"): void {
     const slot = this.deps.current();
-    if (!slot || slot.callId !== callId || !slot.workBinding) return;
+    if (!slot || slot.callId !== callId || !slot.workScopeOpened) return;
     slot.workFeedbackScheduler.setPolicy(policy);
     this.pump(slot);
   }
@@ -76,10 +78,10 @@ export class LiveWorkFeedbackManager {
       clearTimeout(slot.workFeedbackTimer);
       slot.workFeedbackTimer = undefined;
     }
-    if (this.deps.current() !== slot || slot.phase !== "connected" || !slot.workBinding) return;
+    if (this.deps.current() !== slot || slot.phase !== "connected" || !slot.workScopeOpened) return;
     const localPlaybackIdle = slot.bridge
       ? slot.bridge.isPlaybackIdle()
-      : slot.workBinding && slot.binding?.adapterId === "codex-live"
+      : slot.workScopeOpened && slot.binding?.adapterId === "codex-live"
         ? slot.playbackMonitorReady && !slot.assistantPlaybackActive
         : true;
     const idle = !slot.userSpeaking && !slot.assistantSpeaking && localPlaybackIdle;
@@ -110,8 +112,8 @@ export class LiveWorkFeedbackManager {
   private async deliver(slot: Slot, scheduled: ScheduledLiveWorkFeedback): Promise<void> {
     const { feedback, operationIds, delegationId } = scheduled;
     if (
-      this.deps.current() !== slot || slot.abort.signal.aborted || !slot.workBinding ||
-      feedback.callId !== slot.callId || feedback.workBindingRevision !== slot.workBinding.workBindingRevision
+      this.deps.current() !== slot || slot.abort.signal.aborted || !slot.workScopeOpened ||
+      feedback.callId !== slot.callId || feedback.workBindingRevision !== slot.workBindingRevision
     ) return;
     let status: Exclude<FeedbackStatus, "pending"> = "undelivered";
     try {
@@ -144,6 +146,7 @@ function feedbackDraft(
   operation: LiveWorkOperationView,
   resultSummary?: string,
   intent?: LiveWorkIntent,
+  pendingQuestion?: LiveWorkPendingQuestion,
 ): Omit<LiveWorkFeedback, "feedbackId" | "callId" | "workBindingRevision" | "operationId"> & {
   dedupeKey?: string;
   operationId?: string;
@@ -161,7 +164,7 @@ function feedbackDraft(
       speakWhenSilent: true,
     };
   }
-  if (intent && ["query-status", "query-result", "query-queue", "stop-current", "cancel-queued", "open-session"].includes(intent.kind)) {
+  if (intent && ["query-status", "query-result", "query-queue", "stop-current", "cancel-queued", "open-session", "select-session", "respond-input"].includes(intent.kind)) {
     return operation.summary
       ? { kind: intent.kind === "query-result" ? "result" : "status", delivery: "speak-when-idle", content: operation.summary, speakWhenSilent: true }
       : null;
@@ -177,15 +180,16 @@ function feedbackDraft(
     };
   }
   if (operation.execution === "queued") {
-    return { kind: "admission", delivery: "speak-when-idle", content: "The task is queued in the bound work session." };
+    return { kind: "admission", delivery: "speak-when-idle", content: "The task is queued in the selected work session." };
   }
   if (operation.execution === "waiting-permission" || operation.execution === "waiting-input") {
+    const question = operation.execution === "waiting-input" ? spokenQuestion(pendingQuestion) : null;
     return {
       kind: "interaction-required",
       delivery: "speak-when-idle",
-      content: operation.execution === "waiting-permission"
+      content: question ?? (operation.execution === "waiting-permission"
         ? "The work session is waiting for permission in the desktop. Review the pending request there."
-        : "The work session is waiting for your input in the desktop. Continue there when ready.",
+        : "The work session is waiting for your input in the desktop. Continue there when ready."),
     };
   }
   if (["completed", "failed", "interrupted", "canceled"].includes(operation.execution) && resultSummary) {

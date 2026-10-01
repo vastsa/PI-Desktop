@@ -19,7 +19,8 @@ const headerEditorSource = await read("../src/components/settings/ProviderHeader
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
 // The panes themselves live in the picker both dialogs render (D269).
 const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
-const fetchErrorSource = await read("../src/components/settings/ModelsFetchErrorMessage.tsx");
+const fetchErrorCopySource = await read("../src/components/settings/models-fetch-error-copy.ts");
+const probeFeedbackSource = await read("../src/components/settings/useProbeFeedback.ts");
 // The credential rows live in their own component since D625.
 const fieldsSource = await read("../src/components/settings/ProviderConnectionFields.tsx");
 const styles = await loadStyles();
@@ -116,15 +117,21 @@ test("custom Name and Base URL sit on one row without helper copy", () => {
   );
 });
 
-test("a failed model list uses a classified error, not a raw dump plus empty copy", () => {
-  assert.match(fetchErrorSource, /describeModelsFetchError/);
-  assert.match(pickerSource, /ModelsFetchErrorMessage/);
-  assert.match(pickerSource, /variant="placeholder"/);
-  assert.match(pickerSource, /variant="banner"/);
-  assert.match(pickerSource, /emptyFetchError/);
+test("a failed model list is classified once and toasted, not dumped into the pane", () => {
+  assert.match(fetchErrorCopySource, /describeModelsFetchError/);
+  assert.match(probeFeedbackSource, /modelsFetchErrorText\(discovery\.error, t\)/);
+  assert.match(
+    probeFeedbackSource,
+    /showToast\(outcome\.message, \{ variant: outcome\.variant \}\)/,
+  );
+  // The pane keeps one line saying the list is missing; why it failed is the
+  // toast's job, so the classified box and its detail rows are gone.
+  assert.match(pickerSource, /provider-models-placeholder is-error/);
   assert.match(styles, /\.provider-models-placeholder\.is-error\s*\{/);
-  assert.match(styles, /\.provider-models-error-summary\s*\{/);
-  assert.match(styles, /\.provider-models-note\.is-error\s*\{[\s\S]*overflow-wrap: anywhere/);
+  assert.doesNotMatch(pickerSource, /variant="banner"/);
+  assert.doesNotMatch(pickerSource, /variant="placeholder"/);
+  assert.doesNotMatch(styles, /\.provider-models-note\s*\{/);
+  assert.doesNotMatch(styles, /\.provider-models-error-summary\s*\{/);
 });
 
 test("list rows carry no box of their own inside the inset pane", () => {
@@ -202,19 +209,22 @@ test("the dialog's actions live in the header, not in a footer bar", () => {
   assert.match(head, /disabled=\{!canSave\}/);
 });
 
-test("the connection test reports its result next to the fields", () => {
-  // The button moved to the header; its outcome stays where the inputs are.
-  const body = setupSource.slice(setupSource.indexOf('className="provider-setup-body"'));
-  assert.match(body, /provider-credential-test-result/);
-  assert.doesNotMatch(body, /settings\.testConnection/);
+test("the connection test reports its result through the toast stack", () => {
+  // The button sits in the header and its outcome no longer takes a result line
+  // under the credential fields.
+  assert.match(setupSource, /showToast\(t\("settings\.testOk"\), \{ variant: "success" \}\)/);
+  assert.match(setupSource, /settings\.testFailedStatus/);
+  assert.doesNotMatch(setupSource, /provider-credential-test/);
+  assert.doesNotMatch(styles, /\.provider-credential-test\s*\{/);
 });
 
-test("a save error appears next to the fields it refers to", () => {
-  const bodyStart = setupSource.indexOf('className="provider-setup-body"');
-  const credentials = setupSource.indexOf('className="provider-setup-credentials"');
-  const errorLine = setupSource.indexOf('className="provider-setup-error"');
-  assert.ok(errorLine > bodyStart && errorLine < credentials,
-    "the error line should open the body, above the credential grid");
+test("a save failure is toasted instead of opening the body with an error row", () => {
+  assert.match(
+    setupSource,
+    /showToast\(cause instanceof Error \? cause\.message : String\(cause\), \{[\s\S]*variant: "error"/,
+  );
+  assert.doesNotMatch(setupSource, /provider-setup-error/);
+  assert.doesNotMatch(styles, /\.provider-setup-error\s*\{/);
 });
 
 test("picking and reviewing models are two side-by-side panes", () => {
@@ -361,7 +371,9 @@ test("the vendor account dialog hosts the same panes in the same shell", () => {
 
 test("Advanced says a fullwidth value folds and a non-Latin-1 value is refused", () => {
   // The rule itself lives in @pi-desktop/shared (unit-tested there) and is
-  // mirrored in host-core; this pins that the editor asks it and renders both
+  // mirrored in host-core; this pins that the editor asks it, refuses a bad
+  // value next to the row it is about, and announces a value the host will
+  // fold once as a toast instead of taking a line above the list.
   assert.match(headerEditorSource, /import \{ APP_VERSION, inspectHeaderValue \}/);
   assert.match(headerEditorSource, /inspectHeaderValue\(pair\.value\)/);
   // Only a row that will be persisted may claim it folds: the hint has to
@@ -370,12 +382,17 @@ test("Advanced says a fullwidth value folds and a non-Latin-1 value is refused",
   assert.match(headerEditorSource, /header\.value !== ""/);
   assert.match(headerEditorSource, /header\.fault === null/);
   assert.match(headerEditorSource, /row\.storable && row\.header\.folded/);
-  assert.match(headerEditorSource, /provider-setup-header-note/);
-  assert.match(headerEditorSource, /role="status"/);
+  assert.match(
+    headerEditorSource,
+    /showToast\(t\("settings\.headersFullwidthFolded"\), \{ variant: "info" \}\)/,
+  );
+  // Announced when a foldable value appears, never on mount and never twice
+  // while the same rows stay folded.
+  assert.match(headerEditorSource, /foldedReportedRef\.current = foldedHeaderValue/);
   assert.match(headerEditorSource, /role="alert"/);
   assert.match(headerEditorSource, /settings\.headersFullwidthFolded/);
   assert.match(headerEditorSource, /settings\.headersValueNotLatin1/);
-  assert.match(block(".provider-setup-header-note"), /color: var\(--ds-text-muted\)/);
+  assert.doesNotMatch(styles, /\.provider-setup-header-note\s*\{/);
 });
 
 test("both dialogs open straight on the two panes, with no summary to fold (D625)", () => {

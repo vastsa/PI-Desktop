@@ -82,14 +82,19 @@ test("a failed preview is reported instead of silently disabling install", () =>
   // no way to try again. The preview-before-save gate itself is intentional and
   // stays — what changes is that a failure is now legible and recoverable.
   assert.match(panel, /setPreviewFailure\(\{/);
-  assert.match(panel, /kind: classifySkillMarketFailure\(error\)/);
+  assert.match(panel, /const kind = classifySkillMarketFailure\(error\)/);
   assert.match(panel, /detail: skillMarketFailureDetail\(error\)/);
   assert.match(panel, /settings\.sklm\.previewError/);
   assert.match(panel, /settings\.sklm\.previewPolicyError/);
   assert.match(panel, /settings\.sklm\.proxyHint/);
   assert.match(panel, /settings\.sklm\.failureDetail/);
   assert.match(panel, /settings\.sklm\.retryPreview/);
-  assert.match(panel, /role="alert"/);
+  // Announced once, by the toast host, with the classified copy: the sheet
+  // keeps the hints, the host's detail and its retry rather than an error row.
+  assert.match(
+    panel,
+    /showToast\(\s*t\(\s*kind === "policy"[\s\S]{0,400}\{ variant: "error" \}/,
+  );
   assert.match(panel, /disabled=\{installing \|\| documentBody === null \|\| documentTooLarge\}/);
   assert.match(panel, /const retryPreview = \(\) => \{/);
   assert.match(panel, /if \(installFor\) loadDocument\(installFor\)/);
@@ -117,8 +122,16 @@ test("a resolver with no answer is explained as that, not as an address check", 
     /if \(hasUnresolvedFailure\(remote\.failureKinds\)\) return t\("settings\.sklm\.remoteErrorUnresolved"\)/,
   );
   assert.match(panel, /settings\.sklm\.dnsHint/);
-  assert.match(panel, /previewFailure\.kind === "unresolved"/);
-  assert.match(panel, /settings\.sklm\.previewResolveError/);
+  assert.match(
+    panel,
+    /kind === "unresolved"\s*\? "settings\.sklm\.previewResolveError"/,
+  );
+  // The reason itself is announced by the toast host: the sheet keeps its
+  // recovery hints, its retry control and the host's own detail, and has no
+  // error row left occupying the preview field.
+  assert.match(panel, /showToast\(\s*t\(\s*kind === "policy"/);
+  assert.doesNotMatch(panel, /sklm-note is-error/);
+  assert.match(panel, /onClick=\{retryPreview\}/);
   // The refusal names the host it is about, not just the source label: a policy
   // refusal is a statement about one address.
   assert.match(panel, /settings\.sklm\.failureSourceHost/);
@@ -137,8 +150,10 @@ test("a proxy fake-IP gets its own copy and names the address it came from", () 
     panel,
     /if \(hasFakeIpFailure\(remote\.failureKinds\)\) return t\("settings\.sklm\.remoteErrorFakeIp"\)/,
   );
-  assert.match(panel, /previewFailure\.kind === "fake-ip"/);
-  assert.match(panel, /settings\.sklm\.previewFakeIpError/);
+  assert.match(
+    panel,
+    /kind === "fake-ip"\s*\? "settings\.sklm\.previewFakeIpError"/,
+  );
   assert.match(panel, /settings\.sklm\.fakeIpHint/);
   assert.match(panel, /settings\.sklm\.fakeIpHintPlain/);
   // The hint names what actually happened: which host, and which address the

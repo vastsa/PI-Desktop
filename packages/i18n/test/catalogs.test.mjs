@@ -37,7 +37,7 @@ test("Live Voice preparation and call recovery copy is localized in every shippe
     "playbackBlocked", "playbackFailed", "mediaReleaseUnconfirmed",
     "callActionFailed", "workNotConnected", "transcript", "transcriptEmpty",
     "userSpeaking", "assistantSpeaking", "muted", "resumePlayback",
-    "selectWorkSession", "shareContext", "contextConsent", "contextShared",
+    "selectWorkSession", "shareContext", "contextShared",
     "contextNotShared", "createWorkSession", "viewWorkSession", "enableDetail",
     "microphoneDenied", "microphoneUnavailable", "microphoneBusy",
     "phase.connecting", "phase.closing",
@@ -52,8 +52,8 @@ test("Live Voice preparation and call recovery copy is localized in every shippe
     }
   }
 
-  assert.match(english["liveVoice.enableDetail"], /voice-only by default/);
-  assert.match(english["liveVoice.enableDetail"], /separate opt-in and work session/);
+  assert.match(english["liveVoice.enableDetail"], /current Composer session as the default work target/);
+  assert.match(english["liveVoice.enableDetail"], /switch sessions by voice/);
 });
 
 test("canonical thinking levels are not translated catalog entries", () => {

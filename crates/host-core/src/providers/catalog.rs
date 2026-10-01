@@ -322,8 +322,14 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-/// Merge live discovery results into the durable catalog cache. User-created
-/// rows are authoritative and stale cache remains available if discovery fails.
+/// Merge live discovery results into the durable catalog cache.
+///
+/// The answer is the service's current list, so it replaces the previous one:
+/// rows this answer no longer contains are dropped with it, while the rows the
+/// user owns survive — a configured binding, including a hand-typed id, is the
+/// user's configuration rather than the service's answer. A failed or empty
+/// probe never reaches this call, so a cache is only ever narrowed by an answer
+/// that actually arrived.
 pub fn cache_discovered_models(
     db: &Database,
     provider_id: &str,
@@ -367,7 +373,102 @@ pub fn cache_discovered_models(
         }
     }
     tx.commit()?;
+    // The rows above are the answer; anything discovered before that the answer
+    // no longer names belongs to a model the endpoint stopped publishing.
+    let mut keep: Vec<String> = models
+        .iter()
+        .map(|model| model.model_id.trim().to_string())
+        .filter(|model_id| !model_id.is_empty())
+        .collect();
+    keep.extend(configured_model_ids(db, provider_id)?);
+    forget_missing_discovered_models(db, provider_id, &keep)?;
     Ok(changed)
+}
+
+/// Forget the cached rows of models a save removed from the provider.
+///
+/// The `models` table is a cache of what the service published, and deleting a
+/// binding is the user saying that model is no longer part of this service's
+/// configuration. Keeping the row would hand the deleted model's recorded
+/// parameters — context window, capabilities, display name — to the next add of
+/// the same id, and would keep the id in the picker's cache-first paint. Only
+/// rows of ids the save actually dropped are touched: the rest of the discovered
+/// list is the service's answer, not the user's configuration. A model the
+/// service still publishes comes back on the next probe, described by the
+/// service rather than by a stale answer.
+pub(crate) fn forget_cached_models(
+    db: &Database,
+    provider_id: &str,
+    model_ids: &[String],
+) -> Result<usize> {
+    if model_ids.is_empty() {
+        return Ok(0);
+    }
+    let tx = db.conn().unchecked_transaction()?;
+    let mut removed = 0;
+    {
+        // Ids are matched case-insensitively: a binding may spell a model
+        // differently from the answer it was added from.
+        let mut stmt = tx.prepare_cached(
+            "DELETE FROM models WHERE provider_id = ?1 AND lower(model_id) = lower(?2)",
+        )?;
+        for model_id in model_ids {
+            let model_id = model_id.trim();
+            if model_id.is_empty() {
+                continue;
+            }
+            removed += stmt.execute(params![provider_id, model_id])?;
+        }
+    }
+    tx.commit()?;
+    Ok(removed)
+}
+
+/// Model ids the provider's own bindings configure, in any spelling.
+fn configured_model_ids(db: &Database, provider_id: &str) -> Result<Vec<String>> {
+    let raw: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT config_json FROM providers WHERE id = ?1",
+            params![provider_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    Ok(config_model_bindings(&raw, None, provider_id)
+        .into_iter()
+        .map(|binding| binding.id)
+        .collect())
+}
+
+/// Drop discovered rows the current answer no longer names.
+///
+/// The cache is the service's answer, so it has to move when the answer moves: a
+/// model the endpoint stopped publishing must stop being painted from cache with
+/// the parameters it used to have, and it must stop being offered as "already
+/// known" to a hand-typed id. `keep_ids` carries what the answer does name,
+/// together with the provider's configured bindings; only rows whose source is
+/// discovery are eligible, so a row the user owns is never dropped here.
+pub(crate) fn forget_missing_discovered_models(
+    db: &Database,
+    provider_id: &str,
+    keep_ids: &[String],
+) -> Result<usize> {
+    let keep: std::collections::BTreeSet<String> =
+        keep_ids.iter().map(|id| id.trim().to_lowercase()).collect();
+    let stale: Vec<String> = {
+        let mut stmt = db.conn().prepare_cached(
+            "SELECT model_id FROM models WHERE provider_id = ?1 AND source = 'discovered'",
+        )?;
+        let rows = stmt.query_map(params![provider_id], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<String>>>()?
+            .into_iter()
+            .filter(|model_id| !keep.contains(&model_id.trim().to_lowercase()))
+            .collect()
+    };
+    forget_cached_models(db, provider_id, &stale)
 }
 
 #[cfg(test)]

@@ -35,6 +35,8 @@ export function createLiveCallSlot(owner: LiveOwner, request: LivePrepareRequest
     releaseBackgroundLease: null,
     heartbeatAt: now(),
     delegationInstructions: new Map(),
+    workBindingRevision: 1,
+    workContextConsent: request.shareSelectedSessionContext ?? false,
     workScopeOpened: false,
     workOperations: [],
     workFeedbackScheduler: new LiveWorkFeedbackScheduler({ callId, workBindingRevision: 1 }, now),

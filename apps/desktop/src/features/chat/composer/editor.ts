@@ -378,6 +378,11 @@ export function paintEditorValue(
       // A private-use code point with no chip behind it is user text (for
       // example a Nerd Font glyph pasted from a terminal); keep it verbatim.
     }
+    if (char === "\n") {
+      flush();
+      el.appendChild(document.createElement("br"));
+      continue;
+    }
     textBuffer += char;
   }
   flush();

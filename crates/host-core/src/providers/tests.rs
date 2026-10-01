@@ -890,7 +890,9 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
     .unwrap();
 
     let models = list_models(&db, Some(&provider.id)).unwrap();
-    assert_eq!(models.len(), 3);
+    // The second answer names model-a and the user's row only, so the model it
+    // stopped publishing goes with the answer it belonged to.
+    assert_eq!(models.len(), 2);
     let alpha = models
         .iter()
         .find(|model| model.model_id == "model-a")
@@ -898,7 +900,7 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
     assert_eq!(alpha.display_name, "Alpha updated");
     assert_eq!(alpha.capabilities, vec!["text", "reasoning"]);
     assert_eq!(alpha.context_window, Some(256_000));
-    assert!(models.iter().any(|model| model.model_id == "model-b"));
+    assert!(!models.iter().any(|model| model.model_id == "model-b"));
     let custom = models
         .iter()
         .find(|model| model.model_id == "user-model")
@@ -906,6 +908,273 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
     assert_eq!(custom.display_name, "Custom label");
     assert_eq!(custom.source, "user");
     assert_eq!(custom.capabilities, vec!["tools"]);
+}
+
+/// A model the user deleted and saved is no longer part of the configuration,
+/// so the parameters recorded for it go with it: keeping the row handed the
+/// deleted model's context window back to the next add of the same id, and kept
+/// it in the picker's cache-first paint.
+#[test]
+fn deleting_a_binding_and_saving_forgets_its_cached_parameters() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Catalog".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: Some("http://localhost:11434/v1".into()),
+            auth_kind: Some("none".into()),
+            models: Some(vec![
+                binding_with_limits("model-a", 128_000, 8_192),
+                binding_with_limits("model-b", 32_000, 4_096),
+            ]),
+            default_model_id: Some("model-a".into()),
+            secret_value: None,
+            api_style: Some("chat_completions".into()),
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    cache_discovered_models(
+        &db,
+        &provider.id,
+        &[
+            DiscoveredModelInput {
+                model_id: "model-a".into(),
+                display_name: "Alpha".into(),
+                capabilities: vec!["text".into()],
+                context_window: Some(128_000),
+            },
+            // The service spells it differently from the binding that drops it.
+            DiscoveredModelInput {
+                model_id: "MODEL-B".into(),
+                display_name: "Beta".into(),
+                capabilities: vec!["text".into()],
+                context_window: Some(32_000),
+            },
+            DiscoveredModelInput {
+                model_id: "model-c".into(),
+                display_name: "Gamma".into(),
+                capabilities: vec!["text".into()],
+                context_window: Some(64_000),
+            },
+        ],
+    )
+    .unwrap();
+    assert_eq!(list_models(&db, Some(&provider.id)).unwrap().len(), 3);
+
+    update_provider(
+        &db,
+        &secrets,
+        ProviderUpdateInput {
+            id: provider.id.clone(),
+            name: None,
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: None,
+            models: Some(vec![binding_with_limits("model-a", 128_000, 8_192)]),
+            default_model_id: None,
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+            enabled: None,
+        },
+    )
+    .unwrap()
+    .unwrap();
+
+    let cached = list_models(&db, Some(&provider.id)).unwrap();
+    assert_eq!(
+        cached
+            .iter()
+            .map(|model| model.model_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["model-a", "model-c"]
+    );
+}
+
+/// The cache is the service's answer, so an answer that no longer publishes a
+/// model drops that model's row — while a row the user owns survives it: a
+/// hand-typed id and a configured binding are the user's configuration, not the
+/// service's answer.
+#[test]
+fn a_probe_answer_forgets_models_it_no_longer_publishes() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Catalog".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: Some("http://localhost:11434/v1".into()),
+            auth_kind: Some("none".into()),
+            models: Some(vec![binding_with_limits("custom-model", 8_000, 1_024)]),
+            default_model_id: Some("custom-model".into()),
+            secret_value: None,
+            api_style: Some("chat_completions".into()),
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    // A hand-typed id the service never published, recorded as the user's own.
+    db.conn()
+        .execute(
+            "INSERT INTO models (
+                    provider_id, model_id, display_name, source,
+                    capabilities_json, updated_at
+                 ) VALUES (?1, 'pinned-model', 'Pinned', 'user', '[]', ?2)",
+            params![provider.id, now_ms()],
+        )
+        .unwrap();
+    let answer = |discovered: &[&str]| -> Vec<DiscoveredModelInput> {
+        discovered
+            .iter()
+            .map(|id| DiscoveredModelInput {
+                model_id: (*id).to_string(),
+                display_name: (*id).to_string(),
+                capabilities: vec!["text".into()],
+                context_window: Some(64_000),
+            })
+            .collect()
+    };
+
+    // This answer publishes the hand-typed id too, so its row is discovered.
+    cache_discovered_models(
+        &db,
+        &provider.id,
+        &answer(&["model-a", "model-b", "custom-model"]),
+    )
+    .unwrap();
+    assert_eq!(list_models(&db, Some(&provider.id)).unwrap().len(), 4);
+
+    // The endpoint stopped publishing model-b.
+    cache_discovered_models(&db, &provider.id, &answer(&["model-a"])).unwrap();
+
+    let mut cached: Vec<String> = list_models(&db, Some(&provider.id))
+        .unwrap()
+        .into_iter()
+        .map(|model| model.model_id)
+        .collect();
+    cached.sort();
+    assert_eq!(
+        cached,
+        vec!["custom-model", "model-a", "pinned-model"],
+        "the unpublished model goes with the answer; the user's rows stay"
+    );
+}
+
+/// The discovered answer belongs to the endpoint that produced it: saving a new
+/// address drops the previous one's answer, while the models the user configured
+/// stay exactly as saved.
+#[test]
+fn changing_the_endpoint_forgets_the_discovered_answer() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Relay".into(),
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: Some("http://localhost:11434/v1".into()),
+            auth_kind: Some("none".into()),
+            models: Some(vec![binding_with_limits("model-a", 128_000, 8_192)]),
+            default_model_id: Some("model-a".into()),
+            secret_value: None,
+            api_style: Some("chat_completions".into()),
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    cache_discovered_models(
+        &db,
+        &provider.id,
+        &[
+            DiscoveredModelInput {
+                model_id: "model-a".into(),
+                display_name: "Alpha".into(),
+                capabilities: vec!["text".into()],
+                context_window: Some(128_000),
+            },
+            DiscoveredModelInput {
+                model_id: "model-b".into(),
+                display_name: "Beta".into(),
+                capabilities: vec!["text".into()],
+                context_window: Some(32_000),
+            },
+        ],
+    )
+    .unwrap();
+    assert_eq!(list_models(&db, Some(&provider.id)).unwrap().len(), 2);
+
+    // A URL-only edit: the model list is untouched, so only the endpoint rule can
+    // be what drops the old answer.
+    update_provider(
+        &db,
+        &secrets,
+        ProviderUpdateInput {
+            id: provider.id.clone(),
+            name: None,
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: Some("http://localhost:9000/v1".into()),
+            auth_kind: None,
+            models: None,
+            default_model_id: None,
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+            enabled: None,
+        },
+    )
+    .unwrap()
+    .unwrap();
+
+    let cached: Vec<String> = list_models(&db, Some(&provider.id))
+        .unwrap()
+        .into_iter()
+        .map(|model| model.model_id)
+        .collect();
+    assert_eq!(cached, vec!["model-a"]);
 }
 
 #[test]

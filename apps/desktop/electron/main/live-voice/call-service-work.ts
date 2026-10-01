@@ -32,12 +32,12 @@ export function createLiveCallWorkHandlers(deps: Dependencies) {
         if (slot.delegationInstructions.size >= MAX_DELEGATIONS_PER_CALL) throw liveError("LIVE_PROTOCOL_ERROR");
         slot.delegationInstructions.set(id, request.instruction);
       }
-      if (slot.workBinding && deps.receiveWorkCandidate) {
+      if (slot.workScopeOpened && deps.receiveWorkCandidate) {
         void deps.receiveWorkCandidate(
           {
             callId: slot.callId,
-            workBindingRevision: slot.workBinding.workBindingRevision,
-            workSessionId: slot.workBinding.workSessionId,
+            workBindingRevision: slot.workBindingRevision,
+            workSessionId: slot.workBinding?.workSessionId ?? `live-work-unselected:${slot.callId}`,
             providerRequestId: id,
             instruction: request.instruction,
           },
@@ -95,7 +95,7 @@ export function createLiveCallWorkHandlers(deps: Dependencies) {
 
     notifyWorkOperation(callId: string, operation: LiveWorkOperationView): void {
       const slot = deps.current();
-      if (!slot || slot.callId !== callId || !slot.workBinding) return;
+      if (!slot || slot.callId !== callId || !slot.workScopeOpened) return;
       const existing = slot.workOperations.findIndex((item) => item.operationId === operation.operationId);
       slot.workOperations = existing < 0
         ? [...slot.workOperations, operation].slice(-8)
@@ -128,8 +128,8 @@ export function createLiveCallWorkHandlers(deps: Dependencies) {
     sendWorkFeedback(slot: Slot, delegationId: string, feedback: LiveWorkFeedback): Promise<import("./types").LiveReceiptDelivery> {
       const actionId = randomUUID();
       if (
-        !delegationId.trim() || delegationId.length > 256 || !slot.workBinding ||
-        feedback.callId !== slot.callId || feedback.workBindingRevision !== slot.workBinding.workBindingRevision ||
+        !delegationId.trim() || delegationId.length > 256 || !slot.workScopeOpened ||
+        feedback.callId !== slot.callId || feedback.workBindingRevision !== slot.workBindingRevision ||
         Buffer.byteLength(feedback.content, "utf8") === 0 || Buffer.byteLength(feedback.content, "utf8") > 1_200 ||
         deps.current() !== slot || !deps.ownerAlive(slot.owner)
       ) {

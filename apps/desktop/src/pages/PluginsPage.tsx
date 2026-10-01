@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Button, TooltipButton, cx } from "../components/ui";
 import { IconCloudDown, IconDownload, IconMore, IconPlug } from "../components/icons";
 import { AnchoredMenu } from "../components/settings/AnchoredMenu";
@@ -27,8 +28,22 @@ export function PluginsPage() {
     setInstalledQuery,
     marketLoading,
     market,
-    applyAutoUpdates,
+    showToast,
   } = page;
+
+  /**
+   * Pending updates are announced once, where the user is looking, instead of
+   * holding a banner open across the route. Applying them keeps its entry on
+   * the header menu (`plugins.applyAutoUpdates`), and a count that was already
+   * on screen when the page opened is not news.
+   */
+  const reportedUpdatesRef = useRef<number | null>(null);
+  useEffect(() => {
+    const reported = reportedUpdatesRef.current;
+    reportedUpdatesRef.current = stats.updates;
+    if (reported === null || reported === stats.updates || stats.updates === 0) return;
+    showToast(t("plugins.updatesReady", { count: stats.updates }), { variant: "info" });
+  }, [stats.updates, showToast, t]);
 
   return (
     <div className="route-scroll">
@@ -98,22 +113,6 @@ export function PluginsPage() {
             </AnchoredMenu>
           </div>
         </div>
-
-        {stats.updates > 0 ? (
-          <div className="plugins-alert" role="status">
-            <span className="plugins-alert-icon" aria-hidden>
-              <IconCloudDown size={15} />
-            </span>
-            <div className="plugins-alert-copy">
-              <span className="plugins-alert-title">
-                {t("plugins.updatesReady", { count: stats.updates })}
-              </span>
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => void applyAutoUpdates()}>
-              {t("plugins.applyAutoUpdates")}
-            </Button>
-          </div>
-        ) : null}
 
         <div className="plugins-toolbar">
           <div className="plugins-segment" role="tablist" aria-label={t("plugins.title")}>

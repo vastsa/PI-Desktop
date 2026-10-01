@@ -76,7 +76,7 @@ test("an explicitly bound work call forwards only the declared tool candidate to
     bindingId: binding.id,
     expectedSettingsRevision: status.settingsRevision,
     initialMuted: true,
-    workTarget: { workSessionId: "session-a", contextEnabled: false },
+    workTarget: { workSessionId: "session-a" },
   });
   t.after(async () => {
     const ending = service.end(owner, { callId: prepared.callId, reason: "user-ended" }).catch(() => undefined);
@@ -109,6 +109,47 @@ test("an explicitly bound work call forwards only the declared tool candidate to
   assert.deepEqual(closed, [prepared.callId]);
 });
 
+test("Live operation controls require the owner and forward only call-scoped operation IDs", async (t) => {
+  const { LiveCallService } = await loadModules(t);
+  const routed = [];
+  const { deps } = dependencies({
+    resolveWorkBinding: async (target) => ({
+      workSessionId: target.workSessionId,
+      workBindingRevision: 1,
+      label: "Fixture / Target",
+      contextEnabled: target.contextEnabled,
+    }),
+    openWorkScope: () => undefined,
+    receiveWorkCandidate: async () => undefined,
+    stopWorkOperation: async (input) => { routed.push({ kind: "stop", ...input }); return { status: "requested" }; },
+    cancelQueuedWorkOperation: async (input) => { routed.push({ kind: "cancel", ...input }); return { status: "canceled" }; },
+  });
+  const service = new LiveCallService(deps);
+  const status = await service.status();
+  const prepared = await service.prepare(owner, {
+    requestId,
+    bindingId: binding.id,
+    expectedSettingsRevision: status.settingsRevision,
+    initialMuted: true,
+    workTarget: { workSessionId: "session-a" },
+  });
+  t.after(async () => {
+    const ending = service.end(owner, { callId: prepared.callId, reason: "user-ended" }).catch(() => undefined);
+    try { service.reportMedia(owner, { callId: prepared.callId, kind: "released" }); } catch { /* the service may already have cleaned up */ }
+    await ending;
+  });
+  await service.connect(owner, { callId: prepared.callId, offerSdp: "v=0\r\n" });
+  service.reportMedia(owner, { callId: prepared.callId, kind: "phase", phase: "connected" });
+
+  await assert.rejects(service.stopWorkOperation(otherOwner, { callId: prepared.callId, operationId: "operation-a" }), { errorCode: "LIVE_INVALID_OWNER" });
+  assert.deepEqual(await service.stopWorkOperation(owner, { callId: prepared.callId, operationId: "operation-a" }), { status: "requested" });
+  assert.deepEqual(await service.cancelQueuedWorkOperation(owner, { callId: prepared.callId, operationId: "operation-b" }), { status: "canceled" });
+  assert.deepEqual(routed, [
+    { kind: "stop", callId: prepared.callId, operationId: "operation-a" },
+    { kind: "cancel", callId: prepared.callId, operationId: "operation-b" },
+  ]);
+});
+
 test("work feedback waits for a quiet window and reports local delivery separately from task execution", async (t) => {
   const { LiveCallService } = await loadModules(t);
   let now = 1_000;
@@ -136,7 +177,7 @@ test("work feedback waits for a quiet window and reports local delivery separate
     bindingId: binding.id,
     expectedSettingsRevision: status.settingsRevision,
     initialMuted: true,
-    workTarget: { workSessionId: "session-a", contextEnabled: false },
+    workTarget: { workSessionId: "session-a" },
   });
   t.after(async () => {
     const ending = service.end(owner, { callId: prepared.callId, reason: "user-ended" }).catch(() => undefined);
@@ -204,7 +245,7 @@ test("a shared terminal turn produces one feedback item and updates every linked
     bindingId: binding.id,
     expectedSettingsRevision: status.settingsRevision,
     initialMuted: true,
-    workTarget: { workSessionId: "session-a", contextEnabled: false },
+    workTarget: { workSessionId: "session-a" },
   });
   t.after(async () => {
     const ending = service.end(owner, { callId: prepared.callId, reason: "user-ended" }).catch(() => undefined);

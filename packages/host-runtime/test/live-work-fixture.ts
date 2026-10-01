@@ -6,8 +6,11 @@ export function build(input: {
   hangSnapshot?: boolean;
   onSubmit?: LiveWorkPort["submit"];
   onCancelQueued?: LiveWorkPort["cancelQueued"];
+  onRespondInput?: LiveWorkPort["respondInput"];
   lookupAdmission?: LiveWorkPort["lookupAdmission"];
   resolveIntent?: LiveWorkCoordinatorOptions["resolveIntent"];
+  selectSession?: LiveWorkPort["selectSession"];
+  hasWorkTarget?: boolean;
   classifyTimeoutMs?: number;
 }): { coordinator: LiveWorkCoordinator; calls: string[]; snapshot: WorkSnapshot } {
   const calls: string[] = [];
@@ -39,16 +42,24 @@ export function build(input: {
       return { queueEntryId: "queue-1" };
     },
     stop: async (request) => {
-      calls.push(`stop:${request.expectedTurnId}:${request.urgency}`);
+      calls.push(`stop:${request.sessionId}:${request.expectedTurnId}:${request.urgency}`);
       return { status: "requested" };
     },
     cancelQueued: async (request) => {
-      calls.push(`cancel:${request.queueEntryId}`);
+      calls.push(`cancel:${request.sessionId}:${request.queueEntryId}`);
       return input.onCancelQueued ? input.onCancelQueued(request) : { status: "canceled" };
+    },
+    respondInput: async (request) => {
+      const labels = request.answers.map((answer) => answer.options.join("+")).join(",");
+      calls.push(`answer:${request.sessionId}:${labels}`);
+      return input.onRespondInput
+        ? input.onRespondInput(request)
+        : { status: "resolved", turnId: "turn-1" };
     },
     listProjects: async (request) => [{ selectionRef: "project-ref", kind: "project", action: request.action, label: "Demo" }],
     listSessions: async () => [{ selectionRef: "session-ref", kind: "session", action: "open", label: "Demo / Chat" }],
     openSelection: async () => ({ status: "opened" }),
+    selectSession: input.selectSession ?? (async () => ({ status: "selected", sessionId: "session-b", label: "Demo / Chat" })),
   };
   let next = 0;
   const coordinator = new LiveWorkCoordinator({
@@ -62,7 +73,7 @@ export function build(input: {
     now: () => ++next,
     onOperation: ({ operation }) => calls.push(`state:${operation.admission}:${operation.execution}`),
   });
-  coordinator.openCall({ callId: "call-1", workSessionId: "session-a", workBindingRevision: 2 });
+  coordinator.openCall({ callId: "call-1", workSessionId: "session-a", workBindingRevision: 2, hasWorkTarget: input.hasWorkTarget });
   return { coordinator, calls, snapshot };
 }
 

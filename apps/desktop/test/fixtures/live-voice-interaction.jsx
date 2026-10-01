@@ -7,7 +7,9 @@ import { IPC, KEYBOARD_SHORTCUTS, keybindingMatchesEvent, resolveKeybinding } fr
 import { useAppStore } from "../../src/stores/app-store";
 import { PortalVisibilityProvider } from "../../src/lib/portal-visibility";
 import { LiveVoiceControls } from "../../src/features/voice/live/LiveVoiceControls";
+import { ToastHost } from "../../src/components/Toast";
 import { LiveVoiceStatusHost } from "../../src/features/voice/live/LiveVoiceStatusHost";
+import { LiveVoiceWidget } from "../../src/features/voice/live/LiveVoiceWidget";
 import { getLiveCallController } from "../../src/features/voice/live/live-call-controller";
 import { runLiveVoiceShortcut } from "../../src/features/voice/live/live-voice-shortcuts";
 
@@ -28,7 +30,7 @@ const settings = {
     { id: "fixture-selected", adapterId: "codex-live", providerId: "fixture-provider", voice: "cove" },
     { id: "fixture-other", adapterId: "codex-live", providerId: "fixture-other-provider", voice: "cove" },
   ] },
-  voice: { deviceId: null }, keybindings: {},
+  voice: { deviceId: null }, keybindings: {}, language: "en",
 };
 const status = {
   enabled: false, settingsRevision: 1, selectedBindingId: "fixture-selected", call: null,
@@ -46,14 +48,27 @@ let callNumber = 0;
 let rejectPlayback = false;
 let rejectReleaseReport = false;
 const ending = new Map();
+// The widget window is a view of the call: main pushes the owner's view into it
+// and forwards its presses back to the owner frame. Both directions are faked
+// here so the mounted production widget runs its real code path.
+const widgetReports = { presentation: null, actions: [], errorCode: undefined, decisionWaiting: false };
 const emit = (channel, value) => {
   for (const listener of listeners.get(channel) ?? []) listener(structuredClone(value));
 };
 const waitAt = (name) => gates.get(name)?.promise ?? Promise.resolve();
+function pushWidgetState() {
+  emit(IPC.event.liveVoiceWidgetState, {
+    call,
+    ...(widgetReports.errorCode ? { errorCode: widgetReports.errorCode } : {}),
+    ...(widgetReports.decisionWaiting ? { decisionWaiting: true } : {}),
+  });
+}
 function updateCall(patch) {
   call = { ...call, ...patch, revision: (call?.revision ?? 0) + 1 };
   status.call = call;
   emit(IPC.event.liveVoiceChanged, call);
+  // Main forwards the same authoritative view to the docked widget.
+  pushWidgetState();
   return structuredClone(call);
 }
 function beginClosing() {
@@ -75,8 +90,13 @@ async function handleInvoke(channel, request) {
         ...(request.workTarget ? { workBinding: {
           ...request.workTarget, workBindingRevision: 1,
           label: sessions.find((session) => session.id === request.workTarget.workSessionId)?.title ?? "Fixture session",
+          contextEnabled: request.shareSelectedSessionContext === true,
         } } : {}),
       };
+      // A new call starts blank: main drops the previous call's failure code and
+      // its waiting-decision flag.
+      widgetReports.errorCode = undefined;
+      widgetReports.decisionWaiting = false;
       updateCall({});
       const prepared = {
         callId: call.callId, requestId: request.requestId, bindingId: call.bindingId,
@@ -120,6 +140,27 @@ async function handleInvoke(channel, request) {
     case IPC.invoke.liveVoiceHeartbeat:
     case IPC.invoke.liveVoiceReportPlayback:
     case IPC.invoke.liveVoiceReportControlApplied:
+      return { ok: true };
+    case IPC.invoke.liveVoiceWidgetVisibility:
+      // Main turns the widget's measured box into the window's bounds.
+      widgetReports.presentation = structuredClone(request);
+      return { ok: true };
+    case IPC.invoke.liveVoiceWidgetAction:
+      // Main validates the sender, then hands the press to the owner frame.
+      widgetReports.actions.push(request.action);
+      emit(IPC.event.liveVoiceWidgetAction, { action: request.action });
+      return { ok: true };
+    case IPC.invoke.liveVoiceWidgetOwnerState:
+      // What only the owner frame knows — its failure code and whether the bound
+      // session waits on a decision — cached for that call and pushed into the
+      // widget exactly as main does.
+      if (request.callId !== call?.callId) return { ok: true };
+      widgetReports.errorCode = request.errorCode ?? undefined;
+      widgetReports.decisionWaiting = request.decisionWaiting === true;
+      pushWidgetState();
+      return { ok: true };
+      widgetReports.errorCode = request.code ?? undefined;
+      pushWidgetState();
       return { ok: true };
     default:
       requests.unexpected.push(channel);
@@ -199,9 +240,19 @@ await i18n.use(initReactI18next).init({
 });
 useAppStore.setState({ sessions, activeSessionId: sessions[0].id, settings });
 const controller = getLiveCallController();
+/** Set by the fixture shell so a scenario can resize the emulated widget window. */
+let setFixtureWidgetWidth = () => {};
+
 function SimulatedShell() {
   const [route, setRoute] = useState("chat");
   const [hidden, setHidden] = useState(false);
+  // The window main gives the widget is a fixed width until the bar reports the
+  // box it needs; the scenario can narrow it to prove the bar neither folds nor
+  // under-reports its width.
+  const [widgetWidth, setWidgetWidth] = useState(420);
+  useEffect(() => {
+    setFixtureWidgetWidth = setWidgetWidth;
+  }, []);
   const activeSessionId = useAppStore((state) => state.activeSessionId);
   useEffect(() => {
     useAppStore.setState({ page: route });
@@ -235,6 +286,15 @@ function SimulatedShell() {
         </PortalVisibilityProvider>
       ) : <p data-fixture-settings>Settings route: composer unmounted</p>}
       <LiveVoiceStatusHost />
+      {/* The docked widget window, mounted in the same document: it is the call
+          chrome now, and its presses travel through the widget IPC channels.
+          The wrapper is the fixed-width surface the real window is: without it a
+          wrapped status line would go unnoticed, because the fixture document is
+          wider than the window the bar is drawn in. */}
+      <div data-fixture-widget-window style={{ width: widgetWidth, overflow: "hidden" }}>
+        <LiveVoiceWidget />
+      </div>
+      <ToastHost />
     </div>
   );
 }
@@ -281,12 +341,40 @@ window.liveVoiceFixture = {
     emit(IPC.event.liveVoiceTranscript, { callId: call.callId,
       segment: { id: "fixture-transcript", role: "assistant", text, final: true, timestamp: 0 } });
   },
+  // Narrow the window main gives the widget, so a status line no longer fits: a
+  // bar that folds or under-reports its width fails the assertion after it.
+  // The pending queues live in the owner window's store; the widget window has
+  // none. Seeding one here exercises the "owner reports it, main forwards it"
+  // path end to end instead of the bar reading a store it does not have.
+  pendingAsk(sessionId, question) {
+    useAppStore.setState((state) => ({
+      pendingAsks: {
+        ...state.pendingAsks,
+        [sessionId]: [{
+          requestId: "ask-fixture",
+          sessionId,
+          toolCallId: "call_ask",
+          questions: [{ question, options: [{ label: "yes" }] }],
+        }],
+      },
+    }));
+  },
+  clearPendingAsks() {
+    useAppStore.setState({ pendingAsks: {} });
+  },
+  setWidgetWindowWidth(width) { setFixtureWidgetWidth(width); },
   inspect() {
     return {
       snapshot: controller.getSnapshot(), counts, requests, errors,
       tracks: tracks.map(({ enabled, readyState }) => ({ enabled, readyState })),
       contexts: contexts.map(({ state }) => ({ state })),
       peers: peers.map(({ connectionState }) => ({ connectionState })), held: [...gates.keys()],
+      widget: {
+        presentation: widgetReports.presentation,
+        actions: [...widgetReports.actions],
+        visible: widgetReports.presentation?.visible === true,
+        ownerState: { errorCode: widgetReports.errorCode ?? null, decisionWaiting: widgetReports.decisionWaiting },
+      },
     };
   },
 };

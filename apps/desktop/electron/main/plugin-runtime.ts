@@ -13,6 +13,7 @@ import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { LoadedSkillDocument } from "./skill-document";
+import { getModuleDirectory } from "./module-path";
 import {
   busTopicAllowed,
   isDeniedFsPath,
@@ -1782,7 +1783,9 @@ export class PluginRuntime {
             ),
           );
 
-    const entry = this.services.hostEntry ?? join(__dirname, "plugin-host-process.js");
+    const entry =
+      this.services.hostEntry ??
+      join(getModuleDirectory(import.meta.url), "plugin-host-process.js");
     const spawn = this.services.spawnProcess ?? spawnUtilityProcess;
     const child = await spawn({ pluginId: manifest.id, entry, pluginPath });
 

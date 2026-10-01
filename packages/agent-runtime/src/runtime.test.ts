@@ -808,6 +808,39 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("executes an edit with legacy old_string and new_string parameters", async () => {
+    let capturedArgs: any;
+    const host = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method !== "tools.execute") return undefined;
+        capturedArgs = params.args;
+        return {
+          ok: true,
+          isError: false,
+          content: { path: "src/example.ts", tag: "C3D4" },
+        };
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const edit = agent.state.tools.find((tool: any) => tool.name === "Edit");
+    const args = {
+      path: "src/example.ts",
+      old_string: "const a = 1;",
+      new_string: "const a = 2;",
+    };
+
+    const result = await edit.execute("edit-legacy", args);
+    expect(result.isError).toBe(false);
+    expect(capturedArgs).toMatchObject({
+      path: "src/example.ts",
+      old_string: "const a = 1;",
+      new_string: "const a = 2;",
+    });
+
+    await runtime.dispose();
+  });
+
   it("reports a visible error row when the mutation guard ends the turn", async () => {
     const onEvent = vi.fn();
     const host = {

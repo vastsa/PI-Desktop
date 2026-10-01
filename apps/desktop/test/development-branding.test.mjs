@@ -126,13 +126,27 @@ test("macOS development launches from a branded host bundle", () => {
   assert.match(devScriptSource, /CFBundleName", APP_NAME/);
   assert.match(devScriptSource, /CFBundleExecutable", APP_NAME/);
   assert.match(devScriptSource, /CFBundleIconFile", "icon\.icns"/);
+  assert.match(devScriptSource, /BRANDING_SCHEMA = "v4"/);
   assert.match(
     devScriptSource,
     /copyFileSync\(iconPath, join\(resources, "icon\.icns"\)\)/,
   );
+  assert.match(
+    devScriptSource,
+    /copyFileSync\(trayIconPath, join\(resources, "tray-icon\.png"\)\)/,
+  );
+  assert.match(
+    devScriptSource,
+    /copyFileSync\(trayIconMacPath, join\(resources, "tray-icon-mac\.png"\)\)/,
+  );
   assert.match(devScriptSource, /verbatimSymlinks: true/);
   assert.match(devScriptSource, /join\(ROOT, "\.cache", "electron-dev"\)/);
   assert.doesNotMatch(devScriptSource, /node_modules.*Info\.plist/);
+});
+
+test("Electron main resolves runtime paths from ES module URLs", () => {
+  assert.match(mainSource, /function getModuleDirectory\(moduleUrl: string\)/);
+  assert.doesNotMatch(mainSource, /\b__dirname\b/);
 });
 
 test(
@@ -154,6 +168,8 @@ test(
     const resources = join(contents, "Resources");
     const executable = join(macos, "Electron");
     const iconPath = join(root, "source.icns");
+    const trayIconPath = join(root, "tray-icon.png");
+    const trayIconMacPath = join(root, "tray-icon-mac.png");
     const cacheRoot = join(root, "cache");
 
     try {
@@ -161,6 +177,8 @@ test(
       await mkdir(resources, { recursive: true });
       await writeFile(executable, "electron-host");
       await writeFile(iconPath, "canonical-icon");
+      await writeFile(trayIconPath, "generic-tray-icon");
+      await writeFile(trayIconMacPath, "macOS-tray-icon");
       await writeFile(
         join(contents, "Info.plist"),
         `<?xml version="1.0" encoding="UTF-8"?>
@@ -179,6 +197,8 @@ test(
         electronExecutable: executable,
         electronVersion: "test-version",
         iconPath,
+        trayIconPath,
+        trayIconMacPath,
         cacheRoot,
         sign: false,
       };
@@ -195,9 +215,32 @@ test(
         await readFile(join(brandedContents, "Resources", "icon.icns"), "utf8"),
         "canonical-icon",
       );
+      assert.equal(
+        await readFile(join(brandedContents, "Resources", "tray-icon.png"), "utf8"),
+        "generic-tray-icon",
+      );
+      assert.equal(
+        await readFile(
+          join(brandedContents, "Resources", "tray-icon-mac.png"),
+          "utf8",
+        ),
+        "macOS-tray-icon",
+      );
       assert.match(plist, /<string>PI-Desktop<\/string>/);
       assert.match(plist, /<string>net\.aiuo\.pi-desktop\.dev<\/string>/);
       assert.equal(prepareMacDevelopmentBundle(options), brandedExecutable);
+
+      await writeFile(trayIconMacPath, "updated-macOS-tray-icon");
+      const updatedExecutable = prepareMacDevelopmentBundle(options);
+      assert.notEqual(updatedExecutable, brandedExecutable);
+      const updatedContents = join(updatedExecutable, "..", "..");
+      assert.equal(
+        await readFile(
+          join(updatedContents, "Resources", "tray-icon-mac.png"),
+          "utf8",
+        ),
+        "updated-macOS-tray-icon",
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }

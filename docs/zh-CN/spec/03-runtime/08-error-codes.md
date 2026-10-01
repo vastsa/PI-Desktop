@@ -196,6 +196,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | 代码 | 可重试 | 含义 |
 |---|---|---|
 | `EDIT_TAG_REQUIRED` | 否 | `tag` 缺失或不是 4 位十六进制 |
+| `EDIT_LEGACY_MATCH_FAILED` | `Read` 之后可以 | 旧版兼容参数 `old_string` 未找到或出现多次 |
 | `EDIT_TAG_MISMATCH` | `Read` 之后可以 | tag 无法哈希出实时文件且漂移恢复拒绝；携带实时 tag 与锚点处的当前内容 |
 | `EDIT_TAG_UNKNOWN` | `Read` 之后可以 | tag 格式正确，但本会话没有为该路径记录过对应内容 |
 | `EDIT_LINES_UNSEEN` | 是 | 锚点引用了会话从未显示过的行；携带被揭示的内容 |

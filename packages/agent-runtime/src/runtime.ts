@@ -3014,14 +3014,30 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       Edit: {
         path: pathParam("File to edit; workspace-relative."),
         file_path: aliasParam("path"),
-        tag: Type.String({
-          description:
-            "4 uppercase hex from the latest Read, Grep, Write, or Edit for this path.",
-        }),
-        ops: Type.String({
-          description:
-            "One or more operation headers with + body rows, newline separated. A PUT with body rows must end its header with `:` (for example, `PUT 48.=48:`); `PUT 48.=48` followed by + rows is invalid. A colonless PUT is only for a register paste such as `PUT <1 @name`.",
-        }),
+        tag: Type.Optional(
+          Type.String({
+            description:
+              "4 uppercase hex from the latest Read, Grep, Write, or Edit for this path. Required unless legacy old_string/new_string is used.",
+          }),
+        ),
+        ops: Type.Optional(
+          Type.String({
+            description:
+              "One or more operation headers with + body rows, newline separated. A PUT with body rows must end its header with `:` (for example, `PUT 48.=48:`); `PUT 48.=48` followed by + rows is invalid. A colonless PUT is only for a register paste such as `PUT <1 @name`. Required unless legacy old_string/new_string is used.",
+          }),
+        ),
+        old_string: Type.Optional(
+          Type.String({
+            description:
+              "Legacy text replacement: exact text to be replaced (must match exactly once in the target file).",
+          }),
+        ),
+        new_string: Type.Optional(
+          Type.String({
+            description:
+              "Legacy text replacement: new text to replace old_string with.",
+          }),
+        ),
       },
       Bash: {
         command: Type.String(),

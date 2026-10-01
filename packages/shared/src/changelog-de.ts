@@ -2,6 +2,17 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.16.0",
+    "date": "2026-10-01",
+    "highlights": [
+      "Live Voice steht jetzt allen zur Verfügung, und Anrufe starten im aktuellen Verlauf.",
+      "Neue Checkliste pro Verlauf, die ihren verbindlichen Stand auch nach einem Neustart des lokalen Dienstes behält.",
+      "Einmalige Hinweise erscheinen jetzt im gemeinsamen Toast-Stapel statt in blockierenden Dialogen.",
+      "Modelllisten richten sich nach den offiziellen Anbieter-Metadaten, damit Relay-Dienste und Modellnamen korrekt bleiben.",
+    ],
+  },
+
+  {
     "version": "0.15.10",
     "date": "2026-09-28",
     "highlights": [

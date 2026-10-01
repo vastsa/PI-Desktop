@@ -831,6 +831,19 @@ export class AgentHost {
     return this.approvals.list(sessionId);
   }
 
+  /**
+   * Open interactive inputs of one session, oldest first: the same entries a
+   * late-attaching client reads as `snapshot().pendingInputs`, without a
+   * history read. The paired original request carries the runtime request id
+   * and tool call the answer has to be resolved against.
+   */
+  pendingInputRequests(sessionId: string): Array<{ input: RacpInputRequest; original: AskToolRequest }> {
+    return [...this.state(sessionId).pendingInputs.values()].map((entry) => ({
+      input: entry.request,
+      original: entry.original,
+    }));
+  }
+
   /** The RACP view of a session the caller already fetched: its durable summary plus live state. */
   describeSession(summary: SessionSummary): RacpSession {
     const state = this.state(summary.id);

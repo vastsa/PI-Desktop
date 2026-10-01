@@ -335,6 +335,8 @@ export type AppState = {
   /** Drop a session's sidebar outcome badge and read its task notifications. */
   acknowledgeSessionOutcome: (sessionId: string) => Promise<void>;
   restorePendingPlan: (sessionId: string) => Promise<PendingPlanRefreshResult>;
+  /** Re-read a session's open ask / permission cards from Main (reload recovery). */
+  restorePendingInteractive: (sessionId: string) => Promise<void>;
   refreshPlanCheckpoints: () => Promise<void>;
   handleAgentEvent: (envelope: AgentEventEnvelope) => void;
   handlePlansChanged: (event: PlanningStateEvent) => void;

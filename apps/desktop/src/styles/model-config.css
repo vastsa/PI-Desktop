@@ -247,37 +247,6 @@
   min-width: 0;
 }
 
-/* One quiet line under the key: connecting, connected, or why not. */
-.provider-connection-status {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-  overflow-wrap: anywhere;
-}
-
-.provider-connection-status.is-ok {
-  color: var(--ds-text-secondary);
-}
-
-.provider-connection-status.is-ok svg {
-  flex: none;
-  color: var(--ds-success);
-}
-
-.provider-connection-status.is-error {
-  flex-wrap: wrap;
-  column-gap: 6px;
-  color: var(--ds-warning);
-}
-
-.provider-connection-status.is-error .provider-models-error-detail {
-  max-width: none;
-}
-
 .provider-service-anchor {
   width: 100%;
   min-width: 0;
@@ -588,14 +557,6 @@
   line-height: var(--leading-relaxed);
 }
 
-/* Quieter than the import error: folding is informational, not a refusal. */
-.provider-setup-header-note {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
 /* Pick on the left, review on the right; both stretch to the same height. */
 .provider-setup-panes {
   flex: 1;
@@ -605,29 +566,7 @@
   min-height: 0;
 }
 
-.provider-setup-error {
-  padding: 8px 10px;
-  border-radius: var(--radius-xs);
-  background: var(--ds-bg-inset);
-  color: var(--ds-warning);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
 /* ----------------------------------------------------- credential fields */
-
-.provider-credential-test {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.provider-credential-test-result {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
 
 /* ------------------------------------------------- live model list */
 
@@ -765,24 +704,6 @@
   color: var(--ds-text-faint);
 }
 
-.provider-models-note {
-  margin: 0 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius-xs);
-  background: var(--ds-tile);
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
-.provider-models-note.is-error {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--ds-warning);
-  overflow-wrap: anywhere;
-}
-
 .provider-models-placeholder {
   flex: 1;
   display: flex;
@@ -803,16 +724,6 @@
   gap: 6px;
   color: var(--ds-warning);
   overflow-wrap: anywhere;
-}
-
-.provider-models-error-summary {
-  font-weight: var(--font-weight-medium);
-}
-
-.provider-models-error-detail,
-.provider-models-error-hint {
-  color: var(--ds-text-muted);
-  max-width: 36ch;
 }
 
 .provider-models-list {

@@ -20,9 +20,9 @@
 ### E2E-LIVE-WORK-session-admission
 
 - **前提：** 使用隔离的 Live Provider fixture、本地 AgentHost 会话和确定性意图分类器；候选请求须从现有 Live adapter 回调进入，不使用真实账号或付费端点。
-- **步骤：** 验证纯通话没有工作作用域时会拒绝任务候选；再以明确选择的本地会话和关闭的上下文共享启动工作通话。提交一个已声明工具请求并检查回执、Host admission 和 `voiceOrigin`。覆盖忙时独立排队、过期 steer、精确回合 stop、submit 返回前到达的终态事件，以及基于已记录结果的只读查询。请求项目／会话列表，确认只返回标签和本次 call 的 opaque 引用；通过面板动作打开已列会话、在已列项目中新建会话，并确认工作绑定仍固定。分别保持 Provider 生成、用户讲话和本地播放活跃，确认反馈须待三者空闲和静默窗口结束后才发送。覆盖 silent、静默时的显式查询、过期反馈降级；结束通话时确认已受理工作仍保留。
+- **步骤：** 验证纯通话没有工作作用域时会拒绝任务候选；再以明确选择的本地会话和关闭的上下文共享启动工作通话。提交一个已声明工具请求并检查回执、Host admission 和 `voiceOrigin`。覆盖忙时独立排队、过期 steer、精确回合 stop、submit 返回前到达的终态事件，以及基于已记录结果的只读查询。请求项目／会话列表，确认只返回标签和本次 call 的 opaque 引用；通过面板动作打开已列会话、在已列项目中新建会话，并确认工作绑定仍固定。分别保持 Provider 生成、用户讲话和本地播放活跃，确认反馈须待三者空闲和静默窗口结束后才发送。覆盖 silent、静默时的显式查询、过期反馈降级；当提交处于等待用户决策状态时，确认紧凑栏保留等待提示、详情显示待决请求并提供打开该精确会话的操作，且其他会话的待决请求不会被归到绑定会话；当提交处于等待用户决策状态时，确认紧凑栏保留等待提示、详情显示待决请求并提供打开该精确会话的操作，且其他会话的待决请求不会被归到绑定会话。随后用语音回答该 AskTool 提问，确认会话卡片经由 Host 输入路径解决；再分别用提问从未提供的标签、只回答一部分、以及同时存在两个待答提问重试，确认每次都被拒绝、不产生写操作且不重试。结束通话时确认已受理工作仍保留。
 - **预期：** 工作始终绑定到通话开始时选定的会话；关闭上下文共享时不读取历史；现有 AgentHost 执行 prompt、steer、queue 和 stop；重复 Provider ID 不重复派发；结果查询只投影准确操作摘要且不会创建新回合。项目／会话选项不暴露原始路径或 ID，引用按 call 隔离并过期；打开只导航，创建必须先列出注册项目并由用户点击确认。自动反馈同时观察 Provider 生成状态和本地播放活动，任务执行与反馈投递状态分开。结束 Live 不取消已受理任务；Renderer 信号不代表用户已经听到结果。
-- **覆盖：** `apps/desktop/test/live-voice-service.test.mjs` 覆盖纯通话拒绝、显式工作作用域和 Provider／用户／本地播放的反馈门控及独立投递状态；`packages/host-runtime/src/live-work/coordinator.test.ts` 覆盖回执顺序、路由、过期 steer、去重、关闭通话、早到终态和选择流程；`packages/host-runtime/src/live-work/feedback-scheduler.test.ts` 覆盖防抖、播报间隔、silent、过期降级、去重与溢出；`packages/host-runtime/src/live-work/context.test.ts` 覆盖上下文投影与 opaque 引用；`packages/host-runtime/src/live-work/result-summary.test.ts` 覆盖精确回合摘要和诚实回退；`packages/agent-host/src/agent-host.test.ts` 覆盖无历史快照、队列和语音来源；`packages/voice-runtime/src/live/protocol.test.ts` 覆盖 Provider 工具及反馈编码；`apps/desktop/test/live-work-scope.test.mjs` 覆盖引用作用域／过期，`live-work-operations.test.mjs` 覆盖面板动作，`voice-runtime/src/live/playback-monitor.test.ts` 覆盖本地音频信号检测。该自动化覆盖仍不等于 W2-001—W2-096 全矩阵，也不代表真实 Provider／设备验收。
+- **覆盖：** `apps/desktop/test/live-voice-service.test.mjs` 覆盖纯通话拒绝、显式工作作用域和 Provider／用户／本地播放的反馈门控及独立投递状态；`packages/host-runtime/src/live-work/coordinator.test.ts` 覆盖回执顺序、路由、过期 steer、去重、关闭通话、早到终态和选择流程；`packages/host-runtime/src/live-work/feedback-scheduler.test.ts` 覆盖防抖、播报间隔、silent、过期降级、去重与溢出；`packages/host-runtime/src/live-work/context.test.ts` 覆盖上下文投影与 opaque 引用；`packages/host-runtime/src/live-work/result-summary.test.ts` 覆盖精确回合摘要和诚实回退；`packages/agent-host/src/agent-host.test.ts` 覆盖无历史快照、队列和语音来源；`packages/voice-runtime/src/live/protocol.test.ts` 覆盖 Provider 工具及反馈编码；`apps/desktop/test/live-work-scope.test.mjs` 覆盖引用作用域／过期，`live-work-operations.test.mjs` 覆盖面板动作，`live-work-decision.test.mjs` 覆盖等待决策投影、会话作用域、有界纯文本渲染与打开绑定会话的面板操作，`voice-runtime/src/live/playback-monitor.test.ts` 覆盖本地音频信号检测；`packages/host-runtime/src/live-work/ask-answer.test.ts` 覆盖语音回答意图与路由（解决、拒绝、unknown 且绝不重发），`apps/desktop/test/spoken-answer.test.mjs` 覆盖只选既有选项的匹配、有界朗读内容与投递预算。该自动化覆盖仍不等于 W2-001—W2-096 全矩阵，也不代表真实 Provider／设备验收。
 - **状态：** 部分完成；其余场景和实机矩阵见 `docs/implementation/live-work-evidence.md`。
 
 ### E2E-LIVE-WORK-v2.1-reliability
@@ -92,7 +92,9 @@
   4. 打开详情，检查转录、服务商和工作状态，然后分别通过关闭、点击外部和
      Escape 关闭详情。通话保持连接；通过通话栏恢复暂停的声音，观察恢复失败，
      再明确重试并恢复。
-  5. 在聊天、设置、插件和会话间导航。在 Main 延迟终止和 Renderer 延迟清理的
+  5. 在聊天、设置、插件和会话间导航。通话控件是停靠的桌面挂件窗口：拖动它自身的
+     通话栏，确认位置在这些导航后仍然保留、并会被夹取回工作区内，同时确认主窗口
+     不再绘制任何通话栏。在 Main 延迟终止和 Renderer 延迟清理的
      情况下结束通话或禁用功能，并分别测试两种清理完成顺序。在两者完成前，
      始终显示「结束中」，且不允许再次开始。模拟释放未确认，确认阻止状态可见。
   6. 重新打开准备界面，确认工作授权和上下文确认均未勾选。仅展开区域或选择
@@ -402,7 +404,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-005I：从选择器标题重新获取服务模型列表
 
 - **前提条件**：添加或编辑服务（或厂商账户）对话框已打开，且该服务可访问并提供 `/models` 列表。
-- **步骤**：1) 确认左侧标题旁有「获取列表」，在有效端点就绪前为禁用。2) 填入有效端点。确认在 600 ms 防抖等待期间「获取列表」已可用。立刻点击；确认它不等待该窗口，探测时显示加载文案，然后列出模型。3) 再次点击「获取列表」。确认加载期间保留当前行，并以实时结果替换。4) 让服务离线后再点「获取列表」；确认出现分类错误且先前的行仍在。5) 恢复服务，再点「获取列表」，确认实时列表回来。6) 在厂商账户编辑对话框重复上述步骤。
+- **步骤**：1) 确认左侧标题旁有「获取列表」，在有效端点就绪前为禁用。2) 填入有效端点。确认在 600 ms 防抖等待期间「获取列表」已可用。立刻点击；确认它不等待该窗口，探测时显示加载文案，然后列出模型。3) 再次点击「获取列表」。确认加载期间保留当前行，并以实时结果替换。4) 让服务离线后再点「获取列表」；确认分类错误以 toast 出现且先前的行仍在。5) 恢复服务，再点「获取列表」，确认实时列表回来。6) 在厂商账户编辑对话框重复上述步骤。
 - **预期**：标题上的操作会立刻向服务探测，包括端点刚变为有效后的防抖等待期间。凭据变更触发的自动发现不变。两种凭据都有同一控件，因为两个对话框共用该选择器。
 - **链接规格**：`03-runtime/13-model-catalog-and-selection.md`、
   `04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`

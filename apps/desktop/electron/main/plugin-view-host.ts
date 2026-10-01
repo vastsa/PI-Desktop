@@ -1,5 +1,6 @@
 import { session, shell, WebContentsView, type BrowserWindow } from "electron";
 import { join } from "node:path";
+import { getModuleDirectory } from "./module-path";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import { PanelSenders, pageGoneWithin } from "./plugin-panel-senders";
 import {
@@ -423,7 +424,10 @@ export class PluginViewHost {
     const view = new WebContentsView({
       webPreferences: {
         session: ses,
-        preload: join(__dirname, "../preload/plugin-panel.js"),
+        preload: join(
+          getModuleDirectory(import.meta.url),
+          "../preload/plugin-panel.js",
+        ),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,

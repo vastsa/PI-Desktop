@@ -1,8 +1,11 @@
 import { net, type BrowserWindow, type WebContents } from "electron";
-import { IPC, type AppSettings } from "@pi-desktop/shared";
+import { IPC, type AppSettings, type LiveCallView } from "@pi-desktop/shared";
 import type { VendorOAuth } from "../oauth";
 import type { HostProcess } from "../host-process";
 import type { AgentHostBridge } from "../agent-host-bridge";
+import type { AgentSidecar } from "../agent-sidecar";
+import type { BackendRouter } from "../remote/backend-router";
+import type { RemoteHostsBoot } from "../bootstrap/remote-hosts";
 import { LiveCallService } from "./call-service";
 import { LiveAuthResolver } from "./auth-resolver";
 import { createLivePcmBridge } from "./audio-port";
@@ -14,8 +17,9 @@ import { assertLiveHttpsEndpoint } from "./websocket-transport";
 import type { MicrophoneLeaseRegistry } from "./microphone-lease";
 import type { LiveOwner } from "./call-service";
 import { createLiveWorkBridge } from "./work-bridge";
+import { listLiveWorkSessions, requireLiveWorkSession, type LiveWorkSessionRecord } from "./live-work-backend-port";
 import type { ThinkingLevel } from "@pi-desktop/shared";
-import { sessionWorkspaceIdentity } from "@pi-desktop/host-runtime";
+import { liveWorkUnselectedSessionId, sessionWorkspaceIdentity } from "@pi-desktop/host-runtime";
 
 type BackgroundLease = { webContents: WebContents; previous: boolean; count: number };
 
@@ -23,7 +27,16 @@ export function createLiveCallService(input: {
   getHost: () => HostProcess | null;
   getMainWindow: () => BrowserWindow | null;
   getAgentHostBridge: () => AgentHostBridge | null;
+  getSidecar?: () => AgentSidecar | null;
+  getBackendRouter?: () => BackendRouter | null;
+  getRemoteHosts?: () => RemoteHostsBoot | null;
   vendorOAuth: Pick<VendorOAuth, "resolveAuth">;
+  /**
+   * Every published call view, for chrome outside the owner frame — the docked
+   * Live Voice widget window. The owner frame keeps receiving the same view
+   * through `IPC.event.liveVoiceChanged`.
+   */
+  onCallView?: (view: LiveCallView | null) => void;
   microphoneLeases: MicrophoneLeaseRegistry;
   resolveAgentRuntimeLaunch: (
     sessionId: string,
@@ -34,6 +47,8 @@ export function createLiveCallService(input: {
     providerId: string;
     sidecarParams: { provider: import("@pi-desktop/agent-runtime").RuntimeProviderConfig };
   }>;
+  /** Terminal call failures land in the `provider` log channel (see spec 09). */
+  log?: (level: "warn" | "error", message: string, data: Record<string, unknown>) => void;
 }): LiveCallService {
   const backgroundLeases = new Map<number, BackgroundLease>();
   const authorizedWorkspaces = new WeakMap<object, string | null>();
@@ -50,6 +65,9 @@ export function createLiveCallService(input: {
   const workBridge = createLiveWorkBridge({
     getHost: input.getHost,
     getAgentHostBridge: input.getAgentHostBridge,
+    getSidecar: input.getSidecar ?? (() => null),
+    getBackendRouter: input.getBackendRouter ?? (() => null),
+    getRemoteHosts: input.getRemoteHosts ?? (() => null),
     vendorOAuth: input.vendorOAuth,
     navigateSession: (callId, sessionId) => {
       if (!liveCallService) return Promise.reject(Object.assign(new Error("Live call service is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" }));
@@ -60,6 +78,9 @@ export function createLiveCallService(input: {
       const operation = update.operation;
       liveCallService?.notifyWorkOperation(callId, {
         operationId: operation.operationId,
+        ...(operation.workSessionId ? { workSessionId: operation.workSessionId } : {}),
+        ...(operation.workSessionLabel ? { workSessionLabel: operation.workSessionLabel } : {}),
+        ...(operation.workSessionSource ? { sessionSource: operation.workSessionSource } : {}),
         admission: operation.admission,
         execution: operation.execution,
         ...(operation.failureCode ? { failureCode: operation.failureCode } : {}),
@@ -70,8 +91,10 @@ export function createLiveCallService(input: {
         ...(operation.resultSummary ? { resultSummary: operation.resultSummary } : {}),
         ...(operation.resultState ? { resultState: operation.resultState } : {}),
         ...(operation.selections ? { selections: operation.selections } : {}),
-      }, operation.providerRequestId, operation.resultSummary, update.intent);
+      }, operation.providerRequestId, operation.resultSummary, update.intent, update.pendingQuestion);
     },
+    getWorkContextConsent: (callId) => liveCallService?.getWorkContextConsent(callId) ?? false,
+    onTargetSelected: (callId, binding) => liveCallService?.setWorkTarget(callId, binding),
     onAnnouncementPolicy: ({ callId, policy }) => liveCallService?.setWorkAnnouncementPolicy(callId, policy),
   });
 
@@ -82,37 +105,40 @@ export function createLiveCallService(input: {
       return host.call<AppSettings>("settings.get");
     },
     authResolver,
+    log: input.log,
     resolveWorkBinding: async (target) => {
-      if (target.workSessionId.startsWith("native-pi:")) {
-        throw Object.assign(new Error("Live work integration does not support native Pi sessions"), {
-          errorCode: "LIVE_WORK_BACKEND_UNSUPPORTED",
-        });
-      }
-      const host = input.getHost();
-      if (!host) throw Object.assign(new Error("Local Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
-      const result = await host.call<{ sessions?: Array<{ id?: unknown; title?: unknown; source?: unknown; projectId?: unknown; projectPath?: unknown }> }>("session.list");
-      const session = result.sessions?.find((item) => item.id === target.workSessionId);
-      if (!session) {
-        throw Object.assign(new Error("The selected local work session is unavailable"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
-      }
-      if (session.source !== undefined && session.source !== "desktop") {
-        throw Object.assign(new Error("Live work integration supports only local Desktop sessions"), { errorCode: "LIVE_WORK_BACKEND_UNSUPPORTED" });
-      }
+      const sessions = await listLiveWorkSessions({
+        getHost: input.getHost,
+        getSidecar: input.getSidecar ?? (() => null),
+        getRemoteHosts: input.getRemoteHosts ?? (() => null),
+      });
+      const session = requireLiveWorkSession(sessions, target.workSessionId);
       const binding = {
-        workSessionId: target.workSessionId,
+        workSessionId: session.id,
         workBindingRevision: 1,
-        label: formatWorkSessionLabel(session.projectPath, session.title),
+        label: formatWorkSessionLabel(session),
+        sessionSource: session.source,
         contextEnabled: target.contextEnabled,
       };
-      authorizedWorkspaces.set(binding, sessionWorkspaceIdentity(session));
+      authorizedWorkspaces.set(binding, session.source === "desktop" ? sessionWorkspaceIdentity(session) : null);
       return binding;
     },
-    openWorkScope: (callId, binding) => workBridge.openCall(
-      { ...binding, callId },
-      authorizedWorkspaces.get(binding) ?? null,
-    ),
+    openWorkScope: (callId, binding) => {
+      const initial = binding ?? {
+        workSessionId: liveWorkUnselectedSessionId(callId),
+        workBindingRevision: 1,
+        label: "",
+        contextEnabled: false,
+      };
+      workBridge.openCall(
+        { ...initial, callId },
+        binding ? authorizedWorkspaces.get(binding) ?? null : null,
+      );
+    },
     closeWorkScope: workBridge.closeCall,
     resolveWorkSelection: workBridge.resolveSelection,
+    stopWorkOperation: workBridge.stopOperation,
+    cancelQueuedWorkOperation: workBridge.cancelQueuedOperation,
     receiveWorkCandidate: workBridge.receiveCandidate,
     createAdapter: (context) => {
       switch (context.binding.adapterId) {
@@ -135,7 +161,10 @@ export function createLiveCallService(input: {
         ownerFrame: frame,
       });
     },
-    sendView: (owner, view) => sendToOwner(input.getMainWindow(), owner, IPC.event.liveVoiceChanged, view),
+    sendView: (owner, view) => {
+      sendToOwner(input.getMainWindow(), owner, IPC.event.liveVoiceChanged, view);
+      input.onCallView?.(view);
+    },
     sendControl: (owner, event) => sendToOwner(input.getMainWindow(), owner, IPC.event.liveVoiceControl, event),
     sendTranscript: (owner, event) => sendToOwner(input.getMainWindow(), owner, IPC.event.liveVoiceTranscript, event),
     ownerAlive: (owner) => liveOwnerFrame(input.getMainWindow(), owner) !== null,
@@ -145,12 +174,16 @@ export function createLiveCallService(input: {
   return liveCallService;
 }
 
-function formatWorkSessionLabel(projectPath: unknown, title: unknown): string {
-  const sessionLabel = typeof title === "string" ? title.trim().slice(0, 100) : "";
-  const projectLabel = typeof projectPath === "string" && projectPath.trim()
-    ? projectPath.split(/[\\/]/).filter(Boolean).at(-1)?.slice(0, 60)
-    : undefined;
-  return [projectLabel, sessionLabel].filter((part): part is string => Boolean(part)).join(" / ");
+function formatWorkSessionLabel(session: LiveWorkSessionRecord): string {
+  const title = session.title.trim().slice(0, 100) || "Untitled session";
+  const project = session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1)?.slice(0, 60);
+  const source = session.source === "pi-native"
+    ? "Native Pi"
+    : session.source === "remote"
+      ? `Remote${session.hostLabel ? ` · ${session.hostLabel}` : ""}`
+      : "";
+  const workspace = session.source === "remote" ? session.workspaceLabel : project;
+  return [source, workspace, title].filter(Boolean).join(" / ").slice(0, 180);
 }
 
 function sendToOwner(window: BrowserWindow | null, owner: LiveOwner, channel: string, payload: unknown): void {

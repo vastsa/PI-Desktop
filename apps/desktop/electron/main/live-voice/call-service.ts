@@ -15,9 +15,12 @@ import {
   type LivePrepareRequest,
   type LivePreparedCall,
   type LiveStatus,
+  type LiveWorkBinding,
+  type LiveWorkCancelQueuedOperationResult,
   type LiveWorkOperationView,
+  type LiveWorkStopOperationResult,
 } from "@pi-desktop/shared";
-import { LiveWorkFeedbackScheduler, type LiveWorkIntent } from "@pi-desktop/host-runtime";
+import { LiveWorkFeedbackScheduler, liveWorkUnselectedSessionId, type LiveWorkIntent, type LiveWorkPendingQuestion } from "@pi-desktop/host-runtime";
 import { LIVE_WORK_TOOL_NAME, parseLiveWorkArguments, type LiveWireEvent } from "@pi-desktop/voice-runtime/live";
 import { LiveAuthResolver } from "./auth-resolver";
 import type { LivePcmBridge } from "./audio-port";
@@ -258,24 +261,52 @@ export class LiveCallService {
     slot.bridge?.reportPlayback(input.cursors);
   }
 
+  getWorkContextConsent(callId: string): boolean {
+    const slot = this.current;
+    return Boolean(slot && slot.callId === callId && slot.workContextConsent);
+  }
+
+  setWorkTarget(callId: string, target: LiveWorkBinding): void {
+    const slot = this.current;
+    if (!slot || slot.callId !== callId || !slot.workScopeOpened || slot.phase !== "connected") throw liveError("LIVE_STALE_CALL");
+    if (
+      !target.workSessionId.trim() || target.workSessionId.length > 256 ||
+      !Number.isSafeInteger(target.workBindingRevision) || target.workBindingRevision !== slot.workBindingRevision ||
+      !target.label.trim() || target.label.length > 180 || target.contextEnabled !== slot.workContextConsent
+    ) throw liveError("LIVE_WORK_SELECTION_EXPIRED");
+    slot.workBinding = Object.freeze({ ...target });
+    this.publish(slot);
+  }
+
   async resolveWorkSelection(owner: LiveOwner, input: { callId: string; selectionRef: string }): Promise<
     | { kind: "session"; sessionId: string }
     | { kind: "project"; projectPath: string }
   > {
     const slot = this.requireCurrent(owner, input.callId);
-    const binding = slot.workBinding;
-    if (!binding || !this.deps.resolveWorkSelection) throw liveError("LIVE_WORK_NOT_BOUND");
+    if (!slot.workScopeOpened || !this.deps.resolveWorkSelection) throw liveError("LIVE_WORK_CAPABILITY_UNAVAILABLE");
     if (typeof input.selectionRef !== "string" || !input.selectionRef.trim() || input.selectionRef.length > 256) throw liveError("LIVE_PROTOCOL_ERROR");
     return this.deps.resolveWorkSelection({
       callId: slot.callId,
-      workBindingRevision: binding.workBindingRevision,
+      workBindingRevision: slot.workBindingRevision,
       selectionRef: input.selectionRef,
     });
   }
 
+  async stopWorkOperation(owner: LiveOwner, input: { callId: string; operationId: string }): Promise<LiveWorkStopOperationResult> {
+    const slot = this.requireCurrent(owner, input.callId);
+    if (!slot.workScopeOpened || slot.phase !== "connected" || !this.deps.stopWorkOperation) throw liveError("LIVE_WORK_CAPABILITY_UNAVAILABLE");
+    return this.deps.stopWorkOperation(input);
+  }
+
+  async cancelQueuedWorkOperation(owner: LiveOwner, input: { callId: string; operationId: string }): Promise<LiveWorkCancelQueuedOperationResult> {
+    const slot = this.requireCurrent(owner, input.callId);
+    if (!slot.workScopeOpened || slot.phase !== "connected" || !this.deps.cancelQueuedWorkOperation) throw liveError("LIVE_WORK_CAPABILITY_UNAVAILABLE");
+    return this.deps.cancelQueuedWorkOperation(input);
+  }
+
   async navigateWorkSession(callId: string, sessionId: string): Promise<void> {
     const slot = this.current;
-    if (!slot || slot.callId !== callId || !slot.workBinding || slot.phase !== "connected") throw liveError("LIVE_STALE_CALL");
+    if (!slot || slot.callId !== callId || !slot.workScopeOpened || slot.phase !== "connected") throw liveError("LIVE_STALE_CALL");
     const result = await this.workHandlers.navigateSession(slot, sessionId);
     if (result.status !== "sent") throw liveError(result.code ?? "LIVE_WORK_FEEDBACK_UNDELIVERED");
   }
@@ -291,11 +322,11 @@ export class LiveCallService {
     this.workHandlers.reportControlApplied(slot, input);
   }
 
-  notifyWorkOperation(callId: string, operation: LiveWorkOperationView, delegationId?: string, resultSummary?: string, intent?: LiveWorkIntent): void {
+  notifyWorkOperation(callId: string, operation: LiveWorkOperationView, delegationId?: string, resultSummary?: string, intent?: LiveWorkIntent, pendingQuestion?: LiveWorkPendingQuestion): void {
     this.workHandlers.notifyWorkOperation(callId, operation);
     const slot = this.current;
-    if (!slot || slot.callId !== callId || !slot.workBinding) return;
-    this.feedback.notifyOperation(slot, operation, delegationId, resultSummary, intent);
+    if (!slot || slot.callId !== callId || !slot.workScopeOpened) return;
+    this.feedback.notifyOperation(slot, operation, delegationId, resultSummary, intent, pendingQuestion);
   }
 
   setWorkAnnouncementPolicy(callId: string, policy: "normal" | "silent"): void {
@@ -399,7 +430,7 @@ export class LiveCallService {
     if (request.workTarget) {
       if (!this.deps.resolveWorkBinding) throw liveError("LIVE_WORK_CAPABILITY_UNAVAILABLE");
       slot.workBinding = await this.withDeadline(
-        this.deps.resolveWorkBinding(request.workTarget),
+        this.deps.resolveWorkBinding({ ...request.workTarget, contextEnabled: slot.workContextConsent }),
         PREPARE_DEADLINE_MS,
         "work-binding",
         slot.abort.signal,
@@ -408,10 +439,11 @@ export class LiveCallService {
         slot.workBinding.workSessionId !== request.workTarget.workSessionId ||
         !Number.isSafeInteger(slot.workBinding.workBindingRevision) ||
         slot.workBinding.workBindingRevision < 1 ||
-        typeof slot.workBinding.label !== "string" || slot.workBinding.label.length > 120 ||
-        slot.workBinding.contextEnabled !== request.workTarget.contextEnabled
+        typeof slot.workBinding.label !== "string" || slot.workBinding.label.length > 180 ||
+        slot.workBinding.contextEnabled !== slot.workContextConsent
       ) throw liveError("LIVE_WORK_SESSION_UNAVAILABLE");
-      slot.workFeedbackScheduler.bindRevision(slot.workBinding.workBindingRevision);
+      slot.workBindingRevision = slot.workBinding.workBindingRevision;
+      slot.workFeedbackScheduler.bindRevision(slot.workBindingRevision);
     }
     const record = await this.withDeadline(this.deps.authResolver.provider(binding.providerId), PREPARE_DEADLINE_MS, "prepare");
     this.assertCurrent(slot);
@@ -474,13 +506,11 @@ export class LiveCallService {
       this.assertCurrent(slot);
       await this.assertBindingStillConfigured(slot);
       this.assertCurrent(slot);
-      if (slot.workBinding) {
-        if (!this.deps.openWorkScope || !this.deps.receiveWorkCandidate) {
-          throw liveError("LIVE_WORK_CAPABILITY_UNAVAILABLE");
-        }
+      if (this.deps.openWorkScope && this.deps.receiveWorkCandidate) {
         this.deps.openWorkScope(slot.callId, slot.workBinding);
         slot.workScopeOpened = true;
       }
+      const workEnabled = slot.workScopeOpened && Boolean(this.deps.receiveWorkCandidate);
       const context: LiveAdapterContext = {
         callId: slot.callId,
         binding: slot.binding,
@@ -488,25 +518,21 @@ export class LiveCallService {
         auth: result.auth as LiveResolvedAuth,
         signal: slot.abort.signal,
         onEvent: (event) => this.onAdapterEvent(slot, event),
-        ...(slot.workBinding ? { workProfile: createLiveWorkProfile(slot.workBinding) } : {}),
-        ...(slot.workBinding
+        ...(workEnabled ? { workProfile: createLiveWorkProfile(slot.workBinding, slot.workContextConsent) } : {}),
+        ...(workEnabled && this.deps.receiveWorkCandidate
           ? {
               onWorkCandidate: async (candidate, deliverReceipt) => {
                 const parsed = parseLiveWorkArguments(candidate.arguments);
-                const binding = slot.workBinding;
-                if (!binding || candidate.toolName !== LIVE_WORK_TOOL_NAME || !parsed || !this.deps.receiveWorkCandidate) {
-                  await deliverReceipt({
-                    status: "rejected",
-                    providerRequestId: candidate.providerRequestId,
-                    code: !binding ? "LIVE_WORK_NOT_BOUND" : "LIVE_WORK_INVALID_REQUEST",
-                  }).catch(() => undefined);
+                if (candidate.toolName !== LIVE_WORK_TOOL_NAME || !parsed || !this.deps.receiveWorkCandidate) {
+                  await deliverReceipt({ status: "rejected", providerRequestId: candidate.providerRequestId, code: "LIVE_WORK_INVALID_REQUEST" }).catch(() => undefined);
                   return;
                 }
+                const binding = slot.workBinding;
                 await this.deps.receiveWorkCandidate(
                   {
                     callId: slot.callId,
-                    workBindingRevision: binding.workBindingRevision,
-                    workSessionId: binding.workSessionId,
+                    workBindingRevision: slot.workBindingRevision,
+                    workSessionId: binding?.workSessionId ?? liveWorkUnselectedSessionId(slot.callId),
                     providerRequestId: candidate.providerRequestId,
                     instruction: parsed.instruction,
                   },
@@ -663,6 +689,13 @@ export class LiveCallService {
       slot.releaseMicrophone = null;
       slot.mediaRelease = "unconfirmed";
       slot.error = { code: "LIVE_MEDIA_RELEASE_UNCONFIRMED", stage: "cleanup", retriable: false };
+      this.deps.log?.("error", "live voice microphone release unconfirmed", {
+        callId: slot.callId,
+        adapterId: slot.binding?.adapterId ?? "unknown",
+        code: slot.error.code,
+        stage: slot.error.stage ?? "cleanup",
+        retriable: slot.error.retriable,
+      });
     }
     transition(slot, slot.error ? "failed" : "ended");
     this.publish(slot);
@@ -672,7 +705,23 @@ export class LiveCallService {
 
   private async failAndCleanup(slot: Slot, error: unknown, stage: string): Promise<void> {
     if (this.current !== slot) return;
-    if (!slot.error) slot.error = { ...errorCode(error), stage };
+    // Only the first failure is the cause; later failures are consequences of
+    // the same teardown and would bury it.
+    if (!slot.error) {
+      slot.error = { ...errorCode(error), stage };
+      this.deps.log?.("warn", "live voice call failed", {
+        callId: slot.callId,
+        adapterId: slot.binding?.adapterId ?? "unknown",
+        phase: slot.phase,
+        stage,
+        code: slot.error.code,
+        retriable: slot.error.retriable,
+        // The raw reason is log-only: the Logger redacts bearer tokens and key
+        // material, while a call view may show only the code and its localized
+        // message (live-voice spec: no provider response content in views).
+        ...(error instanceof Error && error.message && error.message !== slot.error.code ? { reason: error.message } : {}),
+      });
+    }
     await this.endSlot(slot, slot.error.code === "LIVE_TIMEOUT" ? "timeout" : slot.error.code === "LIVE_AUDIO_BACKPRESSURE" ? "audio-backpressure" : "network-error");
   }
 

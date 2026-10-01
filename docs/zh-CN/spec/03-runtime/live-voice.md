@@ -12,6 +12,8 @@
 | Gemini Live | Google Generative AI API Key Provider | Main WebSocket 与 Renderer PCM 端口 |
 | OpenAI Realtime | 配置了 endpoint 的 API Key Provider | Main WebSocket 与 Renderer PCM 端口；GA 和 compat-v1 使用独立 profile |
 
+
+独立作用域的 Live Work 通话也可以解决绑定会话唯一一个待回答的 AskTool 提问，但只能从该提问自己提供的选项标签中选择；权限与 Plan/Goal 审批仍然只在桌面 UI 中决定（见[实时语音工作会话接入](live-work-session.md)与 [ADR 0315](../../../adr/0315-live-voice-spoken-asktool-answers.md)）。
 公开设置为 `liveVoice: { enabled, selectedBindingId?, bindings }`。它只包含 Provider ID、模型/音色选择和协议 profile，不保存凭证。现有 `voice` 和 `speech` 设置保持原义。持久化 JSON 由 Host Core 所有；它会将 Live 设置与其他设置合并。
 
 没有工作绑定的纯语音 Live profile 不会创建 Agent turn、调用 AgentHost 或 MCP、访问工作区文件、执行模型生成的函数、保存录音或持久化字幕。字幕只保存在本次通话的有界 Renderer 内存缓冲区中。除非用户明确开启独立作用域的 Live Work 通话，否则 Provider delegation/function-call 请求会被拒绝或导致协议错误；Live Work 的执行与权限合同见[实时语音工作会话接入](live-work-session.md)。
@@ -38,7 +40,7 @@ PCM 采集使用 AudioWorklet，依据实际 `AudioContext.sampleRate` 进行有
 
 Voice 在开发构建和打包构建中均向普通用户开放，不再要求开发者模式。实验标记用于提示可用性限制，不是访问门槛。实时语音仍默认关闭，开启设置不会开始采集麦克风。需要配置或恢复账号时，Composer 提供“打开设置”操作。云同步和 Remote Hosts 保留各自的开发构建限制。
 
-账号列表明确区分加载中、可重试的加载失败和无兼容账号。加载失败不会清除已保存的绑定。设置页提供现有模型配置入口，用于登录和管理账号。通话错误区分缺少认证、账号访问被拒、协议不支持、网络/限流及麦克风故障，不显示服务响应内容或凭证。
+账号列表明确区分加载中、可重试的加载失败和无兼容账号。加载失败不会清除已保存的绑定。设置页提供现有模型配置入口，用于登录和管理账号。通话错误区分缺少认证、账号访问被拒、协议不支持、网络/限流及麦克风故障，不显示服务响应内容或凭证。通话条会在本地化文案旁同时显示对应的 `LIVE_*` 错误码本身，因此没有专属文案的失败也能从截图或工单中定位；该错误码背后的原始原因不进入任何视图，只写入脱敏后的 `provider` 日志。通话条本身是该应用的一个独立、无边框、始终置顶的桌面窗口，不拥有通话：它的每次按键都转发给持有麦克风、媒体和按通话隔离工作的主窗口，且只显示主窗口推送的权威状态与错误码。
 
 Voice 设置入口现在只展示实时语音：用户可绑定现有兼容 Provider、选择下次通话使用的绑定，以及设置模型、音色和 Realtime profile。通话进行中，当前绑定不可修改。关闭实时语音会结束通话。Provider 凭证继续由现有 Provider/secret 或 VendorOAuth 系统管理。旧的本地 Dictation 设置和 Composer 入口已隐藏；已有 `voice` 设置值及底层 Dictation 能力保持不变，不会因 UI 调整而删除或改写。旧设置中没有 `liveVoice` 时，会按关闭且无绑定处理。
 

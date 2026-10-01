@@ -6,6 +6,7 @@ import { createServer } from "vite";
 test("renderer and Main complete a Codex Live user path without invoking an Agent", async (t) => {
   const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
   const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const originalAudioContextDescriptor = Object.getOwnPropertyDescriptor(globalThis, "AudioContext");
   const listeners = new Map();
   const sentDataChannelMessages = [];
   const tracks = [{ enabled: true, stopped: false, stop() { this.stopped = true; } }];
@@ -68,6 +69,13 @@ test("renderer and Main complete a Codex Live user path without invoking an Agen
   } });
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: { mediaDevices: { getUserMedia: async () => stream } } });
   const originalPeer = globalThis.RTCPeerConnection;
+  class FakeAudioContext {
+    state = "running";
+    sampleRate = 48_000;
+    async resume() {}
+    async close() { this.state = "closed"; }
+  }
+  Object.defineProperty(globalThis, "AudioContext", { configurable: true, value: FakeAudioContext });
   const peerInstances = [];
   class FakeDataChannel {
     readyState = "open";
@@ -101,6 +109,8 @@ test("renderer and Main complete a Codex Live user path without invoking an Agen
     else delete globalThis.window;
     if (originalNavigatorDescriptor) Object.defineProperty(globalThis, "navigator", originalNavigatorDescriptor);
     else delete globalThis.navigator;
+    if (originalAudioContextDescriptor) Object.defineProperty(globalThis, "AudioContext", originalAudioContextDescriptor);
+    else delete globalThis.AudioContext;
     if (originalPeer === undefined) delete globalThis.RTCPeerConnection;
     else globalThis.RTCPeerConnection = originalPeer;
   });

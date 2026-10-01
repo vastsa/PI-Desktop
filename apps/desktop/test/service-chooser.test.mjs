@@ -11,6 +11,9 @@ const fieldsSource = await read("../src/components/settings/ProviderConnectionFi
 const catalogSource = await read("../src/components/settings/service-catalog.ts");
 const hookSource = await read("../src/components/settings/useProviderModels.ts");
 const subagentPickerSource = await read("../src/components/settings/SubagentModelPicker.tsx");
+const panesSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
+const probeFeedbackSource = await read("../src/components/settings/useProbeFeedback.ts");
+const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
 const menuSource = await read("../src/components/settings/AnchoredMenu.tsx");
 const styles = await loadStyles();
 
@@ -127,16 +130,27 @@ test("named add-path discovery waits for a key and does not flash loading", () =
   assert.match(hookSource, /FETCH_DEBOUNCE_MS/);
 });
 
-test("the connection status line answers whether the key worked", () => {
-  assert.match(fieldsSource, /export function ConnectionStatus/);
-  assert.match(fieldsSource, /aria-live="polite"/);
-  assert.match(fieldsSource, /settings\.connectionKeyHint/);
-  assert.match(fieldsSource, /settings\.connectionChecking/);
-  assert.match(fieldsSource, /settings\.connectionReady/);
-  assert.match(fieldsSource, /canRecommendFrom\(discovery, named\)/);
-  assert.match(fieldsSource, /<ModelsFetchErrorMessage error=\{discovery\.error\} variant="status" \/>/);
-  // The status sits under the key on a named service.
-  const keyAt = fieldsSource.indexOf("provider-setup-key");
-  const statusAt = fieldsSource.indexOf("{status}", keyAt);
-  assert.ok(keyAt !== -1 && statusAt > keyAt, "status follows the key field");
+test("the probe's own answer is toasted instead of parked under the key", () => {
+  assert.match(probeFeedbackSource, /export function useProbeFeedback/);
+  assert.match(probeFeedbackSource, /settings\.connectionReady/);
+  assert.match(probeFeedbackSource, /settings\.connectionCatalog/);
+  assert.match(probeFeedbackSource, /settings\.connectionNoModelList/);
+  assert.match(probeFeedbackSource, /canRecommendFrom\(discovery, namedService\)/);
+  assert.match(
+    probeFeedbackSource,
+    /showToast\(outcome\.message, \{ variant: outcome\.variant \}\)/,
+  );
+  // Nothing is announced before the service answered: idle, in flight and the
+  // cache-first paint all leave the question open.
+  assert.match(
+    probeFeedbackSource,
+    /if \(discovery\.status !== "ready" && discovery\.status !== "error"\) return null;/,
+  );
+  // Both dialogs that probe report through the same hook...
+  assert.match(setupSource, /useProbeFeedback\(discovery, named\)/);
+  assert.match(vendorDialogSource, /useProbeFeedback\(discovery, true\)/);
+  // ...and the credential fields no longer reserve a row for the answer.
+  assert.doesNotMatch(fieldsSource, /ConnectionStatus/);
+  assert.doesNotMatch(fieldsSource, /\{status\}/);
+  assert.doesNotMatch(styles, /\.provider-connection-status\s*\{/);
 });

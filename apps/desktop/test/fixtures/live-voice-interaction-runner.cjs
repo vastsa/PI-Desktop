@@ -88,6 +88,7 @@ async function selectOption(expression, value) {
   if (!result.ok) throw new Error(result.error);
   await frame();
 }
+
 async function fresh(enabled = true) {
   await win.loadURL(process.env.PI_LIVE_VOICE_FIXTURE_URL);
   if (!win.isVisible()) win.show();
@@ -145,13 +146,18 @@ async function clean() {
 async function preparationScenario() {
   await fresh(false);
   await check("disabled Live Voice has neither Live nor work icons",
-    `ui.all('button', undefined, '[data-fixture-composer]').length === 0 && !ui.visible(document.querySelector('.live-voice-status-host')) && ${noMedia}`);
+    `ui.all('button', undefined, '[data-fixture-composer]').length === 0 && !s.widget.visible && ${noMedia}`);
   await evaluate("window.liveVoiceFixture.configure({ enabled: true })");
   await check("enabling exposes exactly one idle trigger",
     `s.snapshot.status.enabled && ui.all('button', undefined, '[data-fixture-composer]').length === 1 && ${button("Live voice")}`);
   await openPreparation();
-  await click(button("Connect a work session", prep));
-  await check("work disclosure is inert until explicit Start", `${checkbox("Allow work requests")}?.checked === false && ${noMedia}`);
+  await check("preparation carries no explanatory prose around its controls",
+    `(() => {
+      const text = document.querySelector(${JSON.stringify(prep)})?.textContent ?? '';
+      return !text.includes('The current Composer session is the default') && !text.includes('up to six recent plain-text') &&
+        text.includes('Selected fixture account') && !${button("Allow work requests", prep)} &&
+        ${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia};
+    })()`);
   await click(button("Close", prep));
   await check("closing preparation acquires no media", `${noDialog} && ${noMedia}`);
   await openPreparation();
@@ -180,7 +186,7 @@ async function cancellationScenario() {
   await evaluate("['connect','end','released'].forEach(name => window.liveVoiceFixture.hold(name))");
   await start();
   await check("explicit Start defaults muted and shows compact connecting with Cancel",
-    `ui.state('connecting') && ${button("Cancel", bar)} && ${noDialog} && s.counts.connect === 1 && s.counts.prepare === 1 && s.counts.getUserMedia === 1 && s.counts.audioContext === 0 && s.requests.prepare[0].initialMuted === true && !s.requests.prepare[0].workTarget && s.tracks.every(track => !track.enabled)`);
+    `ui.state('connecting') && ${button("Cancel", bar)} && ${noDialog} && s.counts.connect === 1 && s.counts.prepare === 1 && s.counts.getUserMedia === 1 && s.counts.audioContext === 1 && s.requests.prepare[0].initialMuted === true && s.requests.prepare[0].workTarget?.workSessionId === 'fixture-session-1' && s.requests.prepare[0].shareSelectedSessionContext === false && !('contextEnabled' in s.requests.prepare[0].workTarget) && s.tracks.every(track => !track.enabled)`);
   await click(button("Cancel", bar));
   await check("Cancel enters stopping while deferred release remains pending",
     `ui.state('stopping') && s.snapshot.stopping && s.counts.released === 1 && s.tracks.every(track => track.readyState === 'ended') && !${button("Live voice")}`);
@@ -199,12 +205,44 @@ async function connectedScenario() {
   await start();
   await connected();
   await check("connected call starts muted with no details dialog", `${button("Unmute microphone", bar)} && s.snapshot.call.muted && ${noDialog}`);
+  // The bar is drawn inside a fixed-width window, so its status and controls must
+  // stay on one row: a folded status line reads as two rows of chrome. Narrowing
+  // the window proves the bar neither folds the row nor under-reports the width it
+  // needs — that report is what lets main grow the window to the content.
+  await evaluate("window.liveVoiceFixture.setWidgetWindowWidth(240)");
+  await frame();
+  await check("a status line too wide for the window stays one row and reports its width",
+    `(() => {
+      const status = document.querySelector('.live-voice-call-status > span');
+      const actions = document.querySelector('.live-voice-call-actions');
+      const report = window.liveVoiceFixture.inspect().widget.presentation;
+      if (!status || !actions || !report) return false;
+      return status.getClientRects().length === 1 &&
+        Math.abs(status.getBoundingClientRect().top - actions.getBoundingClientRect().top) < 6 &&
+        report.width >= Math.ceil(status.scrollWidth) - 2;
+    })()`);
+  await evaluate("window.liveVoiceFixture.setWidgetWindowWidth(420)");
+  await frame();
+  // The pending decision lives in the owner window's store, which the widget
+  // window does not have: the owner frame reports it, main forwards it, and the
+  // bar names it. Seeding the owner store is therefore the whole test.
+  await evaluate("window.liveVoiceFixture.pendingAsk('fixture-session-1', 'Ship beta.1?')");
+  await check("a decision the bound session waits on reaches the widget bar",
+    `document.querySelector('.live-voice-call-bar')?.textContent.includes('waiting for your answer or approval') === true`);
+  await evaluate("window.liveVoiceFixture.clearPendingAsks()");
+  await check("the waiting hint clears with the decision",
+    `document.querySelector('.live-voice-call-bar')?.textContent.includes('waiting for your answer or approval') === false`);
   await capture("call-connected");
   await evaluate("window.liveVoiceFixture.setPhase('reconnecting')");
   await check("reconnecting keeps an explicit End action", `ui.state('reconnecting') && ${button("End call", bar)} && !${button("Cancel", bar)} && !${button("Unmute microphone", bar)}`);
   await evaluate("window.liveVoiceFixture.setPhase('connected')");
   await connected();
   await click(button("Unmute microphone", bar));
+  // The press left the widget as an action, and the widget reported the visible
+  // box main has to show: the widget window is not the call owner and never
+  // reaches the controller itself.
+  await check("a widget press travels to the owner frame as an action",
+    "s.widget.actions.includes('mute') && s.widget.visible && s.widget.presentation.width > 0 && s.widget.presentation.height > 0");
   await check("unmute opens the real controller capture gate", `${button("Mute microphone", bar)} && !s.snapshot.call.muted && s.tracks[0].enabled && s.counts.mute === 1`);
   await click(button("Mute microphone", bar));
   await check("mute immediately closes the capture gate", `${button("Unmute microphone", bar)} && s.snapshot.call.muted && !s.tracks[0].enabled && s.counts.mute === 2`);
@@ -234,12 +272,17 @@ async function playbackScenario() {
   await check("blocked output exposes Resume sound with details closed",
     `s.snapshot.call.playbackBlocked && ${button("Resume sound")} && ${noDialog}`);
   await click(button("Resume sound"));
-  await check("failed playback retry is visible without opening details",
-    `s.snapshot.errorCode === 'LIVE_PLAYBACK_FAILED' && ui.all('[role=alert]').length > 0 && ${button("Resume sound")} && ${noDialog} && s.counts.play >= 2`);
+  // Widget IPC cannot carry transient user activation. The owner window is
+  // focused and exposes a real owner-frame control for the retry.
+  await check("widget playback recovery hands off to the owner frame",
+    `ui.dialog(${JSON.stringify(details)}) && ${button("Resume sound", details)} && s.counts.play === 1`);
+  await click(button("Resume sound", details));
+  await check("failed playback retry is visible after owner-frame activation",
+    `s.snapshot.errorCode === 'LIVE_PLAYBACK_FAILED' && document.body.textContent.includes('LIVE_PLAYBACK_FAILED') && ${button("Resume sound", details)} && s.counts.play >= 2`);
   await evaluate("window.liveVoiceFixture.blockPlayback(false)");
-  await click(button("Resume sound"));
-  await check("successful user retry clears playback blockage and error",
-    `!s.snapshot.call.playbackBlocked && !s.snapshot.errorCode && !${button("Resume sound")} && ${noDialog}`);
+  await click(button("Resume sound", details));
+  await check("successful owner-frame retry clears playback blockage and error",
+    `!s.snapshot.call.playbackBlocked && !s.snapshot.errorCode && !${button("Resume sound", details)}`);
   await click(button("End call", bar));
   await wait("playback call ended", "!s.snapshot.stopping && s.snapshot.call?.phase === 'ended'");
   await clean();
@@ -247,34 +290,25 @@ async function playbackScenario() {
 
 async function enableWork() {
   await openPreparation();
-  await click(button("Connect a work session", prep));
-  await click(checkbox("Allow work requests"));
 }
 async function workScenario() {
   await fresh();
   await enableWork();
-  await check("work and context require separate opt-ins", `${checkbox("Allow work requests")}?.checked && ${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
+  await check("Composer target is default; context consent is separate and unchecked",
+    `${checkbox("Share limited recent conversation context")}?.checked === false && !${checkbox("Allow work requests")} && ${noMedia}`);
   await click(checkbox("Share limited recent conversation context"));
-  await selectOption(`ui.named('select', 'Work session for the next call', ${JSON.stringify(prep)})`, "fixture-session-2");
-  await check("changing selected work session clears context consent",
-    `ui.named('select', 'Work session for the next call', ${JSON.stringify(prep)})?.value === 'fixture-session-2' && ${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
-  await click(checkbox("Share limited recent conversation context"));
-  await click(checkbox("Allow work requests"));
-  await click(checkbox("Allow work requests"));
-  await check("removing work opt-in clears context consent", `${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
-  await click(checkbox("Share limited recent conversation context"));
-  await click(button("Close", prep));
-  await enableWork();
-  await check("reopening preparation does not retain context consent", `${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
+  await evaluate("window.liveVoiceFixture.switchSession('fixture-session-2')");
+  await check("changing Composer session preserves independent context consent",
+    `${checkbox("Share limited recent conversation context")}?.checked === true && ${noMedia}`);
   await click(button("Start Live voice", prep));
   await connected();
-  await check("only explicit work opt-in reaches prepare with selected target",
-    "s.requests.prepare[0].workTarget?.workSessionId === 'fixture-session-1' && s.requests.prepare[0].workTarget.contextEnabled === false && s.counts.audioContext === 1");
+  await check("Start sends the current Composer target and separate context consent",
+    "s.requests.prepare[0].workTarget?.workSessionId === 'fixture-session-2' && s.requests.prepare[0].shareSelectedSessionContext === true && !('contextEnabled' in s.requests.prepare[0].workTarget) && s.counts.audioContext === 1");
   await click(button("End call", bar));
   await wait("work call ended", `!s.snapshot.stopping && ${button("Live voice")}`);
   await openPreparation();
-  await click(button("Connect a work session", prep));
-  await check("the next call resets work opt-in", `${checkbox("Allow work requests")}?.checked === false`);
+  await check("reopening preparation resets call-only context consent",
+    `${checkbox("Share limited recent conversation context")}?.checked === false && !${checkbox("Allow work requests")}`);
   await key("Escape");
   await clean();
 }
@@ -289,7 +323,7 @@ async function unconfirmedReleaseScenario() {
     "s.snapshot.stopping && s.counts.released === 1 && s.contexts[0].state === 'closed' && ui.state('stopping')");
   await evaluate("window.liveVoiceFixture.terminalUnconfirmed()");
   await check("unconfirmed release stays visible and suppresses another Start",
-    `!s.snapshot.stopping && s.snapshot.call?.error?.code === 'LIVE_MEDIA_RELEASE_UNCONFIRMED' && ui.visible(document.querySelector('.live-voice-status-host')) && ui.all('[role="alert"]').some(element => element.textContent.includes('Microphone release could not be confirmed')) && !${button("Live voice")} && !${button("Dismiss", bar)}`);
+    `!s.snapshot.stopping && s.snapshot.call?.error?.code === 'LIVE_MEDIA_RELEASE_UNCONFIRMED' && s.widget.visible && ui.all('[role="alert"]').some(element => element.textContent.includes('Microphone release could not be confirmed')) && !${button("Live voice")} && !${button("Dismiss", bar)}`);
   await capture("call-release-quarantined");
   const attempt = await evaluate("window.liveVoiceFixture.attemptStart()");
   assert.equal(attempt, "LIVE_MEDIA_RELEASE_UNCONFIRMED");
@@ -297,7 +331,6 @@ async function unconfirmedReleaseScenario() {
     "s.counts.prepare === 1 && s.snapshot.call?.error?.code === 'LIVE_MEDIA_RELEASE_UNCONFIRMED'");
   await clean();
 }
-
 async function shellAndDisableScenario() {
   await fresh();
   await enableWork();
@@ -305,7 +338,7 @@ async function shellAndDisableScenario() {
   await connected();
   await click(button("Fixture toggle composer visibility"));
   await check("global status survives the simulated hidden composer boundary",
-    "document.querySelector('[data-fixture-composer]')?.hidden && ui.state('connected') && ui.visible(document.querySelector('.live-voice-status-host'))");
+    "document.querySelector('[data-fixture-composer]')?.hidden && ui.state('connected') && s.widget.visible");
   await click(button("Fixture settings route"));
   await check("global status survives simulated route unmount",
     `!document.querySelector('[data-fixture-composer]') && ui.state('connected') && ${button("End call", bar)} && s.counts.end === 0`);
@@ -322,7 +355,7 @@ async function shellAndDisableScenario() {
     "s.counts.released === 1 && s.contexts[0].state === 'closed' && s.snapshot.stopping && ui.state('stopping')");
   await evaluate("window.liveVoiceFixture.release('released')");
   await check("disabled status disappears only after local cleanup settles",
-    "!s.snapshot.stopping && !ui.visible(document.querySelector('.live-voice-status-host')) && s.tracks.every(track => track.readyState === 'ended')");
+    "!s.snapshot.stopping && !s.widget.visible && s.tracks.every(track => track.readyState === 'ended')");
   await click(button("Fixture chat route"));
   await check("returning to composer while disabled leaves no Live or work icons",
     "ui.all('button', undefined, '[data-fixture-composer]').length === 0 && s.counts.prepare === 1 && s.counts.getUserMedia === 1");

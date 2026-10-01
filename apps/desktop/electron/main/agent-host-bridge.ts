@@ -19,6 +19,7 @@ import type {
   AgentQueueChangedEvent,
   AgentQueuePushRequest,
   AskToolResolution,
+  PendingInteractiveRequests,
   QueuedTurnSummary,
   RacpApprovalResult,
   RacpEventEnvelope,
@@ -47,6 +48,9 @@ function isWidening(session: RacpPermissionMode, effective: RacpPermissionMode):
 type HostLike = {
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
 };
+
+/** Interactive cards one read may restore; a session never has many open. */
+const MAX_PENDING_INTERACTIVE = 8;
 
 export type AgentHostBridgeOptions = {
   invoke: IpcInvoke;
@@ -321,6 +325,49 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
     agentHost,
     observeWorkTarget(sessionId: string): string | null {
       return agentHost.observeWorkTarget(sessionId).activeTurnId;
+    },
+    /**
+     * Every interactive request this session is waiting on: the ask questions
+     * this sidecar generation still holds plus Host-owned permission requests.
+     * A renderer that reloaded reads this instead of keeping a card that no
+     * longer exists; both lists are bounded.
+     */
+    async pendingInteractiveRequests(sessionId: string): Promise<PendingInteractiveRequests> {
+      const asks = agentHost.pendingInputRequests(sessionId)
+        .slice(0, MAX_PENDING_INTERACTIVE)
+        .map((entry) => entry.original);
+      const pending = await listPendingToolRequests(options.getHost, sessionId);
+      return {
+        asks,
+        permissions: pending.slice(0, MAX_PENDING_INTERACTIVE).map(
+          ({ createdAt: _createdAt, expiresAt: _expiresAt, ...request }) => request,
+        ),
+      };
+    },
+    /**
+     * The single open ask of a session, or `null` when none or several are
+     * open: an answer that cannot be attributed to exactly one question must
+     * fail closed rather than guess.
+     */
+    openAsk(sessionId: string) {
+      const open = agentHost.pendingInputRequests(sessionId);
+      if (open.length !== 1) return null;
+      const [entry] = open;
+      return {
+        inputId: entry.input.id,
+        turnId: entry.input.turnId,
+        requestId: entry.original.requestId,
+        toolCallId: entry.original.toolCallId,
+        questions: entry.original.questions,
+      };
+    },
+    /** Resolve one open ask through the Host-owned input path. */
+    async resolveOpenAsk(input: { sessionId: string; inputId: string; answers: Array<string[] | null> }) {
+      return forIpc(() => agentHost.respondInput(DESKTOP_PRINCIPAL, {
+        inputId: input.inputId,
+        answers: input.answers,
+        context: { requestId: `live-voice:${input.sessionId}` },
+      }));
     },
     lookupWorkAdmission(request: {
       sessionId: string;

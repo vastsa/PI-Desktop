@@ -116,7 +116,7 @@ async function codexHarness(t) {
     for (const timer of timers) clearTimeout(timer);
   });
   await controller.refreshStatus();
-  await controller.start({ workTarget: { workSessionId: WORK_SESSION_ID, contextEnabled: false } });
+  await controller.start({ workTarget: { workSessionId: WORK_SESSION_ID } });
   const callId = controller.getSnapshot().call.callId;
   service.reportMedia(owner, { callId, kind: "playback-activity", active: false, ready: true });
   return {

@@ -449,47 +449,6 @@
   color: var(--ds-text-secondary);
 }
 
-.composer-enhancement-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin: 0 0 8px;
-  border-radius: var(--radius-lg);
-  padding: 8px 10px;
-  background: color-mix(in oklab, var(--ds-error) 8%, var(--ds-bg-composer));
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-}
-
-.composer-enhancement-error-message {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-
-.composer-enhancement-error code {
-  color: var(--ds-error);
-  font-size: var(--text-xs);
-}
-
-.composer-enhancement-error-dismiss {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-md);
-  color: var(--ds-text-muted);
-}
-
-.composer-enhancement-error-dismiss:hover,
-.composer-enhancement-error-dismiss:focus-visible {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
 .send-btn:hover:not(:disabled) {
   opacity: 0.9;
 }

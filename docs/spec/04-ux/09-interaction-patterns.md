@@ -1014,6 +1014,11 @@ Running turns and pending approvals continue to gate the controls.
 | Manual menu update check failure | Error | 8s | Direct feedback for an explicit command |
 | Context checkpoint completed | Info (Warning before overflow retry) | 4s/8s | Confirms a background context transition without altering transcript rows |
 | Manual context checkpoint failure | Error | 8s | Direct feedback for explicit `/compact`; automatic terminal failures stay inline |
+| Settings or dialog action failure (save, JSON import, endpoint probe) | Error | 8s | Result of an explicit action; the surface keeps the fields to correct and, when it owns one, the retry control |
+| Vendor sign-in failure | Error | 8s | Result of an explicit sign-in; the dialog keeps its status, link, and Cancel |
+| Config-sync or plugin-settings action result | Success / Warning / Error | 4s/8s | Confirmation or failure of an explicit action |
+| Live Voice session or settings failure | Error | 8s | Result of an explicit action; the retry control stays on the surface |
+| Model-list probe result (connected, catalog, refused) | Success / Info / Error | 4s/8s | One answer per settled probe; idle, in flight, and cache-only results are not announced |
 
 ### 6.2 Inline errors (use for)
 
@@ -1026,6 +1031,9 @@ Running turns and pending approvals continue to gate the controls.
 | Provider configuration validation error | Inline in settings form | User needs to see which field is wrong |
 | Application update status/error | Settings → Info Updates row | Preserves the latest Main-owned state without interrupting background checks |
 | Composer validation (no model) | Disabled state + tooltip on send button | Immediate context |
+| Failed model list | One-line empty state in the picker | Says the list is missing and stays beside the Fetch list action; the reason is toasted |
+| Surface whose own content failed to load and that owns a retry control | Inline state label + retry | The label is what explains the retry; only the one-off reason is toasted |
+| Broken plugin row, permission or consequence warning, app-level backend or update banner | Inline | Persistent state until the user changes it |
 
 ### 6.3 Rules
 
@@ -1037,6 +1045,11 @@ Running turns and pending approvals continue to gate the controls.
 - Toasts stack vertically, newest on top, at top-center
 - Error toasts require manual dismiss or timeout at 8s (longer than success)
 - Success toasts auto-dismiss at 4s
+- One-off results of an explicit action (save, import, probe, sign-in, connection
+  test) report through a toast; the surface they came from keeps the fields,
+  state label, and retry control it needs to stay actionable
+- Persistent state — a plugin that stays broken, a permission or consequence
+  warning, an app-level backend or update banner — stays inline
 
 ### 6.4 Icon-only action labels
 

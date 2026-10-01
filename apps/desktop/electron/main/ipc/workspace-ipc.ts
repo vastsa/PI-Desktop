@@ -48,6 +48,7 @@ import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { ClipboardHistory } from "../clipboard-history";
+import { getModuleDirectory } from "../module-path";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { IpcRegistrar } from "./types";
 
@@ -204,7 +205,9 @@ export function registerWorkspaceIpc({
     const seed =
       process.env.PI_DESKTOP_SEED_WORKSPACE ||
       process.env.PI_DESKTOP_WORKSPACE ||
-      (isDevelopmentBuild ? join(__dirname, "../../..") : "");
+      (isDevelopmentBuild
+        ? join(getModuleDirectory(import.meta.url), "../../..")
+        : "");
     if (!res.workspace && seed) {
       try {
         res = (await host.call("workspace.set", { path: seed })) as {

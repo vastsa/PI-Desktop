@@ -17,6 +17,8 @@ test("Live Voice distinguishes account access from microphone and transport fail
     LIVE_NETWORK_ERROR: "errors.NETWORK_ERROR",
     LIVE_RATE_LIMITED: "errors.PROVIDER_RATE_LIMITED",
     LIVE_TIMEOUT: "errors.TIMEOUT",
+    LIVE_TIMEOUT: "errors.TIMEOUT",
+    LIVE_NETWORK_POLICY_UNSUPPORTED: "errors.NETWORK_POLICY_BLOCKED",
   };
   for (const [code, key] of Object.entries(expected)) {
     assert.equal(liveVoiceErrorKey(code), key);

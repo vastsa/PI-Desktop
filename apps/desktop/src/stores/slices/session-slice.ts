@@ -1,6 +1,7 @@
 import i18n from "i18next";
 import type {
   Mode,
+  PendingInteractiveRequests,
   PlanProposal,
   ProposalKind,
   SessionDetail,
@@ -33,6 +34,8 @@ import {
   sessionIsPinned,
   type SessionMeta,
 } from "../../lib/sidebar-preferences";
+import { enqueueAsk } from "../../lib/pending-asks";
+import { enqueuePermission } from "../../lib/pending-permissions";
 import { api } from "../../lib/api";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import {
@@ -105,6 +108,7 @@ export function createSessionSlice({
 }: SessionSliceDependencies): Pick<
   AppState,
   | "refreshSessions"
+  | "restorePendingInteractive"
   | "restorePendingPlan"
   | "refreshPlanCheckpoints"
   | "prefetchSession"
@@ -209,10 +213,63 @@ export function createSessionSlice({
       }
     },
 
+    /**
+     * Rebuild a session's decision cards from the Host-owned read.
+     *
+     * `pendingAsks` / `pendingPermissions` live in renderer memory only, so a
+     * renderer reload forgets both. Main still holds the open questions and
+     * gated tool requests, and this merges that read back in. It is a merge,
+     * never a replace: an entry the live event stream already delivered (or
+     * delivered while this read was in flight) stays exactly once, and nothing
+     * is ever cleared from here — an empty or failed read must not wipe cards
+     * the user can still answer.
+     *
+     * Only this desktop's own sessions have that read. `native-pi:` sessions
+     * are read-mostly imports and remote sessions are driven over RACP-WS, so
+     * both keep their own transports.
+     */
+    restorePendingInteractive: async (sessionId) => {
+      if (!sessionId || sessionId.startsWith("native-pi:")) return;
+      const session = get().sessions.find(
+        (candidate) => candidate.id === sessionId,
+      );
+      if (!session) return;
+      if (session.source === "pi-native" || session.source === "remote") return;
+      let pending: PendingInteractiveRequests;
+      try {
+        pending = await api.pendingInteractive(sessionId);
+      } catch {
+        // Silent and non-destructive: an unavailable Main leaves the queues
+        // exactly as the live stream left them.
+        return;
+      }
+      if (pending.asks.length === 0 && pending.permissions.length === 0) return;
+      set((state) => {
+        let pendingAsks = state.pendingAsks;
+        for (const ask of pending.asks) pendingAsks = enqueueAsk(pendingAsks, ask);
+        let pendingPermissions = state.pendingPermissions;
+        for (const permission of pending.permissions) {
+          pendingPermissions = enqueuePermission(pendingPermissions, permission);
+        }
+        if (
+          pendingAsks === state.pendingAsks &&
+          pendingPermissions === state.pendingPermissions
+        ) {
+          return {};
+        }
+        return { pendingAsks, pendingPermissions };
+      });
+    },
+
     refreshPlanCheckpoints: async () => {
       const sessionIds = get().sessions.map((session) => session.id);
       await Promise.allSettled(
-        sessionIds.map((sessionId) => get().restorePendingPlan(sessionId)),
+        sessionIds.map(async (sessionId) => {
+          await get().restorePendingPlan(sessionId);
+          // A sidecar restart or reload is when a forgotten card has to come
+          // back, so both reads run in the same per-session batch.
+          await get().restorePendingInteractive(sessionId);
+        }),
       );
     },
 
@@ -418,6 +475,9 @@ export function createSessionSlice({
         }
         rememberSessionCompactions(id, detail.session);
         void get().restorePendingPlan(id);
+        // Opening a session is where its unanswered cards become visible again
+        // after a renderer reload; the live stream only re-delivers new ones.
+        void get().restorePendingInteractive(id);
         const selected = get().sessions.find((session) => session.id === id);
         if (
           selected &&

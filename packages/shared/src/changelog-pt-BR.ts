@@ -2,6 +2,17 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    "version": "0.16.0",
+    "date": "2026-10-01",
+    "highlights": [
+      "O Live Voice agora está disponível para todos e as chamadas começam na sessão atual.",
+      "Nova lista de tarefas por sessão, que mantém o estado oficial mesmo após reiniciar o serviço local.",
+      "Avisos pontuais agora aparecem na pilha de toasts compartilhada em vez de diálogos bloqueantes.",
+      "As listas de modelos seguem os metadados oficiais dos provedores, mantendo serviços relay e nomes de modelos corretos.",
+    ],
+  },
+
+  {
     "version": "0.15.10",
     "date": "2026-09-28",
     "highlights": [

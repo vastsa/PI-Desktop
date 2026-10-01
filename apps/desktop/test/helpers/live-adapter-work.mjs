@@ -136,7 +136,7 @@ export async function createAdapterWorkHarness(t, profile) {
   const status = await service.status();
   const prepared = await service.prepare(owner, {
     requestId: randomUUID(), bindingId: binding.id, expectedSettingsRevision: status.settingsRevision,
-    initialMuted: true, workTarget: { workSessionId: WORK_SESSION_ID, contextEnabled: false },
+    initialMuted: true, workTarget: { workSessionId: WORK_SESSION_ID },
   });
   t.after(async () => {
     const call = (await service.status()).call;

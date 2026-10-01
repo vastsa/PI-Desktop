@@ -5,6 +5,7 @@ import {
   type StderrHandler,
 } from "@pi-desktop/host-runtime";
 import { redactValue } from "./logger";
+import { getModuleDirectory } from "./module-path";
 
 export type {
   LocalToolHandler,
@@ -18,13 +19,22 @@ export type {
 function resolveSidecarEntry(): string {
   const candidates = [
     join(process.resourcesPath || "", "agent-runtime/sidecar.js"),
-    join(__dirname, "../../../agent-runtime/dist/sidecar.js"),
-    join(__dirname, "../../../../packages/agent-runtime/dist/sidecar.js"),
+    join(
+      getModuleDirectory(import.meta.url),
+      "../../../agent-runtime/dist/sidecar.js",
+    ),
+    join(
+      getModuleDirectory(import.meta.url),
+      "../../../../packages/agent-runtime/dist/sidecar.js",
+    ),
   ];
   for (const c of candidates) {
     if (c && existsSync(c)) return c;
   }
-  return join(__dirname, "../../../../packages/agent-runtime/dist/sidecar.js");
+  return join(
+    getModuleDirectory(import.meta.url),
+    "../../../../packages/agent-runtime/dist/sidecar.js",
+  );
 }
 
 function fallbackStderrLogger(text: string): void {

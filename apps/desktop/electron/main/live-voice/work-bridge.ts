@@ -1,31 +1,48 @@
 import type { Context } from "@earendil-works/pi-ai";
 import { completeOneShot, type RuntimeProviderConfig } from "@pi-desktop/agent-runtime";
 import {
+  createLiveWorkBackendPort,
+  listLiveWorkSessions,
+  type LiveWorkSessionRecord,
+} from "./live-work-backend-port";
+import {
   LIVE_WORK_INTENT_SCHEMA,
+  liveWorkUnselectedSessionId,
   LiveWorkCoordinator,
   buildLiveWorkClassifierInput,
   findTurnResult,
   projectTurnResultSummary,
+  sessionWorkspaceIdentity,
   type LiveWorkOperationUpdate,
   type LiveWorkPort,
   type LiveWorkCandidate,
   type LiveWorkContextMessage,
   type LocalReceiptDelivery,
   type ProviderReceipt,
+  type LiveWorkPendingQuestion,
   type WorkSnapshot,
 } from "@pi-desktop/host-runtime";
+import { buildSpokenAnswers, toPendingQuestion } from "./spoken-answer";
 import {
+  ErrorCodes,
+  IPC,
   OAUTH_AUTH_KIND,
   type RacpItemSummary,
   type LiveWorkBinding,
+  type LiveWorkCancelQueuedOperationResult,
   type LiveWorkSelectionOption,
+  type LiveWorkStopOperationResult,
+  type SessionSource,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
+import type { AgentSidecar } from "../agent-sidecar";
+import type { BackendRouter } from "../remote/backend-router";
+import type { RemoteHostsBoot } from "../bootstrap/remote-hosts";
 import type { AgentHostBridge } from "../agent-host-bridge";
 import { DESKTOP_PRINCIPAL } from "../agent-host-bridge";
 import type { VendorOAuth } from "../oauth";
-import { requireSupportedWorkSession } from "./work-scope";
 import { LiveWorkSelectionRegistry, type LiveWorkSelectionEntry } from "./work-selections";
+import { subscribeLiveSessionEvents, type LiveSessionWorkEvent } from "./live-session-events";
 
 type LaunchResult = {
   providerId: string;
@@ -34,21 +51,13 @@ type LaunchResult = {
   };
 };
 
-type WorkSessionSummary = {
-  id?: unknown;
-  title?: unknown;
-  source?: unknown;
-  projectPath?: unknown;
-  providerId?: unknown;
-  modelId?: unknown;
-  mode?: unknown;
+type WorkSessionSummary = LiveWorkSessionRecord & {
   thinkingLevel?: unknown;
-  permissionMode?: unknown;
 };
 
 type WorkProjectSummary = { name?: unknown; path?: unknown };
 export type LiveWorkSelectionTarget =
-  | { kind: "session"; sessionId: string }
+  | { kind: "session"; sessionId: string; source: SessionSource; label: string; workspaceIdentity: string | null }
   | { kind: "project"; projectPath: string };
 
 type HostRpc = {
@@ -76,6 +85,8 @@ const INTENT_SYSTEM_PROMPT = [
   "Use stop-current only for a request to stop the active work turn; use immediate only for an explicit abort request.",
   "Use speech-only only for a request to stop or resume voice announcements while leaving work running.",
   "Fail closed with clarify when intent or target is ambiguous.",
+  "When the Host context names an open question and the user answers it, use respond-input with that question's own option labels: one entry per question, questionIndex matching the order the questions were read out, and never a label the question did not offer. An incomplete or paraphrased answer is not respond-input; say what is still needed instead.",
+  "A spoken answer is never approval for a permission, Plan, or Goal request; those stay in the desktop UI.",
   `Schema: ${JSON.stringify(LIVE_WORK_INTENT_SCHEMA)}`,
 ].join("\n");
 
@@ -96,11 +107,16 @@ export type LiveWorkBridge = {
     deliverReceipt: (receipt: ProviderReceipt) => Promise<LocalReceiptDelivery>,
   ): Promise<void>;
   resolveSelection(input: { callId: string; workBindingRevision: number; selectionRef: string }): Promise<LiveWorkSelectionTarget>;
+  stopOperation(input: { callId: string; operationId: string }): Promise<LiveWorkStopOperationResult>;
+  cancelQueuedOperation(input: { callId: string; operationId: string }): Promise<LiveWorkCancelQueuedOperationResult>;
 };
 
 export function createLiveWorkBridge(input: {
   getHost: () => HostRpc | null;
   getAgentHostBridge: () => AgentHostBridge | null;
+  getSidecar?: () => AgentSidecar | null;
+  getBackendRouter?: () => BackendRouter | null;
+  getRemoteHosts?: () => RemoteHostsBoot | null;
   vendorOAuth: Pick<VendorOAuth, "resolveAuth">;
   navigateSession: (callId: string, sessionId: string) => Promise<void>;
   resolveAgentRuntimeLaunch: (
@@ -111,28 +127,65 @@ export function createLiveWorkBridge(input: {
   ) => Promise<LaunchResult>;
   completeIntent?: typeof completeOneShot;
   onOperation: (callId: string, update: LiveWorkOperationUpdate) => void;
+  getWorkContextConsent?: (callId: string) => boolean;
+  onTargetSelected?: (callId: string, binding: LiveWorkBinding) => void;
   onAnnouncementPolicy?: (input: { callId: string; policy: "normal" | "silent" }) => void;
   waitForResultRetry?: (delayMs: number, signal: AbortSignal) => Promise<void>;
 }): LiveWorkBridge {
   const bindings = new Map<string, LiveWorkBinding & { workspaceIdentity: string | null }>();
+  const authorizedTargets = new Map<string, Map<string, { source: SessionSource; workspaceIdentity: string | null }>>();
   const selections = new LiveWorkSelectionRegistry();
-  const sessionEventSubscriptions = new Map<string, () => void>();
+  const sessionEventSubscriptions = new Map<string, Array<() => void>>();
+  const subscribedSessions = new Map<string, Set<string>>();
   const resultReaders = new Map<string, Set<AbortController>>();
   const host = (): HostRpc => {
     const current = input.getHost();
     if (!current) throw Object.assign(new Error("Local Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
     return current;
   };
+  const listWorkSessions = async (): Promise<LiveWorkSessionRecord[]> => listLiveWorkSessions({
+    getHost: input.getHost,
+    getSidecar: input.getSidecar ?? (() => null),
+    getRemoteHosts: input.getRemoteHosts ?? (() => null),
+  });
+  const rememberAuthorizedTarget = (
+    callId: string,
+    target: { sessionId: string; source: SessionSource; workspaceIdentity: string | null },
+  ): void => {
+    const targets = authorizedTargets.get(callId) ?? new Map<string, { source: SessionSource; workspaceIdentity: string | null }>();
+    if (!targets.has(target.sessionId) && targets.size >= 256) {
+      throw Object.assign(new Error("This call reached its session-control limit"), { errorCode: "LIVE_WORK_CAPACITY_EXCEEDED" });
+    }
+    targets.set(target.sessionId, { source: target.source, workspaceIdentity: target.workspaceIdentity });
+    authorizedTargets.set(callId, targets);
+  };
+
   const requireSupportedSession = async (sessionId: string, callId?: string): Promise<WorkSessionSummary> => {
-    return requireSupportedWorkSession({ host: host(), bindings, sessionId, ...(callId ? { callId } : {}) });
+    const priorAuthorizations = callId
+      ? [authorizedTargets.get(callId)?.get(sessionId)].filter((item): item is NonNullable<typeof item> => Boolean(item))
+      : [...authorizedTargets.values()].flatMap((targets) => targets.get(sessionId) ? [targets.get(sessionId)!] : []);
+    const identities = new Set(priorAuthorizations.map((item) => `${item.source}:${item.workspaceIdentity ?? ""}`));
+    if ((callId && priorAuthorizations.length !== 1) || identities.size > 1) {
+      throw Object.assign(new Error("The session was not selected during this Live call or is ambiguous"), { errorCode: "LIVE_WORK_SCOPE_CHANGED" });
+    }
+    const authorization = priorAuthorizations[0];
+    const matching = (await listWorkSessions()).filter((item) =>
+      item.id === sessionId && (!authorization || item.source === authorization.source),
+    );
+    if (matching.length !== 1) throw Object.assign(new Error("The selected work session is no longer available or is ambiguous"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
+    const session = matching[0];
+    if (authorization?.source === "desktop" && sessionWorkspaceIdentity(session) !== authorization.workspaceIdentity) {
+      throw Object.assign(new Error("The selected Desktop workspace changed after authorization"), { errorCode: "LIVE_WORK_SCOPE_CHANGED" });
+    }
+    return session;
   };
 
   const requireCallScope = (callId: string, sessionId: string) => {
-    const binding = bindings.get(callId);
-    if (!binding || binding.workSessionId !== sessionId) {
+    const authorization = authorizedTargets.get(callId)?.get(sessionId);
+    if (!authorization) {
       throw Object.assign(new Error("The Live work scope is no longer available"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
     }
-    return binding;
+    return { workspaceIdentity: authorization.workspaceIdentity };
   };
 
   const requireCallRevision = (callId: string, workBindingRevision: number) => {
@@ -153,20 +206,20 @@ export function createLiveWorkBridge(input: {
   const resolveSelection = async (input: { callId: string; workBindingRevision: number; selectionRef: string }): Promise<LiveWorkSelectionTarget> => {
     requireCallRevision(input.callId, input.workBindingRevision);
     const entry = selections.resolve(input);
-    if (!entry) {
-      throw Object.assign(new Error("The Live work selection expired"), { errorCode: "LIVE_WORK_SELECTION_EXPIRED" });
-    }
-    const rpc = host();
+    if (!entry) throw Object.assign(new Error("The Live work selection expired"), { errorCode: "LIVE_WORK_SELECTION_EXPIRED" });
     if (entry.kind === "session") {
-      const listed = await rpc.call<{ sessions?: WorkSessionSummary[] }>("session.list");
+      const session = (await listWorkSessions()).find((candidate) => candidate.id === entry.value && candidate.source === entry.sessionSource);
       requireCallRevision(input.callId, input.workBindingRevision);
-      const session = listed.sessions?.find((candidate) => candidate.id === entry.value && (candidate.source === undefined || candidate.source === "desktop"));
-      if (!session || typeof session.id !== "string") {
-        throw Object.assign(new Error("The selected session is no longer available"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
-      }
-      return { kind: "session", sessionId: session.id };
+      if (!session) throw Object.assign(new Error("The selected session is no longer available"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
+      return {
+        kind: "session",
+        sessionId: session.id,
+        source: session.source,
+        label: sessionSelectionLabel(session),
+        workspaceIdentity: session.source === "desktop" ? sessionWorkspaceIdentity(session) : null,
+      };
     }
-    const listed = await rpc.call<{ projects?: WorkProjectSummary[] }>("projects.list");
+    const listed = await host().call<{ projects?: WorkProjectSummary[] }>("projects.list");
     requireCallRevision(input.callId, input.workBindingRevision);
     const project = listed.projects?.find((candidate) => candidate.path === entry.value);
     if (!project || typeof project.path !== "string") {
@@ -175,117 +228,126 @@ export function createLiveWorkBridge(input: {
     return { kind: "project", projectPath: project.path };
   };
 
+  const selectedTurnIds = new Map<string, string>();
+  const terminalResults = new Map<string, LiveSessionWorkEvent>();
+  const interruptedNativeTurns = new Set<string>();
+  let coordinator: LiveWorkCoordinator;
+  const terminalKey = (callId: string, sessionId: string, turnId: string) => `${callId}:${sessionId}:${turnId}`;
+  const flushTerminalResult = (operation: LiveWorkOperationUpdate["operation"]) => {
+    if (!operation.turnId || !["completed", "failed", "interrupted", "canceled"].includes(operation.execution)) return;
+    if (operation.resultState === "available" || operation.resultState === "unavailable") return;
+    const key = terminalKey(operation.callId, operation.workSessionId, operation.turnId);
+    const terminal = terminalResults.get(key);
+    if (!terminal || terminal.kind !== "terminal") return;
+    const summary = terminal.resultText?.trim()
+      ? terminal.resultText.slice(0, 480)
+      : projectTurnResultSummary([], operation.turnId, terminal.status);
+    coordinator.reportTurnResult({
+      callId: operation.callId,
+      operationId: operation.operationId,
+      summary,
+      resultState: terminal.resultText?.trim() ? "available" : "unavailable",
+      ...(terminal.resultMessageId ? { sourceMessageId: terminal.resultMessageId } : {}),
+    });
+    terminalResults.delete(key);
+  };
+  const reportBackendEvent = (callId: string, event: LiveSessionWorkEvent) => {
+    if (event.kind === "started") {
+      selectedTurnIds.set(event.sessionId, event.turnId);
+      coordinator.reportTurnStarted({ sessionId: event.sessionId, turnId: event.turnId, ...(event.idempotencyKey ? { idempotencyKey: event.idempotencyKey } : {}) });
+      return;
+    }
+    if (event.kind === "waiting") {
+      selectedTurnIds.set(event.sessionId, event.turnId);
+      coordinator.reportTurnWaiting({ sessionId: event.sessionId, turnId: event.turnId, state: event.state, ...(event.idempotencyKey ? { idempotencyKey: event.idempotencyKey } : {}) });
+      return;
+    }
+    if (selectedTurnIds.get(event.sessionId) === event.turnId) selectedTurnIds.delete(event.sessionId);
+    const key = terminalKey(callId, event.sessionId, event.turnId);
+    terminalResults.set(key, event);
+    while (terminalResults.size > 256) terminalResults.delete(terminalResults.keys().next().value as string);
+    coordinator.reportTurnTerminal({ sessionId: event.sessionId, runtimeTurnId: event.turnId, turnId: event.turnId, status: event.status, ...(event.idempotencyKey ? { idempotencyKey: event.idempotencyKey } : {}) });
+    const matched = coordinator.findOperationByTurn({ sessionId: event.sessionId, turnId: event.turnId, ...(event.idempotencyKey ? { idempotencyKey: event.idempotencyKey } : {}) });
+    const operation = matched ? coordinator.getOperation(matched.callId, matched.operationId) : undefined;
+    if (operation) flushTerminalResult(operation);
+  };
+  const backendPort = createLiveWorkBackendPort({
+    getHost: input.getHost,
+    getSidecar: input.getSidecar ?? (() => null),
+    getAgentHostBridge: input.getAgentHostBridge,
+    getBackendRouter: input.getBackendRouter ?? (() => null),
+    getRemoteHosts: input.getRemoteHosts ?? (() => null),
+    requireSelectedSession: requireSupportedSession,
+    requireCallScope,
+    observeTurnTarget: (sessionId) => selectedTurnIds.get(sessionId) ?? null,
+  });
+
+  /**
+   * What the session's open question says, bounded and flattened, so the voice
+   * surface can read it out and an answer can be checked against it. `null`
+   * whenever there is not exactly one question open.
+   */
+  const readPendingQuestion = (sessionId: string): LiveWorkPendingQuestion | null =>
+    toPendingQuestion(input.getAgentHostBridge()?.openAsk(sessionId));
   const workPort: LiveWorkPort = {
+    ...backendPort,
     async snapshot(sessionId) {
-      await requireSupportedSession(sessionId);
-      const bridge = input.getAgentHostBridge();
-      if (!bridge) throw Object.assign(new Error("Agent Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
-      const snapshot = await bridge.agentHost.workSnapshot(sessionId);
-      return {
-        sessionId: snapshot.sessionId,
-        mode: snapshot.mode,
-        state: snapshot.state,
-        ...(snapshot.activeTurnId ? { activeTurnId: snapshot.activeTurnId } : {}),
-        queue: snapshot.queue.map(({ queueEntryId, position }) => ({ queueEntryId, position, summary: "" })),
-        observedAt: Date.now(),
-      };
+      const snapshot = await backendPort.snapshot(sessionId);
+      if (snapshot.activeTurnId) selectedTurnIds.set(sessionId, snapshot.activeTurnId);
+      else selectedTurnIds.delete(sessionId);
+      return snapshot;
     },
     observeTurnTarget(sessionId) {
-      return input.getAgentHostBridge()?.observeWorkTarget(sessionId) ?? null;
-    },
-    async lookupAdmission(request) {
-      const bridge = input.getAgentHostBridge();
-      if (!bridge) return { kind: "unavailable", code: "LIVE_WORK_NOT_READY" };
-      const turn = bridge.lookupWorkAdmission({
-        sessionId: request.sessionId,
-        idempotencyKey: request.idempotencyKey,
-        userMessageId: request.userMessageId,
-        voiceOrigin: { callId: request.callId, operationId: request.operationId },
-      });
-      if (!turn) return { kind: "not-found" };
-      if (turn.status === "queued") return { kind: "queued", queueEntryId: turn.id };
-      if (turn.status === "completed" || turn.status === "failed" || turn.status === "interrupted" || turn.status === "canceled") {
-        return { kind: "terminal", turnId: turn.id, status: turn.status };
-      }
-      if (turn.status === "running" || turn.status === "waiting_approval" || turn.status === "waiting_input") {
-        return { kind: "running", turnId: turn.id };
-      }
-      return { kind: "unavailable", code: "LIVE_WORK_STATUS_UNKNOWN" };
+      return input.getAgentHostBridge()?.observeWorkTarget(sessionId) ?? selectedTurnIds.get(sessionId) ?? null;
     },
     async submit(request) {
-      const scope = requireCallScope(request.voiceOrigin.callId, request.sessionId);
-      await requireSupportedSession(request.sessionId, request.voiceOrigin.callId);
-      const bridge = input.getAgentHostBridge();
-      if (!bridge) throw Object.assign(new Error("Agent Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
-      const result = await bridge.agentHost.startTurn(DESKTOP_PRINCIPAL, {
-        sessionId: request.sessionId,
-        expectedWorkspaceIdentity: scope.workspaceIdentity,
-        idempotencyKey: request.idempotencyKey,
-        input: {
-          text: request.text,
-          userMessageId: request.userMessageId,
-          voiceOrigin: request.voiceOrigin,
-        },
-        context: { requestId: request.idempotencyKey },
-      });
-      return result.turn.status === "queued"
-        ? { status: "queued", queueEntryId: result.turn.id }
-        : { status: "started", turnId: result.turn.id };
-    },
-    async steer(request) {
-      await requireSupportedSession(request.sessionId, request.voiceOrigin.callId);
-      const bridge = input.getAgentHostBridge();
-      if (!bridge) throw Object.assign(new Error("Agent Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
-      return {
-        accepted: await bridge.steerWorkSession({
-          sessionId: request.sessionId,
-          expectedTurnId: request.expectedTurnId,
-          content: request.text,
-          userMessageId: request.userMessageId,
-          voiceOrigin: request.voiceOrigin,
-        }),
-      };
-    },
-    async enqueue(request) {
-      const scope = requireCallScope(request.voiceOrigin.callId, request.sessionId);
-      await requireSupportedSession(request.sessionId, request.voiceOrigin.callId);
-      const bridge = input.getAgentHostBridge();
-      if (!bridge) throw Object.assign(new Error("Agent Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
-      const result = await bridge.agentHost.enqueueTurn(DESKTOP_PRINCIPAL, {
-        sessionId: request.sessionId,
-        expectedWorkspaceIdentity: scope.workspaceIdentity,
-        idempotencyKey: request.idempotencyKey,
-        input: {
-          text: request.text,
-          userMessageId: request.userMessageId,
-          voiceOrigin: request.voiceOrigin,
-        },
-        context: { requestId: request.idempotencyKey },
-      });
-      return { queueEntryId: result.turn.id };
+      const result = await backendPort.submit(request);
+      if (result.status === "started") selectedTurnIds.set(request.sessionId, result.turnId);
+      return result;
     },
     async stop(request) {
-      await requireSupportedSession(request.sessionId, request.callId);
-      const bridge = input.getAgentHostBridge();
-      if (!bridge) return { status: "stale-target" };
-      return bridge.stopWorkSession({
-        sessionId: request.sessionId,
-        expectedTurnId: request.expectedTurnId,
-        urgency: request.urgency,
-      });
+      const session = await requireSupportedSession(request.sessionId, request.callId);
+      const key = `${request.sessionId}:${request.expectedTurnId}`;
+      if (session.source === "pi-native") interruptedNativeTurns.add(key);
+      try {
+        const result = await backendPort.stop(request);
+        if (result.status !== "requested" && session.source === "pi-native") interruptedNativeTurns.delete(key);
+        if (result.status === "requested" && selectedTurnIds.get(request.sessionId) === request.expectedTurnId) selectedTurnIds.delete(request.sessionId);
+        return result;
+      } catch (error) {
+        if (session.source === "pi-native") interruptedNativeTurns.delete(key);
+        throw error;
+      }
     },
-    async cancelQueued(request) {
-      await requireSupportedSession(request.sessionId, request.callId);
+    /**
+     * A spoken answer resolves the session's one open question. Every option
+     * label is re-checked against that question's own options — the model can
+     * choose among what the user was read out and can never introduce an
+     * answer the question did not offer — and every question has to be
+     * answered, or nothing is resolved at all.
+     */
+    async respondInput(request) {
       const bridge = input.getAgentHostBridge();
-      if (!bridge) return { status: "unknown" };
-      if (!bridge.queue.list(request.sessionId).some((entry) => entry.id === request.queueEntryId)) {
-        return { status: "already-delivered" };
+      if (!bridge) return { status: "unavailable", message: "The work session backend is unavailable. Answer this question in the desktop." };
+      const open = bridge.openAsk(request.sessionId);
+      if (!open) {
+        return {
+          status: "rejected",
+          message: "That session is not asking a single question right now. Answer it in the desktop.",
+        };
+      }
+      const answers = buildSpokenAnswers(open.questions, request.answers);
+      if (!answers) {
+        return {
+          status: "rejected",
+          message: "That answer does not match the question's own options. Read the question and its options again, or answer it in the desktop.",
+        };
       }
       try {
-        await bridge.queue.remove(request.queueEntryId);
-        return { status: "canceled" };
+        await bridge.resolveOpenAsk({ sessionId: request.sessionId, inputId: open.inputId, answers });
+        return { status: "resolved", message: "Answer delivered to the open question.", turnId: open.turnId };
       } catch {
-        return { status: "unknown" };
+        return { status: "unavailable", message: "The answer could not be delivered. Answer the question in the desktop." };
       }
     },
     async listProjects(request) {
@@ -305,16 +367,13 @@ export function createLiveWorkBridge(input: {
     },
     async listSessions(request) {
       requireCallRevision(request.callId, request.workBindingRevision);
-      const listed = await host().call<{ sessions?: WorkSessionSummary[] }>("session.list");
+      const listed = await listWorkSessions();
       requireCallRevision(request.callId, request.workBindingRevision);
       const query = request.query?.trim().toLocaleLowerCase();
-      const values = (listed.sessions ?? []).flatMap((session) => {
-        if (typeof session.id !== "string" || (session.source !== undefined && session.source !== "desktop")) return [];
-        const title = typeof session.title === "string" ? session.title.trim() : "";
-        const projectLabel = typeof session.projectPath === "string" ? session.projectPath.split(/[\\/]/).filter(Boolean).at(-1) : undefined;
-        const label = `${projectLabel && title ? `${projectLabel} / ` : ""}${title || projectLabel || ""}`.slice(0, 180);
+      const values = listed.flatMap((session) => {
+        const label = sessionSelectionLabel(session);
         if (query && !label.toLocaleLowerCase().includes(query)) return [];
-        return [{ kind: "session" as const, value: session.id, label }];
+        return [{ kind: "session" as const, value: session.id, label, sessionSource: session.source }];
       });
       return issueSelections(request.callId, request.workBindingRevision, values, "open");
     },
@@ -331,53 +390,125 @@ export function createLiveWorkBridge(input: {
         return { status: "unavailable" };
       }
     },
+    async selectSession(request) {
+      try {
+        const scope = requireCallRevision(request.callId, request.workBindingRevision);
+        const entry = selections.resolve(request);
+        if (!entry || entry.kind !== "session") return { status: "expired" };
+        if (entry.duplicateLabel) return { status: "ambiguous" };
+        const target = await resolveSelection(request);
+        requireCallRevision(request.callId, request.workBindingRevision);
+        if (target.kind !== "session") return { status: "unavailable" };
+        rememberAuthorizedTarget(request.callId, target);
+        const snapshot = await backendPort.snapshot(target.sessionId);
+        const nextBinding = {
+          ...scope,
+          callId: request.callId,
+          workSessionId: target.sessionId,
+          label: target.label,
+          sessionSource: target.source,
+          contextEnabled: input.getWorkContextConsent?.(request.callId) ?? false,
+          workspaceIdentity: target.workspaceIdentity,
+        };
+        subscribeTargetSession(nextBinding);
+        bindings.set(request.callId, nextBinding);
+        input.onTargetSelected?.(request.callId, {
+          workSessionId: nextBinding.workSessionId,
+          workBindingRevision: nextBinding.workBindingRevision,
+          label: nextBinding.label,
+          sessionSource: nextBinding.sessionSource,
+          contextEnabled: nextBinding.contextEnabled,
+        });
+        if (snapshot.activeTurnId) selectedTurnIds.set(target.sessionId, snapshot.activeTurnId);
+        else selectedTurnIds.delete(target.sessionId);
+        return { status: "selected", sessionId: target.sessionId, label: target.label, source: target.source };
+      } catch {
+        return { status: "unavailable" };
+      }
+    },
   };
 
-  const coordinator = new LiveWorkCoordinator({
+  coordinator = new LiveWorkCoordinator({
     workPort,
     ...(input.onAnnouncementPolicy ? { onAnnouncementPolicy: input.onAnnouncementPolicy } : {}),
     resolveIntent: async ({ candidate, snapshot, recentOperations, signal }) => {
       const binding = bindings.get(candidate.callId);
       if (!binding || binding.workSessionId !== candidate.workSessionId) return null;
       signal.throwIfAborted();
+      const hasTarget = binding.workSessionId !== liveWorkUnselectedSessionId(candidate.callId);
       const rpc = host();
-      const session = await raceWithSignal(
-        requireSupportedSession(binding.workSessionId, candidate.callId),
-        signal,
-        2_000,
-      );
+      const session: Partial<WorkSessionSummary> = hasTarget
+        ? await raceWithSignal(requireSupportedSession(binding.workSessionId, candidate.callId), signal, 2_000)
+        : {};
       signal.throwIfAborted();
       const settings = await raceWithSignal(rpc.call<Record<string, unknown>>("settings.get"), signal, 2_000);
       signal.throwIfAborted();
       let recentMessages: LiveWorkContextMessage[] = [];
-      if (binding.contextEnabled) {
-        const detail = await raceWithSignal(
-          rpc.call<{ session?: { messages?: LiveWorkContextMessage[] } }>("session.get", {
-            id: binding.workSessionId,
-            messageLimit: 6,
-          }),
-          signal,
-          2_000,
-        );
+      if (hasTarget && binding.contextEnabled) {
+        if (session.source === "desktop") {
+          const detail = await raceWithSignal(
+            rpc.call<{ session?: { messages?: LiveWorkContextMessage[] } }>("session.get", {
+              id: binding.workSessionId,
+              messageLimit: 6,
+            }),
+            signal,
+            2_000,
+          );
+          recentMessages = detail.session?.messages ?? [];
+        } else if (session.source === "pi-native") {
+          const sidecar = input.getSidecar?.();
+          if (!sidecar) throw Object.assign(new Error("Native Pi runtime is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
+          const detail = await raceWithSignal(
+            sidecar.call<{ session?: { messages?: LiveWorkContextMessage[] } }>("native.session.get", {
+              id: binding.workSessionId,
+              messageLimit: 6,
+            }),
+            signal,
+            2_000,
+          );
+          recentMessages = detail.session?.messages ?? [];
+        } else {
+          const remoteHosts = input.getRemoteHosts?.();
+          if (!remoteHosts) throw Object.assign(new Error("Remote Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
+          const items = await raceWithSignal(remoteHosts.readHistory(binding.workSessionId, 24), signal, 2_000);
+          recentMessages = items.flatMap((item): LiveWorkContextMessage[] => {
+            const message = item.content && typeof item.content === "object" && !Array.isArray(item.content)
+              ? item.content as Record<string, unknown>
+              : {};
+            if ((message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") return [];
+            return [{
+              role: message.role,
+              content: message.content,
+              ...(typeof message.voiceOrigin === "object" && message.voiceOrigin !== null ? { voiceOrigin: message.voiceOrigin as LiveWorkContextMessage["voiceOrigin"] } : {}),
+              ...(typeof message.toolName === "string" ? { toolName: message.toolName } : {}),
+              ...(typeof message.parentToolCallId === "string" ? { parentToolCallId: message.parentToolCallId } : {}),
+              ...(Array.isArray(message.attachments) ? { attachments: message.attachments as LiveWorkContextMessage["attachments"] } : {}),
+            }];
+          });
+        }
         signal.throwIfAborted();
-        recentMessages = detail.session?.messages ?? [];
       }
+      // Read the open question at classification time: it is the only source
+      // for the option labels a spoken answer may select.
+      const pendingQuestion = readPendingQuestion(snapshot.sessionId);
       const contextInput = buildLiveWorkClassifierInput({
         candidate,
         snapshot,
         contextEnabled: binding.contextEnabled,
         recentMessages,
         recentOperations,
+        ...(pendingQuestion ? { pendingQuestion } : {}),
       });
+      const classifierSessionId = hasTarget ? binding.workSessionId : `live-work-classifier:${candidate.callId}`;
       const launch = await raceWithSignal(input.resolveAgentRuntimeLaunch(
-        binding.workSessionId,
+        classifierSessionId,
         {
-          id: binding.workSessionId,
+          id: classifierSessionId,
           title: typeof session.title === "string" ? session.title : "",
-          providerId: typeof session.providerId === "string" ? session.providerId : undefined,
-          modelId: typeof session.modelId === "string" ? session.modelId : undefined,
-          mode: session.mode,
-          thinkingLevel: session.thinkingLevel,
+          ...(typeof session.providerId === "string" ? { providerId: session.providerId } : {}),
+          ...(typeof session.modelId === "string" ? { modelId: session.modelId } : {}),
+          mode: session.mode ?? "agent",
+          thinkingLevel: session.thinkingLevel ?? "off",
           permissionMode: session.permissionMode,
           // Do not pass projectPath or transcript-derived fields to launch resolution.
         },
@@ -400,7 +531,7 @@ export function createLiveWorkBridge(input: {
         messages: [{ role: "user", content: contextInput, timestamp: Date.now() }],
       };
       const result = await (input.completeIntent ?? completeOneShot)(provider, context, "off", {
-        sessionId: binding.workSessionId,
+        sessionId: classifierSessionId,
         signal,
         maxOutputTokens: 1_024,
       });
@@ -413,7 +544,19 @@ export function createLiveWorkBridge(input: {
         return null;
       }
     },
-    onOperation: ({ operation, ...update }) => input.onOperation(operation.callId, { operation, ...update }),
+    onOperation: ({ operation, ...update }) => {
+      // A waiting operation carries the question it waits on, so the voice
+      // surface can read it out and pass the user's answer back.
+      const pendingQuestion = operation.execution === "waiting-input"
+        ? readPendingQuestion(operation.workSessionId)
+        : null;
+      input.onOperation(operation.callId, {
+        operation,
+        ...update,
+        ...(pendingQuestion ? { pendingQuestion } : {}),
+      });
+      flushTerminalResult(operation);
+    },
   });
 
   const startResultReader = (
@@ -463,7 +606,7 @@ export function createLiveWorkBridge(input: {
           }
           const result = findTurnResult(page.items, turnId);
           if (result) {
-            if (bindings.get(callBinding.callId) === callBinding && !controller.signal.aborted) {
+            if (bindings.get(callBinding.callId)?.workBindingRevision === callBinding.workBindingRevision && !controller.signal.aborted) {
               coordinator.reportTurnResult({
                 ...matched,
                 summary: result.text,
@@ -487,7 +630,7 @@ export function createLiveWorkBridge(input: {
           beforeItemId = nextCursor;
         }
       }
-      if (bindings.get(callBinding.callId) === callBinding && !controller.signal.aborted) {
+      if (bindings.get(callBinding.callId)?.workBindingRevision === callBinding.workBindingRevision && !controller.signal.aborted) {
         coordinator.reportTurnResult({
           ...matched,
           summary: projectTurnResultSummary([], turnId, status),
@@ -496,7 +639,7 @@ export function createLiveWorkBridge(input: {
       }
     };
     void read().catch(() => {
-      if (bindings.get(callBinding.callId) === callBinding) {
+      if (bindings.get(callBinding.callId)?.workBindingRevision === callBinding.workBindingRevision) {
         coordinator.reportTurnResult({
           ...matched,
           summary: projectTurnResultSummary([], turnId, status),
@@ -511,79 +654,153 @@ export function createLiveWorkBridge(input: {
     });
   };
 
-  return {
-    openCall(binding, workspaceIdentity) {
+  const subscribeLocalSession = (
+    callBinding: LiveWorkBinding & { callId: string; workspaceIdentity: string | null },
+    bridge: AgentHostBridge,
+  ): void => {
+    const subscriptions = sessionEventSubscriptions.get(callBinding.callId) ?? [];
+    const subscribed = subscribedSessions.get(callBinding.callId) ?? new Set<string>();
+    if (subscribed.has(callBinding.workSessionId)) return;
+    const dispose = bridge.onSessionEvent(callBinding.workSessionId, (event) => {
+      const turnId = event.turnId;
+      if (!turnId) return;
+      const payload = event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+        ? event.payload as Record<string, unknown>
+        : {};
+      const turn = payload.turn && typeof payload.turn === "object" && !Array.isArray(payload.turn)
+        ? payload.turn as Record<string, unknown>
+        : {};
+      const idempotencyKey = typeof turn.idempotencyKey === "string" ? turn.idempotencyKey : undefined;
+      if (event.kind === "turn.started") {
+        selectedTurnIds.set(callBinding.workSessionId, turnId);
+        coordinator.reportTurnStarted({ sessionId: callBinding.workSessionId, turnId, ...(idempotencyKey ? { idempotencyKey } : {}) });
+      } else if (event.kind === "approval.requested") {
+        coordinator.reportTurnWaiting({ sessionId: callBinding.workSessionId, turnId, state: "waiting-permission", ...(idempotencyKey ? { idempotencyKey } : {}) });
+      } else if (event.kind === "input.requested") {
+        coordinator.reportTurnWaiting({ sessionId: callBinding.workSessionId, turnId, state: "waiting-input", ...(idempotencyKey ? { idempotencyKey } : {}) });
+      } else if (event.kind === "approval.resolved" || event.kind === "input.resolved") {
+        coordinator.reportTurnStarted({ sessionId: callBinding.workSessionId, turnId, ...(idempotencyKey ? { idempotencyKey } : {}) });
+      } else if (event.kind === "turn.completed" || event.kind === "turn.failed" || event.kind === "turn.interrupted" || event.kind === "turn.canceled") {
+        if (selectedTurnIds.get(callBinding.workSessionId) === turnId) selectedTurnIds.delete(callBinding.workSessionId);
+        const status = event.kind === "turn.completed"
+          ? "completed"
+          : event.kind === "turn.failed"
+            ? "failed"
+            : event.kind === "turn.interrupted"
+              ? "interrupted"
+              : "canceled";
+        coordinator.reportTurnTerminal({
+          sessionId: callBinding.workSessionId,
+          runtimeTurnId: turnId,
+          turnId,
+          status,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+        });
+        const matched = coordinator.findOperationByTurn({
+          sessionId: callBinding.workSessionId,
+          turnId,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+        });
+        if (matched) startResultReader(callBinding, bridge, matched, turnId, status);
+      }
+    });
+    subscriptions.push(dispose);
+    sessionEventSubscriptions.set(callBinding.callId, subscriptions);
+    subscribed.add(callBinding.workSessionId);
+    subscribedSessions.set(callBinding.callId, subscribed);
+  };
+
+  const subscribeTargetSession = (callBinding: LiveWorkBinding & { callId: string; workspaceIdentity: string | null }): void => {
+    const source = callBinding.sessionSource ?? "desktop";
+    if (source === "desktop") {
       const bridge = input.getAgentHostBridge();
       if (!bridge) throw Object.assign(new Error("Agent Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
-      sessionEventSubscriptions.get(binding.callId)?.();
+      subscribeLocalSession(callBinding, bridge);
+      return;
+    }
+    const subscribed = subscribedSessions.get(callBinding.callId) ?? new Set<string>();
+    if (subscribed.has(callBinding.workSessionId)) return;
+    const dispose = subscribeLiveSessionEvents({
+      sessionId: callBinding.workSessionId,
+      source,
+      sidecar: input.getSidecar?.() ?? null,
+      remoteHosts: input.getRemoteHosts?.() ?? null,
+      isInterrupted: (sessionId, turnId) => interruptedNativeTurns.has(`${sessionId}:${turnId}`),
+      onEvent: (event) => reportBackendEvent(callBinding.callId, event),
+    });
+    if (!dispose) throw Object.assign(new Error("The selected session backend is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
+    const subscriptions = sessionEventSubscriptions.get(callBinding.callId) ?? [];
+    subscriptions.push(dispose);
+    sessionEventSubscriptions.set(callBinding.callId, subscriptions);
+    subscribed.add(callBinding.workSessionId);
+    subscribedSessions.set(callBinding.callId, subscribed);
+  };
+
+  return {
+    openCall(binding, workspaceIdentity) {
+      for (const dispose of sessionEventSubscriptions.get(binding.callId) ?? []) dispose();
+      sessionEventSubscriptions.delete(binding.callId);
+      subscribedSessions.delete(binding.callId);
       for (const reader of resultReaders.get(binding.callId) ?? []) reader.abort(new Error("Live work scope replaced"));
       resultReaders.delete(binding.callId);
       coordinator.closeCall(binding.callId);
       const callBinding = { ...binding, workspaceIdentity };
       bindings.set(binding.callId, callBinding);
+      authorizedTargets.set(binding.callId, new Map());
+      if (binding.workSessionId !== liveWorkUnselectedSessionId(binding.callId)) {
+        rememberAuthorizedTarget(binding.callId, {
+          sessionId: binding.workSessionId,
+          source: binding.sessionSource ?? "desktop",
+          workspaceIdentity,
+        });
+      }
       coordinator.openCall({
         callId: binding.callId,
         workSessionId: binding.workSessionId,
         workBindingRevision: binding.workBindingRevision,
+        hasWorkTarget: binding.workSessionId !== liveWorkUnselectedSessionId(binding.callId),
       });
-      sessionEventSubscriptions.set(binding.callId, bridge.onSessionEvent(callBinding.workSessionId, (event) => {
-        const turnId = event.turnId;
-        if (!turnId) return;
-        const payload = event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
-          ? event.payload as Record<string, unknown>
-          : {};
-        const turn = payload.turn && typeof payload.turn === "object" && !Array.isArray(payload.turn)
-          ? payload.turn as Record<string, unknown>
-          : {};
-        const idempotencyKey = typeof turn.idempotencyKey === "string" ? turn.idempotencyKey : undefined;
-        if (event.kind === "turn.started") {
-          coordinator.reportTurnStarted({ sessionId: binding.workSessionId, turnId, ...(idempotencyKey ? { idempotencyKey } : {}) });
-        } else if (event.kind === "approval.requested") {
-          coordinator.reportTurnWaiting({ sessionId: binding.workSessionId, turnId, state: "waiting-permission", ...(idempotencyKey ? { idempotencyKey } : {}) });
-        } else if (event.kind === "input.requested") {
-          coordinator.reportTurnWaiting({ sessionId: binding.workSessionId, turnId, state: "waiting-input", ...(idempotencyKey ? { idempotencyKey } : {}) });
-        } else if (event.kind === "approval.resolved" || event.kind === "input.resolved") {
-          coordinator.reportTurnStarted({ sessionId: binding.workSessionId, turnId, ...(idempotencyKey ? { idempotencyKey } : {}) });
-        } else if (event.kind === "turn.completed" || event.kind === "turn.failed" || event.kind === "turn.interrupted" || event.kind === "turn.canceled") {
-          const status = event.kind === "turn.completed"
-            ? "completed"
-            : event.kind === "turn.failed"
-              ? "failed"
-              : event.kind === "turn.interrupted"
-                ? "interrupted"
-                : "canceled";
-          coordinator.reportTurnTerminal({
-            sessionId: binding.workSessionId,
-            runtimeTurnId: turnId,
-            turnId,
-            status,
-            ...(idempotencyKey ? { idempotencyKey } : {}),
-          });
-          const matched = coordinator.findOperationByTurn({
-            sessionId: binding.workSessionId,
-            turnId,
-            ...(idempotencyKey ? { idempotencyKey } : {}),
-          });
-          if (matched) {
-            startResultReader(callBinding, bridge, matched, turnId, status);
-          }
-        }
-      }));
+      if (binding.workSessionId !== liveWorkUnselectedSessionId(binding.callId)) subscribeTargetSession(callBinding);
     },
     closeCall(callId) {
-      sessionEventSubscriptions.get(callId)?.();
+      for (const dispose of sessionEventSubscriptions.get(callId) ?? []) dispose();
       sessionEventSubscriptions.delete(callId);
+      const subscribed = subscribedSessions.get(callId) ?? new Set<string>();
+      subscribedSessions.delete(callId);
+      for (const sessionId of subscribed) {
+        for (const turnId of [selectedTurnIds.get(sessionId)].filter((value): value is string => Boolean(value))) {
+          interruptedNativeTurns.delete(`${sessionId}:${turnId}`);
+        }
+      }
+      for (const key of terminalResults.keys()) if (key.startsWith(`${callId}:`)) terminalResults.delete(key);
       for (const reader of resultReaders.get(callId) ?? []) reader.abort(new Error("Live work call closed"));
       resultReaders.delete(callId);
       coordinator.closeCall(callId);
       bindings.delete(callId);
+      authorizedTargets.delete(callId);
       selections.removeCall(callId);
     },
     resolveSelection,
+    stopOperation: (input) => coordinator.stopOperation(input),
+    cancelQueuedOperation: (input) => coordinator.cancelQueuedOperation(input),
     async receiveCandidate(candidate, deliverReceipt) {
       await coordinator.receiveCandidate(candidate, deliverReceipt);
     },
   };
+}
+
+function sessionSelectionLabel(session: LiveWorkSessionRecord): string {
+  const title = session.title.trim() || "Untitled session";
+  if (session.source === "pi-native") {
+    const project = session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1);
+    return `Native Pi · ${project ? `${project} / ` : ""}${title}`.slice(0, 180);
+  }
+  if (session.source === "remote") {
+    const workspace = session.workspaceLabel?.trim();
+    return `Remote ${session.hostLabel ? `${session.hostLabel} · ` : ""}${workspace ? `${workspace} / ` : ""}${title}`.slice(0, 180);
+  }
+  const project = session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1);
+  return `${project ? `${project} / ` : ""}${title}`.slice(0, 180);
 }
 
 function waitForSignal(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -633,3 +850,4 @@ function raceWithSignal<T>(promise: Promise<T>, signal: AbortSignal, timeoutMs?:
     );
   });
 }
+

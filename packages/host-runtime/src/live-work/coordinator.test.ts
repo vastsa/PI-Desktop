@@ -4,6 +4,13 @@ import { parseLiveWorkIntent } from "./intent.js";
 import { build, candidate } from "../../test/live-work-fixture.js";
 
 describe("LiveWorkCoordinator", () => {
+  it("accepts opaque session-selection references and rejects provider-supplied session IDs", () => {
+    expect(parseLiveWorkIntent({ kind: "select-session", selectionRef: "short-lived-ref" })).toEqual({
+      kind: "select-session",
+      selectionRef: "short-lived-ref",
+    });
+    expect(parseLiveWorkIntent({ kind: "select-session", selectionRef: "short-lived-ref", sessionId: "remote:host:raw-id" })).toBeNull();
+  });
   it("delivers a received receipt before classifying and submits the original text once", async () => {
     const subject = build({ intent: { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false } });
     const order: string[] = [];
@@ -14,6 +21,127 @@ describe("LiveWorkCoordinator", () => {
     expect(order).toEqual(["receipt:received"]);
     expect(subject.calls).toContain(`submit:${candidate.instruction}:` + subject.coordinator.getOperation("call-1", subject.coordinator.listOperations("call-1")[0]!.operationId)?.userMessageId);
     expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({ admission: "accepted", execution: "running", turnId: "turn-1" });
+  });
+
+  it("switches voice work targets without losing earlier session terminal evidence", async () => {
+    const subject = build({
+      intent: ({ providerRequestId }: LiveWorkCandidate) => {
+        if (providerRequestId === "provider-list") return { kind: "list-sessions" };
+        if (providerRequestId === "provider-select") return { kind: "select-session", selectionRef: "session-ref" };
+        return { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false };
+      },
+      selectSession: async ({ selectionRef }) => selectionRef === "session-ref"
+        ? { status: "selected", sessionId: "session-b", label: "Remote / Refactor" }
+        : { status: "expired" },
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "receipt-a" }));
+    const first = subject.coordinator.listOperations("call-1")[0]!;
+    await subject.coordinator.receiveCandidate({ ...candidate, providerRequestId: "provider-list", instruction: "List sessions" }, async () => ({ status: "sent", deliveryId: "receipt-list" }));
+    await subject.coordinator.receiveCandidate({ ...candidate, providerRequestId: "provider-select", instruction: "Switch to the refactor session" }, async () => ({ status: "sent", deliveryId: "receipt-select" }));
+    await subject.coordinator.receiveCandidate({ ...candidate, workSessionId: "session-b", providerRequestId: "provider-b", instruction: "Inspect the selected task" }, async () => ({ status: "sent", deliveryId: "receipt-b" }));
+
+    subject.coordinator.reportTurnTerminal({ sessionId: "session-a", runtimeTurnId: first.turnId!, turnId: first.turnId!, status: "completed" });
+    subject.coordinator.reportTurnResult({ callId: "call-1", operationId: first.operationId, summary: "Session A result remains attached to A." });
+
+    const operations = subject.coordinator.listOperations("call-1");
+    expect(operations[0]).toMatchObject({ workSessionId: "session-a", execution: "completed", resultSummary: "Session A result remains attached to A." });
+    expect(operations.at(-1)).toMatchObject({ workSessionId: "session-b", admission: "accepted", execution: "running" });
+    expect(subject.calls.some((call) => call.startsWith("submit:Inspect the selected task:"))).toBe(true);
+  });
+
+  it("cancels an old queued operation through its original session after a voice target switch", async () => {
+    const subject = build({
+      intent: ({ providerRequestId }: LiveWorkCandidate) => providerRequestId === "provider-list"
+        ? { kind: "list-sessions" }
+        : providerRequestId === "provider-select"
+          ? { kind: "select-session", selectionRef: "session-ref" }
+          : { kind: "new-task", relationToActive: "independent", explicitRepeat: false },
+      snapshot: { state: "running", activeTurnId: "turn-a" },
+      selectSession: async () => ({ status: "selected", sessionId: "session-b", label: "Remote / Refactor", source: "remote" }),
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "queue-receipt" }));
+    const queued = subject.coordinator.listOperations("call-1")[0]!;
+    expect(queued).toMatchObject({ workSessionId: "session-a", execution: "queued", queueEntryId: "queue-1" });
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-list",
+      instruction: "List sessions",
+    }, async () => ({ status: "sent", deliveryId: "list-receipt" }));
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-select",
+      instruction: "Switch to the refactor session",
+    }, async () => ({ status: "sent", deliveryId: "select-receipt" }));
+
+    expect(await subject.coordinator.cancelQueuedOperation({ callId: "call-1", operationId: queued.operationId })).toEqual({ status: "canceled" });
+    expect(subject.calls).toContain("cancel:session-a:queue-1");
+    expect(subject.coordinator.getOperation("call-1", queued.operationId)).toMatchObject({ workSessionId: "session-a", execution: "canceled" });
+  });
+
+  it("routes voice cancellation of an old queued operation to that operation's original session", async () => {
+    let queuedOperationId = "";
+    const subject = build({
+      intent: ({ providerRequestId }: LiveWorkCandidate) => providerRequestId === "provider-list"
+        ? { kind: "list-sessions" }
+        : providerRequestId === "provider-select"
+          ? { kind: "select-session", selectionRef: "session-ref" }
+          : providerRequestId === "provider-cancel"
+            ? { kind: "cancel-queued", operationRef: queuedOperationId }
+            : { kind: "new-task", relationToActive: "independent", explicitRepeat: false },
+      snapshot: { state: "running", activeTurnId: "turn-a" },
+      selectSession: async () => ({ status: "selected", sessionId: "session-b", label: "Remote / Refactor", source: "remote" }),
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "queue-receipt" }));
+    const queued = subject.coordinator.listOperations("call-1")[0]!;
+    queuedOperationId = queued.operationId;
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-list",
+      instruction: "List sessions",
+    }, async () => ({ status: "sent", deliveryId: "list-receipt" }));
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-select",
+      instruction: "Switch to the refactor session",
+    }, async () => ({ status: "sent", deliveryId: "select-receipt" }));
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      workSessionId: "session-b",
+      providerRequestId: "provider-cancel",
+      instruction: "Cancel the queued operation",
+    }, async () => ({ status: "sent", deliveryId: "cancel-receipt" }));
+
+    expect(subject.calls).toContain("cancel:session-a:queue-1");
+    expect(subject.calls).not.toContain("cancel:session-b:queue-1");
+    expect(subject.coordinator.getOperation("call-1", queued.operationId)).toMatchObject({ workSessionId: "session-a", execution: "canceled" });
+  });
+
+  it("stops an old running operation through its original session and exact turn after a voice target switch", async () => {
+    const subject = build({
+      intent: ({ providerRequestId }: LiveWorkCandidate) => providerRequestId === "provider-list"
+        ? { kind: "list-sessions" }
+        : providerRequestId === "provider-select"
+          ? { kind: "select-session", selectionRef: "session-ref" }
+          : { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
+      selectSession: async () => ({ status: "selected", sessionId: "session-b", label: "Remote / Refactor", source: "remote" }),
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "task-receipt" }));
+    const running = subject.coordinator.listOperations("call-1")[0]!;
+    subject.snapshot.state = "running";
+    subject.snapshot.activeTurnId = running.turnId;
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-list",
+      instruction: "List sessions",
+    }, async () => ({ status: "sent", deliveryId: "list-receipt" }));
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-select",
+      instruction: "Switch to the refactor session",
+    }, async () => ({ status: "sent", deliveryId: "select-receipt" }));
+
+    expect(await subject.coordinator.stopOperation({ callId: "call-1", operationId: running.operationId })).toEqual({ status: "requested" });
+    expect(subject.calls).toContain(`stop:session-a:${running.turnId}:graceful`);
   });
 
   it("does not dispatch if the local provider receipt was not sent", async () => {
@@ -306,7 +434,7 @@ describe("LiveWorkCoordinator", () => {
       instruction: "Stop the current task now.",
     }, async () => ({ status: "sent", deliveryId: "stop-receipt" }));
 
-    expect(subject.calls.some((call) => call === "stop:turn-current:graceful")).toBe(true);
+    expect(subject.calls.some((call) => call === "stop:session-a:turn-current:graceful")).toBe(true);
     releaseNormal({ kind: "new-task", relationToActive: "unspecified", explicitRepeat: false });
     await normal;
 

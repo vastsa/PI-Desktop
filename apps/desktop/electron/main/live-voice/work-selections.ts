@@ -1,17 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type { LiveWorkSelectionOption } from "@pi-desktop/shared";
+import type { LiveWorkSelectionOption, SessionSource } from "@pi-desktop/shared";
 
 export type LiveWorkSelectionEntry = {
   callId: string;
   workBindingRevision: number;
   kind: "project" | "session";
+  sessionSource?: SessionSource;
   value: string;
   label: string;
   duplicateLabel: boolean;
   expiresAt: number;
 };
 
-type Candidate = Pick<LiveWorkSelectionEntry, "kind" | "value" | "label">;
+type Candidate = Pick<LiveWorkSelectionEntry, "kind" | "value" | "label" | "sessionSource">;
 
 const MAX_SELECTIONS_PER_CALL = 80;
 const SELECTION_TTL_MS = 60_000;
@@ -49,6 +50,7 @@ export class LiveWorkSelectionRegistry {
         selectionRef,
         kind: candidate.kind,
         action,
+        ...(candidate.sessionSource ? { sessionSource: candidate.sessionSource } : {}),
         label: candidate.label,
         ...(duplicateLabel ? { duplicateLabel: true } : {}),
       };

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { type RefObject } from "react";
 import type { TFunction } from "i18next";
 import { IconClose, IconInfo, IconMic, IconMicOff, IconPhoneOff, IconSettings, IconVolume, IconWaveform } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
@@ -9,6 +9,12 @@ type CallBarProps = {
   t: TFunction;
   snapshot: LiveVoiceSnapshot;
   issue: ReturnType<typeof liveVoiceIssue>;
+  /**
+   * True while the bound work session waits on a decision the user has to make
+   * elsewhere. The widget window has no session store, so the owner frame
+   * reports this instead of the bar deriving it (live-work-decision).
+   */
+  decisionWaiting: boolean;
   detailsOpen: boolean;
   detailsRef: RefObject<HTMLButtonElement | null>;
   actionPending: "mute" | "playback" | null;
@@ -21,8 +27,16 @@ type CallBarProps = {
   onDismiss: () => void;
 };
 
+/**
+ * The compact call bar, drawn by the docked widget window from the state main
+ * pushes. It is presentation only — the widget owns no media and is not the
+ * call owner, so every button forwards an action instead of reaching a
+ * controller — and it is the only call chrome the user sees. A failure that
+ * outlives a toast is therefore drawn in place next to its verbatim `LIVE_*`
+ * code, because nothing else on screen could name it.
+ */
 export function LiveVoiceCallBar({
-  t, snapshot, issue, detailsOpen, detailsRef, actionPending,
+  t, snapshot, issue, decisionWaiting, detailsOpen, detailsRef, actionPending,
   onCancel, onMute, onEnd, onDetails, onResume, onSettings, onDismiss,
 }: CallBarProps) {
   const mode = liveVoiceMode(snapshot);
@@ -37,7 +51,6 @@ export function LiveVoiceCallBar({
                 : "liveVoice.phase.connected";
   const unmute = call?.muted !== false;
   const speaking = mode === "connected" && (call?.assistantSpeaking || (call?.userSpeaking && !call.muted));
-
   return (
     <div className="live-voice-call-bar" data-state={mode}>
       <div className="live-voice-call-row">
@@ -99,7 +112,15 @@ export function LiveVoiceCallBar({
       {issue ? (
         <p className={issue.warning ? "live-voice-feedback live-voice-hint" : "live-voice-feedback live-voice-error"} role={issue.warning ? "status" : "alert"}>
           {t(issue.message)}
+          {/* The localized sentence alone cannot say whether authentication,
+              entitlement or the transport failed; the allow-listed code can,
+              and it is what a log line or bug report needs. Raw provider text
+              never reaches this bar (live-voice spec). */}
+          <code className="live-voice-error-code">{issue.code}</code>
         </p>
+      ) : null}
+      {decisionWaiting && (mode === "connected" || mode === "reconnecting") ? (
+        <p className="live-voice-feedback live-voice-hint" role="status">{t("liveVoice.decisionWaiting")}</p>
       ) : null}
     </div>
   );

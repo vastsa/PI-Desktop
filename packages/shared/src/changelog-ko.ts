@@ -2,6 +2,17 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    "version": "0.16.0",
+    "date": "2026-10-01",
+    "highlights": [
+      "라이브 보이스를 모든 사용자가 사용할 수 있으며 통화는 현재 세션에서 시작됩니다.",
+      "세션별 체크리스트를 추가하고 로컬 서비스를 다시 시작해도 확정된 상태를 유지합니다.",
+      "일회성 알림이 차단형 대화 상자 대신 공용 토스트 스택에 표시됩니다.",
+      "모델 목록이 공식 제공자 메타데이터와 일치하여 릴레이 서비스와 모델 이름이 정확하게 유지됩니다.",
+    ],
+  },
+
+  {
     "version": "0.15.10",
     "date": "2026-09-28",
     "highlights": [

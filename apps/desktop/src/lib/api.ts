@@ -25,6 +25,7 @@ import type {
   QueuedTurnSummary,
   AgentStatus,
   AskToolResolution,
+  PendingInteractiveRequests,
   AgentInstructionFile,
   AppSettings,
   CommandShellCatalog,
@@ -959,6 +960,8 @@ export const api = {
     invoke(IPC.invoke.toolResolvePermission, resolution),
   resolveAskTool: (resolution: AskToolResolution) =>
     invoke(IPC.invoke.askToolResolve, resolution),
+  pendingInteractive: (sessionId: string) =>
+    invoke<PendingInteractiveRequests>(IPC.invoke.pendingInteractive, { sessionId }),
   pendingPlans: (sessionId?: string) =>
     invoke<PlansPendingResult>(
       IPC.invoke.plansPending,

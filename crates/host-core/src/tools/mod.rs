@@ -1411,16 +1411,6 @@ fn tool_edit(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
-    let tag = args.get("tag").and_then(|v| v.as_str()).ok_or_else(|| {
-        hashline::ToolError::new(
-            "EDIT_TAG_REQUIRED",
-            "tag required; pass the 4-hex tag from the latest Read, Grep, Write, or Edit",
-        )
-    })?;
-    let ops = args
-        .get("ops")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "ops required"))?;
     let (resolved, root_kind) =
         resolve_tool_path_with_external(root, scratch, path, allow_external_paths)
             .map_err(|e| hashline::ToolError::new(e.clone(), e))?;
@@ -1435,13 +1425,68 @@ fn tool_edit(
             hashline::ToolError::new("TOOL_FAILED", format!("read failed: {e}"))
         }
     })?;
+    let legacy_old = args.get("old_string").and_then(Value::as_str);
+    let legacy_new = args.get("new_string").and_then(Value::as_str);
+    let (tag, ops) = match (
+        args.get("tag").and_then(Value::as_str),
+        args.get("ops").and_then(Value::as_str),
+        legacy_old,
+        legacy_new,
+    ) {
+        (Some(tag), Some(ops), _, _) => (tag.to_string(), ops.to_string()),
+        (None, None, Some(old), Some(new)) => {
+            let file = hashline::normalize_file(&live);
+            let tag = hashline::tag_of_lf_text(&file.text);
+            let matches: Vec<_> = file
+                .text
+                .match_indices(old)
+                .map(|(start, _)| start)
+                .collect();
+            if matches.is_empty() {
+                return Err(hashline::ToolError::new(
+                    "EDIT_LEGACY_MATCH_FAILED",
+                    format!(
+                        "old_string not found in {path}; re-read the file to verify the content"
+                    ),
+                ));
+            }
+            if matches.len() > 1 {
+                return Err(hashline::ToolError::new(
+                    "EDIT_LEGACY_MATCH_FAILED",
+                    format!(
+                        "old_string must match exactly once; found {} matches in {path}",
+                        matches.len()
+                    ),
+                ));
+            }
+            let start = matches[0];
+            let first_line = file.text[..start].bytes().filter(|b| *b == b'\n').count() + 1;
+            let old_lines = old.split('\n').count().max(1);
+            let mut ops = format!("PUT {first_line}.={}:\n", first_line + old_lines - 1);
+            for line in new.split('\n') {
+                ops.push('+');
+                ops.push_str(line);
+                ops.push('\n');
+            }
+            (tag, ops)
+        }
+        (None, _, _, _) => {
+            return Err(hashline::ToolError::new(
+                "EDIT_TAG_REQUIRED",
+                "tag required; pass the 4-hex tag from the latest Read, Grep, Write, or Edit",
+            ));
+        }
+        (_, None, _, _) => {
+            return Err(hashline::ToolError::new("INVALID_ARGUMENT", "ops required"));
+        }
+    };
     let display = display_tool_path(root_kind, root, &resolved);
     let canonical = hashline::canonical_key(&resolved);
     let (file, success) = hashline::apply_edit(
         &display,
         &canonical,
-        tag,
-        ops,
+        &tag,
+        &ops,
         &live,
         hashline.map(|c| c.session_id),
         hashline.map(|c| c.store),
@@ -4478,6 +4523,55 @@ mod tests {
 
         let written = std::fs::read_to_string(&target).unwrap();
         assert_eq!(written, "line one\r\nline TWO replaced\r\nline three\r\n");
+    }
+
+    #[tokio::test]
+    async fn edit_accepts_legacy_old_string_new_string_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("legacy.txt");
+        std::fs::write(&target, "fn main() {\n    println!(\"hello\");\n}\n").unwrap();
+
+        // Model sends old_string and new_string without tag or ops
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Edit",
+            &serde_json::json!({
+                "path": "legacy.txt",
+                "old_string": "    println!(\"hello\");",
+                "new_string": "    println!(\"world\");"
+            }),
+            5_000,
+        )
+        .await;
+        assert!(
+            result.ok,
+            "Edit with legacy shape should succeed: {:?}",
+            result.content
+        );
+        assert_eq!(result.content["tag"].as_str().unwrap().len(), 4);
+
+        let written = std::fs::read_to_string(&target).unwrap();
+        assert_eq!(written, "fn main() {\n    println!(\"world\");\n}\n");
+
+        // Fails cleanly when old_string is not found
+        let not_found = execute_tool(
+            Some(dir.path()),
+            None,
+            "Edit",
+            &serde_json::json!({
+                "path": "legacy.txt",
+                "old_string": "non_existent_text",
+                "new_string": "replacement"
+            }),
+            5_000,
+        )
+        .await;
+        assert!(!not_found.ok);
+        assert_eq!(
+            not_found.error_code.as_deref(),
+            Some("EDIT_LEGACY_MATCH_FAILED")
+        );
     }
 
     #[tokio::test]
