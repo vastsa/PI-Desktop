@@ -7,7 +7,7 @@
 
 import type { AgentMessage, JsonValue } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
-import type { MessageUsage } from "@pi-desktop/shared";
+import type { MessageUsage, UsageProvenance } from "@pi-desktop/shared";
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -47,26 +47,29 @@ export function toJsonObject(value: unknown): Record<string, JsonValue> {
     : {};
 }
 
+/** Pi requires numeric costs, including when replaying history with no price. */
+export type AccountedPiUsage = Usage & { desktopUsage?: MessageUsage };
+
 export function usageFromPi(
   usage: Usage | undefined | null,
+  provenance: UsageProvenance = {},
 ): MessageUsage | undefined {
   if (!usage) return undefined;
-  const inputTokens = Math.max(0, Math.round(usage.input || 0));
-  const outputTokens = Math.max(0, Math.round(usage.output || 0));
-  const cacheReadTokens = Math.max(0, Math.round(usage.cacheRead || 0));
-  const cacheWriteTokens = Math.max(0, Math.round(usage.cacheWrite || 0));
-  const reasoningTokens =
-    typeof usage.reasoning === "number"
-      ? Math.max(0, Math.round(usage.reasoning))
-      : undefined;
-  const totalTokens = Math.max(
-    0,
-    Math.round(
-      usage.totalTokens ||
-        inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
-    ),
-  );
-  if (totalTokens <= 0 && inputTokens <= 0 && outputTokens <= 0) return undefined;
+  const retained = (usage as AccountedPiUsage).desktopUsage;
+  if (retained) return { ...retained, ...provenance };
+  const tokens = (value: number | undefined) => Number.isFinite(value) ? Math.max(0, Math.round(value ?? 0)) : 0;
+  const inputTokens = tokens(usage.input);
+  const outputTokens = tokens(usage.output);
+  const cacheReadTokens = tokens(usage.cacheRead);
+  const cacheWriteTokens = tokens(usage.cacheWrite);
+  const reasoningTokens = typeof usage.reasoning === "number" ? tokens(usage.reasoning) : undefined;
+  const totalTokens = tokens(usage.totalTokens) || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+  const validCost = usage.cost && (["input", "output", "cacheRead", "cacheWrite", "total"] as const).every((key) => Number.isFinite(usage.cost[key]) && usage.cost[key] >= 0);
+  // Pi adapters normally calculate cost from model rates. Unmarked all-zero
+  // costs are also their missing-price placeholder, not evidence of free use.
+  const costStatus = provenance.costStatus ?? (validCost && usage.cost.total > 0 ? "estimated" : "unknown");
+  const cost = validCost && costStatus !== "unknown" ? { ...usage.cost } : undefined;
+  if (totalTokens <= 0 && inputTokens <= 0 && outputTokens <= 0 && !cost?.total) return undefined;
   return {
     inputTokens,
     outputTokens,
@@ -74,10 +77,15 @@ export function usageFromPi(
     ...(cacheWriteTokens > 0 ? { cacheWriteTokens } : {}),
     ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
     totalTokens,
+    usageOrigin: "pi",
+    ...provenance,
+    costStatus: cost ? costStatus : "unknown",
+    ...(cost ? { cost } : {}),
+    ...(provenance.operationId ? { aggregation: "operation" } : {}),
   };
 }
 
-export function usageToPi(usage: MessageUsage | undefined): Usage {
+export function usageToPi(usage: MessageUsage | undefined): AccountedPiUsage {
   const input = usage?.inputTokens ?? 0;
   const output = usage?.outputTokens ?? 0;
   const cacheRead = usage?.cacheReadTokens ?? 0;
@@ -87,12 +95,14 @@ export function usageToPi(usage: MessageUsage | undefined): Usage {
     output,
     cacheRead,
     cacheWrite,
-    ...(usage?.reasoningTokens !== undefined
-      ? { reasoning: usage.reasoningTokens }
-      : {}),
-    totalTokens:
-      usage?.totalTokens ?? input + output + cacheRead + cacheWrite,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    ...(usage?.reasoningTokens !== undefined ? { reasoning: usage.reasoningTokens } : {}),
+    totalTokens: usage?.totalTokens ?? input + output + cacheRead + cacheWrite,
+    cost: usage?.cost && usage.costStatus !== "unknown"
+      ? { ...usage.cost }
+      : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    // Explicitly tag the numeric placeholder so it can never become a known
+    // zero-dollar charge when reconstructed history crosses this boundary again.
+    ...(usage ? { desktopUsage: { ...usage } } : {}),
   };
 }
 

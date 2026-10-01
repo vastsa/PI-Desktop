@@ -1,4 +1,5 @@
-import { applyMessageUpdate, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
+import { createHash } from "node:crypto";
+import { usageForEvent, ownsUsageTurn, applyMessageUpdate, tagMessageToolLineage, toolCallLineage, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
 import type { FinishTurn } from "./plans";
 import type { RuntimeState } from "./context";
 import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
@@ -56,18 +57,27 @@ export function createEventPersistence({
 } {
   const inflightSnapshots = new Map<string, UiMessage>();
 function subagentTagged(message: UiMessage, envelope: AgentEventEnvelope): UiMessage {
-  if (!envelope.parentToolCallId) return message;
-  return {
-    ...message,
-    parentToolCallId: envelope.parentToolCallId,
-    ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
-  };
+  return tagMessageToolLineage(message, envelope);
 }
 
 
 function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined {
   const event = envelope.event;
   const turnId = activeTurns.get(envelope.sessionId);
+  const usage = usageForEvent(envelope);
+  if (usage) {
+    if (ownsUsageTurn(envelope, turnId)) addActiveTurnUsage(envelope.sessionId, usage);
+    const usageTurnId = envelope.turnId ?? turnId;
+    if (usageTurnId && (usage.operationId || usage.operations?.length)) {
+      void persistenceOutbox.enqueue({
+        key: `usage:${envelope.sessionId}:${usageTurnId}:${createHash("sha256").update(JSON.stringify(usage)).digest("hex")}`,
+        sessionId: envelope.sessionId, turnId: usageTurnId, usage,
+      }, () => runtimeState.host).catch((error: unknown) => {
+        logger.app("persistence", "warn", "usage enqueue failed", { sessionId: envelope.sessionId, data: String(error) });
+      });
+    }
+  }
+
   const executionId = (() => {
     const candidate = approvedExecutionIdsBySession.get(envelope.sessionId);
     if (!candidate) return undefined;
@@ -119,10 +129,7 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
       args: event.args,
       createdAt: new Date(envelope.ts).toISOString(),
       turnId: envelope.turnId ?? turnId,
-      ...(envelope.parentToolCallId
-        ? { parentToolCallId: envelope.parentToolCallId }
-        : {}),
-      ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
+      ...toolCallLineage(envelope),
     });
     if (
       (event.toolName === "SubmitPlan" || event.toolName === "SubmitGoal") &&
@@ -232,9 +239,6 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     })();
     return;
   }
-  if (event.type === "turn_end" && !envelope.parentToolCallId) {
-    addActiveTurnUsage(envelope.sessionId, event.subagentUsage);
-  }
   if (event.type === "message_end" && event.message.role === "user" && !envelope.parentToolCallId) {
     // Reserve the current reply before persisting input accepted during its stream.
     const preceding = event.precedingAssistant?.role === "assistant"
@@ -253,9 +257,6 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     }
   }
   if (event.type === "message_end" && event.message.role === "assistant") {
-    if (!envelope.parentToolCallId && event.message.usage) {
-      addActiveTurnUsage(envelope.sessionId, event.message.usage);
-    }
     // Checkpoint the finished snapshot before the outbox append (D327).
     // Settling first dropped the last interval of text, and endTurn used to
     // delete the host file while the final row was still queued.
@@ -343,10 +344,7 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
         : undefined,
       isError: event.isError,
       status: "complete",
-      ...(started?.parentToolCallId
-        ? { parentToolCallId: started.parentToolCallId }
-        : {}),
-      ...(started?.agentName ? { agentName: started.agentName } : {}),
+      ...toolCallLineage(started ?? {}, envelope),
     };
     void persistenceOutbox
       .enqueue(

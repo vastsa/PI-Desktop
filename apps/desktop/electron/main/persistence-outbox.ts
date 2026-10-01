@@ -5,7 +5,8 @@ import type { HostProcess } from "./host-process";
 type MessageAppend = {
   key: string;
   sessionId: string;
-  message: unknown;
+  message?: unknown;
+  usage?: unknown;
   turnId?: string;
 };
 
@@ -89,9 +90,9 @@ export class PersistenceOutbox {
       const currentHost = getHost();
       if (!currentHost || !currentHost.isAvailable()) return;
       try {
-        await currentHost.call("session.appendMessage", {
+        await currentHost.call(current.usage ? "session.recordUsage" : "session.appendMessage", {
           sessionId: current.sessionId,
-          message: current.message,
+          ...(current.usage ? { usage: current.usage } : { message: current.message }),
           turnId: current.turnId,
         });
       } catch (error) {
@@ -146,7 +147,7 @@ export class PersistenceOutbox {
             entry &&
             typeof entry.key === "string" &&
             typeof entry.sessionId === "string" &&
-            "message" in entry
+            ("message" in entry || ("usage" in entry && typeof entry.turnId === "string"))
           );
         });
       }

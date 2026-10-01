@@ -26,6 +26,7 @@ import {
  */
 export const HIGH_RISK_PERMISSIONS = [
   "net.fetch",
+  "net.anyHost",
   "net.websocket",
   "fs.write",
   "fs.delete",

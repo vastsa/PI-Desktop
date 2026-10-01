@@ -34,6 +34,7 @@ const { persistUpdatePreference } = settingsPreference;
  test("installed builds keep automatic by default while portable and ZIP builds default to manual", () => {
   assert.equal(resolveDefaultUpdatePreference("win32", true, {}, "installed"), "automatic");
   assert.equal(resolveDefaultUpdatePreference("win32", true, {}, "zip"), "manual");
+  assert.equal(resolveDefaultUpdatePreference("win32", true, {}, "portable"), "manual");
   assert.equal(
     resolveDefaultUpdatePreference("win32", true, { PORTABLE_EXECUTABLE_FILE: "PI-Desktop.exe" }),
     "manual",
@@ -54,7 +55,9 @@ test("unset preferences use package defaults and unsupported automatic preferenc
 test("manual preference disables in-app delivery and explicit automatic restores supported delivery", () => {
   assert.equal(resolveUpdateMode("win32", true, {}, "installed", "manual"), "manual");
   assert.equal(resolveUpdateMode("win32", true, {}, "zip"), "manual");
+  assert.equal(resolveUpdateMode("win32", true, {}, "portable"), "manual");
   assert.equal(resolveUpdateMode("win32", true, {}, "zip", "automatic"), "in-app");
+  assert.equal(resolveUpdateMode("win32", true, {}, "portable", "automatic"), "in-app");
   assert.equal(resolveUpdateMode("darwin", true, {}, undefined, "automatic"), "in-app");
   assert.equal(resolveUpdateMode("linux", true, {}, undefined, "automatic"), "manual");
   assert.equal(resolveUpdateMode("win32", false, {}, undefined, "automatic"), "disabled");

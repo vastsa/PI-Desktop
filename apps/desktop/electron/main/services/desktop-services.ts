@@ -50,7 +50,7 @@ export function createDesktopServices({
     const body = String(input.body ?? "").trim().slice(0, 240);
 
     return new Promise((resolve) => {
-      const notification = new SystemNotification({ title, body });
+      const notification = new SystemNotification({ title, body, silent: true });
       pluginNativeNotifications.add(notification);
       let settled = false;
       let timer: NodeJS.Timeout | undefined;

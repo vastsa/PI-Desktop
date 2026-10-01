@@ -1,12 +1,12 @@
-import { readdir, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, readdir, realpath, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import type {
   FsChatRefMatch,
   FsChatRefMatchKind,
   FsChatRefProjectRoot,
   FsChatRefRoot,
 } from "@pi-desktop/shared";
-import { isAttachmentBlobRef, isIgnoredName } from "@pi-desktop/host-runtime";
+import { isAttachmentBlobRef, isIgnoredName, resolveRealPathWithinRoot } from "@pi-desktop/host-runtime";
 import { getWorkspaceFileIndex } from "./fs-index.js";
 
 /**
@@ -19,8 +19,7 @@ import { getWorkspaceFileIndex } from "./fs-index.js";
  *
  * Resolution order is the product contract:
  *
- *   1. an absolute reference that already names a real file inside a known
- *      root wins outright — that is path equality, not a guess;
+ *   1. an absolute reference only names that exact file inside a known root;
  *   2. an `attachments/<sha256>` blob names a stored file by hash rather than
  *      by path, so it resolves against the attachment store directly;
  *   3. otherwise the roots are searched in priority order — the open project
@@ -48,6 +47,8 @@ type ChatRefRootEntry = {
   path: string;
   projectRoot?: FsChatRefProjectRoot;
 };
+
+type CanonicalChatRefRoot = ChatRefRootEntry & { realPath: string | null };
 
 const MAX_REF_LENGTH = 512;
 const ATTACHMENT_HASH_PATTERN = /^[0-9a-f]{64}$/i;
@@ -163,6 +164,54 @@ function relativeInside(rootPath: string, absolute: string): string | null {
   return toPosix(rel);
 }
 
+async function canonicalRoots(roots: ChatRefRootEntry[]): Promise<CanonicalChatRefRoot[]> {
+  return Promise.all(roots.map(async (root) => {
+    try {
+      return { ...root, realPath: await realpath(root.path) };
+    } catch {
+      return { ...root, realPath: null };
+    }
+  }));
+}
+
+function couldShareVolume(target: string, roots: CanonicalChatRefRoot[]): boolean {
+  if (process.platform !== "win32") return true;
+  const volume = parse(target).root.toLowerCase();
+  return roots.some((root) => [root.path, root.realPath].some(
+    (path) => path && parse(path).root.toLowerCase() === volume,
+  ));
+}
+
+async function canonicalPathOrMissingTail(path: string): Promise<string | null> {
+  let ancestor = path;
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      return resolve(await realpath(ancestor), ...tail);
+    } catch {
+      const parent = dirname(ancestor);
+      if (parent === ancestor) return null;
+      tail.unshift(basename(ancestor));
+      ancestor = parent;
+    }
+  }
+}
+
+export async function isChatRefOutsideRoots(ref: string, roots: ChatRefRoots): Promise<boolean> {
+  const parsed = parseChatRef(ref);
+  if (!parsed?.absolute) return false;
+  const cleaned = cleanRef(ref);
+  if (!isAbsolute(cleaned)) return true;
+  const absolutePath = resolve(cleaned);
+  const rootList = await canonicalRoots(orderedRoots(roots));
+  if (!couldShareVolume(absolutePath, rootList)) return true;
+  const targetPath = await canonicalPathOrMissingTail(absolutePath);
+  if (!targetPath) return !rootList.some((root) => relativeInside(root.path, absolutePath) !== null);
+  return !rootList.some((root) =>
+    root.realPath && relativeInside(root.realPath, targetPath) !== null,
+  );
+}
+
 function segmentsOf(path: string): string[] {
   return toPosix(path).split("/").filter(Boolean);
 }
@@ -189,30 +238,51 @@ type FuzzyCandidate = { relativePath: string; matchedBy: FsChatRefMatchKind };
  * Longest tail first, so a two-segment shorthand beats a bare leaf name.
  * Within one tail the shallowest file wins.
  */
-function bestFuzzyCandidate(
+function fuzzyCandidates(
   files: readonly string[],
   tails: readonly string[][],
-): FuzzyCandidate | null {
+): FuzzyCandidate[] {
   const parsedFiles = files.map((file) => ({
     file,
     segments: segmentsOf(file),
   }));
+  const candidates: FuzzyCandidate[] = [];
+  const seen = new Set<string>();
   for (const tail of tails) {
-    let best: string | null = null;
-    for (const entry of parsedFiles) {
-      if (!endsWithTail(entry.segments, tail)) continue;
-      if (best === null || compareCandidates(entry.file, best) < 0) {
-        best = entry.file;
-      }
-    }
-    if (best !== null) {
-      return {
-        relativePath: best,
+    const matches = parsedFiles
+      .filter((entry) => endsWithTail(entry.segments, tail))
+      .map((entry) => entry.file)
+      .sort(compareCandidates);
+    for (const file of matches) {
+      if (seen.has(file)) continue;
+      seen.add(file);
+      candidates.push({
+        relativePath: file,
         matchedBy: tail.length === 1 ? "basename" : "path-suffix",
-      };
+      });
     }
   }
-  return null;
+  return candidates;
+}
+
+async function isContainedRegularFile(root: string, relativePath: string): Promise<boolean> {
+  const realPath = await resolveRealPathWithinRoot(root, relativePath);
+  return realPath !== null && isRegularFile(realPath);
+}
+
+async function hasInvalidLinkAncestor(root: string, segments: readonly string[]): Promise<boolean> {
+  for (let length = 1; length <= segments.length; length += 1) {
+    const prefixSegments = segments.slice(0, length);
+    try {
+      if ((await lstat(join(root, ...prefixSegments))).isSymbolicLink()
+        && !(await resolveRealPathWithinRoot(root, prefixSegments.join("/")))) return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Only ordinary missing paths can fall back to an indexed suffix match.
+      if (code !== "ENOENT" && code !== "ENOTDIR") return true;
+    }
+  }
+  return false;
 }
 
 /** Bounded walk for trees with no git index (session scratch, attachments). */
@@ -278,25 +348,32 @@ export async function resolveChatFileRef(
   const cleanedPosixRef = toPosix(cleanRef(ref));
   const isAttachmentRef = /^attachments(?:\/|$)/i.test(cleanedPosixRef);
 
-  // 1. An absolute reference that already names a real path inside a known root
-  //    is unambiguous evidence, so it outranks every shorthand rule below. A
-  //    POSIX-style path on Windows finds nothing here, which is correct: step 2
-  //    then treats its tail as the shorthand it is.
+  // Absolute references must not select an unrelated in-root file by suffix.
   if (parsed.absolute) {
-    const absolutePath = resolve(cleanRef(ref));
-    for (const root of rootList) {
-      const relativePath = relativeInside(root.path, absolutePath);
-      if (!relativePath) continue;
-      if (await isRegularFile(absolutePath)) {
-        return {
-          root: root.kind,
-          relativePath,
-          absolutePath,
-          matchedBy: "exact-absolute",
-          ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
-        };
-      }
+    const cleaned = cleanRef(ref);
+    if (!isAbsolute(cleaned)) return null;
+    const absolutePath = resolve(cleaned);
+    const canonicalRootList = await canonicalRoots(rootList);
+    if (!couldShareVolume(absolutePath, canonicalRootList)) return null;
+    let targetPath: string;
+    try {
+      targetPath = await realpath(absolutePath);
+    } catch {
+      return null;
     }
+    if (!(await isRegularFile(targetPath))) return null;
+    for (const root of canonicalRootList) {
+      const relativePath = root.realPath ? relativeInside(root.realPath, targetPath) : null;
+      if (!relativePath) continue;
+      return {
+        root: root.kind,
+        relativePath,
+        absolutePath,
+        matchedBy: "exact-absolute",
+        ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
+      };
+    }
+    return null;
   }
 
   // 2. A content-addressed attachment blob (`attachments/<sha256>`) is not a
@@ -314,7 +391,7 @@ export async function resolveChatFileRef(
     if (!absolutePath.startsWith(resolvedRoot + sep) && absolutePath !== resolvedRoot) {
       return null;
     }
-    if (!(await isRegularFile(absolutePath))) return null;
+    if (!(await isContainedRegularFile(resolvedRoot, blobHash.toLowerCase()))) return null;
     return {
       root: "attachments",
       relativePath: blobHash.toLowerCase(),
@@ -333,30 +410,32 @@ export async function resolveChatFileRef(
     tails.push(parsed.segments.slice(parsed.segments.length - length));
   }
   for (const root of rootList) {
-    if (!parsed.absolute) {
-      const absolutePath = join(root.path, ...parsed.segments);
-      if (await isRegularFile(absolutePath)) {
-        return {
-          root: root.kind,
-          relativePath: parsed.segments.join("/"),
-          absolutePath,
-          matchedBy: "exact-relative",
-          ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
-        };
-      }
+    const absolutePath = join(root.path, ...parsed.segments);
+    if (await isRegularFile(absolutePath)) {
+      if (!(await isContainedRegularFile(root.path, parsed.segments.join("/")))) return null;
+      return {
+        root: root.kind,
+        relativePath: parsed.segments.join("/"),
+        absolutePath,
+        matchedBy: "exact-relative",
+        ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
+      };
     }
-    const candidate = bestFuzzyCandidate(
+    if (await hasInvalidLinkAncestor(root.path, parsed.segments)) return null;
+    const candidates = fuzzyCandidates(
       await listRootFiles(root.kind, root.path),
       tails,
     );
-    if (!candidate) continue;
-    return {
-      root: root.kind,
-      relativePath: candidate.relativePath,
-      absolutePath: join(root.path, ...segmentsOf(candidate.relativePath)),
-      matchedBy: candidate.matchedBy,
-      ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
-    };
+    for (const candidate of candidates) {
+      if (!(await isContainedRegularFile(root.path, candidate.relativePath))) continue;
+      return {
+        root: root.kind,
+        relativePath: candidate.relativePath,
+        absolutePath: join(root.path, ...segmentsOf(candidate.relativePath)),
+        matchedBy: candidate.matchedBy,
+        ...(root.projectRoot ? { projectRoot: root.projectRoot } : {}),
+      };
+    }
   }
 
   return null;

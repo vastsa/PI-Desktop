@@ -54,6 +54,7 @@ import {
   reduceSummaryInput,
   type CompactionSummaryInput,
 } from "./compaction-summary-input.js";
+import type { UsageObserver } from "./request-usage.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
 import {
   DEFAULT_MAX_TOKENS,
@@ -127,11 +128,13 @@ export function delegateSummaryModels(
   provider: RuntimeProviderConfig,
   model: Model<Api>,
   sessionId: string,
+  onUsage?: UsageObserver,
 ): Models {
   return withCompactionRequestHeaders(
     createProviderModels(provider, model),
     provider,
     sessionId,
+    onUsage,
   );
 }
 

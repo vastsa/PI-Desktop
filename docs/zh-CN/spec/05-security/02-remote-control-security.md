@@ -128,9 +128,8 @@ MCP 服务器和不需要会话工作区的插件工具；中继工具在桌面�
 执行，绝不在 Host 运行、绝不针对远程工作区，Host 的权限决定先于中继请求，Host 只传
 Agent 的参数不传 secret，中继连接丢失则工具失败而回合继续。会话终端是以 `pi-host`
 用户身份在 Host 机器上运行的 shell，工作目录为会话根，只有 SSH 配对的 owner 设备或
-持有显式 `terminal` scope 的主体可以打开。provider secret 在任何方向都不经过 RACP。审批寿命是 Host 策略：本地默认仍是 120 秒后拒绝，有远程订阅者接入时默认
-30 分钟（D375），Host 可在上限内调整，被阻塞的工具在本地或远程任一决定先到之前
-一直等待，断线不会延长它。
+持有显式 `terminal` scope 的主体可以打开。provider secret 在任何方向都不经过 RACP。审批寿命是 Host 策略：本地桌面权限确认没有自动截止时间；有远程订阅者接入时，远程审批记录默认
+30 分钟（D375），Host 可在上限内调整，断线不会延长它。
 
 审计记录包含 principal、tenant、Host、clientConnectionId、Session、Turn、
 operation、准入模式与 `effectivePermissionMode`、授权决定、epoch 与序号范围，

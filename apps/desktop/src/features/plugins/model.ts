@@ -37,6 +37,8 @@ export type RiskTier = "high" | "medium" | "low";
 /** Mirrors the risk column of docs/spec/07-plugins/13-plugin-permissions-matrix.md. */
 export const PERMISSION_RISK: Record<string, RiskTier> = {
   "net.fetch": "high",
+  // Reaches any host the user types in; same tier as the outbound paths.
+  "net.anyHost": "high",
   "fs.write": "high",
   "fs.delete": "high",
   "fs.write.workspace": "high",
@@ -45,6 +47,8 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "agent.tool.register": "high",
   "agent.complete": "high",
   "agent.extension": "high",
+  // Its code runs in the app's own document, so the grant is the boundary.
+  "renderer.extension": "high",
   "desktop.control": "high",
   "session.read": "high",
   "browser.cdp": "high",
@@ -80,6 +84,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
 export const CAPABILITY_ORDER: PluginCapability[] = [
   "panel",
   "views",
+  "rendererUi",
   "commands",
   "tools",
   "agentExtension",

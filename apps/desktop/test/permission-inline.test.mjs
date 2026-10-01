@@ -13,7 +13,6 @@ import {
   clearSessionPermissions,
   enqueuePermission,
   headPermission,
-  permissionSecondsLeft,
   queuedPermissionCount,
   removePermission,
   removePermissionForToolCall,
@@ -58,7 +57,6 @@ function permission(sessionId, requestId, extra = {}) {
     argsPreview: { path: `${sessionId}.txt` },
     risk: "high",
     reason: "Modify a workspace file",
-    receivedAt: 1_000,
     ...extra,
   };
 }
@@ -106,15 +104,15 @@ test("a finished tool call clears its request from anywhere in the queue", () =>
   const second = permission("session-a", "request-second");
   const queues = enqueuePermission(enqueuePermission({}, first), second);
 
-  // The host answers an expired request itself, so a queued card that was
-  // never shown still has to leave the queue on `tool_end`.
-  const afterExpiry = removePermissionForToolCall(
+  // A cancelled request that was never shown still has to leave the queue on
+  // `tool_end`.
+  const afterCancellation = removePermissionForToolCall(
     queues,
     "session-a",
     "tool-request-second",
   );
-  assert.equal(headPermission(afterExpiry, "session-a"), first);
-  assert.equal(queuedPermissionCount(afterExpiry, "session-a"), 0);
+  assert.equal(headPermission(afterCancellation, "session-a"), first);
+  assert.equal(queuedPermissionCount(afterCancellation, "session-a"), 0);
   assert.equal(
     removePermissionForToolCall(queues, "session-a", "tool-unknown"),
     queues,
@@ -193,11 +191,9 @@ test("asktool card is a stepwise, non-expiring composer question surface", () =>
   );
 });
 
-test("permission countdown uses its absolute receipt time", () => {
-  assert.equal(permissionSecondsLeft(1_000, 1_000), 120);
-  assert.equal(permissionSecondsLeft(1_000, 61_001), 60);
-  assert.equal(permissionSecondsLeft(1_000, 121_000), 0);
-  assert.equal(permissionSecondsLeft(1_000, 180_000), 0);
+test("permission approval stays pending until an explicit decision", () => {
+  assert.doesNotMatch(cardSource, /setInterval|permissionSecondsLeft|role="timer"/);
+  assert.doesNotMatch(eventsSource, /receivedAt/);
 });
 
 test("permission approval is an inline transcript card, never a global dialog", () => {
@@ -225,7 +221,7 @@ test("permission approval is an inline transcript card, never a global dialog", 
   assert.match(cardSource, /requestAnimationFrame/);
   assert.match(cardSource, /showToast/);
   assert.doesNotMatch(cardSource, /<section[^>]*aria-live=/);
-  assert.match(cardSource, /permissionSecondsLeft\(permission\.receivedAt\)/);
+  assert.doesNotMatch(cardSource, /permissionSecondsLeft|permission\.receivedAt/);
   assert.match(browserSource, /blocking overlay/);
   assert.doesNotMatch(browserSource, /permission dialog/);
 });

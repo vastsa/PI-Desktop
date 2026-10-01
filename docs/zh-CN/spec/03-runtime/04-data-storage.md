@@ -591,6 +591,28 @@ CREATE UNIQUE INDEX idx_turn_queue_idempotency
 - 重启后模块列出全部条目，把每个会话的队列挂起到 controller 接入，并在活动回合终止事件
   之后释放一条。删除会话会级联删除其条目。
 
+**会话 Todo 清单——存储架构 v21**
+
+```sql
+CREATE TABLE session_todo (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0 AND position < 50),
+  content TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, position)
+);
+```
+
+`sessions.todo_revision` 和 `sessions.todo_updated_at` 即使清单为空也保留顺序元数据。
+主机事务会更新这些字段、删除旧行并插入归一化后的替换清单；每次成功写入都会推进
+revision，包括清空。唯一的部分 `in_progress` 索引在数据库边界保证只有一个活动项。
+分叉会话从 revision 0 和空清单开始；删除会话会级联删除清单行。
+
+行内容在存储前会裁剪空白，限制为 500 个 Unicode 标量值且不得包含 NUL。
+TodoWrite 是唯一写入方；渲染器和 sidecar 只能通过 host RPC 访问该状态。
+
 ### 4.6c 会话协作 ledger —— 宿主拥有的投递状态（架构 v16）
 
 ```sql
@@ -1342,3 +1364,15 @@ schedule 就推断为日历配置；旧版 Hourly 行保留字段，但转换时
 已知意图在周期切换和数据库重开后仍然保留。该新增 JSON 字段不需要表或 schema
 版本迁移；旧版本会忽略它，也无法执行新的转换保护。
 
+
+## Physical operation usage ledger
+
+Optional operation ID, origin, physical account/model and cost status augment
+existing message/turn usage. `session.recordUsage` merges identities into the
+existing turn `usage_json`; no schema migration or historical rewrite is needed.
+Identified records are idempotent across event replay, outbox retries, tool results
+and parent/subagent rollups. Legacy token-only rows remain readable and additive.
+An unknown price is distinct from a known zero price; partial known costs remain
+on the individual operations. Late usage targets its captured turn and does not
+revive it or debit the currently active turn. Immediate nested parent and owning
+Task remain separate optional transcript/event fields.

@@ -91,9 +91,15 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 `X-Initiator`、`Openai-Intent` 与图像请求标头。本地行 id 仍然拥有认证绑定与
 对话记录身份；用户设置的提供商 headers 仍是最后的覆盖层。
 
-智谱 / GLM 与 Z.AI 是命名的 OpenAI 兼容端点预设，收录在一份由 models.dev
+Copilot 的 Anthropic Messages（Claude）请求将每次请求解析的 OAuth 令牌作为
+`Authorization: Bearer` 标头认证发送，不携带 `X-Api-Key`，因为 pi-ai 仅在
+`model.provider` 为 `github-copilot` 时选择 Copilot Bearer 认证。
+OpenAI 风格的 Copilot 线路 API 仍将令牌作为请求密钥签名；所有线路均保留
+逐请求认证解析与账户专属的 `baseUrl`。
+
+智谱 / GLM 与 Z.AI 是命名的 OpenAI 兼容端点预设，收录在一份由 Pi catalog
 支撑的、简短的第一方厂商服务列表中（含小米）。添加提供商时的「服务」选择器
-会持久化匹配的 models.dev `vendorKey`，并使用已发布的端点，在命名服务这条
+会持久化匹配的 Pi catalog `vendorKey`，并使用已发布的端点，在命名服务这条
 路径上不显示名称、Base URL 或 API 格式。对话回合仍然使用选定的 pi-ai 适配器
 （`chat_completions`、`responses`、`anthropic_messages`、
 `google_generative_ai` 或 `opencode_go`）。智谱 / Z.AI 的 Completions 请求
@@ -107,15 +113,15 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 见 ADR 0256 / #296）。官方 `deepseek.com` 行仍使用空串回填（#223）。该覆盖不改
 `thinkingFormat`。
 
-当 models.dev 记录发布了推理 `effort` 选项且没有 `budget_tokens` 选项时
+当 Pi catalog 记录发布了推理 `effort` 选项且没有 `budget_tokens` 选项时
 （例如 Opus 4.7+、Opus 5.x、Fable），Anthropic Messages 请求会设置
 `forceAdaptiveThinking: true`。这些模型会以 HTTP 400 拒绝
-`thinking.type=enabled`，而 models.dev 不携带 pi-ai 的 compat 记录，缺少该标志时
+`thinking.type=enabled`，而 Pi catalog 不携带 pi-ai 的 compat 记录，缺少该标志时
 pi-ai 会回落到 budget 思考。仍发布 `budget_tokens` 的模型保持 budget 思考，显式的
 目录 `compat` 记录会被保留。
 
 目录无法识别的 Anthropic Messages 行（例如某个自定义网关 URL 提供多家发布方都列出的
-模型 ID）仍回退到通用模型形状，但当 Anthropic 自己的 models.dev 记录中存在完全相同的
+模型 ID）仍回退到通用模型形状，但当 Anthropic 自己的 Pi catalog 记录中存在完全相同的
 模型 ID 时，会采用该记录的 `reasoning_options` 及派生的 `thinkingLevelMap`。Claude
 模型接受哪种思考形状是模型本身的属性，而非部署的属性，因此只迁移这两个字段；上下文与
 模态限制保持通用值，别名、改名后的 ID、其他 wire API，以及通过 Anthropic 协议提供的
@@ -166,80 +172,38 @@ pi-ai 会回落到 budget 思考。仍发布 `budget_tokens` 的模型保持 bud
 ### 6.1 无硬性模型许可名单上限
 PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
 
-### 6.2 目录职责
-1. **models.dev**（`https://models.dev/api.json`）是唯一的模型元数据来源。
-   Electron main 在开发时读取签入仓库的发布资源
-   `apps/desktop/resources/models.dev/api.json`，在发布构建中读取打包后的
-   `resources/models.dev/api.json` 路径。它绝不会把提供商凭据发给目录。
-2. 签入的快照由 `scripts/release.mjs` 在创建发布标签之前刷新。运行时，
-   设置 → 模型配置可以显式地重新抓取 `https://models.dev/api.json`；成功的
-   响应只替换当前进程的内存内目录。抓取失败则保留上一份有效的内存内目录，
-   并且绝不写入用户数据。
-3. **运行时/提供商发现**与 Rust 拥有的缓存，为自定义、本地或需要认证的账户
-   专属端点提供模型 id。提供商匹配接受已配置的厂商键、归一化的 API URL、
-   models.dev 的提供商身份，以及带厂商前缀的 id（例如
-   `deepseek/deepseek-v4`）；不带目录前缀的提供商模型 id，只有在提供商身份
-   明确无歧义时，才会匹配到那个去掉前缀的精确后缀。原生适配器键可以使用目录
-   别名——例如 pi-ai 的 `openai-codex` ChatGPT 订阅适配器通过 `openai` 记录
-   解析模型元数据——而适配器本身保留自己的传输身份。它们不能凭空发明或替换
-   模型元数据。已配置的自由格式 id 在 models.dev 中不存在时，仍可选中，
-   并使用通用的纯文本、非推理基线。对于目录尚不认识的端点，设置里依然允许
-   显式覆盖思考级别。
-4. models.dev 记录把 `id`、`name`、`description`、`family`、`attachment`、
-   `reasoning`、`reasoning_options`、`tool_call`、`structured_output`、
-   `temperature`、`knowledge`、`release_date`、`last_updated`、
-   `modalities.input/output`、`open_weights`、`limit.context/input/output`、
-   `cost`、`interleaved`、`status`、`experimental` 和 `provider` 映射到共享的
-   模型界面上。
-5. pi-ai 仅仅是请求/OAuth 的实现层。它自带的模型目录与模型能力函数，不会被
-   用来读取名称、上限、定价、模态、推理或其他模型配置。
-6. 输入与输出模态数组保留 `text`、`image`、`audio`、`video` 和 `pdf`。文本
-   agent 选择器暴露能处理文本的模型，同时在文件中保留全部原始记录以备将来的
-   界面使用。只有当模型接受图片输入时，图片才会作为临时图片内容块发送。PDF
-   能力会在模型元数据中呈现并保留；由于 pi-ai 0.87.1 没有原生的 PDF 内容块，
-   PDF 附件仍然是有界的文件引用，而不会被错误地编码成图片。
-7. 用户编辑过的 `ModelBinding` 值仍属于显式的提供商配置：它们控制选定的请求
-   上限、启用的思考级别、应用到新的主页草稿与新持久化会话的默认思考级别
-   （会被钳制到已启用集合上；只有在默认值未设置时才取已启用中最强的那个），
-   以及附件能力覆盖。`models.dev` 提供已发布的元数据，并为新添加的已知模型
-   播下初始的思考级别选择；它不是对用户为该端点显式启用的级别的运行时闸门。
-   出于兼容考虑，仍然带着旧的通用 `128,000` 上下文种子的 binding 会跟随新
-   发布的 `limit.context`；非默认的 Advanced 值仍保持显式。这样目录刷新之后，
-   sidecar 与上下文检查器仍处在同一个有效窗口上。
-8. 设置为每个 binding 渲染七个规范思考级别。对已知的推理模型，已发布的级别
-   一开始就是选中的。非推理或未知模型显示同样的选项但不选中，并附一行简短的
-   手动覆盖说明。`defaultThinkingLevel` 从 `omit` 加上该 binding 已启用的级别
-   中选取，因此存下来的默认值要么是 `omit`，要么属于那个显式集合。
-9. `supportsImages` 与 `supportsDocuments` 是三态覆盖。缺省或 `null` 表示跟随
-   已发布的 models.dev 模态，因此目录的更正仍然能作用到已保存的 binding；
-   `true` 或 `false` 是用户的显式回答，并在目录变动后继续有效。与思考级别
-   不同，这两个覆盖不会被收窄到已发布的能力，因为经过代理或自托管的端点
-   经常接受其目录条目未列出的输入。启用图片输入会打开临时图片内容块；启用
-   PDF 输入只记录该能力，不改变编码方式——pi-ai 0.87.1 没有 PDF 内容块，
-   PDF 仍是有界的文件引用。
-10. 设置里的复选框展示相对于已发布基线的有效答案。未修改或为 `null` 时跟随目录；
-    用户一旦更改复选框，所选布尔值就会显式固定，即使它与当前目录值相同。目录刷新
-    不会撤销用户主动做出的选择。
-10a. `nativeWebSearch` 是两态主动开启（缺省即关闭；models.dev 不发布托管工具能力，
-    因此没有目录默认值）。启用后，当模型解析到 `anthropic-messages`、
-    `openai-responses`、`azure-openai-responses` 或 `openai-codex-responses`
-    （存储的 apiStyle 为 `anthropic_messages`、`responses` 或
-    `openai_codex_responses`，或从 Chat Completions 解析到已确认的官方搜索路径）时，适配器附加提供商托管搜索工具
-    （`web_search_20250305` / `web_search`），将活动写入
-    `UiMessage.hostedSearch`，并在后续回合（含重启后）回放原始数据（ADR 0297）。
-    OpenAI OAuth 使用独立的 Codex Responses 适配器和 ChatGPT 订阅端点，不是公开的
-    `/v1/responses`；搜索工具写入 Codex 请求体顶层 `tools`。设置仍需用户逐模型
-    勾选；运行时还会按最终解析的 wire API 校验，旧配置不会把工具带给不支持的适配器。
-    不支持工具的网关会显示提供商错误，用户可取消勾选。搜索由提供商执行，没有
-    本地抓取或权限询问。压缩仍按既有前缀/尾部策略保留；摘要请求含被压缩前缀的
-    搜索回放，但生成的文本摘要不是原始搜索块的无损副本。
-11. `ModelInfo` 是设置界面用来对照的已发布记录，因此已存储的 binding 不得
-    塑造它的能力或推理字段。有效上限、推理与思考级别都通过那个确切的 binding
-    解析；有效的传输模态数组还会额外套用显式的附件覆盖。
-12. 用户已配置过的模型，即使实时发现不再列出它，也保留它已发布的记录，使其
-    能力仍然可见、可编辑。只有已经存在于该提供商 `models` 中的 id 才会被
-    重新加入，绝不会加入整个目录；而且只有发现实际返回的那些行才会被写入
-    模型缓存。
+### 6.2 Catalog responsibilities
+
+1. pi-ai 0.99.1 Providers/Models own published metadata, transport, thinking
+   support and native operation types. Electron's historically named
+   `ModelsDevCatalog` is an account-aware adapter over this public API.
+2. Startup is cache-only and disables ambient environment/file credentials.
+   Each configured account has its own Models collection and Host credential
+   store. Same-vendor rows cannot borrow one another's credentials.
+3. OAuth live entitlement IDs are published through the account provider's
+   refresh/filter boundary. A successful list governs available chat models;
+   discovery failure preserves the pinned catalog. Live-only IDs may inherit
+   same-tier adapter/thinking metadata, with unknown prices retained as unknown.
+4. Settings exposes published metadata separately from explicit binding
+   overrides. Effective chat limits, inputs, thinking and request shape are
+   projected once at the account boundary and reused for ordinary sessions,
+   delegates, compaction and image lookup. Pi's unsupported/null effort mappings
+   cannot be re-enabled by stale persisted settings. No saved data is rewritten.
+5. Chat, image and classifier models are selected by operation type even when
+   they share a model ID. A small display-only operation metadata supplement
+   preserves settings visibility for image/audio/video/embedding records that
+   Pi does not publish. It supplies no runtime auth, dispatch, price or entitlement.
+6. Free-form IDs remain configurable. Conservative generic metadata applies
+   when no published model matches; explicit user overrides remain supported.
+   Unknown relay metadata uses exact final-segment matching and an unambiguous
+   official publisher. Known endpoint aliases cannot borrow past an ambiguous
+   same-endpoint miss. No deployment/date/thinking suffix is removed.
+7. Settings catalog refresh calls Pi's public refresh API. Release scripts no
+   longer fetch or package the independent Pi catalog JSON catalog. Pi version
+   pins provide the reproducible catalog baseline.
+8. PDF capability remains metadata; attachments use bounded file references
+   until the runtime supports a native PDF content block. Image capability is
+   resolved against the effective selected binding before transport.
 
 ### 6.3 涵盖的模型系列
 目录和自定义模型条目必须支持通用功能类：
@@ -336,9 +300,9 @@ type ThinkingLevel =
 
 上面这些兼容性字段，是为老客户端保留的持久化模式兼容面。PI-Desktop 不再把
 它们当作运行时的模型覆盖来读取。`ModelInfo` 的推理支持与受支持的思考级别
-描述的是解析出的 models.dev 记录；有效的 provider/会话能力则来自那个确切的
-`ModelBinding`。未知的自由格式 id 以通用形态起步，不带任何推断出的推理能力，
-但显式的 binding 可以主动启用相应级别。
+描述的是解析出的 Pi catalog 记录；有效的 provider/会话能力则来自那个确切的
+`ModelBinding`。未知的自由格式 id 以通用形态起步，不带任何推断出的推理能力；
+空的绑定等级数组是通用种子，非空的显式 binding 才会主动启用或禁用相应级别。
 
 提供商对话框会为每个选中的模型持久化一条 `ModelBinding`。第一条 binding 是
 当前对话以及旧版运行时消费方的有效模型。对话级别的模型切换与跨数组路由仍属
@@ -399,21 +363,25 @@ sidecar 请求
 这类行的模型发现读取已登录账户自己的模型列表；连接测试仍通过解析认证来证明
 账户。请求失败，或返回的不是模型列表时，才回退到 pi-ai（`models.getAvailable`，
 含厂商自己的 `filterModels`）。各厂商打自己的接口：ChatGPT Plus/Pro
-（`openai-codex`）是 `GET {base}/codex/models`，因此 `gpt-6-luna` 这类账户
-已经提供、pin 里还没有的 id 也能出现；普通 `{ data: [...] }` 不当成 Codex
-列表。Copilot 是带 IDE 身份头和 `X-GitHub-Api-Version` 的 `GET {base}/models`，
+（`openai-codex`）是 `GET {base}/codex/models?client_version=…`，因此
+`gpt-6-luna` 这类账户已经提供、pin 里还没有的 id 也能出现；该接口要求
+`client_version`，并隐藏最低 Codex 客户端版本更高的模型，所以取值是固定的
+Codex CLI 版本（`CODEX_MODELS_CLIENT_VERSION`），账户模型缺失时调高；普通
+`{ data: [...] }` 不当成 Codex 列表。Copilot 是带 IDE 身份头和 `X-GitHub-Api-Version` 的 `GET {base}/models`，
 只保留 `model_picker_enabled === true` 且未被策略禁用的 id，pin 不认识的 id
 只有在其家族已经对应唯一线路 API 时才加入。Anthropic 用 OAuth 身份头请求
 `GET {base}/v1/models`。Kimi、Meta、xAI、OpenRouter 请求 `GET {base}/models`
 （Kimi 走 Anthropic 风格的 `/v1`）。Radius 继续用网关目录刷新，不再另打一遍。
-图像、视频、语音和嵌入模型会被丢掉。models.dev 不认识的 id 只从同档位的 pin
+账户请求失败时，日志记录 HTTP 状态码和一小段单行的响应内容摘要，其中去掉了
+请求自身的凭据和任何形似令牌的值，便于从提供商日志诊断上游契约变化。
+图像、视频、语音和嵌入模型会被丢掉。Pi catalog 不认识的 id 只从同档位的 pin
 兄弟继承限额，xAI 按 `grok-4.7`、`grok-4.6`、`grok-4.5`、`grok-4.3` 的固定新到旧顺序，
-不按 pin 顺序。models.dev 不能把账户列表里没有的 id 加进去。一个厂商可以
+不按 pin 顺序。Pi catalog 不能把账户列表里没有的 id 加进去。一个厂商可以
 跨越多种线路 API，因此行的 `apiStyle` 跟随所选模型。
 
 ### Anthropic token 端点限流
 
-固定版本 pi-ai 0.87.1 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
+固定版本 pi-ai 0.99.1 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
 有限策略：只重试明确的 HTTP 429，最多总共三次请求。先等待至少 1 秒、再
 等待至少 2 秒；若 `Retry-After` 给出更长的秒数或 HTTP 日期，则遵守该时间。
 服务器要求的等待超出剩余预算时结束本次尝试，不缩短等待后提前重试。
@@ -504,30 +472,24 @@ type ModelDescriptor = {
 - 提供商未经授权
 - 目录刷新失败（仍然允许手动模型 ID）
 
-## 11. 运行时解析算法
+## 11. Runtime resolution algorithm
 
-当使用 `(providerId, modelId)` 开始回合时：
+When starting a turn with `(providerId, modelId)`:
 
-1.从主机加载提供程序配置
-2. 如果 missing/disabled → 失败（`MODEL_NOT_CONFIGURED`；保留详细信息：`PROVIDER_DISABLED`）
-3. 解析凭据：密钥行通过 `secretRef` 读取机密（从不记录机密；丢失 →
-   `PROVIDER_SECRET_MISSING`）；`oauth` 行完全跳过这一步并以空密钥启动，
-   因为认证按请求解析（第 8a 节）
-4. 通过精确的 vendor/id 或兼容的解析完整的 pi-ai 模型记录
-   带有分隔符限制后缀的网关别名
-5.解决后，复制pi的名字，推理标志，思维层次图，输入
-   模式、定价、上下文窗口、输出限制、标题和兼容性
-   逐字记录；当未解决时，接受原始模型 ID 和通用模型
-   纯文本、非推理后备
-6. 将会话思维水平与 PI 支持的水平相结合并构建
-   通过仅替换 provider/model 标识来选择运行时提供程序适配器
-   API 适配器、身份验证和显式配置的端点 URL
-7. 使用中止句柄和单独的 answer/thinking 事件执行流
-8. 将供应商错误转换为共享 `AppError` 代码 (§15)
+1. Load the Host provider row; fail for a missing or disabled explicit account.
+2. Resolve credentials only for that account. OAuth refresh remains per request.
+3. Resolve the typed chat model from the account Pi collection, with conservative
+   generic fallback for explicitly configured unknown compatible IDs.
+4. Apply the central effective binding projection and clamp thinking with Pi's
+   public capability helper. Preserve native costs and unknown-price provenance.
+5. Build the transport with the actual vendor/model identity and the configured
+   endpoint. Anthropic roots normalize a trailing `/v1` because its adapter
+   appends `/v1/messages`. Delegates use the same account/binding resolution.
+6. Stream with cancellation and separate answer/thinking events. Attribute usage
+   to each physical request operation, including retries, and translate errors
+   to shared AppError codes. Replay aggregation deduplicates operation IDs.
 
-如果模型不在 pi 的目录中，当用户明确指定时仍然允许它
-输入模型 ID，提供商接受未知 ID。 Cached/discovered
-能力字段不会促进回退到已知的运行时模型。
+An unavailable saved account never silently falls back to the default account.
 
 ## 12. 兼容性层
 
@@ -540,18 +502,15 @@ type ModelDescriptor = {
 
 UI 可能会显示层级提示，但默认情况下不得硬阻止未知模型。
 
-## 13. 刷新和更新策略
+## 13. Refresh & update policy
 
-1. Electron main 在提供模型元数据之前先读取随包的发布资源：开发时是
-   `apps/desktop/resources/models.dev/api.json`，打包构建中是
-   `resources/models.dev/api.json`。
-2. `scripts/release.mjs` 抓取 `https://models.dev/api.json`，校验它，并在创建
-   发布标签之前原子地替换签入仓库的那份资源。
-3. 设置 → 模型配置可以随时强制一次远程刷新；成功的响应只更新当前进程的
-   内存内目录。
-4. 提供商端点发现只为随包/内存内 models.dev 快照中没有的模型提供 id；未知的
-   id 使用通用元数据。
-5. 刷新失败不得擦除随包文件、Rust 拥有的提供商缓存，或已配置的 binding。
+1. Use the pinned Pi catalog at startup without network or ambient credentials.
+2. Settings may explicitly refresh Pi provider catalogs in memory.
+3. Provider endpoint discovery preserves configured IDs and Host caches; OAuth
+   live discovery publishes account entitlements through the same Models owner.
+4. Failed refresh retains available metadata and configured bindings.
+5. Release catalog changes arrive through reviewed Pi pins and patches; the
+   release script does not fetch a second model catalog.
 
 ## 14. 本地/离线模型支持
 
@@ -621,7 +580,7 @@ OpenAI Responses 适配器必须把 `response.completed`（以及
 而不是继续等待服务端的 TCP FIN。上游 pi-ai 会一直迭代直到服务端关闭
 连接，在保持空闲连接不关的反向代理后面会导致整个回合挂起。在该修复
 随上游发布之前，`patches/` 通过 pnpm patch 修改
-`@earendil-works/pi-ai@0.87.1`，在终态事件处跳出事件循环（消费方停止
+`@earendil-works/pi-ai@0.99.1`，在终态事件处跳出事件循环（消费方停止
 迭代时 OpenAI SDK 会中止底层请求）。待 pi-ai 发布包含该修复的版本后
 移除补丁。
 

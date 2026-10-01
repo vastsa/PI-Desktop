@@ -470,6 +470,12 @@ pub fn copy_directory_tree(from: &Path, to: &Path, skip_skill_document: bool) ->
     fs::create_dir_all(to).map_err(|error| anyhow::anyhow!("create {}: {error}", to.display()))?;
     let entries = fs::read_dir(from).with_context(|| format!("read {}", from.display()))?;
     for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
         let path = entry.path();
         let Some(name) = path.file_name() else {
             continue;
@@ -478,9 +484,9 @@ pub fn copy_directory_tree(from: &Path, to: &Path, skip_skill_document: bool) ->
             continue;
         }
         let target = to.join(name);
-        if path.is_dir() {
+        if file_type.is_dir() {
             copy_directory_tree(&path, &target, false)?;
-        } else {
+        } else if file_type.is_file() {
             fs::copy(&path, &target)
                 .map_err(|error| anyhow::anyhow!("copy {}: {error}", path.display()))?;
         }

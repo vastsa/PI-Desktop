@@ -81,7 +81,7 @@ check("tool_result replacement reached the model", /42 \(replaced\)/.test(assist
 const requests = readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
 const first = requests[0];
 const sys = (first.payload.messages.find((m) => m.role === "system")?.content ?? "");
-check("before_agent_start marker in system prompt", sys.includes("E2E-MARKER-7f3"));
+check("before_agent_start chains two plugins in extension ID order", sys.includes("E2E-MARKER-7f3\n\nE2E-MARKER-greet"));
 check("before_provider_headers header sent", first.headers["x-e2e-ext"] === "yes", JSON.stringify(first.headers["x-e2e-ext"]));
 check("ToolSearch activation advertised fx_add to a later request", requests.some((r) => (r.payload.tools ?? []).some((t) => t.function?.name === "fx_add")));
 check("hooks log has session_start, tool_call fx_add, tool_result, turn_end", (() => { const h = readFileSync(join(root, "hooks.log"), "utf8"); return ["session_start startup", "before_agent_start", "tool_call fx_add", "fx_add 20+22", "tool_result fx_add false", "turn_end", "agent_end", "after_provider_response 200", "before_provider_request object", "context "].every((k) => h.includes(k)); })(), readFileSync(join(root, "hooks.log"), "utf8").split("\n").slice(0, 14).join(" | "));

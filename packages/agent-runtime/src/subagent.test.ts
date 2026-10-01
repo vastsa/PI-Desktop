@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentEventEnvelope, SubagentDefinition } from "@pi-desktop/shared";
 import type { Message } from "@earendil-works/pi-ai";
@@ -114,6 +117,15 @@ describe("composeSubagentSystemPrompt", () => {
 
     expect(prompt).toContain("You may change files");
     expect(prompt).not.toContain("no tools that change files");
+    expect(prompt).toContain("If the final report would exceed ~8,000 characters, write the full report to a file yourself");
+  });
+
+  it("does not instruct read-only delegates to write reports to a file", () => {
+    const prompt = composeSubagentSystemPrompt({
+      definition: definition({ tools: ["Read", "Glob"] }),
+    });
+
+    expect(prompt).not.toContain("write the full report to a file yourself");
   });
 
   it("lists resolved inherit tools and treats them as mutating when they write", () => {
@@ -365,6 +377,180 @@ describe("SubagentRun reporting", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("SUBAGENT_NO_REPORT");
+  });
+
+  it("reports truncated output as a failure rather than a clean completion", async () => {
+    const { run } = createRun();
+    run.handleEvent({
+      type: "message_end",
+      message: assistantMessage({
+        content: [{ type: "text", text: "Analysis report cut off mid-sentence..." }],
+        stopReason: "length",
+      }),
+    });
+    run.agent = {
+      prompt: vi.fn().mockResolvedValue(undefined),
+      waitForIdle: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn(),
+    };
+
+    const result = await (run as unknown as SubagentRun).run();
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("SUBAGENT_OUTPUT_TRUNCATED");
+    expect(result.outputTruncated).toBe(true);
+    expect(result.report).toContain("The explorer subagent failed");
+    expect(result.report).toContain(
+      "The subagent response exceeded the model's output token limit and was truncated",
+    );
+    expect(result.report).toContain("Analysis report cut off mid-sentence...");
+  });
+
+  it("includes resume hint and size stats in truncated output when delegationId is provided", async () => {
+    const { run } = createRun({ delegationId: "del-resume-123" });
+    run.handleEvent({
+      type: "message_end",
+      message: assistantMessage({
+        content: [{ type: "text", text: "Partial text here..." }],
+        stopReason: "length",
+      }),
+    });
+    run.agent = {
+      prompt: vi.fn().mockResolvedValue(undefined),
+      waitForIdle: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn(),
+    };
+
+    const result = await (run as unknown as SubagentRun).run();
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("SUBAGENT_OUTPUT_TRUNCATED");
+    expect(result.error?.message).toContain('Resume this delegation with Task(resume: "del-resume-123").');
+    expect(result.error?.message).toContain("characters produced before truncation");
+    expect(result.error?.resumeId).toBe("del-resume-123");
+    expect(result.error?.charactersProduced).toBe("Partial text here...".length);
+  });
+
+  it("spills oversized reports to session scratch directory (ADR 0062)", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "pi-subagent-scratch-"));
+    try {
+      const { run } = createRun({
+        scratchDir: tmp,
+        parentToolCallId: "call-99",
+      });
+      const largeReport = "A".repeat(MAX_SUBAGENT_REPORT_CHARS + 500);
+      run.handleEvent({
+        type: "message_end",
+        message: assistantMessage({
+          content: [{ type: "text", text: largeReport }],
+          stopReason: "stop",
+        }),
+      });
+      run.agent = {
+        prompt: vi.fn().mockResolvedValue(undefined),
+        waitForIdle: vi.fn().mockResolvedValue(undefined),
+        abort: vi.fn(),
+      };
+
+      const result = await (run as unknown as SubagentRun).run();
+
+      expect(result.status).toBe("completed");
+      expect(result.scratchReportPath).toBeDefined();
+      expect(result.report).toContain("Complete subagent report");
+      expect(result.report).toContain("was saved to:");
+      expect(result.report).toContain(result.scratchReportPath!);
+      expect(existsSync(result.scratchReportPath!)).toBe(true);
+      expect(readFileSync(result.scratchReportPath!, "utf8")).toBe(largeReport);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an opaque tool-call id inside the scratch directory", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "pi-subagent-scratch-"));
+    try {
+      const { run } = createRun({
+        scratchDir: tmp,
+        parentToolCallId: "../../outside",
+      });
+      run.handleEvent({
+        type: "message_end",
+        message: assistantMessage({
+          content: [{ type: "text", text: "A".repeat(MAX_SUBAGENT_REPORT_CHARS + 1) }],
+          stopReason: "stop",
+        }),
+      });
+      run.agent = {
+        prompt: vi.fn().mockResolvedValue(undefined),
+        waitForIdle: vi.fn().mockResolvedValue(undefined),
+        abort: vi.fn(),
+      };
+
+      const result = await (run as unknown as SubagentRun).run();
+
+      expect(result.scratchReportPath?.startsWith(join(tmp, "delegations"))).toBe(true);
+      expect(readFileSync(result.scratchReportPath!, "utf8")).toHaveLength(
+        MAX_SUBAGENT_REPORT_CHARS + 1,
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to bounded clipping when scratch write is unavailable or fails", async () => {
+    const { run } = createRun({
+      scratchDir: undefined,
+      parentToolCallId: "call-no-scratch",
+    });
+    const largeReport = "A".repeat(MAX_SUBAGENT_REPORT_CHARS + 500);
+    run.handleEvent({
+      type: "message_end",
+      message: assistantMessage({
+        content: [{ type: "text", text: largeReport }],
+        stopReason: "stop",
+      }),
+    });
+    run.agent = {
+      prompt: vi.fn().mockResolvedValue(undefined),
+      waitForIdle: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn(),
+    };
+
+    const result = await (run as unknown as SubagentRun).run();
+
+    expect(result.status).toBe("completed");
+    expect(result.scratchReportPath).toBeUndefined();
+    expect(result.report.length).toBeLessThanOrEqual(MAX_SUBAGENT_REPORT_CHARS);
+    expect(result.report).toContain("[subagent report truncated]");
+  });
+
+  it("clears truncated output state if a subsequent turn finishes cleanly", async () => {
+    const { run } = createRun();
+    run.handleEvent({
+      type: "message_end",
+      message: assistantMessage({
+        content: [{ type: "text", text: "Initial attempt" }],
+        stopReason: "length",
+      }),
+    });
+    run.handleEvent({
+      type: "message_end",
+      message: assistantMessage({
+        content: [{ type: "text", text: "Complete final report." }],
+        stopReason: "stop",
+      }),
+    });
+    run.agent = {
+      prompt: vi.fn().mockResolvedValue(undefined),
+      waitForIdle: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn(),
+    };
+
+    const result = await (run as unknown as SubagentRun).run();
+
+    expect(result.status).toBe("completed");
+    expect(result.outputTruncated).toBeUndefined();
+    expect(result.report).toBe("Complete final report.");
   });
 
   it("returns aborted without prompting when the parent call is already aborted", async () => {

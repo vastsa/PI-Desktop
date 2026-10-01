@@ -480,7 +480,7 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-xs);
-  color: color-mix(in oklab, #abb2bf 72%, transparent);
+  color: var(--ds-text-muted);
   transition: background var(--motion-duration-fast) var(--motion-ease-out), color var(--motion-duration-fast) var(--motion-ease-out), opacity var(--motion-duration-fast) var(--motion-ease-out);
   opacity: 0.75;
 }
@@ -492,7 +492,7 @@
 }
 
 .code-block .code-copy-btn:hover {
-  color: #d7dae0;
+  color: var(--ds-text-secondary);
   background: var(--ds-code-hover-bg);
 }
 

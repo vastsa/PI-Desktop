@@ -55,6 +55,39 @@ const settle = () => new Promise<void>((resolve) =>
   requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
 );
 
+async function waitForMenuToSettle(menu: HTMLElement): Promise<void> {
+  let previousRect: DOMRect | undefined;
+  let previousTransform: string | undefined;
+  let stableFrames = 0;
+  for (let frame = 0; frame < 120; frame++) {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const rect = menu.getBoundingClientRect();
+    const transform = getComputedStyle(menu).transform;
+    const animating = menu.getAnimations().some(
+      (animation) => animation.pending || animation.playState === "running",
+    );
+    const untransformed = transform === "none";
+    const layoutMatches =
+      Math.abs(rect.width - menu.offsetWidth) <= 0.5 &&
+      Math.abs(rect.height - menu.offsetHeight) <= 0.5;
+    const stable =
+      layoutMatches &&
+      previousRect !== undefined &&
+      Math.abs(rect.left - previousRect.left) < 0.05 &&
+      Math.abs(rect.top - previousRect.top) < 0.05 &&
+      Math.abs(rect.width - previousRect.width) < 0.05 &&
+      Math.abs(rect.height - previousRect.height) < 0.05 &&
+      transform === previousTransform;
+    stableFrames = menu.classList.contains("is-open") && !animating && untransformed && stable
+      ? stableFrames + 1
+      : 0;
+    if (stableFrames >= 2) return;
+    previousRect = rect;
+    previousTransform = transform;
+  }
+  throw new Error("Composer reasoning menu did not settle after opening");
+}
+
 declare global {
   var composerThinkingLayoutProbe: () => Promise<unknown>;
   var composerThinkingPointerProbe: {
@@ -133,10 +166,15 @@ globalThis.composerThinkingLayoutProbe = async () => {
     element<HTMLButtonElement>(".composer-model-thinking-chip").click();
     await settle();
     const menu = element(".composer-model-thinking-menu");
-    await Promise.all(menu.getAnimations().map((animation) => animation.finished));
-    await settle();
-    const initialLeft = menu.getBoundingClientRect().left;
-    const initialTop = menu.getBoundingClientRect().top;
+    await waitForMenuToSettle(menu);
+    const initialMenuRect = menu.getBoundingClientRect();
+    const initialLeft = initialMenuRect.left;
+    const initialTop = initialMenuRect.top;
+    const initialTriggerRect = element<HTMLButtonElement>(".composer-model-thinking-chip").getBoundingClientRect();
+    const initialTriggerHeight = initialTriggerRect.height;
+    if (Math.abs(initialMenuRect.right - initialTriggerRect.right) > 0.05) {
+      failures.push(`${index}: opened menu did not align its right edge to the trigger (${initialMenuRect.right - initialTriggerRect.right}px)`);
+    }
     for (const level of ["low", "omit", "high", "max", "off", "low"]) {
       const tick = [...document.querySelectorAll<HTMLButtonElement>(".composer-thinking-tick")]
         .find((button) => button.textContent === level);
@@ -151,7 +189,7 @@ globalThis.composerThinkingLayoutProbe = async () => {
       if (!menu.classList.contains("is-open")) failures.push(`${index}: selection closed the menu`);
       if (Math.abs(currentMenu.left - initialLeft) > 0.05) failures.push(`${index}/${level}: menu moved ${currentMenu.left - initialLeft}px`);
       if (Math.abs(currentMenu.top - initialTop) > 0.05) failures.push(`${index}/${level}: menu moved vertically`);
-      if (Math.abs(trigger.height - 28) > 0.05) failures.push(`${index}/${level}: trigger changed height`);
+      if (Math.abs(trigger.height - initialTriggerHeight) > 0.05) failures.push(`${index}/${level}: trigger changed height`);
       if (trigger.right > wrapper.right + 0.05) failures.push(`${index}/${level}: trigger overflows its wrapper`);
       measurements.push({ ...config, level, triggerRight: trigger.right, wrapperRight: wrapper.right, menuLeft: currentMenu.left });
     }

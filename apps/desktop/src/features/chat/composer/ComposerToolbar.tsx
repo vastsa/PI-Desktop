@@ -10,6 +10,7 @@ import {
 import type { AppState } from "../../../stores/app-store";
 import { ComposerPermissionPicker } from "./ComposerPermissionPicker";
 import { ContextUsageInspector } from "../../../components/ContextUsageInspector";
+import { ComposerControlSlots } from "./ComposerControlSlots";
 import { TooltipButton } from "../../../components/ui";
 import {
   IconArrowUp,
@@ -19,14 +20,13 @@ import {
   IconUndo2,
 } from "../../../components/icons";
 import { ModeIcon } from "./ComposerModeIcon";
-import { VoiceMicButton } from "../../voice/VoiceMicButton";
+import { LiveVoiceControls } from "../../voice/live/LiveVoiceControls";
 import { ComposerModelPicker } from "./ComposerModelPicker";
 import {
   MODE_LABEL_KEYS,
   nextMode,
 } from "./model";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
-import type { VoicePhase } from "../../voice/useVoiceInput";
 
 type ModelMenuController = ReturnType<typeof useComposerModelMenu>;
 type ContextUsage = Parameters<typeof ContextUsageInspector>[0];
@@ -62,10 +62,8 @@ export type ComposerToolbarProps = {
   hasDraftContent: boolean;
   abort: AppState["abort"];
   submit: () => Promise<void>;
-  voicePhase: VoicePhase;
-  voiceEnabled: boolean;
-  onVoiceToggle: () => void;
-  onVoiceCancel: () => void;
+  workSessionId?: string;
+  workSessionLabel?: string;
 };
 
 /** Composer controls: mode, permission, model, enhancement, and send/stop. */
@@ -100,10 +98,8 @@ export function ComposerToolbar({
   hasDraftContent,
   abort,
   submit,
-  voicePhase,
-  voiceEnabled,
-  onVoiceToggle,
-  onVoiceCancel,
+  workSessionId,
+  workSessionLabel,
 }: ComposerToolbarProps) {
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
   const steeringShortcut = keybindingDisplayParts("Alt+Enter", platform).join("+");
@@ -125,15 +121,7 @@ export function ComposerToolbar({
             <IconPlus size={15} aria-hidden="true" />
           </TooltipButton>
         </div>
-        {voiceEnabled && (
-          <VoiceMicButton
-            t={t}
-            phase={voicePhase}
-            disabled={controlsBlocked}
-            onToggle={onVoiceToggle}
-            onCancel={onVoiceCancel}
-          />
-        )}
+        <LiveVoiceControls t={t} workSessionId={workSessionId} />
         <TooltipButton
           type="button"
           className="icon-btn mode-chip composer-mode-chip"
@@ -186,9 +174,11 @@ export function ComposerToolbar({
                   });
                 }
           }} />
+        <ComposerControlSlots side="left" />
       </div>
 
       <div className="composer-right">
+        <ComposerControlSlots side="right" />
         {contextUsage ? <ContextUsageInspector {...contextUsage} /> : null}
         <ComposerModelPicker
           t={t}

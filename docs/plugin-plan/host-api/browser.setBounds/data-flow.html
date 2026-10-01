@@ -1,0 +1,136 @@
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>browser.setBounds · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">host-api</a><span class="sep">/</span><a href="index.html">browser.setBounds</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+<header class="top">
+  <h1>browser.setBounds · 数据流</h1>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>接口约定</h2>
+  <pre class="sig">pi.browser.setBounds(hole: { x: number; y: number; width: number; height: number }): Promise&lt;unknown&gt;</pre>
+  <p class="lead">设置访客页在宿主面板里的矩形区域。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">x</td><td class="id">number</td><td>是</td><td>访客页矩形左上角横坐标。</td></tr>
+      <tr><td class="id">y</td><td class="id">number</td><td>是</td><td>访客页矩形左上角纵坐标。</td></tr>
+      <tr><td class="id">width</td><td class="id">number</td><td>是</td><td>矩形宽度。</td></tr>
+      <tr><td class="id">height</td><td class="id">number</td><td>是</td><td>矩形高度。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+      <tr><td class="id">（返回值）</td><td class="id">unknown</td><td>SDK 声明为 <code>Promise&lt;unknown&gt;</code>，形状由实现定义。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "x": 320, "y": 0, "width": 640, "height": 480 }</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 返回类型为实现定义（Promise&lt;unknown&gt;），以下为示意
+{ "x": 320, "y": 0, "width": 640, "height": 480 }</pre>
+  <div class="callout"><b>一句话边界。</b>矩形只在本插件面板内摆放，访客页边界限制在调用插件视图。</div>
+</section>
+<section>
+  <h2><span class="n">2</span>数据怎么走</h2>
+  <ol>
+    <li><b>调用：</b>插件执行 <code>pi.browser.setBounds({ x, y, width, height })</code>。</li>
+    <li><b>校验：</b>宿主按 SDK 类型检查四个数值字段（hole）是否齐全。</li>
+    <li><b>执行：</b>宿主把本插件访客页摆放到给定矩形。</li>
+    <li><b>返回：</b>Promise 完成并带回结果；插件卸载后绑定失效，不能再操作。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead><tbody>
+      <tr><td>插件 → 宿主</td><td>目标矩形（<code>{ x, y, width, height }</code>）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>Promise 结果（形状实现定义）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">3</span>出错怎么办</h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead><tbody>
+      <tr><td>无权操作访客页</td><td>调用被拒绝</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td>访客页不存在（未创建或已销毁）</td><td>调用被拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>x / y / width / height 缺省或非数值</td><td>调用被拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">4</span>不提供什么</h2>
+  <p class="lead">不能逃出访客页边界；不能拿任意站点会话凭证；内容安全策略与隔离仍然生效。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：访客页边界限制在调用插件视图。已接受代价：白名单外的 CDP 调用不可用。</div>
+</section>
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <ul>
+    <li><code>host-api/browser.snapshot</code></li>
+    <li><code>host-api/browser.navigate</code></li>
+  </ul>
+</section>
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <p class="lead">无。</p>
+</section>
+
+</main>
+</body>
+</html>

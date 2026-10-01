@@ -24,16 +24,18 @@ describe("release-stamp aliases", () => {
     }
   });
 
-  it("reads a dated snapshot against the model it was published from", () => {
-    expect(catalogModelIdsMatch("mimo-v2.5-pro", "mify/mimo-v2.5-pro-0731")).toBe(true);
-    expect(catalogModelIdsMatch("foo-v2", "foo-v2-20250731")).toBe(true);
-    expect(catalogModelIdsMatch("foo-v2", "foo-v2-2025-07-31")).toBe(true);
-    expect(catalogModelIdsMatch("foo-v2", "foo-v2-2025_07_31")).toBe(true);
-    expect(catalogModelIdsMatch("foo-v2", "foo-v2-2025.07.31")).toBe(true);
-    // An invalid stamp is part of the id, not an alias of a shorter model.
+  it("does not treat a dated snapshot leaf as the undated model leaf", () => {
+    // Catalog matching is exact last-segment only; release stamps stay part of the leaf.
+    expect(catalogModelIdsMatch("mimo-v2.5-pro", "mify/mimo-v2.5-pro-0731")).toBe(false);
+    expect(catalogModelIdsMatch("foo-v2", "foo-v2-20250731")).toBe(false);
+    expect(catalogModelIdsMatch("foo-v2", "foo-v2-2025-07-31")).toBe(false);
+    expect(catalogModelIdsMatch("foo-v2", "foo-v2-2025_07_31")).toBe(false);
+    expect(catalogModelIdsMatch("foo-v2", "foo-v2-2025.07.31")).toBe(false);
     expect(catalogModelIdsMatch("foo-v2", "foo-v2-1399")).toBe(false);
     expect(catalogModelIdsMatch("foo-v2", "foo-v2-9999")).toBe(false);
     expect(catalogModelIdsMatch("foo-v2", "foo-v2-0232")).toBe(false);
+    // Same leaf still matches across a route prefix.
+    expect(catalogModelIdsMatch("mimo-v2.5-pro-0731", "mify/mimo-v2.5-pro-0731")).toBe(true);
   });
 
   it("keeps a dated record from borrowing another publisher's family", () => {
@@ -42,8 +44,8 @@ describe("release-stamp aliases", () => {
 });
 
 describe("metadata aliases never redefine the wire id", () => {
-  it("resolves a routed snapshot against its published metadata", () => {
-    expect(catalogModelIdsMatch("mify/mimo-v2.5-pro", "mify/mimo-v2.5-pro-0731")).toBe(true);
+  it("does not resolve a routed dated snapshot to an undated leaf", () => {
+    expect(catalogModelIdsMatch("mify/mimo-v2.5-pro", "mify/mimo-v2.5-pro-0731")).toBe(false);
   });
 
   it("leaves configured-model identity on the complete wire id", () => {
@@ -54,8 +56,10 @@ describe("metadata aliases never redefine the wire id", () => {
     expect(modelIdsMatch("foo-v2", "foo-v2-20250731")).toBe(false);
   });
 
-  it("does not collapse two independently routed leaves", () => {
-    expect(catalogModelIdsMatch("provider-a/foo", "gateway/foo")).toBe(false);
-    expect(catalogModelIdsMatch("provider-a/foo", "provider-b/foo")).toBe(false);
+  it("matches independently routed ids that share an exact last segment", () => {
+    // Disambiguation (0/1/≥2, official, shared caps) is the caller's job.
+    expect(catalogModelIdsMatch("provider-a/foo", "gateway/foo")).toBe(true);
+    expect(catalogModelIdsMatch("provider-a/foo", "provider-b/foo")).toBe(true);
+    expect(catalogModelIdsMatch("provider-a/foo", "gateway/bar")).toBe(false);
   });
 });

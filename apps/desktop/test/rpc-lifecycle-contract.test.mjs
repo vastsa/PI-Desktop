@@ -154,13 +154,12 @@ test("host disposal closes stdin, observes exit, and force-kills only after grac
   );
 });
 
-test("Bash defaults are finite and the tool advertises the effective timeout", () => {
+test("Bash execution remains bounded while permission transport has no deadline", () => {
   assert.match(runtimeSource, /DEFAULT_COMMAND_TIMEOUT_MS/);
   assert.match(runtimeSource, /defaults to a 60-second timeout/);
   assert.match(runtimeSource, /timeoutMs,\n\s+}/);
-  assert.match(rpcTimeoutSource, /DEFAULT_BASH_RPC_TIMEOUT_MS/);
-  assert.match(rpcTimeoutSource, /return DEFAULT_BASH_RPC_TIMEOUT_MS/);
-  assert.doesNotMatch(rpcTimeoutSource, /return undefined/);
+  assert.doesNotMatch(rpcTimeoutSource, /DEFAULT_BASH_RPC_TIMEOUT_MS/);
+  assert.match(rpcTimeoutSource, /if \(method === "tools\.execute"\) return undefined/);
 });
 
 test("turn ownership and execution queue wake only after durable turn settlement", () => {
@@ -251,7 +250,7 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
 
 test("settings writes validate without applying read defaults", () => {
   assert.match(mainSource, /validateSettingsWrite\(settings\)/);
-  assert.match(mainSource, /host\.call\("settings\.set", validatedSettings\)/);
+  assert.match(mainSource, /host\.call(?:<AppSettings>)?\("settings\.set", validatedSettings\)/);
   assert.doesNotMatch(mainSource, /host\.call\("settings\.set", normalizedSettings\)/);
   assert.match(apiSource, /export function validateSettingsWrite/);
   assert.match(apiSource, /invoke\(IPC\.invoke\.settingsSet, validateSettingsWrite\(settings\)\)/);

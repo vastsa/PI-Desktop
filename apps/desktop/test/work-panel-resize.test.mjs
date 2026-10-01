@@ -171,7 +171,9 @@ test("clamps the work panel to its minimum without a fixed upper bound", () => {
 });
 
 test("clamps the conversation area to its bounded native resize range", () => {
-  assert.equal(clampWorkPanelChatWidth(900), WORK_PANEL_CHAT_MIN_WIDTH);
+  assert.equal(WORK_PANEL_CHAT_MIN_WIDTH, 800);
+  assert.equal(clampWorkPanelChatWidth(700), WORK_PANEL_CHAT_MIN_WIDTH);
+  assert.equal(clampWorkPanelChatWidth(900), 900);
   assert.equal(clampWorkPanelChatWidth(1200), 1200);
   assert.equal(clampWorkPanelChatWidth(20000), WORK_PANEL_CHAT_MAX_WIDTH);
 });
@@ -213,9 +215,9 @@ test("commits only a changed conversation preview after a completed gesture", ()
 });
 
 test("accepts only bounded integer conversation widths over IPC", () => {
-  assert.equal(parseWorkPanelChatWidth({ width: 1040 }), 1040);
+  assert.equal(parseWorkPanelChatWidth({ width: 800 }), 800);
   assert.equal(parseWorkPanelChatWidth({ width: 10000 }), 10000);
-  assert.equal(parseWorkPanelChatWidth({ width: 1039 }), null);
+  assert.equal(parseWorkPanelChatWidth({ width: 799 }), null);
   assert.equal(parseWorkPanelChatWidth({ width: 10000.5 }), null);
   assert.equal(parseWorkPanelChatWidth({ width: "1200" }), null);
   assert.equal(parseWorkPanelChatWidth(null), null);

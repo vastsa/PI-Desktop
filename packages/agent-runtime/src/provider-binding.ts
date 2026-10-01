@@ -56,7 +56,7 @@ export type RuntimeProviderConfig = {
   apiStyle?: string;
   supportsReasoning: boolean;
   supportedThinkingLevels: ThinkingLevel[];
-  /** Complete model metadata resolved from models.dev by Electron main. */
+  /** Effective Pi model metadata resolved by Electron main. */
   modelConfig?: ModelConfig;
   /**
    * Optional outbound HTTP headers. Empty/absent keeps adapter defaults.
@@ -212,7 +212,7 @@ function nativeCopilotHeaders(modelId: string): Record<string, string> | undefin
     : undefined;
   if (model?.headers) return model.headers;
 
-  // A model returned by models.dev or a user's Copilot entitlement may not be
+  // A model returned by Pi or a user's Copilot entitlement may not be
   // present in pi-ai's pinned built-in catalog. Its transport still requires
   // the same client identity headers as every other Copilot model.
   return Object.values(GITHUB_COPILOT_MODELS).find((entry) => entry.headers)?.headers;
@@ -233,11 +233,43 @@ export function copilotRequestHeaders(
 }
 
 /**
+ * Row-scoped models bypass pi-ai's native Copilot Bearer branch, so the token
+ * would leave as X-Api-Key. Send it as Bearer and null out X-Api-Key instead.
+ * Keep apiKey set so the Anthropic SDK skips its default credential chain.
+ * OpenAI-style adapters already sign an apiKey as Bearer.
+ */
+function copilotRequestAuth(
+  provider: Pick<RuntimeProviderConfig, "vendorKey">,
+  api: Api,
+  auth: ModelAuth,
+): ModelAuth {
+  if (
+    provider.vendorKey?.trim().toLowerCase() !== "github-copilot" ||
+    api !== "anthropic-messages" ||
+    !auth.apiKey
+  ) {
+    return auth;
+  }
+  const { apiKey, headers, ...rest } = auth;
+  const requestHeaders: NonNullable<ModelAuth["headers"]> = Object.fromEntries(
+    Object.entries(headers ?? {}).filter(([name]) => {
+      const lowerName = name.toLowerCase();
+      return lowerName !== "authorization" && lowerName !== "x-api-key";
+    }),
+  );
+  return {
+    ...rest,
+    apiKey,
+    headers: { ...requestHeaders, Authorization: `Bearer ${apiKey}`, "X-Api-Key": null },
+  };
+}
+
+/**
  * Claude models that publish an effort ladder without a `budget_tokens`
  * option (Opus 4.7+, Opus 5.x, Fable, ...) reject `thinking.type=enabled`
  * with a 400. pi-ai only sends adaptive thinking when
- * `compat.forceAdaptiveThinking` is set, and models.dev carries no compat
- * record, so derive the flag from the published reasoning options.
+ * `compat.forceAdaptiveThinking` is set. Legacy projections can lack that
+ * compatibility record, so derive the flag from published reasoning options.
  */
 function requiresAdaptiveThinking(
   model: Pick<ModelConfig, "reasoning" | "reasoningOptions">,
@@ -256,8 +288,15 @@ export function buildProviderModel(
   const binding = apiBindingForProviderModel(provider);
   const catalog = provider.modelConfig;
   const catalogModel = catalog
-    ? (({ source: _source, ...model }) => model)(catalog)
-    : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl);
+    ? (({ source: _source, nativeCost, ...model }) => ({
+        ...model,
+        ...(nativeCost ? { cost: nativeCost } : {}),
+      }))(catalog)
+    : {
+        ...genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl),
+        reasoning: provider.supportsReasoning,
+        supportedThinkingLevels: provider.supportedThinkingLevels,
+      };
   const baseUrl = runtimeBaseUrlForApi(
     binding.api,
     providerRequestTransport(provider).baseUrl ?? binding.defaultBaseUrl,
@@ -280,6 +319,11 @@ export function buildProviderModel(
     ...(copilotDefaults ?? {}),
     ...(catalogModel.headers ?? {}),
   };
+  const thinkingProtocolCompat = catalogModel.thinkingProtocol
+    ? { forceAdaptiveThinking: catalogModel.thinkingProtocol === "adaptive" }
+    : undefined;
+  const autoAdaptiveThinking =
+    catalogModel.thinkingProtocol === undefined && requiresAdaptiveThinking(catalogModel);
   // OpenAI-compatible gateways are not guaranteed to implement the newer
   // `developer` role, even when the selected model supports reasoning. Keep
   // the broadest Chat Completions wire shape as the default; a catalog/model
@@ -290,18 +334,26 @@ export function buildProviderModel(
     binding.api === "openai-completions"
       ? {
           ...(catalogModel.compat ?? {}),
+          ...(thinkingProtocolCompat ?? {}),
           ...(zhipuCompat ?? {}),
           ...(deepseekCompat ?? {}),
           supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
         }
-      : binding.api === "anthropic-messages" && requiresAdaptiveThinking(catalogModel)
-        ? { ...(catalogModel.compat ?? {}), forceAdaptiveThinking: true }
-        : catalogModel.compat;
+      : binding.api === "anthropic-messages" &&
+          (catalogModel.thinkingProtocol === "adaptive" || autoAdaptiveThinking)
+        ? {
+            ...(catalogModel.compat ?? {}),
+            ...(thinkingProtocolCompat ?? {}),
+            forceAdaptiveThinking: true,
+          }
+        : thinkingProtocolCompat
+          ? { ...(catalogModel.compat ?? {}), ...thinkingProtocolCompat }
+          : catalogModel.compat;
   return {
     ...catalogModel,
     id: provider.modelId,
     api: binding.api,
-    provider: provider.id,
+    provider: provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id),
     baseUrl,
     webSearch:
       resolveNativeWebSearch({
@@ -315,41 +367,50 @@ export function buildProviderModel(
   } as Model<Api>;
 }
 
-/** A single-model registry for one resolved provider. */
+/** Account-local operation registry. Vendor identity stays internal; auth stays row-scoped. */
+export function createAccountModels(
+  provider: RuntimeProviderConfig,
+  operations: Pick<Parameters<typeof createProvider>[0], "models" | "api" | "images" | "classifiers">,
+): Models {
+  const models = createModels({ authContext: { env: async () => undefined, fileExists: async () => false } });
+  const providerId = provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id);
+  models.setProvider(createProvider({
+    id: providerId,
+    name: provider.name,
+    baseUrl: provider.baseUrl,
+    ...operations,
+    models: operations.models.map((model) => ({ ...model, provider: providerId })),
+    auth: {
+      apiKey: {
+        name: `${provider.name} credential`,
+        resolve: async () => ({
+          auth: provider.resolveAuth
+            ? await provider.resolveAuth()
+            : provider.authKind === "none" ? {} : { apiKey: providerRequestKey(provider) },
+        }),
+      },
+    },
+  }));
+  return models;
+}
+
+/** A single account registry for an effective chat binding and optional other operations. */
 export function createProviderModels(
   provider: RuntimeProviderConfig,
   model: Model<Api>,
+  operations?: Pick<Parameters<typeof createProvider>[0], "models" | "images" | "classifiers">,
 ): Models {
-  const requestKey = providerRequestKey(provider);
   const resolveAuth = provider.resolveAuth;
-  const models = createModels();
-  models.setProvider(
-    createProvider({
-      id: provider.id,
-      name: provider.name,
-      baseUrl: model.baseUrl,
-      auth: {
-        apiKey: {
-          name: `${provider.name} API key`,
-          // Plain apiKey semantics let each adapter emit its own auth header
-          // (Bearer for OpenAI-style APIs, x-api-key for Anthropic, …).
-          //
-          // A vendor account resolves instead through Electron main, which
-          // returns the whole `ModelAuth` — token, headers, and the
-          // per-credential baseUrl GitHub Copilot hands out. pi-ai calls this
-          // for every request and caches nothing, so a token that rotates
-          // mid-session is picked up on the next one.
-          resolve: async () =>
-            resolveAuth
-              ? { auth: await resolveAuth(), source: "OAuth" }
-              : { auth: { apiKey: requestKey } },
-        },
-      },
-      models: [model],
-      api: apiBindingForProviderModel(provider).adapter(),
-    }),
-  );
-  return models;
+  return createAccountModels({
+    ...provider,
+    resolveAuth: async () => resolveAuth
+      ? copilotRequestAuth(provider, model.api, await resolveAuth())
+      : { apiKey: providerRequestKey(provider) },
+  }, {
+    ...operations,
+    models: [model, ...(operations?.models ?? [])],
+    api: apiBindingForProviderModel(provider).adapter(),
+  });
 }
 /** Build a pi-ai model collection for a trusted extension-owned agent. */
 export function createExtensionAgentModels(input: {
@@ -358,7 +419,7 @@ export function createExtensionAgentModels(input: {
   model: Model<Api>;
   stream: ProviderStreams;
 }): Models {
-  const models = createModels();
+  const models = createModels({ authContext: { env: async () => undefined, fileExists: async () => false } });
   models.setProvider(
     createProvider({
       id: input.providerId,

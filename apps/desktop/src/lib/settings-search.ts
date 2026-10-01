@@ -49,6 +49,8 @@ export type SettingsNavEntry = {
    * rail, the page, and settings search drop it together.
    */
   developerOnly?: true;
+  /** Surface is omitted from packaged builds; development builds retain it. */
+  developmentOnly?: true;
   /** Localized Experimental badge shown beside the rail row and page title. */
   experimentalBadgeKey?: string;
 };
@@ -126,18 +128,19 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
   },
   {
     id: "voice",
-    labelKey: "settings.nav.voice",
-    titleKey: "settings.voice",
+    labelKey: "liveVoice.title",
+    titleKey: "liveVoice.title",
     group: "preferences",
-    developerOnly: true,
-    experimentalBadgeKey: "settings.voiceExperimental",
     keywordKeys: [
-      "settings.voiceEnable",
-      "settings.voiceMicrophone",
-      "settings.voiceLanguages",
-      "settings.voiceChineseVariant",
-      "settings.voiceModel",
-      "settings.voiceLocalModels",
+      "liveVoice.title",
+      "liveVoice.description",
+      "liveVoice.enable",
+      "liveVoice.provider",
+      "liveVoice.model",
+      "liveVoice.voice",
+      "liveVoice.adapters.codex-live.title",
+      "liveVoice.adapters.gemini-live.title",
+      "liveVoice.adapters.openai-realtime.title",
     ],
   },
   {
@@ -275,6 +278,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.configSync.title",
     group: "system",
     developerOnly: true,
+    developmentOnly: true,
     experimentalBadgeKey: "settings.configSync.experimental",
     keywordKeys: [
       "settings.configSync.connectionTitle",
@@ -291,6 +295,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.remoteHosts.title",
     group: "system",
     developerOnly: true,
+    developmentOnly: true,
     experimentalBadgeKey: "settings.remoteHosts.experimental",
     keywordKeys: [
       "settings.remoteHosts.title",
@@ -327,25 +332,29 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
 ];
 
 /**
- * Destinations the current mode offers, in rail order. `developerMode` comes
- * from `AppSettings.developerMode`; when it is off the developer-only rows are
- * absent rather than disabled.
+ * Destinations the current mode offers. Unavailable destinations are omitted
+ * from navigation and search rather than disabled.
  */
-export function visibleSettingsNav(developerMode: boolean): SettingsNavEntry[] {
-  return SETTINGS_NAV.filter((entry) => entry.developerOnly !== true || developerMode);
+export function visibleSettingsNav(
+  developerMode: boolean,
+  includeDevelopmentOnly = true,
+): SettingsNavEntry[] {
+  return SETTINGS_NAV.filter(
+    (entry) =>
+      (entry.developerOnly !== true || developerMode) &&
+      (entry.developmentOnly !== true || includeDevelopmentOnly),
+  );
 }
 
-/**
- * True when `tab` is a destination the current mode hides, so a caller holding
- * a stale selection can fall back instead of rendering a page the rail no
- * longer offers.
- */
+/** True when a stale selection points to a destination the current mode hides. */
 export function isSettingsDestinationHidden(
   tab: SettingsTabId,
   developerMode: boolean,
+  includeDevelopmentOnly = true,
 ): boolean {
-  const entry = SETTINGS_NAV.find((candidate) => candidate.id === tab);
-  return entry?.developerOnly === true && !developerMode;
+  return !visibleSettingsNav(developerMode, includeDevelopmentOnly).some(
+    (entry) => entry.id === tab,
+  );
 }
 
 export type SettingsSearchHit = {
@@ -357,19 +366,25 @@ export type SettingsSearchHit = {
 
 export type SettingsSearchOptions = {
   limit?: number;
-  /** Search mirrors the rail, so developer-only tabs stay out of the results. */
+  /** Search mirrors the rail, so developer-only tabs stay out of results. */
   developerMode?: boolean;
+  /** Packaged builds omit experimental surfaces, even with developer mode on. */
+  includeDevelopmentOnly?: boolean;
 };
 
 export function searchSettings(
   query: string,
   t: (key: string) => string,
-  { limit = 8, developerMode = false }: SettingsSearchOptions = {},
+  {
+    limit = 8,
+    developerMode = false,
+    includeDevelopmentOnly = true,
+  }: SettingsSearchOptions = {},
 ): SettingsSearchHit[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const hits: SettingsSearchHit[] = [];
-  for (const entry of visibleSettingsNav(developerMode)) {
+  for (const entry of visibleSettingsNav(developerMode, includeDevelopmentOnly)) {
     if (t(entry.labelKey).toLowerCase().includes(q)) {
       hits.push({ tab: entry.id, tabLabelKey: entry.labelKey, rowKey: null });
     }

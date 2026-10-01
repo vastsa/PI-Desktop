@@ -115,16 +115,32 @@ export async function turnProcessProbe() {
       "detailed wraps one process per turn",
     );
     check(
-      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
-      "detailed starts the process open",
+      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
+      "detailed completed process starts collapsed",
     );
     check(
       visible(container.querySelector('[data-message-id="answer"]')),
       "final answer stays visible",
     );
     check(
+      !visible(container.querySelector('[data-message-id="progress"]')),
+      "completed progress stays hidden until expanded",
+    );
+    render(messages, true, null, "active-process");
+    check(
+      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
+      "active detailed process starts open",
+    );
+    render(messages, false, null, "active-process");
+    check(
+      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
+      "untouched detailed process collapses on completion",
+    );
+    render(messages);
+    click(header());
+    check(
       visible(container.querySelector('[data-message-id="progress"]')),
-      "detailed keeps intermediate progress visible",
+      "user can expand completed progress",
     );
     check(
       container.querySelector('[data-message-id="edit"]')?.classList.contains("open") === true,

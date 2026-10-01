@@ -12,18 +12,14 @@
 | Host backend | **Rust** | stable Rust toolchain | tools/plugins/permissions/persistence adapters |
 | Rust async | tokio | stable | host services |
 | Host RPC | stdio JSON-RPC (NDJSON) | frozen (D001) | Electron main ↔ Rust host |
-| Agent engine | `@earendil-works/pi-agent-core` | 0.87.1 | agent loop |
-| Model API | `@earendil-works/pi-ai` | 0.87.1 | provider adapters, OAuth, and stream handling |
-| Model catalog | `https://models.dev/api.json` | bundled release snapshot + process-local refresh | sole provider/model metadata source |
+| Agent engine | `@earendil-works/pi-agent-core` | 0.99.1 | agent loop |
+| Model API | `@earendil-works/pi-ai` | 0.99.1 | provider adapters, OAuth, and stream handling |
+| Model catalog | pi-ai Providers/Models | pinned 0.99.1 + explicit provider refresh | account-scoped metadata and typed operations |
 
-> pi-ai is not consulted for model names, capabilities, limits, modalities,
-> thinking levels, or prices. It remains the request transport dependency.
-> ChatGPT Plus/Pro and GitHub Copilot OAuth availability still comes from the
-> pinned pi-ai catalog; 0.87.1 includes `gpt-6-sol`, `gpt-6-luna`, and
-> `grok-4.7` alongside the existing `gpt-6-astra` catalog entry.
-> The 0.87.1 pi-ai catalog also registers Claude Opus 5.5 and Meta/Muse
-> subscription OAuth; Desktop enumerates them dynamically rather than
-> maintaining a separate vendor list.
+> pi-ai owns published metadata, native thinking support, transports and auth.
+> Host persists Desktop account rows, credentials, and explicit binding overrides.
+> pi-coding-agent remains an existing compatibility dependency for compaction and
+> file utilities; this migration does not adopt AgentSession, Codemode or routing.
 
 | Node runtime | Node.js | `>= 22.19` | pi requirement |
 | DB | SQLite | Rust host-core via `rusqlite` | sessions/settings |

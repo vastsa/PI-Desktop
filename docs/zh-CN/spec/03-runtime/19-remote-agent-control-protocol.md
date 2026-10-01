@@ -258,8 +258,9 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 会话级转换；asktool 回答为 `Array<string[] | null>`，`null` 表示跳过。待处理请求
 是 Host 状态，host-core 通过 `permissions.pending` 提供读取，晚接入的客户端在
 快照中看到它们；首个有效决定生效，之后的有效响应返回 `alreadyResolved`。审批
-寿命由 Host 策略决定：本地默认 120 秒后拒绝，有远程订阅者接入时默认 30 分钟
-（D375），Host 可在上限内调整，本地或远程任一决定先到即生效，断线不会延长它。
+寿命由 Host 策略决定：本地桌面权限确认没有自动截止时间，会一直保持待处理直到明确决定、
+取消或关闭；有远程订阅者接入时，远程审批记录默认 30 分钟（D375），Host 可在上限内调整，
+断线不会延长它。
 
 大附件使用 `attachment/create`、HTTPS 上传和 `attachment/complete`；
 远程本地路径、`file://` 和任意 URL 都不允许作为附件来源。经 Gateway 时上传
@@ -314,7 +315,7 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 | `connection/initialize` deadline | 10 seconds |
 | Read/metadata operation deadline | 15 seconds |
 | `turn/start` admission deadline | 5 seconds |
-| Approval lifetime, local default | 120 秒后拒绝 |
+| Approval lifetime, local default | 无自动截止时间；必须明确决定或取消 |
 | Approval lifetime, remote policy | 有远程订阅者接入时默认 30 分钟；Host 配置、有界，以 `approvalLifetimeMs` 公布 |
 | Heartbeat interval | 30 seconds |
 | Terminal output replay ring | 每终端 128 KiB |
@@ -334,7 +335,7 @@ Plan/Goal 审批为带显式 `permissionMode` 的 `approve` 或 `reject`，且�
 | `IDEMPOTENCY_CONFLICT` | no | 同一 key 使用了不同输入 |
 | `CURSOR_EXPIRED` | no | epoch 已变化或游标不在回放窗口内 |
 | `CLIENT_TOO_SLOW` | yes | 有界事件队列溢出 |
-| `APPROVAL_EXPIRED` | no | 审批已不可执行；映射自 `PERMISSION_TIMEOUT` 与 `PLAN_APPROVAL_TIMEOUT` |
+| `APPROVAL_EXPIRED` | no | 审批已不可执行；旧版本地 Host 的 `PERMISSION_TIMEOUT` 或 `PLAN_APPROVAL_TIMEOUT` 映射为此错误码，当前本地权限提示不会过期 |
 | `APPROVAL_STALE` | no | 审批响应针对旧 revision |
 | `PAYLOAD_TOO_LARGE` | no | 请求、事件或附件超限 |
 | `RATE_LIMITED` | yes | 主体、会话或 Host 超额 |

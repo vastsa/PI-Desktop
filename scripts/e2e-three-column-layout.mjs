@@ -1225,7 +1225,7 @@ async function main() {
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
       await delay(220);
     };
-    for (const route of ["plugins", "pulls", "scheduled"]) {
+    for (const route of ["plugins", "scheduled"]) {
       if ((await measure()).sidebarKind !== "sidebar") await clickSidebarToggle();
       await rig(`window.__PI_DESKTOP__.setPage(${JSON.stringify(route)})`);
       await waitFor(

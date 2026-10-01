@@ -22,16 +22,16 @@
 }
 
 :root[data-theme="dark"] .composer-input {
-  color: var(--gray-0);
+  color: var(--ds-text-primary);
 }
 
 :root[data-theme="dark"] .composer-toolbar .icon-btn,
 :root[data-theme="dark"] .mode-chip {
-  color: color-mix(in oklab, var(--gray-0) 78%, transparent);
+  color: color-mix(in oklab, var(--ds-text-primary) 78%, transparent);
 }
 
 :root[data-theme="dark"] .empty-hero-icon {
-  color: var(--gray-0);
+  color: var(--ds-text-primary);
   opacity: 1;
 }
 

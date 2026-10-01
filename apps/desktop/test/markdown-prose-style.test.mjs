@@ -62,8 +62,9 @@ test("markdown resolves relative file links against a base directory", () => {
   assert.match(markdownSource, /remarkChatFileLinks/);
   assert.match(
     markdownSource,
-    /toWorkspaceRel\(safeDecodeUri\(href\), root, baseDir\)/,
+    /toWorkspaceRel\(decoded, root, baseDir\)/,
   );
+  assert.match(markdownSource, /safeDecodeUri\(href\)/);
   assert.match(filesTabSource, /baseDir=\{fileDirOf\(selected\)\}/);
 });
 

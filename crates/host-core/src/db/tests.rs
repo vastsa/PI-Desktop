@@ -122,6 +122,109 @@ fn v18_database_migrates_session_thinking_omit() {
     assert!(sql.contains("'omit'"), "{sql}");
 }
 
+/// v21 owns the session checklist. A real v20 database has neither the
+/// `sessions` stamps nor the `session_todo` table, so the upgrade must add
+/// both, keep the v20 rows, leave a readable pre-migration backup, and stay
+/// idempotent when a fixture downgrades the same file in place.
+#[test]
+fn v20_database_migrates_the_session_checklist_with_a_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        let session = crate::sessions::create_session(
+            &db,
+            Some("v20 session".into()),
+            Some("agent".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO artifacts (session_id, path, op, updated_at)
+                     VALUES (?1, 'kept.txt', 'write', 1)",
+                params![session.id],
+            )
+            .unwrap();
+        session.id
+    };
+
+    let downgrade_to_v20 = |path: &Path| {
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys = OFF;
+             DROP TABLE IF EXISTS session_todo;
+             ALTER TABLE sessions DROP COLUMN todo_revision;
+             ALTER TABLE sessions DROP COLUMN todo_updated_at;
+             PRAGMA user_version = 20;",
+        )
+        .unwrap();
+        drop(conn);
+    };
+    downgrade_to_v20(&path);
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(table_exists(db.conn(), "session_todo"));
+    assert!(migration_backup_path(&path, 20).exists());
+    assert_readable_migration_backup(&path, 20);
+    let todo_columns: i64 = db
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('sessions')
+                 WHERE name IN ('todo_revision', 'todo_updated_at')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(todo_columns, 2, "both v21 session stamps are present");
+    let (title, revision, updated_at): (String, i64, Option<i64>) = db
+        .conn()
+        .query_row(
+            "SELECT title, todo_revision, todo_updated_at FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(title, "v20 session");
+    assert_eq!(revision, 0, "a migrated session starts at revision zero");
+    assert!(updated_at.is_none());
+    let kept: String = db
+        .conn()
+        .query_row(
+            "SELECT path FROM artifacts WHERE session_id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(kept, "kept.txt");
+
+    // A second run over the same file, both with and without the v21 objects
+    // already in place, must not fail or duplicate anything.
+    drop(db);
+    downgrade_to_v20(&path);
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(table_exists(db.conn(), "session_todo"));
+    drop(db);
+    {
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 20).unwrap();
+    }
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(table_exists(db.conn(), "session_todo"));
+    assert_eq!(
+        db.conn()
+            .query_row("SELECT COUNT(*) FROM session_todo", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
 fn schema_version(conn: &Connection) -> i64 {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap()
@@ -195,6 +298,7 @@ fn fresh_open_creates_latest_schema() {
         "audit_log",
         "plan_approvals",
         "session_import_origins",
+        "session_todo",
     ] {
         assert!(table_exists(db.conn(), table), "missing {table}");
     }

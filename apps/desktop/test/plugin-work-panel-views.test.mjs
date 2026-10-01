@@ -170,7 +170,10 @@ test("a docked view is as isolated as a detached panel window", () => {
   assert.match(viewHostSource, /contextIsolation: true/);
   assert.match(viewHostSource, /nodeIntegration: false/);
   assert.match(viewHostSource, /webviewTag: false/);
-  assert.match(viewHostSource, /preload: join\(__dirname, "\.\.\/preload\/plugin-panel\.js"\)/);
+  assert.match(
+    viewHostSource,
+    /preload: join\(\s*getModuleDirectory\(import\.meta\.url\),\s*"\.\.\/preload\/plugin-panel\.js",?\s*\)/,
+  );
   // `window.open` would mint a chromeless window outside that policy.
   assert.match(viewHostSource, /setWindowOpenHandler\(\(\{ url \}\) =>/);
   assert.match(viewHostSource, /action: "deny"/);

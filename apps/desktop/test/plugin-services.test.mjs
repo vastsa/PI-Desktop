@@ -510,6 +510,7 @@ test("capability badges include every declared plugin capability", () => {
   assert.deepEqual(order, [
     "panel",
     "views",
+    "rendererUi",
     "commands",
     "tools",
     "agentExtension",

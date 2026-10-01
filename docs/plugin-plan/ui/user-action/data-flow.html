@@ -1,0 +1,156 @@
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>用户消息操作栏 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e;--surface:#161616;--surface-2:#1b1b1b;--line:#2a2a2a;--line-2:#353535;
+    --text:#ededed;--text-2:#b0b0b0;--muted:#7d7d7d;--faint:#5c5c5c;
+    --ok:#40c977;--warn:#ff8549;--error:#ff6764;
+    --ui:#c27aff;--host:#4c8dff;--plugin:#c27aff;--slot:#ff8549;
+    --ok-bg:rgba(64,201,119,.10);--warn-bg:rgba(255,133,73,.10);--error-bg:rgba(255,103,100,.10);
+    --host-bg:rgba(76,141,255,.10);--plugin-bg:rgba(194,122,255,.10);--slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  a{color:inherit}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .plan-nav .here{color:var(--text);padding:3px 8px}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px}
+  .top h1{margin:0 0 6px;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:880px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px;border-top:1px solid var(--line);padding-top:14px}
+  section:first-child>h2{border-top:0;padding-top:0}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  .tag{font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:99px}
+  .tag.decided{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  p{margin:0 0 10px}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout.ok{border-left-color:var(--ok)}
+  .callout b{color:var(--text)}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 12px}
+  .duo>div{padding:12px 14px;border-radius:10px;background:var(--surface);font-size:13px;color:var(--text-2)}
+  .duo h4{margin:0 0 6px;font-size:12px;font-family:var(--mono);color:var(--muted);letter-spacing:.04em;text-transform:uppercase;font-weight:500}
+  .duo .guarantee{border-left:2px solid var(--ok)}
+  .duo .cost{border-left:2px solid var(--warn)}
+  @media (max-width:720px){.duo{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <span class="here">用户消息操作栏</span>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="demo.html">演示</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+<header class="top">
+  <h1>用户消息操作栏 · 数据流</h1>
+  <p>插件能拿到什么、自己画什么、出错时发生什么。</p>
+   <div class="meta">status: finalized · 槽名与 props 字段名已定稿（见 slot-contract.html §6）；SDK 与宿主已实现，示例见 examples/plugins/ui-slots-lab</div>
+</header>
+<main>
+
+<section>
+   <h2><span class="n">1</span>接口约定 <span class="tag decided">已定</span></h2>
+  <p>插件注册左右两个组件槽。只渲染，不提供宿主函数。</p>
+  <table>
+    <thead><tr><th>props</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>message</code></td><td>这条用户消息的数据（文本等）</td></tr>
+      <tr><td><code>messageId</code> / <code>sessionId</code></td><td>各种 id</td></tr>
+      <tr><td><code>position</code></td><td><code>"left"</code> | <code>"right"</code></td></tr>
+    </tbody>
+  </table>
+  <p>权限：随 <code>renderer.extension</code>（纯展示）。副作用走插件自己的 <code>plugin.call</code>。</p>
+</section>
+
+<section>
+   <h2><span class="n">2</span>数据怎么走 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>宿主 → 插件</td><td>props 一次给全（message + id + position）；消息重渲染时整份重推</td></tr>
+      <tr><td>插件 → 宿主</td><td><strong>无</strong>。不回调宿主，不改宿主状态</td></tr>
+      <tr><td>插件 → 自己</td><td>点击等交互由插件自理（可走 <code>plugin.call</code>）</td></tr>
+    </tbody>
+  </table>
+  <p>递交模型：<strong>props-push</strong>（宿主每次变化推整份，插件不订阅）。</p>
+</section>
+
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr><td>插件组件抛错</td><td>只塌掉本插件那一侧新增区；宿主键与正文不受影响</td></tr>
+      <tr><td>插件未加载 / 已卸载</td><td>新增区消失，位置释放</td></tr>
+      <tr><td>插件自己按钮的逻辑失败</td><td>插件自理；宿主不介入</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>不提供 copy / edit / delete 或任何宿主函数</li>
+    <li>不提供改正文、整卡替换、entryExtra</li>
+    <li>不允许改 / 藏 / 删宿主键</li>
+    <li>不提供额外数据</li>
+  </ul>
+  <div class="duo">
+    <div class="guarantee">
+      <h4>宿主保证</h4>
+      出错隔离；卸载时摘掉注册与注入样式。
+    </div>
+    <div class="cost">
+      <h4>已接受代价</h4>
+      同 realm 可碰全局；样式重写可被绕过。
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">5</span>相关条目 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li><code>ui/assistant-action/</code> — AI 回复卡操作栏左右（同形）</li>
+    <li><code>ui/entry-extra/</code> — AI 回复正文下方追加位</li>
+    <li><a href="../../slot-contract.html">slot-contract.html</a> — 公共契约</li>
+  </ul>
+</section>
+
+<section>
+   <h2><span class="n">6</span>定稿记录 <span class="tag decided">已定</span></h2>
+  <ul>
+     <li>SDK 槽名 <code>userAction</code>；注册形状 <code>positions?: ["left","right"]</code>（省略即两侧）；props 仍带 <code>position?</code> 由宿主告知挂载侧</li>
+     <li>每侧最多 3 个可见项，第 4 个起进宿主「⋯」折叠菜单（左槽 ⋯ 置宿主键前、右槽置末尾）；宿主键永不折叠，装/卸插件时重算</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

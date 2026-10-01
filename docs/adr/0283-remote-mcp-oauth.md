@@ -49,4 +49,9 @@ Previous MCP implementations in PI-Desktop supported only static HTTP headers. U
 - Loopback `/callback` validates `state` before looking at `error` or `code`. A mismatched `state` is a stray request and does not abort the login. A matching callback is consumed once (replay returns 409).
 - `invalid_grant` on refresh deletes the stored secret; transient 5xx keeps the existing access token.
 - `mcp/oauth/start` passes the listed `McpServerRecord` through to `onAuthorized` so a project-level server that is not in the current workspace runtime can still handshake after login.
-- Scope selection remains an MVP heuristic (`default` if advertised, else `scopes_supported[0]`). There is no per-server scope picker, device-code flow, or DPoP.
+- Scope selection initially used an MVP heuristic (`default` if advertised, else `scopes_supported[0]`); the amendment below supersedes it. There is no per-server scope picker, device-code flow, or DPoP.
+
+## Amendment (2026-09-29) — issuer discovery and resource scopes (#1221)
+
+- Preserve issuer paths when discovering authorization metadata: try OAuth path insertion, OIDC path insertion, then OIDC path appending. Root issuers retain the two root discovery URLs. Keep the existing TLS checks and manual redirect policy.
+- Request scopes from the initial 401 Bearer challenge first, otherwise all valid `scopes_supported` entries from protected-resource metadata. Omit `scope` when neither supplies one; authorization-server scope catalogs do not describe the resource's requirements and must not supply defaults or extra scopes.

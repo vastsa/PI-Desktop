@@ -1,0 +1,240 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>tool-extend · 工具返回值上的三个扩展字段 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">tool-extend</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/tool-extend</div>
+  <h1>tool-extend · 数据流</h1>
+  <p>返回值三字段从插件到宿主的路径。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.tool.extend</code> · addedToolNames / usage / terminate</div>
+</header>
+
+<main>
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag proposal">建议</span></h2>
+    <p class="lead">不是一个调用，而是插件<b>自有工具</b>返回值上的三个可选字段；宿主按 <code>runtime.tool.extend</code> 授权决定收下还是剥掉。</p>
+<pre><span class="c">// 插件自有工具的返回值（示意）</span>
+<span class="k">return</span> {
+  ...normalResult,
+  <span class="k">addedToolNames</span>: [<span class="c">"my-next-step"</span>],
+  <span class="k">usage</span>: { <span class="k">costUsd</span>: 0.02 },
+  <span class="k">terminate</span>: <span class="k">true</span>,
+};</pre>
+    <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">addedToolNames</td><td>引入新工具；界面署名插件；无授权 → 剥离 + 审计</td></tr>
+      <tr><td class="id">usage</td><td>报告花费；无授权 → 剥离 + 审计</td></tr>
+      <tr><td class="id">terminate</td><td>请求批量终止；无授权 → 剥离 + 审计</td></tr>
+      <tr><td class="id">权限</td><td><code>runtime.tool.extend</code>；refusal / 剥离都留审计</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag verified">已核实</span></h2>
+    <div class="legend">
+    <span><span class="chip host">host</span> 宿主 / 内核</span>
+    <span><span class="chip slot">slot</span> 钩子边界</span>
+    <span><span class="chip plugin">plugin</span> 插件</span>
+  </div>
+  <div class="flow">
+    <div class="flow-head">
+      <div class="h">宿主</div>
+      <div class="s">钩子边界</div>
+      <div class="p">插件</div>
+    </div>
+    <div class="flow-body">
+      <div class="lane"><ul>
+          <li><span class="what">收到工具返回值</span><span class="why">插件自有工具</span></li>
+          <li><span class="what">按权限看三字段</span><span class="why">runtime.tool.extend</span></li>
+          <li><span class="what">有授权 → 收下</span><span class="why">注册工具 / 记账 / 终止</span></li>
+          <li><span class="what">无授权 → 剥离</span><span class="why">留审计</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">runtime.tool.extend</span><span class="why">字段级授权</span></li>
+          <li><span class="what">剥离不整单失败</span><span class="why">其余结果照常</span></li>
+          <li><span class="what">沙箱缺口</span><span class="why">未接（ADR 0300）</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">在返回值上加字段</span><span class="why">可选</span></li>
+          <li><span class="what">有授权才有用</span><span class="why">否则被剥掉</span></li>
+          <li><span class="what">引入的工具署名</span><span class="why">作者可见</span></li>
+      </ul></div>
+    </div>
+    <div class="arrow-row">
+      <div class="x">→ 返回值 + 三字段</div>
+      <div class="x">收下 / 剥离 →</div>
+      <div class="y">← 结果照常返回</div>
+    </div>
+  </div>
+  <h3>一次返回的一生</h3>
+    <table>
+    <thead><tr><th>时刻</th><th>发生什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">工具结束</td><td>插件自有工具返回结果，可带三字段</td></tr>
+      <tr><td class="id">门控</td><td>按 <code>runtime.tool.extend</code> 逐字段决定</td></tr>
+      <tr><td class="id">收下</td><td>addedToolNames 注册（署名插件）；usage 记账；terminate 请求收工</td></tr>
+      <tr><td class="id">剥掉</td><td>字段无效化 + 审计；工具结果本身照常进对话</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>情况</th><th>结果</th><th>靠什么保证</th></tr></thead>
+    <tbody>
+      <tr><td class="id">无授权</td><td>三字段剥离 + 审计，结果照常</td><td>字段级门控</td></tr>
+      <tr><td class="id">addedToolNames 重名</td><td>拒绝注册 + 审计</td><td>命名冲突检查</td></tr>
+      <tr><td class="id">terminate 无授权</td><td>不终止</td><td>门控</td></tr>
+      <tr><td class="id">沙箱插件</td><td>目前调不通</td><td>ADR 0300</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">改宿主工具结果</td><td>那是 tool-gate 的只读边界</td></tr>
+      <tr><td class="id">覆盖内建工具名</td><td>重名拒绝注册</td></tr>
+      <tr><td class="id">静默提权</td><td>没授权就是剥离 + 审计</td></tr>
+      <tr><td class="id">整轮中止语义</td><td>terminate 是批量收工；整轮停走 abort-turn</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+      <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">tool-gate</td><td>宿主工具的观察 / 拦截；本页是自有工具返回值扩展</td><td><code>runtime/tool-gate/</code></td></tr>
+      <tr><td class="id">abort-turn</td><td>整轮中止</td><td><code>runtime/abort-turn/</code></td></tr>
+      <tr><td class="id">ADR 0303</td><td>权限模型</td><td><code>docs/adr/0303</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+    <p style="color:var(--text-2)">usage 汇总口径、terminate 提示形态——见 requirements.html 的「本轮拍板」。</p>
+</section>
+
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

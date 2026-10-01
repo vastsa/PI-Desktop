@@ -9,6 +9,8 @@ import {
   validateManifest,
   LEGACY_FS_PERMISSIONS,
   MAX_GLOBAL_SHORTCUTS_PER_PLUGIN,
+  MAX_RENDERER_ACTIONS_PER_PLUGIN,
+  MAX_RENDERER_CALL_METHODS_PER_PLUGIN,
   PLUGIN_PERMISSIONS,
   PLUGIN_VIEW_ICONS,
   type PluginProviderContrib,
@@ -117,6 +119,64 @@ describe("validateManifest", () => {
     );
     expect(validateManifest({ ...base, ui: { panel: 3 } }).error).toMatch(/manifest\.ui\.panel/);
     expect(validateManifest({ ...base, ui: { panel: "renderer/index.html" } }).ok).toBe(true);
+  });
+
+  it("couples a renderer entry and its whitelists to renderer.extension", () => {
+    const granted = { ...base, permissions: ["renderer.extension"] };
+    expect(
+      validateManifest({
+        ...granted,
+        renderer: "renderer/index.mjs",
+        rendererActions: ["plugin.call", "demo.future-word"],
+        rendererCallMethods: ["stats.summary"],
+      }).ok,
+    ).toBe(true);
+    expect(validateManifest({ ...base, renderer: "renderer.js" }).error).toMatch(
+      /renderer\.extension permission/,
+    );
+    expect(validateManifest({ ...granted, rendererActions: ["plugin.call"] }).error).toMatch(
+      /require manifest\.renderer/,
+    );
+    // Empty whitelists declare nothing, exactly as host-core reads them.
+    expect(validateManifest({ ...base, rendererActions: [] }).ok).toBe(true);
+    expect(validateManifest({ ...granted, renderer: "../renderer.js" }).error).toMatch(
+      /manifest\.renderer.*\.\./,
+    );
+    expect(validateManifest({ ...granted, renderer: "/abs/renderer.js" }).error).toMatch(
+      /manifest\.renderer.*absolute/,
+    );
+    expect(validateManifest({ ...granted, renderer: "renderer.css" }).error).toMatch(
+      /\.js or \.mjs module/,
+    );
+    expect(validateManifest({ ...granted, renderer: " " }).error).toMatch(/non-empty string/);
+  });
+
+  it("bounds the renderer whitelists", () => {
+    const granted = { ...base, permissions: ["renderer.extension"], renderer: "renderer.js" };
+    const words = (count: number) => Array.from({ length: count }, (_, index) => `word${index}`);
+    expect(
+      validateManifest({
+        ...granted,
+        rendererActions: words(MAX_RENDERER_ACTIONS_PER_PLUGIN),
+        rendererCallMethods: words(MAX_RENDERER_CALL_METHODS_PER_PLUGIN),
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateManifest({ ...granted, rendererActions: words(MAX_RENDERER_ACTIONS_PER_PLUGIN + 1) })
+        .error,
+    ).toMatch(/rendererActions allows at most 16/);
+    expect(
+      validateManifest({
+        ...granted,
+        rendererCallMethods: words(MAX_RENDERER_CALL_METHODS_PER_PLUGIN + 1),
+      }).error,
+    ).toMatch(/rendererCallMethods allows at most 32/);
+    expect(validateManifest({ ...granted, rendererCallMethods: ["ok", ""] }).error).toMatch(
+      /rendererCallMethods must be an array of non-empty strings/,
+    );
+    expect(validateManifest({ ...granted, rendererActions: "plugin.call" }).error).toMatch(
+      /rendererActions must be an array/,
+    );
   });
 
   it("surfaces contribution errors", () => {

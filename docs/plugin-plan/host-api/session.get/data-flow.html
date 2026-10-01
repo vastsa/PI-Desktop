@@ -1,0 +1,159 @@
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>session.get · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">host-api</a><span class="sep">/</span><a href="index.html">session.get</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+<header class="top">
+  <h1>session.get · 数据流</h1>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>接口约定</h2>
+  <pre class="sig">pi.session.get(input: { sessionId: string }): Promise&lt;PluginSessionGetResult&gt;</pre>
+  <p class="lead">读取一条本插件会话的元数据（标题、来源、项目/模型绑定、消息数），不含消息正文。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>是</td><td>本插件拥有的会话 id。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>会话 id。</td></tr>
+      <tr><td class="id">title</td><td class="id">string</td><td>当前标题。</td></tr>
+      <tr><td class="id">source</td><td class="id">string</td><td>导入来源 namespace。</td></tr>
+      <tr><td class="id">externalId</td><td class="id">string</td><td>来源系统内的原始 id。</td></tr>
+      <tr><td class="id">originKind</td><td class="id">"imported" | "created"</td><td>导入会话或宿主内创建。</td></tr>
+      <tr><td class="id">projectId</td><td class="id">number | null</td><td>绑定的宿主项目 id，未绑定为 null。</td></tr>
+      <tr><td class="id">projectPath</td><td class="id">string | null</td><td>绑定的项目路径，未绑定为 null。</td></tr>
+      <tr><td class="id">modelId</td><td class="id">string | null</td><td>当前绑定模型 id。</td></tr>
+      <tr><td class="id">providerId</td><td class="id">string | null</td><td>当前绑定提供商 id。</td></tr>
+      <tr><td class="id">history</td><td class="id">对象</td><td>导入时的绑定快照：history.projectPath / history.modelId / history.providerId，均可为 null。</td></tr>
+      <tr><td class="id">messageCount</td><td class="id">number</td><td>会话内消息条数。</td></tr>
+      <tr><td class="id">createdAt</td><td class="id">string</td><td>会话创建时间（ISO）。</td></tr>
+      <tr><td class="id">updatedAt</td><td class="id">string</td><td>最近更新时间（ISO）。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "sessionId": "imp_9f3a2c" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "sessionId": "imp_9f3a2c",
+  "title": "React 迁移讨论",
+  "source": "wechat-export",
+  "externalId": "wx-2026-0212-01",
+  "originKind": "imported",
+  "projectId": 3,
+  "projectPath": "C:\\work\\shop",
+  "modelId": "claude-sonnet-4-5",
+  "providerId": "anthropic",
+  "history": { "projectPath": null, "modelId": "claude-sonnet-4-5", "providerId": "anthropic" },
+  "messageCount": 42,
+  "createdAt": "2026-02-12T08:30:00.000Z",
+  "updatedAt": "2026-02-14T21:05:00.000Z"
+}</pre>
+  <div class="callout"><b>一句话边界。</b>只给元数据，不返回消息正文；要读消息用 session.listMessages。</div>
+</section>
+<section>
+  <h2><span class="n">2</span>数据怎么走</h2>
+  <ol>
+    <li><b>调用：</b>插件带着 <code>sessionId</code> 发起请求。</li>
+    <li><b>校验：</b>宿主做归属检查——会话必须属于本插件声明的 <code>sessionSources</code>，否则拒绝。</li>
+    <li><b>读取：</b>宿主取会话行、绑定历史快照与消息计数。</li>
+    <li><b>返回：</b>一次性返回 <code>PluginSessionGetResult</code>，不含消息正文。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td><code>{ sessionId }</code> 查询请求。</td></tr>
+      <tr><td>宿主 → 插件</td><td>会话元数据 <code>PluginSessionGetResult</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">3</span>出错怎么办</h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>会话不属于本插件（source 隔离）</td><td>调用失败，无数据返回</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>sessionId 不存在</td><td>调用失败</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">4</span>不提供什么</h2>
+  <p class="lead">不返回消息正文（用 listMessages）。</p>
+</section>
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <ul>
+    <li><code>host-api/session.listMessages</code></li>
+  </ul>
+</section>
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <p class="lead">无。</p>
+</section>
+
+</main>
+</body>
+</html>

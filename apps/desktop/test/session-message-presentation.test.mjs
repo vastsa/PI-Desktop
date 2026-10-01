@@ -49,6 +49,8 @@ function loadComponent(name, extras = {}) {
       useTranscriptMenu: () => () => {},
       useChatTextActions: () => ({ copyText: () => {}, selectText: () => {} }),
     },
+    "./ActionBarSlots": { ActionSlotSide: () => null },
+    "../../../plugins/renderer-slots/slot-message": { slotMessage: () => undefined },
     ...extras,
   };
   const module = { exports: {} };

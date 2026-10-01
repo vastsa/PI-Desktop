@@ -1,6 +1,6 @@
 # 03. Tools and Permissions
 
-> Decisions applied: D003, D004, D005, D006, D013, D015, D093, D114, D115, D181, D186,
+> Decisions applied: D003, D004, D006, D013, D015, D093, D114, D115, D181, D186, D636,
 > D189, D190, D195 (ADR 0057), D315, D384 (ADR 0211), ADR 0087
 
 ## 0. Frozen policy summary
@@ -13,7 +13,7 @@
 | Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
 | Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
-| Permission timeout | 120s → deny |
+| Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
 | Bash style | non-interactive; selected host catalog shell with streamed output |
 | Edit contract | line-anchored ops + whole-file `tag`; no `old_string`/`new_string` (ADR 0087) |
@@ -40,20 +40,22 @@ Let the agent get things done, but stay under control by default.
 | `Edit` | high | Modify files through line-anchored ops against a verified `tag` ([18](18-line-anchored-edit-contract.md)) |
 | `Bash` | high | Execute commands |
 | `asktool` | low | Ask one or more user questions and return the submitted answers as tool output |
+| `TodoWrite` | low | Replace the current Agent session checklist; host validates and persists the full ordered snapshot |
 
 > Names may be fine-tuned during implementation, but semantics stay consistent.
 
 ### 2.1 Deferred ancillary tools (D185, ADR 0048)
 
-Following pi's coding-agent default, the first Agent request activates only
-`Read`, `Bash`, `Edit`, and `Write`; `Glob` and `Grep` are loaded on demand.
-Plan and Goal keep their read/inspection core. `Skill` is deliberately not
-deferred: a `/skill-id` invocation instructs the model to call it, and a tool
-absent from the schema cannot be called at all, so it ships with the first
-request whenever the skill catalog is non-empty (D404, ADR 0230). The runtime
-also registers capabilities without sending their full schemas up front:
+The first Agent request includes `Read`, `Bash`, `Edit`, `Write`, `Glob`, and
+`Grep`. Keeping workspace listing and content search in the initial schema
+avoids a discovery round trip for routine project exploration (the amendment
+to ADR 0048 records this change). Plan and Goal keep their read/inspection core.
+`Skill` is deliberately not deferred: a `/skill-id` invocation instructs the
+model to call it, and a tool absent from the schema cannot be called at all, so
+it ships with the first request whenever the skill catalog is non-empty (D404,
+ADR 0230). The runtime still registers optional capabilities without sending
+their full schemas up front:
 
-- `Glob` and `Grep` in Agent mode
 - `BrowserPreview`
 - `PluginCheck`, `PluginScaffold`, and `PluginPack`
 - plugin-declared agent tools
@@ -86,7 +88,9 @@ Every non-interactive execution tool must have:
 
 `asktool` is the interactive exception: it has a typed request event, waits for
 the renderer response without an expiry, and returns a bounded structured tool
-result. Stopping the turn resolves outstanding questions as skipped.
+result. Options may be plain strings or `{ label, description? }` objects; the
+selected label remains the answer value. Stopping the turn resolves outstanding
+questions as skipped.
 
 ## 4. Path Rules
 
@@ -108,11 +112,10 @@ On POSIX, a literal backslash in a filename remains a backslash so the result
 can be passed back to `Read` or `Edit`; Windows path separators are normalized
 to `/`.
 
-Agent mode keeps `Glob`/`Grep` deferred under D185. Each new user prompt clears
-their live activation and restores only eligible successful markers still in
-context; when no such marker exists, directory discovery activates `Glob`
-through `ToolSearch` for that prompt instead of guessing a file name or calling
-`Read` on a directory.
+Agent mode keeps `Glob`/`Grep` available from the first request. Other deferred
+tools still follow the per-prompt activation and successful-context restoration
+rules above; directory discovery can call `Glob` directly without a
+`ToolSearch` round trip.
 
 The runtime accepts one alias per canonical argument name and folds it away
 before the host sees the call (D273):
@@ -156,7 +159,7 @@ low-risk auto-allow decision:
 - `ask` and `accept-edits` emit the ordinary permission card;
 - `allow-once` executes only the current call, while `allow-session` follows
   the existing per-tool session grant scope;
-- denial, timeout, or cancellation never executes the operation;
+- denial or cancellation never executes the operation;
 - relative `..` escapes and symlink escapes use the same rule as absolute
   paths;
 - successful external `Read`/`Write`/`Edit` results carry `root: "external"`
@@ -462,8 +465,10 @@ tool call
  → deny? return tool error result
 ```
 
-Permission confirmation timeout:
-- After 120s, auto-deny (D005: fail closed, do not hang forever)
+Permission confirmation:
+- The local approval remains pending until Allow once, Allow for session, Deny,
+  cancellation, or host/process shutdown. Tool-specific execution timeouts
+  still apply after approval.
 
 ## 8. Tool Result Visibility to the Model
 

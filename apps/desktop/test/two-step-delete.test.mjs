@@ -133,7 +133,7 @@ test("both delete labels ship in every catalog and read the same", () => {
     const source = catalogs.get(id);
     const expected = CONFIRM_LABELS[id];
     assert.equal(blockValue(catalogBlock(source, "nav", "sessionCollaboration"), "deleteTaskConfirm"), expected, id);
-    assert.equal(blockValue(catalogBlock(source, "project", "pulls"), "deleteMenuConfirm"), expected, id);
+    assert.equal(blockValue(catalogBlock(source, "project", "scheduled"), "deleteMenuConfirm"), expected, id);
     if (id !== "en") {
       assert.notEqual(expected, CONFIRM_LABELS.en, `${id} is translated`);
     }

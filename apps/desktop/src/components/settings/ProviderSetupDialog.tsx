@@ -20,12 +20,14 @@ import {
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { useAppStore } from "../../stores/app-store";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
 import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
-import { ConnectionStatus, ProviderConnectionFields } from "./ProviderConnectionFields";
+import { ProviderConnectionFields } from "./ProviderConnectionFields";
+import { useProbeFeedback } from "./useProbeFeedback";
 import { ServiceChooser } from "./ServiceChooser";
 import { CUSTOM_SERVICE } from "./service-catalog";
 import { useRecommendedModelSelection } from "./useRecommendedModelSelection";
@@ -99,8 +101,7 @@ export function ProviderSetupDialog({
   const [models, setModels] = useState<ModelBinding[]>(initialDraft?.models ?? provider?.models ?? []);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [error, setError] = useState("");
-  const [testResult, setTestResult] = useState("");
+  const showToast = useAppStore((state) => state.showToast);
   const [baseUrlTouched, setBaseUrlTouched] = useState(false);
   // A format the user picked by hand outranks every inference about this row.
   const [apiStyleTouched, setApiStyleTouched] = useState(false);
@@ -156,6 +157,9 @@ export function ProviderSetupDialog({
     },
     provider,
   );
+  // The probe's own answer is reported once as a toast instead of a status row
+  // under the key, which held a line of the dialog open for as long as it stood.
+  useProbeFeedback(discovery, named);
   const recommended = useRecommendedModelSelection({
     // A copy keeps the models it was copied with.
     enabled: !provider && !initialDraft?.models?.length,
@@ -247,26 +251,35 @@ export function ProviderSetupDialog({
     if (normalized !== baseUrl) setBaseUrl(normalized);
   };
 
+  /*
+    The outcome of a manual connection test is an event: it is reported through
+    the app toast stack instead of a result line under the credential fields,
+    which used to push the two panes down every time it changed.
+  */
   const testConnection = async () => {
     if (!provider) return;
     setTesting(true);
-    setTestResult("");
     try {
       const result = (await api.testProvider(provider.id)) as {
         ok?: boolean;
         message?: string;
         status?: number;
       };
-      setTestResult(
-        result?.ok
-          ? t("settings.testOk")
-          : result?.message ||
-              (result?.status
-                ? t("settings.testFailedStatus", { status: result.status })
-                : t("settings.testFailed")),
+      if (result?.ok) {
+        showToast(t("settings.testOk"), { variant: "success" });
+        return;
+      }
+      showToast(
+        result?.message ||
+          (result?.status
+            ? t("settings.testFailedStatus", { status: result.status })
+            : t("settings.testFailed")),
+        { variant: "error" },
       );
     } catch (cause) {
-      setTestResult(cause instanceof Error ? cause.message : String(cause));
+      showToast(cause instanceof Error ? cause.message : String(cause), {
+        variant: "error",
+      });
     } finally {
       setTesting(false);
     }
@@ -298,7 +311,6 @@ export function ProviderSetupDialog({
       ? remainingImageModels
       : undefined;
     setSaving(true);
-    setError("");
     try {
       if (provider) {
         const result = await api.updateProvider({
@@ -332,7 +344,9 @@ export function ProviderSetupDialog({
         await onSaved(result.provider, persisted, imageModelIdsToSave);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      showToast(cause instanceof Error ? cause.message : String(cause), {
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -401,7 +415,6 @@ export function ProviderSetupDialog({
       </div>
 
       <div className="provider-setup-body">
-        {error ? <div className="provider-setup-error">{error}</div> : null}
 
         <ProviderEndpointGuidance
           baseUrl={resolvedBaseUrl}
@@ -414,8 +427,6 @@ export function ProviderSetupDialog({
             setService(preset?.id ?? CUSTOM_SERVICE);
             setBaseUrl(suggestion.baseUrl);
             setApiStyle(suggestion.apiStyle);
-            setError("");
-            setTestResult("");
           }}
         />
 
@@ -437,7 +448,6 @@ export function ProviderSetupDialog({
             baseUrl={baseUrl}
             onBaseUrlChange={(value) => {
               setBaseUrl(value);
-              setError("");
             }}
             commitBaseUrl={commitBaseUrl}
             baseUrlError={baseUrlError}
@@ -451,14 +461,8 @@ export function ProviderSetupDialog({
             apiStyleNote={endpointFormatNote}
             accountOnlyApiStyle={accountOnlyApiStyle}
             requiresApiStyleChoice={requiresApiStyleChoice}
-            status={<ConnectionStatus active={discoveryActive} discovery={discovery} named={named} />}
           />
 
-          {testResult ? (
-            <div className="provider-credential-test">
-              <span className="provider-credential-test-result">{testResult}</span>
-            </div>
-          ) : null}
         </div>
 
         <ModelSelectionPanes

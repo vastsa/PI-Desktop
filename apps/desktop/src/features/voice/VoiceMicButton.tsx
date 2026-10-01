@@ -96,7 +96,7 @@ function MicIcon({ active, phase }: { active: boolean; phase: VoicePhase }) {
       />
       {/* Recording indicator */}
       {phase === "listening" && (
-        <circle cx="13" cy="3" r="2.5" fill="var(--color-danger, #ef4444)">
+        <circle cx="13" cy="3" r="2.5" fill="var(--ds-error)">
           <animate
             attributeName="opacity"
             values="1;0.3;1"

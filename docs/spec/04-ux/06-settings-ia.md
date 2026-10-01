@@ -70,6 +70,11 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   lines are rendered. These are visual landmarks only, not a second navigation
   level.
   When search filters the directory, empty clusters and their headings disappear.
+- **Voice** is a regular Preferences destination between AI and Shortcuts,
+  present in every build with no Experimental badge and no developer-mode
+  requirement. Its rail row, page, search hits, and idle Composer entry are
+  available to all users.
+  It is the only place to enable Live Voice. See the Voice section below.
 - **Cloud sync / 云同步** is a developer-only, Experimental destination: its
   rail row, page, and settings-search hits exist only while
   `AppSettings.developerMode` is `true`. With developer mode off the row is
@@ -294,6 +299,37 @@ The user-facing dashboard is marketplace plugin `pi.token-insights`, opened from
 the command palette (`usage`, `tokens`, `用量`). Settings search does not index
 a usage tab.
 
+### Voice
+
+- This destination owns Live Voice enablement and provider bindings, and is
+  reachable in every build without developer mode. Its enable card keeps the
+  explanation behind the heading's help mark and the Model configuration link
+  on the card's heading line, so no control floats between the rows. Disabled
+  Live Voice has no Composer voice or work icon; enabling it reveals one
+  preparation entry, never auto-starts a call, and never grants work access.
+- Bind an existing compatible provider account, choose the exact next-call
+  binding, and configure its model, voice, and explicit Realtime profile where
+  applicable. An account card with nothing bound shows only its picker: the
+  next-call, model, voice, and profile rows appear with the binding instead of
+  rendering as empty disabled controls. Readiness describes that selected
+  binding, not whether any other configured provider is ready. Credentials
+  remain in the existing Host/Main systems and are not shown or copied into the
+  renderer.
+- Provider-binding edits remain locked while that binding is active. Turning
+  Live Voice off ends the call, but the global compact call bar remains visible
+  through Main termination and renderer media cleanup, including while Settings
+  replaces the chat shell. An unconfirmed release keeps its error visible and
+  suppresses another Start until the app is restarted.
+- Work authorization belongs to an explicit opt-in and target in next-call
+  preparation, not to the Settings enable switch. Context sharing is a separate
+  unchecked, transient next-call choice. Settings copy distinguishes the
+  default voice-only call from explicitly authorized work requests.
+- Legacy Dictation and Host Speech settings remain hidden and their stored
+  values retain their meaning. No new persisted preference, IPC, provider
+  fallback, or permission rule is introduced. See
+  [Live Voice](../03-runtime/live-voice.md) and
+  [Live Work](../03-runtime/live-work-session.md).
+
 ### Shortcuts (`shortcuts` tab)
 - **Keyboard shortcuts** card:
   - lists navigation, agent, and window actions from one shared shortcut map
@@ -437,8 +473,11 @@ a usage tab.
     `/messages`, `/chat/completions`, or `/responses` when the field loses
     focus. The placeholder is enough — no helper paragraph under the URL.
     Invalid URLs show an inline error and block discovery and save. A failed
-    model-list probe shows a compact classified error in the empty pane, or a
-    one-line banner above a cached list; raw HTTP/JSON dumps are not shown.
+    model-list probe reports one classified sentence through the app toast and
+    leaves a one-line “no list” label in the empty pane, or the rows in place
+    above it; raw HTTP/JSON dumps are shown in neither. A settled probe —
+    connected, catalog, or refused — is announced once instead of holding a
+    status row under the key.
     Named display names and optional custom headers stay behind Advanced settings.
     The dialog header's upper-right actions include an explicit Advanced settings
     button that opens a separate compact modal, keeping the main form focused on
@@ -778,7 +817,9 @@ system while preserving their different data ownership:
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
    Subagents / 子智能体, Import / 导入, Projects / 项目, Cloud sync / 云同步,
    Remote Hosts / 远程主机, and Info / 信息 in that order. Cloud sync / 云同步
-   and Remote Hosts / 远程主机 appear only while developer mode is on. The rows are grouped under Preferences / 偏好,
+   and Remote Hosts / 远程主机 appear only while developer mode is on. Voice
+   appears between AI and Shortcuts only in development builds with developer
+   mode on. The rows are grouped under Preferences / 偏好,
    Agent / 智能体, Workspace / 工作区, and System / 系统. There is no
    Usage / 用量 destination.
 3. Appearance is part of General and has no standalone rail destination

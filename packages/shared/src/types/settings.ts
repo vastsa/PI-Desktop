@@ -10,6 +10,7 @@ import type { PluginMarketSource } from "./plugins.js";
 import type { SpeechSettings } from "./speech.js";
 import type { ThinkingLevel } from "./models.js";
 import type { UpdatePreference } from "./platform.js";
+import type { LiveVoiceSettings } from "./live-voice.js";
 
 export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 
@@ -35,6 +36,8 @@ export type AppSettings = {
   lastNotifiedUpdateVersion?: string;
   /** Host speech bindings. Absent means voice actions stay disabled. */
   speech?: SpeechSettings;
+  /** App-owned real-time voice bindings; separate from local dictation. */
+  liveVoice?: LiveVoiceSettings;
   defaultMode: Mode;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.

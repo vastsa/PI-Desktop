@@ -82,3 +82,12 @@ and common across coding-agent tool conventions.
 
 Rejected. Settlement does not mean every intermediate tool call succeeded;
 the dedicated terminal outcome surfaces already own turn failure.
+
+## Amendment — 2026-09-27: Agent search tools start active
+
+`Glob` and `Grep` now ship in the first Agent request alongside `Read`,
+`Bash`, `Edit`, and `Write`, as recorded in the amendment to ADR 0048. This
+supersedes Decision 1's deferral instruction and the deferred-search
+consequences above. ADR 0069's path shapes, structured Read recovery, and
+transcript outcome ownership remain unchanged; other optional capabilities
+remain available through `ToolSearch`.

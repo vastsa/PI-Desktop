@@ -1,4 +1,5 @@
 import type { UiMessage } from "@pi-desktop/shared";
+import { messageContentFacts } from "./transcript-summary";
 
 export type ConversationMinimapMarker = {
   id: string;
@@ -42,16 +43,20 @@ export function buildConversationMinimapMarkers(
       markers.push({
         id: message.id,
         role: "user",
-        preview: (message.content || "")
-          .trim()
-          .slice(0, CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS),
+        preview: messageContentFacts(message).trimmedContent.slice(
+          0, CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS,
+        ),
       });
       assistantMarkerIndex = null;
       continue;
     }
     if (message.role !== "assistant") continue;
 
-    const content = (message.content || "").trim();
+    // Later fragments cannot change a saturated preview or its first anchor.
+    if (assistantMarkerIndex !== null &&
+      markers[assistantMarkerIndex].preview.length >= CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS
+    ) continue;
+    const content = messageContentFacts(message).trimmedContent;
     if (!content) continue;
     if (assistantMarkerIndex === null) {
       markers.push({

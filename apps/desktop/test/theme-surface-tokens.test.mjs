@@ -85,3 +85,29 @@ test("surface guard covers the tokenized families and every opaque colour form",
     ],
   );
 });
+
+test("surface guard rejects static non-token variable references", () => {
+  /*
+    The gray/accent scales are static root literals and the legacy color-*
+    family never existed, so a declaration riding those variables is pinned
+    out of every contributed theme's reach. Theme roots (where the scales are
+    defined) and the enumerated fixed-palette rules stay exempt.
+    the enumerated fixed-palette rules stay exempt.
+  */
+  const violations = findLiteralSurfaceColors(`
+.send-btn { background: var(--gray-0); color: var(--gray-1000); }
+:root[data-theme="dark"] .composer-input { color: var(--gray-0); }
+.voice-error { color: var(--color-danger, #ef4444); }
+:root { --ds-bg-hover: color-mix(in oklab, var(--gray-0) 6%, transparent); }
+.composer-image-preview button:hover { background: var(--gray-700); }
+.projects-glyph { color: var(--gray-0); }`);
+  assert.deepEqual(
+    violations.map(({ line, property }) => [line, property]),
+    [
+      [2, "background"],
+      [2, "color"],
+      [3, "color"],
+      [4, "color"],
+    ],
+  );
+});

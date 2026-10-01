@@ -1,0 +1,139 @@
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>自理弹窗 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e;--surface:#161616;--surface-2:#1b1b1b;--line:#2a2a2a;--line-2:#353535;
+    --text:#ededed;--text-2:#b0b0b0;--muted:#7d7d7d;--faint:#5c5c5c;
+    --ok:#40c977;--warn:#ff8549;--error:#ff6764;
+    --ui:#c27aff;--host:#4c8dff;--plugin:#c27aff;--slot:#ff8549;
+    --ok-bg:rgba(64,201,119,.10);--warn-bg:rgba(255,133,73,.10);--error-bg:rgba(255,103,100,.10);
+    --host-bg:rgba(76,141,255,.10);--plugin-bg:rgba(194,122,255,.10);--slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  a{color:inherit}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .plan-nav .here{color:var(--text);padding:3px 8px}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:880px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px;border-top:1px solid var(--line);padding-top:14px}
+  section:first-child>h2{border-top:0;padding-top:0}
+  .tag{font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:99px}
+  .tag.decided{color:var(--ok);background:var(--ok-bg)}
+  .tag.open{color:var(--ui);background:var(--plugin-bg)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  p{margin:0 0 10px}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left-color:var(--ok)}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+</style>
+</head>
+<body>
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <span class="here">自理弹窗</span>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="demo.html">演示</a>
+</nav>
+<header class="top">
+  <div class="crumb">docs/plugin-plan · ui/self-dialog</div>
+  <h1>自理弹窗 · 需求</h1>
+  <p>插件自理的全屏弹窗和角落浮层。无槽无注册；四条底线；Esc 不关安全层。</p>
+   <div class="meta">status: finalized · 无数据流页（原因见「本轮拍板」）</div>
+</header>
+<main>
+
+<section>
+  <h2>范围 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li><strong>弹窗</strong>（模态）与<strong>悬浮层</strong>（非阻塞）由插件自己画。</li>
+    <li>不谈：宿主确认卡、宿主权限审批卡、工具调用卡。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>槽形状 <span class="tag decided">已定</span></h2>
+  <div class="callout ok"><b>无槽、无注册、自理。</b>插件在自己的组件里用 <code>position: fixed</code> 自画。宿主不设槽、不注册、无抢注。</div>
+  <p><strong>四条底线：</strong></p>
+  <table>
+    <thead><tr><th>底线</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>画在自己组件里</td><td>不逃出样式作用域</td></tr>
+      <tr><td>卸载即消失</td><td>禁用 / 卸载随组件树消失，宿主不用收拾</td></tr>
+      <tr><td>压不过宿主安全层</td><td>权限审批 / 确认等安全层永远在上</td></tr>
+      <tr><td>插件之间后开在上</td><td>宿主不仲裁</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>插件能拿到什么 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>没有槽、没有注册，也没有宿主给的 props。</li>
+    <li>层的出现与消失就是普通组件的挂载与卸载。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>插件场景 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>场景</th><th>装上插件之后</th></tr></thead>
+    <tbody>
+      <tr><td>全屏向导</td><td>插件自己画模态弹窗</td></tr>
+      <tr><td>角落通知</td><td>插件自己画浮层</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>宿主不做槽、不做注册、不做抢注仲裁</li>
+    <li>Esc <strong>不关安全层</strong>；关闭只走明确的界面动作（✕）</li>
+    <li>不让自理层压过宿主安全层</li>
+  </ul>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>问题</th><th>决定</th></tr></thead>
+    <tbody>
+      <tr><td>有没有槽 / 注册</td><td><strong>无槽无注册，自理</strong></td></tr>
+      <tr><td>四条底线</td><td>画在自己组件里；卸载即消失；压不过宿主安全层；插件之间后开在上、宿主不仲裁</td></tr>
+      <tr><td>Esc</td><td><strong>不关安全层</strong>；关闭只走 ✕</td></tr>
+      <tr><td>有没有数据流</td><td><strong>没有 data-flow.html。</strong>宿主不经手任何数据——无槽无注册，没有接口、没有数据往来</td></tr>
+    </tbody>
+  </table>
+   <div class="callout ok"><b>定稿：</b>推荐工具类 <code>p-overlay</code> / <code>p-dialog</code>（含 <code>p-dialog-head/__body/__foot</code>）/ <code>p-notice</code>（含 <code>p-notice-icon/__msg/__dismiss</code>），token <code>--ds-scrim</code>、<code>--ds-shadow-dialog</code>；z 序：插件自理层 600..899（首个 600，每层 +1），宿主安全层固定 900，现网 1000+ 阶梯不动。</div>
+</section>
+
+</main>
+</body>
+</html>

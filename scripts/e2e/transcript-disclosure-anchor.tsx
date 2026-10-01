@@ -82,7 +82,7 @@ async function settle() {
  * viewport. Only the app's stylesheet is left out, so the geometry comes from
  * inline sizes and the real components' intrinsic height.
  */
-function TranscriptFixture({ messages, process = false }: { messages: UiMessage[]; process?: boolean }) {
+function TranscriptFixture({ messages, process = false, isActive = false }: { messages: UiMessage[]; process?: boolean; isActive?: boolean }) {
   const entry = process ? buildTranscriptEntries(messages).entries.find((item) => item.kind === "assistant-turn") : undefined;
   const {
     scrollRef,
@@ -118,7 +118,7 @@ function TranscriptFixture({ messages, process = false }: { messages: UiMessage[
           <div ref={contentRef} className="thread-content">
             <div style={{ height: 700 }} />
             {entry?.kind === "assistant-turn"
-              ? <AssistantTurn entry={entry} isActive={false} />
+              ? <AssistantTurn entry={entry} isActive={isActive} />
               : <ToolRow message={messages[1]} />}
             <div style={{ height: 300 }} />
           </div>
@@ -266,12 +266,28 @@ globalThis.transcriptDisclosureProbe = async () => {
       dockExpanded.scrollTop <= dockBefore.scrollTop + 2,
       "expanding the dock re-bottomed the dock scroller",
     );
-    const processContainer = mount(<TranscriptFixture process messages={[
+    const processMessages = [
       message("process-user", "user", "Inspect"),
       message("progress", "assistant", Array.from({ length: 50 }, (_, i) => `Progress paragraph ${i}.`).join("\n\n")),
       toolRowMessage("process-tool"),
       message("final", "assistant", "Finished."),
-    ]} />);
+    ];
+    const processContainer = document.createElement("div");
+    processContainer.style.height = "600px";
+    processContainer.style.width = "640px";
+    host.append(processContainer);
+    const processRoot = createRoot(processContainer, {
+      onUncaughtError: (error) => renderErrors.push(error),
+    });
+    roots.push(processRoot);
+    const renderProcess = (isActive: boolean) => flushSync(() =>
+      processRoot.render(
+        <I18nextProvider i18n={i18n}>
+          <TranscriptFixture process isActive={isActive} messages={processMessages} />
+        </I18nextProvider>,
+      ),
+    );
+    renderProcess(true);
     const processScroller = processContainer.querySelector<HTMLElement>(".thread-scroll");
     const processTitle = processContainer.querySelector<HTMLElement>(".turn-process > button");
     assert(processScroller && processTitle, "process fixture did not render");
@@ -279,27 +295,42 @@ globalThis.transcriptDisclosureProbe = async () => {
     const processBefore = geometry(processScroller, processTitle);
     assert(
       processTitle.getAttribute("aria-expanded") === "true",
-      "detailed should start the process open",
+      "an active detailed process should start open",
     );
-    processTitle.click();
+    renderProcess(false);
     await settle();
     const processCollapsed = geometry(processScroller, processTitle);
     assert(
+      processTitle.getAttribute("aria-expanded") === "false",
+      `an untouched process should collapse when its turn completes (expanded=${processTitle.getAttribute("aria-expanded")}, active=${processContainer.querySelector(".turn-process")?.classList.contains("active") ?? false}, bodyHidden=${processContainer.querySelector<HTMLElement>(".turn-process-body")?.hidden ?? true}, focusInside=${processContainer.querySelector(".turn-process-body")?.contains(document.activeElement) ?? false}, selected=${window.getSelection()?.isCollapsed === false})`,
+    );
+    assert(
       processCollapsed.scrollHeight < processBefore.scrollHeight - 100,
-      "process did not collapse",
+      "completed process content remained visible",
     );
     processTitle.click();
     await settle();
     const processExpanded = geometry(processScroller, processTitle);
     assert(
+      processTitle.getAttribute("aria-expanded") === "true",
+      "a completed process should expand on user request",
+    );
+    assert(
       processExpanded.scrollHeight > processCollapsed.scrollHeight + 100,
       "process did not expand",
     );
     // Expansion grows content under a pinned bottom, which is the case the held
-    // anchor has to compensate; the collapse above may legitimately clamp.
+    // anchor has to compensate; the automatic collapse above may legitimately clamp.
     assert(
       Math.abs(processExpanded.titleTop - processCollapsed.titleTop) < 2,
       "process expansion moved its title",
+    );
+    renderProcess(true);
+    renderProcess(false);
+    await settle();
+    assert(
+      processTitle.getAttribute("aria-expanded") === "true",
+      "a user-expanded process should stay open after completion",
     );
     assert(renderErrors.length === 0, `React render errors: ${renderErrors.map(String).join("; ")}`);
     return {

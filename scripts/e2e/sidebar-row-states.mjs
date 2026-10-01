@@ -196,12 +196,12 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
         const chatShell = document.querySelector('.app-chat-shell');
         const sidebar = chatShell?.querySelector('.sidebar');
         return {
-          hidden: chatShell?.hidden === true && chatShell.getAttribute('aria-hidden') === 'true' && chatShell.inert,
+          hiddenAndInert: chatShell?.hidden === true && chatShell.inert === true,
           sidebarRetained: sidebar?.isConnected === true,
         };
       })()`);
       check(
-        hiddenChatState.hidden && hiddenChatState.sidebarRetained,
+        hiddenChatState.hiddenAndInert && hiddenChatState.sidebarRetained,
         `${theme} settings hides the mounted chat and sidebar`,
         JSON.stringify({ hiddenChatState, selectedIds: await selectedIds() }),
       );

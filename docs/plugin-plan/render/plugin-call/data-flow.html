@@ -1,0 +1,219 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>插件转发 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:960px;margin:0 auto;padding:24px 28px 90px}
+  section{margin:0 0 44px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:rgba(76,141,255,.10)}
+  .chip.plugin{color:var(--plugin);background:rgba(194,122,255,.10)}
+  .chip.slot{color:var(--slot);background:rgba(255,133,73,.10)}
+  .chip.api{color:var(--api);background:rgba(64,201,119,.10)}
+  .steps{list-style:none;margin:0 0 14px;padding:0;counter-reset:step}
+  .steps > li{position:relative;padding:10px 13px 10px 44px;margin:0 0 8px;background:var(--surface);border-radius:9px}
+  .steps > li::before{counter-increment:step;content:counter(step);position:absolute;left:13px;top:11px;display:grid;place-items:center;width:20px;height:20px;border-radius:99px;background:rgba(194,122,255,.10);color:var(--plugin);font-family:var(--mono);font-size:11px}
+  .steps b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">插件转发</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/plugin-call</div>
+  <h1>插件转发 · 数据流</h1>
+  <p>一次 <code>plugin.call</code> 的往返：组件发起、宿主校验并注入身份、跨进程到本插件、JSON 答回来。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #545 · #561 · 出站分层：核心 P · 字段名是建议值</div>
+</header>
+
+<main>
+
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag decided">已拍板</span></h2>
+  <p class="lead">一个渲染侧动作 <code>plugin.call</code>，出站分层里的<b>核心 P</b>。一问一答，JSON 应答，不能推流。</p>
+
+<pre><span class="c">// 组件侧</span>
+<span class="k">const</span> data = <span class="k">await</span> dispatch(<span class="c">"plugin.call"</span>, { <span class="k">method</span>, <span class="k">args</span> })
+
+<span class="c">// 跨进程载荷（宿主组装，pluginId 不可自填）</span>
+IPC <span class="k">plugin/renderer/call</span>
+  { <span class="k">pluginId</span>, <span class="k">method</span>, <span class="k">args</span> }
+
+<span class="c">// 插件侧</span>
+onRendererCall(method, args) → <span class="k">JSON 值</span></pre>
+
+  <h3>约束五件套</h3>
+  <table>
+    <thead><tr><th>约束</th><th>值</th><th>违反时</th></tr></thead>
+    <tbody>
+      <tr><td class="id">method 白名单</td><td>只认声明过的</td><td><code>PLUGIN_CALL_NO_HANDLER</code></td></tr>
+      <tr><td class="id">载荷</td><td>≤64KB</td><td><code>PLUGIN_CALL_TOO_LARGE</code></td></tr>
+      <tr><td class="id">限速</td><td>QPS</td><td><code>PLUGIN_CALL_RATE_LIMITED</code></td></tr>
+      <tr><td class="id">超时</td><td>2s</td><td><code>PLUGIN_CALL_TIMEOUT</code></td></tr>
+      <tr><td class="id">熔断</td><td>连续失败</td><td><code>PLUGIN_CALL_DISABLED</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>出站分层（公共）</h3>
+  <table>
+    <thead><tr><th>层</th><th>词</th><th>约束</th></tr></thead>
+    <tbody>
+      <tr><td class="id">核心 H</td><td><code>entry.copy</code> · <code>message.mutate</code> · <code>composer.insertText</code> · <code>attachments.add</code></td><td>mutate 宿主确认 + 必审计；add 只收 <code>content|token</code></td></tr>
+      <tr><td class="id"><b>核心 P（本接口）</b></td><td><b><code>plugin.call</code></b></td><td>白名单 · ≤64KB · QPS · 2s 超时 · 熔断 · pluginId 宿主注入</td></tr>
+      <tr><td class="id">核心 F</td><td><code>measureHeight</code> · <code>deriveSummary</code></td><td>同步 16ms · 超时回默认 · F 内禁调 H/P</td></tr>
+      <tr><td class="id">可选 H</td><td>toast · ask · clipboard.write · host.open · composer.readDraft · attachments.list/remove</td><td>clipboard.write 须同次用户手势</td></tr>
+      <tr><td class="id">拒绝</td><td>远端 replaceDraft · 裸路径附件</td><td>P 返回不得静默改用户数据</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>边界一句话。</b>F = 渲染线程内同步纯函数；H/P = 跨进程异步 dispatch。<code>plugin.call</code> 是 P——慢、可能失败、有额度；F 内不得调它。</div>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag decided">已拍板</span></h2>
+  <div class="legend">
+    <span><span class="chip host">host</span> 宿主校验 / 转发</span>
+    <span><span class="chip slot">slot</span> 接口边界</span>
+    <span><span class="chip plugin">plugin</span> 槽组件 · 本插件 main</span>
+  </div>
+
+  <ol class="steps">
+    <li><b>dispatch</b> — 槽组件发起 <code>dispatch("plugin.call", { method, args })</code>。这里没有 pluginId。</li>
+    <li><b>校验声明</b> — 宿主查：method 在白名单吗？载荷超 64KB 吗？超 QPS 吗？熔断中吗？任一不过，直接带失败码返回，不往下走。</li>
+    <li><b>跨进程转发</b> — 宿主组装 IPC <code>plugin/renderer/call</code> <code>{ pluginId, method, args }</code>。<b>pluginId 由宿主注入</b>，组件填不了。</li>
+    <li><b>本插件应答</b> — 该插件的 <code>onRendererCall(method, args)</code> 跑起来，吐出一个 JSON 值。</li>
+    <li><b>JSON 回来</b> — 应答原路回到组件的 <code>await</code>，落定为那个 JSON 值；2s 内没回到 → <code>TIMEOUT</code>。</li>
+  </ol>
+
+  <h3>递交模型</h3>
+  <ul>
+    <li><b>请求 / 应答</b>，一次一个来回。不是订阅，不是推流。</li>
+    <li><b>身份单向</b>：pluginId 只能由宿主注入，组件侧不可见、不可写。</li>
+    <li><b>方向单一</b>：组件 → 自己的 main。反向（main 主动推给组件）不走本接口。</li>
+    <li><b>生命周期</b>：随插件走。插件卸载 → 挂起的调用落定失败码，不悬空。</li>
+  </ul>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td class="id">method 没声明 / 没实现</td><td>拒绝</td><td><code>PLUGIN_CALL_NO_HANDLER</code></td></tr>
+      <tr><td class="id">args / 应答不能变 JSON</td><td>拒绝</td><td><code>PLUGIN_CALL_UNSERIALIZABLE</code></td></tr>
+      <tr><td class="id">2s 内没答上</td><td>超时落定</td><td><code>PLUGIN_CALL_TIMEOUT</code></td></tr>
+      <tr><td class="id">超过 64KB</td><td>拒绝</td><td><code>PLUGIN_CALL_TOO_LARGE</code></td></tr>
+      <tr><td class="id">超过 QPS</td><td>拒绝</td><td><code>PLUGIN_CALL_RATE_LIMITED</code></td></tr>
+      <tr><td class="id">连续失败</td><td>熔断，暂时关掉本插件转发</td><td><code>PLUGIN_CALL_DISABLED</code></td></tr>
+      <tr><td class="id">插件被禁用 / 卸载</td><td>挂起调用落定失败</td><td>生命周期清理</td></tr>
+      <tr><td class="id">尝试冒充别家</td><td>拒绝（pluginId 不可自填）</td><td>身份闸</td></tr>
+    </tbody>
+  </table>
+  <div class="callout stop"><b>失败不静默。</b>每一种拒绝都带码回来，调用方能区分「没这个方法」和「太慢了」和「被熔断了」。P 的返回不得静默改用户数据——应答只是数据，副作用另走 H 词。</div>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">推流 / 订阅</td><td>一问一答，JSON 应答；要持续就多次调，或走宿主推送通道</td></tr>
+      <tr><td class="id">跨插件调用</td><td>pluginId 宿主注入，只能调自己</td></tr>
+      <tr><td class="id">白名单外的 method</td><td>声明制，不给后门</td></tr>
+      <tr><td class="id">借道做副作用</td><td>写草稿 / 加附件 / 复制 / 打开链接——各有出站词，不在这里开</td></tr>
+      <tr><td class="id">无限重试</td><td>连续失败就熔断 <code>PLUGIN_CALL_DISABLED</code></td></tr>
+      <tr><td class="id">在同步纯函数里调</td><td>F 内禁 H/P（16ms 同步预算）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">公共契约</td><td>出站分层总表（本接口 = 核心 P）</td><td><a href="../../slot-contract.html">../../slot-contract.html</a></td></tr>
+      <tr><td class="id">输入区</td><td>触发符 / 记号组件常要取私有数据，是本接口的典型用户</td><td><a href="../../ui/composer/index.html">../../ui/composer/</a></td></tr>
+      <tr><td class="id">确认卡</td><td>问完用户后若要取数，接一次 plugin.call</td><td><code>render/ask/</code></td></tr>
+      <tr><td class="id">附件</td><td>远程取回的内容交附件走 add（content|token），不在 plugin.call 里塞文件</td><td><code>render/attachments/</code></td></tr>
+      <tr><td class="id">草稿读写</td><td>远端结果写回输入框走 insertText，不要 replace</td><td><code>render/draft/</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <ul>
+    <li>QPS 具体数值（按插件还是按会话）。</li>
+    <li>熔断的「连续失败」次数、冷却时长、如何恢复。</li>
+    <li>64KB 是单向还是双向合计的精确口径。</li>
+    <li>失败码是否统一加 <code>PLUGIN_CALL_</code> 前缀（当前示例是）。</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

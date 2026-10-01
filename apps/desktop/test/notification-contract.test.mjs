@@ -49,6 +49,7 @@ test("notification IPC stays behind the shared preload allowlist", () => {
     "notificationSetViewingSession",
     "notificationChanged",
     "notificationActivated",
+    "notificationSound",
   ]) {
     assert.match(protocolSource, new RegExp(`${channel}:`), channel);
   }
@@ -56,6 +57,7 @@ test("notification IPC stays behind the shared preload allowlist", () => {
   assert.match(apiSource, /setNotificationViewingSession:/);
   assert.match(apiSource, /onNotificationChanged:/);
   assert.match(apiSource, /onNotificationActivated:/);
+  assert.match(apiSource, /onNotificationSound:/);
 });
 
 test("terminal notifications flow from host completion to the renderer", () => {

@@ -220,6 +220,7 @@ export function createInteractionSlice({
             message,
             variant,
             duration,
+            sound: options?.sound !== false,
           },
         ];
         return { toasts: next.slice(-TOAST_STACK_LIMIT) };

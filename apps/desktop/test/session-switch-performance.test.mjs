@@ -178,7 +178,7 @@ test("reopening a running session never lets durable detail erase its live tail"
   // A warm pane must not reveal one deferred frame from before the stream was
   // captured; its first visible render uses the selected live snapshot.
   assert.match(transcript, /const paneRevealed = paneVisible && !wasPaneVisibleRef\.current/);
-  assert.match(transcript, /firstCommit \|\| paneRevealed \? messages : deferredMessages/);
+  assert.match(transcript, /firstCommit \|\| paneRevealed \? projection : deferredProjection/);
 });
 
 test("reopening an idle session keeps a completed live tail until the durable page has it (D324)", () => {

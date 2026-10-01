@@ -25,6 +25,7 @@ import type {
   QueuedTurnSummary,
   AgentStatus,
   AskToolResolution,
+  PendingInteractiveRequests,
   AgentInstructionFile,
   AppSettings,
   CommandShellCatalog,
@@ -71,7 +72,6 @@ import type {
   ProjectMemory,
   ProjectMemoryEntry,
   ProjectWorkspace,
-  PullRequestSummary,
   ScheduledTask,
   ProviderCreateInput,
   ProviderPublic,
@@ -121,6 +121,7 @@ import type {
   TrustedExtensionStatusEvent,
   TrustedExtensionUiPrompt,
   TrustedExtensionUiPromptResponse,
+  SessionTodoSnapshot,
 } from "@pi-desktop/shared";
 import {
   defaultCommandShellForPlatform,
@@ -293,6 +294,7 @@ declare global {
     piDesktop?: {
       invoke: <T = unknown>(channel: string, ...args: unknown[]) => Promise<Result<T>>;
       on: (channel: string, listener: (...args: unknown[]) => void) => () => void;
+      onLiveVoicePort?: () => () => void;
       channels: typeof IPC;
       platform: NodeJS.Platform;
       /** Authoritative OS locale passed from the main process at window creation. */
@@ -858,8 +860,6 @@ export const api = {
     ),
   setProject: (path: string) =>
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectSet, path),
-  listPullRequests: () =>
-    invoke<{ pulls: PullRequestSummary[]; error?: string }>(IPC.invoke.pullsList),
   listScheduled: () =>
     invoke<{ tasks: ScheduledTask[] }>(IPC.invoke.scheduledList),
   createScheduled: (input: {
@@ -927,8 +927,8 @@ export const api = {
     invoke<AgentCompactResponse>(IPC.invoke.agentCompact, req),
   abort: (sessionId: string) =>
     invoke(IPC.invoke.agentAbort, { sessionId }),
-  stop: (sessionId: string) =>
-    invoke<AgentStopResponse>(IPC.invoke.agentStop, { sessionId }),
+  stop: (sessionId: string, turnId?: string) =>
+    invoke<AgentStopResponse>(IPC.invoke.agentStop, { sessionId, ...(turnId ? { turnId } : {}) }),
   queuePrompt: (req: AgentQueuePushRequest) =>
     invoke<QueuedTurnSummary>(IPC.invoke.agentQueuePush, req),
   listQueuedPrompts: (sessionId: string) =>
@@ -960,6 +960,8 @@ export const api = {
     invoke(IPC.invoke.toolResolvePermission, resolution),
   resolveAskTool: (resolution: AskToolResolution) =>
     invoke(IPC.invoke.askToolResolve, resolution),
+  pendingInteractive: (sessionId: string) =>
+    invoke<PendingInteractiveRequests>(IPC.invoke.pendingInteractive, { sessionId }),
   pendingPlans: (sessionId?: string) =>
     invoke<PlansPendingResult>(
       IPC.invoke.plansPending,
@@ -969,6 +971,9 @@ export const api = {
     invoke<PlanResolutionResult>(IPC.invoke.plansResolve, resolution),
   listPlugins: () =>
     invoke<{ plugins: PluginSummary[] }>(IPC.invoke.pluginList),
+  /** One renderer slot component asking its own plugin for one JSON answer. */
+  pluginRendererCall: (pluginId: string, method: string, args?: unknown) =>
+    invoke(IPC.invoke.pluginRendererCall, pluginId, method, args),
   /**
    * Picking a folder only reports what it declares; the load happens in
    * `confirmLoadDevPlugin` once the user has seen that.
@@ -1115,16 +1120,20 @@ export const api = {
   createUserSkill: (skill: UserSkillInput) =>
     invoke<{ skill: UserSkillRecord }>(IPC.invoke.skillCreate, skill),
   /**
-   * Opens a native picker for one file or (when `sourceKind === "dir"`) a
-   * folder; `canceled` when the user backed out. `mode: "link"` swaps copy
-   * for a symlink import.
+   * Opens a native picker for one file or multiple skill folders.
+   * Folder results report successful and failed imports independently.
    */
   importUserSkill: (
     query?: AgentCapabilityQuery & {
       sourceKind?: "file" | "dir";
       mode?: "copy" | "link";
     },
-  ) => invoke<{ canceled?: boolean; skill?: UserSkillRecord }>(IPC.invoke.skillImport, query),
+  ) => invoke<{
+    canceled?: boolean;
+    skill?: UserSkillRecord;
+    imported?: UserSkillRecord[];
+    failed?: Array<{ path: string; error: string }>;
+  }>(IPC.invoke.skillImport, query),
   /**
    * Scan third-party AI-tool skill directories. The scanner never throws;
    * a source that failed to read is reported with an `error` on its row.
@@ -1360,7 +1369,8 @@ export const api = {
       ...(mimeType ? { mimeType } : {}),
     }),
   fsReveal: (path: string) => invoke(IPC.invoke.fsReveal, { path }),
-  fsOpen: (path: string) => invoke(IPC.invoke.fsOpen, { path }),
+  fsOpen: (path: string, mimeType?: string) =>
+    invoke(IPC.invoke.fsOpen, { path, mimeType }),
   fsIndex: () => invoke<FsIndexResult>(IPC.invoke.fsIndex),
   /**
    * Complete a file reference from chat text to a real file (D320 follow-up).
@@ -1486,6 +1496,14 @@ export const api = {
       listener(normalizePlansChangedEvent(payload)),
     );
   },
+  getTodos: (sessionId: string) =>
+    invoke<SessionTodoSnapshot>(IPC.invoke.todosGet, { sessionId }),
+  onTodosChanged: (listener: (snapshot: SessionTodoSnapshot) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.todosChanged, (payload) =>
+      listener(payload as SessionTodoSnapshot),
+    );
+  },
   onOauthLogin: (listener: (event: OAuthLoginEvent) => void) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.providersOauth, (payload) =>
@@ -1535,6 +1553,10 @@ export const api = {
     return window.piDesktop.on(IPC.event.notificationChanged, (payload) =>
       listener((payload as { notification: AppNotification }).notification),
     );
+  },
+  onNotificationSound: (listener: () => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.notificationSound, () => listener());
   },
 
   // --- Remote hosts (R2b pairing UX) -----------------------------------------

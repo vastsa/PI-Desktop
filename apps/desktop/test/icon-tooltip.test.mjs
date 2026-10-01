@@ -39,7 +39,6 @@ test("icon-only actions expose localized hover tooltips", () => {
     ["components/Sidebar.tsx", "nav.sessionActions"],
     ["components/Sidebar.tsx", "project.openActions"],
     ["components/Sidebar.tsx", "nav.sortSessions"],
-    ["pages/PullRequestsPage.tsx", "pulls.open"],
     ["components/workpanel/FilesTab.tsx", "panel.files.back"],
     ["components/workpanel/FilesTab.tsx", "panel.files.reveal"],
   ]) {
@@ -53,6 +52,21 @@ test("icon-only actions expose localized hover tooltips", () => {
   assert.match(uiSource, /const \[dismissed, setDismissed\] = useState\(false\)/);
   assert.match(uiSource, /const dismiss = \(\) => \{[\s\S]*?setDismissed\(true\)/);
   assert.match(uiSource, /onClick=\{\(event\) => \{[\s\S]*?tooltip\.dismiss\(\)/);
+});
+
+test("conversation topbar tooltips reflect configured shortcuts", () => {
+  const topbarSource = source("components/ConversationTopbar.tsx");
+  assert.match(topbarSource, /settings\?\.keybindings/);
+  assert.match(topbarSource, /resolveKeybinding\(newTaskShortcut, keybindings, platform\)/);
+  assert.match(topbarSource, /resolveKeybinding\(searchShortcut, keybindings, platform\)/);
+  assert.match(topbarSource, /keybindingDisplayParts\(newTaskBinding, platform\)/);
+  assert.match(topbarSource, /keybindingDisplayParts\(searchBinding, platform\)/);
+  assert.match(topbarSource, /newTaskTooltip = newTaskShortcutLabel[\s\S]*?t\("nav\.actionWithShortcut"[\s\S]*?: t\("nav\.newTask"\)/);
+  assert.match(topbarSource, /searchTooltip = searchShortcutLabel[\s\S]*?t\("nav\.actionWithShortcut"[\s\S]*?: t\("nav\.search"\)/);
+  assert.match(topbarSource, /tooltip=\{newTaskTooltip\}/);
+  assert.match(topbarSource, /tooltip=\{searchTooltip\}/);
+  assert.match(topbarSource, /ariaLabel=\{t\("nav\.newTask"\)\}/);
+  assert.match(topbarSource, /ariaLabel=\{t\("nav\.search"\)\}/);
 });
 
 // A tooltip that survives its trigger is the reported "sometimes it never goes

@@ -47,6 +47,17 @@ test("advanced settings choose the default thinking level among omit and the ena
   assert.match(pickerSource, /bindingDefaultThinkingMenuLevels\(enabledLevels\)\.length > 1 \?/);
 });
 
+test("advanced settings expose the model thinking protocol", () => {
+  assert.match(pickerSource, /settings\.thinkingProtocol/);
+  assert.match(pickerSource, /settings\.thinkingProtocolLegacy/);
+  assert.match(pickerSource, /settings\.thinkingProtocolAdaptive/);
+  assert.match(
+    pickerSource,
+    /binding\.thinkingProtocol\s*\?\?\s*info\?\.thinkingProtocol\s*\?\?\s*"legacy"/,
+  );
+  assert.match(pickerSource, /thinkingProtocol: id as ThinkingProtocol/);
+});
+
 test("the capability checkboxes show and follow the published value", () => {
   assert.match(pickerSource, /settings\.imageInput/);
   assert.match(pickerSource, /settings\.documentInput/);
@@ -170,7 +181,7 @@ test("the published record is not shaped by the stored override", () => {
   // the binding to it would make an override its own justification.
   assert.match(
     mainSource,
-    /modalities: catalogModelConfig\.modalities \?\? \{ input: \["text"\], output: \["text"\] \}/,
+    /modalities: operationMetadata\?\.modalities \?\? catalogModelConfig\.modalities \?\? \{ input: \["text"\], output: \["text"\] \}/,
   );
   const decorate = mainSource.slice(
     mainSource.indexOf("const decorate ="),
@@ -212,9 +223,9 @@ test("a model the catalog does not describe still reports its binding overrides"
     ),
   );
   for (const block of [providerBlock, sessionBlock]) {
-    assert.match(block, /modelConfigWithBinding\(/);
+    assert.doesNotMatch(block, /modelConfigWithBinding\(/);
     assert.match(block, /catalogModelConfigFor\(modelsDevCatalog/);
-    assert.match(block, /bindingForModel\(provider, modelId\)/);
+    assert.match(block, /providerId: provider.id/);
   }
   assert.doesNotMatch(
     providerCatalogSource,

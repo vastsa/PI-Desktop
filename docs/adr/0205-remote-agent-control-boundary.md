@@ -158,10 +158,9 @@ required more than v1 can carry. The following changes apply to decisions 3,
    and a remote decision closes the local desktop card.
 8. **Remote permission ceiling and approval lifetime.** A remote-initiated
    turn runs under the lower of the session mode and a Host-configured
-   ceiling that defaults to `ask`. The local 120-second deny timeout stays
-   the default; a Host with remote control enabled may configure a longer
-   bounded lifetime for approvals raised while a remote subscriber is
-   attached.
+   ceiling that defaults to `ask`. Local desktop permission approvals have no
+   automatic deadline. The remote approval record may use a longer bounded
+   lifetime while a remote subscriber is attached, as amended by ADR 0310.
 9. **Host link relay profile.** The Gateway-to-Host connection multiplexes
    logical client connections so server-initiated approval requests and
    attachment bytes reach the right endpoint without an inbound port; the
@@ -230,8 +229,8 @@ answers below were chosen by the maintainer the same day.
    until a controller attaches. The schema bump is recorded by its own ADR
    when R1 starts.
 8. **Remote approval lifetime.** While a remote subscriber is attached the
-   default approval lifetime is 30 minutes, operator-adjustable within a
-   bound; the local 120-second default is unchanged.
+   default remote approval lifetime is 30 minutes, operator-adjustable within
+   a bound; local desktop permission approvals have no automatic deadline.
 9. **Second scheduled milestone: outbound messaging integration.** An
    adapter beside the Host relays redacted event summaries to a webhook
    first, then Telegram and Slack through outbound channels, and maps a fixed

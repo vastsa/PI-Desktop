@@ -56,7 +56,12 @@ test("Composer enables enhancement with inline file references and guards stale 
   assert.match(composer, /enhancementVersionRef\.current !== sourceVersion/);
   assert.match(composer, /currentKey !== sourceKey/);
   assert.match(composer, /invalidatePromptEnhancement\(\);/);
-  assert.match(composer, /className="composer-enhancement-error"/);
+  // The failure is a toast instead of an inline composer row.
+  assert.doesNotMatch(composer, /className="composer-enhancement-error"/);
+  assert.match(
+    composer,
+    /showToast\([\s\S]{0,160}enhancementError\.code[\s\S]{0,80}\{ variant: "error" \}/,
+  );
   assert.match(composer, /enhancementError\.code/);
   assert.match(composer, /setEnhancementError\(null\)/);
   assert.doesNotMatch(composer, /activeInlineFileReferences\.length > 0/);

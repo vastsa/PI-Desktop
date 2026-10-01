@@ -1,9 +1,9 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.15.7-beta.1",
+  "version": "0.16.0-beta.1",
   "description": "Local-first AI coding agent desktop client",
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@12.8.1+sha512.f64ba907507f5ceafe06c8d38e6052d0179444580ec1279ddd5bfc11cb48aa8a2644b66598e07e761da84872a9fc57d5f902b87fa49d024198d558612aabbe45",
   "engines": {
     "node": ">=22.19.0",
     "pnpm": ">=10"
@@ -23,12 +23,14 @@
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
     "test:e2e:keep-awake": "node scripts/e2e-keep-awake.mjs",
+    "test:e2e:live-voice": "node scripts/e2e-live-voice.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
     "test:e2e:theme-surfaces": "node scripts/e2e-theme-surfaces.mjs",
     "test:e2e:composer-occlusion": "node scripts/e2e-theme-surfaces.mjs --dock-mask-only",
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",
+    "test:e2e:composer-ime-slash": "node scripts/e2e-composer-ime-stack.mjs",
     "test:e2e:composer-model-selection": "node scripts/e2e-composer-model-selection.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
@@ -41,6 +43,7 @@
     "test:e2e:hosted-search": "node scripts/e2e-hosted-search.mjs",
     "test:e2e:oauth-retry": "node --test apps/desktop/test/anthropic-oauth-retry.test.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
+    "test:e2e:todos": "node scripts/e2e-todo-checklist.mjs",
     "test:e2e:settings-scroll": "node scripts/e2e-settings-scroll.mjs",
     "test:e2e:config-sync": "node scripts/e2e-config-sync-multidevice.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
@@ -66,11 +69,13 @@
     "test:e2e:capability-move": "node scripts/e2e-capability-move.mjs",
     "test:e2e:plugin-import-deps": "node scripts/e2e-plugin-import-deps.mjs",
     "test:e2e:trusted-extensions": "node scripts/e2e-trusted-extensions.mjs",
+    "test:e2e:plugin-ui-slots": "node scripts/e2e-plugin-ui-slots.mjs",
     "test:e2e:collaboration": "node scripts/e2e-session-collaboration.mjs",
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
     "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
     "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
-    "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs"
+    "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs",
+    "test:e2e:live-voice-interaction": "node scripts/test-live-voice-interaction.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

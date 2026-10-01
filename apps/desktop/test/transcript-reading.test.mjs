@@ -6,7 +6,9 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createTranscriptReadingRuntime } = await import(
   "../src/stores/runtime/transcript-reading-runtime.ts"
 );
-const { transcriptViewMessages } = await import("../src/lib/transcript-reading.ts");
+const { transcriptViewMessages, transcriptViewFromSession } = await import("../src/lib/transcript-reading.ts");
+const { getSessionMessageSnapshot } = await import("../src/lib/session-transcript-updates.ts");
+const { mergeLiveSessionMessages, upsertLiveSessionMessage, projectMessageEnd, removeLiveSessionMessage } = await import("../src/lib/session-transcript.ts");
 const { buildTranscriptEntries } = await import("../src/lib/assistant-turns.ts");
 const { prepareTranscriptAction } = await import("../src/stores/runtime/transcript-action.ts");
 
@@ -398,4 +400,100 @@ test("paging during an existing stream never freezes its snapshot over newer tok
     ["older", "reply"],
   );
   assert.equal(r.visible().at(-1), complete);
+});
+
+function fullReadingProjection(live, view) {
+  const current = new Map(live.map((row) => [row.id, row]));
+  return mergeLiveSessionMessages(view.messages, live).map((row) => current.get(row.id) ?? row);
+}
+
+test("ordinary reading replaces only changed overlap without rereading historical ids", () => {
+  let reads = 0;
+  const rows = Array.from({ length: 10_000 }, (_, index) => ({
+    ...message(`old-${index}`),
+    get id() { reads++; return `old-${index}`; },
+  }));
+  const live = [...rows, message("tail", "partial", { role: "assistant", status: "streaming" })];
+  const view = transcriptViewFromSession(page([message("earlier"), ...live]).session);
+  const first = transcriptViewMessages(live, view);
+  assert.equal(transcriptViewMessages(live, view), first);
+  reads = 0;
+  const nextLive = upsertLiveSessionMessage(live, message("tail", "final", { role: "assistant", status: "complete" }));
+  const next = transcriptViewMessages(nextLive, view);
+  assert.equal(reads, 0);
+  assert.equal(next.at(-1), nextLive.at(-1));
+  assert.equal(first.at(-1).content, "partial");
+  const before = getSessionMessageSnapshot(first);
+  const after = getSessionMessageSnapshot(next);
+  assert.equal(before.owner, after.owner);
+  assert.equal(before.positions, after.positions);
+  assert.equal(before.blocks[0], after.blocks[0]);
+  assert.notEqual(before.blocks.at(-1), after.blocks.at(-1));
+});
+
+test("reading overlap includes skipped non-tail updates and remains safe for older renders", () => {
+  const live = Array.from({ length: 200 }, (_, index) => message(`row-${index}`));
+  const view = transcriptViewFromSession(page([message("older"), ...live.slice(0, 5)]).session);
+  const first = transcriptViewMessages(live, view);
+  const early = upsertLiveSessionMessage(live, message("row-2", "changed early"));
+  const late = upsertLiveSessionMessage(early, message("row-150", "changed late"));
+  const latest = transcriptViewMessages(late, view);
+  assert.deepEqual(latest, fullReadingProjection(late, view));
+  assert.equal(latest[3].content, "changed early");
+  assert.equal(latest[151].content, "changed late");
+  assert.equal(first[3].content, "row-2");
+  assert.deepEqual(transcriptViewMessages(early, view), fullReadingProjection(early, view));
+  assert.deepEqual(transcriptViewMessages(late, view), latest);
+});
+
+test("reading cache invalidates structural changes, unrelated sources and changed view owners", () => {
+  const view = transcriptViewFromSession(page([message("older")]).session);
+  const initial = [message("a"), message("provisional", "partial", { role: "assistant" })];
+  const first = transcriptViewMessages(initial, view);
+  const appended = upsertLiveSessionMessage(initial, message("b"));
+  assert.deepEqual(transcriptViewMessages(appended, view), fullReadingProjection(appended, view));
+  const rekeyed = projectMessageEnd(appended, {
+    type: "message_end", replacesMessageId: "provisional",
+    message: message("durable", "final", { role: "assistant", status: "complete" }),
+  });
+  assert.deepEqual(transcriptViewMessages(rekeyed, view), fullReadingProjection(rekeyed, view));
+  const removed = removeLiveSessionMessage(rekeyed, "a");
+  assert.deepEqual(transcriptViewMessages(removed, view), fullReadingProjection(removed, view));
+  const unknown = [message("replacement"), message("replacement", "last duplicate")];
+  assert.deepEqual(transcriptViewMessages(unknown, view), fullReadingProjection(unknown, view));
+  const changedView = { ...view, messages: [message("different history")] };
+  assert.deepEqual(transcriptViewMessages(removed, changedView), fullReadingProjection(removed, changedView));
+  assert.deepEqual(first.map((row) => row.id), ["older", "a", "provisional"]);
+  assert.equal(transcriptViewMessages(removed), removed, "return to latest bypasses the reading cache");
+});
+
+test("timestamp corrections remerge chronological positions instead of patching stale order", () => {
+  const at = (id, day) => message(id, id, { createdAt: `2026-09-${day}T00:00:00Z` });
+  const keep = at("keep", 20);
+  const live = [keep, at("old", 10), at("tail", 30)];
+  const view = transcriptViewFromSession(page([keep]).session);
+  assert.deepEqual(transcriptViewMessages(live, view).map((row) => row.id), ["old", "keep", "tail"]);
+  const corrected = upsertLiveSessionMessage(live, at("old", 25));
+  assert.deepEqual(transcriptViewMessages(corrected, view), fullReadingProjection(corrected, view));
+  assert.deepEqual(transcriptViewMessages(corrected, view).map((row) => row.id), ["keep", "old", "tail"]);
+});
+
+test("focused search never reads unused live identities, including parent context", () => {
+  const live = [{ ...message("unused"), get id() { assert.fail("historical search indexed live rows"); } }];
+  const parent = message("task", "latest parent", { role: "tool" });
+  const view = transcriptViewFromSession(page([message("hit")], { navigationParent: parent }).session, target("hit"));
+  assert.deepEqual(transcriptViewMessages(live, view), [parent, view.messages[0]]);
+  const overlapping = { ...view, messages: [message("task", "old parent"), ...view.messages] };
+  assert.deepEqual(transcriptViewMessages(live, overlapping), [parent, view.messages[0]]);
+});
+
+test("ordinary parent context stays authoritative over tracked live changes", () => {
+  const parent = message("task", "navigation parent", { role: "tool" });
+  const view = transcriptViewFromSession(page([message("hit")], { navigationParent: parent }).session);
+  const live = [message("task", "live parent", { role: "tool" }), message("tail")];
+  const initial = transcriptViewMessages(live, view);
+  const updated = upsertLiveSessionMessage(live, message("task", "new live parent", { role: "tool" }));
+  const next = transcriptViewMessages(updated, view);
+  assert.equal(next, initial);
+  assert.equal(next.find((row) => row.id === "task"), parent);
 });

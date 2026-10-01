@@ -57,3 +57,18 @@
 验证：`node scripts/e2e-image-generation.mjs` 覆盖宿主、stdio、HTTP 和存储；`node scripts/e2e-image-generation-ui.mjs` 使用 API 边界夹具覆盖真实 React/Chromium 交互。单元及服务测试覆盖限制、取消、部分失败、认证、超时、不安全路径和受限下载。
 
 `node scripts/e2e-image-chat.mjs` 在隔离桌面中使用本地模型/图片 HTTP 夹具，覆盖相邻默认设置、Composer 提交、批量结果、引用生成文件编辑、收起详情和配置跳转。真实接口验证通过 `scripts/test-image-generation-live.mjs` 显式启用，仅限一次生成和一次编辑，不属于默认测试命令。
+
+## Pi 0.99.1 operation boundary
+
+Image generation and edits execute through account-scoped Pi `Models.generateImages`.
+Use native OpenRouter images or a registered compatible OpenAI-images adapter,
+with JSON generations and multipart edits preserved. Each prompt is one physical
+operation; no automatic retry may duplicate a billable image request. Batch
+workers preserve output order, propagate cancellation/timeouts, and bound download
+sizes and URL safety. Returned text, response ID and operation usage survive the
+artifact projection. Multiple images from one response count as one operation.
+
+The existing settings UI still excludes OAuth candidates. The internal adapter
+may accept OAuth only with an actual supported native image model and account
+auth resolver; it cannot fabricate entitlement or fall back to another account.
+Unknown pricing remains unknown. Images never route through the chat selector.

@@ -14,11 +14,11 @@ test("saved provider discovery persists models in the host catalog", () => {
   assert.match(mainSource, /req\.source === "cache"/);
   assert.match(mainSource, /"providers\.listModels"/);
   assert.match(mainSource, /"providers\.cacheModels"/);
-  assert.match(mainSource, /catalogPath: app\.isPackaged/);
-  assert.match(mainSource, /resources", "models\.dev", "api\.json"/);
+  assert.match(mainSource, /new ModelsDevCatalog\(\)/);
+  assert.doesNotMatch(mainSource, /catalogPath: app\.isPackaged/);
   assert.match(mainSource, /modelsDevCatalog\.loadLocal\(\)/);
   assert.match(mainSource, /modelsDevCatalog\.refresh\(\)/);
-  assert.match(mainSource, /const modelsDevModel = modelsDevCatalog\.findModel/);
+  assert.match(mainSource, /const modelsDevModel = .*modelsDevCatalog\.publishedModelFor/);
   assert.match(mainSource, /modelConfigFromModelsDev/);
   assert.match(mainSource, /genericModelConfig/);
   assert.match(mainSource, /providersRefreshModelCatalog/);

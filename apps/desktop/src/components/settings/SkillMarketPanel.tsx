@@ -301,10 +301,27 @@ export function SkillMarketPanel({
         // Swallowing this left the sheet on a null body, so the install button
         // sat disabled behind the word "Loading…" with no reason and no way to
         // try again — the dead end issue #419 reports.
+        const kind = classifySkillMarketFailure(error);
         setPreviewFailure({
-          kind: classifySkillMarketFailure(error),
+          kind,
           detail: skillMarketFailureDetail(error),
         });
+        // The reason belongs to one attempt of opening the sheet, or of asking
+        // it to try again, so it is announced once as a toast. What the sheet
+        // keeps is what stays useful: the recovery hint, the host's own detail,
+        // and the retry control that clear the dead end issue #419 reports.
+        showToast(
+          t(
+            kind === "policy"
+              ? "settings.sklm.previewPolicyError"
+              : kind === "fake-ip"
+                ? "settings.sklm.previewFakeIpError"
+                : kind === "unresolved"
+                  ? "settings.sklm.previewResolveError"
+                  : "settings.sklm.previewError",
+          ),
+          { variant: "error" },
+        );
       });
   };
 
@@ -326,7 +343,6 @@ export function SkillMarketPanel({
       if (assembled.tooLarge) {
         setDocumentBody(assembled.body);
         setDocumentTooLarge(true);
-        showToast(t("settings.sklm.documentTooLarge"), { variant: "error" });
         return;
       }
       const created = await api.createUserSkill({
@@ -551,19 +567,7 @@ export function SkillMarketPanel({
 
           <div className="ext-field-group">
             <div className="ext-field-label">{t("settings.sklm.preview")}</div>
-            {previewFailure ? (
-              <p className="sklm-note is-error" role="alert">
-                {t(
-                  previewFailure.kind === "policy"
-                    ? "settings.sklm.previewPolicyError"
-                    : previewFailure.kind === "fake-ip"
-                      ? "settings.sklm.previewFakeIpError"
-                      : previewFailure.kind === "unresolved"
-                        ? "settings.sklm.previewResolveError"
-                        : "settings.sklm.previewError",
-                )}
-              </p>
-            ) : (
+            {previewFailure ? null : (
               <pre className="sklm-preview">{documentBody ?? t("common.loading")}</pre>
             )}
             {previewFailure?.kind === "policy" ? (

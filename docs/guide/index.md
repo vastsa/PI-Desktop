@@ -60,3 +60,7 @@ number; use the sidebar when you are exploring a domain.
 See the [AI development workflow](/spec/06-delivery/03-ai-development-workflow)
 and [change checklist](/spec/06-delivery/05-change-checklist) for the complete
 repository rules.
+
+## StepFun Plan
+
+See [StepFun Plan setup](stepfun.md) for the subscription endpoint and model configuration.

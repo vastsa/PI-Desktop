@@ -12,7 +12,7 @@ import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import { Markdown } from "../Markdown";
 import { fileDirOf } from "../../lib/chat-links";
-import { cx } from "../ui";
+import { Button, cx } from "../ui";
 import { TooltipButton } from "../ui";
 import {
   ensureLang,
@@ -72,6 +72,13 @@ function langForPath(path: string): string | null {
 
 function isMarkdownPath(path: string): boolean {
   return /\.(?:md|markdown)$/i.test(path);
+}
+
+function isMp4(path: string, mimeType?: string): boolean {
+  return /\.mp4$/i.test(path) || (
+    /(?:^|[\\/])attachments[\\/][0-9a-f]{64}$/i.test(path) &&
+    mimeType?.toLowerCase() === "video/mp4"
+  );
 }
 
 function formatSize(size: number): string {
@@ -149,11 +156,13 @@ export function FilesTab() {
   const { t } = useTranslation();
   const workspace = useAppStore((s) => s.workspace);
   const fileRequest = useAppStore((s) => s.workPanelFileRequest);
+  const showToast = useAppStore((s) => s.showToast);
   const root = workspace?.path ?? null;
 
   const [dirs, setDirs] = useState<Record<string, DirState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedMimeType, setSelectedMimeType] = useState<string | undefined>();
   const [file, setFile] = useState<FsReadResult | null>(null);
   const [fileError, setFileError] = useState(false);
 
@@ -168,6 +177,7 @@ export function FilesTab() {
     setDirs({});
     setExpanded(new Set());
     setSelected(null);
+    setSelectedMimeType(undefined);
     setFile(null);
     setFileError(false);
   }, [root]);
@@ -207,6 +217,7 @@ export function FilesTab() {
 
   const openFile = useCallback(async (rel: string, mimeType?: string) => {
     setSelected(rel);
+    setSelectedMimeType(mimeType);
     setFile(null);
     setFileError(false);
     try {
@@ -215,6 +226,15 @@ export function FilesTab() {
       setFileError(true);
     }
   }, []);
+
+  const openMp4 = useCallback(async () => {
+    if (!selected) return;
+    try {
+      await api.fsOpen(selected, selectedMimeType);
+    } catch {
+      showToast(t("panel.files.openFailed"), { variant: "error" });
+    }
+  }, [selected, selectedMimeType, showToast, t]);
 
   // Chat-initiated previews: open the file and expand its ancestor folders
   // so "back" lands on a tree that reveals it. Attachment blobs and absolute
@@ -316,6 +336,7 @@ export function FilesTab() {
             ariaLabel={t("panel.files.back")}
             onClick={() => {
               setSelected(null);
+              setSelectedMimeType(undefined);
               setFile(null);
             }}
           >
@@ -358,7 +379,13 @@ export function FilesTab() {
                   ? t("panel.files.tooLarge")
                   : t("panel.files.binary")
               }
-            />
+            >
+              {isMp4(selected, selectedMimeType) && (
+                <Button type="button" onClick={() => void openMp4()}>
+                  {t("chat.openFile")}
+                </Button>
+              )}
+            </WorkTabEmpty>
           )}
         </div>
       </div>

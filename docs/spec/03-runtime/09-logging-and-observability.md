@@ -52,7 +52,12 @@ The application categories are:
 - `tool` — tool execution outcomes and interruptions
 - `permission` — permission requests and decisions
 - `plugin` — plugin loading, services, and plugin tool execution
-- `provider` — provider/model discovery, retries, and cache failures
+- `provider` — provider/model discovery, retries, and cache failures, plus
+  live voice call failures: one `live voice call failed` `warn` per root cause
+  carrying `callId`, `adapterId`, `phase`, `stage`, `code`, `retriable` and the
+  Logger-redacted raw `reason`, and one `live voice microphone release
+  unconfirmed` `error` when a release could not be confirmed and the lease is
+  quarantined. Call views carry the `code` only.
 - `persistence` — transcript and outbox persistence failures
 - `updater` — updater diagnostics and errors
 - `diagnostics` — blocked navigation, menu, template, and outbound-fetch
@@ -136,7 +141,7 @@ record.
 - host/agent spawn, handshake, and unexpected exit;
 - session create/delete;
 - prompt accepted/aborted;
-- tool completion/failure/interruption and permission request/decision/timeout;
+- tool completion/failure/interruption and permission request/decision/cancellation;
 - Plan artifact creation, approval, expiry, rejection, execution transition,
   and startup interruption;
 - shell identity, timeout, abort, and process-tree shutdown;

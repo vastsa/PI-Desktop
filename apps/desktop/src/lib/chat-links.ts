@@ -8,12 +8,9 @@
  * prose (`store.messages`) stay plain text. Explicit `@path` tokens from the
  * composer (D124 / D320) are accepted even when quoted or absolute.
  *
- * Path tokens recognize Unicode letters and digits, so non-ASCII filenames
- * (CJK above all) link exactly like ASCII ones. Absolute and `~/` tokens are
- * captured whole and then resolved by the same workspace rules: a path under
- * the root resolves normally, and one outside it — or any home path — stays
- * plain text instead of rendering a chip that could never open. Links still
- * cannot escape the workspace (D322).
+ * Path tokens recognize Unicode letters and digits, spaces, and Windows drive
+ * paths. Absolute candidates stay whole for main-process resolution, which
+ * checks the allowed roots before opening anything. Home paths stay plain.
  *
  * Relative paths are workspace-rooted unless they start with `./` or `../`,
  * in which case they resolve against an optional markdown-file directory and
@@ -38,7 +35,7 @@ const KNOWN_BARE_NAMES = new Set([
 ]);
 
 const FILE_TOKEN_RE =
-  /^(?:~\/|\/)?(?:\.{1,2}\/)?[\p{L}\p{N}_@+.-]+(?:\/[\p{L}\p{N}_@+.-]+)*(?::\d+(?::\d+)?)?$/u;
+  /^(?:(?:[A-Za-z]:[\\/]|~[\\/]|\\\\|\/\/|[\\/])|(?:\.{1,2}[\\/])?)[\p{L}\p{N}_@+. -]+(?:[\\/][\p{L}\p{N}_@+. -]+)*(?::\d+(?::\d+)?)?$/u;
 
 const AT_QUOTED_RE = /^@"([^"\n]+)"$/;
 const AT_UNQUOTED_RE = /^@(\/?[^\s]+)$/;
@@ -61,16 +58,22 @@ function leafName(path: string): string {
 }
 
 function isLikelyFilePath(path: string): boolean {
-  const base = path.split("/").pop() ?? "";
+  const normalized = path.replaceAll("\\", "/");
+  const base = normalized.split("/").pop() ?? "";
   const dotIndex = base.lastIndexOf(".");
   const ext = dotIndex > 0 ? base.slice(dotIndex + 1).toLowerCase() : "";
-  if (path.includes("/")) {
-    if (ext && ext.length <= 8) return true;
+  const baseExt = ext.replace(/[+@-][\p{L}\p{N}_@+-]*$/u, "");
+  if (normalized.includes("/")) {
+    if (baseExt && baseExt.length <= 8) return true;
     if (KNOWN_BARE_NAMES.has(base)) return true;
     return false;
   }
   if (KNOWN_BARE_NAMES.has(base)) return true;
-  return KNOWN_EXTS.has(ext);
+  return KNOWN_EXTS.has(baseExt);
+}
+
+function isAbsoluteFilePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
 }
 
 /**
@@ -118,7 +121,7 @@ export function fileDirOf(path: string): string {
 
 export function safeDecodeUri(value: string): string {
   try {
-    return decodeURI(value);
+    return decodeURIComponent(value);
   } catch {
     return value;
   }
@@ -163,19 +166,22 @@ export function toWorkspaceRel(
 ): string | null {
   if (!path) return null;
   if (path.startsWith("~")) return null;
+  const normalizedPath = path.replaceAll("\\", "/");
 
   let rel: string;
-  if (path.startsWith("/")) {
+  if (isAbsoluteFilePath(path)) {
     if (!root) return null;
-    const cleanRoot = root.replace(/\/+$/, "");
-    if (path === cleanRoot) return null;
-    if (!path.startsWith(cleanRoot + "/")) return null;
-    rel = path.slice(cleanRoot.length + 1);
-  } else if (isDotRelative(path)) {
+    const cleanRoot = root.replaceAll("\\", "/").replace(/\/+$/, "");
+    const windowsPath = /^[A-Za-z]:\//.test(normalizedPath);
+    const comparisonPath = windowsPath ? normalizedPath.toLowerCase() : normalizedPath;
+    const comparisonRoot = windowsPath ? cleanRoot.toLowerCase() : cleanRoot;
+    if (!comparisonPath.startsWith(comparisonRoot + "/")) return null;
+    rel = normalizedPath.slice(cleanRoot.length + 1);
+  } else if (isDotRelative(normalizedPath)) {
     const base = (baseDir ?? "").replaceAll("\\", "/").replace(/\/+$/, "");
-    rel = base ? `${base}/${path}` : path;
+    rel = base ? `${base}/${normalizedPath}` : normalizedPath;
   } else {
-    rel = path;
+    rel = normalizedPath;
   }
 
   return normalizeWorkspaceRel(rel);
@@ -195,13 +201,13 @@ export function resolvePreviewTarget(
   if (isHttpUrl(trimmed)) return { kind: "url", url: trimmed };
   const at = unwrapAtFileRef(trimmed);
   if (at) {
-    // Scratch/attachment @refs stay absolute so fs/open can contain them.
-    if (at.startsWith("/")) return { kind: "file", path: at };
+    if (isAbsoluteFilePath(at)) return { kind: "file", path: at };
     const rel = toWorkspaceRel(at, root, baseDir);
     return rel ? { kind: "file", path: rel } : null;
   }
   const file = parseFileRef(trimmed);
   if (!file) return null;
+  if (isAbsoluteFilePath(file)) return { kind: "file", path: file };
   const rel = toWorkspaceRel(file, root, baseDir);
   return rel ? { kind: "file", path: rel } : null;
 }
@@ -216,7 +222,9 @@ export function getToolPreviewTarget(
   for (const key of ["path", "file_path", "filePath"]) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
-      const rel = toWorkspaceRel(value.trim(), root);
+      const raw = value.trim();
+      if (isAbsoluteFilePath(raw)) return { kind: "file", path: raw };
+      const rel = toWorkspaceRel(raw, root);
       if (rel) return { kind: "file", path: rel };
       return null;
     }
@@ -238,14 +246,48 @@ export type ChatTextSegment =
       target: ChatPreviewTarget;
     };
 
-// Unicode-aware scan (#235). `~`- and `/`-prefixed paths are captured whole
-// so the resolver sees the real anchor: under-root absolutes resolve, while
-// outside absolutes and home paths fail resolution and stay plain text
-// instead of chipping a suffix that could never open. The extension tail
-// uses `(?![A-Za-z0-9_])` rather than `\b`: in unicode mode `\b` treats CJK
-// letters as word characters, which would stop `App.tsx文件` from linking.
-const SCAN_RE =
-  /@"[^"\n]+"|@[^\s]+|https?:\/\/(?=[^\s<>"'()[\]{}])|(?:~\/)?\/?\.{1,2}\/(?:[\p{L}\p{N}_@+.-]+\/)*[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|(?:~\/)?\/?(?:[\p{L}\p{N}_@+.-]+\/)+[\p{L}\p{N}_@+.-]+(?::\d+(?::\d+)?)?|[\p{L}\p{N}_@+-][\p{L}\p{N}_@+.-]*\.[A-Za-z0-9]{1,8}(?![A-Za-z0-9_])/gu;
+// Unicode-aware scan (#235). Keep absolute candidates whole, and do not stop
+// at an inner extension such as the `.v1` in `report.v1.md`. CJK prose after
+// the extension remains outside the link (Unicode `\b` cannot express that).
+const PATH_WORD = String.raw`[\p{L}\p{N}_@+.-]+`;
+const PATH_SEGMENT = String.raw`[\p{L}\p{N}_@+. -]+`;
+// Only adjacent characters can extend a dotted directory. Whitespace after an
+// extension is ambiguous with prose; quote such paths with @"...".
+const PATH_CONTINUATION = String.raw`[\p{L}\p{N}_@+.-]*[\\/]`;
+const FILE_END = String.raw`\.[A-Za-z0-9]{1,8}(?:[+@-][\p{L}\p{N}_@+-]*)?(?::\d+(?::\d+)?)?(?![A-Za-z0-9_@+-]|\.[A-Za-z0-9]|${PATH_CONTINUATION})`;
+const BARE_FILE_END = String.raw`(?:${[...KNOWN_BARE_NAMES].join("|")})(?![\p{L}\p{N}_@+.-]|${PATH_CONTINUATION})`;
+const FILE_NAME = String.raw`(?:${PATH_SEGMENT}?${FILE_END}|${BARE_FILE_END})`;
+const UNC_PREFIX = String.raw`(?:\\\\[^\\/\s]+[\\/]|\/\/[^/\s]+\/)`;
+const SPACED_START = String.raw`(?<![\p{L}\p{N}_@+.-])[A-Za-z][\p{L}\p{N}_+-]*(?: [\p{L}\p{N}_+-]+)+`;
+// Unmarked first-segment spaces cannot be distinguished from prose. Retry
+// after common introducers so ordinary bare file links still work.
+const PROSE_INTRODUCERS = new Set([
+  "a", "an", "the", "and", "or", "plus", "because", "with", "then", "against", "i", "is", "this", "please",
+  "see", "open", "read", "view", "check", "show", "find", "edit",
+  "update", "fix", "inspect", "compare", "review", "use", "add", "remove",
+  "write", "create", "created", "delete", "rename", "move", "copy",
+  "change", "saved", "generated",
+]);
+const SCAN_RE = new RegExp([
+  String.raw`@"[^"\n]+"`,
+  String.raw`@[^\s]+`,
+  String.raw`https?:\/\/(?=[^\s<>"'()[\]{}])`,
+  String.raw`(?:[A-Za-z]:[\\/]|${UNC_PREFIX}|\/)(?:${PATH_SEGMENT}[\\/])*?${FILE_NAME}`,
+  String.raw`${SPACED_START}[\\/](?:${PATH_SEGMENT}[\\/])*?${FILE_NAME}`,
+  String.raw`${SPACED_START}(?:\.[A-Za-z0-9_-]+)*${FILE_END}`,
+  String.raw`(?:${PATH_WORD}[\\/])+(?:${PATH_SEGMENT}[\\/])*?${FILE_NAME}`,
+  String.raw`(?:~\/)?\/?\.{1,2}\/(?:${PATH_WORD}\/)*${PATH_WORD}(?::\d+(?::\d+)?)?`,
+  String.raw`(?:~\/)?\/?(?:${PATH_WORD}\/)+${PATH_WORD}(?::\d+(?::\d+)?)?`,
+  String.raw`[\p{L}\p{N}_@+-][\p{L}\p{N}_@+.-]*${FILE_END}`,
+].join("|"), "gu");
+
+function spacedRefDisposition(raw: string): "accept" | "retry" | "skip" {
+  if (isAbsoluteFilePath(raw) || raw.startsWith("@") || isHttpUrl(raw)) return "accept";
+  const firstSegment = raw.split(/[\\/]/, 1)[0];
+  if (!firstSegment.includes(" ")) return "accept";
+  const firstWord = firstSegment.slice(0, firstSegment.indexOf(" ")).toLowerCase();
+  return PROSE_INTRODUCERS.has(firstWord) ? "retry" : "skip";
+}
 
 /** Scan once, keeping URL parentheses but stopping at a closing prose wrapper. */
 function scanUrl(text: string, start: number): string {
@@ -284,6 +326,14 @@ export function splitChatText(
       ? scanUrl(text, start)
       : match[0];
     scanner.lastIndex = start + raw.length;
+    if ((text[start - 1] === "~" && /^[\\/]/u.test(raw)) ||
+        ["~/", "~\\"].includes(text.slice(start - 2, start))) continue;
+    const disposition = spacedRefDisposition(raw);
+    if (disposition === "skip") continue;
+    if (disposition === "retry") {
+      scanner.lastIndex = start + raw.indexOf(" ") + 1;
+      continue;
+    }
     const target = resolvePreviewTarget(raw, root, baseDir);
     if (!target) continue;
     if (start > last) segments.push({ kind: "text", text: text.slice(last, start) });
@@ -347,7 +397,9 @@ export function linkifyMdastTree(
           const url =
             segment.target.kind === "url"
               ? segment.target.url
-              : segment.target.path;
+              : (/^[A-Za-z]:[\\/]/.test(segment.target.path) || segment.target.path.startsWith("\\\\"))
+                ? encodeURIComponent(segment.target.path)
+                : segment.target.path;
           next.push({
             type: "link",
             url,

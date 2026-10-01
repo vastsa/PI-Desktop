@@ -1,0 +1,161 @@
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>session.importBatch · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">host-api</a><span class="sep">/</span><a href="index.html">session.importBatch</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+<header class="top">
+  <h1>session.importBatch · 数据流</h1>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>接口约定</h2>
+  <pre class="sig">pi.session.importBatch(input: PluginSessionBatchImportInput): Promise&lt;PluginSessionBatchImportResult&gt;</pre>
+  <p class="lead">一批导入同一 <code>source</code> 的多条外部会话，逐条返回结果并给出计数。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">source</td><td class="id">string</td><td>是</td><td>整批共用的来源 namespace，须在清单 <code>sessionSources</code> 声明。</td></tr>
+      <tr><td class="id">sessions</td><td class="id">Array&lt;Omit&lt;PluginSessionImportInput, "source"&gt;&gt;</td><td>是</td><td>会话数组；元素结构同 <code>pi.session.import</code> 入参去掉 <code>source</code>。</td></tr>
+      <tr><td class="id">mode</td><td class="id">"skip" | "fail"</td><td>否</td><td>单条失败策略：<code>skip</code> 跳过该条继续，<code>fail</code> 整批失败。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">results</td><td class="id">数组</td><td>逐条结果。数组元素结构：externalId、sessionId（失败为 null）、status（"imported"|"skipped"|"failed"）、errorCode?、errorMessage?。</td></tr>
+      <tr><td class="id">imported</td><td class="id">number</td><td>成功导入条数。</td></tr>
+      <tr><td class="id">skipped</td><td class="id">number</td><td>跳过条数。</td></tr>
+      <tr><td class="id">failed</td><td class="id">number</td><td>失败条数。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{
+  "source": "wechat-export",
+  "mode": "skip",
+  "sessions": [
+    {
+      "externalId": "wx-2026-0212-01",
+      "title": "React 迁移讨论",
+      "createdAt": "2026-02-12T08:30:00.000Z",
+      "updatedAt": "2026-02-14T21:05:00.000Z",
+      "messages": [ { "role": "user", "content": "帮我看看这个报错", "createdAt": "2026-02-12T08:30:00.000Z" } ]
+    }
+  ]
+}</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "results": [
+    { "externalId": "wx-2026-0212-01", "sessionId": "imp_9f3a2c", "status": "imported" },
+    { "externalId": "wx-2026-0212-02", "sessionId": null, "status": "failed", "errorCode": "INVALID_ARGUMENT", "errorMessage": "消息格式非法" }
+  ],
+  "imported": 1,
+  "skipped": 0,
+  "failed": 1
+}</pre>
+  <div class="callout"><b>一句话边界。</b>没有事务回滚：<code>mode: "fail"</code> 中止后，已导入的条目仍然保留。</div>
+</section>
+<section>
+  <h2><span class="n">2</span>数据怎么走</h2>
+  <ol>
+    <li><b>调用：</b>插件提交 <code>source</code> + 会话数组 + <code>mode</code>。</li>
+    <li><b>校验：</b><code>source</code> 必须已声明；整体入参非法直接失败（码同 import）。</li>
+    <li><b>执行：</b>逐条走 <code>session.import</code> 的校验与持久化；单条失败按 <code>mode</code> 决定跳过或中止。</li>
+    <li><b>返回：</b>逐条 <code>status</code>（失败条带 errorCode / errorMessage）与 imported / skipped / failed 计数。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>一批外部会话（共用 source）与失败策略。</td></tr>
+      <tr><td>宿主 → 插件</td><td>逐条结果数组与三个计数。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">3</span>出错怎么办</h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td><code>source</code> 未声明或越权</td><td>调用失败，不写入</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>入参结构非法</td><td>调用失败，不写入</td><td><code>INVALID_ARGUMENT</code></td></tr>
+      <tr><td>超出大小限制</td><td>调用失败，不写入</td><td><code>LIMIT_EXCEEDED</code></td></tr>
+      <tr><td>频率超限</td><td>调用失败，不写入</td><td><code>RATE_LIMITED</code></td></tr>
+      <tr><td>单条失败（按 <code>mode</code> 跳过或中止）</td><td>该条 <code>results[].status = "failed"</code>，带 errorCode / errorMessage</td><td>—（记入 <code>results[].errorCode</code>）</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">4</span>不提供什么</h2>
+  <p class="lead">不是事务回滚；<code>mode: skip</code> 会留下已导入的部分。</p>
+</section>
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <ul>
+    <li><code>host-api/session.import</code></li>
+  </ul>
+</section>
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <p class="lead">无。</p>
+</section>
+
+</main>
+</body>
+</html>

@@ -173,6 +173,7 @@ function createStdioTransport(
     cwd: options.rootPath,
     env: launch.env,
     stdio: ["pipe", "pipe", "pipe"],
+    detached: process.platform !== "win32",
     // Arguments stay literal. Known launchers rewrite to a PE binary; remaining
     // Windows `.cmd` shims go through `cmd.exe /d /s /c` with quoted args.
     shell: false,
@@ -183,14 +184,36 @@ function createStdioTransport(
   let closed = false;
   let buffer = "";
   let lastStderr = "";
+  let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 
+  const signalChildTree = (signal: NodeJS.Signals = "SIGTERM") => {
+    if (process.platform !== "win32" && child.pid) {
+      try {
+        process.kill(-child.pid, signal);
+        return;
+      } catch {
+        // The process group may already be gone; fall back to the direct child.
+      }
+    }
+    child.kill(signal);
+  };
+
+  const stopChild = () => {
+    closed = true;
+    child.stdin?.destroy();
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    signalChildTree();
+    forceKillTimer ??= setTimeout(() => signalChildTree("SIGKILL"), 1_000);
+    forceKillTimer.unref?.();
+  };
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (chunk: string) => {
     buffer += chunk;
     if (buffer.length > MAX_STDIO_LINE_BYTES) {
       buffer = "";
       handlers.onClose("mcp server sent an oversized message");
-      child.kill();
+      stopChild();
       return;
     }
     let index = buffer.indexOf("\n");
@@ -240,10 +263,7 @@ function createStdioTransport(
       }
       child.stdin.write(`${JSON.stringify(message)}\n`);
     },
-    close: () => {
-      closed = true;
-      child.kill();
-    },
+    close: stopChild,
   };
 }
 
@@ -302,6 +322,61 @@ async function readBoundedHttpBody(response: Response): Promise<string> {
     offset += chunk.byteLength;
   }
   return new TextDecoder().decode(body);
+}
+
+/**
+ * Dispatch `text/event-stream` messages as they arrive instead of waiting for
+ * the body to end. A streamable-HTTP server is free to hold the response open
+ * long after the JSON-RPC reply has been written, and reading the whole stream
+ * first turned that server-side schedule into a client-side timeout.
+ */
+async function streamSseMessages(
+  response: Response,
+  onMessage: (message: JsonRpcMessage) => void,
+): Promise<void> {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_HTTP_RESPONSE_BYTES) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The response is already rejected; cancellation is best effort.
+    }
+    throw mcpError("LIMIT_EXCEEDED", "mcp server response is too large");
+  }
+  if (!response.body) return;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let bytes = 0;
+  const dispatchCompleteEvents = () => {
+    for (;;) {
+      const boundary = /\r?\n\r?\n/.exec(buffer);
+      if (!boundary) return;
+      const event = buffer.slice(0, boundary.index);
+      buffer = buffer.slice(boundary.index + boundary[0].length);
+      for (const entry of parseSseMessages(event)) onMessage(entry);
+    }
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      bytes += value.byteLength;
+      if (bytes > MAX_HTTP_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw mcpError("LIMIT_EXCEEDED", "mcp server response is too large");
+      }
+      buffer += decoder.decode(value, { stream: true });
+      dispatchCompleteEvents();
+    }
+    buffer += decoder.decode();
+    dispatchCompleteEvents();
+    // A body that ends without its closing blank line still owes us that event.
+    for (const entry of parseSseMessages(buffer)) onMessage(entry);
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 function headersForMcpRequest(
@@ -409,15 +484,19 @@ function createHttpTransport(
             return;
           }
           const contentType = response.headers.get("content-type") ?? "";
+          if (contentType.includes("text/event-stream")) {
+            // A streamable-HTTP server may hold the SSE stream open long after
+            // the JSON-RPC reply is written — keep-alives, or a session it ends
+            // on its own schedule (gitmcp.io answers in ~2s and closes ~12s
+            // later). Dispatching each event as it lands keeps that wait out of
+            // the caller's timeout budget.
+            await streamSseMessages(response, handlers.onMessage);
+            return;
+          }
           const body = await readBoundedHttpBody(response);
           if (!body.trim()) return;
-          const messages = contentType.includes("text/event-stream")
-            ? parseSseMessages(body)
-            : (() => {
-                const parsed = JSON.parse(body) as JsonRpcMessage | JsonRpcMessage[];
-                return Array.isArray(parsed) ? parsed : [parsed];
-              })();
-          for (const entry of messages) handlers.onMessage(entry);
+          const parsed = JSON.parse(body) as JsonRpcMessage | JsonRpcMessage[];
+          for (const entry of Array.isArray(parsed) ? parsed : [parsed]) handlers.onMessage(entry);
           return;
         }
       } finally {

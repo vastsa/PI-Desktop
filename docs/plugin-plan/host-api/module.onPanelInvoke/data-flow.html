@@ -1,0 +1,137 @@
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>module.onPanelInvoke · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">host-api</a><span class="sep">/</span><a href="index.html">module.onPanelInvoke</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+<header class="top">
+  <h1>module.onPanelInvoke · 数据流</h1>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>接口约定</h2>
+  <pre class="sig">onPanelInvoke?: (channel: string, payload: unknown) =&gt; Promise&lt;unknown&gt; | unknown  // PluginModule 可选钩子</pre>
+  <p class="lead">隔离面板页与插件之间的固定通道调用入口；面板能力不因该钩子扩大，无需声明任何权限。<span class="pill perm">—</span></p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">channel</td><td class="id">string</td><td>是</td><td>通道名，由插件自己约定（固定通道，非通用 IPC）。</td></tr>
+      <tr><td class="id">payload</td><td class="id">unknown</td><td>是</td><td>面板页随调用携带的数据；可为空值，结构由插件约定。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">（返回值）</td><td class="id">Promise&lt;unknown&gt; | unknown</td><td>处理结果，结构由插件实现决定，原样回传面板页。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 宿主调用：转发面板页的固定通道调用
+module.onPanelInvoke("submit", { title: "周报", count: 3 })
+
+// 插件侧最小实现
+onPanelInvoke(channel, payload) {
+  if (channel === "submit") return { ok: true, saved: payload.title }
+  throw new Error("未知通道: " + channel)
+}</pre>
+  <p><b>输出样例</b></p>
+  <pre>// 返回类型为 unknown，结构由插件实现自定义
+{ "ok": true, "saved": "周报" }</pre>
+  <div class="callout"><b>一句话边界。</b>不是通用 IPC：通道语义由插件自己约定，宿主不借它暴露 plugin.setSettings、fs.remove 或任意 Electron IPC。</div>
+</section>
+<section>
+  <h2><span class="n">2</span>数据怎么走</h2>
+  <ol>
+    <li><b>调用。</b>面板打开期间（<code>ui.openPanel</code> 打开的隔离沙箱页），面板页经固定通道发起调用。</li>
+    <li><b>转发。</b>宿主把通道名与数据转发给插件主模块的 <code>onPanelInvoke</code>；面板页是沙箱页，不直接访问插件进程。</li>
+    <li><b>执行。</b>插件按 <code>channel</code> 分发处理，<code>payload</code> 结构由插件约定。</li>
+    <li><b>返回。</b>处理结果（可 async）回传面板页；通道未处理按宿主错误模型返回。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">宿主 → 插件</td><td><code>channel</code> 通道名与 <code>payload</code> 数据。</td></tr>
+      <tr><td class="id">插件 → 宿主</td><td>处理结果，原样回传面板页。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">3</span>出错怎么办</h2>
+  <p class="lead">无错误码。通道未处理时，按宿主错误模型返回给面板页。</p>
+</section>
+<section>
+  <h2><span class="n">4</span>不提供什么</h2>
+  <p class="lead">不是通用 IPC；通道由插件自己约定。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：不暴露 `plugin.setSettings`、`fs.remove` 或任意 Electron IPC。已接受代价：通道由插件自己约定。</div>
+</section>
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <ul>
+    <li><code>host-api/ui.openPanel</code></li>
+  </ul>
+</section>
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <p class="lead">无。</p>
+</section>
+
+</main>
+</body>
+</html>

@@ -24,7 +24,9 @@ html[data-surface="plugin-launcher"] #root {
   border: 1px solid var(--ds-border-strong);
   border-radius: var(--radius-lg-plus);
   background: var(--ds-bg-elevated-opaque);
-  box-shadow: var(--ds-shadow-dialog);
+  /* Border alone: the launcher floats over the desktop in a transparent
+     window, where a blurred drop shadow reads as a heavy halo ring. */
+  box-shadow: none;
 }
 
 .plugin-launcher-search-row {

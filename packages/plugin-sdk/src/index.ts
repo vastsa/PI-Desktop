@@ -60,6 +60,27 @@ export type PluginManifest = {
   author?: PluginManifestAuthor;
   homepage?: string;
   repository?: string;
+  /**
+   * Renderer entry (ES module path relative to the plugin root). Declaring it
+   * requires the `renderer.extension` permission; the module loads into the
+   * host renderer and registers UI slot components through `pi.slots`.
+   */
+  renderer?: string;
+  /**
+   * Outbound actions the renderer components may dispatch
+   * (`PLUGIN_RENDERER_ACTIONS`). Declaring fewer is safe; an action outside
+   * this list is refused with `PLUGIN_ACTION_UNDECLARED`. A word this host does
+   * not implement still installs, so a manifest written for a newer host
+   * loads, and is refused at dispatch with `PLUGIN_ACTION_UNKNOWN`. Requires
+   * `renderer.extension`.
+   */
+  rendererActions?: string[];
+  /**
+   * Methods the plugin's `onRendererCall` answers for `plugin.call`.
+   * Whitelist: an undeclared method is refused with `PLUGIN_CALL_NO_HANDLER`.
+   * Requires `renderer.extension`.
+   */
+  rendererCallMethods?: string[];
   main: string;
   icon?: string;
   /**
@@ -1247,6 +1268,12 @@ export type PluginModule = {
   onUnload?: () => Promise<void> | void;
   /** Optional fixed-channel operations for an isolated plugin panel. */
   onPanelInvoke?: (channel: string, payload: unknown) => Promise<unknown> | unknown;
+  /**
+   * Answers the renderer entry's `plugin.call` for a method listed in
+   * `manifest.rendererCallMethods`. `args` defaults to `{}`; the answer must
+   * be JSON. Throw an `Error` with a `code` to hand that code to the caller.
+   */
+  onRendererCall?: (method: string, args: unknown) => Promise<unknown> | unknown;
 };
 
 /** Upper bound on ExtensionAPI modules one plugin may contribute. */
@@ -1271,6 +1298,10 @@ export const PLUGIN_PERMISSIONS = [
   "agent.prompt.inject",
   "agent.complete",
   "agent.extension",
+  // Renderer slots (`docs/plugin-plan/ui/`): the entry module loads into the
+  // host renderer's own document, so the surface it can touch is the
+  // renderer itself. One umbrella permission, like `agent.extension`.
+  "renderer.extension",
   "provider.register",
   "desktop.control",
   "models.list",
@@ -1283,7 +1314,11 @@ export const PLUGIN_PERMISSIONS = [
   // Read-only usage facts (pi.usage.listTurns):
   // completed-turn counters and session titles, never message bodies.
   "usage.read",
+  // Install-time escape hatch from the net.domains allowlist (issue #1201):
+  // user-typed endpoints, e.g. a self-hosted server, that no manifest written
+  // ahead of time can name. Enforced by net-policy's grant-aware checks.
   "net.fetch",
+  "net.anyHost",
   "shell.openExternal",
   "mcp.server.local",
   "mcp.server.remote",
@@ -1325,6 +1360,8 @@ export function validateManifest(raw: unknown): {
   }
   const mainError = relativePathError(m.main, "manifest.main");
   if (mainError) return { ok: false, error: mainError };
+  const rendererError = manifestRendererError(m);
+  if (rendererError) return { ok: false, error: rendererError };
   if (typeof m.schemaVersion !== "number") {
     return { ok: false, error: "manifest.schemaVersion is required" };
   }
@@ -1951,6 +1988,45 @@ function manifestI18nError(value: unknown): string | undefined {
   }
   return undefined;
 }
+
+/** Upper bounds for the renderer-slot declarations one plugin may carry. */
+export const MAX_RENDERER_ACTIONS_PER_PLUGIN = 16;
+export const MAX_RENDERER_CALL_METHODS_PER_PLUGIN = 32;
+
+/**
+ * `manifest.renderer` and its two whitelists. The entry is a relative
+ * `.js`/`.mjs` module, the whitelists are bounded arrays of non-empty strings
+ * that mean nothing without the entry, and any of it requires the
+ * `renderer.extension` permission. Unknown action words are accepted here so a
+ * manifest written for a newer host still loads; dispatch refuses them.
+ */
+function manifestRendererError(m: Partial<PluginManifest>): string | undefined {
+  for (const [field, max] of [
+    ["rendererActions", MAX_RENDERER_ACTIONS_PER_PLUGIN],
+    ["rendererCallMethods", MAX_RENDERER_CALL_METHODS_PER_PLUGIN],
+  ] as const) {
+    const value: unknown = m[field];
+    if (value === undefined) continue;
+    if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || !entry.trim())) {
+      return `manifest.${field} must be an array of non-empty strings`;
+    }
+    if (value.length > max) return `manifest.${field} allows at most ${max} entries`;
+  }
+  const declaresWhitelist = Boolean(m.rendererActions?.length || m.rendererCallMethods?.length);
+  if (m.renderer === undefined && !declaresWhitelist) return undefined;
+  if (!m.permissions?.includes("renderer.extension")) {
+    return "renderer modules require the renderer.extension permission";
+  }
+  if (m.renderer === undefined) return "renderer whitelists require manifest.renderer";
+  if (typeof m.renderer !== "string" || !m.renderer.trim()) {
+    return "manifest.renderer must be a non-empty string";
+  }
+  const pathError = relativePathError(m.renderer, "manifest.renderer");
+  if (pathError) return pathError;
+  if (!/\.m?js$/.test(m.renderer)) return "manifest.renderer must be a .js or .mjs module";
+  return undefined;
+}
+
 function relativePathError(value: string, field: string): string | undefined {
   if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("\\")) {
     return `${field} must not be an absolute path`;
@@ -2046,11 +2122,14 @@ export {
 } from "./mcp-config.js";
 export {
   isLocalNetDomain,
+  isMetadataNetHost,
   isNetHostAllowed,
+  isNetSocketUrlAllowedWithGrant,
   isNetUrlAllowed,
-  isNetSocketUrlAllowed,
+  isNetUrlAllowedWithGrant,
   parseNetDomains,
   type PluginNetDomain,
+  type PluginNetEgressGrant,
 } from "./net-policy.js";
 export {
   fsGlobIgnoresCase,
@@ -2072,3 +2151,72 @@ export {
   type PluginFsRule,
   type ResolvedFsAccess,
 } from "./fs-policy.js";
+
+export {
+  PLUGIN_RENDERER_SCHEME,
+  PLUGIN_RENDERER_SLOTS,
+  PLUGIN_SLOT_POSITIONS,
+  PLUGIN_RENDERER_ACTIONS,
+  PLUGIN_INSERT_TEXT_MAX_BYTES,
+  blockRendererLanguageKey,
+  slotRegistrationRefusal,
+  type PiRendererApi,
+  type PiRendererModule,
+  type PluginRendererSlot,
+  type PluginSlotPosition,
+  type PluginSlotMessage,
+  type PluginActionSlotProps,
+  type PluginEntryExtraSlotProps,
+  type PluginToolCardStatus,
+  type PluginToolCardSlotProps,
+  type PluginBlockRendererSlotProps,
+  type PluginComposerControlSlotProps,
+  type PluginSlotComponent,
+  type PluginActionSlotRegistration,
+  type PluginEntryExtraSlotRegistration,
+  type PluginToolCardSlotRegistration,
+  type PluginBlockRendererSlotRegistration,
+  type PluginComposerControlSlotRegistration,
+  type PluginSlotRegistration,
+  type PluginDisposer,
+  type PluginLayer,
+  type PluginRendererActionName,
+  type PluginRendererActionMap,
+  type PluginRendererDispatch,
+  type PluginCallPayload,
+  type PluginInsertTextPayload,
+  type PluginSlotErrorCode,
+  type PluginRendererErrorCode,
+  type PluginSlotRefusal,
+  type PluginComponentSlot,
+} from "./renderer.js";
+
+export {
+  PLUGIN_COMPOSER_TRIGGERS,
+  PLUGIN_TRIGGER_MAX_ITEMS,
+  PLUGIN_TRIGGER_TIMEOUT_MS,
+  PLUGIN_MARK_LABEL_MAX_CHARS,
+  PLUGIN_TRIGGER_DETAIL_MAX_CHARS,
+  PLUGIN_MARK_SEND_MAX_BYTES,
+  PLUGIN_DRAFT_MAX_MARKS,
+  PLUGIN_DRAFT_TEXT_MAX_BYTES,
+  PLUGIN_DRAFT_MARK_CHAR,
+  PLUGIN_ATTACHMENT_MAX_BYTES,
+  PLUGIN_ATTACHMENTS_MAX,
+  composerTriggerKey,
+  type PluginComposerTrigger,
+  type PluginTriggerQuery,
+  type PluginTriggerItem,
+  type PluginComposerTriggerRegistration,
+  type PluginDraftMark,
+  type PluginDraftSnapshot,
+  type PluginDraftMarkInput,
+  type PluginReadDraftPayload,
+  type PluginReplaceDraftPayload,
+  type PluginDraftWriteResult,
+  type PluginAttachmentAddPayload,
+  type PluginAttachmentRef,
+  type PluginAttachment,
+  type PluginAttachmentListPayload,
+  type PluginDraftListener,
+} from "./renderer-composer.js";

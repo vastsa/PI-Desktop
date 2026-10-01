@@ -63,17 +63,6 @@ export type ProjectGroupContext = {
   memory: ProjectMemory;
 };
 
-export type PullRequestSummary = {
-  number: number;
-  title: string;
-  url: string;
-  author?: string;
-  headRefName?: string;
-  baseRefName?: string;
-  updatedAt?: string;
-  isDraft?: boolean;
-};
-
 /**
  * `authKind` for a provider row whose credential is a vendor-account OAuth
  * login rather than a pasted API key. Shared so main, the sidecar runtime and

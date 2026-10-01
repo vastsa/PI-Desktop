@@ -488,8 +488,9 @@ Rules:
    is the local `AskToolResolution` contract.
 4. Approval summaries MUST be safe to display. Raw provider credentials,
    secret values, and unbounded tool results are never included.
-5. Expiry maps the local `PERMISSION_TIMEOUT` and `PLAN_APPROVAL_TIMEOUT`
-   outcomes to `APPROVAL_EXPIRED`; the tool is never executed after expiry.
+5. Expiry maps a legacy `PERMISSION_TIMEOUT` from an older local host, and
+   `PLAN_APPROVAL_TIMEOUT`, to `APPROVAL_EXPIRED`; the tool is never executed
+   after expiry. Current local permission prompts do not expire.
 
 ### 5.6 Attachment
 
@@ -1132,7 +1133,7 @@ The initial target limits are:
 | `connection/initialize` deadline | 10 seconds |
 | Read/metadata operation deadline | 15 seconds |
 | `turn/start` admission deadline | 5 seconds |
-| Approval lifetime, local default | 120 seconds, then deny |
+| Approval lifetime, local default | No automatic deadline; explicit decision or cancellation |
 | Approval lifetime, remote policy | 30 minutes by default while a remote subscriber is attached; Host-configured, bounded, advertised as `approvalLifetimeMs` |
 | Heartbeat interval | 30 seconds |
 | Terminal output replay ring | 128 KiB per terminal |
@@ -1142,12 +1143,12 @@ The initial target limits are:
 The Host MAY advertise stricter limits. It MUST return a structured limit
 error rather than truncating a command silently.
 
-Approval lifetime is a Host policy. The local default stays at 120 seconds
-then deny (frozen decision 17). While a remote subscriber is attached the
-default lifetime is 30 minutes (D375), because a remote approver is rarely at
-the keyboard; the Host operator may shorten or lengthen it within a bound, the
-tool call stays blocked for that lifetime unless a local or remote decision
-arrives earlier, and a disconnect never extends it.
+Approval lifetime is a Host policy. Local desktop permission requests have no
+automatic deadline and remain pending until an explicit decision, cancellation,
+or shutdown. While a remote subscriber is attached, the remote approval record
+has a 30-minute default lifetime (D375), because a remote approver is rarely at
+the keyboard; the Host operator may shorten or lengthen it within a bound, and
+a disconnect never extends it.
 
 ## 13. Errors
 
@@ -1284,4 +1285,3 @@ D375 (2026-09-10) re-sequenced the deployments and extended the catalog:
 - queued turns persisted by host-core and held after a restart, the
   30-minute default approval lifetime for remote subscribers, and the
   `applyCeilingToPairedDevices` policy.
-

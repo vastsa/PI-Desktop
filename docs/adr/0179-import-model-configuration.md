@@ -53,6 +53,8 @@ credentials. Copying refresh tokens would be the wrong security boundary.
 4. **Secrets.** A stored API key, `env:` / `env_key` resolution, or
    `Authorization: Bearer` header is copied into the host secret store.
    Placeholder values (`YOUR_API_KEY`, `${VAR}`) are treated as missing.
+   A pi `apiKey` or auth header written as a `!<shell command>` is never
+   executed or stored; that provider is imported without a secret.
    OAuth auth.json entries and Codex `requires_openai_auth` tables without
    a key are omitted or imported without a secret.
 

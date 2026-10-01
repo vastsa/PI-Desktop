@@ -102,6 +102,10 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
             "type": ["string", "null"],
             "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", "omit", null]
           },
+          "thinkingProtocol": {
+            "enum": ["legacy", "adaptive"],
+            "description": "Provider request protocol used when thinking is enabled; absent preserves legacy behavior."
+          },
           "supportsImages": { "type": ["boolean", "null"] },
           "supportsDocuments": { "type": ["boolean", "null"] },
           "availableForSubagents": { "type": "boolean", "default": false }
@@ -390,7 +394,8 @@ Presets only prefill form defaults; they are not a closed world.
 
 These rows are created from the add-provider **Service** select, not from a
 new protocol. They remain `type: "openai_compatible"`. The common path is
-Service + API key; the published host is a summary, and the display name is
+Service + API key; the summary shows the endpoint host and path so subscription
+routes remain visible (wrapping when needed), and the display name is
 editable in Advanced. Custom endpoint shows Name beside Base URL, then API key
 beside API format. `vendorKey` is the models.dev provider key.
 
@@ -423,6 +428,15 @@ Qwen Token Plan (`alibaba-token-plan`, aliases `qwen-token-plan` /
 `qwen-token-plan-individual`), Qwen Token Plan (China)
 (`alibaba-token-plan-cn`, alias `qwen-token-plan-cn`), Xiaomi Token Plan
 (`xiaomi-token-plan-cn` / `-ams` / `-sgp`).
+
+StepFun Plan uses the `stepfun-plan` preset with catalog vendor key
+`stepfun-step-plan`, Base URL `https://api.stepfun.com/step_plan/v1`, and
+`anthropic_messages`. The existing Anthropic adapter removes the trailing
+`/v1` before the SDK appends `/v1/messages`, preserving the subscription path.
+Step 5 Preview capabilities come from the bundled first-party models.dev
+record; no supplemental catalog or hard-coded limits are needed. The ordinary
+StepFun API and existing custom-provider rows retain their configuration.
+
 
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
 `zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of

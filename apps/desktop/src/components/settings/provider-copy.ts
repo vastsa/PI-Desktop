@@ -40,6 +40,9 @@ export function copyProviderConfiguration(provider: ProviderPublic, name: string
         : {}),
       thinkingLevels: [...model.thinkingLevels],
       defaultThinkingLevel: model.defaultThinkingLevel,
+      ...(model.thinkingProtocol !== undefined
+        ? { thinkingProtocol: model.thinkingProtocol }
+        : {}),
       ...(model.supportsImages !== undefined ? { supportsImages: model.supportsImages } : {}),
       ...(model.supportsDocuments !== undefined ? { supportsDocuments: model.supportsDocuments } : {}),
       ...(model.availableForSubagents !== undefined ? { availableForSubagents: model.availableForSubagents } : {}),

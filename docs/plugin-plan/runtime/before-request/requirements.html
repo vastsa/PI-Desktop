@@ -1,0 +1,195 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>before-request · 模型请求层（已撤回） · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">before-request</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/before-request</div>
+  <h1>before-request · 需求</h1>
+  <p>模型请求层改写已撤回。本页维持撤回决定，并给出场景迁移表：原来想做的事各有更合适的去处。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.request.before</code> · 已撤回 · 不作为正选项重开 message_list 改写</div>
+</header>
+
+<main>
+<section>
+  <h2>范围 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>范围：曾经的「模型请求发出前改写请求体」这一档能力——现已撤回。</li>
+    <li>本页只做两件事：确认维持撤回；给出场景迁移表。</li>
+    <li>不谈：怎么实现改写、怎么重开、message_list 怎么编辑。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>现状（代码核实） <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li><b>撤回是产品决定</b>：ADR 0303（原 0295） 记录了「决定并随后收回」，不是实现没跟上。</li>
+    <li><b>内核事件映射不开放</b>：<code>runtime.request.before</code> 在权限清单里标为已撤回，可信运行器会拒绝该事件。</li>
+    <li><b>重开不排期</b>：本轮不把「可重开 message_list 改写」写成正选项。</li>
+    <li><b>沙箱缺口</b>：沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。与本页关系不大——本页本身已撤回。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>契约（建议） <span class="tag proposal">建议</span></h2>
+    <p>维持撤回。下表是场景迁移对照（建议按此分流，不再走 before-request）。</p>
+    <table>
+    <thead><tr><th>原来想在 before-request 做的事</th><th>现在去哪</th></tr></thead>
+    <tbody>
+      <tr><td class="id">prompt 注入 / 组装</td><td><code>inject</code> / <code>compose</code>（会话提示词装配）</td></tr>
+      <tr><td class="id">历史治理（裁剪、摘要、排序）</td><td>宿主压缩（compaction），不要插件改写请求体</td></tr>
+      <tr><td class="id">model / think 覆盖</td><td>会话绑定（session 绑定的模型与思考档）</td></tr>
+      <tr><td class="id">出站内容拦截 / 改写</td><td><code>before-send</code>（发送路径，带审计）</td></tr>
+      <tr><td class="id">取消这次请求</td><td><code>abort-turn</code>（中止本轮）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout error"><b>不写「可重开 message_list 改写」为正选项。</b>改写模型要看到的全部历史，风险高于发送层改写一个数量级；即便将来重开，也必须先有 diff 级审计与短预算，且单独拍板。</div>
+</section>
+
+<section>
+  <h2>插件场景 <span class="tag proposal">建议</span></h2>
+    <p>下列场景都已在别处有家；不要再往 before-request 塞。</p>
+    <table>
+    <thead><tr><th>原来想在 before-request 做的事</th><th>现在去哪</th></tr></thead>
+    <tbody>
+      <tr><td class="id">prompt 注入 / 组装</td><td><code>inject</code> / <code>compose</code>（会话提示词装配）</td></tr>
+      <tr><td class="id">历史治理（裁剪、摘要、排序）</td><td>宿主压缩（compaction），不要插件改写请求体</td></tr>
+      <tr><td class="id">model / think 覆盖</td><td>会话绑定（session 绑定的模型与思考档）</td></tr>
+      <tr><td class="id">出站内容拦截 / 改写</td><td><code>before-send</code>（发送路径，带审计）</td></tr>
+      <tr><td class="id">取消这次请求</td><td><code>abort-turn</code>（中止本轮）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag open">待定</span></h2>
+    <p>本轮拍板只有一条：<b>维持撤回</b>。若要推翻，需先回答：审计记什么、预算多长、用户怎么知道请求被改过。</p>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>不让插件改写模型请求体（message_list、工具列表、系统提示）。</li>
+    <li>不把「重开 message_list 改写」写成正选项。</li>
+    <li>不做静默改写——任何改写都必须可审计、用户可感知；当前选择是干脆不开。</li>
+    <li>不在本目录设计实现细节。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>还没定的事 <span class="tag open">未定</span></h2>
+    <ul>
+    <li>无——本轮拍板就是维持撤回。</li>
+    <li>若将来重开，前置未定：审计字段、请求级预算、用户可见性。沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。</li>
+  </ul>
+</section>
+
+<p class="omitted">省略：无界面</p>
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

@@ -309,6 +309,7 @@ export function bindingFromModelInfo(model: ModelInfo): ModelBinding {
     defaultThinkingLevel: thinkingLevels.includes("medium")
       ? "medium"
       : (thinkingLevels[0] ?? null),
+    ...(model.thinkingProtocol ? { thinkingProtocol: model.thinkingProtocol } : {}),
     // Absent overrides keep following models.dev, so a catalog correction still
     // reaches an already saved binding.
     supportsImages: null,

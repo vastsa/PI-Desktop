@@ -1,7 +1,7 @@
-import { useId, type ReactNode } from "react";
+import { useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AssistantActivityItem } from "../../../lib/assistant-turns";
-import { activitySummary } from "../../../lib/activity-summary";
+import { cachedActivitySummary } from "../../../lib/transcript-activity-summary";
 import { IconChevronRight, IconCircleAlert, IconSparkles } from "../../../components/icons";
 import { DisclosureCollapseRail } from "./shared";
 import { DisclosureScope, type useAutomaticDisclosure } from "./disclosure";
@@ -22,7 +22,7 @@ export function ProcessActivityGroup({
   const detailsId = useId();
   const grouped = items.length > 1;
   const open = !grouped || disclosure.open;
-  const summary = activitySummary(items);
+  const summary = useMemo(() => cachedActivitySummary(items), [items]);
   if (items.length === 0) return null;
   return (
     <div className={`process-activity-group${grouped ? " grouped" : " singleton"}${open ? " open" : ""}`}>

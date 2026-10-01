@@ -4,7 +4,7 @@
 - Status: Accepted for implementation (definition roots amended by ADR 0112;
   timeout policy amended by ADR 0119; delegation presentation amended by D265;
   opt-in parent-tool inherit amended by ADR 0246; resumable delegations amended
-  by ADR 0279)
+  by ADR 0279; report spillover amended by RFC #1196)
 - Date: 2026-08-06
 - Deciders: PI-Desktop core
 - Related: D201, ADR 0041 (persistence outbox), ADR 0048 (lazy per-turn tool
@@ -89,9 +89,11 @@ The `Task` tool takes `agent`, `task` and an optional short `description`. The
 catalog of available delegates rides in the tool description rather than the
 system prompt, because the two change together.
 
-`Task` is offered only in Agent mode. Plan and Goal are read-only contract
+`Task` executes only in Agent mode. Plan and Goal are read-only contract
 negotiations (D198), and a delegate with Bash or Edit would drive straight
-through one.
+through one. [Contract-mode declaration compatibility](plan-tool-declarations-and-execution-denials.md)
+retains configured Task-family schemas but rejects their execution before any
+delegate is created or controlled; a visible schema is not a permission grant.
 
 Concurrency is expressed through pi's execution modes: the session Agent runs
 with `toolExecution: "parallel"`, every catalog tool carries
@@ -120,6 +122,20 @@ A `SubagentRun` is a second pi `Agent` in the same sidecar process. Its final
 message, bounded to `MAX_SUBAGENT_REPORT_CHARS` (12k), becomes the `Task` tool
 result, with `agent`, `status`, `turns`, `toolCalls` and `usage` as structured
 details.
+
+When a delegate's completed report exceeds `MAX_SUBAGENT_REPORT_CHARS`, the
+runtime preserves the full, unclipped report in the session scratch directory
+(`<data_dir>/scratch/<sessionId>/delegations/<parentToolCallId>/report.md`; an
+opaque ID containing path separators is encoded before it is used as a path
+component)
+and returns a compact pointer notice (`Complete subagent report (N characters) was saved to: <path>`)
+alongside `scratchReportPath` in the structured result. If scratch persistence fails,
+it degrades gracefully to bounded head/tail clipping with a truncation marker.
+Delegates with mutation capability are guided in their prompt to write oversized
+reports (>8,000 characters) directly to a file and return a summary with the file path.
+When a delegate truncates due to model output token limits (`SUBAGENT_OUTPUT_TRUNCATED`),
+the failure result includes character count statistics and a resume hint for ADR 0279
+chains (`Task(resume: "<delegationId>")`).
 
 Delegate messages and tool rows are still emitted and persisted — they are what
 makes a delegation reviewable — but every row carries `parentToolCallId` and

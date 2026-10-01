@@ -1090,7 +1090,7 @@ impl UserSkillRegistry {
             .unwrap_or_else(|| {
                 // Prefer the directory basename so nested resources keep their
                 // relative paths intact under `<capability_dir>/skills/<id>/`.
-                let fallback_path = source_dir.join(format!("{name}"));
+                let fallback_path = source_dir.join(&name);
                 capability_id(&name, &fallback_path, 64)
             });
         if !valid_id(&id) {

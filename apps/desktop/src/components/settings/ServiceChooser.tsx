@@ -255,7 +255,7 @@ export function ServiceChooser({
                     <span className="service-chooser-tile-copy">
                       <span className="service-chooser-tile-name">{option.label}</span>
                       <span className="service-chooser-tile-detail">
-                        {isCustom ? t("settings.customEndpointDesc") : option.host}
+                        {isCustom ? t("settings.customEndpointDesc") : option.endpoint}
                       </span>
                     </span>
                   </button>

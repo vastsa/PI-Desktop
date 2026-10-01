@@ -1,0 +1,398 @@
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 回复追加区 · 演示</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --gray-800: #212121;
+      --ds-bg-primary: #181818;
+      --ds-bg-under: #000;
+      --ds-bg-composer: color-mix(in oklab, var(--gray-800) 96%, transparent);
+      --ds-text-primary: #fff;
+      --ds-text-secondary: color-mix(in oklab, #fff 70%, transparent);
+      --ds-text-muted: color-mix(in oklab, #fff 52%, transparent);
+      --ds-text-faint: color-mix(in oklab, #fff 38%, transparent);
+      --ds-tile: color-mix(in oklab, #fff 3.5%, transparent);
+      --ds-tile-deep: color-mix(in oklab, #fff 8%, transparent);
+      --ds-bg-hover: color-mix(in oklab, #fff 6%, transparent);
+      --ds-accent: #fff;
+      --ds-purple: #c27aff;
+      --ds-blue: #6cb2ff;
+      --ds-error: #ff6764;
+      --ds-warning: #ff8549;
+      --ds-success: #40c977;
+      --ds-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+      --radius-xs: 4px;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 12px;
+      --radius-lg-plus: 16px;
+      --radius-2xl: 22px;
+      --ui: #c27aff;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      font-family: var(--font);
+      background: var(--ds-bg-under);
+      color: var(--ds-text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; color: inherit; }
+
+    .shell {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      background: var(--ds-bg-primary);
+    }
+    .topbar {
+      padding: 14px 28px 12px;
+      border-bottom: 1px solid color-mix(in oklab, #fff 6%, transparent);
+    }
+    .topbar h1 { margin: 0; font-size: 14px; font-weight: 560; }
+
+    .thread { flex: 1; min-height: 0; overflow: auto; }
+    .inner {
+      width: min(760px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stage {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 26px 0 10px;
+      color: var(--ds-text-faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+    }
+    .stage::after { content: ""; flex: 1; height: 1px; background: color-mix(in oklab, #fff 6%, transparent); }
+    .stage .no {
+      display: inline-grid;
+      place-items: center;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 99px;
+      background: var(--ds-tile-deep);
+      color: var(--ds-text-secondary);
+      font-size: 10.5px;
+    }
+    .stage .hint {
+      color: var(--ds-text-muted);
+      letter-spacing: 0;
+      font-family: var(--font);
+      font-size: 11.5px;
+    }
+
+    .message-row.user {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+      padding: 12px 0;
+    }
+    .message-col {
+      display: flex;
+      min-width: 0;
+      width: min(max-content, 82%, 600px);
+      max-width: min(82%, 600px);
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-end;
+    }
+    .message-bubble {
+      width: max-content;
+      max-width: 100%;
+      border-radius: var(--radius-lg-plus);
+      border-bottom-right-radius: var(--radius-xs);
+      background: color-mix(in oklab, #fff 8%, transparent);
+      padding: 10px 15px;
+      color: var(--ds-text-primary);
+      font-size: 15px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+    .message-row.assistant {
+      display: flex;
+      width: 100%;
+      padding: 6px 0 14px;
+    }
+    .assistant-col {
+      width: min(100%, 720px);
+      color: var(--ds-text-secondary);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .assistant-col p { margin: 0; }
+    .assistant-col code {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--ds-text-primary);
+    }
+    .assistant-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      min-height: 24px;
+      margin-top: 6px;
+    }
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      min-height: 24px;
+      padding: 3px 5px;
+      border: 0;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--ds-text-muted);
+      cursor: default;
+    }
+    .copy-btn svg { display: block; }
+    .copy-btn.label {
+      gap: 4px;
+      padding: 3px 8px;
+      font-size: 11.5px;
+      color: var(--ds-text-secondary);
+    }
+
+    .slot-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      border: 1px dashed color-mix(in oklab, var(--ui) 55%, transparent);
+      border-radius: var(--radius-lg-plus);
+      padding: 18px 10px 10px;
+      margin: 10px 0 4px;
+    }
+    .slot-wrap .slot-name {
+      position: absolute;
+      top: -8px;
+      left: 10px;
+      padding: 0 6px;
+      background: var(--ds-bg-primary);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: #e4c8ff;
+    }
+    .extra-block {
+      border-radius: var(--radius-md);
+      background: var(--ds-tile);
+      padding: 11px 13px;
+      color: var(--ds-text-secondary);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .extra-block + .extra-block { margin-top: 8px; }
+    .extra-head {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 7px;
+      color: var(--ui);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.03em;
+    }
+    .run-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .run-row code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ds-text-primary);
+    }
+    .mini-btn {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: var(--radius-sm);
+      background: var(--ds-tile-deep);
+      color: var(--ds-text-primary);
+      font-size: 12px;
+    }
+    .spark {
+      display: block;
+      width: 100%;
+      height: 54px;
+    }
+
+    .composer-dock {
+      padding: 0 24px 16px;
+      background: var(--ds-bg-primary);
+    }
+    .composer-shell {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      border-radius: var(--radius-2xl);
+      background: var(--ds-bg-composer);
+      box-shadow: var(--ds-shadow-composer);
+      padding: 10px 12px 8px;
+    }
+    .composer-input {
+      min-height: 40px;
+      color: var(--ds-text-faint);
+      font-size: 14px;
+      padding: 4px 4px 10px;
+    }
+    .composer-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--ds-text-faint);
+      font-size: 12px;
+    }
+    .send {
+      width: 28px; height: 28px; border: 0; border-radius: 99px;
+      background: var(--ds-accent); color: #181818;
+      display: grid; place-items: center; cursor: default;
+    }
+
+    .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid color-mix(in oklab, #fff 8%, transparent);font-size:13px;flex:0 0 auto}
+    .plan-nav a{color:var(--ds-text-muted);text-decoration:none;padding:3px 8px;border-radius:6px}
+    .plan-nav a:hover{background:var(--ds-bg-hover);color:var(--ds-text-primary)}
+    .plan-nav a[aria-current="page"]{background:var(--ds-tile-deep);color:var(--ds-text-primary);box-shadow:inset 0 0 0 1px color-mix(in oklab, #fff 14%, transparent)}
+    .plan-nav .sep{color:var(--ds-text-faint);padding:0 2px}
+    .plan-nav .spacer{flex:1}
+    .plan-nav .here{color:var(--ds-text-primary);padding:3px 8px}
+  </style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <span class="here">AI 回复追加区</span>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="demo.html" aria-current="page">演示</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+  <div class="shell">
+    <header class="topbar">
+      <h1>AI 回复追加区 · 演示</h1>
+    </header>
+
+    <div class="thread">
+      <div class="inner">
+
+        <div class="stage" id="s1"><span class="no">1</span>无追加<span class="hint">空位 0 块</span></div>
+
+        <article class="message-row assistant">
+          <div class="assistant-col">
+            <p>这段重试逻辑里有三处硬编码超时，我先列出来。</p>
+            <div class="assistant-actions">
+              <button class="copy-btn" type="button" aria-label="复制">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button class="copy-btn label" type="button">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                重新生成
+              </button>
+            </div>
+            <div class="slot-wrap">
+              <div class="slot-name">entryExtra</div>
+            </div>
+          </div>
+        </article>
+
+        <div class="stage" id="s2"><span class="no">2</span>一块追加<span class="hint">可运行面板</span></div>
+
+        <article class="message-row assistant">
+          <div class="assistant-col">
+            <p>这段重试逻辑里有三处硬编码超时，我先列出来。</p>
+            <div class="assistant-actions">
+              <button class="copy-btn" type="button" aria-label="复制">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button class="copy-btn label" type="button">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                重新生成
+              </button>
+            </div>
+            <div class="slot-wrap">
+              <div class="slot-name">entryExtra</div>
+              <div class="extra-block">
+                <div class="extra-head">plugin_demo_runner · 可运行面板</div>
+                <div class="run-row">
+                  <code>pnpm test -- filter retry</code>
+                  <button class="mini-btn" type="button">运行</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <div class="stage" id="s3"><span class="no">3</span>两块叠加<span class="hint">additive</span></div>
+
+        <article class="message-row assistant">
+          <div class="assistant-col">
+            <p>这段重试逻辑里有三处硬编码超时，我先列出来。</p>
+            <div class="assistant-actions">
+              <button class="copy-btn" type="button" aria-label="复制">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button class="copy-btn label" type="button">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                重新生成
+              </button>
+            </div>
+            <div class="slot-wrap">
+              <div class="slot-name">entryExtra</div>
+              <div class="extra-block">
+                <div class="extra-head">plugin_demo_runner · 可运行面板</div>
+                <div class="run-row">
+                  <code>pnpm test -- filter retry</code>
+                  <button class="mini-btn" type="button">运行</button>
+                </div>
+              </div>
+              <div class="extra-block">
+                <div class="extra-head">plugin_demo_spark · 指标缩略图</div>
+                <svg class="spark" viewBox="0 0 280 54" preserveAspectRatio="none" aria-hidden="true">
+                  <polyline fill="none" stroke="#c27aff" stroke-width="2" points="0,40 40,36 80,28 120,30 160,18 200,22 240,10 280,14"/>
+                  <polyline fill="color-mix(in oklab, #c27aff 18%, transparent)" stroke="none" points="0,54 0,40 40,36 80,28 120,30 160,18 200,22 240,10 280,14 280,54"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <div class="composer-dock">
+      <div class="composer-shell">
+        <div class="composer-input">问点什么…</div>
+        <div class="composer-bar">
+          <span>+  ·  Agent</span>
+          <button class="send" type="button" tabindex="-1" aria-label="发送">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

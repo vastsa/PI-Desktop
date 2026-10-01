@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { createHash } from "node:crypto";
 
 import type {
   PendingToolRequest,
@@ -8,7 +9,7 @@ import type {
   SessionSummary,
 } from "@pi-desktop/agent-host";
 import { RacpError } from "@pi-desktop/agent-host";
-import type { RacpItemSummary, RacpPermissionMode, UiMessage } from "@pi-desktop/shared";
+import type { RacpItemSummary, RacpPermissionMode, UiMessage, VoiceOrigin } from "@pi-desktop/shared";
 
 /** Rust host-core over stdio JSON-RPC, as the ports below need it. */
 export type HostRpc = {
@@ -28,6 +29,14 @@ export type HostSessionRecord = {
   messages?: UiMessage[];
 };
 
+/** Opaque Main/Host authorization fingerprint; never send the source identity to the renderer or model. */
+export function sessionWorkspaceIdentity(input: { projectId?: unknown; projectPath?: unknown }): string | null {
+  const projectId = typeof input.projectId === "string" ? input.projectId.trim() : "";
+  const projectPath = typeof input.projectPath === "string" ? input.projectPath.trim() : "";
+  if (!projectId && !projectPath) return null;
+  return createHash("sha256").update(JSON.stringify([projectId, projectPath])).digest("hex");
+}
+
 export function requireHostRpc(getHost: () => HostRpc | null): HostRpc {
   const host = getHost();
   if (!host) throw new RacpError("AGENT_UNAVAILABLE", "host is not running", { retriable: true });
@@ -46,6 +55,7 @@ export function toSessionSummary(record: HostSessionRecord): SessionSummary {
     id: record.id,
     title: record.title ?? "",
     ...(record.projectId ? { projectId: record.projectId } : {}),
+    workspaceIdentity: sessionWorkspaceIdentity(record),
     ...(record.projectPath ? { workspaceLabel: basename(record.projectPath) } : {}),
     mode,
     permissionMode,
@@ -64,6 +74,7 @@ export function toRacpItem(message: UiMessage): RacpItemSummary {
     status: message.status === "streaming" ? "streaming" : "completed",
     createdAt: message.createdAt,
     ...(message.parentToolCallId ? { parentToolCallId: message.parentToolCallId } : {}),
+    ...(message.nestedParentToolCallId ? { nestedParentToolCallId: message.nestedParentToolCallId } : {}),
     ...(message.agentName ? { agentName: message.agentName } : {}),
     content: message,
   };
@@ -104,6 +115,8 @@ export type HostQueueEntry = {
   inputHash: string;
   content: string;
   sessionMessageId?: string;
+  userMessageId?: string;
+  voiceOrigin?: VoiceOrigin;
   attachments?: unknown;
   permissionMode: string;
   position: number;
@@ -120,6 +133,8 @@ export function fromHostQueueEntry(entry: HostQueueEntry): QueuedTurnRecord {
     principalSubject: entry.principal,
     content: entry.content,
     ...(entry.sessionMessageId ? { sessionMessageId: entry.sessionMessageId } : {}),
+    ...(entry.userMessageId ? { userMessageId: entry.userMessageId } : {}),
+    ...(entry.voiceOrigin ? { voiceOrigin: entry.voiceOrigin } : {}),
     ...(Array.isArray(entry.attachments) ? { attachments: entry.attachments as QueuedTurnRecord["attachments"] } : {}),
     effectivePermissionMode: permissionMode,
     ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}),
@@ -147,6 +162,8 @@ export function createHostQueueStore(getHost: () => HostRpc | null): QueueStore 
         inputHash: record.inputHash,
         content: record.content,
         ...(record.sessionMessageId ? { sessionMessageId: record.sessionMessageId } : {}),
+        ...(record.userMessageId ? { userMessageId: record.userMessageId } : {}),
+        ...(record.voiceOrigin ? { voiceOrigin: record.voiceOrigin } : {}),
         ...(record.attachments ? { attachments: record.attachments } : {}),
         permissionMode: record.effectivePermissionMode,
       });

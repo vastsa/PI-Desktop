@@ -8,6 +8,7 @@ import {
   type McpServerStatus,
 } from "@pi-desktop/shared";
 import { allowInsecureUserEndpointsEnabled } from "./endpoint-policy.ts";
+import { authorizationMetadataUrls, parseBearerChallenge, selectOAuthScope } from "./mcp-oauth-discovery.ts";
 export type StoredMcpOAuthToken = {
   clientId: string;
   clientSecret?: string;
@@ -27,7 +28,7 @@ export type McpOAuthMetadata = {
   authorizationEndpoint: string;
   tokenEndpoint: string;
   registrationEndpoint?: string;
-  scopesSupported?: string[];
+  scope?: string;
 };
 
 export type McpOAuthDeps = {
@@ -202,6 +203,7 @@ export class McpOAuthManager {
   async discoverMetadata(serverUrl: string): Promise<McpOAuthMetadata> {
     const urlObj = new URL(serverUrl);
     let resourceMetadataUrl: string | undefined;
+    let challengeScope: string | undefined;
 
     // Step 1: Probe endpoint to check for 401 with WWW-Authenticate
     try {
@@ -226,12 +228,9 @@ export class McpOAuthManager {
       if (probeRes.status === 401) {
         const wwwAuth = probeRes.headers.get("www-authenticate");
         if (wwwAuth) {
-          const match =
-            wwwAuth.match(/resource_metadata="([^"]+)"/i) ??
-            wwwAuth.match(/resource_metadata=([^,\s]+)/i);
-          if (match?.[1]) {
-            resourceMetadataUrl = match[1];
-          }
+          const challenge = parseBearerChallenge(wwwAuth);
+          resourceMetadataUrl = challenge.resourceMetadataUrl;
+          challengeScope = challenge.scope;
         }
       }
     } catch {
@@ -278,10 +277,7 @@ export class McpOAuthManager {
 
     // Step 3: Fetch Authorization Server Metadata (RFC 8414)
     let asMeta: Record<string, unknown> | null = null;
-    const asMetaCandidates = [
-      new URL("/.well-known/oauth-authorization-server", authServerObj.origin).toString(),
-      new URL("/.well-known/openid-configuration", authServerObj.origin).toString(),
-    ];
+    const asMetaCandidates = authorizationMetadataUrls(authServerObj);
 
     for (const asUrl of asMetaCandidates) {
       try {
@@ -312,11 +308,7 @@ export class McpOAuthManager {
     if (registrationEndpoint) {
       assertTlsProtectedUrl(registrationEndpoint, "registration_endpoint", serverUrl);
     }
-    const scopesSupported = Array.isArray(asMeta?.scopes_supported)
-      ? (asMeta.scopes_supported as string[])
-      : Array.isArray(prm?.scopes_supported)
-        ? (prm.scopes_supported as string[])
-        : undefined;
+    const scope = selectOAuthScope(challengeScope, prm?.scopes_supported);
 
     return {
       resource: typeof prm?.resource === "string" ? prm.resource : serverUrl,
@@ -324,7 +316,7 @@ export class McpOAuthManager {
       authorizationEndpoint,
       tokenEndpoint,
       registrationEndpoint,
-      scopesSupported,
+      scope,
     };
   }
 
@@ -697,12 +689,10 @@ export class McpOAuthManager {
             authUrl.searchParams.set("code_challenge_method", "S256");
             authUrl.searchParams.set("resource", metadata.resource);
 
-            // MVP: no per-server scope picker. Prefer a literal "default" if
-            // advertised (Notion-class), otherwise the first supported scope.
-            if (metadata.scopesSupported?.includes("default")) {
-              authUrl.searchParams.set("scope", "default");
-            } else if (metadata.scopesSupported?.[0]) {
-              authUrl.searchParams.set("scope", metadata.scopesSupported[0]);
+            if (metadata.scope) {
+              authUrl.searchParams.set("scope", metadata.scope);
+            } else {
+              authUrl.searchParams.delete("scope");
             }
 
             this.deps.log?.("info", "opening browser for mcp oauth", {

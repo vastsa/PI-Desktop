@@ -66,13 +66,13 @@ export function isLastActivityPart(
   return false;
 }
 
-/** Detailed keeps narration visible; compact reveals active failures only. */
+/** Active processes open in Detailed; settled processes default closed. */
 export function shouldAutoOpenTurnProcess(
   mode: ThinkingDisplayMode,
   isActive: boolean,
   hasToolFailure: boolean,
 ): boolean {
-  return mode === "detailed" || (isActive && hasToolFailure);
+  return isActive && (mode === "detailed" || hasToolFailure);
 }
 
 /**

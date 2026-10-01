@@ -14,6 +14,7 @@ import { Badge, Button, Checkbox, Field, Input, PasswordInput, SettingsToggle } 
 import { IconCloudDown, IconRefresh, IconShield, IconTrash } from "../icons";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
 import { configSyncProgressView } from "../../features/settings/config-sync-progress";
+import { useAppStore } from "../../stores/app-store";
 import {
   cacheConfigSyncHistory,
   cacheConfigSyncState,
@@ -125,6 +126,7 @@ function statusTone(
 
 export function ConfigSyncPage() {
   const { t } = useTranslation();
+  const showToast = useAppStore((state) => state.showToast);
   const [initialDraft] = useState(() => readConfigSyncDraft());
   const [state, setState] = useState<ConfigSyncState | null>(() =>
     getCachedConfigSyncState(),
@@ -151,7 +153,6 @@ export function ConfigSyncPage() {
     getCachedConfigSyncHistory(),
   );
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<ConfigSyncForm>(() =>
     initialConfigSyncForm(initialDraft),
   );
@@ -318,7 +319,6 @@ export function ConfigSyncPage() {
     }
     setBusy(operation);
     setError(null);
-    setNotice(null);
     try {
       if (operation === "test") {
         const result = await api.configSyncTest({
@@ -333,14 +333,19 @@ export function ConfigSyncPage() {
           automaticSync: true,
           remoteMode,
         });
-        setNotice(
-          remoteMode === "appendOnly"
-            ? result.appendOnly
-              ? t("settings.configSync.testAppendOnlySuccess")
-              : t("settings.configSync.testAppendOnlyUnsupported")
-            : result.conditionalWrites
-              ? t("settings.configSync.testSuccess")
-              : t("settings.configSync.testUnsupported"),
+        const supported =
+          remoteMode === "appendOnly" ? result.appendOnly : result.conditionalWrites;
+        showToast(
+          t(
+            remoteMode === "appendOnly"
+              ? supported
+                ? "settings.configSync.testAppendOnlySuccess"
+                : "settings.configSync.testAppendOnlyUnsupported"
+              : supported
+                ? "settings.configSync.testSuccess"
+                : "settings.configSync.testUnsupported",
+          ),
+          { variant: supported ? "success" : "warning" },
         );
       } else if (operation === "configure") {
         clearHistory();
@@ -366,7 +371,7 @@ export function ConfigSyncPage() {
         applyState(await api.configSyncSyncNow());
         void refreshHistory(false);
         setForm((current) => ({ ...current, appPassword: "", backupPassword: "" }));
-        setNotice(t("settings.configSync.configured"));
+        showToast(t("settings.configSync.configured"), { variant: "success" });
       } else if (operation === "sync") {
         applyState(await api.configSyncSyncNow());
         void refreshHistory(false);
@@ -396,7 +401,6 @@ export function ConfigSyncPage() {
   const changePassword = async () => {
     setBusy("password");
     setError(null);
-    setNotice(null);
     try {
       applyState(
         await api.configSyncChangePassword({
@@ -409,7 +413,7 @@ export function ConfigSyncPage() {
         currentBackupPassword: "",
         newBackupPassword: "",
       }));
-      setNotice(t("settings.configSync.passwordChanged"));
+      showToast(t("settings.configSync.passwordChanged"), { variant: "success" });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -429,7 +433,7 @@ export function ConfigSyncPage() {
         }),
       );
       await refreshHistory(true);
-      setNotice(t("settings.configSync.restoreStarted"));
+      showToast(t("settings.configSync.restoreStarted"), { variant: "success" });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -694,11 +698,6 @@ export function ConfigSyncPage() {
             </Button>
           ) : null}
         </div>
-        {notice ? (
-          <div className="settings-config-sync-message" role="status">
-            {notice}
-          </div>
-        ) : null}
       </SettingsCard>
 
       {/* A sync this page started reports itself here, above the cards: the

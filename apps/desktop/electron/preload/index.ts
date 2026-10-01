@@ -27,6 +27,16 @@ const api = {
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);
   },
+  onLiveVoicePort: () => {
+    const listener = (event: Electron.IpcRendererEvent, payload: unknown) => {
+      const value = payload && typeof payload === "object" ? payload as { callId?: unknown; nonce?: unknown } : null;
+      const port = event.ports[0];
+      if (!port || typeof value?.callId !== "string" || typeof value.nonce !== "string") return;
+      window.postMessage({ kind: "pi-desktop-live-voice-port", callId: value.callId, nonce: value.nonce }, "*", [port]);
+    };
+    ipcRenderer.on(IPC.event.liveVoicePort, listener);
+    return () => ipcRenderer.removeListener(IPC.event.liveVoicePort, listener);
+  },
   channels: IPC,
   // Synchronous platform info so the renderer can style window chrome
   // (traffic lights on macOS vs. controls overlay on Windows/Linux)

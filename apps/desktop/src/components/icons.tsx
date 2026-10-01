@@ -9,6 +9,7 @@ import {
   ArrowUpDown,
   ArrowUpRight,
   AtSign,
+  AudioLines,
   Bell,
   BookOpen,
   Bot,
@@ -18,6 +19,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleAlert,
   CircleCheck,
   CircleHelp,
@@ -50,6 +52,7 @@ import {
   ListChecks,
   LogOut,
   Mic,
+  MicOff,
   Minus,
   MessageSquare,
   MessageSquarePlus,
@@ -64,6 +67,7 @@ import {
   Maximize2,
   Minimize2,
   PawPrint,
+  PhoneOff,
   PencilLine,
   Pin,
   Play,
@@ -92,6 +96,7 @@ import {
   UserRound,
   Undo2,
   Video,
+  Volume2,
   Webhook,
   Workflow,
   Wrench,
@@ -197,9 +202,10 @@ export const IconSquare = icon(Square);
 export const IconSliders = icon(SlidersHorizontal);
 export const IconConfig = icon(RefreshCcw);
 export const IconChevronLeft = icon(ChevronLeft);
-export const IconChevronRight = icon(ChevronRight);
 export const IconExternal = icon(ExternalLink);
 export const IconArrowUpRight = icon(ArrowUpRight);
+export const IconChevronRight = icon(ChevronRight);
+export const IconChevronUp = icon(ChevronUp);
 export const IconUndo2 = icon(Undo2);
 export const IconCloudDown = icon(CloudDownload);
 export const IconDownload = icon(Download);
@@ -212,6 +218,10 @@ export const IconVideo = icon(Video);
 export const IconReview = icon(RefreshCw);
 export const IconKeyboard = icon(Keyboard);
 export const IconMic = icon(Mic);
+export const IconMicOff = icon(MicOff);
+export const IconWaveform = icon(AudioLines);
+export const IconPhoneOff = icon(PhoneOff);
+export const IconVolume = icon(Volume2);
 export const IconPlug = icon(Plug);
 export const IconSlash = icon(Slash);
 export const IconUser = icon(UserRound);

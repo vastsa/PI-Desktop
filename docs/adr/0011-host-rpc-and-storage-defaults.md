@@ -1,6 +1,7 @@
 # ADR 0011: Freeze host RPC, storage ownership, and mode defaults
 
-- Status: Accepted; mode-profile clause superseded in part by ADR 0053
+- Status: Accepted; mode-profile clause superseded in part by ADR 0053;
+  permission-timeout clause amended by ADR 0310
 - Date: 2026-07-25
 
 ## Context
@@ -11,7 +12,7 @@ After baseline 0.3.0, implementation still depended on several high-impact defau
 - SQLite ownership
 - default interaction mode
 - former restricted-profile tool split (superseded by ADR 0053)
-- permission timeout behavior
+- local permission approval behavior
 
 ## Decision
 
@@ -23,7 +24,8 @@ Freeze the following defaults for implementation:
 4. The former restricted profile was read-only; this mode-profile clause is
    superseded by ADR 0053, which supersedes the historical operating-state
    decision in ADR 0052 and replaces it with the current Plan workflow
-5. Permission timeout = **120s deny**
+5. Local permission approvals have **no automatic deadline**; they remain
+   pending until an explicit decision, cancellation, or host/process shutdown
 6. Session grants = **by toolName**
 7. First release platform = **macOS arm64 only**
 8. TS schema = **typebox**

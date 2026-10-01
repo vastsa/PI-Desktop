@@ -17,7 +17,7 @@
 | D002 | SQLite 所有权 | **Rust host-core 独家拥有 SQLite** | 单写入者，权限边界更清晰 |
 | D003 | 默认模式 | **Agent** | 产品是座席桌面，不是纯聊天 |
 | D004 | 前受限个人资料 | *（由 D189 取代）* **以前的聊天只读配置文件已删除；持久的聊天值迁移到 Plan。** | 该产品现在有一个 Agent，具有规划状态和单独的批准边界 |
-| D005 | 权限超时 | **120秒→拒绝** | 失败关闭，不会永远挂起 |
+| D005 | 权限超时 | *（由 D636 / ADR 0310 修订）* **本地权限确认没有自动截止时间；必须明确决定或取消** | 避免用户未注意到卡片时被意外拒绝 |
 | D006 | `allow-session` 范围 | **由 `toolName` 提供** | 简单的用户体验；工作区沙箱仍然强制路径安全 |
 | D007 | `~/.pi` 兼容性 | **MVP 中没有自动导入** | 在 `~/.pi-desktop` 中保持配置所有权干净 |
 | D008 | Node 运行时打包 | **开发人员使用系统 Node；版本通过 `ELECTRON_RUN_AS_NODE=1` 在 Electron 二进制文件上运行捆绑的 sidecar（未提供单独的 Node）** | 疏通M1–M4；在 M5 处解决，请参阅 03-runtime/07-process-model §6 |
@@ -30,7 +30,10 @@
 | D451 | 审阅面板只在用户主动操作时打开 | **工具结果永不打开、激活或改变工作面板。移除 `tool_end` 中的 artifact 门控与 `shouldOpenReviewArtifact`；Review 仅从 `+` 新建启动器的 Review 行，或视口固定开关 / `Cmd/Ctrl + J` 显示的会话保留上下文进入。成功的 workspace Write/Edit 仍会在 transcript 中记录消息级内联审阅卡片。** | Agent 编辑静默弹出侧边栏会与用户正在阅读的内容和布局争夺注意力，且 transcript 卡片已承载变更证据。见 ADR 0043、`04-ux/01-ui-ia.md`、`04-ux/08-component-spec.md` §5、`04-ux/09-interaction-patterns.md`、E2E-057。 |
 | D452 | 计划与目标工件在内置文件视图中打开 | **审批卡的工件打开器把不可变的 `.pi/plan/*.md` 或 `.pi/goal/*.md` 路径交给内置 `pi.file-manager` 视图（该视图可启动时），否则交给宿主机文件标签——与对话文件引用已有的偏好与回退一致（ADR 0241）。工件仍会在其来源会话中创建或激活标签，因此审批揭示本身不变，只有承载界面改变。仅渲染进程；不改协议、宿主、存储、工件内容或权限。见 D189、ADR 0043、`04-ux/08-component-spec.md` §5.4 与 §10A.2、`04-ux/09-interaction-patterns.md` §5A、E2E-106。** | 审批打开器原先使用宿主机文件标签，而对话提到的其它项目文件都已进入用户自己的文件视图，于是计划或目标落在了用户唯一不浏览项目文件的界面上。 |
 | D459 | 恢复可拖拽侧边栏宽度，过窄时收起 | **修订 D408 / ADR 0238 并恢复 ADR 0141（ADR 0290）：展开侧边栏重新成为渲染层拥有的 `240px..520px` 列（默认 `275px`），右缘手柄在指针按下时预览、释放时持久，并支持左右方向键（16px）、Home 与 End。指针宽度低于 `160px` 时以用户操作收起，不覆盖首选展开宽度；键盘调整永不收起。实时上限为扣除 MainChat 450px 下限后的三栏余量。仅渲染进程；沿用 `pi.desktop.sidebarWidth` 偏好。见 E2E-168。** | 长标签需要可回收宽度；ADR 0238 固定 275px 会挡住这一点，而三栏实时预算本就可以限制用户选定的宽度。该决策曾被误记为 D451（已由「审阅面板只在用户主动操作时打开」占用）；按 issue #620 改号。 |
-| D457 | 已签名 macOS DMG 改为双图标安装 | **修订 D406 / ADR 0232 / ADR 0204：正式与本地 DMG 只包含 PI-Desktop.app 和 Applications 链接，使用 720×440 品牌背景。不再放入 `If app won't open, read this.txt` 或 command 助手。macOS ZIP 仍附带打开说明和 `PI-Desktop-macOS-open.command`，供可信未签名工件使用。见 ADR 0296 与 E2E-196b。** | 标签 DMG 已签名公证（D450）；安装盘上的未签名打开说明读起来像报错。 |
+| D457 | 已签名 macOS DMG 改为双图标安装 | *（由 D634 修订）* **修订 D406 / ADR 0232 / ADR 0204：正式与本地 DMG 只包含 PI-Desktop.app 和 Applications 链接，使用 720×440 品牌背景。ZIP 只包含 PI-Desktop.app。任何 macOS 格式（包括未签名调试工件）都不再附带打开说明或 command 助手。见 ADR 0296 / ADR 0309 与 E2E-196b。** | 标签 DMG 已签名公证（D450）；打包工件不再需要未签名首次启动指引。 |
+| D634 | 移除 macOS 首次启动辅助文件 | **修订 D457 / ADR 0296 及 ADR 0232 / ADR 0204 中的 macOS 分发约定：macOS DMG 与 ZIP 均不再附带 `PI-Desktop-macOS-open.command`、`PI-Desktop-macOS-opening-help.txt`，或其他捆绑的 quarantine 清理助手/打开说明。ZIP 根目录只包含 `PI-Desktop.app`；DMG 仍为双图标安装。该规定适用于签名发布和本地或可选的未签名调试构建。见 ADR 0309 与 E2E-196b。** | 已签名发布通道不再需要未签名首次启动兜底；随调试包附带此类文件可能误导用户绕过 Gatekeeper。 |
+| D635 | 按工作区上限裁剪的 800×560 窗口最小尺寸 | **取代 D156 / D447 中的 1040×700 窗口最小尺寸（及 ADR 0029 / ADR 0238 的对应条款）和 `window/setWorkPanelChatWidth` 的 `1040..10000` 范围（ADR 0146）：Electron 强制 800×560 最小尺寸，并由 `clampMinimumSizeToWorkArea` 按维度裁剪到当前显示器工作区。聊天宽度 IPC 与渲染层接受 `800..10000`。窄窗口下沿用现有 `workPanelLayout` 预算：限制停靠面板宽度以保证 MainChat 的 450px 下限，并优先收起侧边栏。见 US-UI-19 与 E2E-167。** | Windows 150% 缩放下工作区约为 1280×672 DIP，固定最小尺寸可能超过屏幕，导致窗口无法适配。 |
+| D636 | 本地权限确认没有自动截止时间 | **修订 D005 / ADR 0011：需要权限的 `tools.execute` 请求会在 host-core、渲染层和传输中保持待处理，直到用户选择允许一次、允许会话或拒绝，或请求被取消/进程关闭。移除 120 秒倒计时以及本地权限契约中的超时字段。工具自身执行预算以及独立的 RACP/Plan 审批时限保持不变。见 ADR 0310、issue #1214 与 E2E-017。** | 用户可能在其他工作期间错过可见的权限请求；保持取消和执行预算即可保留控制与资源安全，又不会把“未注意”变成一个决定。 |
 | D450 | 签名的 macOS GitHub Release | **修订 D078 / ADR 0022：GitHub tag 发布使用身份 `Developer ID Application: XingYu Liu (DUV63RKYTW)` / 团队 `DUV63RKYTW`，通过 Actions 密钥（`CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`）对 macOS DMG/ZIP 做 Developer ID 签名、`notarytool` 公证、装订和 Gatekeeper 校验；缺少密钥则失败。无证书的本地未签名打包仍可用。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物。打包的 macOS 走应用内 `electron-updater`（ZIP + 合并后的 `latest-mac.yml`）；Linux deb/rpm 与 Windows 便携版 ZIP 仍为通知并打开发布页。禁止 afterPack/afterSign adhoc 签名（ADR 0278）。** | 正式 DMG 应无需 Gatekeeper 警告即可打开，已签名 macOS 安装可下载并重启到新 tag。见 ADR 0289、E2E-196c、E2E-067A。 |
 
 ## B. 辅助实现默认值
@@ -90,7 +93,7 @@
 | D403 | 按住标题移动即可重排 | **修订 D402 / D093 / ADR 0228：鼠标和触控笔按住项目标题并移动 8px 开始重排；没有足够移动的单击仍会选中并折叠/展开。触摸不会开始重排。强调色插入线标出前/后放置位置。`ArrowUp`/`ArrowDown` 与 Escape 不变。见 ADR 0229 与 E2E-253。** | 静止按住 400ms 是移动端长按模式，比 ChatGPT 一类桌面侧边栏列表更慢。 |
 | D404 | Skill 随 Agent 核心工具集下发 | **修订 D174 / D185 / ADR 0048 / ADR 0219：`Skill` 加入 Agent 模式核心工具集，因此只要技能目录非空，第一个 provider 请求就带有它的 schema。它从延迟目录中移除，不再出现在 `# On-demand tools`；其他按需能力与 `ToolSearch` 不变，Plan 与 Goal 仍然完全不提供该工具。不改协议、存储、权限或技能正文。见 ADR 0230 与 E2E-254。** | 用户输入的 `/skill-id` 与 `# Skills` 段落都要求模型调用 `Skill`，而 schema 中不存在的工具根本无法被调用；延迟注册让任何技能正文加载前都多一次发现往返（issue #204）。 |
 | D405 | 顿号打开斜杠菜单 | **修订 D123 / D139 / ADR 0024：当输入框为空时，第 1 个字符提交的「、」（U+3001）会在触发检测前改写为 `/`，中文输入法因此无需切换输入方式即可打开普通斜杠菜单。只改写该位置；其他位置的「、」仍是普通标点，`@` 文件菜单不受影响。仅共享语法与渲染器改动；不改 IPC、存储或补全数据源。见 ADR 0231 与 E2E-255。** | 要唤出 `/new`、`/compact`、模式别名或某个 Skill，中文输入法用户必须在书写中途切到 ASCII 输入再切回（issue #65）。 |
-| D406 | macOS DMG 只保留打开说明 | *（由 D457 修订）* **修订 D371 / ADR 0204：macOS DMG 以 Finder 名称 `If app won't open, read this.txt` 展示打开说明，不再包含或暴露可执行的 `PI-Desktop-macOS-open.command`。macOS ZIP 安装包保留说明和助手。说明为可信未签名构建提供范围明确的终端备用命令；已签名和公证版本无需执行。见 ADR 0232 与 E2E-196b。** | DMG 应保持应用拖入 Applications 的正常安装路径简洁，同时在未签名应用打不开时提供可见且可执行的处理指引。 |
+| D406 | macOS DMG 只保留打开说明 | *（由 D457 和 D634 修订）* **修订 D371 / ADR 0204：macOS DMG 不再展示打开说明或可执行助手，macOS ZIP 也不再附带它们。原有终端备用方法仅供可信未签名构建使用；已签名和公证版本无需执行。见 ADR 0232、ADR 0296、ADR 0309 与 E2E-196b。** | DMG 应保持应用拖入 Applications 的正常安装路径简洁，同时为未签名应用打不开的问题提供可见且可执行的处理指引。 |
 | D407 | 导入会话后恢复已归档项目 | **针对 issue #250 的渲染器增量行为：核心或插件导入新增项目绑定会话时，导入触发的会话刷新会规范化项目路径，并清除该项目的渲染器归档状态。无路径会话、跳过的导入、没有活动绑定的插件历史路径和普通刷新保持归档状态不变。host 项目行、IPC 通道、插件方法、存储 schema 和数据格式不变。见 ADR 0236 与 E2E-257。** | host 可以在项目下成功生成导入会话，而渲染器仍将该项目侧边栏行隐藏为已归档。只恢复新导入绑定对应的项目，可以让结果可发现，同时不会在普通刷新时削弱用户的归档选择（issue #250）。 |
 | D408 | 三栏布局中优先保障 MainChat | **针对 issue #267 修订 ADR 0226 / ADR 0151 / ADR 0033：MainChat 保持 450px 硬下限；工作面板上限为动态预算（`客户端宽度 − 450px − 展开的左栏宽度`，无固定上限）；中栏到达阈值时展开的左栏立即让位（`sidebar-out` 退场期间仍计入预算）。手动重开左栏优先占用右栏宽度，否则以 460px 为目标；关闭右栏只恢复由布局机制收起的左栏。原生窗口不变：预留 seam 保持 0 且不套用任何面板几何。预览模式临时卸载 MainChat 并使用窗口级 chrome 行；侧边栏折叠时，macOS 窗口模式预留 88px、全屏预留 8px 给交通灯（D433）。见 ADR 0238 与 E2E-LAYOUT-three-column-width-priority。** | 固定客户区此前没有明确的宽度优先级，侧边停靠可以把 MainChat 压到下限、使 composer 不可用；显式化让位顺序后聊天在固定窗口内保持可读，且不重新引入原生窗口增长（issue #267）。 |
 | D409 | 宿主拥有的会话协作消息 | *（由 D446 修订）* **修订 ADR 0237 / ADR 0165 / ADR 0213：Rust host-core 拥有以消息 id 和真实源/目标 Session ID 为键的持久会话协作 ledger。插件驱动的 `spawn`、`send`、`status`、`result` 和 `cancel` 使用已审查的 desktop-control 网关；发送者绑定当前插件 Agent 工具调用，目标回合保留原有配置，每条投递由实际持久回合认领。完成回调持久化且最多一次，并引用已结算回合。来源信息随转录行持久化，不能在重生成中伪造、剥离或编辑。增量架构 v16 迁移在重启后保留排队工作但不无人值守重放，执行权限上限和有界自主跳数，同时保持既有 Task 系列不变。见 ADR 0239 与 E2E-PLUGIN-session-orchestrator-real-workers。** | 插件之前的创建/提示轮询路径既无法推断持久回合结果，也无法安全确认双向发送者身份。宿主拥有的 ledger 让投递、来源、回调、取消和重启行为可审计，同时不恢复已撤回的 A2A 协议。 |
@@ -235,7 +238,7 @@
 | D098 | Review 选项卡读取 git 工作树 *（由 D180 取代）* | **历史性决定：通过 git CLI 审核呈现工作区的未提交状态。** | 被取代，因为提交删除了消息级证据并且无法支持安全的每消息回滚 |
 | D099 | 终端选项卡是真正的 PTY（已由 D251 取代） | **历史决策：旧版工作面板曾提供按会话范围保留的交互式 shell 选项卡。** | 当前产品移除了独立 shell 表面；Agent Bash 仍是非交互式并归对话所有 |
 | D100 | 浏览器选项卡嵌入 WebContentsView | **预览浏览器是一个主进程 WebContentsView，具有渲染器驱动的边界同步、强化（拒绝弹出窗口→外部、拒绝权限请求、仅限 http(s) 导航、隔离持久分区）；当阻止覆盖（调色板、权限对话框、设置）打开时它会隐藏。用户驾驶它；代理没有。** | 推荐现代嵌入，无需 webview-tag 警告；隐藏规则通过渲染器覆盖解析其合成器 z 顺序 |
-| D138 | 会话范围的内联权限请求 | **工具批准是其原始 `sessionId` 拥有的内联 PermissionCard，而不是全局对话框。不同的会话保留独立的待处理请求和绝对的超时期限；后台 message/tool/permission 事件仅更新范围内的状态，并且从不激活、覆盖或聚焦其他对话。解析和清理与会话和请求身份相匹配。这仅取代 D100 的权限对话框 overlay/hide 子句；调色板、搜索、设置和其他阻塞表面保留其现有的浏览器隐藏行为。** | 并发代理不得窃取活动工作流程或覆盖彼此的批准请求；现有协议已携带所需的 session/request 身份。 |
+| D138 | 会话范围的内联权限请求 | **工具批准是其原始 `sessionId` 拥有的内联 PermissionCard，而不是全局对话框。不同的会话保留独立的待处理请求且没有自动截止时间；后台 message/tool/permission 事件仅更新范围内的状态，并且从不激活、覆盖或聚焦其他对话。解析和清理与会话和请求身份相匹配。这仅取代 D100 的权限对话框 overlay/hide 子句；调色板、搜索、设置和其他阻塞表面保留其现有的浏览器隐藏行为。** | 并发代理不得窃取活动工作流程或覆盖彼此的批准请求；现有协议已携带所需的 session/request 身份。 |
 | D139 | 导航意图和快捷方式事件防护 | **每个显式会话、项目、页面、分支或历史导航都开始或重用一个渲染器导航意图；异步工作仅在该意图保持当前状态时提交可见状态。全局快捷键忽略仅修饰符和 IME 组合事件，而历史导航也忽略按键重复事件。** | 延迟的 session/project 加载和不完整的键盘事件不得导致无法解释的页面或历史跳转。 |
 | D128 | 工件驱动的工作面板选项卡（由 D207 取代的快捷方式子句） | **工作面板没有空的手动入口点、欢迎选择器、titlebar/menu 命令或 Cmd/Ctrl+J 快捷方式。 file/URL/BrowserPreview/successful-command 工件创建并激活可关闭的顶部选项卡；成功的活动会话工作区 Write/Edit 工件创建并激活单例“审阅”选项卡。文件选项卡由词法规范化路径键入，单例工具选项卡重复数据删除，关闭活动选项卡选择其右侧邻居然后选择左侧，关闭最后一个选项卡隐藏面板，唯一的面板级控件将其折叠，而不删除保留的运行时选项卡。更改可见会话或工作区会关闭并清除选项卡，因此相关资源永远不会跨越上下文边界。启动关闭，没有任何选项卡；只有面板宽度仍然存在，而临时操作系统窗口扩展被排除在启动范围之外。后台会话、失败和临时写入不会抢走焦点。这取代了 D097 的固定选项卡入口点和 `{open, tab}` 持久性，改进了 D098 的自动刷新，并且仅取代了 D112 的welcome-chooser 子句。** | 匹配 Codex 的输出驱动工作界面，避免空工具启动器，并使每个可见选项卡对应于会话实际生成或显式预览的工作。 D128 纠正最初重复的 D119 标识符； D119 仍然是记录文件存储决策。 |
 | D140 | 会话拥有的脏工作区成绩单审核条目*（由 D179 取代）* | **会话成功生成工作区 Write/Edit 后，其记录以折叠活动组之外的一个明确的“审阅更改”命令结束，而 Git 工作树仍然是脏的；同一项目中的其他会话不会继承该命令。它报告上限文件计数和 addition/deletion 总数，并创建、重新打开或激活 D128 的单个“审阅”选项卡。条目和审阅共享一个工作区键控差异，在工作区激活、成功 Write/Edit/Bash 完成（500 毫秒去抖）、显式审阅刷新和窗口焦点时刷新；排序的请求会丢弃先前的工作空间响应。干净和非 Git 结果明确了该工作区的审查所有权； clean、non-Git、missing-workspace 和 failed-refresh 状态会隐藏该条目。审查所有权是在使用 D142 工作面板上下文重新启动时丢弃的渲染器内存状态。这是上下文 artifact/status 条目，而不是 D128 禁止的空手动启动器。** | 自动面板打开在折叠或选项卡关闭后不会留下可发现的返回路径，而会话所有权可防止不相关的对话声明项目范围的编辑。共享真实的差异可以使对话条目准确并保持评论的重复数据。 |
@@ -461,6 +464,8 @@
 | D152 | 直接运行时流渲染 | **辅助内容直接通过增量 Markdown 块缓存渲染每个运行时流块。渲染器不添加 requestAnimationFrame 打字机状态循环。 KaTeX 的 Vite 内联字体仍然是本地资源，并被狭窄的 `font-src 'self' data:` CSP 指令所允许。** | 重复的动画循环可能会在持续流期间触发 React 的嵌套更新防护，而之前的 CSP 会阻止捆绑的数学字体并产生控制台错误。 |
 | D153 | 推理会话默认为最大思考 | *（由 D303 取代）* **新创建的会话（其继承的默认模型支持推理）从该模型的 pi 发布的 `supportedThinkingLevels` 中的最高规范条目开始。非推理模型和缺失的能力元数据从 `off` 开始；现有会议保留其持久选择。这改进了 D096，而无需添加提供程序覆盖。** | 具有推理能力的模型应该默认使用最强大的可用努力，同时保留明确的每会话选择和 pi-ai 的模型权威。 |
 | D264 | Composer 输入避开全量排序与冗余 DOM 写入 | **`@` 文件菜单用有界 top-K 选择从匹配列表中挑出可见行，而不再排序全部匹配；该选择返回的行集合与顺序与完整排序完全一致，而较小且按命令类型分组的命令列表保留完整排序。Composer 自动调整高度与 `--composer-dock-height` 发布都是幂等的：高度未变化时不做 DOM 写入，也不会使整个文档样式失效，`height: auto` 测量探针仅在文本框可能需要收缩时读取。增长到七行、超过第七行后内部滚动，以及 delete/submit 后的收缩均保持不变。当一次按键既未改变草稿文件引用状态也未改变光标位置时，两者都保持原有的身份与取值，因此草稿缓存序列化 effect 和自动完成触发检测不再每次按键都重跑。不改动 IPC、存储、主机协议或 schema。** | 在大型工作区中打开 `@` 菜单时，每次按键都要对整个 8000 条的文件索引做一次完整排序才显示 50 行，还要为测量探针付一次强制同步重排，而每次按键新建的 `fileReferences` 数组身份又会重跑草稿缓存序列化 effect。代价是输入延迟而非正确性；与完整排序的顺序等价性由单元测试覆盖。 |
+| D632 | Composer 按 ↑/↓ 召回当前会话的提交历史 | **修订 D125 / D209 / D301：每个会话仅记录已接受的常规或 steering 提示，以及已派发的 slash、扩展和模式命令；记录按新到旧存入渲染器 `localStorage`（`pi.desktop.composerInputHistory`），每会话最多 100 条、最多 20 个会话，连续重复项合并。空草稿按 ↑ 开始召回，↑/↓ 在历史中导航，越过最新项后恢复为空；编辑、提交或切换会话会结束浏览，IME 与自动补全优先。召回同时恢复该会话自己的文件和图片引用；首页无会话时不提供召回。首页首条消息被接受时，提交流程将实际 materialize 的 sessionId 回传给历史记录器，不再于异步结束后读取全局活动会话，因此导航竞态不会串写历史。不改协议、host、schema、权限、主题或打包。** | 重复输入指令无需重打；按会话隔离可保持上下文一致，并可无条件恢复存于该会话 scratch 目录的附件。 |
+| D633 | 已完成回合的过程默认收起 | **修订 ADR turn-process-and-thinking-display：详细模式仅在回合运行时默认展开整体过程；回合完成后，未操作过程默认收起，用户明确选择仍生效。紧凑模式恢复、搜索定位、回答／操作面位置及持久化语义不变。** | 完成后的过程是唯一默认展开的分支，导致进度和工具详情在工作结束后仍占据对话区。收起未操作过程可让最终回答重新成为回合焦点，同时保留用户主动查看的入口。 |
 
 
 ## T. 发布交付决策
@@ -471,7 +476,7 @@
 | D364 | Windows portable exe without installer | *(superseded by D603)* **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). |
 | D603 | Windows portable delivery uses a normal ZIP | *(amended by D628)* **Amend D364 / ADR 0022 / ADR 0197: tag builds publish a Windows x64 portable ZIP `PI-Desktop-Portable-${version}.zip` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The Windows release helper builds NSIS and ZIP separately, stamps ZIP app metadata with `piDistribution = "zip"`, and keeps the ZIP target out of `latest.yml`. Extracted ZIP runs use notify-and-link delivery; the updater still recognizes `PORTABLE_EXECUTABLE_FILE` for older portable executables. Data stays in the existing application data directory.** | The self-extracting portable wrapper could trigger administrator prompts and did not provide a reliable normal executable identity for the taskbar. A user-extracted ZIP launches `PI-Desktop.exe` directly and preserves the manual-update boundary. |
 | D260 | 发布文档是一个版本载体 | **稳定版本号提升必须在打标签之前更新每一处带版本号的载体：双语言的应用内变更日志及其测试清单、每个工作区的 `package.json`（包括之前被第三个工作区根 `scripts/release.mjs` 跳过的 `docs/package.json`）、Cargo 工作区版本与 `host-core` 的锁文件条目、`APP_VERSION`，以及 `README.md` 和 `README.zh-CN.md` 中声明的 `<major>.<minor>.x` 发布线。`scripts/check-release-docs.mjs` 校验全部这些；`scripts/release.mjs` 在提升版本号之后运行它，只要任一载体不一致就拒绝提交或打标签，`--skip-docs-check` 仅保留给刻意的非发布性版本提升。扩展 D164。** | 仅有应用内变更日志这道闸门，导致已发布的文档落后：版本已到 `0.10.8`，两个 README 仍在宣传 `0.5.x` 线，而 `docs/package.json` 停在 `0.5.8`。标签是不可逆的，所以这项检查在标签存在之前运行，而不是作为评审礼节。 |
-| D371 | 显式的未签名 macOS 首次启动助手 | *（由 D406 和 D443 修订）* **每个 macOS 分发都附带可执行的 `PI-Desktop-macOS-open.command`，放在 DMG 上拖入 Applications 手势下方的可见首启行。它只查找 `/Applications/PI-Desktop.app` 与 `~/Applications/PI-Desktop.app`，校验 `CFBundleIdentifier` 为 `net.aiuo.pi-desktop`，仅在存在时移除 `com.apple.quarantine`，然后打开应用。永不使用 `sudo`，不接受任意路径，也不替代 Developer ID 签名或公证。** | 未签名的 macOS 通道可能被 quarantine 拦截并显示误导性的\"已损坏\"提示，而仅限终端的 `xattr -cr` 说明比启动失败所需的范围更宽（ADR 0204，E2E-196b） |
+| D371 | 显式的未签名 macOS 首次启动助手 | *（由 D406、D443 和 D634 修订）* **每个 macOS 分发过去都附带可执行的 `PI-Desktop-macOS-open.command`；该助手现在已从分发中移除。见 ADR 0204、ADR 0309 与 E2E-196b。** | 未签名的 macOS 通道可能被 quarantine 拦截并显示误导性的“已损坏”提示，而仅限终端的 `xattr -cr` 说明比启动失败所需的范围更宽（ADR 0204，E2E-196b） |
 | D443 | 规范应用 ID 与 macOS 代码签名标识 | **修订 D141 / D371 / ADR 0204：应用 ID 为 `net.aiuo.pi-desktop`（`APP_ID`、electron-builder `appId`、macOS `CFBundleIdentifier`、Windows AppUserModelID）。开发用 macOS 宿主为 `net.aiuo.pi-desktop.dev`。不要在 `afterPack`/`afterSign` 对未签名包做 adhoc 签名：嵌套 Electron helper 此时尚未签名，`codesign` 会报 `code object is not signed at all`。见 ADR 0278、issue #524。** | 所有者域名为 `net.aiuo.pi-desktop`。未签名包的 Identifier 绑定推迟到有安全的 helper 签名路径之后。 |
 
 ## V. 扩展激活决策
@@ -2934,7 +2939,7 @@ D193 和 D194。
 - 截图装置：插件夹具在页面挂载后重新注入（挂载时的刷新曾把它覆盖掉），注入
   期间桩掉市场搜索与详情调用，并新增 `pi-plugins-row-details` /
   `pi-plugins-sheet` 场景。协议、存储与运行时行为不变。细化 D169 的已安装页
-  条款及 UI IA §3.5。
+  条款及 UI IA §3.4。
 
 ## 2026-09-05 —— 滚动条只在悬停或滚动时显示（D300）
 
@@ -5077,3 +5082,76 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   无需数据库迁移或 Host 协议版本变更。
 - 覆盖：`apps/desktop/test/update-preference.test.mjs`、更新后的
   `apps/desktop/test/auto-update.test.mjs` 与 E2E-UPDATE-preference-and-once-only-reminder。
+
+## 2026-09-27 —— 路由模型元数据采用保守的末段匹配（D630，PR #1047）
+
+- 取代 D622 中用于运行期补全的宽泛目录别名。只比较大小写不敏感的最后一个 `/` 段，
+  让路由或网关 wire ID 可以命中目录记录，同时不再把任意 thinking、发布日期、部署标记
+  或厂商短横线后缀当作模型身份。
+- 一个叶子对应多个目录候选时，只有官方/来源提供商的提供商族与显式模型来源一致才优先
+  采用唯一官方命中；否则只有所有候选的能力和思考元数据完全一致时才借用。两条规则都
+  无法证明身份时保持未匹配。已知提供商仍可从其他发布方借用完全相同的 ID；未知提供商
+  不使用无锚点共识或部署标记兜底。
+- Composer 模型行保留完整的配置 wire ID。未匹配模型提供规范思考阶梯供手动启用，但
+  新草稿/会话在没有显式绑定默认值时从 `off` 开始。空的绑定等级数组是未知模型的通用
+  种子而不是显式禁用；非空 binding 覆盖仍然有效。目录命中的模型保留 D303 的绑定默认值
+  与最高已启用档回退行为。
+- 该变化只影响元数据和 UI 投影，不改写持久化 wire ID、提供商身份或 host 能力归属。参见
+  `03-runtime/13-model-catalog-and-selection.md` §11.3 与
+  `04-ux/08-component-spec.md` §11。
+
+## 2026-09-27 —— Composer 用 ↑/↓ 召回当前会话已提交的内容（D632）
+
+- 重复使用上一条指令是 Composer 中常见操作。历史保存在渲染器本地
+  `localStorage`（键 `pi.desktop.composerInputHistory`），按会话分桶，
+  每个会话保留最近 100 条、最多保留 20 个会话；连续重复内容只记录一次。
+- 只有成功接受的提示或已派发命令会进入历史。首页没有会话时不召回；
+  首页首条消息发送成功后，`sendPrompt` 将实际创建的 sessionId 回传给记录器。
+  即使请求等待期间用户切换会话，历史仍写入原提交 materialize 的会话。
+- 空草稿按 ↑ 召回最新内容，↑/↓ 可继续遍历；越过最新项回到空草稿。
+  编辑、提交或会话切换结束浏览；IME 组字和打开的自动补全菜单优先处理按键。
+  同会话附件随历史一起恢复，不会从其他会话召回。
+- `composer-input-history.test.mjs` 覆盖存储、导航和 sessionId 回传竞态；
+  `pnpm test:e2e:composer-paste` 覆盖真实渲染器键盘操作、附件芯片、发送期间
+  切换会话，以及重启 Electron 进程后的历史恢复。参见 E2E-COMPOSER-input-history-recall。
+
+## 2026-09-27 —— 已完成回合的过程默认收起（D633）
+
+- 详细模式下，回合运行时整体过程默认展开；回合结束后，未操作的过程详情默认收起，
+  用户明确选择的状态继续生效。搜索定位以及过程之外的待处理／错误操作面保持不变。
+- 仅改变渲染器展示：不改转录、持久化、提供商思考设置或宿主行为。参见 ADR
+  turn-process-and-thinking-display、`04-ux/08-component-spec.md` 和
+  E2E-CHAT-turn-process-and-thinking-display。
+
+## 2026-09-27 —— 移除 macOS 首次启动辅助文件（D634）
+
+- DMG 仍是应用与 Applications 链接组成的双图标安装；ZIP 根目录包含
+  `PI-Desktop.app`。两种格式均不附带打开说明或可执行的 quarantine 清理助手，
+  本地或未签名调试构建也一样。
+- 签名、公证、装订和更新程序通道保持不变。未签名调试工件不代表通过 Gatekeeper 验证。
+- `packaging-footprint.test.mjs` 检查打包配置；E2E-196b 覆盖本机 DMG 与 ZIP 归档检查。
+- D634 修订 D457 / ADR 0296，并取代 ADR 0232 / ADR 0204 中的 macOS 分发约定。见 ADR 0309。
+
+## 2026-09-29 —— 按工作区上限裁剪的 800×560 窗口最小尺寸（D635）
+
+- 应用级窗口最小尺寸为 800×560 DIP。Main 在所有设置最小尺寸的位置（窗口创建、
+  显示器协调、Stage Manager 恢复和工作面板调整路径）都用
+  `clampMinimumSizeToWorkArea` 按维度裁剪到当前显示器工作区（向下取整，至少为 1）。
+  Windows 150% 缩放下工作区约为 1280×672 DIP，固定最小尺寸可能大于屏幕。
+- `window/setWorkPanelChatWidth` 与渲染层聊天宽度裁剪接受 `800..10000px`；两处下限
+  共用同一常量，渲染层认为合法的宽度不会被 Main 拒绝。
+- 窄窗口下仍沿用现有三栏预算（`workPanelLayout`）：限制停靠面板宽度以保证 MainChat
+  的 450px 下限，并优先自动收起展开的侧边栏。已保存的面板宽度不会被改写。
+- D635 取代 D156 / D447 中的 1040×700 最小尺寸（及 ADR 0029 / ADR 0238 的对应条款）
+  和 ADR 0146 中 `1040..10000` 的聊天宽度范围。`work-panel-window.test.mjs` 与
+  `work-panel-resize.test.mjs` 覆盖裁剪与聊天宽度范围；见 US-UI-19 与 E2E-167。
+
+## 2026-09-29 —— 本地权限确认一直保持待处理直到解决（D636）
+
+- D636 针对本地桌面权限门控修订 D005 / ADR 0011。需要权限的
+  `tools.execute` 请求没有自动截止时间：host-core 保留其
+  `permissions.pending` 状态，渲染层保留内联卡片，传输不安装计时器。
+  允许一次、允许会话、拒绝、明确取消和进程关闭仍是解决路径。
+- 权限请求不再携带 `timeoutMs`；pending 快照不再暴露 `expiresAt` 或
+  `remainingMs`，UI 也不再显示倒计时。工具自身的命令/插件执行预算以及独立的
+  Plan/Goal 和 RACP 审批时限保持不变。见 ADR 0310、issue #1214 与 E2E-017。

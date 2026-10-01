@@ -290,6 +290,9 @@ the next launch rather than changing the NSIS installer or writing into
   `scripts/dev-electron.mjs` resolves the development host through the
   `electron` package entry, which downloads and extracts the binary on demand
   at first dev boot
+- On macOS, `scripts/dev-electron.mjs` copies both tray icon assets into the
+  branded bundle's `Contents/Resources`, matching Electron's packaged resource
+  lookup used by the development process.
 
 ### Release
 - package Electron app

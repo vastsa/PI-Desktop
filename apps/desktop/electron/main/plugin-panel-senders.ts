@@ -87,3 +87,51 @@ export function pageGoneWithin(
     page.once("destroyed", finish);
   });
 }
+
+export type TeardownableWindow = {
+  close(): void;
+  destroy(): void;
+  isDestroyed(): boolean;
+  webContents: ClosablePage;
+};
+
+/**
+ * Close a panel window and wait for its webContents to be destroyed.
+ * When `force` is true (such as during plugin reload or host shutdown),
+ * if the page refuses the close (e.g. `beforeunload`) or fails to exit
+ * within `budgetMs`, the window is forcibly destroyed to prevent stale
+ * surfaces from surviving across reloads.
+ */
+export async function teardownPanelWindow(
+  window: TeardownableWindow,
+  options: { force?: boolean; budgetMs?: number } = {},
+): Promise<void> {
+  if (window.isDestroyed()) return;
+  const page = window.webContents;
+  window.close();
+  await pageGoneWithin(page, options.budgetMs);
+  if (options.force && !window.isDestroyed()) {
+    window.destroy();
+  }
+}
+
+/**
+ * Serializes async operations per plugin ID to prevent lifecycle races
+ * between teardown/close and subsequent openPanel requests.
+ */
+export class PanelOperationSerializer {
+  private inFlight = new Map<string, Promise<unknown>>();
+
+  run<T>(pluginId: string, operation: () => Promise<T>): Promise<T> {
+    const prior = this.inFlight.get(pluginId) ?? Promise.resolve();
+    const current = prior.catch(() => undefined).then(operation);
+    this.inFlight.set(pluginId, current);
+    const cleanup = () => {
+      if (this.inFlight.get(pluginId) === current) {
+        this.inFlight.delete(pluginId);
+      }
+    };
+    current.then(cleanup, cleanup);
+    return current;
+  }
+}

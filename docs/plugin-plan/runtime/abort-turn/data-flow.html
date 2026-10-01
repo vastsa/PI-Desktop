@@ -1,0 +1,238 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>abort-turn · 请求中止本轮 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">abort-turn</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/abort-turn</div>
+  <h1>abort-turn · 数据流</h1>
+  <p>一次中止请求从插件到宿主再回来的路径。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.turn.abort</code> · 风险 high</div>
+</header>
+
+<main>
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag proposal">建议</span></h2>
+    <p class="lead">无界面接口，权限 <code>runtime.turn.abort</code>，风险 high。</p>
+<pre><span class="c">// 请求中止正在跑的这一轮</span>
+<span class="k">const</span> ok = <span class="k">await</span> pi.requestTurnAbort();
+<span class="c">// ok === true  受理</span>
+<span class="c">// ok === false 拒绝 / 无权限（有诊断）</span></pre>
+    <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">入参</td><td>无</td></tr>
+      <tr><td class="id">返回</td><td>布尔</td></tr>
+      <tr><td class="id">作用域</td><td>当前会话正在跑的这一轮</td></tr>
+      <tr><td class="id">权限</td><td><code>runtime.turn.abort</code>，high，装时确认</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag verified">已核实</span></h2>
+    <div class="legend">
+    <span><span class="chip host">host</span> 宿主 / 内核</span>
+    <span><span class="chip slot">slot</span> 钩子边界</span>
+    <span><span class="chip plugin">plugin</span> 插件</span>
+  </div>
+  <div class="flow">
+    <div class="flow-head">
+      <div class="h">宿主</div>
+      <div class="s">钩子边界</div>
+      <div class="p">插件</div>
+    </div>
+    <div class="flow-body">
+      <div class="lane"><ul>
+          <li><span class="what">收到中止请求</span><span class="why">当前轮</span></li>
+          <li><span class="what">按权限门控</span><span class="why">high，装时确认</span></li>
+          <li><span class="what">受理 → 停循环</span><span class="why">工具与模型请求一起停</span></li>
+          <li><span class="what">拒绝 → false</span><span class="why">记诊断，不静默</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">runtime.turn.abort</span><span class="why">结果性调用</span></li>
+          <li><span class="what">返回布尔</span><span class="why">无载荷</span></li>
+          <li><span class="what">沙箱缺口</span><span class="why">未接（ADR 0300）</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">决定要停</span><span class="why">无入参</span></li>
+          <li><span class="what">调用 requestTurnAbort</span><span class="why">等布尔</span></li>
+          <li><span class="what">拿到 false</span><span class="why">自己决定下一步</span></li>
+      </ul></div>
+    </div>
+    <div class="arrow-row">
+      <div class="x">→ 中止请求</div>
+      <div class="x">权限门控 →</div>
+      <div class="y">← 布尔返回</div>
+    </div>
+  </div>
+  <h3>一次中止的一生</h3>
+    <table>
+    <thead><tr><th>时刻</th><th>发生什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">调用</td><td>插件发出中止请求（无原因、无范围）</td></tr>
+      <tr><td class="id">门控</td><td>无权限 → false + 诊断；有权限继续</td></tr>
+      <tr><td class="id">受理</td><td>宿主停掉当前轮：不再发模型请求，工具调用尽量收尾</td></tr>
+      <tr><td class="id">返回</td><td>true / false 回到插件</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>情况</th><th>结果</th><th>靠什么保证</th></tr></thead>
+    <tbody>
+      <tr><td class="id">无权限</td><td>返回 false + <code>permission_denied</code> 诊断</td><td>权限门控</td></tr>
+      <tr><td class="id">没有轮在跑</td><td>返回 false（或 true 表示无事可做——见拍板）</td><td>宿主状态</td></tr>
+      <tr><td class="id">宿主拒绝</td><td>返回 false + 诊断</td><td>内核路径</td></tr>
+      <tr><td class="id">沙箱插件</td><td>目前收不到 / 调不通</td><td>ADR 0300</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">中止原因字段</td><td>当前契约无载荷；要不要加见拍板</td></tr>
+      <tr><td class="id">跨会话中止</td><td>只针对当前轮</td></tr>
+      <tr><td class="id">排队撤销</td><td>队列是输入区 / 宿主的事</td></tr>
+      <tr><td class="id">伪装用户停止</td><td>中止来源是插件，不可冒充用户</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+      <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">tool-gate</td><td>先拦单个工具；拦不住再整轮停</td><td><code>runtime/tool-gate/</code></td></tr>
+      <tr><td class="id">before-send</td><td>发送前拦下；这里是跑起来之后停</td><td><code>runtime/before-send/</code></td></tr>
+      <tr><td class="id">turn-continue</td><td>续跑与中止相反方向；别混用</td><td><code>runtime/turn-continue/</code></td></tr>
+      <tr><td class="id">ADR 0303</td><td>权限模型</td><td><code>docs/adr/0303</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+    <p style="color:var(--text-2)">要不要带原因、要不要区分「停工具 / 停整轮」、没有轮在跑时返回什么——见 requirements.html 的「本轮拍板」。</p>
+</section>
+
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

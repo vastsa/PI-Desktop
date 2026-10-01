@@ -1,8 +1,8 @@
 # PI-Desktop Baseline Freeze
 
-- Baseline Version: `0.4.18`
-- Date: `2026-09-14`
-- Status: `Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v16 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + edge-specific work-panel/chat resize ownership + models.dev model catalog with a bundled release snapshot + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font + ChatGPT-style logical project groups)`
+- Baseline Version: `0.4.19`
+- Date: `2026-09-29`
+- Status: `Frozen for implementation details (indefinite local permission approvals + Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v16 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + edge-specific work-panel/chat resize ownership + account-scoped Pi model catalog + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font + ChatGPT-style logical project groups)`
 - Language policy: **English-first**
 - Backend policy: **Rust host core + pi agent sidecar**
 
@@ -28,10 +28,9 @@
 > Settings as the fifth **Project archive** destination through D133 / ADR 0026.
 > `0.4.9` made the pinned pi-ai catalog authoritative for known-model metadata
 > and removed desktop-owned model parameter overrides through D136 / ADR 0027.
-> ADR 0133 / D266 first introduced models.dev as a remote primary; ADR 0134
-> supersedes that fallback design and makes models.dev the sole metadata source
-> with a checked-in release snapshot. pi-ai remains the transport, OAuth, and
-> account-availability layer.
+> ADR 0133 / D266 and ADR 0134 describe the historical models.dev source.
+> [Pi 0.99.1 authority](../adr/pi-ai-core-0991-authority.md) supersedes that
+> source with account-scoped Pi Models, preserving explicit Desktop bindings.
 > `0.4.10` replaces destructive work-panel clearing on conversation switches
 > with runtime session-scoped contexts through D142 / ADR 0028.
 > `0.4.11` adopts turn-boundary model-context checkpoint compaction through
@@ -89,6 +88,9 @@
 > host-backed adjustment of logical project roots. The editor keeps the Primary
 > root fixed, supports adding/removing eligible additional roots, and rejects
 > removal of roots that still own chats.
+> `0.4.19` removes the automatic deadline from local permission approvals. The
+> inline card and host pending state remain open until an explicit decision,
+> cancellation, or process shutdown; per-tool execution timeouts remain.
 
 > The current post-baseline amendments add the P0/P1 host-owned plugin session
 > API through ADR 0200 / D367, explicit project ids plus host-owned session
@@ -128,7 +130,7 @@
     value remains a conversation-surface implementation detail, not an
     operating mode
 16. Agent tools: **Read / Glob / Grep / Write / Edit / Bash**
-17. Permission timeout: **120s → deny**
+17. Local permission approvals: **no automatic deadline; explicit decision or cancellation required**
 18. Session grant scope: **by toolName**
 19. `~/.pi` one-shot auto-import: **not in MVP**. ADR 0254 adds read-only
     native-session discovery and explicit continuation against the canonical Pi
@@ -152,7 +154,7 @@
 32. Observability MVP: **local logs only**
 33. Error model: **shared AppError code registry**
 34. Provider coverage: **universal via pi-ai native + OpenAI-compatible + custom**
-35. Model policy: **no closed allowlist; models.dev release catalog, generic unknown IDs, and free-form model IDs**
+35. Model policy: **no closed allowlist; account-scoped Pi catalog, generic unknown IDs, and free-form model IDs**
 36. Provider storage: **Rust SQLite configs + OS secret store references**
 37. Secrets backend: **safeStorage primary + encrypted file fallback**
 38. Workspace ignore: **denylist + defaults + `.pi-desktopignore`**

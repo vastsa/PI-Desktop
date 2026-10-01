@@ -14,6 +14,7 @@ import {
   removeLiveSessionMessage,
   upsertLiveSessionMessage,
 } from "../../lib/session-transcript";
+import { getSessionMessageSnapshot, getSessionToolMessagePositions } from "../../lib/session-transcript-updates";
 import { sessionReadLooksEmpty } from "../../lib/session-transcript-read";
 import { sessionIsArchived, type SessionMeta } from "../../lib/sidebar-preferences";
 import {
@@ -100,6 +101,7 @@ export type SessionRuntime = {
       args: unknown;
       createdAt: string;
       parentToolCallId?: string;
+      nestedParentToolCallId?: string;
       agentName?: string;
     },
   ) => void;
@@ -108,6 +110,7 @@ export type SessionRuntime = {
     args: unknown;
     createdAt: string;
     parentToolCallId?: string;
+    nestedParentToolCallId?: string;
     agentName?: string;
   } | undefined;
   removeToolStart: (toolCallId: string) => void;
@@ -264,11 +267,12 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
         next = upsertLiveSessionMessage(current, event.message);
         break;
       case "message_update": {
-        const previous = current.find((message) => message.id === event.message.id);
-        next = upsertLiveSessionMessage(current, applyMessageUpdate(previous, event));
+        const normalized = dedupeSessionMessages(current);
+        const index = getSessionMessageSnapshot(normalized).positions.get(event.message.id);
+        const previous = index === undefined ? undefined : normalized[index];
+        next = upsertLiveSessionMessage(normalized, applyMessageUpdate(previous, event));
         break;
       }
-        break;
       case "message_end": {
         next = projectMessageEnd(current, event);
         break;
@@ -287,17 +291,16 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
           ...(envelope.parentToolCallId
             ? { parentToolCallId: envelope.parentToolCallId }
             : {}),
+          ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
           ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
         });
         break;
       case "tool_update": {
         if (event.partialResult === undefined) return current;
-        const existing = current.find(
-          (message) =>
-            message.toolCallId === event.toolCallId &&
-            message.toolStatus === "running",
-        );
-        if (!existing) return current;
+        const index = getSessionToolMessagePositions(current, event.toolCallId)
+          .find((position) => current[position].toolStatus === "running");
+        if (index === undefined) return current;
+        const existing = current[index];
         next = upsertLiveSessionMessage(current, {
           ...existing,
           content:

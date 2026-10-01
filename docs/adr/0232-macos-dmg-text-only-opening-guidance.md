@@ -1,6 +1,6 @@
 # ADR 0232: Keep macOS DMG Opening Guidance Text-Only
 
-- Status: Accepted (amended by D457 / [ADR 0296](0296-macos-signed-dmg-two-icon-install.md))
+- Status: Superseded for macOS distribution by D634 / [ADR 0309](0309-remove-macos-first-launch-artifacts.md)
 - Date: 2026-09-12
 - Deciders: PI-Desktop release maintainers
 - Amends: D371 / [ADR 0204](0204-unsigned-macos-first-launch-helper.md)
@@ -48,3 +48,9 @@ inspection on macOS.
 
 Official signed DMGs no longer include the opening-help note. The two-icon
 install row is the whole DMG. The ZIP still ships the note and helper.
+
+## Amendment (D634 / ADR 0309)
+
+Neither macOS DMG nor ZIP now ships the opening note or executable helper.
+The ZIP-helper provisions above are historical; see ADR 0309 for the current
+distribution rule.

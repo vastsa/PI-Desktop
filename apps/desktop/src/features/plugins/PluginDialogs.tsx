@@ -2,6 +2,8 @@ import { Button, SettingsToggle, cx, portalOverlay } from "../../components/ui";
 import { IconCheck, IconShield, IconSparkles, IconTriangleAlert } from "../../components/icons";
 import { PluginInstallDialog } from "../../components/plugins/PluginInstallDialog";
 import { PluginSettingsSheet } from "../../components/plugins/PluginSettingsSheet";
+import { useBlockingOverlay } from "../../lib/blocking-overlay";
+import type { ReactNode } from "react";
 import { useAppStore } from "../../stores/app-store";
 import {
   RISK_LABEL_KEYS,
@@ -11,6 +13,15 @@ import {
   permissionRisk,
 } from "./model";
 import type { PluginsPageModel } from "./usePluginsPage";
+
+function pluginModalPortal(node: ReactNode) {
+  return portalOverlay(<PluginModalBlockingHost>{node}</PluginModalBlockingHost>);
+}
+
+function PluginModalBlockingHost({ children }: { children: ReactNode }) {
+  useBlockingOverlay();
+  return <>{children}</>;
+}
 
 export function PluginDialogs({
   t,
@@ -38,7 +49,7 @@ export function PluginDialogs({
   return (
     <>
       {pendingReview
-        ? portalOverlay(
+        ? pluginModalPortal(
         <div className="plugins-modal-backdrop" role="presentation">
           <div
             className="plugins-modal"
@@ -95,7 +106,7 @@ export function PluginDialogs({
       )
         : null}
       {pendingInstall
-        ? portalOverlay(
+        ? pluginModalPortal(
         <div className="plugins-modal-backdrop" role="presentation">
           <div
             className="plugins-modal"
@@ -177,7 +188,7 @@ export function PluginDialogs({
         />
       ) : null}
       {templatePick
-        ? portalOverlay(
+        ? pluginModalPortal(
         <div className="plugins-modal-backdrop" role="presentation">
           <div
             className="plugins-modal"

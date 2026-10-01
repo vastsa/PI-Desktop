@@ -135,6 +135,12 @@ test("watchers are released on teardown and reloads reach the renderer", () => {
     pluginServicesSrc.indexOf("onPluginReloaded:"),
   );
   assert.match(reported, /IPC\.event\.toast/);
+  assert.match(reported, /await pluginPanels\.close\(pluginId,\s*\{\s*force:\s*true\s*\}\)/);
   assert.match(reported, /IPC\.event\.pluginChanged,\s*\{ reason: "reload", pluginId \}/);
+  assert.ok(
+    reported.indexOf("pluginPanels.close(pluginId, { force: true })") <
+      reported.indexOf('IPC.event.pluginChanged,{ reason: "reload", pluginId }'),
+    "panel teardown must precede notifying renderer of reload",
+  );
   assert.match(reported, /Reload failed/);
 });

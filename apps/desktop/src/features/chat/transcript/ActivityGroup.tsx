@@ -1,12 +1,14 @@
-import { visibleActivityItems } from "../../../lib/activity-summary";
+import { activityTimingInputs, cachedVisibleActivityItems } from "../../../lib/transcript-activity-summary";
+import { reuseReferences } from "../../../lib/transcript-summary";
+import { ActivityItems } from "./ActivityItems";
 import { DisclosureScope, disclosureKey } from "./disclosure";
 import { ProcessActivityGroup } from "./ProcessActivityGroup";
 import {
-  Fragment,
   memo,
   useContext,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -43,20 +45,15 @@ import {
   getToolAction,
   getToolSummary,
 } from "../../../lib/tool-display";
-import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
 import { IconChevronRight, IconCircleAlert, IconSparkles, IconWorkflow } from "../../../components/icons";
 import {
   DisclosureCollapseRail,
   TOOL_RUNNING_KEYS,
-  ThinkingRow,
   useAutomaticDisclosure,
 } from "./shared";
-import { SubagentTopology } from "./SubagentDetail";
-import { ToolRow } from "./ToolRow";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { useAppStore } from "../../../stores/app-store";
 import { resolveThinkingDisplayMode } from "../../../lib/turn-process";
-import { HostedSearchRow } from "./HostedSearchRow";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -168,6 +165,7 @@ export function activityItemsEqual(
   previous: ActivityItem,
   next: ActivityItem,
 ): boolean {
+  if (previous === next) return true;
   if (previous.kind !== next.kind || previous.message !== next.message) {
     return false;
   }
@@ -195,18 +193,19 @@ function activityGroupPropsEqual(
     return false;
   }
   if (
+    previous.items !== next.items &&
     !previous.items.every((item, index) =>
       activityItemsEqual(item, next.items[index]),
     )
   ) {
     return false;
   }
-  // Text updates rebuild the turn's delegation maps. Only Task groups consume
-  // those maps; ordinary completed work must retain its render boundary.
+  // Only Task groups consume the turn-wide delegation maps. Ordinary completed
+  // work must retain its render boundary when another group's tools update.
   return (
-    !previous.items.some(isDelegationActivityItem) ||
     (previous.turnDelegationStatuses === next.turnDelegationStatuses &&
-      previous.turnDelegationTimings === next.turnDelegationTimings)
+      previous.turnDelegationTimings === next.turnDelegationTimings) ||
+    !previous.items.some(isDelegationActivityItem)
   );
 }
 
@@ -225,7 +224,15 @@ export const ActivityGroup = memo(function ActivityGroup({
   );
   const { t } = useTranslation();
   const detailsId = useId();
-  const delegateItems = items.filter(isDelegationActivityItem);
+  const rawDelegateItems = useMemo(() => items.filter(isDelegationActivityItem), [items]);
+  const delegatesRef = useRef(rawDelegateItems);
+  const delegateItems = reuseReferences(delegatesRef.current, rawDelegateItems);
+  delegatesRef.current = delegateItems;
+  const rawTools = useMemo(() => items.flatMap((item) => item.kind === "tool" ? [item.message] : []), [items]);
+  const toolsRef = useRef(rawTools);
+  const tools = reuseReferences(toolsRef.current, rawTools);
+  toolsRef.current = tools;
+  const delegationItems = useMemo(() => tools.map((message) => ({ kind: "tool" as const, message })), [tools]);
   // One delegation reads the same as five: the card is how a delegation is
   // presented, not a treatment reserved for fan-out. A lone `Task` rendered as
   // an ordinary tool row hid the outcome, runtime and step count that the card
@@ -236,21 +243,20 @@ export const ActivityGroup = memo(function ActivityGroup({
   // tool is in a different activity part (the agent emitted text between Task
   // and TaskWait), the turn-level statuses computed by the parent give us the
   // cross-part view we need.
-  const delegationStatuses = turnDelegationStatuses ?? collectDelegationStatuses(items);
-  const delegationTimings =
-    turnDelegationTimings ?? collectDelegationTimings(items);
-  const subagentSummary = summarizeSubagentActivity(
+  const delegationStatuses = useMemo(() => turnDelegationStatuses ?? collectDelegationStatuses(delegationItems), [turnDelegationStatuses, delegationItems]);
+  const delegationTimings = useMemo(() => turnDelegationTimings ?? collectDelegationTimings(delegationItems), [turnDelegationTimings, delegationItems]);
+  const subagentSummary = useMemo(() => summarizeSubagentActivity(
     delegateItems,
     delegationStatuses,
-  );
+  ), [delegateItems, delegationStatuses]);
   // Parent tools after a Task fan-out live in a later activity part (D319), so
   // this card is not the turn's live tail while its delegates are still running.
   const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
   const live = isActive || topologyLive;
   const searchTarget = useContext(TranscriptSearchContext);
-  const revealRequest = searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
-    ? searchTarget.requestId : undefined;
-  const visibleItems = visibleActivityItems(items, compact, isActive);
+  const revealRequest = useMemo(() => searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
+    ? searchTarget.requestId : undefined, [items, searchTarget]);
+  const visibleItems = useMemo(() => cachedVisibleActivityItems(items, compact, isActive), [items, compact, isActive]);
   const first = items[0];
   const disclosure = useAutomaticDisclosure(
     hasSubagentTopology ? live : visibleItems.length <= 1 || (!compact && live),
@@ -261,23 +267,12 @@ export const ActivityGroup = memo(function ActivityGroup({
   const [now, setNow] = useState(Date.now);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const wasActiveRef = useRef(live);
-  const messages = items.map((item) => item.message);
-  const topologyTiming = hasSubagentTopology
-    ? delegationTimingBounds(delegateItems, delegationTimings)
-    : null;
-  const startedAt =
-    topologyTiming?.startedAt ??
-    (Date.parse(messages[0]?.createdAt || "") || now);
-  const fallbackEnd =
-    Math.max(
-      startedAt,
-      ...messages.map(
-        (message) =>
-          Date.parse(message.toolCompletedAt || "") ||
-          (Date.parse(message.createdAt) || startedAt) +
-            (message.toolDurationMs || 0),
-      ),
-    );
+  const timingInputs = useMemo(() => activityTimingInputs(items), [items]);
+  const topologyTiming = useMemo(() => hasSubagentTopology
+    ? delegationTimingBounds(delegateItems, delegationTimings) : null,
+  [hasSubagentTopology, delegateItems, delegationTimings]);
+  const startedAt = topologyTiming?.startedAt ?? (timingInputs.startedAt || now);
+  const fallbackEnd = Math.max(startedAt, timingInputs.recordedEnd, startedAt + timingInputs.missingStartDuration);
   const completedAt =
     topologyTiming?.completedAt ??
     (Date.parse(endedAt || "") ||
@@ -293,7 +288,7 @@ export const ActivityGroup = memo(function ActivityGroup({
     isActive &&
     lastItem?.kind === "thinking" &&
     lastItem.message.status === "streaming";
-  const onlyThinking = items.every((item) => item.kind === "thinking");
+  const onlyThinking = useMemo(() => items.every((item) => item.kind === "thinking"), [items]);
   const label = hasSubagentTopology
     ? t(
         live
@@ -320,10 +315,10 @@ export const ActivityGroup = memo(function ActivityGroup({
   const runtimeStatus = runtimeActivity
     ? runActivityLabel(runtimeActivity, t as Translate)
     : "";
-  const currentDetail =
+  const currentDetail = useMemo(() =>
     live && !runtimeStatus && lastItem && !(compact && lastItem.kind === "thinking")
-      ? activityItemDetail(lastItem)
-      : "";
+      ? activityItemDetail(lastItem) : "",
+  [live, runtimeStatus, lastItem, compact]);
   const tail = live && !open ? currentDetail : "";
 
   useEffect(() => {
@@ -335,66 +330,22 @@ export const ActivityGroup = memo(function ActivityGroup({
     return () => window.clearInterval(id);
   }, [live]);
 
-  const renderActivityItems = () => {
-    let renderedTopology = false;
-    return items.map((item, itemIndex) => {
-      if (hasSubagentTopology && isDelegationActivityItem(item)) {
-        if (renderedTopology) return null;
-        renderedTopology = true;
-        return (
-          <SubagentTopology
-            key="subagent-topology"
-            items={delegateItems}
-            delegationStatuses={delegationStatuses}
-            delegationTimings={delegationTimings}
-            onUserInteraction={claimDisclosure}
-          />
-        );
-      }
-      const autoOpenLatest =
-        !compact && isLast && itemIndex === items.length - 1;
-      if (item.kind === "tool") {
-        return (
-          <Fragment key={item.message.id}>
-            <ToolRow
-              imagesInTurn
-              message={item.message}
-              autoOpen={autoOpenLatest}
-              onUserInteraction={claimDisclosure}
-              {...(item.delegate ? { delegate: item.delegate } : {})}
-            />
-            <ReviewChangeCard message={item.message} />
-          </Fragment>
-        );
-      }
-      if (item.kind === "hostedSearch") {
-        return (
-          <HostedSearchRow
-            key={`hosted-search-${item.message.id}-${item.round.id}`}
-            messageId={item.message.id}
-            round={item.round}
-            streaming={isActive && item.message.status === "streaming"}
-            autoOpen={autoOpenLatest}
-            onUserInteraction={claimDisclosure}
-          />
-        );
-      }
-      return (
-        <ThinkingRow
-          key={`thinking-${item.message.id}`}
-          message={item.message}
-          streaming={isActive && item.message.status === "streaming"}
-          autoOpen={live && itemIndex === items.length - 1}
-          onUserInteraction={claimDisclosure}
-        />
-      );
-    });
-  };
+  const renderedItems = <ActivityItems
+    items={items}
+    compact={compact}
+    isLast={isLast}
+    isActive={isActive}
+    live={live}
+    delegateItems={delegateItems}
+    delegationStatuses={delegationStatuses}
+    delegationTimings={delegationTimings}
+    onUserInteraction={claimDisclosure}
+  />;
 
   if (!hasSubagentTopology) {
     return (
       <ProcessActivityGroup items={visibleItems} active={isActive} disclosure={disclosure}>
-        {renderActivityItems()}
+        {renderedItems}
       </ProcessActivityGroup>
     );
   }
@@ -462,7 +413,7 @@ export const ActivityGroup = memo(function ActivityGroup({
               label={t("chat.collapseActivityGroup")}
               onCollapse={collapseDisclosure}
             />
-            <DisclosureScope disclosure={disclosure}>{renderActivityItems()}</DisclosureScope>
+            <DisclosureScope disclosure={disclosure}>{renderedItems}</DisclosureScope>
           </div>
         </div>
       </div>

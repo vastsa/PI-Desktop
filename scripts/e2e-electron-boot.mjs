@@ -121,6 +121,7 @@ child.on("close", (code) => {
     projectRemove?.ok === true &&
     projectRemove.removed === false &&
     projectRemove.sessionsRemoved === 0;
+  const ctrlRBlocked = probe?.ctrlRBlocked === true;
   if (
     code === 0 &&
     probe?.ok &&
@@ -129,7 +130,8 @@ child.on("close", (code) => {
     (process.platform === "darwin" || probe.maximized === true) &&
     menuContractOk &&
     sessionListOk &&
-    projectRemoveOk
+    projectRemoveOk &&
+    ctrlRBlocked
   ) {
     const menuDetail =
       process.platform === "darwin"
@@ -147,6 +149,7 @@ child.on("close", (code) => {
         "projectRemove IPC round-trip through the sandboxed preload " +
         `{removed:${probe.projectRemove.removed}, sessionsRemoved:${probe.projectRemove.sessionsRemoved}}`,
     );
+    console.log("PASS E2E-072-main-window-ctrl-r-blocked");
     cleanup(0);
   } else {
     console.error("FAIL boot-probe —", JSON.stringify(probe));

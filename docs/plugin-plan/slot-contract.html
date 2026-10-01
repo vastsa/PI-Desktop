@@ -1,0 +1,154 @@
+ <!-- AI生成 -->
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>组件插槽公共契约</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --ui:#c27aff; --ui-bg:rgba(194,122,255,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 40px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout.ok{border-left-color:var(--ok)}
+  .callout.stop{border-left-color:var(--error)}
+  .callout b{color:var(--text)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .pill.core{color:var(--ok);background:var(--ok-bg)}
+  .pill.opt{color:var(--warn);background:var(--warn-bg)}
+  .pill.no{color:var(--error);background:var(--error-bg)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+
+<nav class="plan-nav">
+  <a href="index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="slot-contract.html" aria-current="page">组件插槽公共契约</a>
+  <span class="spacer"></span>
+  <a href="ui/user-action/index.html">用户 action</a>
+  <a href="ui/assistant-action/index.html">AI action</a>
+  <a href="ui/entry-extra/index.html">entryExtra</a>
+  <a href="render/draft/index.html">draft</a>
+  <a href="render/plugin-call/index.html">plugin.call</a>
+</nav>
+<header class="top">
+  <h1>组件插槽公共契约</h1>
+  <p>所有 UI 插槽共用的一套词与规则。各槽页只写自己的增量。</p>
+   <div class="meta">status: <b>finalized</b> · 引用代码写 <code>分支@sha · 路径 · 符号</code>，不用裸行号</div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>认领与冲突</h2>
+  <table>
+    <thead><tr><th>类型</th><th>槽</th><th>冲突语义</th></tr></thead>
+    <tbody>
+       <tr><td>additive 左右位</td><td><code>user-action</code>（<code>userAction</code>） · <code>assistant-action</code>（<code>assistantAction</code>）</td><td>按注册顺序叠；无抢注</td></tr>
+       <tr><td>additive 追加位</td><td><code>entry-extra</code>（<code>entryExtra</code>，仅 AI 回复）</td><td>多插件叠放；无抢注</td></tr>
+      <tr><td>自有工具卡</td><td><code>tool-card</code></td><td>无认领：只画自己注册的工具</td></tr>
+      <tr><td>keyed 语言</td><td><code>block-renderer</code></td><td><code>前缀:语言</code>；不得注册已有语言</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">若出现替换型槽位，冲突码统一 <code>PLUGIN_SLOT_DUPLICATE</code>（先占者赢）。本轮 UI 槽无替换型。</div>
+</section>
+
+<section>
+  <h2><span class="n">2</span>Props 骨架</h2>
+  <table>
+    <thead><tr><th>字段</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>message</code></td><td>这条消息的数据</td></tr>
+      <tr><td><code>messageId</code> · <code>sessionId</code></td><td>标识</td></tr>
+      <tr><td><code>position?</code></td><td>左右位：<code>"left" | "right"</code></td></tr>
+    </tbody>
+  </table>
+  <p>action / entryExtra 槽<strong>不提供任何宿主函数</strong>与额外数据面。副作用走 <code>dispatch</code>。</p>
+</section>
+
+<section>
+  <h2><span class="n">3</span>递交模型与出站词表</h2>
+  <table>
+    <thead><tr><th>模型</th><th>契约</th><th>用在哪</th></tr></thead>
+    <tbody>
+      <tr><td>props-once</td><td>一次给全；重挂载才更新</td><td>块渲染（闭合后）</td></tr>
+      <tr><td><span class="pill core">核心 H</span></td><td><code>composer.acceptTriggerItem</code></td><td>触发符候选选中项回流（<code>label</code> + <code>value</code>）；宿主写入 <code>#label</code> 记号；菜单未开拒绝 <code>PLUGIN_ACTION_UNROUTED</code></td></tr>
+      <tr><td>props-once</td><td>一次给全；重挂载才更新</td><td>块渲染（闭合后）</td></tr>
+      <tr><td>props-push</td><td>宿主推整份，插件不订阅</td><td>action · entryExtra · 工具卡</td></tr>
+      <tr><td>request</td><td>问几次答几次</td><td>触发符候选</td></tr>
+  </table>
+  <table>
+    <thead><tr><th>层</th><th>词</th><th>约束</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill core">核心 H</span></td><td><code>entry.copy</code> · <code>message.mutate</code> · <code>composer.insertText</code> · <code>attachments.add</code></td><td>mutate 宿主确认+必审计；add 只收 <code>content|token</code></td></tr>
+      <tr><td><span class="pill core">核心 P</span></td><td><code>plugin.call</code></td><td>白名单 · ≤64KB · QPS · 2s 超时熔断 · pluginId 宿主注入</td></tr>
+      <tr><td><span class="pill core">核心 F</span></td><td><code>measureHeight</code> · <code>deriveSummary</code></td><td>同步纯函数 · 禁 I/O · 超时回默认 · F 内禁 H/P</td></tr>
+      <tr><td><span class="pill opt">可选 H</span></td><td><code>ui.toast</code> · <code>ui.ask</code> · <code>clipboard.write</code> · <code>host.open</code> · <code>composer.readDraft</code> · <code>attachments.list/remove</code></td><td>clipboard 同次手势；host.open 只认登记句柄</td></tr>
+      <tr><td><span class="pill no">拒绝</span></td><td>远端来源 <code>replaceDraft</code> · modal/overlay 四动作 · 裸路径附件</td><td>P 返回不得静默改用户数据</td></tr>
+    </tbody>
+  </table>
+  <div class="callout ok">F = 渲染线程内同步纯函数；H/P = 跨进程异步 dispatch。组件出站唯一出口是 <code>dispatch</code> + 词表。</div>
+</section>
+
+<section>
+  <h2><span class="n">4</span>回退与出错归属</h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr><td>additive 组件抛错</td><td>只塌掉自己那一块</td></tr>
+      <tr><td>未加载 / 卸载</td><td>位置释放</td></tr>
+      <tr><td>工具失败</td><td>是数据不是抛错</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>宿主保证：</b>出错隔离；卸载摘注册与注入样式。<br/><b>已接受代价：</b>同 realm 可碰全局；样式重写可被绕过；声明校验不是安全边界。</div>
+</section>
+
+<section>
+  <h2><span class="n">5</span>权限</h2>
+  <p>纯展示槽随 <code>renderer.extension</code>。副作用按词表声明并配权限。</p>
+</section>
+
+ <section>
+   <h2><span class="n">6</span>定稿记录（已定稿）</h2>
+   <ul>
+     <li>SDK 槽名已定稿：<code>userAction</code> / <code>assistantAction</code> / <code>entryExtra</code>；各槽页只链接本契约，不复述</li>
+     <li>注册走统一判别式联合：<code>{ slot: "userAction" | "assistantAction" | "entryExtra" | "toolCard", ... }</code>；<code>toolCard</code> 项须带 <code>toolName</code> 且命中 manifest <code>contributes.agentTools[].name</code></li>
+     <li>左右位（userAction / assistantAction）每侧最多 3 个可见项，第 4 个起进宿主「⋯」折叠菜单；entryExtra 单块折叠态 320px / 展开态 600px 内部滚动</li>
+     <li>composer 触发符固定 <code>@</code> / <code>#</code> / <code>/</code>；记号单草稿上限 8 个；tool-card 运行中 500ms 节拍合并推送（状态跃迁立即推）</li>
+     <li><code>ui.ask</code> 定名不变：与 agent 侧布尔确认同名不同物，消歧表述以 render/ask 为准</li>
+     <li>SDK 与宿主已实现（7 槽 + self-dialog 指导项；dispatch 词表 <code>plugin.call</code> / <code>composer.insertText</code> / <code>composer.acceptTriggerItem</code>）；示例见 <code>examples/plugins/ui-slots-lab</code>，契约测试见 <code>apps/desktop/test/plugin-*.test.mjs</code></li>
+   </ul>
+ </section>
+
+</main>
+</body>
+</html>

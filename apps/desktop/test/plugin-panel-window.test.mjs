@@ -96,6 +96,8 @@ test("plugin panel close does not read destroyed webContents", () => {
     hostSource.indexOf("this.windows.set(request.pluginId, win);"),
   );
   assert.doesNotMatch(closedHandler, /win\.webContents/);
+  assert.match(hostSource, /await win\.loadURL\(/);
+  assert.match(hostSource, /if \(!win\.isDestroyed\(\)\) \{\s*win\.destroy\(\);\s*\}/);
 });
 
 test("plugin content is offset below the strict 46px host drag band", () => {

@@ -87,14 +87,19 @@ function useResolveChatFileRef() {
       const anchored = isDotRelative(raw)
         ? toWorkspaceRel(raw, workspacePath, baseDir)
         : null;
-      let match = null;
+      let result;
       try {
-        match = (await api.fsResolveRef(anchored ?? raw, sessionId)).match;
+        result = await api.fsResolveRef(anchored ?? raw, sessionId);
       } catch {
-        match = null;
+        showToast(t("chat.fileRefLookupFailed"), { variant: "error" });
+        return null;
       }
+      const match = result.match;
       if (!match) {
-        showToast(t("chat.fileRefMissing", { name: raw }), { variant: "error" });
+        const key = result.reason === "outside-allowed-roots"
+          ? "chat.fileRefRestricted"
+          : "chat.fileRefMissing";
+        showToast(t(key, { name: raw }), { variant: "error" });
         return null;
       }
       if (match.root !== "workspace") {

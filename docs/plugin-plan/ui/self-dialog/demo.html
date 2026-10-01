@@ -1,0 +1,355 @@
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>自理弹窗 · 演示</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --gray-0: #fff;
+      --gray-1000: #181818;
+      --ds-bg-primary: #181818;
+      --ds-bg-under: #000;
+      --ds-bg-hover: color-mix(in oklab, #fff 6%, transparent);
+      --ds-text-primary: #fff;
+      --ds-text-secondary: color-mix(in oklab, #fff 70%, transparent);
+      --ds-text-muted: color-mix(in oklab, #fff 52%, transparent);
+      --ds-text-faint: color-mix(in oklab, #fff 38%, transparent);
+      --ds-tile: color-mix(in oklab, #fff 3.5%, transparent);
+      --ds-tile-deep: color-mix(in oklab, #fff 8%, transparent);
+      --ds-border-default: color-mix(in oklab, #fff 8%, transparent);
+      --ds-border-subtle: color-mix(in oklab, #fff 5%, transparent);
+      --ds-scrim: color-mix(in oklab, #000 45%, transparent);
+      --ds-success: #40c977;
+      --ds-error: #ff6764;
+      --ds-purple: #c27aff;
+      --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
+      --radius-xs: 8px;
+      --radius-sm: 10px;
+      --radius-md: 12px;
+      --radius-md-plus: 14px;
+      --radius-lg: 16px;
+      --radius-lg-plus: 18px;
+      --radius-2xl: 24px;
+      --text-2xs: 11px;
+      --text-xs-plus: 11.5px;
+      --text-sm: 12px;
+      --text-sm-plus: 12.5px;
+      --text-md: 13px;
+      --text-md-plus: 13.5px;
+      --leading-body: 1.45;
+      --ui: #c27aff;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      display: flex; flex-direction: column;
+      font-family: var(--font);
+      background: var(--ds-bg-under);
+      color: var(--ds-text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; color: inherit; }
+
+    .shell { display: flex; min-height: 0; flex: 1; flex-direction: column; background: var(--ds-bg-primary); }
+    .topbar { padding: 14px 28px 12px; border-bottom: 1px solid var(--ds-border-subtle); }
+    .topbar h1 { margin: 0; font-size: var(--text-md-plus); font-weight: 560; }
+
+    .thread { flex: 1; min-height: 0; overflow: auto; }
+    .inner { width: min(860px, calc(100% - 48px)); margin: 0 auto; padding: 24px 0 40px; display: flex; flex-direction: column; }
+
+    .stage {
+      display: flex; align-items: center; gap: 10px;
+      margin: 30px 0 10px;
+      color: var(--ds-text-faint); font-family: var(--mono); font-size: var(--text-2xs); letter-spacing: 0.05em;
+    }
+    .stage::after { content: ""; flex: 1; height: 1px; background: var(--ds-border-subtle); }
+    .stage .no {
+      display: inline-grid; place-items: center; min-width: 18px; height: 18px;
+      border-radius: 99px; background: var(--ds-tile-deep); color: var(--ds-text-secondary); font-size: 10.5px;
+    }
+    .stage .hint {
+      color: var(--ds-text-muted);
+      letter-spacing: 0;
+      font-family: var(--font);
+      font-size: 11.5px;
+    }
+
+    .win {
+      position: relative;
+      margin: 14px 0 4px;
+      border-radius: var(--radius-lg-plus);
+      border: 1px solid var(--ds-border-default);
+      background: var(--ds-bg-primary);
+      overflow: hidden;
+      padding: 16px 18px;
+    }
+    .chat-bg { pointer-events: none; user-select: none; }
+    .chat-bg .u { display: flex; justify-content: flex-end; margin: 10px 0; }
+    .chat-bg .u span {
+      max-width: 60%; border-radius: 14px 14px 2px 14px;
+      background: var(--ds-tile-deep); padding: 7px 12px; font-size: var(--text-sm-plus);
+    }
+    .chat-bg .a { margin: 10px 0; color: var(--ds-text-secondary); font-size: var(--text-sm-plus); max-width: 76%; }
+    .win.has-scrim::before {
+      content: ""; position: absolute; inset: 0;
+      background: var(--ds-scrim);
+      z-index: 1;
+    }
+    .win.has-scrim > :not(.layer) { position: relative; z-index: 2; }
+    .layer { position: absolute; z-index: 2; }
+    .layer.center { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .layer.br { right: 16px; top: 14px; }
+
+    .slot-name {
+      position: absolute; top: -9px; left: 12px; padding: 0 6px;
+      background: #1f1f1f;
+      font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; color: #e4c8ff;
+      white-space: nowrap;
+    }
+
+    .p-overlay {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--ds-scrim);
+    }
+    .p-dialog {
+      display: flex;
+      width: min(100%, 520px);
+      max-height: min(420px, 100%);
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--ds-border-default);
+      border-radius: var(--radius-lg-plus);
+      background: #212121;
+      box-shadow: var(--ds-shadow-dialog);
+    }
+    .p-dialog-head {
+      display: flex; flex: 0 0 auto; align-items: center; gap: 8px;
+      padding: 14px 12px 8px 18px;
+    }
+    .p-dialog-head .t { flex: 1; font-size: var(--text-md-plus); font-weight: 600; color: var(--ds-text-primary); }
+    .p-dialog-head .esc {
+      font-family: var(--mono); font-size: 10px; color: var(--ds-text-faint);
+      border: 1px solid var(--ds-border-default); border-radius: 4px; padding: 1px 5px;
+    }
+    .p-dialog-body {
+      min-height: 0; overflow-y: auto; padding: 4px 18px 8px;
+      color: var(--ds-text-secondary); font-size: var(--text-sm-plus); line-height: var(--leading-body);
+    }
+    .p-dialog-foot { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 8px; padding: 10px 16px 14px; }
+    .btn {
+      height: 28px; padding: 0 13px; border: 0; border-radius: var(--radius-xs);
+      background: var(--ds-tile-deep); color: var(--ds-text-primary);
+      font-size: var(--text-sm-plus); cursor: default; white-space: nowrap;
+    }
+    .btn.primary { background: var(--ds-text-primary); color: var(--gray-1000); }
+
+    .p-notice {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) 24px;
+      gap: 10px;
+      width: 300px;
+      padding: 12px;
+      border: 1px solid var(--ds-border-subtle);
+      border-radius: var(--radius-md-plus);
+      background: #212121;
+      box-shadow: var(--ds-shadow-dialog);
+    }
+    .p-notice-icon {
+      display: inline-flex; width: 32px; height: 32px;
+      align-items: center; justify-content: center;
+      border-radius: var(--radius-sm);
+      background: color-mix(in oklab, var(--ui) 12%, transparent);
+      color: #e4c8ff;
+    }
+    .p-notice-title { font-size: var(--text-md); font-weight: 600; line-height: 1.3; }
+    .p-notice-msg { margin-top: 2px; color: var(--ds-text-secondary); font-size: var(--text-sm); line-height: var(--leading-body); overflow-wrap: anywhere; }
+    .p-notice-dismiss {
+      display: inline-flex; width: 24px; height: 24px;
+      align-items: center; justify-content: center;
+      border-radius: 6px; color: var(--ds-text-muted);
+    }
+    .p-notice-dismiss:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+
+    .perm-bar {
+      display: flex; align-items: center; gap: 12px;
+      border-radius: var(--radius-lg);
+      background: #1f1f1f;
+      border: 1px solid color-mix(in oklab, #fff 10%, transparent);
+      padding: 10px 12px 10px 14px;
+    }
+    .perm-bar .a-head { display: flex; align-items: center; gap: 7px; font-size: var(--text-sm-plus); font-weight: 560; color: var(--ds-text-secondary); }
+    .perm-bar .a-sub { margin-top: 3px; font-family: var(--mono); font-size: var(--text-xs-plus); color: var(--ds-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .perm-bar .risk {
+      font-family: var(--mono); font-size: 10px; padding: 1px 6px;
+      border-radius: 99px; background: color-mix(in oklab, var(--ds-error) 14%, transparent); color: var(--ds-error); font-weight: 400;
+    }
+    .perm-bar .btn.safe { background: var(--ds-text-primary); color: var(--gray-1000); }
+    .perm-bar .btn.ghosty { background: transparent; border: 1px solid color-mix(in oklab, #fff 16%, transparent); color: var(--ds-text-secondary); }
+
+    .z-label {
+      position: absolute;
+      right: 10px;
+      padding: 0 6px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ds-text-faint);
+    }
+
+    .minis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 14px 0 4px; }
+    .mini {
+      position: relative; min-height: 200px;
+      border-radius: var(--radius-md); border: 1px solid var(--ds-border-default);
+      background: var(--ds-bg-primary); overflow: hidden; padding: 12px;
+    }
+    .mini .chat-bg { opacity: .5; }
+    .mini .cap {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: 7px 12px;
+      background: color-mix(in oklab, #000 55%, transparent);
+      color: var(--ds-text-muted); font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em;
+    }
+    .mini.dim::before { content: ""; position: absolute; inset: 0; background: color-mix(in oklab, #000 45%, transparent); z-index: 1; }
+    .mini .p-dialog { position: absolute; z-index: 2; left: 50%; top: 44%; transform: translate(-50%,-50%) scale(.9); width: 88%; filter: brightness(.5); }
+    .mini .perm-bar { position: absolute; z-index: 3; left: 12px; right: 12px; bottom: 44px; }
+
+    .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--ds-border-subtle);font-size:13px;flex:0 0 auto}
+    .plan-nav a{color:var(--ds-text-muted);text-decoration:none;padding:3px 8px;border-radius:6px}
+    .plan-nav a:hover{background:var(--ds-bg-hover);color:var(--ds-text-primary)}
+    .plan-nav a[aria-current="page"]{background:var(--ds-tile-deep);color:var(--ds-text-primary);box-shadow:inset 0 0 0 1px color-mix(in oklab, #fff 14%, transparent)}
+    .plan-nav .sep{color:var(--ds-text-faint);padding:0 2px}
+    .plan-nav .spacer{flex:1}
+    .plan-nav .here{color:var(--ds-text-primary);padding:3px 8px}
+  </style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <span class="here">自理弹窗</span>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="demo.html" aria-current="page">演示</a>
+</nav>
+
+  <div class="shell">
+    <header class="topbar">
+      <h1>自理弹窗 · 演示</h1>
+    </header>
+
+    <div class="thread">
+      <div class="inner">
+
+        <div class="stage" id="s1"><span class="no">1</span>模态弹窗<span class="hint">关闭只走 ✕</span></div>
+
+        <div class="win has-scrim" style="min-height:360px">
+          <div class="chat-bg">
+            <div class="u"><span>帮我把这段文档翻成英文。</span></div>
+            <div class="a">已经放进翻译队列了。</div>
+          </div>
+          <div class="layer center">
+            <div style="position:relative">
+              <span class="slot-name" style="top:-16px">self-dialog · 插件自理</span>
+              <div class="p-dialog">
+                <div class="p-dialog-head">
+                  <span class="t">翻译助手</span>
+                  <span class="esc">Esc 不关安全层</span>
+                  <button class="btn" type="button" aria-label="关闭" style="width:28px;padding:0">✕</button>
+                </div>
+                <div class="p-dialog-body">
+                  <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+                    <span style="font-size:var(--text-xs-plus);color:var(--ds-text-muted)">术语表</span>
+                    <span style="font-family:var(--mono);font-size:var(--text-xs-plus);background:var(--ds-tile-deep);border-radius:6px;padding:2px 7px">发版 → release</span>
+                    <span style="font-family:var(--mono);font-size:var(--text-xs-plus);background:var(--ds-tile-deep);border-radius:6px;padding:2px 7px">插槽 → slot</span>
+                  </div>
+                  <div style="border-radius:var(--radius-sm);background:var(--ds-tile);padding:9px 11px;font-size:var(--text-sm);line-height:1.55">
+                    译文中…：The plugin slot boundary for the composer was agreed this week…
+                  </div>
+                </div>
+                <div class="p-dialog-foot">
+                  <button class="btn" type="button">暂停</button>
+                  <button class="btn primary" type="button">应用到原文</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stage" id="s2"><span class="no">2</span>角落悬浮层<span class="hint">非阻塞</span></div>
+
+        <div class="win" style="min-height:300px">
+          <div class="chat-bg">
+            <div class="u"><span>继续翻下一篇。</span></div>
+            <div class="a">好，这篇是配置说明，我直接开始：</div>
+            <div class="u"><span>术语表里加一条「沙箱」。</span></div>
+          </div>
+          <div class="layer br">
+            <div style="position:relative">
+              <span class="slot-name" style="top:-16px">self-dialog · 插件自理</span>
+              <div class="p-notice">
+                <span class="p-notice-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                </span>
+                <span>
+                  <span class="p-notice-title">翻译队列</span>
+                  <span class="p-notice-msg">进行中 2 / 5 · 已交付 14</span>
+                </span>
+                <button class="p-notice-dismiss" type="button" aria-label="收起">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stage" id="s3"><span class="no">3</span>z 序与关闭<span class="hint">安全层在上</span></div>
+
+        <div class="minis">
+          <div class="mini dim">
+            <div class="chat-bg">
+              <div class="u"><span>继续。</span></div>
+            </div>
+            <div class="p-dialog">
+              <div class="p-dialog-head"><span class="t">翻译助手</span></div>
+              <div class="p-dialog-body">译文中…</div>
+              <div class="p-dialog-foot">
+                <button class="btn" type="button">暂停</button>
+                <button class="btn primary" type="button">应用</button>
+              </div>
+            </div>
+            <div class="perm-bar">
+              <div>
+                <div class="a-head">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ds-error);flex:none"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                  权限请求
+                  <span class="risk">high</span>
+                </div>
+                <div class="a-sub">git push --force</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn ghosty" type="button">拒绝</button>
+                <button class="btn safe" type="button">允许一次</button>
+              </div>
+            </div>
+            <div class="cap">z 序 · 宿主安全层永远在自理层之上</div>
+          </div>
+
+          <div class="mini">
+            <div class="chat-bg" style="opacity:.8">
+              <div class="u"><span>继续翻下一篇。</span></div>
+              <div class="a">好，这篇是配置说明，我直接开始…</div>
+            </div>
+            <div class="cap" style="color:var(--ds-text-secondary)">Esc 不关安全层 · 关闭只走 ✕</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

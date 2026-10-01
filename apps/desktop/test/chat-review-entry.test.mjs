@@ -38,6 +38,7 @@ const appSource = await readAppSource();
 const storeSource = await readStoreSource();
 const appStoreSource = await readStoreModule("app-store.ts");
 const eventsSource = await readStoreModule("slices/events-slice.ts");
+const transcriptSliceSource = await readStoreModule("slices/transcript-slice.ts");
 
 const baseReview = {
   version: 1,
@@ -179,6 +180,21 @@ test("chat renders one message-owned card immediately after its tool row", () =>
     /shouldOpenReviewArtifact|toolWorkPanelTab\("review"\)/,
   );
   assert.doesNotMatch(storeSource, /workspaceReviewSessions/);
+});
+
+test("rollback outcomes reach the toast instead of a second card row", () => {
+  // The store already reports both outcomes; the card only owns the action.
+  assert.match(
+    transcriptSliceSource,
+    /rollbackConflict[\s\S]{0,120}variant: "warning"/,
+  );
+  assert.match(
+    transcriptSliceSource,
+    /rollbackUnavailable[\s\S]{0,120}variant: "warning"/,
+  );
+  assert.doesNotMatch(cardSource, /rollbackStatus/);
+  assert.doesNotMatch(cardSource, /review-change-rollback-note is-warning/);
+  assert.doesNotMatch(cardSource, /panel\.review\.rollbackConflict/);
 });
 
 test("Review is a session change history and no longer refreshes a Git diff", () => {

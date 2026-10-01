@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    "version": "0.16.0",
+    "date": "2026-10-01",
+    "highlights": [
+      "O Live Voice agora está disponível para todos e as chamadas começam na sessão atual.",
+      "Nova lista de tarefas por sessão, que mantém o estado oficial mesmo após reiniciar o serviço local.",
+      "Avisos pontuais agora aparecem na pilha de toasts compartilhada em vez de diálogos bloqueantes.",
+      "As listas de modelos seguem os metadados oficiais dos provedores, mantendo serviços relay e nomes de modelos corretos.",
+    ],
+  },
+
+  {
+    "version": "0.15.10",
+    "date": "2026-09-28",
+    "highlights": [
+      "Os plugins do marketplace agora aparecem em ordem aleatória, em vez de alfabética.",
+    ],
+  },
+
+  {
+    "version": "0.15.9",
+    "date": "2026-09-27",
+    "highlights": [
+      "Remove os arquivos obsoletos de ajuda da primeira execução dos pacotes DMG e ZIP do macOS.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

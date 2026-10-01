@@ -38,3 +38,12 @@ stable tool output so the model can distinguish it from a missing tool result.
   require a protocol version bump.
 - Aborting a turn completes the outstanding tool call with skipped values so a
   pending card cannot strand the runtime.
+
+
+## Amendment — 2026-09-27: Render asktool content as Markdown
+
+`question`, selectable option text, and optional option descriptions may use
+CommonMark/GFM. The renderer uses a safe phrasing-content projection: raw HTML
+is ignored, links are non-interactive, and images do not load. Selection and
+tool output preserve the normalized source strings; Markdown affects display
+only. The request schema and protocol version are unchanged.

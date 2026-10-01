@@ -1,0 +1,367 @@
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>host-api · 插件可调用 API 全集</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">插件插槽目录</a><span class="sep">/</span><a href="index.html" aria-current="page">host-api</a>
+</nav>
+<header class="top">
+  <h1>host-api · 插件可调用 API 全集</h1>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">0</span>这份目录是什么</h2>
+  <p class="lead">插件今天<strong>已经能调用</strong>的官方 API 全集。每条 API 一个文件夹，内含<strong>需求描述</strong>与<strong>数据流</strong>。与 <a href="../index.html">插件插槽目录</a>（界面 / render / 运行时）平行，互不覆盖。</p>
+  <table>
+    <thead><tr><th>项</th><th>值</th></tr></thead>
+    <tbody>
+      <tr><td>条目数</td><td>95（PluginHostApi 方法 + PluginModule 钩子）</td></tr>
+      <tr><td>事实来源</td><td><code>packages/plugin-sdk/src/index.ts</code> · <code>docs/spec/07-plugins/03-plugin-api.md</code></td></tr>
+      <tr><td>每文件夹</td><td><code>index.html</code> · <code>requirements.html</code> · <code>data-flow.html</code></td></tr>
+      <tr><td>状态口径</td><td>条目 <code>implemented</code> 表示 SDK 对外表面已存在；总表草稿状态不改变这一点</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>范围：</b>只收录可调用 API 与生命周期钩子。清单声明（contributes.*）不是可调用 API。未实现的设计稿在 <code>runtime/</code> 会话数据契约（session-context / session-compaction / session-model）；用量推送已结案——不新增，官方姿势见 <code>usage.listTurns</code> 第 2 节。</div>
+</section>
+<section>
+  <h2><span class="n">1</span>应用与外观</h2>
+  <p class="lead">命名空间 <code>app</code> · 4 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="app.getVersion/index.html"><code>app.getVersion</code></a></td><td>读宿主应用版本号字符串。</td><td><span class="pill has">implemented</span></td><td><a href="app.getVersion/requirements.html">需求</a> · <a href="app.getVersion/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="app.getLocale/index.html"><code>app.getLocale</code></a></td><td>读当前应用语言标签，供插件自绘界面本地化。</td><td><span class="pill has">implemented</span></td><td><a href="app.getLocale/requirements.html">需求</a> · <a href="app.getLocale/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="app.getAppearance/index.html"><code>app.getAppearance</code></a></td><td>读当前外观：主题偏好、解析后的明暗、语言、插件主题。</td><td><span class="pill has">implemented</span></td><td><a href="app.getAppearance/requirements.html">需求</a> · <a href="app.getAppearance/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="app.setTheme/index.html"><code>app.setTheme</code></a></td><td>设置应用主题偏好（内置或已注册插件主题）。</td><td><span class="pill has">implemented</span></td><td><a href="app.setTheme/requirements.html">需求</a> · <a href="app.setTheme/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">2</span>主题运行时</h2>
+  <p class="lead">命名空间 <code>themes</code> · 4 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="themes.upsert/index.html"><code>themes.upsert</code></a></td><td>创建或更新本插件的一条运行时主题。</td><td><span class="pill has">implemented</span></td><td><a href="themes.upsert/requirements.html">需求</a> · <a href="themes.upsert/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="themes.remove/index.html"><code>themes.remove</code></a></td><td>删除本插件一条运行时主题。</td><td><span class="pill has">implemented</span></td><td><a href="themes.remove/requirements.html">需求</a> · <a href="themes.remove/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="themes.list/index.html"><code>themes.list</code></a></td><td>列出本插件已注册主题的轻量行。</td><td><span class="pill has">implemented</span></td><td><a href="themes.list/requirements.html">需求</a> · <a href="themes.list/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="themes.setVariables/index.html"><code>themes.setVariables</code></a></td><td>写入主题的设计令牌变量值。</td><td><span class="pill has">implemented</span></td><td><a href="themes.setVariables/requirements.html">需求</a> · <a href="themes.setVariables/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">3</span>插件自身</h2>
+  <p class="lead">命名空间 <code>plugin</code> · 5 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="plugin.getId/index.html"><code>plugin.getId</code></a></td><td>同步返回调用插件自己的 id。</td><td><span class="pill has">implemented</span></td><td><a href="plugin.getId/requirements.html">需求</a> · <a href="plugin.getId/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="plugin.getManifest/index.html"><code>plugin.getManifest</code></a></td><td>同步返回本插件已校验的清单对象。</td><td><span class="pill has">implemented</span></td><td><a href="plugin.getManifest/requirements.html">需求</a> · <a href="plugin.getManifest/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="plugin.getSettings/index.html"><code>plugin.getSettings</code></a></td><td>读本插件设置键值。</td><td><span class="pill has">implemented</span></td><td><a href="plugin.getSettings/requirements.html">需求</a> · <a href="plugin.getSettings/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="plugin.setSettings/index.html"><code>plugin.setSettings</code></a></td><td>合并写入本插件设置。</td><td><span class="pill has">implemented</span></td><td><a href="plugin.setSettings/requirements.html">需求</a> · <a href="plugin.setSettings/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="plugin.getDataPath/index.html"><code>plugin.getDataPath</code></a></td><td>返回本插件私有数据目录绝对路径。</td><td><span class="pill has">implemented</span></td><td><a href="plugin.getDataPath/requirements.html">需求</a> · <a href="plugin.getDataPath/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">4</span>命令</h2>
+  <p class="lead">命名空间 <code>commands</code> · 2 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="commands.register/index.html"><code>commands.register</code></a></td><td>注册一条插件命令（命令面板 / 快捷键可触发）。</td><td><span class="pill has">implemented</span></td><td><a href="commands.register/requirements.html">需求</a> · <a href="commands.register/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="commands.unregister/index.html"><code>commands.unregister</code></a></td><td>注销一条插件命令。</td><td><span class="pill has">implemented</span></td><td><a href="commands.unregister/requirements.html">需求</a> · <a href="commands.unregister/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">5</span>语音适配</h2>
+  <p class="lead">命名空间 <code>speech</code> · 2 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="speech.registerAdapter/index.html"><code>speech.registerAdapter</code></a></td><td>注册一种语音协议适配器（转写或合成）。</td><td><span class="pill has">implemented</span></td><td><a href="speech.registerAdapter/requirements.html">需求</a> · <a href="speech.registerAdapter/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="speech.unregisterAdapter/index.html"><code>speech.unregisterAdapter</code></a></td><td>注销语音适配器。</td><td><span class="pill has">implemented</span></td><td><a href="speech.unregisterAdapter/requirements.html">需求</a> · <a href="speech.unregisterAdapter/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">6</span>界面与通知</h2>
+  <p class="lead">命名空间 <code>ui</code> · 7 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="ui.openPanel/index.html"><code>ui.openPanel</code></a></td><td>打开本插件面板窗口（或已声明的 widget 形态）。</td><td><span class="pill has">implemented</span></td><td><a href="ui.openPanel/requirements.html">需求</a> · <a href="ui.openPanel/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="ui.closePanel/index.html"><code>ui.closePanel</code></a></td><td>关闭本插件面板。</td><td><span class="pill has">implemented</span></td><td><a href="ui.closePanel/requirements.html">需求</a> · <a href="ui.closePanel/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="ui.showToast/index.html"><code>ui.showToast</code></a></td><td>在宿主界面显示短提示。</td><td><span class="pill has">implemented</span></td><td><a href="ui.showToast/requirements.html">需求</a> · <a href="ui.showToast/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="ui.notify/index.html"><code>ui.notify</code></a></td><td>走宿主通知通道提醒用户。</td><td><span class="pill has">implemented</span></td><td><a href="ui.notify/requirements.html">需求</a> · <a href="ui.notify/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="ui.getNotificationPermission/index.html"><code>ui.getNotificationPermission</code></a></td><td>查询通知权限状态。</td><td><span class="pill has">implemented</span></td><td><a href="ui.getNotificationPermission/requirements.html">需求</a> · <a href="ui.getNotificationPermission/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="ui.requestNotificationPermission/index.html"><code>ui.requestNotificationPermission</code></a></td><td>请求通知权限。</td><td><span class="pill has">implemented</span></td><td><a href="ui.requestNotificationPermission/requirements.html">需求</a> · <a href="ui.requestNotificationPermission/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="ui.showNativeNotification/index.html"><code>ui.showNativeNotification</code></a></td><td>显示系统原生通知。</td><td><span class="pill has">implemented</span></td><td><a href="ui.showNativeNotification/requirements.html">需求</a> · <a href="ui.showNativeNotification/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">7</span>项目</h2>
+  <p class="lead">命名空间 <code>project</code> · 1 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="project.create/index.html"><code>project.create</code></a></td><td>创建或复用一条持久项目记录。</td><td><span class="pill has">implemented</span></td><td><a href="project.create/requirements.html">需求</a> · <a href="project.create/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">8</span>工作区</h2>
+  <p class="lead">命名空间 <code>workspace</code> · 1 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="workspace.get/index.html"><code>workspace.get</code></a></td><td>读当前工作区主文件夹；无工作区时返回 null。</td><td><span class="pill has">implemented</span></td><td><a href="workspace.get/requirements.html">需求</a> · <a href="workspace.get/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">9</span>桌面受控操作</h2>
+  <p class="lead">命名空间 <code>desktop</code> · 2 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="desktop.listOperations/index.html"><code>desktop.listOperations</code></a></td><td>列出可调用的受控桌面操作目录。</td><td><span class="pill has">implemented</span></td><td><a href="desktop.listOperations/requirements.html">需求</a> · <a href="desktop.listOperations/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="desktop.invoke/index.html"><code>desktop.invoke</code></a></td><td>执行一条受控桌面操作（宿主代办）。</td><td><span class="pill has">implemented</span></td><td><a href="desktop.invoke/requirements.html">需求</a> · <a href="desktop.invoke/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">10</span>后台音频</h2>
+  <p class="lead">命名空间 <code>audio</code> · 10 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="audio.getInputDevices/index.html"><code>audio.getInputDevices</code></a></td><td>列出可采集的输入设备。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.getInputDevices/requirements.html">需求</a> · <a href="audio.getInputDevices/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.openInput/index.html"><code>audio.openInput</code></a></td><td>打开一条输入采集流。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.openInput/requirements.html">需求</a> · <a href="audio.openInput/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.closeInput/index.html"><code>audio.closeInput</code></a></td><td>关闭输入流。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.closeInput/requirements.html">需求</a> · <a href="audio.closeInput/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.getCaptureState/index.html"><code>audio.getCaptureState</code></a></td><td>查询当前采集状态与丢帧数。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.getCaptureState/requirements.html">需求</a> · <a href="audio.getCaptureState/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.onInputFrame/index.html"><code>audio.onInputFrame</code></a></td><td>注册 PCM16 帧处理函数（同步）。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.onInputFrame/requirements.html">需求</a> · <a href="audio.onInputFrame/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.offInputFrame/index.html"><code>audio.offInputFrame</code></a></td><td>注销 PCM16 帧处理函数。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.offInputFrame/requirements.html">需求</a> · <a href="audio.offInputFrame/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.openOutput/index.html"><code>audio.openOutput</code></a></td><td>打开播放队列。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.openOutput/requirements.html">需求</a> · <a href="audio.openOutput/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.writeOutput/index.html"><code>audio.writeOutput</code></a></td><td>把 PCM16 字节排进播放队列。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.writeOutput/requirements.html">需求</a> · <a href="audio.writeOutput/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.stopOutput/index.html"><code>audio.stopOutput</code></a></td><td>丢弃排队未播音频（抢话）。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.stopOutput/requirements.html">需求</a> · <a href="audio.stopOutput/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="audio.closeOutput/index.html"><code>audio.closeOutput</code></a></td><td>关闭播放队列。本条分支尚无设备后端。</td><td><span class="pill has">implemented</span></td><td><a href="audio.closeOutput/requirements.html">需求</a> · <a href="audio.closeOutput/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">11</span>全局快捷键</h2>
+  <p class="lead">命名空间 <code>keyboard</code> · 3 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="keyboard.registerGlobalShortcut/index.html"><code>keyboard.registerGlobalShortcut</code></a></td><td>注册系统全局快捷键，映射到本插件命令。</td><td><span class="pill has">implemented</span></td><td><a href="keyboard.registerGlobalShortcut/requirements.html">需求</a> · <a href="keyboard.registerGlobalShortcut/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="keyboard.unregisterGlobalShortcut/index.html"><code>keyboard.unregisterGlobalShortcut</code></a></td><td>注销一条全局快捷键。</td><td><span class="pill has">implemented</span></td><td><a href="keyboard.unregisterGlobalShortcut/requirements.html">需求</a> · <a href="keyboard.unregisterGlobalShortcut/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="keyboard.listGlobalShortcuts/index.html"><code>keyboard.listGlobalShortcuts</code></a></td><td>列出宿主当前为本插件持有的快捷键。</td><td><span class="pill has">implemented</span></td><td><a href="keyboard.listGlobalShortcuts/requirements.html">需求</a> · <a href="keyboard.listGlobalShortcuts/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">12</span>文件</h2>
+  <p class="lead">命名空间 <code>fs</code> · 11 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="fs.readText/index.html"><code>fs.readText</code></a></td><td>按根相对路径读入整个文本文件。</td><td><span class="pill has">implemented</span></td><td><a href="fs.readText/requirements.html">需求</a> · <a href="fs.readText/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.stat/index.html"><code>fs.stat</code></a></td><td>读一个文件的大小和修改时间，不载入正文。</td><td><span class="pill has">implemented</span></td><td><a href="fs.stat/requirements.html">需求</a> · <a href="fs.stat/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.readRange/index.html"><code>fs.readRange</code></a></td><td>读文件里一段有界字节区间。</td><td><span class="pill has">implemented</span></td><td><a href="fs.readRange/requirements.html">需求</a> · <a href="fs.readRange/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.readPreview/index.html"><code>fs.readPreview</code></a></td><td>对已有可读文件做有界分类预览。</td><td><span class="pill has">implemented</span></td><td><a href="fs.readPreview/requirements.html">需求</a> · <a href="fs.readPreview/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.openDefault/index.html"><code>fs.openDefault</code></a></td><td>用系统默认应用打开一个已有可读文件。</td><td><span class="pill has">implemented</span></td><td><a href="fs.openDefault/requirements.html">需求</a> · <a href="fs.openDefault/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.reveal/index.html"><code>fs.reveal</code></a></td><td>在系统文件管理器里显示一个已有可读文件。</td><td><span class="pill has">implemented</span></td><td><a href="fs.reveal/requirements.html">需求</a> · <a href="fs.reveal/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.writeText/index.html"><code>fs.writeText</code></a></td><td>把文本写入规则根下的路径（新建或覆盖）。</td><td><span class="pill has">implemented</span></td><td><a href="fs.writeText/requirements.html">需求</a> · <a href="fs.writeText/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.glob/index.html"><code>fs.glob</code></a></td><td>按 glob 模式列出匹配的相对路径。</td><td><span class="pill has">implemented</span></td><td><a href="fs.glob/requirements.html">需求</a> · <a href="fs.glob/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.list/index.html"><code>fs.list</code></a></td><td>列出一个目录下的条目，便于懒加载目录树。</td><td><span class="pill has">implemented</span></td><td><a href="fs.list/requirements.html">需求</a> · <a href="fs.list/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.remove/index.html"><code>fs.remove</code></a></td><td>删除规则根下的文件或目录。</td><td><span class="pill has">implemented</span></td><td><a href="fs.remove/requirements.html">需求</a> · <a href="fs.remove/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="fs.requestDirectory/index.html"><code>fs.requestDirectory</code></a></td><td>请用户选一个目录，作为本次运行 userSelected 规则的根。</td><td><span class="pill has">implemented</span></td><td><a href="fs.requestDirectory/requirements.html">需求</a> · <a href="fs.requestDirectory/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">13</span>Agent 能力</h2>
+  <p class="lead">命名空间 <code>agent</code> · 3 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="agent.registerTool/index.html"><code>agent.registerTool</code></a></td><td>向 Agent 注册可执行工具。</td><td><span class="pill has">implemented</span></td><td><a href="agent.registerTool/requirements.html">需求</a> · <a href="agent.registerTool/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="agent.unregisterTool/index.html"><code>agent.unregisterTool</code></a></td><td>注销 Agent 工具。</td><td><span class="pill has">implemented</span></td><td><a href="agent.unregisterTool/requirements.html">需求</a> · <a href="agent.unregisterTool/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="agent.complete/index.html"><code>agent.complete</code></a></td><td>宿主代发一次性补全（one-shot），可带自定义 system 与消息。</td><td><span class="pill has">implemented</span></td><td><a href="agent.complete/requirements.html">需求</a> · <a href="agent.complete/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">14</span>模型目录</h2>
+  <p class="lead">命名空间 <code>models</code> · 1 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="models.list/index.html"><code>models.list</code></a></td><td>列出已就绪的模型绑定目录。</td><td><span class="pill has">implemented</span></td><td><a href="models.list/requirements.html">需求</a> · <a href="models.list/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">15</span>会话</h2>
+  <p class="lead">命名空间 <code>session</code> · 8 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="session.getLlmContext/index.html"><code>session.getLlmContext</code></a></td><td>读取当前工具会话的 LLM 上下文投影。</td><td><span class="pill has">implemented</span></td><td><a href="session.getLlmContext/requirements.html">需求</a> · <a href="session.getLlmContext/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="session.list/index.html"><code>session.list</code></a></td><td>分页列出本插件导入的会话。</td><td><span class="pill has">implemented</span></td><td><a href="session.list/requirements.html">需求</a> · <a href="session.list/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="session.get/index.html"><code>session.get</code></a></td><td>读一条本插件会话的元数据。</td><td><span class="pill has">implemented</span></td><td><a href="session.get/requirements.html">需求</a> · <a href="session.get/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="session.listMessages/index.html"><code>session.listMessages</code></a></td><td>分页读取本插件会话的消息。</td><td><span class="pill has">implemented</span></td><td><a href="session.listMessages/requirements.html">需求</a> · <a href="session.listMessages/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="session.import/index.html"><code>session.import</code></a></td><td>把一条外部会话导入为插件拥有的会话。</td><td><span class="pill has">implemented</span></td><td><a href="session.import/requirements.html">需求</a> · <a href="session.import/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="session.importBatch/index.html"><code>session.importBatch</code></a></td><td>批量导入外部会话。</td><td><span class="pill has">implemented</span></td><td><a href="session.importBatch/requirements.html">需求</a> · <a href="session.importBatch/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="session.rename/index.html"><code>session.rename</code></a></td><td>重命名本插件拥有的会话标题。</td><td><span class="pill has">implemented</span></td><td><a href="session.rename/requirements.html">需求</a> · <a href="session.rename/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="session.delete/index.html"><code>session.delete</code></a></td><td>回收（trash）或清除（purge）本插件导入的会话。</td><td><span class="pill has">implemented</span></td><td><a href="session.delete/requirements.html">需求</a> · <a href="session.delete/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">16</span>用量事实</h2>
+  <p class="lead">命名空间 <code>usage</code> · 1 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="usage.listTurns/index.html"><code>usage.listTurns</code></a></td><td>分页读取已完成 turn 的用量事实行（只读）。</td><td><span class="pill has">implemented</span></td><td><a href="usage.listTurns/requirements.html">需求</a> · <a href="usage.listTurns/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">17</span>后台服务</h2>
+  <p class="lead">命名空间 <code>services</code> · 2 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="services.register/index.html"><code>services.register</code></a></td><td>登记常驻后台服务（须在 <code>contributes.services</code> 声明）。</td><td><span class="pill has">implemented</span></td><td><a href="services.register/requirements.html">需求</a> · <a href="services.register/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="services.unregister/index.html"><code>services.unregister</code></a></td><td>注销后台服务，运行中则先停。</td><td><span class="pill has">implemented</span></td><td><a href="services.unregister/requirements.html">需求</a> · <a href="services.unregister/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">18</span>插件总线</h2>
+  <p class="lead">命名空间 <code>bus</code> · 2 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="bus.publish/index.html"><code>bus.publish</code></a></td><td>向声明过的主题发布消息。</td><td><span class="pill has">implemented</span></td><td><a href="bus.publish/requirements.html">需求</a> · <a href="bus.publish/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="bus.subscribe/index.html"><code>bus.subscribe</code></a></td><td>订阅声明过的主题模式，返回取消函数。</td><td><span class="pill has">implemented</span></td><td><a href="bus.subscribe/requirements.html">需求</a> · <a href="bus.subscribe/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">19</span>剪贴板</h2>
+  <p class="lead">命名空间 <code>clipboard</code> · 3 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="clipboard.readText/index.html"><code>clipboard.readText</code></a></td><td>读当前剪贴板文本。</td><td><span class="pill has">implemented</span></td><td><a href="clipboard.readText/requirements.html">需求</a> · <a href="clipboard.readText/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="clipboard.writeText/index.html"><code>clipboard.writeText</code></a></td><td>写入剪贴板文本。</td><td><span class="pill has">implemented</span></td><td><a href="clipboard.writeText/requirements.html">需求</a> · <a href="clipboard.writeText/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="clipboard.getHistory/index.html"><code>clipboard.getHistory</code></a></td><td>读宿主保留的剪贴板历史。</td><td><span class="pill has">implemented</span></td><td><a href="clipboard.getHistory/requirements.html">需求</a> · <a href="clipboard.getHistory/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">20</span>外部打开</h2>
+  <p class="lead">命名空间 <code>shell</code> · 1 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="shell.openExternal/index.html"><code>shell.openExternal</code></a></td><td>用系统默认应用打开外部链接。</td><td><span class="pill has">implemented</span></td><td><a href="shell.openExternal/requirements.html">需求</a> · <a href="shell.openExternal/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">21</span>浏览器访客页</h2>
+  <p class="lead">命名空间 <code>browser</code> · 13 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="browser.navigate/index.html"><code>browser.navigate</code></a></td><td>导航到 URL 或站内 path。</td><td><span class="pill has">implemented</span></td><td><a href="browser.navigate/requirements.html">需求</a> · <a href="browser.navigate/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.action/index.html"><code>browser.action</code></a></td><td>对访客页做前进 / 后退 / 刷新 / 停止。</td><td><span class="pill has">implemented</span></td><td><a href="browser.action/requirements.html">需求</a> · <a href="browser.action/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.setBounds/index.html"><code>browser.setBounds</code></a></td><td>设置访客页在宿主里的矩形区域。</td><td><span class="pill has">implemented</span></td><td><a href="browser.setBounds/requirements.html">需求</a> · <a href="browser.setBounds/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.setVisible/index.html"><code>browser.setVisible</code></a></td><td>显示或隐藏访客页。</td><td><span class="pill has">implemented</span></td><td><a href="browser.setVisible/requirements.html">需求</a> · <a href="browser.setVisible/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.getState/index.html"><code>browser.getState</code></a></td><td>读访客页当前状态。</td><td><span class="pill has">implemented</span></td><td><a href="browser.getState/requirements.html">需求</a> · <a href="browser.getState/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.openExternal/index.html"><code>browser.openExternal</code></a></td><td>把当前访客页交给系统浏览器打开。</td><td><span class="pill has">implemented</span></td><td><a href="browser.openExternal/requirements.html">需求</a> · <a href="browser.openExternal/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.snapshot/index.html"><code>browser.snapshot</code></a></td><td>抓一份可访问性树快照。</td><td><span class="pill has">implemented</span></td><td><a href="browser.snapshot/requirements.html">需求</a> · <a href="browser.snapshot/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.screenshot/index.html"><code>browser.screenshot</code></a></td><td>截取访客页图像。</td><td><span class="pill has">implemented</span></td><td><a href="browser.screenshot/requirements.html">需求</a> · <a href="browser.screenshot/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.click/index.html"><code>browser.click</code></a></td><td>按 snapshot 给出的 uid 点击元素。</td><td><span class="pill has">implemented</span></td><td><a href="browser.click/requirements.html">需求</a> · <a href="browser.click/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.fill/index.html"><code>browser.fill</code></a></td><td>按 uid 向输入框填入文本。</td><td><span class="pill has">implemented</span></td><td><a href="browser.fill/requirements.html">需求</a> · <a href="browser.fill/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.evaluate/index.html"><code>browser.evaluate</code></a></td><td>在访客页执行一个表达式并取回结果。</td><td><span class="pill has">implemented</span></td><td><a href="browser.evaluate/requirements.html">需求</a> · <a href="browser.evaluate/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.console/index.html"><code>browser.console</code></a></td><td>读访客页控制台消息。</td><td><span class="pill has">implemented</span></td><td><a href="browser.console/requirements.html">需求</a> · <a href="browser.console/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="browser.cdp/index.html"><code>browser.cdp</code></a></td><td>在白名单内调用一条 CDP 方法。</td><td><span class="pill has">implemented</span></td><td><a href="browser.cdp/requirements.html">需求</a> · <a href="browser.cdp/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">22</span>网络</h2>
+  <p class="lead">命名空间 <code>net</code> · 4 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="net.fetch/index.html"><code>net.fetch</code></a></td><td>宿主代发 HTTP 请求。</td><td><span class="pill has">implemented</span></td><td><a href="net.fetch/requirements.html">需求</a> · <a href="net.fetch/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="net.websocket.connect/index.html"><code>net.websocket.connect</code></a></td><td>连接 <code>ws://</code> / <code>wss://</code> 端点，返回套接字 id。</td><td><span class="pill has">implemented</span></td><td><a href="net.websocket.connect/requirements.html">需求</a> · <a href="net.websocket.connect/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="net.websocket.send/index.html"><code>net.websocket.send</code></a></td><td>发送文本或二进制帧。</td><td><span class="pill has">implemented</span></td><td><a href="net.websocket.send/requirements.html">需求</a> · <a href="net.websocket.send/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="net.websocket.close/index.html"><code>net.websocket.close</code></a></td><td>关闭套接字。</td><td><span class="pill has">implemented</span></td><td><a href="net.websocket.close/requirements.html">需求</a> · <a href="net.websocket.close/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">23</span>事件订阅</h2>
+  <p class="lead">命名空间 <code>events</code> · 2 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="events.on/index.html"><code>events.on</code></a></td><td>订阅宿主推送事件。</td><td><span class="pill has">implemented</span></td><td><a href="events.on/requirements.html">需求</a> · <a href="events.on/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="events.off/index.html"><code>events.off</code></a></td><td>取消事件订阅。</td><td><span class="pill has">implemented</span></td><td><a href="events.off/requirements.html">需求</a> · <a href="events.off/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section><section>
+  <h2><span class="n">24</span>插件模块生命周期</h2>
+  <p class="lead">命名空间 <code>module</code> · 3 条</p>
+  <table>
+    <thead><tr><th>API</th><th>一句话</th><th>状态</th><th>页</th></tr></thead>
+    <tbody>
+<tr><td class="id"><a href="module.onLoad/index.html"><code>module.onLoad</code></a></td><td>插件加载/启用时由运行时调用。</td><td><span class="pill has">implemented</span></td><td><a href="module.onLoad/requirements.html">需求</a> · <a href="module.onLoad/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="module.onUnload/index.html"><code>module.onUnload</code></a></td><td>插件停用/卸载前调用，用于清理。</td><td><span class="pill has">implemented</span></td><td><a href="module.onUnload/requirements.html">需求</a> · <a href="module.onUnload/data-flow.html">数据流</a></td></tr>
+<tr><td class="id"><a href="module.onPanelInvoke/index.html"><code>module.onPanelInvoke</code></a></td><td>隔离面板页与插件进程之间的固定通道调用入口。</td><td><span class="pill has">implemented</span></td><td><a href="module.onPanelInvoke/requirements.html">需求</a> · <a href="module.onPanelInvoke/data-flow.html">数据流</a></td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</body>
+</html>

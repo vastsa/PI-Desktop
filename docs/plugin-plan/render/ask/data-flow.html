@@ -1,0 +1,199 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>确认卡 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:960px;margin:0 auto;padding:24px 28px 90px}
+  section{margin:0 0 44px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:rgba(76,141,255,.10)}
+  .chip.plugin{color:var(--plugin);background:rgba(194,122,255,.10)}
+  .chip.slot{color:var(--slot);background:rgba(255,133,73,.10)}
+  .chip.api{color:var(--api);background:rgba(64,201,119,.10)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">确认卡</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/ask</div>
+  <h1>确认卡 · 数据流</h1>
+  <p>一次 <code>ui.ask</code> 的往返：插件发起、宿主排卡、用户点按钮、结果落定。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #545 · #561 · 字段名是建议值，结构是拍板的</div>
+</header>
+
+<main>
+
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag decided">已拍板</span></h2>
+  <p class="lead">一个渲染侧接口 <code>ui.ask</code>，出站分层里的<b>可选 H</b>。返回恒为对象。</p>
+
+<pre><span class="c">// 插件渲染器内</span>
+<span class="k">const</span> { <span class="k">choice</span>, <span class="k">reason</span> } = <span class="k">await</span> pi.ui.ask({
+  <span class="k">title</span>, <span class="k">description</span>?, <span class="k">actions</span>: [{ <span class="k">id</span>, <span class="k">label</span>, <span class="k">variant</span>? }]
+})
+<span class="c">// choice = 被按下的按钮 id</span>
+<span class="c">// reason = 仅非正常点击时出现，例如 "plugin-unloaded"</span></pre>
+
+  <h3>返回形状（恒定）</h3>
+  <table>
+    <thead><tr><th>情况</th><th>返回</th></tr></thead>
+    <tbody>
+      <tr><td class="id">用户点按钮</td><td><code>{ choice: "&lt;actionId&gt;" }</code></td></tr>
+      <tr><td class="id">插件被禁用 / 卸载</td><td><code>{ choice: "cancel", reason: "plugin-unloaded" }</code></td></tr>
+    </tbody>
+  </table>
+  <div class="callout stop"><b>禁止 string | object 两态。</b>老契约里有时直接回按钮 id 字符串、卸载时回对象——调用方要写两套分支。现在一律 <code>{ choice, reason? }</code>。</div>
+
+  <h3>出站分层（公共，本接口落在「可选 H」）</h3>
+  <table>
+    <thead><tr><th>层</th><th>词</th><th>约束</th></tr></thead>
+    <tbody>
+      <tr><td class="id">核心 H</td><td><code>entry.copy</code> · <code>message.mutate</code> · <code>composer.insertText</code> · <code>attachments.add</code></td><td>mutate 宿主确认 + 必审计；add 只收 <code>content|token</code></td></tr>
+      <tr><td class="id">核心 P</td><td><code>plugin.call</code></td><td>method 白名单 · ≤64KB · QPS · 2s 超时 · 熔断 <code>PLUGIN_CALL_DISABLED</code> · pluginId 宿主注入</td></tr>
+      <tr><td class="id">核心 F</td><td><code>measureHeight</code> · <code>deriveSummary</code></td><td>同步纯函数 · 16ms · 超时回默认 · F 内禁调 H/P</td></tr>
+      <tr><td class="id"><b>可选 H（本接口）</b></td><td><code>toast</code> · <b><code>ui.ask</code></b> · <code>clipboard.write</code> · <code>host.open</code> · <code>composer.readDraft</code> · <code>attachments.list/remove</code></td><td>clipboard.write 须同次用户手势</td></tr>
+      <tr><td class="id">拒绝</td><td>远端来源的 <code>replaceDraft</code> · 裸路径附件</td><td>不得静默改用户数据</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag decided">已拍板</span></h2>
+  <div class="legend">
+    <span><span class="chip host">host</span> 宿主确认卡</span>
+    <span><span class="chip slot">slot</span> 接口边界</span>
+    <span><span class="chip plugin">plugin</span> 插件渲染器</span>
+  </div>
+
+  <table>
+    <thead><tr><th>时刻</th><th>谁</th><th>发生什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">调用</td><td>插件</td><td><code>await pi.ui.ask(...)</code>，入参校验通过后进宿主卡片队列</td></tr>
+      <tr><td class="id">排队</td><td>宿主</td><td>插件确认卡先进先出；<b>权限审批卡随时插队</b>（安全优先，不是公平队列）</td></tr>
+      <tr><td class="id">上屏</td><td>宿主</td><td>轮到它时，固定卡壳出现在输入框上方同宽横栏；标题 / 说明 / 按钮由参数排版</td></tr>
+      <tr><td class="id">显示中</td><td>宿主</td><td>内容定格；卡里没有插件代码在跑</td></tr>
+      <tr><td class="id">点击</td><td>用户 → 宿主</td><td>按下按钮 → 卡片移除 → <code>Promise</code> 落定 <code>{ choice }</code> → 下一张上屏</td></tr>
+      <tr><td class="id">卸载</td><td>宿主</td><td>插件被禁用 / 卸载 → 卡片（含排队中的）移除，挂起的 <code>await</code> 落定 <code>{ choice:"cancel", reason:"plugin-unloaded" }</code></td></tr>
+    </tbody>
+  </table>
+  <div class="callout decided"><b>返回方向单一。</b>只有「按钮 id + 可选原因」这一条窄通道回插件；卡片拿不到会话内容，插件也拿不到卡壳内部结构。</div>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>靠什么保证</th></tr></thead>
+    <tbody>
+      <tr><td class="id">调用参数不合法</td><td>调用被拒绝并带错误码（按钮超限、字段缺失），不产生卡片</td><td>入参校验</td></tr>
+      <tr><td class="id">插件被禁用 / 卸载</td><td>卡片移除；挂起的等待落定 <code>{ choice:"cancel", reason:"plugin-unloaded" }</code></td><td>插件生命周期清理</td></tr>
+      <tr><td class="id">权限审批卡插队</td><td>插件卡退回队列，处理完按原顺序恢复</td><td>安全优先的队列规则</td></tr>
+      <tr><td class="id">用户不点、一直挂着</td><td>不超时、不响应 Esc；直到点击或卸载才落定</td><td>卡片生命周期</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">宿主权限审批卡的接管 / 重画</td><td>安全决策面只属于宿主；<code>ui.ask</code> 不进权限决策路径</td></tr>
+      <tr><td class="id">卡里的自绘 / 组件</td><td>内容只有固定字段；卡片里不跑插件代码</td></tr>
+      <tr><td class="id">string 返回</td><td>禁止两态；恒 <code>{ choice, reason? }</code></td></tr>
+      <tr><td class="id">层机制 / 注册 / 仲裁</td><td>确认卡不是 UI 槽</td></tr>
+      <tr><td class="id">会话 / 消息数据</td><td>卡片只负责问用户</td></tr>
+      <tr><td class="id">与 agent 侧布尔确认共用形状</td><td>同名不同物：那边是允许 / 拒绝布尔，这边是按钮选择对象</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">公共契约</td><td>出站分层、递交模型、回退与权限的总表</td><td><a href="../../slot-contract.html">../../slot-contract.html</a></td></tr>
+      <tr><td class="id">输入区</td><td>确认卡的锚点：与输入框同宽、紧贴其上</td><td><a href="../../ui/composer/index.html">../../ui/composer/</a></td></tr>
+      <tr><td class="id">ui/layers</td><td>原 <code>ui.confirm</code> 的卡型、排队、z 序细节与界面演示</td><td><code>ui/layers/</code></td></tr>
+      <tr><td class="id">ui/self-dialog</td><td>自由界面自理——与本接口分工：问一句话走 <code>ui.ask</code>，自由界面走自理</td><td><code>ui/self-dialog/</code></td></tr>
+      <tr><td class="id">草稿读写</td><td>问完用户后常见下一步：往输入框插一段文字</td><td><code>render/draft/</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <ul>
+     <li>命名消歧已定：本接口定名 <code>ui.ask</code>，与 agent 侧布尔确认同名不同物（见 slot-contract §6）。</li>
+    <li>按钮数量上限、下拉候选的粒度——沿用 ui/layers 待定项。</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

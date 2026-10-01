@@ -2,6 +2,33 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    "version": "0.16.0",
+    "date": "2026-10-01",
+    "highlights": [
+      "Canlı Ses artık herkesin kullanımına açık ve görüşmeler geçerli oturumda başlıyor.",
+      "Yerel hizmet yeniden başlatılsa bile bağlayıcı durumunu koruyan oturum bazlı kontrol listesi eklendi.",
+      "Tek seferlik bildirimler artık engelleyici iletişim kutuları yerine ortak toast yığınında gösteriliyor.",
+      "Model listeleri resmi sağlayıcı üst verileriyle eşleşir; aktarma hizmetleri ve model adları doğru kalır.",
+    ],
+  },
+
+  {
+    "version": "0.15.10",
+    "date": "2026-09-28",
+    "highlights": [
+      "Eklenti pazarı artık eklentileri alfabetik sıra yerine rastgele sırada gösteriyor.",
+    ],
+  },
+
+  {
+    "version": "0.15.9",
+    "date": "2026-09-27",
+    "highlights": [
+      "macOS DMG ve ZIP paketlerindeki eski ilk açılış yardım dosyalarını kaldırır.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

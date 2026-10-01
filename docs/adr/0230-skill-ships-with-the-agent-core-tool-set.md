@@ -7,11 +7,11 @@
 
 ## Context
 
-ADR 0048 keeps the first Agent request on a small core set and defers every
-other capability behind the local `ToolSearch` tool, so a large plugin surface
-cannot recreate the original prompt bloat. `Skill` was registered into that
-deferred set: it only appears in the provider schema after the model searches
-for it.
+As originally accepted, ADR 0048 kept the first Agent request on a small
+core set and deferred optional capabilities behind the local `ToolSearch`
+tool, so a large plugin surface could not recreate the original prompt bloat.
+`Skill` was registered into that deferred set: it only appeared in the
+provider schema after the model searched for it.
 
 Two later decisions assume a `Skill` tool the model can call immediately:
 
@@ -61,3 +61,10 @@ for a skill pays one or two extra round trips before the body is ever loaded.
   reload semantics D174 and ADR 0039 already settled.
 - **Make every on-demand tool core:** rejected because it recreates the prompt
   bloat ADR 0048 exists to prevent. Only `Skill` is admitted here.
+
+## Amendment — 2026-09-27: Agent search tools start active
+
+The amendment to ADR 0048 also places `Glob` and `Grep` in the first Agent
+request to remove the discovery round trip for routine workspace exploration.
+This does not change ADR 0230: `Skill` remains core when its catalog exists,
+and plugin, preview, and development tools remain deferred.

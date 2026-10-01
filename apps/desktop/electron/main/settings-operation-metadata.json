@@ -1,0 +1,3655 @@
+[
+  {
+    "vendor": "poe",
+    "id": "elevenlabs/elevenlabs-v2.5-turbo",
+    "name": "ElevenLabs-v2.5-Turbo",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "elevenlabs/elevenlabs-v3",
+    "name": "ElevenLabs-v3",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "elevenlabs/elevenlabs-music",
+    "name": "ElevenLabs-Music",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 2000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "lumalabs/ray2",
+    "name": "Ray2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 5000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/imagen-3-fast",
+    "name": "Imagen-3-Fast",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/imagen-4-ultra",
+    "name": "Imagen-4-Ultra",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/imagen-4",
+    "name": "Imagen-4",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/imagen-4-fast",
+    "name": "Imagen-4-Fast",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/lyria",
+    "name": "Lyria",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/veo-3-fast",
+    "name": "Veo-3-Fast",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/veo-3.1",
+    "name": "Veo-3.1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/nano-banana-pro",
+    "name": "Nano-Banana-Pro",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 65536,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/imagen-3",
+    "name": "Imagen-3",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/veo-2",
+    "name": "Veo-2",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/veo-3.1-fast",
+    "name": "Veo-3.1-Fast",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "google/veo-3",
+    "name": "Veo-3",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "ideogramai/ideogram-v2",
+    "name": "Ideogram-v2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 150,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "ideogramai/ideogram-v2a-turbo",
+    "name": "Ideogram-v2a-Turbo",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 150,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "ideogramai/ideogram-v2a",
+    "name": "Ideogram-v2a",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 150,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "ideogramai/ideogram",
+    "name": "Ideogram",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 150,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "runwayml/runway",
+    "name": "Runway",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 256,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "runwayml/runway-gen-4-turbo",
+    "name": "Runway-Gen-4-Turbo",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 256,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "stabilityai/stablediffusionxl",
+    "name": "StableDiffusionXL",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 200,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/gpt-5.4",
+    "name": "GPT-5.4",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 128000
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/dall-e-3",
+    "name": "DALL-E-3",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 800,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/sora-2",
+    "name": "Sora-2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/gpt-5.4-pro",
+    "name": "GPT-5.4-Pro",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 1050000,
+    "maxTokens": 128000
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/sora-2-pro",
+    "name": "Sora-2-Pro",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/gpt-image-2",
+    "name": "GPT-Image-2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/gpt-image-1",
+    "name": "GPT-Image-1",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/gpt-image-1-mini",
+    "name": "GPT-Image-1-Mini",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "openai/gpt-image-1.5",
+    "name": "gpt-image-1.5",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "poe",
+    "id": "topazlabs-co/topazlabs",
+    "name": "TopazLabs",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 204,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "groq",
+    "id": "whisper-large-v3",
+    "name": "Whisper",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "groq",
+    "id": "whisper-large-v3-turbo",
+    "name": "Whisper Large V3 Turbo",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "groq",
+    "id": "canopylabs/orpheus-v1-english",
+    "name": "Canopy Labs Orpheus V1 English",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 4000,
+    "maxTokens": 50000
+  },
+  {
+    "vendor": "groq",
+    "id": "canopylabs/orpheus-arabic-saudi",
+    "name": "Canopy Labs Orpheus Arabic Saudi",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 4000,
+    "maxTokens": 50000
+  },
+  {
+    "vendor": "alibaba-token-plan",
+    "id": "happyhorse-1.1-r2v",
+    "name": "HappyHorse 1.1 Reference-to-Video",
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan",
+    "id": "happyhorse-1.1-t2v",
+    "name": "HappyHorse 1.1 Text-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan",
+    "id": "qwen-image-2.0",
+    "name": "Qwen Image 2.0",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan",
+    "id": "qwen-image-2.0-pro",
+    "name": "Qwen Image 2.0 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan",
+    "id": "wan2.7-image",
+    "name": "Wan2.7 Image",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan",
+    "id": "wan2.7-image-pro",
+    "name": "Wan2.7 Image Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan",
+    "id": "happyhorse-1.1-i2v",
+    "name": "HappyHorse 1.1 Image-to-Video",
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "nan",
+    "id": "qwen-image-2.1",
+    "name": "Qwen-Image-2.1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "nearai",
+    "id": "black-forest-labs/FLUX.2-klein-4B",
+    "name": "FLUX.2 Klein 4B",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 128000
+  },
+  {
+    "vendor": "nearai",
+    "id": "openai/whisper-large-v3",
+    "name": "Whisper Large v3",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 448,
+    "maxTokens": 448
+  },
+  {
+    "vendor": "xiaomi-token-plan-cn",
+    "id": "mimo-v2.5-tts-voicedesign",
+    "name": "MiMo-V2.5-TTS-VoiceDesign",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-cn",
+    "id": "mimo-v2.5-tts",
+    "name": "MiMo-V2.5-TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-cn",
+    "id": "mimo-v2-tts",
+    "name": "MiMo-V2-TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-cn",
+    "id": "mimo-v2.5-tts-voiceclone",
+    "name": "MiMo-V2.5-TTS-VoiceClone",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "privatemode-ai",
+    "id": "whisper-large-v3",
+    "name": "Whisper large-v3",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 448,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "privatemode-ai",
+    "id": "voxtral-mini-3b",
+    "name": "Voxtral Mini 3B",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 32000,
+    "maxTokens": 32000
+  },
+  {
+    "vendor": "alibaba-token-plan-cn",
+    "id": "happyhorse-1.1-r2v",
+    "name": "HappyHorse 1.1 Reference-to-Video",
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan-cn",
+    "id": "happyhorse-1.1-t2v",
+    "name": "HappyHorse 1.1 Text-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan-cn",
+    "id": "qwen-image-2.0",
+    "name": "Qwen Image 2.0",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan-cn",
+    "id": "qwen-image-2.0-pro",
+    "name": "Qwen Image 2.0 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan-cn",
+    "id": "wan2.7-image",
+    "name": "Wan2.7 Image",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan-cn",
+    "id": "wan2.7-image-pro",
+    "name": "Wan2.7 Image Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-token-plan-cn",
+    "id": "happyhorse-1.1-i2v",
+    "name": "HappyHorse 1.1 Image-to-Video",
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "azure",
+    "id": "gpt-image-2",
+    "name": "GPT-Image-2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "azure",
+    "id": "gpt-image-2.5-flare",
+    "name": "GPT Image 2.5 Flare",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "azure",
+    "id": "gpt-image-2.5-sunburst",
+    "name": "GPT Image 2.5 Sunburst",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "azure",
+    "id": "gpt-image-1",
+    "name": "GPT-Image-1",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba",
+    "id": "qwen3-asr-flash",
+    "name": "Qwen3-ASR Flash",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 53248,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "zenmux",
+    "id": "z-ai/glm-image",
+    "name": "GLM-Image",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 10240,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "zenmux",
+    "id": "x-ai/grok-voice-tts-1.0",
+    "name": "Grok Voice TTS 1.0",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 15000,
+    "maxTokens": 15000
+  },
+  {
+    "vendor": "zenmux",
+    "id": "x-ai/grok-imagine-image-2.0",
+    "name": "Grok Imagine Image 2.0",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 66000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "zenmux",
+    "id": "x-ai/grok-voice-stt-1.0",
+    "name": "Grok Voice STT 1.0",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 15000,
+    "maxTokens": 15000
+  },
+  {
+    "vendor": "regolo-ai",
+    "id": "qwen-image",
+    "name": "Qwen-Image",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "regolo-ai",
+    "id": "faster-whisper-large-v3",
+    "name": "Faster Whisper Large v3",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 448,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "xiaomi-token-plan-ams",
+    "id": "mimo-v2.5-tts-voiceclone",
+    "name": "MiMo-V2.5-TTS-VoiceClone",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-ams",
+    "id": "mimo-v2-tts",
+    "name": "MiMo-V2-TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-ams",
+    "id": "mimo-v2.5-tts",
+    "name": "MiMo-V2.5-TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-ams",
+    "id": "mimo-v2.5-tts-voicedesign",
+    "name": "MiMo-V2.5-TTS-VoiceDesign",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "qiniu-ai",
+    "id": "gemini-2.5-flash-image",
+    "name": "Gemini 2.5 Flash Image",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 32768,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "qiniu-ai",
+    "id": "kling-v2-6",
+    "name": "Kling-V2 6",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 99999999,
+    "maxTokens": 99999999
+  },
+  {
+    "vendor": "google",
+    "id": "gemini-omni-flash-preview",
+    "name": "Gemini Omni Flash Preview",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 131072,
+    "maxTokens": 65536
+  },
+  {
+    "vendor": "google",
+    "id": "veo-3.1-lite-generate-preview",
+    "name": "Veo 3.1 lite",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "google",
+    "id": "gemini-3.1-flash-tts-preview",
+    "name": "Gemini 3.1 Flash TTS Preview",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 16384
+  },
+  {
+    "vendor": "google",
+    "id": "gemini-2.5-pro-preview-tts",
+    "name": "Gemini 2.5 Pro Preview TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 16384
+  },
+  {
+    "vendor": "google",
+    "id": "gemini-2.5-flash-preview-tts",
+    "name": "Gemini 2.5 Flash Preview TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 16384
+  },
+  {
+    "vendor": "google",
+    "id": "veo-3.1-fast-generate-preview",
+    "name": "Veo 3.1 fast",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "google",
+    "id": "veo-3.1-generate-preview",
+    "name": "Veo 3.1",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "google",
+    "id": "gemini-3.5-live-translate-preview",
+    "name": "Gemini 3.5 Live Translate Preview",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "audio",
+        "text"
+      ]
+    },
+    "contextWindow": 16384,
+    "maxTokens": 32768
+  },
+  {
+    "vendor": "xai",
+    "id": "grok-imagine-image",
+    "name": "Grok Imagine Image",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "image",
+        "pdf"
+      ]
+    },
+    "contextWindow": 16000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "xai",
+    "id": "grok-imagine-video",
+    "name": "Grok Imagine Video",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "pdf"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 1024,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "xai",
+    "id": "grok-imagine-video-1.5",
+    "name": "Grok Imagine Video 1.5",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "audio",
+        "pdf"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 1024,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "xai",
+    "id": "grok-imagine-image-quality",
+    "name": "Grok Imagine Image Quality",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "image",
+        "pdf"
+      ]
+    },
+    "contextWindow": 16000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "scaleway",
+    "id": "whisper-large-v3",
+    "name": "Whisper Large v3",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "vercel",
+    "id": "spacexai/grok-tts",
+    "name": "Grok TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "spacexai/grok-stt",
+    "name": "Grok STT",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "spacexai/grok-imagine-image",
+    "name": "Grok Imagine Image",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "spacexai/grok-imagine-video",
+    "name": "Grok Imagine",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "spacexai/grok-imagine-video-1.5",
+    "name": "Grok Imagine Video 1.5",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "spacexai/grok-imagine-image-2.0",
+    "name": "Grok Imagine Image 2.0",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "prodia/flux-fast-schnell",
+    "name": "Flux Schnell",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v2",
+    "name": "Recraft V2",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v4-pro",
+    "name": "Recraft V4 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v4.1-utility",
+    "name": "Recraft V4.1 Utility",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v4.1-pro",
+    "name": "Recraft V4.1 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v3",
+    "name": "Recraft V3",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v4.1",
+    "name": "Recraft V4.1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v4.1-flash",
+    "name": "Recraft V4.1 Flash",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v4.1-utility-pro",
+    "name": "Recraft V4.1 Utility Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "recraft/recraft-v4",
+    "name": "Recraft V4",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "quiverai/arrow-1.1",
+    "name": "Arrow 1.1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 131072,
+    "maxTokens": 131072
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-kontext-max",
+    "name": "FLUX.1 Kontext Max",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-pro-1.1-ultra",
+    "name": "FLUX1.1 [pro] Ultra",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-3-video",
+    "name": "Flux 3",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-2-flex",
+    "name": "FLUX.2 [flex]",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-2-klein-4b",
+    "name": "FLUX.2 [klein] 4B",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-pro-1.0-fill",
+    "name": "FLUX.1 Fill [pro]",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-2-klein-9b",
+    "name": "FLUX.2 [klein] 9B",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-2-pro",
+    "name": "FLUX.2 [pro]",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 67300,
+    "maxTokens": 67300
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-2-max",
+    "name": "FLUX.2 [max]",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 67300,
+    "maxTokens": 67300
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-pro-1.1",
+    "name": "FLUX1.1 [pro]",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bfl/flux-kontext-pro",
+    "name": "FLUX.1 Kontext Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 512,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "meta/muse-image-1.0",
+    "name": "Muse Image 1.0",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.6-t2v",
+    "name": "Wan v2.6 Text-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.6-i2v-flash",
+    "name": "Wan v2.6 Image-to-Video Flash",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.6-r2v-flash",
+    "name": "Wan v2.6 Reference-to-Video Flash",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.6-i2v",
+    "name": "Wan v2.6 Image-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.5-t2v-preview",
+    "name": "Wan v2.5 Text-to-Video Preview",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v3.0-video",
+    "name": "Wan v3.0 Video",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.7-r2v",
+    "name": "Wan v2.7 Reference-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v3.0-video-prime",
+    "name": "Wan v3.0 Video Prime",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.6-r2v",
+    "name": "Wan v2.6 Reference-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "alibaba/wan-v2.7-t2v",
+    "name": "Wan v2.7 Text-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v2.6-t2v",
+    "name": "Kling v2.6 Text-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v2.6-i2v",
+    "name": "Kling v2.6 Image-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v2.5-turbo-t2v",
+    "name": "Kling v2.5 Turbo Text-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v3.0-i2v",
+    "name": "Kling v3.0 Image-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v3.0-motion-control",
+    "name": "Kling v3.0 Motion Control",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v3.0-t2v",
+    "name": "Kling v3.0 Text-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v2.6-motion-control",
+    "name": "Kling v2.6 Motion Control",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "klingai/kling-v2.5-turbo-i2v",
+    "name": "Kling v2.5 Turbo Image-to-Video",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedream-5.0-lite",
+    "name": "Seedream 5.0 Lite",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedream-4.5",
+    "name": "Seedream 4.5",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedream-4.0",
+    "name": "Seedream 4.0",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedance-v1.0-pro",
+    "name": "Seedance v1.0 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedance-2.0",
+    "name": "Seedance 2.0",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedance-2.0-fast",
+    "name": "Seedance 2.0 Fast",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedance-v1.5-pro",
+    "name": "Seedance v1.5 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedance-2.0-mini",
+    "name": "Seedance 2.0 Mini",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedance-2.5",
+    "name": "Seedance 2.5",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedance-v1.0-pro-fast",
+    "name": "Seedance v1.0 Pro Fast",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "bytedance/seedream-5.0-pro",
+    "name": "Seedream 5.0 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/gemini-3.5-transcribe-live",
+    "name": "Gemini 3.5 Transcribe Live",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/gemini-3.8-flash-lite-tts",
+    "name": "Gemini 3.8 Flash-Lite TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/veo-3.1-lite-generate-001",
+    "name": "Veo 3.1 Lite Generate",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/veo-3.1-fast-generate-001",
+    "name": "Veo 3.1 Fast Generate",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/veo-3.0-fast-generate-001",
+    "name": "Veo 3.0 Fast Generate",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/veo-3.1-generate-001",
+    "name": "Veo 3.1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/gemini-3.5-transcribe",
+    "name": "Gemini 3.5 Transcribe",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/gemini-3.8-flash-tts",
+    "name": "Gemini 3.8 Flash TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "google/veo-3.0-generate-001",
+    "name": "Veo 3.0",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "minimax/minimax-h3",
+    "name": "MiniMax H3",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "minimax/minimax-h3-max",
+    "name": "MiniMax H3 Max",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "fish-audio/s2.1-pro",
+    "name": "S2.1 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "fish-audio/s1",
+    "name": "S1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "fish-audio/transcribe-1",
+    "name": "Transcribe-1",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "fish-audio/s2-pro",
+    "name": "S2 Pro",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-4o-transcribe",
+    "name": "GPT-4o Transcribe",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-image-2",
+    "name": "GPT Image 2",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/whisper-1",
+    "name": "Whisper",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-image-2.5-flare",
+    "name": "GPT Image 2.5 Flare",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-image-2.5-sunburst",
+    "name": "GPT Image 2.5 Sunburst",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-image-1",
+    "name": "GPT Image 1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/tts-1",
+    "name": "TTS-1",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-image-1-mini",
+    "name": "GPT Image 1 Mini",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-4o-mini-transcribe",
+    "name": "GPT-4o mini Transcribe",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-image-1.5",
+    "name": "GPT Image 1.5",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/gpt-realtime-whisper",
+    "name": "gpt-realtime-whisper",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "vercel",
+    "id": "openai/tts-1-hd",
+    "name": "TTS-1 HD",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "greenpt",
+    "id": "green-s",
+    "name": "Green S",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "greenpt",
+    "id": "green-s-pro",
+    "name": "Green S Pro",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "stepfun-ai",
+    "id": "stepaudio-2.5-asr",
+    "name": "StepAudio 2.5 ASR",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "stepfun-ai",
+    "id": "stepaudio-2.5-tts",
+    "name": "StepAudio 2.5 TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "stepfun-ai",
+    "id": "step-tts-2",
+    "name": "Step TTS 2",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "bytedance/seedance-2",
+    "name": "Seedance 2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 4096,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "google/veo3.1",
+    "name": "Veo 3.1",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 400000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "google/imagen-4.0-ultra",
+    "name": "Imagen 4 Ultra",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "google/veo3.1-lite",
+    "name": "Veo 3.1 Lite",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 400000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "google/veo3.1-fast",
+    "name": "Veo 3.1 Fast",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 400000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "google/imagen-4.0-fast",
+    "name": "Imagen 4 Fast",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 480,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "wanx/wan-v2-6",
+    "name": "Wan 2.6",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 400000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "leonardo-ai/lucid-realism",
+    "name": "Lucid Realism",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 4096,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "leonardo-ai/lucid-origin",
+    "name": "Lucid Origin",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 4096,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "fastrouter",
+    "id": "openai/gpt-image-2",
+    "name": "GPT Image 2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "aihubmix",
+    "id": "gpt-image-2",
+    "name": "GPT-Image-2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "aihubmix",
+    "id": "gpt-image-2.5-flare",
+    "name": "GPT Image 2.5 Flare",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "aihubmix",
+    "id": "gpt-image-2.5-sunburst",
+    "name": "GPT Image 2.5 Sunburst",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "nvidia",
+    "id": "black-forest-labs/flux_1-schnell",
+    "name": "FLUX.1-schnell",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 77,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "nvidia",
+    "id": "black-forest-labs/flux.1-dev",
+    "name": "FLUX.1-dev",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 4096,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "nvidia",
+    "id": "black-forest-labs/flux_1-kontext-dev",
+    "name": "FLUX.1-Kontext-dev",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 40960,
+    "maxTokens": 40960
+  },
+  {
+    "vendor": "nvidia",
+    "id": "black-forest-labs/flux_2-klein-4b",
+    "name": "FLUX.2 Klein 4B",
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 40960,
+    "maxTokens": 40960
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/sparsedrive",
+    "name": "sparsedrive",
+    "modalities": {
+      "input": [
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/bevformer",
+    "name": "bevformer",
+    "modalities": {
+      "input": [
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/cosmos-transfer1-7b",
+    "name": "cosmos-transfer1-7b",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/cosmos-predict1-5b",
+    "name": "cosmos-predict1-5b",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/synthetic-video-detector",
+    "name": "synthetic-video-detector",
+    "modalities": {
+      "input": [
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/cosmos-transfer2_5-2b",
+    "name": "cosmos-transfer2.5-2b",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/active-speaker-detection",
+    "name": "Active Speaker Detection",
+    "modalities": {
+      "input": [
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/streampetr",
+    "name": "streampetr",
+    "modalities": {
+      "input": [
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 128000,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "nvidia",
+    "id": "nvidia/magpie-tts-zeroshot",
+    "name": "magpie-tts-zeroshot",
+    "modalities": {
+      "input": [
+        "text",
+        "audio"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "nvidia",
+    "id": "qwen/qwen-image-edit",
+    "name": "Qwen Image Edit",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "nvidia",
+    "id": "qwen/qwen-image",
+    "name": "Qwen Image",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "nvidia",
+    "id": "openai/whisper-large-v3",
+    "name": "Whisper Large v3",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "xiaomi-token-plan-sgp",
+    "id": "mimo-v2.5-tts-voiceclone",
+    "name": "MiMo-V2.5-TTS-VoiceClone",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-sgp",
+    "id": "mimo-v2-tts",
+    "name": "MiMo-V2-TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-sgp",
+    "id": "mimo-v2.5-tts",
+    "name": "MiMo-V2.5-TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "xiaomi-token-plan-sgp",
+    "id": "mimo-v2.5-tts-voicedesign",
+    "name": "MiMo-V2.5-TTS-VoiceDesign",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 8192
+  },
+  {
+    "vendor": "stepfun",
+    "id": "step-tts-2",
+    "name": "Step TTS 2",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "stepfun",
+    "id": "stepaudio-2.5-tts",
+    "name": "StepAudio 2.5 TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "stepfun",
+    "id": "stepaudio-2.5-asr",
+    "name": "StepAudio 2.5 ASR",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "kenari",
+    "id": "gpt-image-2",
+    "name": "GPT-Image-2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 272000,
+    "maxTokens": 16384
+  },
+  {
+    "vendor": "kenari",
+    "id": "grok-imagine-image-2-0",
+    "name": "Grok Imagine Image 2.0",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 8000,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "kenari",
+    "id": "whisper-large-v3-turbo",
+    "name": "Whisper Large v3 Turbo",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 448,
+    "maxTokens": 448
+  },
+  {
+    "vendor": "kenari",
+    "id": "gemini-3-1-flash-tts",
+    "name": "Gemini 3.1 Flash TTS Preview",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 8192,
+    "maxTokens": 16384
+  },
+  {
+    "vendor": "mistral",
+    "id": "voxtral-mini-tts-latest",
+    "name": "Voxtral Mini TTS (latest)",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "mistral",
+    "id": "voxtral-mini-latest",
+    "name": "Voxtral Mini (latest)",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "google-vertex",
+    "id": "gemini-2.5-flash-tts",
+    "name": "Gemini 2.5 Flash TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 32768,
+    "maxTokens": 16384
+  },
+  {
+    "vendor": "google-vertex",
+    "id": "gemini-2.5-pro-tts",
+    "name": "Gemini 2.5 Pro TTS",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 32768,
+    "maxTokens": 16384
+  },
+  {
+    "vendor": "evroc",
+    "id": "KBLab/kb-whisper-large",
+    "name": "KB Whisper",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 448,
+    "maxTokens": 448
+  },
+  {
+    "vendor": "evroc",
+    "id": "openai/whisper-large-v3",
+    "name": "Whisper 3 Large",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 448,
+    "maxTokens": 4096
+  },
+  {
+    "vendor": "evroc",
+    "id": "openai/whisper-large-v3-turbo",
+    "name": "Whisper Large v3 Turbo",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 448,
+    "maxTokens": 448
+  },
+  {
+    "vendor": "openai",
+    "id": "gpt-image-2",
+    "name": "gpt-image-2",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "openai",
+    "id": "gpt-image-1",
+    "name": "gpt-image-1",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "openai-gpt-image-1",
+    "name": "GPT Image 1",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "stable-diffusion-3.5-large",
+    "name": "Stable Diffusion 3.5 Large",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 256,
+    "maxTokens": 1
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "wan2-2-t2v-a14b",
+    "name": "Wan2.2-T2V-A14B",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "video"
+      ]
+    },
+    "contextWindow": 100,
+    "maxTokens": 1
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "qwen3-tts-voicedesign",
+    "name": "Qwen3 TTS VoiceDesign",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 32768,
+    "maxTokens": 1
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "fal-ai/fast-sdxl",
+    "name": "Fast SDXL",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "fal-ai/elevenlabs/tts/multilingual-v2",
+    "name": "ElevenLabs Multilingual TTS v2",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "fal-ai/flux/schnell",
+    "name": "FLUX.1 [schnell]",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "image"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "digitalocean",
+    "id": "fal-ai/stable-audio-25/text-to-audio",
+    "name": "Stable Audio 2.5 (Text-to-Audio)",
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "audio"
+      ]
+    },
+    "contextWindow": 0,
+    "maxTokens": 0
+  },
+  {
+    "vendor": "alibaba-cn",
+    "id": "qwen3-asr-flash",
+    "name": "Qwen3-ASR Flash",
+    "modalities": {
+      "input": [
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "contextWindow": 53248,
+    "maxTokens": 4096
+  }
+]

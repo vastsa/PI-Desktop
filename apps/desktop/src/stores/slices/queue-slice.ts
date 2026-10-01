@@ -370,7 +370,7 @@ export function createQueueSlice({
       }
     },
 
-    sendPrompt: async (content, draft, requestedSessionId) => {
+    sendPrompt: async (content, draft, requestedSessionId, onAccepted) => {
       let sessionId = requestedSessionId ?? get().activeSessionId;
       const submissionKey = sessionId ? `session:${sessionId}` : "draft";
       if (pendingSubmissions.has(submissionKey)) return false;
@@ -404,6 +404,7 @@ export function createQueueSlice({
             return false;
           }
           const accepted = await get().enqueuePrompt(content, draft, sessionId);
+          if (accepted) onAccepted?.(sessionId);
           return accepted;
         }
         const startedIn = sessionId;
@@ -478,6 +479,7 @@ export function createQueueSlice({
           if (submitted?.abortResolution && (await submitted.abortResolution)) {
             return false;
           }
+          onAccepted?.(startedIn);
           return true;
         } catch (error) {
           runtime.submittedComposerDrafts.delete(startedIn);

@@ -236,15 +236,10 @@ claim availability or freshness against a malicious server.
 - The client carries no GitHub token. A private or otherwise unreachable feed
   fails closed; automatic failures stay ambient and explicit checks expose the
   error.
-- Unsigned macOS distributions keep a narrow first-launch fallback for trusted
-  sources. The DMG is a two-icon install and does not include that note. The ZIP
-  package includes a text note and the executable helper, which searches only
-  `/Applications/PI-Desktop.app` and `~/Applications/PI-Desktop.app`,
-  verifies `CFBundleIdentifier` is `net.aiuo.pi-desktop`, removes only
-  `com.apple.quarantine` recursively when present, and opens the app. It accepts
-  no arbitrary path, uses no privilege escalation, and is not a substitute for
-  Developer ID signing or notarization. The note gives the manual
-  `com.apple.quarantine` command and says signed/notarized builds do not need it.
+- Neither macOS DMG nor ZIP ships first-launch guidance or an executable
+  quarantine-clearing helper. GitHub tag artifacts remain Developer ID-signed,
+  notarized, and stapled; opt-in unsigned builds are debug artifacts and do not
+  imply Gatekeeper qualification.
 - Localized product "what's new" text (D164/D345) is selected in Main from the
   shipped changelog catalog and attached to `UpdateState.releaseNotes`. The
   renderer cannot supply a notes URL, feed, or remote body; missing catalog

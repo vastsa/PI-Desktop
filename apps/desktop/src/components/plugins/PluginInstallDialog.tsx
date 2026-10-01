@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useBlockingOverlay } from "../../lib/blocking-overlay";
 import { useTranslation } from "react-i18next";
 import {
   canCancelInstall,
@@ -43,6 +44,8 @@ type Props = {
  * the same request again; a success shows and steps aside.
  */
 export function PluginInstallDialog({ job, onCancel, onRetry, onClose }: Props) {
+  // Hide docked native plugin views while this host install sheet is open.
+  useBlockingOverlay();
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const [hovered, setHovered] = useState(false);

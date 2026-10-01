@@ -53,6 +53,9 @@ export default defineConfig({
     define: {
       "process.env.WS_NO_BUFFER_UTIL": "\"1\"",
       "process.env.WS_NO_UTF_8_VALIDATE": "\"1\"",
+      // The main bundle is ESM (`type: module`), where Node does not provide
+      // the CommonJS `__dirname` global used by Electron's relative asset paths.
+      "__dirname": "import.meta.dirname",
     },
     build: {
       rollupOptions: {

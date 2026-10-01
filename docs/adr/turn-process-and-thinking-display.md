@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-17
-- Amended: 2026-09-20
+- Amended: 2026-09-27
 - Issues: #510, #461
 - Amends: D071, [ADR 0242](0242-delta-only-streaming-updates.md)
 
@@ -33,15 +33,16 @@ its item disclosure directly; hidden compact-mode thinking does not create a
 redundant wrapper. Existing Task topology remains its segment's container and is
 not duplicated inside an ordinary activity group.
 
-Detailed mode starts active and completed whole-process disclosures open. The
-ordinary group that owns the active execution segment starts open, then closes
-on completion only while untouched. Other completed ordinary groups start
-closed. Compact mode starts process and ordinary-group disclosures closed, but
-an untouched active process containing any recorded failed or denied tool stays
-open through later recovery and closes on turn completion if still untouched.
-Compact mode keeps every tool/search payload closed and renders no reasoning
-text or excerpt; it shows only the active thinking indicator and omits empty
-completed thinking-only containers.
+Detailed mode starts active whole-process disclosures open. On completion,
+untouched whole-process disclosures close by default; an explicit user choice
+remains authoritative. The ordinary group that owns the active execution
+segment starts open, then closes on completion only while untouched. Other
+completed ordinary groups start closed. Compact mode starts process and
+ordinary-group disclosures closed, but an untouched active process containing
+any recorded failed or denied tool stays open through later recovery and closes
+on turn completion if still untouched. Compact mode keeps every tool/search
+payload closed and renders no reasoning text or excerpt; it shows only the
+active thinking indicator and omits empty completed thinking-only containers.
 
 Detailed mode preserves the leaf default only for the literal final item of the
 last activity group. If that item is an eligible tool-call or hosted-search row,
@@ -81,8 +82,9 @@ delegated child work or treat a failed child as a failed assistant turn.
 
 - Both modes expose one whole-process disclosure while keeping the final answer
   and actionable interruptions reachable outside it.
-- Detailed mode keeps progress narration visible by default, folds untouched
-  completed activity groups, and preserves the literal-final-item leaf default.
+- Detailed mode keeps the active process visible, folds untouched completed
+  processes by default, preserves explicit disclosure choices, and retains the
+  literal-final-item leaf default.
 - Compact mode remains the low-detail option: the process is folded, payloads
   stay closed, and reasoning content is suppressed.
 - Disclosure memory is pane-owned presentation state with stable turn, group,
@@ -98,3 +100,6 @@ checks and compilation. The linked E2E scenarios describe intended behavior for
 source and design review; no unit, component, integration, browser, Electron, or
 E2E tests are added or run for this amendment. See
 E2E-CHAT-turn-process-and-thinking-display for the synchronized scenario text.
+For the 2026-09-27 amendment, `apps/desktop/test/turn-process.test.mjs` covers
+the default selection, and `pnpm test:e2e:transcript-disclosure` exercises
+active-to-completed collapse and user-open retention in real Chromium.

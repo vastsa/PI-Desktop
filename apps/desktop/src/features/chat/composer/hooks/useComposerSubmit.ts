@@ -18,6 +18,7 @@ import {
   resolveSlashDispatch,
 } from "../slash-dispatch";
 import { readEditorValue, setEditorCaret, type ComposerFileReference } from "../editor";
+import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import type { ComposerDraftController } from "./useComposerDraft";
 
 type UseComposerSubmitOptions = {
@@ -35,6 +36,8 @@ type UseComposerSubmitOptions = {
   sendPrompt: AppState["sendPrompt"];
   steerPrompt: AppState["steerPrompt"];
   showToast: AppState["showToast"];
+  /** Record an accepted submission for ArrowUp recall. */
+  recordHistory?: (snapshot: ComposerDraftSnapshot, sessionId: string) => void;
   draft: Pick<
     ComposerDraftController,
     | "ref"
@@ -78,6 +81,7 @@ export function useComposerSubmit({
   sendPrompt,
   steerPrompt,
   showToast,
+  recordHistory,
   draft,
 }: UseComposerSubmitOptions): ComposerSubmitController {
   const [enhancingPrompt, setEnhancingPrompt] = useState(false);
@@ -209,6 +213,18 @@ export function useComposerSubmit({
     const submittedDraftKey = draftKey;
     const submittedDraftRevision = draft.draftRevision(submittedDraftKey);
     const submittedDraft = draft.draftSnapshot(text);
+    // Recall keeps what the user typed, in the conversation that submitted it.
+    // For a mode command that is the whole `/agent …` text rather than its body,
+    // so re-submitting re-runs it; every other recorded path stores exactly the
+    // accepted payload. A send from the empty home has no session yet, so the id
+    // is resolved after the submission materialized it.
+    let acceptedSessionId = activeSessionId ?? undefined;
+    const remember = () => {
+      if (acceptedSessionId) recordHistory?.(submittedDraft, acceptedSessionId);
+    };
+    const captureAcceptedSession = (sessionId: string) => {
+      acceptedSessionId = sessionId;
+    };
     // Slash dispatch stays local for builtin and extension commands, while
     // templates, skills, and unknown aliases continue as normal prompt text. A
     // command source that cannot be read is a third case: the composer cannot
@@ -248,8 +264,11 @@ export function useComposerSubmit({
                 activeFileReferences,
               ),
               draft.draftSnapshot(visibleCommandBody),
+              activeSessionId ?? undefined,
+              captureAcceptedSession,
             );
             if (accepted) draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
+            if (accepted) remember();
           } catch (error) {
             showToast(error instanceof Error ? error.message : String(error), {
               variant: "error",
@@ -261,6 +280,7 @@ export function useComposerSubmit({
           try {
             await runExtensionCommand(command.name, commandBody);
             draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
+            remember();
           } catch (error) {
             showToast(error instanceof Error ? error.message : String(error), {
               variant: "error",
@@ -273,6 +293,7 @@ export function useComposerSubmit({
             if (command.kind === "builtin") await runPaletteCommand(command.id);
             else await api.executeCommand(command.id);
             draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
+            remember();
           } catch (error) {
             showToast(error instanceof Error ? error.message : String(error), {
               variant: "error",
@@ -289,8 +310,14 @@ export function useComposerSubmit({
     draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
     const accepted = steering
       ? await steerPrompt(inlineContent, submittedDraft)
-      : await sendPrompt(inlineContent, submittedDraft);
+      : await sendPrompt(
+          inlineContent,
+          submittedDraft,
+          activeSessionId ?? undefined,
+          captureAcceptedSession,
+        );
     if (!accepted) draft.restoreDraftForKey(submittedDraftKey, submittedDraft);
+    else remember();
   };
 
   return {

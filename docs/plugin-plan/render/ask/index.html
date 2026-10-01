@@ -1,0 +1,101 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>确认卡 · 目录</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:880px;margin:0 auto;padding:24px 28px 80px}
+  h2{font-size:15px;margin:28px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+  h2:first-child{margin-top:0;border-top:0;padding-top:0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  ul{margin:0;padding-left:1.2em}
+  li{margin:3px 0}
+  .callout{margin:12px 0;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px;border-left:2px solid var(--line-2)}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">确认卡</a>
+  <span class="spacer"></span>
+  <a href="index.html" aria-current="page">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render · ask</div>
+  <h1>确认卡 · 目录</h1>
+  <p>插件向用户问一句话的接口：<code>ui.ask</code>。固定卡壳、配置化按钮，返回恒为 <code>{ choice, reason? }</code>。这是 render 相关接口，不是 UI 槽——没有认领位，不进组件树。</p>
+  <div class="meta">status: draft · issue #545 · #561 · 原 ui.confirm 语义，改名消歧</div>
+</header>
+
+<main>
+
+  <h2>这个目录里有什么</h2>
+  <div class="cards">
+    <a class="card" href="requirements.html">
+      <div class="name">requirements.html</div>
+      <p class="what">要什么：范围、契约形状、谁能用、场景、明确不做、本轮拍板。</p>
+      <p class="files">范围 · 契约形状 · 谁能用 · 场景 · 明确不做 · 本轮拍板</p>
+    </a>
+    <a class="card" href="data-flow.html">
+      <div class="name">data-flow.html</div>
+      <p class="what">数据怎么走：调用与返回、卡片队列、卸载落定、出错怎么办。</p>
+      <p class="files">接口约定 · 数据怎么走 · 出错怎么办 · 不提供什么 · 相关条目 · 还没定的事</p>
+    </a>
+  </div>
+
+  <h2>为什么没有 demo</h2>
+  <div class="callout warn"><b>接口类，省略 demo。</b>本目录只钉契约（入参、返回、边界），没有可挂载的界面槽。卡片长什么样，见 <code>ui/layers/demo.html</code> 的确认卡一幕（原 <code>ui.confirm</code> 形态，外形不变，只改返回值与名字）。</div>
+
+  <h2>一句话回顾</h2>
+  <ul>
+     <li>名字是 <code>ui.ask</code>（已定名，原 <code>ui.confirm</code>）——与 agent 侧的布尔确认<b>同名不同物</b>，改名消歧。</li>
+    <li>返回<b>恒为对象</b> <code>{ choice, reason? }</code>，禁止「有时字符串、有时对象」两态。</li>
+    <li>卸载时 <code>reason: "plugin-unloaded"</code>，挂起的等待一并落定，不悬空。</li>
+    <li>卡壳宿主固定；按钮配置化（文案、档位）。卡片里没有插件代码在跑。</li>
+    <li><b>不接管</b>宿主的权限审批卡——那张卡是安全决策面，永远只属于宿主。</li>
+    <li>出站分层里属<b>可选 H</b>。</li>
+  </ul>
+
+   <h2>定名记录</h2>
+   <p style="color:var(--muted);font-size:13px">命名消歧已定：本接口定名 <code>ui.ask</code>，与 agent 侧布尔确认同名不同物——见 requirements.html「明确不做 / 本轮拍板」。</p>
+
+</main>
+</body>
+</html>

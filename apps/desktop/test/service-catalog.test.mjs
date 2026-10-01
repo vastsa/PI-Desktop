@@ -10,14 +10,15 @@ import {
   CUSTOM_SERVICE,
   customServiceOption,
   filterServiceOptions,
-  hostOf,
+  endpointLabel,
   namedServiceOptions,
 } from "../src/components/settings/service-catalog.ts";
 
-// Stands in for i18next with two localized labels, so a label-only match is
+// Stands in for i18next with localized labels, so a label-only match is
 // distinguishable from a match on the canonical English name.
 const labels = {
   "settings.presetMoonshotCn": "月之暗面",
+  "settings.presetStepfunPlan": "阶跃星辰 Plan（订阅）",
   "settings.presetCustomEndpoint": "自定义端点",
 };
 const translate = (key) => labels[key] ?? key;
@@ -30,7 +31,17 @@ test("every named preset is offered once, in the shared table's order", () => {
     NAMED_ENDPOINT_PRESETS.map((preset) => preset.id),
   );
   const openai = namedServiceOptions(translate).find((option) => option.id === "openai");
-  assert.equal(openai?.host, "api.openai.com");
+  assert.equal(openai?.endpoint, "api.openai.com/v1");
+});
+
+test("StepFun Plan is offered once and searchable by its label, vendor and endpoint", () => {
+  const rows = namedServiceOptions(translate).filter((option) => option.id === "stepfun-plan");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].label, labels["settings.presetStepfunPlan"]);
+  assert.equal(rows[0].endpoint, "api.stepfun.com/step_plan/v1");
+  for (const query of ["阶跃星辰", "StepFun Plan", "stepfun-step-plan", "api.stepfun.com/step_plan/v1"]) {
+    assert.ok(ids(query).includes("stepfun-plan"), query);
+  }
 });
 
 test("an empty or blank query keeps every option", () => {
@@ -56,7 +67,7 @@ test("a query matches the vendor key and the endpoint host", () => {
 test("the custom endpoint is searchable by its label and by 'custom'", () => {
   const custom = customServiceOption(translate);
   assert.equal(custom.id, CUSTOM_SERVICE);
-  assert.equal(custom.host, "");
+  assert.equal(custom.endpoint, "");
   assert.deepEqual(ids("自定义"), [CUSTOM_SERVICE]);
   assert.deepEqual(ids("custom endpoint"), [CUSTOM_SERVICE]);
 });
@@ -65,7 +76,14 @@ test("an unmatched query yields no options", () => {
   assert.deepEqual(ids("no-such-service-anywhere"), []);
 });
 
-test("hostOf keeps unparseable input as-is", () => {
-  assert.equal(hostOf("https://api.openai.com/v1"), "api.openai.com");
-  assert.equal(hostOf("not a url"), "not a url");
+test("endpointLabel keeps unparseable input as-is", () => {
+  assert.equal(endpointLabel("https://api.openai.com/v1"), "api.openai.com/v1");
+  assert.equal(endpointLabel("not a url"), "not a url");
+});
+
+
+test("endpoint labels retain routes and ports without showing credentials or query fields", () => {
+  assert.equal(endpointLabel("https://user:password@api.example:8443/plan/v1?key=private#fragment"),
+    "api.example:8443/plan/v1");
+  assert.equal(endpointLabel("https://api.example/"), "api.example");
 });

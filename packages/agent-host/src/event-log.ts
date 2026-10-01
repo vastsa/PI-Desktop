@@ -12,6 +12,7 @@ export type EventDraft = {
   revision: number;
   kind: RacpEventKind;
   parentToolCallId?: string;
+  nestedParentToolCallId?: string;
   agentName?: string;
   payload: unknown;
   occurredAt?: string;

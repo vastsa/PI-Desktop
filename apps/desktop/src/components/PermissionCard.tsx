@@ -1,9 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import {
-  permissionSecondsLeft,
-  type PendingPermission,
-} from "../lib/pending-permissions";
+import type { PendingPermission } from "../lib/pending-permissions";
 import { useAppStore } from "../stores/app-store";
 import { buildToolPresentation } from "../lib/tool-presentation";
 import { ToolDetailBlocks } from "./ToolDetails";
@@ -23,11 +20,7 @@ export function PermissionCard({
   const workspace = useAppStore((state) =>
     state.sessions.find((session) => session.id === permission.sessionId)?.projectPath,
   );
-  const [secondsLeft, setSecondsLeft] = useState(() =>
-    permissionSecondsLeft(permission.receivedAt),
-  );
   const [resolving, setResolving] = useState(false);
-  const timeoutHandled = useRef(false);
 
   const restoreComposerFocus = () => {
     window.requestAnimationFrame(() => {
@@ -51,20 +44,6 @@ export function PermissionCard({
       restoreComposerFocus();
     }
   };
-
-  useEffect(() => {
-    timeoutHandled.current = false;
-    const update = () => setSecondsLeft(permissionSecondsLeft(permission.receivedAt));
-    update();
-    const timer = window.setInterval(update, 1000);
-    return () => window.clearInterval(timer);
-  }, [permission.receivedAt, permission.requestId]);
-
-  useEffect(() => {
-    if (secondsLeft > 0 || timeoutHandled.current || resolving) return;
-    timeoutHandled.current = true;
-    void resolve("deny");
-  }, [resolving, secondsLeft]);
 
   // Same structured presentation as the transcript tool rows: a command reads
   // as shell, file content as code, everything else as labeled fields.
@@ -122,9 +101,6 @@ export function PermissionCard({
           {t("permission.workspace", {
             workspace: workspace || t("permission.temporarySession"),
           })}
-        </span>
-        <span role="timer">
-          {t("permission.countdown", { seconds: secondsLeft })}
         </span>
       </div>
       <div className="permission-card-actions">

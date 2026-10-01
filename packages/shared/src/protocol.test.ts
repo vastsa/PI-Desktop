@@ -236,27 +236,13 @@ describe("Plan protocol contracts", () => {
     ).toBe(false);
   });
 
-  it("derives transport deadlines from command execution semantics", () => {
-    expect(rpcTimeoutMs("tools.execute", { toolName: "Bash" })).toBe(190_000);
+  it("leaves tool approval transport open until the user decides", () => {
+    expect(rpcTimeoutMs("tools.execute", { toolName: "Bash" })).toBeUndefined();
     expect(
-      rpcTimeoutMs("tools.execute", { toolName: "Bash", timeoutMs: 5_000 }),
-    ).toBe(135_000);
-    expect(
-      rpcTimeoutMs("tools.execute", { toolName: "Bash", timeoutMs: 60_000 }),
-    ).toBe(190_000);
-    expect(
-      rpcTimeoutMs("tools.execute", { toolName: "Bash", timeoutMs: 0 }),
-    ).toBe(190_000);
-    expect(
-      rpcTimeoutMs("tools.execute", {
-        toolName: "Bash",
-        timeoutMs: 2_147_483_647,
-      }),
-    ).toBe(2_147_483_647);
-    expect(rpcTimeoutMs("tools.execute", { toolName: "Read" })).toBe(130_000);
-    expect(rpcTimeoutMs("tools.execute", { toolName: "BrowserPreview" })).toBe(
-      130_000,
-    );
+      rpcTimeoutMs("tools.execute", { toolName: "plugin_advisor_ask", timeoutMs: 5_000 }),
+    ).toBeUndefined();
+    expect(rpcTimeoutMs("tools.execute", { toolName: "Read" })).toBeUndefined();
+    expect(rpcTimeoutMs("tools.execute", { toolName: "BrowserPreview" })).toBeUndefined();
     expect(rpcTimeoutMs("tools.abort", { sessionId: "s", toolCallId: "t" })).toBe(
       130_000,
     );
@@ -282,28 +268,6 @@ describe("Plan protocol contracts", () => {
     // The deadline is per-method on purpose: widening the global default would
     // hide a genuinely lost reply on every other call.
     expect(rpcTimeoutMs("agent.getStatus", { sessionId: "s" })).toBe(130_000);
-  });
-
-  it("covers the permission wait, the admission queue, and host-core dispatch", () => {
-    // Permission (120s) + admission queue (30s) + host-core dispatch (150s) +
-    // slack (10s). A flat 130s would cut off a prompted plugin tool that is
-    // still inside its budget, and dropping the queue wait would cut off a call
-    // that had to wait for a saturated plugin class before it was dispatched.
-    expect(rpcTimeoutMs("tools.execute", { toolName: "plugin_advisor_ask" })).toBe(
-      310_000,
-    );
-    expect(rpcTimeoutMs("tools.execute", { toolName: "mcp_github_search" })).toBe(
-      310_000,
-    );
-    expect(
-      rpcTimeoutMs("tools.execute", {
-        toolName: "plugin_advisor_ask",
-        timeoutMs: 5_000,
-      }),
-    ).toBe(165_000);
-    expect(
-      rpcTimeoutMs("tools.execute", { toolName: "plugin_advisor_ask", timeoutMs: 0 }),
-    ).toBe(310_000);
   });
 
   it("lets a whole cloud sync finish instead of failing on a lost reply", () => {

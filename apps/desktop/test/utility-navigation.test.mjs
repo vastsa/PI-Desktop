@@ -46,7 +46,7 @@ function harness(page = "chat") {
     set: (patch) => { state = { ...state, ...patch }; } };
 }
 
-for (const page of ["chat", "pulls", "scheduled", "settings"]) {
+for (const page of ["chat", "scheduled", "settings"]) {
   test(`Plugins footer goes back one history entry to ${page}`, () => {
     const h = harness(page);
     h.click();

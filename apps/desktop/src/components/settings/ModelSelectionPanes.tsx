@@ -26,6 +26,7 @@ import {
   type ModelInfo,
   type SessionThinkingLevel,
   type ThinkingLevel,
+  type ThinkingProtocol,
 } from "@pi-desktop/shared";
 import {
   CONTEXT_WINDOW_PRESETS,
@@ -43,7 +44,6 @@ import {
   customModelSeedBinding,
   type CustomModelLookupContext,
 } from "./model-custom-lookup";
-import { ModelsFetchErrorMessage } from "./ModelsFetchErrorMessage";
 import type { ProviderModelsState } from "./useProviderModels";
 import { useModelReorder } from "./useModelReorder";
 
@@ -402,14 +402,17 @@ export function ModelSelectionPanes({
     if (!discovered?.info) void enrichCustomModel(binding);
   };
 
-  const fetchFailed = discovery.status === "error";
-  const emptyFetchError = fetchFailed && rows.length === 0;
+  // A failed probe leaves an empty pane: the pane says the list is missing and
+  // the toast says why, so the list no longer hosts a classified error box.
+  const emptyFetchError = discovery.status === "error" && rows.length === 0;
 
   const modelListBody =
     discovery.status === "idle" ? (
       <div className="provider-models-placeholder">{t("settings.modelsEmptyHint")}</div>
     ) : emptyFetchError ? (
-      <ModelsFetchErrorMessage error={discovery.error} variant="placeholder" />
+      <div className="provider-models-placeholder is-error">
+        {t("settings.modelsFetchFailed")}
+      </div>
     ) : rows.length === 0 ? (
       <div className="provider-models-placeholder">
         {discovery.status === "loading"
@@ -540,10 +543,6 @@ export function ModelSelectionPanes({
             />
           </div>
         </div>
-
-        {fetchFailed && !emptyFetchError ? (
-          <ModelsFetchErrorMessage error={discovery.error} variant="banner" />
-        ) : null}
 
         {modelListBody}
       </div>
@@ -809,34 +808,63 @@ export function ModelSelectionPanes({
                             <HelpIcon label={t("settings.thinkingManualOverrideHint")} />
                           ) : null}
                         </span>
-                        {bindingDefaultThinkingMenuLevels(enabledLevels).length > 1 ? (
-                          <div className="provider-chosen-thinking-default">
+                        <div className="provider-chosen-thinking-controls">
+                          <div className="provider-chosen-thinking-protocol">
                             <span className="provider-chosen-thinking-label">
-                              {t("settings.defaultThinkingLevel")}
+                              {t("settings.thinkingProtocol")}
                             </span>
                             <SettingsMenuSelect
                               className="provider-chosen-thinking-select"
-                              label={t("settings.defaultThinkingLevel")}
+                              label={t("settings.thinkingProtocol")}
                               value={
-                                resolveBindingDefaultThinkingLevel(
-                                  binding.defaultThinkingLevel,
-                                  enabledLevels,
-                                ) ?? ""
+                                binding.thinkingProtocol ?? info?.thinkingProtocol ?? "legacy"
                               }
                               onChange={(id) =>
                                 updateBinding(binding.id, {
-                                  defaultThinkingLevel: id as SessionThinkingLevel,
+                                  thinkingProtocol: id as ThinkingProtocol,
                                 })
                               }
-                              options={bindingDefaultThinkingMenuLevels(enabledLevels).map(
-                                (level) => ({
-                                  id: level,
-                                  label: level,
-                                }),
-                              )}
+                              options={[
+                                {
+                                  id: "legacy",
+                                  label: t("settings.thinkingProtocolLegacy"),
+                                },
+                                {
+                                  id: "adaptive",
+                                  label: t("settings.thinkingProtocolAdaptive"),
+                                },
+                              ]}
                             />
                           </div>
-                        ) : null}
+                          {bindingDefaultThinkingMenuLevels(enabledLevels).length > 1 ? (
+                            <div className="provider-chosen-thinking-default">
+                              <span className="provider-chosen-thinking-label">
+                                {t("settings.defaultThinkingLevel")}
+                              </span>
+                              <SettingsMenuSelect
+                                className="provider-chosen-thinking-select"
+                                label={t("settings.defaultThinkingLevel")}
+                                value={
+                                  resolveBindingDefaultThinkingLevel(
+                                    binding.defaultThinkingLevel,
+                                    enabledLevels,
+                                  ) ?? ""
+                                }
+                                onChange={(id) =>
+                                  updateBinding(binding.id, {
+                                    defaultThinkingLevel: id as SessionThinkingLevel,
+                                  })
+                                }
+                                options={bindingDefaultThinkingMenuLevels(enabledLevels).map(
+                                  (level) => ({
+                                    id: level,
+                                    label: level,
+                                  }),
+                                )}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                       <div
                         className="provider-chosen-thinking-chips"

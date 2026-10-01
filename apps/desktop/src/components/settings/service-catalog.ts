@@ -14,14 +14,15 @@ type Translate = (key: string) => string;
 export type ServiceOption = {
   id: string;
   label: string;
-  /** Endpoint host shown under the label; empty for the custom endpoint. */
-  host: string;
+  /** Endpoint host and path shown under the label; empty for the custom endpoint. */
+  endpoint: string;
   haystack: string;
 };
 
-export function hostOf(url: string): string {
+export function endpointLabel(url: string): string {
   try {
-    return new URL(url).host;
+    const parsed = new URL(url);
+    return parsed.host + parsed.pathname.replace(/\/+$/, "");
   } catch {
     return url;
   }
@@ -29,14 +30,14 @@ export function hostOf(url: string): string {
 
 function presetOption(preset: NamedEndpointPreset, translate: Translate): ServiceOption {
   const label = translate(preset.labelKey);
-  const host = hostOf(preset.baseUrl);
+  const endpoint = endpointLabel(preset.baseUrl);
   const aliases = preset.aliases?.join(" ") ?? "";
   return {
     id: preset.id,
     label,
-    host,
+    endpoint,
     haystack:
-      `${label} ${preset.name} ${preset.id} ${preset.vendorKey} ${aliases} ${preset.baseUrl} ${host}`.toLowerCase(),
+      `${label} ${preset.name} ${preset.id} ${preset.vendorKey} ${aliases} ${preset.baseUrl} ${endpoint}`.toLowerCase(),
   };
 }
 
@@ -51,7 +52,7 @@ export function customServiceOption(translate: Translate): ServiceOption {
   return {
     id: CUSTOM_SERVICE,
     label,
-    host: "",
+    endpoint: "",
     haystack: `${label} custom endpoint`.toLowerCase(),
   };
 }

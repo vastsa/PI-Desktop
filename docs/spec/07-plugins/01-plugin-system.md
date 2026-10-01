@@ -524,6 +524,12 @@ Rules the control encodes:
   responses are not JSON-RPC replies. Any acknowledgement body is discarded,
   including plain-text `Accepted`; ordinary request replies still follow the
   JSON/SSE parsing and response-size limits.
+- A streamable-HTTP server may write its JSON-RPC reply and keep the SSE stream
+  open afterwards — keep-alives, or a session it ends on its own schedule. Each
+  `text/event-stream` event is dispatched as it arrives, so a handshake or a
+  `tools/list` page completes on its reply instead of on the end of the stream.
+  The request budget still bounds the exchange: a server that never replies
+  still times out, and a stream left open past its request is aborted.
 - The MCP row shows “Authorization required” only when runtime status explicitly
   reports `authRequired`. Missing credentials, an untested connection, and
   non-authentication failures do not imply OAuth is required. A stored OAuth
@@ -534,8 +540,13 @@ Rules the control encodes:
 
 - The Skills page has independent global and selected-project columns rooted at
   `~/.agents/skills` and `<project>/.agents/skills`.
-- Each column has one native single-file Import action; the host physically
-  copies the selected file and scans its frontmatter.
+- Each column has a native single-file Import action and a folder Import action
+  that can select multiple `<name>/SKILL.md` folders at once. The host imports
+  selected folders independently, preserves sibling resources, and reports
+  partial failures without undoing successful imports. The folder picker
+  reopens at the parent of the last successfully imported source folder when
+  that parent still exists; cancellation and all-failed batches leave that
+  machine-local value unchanged.
 - A `SKILL.md` import or scan uses the parent directory as the id when the
   frontmatter name is not an ASCII slug, and folded YAML descriptions still
   enter the catalog. A readable document is never dropped because its title is

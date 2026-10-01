@@ -578,6 +578,30 @@ async function handleParentCall(method, payload, invocationId) {
       if (entry.stop) await entry.stop();
       return { ok: true };
     }
+    case "renderer.call": {
+      const handler = pluginModule?.onRendererCall;
+      if (typeof handler !== "function") {
+        const error = new Error("plugin does not implement onRendererCall");
+        error.code = "PLUGIN_CALL_NO_HANDLER";
+        throw error;
+      }
+      const answer = await handler(String(payload?.method ?? ""), payload?.args ?? {});
+      // The relay answers JSON only. A cycle, a BigInt or a bare function is
+      // the plugin's bug and is reported as one, instead of surfacing as a
+      // structured-clone failure without a code.
+      let text;
+      try {
+        text = JSON.stringify(answer ?? null);
+      } catch {
+        text = undefined;
+      }
+      if (text === undefined) {
+        const error = new Error("onRendererCall answer is not JSON");
+        error.code = "PLUGIN_CALL_UNSERIALIZABLE";
+        throw error;
+      }
+      return JSON.parse(text);
+    }
     case "lifecycle.unload": {
       for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");
       // Best effort: a throwing onUnload must not block teardown.

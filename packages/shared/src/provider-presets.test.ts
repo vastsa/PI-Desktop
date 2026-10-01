@@ -181,6 +181,19 @@ describe("named endpoint presets", () => {
     });
   });
 
+  it("keeps StepFun Plan on its subscription endpoint and catalog vendor", () => {
+    const expected = {
+      id: "stepfun-plan",
+      vendorKey: "stepfun-step-plan",
+      baseUrl: "https://api.stepfun.com/step_plan/v1",
+      apiStyle: "anthropic_messages",
+    };
+    expect(NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === expected.id)).toMatchObject(expected);
+    expect(matchNamedPreset({ vendorKey: expected.vendorKey })).toMatchObject(expected);
+    expect(matchNamedPreset({ baseUrl: expected.baseUrl })).toMatchObject(expected);
+    expect(matchNamedPreset({ baseUrl: "https://api.stepfun.com/v1" })?.id).not.toBe(expected.id);
+  });
+
   it("maps DashScope and Doubao aliases to China catalog keys", () => {
     expect(matchNamedPreset({ vendorKey: "dashscope" })?.id).toBe("alibaba-cn");
     expect(matchNamedPreset({ vendorKey: "doubao" })?.id).toBe("volcengine");

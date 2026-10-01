@@ -44,7 +44,7 @@ function launchRuntime() {
     logger: { app() {} }, userMcp: { setRecords() {}, toolsForProject: async () => [] },
     plugins: { listLoaded: () => [], getSkills: () => [], getTools: () => [], getAgentExtensions: () => [] },
     sessionProjects: new Map(), dataDir: workspace, vendorOAuth: {},
-    modelsDevCatalog: { ensureLoaded: async () => {}, findModel: () => undefined },
+    modelsDevCatalog: { configureAccount: () => {}, ensureLoaded: async () => {}, findModel: () => undefined },
     getWorkspacePath: () => workspace, pluginActiveInProject: () => true,
     bindingForModel: (row, id) => row.models.find((m) => m.id === id),
     effectiveSubagentModelConfig: () => ({}),

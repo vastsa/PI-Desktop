@@ -1,3 +1,27 @@
+/**
+ * What a plugin put in the draft (`docs/plugin-plan/render/draft/`,
+ * `docs/plugin-plan/render/attachments/`):
+ * - `mark`: a chip showing the reference's `name` that sends `send`;
+ * - `fold`: the one chip holding the marks past the per-draft limit, sending
+ *   their `send` texts joined by spaces; `pluginId` is the first one's;
+ * - `attachment`: a file the plugin staged, owned by it for `attachments.*`.
+ * Parts are immutable; a change is a new object.
+ */
+export type ComposerPluginPart =
+  | { readonly kind: "mark"; readonly pluginId: string; readonly send: string }
+  | {
+      readonly kind: "fold";
+      readonly pluginId: string;
+      readonly send: string;
+      readonly count: number;
+    }
+  | {
+      readonly kind: "attachment";
+      readonly pluginId: string;
+      readonly id: string;
+      readonly size: number;
+    };
+
 export type ComposerDraftFileReference = {
   path: string;
   name: string;
@@ -5,6 +29,7 @@ export type ComposerDraftFileReference = {
   mimeType?: string;
   /** Visible inline token for a generated large-text paste reference. */
   token?: string;
+  plugin?: ComposerPluginPart;
 };
 
 export type ComposerDraftSnapshot = {

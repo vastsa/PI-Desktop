@@ -533,6 +533,23 @@ export class TrustedExtensionRunner {
     return this.dispatch(event, payload, fold);
   }
 
+  /** Chain prompt replacements within this turn while keeping handler inputs isolated. */
+  async emitBeforeAgentStart(prompt: string, systemPrompt: string): Promise<string | undefined> {
+    const payload = { type: "before_agent_start", prompt, systemPrompt, systemPromptOptions: {} };
+    const result = await this.emit<{ systemPrompt?: string }>(
+      "before_agent_start",
+      payload,
+      (acc, next) => {
+        if (typeof next.systemPrompt !== "string") return acc ?? {};
+        // dispatch clones this updated payload for the next handler. Only a
+        // timely returned value reaches this fold, never a late input mutation.
+        payload.systemPrompt = next.systemPrompt;
+        return { systemPrompt: next.systemPrompt };
+      },
+    );
+    return result?.systemPrompt;
+  }
+
   private async dispatch<R>(
     event: TrustedExtensionEventName,
     payload: Record<string, unknown>,

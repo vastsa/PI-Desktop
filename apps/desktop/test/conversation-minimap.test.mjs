@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import test from "node:test";
-import {
+
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const {
   CONVERSATION_MINIMAP_PREVIEW_MAX_CHARS,
   buildConversationMinimapMarkers,
   shouldRenderConversationMinimap,
-} from "../src/lib/conversation-minimap.ts";
+} = await import("../src/lib/conversation-minimap.ts");
 
 function message(id, role, content) {
   return {

@@ -336,6 +336,20 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
 工具值会清理主机保留键。每个插件每 60 秒最多 10 次单条导入、5 次批量导入和
 20 次删除。P2/P3 方法不在协议 v11 中。
 
+**会话 Todo 清单**
+- `todos.get({ sessionId })` 返回活动 Desktop 会话已提交的完整清单快照：
+  `{ sessionId, todos, revision, updatedAt }`。未知或软删除会话返回 `NOT_FOUND`；
+  原生 Pi 会话和空 id 返回 `INVALID_ARGUMENT`。
+- `tools.execute` 的 `toolName: "TodoWrite"` 只接受 `{ todos }`，并替换整个有序清单。
+  主机会裁剪内容、将 priority 默认设为 `medium`，把超长 Unicode 内容限制在 500 个字符并
+  返回警告，把后续 `in_progress` 降级为 `pending`，并拒绝超过 50 项或格式错误的值。
+  所属 session 和运行中的 turn 来自可信传输字段，不来自工具参数。
+- TodoWrite 只允许 Agent 会话自己的运行 turn。Plan/Goal、委托、插件和 MCP 调用会返回工具错误，
+  不会修改存储。成功替换即使 `todos` 为空也会推进 revision，并且只在事务提交后发出
+  `todos.changed`；事件负载与 `todos.get` 返回的完整快照一致。
+- SQLite 只由 host-core 拥有。渲染器通过 Electron Main IPC 接收快照，按 session id 保存并忽略
+  更旧或相同 revision。远程 RACP 会话在这条垂直切片中保持 local-only，因为 RACP v1 尚无 Todo 快照操作。
+
 ### Plan 和 Goal 状态和批准
 
 两种合约类型共享这些方法；可选的 `kind`
@@ -581,7 +595,7 @@ type ToolsExecuteParams = {
 对于`Read`/`Glob`/`Grep`/`Write`/`Edit`，主机分类显式路径
 在工作区之外并在低风险自动允许规则之前从头开始。
 `auto` 执行它，而 `ask` 和 `accept-edits` 发出
-`permissions.request`；拒绝、超时或取消返回 `TOOL_DENIED`
+`permissions.request`；拒绝或取消返回 `TOOL_DENIED`
 而不执行该操作。相对 `..` 和符号链接转义使用
 相同的分类。 Bash 的工作目录和隐式递归遍历
 不继承这个异常。
@@ -843,7 +857,6 @@ params: {
   risk: "low" | "medium" | "high"
   argsPreview: unknown
   reason: string
-  timeoutMs: 120000
 }
 ```
 
@@ -857,12 +870,11 @@ params: {
 }
 ```
 
-超时行为 (**D005**)：120 秒后未解决 → 拒绝。
+本地权限行为（**D636 / ADR 0310**）：未解决的请求会一直保持待处理，直到明确决定、取消或主机/进程关闭。`tools.execute` 的传输不设置截止时间；批准后仍执行工具自身的超时限制。
 
 `permissions.pending` 把待处理请求作为 Host 状态返回（D374/D375）：
 `{ requests: PendingPermission[] }`，最早的在前，可按 `sessionId` 过滤。每一项包含与
-`permissions.request` 通知相同的字段，外加 `createdAt`、`expiresAt` 和 `remainingMs`；
-已超时的请求不会出现。在通知发出之后才接入的客户端读取此列表，并通过不变的
+`permissions.request` 通知相同的字段，外加 `createdAt`；请求解决前会一直列出。在通知发出之后才接入的客户端读取此列表，并通过不变的
 `permissions.resolve` 作答；通知路径本身不变。
 
 ## 7. 错误代码
@@ -953,7 +965,7 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 1. Electron 生成主机并完成握手
 2.health方法返回ok
 3. 拒绝刀具路径返回 `TOOL_DENIED`
-4.超时路径120s后返回拒绝决策
+4. 未解决的权限请求会一直保持待处理，直到明确决定或取消
 5.将选定的工作空间从A切换到B不会改变工具根
    会话 A 发出的呼叫的
 6. 协议 v4 `session.endTurn` creates/returns 恰好有一个通知

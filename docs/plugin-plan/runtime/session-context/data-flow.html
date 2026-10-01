@@ -1,0 +1,179 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>session.getContext · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a><span class="sep">/</span><a href="index.html">session-context</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+<header class="top">
+  <h1>session.getContext · 数据流</h1>
+  <div class="meta">status: <b>draft · 设计稿</b> · 会话数据契约 · 规划出处：能力清单审查 N3 · 权限 <code>session.context.read</code>（新增） · 尚无 SDK 实现</div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>接口约定</h2>
+  <pre class="sig">pi.session.getContext(input?: { sessionId?: string; scope?: "all" | "sinceCompaction"; maxCharsPerMessage?: number }): Promise&lt;PluginSessionContext&gt;</pre>
+  <p class="lead">读当前会话的全量上下文工作集。权限 <code>session.context.read</code>（新增 · high · 装时确认——能读消息正文）。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>否</td><td>缺省 = 当前会话；跨会话读需显式指定（同权限）。</td></tr>
+      <tr><td class="id">scope</td><td class="id">"all" | "sinceCompaction"</td><td>否</td><td>缺省 <code>sinceCompaction</code>：只回自上次压缩以来的工作集；<code>"all"</code> 回全量。</td></tr>
+      <tr><td class="id">maxCharsPerMessage</td><td class="id">number</td><td>否</td><td>单条正文截断上限；缺省走宿主默认。截断发生时该条 <code>contentTruncated = true</code>。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>快照所属会话 id。</td></tr>
+      <tr><td class="id">compactionCursor</td><td class="id">string | null</td><td>最近一次压缩记录 id；<code>applyCompaction</code> 并发校验（<code>CONFLICT</code> 检测）用。</td></tr>
+      <tr><td class="id">system</td><td class="id">string | undefined</td><td>当前 system prompt；无则缺省。</td></tr>
+      <tr><td class="id">messages</td><td class="id">Array&lt;{…}&gt;</td><td>消息数组，元素结构见下。</td></tr>
+      <tr><td class="id">messages[].id</td><td class="id">string</td><td>消息 id。</td></tr>
+      <tr><td class="id">messages[].role</td><td class="id">"user" | "assistant" | "tool"</td><td>角色；system 单独出 <code>system</code> 字段。</td></tr>
+      <tr><td class="id">messages[].content</td><td class="id">string</td><td>正文；超预算被截断时 <code>contentTruncated = true</code>。</td></tr>
+      <tr><td class="id">messages[].contentTruncated</td><td class="id">boolean | undefined</td><td>该条是否被截断。</td></tr>
+      <tr><td class="id">messages[].createdAt</td><td class="id">string</td><td>ISO 时间字符串，与 <code>session.listMessages</code> 一致。</td></tr>
+      <tr><td class="id">messages[].tool</td><td class="id">{…} | undefined</td><td>工具消息的元信息：<code>name</code> / <code>callId</code> / <code>status</code>("success"|"error") / <code>resultPreview</code>（只给预览，不吐全文）。</td></tr>
+      <tr><td class="id">estimate</td><td class="id">{ tokens: number; truncated: boolean }</td><td>整体 token 估算；<code>truncated</code> 表示是否触发整体预算截断（只回窗口内）。</td></tr>
+      <tr><td class="id">modelKey</td><td class="id">string | undefined</td><td>会话当前绑定的模型（<code>provider/model</code>）。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "scope": "sinceCompaction", "maxCharsPerMessage": 4000 }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "sessionId": "s_01J8",
+  "compactionCursor": "c_01J7",
+  "system": "You are a helpful coding assistant.",
+  "messages": [
+    { "id": "m_1", "role": "user", "content": "帮我总结这个会话的讨论重点",
+      "createdAt": "2026-02-17T09:12:00.000Z", "origin": "external" },
+    { "id": "m_2", "role": "assistant", "content": "讨论了三个方案……",
+      "createdAt": "2026-02-17T09:12:08.000Z", "origin": "external" },
+    { "id": "m_3", "role": "tool", "content": "（工具结果预览被截断）",
+      "contentTruncated": true,
+      "tool": { "name": "fs.readText", "callId": "t_9", "status": "success",
+                "resultPreview": "# PI-Desktop\n…" },
+      "createdAt": "2026-02-17T09:12:11.000Z", "origin": "external" }
+  ],
+  "estimate": { "tokens": 21340, "truncated": false },
+  "modelKey": "anthropic/claude-sonnet-4-5"
+}</pre>
+  <div class="callout"><b>一句话边界。</b>能读正文，所以权限比 <code>session.read</code> 宽；工具结果只给 <code>resultPreview</code>，不吐全文。使用前提：实现时须放开现有 <code>session.getLlmContext</code>「仅工具执行期可调」的限制，改为纯权限门控——压缩发生在轮边界，不在任何工具调用里。</div>
+</section>
+<section>
+  <h2><span class="n">2</span>数据怎么走</h2>
+  <ol>
+    <li><b>调用。</b>插件传入可选 <code>{ sessionId?, scope?, maxCharsPerMessage? }</code>。</li>
+    <li><b>校验。</b>主进程校验 <code>session.context.read</code> 权限（装时确认过的高敏域），解析目标会话。</li>
+    <li><b>组装。</b>宿主取会话全量消息与最近压缩记录（数据源与 <code>session.getLlmContext</code> 同链），按 scope 裁剪：压缩点之前的行并入摘要语境；工具结果压成 <code>resultPreview</code>；按整体预算与单条上限截断。</li>
+    <li><b>返回。</b>一次给全；不订阅、不推流。超预算不报错，靠 <code>estimate.truncated</code> 如实标注。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">插件 → 宿主</td><td>读取描述（scope、单条截断上限、目标会话）。</td></tr>
+      <tr><td class="id">宿主 → 插件</td><td>上下文快照（system + 消息 + 估算 + 压缩位点）。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">3</span>出错怎么办</h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>未声明 <code>session.context.read</code></td><td>Promise 拒绝，不静默</td><td class="id">PERMISSION_DENIED</td></tr>
+      <tr><td><code>sessionId</code> 不存在 / 已删</td><td>Promise 拒绝</td><td class="id">NOT_FOUND</td></tr>
+      <tr><td>参数非法（未知 scope 等）</td><td>Promise 拒绝</td><td class="id">INVALID_ARGUMENT</td></tr>
+      <tr><td>内容超整体预算</td><td>不报错；只回窗口内，<code>estimate.truncated = true</code></td><td class="id">—</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">4</span>不提供什么</h2>
+  <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">消息写回 / 替换</td><td>写侧只走 <code>session.applyCompaction</code>；<code>replaceMessages</code> 静默改写已被产品排除</td></tr>
+      <tr><td class="id">工具结果全文</td><td>只给 <code>resultPreview</code>；全量正文不向插件开放</td></tr>
+      <tr><td class="id">跨会话缺省读</td><td>缺省当前会话；跨会话需显式 <code>sessionId</code>（同 high 权限）</td></tr>
+      <tr><td class="id">精确 token 口径</td><td>estimate 是估算值，与 ADR 0047 的口径对齐</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">session.applyCompaction</td><td>读侧的写回对端；压缩器成对使用</td><td><code>runtime/session-compaction/</code></td></tr>
+      <tr><td class="id">session.getLlmContext</td><td>同数据链的受限投影（仅工具执行期）</td><td><code>host-api/session.getLlmContext/</code></td></tr>
+      <tr><td class="id">session-lifecycle</td><td>before_compact 拦截 + segment 载荷</td><td><code>runtime/session-lifecycle/</code></td></tr>
+      <tr><td class="id">session-model</td><td>同族契约：当前模型快照（N1）</td><td><code>runtime/session-model/</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <p class="lead"><code>resultPreview</code> 的截断长度；<code>estimate.tokens</code> 的估算口径细则（对齐 ADR 0047）；实现是否以 <code>session.getLlmContext</code> 兄弟分支落地。</p>
+</section>
+
+</main>
+</body>
+</html>

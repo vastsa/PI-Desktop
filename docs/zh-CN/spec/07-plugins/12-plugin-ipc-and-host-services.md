@@ -202,7 +202,7 @@ toast 加上 `pluginChanged` 到渲染器。
 1.模型调用`plugin_<pluginIdSafe>_<toolName>`； sidecar 转发它
    像任何内置工具一样托管 `tools.execute`。
 2. host-core 首先解析持久操作模式。在 Agent 中，它运行
-   正常权限流程（风险、会话授予、120 秒超时），然后发出
+   正常权限流程（风险、会话授予、无自动截止时间），然后发出
    通知 `plugins.execute`
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`。`turnId` 是
    运行时回合身份，原样转发，以便插件工具上下文能与
@@ -216,8 +216,8 @@ toast 加上 `pluginChanged` 到渲染器。
    （`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`，高于 110 秒的插件工具预算，也高于最宽的
    MCP 支路：10 秒惰性握手 + 30 秒 `tools/list` 遍历 + 100 秒调用），超时映射到
    `TOOL_TIMEOUT`；unknown/unloaded 工具映射到 `TOOL_NOT_FOUND`。这类调用的传输截止
-   时间覆盖 120 秒权限等待、30 秒准入排队、上述调度和 10 秒余量（`rpcTimeoutMs`），
-   因此外层不会在 host-core 报告结果之前先放弃。
+   等待明确权限决定时，`tools.execute` 传输没有截止时间；批准后仍以 host-core 的工具
+   执行预算为准。
 
 面向模型的注册表根据提示获得插件工具：已注册主要通道
 defs（`fullName`、描述、JSON 架构参数）到 `agent.prompt`，以及

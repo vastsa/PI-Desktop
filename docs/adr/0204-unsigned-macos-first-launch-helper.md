@@ -1,9 +1,9 @@
 # ADR 0204: Explicit Unsigned macOS First-Launch Helper
 
-- Status: Accepted (amended by D406 / ADR 0232, D450 / ADR 0289, D457 / ADR 0296)
+- Status: Superseded for macOS distribution by D634 / [ADR 0309](0309-remove-macos-first-launch-artifacts.md)
 - Date: 2026-09-09
 - Deciders: PI-Desktop core
-- Related: D078, D371, D406, D450, D457, E2E-196b, ADR 0289, ADR 0296
+- Related: D078, D371, D406, D450, D457, D634, E2E-196b, ADR 0289, ADR 0296, ADR 0309
 
 ## Context
 

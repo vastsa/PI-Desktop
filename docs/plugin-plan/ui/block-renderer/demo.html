@@ -1,0 +1,466 @@
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>块渲染器 · 演示</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --gray-800: #212121;
+      --ds-bg-primary: #181818;
+      --ds-bg-under: #000;
+      --ds-bg-composer: color-mix(in oklab, var(--gray-800) 96%, transparent);
+      --ds-text-primary: #fff;
+      --ds-text-secondary: color-mix(in oklab, #fff 70%, transparent);
+      --ds-text-muted: color-mix(in oklab, #fff 52%, transparent);
+      --ds-text-faint: color-mix(in oklab, #fff 38%, transparent);
+      --ds-tile: color-mix(in oklab, #fff 3.5%, transparent);
+      --ds-tile-deep: color-mix(in oklab, #fff 8%, transparent);
+      --ds-raised: #1f1f1f;
+      --ds-bg-hover: color-mix(in oklab, #fff 6%, transparent);
+      --ds-accent: #fff;
+      --ds-purple: #c27aff;
+      --ds-blue: #6cb2ff;
+      --ds-error: #ff6764;
+      --ds-warning: #ff8549;
+      --ds-success: #40c977;
+      --ds-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+      --radius-xs: 4px;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 12px;
+      --radius-lg-plus: 16px;
+      --radius-2xl: 22px;
+      --ui: #c27aff;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      font-family: var(--font);
+      background: var(--ds-bg-under);
+      color: var(--ds-text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; color: inherit; }
+
+    .shell {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      background: var(--ds-bg-primary);
+    }
+    .topbar {
+      padding: 14px 28px 12px;
+      border-bottom: 1px solid color-mix(in oklab, #fff 6%, transparent);
+    }
+    .topbar h1 { margin: 0; font-size: 14px; font-weight: 560; }
+
+    .thread { flex: 1; min-height: 0; overflow: auto; }
+    .inner {
+      width: min(760px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stage {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 26px 0 10px;
+      color: var(--ds-text-faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+    }
+    .stage::after { content: ""; flex: 1; height: 1px; background: color-mix(in oklab, #fff 6%, transparent); }
+    .stage .no {
+      display: inline-grid;
+      place-items: center;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 99px;
+      background: var(--ds-tile-deep);
+      color: var(--ds-text-secondary);
+      font-size: 10.5px;
+    }
+    .stage .hint {
+      color: var(--ds-text-muted);
+      letter-spacing: 0;
+      font-family: var(--font);
+      font-size: 11.5px;
+    }
+
+    .message-row.user {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+      padding: 12px 0;
+    }
+    .message-col {
+      display: flex;
+      min-width: 0;
+      width: min(max-content, 82%, 600px);
+      max-width: min(82%, 600px);
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-end;
+    }
+    .message-bubble {
+      width: max-content;
+      max-width: 100%;
+      border-radius: var(--radius-lg-plus);
+      border-bottom-right-radius: var(--radius-xs);
+      background: color-mix(in oklab, #fff 8%, transparent);
+      padding: 10px 15px;
+      color: var(--ds-text-primary);
+      font-size: 15px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+    .message-row.assistant {
+      display: flex;
+      width: 100%;
+      padding: 6px 0 14px;
+    }
+    .assistant-col {
+      width: min(100%, 720px);
+      color: var(--ds-text-secondary);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .assistant-col p { margin: 0; }
+    .assistant-col code {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--ds-text-primary);
+    }
+
+    /* 宿主默认代码块 */
+    .code-block {
+      margin: 0.9em 0;
+      border-radius: 14px;
+      background: #282c34;
+      overflow: hidden;
+      color: #abb2bf;
+    }
+    .code-block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 32px;
+      padding: 3px 6px 3px 14px;
+      background: color-mix(in oklab, #fff 4%, transparent);
+    }
+    .code-block-lang {
+      color: color-mix(in oklab, #abb2bf 72%, transparent);
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      text-transform: lowercase;
+      user-select: none;
+    }
+    .code-copy-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: var(--radius-xs);
+      background: transparent;
+      color: color-mix(in oklab, #abb2bf 72%, transparent);
+      cursor: pointer;
+      opacity: 0.75;
+    }
+    .code-copy-btn:hover { color: #d7dae0; background: color-mix(in oklab, #fff 8%, transparent); }
+    .code-block pre {
+      margin: 0;
+      padding: 13px 16px 15px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: inherit;
+    }
+    .code-block code { font-family: inherit; white-space: pre; }
+    .tk-k { color: #c678dd; }
+    .tk-f { color: #61afef; }
+    .tk-n { color: #d19a66; }
+    .tk-s { color: #98c379; }
+
+    /* 插槽边界 */
+    .slot-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      border: 1px dashed color-mix(in oklab, var(--ui) 55%, transparent);
+      border-radius: var(--radius-lg-plus);
+      padding: 18px 10px 10px;
+      margin: 16px 0 10px;
+    }
+    .slot-wrap .slot-name {
+      position: absolute;
+      top: -8px;
+      left: 10px;
+      padding: 0 6px;
+      background: var(--ds-bg-primary);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: #e4c8ff;
+    }
+
+    /* 插件渲染器 */
+    .r-block {
+      margin: 0.9em 0;
+      border-radius: 14px;
+      background: var(--ds-tile);
+      overflow: hidden;
+    }
+    .r-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 3px 6px 3px 14px;
+      background: var(--ds-tile-deep);
+    }
+    .r-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ui);
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      user-select: none;
+    }
+    .r-title .sub { color: var(--ds-text-muted); }
+    .r-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+    .r-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: var(--radius-xs);
+      background: transparent;
+      color: var(--ds-text-muted);
+      cursor: pointer;
+    }
+    .r-btn:hover { color: var(--ds-text-primary); background: var(--ds-bg-hover); }
+    .r-chart { padding: 14px 16px 12px; }
+    .r-chart svg { display: block; width: 100%; height: auto; }
+    .r-chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      margin-top: 10px;
+      font-size: 11.5px;
+      color: var(--ds-text-secondary);
+    }
+    .r-chart-legend .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 99px;
+      margin-right: 5px;
+      vertical-align: 0;
+    }
+    .prefix-tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: var(--radius-xs);
+      padding: 1px 7px;
+      background: color-mix(in oklab, var(--ui) 14%, transparent);
+      color: var(--ui);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .composer-dock {
+      padding: 0 24px 16px;
+      background: var(--ds-bg-primary);
+    }
+    .composer-shell {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      border-radius: var(--radius-2xl);
+      background: var(--ds-bg-composer);
+      box-shadow: var(--ds-shadow-composer);
+      padding: 10px 12px 8px;
+    }
+    .composer-input {
+      min-height: 40px;
+      color: var(--ds-text-faint);
+      font-size: 14px;
+      padding: 4px 4px 10px;
+    }
+    .composer-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--ds-text-faint);
+      font-size: 12px;
+    }
+    .send {
+      width: 28px; height: 28px; border: 0; border-radius: 99px;
+      background: var(--ds-accent); color: #181818;
+      display: grid; place-items: center; cursor: default;
+    }
+
+    .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid color-mix(in oklab, #fff 8%, transparent);font-size:13px;flex:0 0 auto}
+    .plan-nav a{color:var(--ds-text-muted);text-decoration:none;padding:3px 8px;border-radius:6px}
+    .plan-nav a:hover{background:var(--ds-bg-hover);color:var(--ds-text-primary)}
+    .plan-nav a[aria-current="page"]{background:var(--ds-tile-deep);color:var(--ds-text-primary);box-shadow:inset 0 0 0 1px color-mix(in oklab, #fff 14%, transparent)}
+    .plan-nav .sep{color:var(--ds-text-faint);padding:0 2px}
+    .plan-nav .spacer{flex:1}
+    .plan-nav .here{color:var(--ds-text-primary);padding:3px 8px}
+  </style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <span class="here">块渲染器</span>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="demo.html" aria-current="page">演示</a>
+</nav>
+
+  <div class="shell">
+    <header class="topbar">
+      <h1>块渲染器 · 演示</h1>
+    </header>
+
+    <div class="thread">
+      <div class="inner">
+
+        <div class="stage" id="s1"><span class="no">1</span>宿主默认代码块<span class="hint">未注册标签</span></div>
+
+        <article class="message-row user">
+          <div class="message-col">
+            <div class="message-bubble">把重试改成指数退避，贴一下补丁。</div>
+          </div>
+        </article>
+
+        <article class="message-row assistant">
+          <div class="assistant-col">
+            <p>补丁如下：</p>
+            <div class="code-block">
+              <div class="code-block-head">
+                <span class="code-block-lang">ts</span>
+                <button class="code-copy-btn" type="button" aria-label="复制">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <pre><code><span class="tk-k">const</span> delay = <span class="tk-n">100</span> * <span class="tk-f">Math</span>.pow(<span class="tk-n">2</span>, attempt);</code></pre>
+            </div>
+          </div>
+        </article>
+
+        <div class="stage" id="s2"><span class="no">2</span>acme:chart 成图<span class="hint">整块接管</span></div>
+
+        <article class="message-row user">
+          <div class="message-col">
+            <div class="message-bubble">用 acme:chart 画一下各模块命中数。</div>
+          </div>
+        </article>
+
+        <article class="message-row assistant">
+          <div class="assistant-col">
+            <p>命中分布：</p>
+            <div class="slot-wrap">
+              <div class="slot-name">block-renderer · acme:chart</div>
+              <div class="r-block">
+                <div class="r-head">
+                  <span class="r-title">acme:chart <span class="sub">前缀:语言</span></span>
+                  <span class="r-actions">
+                    <button class="r-btn" type="button" aria-label="复制">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </span>
+                </div>
+                <div class="r-chart">
+                  <svg viewBox="0 0 420 140" aria-hidden="true">
+                    <rect x="30" y="30" width="48" height="100" rx="6" fill="#c27aff"/>
+                    <rect x="110" y="52" width="48" height="78" rx="6" fill="#a78bff"/>
+                    <rect x="190" y="78" width="48" height="52" rx="6" fill="#8f7dff"/>
+                    <rect x="270" y="92" width="48" height="38" rx="6" fill="#7b9bff"/>
+                    <rect x="350" y="104" width="48" height="26" rx="6" fill="#6cb2ff"/>
+                  </svg>
+                  <div class="r-chart-legend">
+                    <span><span class="dot" style="background:#c27aff"></span>src/lib 13</span>
+                    <span><span class="dot" style="background:#a78bff"></span>src/webhook 7</span>
+                    <span><span class="dot" style="background:#8f7dff"></span>apps/desktop 3</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <div class="stage" id="s3"><span class="no">3</span>前缀:语言边界<span class="hint">不得注册已有语言</span></div>
+
+        <article class="message-row assistant">
+          <div class="assistant-col">
+            <div class="code-block">
+              <div class="code-block-head">
+                <span class="code-block-lang">json</span>
+                <button class="code-copy-btn" type="button" aria-label="复制">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <pre><code>{ <span class="tk-s">"hits"</span>: <span class="tk-n">23</span> }</code></pre>
+            </div>
+            <div class="slot-wrap">
+              <div class="slot-name">block-renderer · acme:chart</div>
+              <div class="r-block">
+                <div class="r-head">
+                  <span class="r-title">acme:chart <span class="sub">前缀:语言</span></span>
+                  <span class="prefix-tag">&lt;pluginId&gt;:lang</span>
+                </div>
+                <div class="r-chart">
+                  <svg viewBox="0 0 420 80" aria-hidden="true">
+                    <rect x="30" y="16" width="360" height="20" rx="6" fill="#c27aff" opacity=".85"/>
+                    <rect x="30" y="46" width="220" height="20" rx="6" fill="#6cb2ff" opacity=".75"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <div class="composer-dock">
+      <div class="composer-shell">
+        <div class="composer-input">问点什么…</div>
+        <div class="composer-bar">
+          <span>+  ·  Agent</span>
+          <button class="send" type="button" tabindex="-1" aria-label="发送">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

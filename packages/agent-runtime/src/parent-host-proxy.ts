@@ -106,12 +106,14 @@ export class ParentHostProxy {
         params: { method, params },
       }) + "\n";
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject(new Error(`parent host proxy timeout: ${method}`));
-        }
-      }, deadlineMs);
+      const timer = deadlineMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            if (this.pending.has(id)) {
+              this.pending.delete(id);
+              reject(new Error(`parent host proxy timeout: ${method}`));
+            }
+          }, deadlineMs);
       this.pending.set(id, {
         resolve: resolve as (v: any) => void,
         reject,

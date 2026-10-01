@@ -49,6 +49,8 @@ test("shared shortcut map drives renderer dispatch and native menu accelerators"
     "zoomIn",
     "zoomOut",
     "toggleFullScreen",
+    "voiceToggle",
+    "voiceCancel",
   ]) {
     assert.match(shortcutSource, new RegExp(`"${id}"`));
   }
@@ -56,6 +58,7 @@ test("shared shortcut map drives renderer dispatch and native menu accelerators"
   assert.match(appSource, /settings\?\.keybindings/);
   assert.match(appSource, /keybindingMatchesEvent/);
   assert.match(appSource, /keybindingDisplayParts/);
+  assert.match(appSource, /runLiveVoiceShortcut\(shortcut\.id\)/);
   assert.match(appSource, /case "openWorkPanel"/);
   assert.match(appSource, /useAppStore\.getState\(\)\.toggleWorkPanel\(\)/);
   assert.match(menuSource, /resolveKeybinding\(shortcut, keybindings/);
@@ -81,6 +84,7 @@ test("global shortcut dispatch ignores incomplete keyboard events", () => {
     appSource,
     /e\.repeat[\s\S]*shortcut\.id === "navigateBack"[\s\S]*shortcut\.id === "navigateForward"/,
   );
+  assert.match(appSource, /e\.repeat[\s\S]*shortcut\.id === "voiceToggle"[\s\S]*shortcut\.id === "voiceCancel"/);
 });
 
 test("Basics exposes editable, conflict-safe, resettable shortcut mappings", () => {

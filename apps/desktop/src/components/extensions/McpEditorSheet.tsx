@@ -452,7 +452,6 @@ export function McpEditorSheet({
                   keyPlaceholder="API_KEY"
                   valuePlaceholder={t("extensions.mcp.valuePlaceholder")}
                   addLabel={t("extensions.mcp.addEnv")}
-                  secret
                 />
               </div>
             </>
@@ -481,7 +480,6 @@ export function McpEditorSheet({
                   keyPlaceholder="Authorization"
                   valuePlaceholder={t("extensions.mcp.valuePlaceholder")}
                   addLabel={t("extensions.mcp.addHeader")}
-                  secret
                 />
               </div>
             </>

@@ -1,0 +1,188 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>插件转发 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .tag.open{color:var(--plugin);background:rgba(194,122,255,.10)}
+  h3{margin:22px 0 6px;font-size:14.5px;color:var(--text)}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">插件转发</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/plugin-call</div>
+  <h1>插件转发 · 需求</h1>
+  <p>渲染侧组件取自己插件的私有数据：<code>dispatch("plugin.call")</code>。一问一答、JSON 应答；method 白名单、体积、限速、超时、熔断五道约束；pluginId 宿主注入。</p>
+  <div class="meta">status: draft · issue #545 · #561 · 出站分层：核心 P</div>
+</header>
+
+<main>
+
+<section>
+  <h2>范围 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>一个渲染侧动作：<code>dispatch("plugin.call")</code>——槽组件向<b>自己这个插件</b>要一份数据。</li>
+    <li>链路固定：dispatch → 校验声明 → 跨进程转发 → 本插件应答 → JSON 回来。</li>
+    <li>不谈：跨插件调用（禁止）、推流 / 订阅（禁止）、宿主能力调用（那是别的出站词）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>契约形状 <span class="tag decided">已拍板</span></h2>
+<pre><span class="c">// ① 组件侧发起</span>
+<span class="k">const</span> data = <span class="k">await</span> dispatch(<span class="c">"plugin.call"</span>, {
+  <span class="k">method</span>: <span class="c">"searchKb"</span>,
+  <span class="k">args</span>:   { <span class="k">query</span>: <span class="c">"退货政策"</span> }
+})
+<span class="c">// pluginId 不出现在这里——宿主注入，不可自填</span>
+
+<span class="c">// ② 跨进程载荷（宿主组装）</span>
+IPC <span class="k">plugin/renderer/call</span>
+  { <span class="k">pluginId</span>, <span class="k">method</span>, <span class="k">args</span> }
+
+<span class="c">// ③ 插件侧应答</span>
+onRendererCall(method, args) → <span class="k">JSON 值</span></pre>
+
+  <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">链路</td><td>dispatch → 校验声明 → IPC <code>plugin/renderer/call</code> <code>{pluginId, method, args}</code> → 本插件 <code>onRendererCall</code> → JSON 应答</td></tr>
+      <tr><td class="id">method</td><td><b>白名单</b>——只认插件声明过的；没声明 → <code>PLUGIN_CALL_NO_HANDLER</code></td></tr>
+      <tr><td class="id">载荷</td><td>args 与应答合计 <b>≤64KB</b>；超限拒绝</td></tr>
+      <tr><td class="id">限速</td><td><b>QPS</b>；超速拒绝</td></tr>
+      <tr><td class="id">超时</td><td><b>2s</b>；超时 <code>PLUGIN_CALL_TIMEOUT</code></td></tr>
+      <tr><td class="id">熔断</td><td>连续失败 → <code>PLUGIN_CALL_DISABLED</code>，本插件转发暂时关掉</td></tr>
+      <tr><td class="id">pluginId</td><td><b>宿主注入，不可自填</b>——只能调自己，冒充别家直接拒绝</td></tr>
+      <tr><td class="id">应答</td><td><b>JSON</b>——不能是流、不能是函数、不能是循环引用</td></tr>
+    </tbody>
+  </table>
+  <div class="callout stop"><b>不能推流（拍板）。</b>一问一答，返回值必须能变成 JSON。要持续数据就多次调用，或者去订阅宿主的推送通道——本接口不是流。</div>
+  <div class="callout decided"><b>pluginId 宿主注入（拍板）。</b>组件侧只能写 <code>method</code> 和 <code>args</code>；「这是谁」由宿主在跨进程载荷里补上。这样就堵死了冒充别家插件、绕过归属闸的路。</div>
+
+  <h3>失败码</h3>
+  <table>
+    <thead><tr><th>码</th><th>什么时候</th></tr></thead>
+    <tbody>
+      <tr><td class="id">PLUGIN_CALL_NO_HANDLER</td><td>method 不在白名单，或插件没实现 <code>onRendererCall</code></td></tr>
+      <tr><td class="id">PLUGIN_CALL_UNSERIALIZABLE</td><td>args 或应答不能变成 JSON</td></tr>
+      <tr><td class="id">PLUGIN_CALL_TIMEOUT</td><td>2s 内没答上</td></tr>
+      <tr><td class="id">PLUGIN_CALL_TOO_LARGE</td><td>超过 64KB</td></tr>
+      <tr><td class="id">PLUGIN_CALL_RATE_LIMITED</td><td>超过 QPS</td></tr>
+      <tr><td class="id">PLUGIN_CALL_DISABLED</td><td>连续失败熔断，暂时关掉</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>谁能用 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>谁</th><th>怎么用</th></tr></thead>
+    <tbody>
+      <tr><td class="id">槽组件（渲染侧）</td><td><code>dispatch("plugin.call", …)</code>，只可调自己这个插件</td></tr>
+      <tr><td class="id">本插件 main</td><td>实现 <code>onRendererCall</code>，答 JSON</td></tr>
+      <tr><td class="id">别家插件</td><td><b>不能</b>——pluginId 不可自填，跨插件调用拒绝</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>场景 <span class="tag proposal">典型用法</span></h2>
+  <table>
+    <thead><tr><th>#</th><th>场景</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>知识库槽组件要搜自己插件索引里的条目，答一份列表</td></tr>
+      <tr><td>2</td><td>工具卡要取自己插件侧的运行摘要，答一个对象</td></tr>
+      <tr><td>3</td><td>触发符列表要去自己的数据源里筛，答候选数组</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li><b>不能推流。</b>不是订阅、不是事件源；一问一答，JSON 应答。</li>
+    <li><b>不能跨插件。</b>pluginId 宿主注入，只能调自己；冒充别家拒绝。</li>
+    <li><b>不给未声明的 method。</b>白名单外一律 <code>NO_HANDLER</code>。</li>
+    <li><b>不限于「取数」的副作用不走这里。</b>写草稿、加附件、复制、打开链接——走各自的出站词，不在 <code>plugin.call</code> 里开后门。</li>
+    <li><b>失败不静默。</b>超时、超限、熔断都带码返回，不假装成功。</li>
+    <li><b>连续失败不无限重试。</b>熔断 <code>PLUGIN_CALL_DISABLED</code>，先歇着。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag decided">已拍板</span></h2>
+  <table>
+    <thead><tr><th>问题</th><th>拍板</th></tr></thead>
+    <tbody>
+      <tr><td>链路</td><td>dispatch → 校验声明 → IPC <code>plugin/renderer/call</code> <code>{pluginId, method, args}</code> → <code>onRendererCall</code> → JSON</td></tr>
+      <tr><td>method</td><td>白名单</td></tr>
+      <tr><td>载荷</td><td>≤64KB</td></tr>
+      <tr><td>限速</td><td>QPS</td></tr>
+      <tr><td>超时</td><td>2s</td></tr>
+      <tr><td>熔断</td><td>连续失败 → <code>PLUGIN_CALL_DISABLED</code></td></tr>
+      <tr><td>pluginId</td><td>宿主注入，不可自填</td></tr>
+      <tr><td>应答形态</td><td>JSON；不能推流</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</body>
+</html>

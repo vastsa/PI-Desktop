@@ -327,6 +327,7 @@ type PluginPermission =
  | "agent.prompt.inject"
  | "provider.register"
  | "net.fetch"
+ | "net.anyHost"
  | "shell.openExternal"
  | "mcp.server.local"
  | "mcp.server.remote"
@@ -410,6 +411,18 @@ covers the domain and its subdomains.
 [03-plugin-api.md](03-plugin-api.md) §3). The permission is implemented: a
 connect is confined to `manifest.net.domains`, and a host that is not declared
 is refused before the transport is asked to open anything.
+
+### 5.3.1 net.anyHost — the escape hatch
+
+`"net.anyHost"` lifts the allowlist for a plugin whose endpoints the user types
+in (a self-hosted server, a personal domain no manifest written ahead of time
+can name). With the grant, every egress path above admits any host over
+http(s)/ws(s) — except cloud metadata endpoints (`169.254.169.254` and peers),
+which the grant never reaches: their answers are instance credentials. A host
+declared in `net.domains` keeps today's behavior, so existing manifests are
+unaffected; a plugin without the grant sees no change either. The grant is
+an install-time permission like any other: the user sees it in the review
+dialog and nothing prompts at request time.
 
 ## 5.1 Bus topic grammar
 

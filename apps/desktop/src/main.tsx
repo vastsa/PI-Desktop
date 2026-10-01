@@ -6,6 +6,7 @@ import { catalogs, flattenCatalog, resolveLocale } from "@pi-desktop/i18n";
 import { MAC_TRAFFIC_LIGHT_EDGE_DIP } from "@pi-desktop/shared";
 import App from "./App";
 import { PluginLauncher } from "./components/PluginLauncher";
+import { LiveVoiceWidget } from "./features/voice/live/LiveVoiceWidget";
 import { initLanguageSync, resolveOsLocale } from "./lib/app-language";
 import { installScrollbarReveal } from "./lib/scrollbar-reveal";
 import "./styles/globals.css";
@@ -57,7 +58,8 @@ if (!rootEl) {
 try {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
-      {rendererSurface === "plugin-launcher" ? <PluginLauncher /> : <App />}
+      {rendererSurface === "plugin-launcher" ? <PluginLauncher /> :
+        rendererSurface === "live-voice-widget" ? <LiveVoiceWidget /> : <App />}
     </React.StrictMode>,
   );
 } catch (error) {

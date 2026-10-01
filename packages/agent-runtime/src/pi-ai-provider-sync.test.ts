@@ -17,6 +17,8 @@ const UNSUPPORTED: Record<string, string> = {
   "google-vertex": "requires a project and location instead of a fixed base URL",
   "openai-codex":
     "offered as a vendor account (ChatGPT subscription) service in this app",
+  typesafe:
+    "classifier-only operation; not a chat preset or ordinary plugin API",
   radius:
     "pi_messages is an account-only style here and the gateway publishes no model list",
 };
@@ -31,6 +33,15 @@ describe("pi-ai built-in provider sync", () => {
       expect(reason.length, id).toBeGreaterThan(20);
       expect(matchNamedPreset({ vendorKey: id }), id).toBeUndefined();
     }
+  });
+
+  it("keeps TypeSafe's classifier operation out of chat presets", () => {
+    const provider = providers.find((entry) => entry.id === "typesafe");
+    expect(provider).toBeDefined();
+    expect(provider!.getModels()).toEqual([]);
+    const models = provider!.getAllModels?.() ?? [];
+    expect(models.length).toBeGreaterThan(0);
+    expect(models.every((model) => model.type === "classifier")).toBe(true);
   });
 
   it("covers every other built-in provider with a named preset", () => {

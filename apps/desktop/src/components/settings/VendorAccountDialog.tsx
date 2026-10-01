@@ -20,6 +20,7 @@ import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
 import { Button, Field, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
+import { useProbeFeedback } from "./useProbeFeedback";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
 
 export type VendorAccountForm = {
@@ -67,6 +68,8 @@ export function VendorAccountDialog({
     },
     provider,
   );
+  // The vendored account's own answer is announced once, like the service form's.
+  useProbeFeedback(discovery, true);
   const selection = useModelSelection(discovery, models, setModels);
 
   useEffect(() => {

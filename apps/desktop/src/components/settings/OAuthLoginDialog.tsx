@@ -117,12 +117,11 @@ export function OAuthLoginDialog({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (error) onClose();
-      else void cancel();
+      void cancel();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cancel, error, onClose]);
+  }, [cancel]);
 
   const copy = (value: string) => {
     void navigator.clipboard.writeText(value).then(
@@ -140,7 +139,9 @@ export function OAuthLoginDialog({
     setPrompt(null);
     void session
       .respond(promptId, value)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : String(e)),
+      );
   };
   const canSubmitAnswer = canSubmitOAuthPrompt(prompt, answer);
 
@@ -156,135 +157,125 @@ export function OAuthLoginDialog({
           {vendor.loginLabel || t("settings.vendorSignInTo", { vendor: vendor.name })}
         </h3>
 
-        {error ? (
-          <div className="oauth-error">{error}</div>
-        ) : (
-          <>
-            <div className="oauth-status">{status}</div>
+        {error ? <div className="oauth-error">{error}</div> : null}
 
-            {authUrl ? (
-              <div className="oauth-block">
-                <div className="oauth-block-text">
-                  {authUrl.instructions ||
-                    t(
-                      authUrl.opened
-                        ? "settings.vendorBrowserOpened"
-                        : "settings.vendorBrowserFailed",
-                    )}
-                </div>
-                <div className="oauth-inline-actions">
-                  <Button size="sm" variant="ghost" onClick={() => copy(authUrl.url)}>
-                    <span className="oauth-btn-inner">
-                      {copied === authUrl.url ? (
-                        <IconCheck size={13} />
-                      ) : (
-                        <IconCopy size={13} />
-                      )}
-                      <span>{t("settings.vendorCopyLink")}</span>
-                    </span>
-                  </Button>
-                  <a
-                    className="oauth-link"
-                    href={authUrl.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <IconExternal size={13} />
-                    <span>{t("settings.vendorOpenAgain")}</span>
-                  </a>
-                </div>
-              </div>
-            ) : null}
+        <div className="oauth-status">{status}</div>
 
-            {deviceCode ? (
-              <div className="oauth-block">
-                <div className="oauth-block-text">
-                  {t("settings.vendorDeviceCodeHint")}
-                </div>
-                <TooltipButton
-                  type="button"
-                  className="oauth-device-code font-mono"
-                  tooltip={t("settings.vendorCopyCode")}
-                  ariaLabel={t("settings.vendorCopyCode")}
-                  onClick={() => copy(deviceCode.userCode)}
-                >
-                  <span>{deviceCode.userCode}</span>
-                  {copied === deviceCode.userCode ? (
-                    <IconCheck size={14} />
-                  ) : (
-                    <IconCopy size={14} />
-                  )}
-                </TooltipButton>
-                <a
-                  className="oauth-link"
-                  href={deviceCode.verificationUri}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <IconExternal size={13} />
-                  <span>{deviceCode.verificationUri}</span>
-                </a>
-              </div>
-            ) : null}
-
-            {prompt ? (
-              <div className="oauth-block">
-                <div className="oauth-block-text">{prompt.message}</div>
-                {prompt.type === "select" ? (
-                  <div className="oauth-options">
-                    {(prompt.options ?? []).map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className="oauth-option"
-                        onClick={() => submitAnswer(option.id)}
-                      >
-                        <span className="oauth-option-label">{option.label}</span>
-                        {option.description ? (
-                          <span className="oauth-option-desc">{option.description}</span>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <form
-                    className="oauth-answer"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      if (canSubmitAnswer) submitAnswer(answer.trim());
-                    }}
-                  >
-                    <Input
-                      type={prompt.type === "secret" ? "password" : "text"}
-                      value={answer}
-                      onChange={(event) => setAnswer(event.target.value)}
-                      placeholder={prompt.placeholder}
-                      className={cx(
-                        prompt.type === "manual_code" && "font-mono text-sm-plus",
-                      )}
-                      autoComplete="off"
-                      autoFocus
-                    />
-                    <Button type="submit" variant="primary" disabled={!canSubmitAnswer}>
-                      {t("settings.vendorSubmit")}
-                    </Button>
-                  </form>
+        {authUrl ? (
+          <div className="oauth-block">
+            <div className="oauth-block-text">
+              {authUrl.instructions ||
+                t(
+                  authUrl.opened
+                    ? "settings.vendorBrowserOpened"
+                    : "settings.vendorBrowserFailed",
                 )}
+            </div>
+            <div className="oauth-inline-actions">
+              <Button size="sm" variant="ghost" onClick={() => copy(authUrl.url)}>
+                <span className="oauth-btn-inner">
+                  {copied === authUrl.url ? (
+                    <IconCheck size={13} />
+                  ) : (
+                    <IconCopy size={13} />
+                  )}
+                  <span>{t("settings.vendorCopyLink")}</span>
+                </span>
+              </Button>
+              <a
+                className="oauth-link"
+                href={authUrl.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <IconExternal size={13} />
+                <span>{t("settings.vendorOpenAgain")}</span>
+              </a>
+            </div>
+          </div>
+        ) : null}
+
+        {deviceCode ? (
+          <div className="oauth-block">
+            <div className="oauth-block-text">
+              {t("settings.vendorDeviceCodeHint")}
+            </div>
+            <TooltipButton
+              type="button"
+              className="oauth-device-code font-mono"
+              tooltip={t("settings.vendorCopyCode")}
+              ariaLabel={t("settings.vendorCopyCode")}
+              onClick={() => copy(deviceCode.userCode)}
+            >
+              <span>{deviceCode.userCode}</span>
+              {copied === deviceCode.userCode ? (
+                <IconCheck size={14} />
+              ) : (
+                <IconCopy size={14} />
+              )}
+            </TooltipButton>
+            <a
+              className="oauth-link"
+              href={deviceCode.verificationUri}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <IconExternal size={13} />
+              <span>{deviceCode.verificationUri}</span>
+            </a>
+          </div>
+        ) : null}
+
+        {prompt ? (
+          <div className="oauth-block">
+            <div className="oauth-block-text">{prompt.message}</div>
+            {prompt.type === "select" ? (
+              <div className="oauth-options">
+                {(prompt.options ?? []).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="oauth-option"
+                    onClick={() => submitAnswer(option.id)}
+                  >
+                    <span className="oauth-option-label">{option.label}</span>
+                    {option.description ? (
+                      <span className="oauth-option-desc">{option.description}</span>
+                    ) : null}
+                  </button>
+                ))}
               </div>
-            ) : null}
-          </>
-        )}
+            ) : (
+              <form
+                className="oauth-answer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (canSubmitAnswer) submitAnswer(answer.trim());
+                }}
+              >
+                <Input
+                  type={prompt.type === "secret" ? "password" : "text"}
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  placeholder={prompt.placeholder}
+                  className={cx(
+                    prompt.type === "manual_code" && "font-mono text-sm-plus",
+                  )}
+                  autoComplete="off"
+                  autoFocus
+                />
+                <Button type="submit" variant="primary" disabled={!canSubmitAnswer}>
+                  {t("settings.vendorSubmit")}
+                </Button>
+              </form>
+            )}
+          </div>
+        ) : null}
 
         <div className="provider-dialog-actions">
-          {error ? (
-            <Button variant="ghost" onClick={onClose}>
-              {t("settings.close")}
-            </Button>
-          ) : (
-            <Button variant="ghost" disabled={closing} onClick={() => void cancel()}>
-              {t("settings.cancel")}
-            </Button>
-          )}
+          <Button variant="ghost" disabled={closing} onClick={() => void cancel()}>
+            {t("settings.cancel")}
+          </Button>
         </div>
       </div>
     </div>

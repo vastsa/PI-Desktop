@@ -1,4 +1,4 @@
-import { ErrorCodes, type UiMessage } from "@pi-desktop/shared";
+import { ErrorCodes, type MessageUsage, type UiMessage } from "@pi-desktop/shared";
 
 import type { HostRpc } from "./host-ports.js";
 
@@ -10,7 +10,8 @@ export type TurnPersistenceLogger = (
 
 export type MessageAppend = {
   sessionId: string;
-  message: UiMessage;
+  message?: UiMessage;
+  usage?: MessageUsage;
   turnId?: string;
 };
 
@@ -83,9 +84,9 @@ export class TurnPersistence {
       const host = this.deps.getHost();
       if (host && (host.isAvailable?.() ?? true)) {
         try {
-          await host.call("session.appendMessage", {
+          await host.call(entry.usage ? "session.recordUsage" : "session.appendMessage", {
             sessionId: entry.sessionId,
-            message: entry.message,
+            ...(entry.usage ? { usage: entry.usage } : { message: entry.message }),
             ...(entry.turnId ? { turnId: entry.turnId } : {}),
           });
           return;
@@ -94,7 +95,7 @@ export class TurnPersistence {
           if (!isHostUnavailable(error)) {
             this.deps.log("warn", "transcript append failed", {
               sessionId: entry.sessionId,
-              messageId: entry.message.id,
+              messageId: entry.message?.id,
               error: String(error),
             });
             return;
@@ -105,7 +106,7 @@ export class TurnPersistence {
       if (attempt >= RETRY_DELAYS_MS.length * 2) {
         this.deps.log("error", "transcript append abandoned: host unavailable", {
           sessionId: entry.sessionId,
-          messageId: entry.message.id,
+          messageId: entry.message?.id,
         });
         return;
       }

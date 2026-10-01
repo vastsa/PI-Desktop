@@ -10,10 +10,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { en } from "../../../packages/i18n/src/locales/en/index.ts";
-import { zhCN } from "../../../packages/i18n/src/locales/zh-CN/index.ts";
-import { tr } from "../../../packages/i18n/src/locales/tr/index.ts";
-import { ko } from "../../../packages/i18n/src/locales/ko/index.ts";
+import { en } from "../../../packages/i18n/dist/locales/en/index.js";
+import { zhCN } from "../../../packages/i18n/dist/locales/zh-CN/index.js";
+import { tr } from "../../../packages/i18n/dist/locales/tr/index.js";
+import { ko } from "../../../packages/i18n/dist/locales/ko/index.js";
 
 const catalogs = { en, "zh-CN": zhCN, tr, ko };
 

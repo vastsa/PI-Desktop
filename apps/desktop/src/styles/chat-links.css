@@ -56,6 +56,10 @@
   text-decoration: underline dotted;
   text-underline-offset: 2px;
   overflow-wrap: anywhere;
+  /* The link is message text: override the inert `button` baseline so a drag
+     across the message selects and copies the URL too. */
+  -webkit-user-select: text;
+  user-select: text;
 }
 .chat-text-link:hover,
 .chat-text-link:focus-visible {

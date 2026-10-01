@@ -1,9 +1,9 @@
 import type { SubagentOutcome } from "../../../lib/subagent-topology";
-import { useContext, useEffect, useId, useState, type ReactNode } from "react";
+import { useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AssistantTurnPart } from "../../../lib/assistant-turns";
 import { formatToolDuration } from "../../../lib/tool-display";
-import { activitySummary } from "../../../lib/activity-summary";
+import { cachedActivitySummary, cachedVisibleProcessSteps } from "../../../lib/transcript-activity-summary";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import {
   isTurnThinking,
@@ -11,7 +11,6 @@ import {
   resolveThinkingDisplayMode,
   shouldAutoOpenTurnProcess,
   turnProcessTiming,
-  visibleProcessSteps,
 } from "../../../lib/turn-process";
 import { useAppStore } from "../../../stores/app-store";
 import {
@@ -40,10 +39,13 @@ export function TurnProcess({
   const { t } = useTranslation();
   const mode = useAppStore((state) => resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode));
   const search = useContext(TranscriptSearchContext);
-  const revealRequest = search && processContainsMessage(processParts, search.messageId)
-    ? search.requestId : undefined;
-  const summary = activitySummary(processParts.flatMap((part) => part.kind === "activity" ? part.items : []), delegationStatuses);
-  const thinkingNow = isTurnThinking(turnParts, isActive);
+  const revealRequest = useMemo(() => search && processContainsMessage(processParts, search.messageId)
+    ? search.requestId : undefined, [processParts, search]);
+  const summary = useMemo(() => cachedActivitySummary(
+    processParts.flatMap((part) => part.kind === "activity" ? part.items : []), delegationStatuses,
+  ), [processParts, delegationStatuses]);
+  const thinkingNow = useMemo(() => isTurnThinking(turnParts, isActive), [turnParts, isActive]);
+  const visibleSteps = useMemo(() => cachedVisibleProcessSteps(processParts, mode === "compact", isActive), [processParts, mode, isActive]);
   const disclosure = useAutomaticDisclosure(
     shouldAutoOpenTurnProcess(mode, isActive, summary.issues > 0),
     revealRequest,
@@ -51,14 +53,14 @@ export function TurnProcess({
   );
   const detailsId = useId();
   const [now, setNow] = useState(Date.now);
-  const { startedAt, endedAt } = turnProcessTiming(turnParts);
+  const { startedAt, endedAt } = useMemo(() => turnProcessTiming(turnParts), [turnParts]);
   useEffect(() => {
     if (!isActive) return;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [isActive]);
-  if (visibleProcessSteps(processParts, mode, isActive) === 0) return null;
+  if (visibleSteps === 0) return null;
   const seconds = startedAt === undefined ? 0 : Math.max(
     0, Math.floor(((isActive ? now : (endedAt ?? startedAt)) - startedAt) / 1000),
   );

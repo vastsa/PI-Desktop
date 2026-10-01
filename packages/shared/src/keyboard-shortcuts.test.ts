@@ -60,6 +60,15 @@ describe("keyboard shortcut mapping", () => {
     expect(normalizeKeybinding("Mod+Escape")).toBeNull();
   });
 
+  it("recognizes Escape for the unmodified voice-cancel shortcut", () => {
+    expect(normalizeKeybinding("Escape")).toBe("Escape");
+    expect(normalizeKeybinding("Mod+Escape")).toBeNull();
+    expect(
+      keybindingMatchesEvent("Escape", { key: "Escape", code: "Escape" }, "darwin"),
+    ).toBe(true);
+    expect(keybindingDisplayParts("Escape", "darwin")).toEqual(["Escape"]);
+  });
+
   it("uses platform defaults and valid overrides", () => {
     const fullscreen = KEYBOARD_SHORTCUTS.find(
       (shortcut) => shortcut.id === "toggleFullScreen",

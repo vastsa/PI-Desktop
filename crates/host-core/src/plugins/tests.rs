@@ -55,6 +55,23 @@ fn install_market_package_and_check_update_metadata() {
 }
 
 #[test]
+fn market_search_preserves_catalog_order() {
+    with_local_market(|| {
+        let dir = tempdir().unwrap();
+        let mut catalog = built_in_catalog_at(dir.path());
+        catalog.plugins.reverse();
+        let catalog_path = dir.path().join("plugins/market/catalog.json");
+        fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+        fs::write(&catalog_path, serde_json::to_string(&catalog).unwrap()).unwrap();
+
+        let mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+        let results = mgr.market_search(None, None).unwrap();
+        let ids: Vec<_> = results.iter().map(|plugin| plugin.id.as_str()).collect();
+        assert_eq!(ids, ["demo.workspace-notes", "demo.hello"]);
+    });
+}
+
+#[test]
 fn default_catalog_materializes_packages_under_manager_data_dir() {
     with_local_market(|| {
         let manager_dir = tempdir().unwrap();

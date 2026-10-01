@@ -5,6 +5,7 @@ import {
   type StderrHandler,
 } from "@pi-desktop/host-runtime";
 import { redactValue } from "./logger";
+import { getModuleDirectory } from "./module-path";
 
 export type {
   LocalToolHandler,
@@ -18,13 +19,22 @@ export type {
 function resolveSidecarEntry(): string {
   const candidates = [
     join(process.resourcesPath || "", "agent-runtime/sidecar.js"),
-    join(__dirname, "../../../agent-runtime/dist/sidecar.js"),
-    join(__dirname, "../../../../packages/agent-runtime/dist/sidecar.js"),
+    join(
+      getModuleDirectory(import.meta.url),
+      "../../../agent-runtime/dist/sidecar.js",
+    ),
+    join(
+      getModuleDirectory(import.meta.url),
+      "../../../../packages/agent-runtime/dist/sidecar.js",
+    ),
   ];
   for (const c of candidates) {
     if (c && existsSync(c)) return c;
   }
-  return join(__dirname, "../../../../packages/agent-runtime/dist/sidecar.js");
+  return join(
+    getModuleDirectory(import.meta.url),
+    "../../../../packages/agent-runtime/dist/sidecar.js",
+  );
 }
 
 function fallbackStderrLogger(text: string): void {
@@ -52,9 +62,19 @@ export class AgentSidecar extends RuntimeAgentSidecar {
     super({
       launch: {
         command: process.execPath,
-        // Electron 43's Node supports the OS trust store. Keep bundled roots
-        // and inherited NODE_EXTRA_CA_CERTS; never bypass TLS verification.
-        args: ["--max-old-space-size=2048", "--use-system-ca", resolveSidecarEntry()],
+        // Keep the OS trust store available to the sidecar. On macOS the
+        // Electron 43 build applies `--use-system-ca` by replacing the
+        // bundled roots instead of adding them (its keychain enumeration
+        // misses public anchors like GlobalSign Root CA - R3, issue #1187),
+        // so there the sidecar merges bundled + system + extra CAs itself
+        // (agent-runtime system-ca) and this launcher omits the flag. On
+        // Windows and Linux the flag behaves as documented and stays.
+        // Never bypass TLS verification.
+        args: [
+          "--max-old-space-size=2048",
+          ...(process.platform === "darwin" ? [] : ["--use-system-ca"]),
+          resolveSidecarEntry(),
+        ],
         env: {
           ...process.env,
           ELECTRON_RUN_AS_NODE: "1",

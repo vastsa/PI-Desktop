@@ -1,0 +1,193 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>草稿读写 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .tag.open{color:var(--plugin);background:rgba(194,122,255,.10)}
+  h3{margin:22px 0 6px;font-size:14.5px;color:var(--text)}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">草稿读写</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/draft</div>
+  <h1>草稿读写 · 需求</h1>
+  <p>输入框草稿的读与写：<code>composer.readDraft</code> / <code>composer.replaceDraft</code> / <code>composer.insertText</code>。插入是主路径；整体替换三道闸；草稿变化用推送，不用轮询。</p>
+  <div class="meta">status: draft · issue #545 · #561 · insertText 核心 H · readDraft 可选 H · 远端 replace 拒绝</div>
+</header>
+
+<main>
+
+<section>
+  <h2>范围 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>三个方法，管输入框里的草稿文字和记号：
+      <ul>
+        <li><code>composer.readDraft</code> — 读一份快照</li>
+        <li><code>composer.insertText</code> — 往光标处插一段文字（主路径）</li>
+        <li><code>composer.replaceDraft</code> — 整体替换草稿（受限）</li>
+      </ul>
+    </li>
+    <li>草稿变化由宿主<b>推送</b>（rendererData <code>draft</code>），插件不轮询。</li>
+    <li>不谈：附件三动作（<code>render/attachments/</code>）、输入框界面槽（<code>ui/composer/</code>）、发送前改写（<code>runtime/before-send/</code>）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>契约形状 <span class="tag decided">已拍板</span></h2>
+
+  <h3>读快照</h3>
+<pre><span class="c">// 请求：无参数</span>
+composer.readDraft()
+
+<span class="c">// 返回</span>
+{
+  <span class="k">text</span>,                 <span class="c">// 输入框当前文字</span>
+  <span class="k">marks</span>: [ … ],         <span class="c">// 记号列表，按出现顺序</span>
+  <span class="k">generation</span>            <span class="c">// 草稿世代号；每次草稿变化 +1，给 replaceDraft 对账用</span>
+}</pre>
+
+  <h3>插入（主路径）</h3>
+<pre><span class="c">// 请求：光标处插入一段纯文字</span>
+composer.insertText({ <span class="k">text</span>: <span class="c">"请对照 docs/spec/00-baseline.md"</span> })
+
+<span class="c">// 返回</span>
+{ <span class="k">ok</span>: <span class="k">true</span>, <span class="k">generation</span> }</pre>
+
+  <h3>整体替换（受限）</h3>
+<pre><span class="c">// 请求</span>
+composer.replaceDraft({
+  <span class="k">expectedGeneration</span>,   <span class="c">// 必须等于当前 generation，对不上整次拒绝（CAS）</span>
+  <span class="k">text</span>,
+  <span class="k">marks</span>?
+})
+
+<span class="c">// 返回</span>
+{ <span class="k">ok</span>: <span class="k">true</span>, <span class="k">generation</span> }
+<span class="c">// 或错误：generation 对不上 / 输入框正聚焦 / 来源是远端 → 整次拒绝</span></pre>
+
+  <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">readDraft 返回</td><td>恒 <code>{ text, marks[] }</code>（附 <code>generation</code>）</td></tr>
+      <tr><td class="id">replace 三道闸</td><td>① CAS <code>expectedGeneration</code>；② 输入框<b>非聚焦</b>才可写；③ <b>远端来源禁止</b></td></tr>
+      <tr><td class="id">insert 地位</td><td><b>主路径</b>——远程回来的内容、模板、片段，都走插入</td></tr>
+      <tr><td class="id">递交</td><td>草稿变化经 rendererData <code>draft</code> <b>推送</b>；不要轮询</td></tr>
+    </tbody>
+  </table>
+  <div class="callout decided"><b>replace 三道闸（拍板）。</b>整体替换会盖掉用户正在打的字，所以必须同时满足：世代号对得上、输入框此刻没有焦点、调用来源不是远端回调。任何一道不过，整次拒绝，不部分写入。</div>
+  <div class="callout stop"><b>远端来源禁止 replace（拍板）。</b>「远端来源」指异步回来的结果：插件转发应答、网络请求回调、定时器里迟到的数据。这些场景只能 <code>insertText</code>，不能整体替换——用户可能正在打字，远端迟到的整段替换会把字吃掉。</div>
+  <div class="callout decided"><b>推送不轮询（拍板）。</b>草稿一变（用户打字、删改、插件写入），宿主经 rendererData <code>draft</code> 推一份新快照。插件订阅即可，不要定时去读。</div>
+</section>
+
+<section>
+  <h2>谁能用 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>方法</th><th>谁</th><th>出站层</th></tr></thead>
+    <tbody>
+      <tr><td class="id">composer.insertText</td><td>插件渲染器（用户手势或本地交互路径）</td><td>核心 H</td></tr>
+      <tr><td class="id">composer.readDraft</td><td>插件渲染器</td><td>可选 H</td></tr>
+      <tr><td class="id">composer.replaceDraft</td><td>插件渲染器，且过三道闸</td><td>本地过闸后可用；远端来源 → 拒绝</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>场景 <span class="tag proposal">典型用法</span></h2>
+  <table>
+    <thead><tr><th>#</th><th>场景</th><th>用哪条</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>常用语 / 模板：点一下，把一段固定文字插到光标处</td><td>insertText（主路径）</td></tr>
+      <tr><td>2</td><td>润色：用户按「润色」，本地算完整段替换；此时输入框非聚焦、世代号对得上</td><td>replaceDraft（过闸）</td></tr>
+      <tr><td>3</td><td>字数 / 进度统计：订阅推送，算完画在自己的按钮上</td><td>readDraft + 推送</td></tr>
+      <tr><td>4</td><td>远程查资料回来往输入框补一句</td><td>insertText（远端禁止 replace）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li><b>远端来源禁止 replaceDraft。</b>异步回调、网络返回、定时器迟到数据——一律只能插入。</li>
+    <li><b>不提供轮询接口。</b>草稿变化走推送；再提供轮询就是第二条源。</li>
+    <li><b>输入框聚焦时不许整体替换。</b>用户正在打字，替换就是吃字。</li>
+    <li><b>不做「静默覆盖」。</b>世代号对不上就整次拒绝，不部分写入、不强行盖。</li>
+    <li><b>不动宿主自己的记号</b>（例如编辑历史消息时的锚点）：replace 丢掉它 → 整次拒绝。</li>
+    <li><b>不给附件读写。</b>那是 <code>render/attachments/</code>；本目录只管草稿文字与记号。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag decided">已拍板</span></h2>
+  <table>
+    <thead><tr><th>问题</th><th>拍板</th></tr></thead>
+    <tbody>
+      <tr><td>readDraft 返回</td><td><code>{ text, marks[] }</code>（或带 <code>generation</code>）</td></tr>
+      <tr><td>replace 受限</td><td>CAS <code>expectedGeneration</code> + 输入框非聚焦才可写</td></tr>
+      <tr><td>远端 replace</td><td><b>禁止</b>；远端内容走 insertText</td></tr>
+      <tr><td>写入主路径</td><td><code>composer.insertText</code></td></tr>
+      <tr><td>递交</td><td>草稿变化经 rendererData <code>draft</code> 推送，不要轮询</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</body>
+</html>

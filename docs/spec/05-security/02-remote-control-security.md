@@ -336,16 +336,16 @@ verifies request id, Session id, turn id, principal role, expiry, allowed
 decision, permission-mode selection, and current state in one operation.
 
 Pending requests are Host state. Rust host-core keeps the pending permission
-table and its timer; the Agent Host reads it through `permissions.pending`
+table; the Agent Host reads it through `permissions.pending`
 so a late-attaching client receives open requests. That read is redacted the
 same way as the request event and never returns tool arguments beyond the
 bounded preview.
 
-Approval lifetime is Host policy. The local default remains 120 seconds then
-deny (frozen decision 17). While a remote subscriber is attached the default
-is 30 minutes (D375); the operator may shorten or lengthen it within a bound,
-the blocked tool waits for that lifetime unless a local or remote decision
-arrives earlier, and a client disconnect never extends it.
+Approval lifetime is Host policy. Local desktop permission requests have no
+automatic deadline and remain pending until a decision, cancellation, or
+shutdown. While a remote subscriber is attached, the remote approval record
+defaults to 30 minutes (D375); the operator may shorten or lengthen that
+bounded remote lifetime, and a client disconnect never extends it.
 
 An approval response that arrives after disconnect, expiry, abort, crash, or
 turn completion is a no-op or a structured stale/expired error. It never

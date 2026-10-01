@@ -48,7 +48,7 @@ function projectBlock(source) {
   const start = source.search(/^  "?project"?: \{/m);
   assert.ok(start >= 0, "project block starts");
   const rest = source.slice(start + 1);
-  const end = rest.search(/^  "?pulls"?: \{/m);
+  const end = rest.search(/^  "?scheduled"?: \{/m);
   assert.ok(end > 0, "project block ends");
   return rest.slice(0, end);
 }

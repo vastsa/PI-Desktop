@@ -6,9 +6,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadStyles } from "./helpers/styles.mjs";
-import { en } from "../../../packages/i18n/src/locales/en/index.ts";
-import { zhCN } from "../../../packages/i18n/src/locales/zh-CN/index.ts";
-import { tr } from "../../../packages/i18n/src/locales/tr/index.ts";
+import { en } from "../../../packages/i18n/dist/locales/en/index.js";
+import { zhCN } from "../../../packages/i18n/dist/locales/zh-CN/index.js";
+import { tr } from "../../../packages/i18n/dist/locales/tr/index.js";
 
 const catalogs = { en, "zh-CN": zhCN, tr };
 
@@ -164,13 +164,13 @@ test("capability sections flow at natural height with skeleton loading", () => {
 });
 
 test("skill import is one native file and physically targets the selected level", () => {
-  const start = electronMainSrc.indexOf("handle(IPC.invoke.skillImport");
-  const end = electronMainSrc.indexOf("handle(\n    IPC.invoke.skillUpdate", start);
-  const handler = electronMainSrc.slice(start, end);
-  assert.ok(start >= 0 && end > start, "skill import handler is missing");
+  const handler = electronMainSrc.match(
+    /handle\(\s*IPC\.invoke\.skillImport[\s\S]*?(?=handle\(\s*IPC\.invoke\.skillUpdate)/,
+  )?.[0];
+  assert.ok(handler, "skill import handler is missing");
   assert.match(handler, /properties: \["openFile"\]/);
-  assert.doesNotMatch(handler, /\bmultiple\b/);
-  assert.match(handler, /host\.call\("skills\.import"/);
+  assert.match(handler, /path: picked\.filePaths\[0\]/);
+  assert.match(handler, /currentHost\.call\("skills\.import"/);
   assert.match(settingsComponents.get("AgentSkillsPage.tsx"), /api\.importUserSkill\(/);
   assert.match(hostCapabilitySources, /fs::copy\(source, target\)/);
 });

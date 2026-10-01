@@ -5,7 +5,6 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const pagePaths = [
   "../src/pages/PluginsPage.tsx",
-  "../src/pages/PullRequestsPage.tsx",
   "../src/pages/ScheduledPage.tsx",
 ];
 

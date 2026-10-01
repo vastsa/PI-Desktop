@@ -47,7 +47,7 @@ describe("ParentHostProxy RPC deadlines", () => {
     }
   });
 
-  it("bounds the default Bash command deadline until the host responds", async () => {
+  it("keeps a prompted Bash call open until the host responds", async () => {
     vi.useFakeTimers();
     const stdout = stubStdout();
     try {
@@ -64,7 +64,7 @@ describe("ParentHostProxy RPC deadlines", () => {
         },
       );
 
-      await vi.advanceTimersByTimeAsync(189_999);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
       expect(settled).toBe(false);
       proxy.handleParentMessage({ id: request.id, result: { ok: true } });
       await expect(pending).resolves.toEqual({ ok: true });
@@ -74,7 +74,7 @@ describe("ParentHostProxy RPC deadlines", () => {
     }
   });
 
-  it("adds permission and buffer time to explicit Bash command timeouts", async () => {
+  it("does not apply a transport deadline to explicit Bash command timeouts", async () => {
     vi.useFakeTimers();
     const stdout = stubStdout();
     try {
@@ -84,11 +84,19 @@ describe("ParentHostProxy RPC deadlines", () => {
         timeoutMs: 1_000,
       });
       const request = JSON.parse(String(stdout.mock.calls[0][0]));
-      const rejection = expect(pending).rejects.toThrow("parent host proxy timeout");
-
-      await vi.advanceTimersByTimeAsync(131_000);
-      await expect(Promise.resolve()).resolves.toBeUndefined();
-      await rejection;
+      let settled = false;
+      void pending.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(settled).toBe(false);
+      proxy.handleParentMessage({ id: request.id, result: { ok: true } });
+      await expect(pending).resolves.toEqual({ ok: true });
       expect(request.params.method).toBe("tools.execute");
       await proxy.dispose();
     } finally {

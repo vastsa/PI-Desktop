@@ -94,3 +94,16 @@ optimization.
 - `docs/spec/06-delivery/04-e2e-test-plan.md` (E2E-008a)
 - `https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/core/system-prompt.ts`
 - `https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md`
+
+## Amendment — 2026-09-27: keep workspace search in Agent's initial schema
+
+Routine file discovery should not require a separate `ToolSearch` turn. Agent
+now includes `Glob` and `Grep` alongside `Read`, `Bash`, `Edit`, and `Write` in
+its initial provider request. `BrowserPreview`, plugin tools, and plugin
+development helpers remain deferred, so the bounded catalog and activation
+mechanism continue to control optional schemas. Chat, Plan, and Goal tool sets
+are unchanged.
+
+This supersedes only ADR 0048's initial-set and Glob/Grep-deferral bullets and
+the corresponding first-turn consequences; successful activation restoration,
+provider compatibility, permissions, and host policy are unchanged.

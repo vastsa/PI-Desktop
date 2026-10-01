@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isLocalNetDomain, isNetHostAllowed, isNetUrlAllowed, parseNetDomains } from "./net-policy.js";
+import {
+  isLocalNetDomain,
+  isMetadataNetHost,
+  isNetHostAllowed,
+  isNetSocketUrlAllowedWithGrant,
+  isNetUrlAllowed,
+  isNetUrlAllowedWithGrant,
+  parseNetDomains,
+} from "./net-policy.js";
 
 describe("parseNetDomains", () => {
   it("treats an absent list as no egress rather than an error", () => {
@@ -119,5 +127,66 @@ describe("isNetUrlAllowed", () => {
     expect(isNetUrlAllowed("ws://api.github.com", ["api.github.com"])).toBe(false);
     expect(isNetUrlAllowed("file:///etc/passwd", ["api.github.com"])).toBe(false);
     expect(isNetUrlAllowed("not a url", ["api.github.com"])).toBe(false);
+  });
+});
+
+describe("isMetadataNetHost", () => {
+  it("recognizes cloud metadata endpoints", () => {
+    for (const host of ["169.254.169.254", "metadata.google.internal", "metadata", "METADATA."]) {
+      expect(isMetadataNetHost(host), host).toBe(true);
+    }
+  });
+
+  it("leaves ordinary and private hosts alone", () => {
+    for (const host of ["api.github.com", "192.168.1.10", "10.0.0.1", "localhost"]) {
+      expect(isMetadataNetHost(host), host).toBe(false);
+    }
+  });
+});
+
+describe("isNetUrlAllowedWithGrant", () => {
+  it("keeps the allowlist decision unchanged without the grant", () => {
+    const grant = { domains: ["api.github.com"], anyHost: false };
+    expect(isNetUrlAllowedWithGrant("https://api.github.com/x", grant)).toBe(true);
+    expect(isNetUrlAllowedWithGrant("https://my-self-hosted.example/x", grant)).toBe(false);
+  });
+
+  it("admits any http(s) host once the grant is held", () => {
+    const grant = { domains: [], anyHost: true };
+    expect(isNetUrlAllowedWithGrant("https://my-self-hosted.example:8443/x", grant)).toBe(true);
+    expect(isNetUrlAllowedWithGrant("http://192.168.1.10/api", grant)).toBe(true);
+  });
+
+  it("never admits cloud metadata endpoints, grant or not", () => {
+    const grant = { domains: [], anyHost: true };
+    expect(isNetUrlAllowedWithGrant("http://169.254.169.254/latest/meta-data", grant)).toBe(false);
+    expect(isNetUrlAllowedWithGrant("http://metadata.google.internal/", grant)).toBe(false);
+  });
+
+  it("still refuses non-http schemes and unparseable input under the grant", () => {
+    const grant = { domains: [], anyHost: true };
+    expect(isNetUrlAllowedWithGrant("file:///etc/passwd", grant)).toBe(false);
+    expect(isNetUrlAllowedWithGrant("ws://my-self-hosted.example", grant)).toBe(false);
+    expect(isNetUrlAllowedWithGrant("not a url", grant)).toBe(false);
+  });
+
+  it("prefers the allowlist when the host is declared", () => {
+    const grant = { domains: ["169.254.169.254"], anyHost: true };
+    expect(isNetUrlAllowedWithGrant("http://169.254.169.254/latest/meta-data", grant)).toBe(true);
+  });
+});
+
+describe("isNetSocketUrlAllowedWithGrant", () => {
+  it("admits any ws(s) host under the grant, metadata excepted", () => {
+    const grant = { domains: [], anyHost: true };
+    expect(isNetSocketUrlAllowedWithGrant("wss://my-self-hosted.example/ws", grant)).toBe(true);
+    expect(isNetSocketUrlAllowedWithGrant("http://my-self-hosted.example", grant)).toBe(false);
+    expect(isNetSocketUrlAllowedWithGrant("ws://169.254.169.254/", grant)).toBe(false);
+  });
+
+  it("changes nothing without the grant", () => {
+    const grant = { domains: ["api.github.com"] };
+    expect(isNetSocketUrlAllowedWithGrant("wss://api.github.com/ws", grant)).toBe(true);
+    expect(isNetSocketUrlAllowedWithGrant("wss://other.example/ws", grant)).toBe(false);
   });
 });

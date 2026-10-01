@@ -283,6 +283,19 @@ pub fn update_provider(
     if input.models.is_some() {
         ensure_model_bindings_update_safe(&raw_config)?;
     }
+    // The discovered answer belongs to the endpoint that produced it, and the
+    // cached rows carry no endpoint of their own: an edit that moves the address
+    // or the wire format has to drop that answer, or the picker would paint the
+    // previous service's models as this one's. Read before the update moves the
+    // fields into the row.
+    let endpoint_changed = input
+        .base_url
+        .as_deref()
+        .is_some_and(|value| value.trim() != current.base_url.as_deref().unwrap_or("").trim())
+        || input
+            .api_style
+            .as_deref()
+            .is_some_and(|value| value != current.api_style.as_deref().unwrap_or(""));
     // Derive from the API key ref directly: `has_secret` now also covers an
     // OAuth credential, so reusing it here would stamp an api_key ref onto a
     // provider that only ever signed in with a vendor account.
@@ -366,6 +379,38 @@ pub fn update_provider(
             now_ms(),
             input.id
         ])?;
+    // A save that drops bindings also forgets their cached rows. The cache is
+    // the service's answer, and a model the user removed is no longer part of
+    // the configuration that answer belongs to; keeping the row would feed the
+    // deleted model's recorded limits back to the next add of the same id.
+    if let Some(models) = input.models.as_deref() {
+        let removed: Vec<String> = current
+            .models
+            .iter()
+            .filter(|binding| {
+                let id = binding.id.trim().to_lowercase();
+                !models
+                    .iter()
+                    .any(|model| model.id.trim().to_lowercase() == id)
+            })
+            .map(|binding| binding.id.clone())
+            .collect();
+        forget_cached_models(db, &input.id, &removed)?;
+    }
+    // A save that moves the endpoint drops the answer the previous one
+    // produced. The models the user configured stay: they are the configuration
+    // the save just wrote, not a cached answer.
+    if endpoint_changed {
+        let configured: Vec<String> = match input.models.as_ref() {
+            Some(models) => models.iter().map(|model| model.id.clone()).collect(),
+            None => current
+                .models
+                .iter()
+                .map(|binding| binding.id.clone())
+                .collect(),
+        };
+        forget_missing_discovered_models(db, &input.id, &configured)?;
+    }
     get_provider(db, secrets, &input.id)
 }
 

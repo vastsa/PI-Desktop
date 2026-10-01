@@ -114,10 +114,10 @@ type RecentModelRef = {
 且不发送思考覆盖。
 
 对于新创建的会话，渲染器会解析所选（或应用默认）模型的 `ModelBinding`。
-具有推理能力的模型始于该绑定的 `defaultThinkingLevel`（`omit` 保留；其它值
-钳位到已启用档位）；当默认值未设置时，才回落到已发布
-`supportedThinkingLevels` 中的最高已启用档。非推理模型或缺失的能力元数据从
-`off` 开始。这是一个仅创建时的默认值，绝不会重写现有会话的存储选择。
+已匹配目录的推理模型始于该绑定的 `defaultThinkingLevel`（`omit` 保留；其它值
+钳位到已启用档位）；当默认值未设置时，才回落到已启用档中的最高等级。未匹配
+模型在没有显式绑定默认值时从 `off` 开始，但 Composer 仍提供完整思考等级供用户
+手动启用。这是一个仅创建时的默认值，绝不会重写现有会话的存储选择。
 
 未固定的会话仍在 list/get/create/fork/configure 上展示该继承默认模型的
 推理能力；丰富步骤不会写入 `providerId`/`modelId`。桌面创建会话时会把当时的
@@ -134,33 +134,24 @@ type RecentModelRef = {
 - 显示非阻塞警告
 - 不要硬阻止（供应商标签可能不完整）
 
-## 6. 刷新行为
+## 6. Refresh behavior
 
-随应用打包的 `apps/desktop/resources/models.dev/api.json` 快照是启动基线。
-`scripts/release.mjs` 在创建发布标签前更新该快照；应用启动不会请求或写入目录。
-设置页通过 Electron 专用的 `providers.refreshModelCatalog` 通道重新获取
-`https://models.dev/api.json`；成功响应只替换当前进程内存中的 models.dev
-目录，不会写入用户数据。
+The pinned pi-ai 0.99.1 catalog is the startup baseline. Startup reads no remote
+catalog and uses no ambient credentials. `providers.refreshModelCatalog` invokes
+Pi's public refresh API; settings metadata lookups themselves are local.
 
-重复的元数据查询使用容量有界的进程内缓存，键由配置的厂商键、基础 URL 和
-去除首尾空白且不区分大小写的模型 ID 组成。匹配和未匹配结果都会缓存，原有的
-提供商偏好、别名匹配和候选排序保持不变。成功加载打包快照或在设置中刷新并
-替换目录后，缓存失效；刷新失败则保留之前的目录及查询结果。补全会话能力时，
-每个会话只解析一次匹配的目录记录，再应用当前提供商/模型绑定和会话默认值，
-因此用户覆盖值不会作为过期能力留在缓存中。刷新大型会话列表时，同样的查询
-不能在每次出现时都重新扫描完整目录。
+For keyed endpoints, live discovery supplies IDs and the central Pi catalog
+adapter enriches their metadata. For OAuth, the account provider refresh hook
+publishes live entitlement IDs into its existing Models collection. Successful
+account lists are authoritative; a failed list preserves the pinned baseline.
+Same-tier fallback for live-only IDs preserves transport and thinking behavior
+but cannot invent known prices.
 
-提供商模型加载仍采用 stale-while-revalidate：
-
-1. `source: "cache"` 从 Rust 拥有的 SQLite 读取已保存提供商的规范化发现记录，
-   不访问提供商网络。
-2. 渲染器可以立即在 Composer 和提供商对话框中显示这些记录。
-3. `source: "refresh"` 优先使用打包或内存中的 models.dev 目录，只有需要发现
-   models.dev 未提供的模型 ID 时才探测提供商端点。
-4. 成功的提供商发现可以更新 Rust 拥有的规范化缓存，但不能替换匹配的
-   models.dev 记录或其元数据。
-5. 发现结果不完整或不可用时，保留已配置的 `ModelBinding` ID；models.dev
-   中不存在的 ID 使用通用元数据。
+`source: "cache"` reads Host caches and configured bindings without network.
+`source: "refresh"` probes the selected endpoint/account and decorates returned
+IDs. Saved bindings remain visible when discovery is partial or unavailable.
+Account removal invalidates catalog access; failed Host deletion preserves the
+still-existing account. Refresh does not rewrite configured models or history.
 
 ## 7. 线下行为
 
@@ -170,6 +161,18 @@ type RecentModelRef = {
 - 永远不要清除已渲染的缓存列表或闪烁空选择器
 - 允许自定义模型ID
 - 仍然允许具有已知模型 ID 的提供商
+
+缓存只属于记录它时的那份配置：保存时移除了某个模型绑定，该模型的缓存行一并
+遗忘，因此被删模型的上下文、能力与显示名不会在下次添加同一 ID 时被交还，该 ID
+也不再出现在选择器的“先画缓存”里。只清理这次保存真正移除的 ID——其余发现结果
+是服务的回答；服务仍在提供该模型时，下一次探测会按服务的描述重新记录。
+
+新的回答同样会替换旧回答：一次探测不再提供的模型，其缓存行随之删除，选择器
+不会再按旧参数画出已被端点下线的模型，手输 ID 也不会继承它过去的参数；来源不是
+发现的（用户自己的）行永不因此删除，已配置的绑定即使服务不再列出也仍然可见。
+缓存行本身不记录端点，因此保存时改动接口地址或接口格式会丢弃上一个端点给出的
+回答，由下一次探测记录新的回答。失败或空回答不算回答：它进不了缓存，因此既不能
+替换也不能收窄已存内容。
 
 ## 8. 目录项架构
 
@@ -216,10 +219,10 @@ type ModelCatalogItem = {
 运行时、上下文检查器与设置界面解析同一个有效窗口与输出上限。两个限额的来源分别保存：
 `contextWindowSource` 只适用于 `contextWindow`，`maxTokensSource` 只适用于 `maxTokens`。
 
-- `catalog` —— 对应限额是 models.dev 快照，之后该目录字段的修正可以替换它。刷新后的
+- `catalog` —— 对应限额是 Pi catalog 快照，之后该目录字段的修正可以替换它。刷新后的
   长上下文模型（例如 `gpt-5.6-luna`，1,050,000 tokens）不再显示为 128k 模型；在目录
   尚未收录该 ID 时加入的行，记录解析后也不再显示通用的 8.2k 输出上限。只有成功解析
-  的 models.dev 记录才算已发布；查询未命中、回退到通用形态时不算目录修正。
+  的 Pi catalog 记录才算已发布；查询未命中、回退到通用形态时不算目录修正。
 - `user` —— 该限额来自单个模型「高级」里的输入或预设档位，目录永不替换它，包括与
   通用种子相同的 128,000 或 8,192。设置上下文窗口不会改变最大输出 token 的来源。
 
@@ -243,8 +246,9 @@ type ModelCatalogItem = {
 有资格出现在 Composer 中。
 
 组合 Composer 菜单打开时，渲染器会在进入“模型”子菜单前开始加载提供商模型。
-因此首个可见行优先来自缓存目录或已配置绑定，实时发现仍在后台更新。非空的已配置
-别名会根据等价模型 ID 从绑定中解析，并在目录刷新期间保持为唯一可见的模型名称。
+因此首个可见行优先来自缓存目录或已配置绑定，实时发现仍在后台更新。模型行显示
+配置的线上模型 ID；非空的已配置别名仍会根据准确的绑定解析，并作为选中芯片的
+紧凑名称，而不会替换模型身份。
 
 ## 10. 默认模型策略
 
@@ -260,8 +264,9 @@ type ModelCatalogItem = {
 会话级别：
 - 创建时继承应用默认，并写入该 `providerId`/`modelId`
 - 之后改设置里的默认模型只作用于新会话和未持久化的首页草稿，不改已创建会话
-- 将思维初始化到所选模型绑定的默认思考等级（钳位到已启用档；
-  未设置时才回落最高已启用档），当它支持推理时，否则 `off`
+- 已匹配目录的推理模型从绑定默认思考等级开始（钳位到已启用档；未设置时回落
+  最高已启用档）；未匹配模型在没有显式绑定默认值时从 `off` 开始，但 Composer
+  仍提供思考等级供手动启用
 - 可以独立覆盖
 
 ## 11. 能力门控
@@ -275,75 +280,34 @@ type ModelCatalogItem = {
 
 除非不可能执行，否则警告是非阻塞的。
 
-### 11. 1 推理能力解析
+### 11.1 Reasoning capability resolution
 
-1. 解析 pi 目录元数据以获得确切的 `(vendorKey, modelId)` 或
-   分隔符限制的兼容网关别名。
-2、完整的pi模型记录，权威； cached/discovered 模型
-   功能和遗留提供程序覆盖不能取代其推理
-   旗帜或思维层面的地图。
-3. pi 中不存在的自由格式 id 是未知的通用模型，并且仅公开
-   `off`； UI 无法将其提升为具有推理能力。
-4. 仅当解析的 pi 模型支持时，Composer 才会渲染选择器
-   推理并仅列出已解析的 `supportedThinkingLevels`。
-5. 如果 stored/requested 级别不可用，请选择最近支持的级别
-通过先向上然后向下扫描来调整水平。非推理模型
-   始终解析为 `off`。
-6. 更改为非推理提供商仍然存在 `off`；没有不支持的级别
-   泄漏到下一个请求中。
+1. Resolve published Pi thinking metadata for the exact physical model.
+2. Project explicit binding levels at the account boundary. Known unsupported
+   levels and native null mappings remain unavailable; saved settings are not
+   rewritten. Clamp the dispatched request using Pi's public helper.
+3. Unknown free-form IDs retain the generic Desktop ladder for manual opt-in,
+   with `off` as the unset default. Explicit binding defaults remain scoped to
+   new drafts/sessions rather than overwriting existing session preferences.
+4. `omit` remains a distinct request choice: no thinking field is sent. Agent
+   bookkeeping may store `off` while the request omits reasoning.
+5. The Composer renders effective enabled levels in canonical order. Dispatch
+   normalization cannot silently enable a native unsupported level.
 
-### 11.2 目录元数据的模型 ID 匹配
+### 11.2 Vision capability resolution
 
-目录补全使用 `catalogModelIdsMatch`，不使用解析已配置绑定身份的共享
-`modelIdsMatch`。绑定身份接受不区分大小写的完整 ID、完整斜杠路径后缀、
-已知厂商的 `-`/`.` 前缀，以及仅有一侧带 `@region` 的别名；两个不同地区、
-任意路由前缀或思考/端点后缀不会合并为同一绑定。
-元数据查询还可以匹配 `proxy/` 或 `custom/` 等通用路由下的完整裸叶子 ID，
-但必须避免已知厂商冲突；两个不同的完整路由路径不会仅因叶子相同而匹配。
-它只会剥离末尾以 `-` 或 `:` 分隔的 `thinking`、
-`think`、`agent`、`latest`（也可在 `@region` 之前），不会剥离任意短横线代理
-前缀或 `low`、`high`、`max` 等 effort 后缀。
-
-完全匹配不到时走兜底：取「服务名去掉一层路由前缀」后对应的完整已发布 ID（`test/mimo-v2.5`），
-以及再去掉一个部署标记后的完整 ID（`mimo-v2.5-pro-test`、`gemini-2.5-pro-1m`）。只有表示
-已发布模型变体的标记才会这样处理 —— `-test`、`-preview`、`-beta`、`-1m`、`-128k`；`-asr`、
-`-tts`、`-pro` 是独立的模型，带这类后缀且未发布的 ID 仍保持未知，不会继承同类模型的窗口。
-该兜底只读取一个完整的已发布 ID，不串接多层别名。
-
-目录索引用这些别名生成有界
-候选键，再由匹配器确认；若厂商键或 API URL 已选中已知目录提供商，
-查询仅限该提供商，不能借用别家能力。
-这些别名只用于附加已发布的元数据，不改变配置的请求模型 ID，后缀本身也
-不证明模型有推理能力。未命中的自由格式 ID 仍是无推断能力的未知通用模型；
-只有已发布的记录或显式绑定设置可提供能力。
-
-#### 11.3.1 跨发布方的同名 ID 兜底
-
-models.dev 把网关上的模型副本记在拥有权重的厂商名下，因此返回 `Vendor/Model` 这类 ID 的端点
-自身可能没有记录，而其他发布方声明了完全相同的 ID。当行解析到某个目录提供商、而它自己没有这条
-记录时，`findModel` 改为读取声明该 **完全相同** ID 的其他发布方，而不是把模型留在通用的
-128k 纯文本形态（issue #938）；当没有任何发布方声明该 ID 时，读取「服务名去掉前缀与部署标记后」
-对应的完整已发布 ID（见 §11.2）。
-
-借用是有边界的：
-
-- 只在行已有明确目录发布方身份、且它自己的查询未命中时运行。该提供商自己的记录及其受支持的别名
-  始终优先。
-- 与行的端点同址的提供商是行的别名，不是独立来源：它对这条 ID 的沉默就是对该部署的回答，
-  不会越过它去借用。
-- 只转移大小写不敏感的完全相同 ID，或「服务名去掉前缀与部署标记后」对应的完整已发布 ID
-  （`test/mimo-v2.5-pro-test` → `mimo-v2.5-pro`）。通过别名命中的记录是另一条 ID，
-  保留它自己的窗口。
-- app 自带 provider 的发布方先于任意中转商回答，顺序与「认不出发布方」时一致：被自带发布方声明的
-  ID 描述的是这个模型，中转商自己的副本描述的是它的部署。该层级内，与请求 ID 完全相同的记录优先于
-  另一种拼写的同名记录，因此只列了文本那一半的副本不能把模型自己声明的视觉能力压掉。
-- 工具能力按声明它的发布方多数决：错误的 `true` 会把工具声明放到线上、可能被端点拒绝，
-  但一个持不同意见的中转商也不应让上百家一致同意的记录作废；票数持平则不声明。其余能力取交集，
-  因此借用只可能低估 —— 知道端点支持更多的用户仍可在「高级」里打开。窗口取各发布方声明值的中位数，
-  而不是某一家的上限。
-- 没有任何发布方声明该 ID 时，它保持为未知的通用模型。
-
-这只改变元数据：配置的线上 ID、提供商身份，以及 §11.3 的绑定优先级都不变。
+1. Resolve the published image-input baseline from the matching model record.
+2. Apply the exact configured binding's `supportsImages` value to that
+   baseline. An absent or `null` value follows the published capability;
+   `true` enables image input for a configured endpoint even when its published
+   record is text-only, and `false` disables a published image capability.
+3. The Composer model-row vision badge and the main attachment transport gate
+   use this same effective result. An unknown or custom model without an
+   explicit binding override remains on the conservative path-fallback route;
+   discovery or cache metadata alone cannot promote it to image transport.
+4. The main process prepares pasted images as content-addressed refs. A
+   vision-capable model receives images within the 10 MB app-side inline
+   bound as transient image blocks; other cases receive a safe `@path`.
 
 ## 12. 刷新策略
 
@@ -352,14 +316,14 @@ models.dev 把网关上的模型副本记在拥有权重的厂商名下，因此
 - MVP 中没有激进的背景轮询
 - 刷新失败保留以前的缓存并显示非致命错误
 
-Electron 使用本地 `models.dev` 记录装饰缓存和新发现的模型行。其
+Electron 使用本地 `Pi catalog` 记录装饰缓存和新发现的模型行。其
 `contextWindow` 与 agent sidecar 共享同一套 effective 解析；提供商发现只
 为目录缺失的模型提供 ID，未知模型仍使用通用后备。
 
 上下文窗口解析必须与 agent runtime 使用同一个 effective window。每个 binding 记录
 自己的 `contextWindow` 从哪来（`contextWindowSource`）：
 
-- `catalog`——该值是 models.dev 快照，之后目录修正 `limit.context` 时会跟着更新，
+- `catalog`——该值是 Pi catalog 快照，之后目录修正 `limit.context` 时会跟着更新，
   所以 `gpt-5.6-luna`（`1,050,000`）这类记录不会再显示为 128k，被修正上限的模型
   也不用删掉重建；
 - `user`——该值来自 Advanced 里的手改（含预设档位），任何目录修正都不会覆盖它，
@@ -391,8 +355,9 @@ Electron 使用本地 `models.dev` 记录装饰缓存和新发现的模型行。
       刷新使缓存的选择器保持填充状态
 - [ ] 能力徽章可见
 - [ ] 会话模型更改仅适用于下一回合
-- [ ] 新会话将具有推理能力的继承模型默认为该绑定存储的默认
-      思考等级（钳位到已启用档；未设置时才用最高已启用档），否则默认为 `off`
+- [ ] 目录命中的推理模型新会话默认为该绑定存储的思考等级
+      （钳位到已启用档；未设置时才用最高已启用档）；未匹配模型没有显式绑定默认值
+      时从 `off` 开始，但 Composer 仍保留手动思考阶梯
 - [ ] 推理选择器是能力门控和 pi 发布的稀疏级别
       在 Composer、Electron main 和 pi sidecar 中以相同的方式设置钳位
 - [ ] 提供程序设置和缓存发现无法覆盖已知的 pi 模型

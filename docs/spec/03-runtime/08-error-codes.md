@@ -113,6 +113,7 @@ does not turn temporary thread pressure into a host process exit.
 | `SUBAGENT_IDLE_TIMEOUT` | no | withdrawn (D328): idle watchdogs are not armed; the code remains for stored results |
 | `SUBAGENT_DURATION_TIMEOUT` | no | withdrawn (D328): duration watchdogs are not armed; the code remains for stored results |
 | `SUBAGENT_CONTEXT_OVERFLOW` | no | a delegate's own model context exceeded its safe budget and neither automatic turn-boundary compaction nor the degraded retry that keeps only the task brief and the most recent messages brought it back below the limit; the failure names the actionable recovery instead of the provider's overflow text |
+| `SUBAGENT_OUTPUT_TRUNCATED` | no | a delegate's report ended at the model output-token limit; the partial report is preserved for diagnosis, but the run is failed rather than presented as a completed delegation |
 ### 3.3 Workspace / tools / permissions
 
 | code | retriable | meaning |
@@ -126,13 +127,14 @@ does not turn temporary thread pressure into a host process exit.
 | `TOOL_DENIED` | no | permission denied / mode forbidden |
 | `TOOL_TIMEOUT` | yes | tool execution timeout |
 | `TOOL_FAILED` | maybe | tool executed but failed |
+| `FILE_NOT_FOUND` | no | Read/Write/Edit target path does not exist (distinct from `TOOL_DENIED`) |
 | `TOOL_ABORTED` | no | the tool was cancelled by a user stop or a turn abort before it finished |
 | `MUTATION_RETRY_BUDGET_EXHAUSTED` | yes | the repeat guard ended the turn after same-path `Edit` or shell patch failures; carries `details.kind` (`edit` or `patch-command`), the last tool error code, and a class-specific `details.recovery` hint |
 | `PROCESS_RESOURCE_EXHAUSTED` | yes | shell process could not start because the OS temporarily exhausted process resources |
 | `SHELL_NOT_FOUND` | no | no effective platform shell is available after catalog fallback; message carries guidance |
 | `COMMAND_SHELL_CHANGED` | no | pinned shell ID or dialect changed before execution |
 | `COMMAND_SHELL_INVALID` | no | settings supplied an unknown, unavailable, or wrong-platform shell ID |
-| `PERMISSION_TIMEOUT` | no | permission prompt timed out (mapped to deny) |
+| `PERMISSION_TIMEOUT` | no | legacy compatibility code for an older permission prompt timeout; current local prompts remain pending instead |
 | `PERMISSION_REQUIRED` | no | waiting for user decision |
 | `WRITE_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Write |
 | `EDIT_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Edit |
@@ -193,6 +195,7 @@ loses that. See
 | code | retriable | meaning |
 |---|---|---|
 | `EDIT_TAG_REQUIRED` | no | `tag` missing or not 4 hex digits |
+| `EDIT_LEGACY_MATCH_FAILED` | yes after a `Read` | legacy `old_string` was not found or matched multiple times; model must re-read or provide unique context |
 | `EDIT_TAG_MISMATCH` | yes after a `Read` | tag does not hash the live file and drift recovery declined; carries the live tag and current content at the anchors |
 | `EDIT_TAG_UNKNOWN` | yes after a `Read` | tag is well-formed but the session recorded no such content for the path |
 | `EDIT_LINES_UNSEEN` | yes | anchors reference lines the session never displayed; carries the revealed content |
@@ -309,6 +312,42 @@ codes surface through the same error object as any other call.
 | `PAIRING_TOKEN_EXPIRED` | no | the single-use pairing token expired before pairing completed |
 | `CAPABILITY_UNAVAILABLE` | no | an operation was requested for a capability the host advertised as unavailable (e.g. attachments, tool relay) |
 
+### 3.9 Live Voice
+
+Live Voice errors are returned through app-owned IPC and provider adapter
+events. They do not represent Agent turn failures. A retriable error means the
+user may retry the same call after the stated transient condition clears; it
+does not trigger automatic provider or billing fallback.
+
+| code | retriable | meaning |
+|---|---|---|
+| `LIVE_DISABLED` | no | Live Voice is disabled in settings |
+| `LIVE_NOT_CONFIGURED` | no | no valid Live Voice binding is selected |
+| `LIVE_PROVIDER_NOT_FOUND` | no | the selected Provider is missing, disabled, or changed while resolving credentials |
+| `LIVE_AUTH_KIND_UNSUPPORTED` | no | the selected Provider credential type is incompatible with the adapter |
+| `LIVE_AUTH_REQUIRED` | no | required OAuth or API-key credentials are absent or rejected |
+| `LIVE_ACCOUNT_ID_MISSING` | no | Codex OAuth account identity is absent or inconsistent |
+| `LIVE_ACCESS_DENIED` | no | the provider denied access or entitlement |
+| `LIVE_RATE_LIMITED` | yes | the provider returned a rate-limit response |
+| `LIVE_PROTOCOL_UNSUPPORTED` | no | endpoint, model, or requested protocol profile is unsupported |
+| `LIVE_PROTOCOL_ERROR` | no | a provider or IPC message is malformed or violates the selected protocol |
+| `LIVE_ALREADY_ACTIVE` | no | another Live Voice call or microphone-release quarantine owns the single-call slot |
+| `LIVE_REQUEST_CONFLICT` | no | an idempotency request ID was reused with different call parameters |
+| `LIVE_SETTINGS_IN_USE` | no | settings changed during preparation or the active binding cannot be rewritten |
+| `LIVE_MEDIA_RELEASE_UNCONFIRMED` | no | renderer media release was not acknowledged; Main quarantines the microphone lease |
+| `LIVE_STALE_CALL` | no | the call, request, or capture epoch is no longer current |
+| `LIVE_INVALID_OWNER` | no | IPC or media-port ownership does not match the trusted main frame |
+| `LIVE_MICROPHONE_BUSY` | no | Dictation, another Live call, or an unconfirmed prior release owns the shared capture lease |
+| `LIVE_MICROPHONE_DENIED` | no | the user or operating system denied microphone permission |
+| `LIVE_MICROPHONE_UNAVAILABLE` | no | no usable microphone device is available |
+| `LIVE_MEDIA_UNSUPPORTED` | no | required browser media or AudioWorklet support is unavailable |
+| `LIVE_PLAYBACK_BLOCKED` | maybe | browser audio playback needs a user gesture or could not resume |
+| `LIVE_TIMEOUT` | yes | a bounded startup, handshake, heartbeat, control, or cleanup stage timed out |
+| `LIVE_NETWORK_ERROR` | yes | a transient provider transport connection failed |
+| `LIVE_NETWORK_POLICY_UNSUPPORTED` | no | the desktop proxy route cannot be represented safely by the Live transport |
+| `LIVE_AUDIO_BACKPRESSURE` | no | bounded PCM or playback credits were exhausted |
+| `LIVE_EXECUTION_NOT_CONNECTED` | no | a provider requested an unsupported function/delegation execution path |
+
 ## 4. Mapping rules
 
 ### Host RPC numeric → AppError.code
@@ -386,7 +425,9 @@ the pool it started on. The route in effect is reproduced, never downgraded to a
 direct connection.
 
 ### Permission timeout
-UI/host timeout emits `PERMISSION_TIMEOUT` internally, tool result presented as denied (`TOOL_DENIED`) to agent.
+`PERMISSION_TIMEOUT` is a legacy compatibility code and is no longer emitted
+for local desktop permission requests. An unresolved local permission remains
+pending; explicit denial or cancellation is reported as `TOOL_DENIED`.
 
 ### Shell and Plan/Goal checkpoint failures
 

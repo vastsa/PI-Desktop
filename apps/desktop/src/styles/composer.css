@@ -313,6 +313,12 @@
   outline-offset: 1px;
 }
 
+/* A plugin mark: text the plugin sends in its place, not a file. */
+.composer-chip[data-plugin-mark] {
+  background: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-tile-deep));
+  color: var(--ds-text-primary);
+}
+
 .composer-chip-icon {
   display: inline-flex;
   flex: 0 0 auto;
@@ -415,8 +421,8 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: var(--gray-0);
-  color: var(--gray-1000);
+  background: var(--ds-accent);
+  color: var(--ds-bg-primary);
   transition: opacity var(--motion-duration-fast) var(--motion-ease-out), transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
@@ -443,70 +449,12 @@
   color: var(--ds-text-secondary);
 }
 
-.composer-enhancement-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin: 0 0 8px;
-  border-radius: var(--radius-lg);
-  padding: 8px 10px;
-  background: color-mix(in oklab, var(--ds-error) 8%, var(--ds-bg-composer));
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-}
-
-.composer-enhancement-error-message {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-
-.composer-enhancement-error code {
-  color: var(--ds-error);
-  font-size: var(--text-xs);
-}
-
-.composer-enhancement-error-dismiss {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-md);
-  color: var(--ds-text-muted);
-}
-
-.composer-enhancement-error-dismiss:hover,
-.composer-enhancement-error-dismiss:focus-visible {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
-:root[data-theme="light"] .send-btn {
-  background: var(--gray-1000);
-  color: var(--gray-0);
-}
-
 .send-btn:hover:not(:disabled) {
   opacity: 0.9;
 }
 
 .send-btn:disabled {
   opacity: 1;
-  background: var(--ds-send-disabled-bg);
-  color: var(--ds-send-disabled-fg);
-}
-
-/*
-  `.send-btn:disabled` scores (0,2,0), but light paints the *enabled* chip from
-  a `:root[data-theme="light"] .send-btn` rule at (0,3,0), which would strand the
-  disabled state on the near-black enabled fill. The disabled state therefore
-  keeps a light-qualified companion — it reads the same tokens, so a contributed
-  theme can still move the chip, and the built-in paint is unchanged.
-*/
-:root[data-theme="light"] .send-btn:disabled {
   background: var(--ds-send-disabled-bg);
   color: var(--ds-send-disabled-fg);
 }
@@ -798,4 +746,138 @@
 
 .composer-directory-drop-action:hover {
   background: var(--ds-tile-hover);
+}
+
+.todo-dock {
+  margin-bottom: 8px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-dock-raised);
+  overflow: hidden;
+}
+
+.todo-dock-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--ds-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* TodoDock is a disclosure surface; avoid the shared button's scale press
+   feedback, which reads as a jelly effect on this compact header. */
+.todo-dock-header:active:not(:disabled) {
+  transform: none;
+}
+
+.todo-dock-header:hover,
+.todo-dock-header:focus-visible {
+  background: var(--ds-bg-hover);
+}
+
+.todo-dock-header-symbol,
+.todo-dock-row-symbol {
+  display: grid;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.todo-dock-header-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-dock-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    grid-template-rows var(--motion-duration-normal) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.todo-dock.is-expanded .todo-dock-content {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.todo-dock-list {
+  display: grid;
+  min-height: 0;
+  gap: 6px;
+  padding: 0 10px 10px;
+  overflow: hidden;
+}
+
+.todo-dock-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.todo-dock-row-completed {
+  background: color-mix(in oklab, var(--ds-success) 14%, var(--ds-tile-deep));
+  color: var(--ds-text-primary);
+}
+
+.todo-dock-row-completed .todo-dock-row-symbol {
+  color: var(--ds-success);
+}
+
+.todo-dock-row-in_progress {
+  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-tile-deep));
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.todo-dock-row-cancelled {
+  color: var(--ds-text-muted);
+  opacity: 0.72;
+}
+
+.todo-dock-row-content {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-dock-more {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .todo-dock-header,
+  .todo-dock-content,
+  .todo-dock-row {
+    transition: none;
+  }
 }

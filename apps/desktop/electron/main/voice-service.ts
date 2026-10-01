@@ -6,6 +6,7 @@
  */
 
 import { app, BrowserWindow } from "electron";
+import { randomUUID } from "node:crypto";
 import { PvRecorderBackend, checkMicrophonePermission, requestMicrophonePermission } from "./audio-backend";
 import type {
   AudioCaptureFactory,
@@ -28,10 +29,12 @@ export class VoiceService {
   private captureFactory: AudioCaptureFactory;
   private settings: VoiceSettings;
   private disposed = false;
+  private releaseMicrophoneLease: (() => void) | null = null;
 
   constructor(
     private readonly modelCacheDir: string,
     private readonly getWindow: () => BrowserWindow | null,
+    private readonly acquireMicrophoneLease: (token: string) => () => void = () => () => undefined,
   ) {
     this.captureFactory = new PvRecorderBackend();
     // Will be overridden from app settings
@@ -76,6 +79,9 @@ export class VoiceService {
     // Forward state changes to renderer
     this.controller.on("stateChange", (state: VoiceState) => {
       this.sendToRenderer("voice:stateChanged", state);
+      if (state.phase === "done" || state.phase === "error" || state.phase === "idle") {
+        this.releaseCurrentMicrophoneLease();
+      }
     });
   }
 
@@ -89,16 +95,28 @@ export class VoiceService {
     }
 
     await this.ensureRuntime();
-    await this.controller!.start();
+    this.releaseCurrentMicrophoneLease();
+    this.releaseMicrophoneLease = this.acquireMicrophoneLease(randomUUID());
+    try {
+      await this.controller!.start();
+    } catch (error) {
+      this.releaseCurrentMicrophoneLease();
+      throw error;
+    }
   }
 
   async stop(): Promise<VoiceResult> {
     if (!this.controller) throw new Error("Voice not started");
-    return this.controller.stop();
+    try {
+      return await this.controller.stop();
+    } finally {
+      this.releaseCurrentMicrophoneLease();
+    }
   }
 
   cancel(): void {
     this.controller?.cancel();
+    this.releaseCurrentMicrophoneLease();
   }
 
   getState(): VoiceState {
@@ -152,6 +170,7 @@ export class VoiceService {
     if (this.disposed) return;
     this.disposed = true;
     this.controller?.dispose();
+    this.releaseCurrentMicrophoneLease();
     this.engine?.shutdown();
     this.controller = null;
     this.engine = null;
@@ -170,13 +189,19 @@ export class VoiceService {
       // Window may be closing
     }
   }
+
+  private releaseCurrentMicrophoneLease(): void {
+    this.releaseMicrophoneLease?.();
+    this.releaseMicrophoneLease = null;
+  }
 }
 
 export function createVoiceService(
   modelCacheDir: string,
   getWindow: () => BrowserWindow | null,
+  acquireMicrophoneLease?: (token: string) => () => void,
 ): VoiceService {
-  const service = new VoiceService(modelCacheDir, getWindow);
+  const service = new VoiceService(modelCacheDir, getWindow, acquireMicrophoneLease);
   app.once("before-quit", () => service.dispose());
   return service;
 }

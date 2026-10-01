@@ -179,8 +179,10 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   // Voice owns a separate destination; the AI tab does not duplicate it.
   assert.doesNotMatch(aiSource, /VoiceSettingsCard|VoiceSettingsSection|voice-settings/);
   assert.match(settingsPageSource, /tab === "voice" && !tabHidden && settings && [\s\S]*?<VoiceSettingsSection/);
-  assert.match(voiceSettingsSource, /if \(!voice\.enabled\) \{/);
-  assert.match(voiceSettingsSource, /voiceMicUnavailable/);
+  assert.match(voiceSettingsSource, /LiveVoiceSettings as VoiceSettingsSection/);
+  assert.doesNotMatch(voiceSettingsSource, /voiceIpc|voiceEnable|voiceMicrophone|voiceModel/);
+  assert.doesNotMatch(settingsSearchSource, /settings\.voiceEnable|settings\.voiceMicrophone|settings\.voiceModel/);
+  assert.match(settingsSearchSource, /liveVoice\.enable/);
   assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
   assert.doesNotMatch(stylesSource, /\.settings-speech/);
   assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
@@ -523,4 +525,17 @@ test("native select menus keep readable theme colors across the app on Windows",
     stylesSource,
     /:root\[data-theme="light"\]\s*\{[^}]*color-scheme:\s*light;/s,
   );
+});
+
+test("Live Voice account cards show their options only after a provider is chosen", async () => {
+  const source = await readFile(
+    new URL("../src/features/settings/voice/LiveVoiceSettings.tsx", import.meta.url),
+    "utf8",
+  );
+  // A card with no provider account bound is the picker and nothing else: the
+  // model, voice, and protocol rows belong to a chosen binding instead of
+  // rendering as empty disabled controls.
+  assert.match(source, /\{current && adapter !== "codex-live" \? \(/);
+  assert.match(source, /\{current && adapter === "openai-realtime" \? \(/);
+  assert.doesNotMatch(source, /disabled=\{!current/);
 });

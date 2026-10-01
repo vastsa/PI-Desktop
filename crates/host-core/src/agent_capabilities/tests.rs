@@ -321,6 +321,26 @@ fn copy_directory_tree_overwrites_stale_files_and_can_skip_the_document() {
     assert_eq!(fs::read_to_string(whole.join("SKILL.md")).unwrap(), "doc");
 }
 
+#[cfg(unix)]
+#[test]
+fn copy_directory_tree_ignores_symlinks() {
+    let dir = tempdir().unwrap();
+    let from = dir.path().join("from");
+    let to = dir.path().join("to");
+    let outside = dir.path().join("outside");
+    fs::create_dir_all(&from).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret.txt"), "secret").unwrap();
+    std::os::unix::fs::symlink(outside.join("secret.txt"), from.join("linked.txt")).unwrap();
+    std::os::unix::fs::symlink(&outside, from.join("linked_dir")).unwrap();
+    fs::write(from.join("normal.txt"), "normal").unwrap();
+
+    copy_directory_tree(&from, &to, false).unwrap();
+    assert_eq!(fs::read_to_string(to.join("normal.txt")).unwrap(), "normal");
+    assert!(!to.join("linked.txt").exists());
+    assert!(!to.join("linked_dir").exists());
+}
+
 #[test]
 fn moving_a_directory_capability_carries_its_tree() {
     let dir = tempdir().unwrap();

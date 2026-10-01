@@ -19,12 +19,14 @@ import {
   HOME_DRAFT_KEY,
   captureComposerDraft,
   deleteComposerDraft,
+  draftFileReference,
   draftKeyForSession,
   draftOwnerSessionId,
   flushScheduledHomeDraftAdopt,
   pruneComposerDrafts,
   readComposerDraft,
   readComposerDraftRevision,
+  sameDraftFileReference,
   snapshotComposerDraft,
   writeComposerDraft,
   markComposerDraftEdited,
@@ -34,6 +36,7 @@ import {
   createFileReference,
   isEditableTextReference,
   isPersistedScratchReference,
+  isPluginMark,
   paintEditorValue,
   readEditorValue,
   setEditorCaret,
@@ -76,10 +79,12 @@ export type ComposerDraftController = {
   paintCurrentDraft: (element: HTMLElement, nextValue: string) => void;
   commitEditorDom: () => void;
   insertNewlineInEditor: () => void;
+  /** Set the draft; `focus` false leaves focus where it is (plugin writes). */
   applyEditorDraft: (
     nextText: string,
     nextReferences: ComposerFileReference[],
     caret: number,
+    focus?: boolean,
   ) => void;
   snapshotReferences: (sourceSessionId: string) => ComposerDraftSnapshot["fileReferences"];
   draftSnapshot: (text: string) => ComposerDraftSnapshot;
@@ -178,12 +183,8 @@ export function useComposerDraft({
     const next = typeof action === "function" ? action(current) : action;
     const currentOwned = current.filter((reference) => reference.sessionId === referenceSessionId);
     const nextOwned = next.filter((reference) => reference.sessionId === referenceSessionId);
-    const changed = currentOwned.length !== nextOwned.length || currentOwned.some((reference, index) => {
-      const nextReference = nextOwned[index];
-      return !nextReference || reference.path !== nextReference.path ||
-        reference.name !== nextReference.name || reference.kind !== nextReference.kind ||
-        reference.mimeType !== nextReference.mimeType || reference.token !== nextReference.token;
-    });
+    const changed = currentOwned.length !== nextOwned.length || currentOwned.some((reference, index) =>
+      !sameDraftFileReference(reference, nextOwned[index]));
     if (changed) markComposerDraftEdited(draftKeyRef.current);
     fileReferencesRef.current = next;
     setFileReferences(next);
@@ -258,7 +259,10 @@ export function useComposerDraft({
       element,
       nextValue,
       referenceByTokenRef.current,
-      (name) => t("chat.removeFileReference", { name }),
+      (reference) =>
+        t(isPluginMark(reference) ? "chat.removePluginMark" : "chat.removeFileReference", {
+          name: reference.name,
+        }),
       (token) => removeChipByTokenRef.current(token),
       (token) => expandTextReferenceRef.current(token),
     );
@@ -460,14 +464,15 @@ export function useComposerDraft({
     if (previousWorkspacePathRef.current === workspacePath) return;
     previousWorkspacePathRef.current = workspacePath;
     const current = fileReferencesRef.current;
-    const kept = current.filter((fileReference) =>
-      isPersistedScratchReference(fileReference.path),
-    );
+    // Plugin marks carry their text, not a workspace path.
+    const survives = (fileReference: ComposerFileReference) =>
+      Boolean(fileReference.plugin) || isPersistedScratchReference(fileReference.path);
+    const kept = current.filter(survives);
     if (kept.length === current.length) return;
     markComposerDraftEdited(draftKeyRef.current);
     const droppedTokens = new Set(
       current
-        .filter((fileReference) => !isPersistedScratchReference(fileReference.path))
+        .filter((fileReference) => !survives(fileReference))
         .flatMap((fileReference) =>
           fileReference.token ? [fileReference.token] : [],
         ),
@@ -533,6 +538,7 @@ export function useComposerDraft({
     nextText: string,
     nextReferences: ComposerFileReference[],
     caret: number,
+    focus = true,
   ) => {
     const detached = detachImageTokens(nextText, nextReferences, caret);
     nextText = detached.text;
@@ -541,10 +547,13 @@ export function useComposerDraft({
     markComposerDraftEdited(draftKeyRef.current);
     // A token may now refer to a different attachment even when text is equal.
     editorValueRef.current = null;
-    pendingEditorCaretRef.current = caret;
+    // A caret placed in an unfocused editor would focus it, so a write that
+    // leaves focus alone places none.
+    pendingEditorCaretRef.current = focus || document.activeElement === ref.current ? caret : null;
     setValue(nextText);
     setCursor(caret);
     setFileReferences(nextReferences);
+    if (!focus) return;
     requestAnimationFrame(() => {
       const element = ref.current;
       if (!element) return;
@@ -605,13 +614,7 @@ export function useComposerDraft({
   const snapshotReferences = (sourceSessionId: string) =>
     fileReferencesRef.current
       .filter((fileReference) => fileReference.sessionId === sourceSessionId)
-      .map(({ path, name, kind, mimeType, token }) => ({
-        path,
-        name,
-        kind,
-        ...(mimeType ? { mimeType } : {}),
-        ...(token ? { token } : {}),
-      }));
+      .map(draftFileReference);
 
   const clearDraftForKey = (
     key: string,
@@ -628,12 +631,8 @@ export function useComposerDraft({
         : readComposerDraft(key);
       if (!current || current.text.trim() !== submitted.text ||
         current.fileReferences.length !== submitted.fileReferences.length ||
-        current.fileReferences.some((reference, index) => {
-          const expected = submitted.fileReferences[index];
-          return reference.path !== expected.path || reference.name !== expected.name ||
-            reference.kind !== expected.kind || reference.mimeType !== expected.mimeType ||
-            reference.token !== expected.token;
-        })) return;
+        current.fileReferences.some((reference, index) =>
+          !sameDraftFileReference(reference, submitted.fileReferences[index]))) return;
     }
     invalidatePromptEnhancement();
     deleteComposerDraft(key);
@@ -682,13 +681,7 @@ export function useComposerDraft({
         (fileReference) =>
           !fileReference.token || text.includes(fileReference.token),
       )
-      .map(({ path, name, kind, mimeType, token }) => ({
-        path,
-        name,
-        kind,
-        ...(mimeType ? { mimeType } : {}),
-        ...(token ? { token } : {}),
-      })),
+      .map(draftFileReference),
   });
 
   return {

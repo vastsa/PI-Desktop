@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { generateImageBatch, generateOneImage, imageGenerationUrl } from "./index.js";
+import { generateImageBatch } from "./index.js";
+import { imageGenerationUrl } from "./openai-images.js";
+import { generateTestImage } from "./test-fixture.js";
 import {
   publicImageAddress,
   generatedImageType,
@@ -49,7 +51,7 @@ describe("image generation", () => {
   });
   it("uses the configured model, key and headers without chat protocol fields", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(response());
-    const image = await generateOneImage(
+    const image = await generateTestImage(
       { ...endpoint, headers: { "X-Test": "custom" } },
       "draw",
       new AbortController().signal,
@@ -112,6 +114,7 @@ describe("image generation", () => {
       save,
       fetchImpl,
     });
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
     controller.abort();
     expect((await batch).every((item) => item.status === "cancelled")).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(2);

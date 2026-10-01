@@ -619,6 +619,20 @@ function resultBlocks(
       if (resolved) blocks.push(resolved);
       break;
     }
+    case "todo": {
+      const todoArgs = args ? safeJson(args) : "";
+      if (todoArgs) blocks.push(codeBlock("input", todoArgs, "json"));
+      const warnings = stringArray(details?.warnings);
+      if (warnings) {
+        for (const warning of warnings) {
+          blocks.push({ kind: "note", role: "notice", text: warning });
+        }
+      }
+      const text = stringAt(details, "text");
+      if (text) blocks.push({ kind: "note", role: "notice", text });
+      mapped = true;
+      break;
+    }
     case "delegate": {
       // A lifecycle row (ADR 0089) has no brief and no report of its own: it
       // reports on subagents. Its body is the roster the runtime returned, as

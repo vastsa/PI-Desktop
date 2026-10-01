@@ -203,7 +203,7 @@ export function registerNotificationIpc({
         return { shown: false };
       }
 
-      const notification = new SystemNotification({ title, body });
+      const notification = new SystemNotification({ title, body, silent: true });
       if (kind === "task") {
         taskNativeNotifications.set(id, { notification, dismissed: false });
       } else {

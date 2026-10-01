@@ -18,6 +18,7 @@ describe("host ports", () => {
       id: "s1",
       title: "Fix build",
       projectId: "proj",
+      workspaceIdentity: expect.stringMatching(/^[a-f0-9]{64}$/u),
       workspaceLabel: "pi",
       mode: "plan",
       permissionMode: "accept-edits",
@@ -25,6 +26,7 @@ describe("host ports", () => {
       createdAt: "2026-09-18T00:00:00.000Z",
       updatedAt: "2026-09-18T00:00:00.000Z",
     });
+    expect(JSON.stringify(summary)).not.toContain("/home/user/work/pi");
     expect(toSessionSummary({ id: "x", mode: "weird", permissionMode: "yolo", planningState: "?" })).toMatchObject({
       mode: "agent",
       permissionMode: "ask",

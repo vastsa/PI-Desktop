@@ -172,6 +172,44 @@ requires_openai_auth = true
 });
 
 describe("parsePiModelConfig", () => {
+  it("imports without a secret when apiKey is a `!` shell command", () => {
+    const command = "!/usr/bin/security find-generic-password -w -a me -s svc";
+    for (const apiKey of [command, `  ${command}  `]) {
+      const drafts = parsePiModelConfig(
+        {
+          providers: {
+            radius: {
+              baseUrl: "https://api.example.com",
+              api: "anthropic-messages",
+              apiKey,
+              models: [{ id: "pi-model" }],
+            },
+          },
+        },
+        {},
+      );
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0].secretValue).toBeUndefined();
+      expect(drafts[0].hasSecret).toBe(false);
+      expect(publicModelConfigCandidate(drafts[0]).hasSecret).toBe(false);
+    }
+  });
+
+  it("ignores a `!` shell command in an auth header", () => {
+    const drafts = parsePiModelConfig({
+      providers: {
+        radius: {
+          baseUrl: "https://api.example.com",
+          headers: { Authorization: "!security find-generic-password -w -s svc" },
+          models: [{ id: "pi-model" }],
+        },
+      },
+    });
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].secretValue).toBeUndefined();
+    expect(drafts[0].hasSecret).toBe(false);
+  });
+
   it("reads ~/.pi/agent/models.json providers, env: keys, and limits", () => {
     const drafts = parsePiModelConfig(
       {

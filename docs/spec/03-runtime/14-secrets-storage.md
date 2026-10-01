@@ -139,6 +139,14 @@ assumption holds across concurrent turns. Each OAuth provider row gets its own
 collection and store scope; two rows with the same vendor key never share a
 credential or refresh lock.
 
+Pi login receives an installation context whose `getDeviceId` returns one stable
+UUID v4. Electron main creates it lazily, shares concurrent initialization, and
+persists it through Host secrets under `secret:installation:oauth-device-id`
+before exposing it to the flow. It is independent of provider accounts and
+survives cancellation, account deletion, and service restart. Initialization
+failures remain retryable and use a redacted error. The identity never enters
+provider rows, portable configuration, renderer events, or ordinary diagnostics.
+
 Request auth flows one way only:
 
 1. The launch payload for an `authKind: "oauth"` row carries `apiKey: ""`.

@@ -52,7 +52,7 @@ host 和 agent stderr 使用标记进行分类；无法分类的子进程输出�
 - `tool` — 工具执行结果和中断
 - `permission` — 权限请求和决定
 - `plugin` — 插件加载、服务和插件工具执行
-- `provider` — provider/model 发现、重试和缓存失败
+- `provider` — provider/model 发现、重试和缓存失败，以及实时语音通话失败：每个根因写一条 `live voice call failed` `warn`，`data` 带 `callId`、`adapterId`、`phase`、`stage`、`code`、`retriable` 与经 Logger 脱敏的原始 `reason`；释放无法确认、租约被隔离时另写一条 `live voice microphone release unconfirmed` `error`。通话视图只携带 `code`。
 - `persistence` — 成绩单和发件箱持久化失败
 - `updater` — 更新器诊断和错误
 - `diagnostics` — 阻止导航、菜单、模板以及对外请求的诊断。技能市场的两个通道会为每个没有产出结果的源或文档各记录一条 `skillMarket.sourceFailed` / `skillMarket.documentFailed`：`data` 里带 `source`、`host`、`kind`、`address`,以及被守卫拒绝时的 `reason`、`addressKind` 与 `route`。`kind` 在守卫判定的是目标自身地址时为 `policy`,判定的是本地代理伪造的 fake-IP 占位地址时为 `fake-ip`,本地解析没有返回答案时为 `unresolved`,其余为 `network`；`code` 前两者为 `NETWORK_POLICY_BLOCKED`,第三者为 `NETWORK_RESOLVE_FAILED`,因此一行日志即可区分「目标地址不是公网」「代理用了 fake-IP」与「解析器没有应答」。`reason` 记录守卫自己的分支（`url-syntax`、`resolve-failed`、`non-public-address`、`redirect-limit`）,`addressKind` 记录被拒地址的类别（TUN fake-IP 为 `benchmark`,RFC1918 为 `private`）,`route` 记录该地址是在哪条线路上被判定的（`proxied`、`direct`,或传输层读不出线路时的 `unknown`）,因此「直连线路上的 fake-IP 拒绝」与「读不出线路的拒绝」可以区分（ADR 0272）。记录会保留主机名、被解析到的地址、该地址的类别与该线路 —— 但绝不包含 URL、其路径、查询串或凭据 —— 因为目录源 URL 由用户提供,而被拒绝的主机、地址及其类别正是全部诊断价值所在（issue #419）。Chromium 进程崩溃后，下一次启动会写一条 `crashDumpsFound` 记录（任一新转储属于 browser/main 进程则为 `error`，否则为 `warn`），`data` 带 `count`、`total`、`byProcessType`、`directory` 与 `newestMtimeMs`。已恢复的 renderer 崩溃因此不会被写成「上次运行已死」。扫描失败是一条 `crashDumpReportFailed` 警告，永不挡住第一扇窗口（D602）。

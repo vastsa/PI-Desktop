@@ -134,6 +134,15 @@ export function registerSessionIpc({
     if (!host) throw new Error("host unavailable");
     return host.call("search.context", input);
   });
+  handle(IPC.invoke.todosGet, async (input: { sessionId?: unknown } = {}) => {
+    if (!host) throw new Error("host unavailable");
+    if (typeof input.sessionId !== "string" || !input.sessionId.trim()) {
+      throw Object.assign(new Error("sessionId is required"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    return host.call("todos.get", { sessionId: input.sessionId });
+  });
   handle(IPC.invoke.sessionList, async () => {
     if (!host) throw new Error("host unavailable");
     const [result, native, { providers, defaults }] = await Promise.all([

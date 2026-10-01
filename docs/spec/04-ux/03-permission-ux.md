@@ -43,7 +43,6 @@ No `allow-always` in MVP.
 pending → allowed_once
 pending → allowed_session
 pending → denied
-pending → timeout_denied
 ```
 
 - A request is keyed by both `sessionId` and `requestId`.
@@ -53,12 +52,14 @@ pending → timeout_denied
 - Replacing or resolving one request never removes another session's request
   or a newer request in the same session.
 
-## 5. Timeout
+## 5. Waiting behavior
 
-- Default timeout: **120 seconds**
-- On timeout: auto `deny`
-- UI shows timeout state explicitly
-- Agent receives tool error result: user denied / timed out
+- A local permission card has no automatic deadline or countdown.
+- The request remains pending until Allow once, Allow for session, Deny,
+  cancellation, or host/process shutdown.
+- Tool-specific execution timeouts still apply after approval.
+- The agent receives a denied result only for an explicit denial, cancellation,
+  or host/process failure.
 
 ## 6. Card content requirements
 
@@ -74,7 +75,7 @@ Must show:
 The card is rendered inline only in its originating session's transcript.
 Background requests remain pending without opening an overlay, changing the
 active page/project/session, or moving keyboard focus. Opening that session
-reveals its card with the original absolute countdown deadline.
+reveals its still-pending card.
 
 Resolving a request never initiates navigation. Any resulting tool artifact is
 recorded in the same session's retained work-panel context. If that session is
@@ -94,11 +95,9 @@ answerable.
   invisibly; their delegates stay blocked, which is the intended back-pressure.
 - Answers are matched by `requestId`, never by position, so a late answer can
   only clear the request it answered and can never resolve a successor.
-- A request the host closed itself (expiry, cancelled tool call) is removed by
+- A request the host closed itself (cancelled tool call) is removed by
   `toolCallId` from anywhere in the queue, so a card that was never shown still
-  leaves. The 120s deadline (§5) runs from arrival for every request, queued or
-  not — a request can therefore expire while waiting, and the host's own denial
-  is what the delegate sees.
+  leaves. Queued requests do not expire while waiting.
 - Abort denies the **whole** queue, not just the visible card: a queued delegate
   would otherwise keep its tool call alive behind a stop the user already asked
   for.
@@ -182,7 +181,8 @@ after a full Host/app restart.
 2. Plan and Goal Bash prompt under Ask and Accept edits and run without confirmation
    under Auto, with the mutation tradeoff visible
 3. Agent mode uses the normal high-risk permission policy
-4. timeout becomes deny in UI + tool result
+4. unanswered local permissions remain pending until an explicit decision or
+   cancellation; execution timeouts remain enforced after approval
 5. allow-session suppresses repeat prompts for same toolName only
 6. concurrent session requests remain isolated and never take over the visible
    conversation or its work panel; post-approval artifacts remain assigned to

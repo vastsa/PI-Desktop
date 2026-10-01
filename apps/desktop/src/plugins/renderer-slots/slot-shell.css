@@ -1,0 +1,209 @@
+/**
+ * Host chrome styles for plugin slot regions plus the self-dialog tool
+ * classes (`docs/plugin-plan/ui/self-dialog/`): p-overlay / p-dialog /
+ * p-notice with the --ds-scrim / --ds-shadow-dialog tokens.
+ *
+ * The self-dialog classes are drawn inside a layer from `pi.ui.openLayer`
+ * (`renderer-layers/layer-stack.ts`), which alone decides the stacking: its
+ * z within the plugin band (600..899), below the host's 1000+ ladder, and
+ * hidden while the host waits on the user's own decision.
+ */
+
+.pi-plugin-slot {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/*
+ * A toolbar control shrinks with the row, and what no longer fits is cut at
+ * its own edge instead of painting over the next control. Only across: a
+ * popover a control opens above the toolbar still shows.
+ */
+.pi-plugin-slot[data-pi-slot="composerControl"] {
+  overflow-x: clip;
+  overflow-clip-margin: 2px;
+}
+
+/* Slots that own a whole block of the transcript take its full width. */
+.pi-plugin-slot[data-pi-slot="entryExtra"],
+.pi-plugin-slot[data-pi-slot="toolCard"],
+.pi-plugin-slot[data-pi-slot="blockRenderer"] {
+  display: block;
+  width: 100%;
+}
+
+/* ---- self-dialog tool classes ---------------------------------------- */
+
+.p-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ds-scrim);
+}
+
+.p-overlay__corner {
+  align-items: flex-end;
+  justify-content: flex-end;
+  background: transparent;
+  pointer-events: none;
+  padding: 16px;
+}
+
+.p-overlay__corner > * {
+  pointer-events: auto;
+}
+
+.p-dialog {
+  display: flex;
+  flex-direction: column;
+  min-width: 320px;
+  max-width: min(560px, calc(100vw - 48px));
+  max-height: min(70vh, 640px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-elevated, #1b1b1b);
+  color: var(--ds-text-primary, #ededed);
+  box-shadow: var(--ds-shadow-dialog);
+  overflow: hidden;
+}
+
+.p-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  font-weight: var(--font-weight-semibold);
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.p-dialog__body {
+  padding: 14px 16px;
+  overflow: auto;
+}
+
+.p-dialog__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.p-notice {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 320px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-elevated, #1b1b1b);
+  color: var(--ds-text-primary, #ededed);
+  box-shadow: var(--ds-shadow-dialog);
+}
+
+.p-notice__msg {
+  flex: 1;
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+}
+.p-notice-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.p-notice__dismiss {
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: var(--ds-text-secondary, #b0b0b0);
+  font: inherit;
+  padding: 0 2px;
+}
+
+.p-notice__dismiss:hover {
+  color: var(--ds-text-primary, #ededed);
+}
+/* ---- entryExtra clamp (docs/plugin-plan/ui/entry-extra) --------------- */
+
+.pi-entry-extra-stack {
+  display: block;
+  width: 100%;
+}
+
+.pi-entry-extra-block {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.pi-entry-extra-viewport {
+  overflow: hidden;
+}
+
+.pi-entry-extra-viewport[data-clipped="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 92%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 92%, transparent 100%);
+}
+
+.pi-entry-extra-viewport[data-expanded="true"] {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pi-entry-extra-toggle {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius-2xs);
+  background: transparent;
+  color: var(--ds-text-secondary, rgb(255 255 255 / 0.6));
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.pi-entry-extra-toggle:hover {
+  color: var(--ds-text-primary, rgb(255 255 255 / 0.9));
+  background: var(--ds-bg-hover, rgb(255 255 255 / 0.06));
+}
+.pi-action-overflow {
+  position: relative;
+  display: inline-flex;
+}
+
+.pi-action-overflow-panel {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-elevated, #1b1b1b);
+  color: var(--ds-text-primary, #ededed);
+  box-shadow: var(--ds-shadow-dialog);
+}
+
+.pi-action-overflow[data-side="left"] .pi-action-overflow-panel {
+  left: 0;
+}
+
+.pi-action-overflow[data-side="right"] .pi-action-overflow-panel {
+  right: 0;
+}
+
+.pi-plugin-block-renderer {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+}

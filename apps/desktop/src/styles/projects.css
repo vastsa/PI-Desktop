@@ -333,7 +333,7 @@
   min-width: 0;
   color: var(--ds-text-primary);
   font-size: var(--text-md);
-  font-weight: var(--font-weight-medium-plus);
+  font-weight: var(--font-weight-medium);
   line-height: var(--leading-tight);
 }
 
@@ -871,5 +871,5 @@
 }
 
 .project-delete-dialog-confirm:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--ds-error) 85%, var(--gray-1000));
+  background: color-mix(in oklab, var(--ds-error) 85%, black);
 }

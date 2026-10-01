@@ -51,6 +51,11 @@ await host.stop();
 
 const { appDir, electronBinary } = resolveElectronBinary();
 const port = Number(process.env.PI_IMAGE_CHAT_CDP_PORT || 9386);
+// CDP viewport emulation only changes the renderer's CSS viewport. It does not
+// resize the native window created by the desktop bootstrap (1200x800), so the
+// full-size image-chat scenario must keep those dimensions in sync or the
+// lower Composer area is laid out below the visible E2E window.
+const desktopViewport = { width: 1200, height: 800 };
 const env = {
   ...process.env,
   PI_DESKTOP_DATA_DIR: dataDir,
@@ -189,7 +194,15 @@ try {
       writeFileSync(join(evidence, name), Buffer.from(result.data, "base64"));
     }
   };
-  await send("Emulation.setDeviceMetricsOverride", {width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await send("Emulation.setDeviceMetricsOverride", { ...desktopViewport, deviceScaleFactor: 1, mobile: false });
+  const viewportBounds = await evaluate(
+    `({ innerWidth: window.innerWidth, innerHeight: window.innerHeight, outerWidth: window.outerWidth, outerHeight: window.outerHeight })`,
+  );
+  assert.ok(
+    viewportBounds.innerWidth <= viewportBounds.outerWidth &&
+      viewportBounds.innerHeight <= viewportBounds.outerHeight,
+    `desktop E2E viewport exceeds native window: ${JSON.stringify(viewportBounds)}`,
+  );
   await waitFor(() => evaluate(`!!document.querySelector('[data-nav="settings"]') && !document.querySelector('.startup-splash')`),30000,"desktop ready");
   await evaluate(`document.querySelector('[data-nav="settings"]').click()`);
   await waitFor(() => evaluate(`!![...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='AI')`),10000,"AI settings");
@@ -240,7 +253,7 @@ try {
   await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
   await screenshot("chat-batch-narrow.png");
   assert.ok(await evaluate(`document.querySelector('.generated-image-thumbnails')?.getBoundingClientRect().right <= innerWidth`),"batch thumbnails stay inside narrow window");
-  await send("Emulation.setDeviceMetricsOverride", {width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await send("Emulation.setDeviceMetricsOverride", { ...desktopViewport, deviceScaleFactor: 1, mobile: false });
   assert.ok(await watchImageContinuity('.generated-image-set', '.generated-image-preview img'));
   await click("生成图片 2", ".generated-image-thumbnails button", true);
   await waitFor(() => evaluate(`(() => {const selected=document.querySelectorAll('.generated-image-thumbnails button')[1];const featured=document.querySelector('.generated-image-preview img');return selected?.getAttribute('aria-current')==='true' && featured?.naturalWidth===480 && featured.src===selected.querySelector('img')?.src})()`),5000,"second image selected in chat");
@@ -294,7 +307,7 @@ try {
   await waitFor(() => evaluate(`getComputedStyle(document.querySelector('.generated-image-viewer-thumbs')).flexDirection === 'row'`),5000,"narrow viewer thumbnail layout");
   assert.ok(await evaluate(`document.querySelector('.generated-image-viewer-header-actions a')?.getBoundingClientRect().right <= innerWidth`),"download stays reachable in narrow viewer");
   await screenshot("image-viewer-narrow.png");
-  await send("Emulation.setDeviceMetricsOverride", {width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await send("Emulation.setDeviceMetricsOverride", { ...desktopViewport, deviceScaleFactor: 1, mobile: false });
   await key("Escape",27);
   await waitFor(() => evaluate(`!document.querySelector('.generated-image-viewer')`),5000,"image viewer closes");
   assert.ok(await evaluate(`document.activeElement?.classList.contains('generated-image-preview')`),"viewer restores card focus");

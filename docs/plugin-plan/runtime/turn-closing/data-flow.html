@@ -1,0 +1,244 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>turn-closing · 轮末询问要不要续（续跑缺署名） · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">turn-closing</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/turn-closing</div>
+  <h1>turn-closing · 数据流</h1>
+  <p>轮末询问与续跑的路径，以及署名缺口的位置。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.turn.closing</code> · 续跑走 agent.steer · <b>缺插件署名（缺陷）</b></div>
+</header>
+
+<main>
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag proposal">建议</span></h2>
+    <p class="lead">无界面钩子，<code>runtime.turn.closing</code>。轮末被动询问。</p>
+<pre><span class="c">// 轮末：宿主问要不要续</span>
+pi.on(<span class="k">"turn_closing"</span>, <span class="k">async</span> () =&gt; {
+  <span class="k">if</span> (needMore()) <span class="k">return</span> { <span class="k">continue</span>: <span class="k">true</span>, <span class="k">message</span>: <span class="c">"还有两项未完成，请继续"</span> };
+  <span class="k">return</span> { <span class="k">continue</span>: <span class="k">false</span> };
+});
+<span class="c">// 续跑：agent.steer({ role: "user" }) 注入——无插件署名（缺陷）</span></pre>
+    <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">输入</td><td>轮末上下文（薄）</td></tr>
+      <tr><td class="id">输出</td><td>继续（可带建议消息）/ 不续</td></tr>
+      <tr><td class="id">续跑通道</td><td><code>agent.steer({ role: "user" })</code></td></tr>
+      <tr><td class="id">署名</td><td><b>无</b>（缺陷）——有署名的是 turn-continue → queuePush</td></tr>
+      <tr><td class="id">预算</td><td>每次运行最多续若干轮（现值 4）</td></tr>
+      <tr><td class="id">权限</td><td><code>runtime.turn.closing</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag verified">已核实</span></h2>
+    <div class="legend">
+    <span><span class="chip host">host</span> 宿主 / 内核</span>
+    <span><span class="chip slot">slot</span> 钩子边界</span>
+    <span><span class="chip plugin">plugin</span> 插件</span>
+  </div>
+  <div class="flow">
+    <div class="flow-head">
+      <div class="h">宿主</div>
+      <div class="s">钩子边界</div>
+      <div class="p">插件</div>
+    </div>
+    <div class="flow-body">
+      <div class="lane"><ul>
+          <li><span class="what">一轮跑完</span><span class="why">准备收束</span></li>
+          <li><span class="what">问插件要不要续</span><span class="why">turn_closing</span></li>
+          <li><span class="what">第一个 continue 生效</span><span class="why">默认注入一条消息</span></li>
+          <li><span class="what">agent.steer 续跑</span><span class="why">无插件署名（缺陷）</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">runtime.turn.closing</span><span class="why">被动询问</span></li>
+          <li><span class="what">预算封顶</span><span class="why">现值 4</span></li>
+          <li><span class="what">沙箱缺口</span><span class="why">未接（ADR 0300）</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">轮末被问</span><span class="why">可带建议消息</span></li>
+          <li><span class="what">continue / 不续</span><span class="why">只出建议</span></li>
+          <li><span class="what">不能改历史</span><span class="why">只影响要不要再跑</span></li>
+      </ul></div>
+    </div>
+    <div class="arrow-row">
+      <div class="x">→ 询问</div>
+      <div class="x">continue → steer</div>
+      <div class="y">← 建议 / 不续</div>
+    </div>
+  </div>
+  <h3>一次续跑的一生</h3>
+    <table>
+    <thead><tr><th>时刻</th><th>发生什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">收束前</td><td>宿主发出轮末询问</td></tr>
+      <tr><td class="id">插件</td><td>建议继续（可带一条消息）或不续</td></tr>
+      <tr><td class="id">裁决</td><td>多个插件时第一个 continue 生效</td></tr>
+      <tr><td class="id">续跑</td><td><code>agent.steer({ role: "user" })</code> 注入消息并跑下一轮——<b>该消息无插件署名（缺陷）</b></td></tr>
+      <tr><td class="id">对照</td><td>turn-continue → <code>queuePush</code> 会补 pluginId / pluginLabel</td></tr>
+    </tbody>
+  </table>
+  <div class="callout error"><b>续跑路径缺署名。</b>steer 注入的是匿名 user 消息；用户看不出插件建议过续跑。有署名的是 <code>runtime/turn-continue/</code> 的 queuePush。文档互为对照。</div>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>情况</th><th>结果</th><th>靠什么保证</th></tr></thead>
+    <tbody>
+      <tr><td class="id">多个插件 continue</td><td>第一个生效，其余忽略</td><td>裁决规则</td></tr>
+      <tr><td class="id">预算用尽</td><td>不再续，正常收束</td><td>续跑上限（现值 4）</td></tr>
+      <tr><td class="id">插件抛错</td><td>视为不续 + 诊断</td><td>运行器隔离</td></tr>
+      <tr><td class="id">超时</td><td>视为不续</td><td>结果性询问的预算</td></tr>
+      <tr><td class="id">沙箱插件</td><td>目前收不到</td><td>ADR 0300</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">插件署名（当前）</td><td><b>缺陷：steer 路径不带署名</b>——不是故意不给，是对齐 queuePush 前的缺口</td></tr>
+      <tr><td class="id">改历史消息</td><td>只能建议再跑，不能改写已有行</td></tr>
+      <tr><td class="id">无限续跑</td><td>有预算</td></tr>
+      <tr><td class="id">写权限</td><td>轮末只出建议</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+      <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">turn-continue</td><td>插件主动续跑；<b>有署名</b>（queuePush）；与本页互为对照——closing 续跑路径缺署名</td><td><code>runtime/turn-continue/</code></td></tr>
+      <tr><td class="id">abort-turn</td><td>续跑起来后用户 / 插件可停</td><td><code>runtime/abort-turn/</code></td></tr>
+      <tr><td class="id">ADR 0303</td><td>权限与交付语义</td><td><code>docs/adr/0303</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+    <p style="color:var(--text-2)">续跑要不要补署名（消缺陷）、预算值、并发裁决、SDK 载荷——见 requirements.html 的「本轮拍板」。</p>
+</section>
+
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

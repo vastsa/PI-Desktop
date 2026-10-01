@@ -16,6 +16,7 @@ import {
 import { api } from "../../lib/api";
 import { Button, Input, SegmentedControl, SettingsToggle, cx } from "../ui";
 import { SettingsRow } from "../../features/settings/primitives";
+import { useAppStore } from "../../stores/app-store";
 
 const MODES: NetworkProxyMode[] = ["system", "direct", "custom"];
 
@@ -37,7 +38,7 @@ export function NetworkProxySection({
     saved.bypass ?? DEFAULT_NETWORK_PROXY_BYPASS,
   );
   const [urlError, setUrlError] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  const showToast = useAppStore((state) => state.showToast);
   const [testState, setTestState] = useState<"idle" | "busy" | "ok" | "fail">(
     "idle",
   );
@@ -56,11 +57,10 @@ export function NetworkProxySection({
       return;
     }
     setUrlError(false);
-    setSaveError(false);
     try {
       await saveSettings({ networkProxy: validated.value });
     } catch {
-      setSaveError(true);
+      showToast(t("settings.proxySaveError"), { variant: "error" });
     }
   };
 
@@ -149,7 +149,6 @@ export function NetworkProxySection({
    * mode is the only thing this switch changes.
    */
   const persistNetworkPolicy = async (mode: NetworkPolicyMode) => {
-    setSaveError(false);
     const next: NetworkPolicySettings = { mode };
     if (settings.networkPolicy?.insecureNoticeAcknowledged === true) {
       next.insecureNoticeAcknowledged = true;
@@ -157,7 +156,7 @@ export function NetworkProxySection({
     try {
       await saveSettings({ networkPolicy: next });
     } catch {
-      setSaveError(true);
+      showToast(t("settings.proxySaveError"), { variant: "error" });
     }
   };
 
@@ -265,11 +264,6 @@ export function NetworkProxySection({
           </>
         ) : null}
 
-        {saveError ? (
-          <span className="settings-command-shell-state error" role="status">
-            {t("settings.proxySaveError")}
-          </span>
-        ) : null}
       </div>
     </section>
   );

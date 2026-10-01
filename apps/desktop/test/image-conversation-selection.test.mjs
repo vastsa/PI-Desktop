@@ -42,7 +42,7 @@ test("runtime rejects an image binding retained by an existing conversation", as
       if (method === "providers.getSecret") return {};
       throw new Error(`Unexpected host call: ${method}`);
     } } },
-    modelsDevCatalog: { ensureLoaded: async () => {} },
+    modelsDevCatalog: { configureAccount: () => {}, ensureLoaded: async () => {} },
   });
   await assert.rejects(
     runtime.resolveAgentRuntimeLaunch("session", { providerId: "images", modelId: image.modelId }, { imageGeneration: image }),

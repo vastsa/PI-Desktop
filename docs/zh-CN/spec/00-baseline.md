@@ -3,8 +3,8 @@
 > **翻译说明：** 本页是与 [英文源规格](/spec/00-baseline) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
-- 基线版本：`0.4.16`
-- 日期：`2026-08-14`
+- 基线版本：`0.4.19`
+- 日期：`2026-09-29`
 - 状态：`Frozen for implementation details (Plan checkpoint artifact + approval/execution startup fence + protocol v11 + schema v15 + host-owned plugin session import/read/update/delete P0/P1 + selectable shell catalog + icon-free composer prompt row + turn-boundary context checkpoint compaction + session-scoped work panel + pi-owned model metadata + provider/runtime safety + M5 hardening + settings IA + project archive + sidebar organization + app update delivery + three-platform release + Extensions page density and theme-readable actions + custom global UI font)`
 - 语言政策：**英语优先**
 - 后端策略：**Rust 主机核心 + pi 代理 sidecar**
@@ -111,7 +111,7 @@
     值仍然是对话表面的实现细节，而不是
     操作模式
 16.Agent 工具：**读取/Glob/Grep/写入/编辑/Bash**
-17、权限超时：**120s→拒绝**
+17、本地权限确认：**无自动截止时间；必须明确决定或取消**
 18. 会话授予范围：**按工具名称**
 19. `~/.pi` 自动导入：**不在 MVP 中**
 20.不在MVP中：**网关/远程WebUI控制**；D370 记录的本地回环 MCP 控制是

@@ -73,7 +73,6 @@ export function ComposerModelList({
                         const optionDisplayName = composerModelDisplayName(
                           group.provider,
                           model.modelId,
-                          model.displayName,
                         );
                         return (
                           <button

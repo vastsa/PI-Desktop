@@ -4,7 +4,6 @@ import { createServer } from "node:http";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createImageGenerationTool } = await import(
@@ -106,21 +105,15 @@ test("edit inputs reject outside paths, traversal and non-image files", async (t
 });
 
 test("the default imagegen skill is discoverable and loads in an ordinary session", async () => {
-  const previous = globalThis.__dirname;
-  globalThis.__dirname = fileURLToPath(new URL("../electron/main/", import.meta.url));
-  try {
-    const { builtinSkills, loadBuiltinSkillBody } = await import(
-      "../electron/main/builtin-skills.ts"
-    );
-    const skills = builtinSkills({});
-    assert.equal(skills.find((skill) => skill.id === "pi-desktop/imagegen")?.name, "imagegen");
-    assert.ok(!skills.some((skill) => skill.id === "pi-desktop/plugin-development"));
-    const body = loadBuiltinSkillBody("pi-desktop/imagegen").body;
-    assert.match(body, /GenerateImages/);
-    assert.match(body, /previous result path/);
-    assert.match(body, /Do not retry/);
-    assert.equal(loadBuiltinSkillBody("../../outside"), null);
-  } finally {
-    globalThis.__dirname = previous;
-  }
+  const { builtinSkills, loadBuiltinSkillBody } = await import(
+    "../electron/main/builtin-skills.ts"
+  );
+  const skills = builtinSkills({});
+  assert.equal(skills.find((skill) => skill.id === "pi-desktop/imagegen")?.name, "imagegen");
+  assert.ok(!skills.some((skill) => skill.id === "pi-desktop/plugin-development"));
+  const body = loadBuiltinSkillBody("pi-desktop/imagegen").body;
+  assert.match(body, /GenerateImages/);
+  assert.match(body, /previous result path/);
+  assert.match(body, /Do not retry/);
+  assert.equal(loadBuiltinSkillBody("../../outside"), null);
 });

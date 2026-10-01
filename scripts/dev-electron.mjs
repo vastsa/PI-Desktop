@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const APP_NAME = "PI-Desktop";
 const DEV_BUNDLE_ID = "net.aiuo.pi-desktop.dev";
-const BRANDING_SCHEMA = "v3";
+const BRANDING_SCHEMA = "v4";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP_ROOT = join(ROOT, "apps", "desktop");
 
@@ -46,15 +46,25 @@ export function prepareMacDevelopmentBundle({
   electronExecutable,
   electronVersion,
   iconPath,
+  trayIconPath,
+  trayIconMacPath,
   cacheRoot,
   sign = true,
 }) {
   const sourceBundle = dirname(dirname(dirname(electronExecutable)));
-  const iconHash = createHash("sha256")
-    .update(readFileSync(iconPath))
-    .digest("hex")
-    .slice(0, 12);
-  const cacheKey = `${electronVersion}-${iconHash}-${BRANDING_SCHEMA}`;
+  const brandingHash = createHash("sha256");
+  for (const [name, path] of [
+    ["application icon", iconPath],
+    ["tray icon", trayIconPath],
+    ["macOS tray icon", trayIconMacPath],
+  ]) {
+    if (!existsSync(path)) {
+      throw new Error(`Development bundle ${name} is missing: ${path}`);
+    }
+    brandingHash.update(name).update("\0").update(readFileSync(path));
+  }
+  const brandingHashPrefix = brandingHash.digest("hex").slice(0, 12);
+  const cacheKey = `${electronVersion}-${brandingHashPrefix}-${BRANDING_SCHEMA}`;
   const targetRoot = join(cacheRoot, cacheKey);
   const targetBundle = join(targetRoot, `${APP_NAME}.app`);
   const targetExecutable = join(
@@ -64,10 +74,19 @@ export function prepareMacDevelopmentBundle({
     APP_NAME,
   );
   const markerPath = join(targetRoot, "ready.json");
+  const targetResources = join(targetBundle, "Contents", "Resources");
+  const targetTrayIcon = join(targetResources, "tray-icon.png");
+  const targetTrayIconMac = join(targetResources, "tray-icon-mac.png");
 
-  if (existsSync(markerPath) && existsSync(targetExecutable)) {
+  if (
+    existsSync(markerPath) &&
+    existsSync(targetExecutable) &&
+    existsSync(targetTrayIcon) &&
+    existsSync(targetTrayIconMac)
+  ) {
     return targetExecutable;
   }
+  if (existsSync(targetRoot)) rmSync(targetRoot, { recursive: true, force: true });
 
   mkdirSync(cacheRoot, { recursive: true });
   const stagingRoot = join(cacheRoot, `${cacheKey}.staging-${process.pid}`);
@@ -87,6 +106,8 @@ export function prepareMacDevelopmentBundle({
     const brandedExecutable = join(macos, APP_NAME);
     renameSync(sourceExecutable, brandedExecutable);
     copyFileSync(iconPath, join(resources, "icon.icns"));
+    copyFileSync(trayIconPath, join(resources, "tray-icon.png"));
+    copyFileSync(trayIconMacPath, join(resources, "tray-icon-mac.png"));
 
     const plistPath = join(contents, "Info.plist");
     setPlistString(plistPath, "CFBundleDisplayName", APP_NAME);
@@ -112,7 +133,7 @@ export function prepareMacDevelopmentBundle({
 
     writeFileSync(
       join(stagingRoot, "ready.json"),
-      `${JSON.stringify({ electronVersion, iconHash })}\n`,
+      `${JSON.stringify({ electronVersion, brandingHash: brandingHashPrefix })}\n`,
     );
     renameSync(stagingRoot, targetRoot);
     return targetExecutable;
@@ -120,7 +141,9 @@ export function prepareMacDevelopmentBundle({
     const cacheWonRace =
       (error?.code === "EEXIST" || error?.code === "ENOTEMPTY") &&
       existsSync(markerPath) &&
-      existsSync(targetExecutable);
+      existsSync(targetExecutable) &&
+      existsSync(targetTrayIcon) &&
+      existsSync(targetTrayIconMac);
     rmSync(stagingRoot, { recursive: true, force: true });
     if (cacheWonRace) return targetExecutable;
     throw error;
@@ -129,12 +152,16 @@ export function prepareMacDevelopmentBundle({
 
 function run() {
   const env = { ...process.env, PI_DESKTOP_DEV: "1" };
+  // Electron 43+ downloads its platform binary when its package is resolved.
+  // electron-vite requires the resulting path.txt marker on every platform.
+  const electron = resolveElectronInstallation();
   if (process.platform === "darwin") {
-    const electron = resolveElectronInstallation();
     env.ELECTRON_EXEC_PATH = prepareMacDevelopmentBundle({
       electronExecutable: electron.executablePath,
       electronVersion: electron.version,
       iconPath: join(DESKTOP_ROOT, "build", "icon.icns"),
+      trayIconPath: join(DESKTOP_ROOT, "build", "icon.png"),
+      trayIconMacPath: join(DESKTOP_ROOT, "build", "tray-icon-mac.png"),
       cacheRoot: join(ROOT, ".cache", "electron-dev"),
     });
   }

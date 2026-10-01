@@ -16,13 +16,26 @@ probe of Electron 43.6.0 / Node 24.20.0 confirmed that this flag includes the
 system roots in the default CA set. The older Node 22.16.0 behavior reported in
 #714 is not evidence that the current packaged runtime lacks this capability.
 
+On macOS the Electron 43 build does not honor that contract (issue #1187): the
+flag replaces the bundled Mozilla roots with the enumerated system set, and
+that enumeration misses public anchors it should include — a chain anchored at
+GlobalSign Root CA - R3 fails with `UNABLE_TO_GET_ISSUER_CERT` while the same
+runtime without the flag verifies it, and stock Node 24 with the same flag
+verifies the same chain. A probe alone cannot fix the enumeration, so the
+sidecar reproduces Node's documented additive semantics itself.
+
 ## Decision
 
-The desktop launcher passes `--use-system-ca` before the sidecar entry point.
-Node combines its bundled roots with system roots and inherited
-`NODE_EXTRA_CA_CERTS`. Certificate chain, expiration and hostname validation
-remain enabled. The app neither installs roots nor exports a certificate bundle.
-The operating system's existing trust policy is the authority for local roots.
+The desktop launcher passes `--use-system-ca` before the sidecar entry point
+on Windows and Linux. On macOS the launcher omits the flag; instead the
+sidecar merges its bundled roots, the inherited `NODE_EXTRA_CA_CERTS` set,
+and the system-store certificates into the default CA set at startup
+(`tls.setDefaultCACertificates`, agent-runtime `system-ca`). Either way the
+effective trust set is the same: bundled roots, system roots, and an inherited
+extra-CA file, deduplicated by content. Certificate chain, expiration and
+hostname validation remain enabled. The app neither installs roots nor exports
+a certificate bundle. The operating system's existing trust policy is the
+authority for local roots.
 
 This applies to the desktop sidecar's default Node TLS clients, including the
 direct, HTTP proxy and SOCKS provider transports. It is a process-level default,

@@ -73,11 +73,13 @@ when the run ends; any change between the two fails the run.`);
     fingerprint = async () => {
       const tracked = listGit(["ls-files", "-z", "--", ...sourceScope]);
       const untracked = listGit(["ls-files", "-z", "--others", "--exclude-standard", "--", ...sourceScope]);
-      if (!tracked || !untracked) return null;
+      const deleted = listGit(["ls-files", "-z", "--deleted", "--", ...sourceScope]);
+      if (!tracked || !untracked || !deleted) return null;
+      const deletedFiles = new Set(deleted);
       const files = [...new Set([...tracked, ...untracked])].filter((path) => !generated.test(path)).sort();
       const digests = [];
       for (const path of files) {
-        digests.push(`${path} ${await hash(join(root, path))}`);
+        digests.push(`${path} ${deletedFiles.has(path) ? "deleted" : await hash(join(root, path))}`);
       }
       return { files: files.length, sha256: createHash("sha256").update(digests.join("\n")).digest("hex") };
     };
@@ -87,7 +89,7 @@ when the run ends; any change between the two fails the run.`);
     for (const name of ["pi-ai", "pi-agent-core", "pi-coding-agent"]) {
       const manifest = JSON.parse(await readFile(join(root, "packages/agent-runtime/node_modules/@earendil-works", name, "package.json"), "utf8"));
       evidence.installedDependencies[name] = manifest.version;
-      assert.equal(manifest.version, "0.87.1", `${name} must match the locked pi version`);
+      assert.equal(manifest.version, "0.99.1", `${name} must match the locked pi version`);
     }
     evidence.lockfileSha256 = await hash(join(root, "pnpm-lock.yaml"));
     evidence.head = git("rev-parse", "HEAD");

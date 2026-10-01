@@ -1,8 +1,10 @@
+import { transcriptLongHistoryProbe as runLongHistoryProbe } from "./transcript-long-history";
 import { transcriptEditProbe } from "./transcript-edit";
 import { turnProcessProbe } from "./turn-process";
 import { transcriptStatusProbe } from "./transcript-status";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
+import { useState } from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
@@ -11,13 +13,18 @@ import { Markdown } from "../../apps/desktop/src/components/Markdown";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
+import { useSmoothText } from "../../apps/desktop/src/hooks/useSmoothText";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 
 declare global {
   var __activityGroupRenders: string[];
   var transcriptRenderProbe: () => Promise<unknown>;
   var transcriptRuntimeSlotProbe: () => Promise<unknown>;
+  var smoothTextThrottleProbe: () => Promise<unknown>;
+  var transcriptLongHistoryProbe: typeof runLongHistoryProbe;
 }
+
+globalThis.transcriptLongHistoryProbe = runLongHistoryProbe;
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -377,8 +384,9 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
     if (!passed) failures.push(message);
   };
   const sessionId = "runtime-slot";
-  const messages: UiMessage[] = [message("user", "user", "Inspect the workspace")];
+  const messages: UiMessage[] = [];
   for (let index = 0; index < 8; index++) {
+    messages.push(message(`user-${index}`, "user", `Inspect step ${index} in the workspace`));
     messages.push(
       message(`tool-${index}`, "tool", "done", {
         toolName: "Bash",
@@ -392,17 +400,9 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
       message(`answer-${index}`, "assistant", `Finished step ${index}.`),
     );
   }
-  // A completed tool row does not finish the turn: the fallback remains until
-  // the runtime reports the next phase or the turn reaches a terminal state.
-  messages.push(
-    message("tool-tail", "tool", "done", {
-      toolName: "Bash",
-      toolCallId: "call-tail",
-      toolStatus: "success",
-      toolArgs: { command: "printf tail" },
-      toolResult: { details: { stdout: "done", exitCode: 0 } },
-    }),
-  );
+  messages.push(message("live-user", "user", "Inspect the next step"));
+  // The live user turn exercises the runtime lane without an active process
+  // disclosure changing geometry when that lane settles.
 
   const frame = () =>
     new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -649,5 +649,91 @@ globalThis.transcriptRuntimeSlotProbe = async () => {
     flushSync(() => root.unmount());
     host.remove();
     useAppStore.setState({ agentStatuses: {} });
+  }
+};
+
+/** The real streaming hook must not commit above 60 Hz on a 120 Hz display. */
+globalThis.smoothTextThrottleProbe = async () => {
+  const originalRequestAnimationFrame = window.requestAnimationFrame;
+  const originalCancelAnimationFrame = window.cancelAnimationFrame;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  const commits: number[] = [];
+  const sourceText = "streaming-fragment-".repeat(16);
+  let nextFrameId = 0;
+  let frameTime = performance.now();
+  let updateSource: (value: string) => void = () => undefined;
+  let lastText: string | null = null;
+
+  window.requestAnimationFrame = (callback) => {
+    const id = ++nextFrameId;
+    callbacks.set(id, callback);
+    return id;
+  };
+  window.cancelAnimationFrame = (id) => {
+    callbacks.delete(id);
+  };
+
+  function SmoothTextFixture() {
+    const [source, setSource] = useState("");
+    updateSource = setSource;
+    const visible = useSmoothText(source, source.length > 0, true);
+    if (visible !== lastText) {
+      lastText = visible;
+      commits.push(frameTime);
+    }
+    return <div id="smooth-text-probe">{visible}</div>;
+  }
+
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const yieldToEffects = () =>
+    new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  const flushFrame = (now: number) => {
+    frameTime = now;
+    const scheduled = [...callbacks.values()];
+    callbacks.clear();
+    flushSync(() => {
+      for (const callback of scheduled) callback(now);
+    });
+  };
+
+  try {
+    flushSync(() => root.render(<SmoothTextFixture />));
+    await yieldToEffects();
+    commits.length = 0;
+    flushSync(() => updateSource(sourceText));
+    await yieldToEffects();
+    assert(callbacks.size > 0, "smooth text did not schedule its first frame");
+
+    const start = performance.now();
+    const frameInterval = 1000 / 120;
+    for (let frame = 1; frame <= 360; frame += 1) {
+      flushFrame(start + frame * frameInterval);
+    }
+    assert(
+      host.textContent === sourceText,
+      "smooth text did not reveal the complete streamed source",
+    );
+    assert(commits.length > 1, "smooth text did not reveal progressively");
+    const gaps = commits.slice(1).map((time, index) => time - commits[index]);
+    const minimumGapMs = Math.min(...gaps);
+    assert(
+      minimumGapMs >= 16.5,
+      `smooth text committed faster than 60 Hz (${minimumGapMs.toFixed(2)}ms)`,
+    );
+    flushFrame(start + 361 * frameInterval);
+    assert(callbacks.size === 0, "smooth text kept scheduling frames after catching up");
+    return {
+      ok: true,
+      commits: commits.length,
+      minimumGapMs,
+      idleFramesAfterCatchUp: callbacks.size,
+    };
+  } finally {
+    flushSync(() => root.unmount());
+    host.remove();
+    window.requestAnimationFrame = originalRequestAnimationFrame;
+    window.cancelAnimationFrame = originalCancelAnimationFrame;
   }
 };

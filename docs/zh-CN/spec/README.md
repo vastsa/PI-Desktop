@@ -95,7 +95,7 @@ docs/spec/
 9. 协议 v11 和存储架构 v15 对 Plan/Goal 检查点、
    `plan_approvals` 执行字段、启动中断和外壳身份具有权威性。
    v11 撤回 v10 添加的 A2A 方法域。
-10、权限超时120s拒绝； Bash 超时默认 60 秒
+10、本地权限确认无自动截止时间；Bash 超时默认 60 秒
 11.本地用户可安装的插件（稍后上市）
 12. 标签版本 = macOS arm64、Intel x64、Windows x64 和 Linux x64 (D126/D285)
 13. 通用 provider/model 覆盖范围（原生 + OpenAI 兼容 + 定制）

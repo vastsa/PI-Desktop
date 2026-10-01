@@ -136,6 +136,27 @@ test("parallel delegates never mix into each other's turns", () => {
   );
 });
 
+test("nested tools stay with their owning delegate, not their tool parent", () => {
+  const messages = [
+    taskCall("task-1", "Inspect files", { toolResult: { delegationId: "delegate-1" } }),
+    message("root-read", "root result", {
+      role: "tool", toolName: "Read", nestedParentToolCallId: "root-code",
+    }),
+    message("code-1", "running", {
+      role: "tool", toolName: "codemode", parentToolCallId: "task-1", agentName: "reader",
+    }),
+    message("nested-read", "delegate result", {
+      role: "tool", toolName: "Read", parentToolCallId: "task-1",
+      nestedParentToolCallId: "code-1", agentName: "reader",
+    }),
+  ];
+  const transcript = buildSubagentTranscript(messages, "delegate-1");
+  assert.equal(transcript.agentName, "reader");
+  assert.deepEqual(transcript.turns[0].rows.map((row) => row.message.id), ["code-1", "nested-read"]);
+  assert.equal(transcript.turns[0].rows[1].message.nestedParentToolCallId, "code-1");
+  assert.equal(buildSubagentTranscript(messages, "root-code"), null);
+});
+
 test("an unknown delegation id yields no transcript", () => {
   const messages = [taskCall("call-1", "Task", {
     toolResult: { delegationId: "del-1" },

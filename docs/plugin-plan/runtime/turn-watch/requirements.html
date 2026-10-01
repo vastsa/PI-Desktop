@@ -1,0 +1,214 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>turn-watch · 一轮运行的只读事件流 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">turn-watch</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/turn-watch</div>
+  <h1>turn-watch · 需求</h1>
+  <p>一轮运行的只读事件流。插件可以听 12 个事件，不能改任何东西。fire-and-forget：没有超时、没有回执、没有重投。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.turn.watch</code> · 风险 medium · 12 个内核事件</div>
+</header>
+
+<main>
+<section>
+  <h2>范围 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>一轮运行从 <code>agent_start</code> 到 <code>agent_settled</code> / <code>agent_end</code> 的<b>只读事件流</b>，共 12 个事件。</li>
+    <li>不谈：读消息正文（那是 <code>turn-recap</code>）、写路径（无）、拦截（那是 tool-gate / before-send）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>现状（代码核实） <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li><b>12 个内核事件</b>映射到 <code>runtime.turn.watch</code>：<code>agent_start</code>、<code>agent_end</code>、<code>agent_settled</code>、<code>turn_start</code>、<code>turn_end</code>、<code>message_start</code>、<code>message_update</code>、<code>message_end</code>、<code>tool_execution_start</code>、<code>tool_execution_update</code>、<code>tool_execution_end</code>、<code>after_provider_response</code>。<br /><span class="cite">feat/528-plugin-slots@<sha> · packages/shared/src/trusted-extensions.ts · TURN_WATCH 事件映射表</span></li>
+    <li><b>已对普通插件开放</b>：已注册、已在 SDK 权限清单，风险 medium。<br /><span class="cite">feat/528-plugin-slots@<sha> · packages/plugin-sdk/src/index.ts · runtime.turn.watch 权限声明</span></li>
+    <li><b>非结果性</b>：不在结果性事件表里——没有超时、没有回执、没有重投（ADR 0303（原 0295））。</li>
+    <li><b>沙箱缺口</b>：沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。</li>
+  </ul>
+  <div class="callout warn"><b>12 个，不是 11 个。</b>别漏 <code>agent_settled</code>——运行收束、状态稳定的那一拍，和 <code>agent_end</code> 不是同一时刻。</div>
+</section>
+
+<section>
+  <h2>契约（建议） <span class="tag proposal">建议</span></h2>
+      <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">事件数</td><td><b>12</b>（清单见「现状」）</td></tr>
+      <tr><td class="id">方向</td><td>宿主 → 插件，单向、只读</td></tr>
+      <tr><td class="id">交付</td><td>fire-and-forget：不等插件、丢不补、不重投</td></tr>
+      <tr><td class="id">权限</td><td><code>runtime.turn.watch</code>，风险 medium</td></tr>
+      <tr><td class="id">预算</td><td>无（非结果性）</td></tr>
+    </tbody>
+  </table>
+  <h3>12 个事件</h3>
+    <table>
+    <thead><tr><th>事件</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td class="id"><code>agent_start</code></td><td>一次运行开始</td></tr>
+      <tr><td class="id"><code>agent_end</code></td><td>一次运行结束</td></tr>
+      <tr><td class="id"><code>agent_settled</code></td><td>运行收束、状态稳定</td></tr>
+      <tr><td class="id"><code>turn_start</code></td><td>一轮开始</td></tr>
+      <tr><td class="id"><code>turn_end</code></td><td>一轮结束</td></tr>
+      <tr><td class="id"><code>message_start</code></td><td>一条消息开始</td></tr>
+      <tr><td class="id"><code>message_update</code></td><td>一条消息内容更新（流式）</td></tr>
+      <tr><td class="id"><code>message_end</code></td><td>一条消息结束</td></tr>
+      <tr><td class="id"><code>tool_execution_start</code></td><td>一次工具调用开始</td></tr>
+      <tr><td class="id"><code>tool_execution_update</code></td><td>一次工具调用过程更新</td></tr>
+      <tr><td class="id"><code>tool_execution_end</code></td><td>一次工具调用结束</td></tr>
+      <tr><td class="id"><code>after_provider_response</code></td><td>模型一次应答之后</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>插件场景 <span class="tag proposal">建议</span></h2>
+      <table>
+    <thead><tr><th>#</th><th>场景</th><th>动作</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>转写观察：把一轮里工具调用的起止记成时间线</td><td>listen</td></tr>
+      <tr><td>2</td><td>流式打点：message_update 时估算输出速度</td><td>listen</td></tr>
+      <tr><td>3</td><td>收束检测：agent_settled 时做一次收尾统计</td><td>listen</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag open">待定</span></h2>
+      <table>
+    <thead><tr><th>问题</th><th>选项</th></tr></thead>
+    <tbody>
+      <tr><td>事件序号</td><td>A. 不加　B. 每条带单调序号，便于插件去重</td></tr>
+      <tr><td>payload 粒度</td><td>A. 维持现状（轻量摘要）　B. 关键事件带更完整的上下文引用</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>不让插件改事件、改消息、改工具结果——只读。</li>
+    <li>不保证送达——fire-and-forget，丢一条就丢了。</li>
+    <li>不提供回执 / 重投 / 超时（非结果性）。</li>
+    <li>不给消息正文——要正文走 <code>runtime.turn.recap</code>。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>还没定的事 <span class="tag open">未定</span></h2>
+    <ul>
+    <li>事件序号、payload 粒度。</li>
+    <li>沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。</li>
+  </ul>
+</section>
+
+<p class="omitted">省略：无界面</p>
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

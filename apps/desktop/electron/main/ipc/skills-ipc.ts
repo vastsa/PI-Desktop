@@ -1,4 +1,5 @@
-import { dialog, shell } from "electron";
+import { app, dialog, shell } from "electron";
+import { importSkillFolders, readLastSkillImportDirectory, writeLastSkillImportDirectory } from "../skill-folder-import";
 import { ErrorCodes, IPC, type ActivationScope, type AgentCapabilityMove, type AgentCapabilityQuery, type UserSkillRecord, type UserSubagentRecord } from "@pi-desktop/shared";
 import { loadSubagentDefinitions, type UserSubagentDocument } from "@pi-desktop/agent-runtime";
 import type { HostProcess } from "../host-process";
@@ -157,11 +158,9 @@ export function registerSkillsIpc({
   });
 
   /**
-   * Import exactly one Skill from a native picker. The default single-file
-   * picker is kept so existing callers keep working; a caller may also ask for
-   * a directory picker (Claude-style `<name>/SKILL.md` skills) or pass
-   * `mode: "link"` for a symlink import instead of a copy. The value is
-   * forwarded to `skills.import` intact so host-core still owns the policy.
+   * File import stays single-select. Folder import selects multiple
+   * `<name>/SKILL.md` packages, then delegates validation and copying to
+   * host-core one folder at a time.
    */
   handle(
     IPC.invoke.skillImport,
@@ -171,23 +170,44 @@ export function registerSkillsIpc({
         mode?: "copy" | "link";
       } = {},
     ) => {
-      if (!host) throw new Error("host unavailable");
+      const currentHost = host;
+      if (!currentHost) throw new Error("host unavailable");
       const { sourceKind, mode, ...rest } = query;
-      const picked =
-        sourceKind === "dir"
-          ? await dialog.showOpenDialog({
-              title: "Import skill",
-              properties: ["openDirectory"],
-            })
-          : await dialog.showOpenDialog({
-              title: "Import skill",
-              properties: ["openFile"],
-              filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+      if (sourceKind === "dir") {
+        const dataDir = process.env.PI_DESKTOP_DATA_DIR ?? app.getPath("userData");
+        const lastDirectory = readLastSkillImportDirectory(dataDir);
+        const picked = await dialog.showOpenDialog({
+          title: "Import skill",
+          properties: ["openDirectory", "multiSelections"],
+          ...(lastDirectory ? { defaultPath: lastDirectory } : {}),
+        });
+        if (picked.canceled || !picked.filePaths.length) return { canceled: true };
+        const { lastImportedPath, ...result } = await importSkillFolders<UserSkillRecord>(
+          picked.filePaths,
+          { ...(mode ? { mode } : {}), ...rest },
+          (params) => currentHost.call<{ skill: UserSkillRecord }>("skills.import", params),
+        );
+        if (lastImportedPath) {
+          try {
+            writeLastSkillImportDirectory(dataDir, lastImportedPath);
+          } catch {
+            logger.app("diagnostics", "warn", "last skill import directory could not be saved", {
+              event: "skillImport.preferenceFailed",
+              data: { kind: "storage" },
             });
+          }
+          sendToRenderer(IPC.event.pluginChanged, { reason: "skill" });
+        }
+        return result;
+      }
+      const picked = await dialog.showOpenDialog({
+        title: "Import skill",
+        properties: ["openFile"],
+        filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+      });
       if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
-      const res = await host.call("skills.import", {
+      const res = await currentHost.call("skills.import", {
         path: picked.filePaths[0],
-        ...(sourceKind === "dir" ? { shape: "dir" } : {}),
         ...(mode ? { mode } : {}),
         ...rest,
       });

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { register, registerHooks } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 // Electron is the external boundary; all navigation and timeout logic below
 // runs in the production BrowserPane, without opening a native window.
@@ -23,6 +27,7 @@ const electron = `data:text/javascript,${encodeURIComponent(`
         getTitle: () => "fixture",
         isLoading: () => false,
         isDestroyed: () => false,
+        close: () => {},
         navigationHistory: { canGoBack: () => false, canGoForward: () => false },
         setWindowOpenHandler: () => {},
         session: { setPermissionRequestHandler: () => {} },
@@ -35,7 +40,7 @@ registerHooks({ resolve(specifier, context, next) {
   return specifier === "electron" ? { url: electron, shortCircuit: true } : next(specifier, context);
 } });
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { BrowserPane } = await import("../electron/main/browser-view.ts");
+const { BrowserPane, normalizeUrl } = await import("../electron/main/browser-view.ts");
 const { WebContentsView } = await import("electron");
 const settled = () => new Promise(setImmediate);
 
@@ -47,6 +52,33 @@ function harness(t) {
   const wc = WebContentsView.instances.at(-1).webContents;
   return { pane, wc, request };
 }
+
+test("address-bar host and port inputs normalize to HTTP without accepting other schemes", () => {
+  assert.equal(normalizeUrl("localhost:3000"), "http://localhost:3000/");
+  assert.equal(normalizeUrl("localhost:3000/index.html"), "http://localhost:3000/index.html");
+  assert.equal(normalizeUrl("example.com:8080"), "http://example.com:8080/");
+  assert.equal(normalizeUrl("127.0.0.1:3000"), "http://127.0.0.1:3000/");
+  assert.equal(normalizeUrl("example.com"), "http://example.com/");
+  assert.equal(normalizeUrl("http://localhost:3000/index.html"), "http://localhost:3000/index.html");
+  assert.equal(normalizeUrl("file:///tmp/demo.html"), null);
+  assert.equal(normalizeUrl("javascript:alert(1)"), null);
+  assert.equal(normalizeUrl("custom:8080"), null);
+});
+
+test("submitting a localhost address with a workspace root loads and publishes the HTTP URL", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const root = mkdtempSync(join(tmpdir(), "browser-host-port-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+  const request = pane.navigateAndWait("localhost:3000/index.html", root);
+  const wc = WebContentsView.instances.at(-1).webContents;
+  assert.equal(wc.pendingLoads[0].url, "http://localhost:3000/index.html");
+  assert.equal(published.at(-1).url, "http://localhost:3000/index.html");
+  wc.url = "http://localhost:3000/index.html";
+  wc.pendingLoads.shift().resolve();
+  assert.equal((await request).url, "http://localhost:3000/index.html");
+});
 
 test("timing out a new preview does not return the previous document as ready", async (t) => {
   const { request, wc } = harness(t);
@@ -87,6 +119,61 @@ test("an invalid target cannot mark the previous document ready", async (t) => {
   await request;
   assert.equal(await pane.navigateAndWait("javascript:alert(1)"), null);
   await settled();
+});
+
+test("outside file URLs and absolute paths explain the workspace boundary without loading", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "pi-browser-root-"));
+  const outside = mkdtempSync(join(tmpdir(), "pi-browser-outside-"));
+  t.after(() => { pane.dispose(); rmSync(root, { recursive: true }); rmSync(outside, { recursive: true }); });
+  mkdirSync(join(root, "pages"));
+  const insideFile = join(root, "pages", "demo.html");
+  const outsideFile = join(outside, "demo.html");
+  writeFileSync(insideFile, "<h1>Inside</h1>");
+  writeFileSync(outsideFile, "<h1>Outside</h1>");
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+
+  const allowed = pane.navigateAndWait(pathToFileURL(insideFile).href, root);
+  const wc = WebContentsView.instances.at(-1).webContents;
+  assert.equal(wc.pendingLoads.at(-1).url, pathToFileURL(realpathSync(insideFile)).href);
+  wc.url = pathToFileURL(realpathSync(insideFile)).href;
+  wc.pendingLoads.shift().resolve();
+  await allowed;
+
+  const allowedAbsolute = pane.navigateAndWait(insideFile, root);
+  assert.equal(wc.pendingLoads.at(-1).url, pathToFileURL(realpathSync(insideFile)).href);
+  wc.pendingLoads.shift().resolve();
+  await allowedAbsolute;
+
+  const deniedUrl = pathToFileURL(outsideFile).href;
+  assert.equal(await pane.navigateAndWait(deniedUrl, root), null);
+  assert.equal(wc.pendingLoads.length, 0, "outside file must never reach Electron");
+  assert.equal(published.at(-1).url, deniedUrl);
+  assert.equal(published.at(-1).loadError, "LOCAL_FILE_NOT_ALLOWED");
+  assert.equal(published.at(-1).isLoading, false);
+
+  assert.equal(await pane.navigateAndWait(outsideFile, root, 10), null);
+  assert.equal(wc.pendingLoads.at(-1)?.url, undefined, "outside absolute path must never reach Electron");
+  assert.equal(published.at(-1).url, outsideFile);
+  assert.equal(published.at(-1).loadError, "LOCAL_FILE_NOT_ALLOWED");
+});
+
+test("a denied local file on a blank tab publishes an error without creating a guest", async () => {
+  const published = [];
+  const pane = new BrowserPane((state) => published.push(state));
+  const count = WebContentsView.instances.length;
+  assert.equal(await pane.navigateAndWait("file:///tmp/demo.html", "/projects/demo"), null);
+  assert.equal(WebContentsView.instances.length, count);
+  assert.deepEqual(published.at(-1), {
+    url: "file:///tmp/demo.html", title: "", isLoading: false,
+    loadError: "LOCAL_FILE_NOT_ALLOWED", canGoBack: false, canGoForward: false,
+  });
+  assert.equal(await pane.navigateAndWait("/tmp/demo.html", "/projects/demo"), null);
+  assert.equal(WebContentsView.instances.length, count);
+  assert.deepEqual(published.at(-1), {
+    url: "/tmp/demo.html", title: "", isLoading: false,
+    loadError: "LOCAL_FILE_NOT_ALLOWED", canGoBack: false, canGoForward: false,
+  });
 });
 
 test("late native navigation events cannot publish after the session is invalidated", async () => {

@@ -3,7 +3,7 @@
 // this only affects a new profile without a saved preference.
 export const WORK_PANEL_MIN_WIDTH = 244;
 export const WORK_PANEL_DEFAULT_WIDTH = 360;
-export const WORK_PANEL_CHAT_MIN_WIDTH = 1040;
+export const WORK_PANEL_CHAT_MIN_WIDTH = 800;
 export const WORK_PANEL_CHAT_MAX_WIDTH = 10000;
 /**
  * Hard MainChat floor for the in-flow three-column shell. The work panel may

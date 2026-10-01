@@ -1,4 +1,6 @@
+import type { ReactNode } from "react";
 import { Button, TooltipButton, cx, portalOverlay } from "../../components/ui";
+import { useBlockingOverlay } from "../../lib/blocking-overlay";
 import {
   IconCheck,
   IconLink,
@@ -22,6 +24,11 @@ import {
 } from "./model";
 import type { PluginsPageModel } from "./usePluginsPage";
 
+function PluginDetailBlockingHost({ children }: { children: ReactNode }) {
+  useBlockingOverlay();
+  return <>{children}</>;
+}
+
 export function PluginDetailSheet({
   t,
   locale,
@@ -42,6 +49,7 @@ export function PluginDetailSheet({
 }: PluginsPageModel) {
   return selectedId
     ? portalOverlay(
+        <PluginDetailBlockingHost>
         <div className="plugins-sheet-layer">
           <button
             type="button"
@@ -353,7 +361,8 @@ export function PluginDetailSheet({
               </>
             )}
           </aside>
-        </div>,
+        </div>
+        </PluginDetailBlockingHost>,
       )
     : null;
 }

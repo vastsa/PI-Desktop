@@ -113,6 +113,22 @@ test("item.started forwards the AgentEvent verbatim under the remote session id"
   assert.equal(events[0].payload.ts, Date.parse("2026-09-18T10:00:00.000Z"));
 });
 
+test("nested tool events keep Task ownership separate across the remote bridge", () => {
+  for (const parentToolCallId of [undefined, "task-1"]) {
+    const { bridge, events } = collect();
+    const agentEvent = { type: "tool_start", toolCallId: "read-1", toolName: "Read", args: {} };
+    bridge.handle(makeEnvelope({
+      turnId: "turn-1",
+      nestedParentToolCallId: "code-1",
+      ...(parentToolCallId ? { parentToolCallId, agentName: "reader" } : {}),
+      payload: { itemType: "tool", itemId: "read-1", event: agentEvent },
+    }));
+    assert.equal(events[0].payload.nestedParentToolCallId, "code-1");
+    assert.equal(events[0].payload.parentToolCallId, parentToolCallId);
+    assert.deepEqual(events[0].payload.event, agentEvent);
+  }
+});
+
 test("session.changed forwards a PlanningStateEvent as a local planning_state AgentEvent", () => {
   const { bridge, events } = collect();
   bridge.handle(

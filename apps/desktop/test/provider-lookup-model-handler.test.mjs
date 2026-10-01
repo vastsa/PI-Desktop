@@ -1,3 +1,4 @@
+import { fixtureProvider } from "./pi-catalog-fixtures.mjs";
 /**
  * Contract test for the custom-model library lookup.
  *
@@ -37,29 +38,11 @@ function load(relative, imports) {
   return module.exports;
 }
 
-const fixture = {
-  anthropic: {
-    name: "Anthropic",
-    api: "https://api.anthropic.com",
-    models: {
-      "claude-opus-4.6": {
-        id: "claude-opus-4.6",
-        name: "Claude Opus 4.6",
-        reasoning: true,
-        reasoning_options: [{ type: "effort", values: ["low", "medium", "high"] }],
-        modalities: { input: ["text", "image"], output: ["text"] },
-        limit: { context: 1_000_000, output: 128_000 },
-      },
-    },
-  },
-};
-
-async function fixtureCatalog(t) {
-  const dir = await mkdtemp(join(tmpdir(), "pi-lookup-model-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const catalogPath = join(dir, "api.json");
-  await writeFile(catalogPath, JSON.stringify(fixture), "utf8");
-  const catalog = new modelsDev.ModelsDevCatalog({ catalogPath });
+async function fixtureCatalog() {
+  const catalog = new modelsDev.ModelsDevCatalog({ providers: [fixtureProvider("anthropic", [{
+    id: "claude-opus-4.6", reasoning: true, input: ["text", "image"], contextWindow: 1_000_000, maxTokens: 128_000,
+    thinkingLevelMap: { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: null, max: null },
+  }])] });
   assert.equal(await catalog.ensureLoaded(), true);
   return catalog;
 }
@@ -149,6 +132,7 @@ test("a published id returns the snapshot record for the typed id", async (t) =>
   assert.deepEqual(h.catalogCalls[0], "ensureLoaded");
   assert.equal(h.catalogCalls[1][0], "findModel");
   assert.deepEqual(h.catalogCalls[1][1], {
+    providerId: "provider-1",
     vendorKey: "anthropic",
     baseUrl: undefined,
     modelId: "Claude-Opus-4.6",

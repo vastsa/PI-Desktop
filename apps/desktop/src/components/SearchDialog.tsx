@@ -14,7 +14,6 @@ import {
   IconAt,
   IconClock,
   IconNewSession,
-  IconPullRequest,
   IconSearch,
   IconSettings,
   IconSliders,
@@ -22,7 +21,6 @@ import {
 
 /** Navigable pages surfaced by the global search alongside sessions. */
 const PAGE_ENTRIES = [
-  { page: "pulls", labelKey: "pulls.title", icon: IconPullRequest },
   { page: "scheduled", labelKey: "scheduled.title", icon: IconClock },
   { page: "plugins", labelKey: "nav.plugins", icon: IconAt },
 ] as const;
@@ -207,7 +205,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   }, [query, t]);
 
   const settingsHits = useMemo<SettingsSearchHit[]>(
-    () => searchSettings(query, t, { developerMode }),
+    () =>
+      searchSettings(query, t, {
+        developerMode,
+        includeDevelopmentOnly: import.meta.env.DEV,
+      }),
     [query, t, developerMode],
   );
 

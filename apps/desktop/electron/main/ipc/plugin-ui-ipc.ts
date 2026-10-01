@@ -211,6 +211,7 @@ export function registerPluginUiIpc({
         theme: getPluginPanelTheme(),
         htmlPath,
         netDomains: loaded.manifest.net?.domains?.map((domain) => String(domain)),
+        netAnyHost: loaded.permissions.has("net.anyHost"),
         // The browser view owns an address bar and its own history, so its
         // location keeps going through `browserHost`; every other contributed
         // view receives the opener's subject untouched (D320 follow-up).

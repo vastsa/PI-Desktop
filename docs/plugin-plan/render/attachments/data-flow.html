@@ -1,0 +1,216 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>附件 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:960px;margin:0 auto;padding:24px 28px 90px}
+  section{margin:0 0 44px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:rgba(76,141,255,.10)}
+  .chip.plugin{color:var(--plugin);background:rgba(194,122,255,.10)}
+  .chip.slot{color:var(--slot);background:rgba(255,133,73,.10)}
+  .chip.api{color:var(--api);background:rgba(64,201,119,.10)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">附件</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/attachments</div>
+  <h1>附件 · 数据流</h1>
+  <p>内容怎么进暂存区、列表怎么按来源裁、移除怎么限在自己名下。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #545 · #561 · S1 红线：禁 path / file:// / URL 引用</div>
+</header>
+
+<main>
+
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag decided">已拍板</span></h2>
+  <p class="lead">三个动作。add 只收内容或凭证；list / remove 只限自己名下。</p>
+
+<pre><span class="c">// ① 加</span>
+attachments.add({ <span class="k">name</span>, <span class="k">mimeType</span>, <span class="k">content</span> | <span class="k">token</span> })
+<span class="c">// → { id }</span>
+
+<span class="c">// ② 列 —— 只见自己的</span>
+attachments.list()
+<span class="c">// → [{ id, name, mimeType, size }]</span>
+
+<span class="c">// ③ 移 —— 只能动自己的</span>
+attachments.remove(id)
+<span class="c">// → { ok: true }</span></pre>
+
+  <h3>字段</h3>
+  <table>
+    <thead><tr><th>字段</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td class="id">name</td><td>显示名，必须带扩展名</td></tr>
+      <tr><td class="id">mimeType</td><td>类型；决定缩略图还是文件芯片</td></tr>
+      <tr><td class="id">content | token</td><td><b>二选一</b>：内容本体，或宿主认识的取内容凭证</td></tr>
+      <tr><td class="id">id</td><td>宿主登记后分配；移除、引用都用它</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout stop"><b>S1 红线写入拒绝层。</b>path / <code>file://</code> / URL 引用一律拒绝；裸路径附件不进暂存区。</div>
+
+  <h3>出站分层（公共）</h3>
+  <table>
+    <thead><tr><th>层</th><th>词</th><th>约束</th></tr></thead>
+    <tbody>
+      <tr><td class="id">核心 H</td><td><code>entry.copy</code> · <code>message.mutate</code> · <code>composer.insertText</code> · <b><code>attachments.add</code></b></td><td>add 只收 <code>content|token</code></td></tr>
+      <tr><td class="id">核心 P</td><td><code>plugin.call</code></td><td>白名单 · ≤64KB · QPS · 2s 超时 · 熔断 · pluginId 宿主注入</td></tr>
+      <tr><td class="id">核心 F</td><td><code>measureHeight</code> · <code>deriveSummary</code></td><td>同步 16ms · 超时回默认 · F 内禁 H/P</td></tr>
+      <tr><td class="id">可选 H</td><td>toast · ask · clipboard.write · host.open · composer.readDraft · <b><code>attachments.list/remove</code></b></td><td>clipboard.write 须同次用户手势</td></tr>
+      <tr><td class="id">拒绝</td><td>远端 replaceDraft · <b>裸路径附件</b></td><td>不得静默改用户数据 / 不得让宿主读盘上网</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag decided">已拍板</span></h2>
+  <div class="legend">
+    <span><span class="chip host">host</span> 暂存区 / 附件登记</span>
+    <span><span class="chip slot">slot</span> 动作边界</span>
+    <span><span class="chip plugin">plugin</span> 插件渲染器</span>
+  </div>
+
+  <table>
+    <thead><tr><th>路径</th><th>方向</th><th>怎么走</th></tr></thead>
+    <tbody>
+      <tr><td class="id">加</td><td>插件 → 宿主</td><td>交 <code>{ name, mimeType, content|token }</code> → 宿主校验（拒路径 / 拒无扩展名）→ 落暂存区 → 分配 <code>id</code> 回插件</td></tr>
+      <tr><td class="id">列</td><td>宿主 → 插件</td><td>按来源过滤：<b>只回本插件加的</b>那几条</td></tr>
+      <tr><td class="id">移</td><td>插件 → 宿主</td><td>校验 id 归属：是自己的才删；不是 → 拒绝，列表不变</td></tr>
+      <tr><td class="id">发</td><td>宿主</td><td>发送时从暂存区取内容，当正常附件随消息走</td></tr>
+      <tr><td class="id">清</td><td>宿主</td><td>切会话 / 删会话：暂存区与登记一并清空</td></tr>
+    </tbody>
+  </table>
+
+  <h3>归属怎么记</h3>
+  <ul>
+    <li>每条附件记一个来源：用户，或某个插件。</li>
+    <li>list 的过滤和 remove 的闸，都看这个来源标记。</li>
+    <li>来源标记由宿主注入，插件<b>不能自填</b>——不然就能冒名动别家的。</li>
+  </ul>
+  <div class="callout decided"><b>暂存区生命周期。</b>随会话走：切会话即清空，随会话删除。插件交完内容后不再持有地址；旧「插件自存、只登记 ref」作废（那条路会把读盘 / 上网的责任甩给宿主）。</div>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>靠什么保证</th></tr></thead>
+    <tbody>
+      <tr><td class="id">给了 path / file:// / URL</td><td>add 整次拒绝（S1 红线）</td><td>入参校验</td></tr>
+      <tr><td class="id">content 与 token 都没给 / 都给了</td><td>add 整次拒绝</td><td>二选一校验</td></tr>
+      <tr><td class="id">name 没扩展名</td><td>add 整次拒绝</td><td>名字校验</td></tr>
+      <tr><td class="id">remove 别人 / 用户的 id</td><td>拒绝，列表不变</td><td>归属闸</td></tr>
+      <tr><td class="id">id 不存在</td><td>拒绝</td><td>存在性检查</td></tr>
+      <tr><td class="id">插件被禁用 / 卸载</td><td>它加的附件仍留在暂存区（随会话），但本插件再也 list / remove 不到</td><td>生命周期</td></tr>
+      <tr><td class="id">切会话</td><td>暂存区清空，旧 id 全部作废</td><td>会话边界</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag decided">已定 · 含 S1 红线</span></h2>
+  <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">path / file:// / URL 引用</td><td><b>S1 红线</b>：不让宿主替插件读盘或上网；裸路径附件拒绝</td></tr>
+      <tr><td class="id">别家 / 用户附件的可见与操作</td><td>list 只见自己的；remove 只动自己的</td></tr>
+      <tr><td class="id">改附件</td><td>只有加 / 列 / 移；换内容就移除后重加</td></tr>
+      <tr><td class="id">跨会话附件</td><td>暂存区随会话走</td></tr>
+      <tr><td class="id">自填来源标记</td><td>归属由宿主注入，防冒名</td></tr>
+      <tr><td class="id">草稿文字</td><td>归 <code>render/draft/</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">公共契约</td><td>出站分层（add 核心 H · list/remove 可选 H · 裸路径拒绝）</td><td><a href="../../slot-contract.html">../../slot-contract.html</a></td></tr>
+      <tr><td class="id">输入区</td><td>附件区的宿主形态、界面槽；旧 ref 方案作废对照</td><td><a href="../../ui/composer/index.html">../../ui/composer/</a></td></tr>
+      <tr><td class="id">草稿读写</td><td>文字与记号归那边；本目录只管附件</td><td><code>render/draft/</code></td></tr>
+      <tr><td class="id">插件转发</td><td>要取插件自有数据再交附件时的回程</td><td><code>render/plugin-call/</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <ul>
+    <li>token 的具体形态：一次性凭证、宿主句柄，还是别的。</li>
+    <li>暂存区单条 / 总量上限，超限错误码。</li>
+    <li>插件卸载后其附件是否保留到发送（当前：保留在暂存区、随会话）。</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

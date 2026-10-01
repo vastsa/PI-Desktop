@@ -1,0 +1,178 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>附件 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .tag.open{color:var(--plugin);background:rgba(194,122,255,.10)}
+  h3{margin:22px 0 6px;font-size:14.5px;color:var(--text)}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">附件</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/attachments</div>
+  <h1>附件 · 需求</h1>
+  <p>附件区三动作：<code>attachments.add</code> / <code>attachments.list</code> / <code>attachments.remove</code>。只收内容或凭证；宿主落暂存区；可见性与操作都只限自己。</p>
+  <div class="meta">status: draft · issue #545 · #561 · S1 红线：禁 path / file:// / URL 引用</div>
+</header>
+
+<main>
+
+<section>
+  <h2>范围 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>三个动作，管输入框附件区：
+      <ul>
+        <li><code>attachments.add</code> — 加一条附件（内容或凭证，宿主落暂存区）</li>
+        <li><code>attachments.list</code> — 列出<b>自己</b>加的</li>
+        <li><code>attachments.remove</code> — 移除<b>自己</b>加的</li>
+      </ul>
+    </li>
+    <li>不谈：草稿文字（<code>render/draft/</code>）、附件界面槽（<code>ui/composer/</code>）、发送时的取内容细节（实现期）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>契约形状 <span class="tag decided">已拍板</span></h2>
+<pre><span class="c">// ① 加 —— 只收内容或凭证</span>
+attachments.add({
+  <span class="k">name</span>: <span class="c">"chart.png"</span>,          <span class="c">// 显示名，必须带扩展名</span>
+  <span class="k">mimeType</span>: <span class="c">"image/png"</span>,       <span class="c">// 决定画图片缩略还是文件芯片</span>
+  <span class="k">content</span> | <span class="k">token</span>               <span class="c">// 二选一：内容本体，或取内容的凭证</span>
+})
+<span class="c">// → { id }</span>
+<span class="c">// 拒绝：path / file:// / URL 引用；名字没扩展名</span>
+
+<span class="c">// ② 列 —— 只见自己加的</span>
+attachments.list()
+<span class="c">// → [{ id, name, mimeType, size, … }]</span>
+
+<span class="c">// ③ 移 —— 只能动自己加的</span>
+attachments.remove(id)
+<span class="c">// → { ok: true }</span>
+<span class="c">// 拒绝：id 不存在，或那条不是本插件加的</span></pre>
+
+  <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">add 入参</td><td><b>只收</b> <code>{ name, mimeType, content|token }</code></td></tr>
+      <tr><td class="id">内容保管</td><td>宿主落进<b>暂存区</b>；插件交完就不再持有地址</td></tr>
+      <tr><td class="id">list 可见性</td><td><b>只列自己的</b>——用户加的、别家插件加的，看不见</td></tr>
+      <tr><td class="id">remove 边界</td><td><b>只能动自己的</b>——别人的、用户的，一律拒绝</td></tr>
+    </tbody>
+  </table>
+  <div class="callout stop"><b>S1 红线（拍板）。</b>禁止 path / <code>file://</code> / URL 引用。插件不得只交一个本地路径或网络地址让宿主去读；也不得把裸路径塞进附件。内容进暂存区的只有两条路：<code>content</code> 本体，或宿主认识的 <code>token</code> 凭证。踩线整次拒绝。</div>
+  <div class="callout decided"><b>宿主暂存区（拍板）。</b>内容由宿主收下并保管，插件不再「自己存一份、只登记地址」。发送时宿主从暂存区取内容，当正常附件随消息走。暂存区随会话走：切会话即清空。</div>
+</section>
+
+<section>
+  <h2>谁能用 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>动作</th><th>谁</th><th>出站层</th></tr></thead>
+    <tbody>
+      <tr><td class="id">attachments.add</td><td>插件渲染器</td><td>核心 H</td></tr>
+      <tr><td class="id">attachments.list</td><td>插件渲染器</td><td>可选 H</td></tr>
+      <tr><td class="id">attachments.remove</td><td>插件渲染器</td><td>可选 H</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>场景 <span class="tag proposal">典型用法</span></h2>
+  <table>
+    <thead><tr><th>#</th><th>场景</th><th>动作</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>图表插件生成 chart.png，交进附件区，随下一条消息发走</td><td>add（content）</td></tr>
+      <tr><td>2</td><td>导出插件把报告 PDF 交进来</td><td>add（content 或 token）</td></tr>
+      <tr><td>3</td><td>插件在自己的按钮弹层里列出「我加的附件」</td><td>list（只回自己的）</td></tr>
+      <tr><td>4</td><td>插件清理自己刚才那条失败产物</td><td>remove（只动自己的）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag decided">已定 · 含 S1 红线</span></h2>
+  <ul>
+    <li><b>S1 红线：禁 path / file:// / URL 引用。</b>不收「本地路径」「文件协议地址」「网络地址」当附件内容。裸路径附件 → 整次拒绝，写进拒绝层。</li>
+    <li><b>不让插件碰别人的附件。</b>list 不见别家与用户；remove 动不了别家与用户。</li>
+    <li><b>不让插件自己保管地址。</b>内容进宿主暂存区，旧「插件自存、只登记 ref」作废。</li>
+    <li><b>不做跨会话附件。</b>暂存区随会话走，切会话即清空。</li>
+    <li><b>不管草稿文字。</b>那是 <code>render/draft/</code>。</li>
+    <li><b>不给「改附件」。</b>只有加 / 列 / 移；要换内容就移除后重新加。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag decided">已拍板</span></h2>
+  <table>
+    <thead><tr><th>问题</th><th>拍板</th></tr></thead>
+    <tbody>
+      <tr><td>add 入参</td><td>只收 <code>{ name, mimeType, content|token }</code></td></tr>
+      <tr><td>路径 / URL 引用</td><td><b>禁</b>（S1 红线）；裸路径附件拒绝</td></tr>
+      <tr><td>内容保管</td><td>宿主落暂存区</td></tr>
+      <tr><td>list</td><td>只见自己的</td></tr>
+      <tr><td>remove</td><td>只能动自己的</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</body>
+</html>

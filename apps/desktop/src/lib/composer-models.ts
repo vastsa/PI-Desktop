@@ -43,7 +43,7 @@ export function composerModelsForProvider(
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),
     );
-    const displayName = metadata?.displayName?.trim() || modelId;
+    const displayName = modelId;
     return metadata
       ? { ...metadata, modelId, displayName, providerId: provider.id }
       : {
@@ -56,14 +56,13 @@ export function composerModelsForProvider(
   });
 }
 
-/** The Composer uses the configured alias, then published name, then wire id. */
+/** The Composer uses the configured alias when set, otherwise the complete wire id. */
 export function composerModelDisplayName(
   provider: ConfiguredProvider | undefined,
   modelId: string,
-  fallback?: string,
 ): string {
   const alias = provider ? composerModelBinding(provider, modelId)?.alias?.trim() : undefined;
-  return alias || fallback?.trim() || modelId;
+  return alias || modelId;
 }
 
 /** Find only the binding for this complete wire id. */

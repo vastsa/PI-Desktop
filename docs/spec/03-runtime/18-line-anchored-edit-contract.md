@@ -518,6 +518,7 @@ Recovery warnings distinguish cause, because the corrective action differs:
 | code | retriable | meaning |
 |---|---|---|
 | `EDIT_TAG_REQUIRED` | no | `tag` missing or not 4 hex |
+| `EDIT_LEGACY_MATCH_FAILED` | yes after a `Read` | legacy `old_string` was not found or matched multiple times |
 | `EDIT_TAG_MISMATCH` | yes after a `Read` | tag does not hash the live file and recovery declined; carries the live tag and current content at the anchors |
 | `EDIT_TAG_UNKNOWN` | yes after a `Read` | tag is well-formed but this session recorded no such content for the path |
 | `EDIT_LINES_UNSEEN` | yes | anchors reference lines never displayed; carries the revealed content |

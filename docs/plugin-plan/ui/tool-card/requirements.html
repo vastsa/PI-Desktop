@@ -1,0 +1,140 @@
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>工具调用卡 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e;--surface:#161616;--surface-2:#1b1b1b;--line:#2a2a2a;--line-2:#353535;
+    --text:#ededed;--text-2:#b0b0b0;--muted:#7d7d7d;--faint:#5c5c5c;
+    --ok:#40c977;--warn:#ff8549;--error:#ff6764;
+    --ui:#c27aff;--host:#4c8dff;--plugin:#c27aff;--slot:#ff8549;
+    --ok-bg:rgba(64,201,119,.10);--warn-bg:rgba(255,133,73,.10);--error-bg:rgba(255,103,100,.10);
+    --host-bg:rgba(76,141,255,.10);--plugin-bg:rgba(194,122,255,.10);--slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  a{color:inherit}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .plan-nav .here{color:var(--text);padding:3px 8px}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:880px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px;border-top:1px solid var(--line);padding-top:14px}
+  section:first-child>h2{border-top:0;padding-top:0}
+  .tag{font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:99px}
+  .tag.decided{color:var(--ok);background:var(--ok-bg)}
+  .tag.open{color:var(--ui);background:var(--plugin-bg)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  p{margin:0 0 10px}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left-color:var(--ok)}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+</style>
+</head>
+<body>
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <span class="here">工具调用卡</span>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="demo.html">演示</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+<header class="top">
+  <div class="crumb">docs/plugin-plan · ui/tool-card</div>
+  <h1>工具调用卡 · 需求</h1>
+  <p>对话里每一次工具调用显示的那张卡。插件只画自己注册的工具，展示不交互。</p>
+   <div class="meta">status: finalized · 本轮拍板见文末</div>
+</header>
+<main>
+
+<section>
+  <h2>范围 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>只谈对话流里<strong>工具调用卡</strong>的显示。</li>
+    <li>本期<strong>只做展示</strong>：把这次调用的入参和结果显示好。</li>
+    <li>不谈：工具执行本身、输入框上方的确认 / 审批、消息正文其他部分。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>槽形状 <span class="tag decided">已定</span></h2>
+  <div class="callout ok"><b>无认领概念。</b>插件只画<strong>自己注册的</strong>工具的卡片；宿主工具和别人工具<strong>不可定制</strong>，永远走宿主默认卡。</div>
+  <ul>
+     <li>插件注册工具时一并给出卡片组件，这张卡只服务该工具的调用。注册走统一判别式联合 <code>{ slot:"toolCard", toolName, component }</code>，<code>toolName</code> 须命中 manifest <code>contributes.agentTools[].name</code>。</li>
+    <li>整卡自己画；不提供「只换头部 / 只换一半」的局部替换。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>插件能拿到什么 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li><strong>这次调用的数据</strong> — 工具名、入参、状态、结果</li>
+    <li><strong>各种 id</strong> — 调用 id、消息 id、会话 id</li>
+    <li>结果里的<strong>失败信息是数据</strong>（字段），不是抛错</li>
+    <li>不提供宿主函数与额外数据面</li>
+  </ul>
+</section>
+
+<section>
+  <h2>插件场景 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>场景</th><th>装上插件之后</th></tr></thead>
+    <tbody>
+      <tr><td>自己的数据库查询工具</td><td>结果画成 SQL + 表格</td></tr>
+      <tr><td>自己的统计工具</td><td>结果画成条形图</td></tr>
+      <tr><td>调用失败</td><td>错误是数据，由插件画成失败态</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>无认领：不定制宿主工具、不定制别人工具</li>
+    <li>展示不交互：不做下一步、审批、确认、重试再跑</li>
+    <li>不让插件改入参、拦截或放行执行</li>
+    <li>不让插件发起新的工具调用</li>
+    <li>markdown transformer <strong>不做</strong></li>
+  </ul>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>问题</th><th>决定</th></tr></thead>
+    <tbody>
+      <tr><td>有没有认领</td><td><strong>没有。</strong>插件只画自己注册的工具；宿主 / 他人工具不可定制</td></tr>
+      <tr><td>展示还是交互</td><td><strong>只展示</strong>。等待 / 审批性质一律不做</td></tr>
+      <tr><td>失败怎么给</td><td><strong>失败是数据不是抛错</strong>，进结果字段由插件画</td></tr>
+      <tr><td>宿主 / 他人工具</td><td>永远走宿主默认卡，一个字不变</td></tr>
+    </tbody>
+  </table>
+   <div class="callout ok"><b>定稿：</b>卡片数据字段 <code>toolName</code> / <code>toolCallId</code> / <code>toolArgs?</code> / <code>toolStatus</code> / <code>toolResult?</code> / <code>toolError?</code> / <code>durationMs?</code>（复用 SDK 既有词表，失败即数据）；注册走统一判别式联合 <code>{ slot:"toolCard", toolName, component }</code>；运行中 500ms 节拍合并推送整份 props，状态跃迁与最终结果立即推。</div>
+</section>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,59 @@
+/*
+ * The docked Live Voice widget window (04-ux/08-component-spec § 11.7.1).
+ *
+ * The window is frameless and transparent, so the bar is the only surface and
+ * the window's own drag handle: everything the user can press has to opt out of
+ * the drag region, or the press would move the widget instead of the control.
+ * A transparent window must also hold no dead space it does not draw — main
+ * sizes it to the box this shell reports.
+ */
+html[data-surface="live-voice-widget"],
+html[data-surface="live-voice-widget"] body,
+html[data-surface="live-voice-widget"] #root {
+  background: transparent;
+  overflow: hidden;
+}
+
+/*
+ * One row, never folded: main sizes the window to the box this shell reports, so
+ * a status line allowed to wrap would shrink the window and wrap again. The
+ * status keeps its own width and the window grows to it, up to the size cap —
+ * a folded status line reads as two rows of chrome on the desktop.
+ */
+.live-voice-widget .live-voice-call-row {
+  flex-wrap: nowrap;
+}
+
+.live-voice-widget .live-voice-call-status {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* The failure line is a sentence: it may still wrap, and the window follows it. */
+
+.live-voice-widget {
+  display: inline-flex;
+  padding: 6px;
+  -webkit-app-region: drag;
+  app-region: drag;
+  cursor: grab;
+  /* A touch on the bar moves the window instead of scrolling what is behind it. */
+  touch-action: none;
+}
+
+.live-voice-widget .live-voice-call-bar {
+  max-width: none;
+  /* The bar sits on the desktop, not on an app surface: it needs the elevation
+     a floating card would have inside a window. */
+  box-shadow: var(--ds-shadow-dialog);
+}
+
+.live-voice-widget .live-voice-call-bar button,
+.live-voice-widget .live-voice-call-bar code {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.live-voice-widget .live-voice-call-bar button {
+  cursor: pointer;
+}

@@ -503,6 +503,12 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
   responses are not JSON-RPC replies. Any acknowledgement body is discarded,
   including plain-text `Accepted`; ordinary request replies still follow the
   JSON/SSE parsing and response-size limits.
+- A streamable-HTTP server may write its JSON-RPC reply and keep the SSE stream
+  open afterwards — keep-alives, or a session it ends on its own schedule. Each
+  `text/event-stream` event is dispatched as it arrives, so a handshake or a
+  `tools/list` page completes on its reply instead of on the end of the stream.
+  The request budget still bounds the exchange: a server that never replies
+  still times out, and a stream left open past its request is aborted.
 - The MCP row shows “Authorization required” only when runtime status explicitly
   reports `authRequired`. Missing credentials, an untested connection, and
   non-authentication failures do not imply OAuth is required. A stored OAuth

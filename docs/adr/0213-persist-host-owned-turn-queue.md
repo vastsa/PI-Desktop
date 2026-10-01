@@ -43,6 +43,11 @@ table and RPC surface, not a file the module writes.
 4. **The renderer's in-memory queue is retired.** The composer pushes
    through `agent/queue/push`, mirrors `agent/event/queueChanged`, and its
    "send now" is `agent/queue/prioritize` followed by a graceful stop.
+5. **Schema v20 extends queued input provenance.** `user_message_id` preserves
+   the stable user row across queue recovery, and `voice_origin_json` records
+   the originating Live Voice call and operation. Both columns are nullable,
+   added by an additive v19→v20 migration, and do not change the queue's
+   no-auto-replay rule.
 
 ## Consequences
 
@@ -51,8 +56,9 @@ table and RPC surface, not a file the module writes.
 - Every client of a Host sees the same queue once the renderer switch
   lands.
 - Deleting a session cascades to its queue entries.
-- Fresh installs and every migration path produce schema v15; the
-  `04-data-storage.md` chain, the baseline, and the README move to v15.
+- Fresh installs and every migration path produce the current schema; schema
+  v15 remains the original queue introduction, and schema v20 adds optional
+  identity/provenance metadata without changing prior rows.
 
 ## Alternatives considered
 

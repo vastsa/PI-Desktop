@@ -1,0 +1,224 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>草稿读写 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:960px;margin:0 auto;padding:24px 28px 90px}
+  section{margin:0 0 44px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:rgba(76,141,255,.10)}
+  .chip.plugin{color:var(--plugin);background:rgba(194,122,255,.10)}
+  .chip.slot{color:var(--slot);background:rgba(255,133,73,.10)}
+  .chip.api{color:var(--api);background:rgba(64,201,119,.10)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">草稿读写</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/draft</div>
+  <h1>草稿读写 · 数据流</h1>
+  <p>草稿快照怎么读、文字怎么写回去、变化怎么推给插件。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #545 · #561 · 字段名是建议值，结构是拍板的</div>
+</header>
+
+<main>
+
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag decided">已拍板</span></h2>
+  <p class="lead">三个方法，写分主路径与受限路径。草稿变化走推送。</p>
+
+<pre><span class="c">// ① 读快照</span>
+composer.readDraft()
+<span class="c">// → { text, marks[], generation }</span>
+
+<span class="c">// ② 插入（主路径）</span>
+composer.insertText({ <span class="k">text</span> })
+<span class="c">// → { ok: true, generation }</span>
+
+<span class="c">// ③ 整体替换（受限：CAS + 非聚焦 + 非远端）</span>
+composer.replaceDraft({ <span class="k">expectedGeneration</span>, <span class="k">text</span>, <span class="k">marks</span>? })
+<span class="c">// → { ok: true, generation } 或整次拒绝</span></pre>
+
+  <h3>字段</h3>
+  <table>
+    <thead><tr><th>字段</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td class="id">text</td><td>输入框当前文字；记号占内部字符</td></tr>
+      <tr><td class="id">marks[]</td><td>记号列表（label / 发送策略 / 私有数据 / 位置），按出现顺序</td></tr>
+      <tr><td class="id">generation</td><td>草稿世代号；每次草稿变化 +1。replace 时用 <code>expectedGeneration</code> 对账</td></tr>
+      <tr><td class="id">expectedGeneration</td><td>只在 replaceDraft 出现：必须等于当前值，对不上整次拒绝</td></tr>
+    </tbody>
+  </table>
+
+  <h3>replace 三道闸</h3>
+  <table>
+    <thead><tr><th>闸</th><th>不过会怎样</th></tr></thead>
+    <tbody>
+      <tr><td class="id">① CAS 世代号</td><td><code>expectedGeneration</code> ≠ 当前 → 整次拒绝（先到先得，不静默盖别人）</td></tr>
+      <tr><td class="id">② 输入框非聚焦</td><td>用户正在输入框里打字 → 拒绝（防吃字）</td></tr>
+      <tr><td class="id">③ 非远端来源</td><td>调用来自异步回调 / 网络返回 / 定时器 → 拒绝，改走 insertText</td></tr>
+    </tbody>
+  </table>
+
+  <h3>出站分层（公共）</h3>
+  <table>
+    <thead><tr><th>层</th><th>词</th><th>约束</th></tr></thead>
+    <tbody>
+      <tr><td class="id">核心 H</td><td><code>entry.copy</code> · <code>message.mutate</code> · <b><code>composer.insertText</code></b> · <code>attachments.add</code></td><td>insert 是写草稿主路径</td></tr>
+      <tr><td class="id">核心 P</td><td><code>plugin.call</code></td><td>白名单 · ≤64KB · QPS · 2s 超时 · 熔断 · pluginId 宿主注入</td></tr>
+      <tr><td class="id">核心 F</td><td><code>measureHeight</code> · <code>deriveSummary</code></td><td>同步 16ms · 超时回默认 · F 内禁 H/P</td></tr>
+      <tr><td class="id">可选 H</td><td>toast · ask · clipboard.write · host.open · <b><code>composer.readDraft</code></b> · attachments.list/remove</td><td>clipboard.write 须同次用户手势</td></tr>
+      <tr><td class="id">拒绝</td><td><b>远端来源 replaceDraft</b> · 裸路径附件</td><td>不得静默改用户数据</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag decided">已拍板</span></h2>
+  <div class="legend">
+    <span><span class="chip host">host</span> 输入框 / 草稿登记</span>
+    <span><span class="chip slot">slot</span> 方法边界</span>
+    <span><span class="chip plugin">plugin</span> 插件渲染器</span>
+  </div>
+
+  <table>
+    <thead><tr><th>路径</th><th>方向</th><th>怎么走</th></tr></thead>
+    <tbody>
+      <tr><td class="id">读</td><td>插件 → 宿主 → 插件</td><td><code>readDraft()</code> 同步取一份 <code>{ text, marks[], generation }</code> 快照</td></tr>
+      <tr><td class="id">插</td><td>插件 → 宿主</td><td><code>insertText</code> 在光标处落一段文字；成功后 <code>generation</code> +1</td></tr>
+      <tr><td class="id">换</td><td>插件 → 宿主</td><td><code>replaceDraft</code> 过三道闸后整体换掉；成功后 <code>generation</code> +1</td></tr>
+      <tr><td class="id">推</td><td>宿主 → 插件</td><td>草稿一变（用户打字、删改、插件写入），rendererData <code>draft</code> 推新快照。<b>不要轮询</b></td></tr>
+    </tbody>
+  </table>
+
+  <h3>递交模型</h3>
+  <ul>
+    <li><b>请求 / 应答</b>：三个方法都是一问一答，返回值立刻落定。</li>
+    <li><b>推送</b>：草稿变化是宿主单向推；插件订阅 rendererData <code>draft</code> 即可，不需要也不提供定时拉取。</li>
+    <li><b>生命周期</b>：随会话走。切会话后旧快照作废，以新会话的推送为准。</li>
+  </ul>
+  <div class="callout decided"><b>为什么不用轮询。</b>轮询会和推送形成两条来源，插件两边都听就会打架；而且轮询永远晚一拍。拍板：只推不拉。</div>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>靠什么保证</th></tr></thead>
+    <tbody>
+      <tr><td class="id">generation 对不上</td><td>replace 整次拒绝；草稿不变</td><td>CAS 对账</td></tr>
+      <tr><td class="id">输入框正聚焦</td><td>replace 整次拒绝</td><td>非聚焦闸</td></tr>
+      <tr><td class="id">远端来源调用 replace</td><td>整次拒绝；应改走 insertText</td><td>来源闸</td></tr>
+      <tr><td class="id">text 里丢了宿主锚点记号</td><td>replace 整次拒绝</td><td>锚点保护</td></tr>
+      <tr><td class="id">没有会话</td><td>整次调用报错，不返回半截快照</td><td>会话检查</td></tr>
+      <tr><td class="id">插件被禁用 / 卸载</td><td>订阅拆除；挂起的写入作废</td><td>生命周期清理</td></tr>
+      <tr><td class="id">写入后 0.5s 内没显示</td><td>整次作废并报错（旧契约，沿用）</td><td>上屏时限</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">轮询读草稿</td><td>只推不拉；轮询是第二条源</td></tr>
+      <tr><td class="id">远端来源的 replace</td><td>会吃掉用户正在打的字</td></tr>
+      <tr><td class="id">部分写入 / 静默覆盖</td><td>世代号对不上就整次拒绝</td></tr>
+      <tr><td class="id">动宿主锚点记号</td><td>锚点是编辑历史消息的路标</td></tr>
+      <tr><td class="id">附件读写</td><td>归 <code>render/attachments/</code></td></tr>
+      <tr><td class="id">发送时改写</td><td>归 <code>runtime/before-send/</code>；本目录只管输入框里的草稿</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+  <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">公共契约</td><td>出站分层（insert 核心 H · read 可选 H · 远端 replace 拒绝）</td><td><a href="../../slot-contract.html">../../slot-contract.html</a></td></tr>
+      <tr><td class="id">输入区</td><td>草稿与记号的宿主形态、界面槽与触发符</td><td><a href="../../ui/composer/index.html">../../ui/composer/</a></td></tr>
+      <tr><td class="id">附件</td><td>附件三动作，与草稿分开管</td><td><code>render/attachments/</code></td></tr>
+      <tr><td class="id">确认卡</td><td>问完用户后常接 insertText</td><td><code>render/ask/</code></td></tr>
+      <tr><td class="id">before-send</td><td>发送前的拦截改写——比草稿更晚的一步</td><td><code>runtime/before-send/</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+  <ul>
+    <li>marks 字段名定稿（旧契约叫 tokens，本目录用 marks；SDK 名待定）。</li>
+    <li>generation 计数溢出 / 重开会话后的起点。</li>
+    <li>insertText 是否接受记号占位（当前拍板为纯文字）。</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

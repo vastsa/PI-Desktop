@@ -368,7 +368,7 @@ impl WebDavTransport {
         match response.status() {
             StatusCode::PRECONDITION_FAILED => Ok(false),
             status if status.is_success() => Ok(true),
-            status => return Err(status_error("create", status)),
+            status => Err(status_error("create", status)),
         }
     }
 
@@ -384,7 +384,7 @@ impl WebDavTransport {
         match response.status() {
             StatusCode::PRECONDITION_FAILED => Ok(false),
             status if status.is_success() => Ok(true),
-            status => return Err(status_error("conditional write", status)),
+            status => Err(status_error("conditional write", status)),
         }
     }
 

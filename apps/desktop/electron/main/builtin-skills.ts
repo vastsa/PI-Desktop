@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parseSkillFrontmatter } from "@pi-desktop/plugin-sdk";
 import type { PluginSkillDef } from "@pi-desktop/agent-runtime";
 import type { LoadedSkillDocument } from "./skill-document";
+import { getModuleDirectory } from "./module-path";
 
 /**
  * Skills PI-Desktop ships itself.
@@ -21,7 +22,7 @@ const IMAGE_GENERATION_SKILL_FILE = "image-generation.md";
 
 /** electron-builder copies `resources/skills` to `<resources>/skills`. */
 function resolveBuiltinSkillPath(fileName: string): string | null {
-  const moduleDir = typeof __dirname === "string" ? __dirname : import.meta.dirname;
+  const moduleDir = getModuleDirectory(import.meta.url);
   const candidates = [
     join(process.resourcesPath || "", "skills", fileName),
     join(moduleDir, "../../resources/skills", fileName),

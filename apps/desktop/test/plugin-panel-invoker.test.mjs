@@ -5,8 +5,14 @@ import test from "node:test";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
-const { PanelSenders, PLUGIN_PAGE_CLOSE_SETTLE_MS, pageGoneWithin, resolvePanelInvocation } =
-  await import("../electron/main/plugin-panel-senders.ts");
+const {
+  PanelOperationSerializer,
+  PanelSenders,
+  PLUGIN_PAGE_CLOSE_SETTLE_MS,
+  pageGoneWithin,
+  resolvePanelInvocation,
+  teardownPanelWindow,
+} = await import("../electron/main/plugin-panel-senders.ts");
 
 const panelHostSource = await readFile(
   new URL("../electron/main/plugin-panel-host.ts", import.meta.url),
@@ -202,4 +208,123 @@ test("the bridge settles a call from a page that is gone", () => {
     panelHostSource,
     /if \(!window\) \{[\s\S]*?if \(event\.sender\.isDestroyed\(\)\) return;[\s\S]*?throw new Error\("invalid panel window control invoker"\)/,
   );
+});
+
+test("PanelOperationSerializer serializes operations on the same plugin ID", async () => {
+  const serializer = new PanelOperationSerializer();
+  const events = [];
+  let unblockFirst;
+  const firstBlock = new Promise((resolve) => {
+    unblockFirst = resolve;
+  });
+
+  const op1 = serializer.run("plugin.a", async () => {
+    events.push("op1:start");
+    await firstBlock;
+    events.push("op1:end");
+    return "result-1";
+  });
+
+  const op2 = serializer.run("plugin.a", async () => {
+    events.push("op2:start");
+    events.push("op2:end");
+    return "result-2";
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ["op1:start"], "op2 must not start while op1 is pending");
+
+  unblockFirst();
+  const [res1, res2] = await Promise.all([op1, op2]);
+  assert.equal(res1, "result-1");
+  assert.equal(res2, "result-2");
+  assert.deepEqual(events, ["op1:start", "op1:end", "op2:start", "op2:end"]);
+});
+
+test("PanelOperationSerializer runs operations for different plugins concurrently", async () => {
+  const serializer = new PanelOperationSerializer();
+  const events = [];
+  let unblockA;
+  const blockA = new Promise((resolve) => {
+    unblockA = resolve;
+  });
+
+  const opA = serializer.run("plugin.a", async () => {
+    events.push("a:start");
+    await blockA;
+    events.push("a:end");
+  });
+
+  const opB = serializer.run("plugin.b", async () => {
+    events.push("b:start");
+    events.push("b:end");
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(events.includes("b:start"), "opB must not be blocked by opA");
+  assert.ok(events.includes("b:end"), "opB completes while opA is blocked");
+
+  unblockA();
+  await opA;
+  await opB;
+});
+
+test("PanelOperationSerializer continues processing after an operation failure", async () => {
+  const serializer = new PanelOperationSerializer();
+  const failed = serializer.run("plugin.a", async () => {
+    throw new Error("failure");
+  });
+  await assert.rejects(failed, /failure/);
+
+  const next = await serializer.run("plugin.a", async () => "recovered");
+  assert.equal(next, "recovered");
+});
+
+test("teardownPanelWindow forces destruction when a page refuses to close", async () => {
+  const page = fakePage();
+  let closed = false;
+  let destroyed = false;
+  const win = {
+    close() {
+      closed = true;
+    },
+    destroy() {
+      destroyed = true;
+      page.die();
+    },
+    isDestroyed() {
+      return destroyed;
+    },
+    webContents: page,
+  };
+
+  // The page never dies on win.close(), simulating beforeunload refusing close.
+  await teardownPanelWindow(win, { force: true, budgetMs: 20 });
+  assert.equal(closed, true, "win.close() must be called first");
+  assert.equal(destroyed, true, "win.destroy() must be called when force is true");
+  assert.equal(win.isDestroyed(), true);
+});
+
+test("teardownPanelWindow leaves window registered when not forced and page refuses close", async () => {
+  const page = fakePage();
+  let closed = false;
+  let destroyed = false;
+  const win = {
+    close() {
+      closed = true;
+    },
+    destroy() {
+      destroyed = true;
+      page.die();
+    },
+    isDestroyed() {
+      return destroyed;
+    },
+    webContents: page,
+  };
+
+  await teardownPanelWindow(win, { force: false, budgetMs: 20 });
+  assert.equal(closed, true, "win.close() was called");
+  assert.equal(destroyed, false, "win.destroy() was not called without force");
+  assert.equal(win.isDestroyed(), false);
 });

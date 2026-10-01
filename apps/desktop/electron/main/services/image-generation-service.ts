@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { generateImageBatch } from "@pi-desktop/agent-runtime";
+import { createImageBinding, generateImageBatch, type ImageOperationMetadata } from "@pi-desktop/agent-runtime";
+import type { ImageApi, ImageModel } from "@earendil-works/pi-ai";
+import type { VendorOAuth } from "../oauth";
 import {
   imageGenerationPrompts,
   parseImageGenerationBinding,
@@ -26,6 +28,8 @@ export function createImageGenerationTool(options: {
   getHost: () => Pick<HostProcess, "call"> | null;
   fetchImpl?: typeof fetch;
   allowFakeIp?: () => boolean;
+  resolveAuth?: VendorOAuth["resolveAuth"];
+  resolveImageModel?: (provider: ProviderPublic, modelId: string) => Promise<ImageModel<ImageApi> | undefined>;
 }): LocalToolHandler {
   return async ({ sessionId, args, signal }) => {
     imageGenerationPrompts(args);
@@ -51,16 +55,26 @@ export function createImageGenerationTool(options: {
         "The configured image model is unavailable. Update Settings > Models > Image generation model.",
       );
     }
-    if (provider.authKind === "oauth")
-      return failure(
-        "IMAGE_AUTH_UNSUPPORTED",
-        "Image generation requires an API-key or no-auth service.",
-      );
-    const { value } = await host.call<{ value?: string }>("providers.getSecret", {
-      id: provider.id,
-    });
-    if (provider.authKind !== "none" && !value)
+    const { value } = provider.authKind === "oauth" || provider.authKind === "none"
+      ? { value: undefined }
+      : await host.call<{ value?: string }>("providers.getSecret", { id: provider.id });
+    if (provider.authKind !== "none" && provider.authKind !== "oauth" && !value)
       return failure("IMAGE_AUTH_FAILED", "The image provider needs an API key.");
+    const downloadOptions = { allowFakeIp: options.allowFakeIp?.() === true };
+    let imageBinding;
+    try {
+      imageBinding = createImageBinding({
+        nativeModel: await options.resolveImageModel?.(provider, binding.modelId),
+        providerId: provider.id, vendorKey: provider.vendorKey, authKind: provider.authKind,
+        baseUrl: provider.baseUrl, modelId: binding.modelId, apiKey: value, headers: provider.headers,
+        ...(provider.authKind === "oauth" && options.resolveAuth
+          ? { resolveAuth: () => options.resolveAuth!(provider.id) } : {}),
+      }, downloadOptions);
+    } catch (error) {
+      if (error && typeof error === "object" && "errorCode" in error && error.errorCode === "IMAGE_AUTH_UNSUPPORTED")
+        return failure("IMAGE_AUTH_UNSUPPORTED", "The selected account has no supported image operation.");
+      throw error;
+    }
     const { path } = await host.call<{ path: string }>("session.getScratchPath", { sessionId });
     const root = resolve(options.dataDir, "scratch");
     const within = (base: string, target: string) => {
@@ -79,14 +93,11 @@ export function createImageGenerationTool(options: {
       id: sessionId,
     });
     if (!session) return failure("SESSION_NOT_FOUND", "The image session no longer exists.");
+    const operations: ImageOperationMetadata[] = [];
     const results = await generateImageBatch({
       input: args,
-      endpoint: {
-        baseUrl: provider.baseUrl,
-        modelId: binding.modelId,
-        apiKey: value,
-        headers: provider.headers,
-      },
+      binding: imageBinding,
+      onOperation: operation => { operations.push(operation); },
       signal,
       fetchImpl: options.fetchImpl,
       downloadOptions: { allowFakeIp: options.allowFakeIp?.() === true },
@@ -110,6 +121,7 @@ export function createImageGenerationTool(options: {
         providerId: binding.providerId,
         modelId: binding.modelId,
         results,
+        operations: operations.sort((a, b) => a.index - b.index),
       },
     };
   };

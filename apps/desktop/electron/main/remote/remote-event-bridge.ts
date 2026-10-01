@@ -110,6 +110,7 @@ function toToolPermissionRequest(
     reason: approval.summary,
     ...(approval.agentName ? { agentName: approval.agentName } : {}),
     ...(approval.parentToolCallId ? { parentToolCallId: approval.parentToolCallId } : {}),
+    ...(approval.nestedParentToolCallId ? { nestedParentToolCallId: approval.nestedParentToolCallId } : {}),
   };
 }
 
@@ -154,6 +155,7 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       ts: Date.parse(envelope.occurredAt) || Date.now(),
       event,
       ...(envelope.parentToolCallId ? { parentToolCallId: envelope.parentToolCallId } : {}),
+      ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
       ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
     };
     emit(IPC.event.agentMessage, local);

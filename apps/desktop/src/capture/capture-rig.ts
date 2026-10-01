@@ -1034,7 +1034,6 @@ export function installCaptureRig(): CaptureRig {
       try {
         await useAppStore.getState().refreshSessions();
         const englishNoise = new Set([
-          "Review open pull requests",
           "Tighten composer elevation",
           "Dark theme night plate",
           "Sidebar recents density",

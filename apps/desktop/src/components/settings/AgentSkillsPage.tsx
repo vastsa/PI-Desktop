@@ -259,6 +259,19 @@ export function AgentSkillsPage() {
             variant: "success",
           });
         }
+        if (result.imported?.length) {
+          showToast(t("settings.skillBatchImported", { count: result.imported.length }), {
+            variant: "success",
+          });
+        }
+        if (result.failed?.length) {
+          const first = result.failed[0];
+          const folder = first.path.split(/[\\/]/).filter(Boolean).at(-1) ?? first.path;
+          showToast(t("settings.skillBatchFailed", {
+            count: result.failed.length,
+            first: `${folder}: ${first.error}`,
+          }), { variant: "error" });
+        }
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });

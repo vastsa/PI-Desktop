@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { DEEPSEEK_REASONING_REPLAY_PLACEHOLDER } from "@pi-desktop/shared";
 import type { ModelAuth } from "@earendil-works/pi-ai";
 import { convertMessages } from "@earendil-works/pi-ai/api/openai-completions";
-import { genericModelConfig, modelConfigWithBinding } from "./model-capabilities.js";
+import { genericModelConfig, modelConfigFromPi, modelConfigWithBinding } from "./model-capabilities.js";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import type { ModelConfig } from "./thinking-level.js";
 import {
   adapterAcceptsCustomFetch,
@@ -25,6 +26,53 @@ const keyedProvider: RuntimeProviderConfig = {
   supportsReasoning: false,
   supportedThinkingLevels: ["off"],
 };
+
+describe("account-local Pi registries", () => {
+  it("preserves native pricing tiers through a serialized model projection", () => {
+    const native = builtinProviders().flatMap((provider) => provider.getModels())
+      .find((model) => model.cost.tiers?.length);
+    expect(native).toBeDefined();
+    if (!native) throw new Error("Missing tiered Pi catalog model");
+    const modelConfig: ModelConfig = JSON.parse(JSON.stringify(modelConfigFromPi(native)));
+    const restored = buildProviderModel({
+      ...keyedProvider,
+      modelId: native.id,
+      vendorKey: native.provider,
+      modelConfig,
+    });
+    expect(restored.cost).toEqual(native.cost);
+    expect(restored.cost.tiers).toHaveLength(native.cost.tiers!.length);
+  });
+
+  it("keeps same-vendor credentials isolated during concurrent resolution", async () => {
+    const first: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "account-one",
+      vendorKey: "openai",
+      resolveAuth: async () => ({ apiKey: "first-fixture-key" }),
+    };
+    const second: RuntimeProviderConfig = {
+      ...first,
+      id: "account-two",
+      resolveAuth: async () => ({ apiKey: "second-fixture-key" }),
+    };
+    const firstModel = buildProviderModel(first);
+    const secondModel = buildProviderModel(second);
+    const firstModels = createProviderModels(first, firstModel);
+    const secondModels = createProviderModels(second, secondModel);
+    expect(firstModels).not.toBe(secondModels);
+    expect(firstModel.provider).toBe("openai");
+    expect(secondModel.provider).toBe("openai");
+    const [firstAuth, secondAuth] = await Promise.all([
+      firstModels.getAuth(firstModel),
+      secondModels.getAuth(secondModel),
+    ]);
+    expect(firstAuth?.auth.apiKey).toBe("first-fixture-key");
+    expect(secondAuth?.auth.apiKey).toBe("second-fixture-key");
+    expect(first.id).toBe("account-one");
+    expect(second.id).toBe("account-two");
+  });
+});
 
 describe("apiBindingForStyle", () => {
   it("binds OpenCode Go to its fixed OpenAI-compatible endpoint", () => {
@@ -115,6 +163,130 @@ describe("Anthropic runtime endpoint", () => {
 
     expect(result.stopReason).toBe("error");
     expect(urls).toEqual(["https://gw.example/anthropic/v1/messages?beta=true"]);
+  });
+
+  it("signs a plain Anthropic API-key row without a Bearer header", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "anthropic-api-key-row",
+      name: "Anthropic",
+      baseUrl: "https://api.anthropic.com",
+      modelId: "claude-sonnet-4-6",
+      apiStyle: "anthropic_messages",
+    };
+    const model = buildProviderModel(provider);
+    let request: Request | undefined;
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      request = new Request(input, init);
+      return new Response(
+        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "test response" } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const result = await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+          tools: [],
+        },
+        { fetch, maxRetries: 0 },
+      )
+      .result();
+
+    expect(result.stopReason).toBe("error");
+    expect(request?.headers.get("x-api-key")).toBe("sk-test");
+    expect(request?.headers.get("Authorization")).toBeNull();
+  });
+
+  it("uses adaptive thinking for models explicitly marked adaptive", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "anthropic-adaptive",
+      name: "Anthropic adaptive",
+      baseUrl: "https://api.anthropic.com",
+      modelId: "claude-opus-5-5",
+      apiStyle: "anthropic_messages",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "medium"],
+      modelConfig: {
+        source: "models.dev",
+        name: "Claude Opus 5.5",
+        baseUrl: "https://api.anthropic.com",
+        reasoning: true,
+        thinkingProtocol: "adaptive",
+        thinkingLevelMap: { medium: "medium" },
+        input: ["text"],
+        contextWindow: 200_000,
+        maxTokens: 16_000,
+      },
+    };
+    const model = buildProviderModel(provider);
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response("bad request", { status: 400 });
+    });
+
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        { systemPrompt: "system", messages: [{ role: "user", content: "hello", timestamp: Date.now() }], tools: [] },
+        { reasoning: "medium", fetch },
+      )
+      .result();
+
+    expect(model.compat).toMatchObject({ forceAdaptiveThinking: true });
+    expect(requests[0]).toMatchObject({
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+    });
+  });
+
+  it("keeps the legacy budget request for legacy models", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "anthropic-legacy",
+      name: "Anthropic legacy",
+      baseUrl: "https://api.anthropic.com",
+      modelId: "claude-opus-4-5",
+      apiStyle: "anthropic_messages",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "medium"],
+      modelConfig: {
+        source: "models.dev",
+        name: "Claude Opus 4.5",
+        baseUrl: "https://api.anthropic.com",
+        reasoning: true,
+        reasoningOptions: [{ type: "effort", values: ["low", "medium", "high"] }],
+        thinkingProtocol: "legacy",
+        input: ["text"],
+        contextWindow: 200_000,
+        maxTokens: 16_000,
+      },
+    };
+    const model = buildProviderModel(provider);
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response("bad request", { status: 400 });
+    });
+
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        { systemPrompt: "system", messages: [{ role: "user", content: "hello", timestamp: Date.now() }], tools: [] },
+        { reasoning: "medium", fetch },
+      )
+      .result();
+
+    expect(model.compat).toMatchObject({ forceAdaptiveThinking: false });
+    expect(requests[0]).toMatchObject({
+      thinking: { type: "enabled" },
+    });
+    expect((requests[0].thinking as Record<string, unknown>).budget_tokens).toEqual(expect.any(Number));
   });
 });
 
@@ -343,7 +515,7 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
       },
     }) as any;
 
-    expect(model.provider).toBe("row-uuid");
+    expect(model.provider).toBe("siliconflow-cn");
     expect(model.compat).toMatchObject({
       requiresReasoningContentOnAssistantMessages: true,
       requiresNonEmptyReasoningReplay: true,
@@ -760,7 +932,7 @@ describe("GitHub Copilot transport identity", () => {
   it("retains pi-ai static headers for a row-scoped OAuth model", () => {
     const model = buildProviderModel(provider);
 
-    expect(model.provider).toBe(provider.id);
+    expect(model.provider).toBe(provider.vendorKey);
     expect(model.headers).toMatchObject({
       "Editor-Version": "vscode/1.107.0",
       "Editor-Plugin-Version": "copilot-chat/0.35.0",
@@ -850,6 +1022,98 @@ describe("GitHub Copilot transport identity", () => {
     expect(request?.headers.get("Copilot-Integration-Id")).toBe("vscode-chat");
     expect(request?.headers.get("X-Initiator")).toBe("user");
     expect(request?.headers.get("Openai-Intent")).toBe("conversation-edits");
+    expect(request?.headers.get("Authorization")).toBe("Bearer copilot-token");
+    expect(request?.headers.get("x-api-key")).toBeNull();
+  });
+
+  it("sends Bearer auth and the complete identity on a row-scoped Claude request", async () => {
+    const claudeProvider: RuntimeProviderConfig = {
+      ...provider,
+      modelId: "claude-sonnet-4.6",
+      apiStyle: "anthropic_messages",
+      resolveAuth: async () => ({
+        apiKey: "copilot-token",
+        baseUrl: "https://api.business.githubcopilot.com",
+      }),
+    };
+    const model = buildProviderModel(claudeProvider);
+    const context = {
+      systemPrompt: "system",
+      messages: [{ role: "user" as const, content: "hello", timestamp: Date.now() }],
+      tools: [],
+    };
+    let request: Request | undefined;
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      request = new Request(input, init);
+      return new Response(
+        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "test response" } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const result = await createProviderModels(claudeProvider, model)
+      .streamSimple(model, context, {
+        fetch,
+        maxRetries: 0,
+        headers: copilotRequestHeaders(claudeProvider, context),
+      })
+      .result();
+
+    expect(result.stopReason).toBe("error");
+    expect(request?.headers.get("Authorization")).toBe("Bearer copilot-token");
+    expect(request?.headers.get("x-api-key")).toBeNull();
+    expect(request?.headers.get("Editor-Version")).toBe("vscode/1.107.0");
+    expect(request?.headers.get("Editor-Plugin-Version")).toBe("copilot-chat/0.35.0");
+    expect(request?.headers.get("Copilot-Integration-Id")).toBe("vscode-chat");
+    expect(request?.headers.get("X-Initiator")).toBe("user");
+    expect(request?.headers.get("Openai-Intent")).toBe("conversation-edits");
+    expect(request?.url).toBe("https://api.business.githubcopilot.com/v1/messages?beta=true");
+    expect(model.provider).toBe(claudeProvider.vendorKey);
+  });
+
+  it("re-resolves the rotating Bearer token for each row-scoped Claude request", async () => {
+    const resolveAuth = vi.fn<NonNullable<RuntimeProviderConfig["resolveAuth"]>>()
+      .mockResolvedValueOnce({ apiKey: "first-token" })
+      .mockResolvedValueOnce({ apiKey: "second-token" });
+    const claudeProvider: RuntimeProviderConfig = {
+      ...provider,
+      modelId: "claude-sonnet-4.6",
+      apiStyle: "anthropic_messages",
+      resolveAuth,
+    };
+    const model = buildProviderModel(claudeProvider);
+    const models = createProviderModels(claudeProvider, model);
+    const context = {
+      systemPrompt: "system",
+      messages: [{ role: "user" as const, content: "hello", timestamp: Date.now() }],
+      tools: [],
+    };
+    const requests: Request[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(new Request(input, init));
+      return new Response(
+        JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "test response" } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    for (let turn = 0; turn < 2; turn++) {
+      const result = await models
+        .streamSimple(model, context, {
+          fetch,
+          maxRetries: 0,
+          headers: copilotRequestHeaders(claudeProvider, context),
+        })
+        .result();
+      expect(result.stopReason).toBe("error");
+    }
+
+    expect(requests.map((request) => request.headers.get("Authorization"))).toEqual([
+      "Bearer first-token",
+      "Bearer second-token",
+    ]);
+    expect(requests.map((request) => request.headers.get("x-api-key"))).toEqual([null, null]);
+    expect(resolveAuth).toHaveBeenCalledTimes(2);
   });
 });
 

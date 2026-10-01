@@ -1,4 +1,8 @@
 import { serializeInlineComposerFileReferences } from "@pi-desktop/shared";
+import { useComposerInputHistory } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerInputHistory";
+import type { AppState } from "../../apps/desktop/src/stores/app-state";
+import { createQueueSlice } from "../../apps/desktop/src/stores/slices/queue-slice";
+import type { SessionRuntime } from "../../apps/desktop/src/stores/runtime/session-runtime";
 import { useComposerSubmit } from "../../apps/desktop/src/features/chat/composer/hooks/useComposerSubmit";
 import { verifyComposerSubmission } from "./composer-submission";
 import { ComposerImageAttachments } from "../../apps/desktop/src/features/chat/composer/ComposerImageAttachments";
@@ -26,6 +30,8 @@ import {
 } from "../../apps/desktop/src/features/chat/composer/editor";
 import { api } from "../../apps/desktop/src/lib/api";
 import { FilesTab } from "../../apps/desktop/src/components/workpanel/FilesTab";
+import { FileRefChip } from "../../apps/desktop/src/features/chat/transcript/shared";
+import { useOpenChatFileRef } from "../../apps/desktop/src/hooks/use-preview-target";
 import {
   readComposerDraft,
   resetComposerDraftCache,
@@ -37,20 +43,23 @@ declare global {
   var composerPreviewPressKey: (key: string) => Promise<void>;
   var composerPreviewCapture: (() => Promise<void>) | undefined;
   var composerPasteProbe: () => Promise<unknown>;
+  var composerHistoryProbe: (phase: "prepare" | "verify") => Promise<unknown>;
 }
 const assert = (value: unknown, message: string) => {
   if (!value) throw new Error(message);
 };
-const sessions = [{ id: "paste-a" }, { id: "paste-b" }];
+const sessions = [{ id: "paste-a" }, { id: "paste-b" }, { id: "history-created-session" }];
 const noop = () => {};
 let controller: ComposerDraftController;
 let pastePending: Promise<unknown> | undefined;
 let submitted = 0;
 let rejectSubmission: () => Promise<void>;
+let historySendPrompt: AppState["sendPrompt"] = async () => false;
+let latestSubmission: Promise<void> = Promise.resolve();
 function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunction; workspacePath: string }) {
   const draft = useComposerDraft({
     variant: "docked",
-    activeSessionId: sessionId,
+    activeSessionId: sessionId || null,
     workspacePath,
     sessions,
     composerPrefill: null,
@@ -60,15 +69,28 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
     inputBlocked: false,
   });
   controller = draft;
-  rejectSubmission = useComposerSubmit({
-    value: draft.value, draftKey: draft.draftKey, activeSessionId: sessionId,
+  const inputHistory = useComposerInputHistory({
+    draftKey: draft.draftKey,
+    referenceSessionId: sessionId,
+    draft,
+  });
+  const submitController = useComposerSubmit({
+    value: draft.value, draftKey: draft.draftKey, activeSessionId: sessionId || null,
     thinkingLevel: "off", modelReady: true, sendBlocked: false, pasting: false,
     activeFileReferences: draft.activeFileReferences, t, draft,
-    sendPrompt: async () => false, steerPrompt: async () => false, showToast: noop,
-  }).submit;
+    recordHistory: inputHistory.record,
+    sendPrompt: (...args) => historySendPrompt(...args),
+    steerPrompt: async () => false, showToast: noop,
+  });
+  rejectSubmission = submitController.submit;
+  const submitFromComposer = (steering?: boolean) => {
+    inputHistory.exitBrowsing();
+    submitted++;
+    return submitController.submit(steering);
+  };
   const attachments = useComposerAttachments({
     inputBlocked: false,
-    activeSessionId: sessionId,
+    activeSessionId: sessionId || null,
     draftKey: draft.draftKey,
     largePasteThreshold: 600,
     t,
@@ -95,15 +117,38 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
           pastePending = Promise.resolve(attachments.pasteClipboardFiles(event));
         }}
         onAcceptCompletion={noop}
-        onSubmit={() => { submitted++; }}
+        onSubmit={(steering) => { latestSubmission = submitFromComposer(steering); }}
+        onHistoryNavigate={inputHistory.navigate}
         onInsertNewline={draft.insertNewlineInEditor}
-        onInput={draft.handleInput}
+        onInput={(source, caret) => { inputHistory.exitBrowsing(); draft.handleInput(source, caret); }}
         onCompositionStart={noop}
         onCompositionEnd={noop}
+        onSettledInput={() => draft.setComposing(false)}
         onFocus={noop}
         onBlur={noop}
       />
       </div>
+    </div>
+  );
+}
+
+function Mp4AttachmentChips({ scratchPath }: { scratchPath: string }) {
+  const openFile = useOpenChatFileRef();
+  return (
+    <div className="mp4-attachment-chips">
+      {[
+        { name: "a.mp4", path: `attachments/${"a".repeat(64)}` },
+        { name: "b.mp4", path: `attachments/${"b".repeat(64)}` },
+        { name: "scratch.mp4", path: scratchPath },
+      ].map((video) => (
+        <FileRefChip
+          key={video.name}
+          name={video.name}
+          path={video.path}
+          mimeType="video/mp4"
+          onOpen={openFile}
+        />
+      ))}
     </div>
   );
 }
@@ -240,7 +285,11 @@ globalThis.composerPasteProbe = async () => {
       await pendingPaste;
       assert(controller.value === "", "pending paste changed the destination draft");
       render("paste-a");
-      await new Promise(requestAnimationFrame);
+      const restoreDeadline = performance.now() + 3000;
+      while (!controller.fileReferences.some((reference) => reference.name === "new.txt") &&
+        performance.now() < restoreDeadline) {
+        await new Promise(requestAnimationFrame);
+      }
       const names = controller.fileReferences.map((r) => r.name);
       assert(names.includes("original.txt") && names.includes("new.txt"),
         "PENDING_PASTE_SESSION_SWITCH lost original attachment: " + JSON.stringify({ names, text: readEditorValue(controller.ref.current!), visible: controller.ref.current!.textContent }));
@@ -389,20 +438,36 @@ globalThis.composerPasteProbe = async () => {
         `prefix ${controller.fileReferences[0].token} suffix`,
       "large text chip lost the selection boundary",
     );
+    const longTextPath = controller.fileReferences[0].path;
+    await paste("", [new File([new Uint8Array(512 * 1024 + 1)], "clip.mp4", {
+      type: "video/mp4",
+    })]);
+    assert(controller.fileReferences.length === 1 &&
+      controller.fileReferences[0].mimeType === "video/mp4" &&
+      controller.fileReferences[0].path.endsWith(".mp4"),
+    "a pasted MP4 did not retain its playable scratch filename");
+    const scratchVideoPath = controller.fileReferences[0].path;
 
     // Preview the persisted long-text attachment through the public work-panel
     // entry point, with no project open (the temporary-task user path).
     const previewHost = document.createElement("div");
     document.body.append(previewHost);
     const previewRoot = createRoot(previewHost);
+    const originalFsOpen = api.fsOpen;
+    const openRequests: Array<ReturnType<typeof api.fsOpen>> = [];
+    api.fsOpen = (path: string, mimeType?: string) => {
+      const request = originalFsOpen(path, mimeType);
+      openRequests.push(request);
+      return request;
+    };
     try {
       flushSync(() => previewRoot.render(
-        <I18nextProvider i18n={i18n}><FilesTab /></I18nextProvider>,
+        <I18nextProvider i18n={i18n}><FilesTab /><Mp4AttachmentChips scratchPath={scratchVideoPath} /></I18nextProvider>,
       ));
       assert(previewHost.textContent?.includes(i18n.t("panel.files.noWorkspace")),
         "file browsing without a project should show the empty state");
       flushSync(() => useAppStore.getState().openFileInWorkPanel(
-        controller.fileReferences[0].path, "text/plain",
+        longTextPath, "text/plain",
       ));
       const deadline = performance.now() + 3000;
       while (!previewHost.querySelector(".file-viewer-code") && performance.now() < deadline) {
@@ -410,6 +475,39 @@ globalThis.composerPasteProbe = async () => {
       }
       assert(previewHost.querySelector(".file-viewer-code")?.textContent === longText,
         "temporary-task attachment did not display its saved text in the file preview");
+      for (const [index, [hash, expected]] of [
+        ["a", i18n.t("panel.files.tooLarge")],
+        ["b", i18n.t("panel.files.binary")],
+        ["scratch", i18n.t("panel.files.tooLarge")],
+      ].entries()) {
+        const chip = previewHost.querySelector<HTMLButtonElement>(
+          `.mp4-attachment-chips [aria-label^="${hash}.mp4"]`,
+        );
+        assert(chip, `MP4 attachment chip is missing: ${hash}`);
+        flushSync(() => chip!.click());
+        const deadline = performance.now() + 3000;
+        while (!previewHost.textContent?.includes(expected) && performance.now() < deadline) {
+          await new Promise(requestAnimationFrame);
+        }
+        assert(previewHost.textContent?.includes(expected),
+          `MP4 attachment did not reach its expected preview state: ${hash}`);
+        const open = Array.from(previewHost.querySelectorAll<HTMLButtonElement>("button"))
+          .find((button) => button.textContent === i18n.t("chat.openFile"));
+        assert(open, `MP4 attachment has no system-player action: ${hash}`);
+        flushSync(() => open!.click());
+        assert(openRequests.length === index + 1, `MP4 open did not reach IPC: ${hash}`);
+        await openRequests[index];
+      }
+      flushSync(() => useAppStore.getState().openFileInWorkPanel("untrusted.sh", "video/mp4"));
+      const unsafeDeadline = performance.now() + 3000;
+      while ((previewHost.querySelector(".file-viewer-path")?.textContent !== "untrusted.sh" ||
+        !previewHost.textContent?.includes(i18n.t("panel.files.tooLarge"))) &&
+        performance.now() < unsafeDeadline) {
+        await new Promise(requestAnimationFrame);
+      }
+      assert(!Array.from(previewHost.querySelectorAll<HTMLButtonElement>("button"))
+        .some((button) => button.textContent === i18n.t("chat.openFile")),
+      "a spoofed video MIME must not offer an OS-open action for a script");
       const back = previewHost.querySelector<HTMLButtonElement>(
         `[aria-label="${i18n.t("panel.files.back")}"]`,
       );
@@ -418,6 +516,7 @@ globalThis.composerPasteProbe = async () => {
       assert(previewHost.textContent?.includes(i18n.t("panel.files.noWorkspace")),
         "back from a temporary attachment should restore the no-project empty state");
     } finally {
+      api.fsOpen = originalFsOpen;
       flushSync(() => previewRoot.unmount());
       previewHost.remove();
     }
@@ -480,7 +579,7 @@ globalThis.composerPasteProbe = async () => {
     assert(dialog()!.contains(document.activeElement), "modal allowed background input focus");
     button(i18n.t("chat.imagePreview.fit")).focus();
     await globalThis.composerPreviewPressKey("Tab");
-    assert(dialog()!.contains(document.activeElement), "Tab escaped the preview");
+    await until(() => dialog()?.contains(document.activeElement), "Tab escaped the preview");
     assert(preview.naturalWidth === 1 && preview.getBoundingClientRect().width === 1,
       "small image must not be stretched to fill the window");
     assert(!useAppStore.getState().workPanelOpen, "preview opened the work panel");
@@ -808,6 +907,7 @@ globalThis.composerPasteProbe = async () => {
       crossBreakAndChipSelection: true,
       mixedLongText: true,
       temporaryTaskTextPreview: true,
+      mp4AttachmentOpen: true,
       imageOnly: true,
       nativeImageFile: true,
       imagePreviewAndKeyboard: true,
@@ -821,6 +921,220 @@ globalThis.composerPasteProbe = async () => {
       pendingPasteAcrossSessionSwitch: true,
     };
   } finally {
+    flushSync(() => root.unmount());
+    host.remove();
+    resetComposerDraftCache();
+  }
+};
+
+globalThis.composerHistoryProbe = async (phase) => {
+  const i18n = createInstance();
+  await i18n.init({
+    lng: "en",
+    resources: { en: { translation: en } },
+    interpolation: { escapeValue: false },
+  });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const errors: unknown[] = [];
+  const root = createRoot(host, {
+    onUncaughtError: (error) => errors.push(error),
+  });
+  const render = (sessionId: string) => {
+    useAppStore.setState({ activeSessionId: sessionId || null });
+    flushSync(() =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <Fixture
+            key={sessionId || "home"}
+            sessionId={sessionId}
+            t={i18n.t}
+            workspacePath=""
+          />
+        </I18nextProvider>,
+      ),
+    );
+    assert(errors.length === 0, `React failed: ${errors.map(String).join("; ")}`);
+  };
+  const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const press = async (key: string) => {
+    controller.ref.current!.focus();
+    await globalThis.composerPreviewPressKey(key);
+    await frame();
+    assert(errors.length === 0, `React failed after ${key}: ${errors.map(String).join("; ")}`);
+  };
+  try {
+    resetComposerDraftCache();
+    if (phase === "prepare") {
+      historySendPrompt = async (_content, _draft, sessionId, onAccepted) => {
+        if (!sessionId) throw new Error("a docked prompt must submit to its selected session");
+        onAccepted?.(sessionId);
+        return true;
+      };
+      render("paste-a");
+      await frame();
+      const send = async (text: string, references: ReturnType<typeof createFileReference>[] = []) => {
+        flushSync(() => controller.applyEditorDraft(text, references, text.length));
+        await frame();
+        await press("Enter");
+        await latestSubmission;
+        await frame();
+        assert(readEditorValue(controller.ref.current!) === "", "accepted send did not clear its draft");
+      };
+      await send("alpha");
+      await send("beta");
+      await send("beta");
+      await press("ArrowUp");
+      assert(readEditorValue(controller.ref.current!) === "beta", "ArrowUp did not recall the newest entry");
+      await press("ArrowUp");
+      assert(readEditorValue(controller.ref.current!) === "alpha", "ArrowUp did not walk to the older entry");
+      await press("ArrowDown");
+      assert(readEditorValue(controller.ref.current!) === "beta", "ArrowDown did not walk forward");
+      await press("ArrowDown");
+      assert(readEditorValue(controller.ref.current!) === "", "ArrowDown past newest did not clear the draft");
+
+      const fileReference = createFileReference(
+        "/scratch/paste-a/history.txt",
+        "history.txt",
+        "paste-a",
+        { kind: "file", token: "\uE050" },
+      );
+      const attachedText = `inspect \uE050`;
+      await send(attachedText, [fileReference]);
+      await press("ArrowUp");
+      assert(
+        controller.fileReferences.some((reference) => reference.path === fileReference.path) &&
+          controller.ref.current!.querySelector(".composer-chip-name")?.textContent === "history.txt",
+        "history recall did not restore and render the file attachment chip",
+      );
+
+      render("paste-b");
+      await frame();
+      await press("ArrowUp");
+      assert(readEditorValue(controller.ref.current!) === "", "session B recalled session A history");
+      await send("beta");
+      await press("ArrowUp");
+      assert(readEditorValue(controller.ref.current!) === "beta", "session B did not recall its own entry");
+      render("paste-a");
+      await frame();
+      flushSync(() => controller.applyEditorDraft("", [], 0));
+      await frame();
+      await press("ArrowUp");
+      assert(
+        controller.fileReferences.some((reference) => reference.path === fileReference.path),
+        "returning to session A did not restore its attached history entry",
+      );
+
+      render("");
+      await frame();
+      await press("ArrowUp");
+      assert(readEditorValue(controller.ref.current!) === "", "the empty home composer recalled another session");
+      const homeText = "first home prompt";
+      flushSync(() => controller.applyEditorDraft(homeText, [], homeText.length));
+      await frame();
+      await frame();
+      let signalStarted!: () => void;
+      let releaseSend!: () => void;
+      const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+      const sendGate = new Promise<void>((resolve) => { releaseSend = resolve; });
+      const originalPrompt = api.prompt;
+      let queueState = {
+        activeSessionId: null,
+        pendingPlans: {},
+        runningSessions: {},
+        sessions: [{ id: "history-created-session" }],
+        messages: [],
+        latestTurnResults: {},
+        sessionOutcomes: {},
+        isRunning: false,
+      } as unknown as AppState;
+      const queueRuntime = {
+        beginNavigationIntent: () => 1,
+        submittedComposerDrafts: new Map(),
+        sessionTranscriptCache: new Map(),
+        insertOptimisticUserMessage: () => {},
+        retractOptimisticUserMessage: () => {},
+      } as unknown as SessionRuntime;
+      const queueSlice = createQueueSlice({
+        get: () => queueState,
+        set: (update) => {
+          const next = typeof update === "function" ? update(queueState) : update;
+          queueState = { ...queueState, ...next };
+        },
+        runtime: queueRuntime,
+        promptAttachmentsFromDraft: () => [],
+        withoutRecordKey: (record, key) => {
+          const next = { ...record };
+          delete next[key];
+          return next;
+        },
+        promptFallbackSessionTitle: () => "",
+        untitledTaskTitle: () => "",
+        isDefaultSessionTitle: () => false,
+        viewingSessionIdForPrompt: () => null,
+        messageErrorFromUnknown: () => { throw new Error("unexpected prompt failure"); },
+        assistantErrorMessage: () => { throw new Error("unexpected prompt failure"); },
+        materializeDraftSession: async () => "history-created-session",
+      });
+      historySendPrompt = queueSlice.sendPrompt;
+      api.prompt = async (input) => {
+        assert(input.sessionId === "history-created-session", "prompt used the wrong materialized session");
+        signalStarted();
+        await sendGate;
+        queueState = { ...queueState, activeSessionId: "paste-b" };
+        useAppStore.setState({ activeSessionId: "paste-b" });
+      };
+      try {
+        await press("Enter");
+        await started;
+        const homeSubmission = latestSubmission;
+        render("paste-b");
+        releaseSend();
+        await homeSubmission;
+      } finally {
+        api.prompt = originalPrompt;
+      }
+      render("history-created-session");
+      await frame();
+      await press("ArrowUp");
+      assert(
+        readEditorValue(controller.ref.current!) === "first home prompt",
+        "home's first prompt was not recorded under its materialized session after navigation",
+      );
+      return {
+        ok: true,
+        arrowNavigation: true,
+        sessionIsolation: true,
+        renderedAttachmentRecall: true,
+        homeSessionSwitchDuringSend: true,
+      };
+    }
+
+    render("paste-a");
+    await frame();
+    await press("ArrowUp");
+    const recalledText = readEditorValue(controller.ref.current!);
+    assert(
+      controller.fileReferences.some((reference) => reference.name === "history.txt") &&
+        controller.ref.current!.querySelector(".composer-chip-name")?.textContent === "history.txt",
+      "attachment history did not survive the Electron process restart",
+    );
+    assert(recalledText === "inspect \uE050", "the latest attached prompt changed after restart");
+    render("history-created-session");
+    await frame();
+    await press("ArrowUp");
+    assert(
+      readEditorValue(controller.ref.current!) === "first home prompt",
+      "the Home-created session history did not survive the Electron process restart",
+    );
+    return {
+      ok: true,
+      processRestartPersistence: true,
+      attachmentPersistence: true,
+      materializedHomeSessionPersistence: true,
+    };
+  } finally {
+    historySendPrompt = async () => false;
     flushSync(() => root.unmount());
     host.remove();
     resetComposerDraftCache();

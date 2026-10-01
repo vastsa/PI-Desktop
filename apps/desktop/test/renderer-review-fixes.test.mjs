@@ -12,7 +12,6 @@ const rendererApi = read("../src/capture/renderer-api.ts");
 const captureRig = read("../src/capture/capture-rig.ts");
 const main = read("../src/main.tsx");
 const windowControls = read("../src/components/WindowControls.tsx");
-const pulls = read("../src/pages/PullRequestsPage.tsx");
 const messages = read("../src/styles/messages.css");
 
 test("screenshot fixtures stay out of the production App bundle", () => {
@@ -57,10 +56,6 @@ test("window controls draw through the icon wrappers", () => {
   assert.match(windowControls, /import \{ IconClose, IconCopy, IconMinus, IconSquare \} from "\.\/icons";/);
 });
 
-test("pull request links open through the shared external-open path", () => {
-  assert.doesNotMatch(pulls, /window\.open\(/);
-  assert.match(pulls, /api\.browserOpenExternal\(pr\.url\)/);
-});
 
 test("attachment thumbnails are tone tiles, not stroked boxes (D297)", () => {
   const block = messages.slice(

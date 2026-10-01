@@ -162,7 +162,7 @@
 
 /*
   The chosen service is a settled fact, not an open menu: its letter tile,
-  name and host on the field tone, with Change leading back to the chooser.
+  name and endpoint on the field tone, with Change leading back to the chooser.
 */
 .provider-service-chip {
   display: flex;
@@ -185,11 +185,10 @@
 .provider-service-chip-copy {
   display: flex;
   flex: 1;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 2px 8px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 .provider-service-chip-name {
@@ -202,12 +201,11 @@
 
 .provider-service-chip-host {
   min-width: 0;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--ds-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   line-height: var(--leading-tight);
-  text-overflow: ellipsis;
 }
 
 .provider-service-chip-change,
@@ -247,37 +245,6 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-}
-
-/* One quiet line under the key: connecting, connected, or why not. */
-.provider-connection-status {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-  overflow-wrap: anywhere;
-}
-
-.provider-connection-status.is-ok {
-  color: var(--ds-text-secondary);
-}
-
-.provider-connection-status.is-ok svg {
-  flex: none;
-  color: var(--ds-success);
-}
-
-.provider-connection-status.is-error {
-  flex-wrap: wrap;
-  column-gap: 6px;
-  color: var(--ds-warning);
-}
-
-.provider-connection-status.is-error .provider-models-error-detail {
-  max-width: none;
 }
 
 .provider-service-anchor {
@@ -590,14 +557,6 @@
   line-height: var(--leading-relaxed);
 }
 
-/* Quieter than the import error: folding is informational, not a refusal. */
-.provider-setup-header-note {
-  margin: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
 /* Pick on the left, review on the right; both stretch to the same height. */
 .provider-setup-panes {
   flex: 1;
@@ -607,29 +566,7 @@
   min-height: 0;
 }
 
-.provider-setup-error {
-  padding: 8px 10px;
-  border-radius: var(--radius-xs);
-  background: var(--ds-bg-inset);
-  color: var(--ds-warning);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
 /* ----------------------------------------------------- credential fields */
-
-.provider-credential-test {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.provider-credential-test-result {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
 
 /* ------------------------------------------------- live model list */
 
@@ -767,24 +704,6 @@
   color: var(--ds-text-faint);
 }
 
-.provider-models-note {
-  margin: 0 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius-xs);
-  background: var(--ds-tile);
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-relaxed);
-}
-
-.provider-models-note.is-error {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--ds-warning);
-  overflow-wrap: anywhere;
-}
-
 .provider-models-placeholder {
   flex: 1;
   display: flex;
@@ -805,16 +724,6 @@
   gap: 6px;
   color: var(--ds-warning);
   overflow-wrap: anywhere;
-}
-
-.provider-models-error-summary {
-  font-weight: var(--font-weight-medium);
-}
-
-.provider-models-error-detail,
-.provider-models-error-hint {
-  color: var(--ds-text-muted);
-  max-width: 36ch;
 }
 
 .provider-models-list {
@@ -1189,10 +1098,14 @@
 }
 
 .provider-chosen-thinking-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 8px;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.provider-chosen-thinking-head > .provider-chosen-thinking-label {
   min-width: 0;
 }
 
@@ -1216,11 +1129,18 @@
   line-height: var(--leading-normal);
 }
 
-.provider-chosen-thinking-default {
+.provider-chosen-thinking-controls {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 12px;
+}
+
+.provider-chosen-thinking-default,
+.provider-chosen-thinking-protocol {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
 }
 
 /* The row body keeps its own compact field metric (28px inputs and selects), so
@@ -1840,8 +1760,10 @@
 
 /* ------------------------------------------------------------ responsive */
 
-@media (max-width: 940px) {
-  /* Two panes stop being readable before the dialog itself gets narrow. */
+@media (max-width: 940px), (max-height: 800px) {
+  /* Two panes stop being readable before the dialog itself gets narrow,
+     and when vertical space is constrained (such as Windows high-DPI scaling)
+     the stacked layout prevents the panes from being crushed. */
   .provider-setup-field-row,
   .provider-setup-custom-identity-row,
   .provider-setup-custom-auth-row {
@@ -1900,6 +1822,19 @@
 
   .provider-chosen-thinking-chips {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .provider-chosen-thinking-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .provider-chosen-thinking-head > .provider-chosen-thinking-label {
+    grid-column: 1 / -1;
+  }
+
+  .provider-chosen-thinking-controls {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 
 }

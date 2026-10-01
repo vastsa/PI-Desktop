@@ -37,6 +37,7 @@ export type LogFields = {
   turnId?: string;
   toolCallId?: string;
   parentToolCallId?: string;
+  nestedParentToolCallId?: string;
   agentName?: string;
   pluginId?: string;
   executionId?: string;
@@ -59,6 +60,7 @@ export type LogRecord = {
   turnId?: string;
   toolCallId?: string;
   parentToolCallId?: string;
+  nestedParentToolCallId?: string;
   agentName?: string;
   pluginId?: string;
   executionId?: string;

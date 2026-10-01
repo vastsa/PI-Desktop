@@ -1,0 +1,169 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>确认卡 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --warn:#ff8549; --error:#ff6764;
+    --api:#40c977; --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.decided{color:var(--ok);background:rgba(64,201,119,.10)}
+  .tag.proposal{color:var(--warn);background:rgba(255,133,73,.10)}
+  .tag.open{color:var(--plugin);background:rgba(194,122,255,.10)}
+  h3{margin:22px 0 6px;font-size:14.5px;color:var(--text)}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.decided{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.stop{border-left:2px solid var(--error)}
+  .callout b{color:var(--text);font-weight:560}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">确认卡</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · render/ask</div>
+  <h1>确认卡 · 需求</h1>
+  <p>插件向用户问一句话：确认 / 二选一 / 知会。接口名 <code>ui.ask</code>（原 <code>ui.confirm</code> 语义，改名消歧）。返回恒为对象，卡壳宿主固定，按钮配置化。</p>
+  <div class="meta">status: draft · issue #545 · #561 · 出站分层：可选 H</div>
+</header>
+
+<main>
+
+<section>
+  <h2>范围 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>一个渲染侧接口：<code>ui.ask</code>——插件发起一次确认 / 选择 / 知会，等用户点一个按钮。</li>
+    <li>卡壳宿主固定，内容与按钮走参数；返回恒为 <code>{ choice, reason? }</code>。</li>
+    <li>不谈：自理弹窗 / 悬浮层（<code>ui/self-dialog/</code>）、宿主权限审批卡、agent 侧的布尔确认。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>契约形状 <span class="tag decided">已拍板</span></h2>
+<pre><span class="c">// 调用（插件渲染器内）</span>
+<span class="k">const</span> result = <span class="k">await</span> pi.ui.ask({
+  <span class="k">title</span>: <span class="c">"分支清理 · 确认删除"</span>,
+  <span class="k">description</span>: <span class="c">"将删除 feat/528 等 3 个分支"</span>,
+  <span class="k">actions</span>: [
+    { <span class="k">id</span>: <span class="c">"cancel"</span>,  <span class="k">label</span>: <span class="c">"取消"</span>,     <span class="k">variant</span>: <span class="c">"ghost"</span> },
+    { <span class="k">id</span>: <span class="c">"delete"</span>,  <span class="k">label</span>: <span class="c">"全部删除"</span>, <span class="k">variant</span>: <span class="c">"primary"</span> },
+  ],
+})
+
+<span class="c">// 返回：恒为对象，禁止 string | object 两态</span>
+{ <span class="k">choice</span>: <span class="c">"delete"</span> }
+{ <span class="k">choice</span>: <span class="c">"cancel"</span>,  <span class="k">reason</span>: <span class="c">"plugin-unloaded"</span> }</pre>
+  <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">入参</td><td><code>title</code> 一行；<code>description?</code> 说明；<code>actions[]</code> 按钮配置（id / 文案 / 档位）</td></tr>
+      <tr><td class="id">返回</td><td>恒 <code>{ choice, reason? }</code>。<code>choice</code> = 被按下的按钮 id；<code>reason</code> 只在非正常点击时出现</td></tr>
+      <tr><td class="id">卸载</td><td>插件被禁用 / 卸载 → <code>{ choice: "cancel", reason: "plugin-unloaded" }</code>，挂起的等待一并落定</td></tr>
+      <tr><td class="id">卡壳</td><td>宿主固定（输入框上方同宽横栏）；插件不能换外形、不能往卡里塞自己的界面</td></tr>
+      <tr><td class="id">按钮</td><td>配置化：文案、档位（ghost / secondary / primary）；样式宿主定</td></tr>
+      <tr><td class="id">出站层</td><td>可选 H（与 toast、clipboard.write、host.open、readDraft、list / remove 同档）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout decided"><b>禁止两态返回（拍板）。</b>旧写法有时回字符串、有时回对象，调用方要写两套判断。现在一律对象：<code>choice</code> 永远在，<code>reason</code> 可选。卸载也走对象，不再抛特殊值。</div>
+  <div class="callout decided"><b>固定卡壳、配置化按钮（拍板）。</b>卡壳和按钮样式是宿主的；插件只交标题、说明、按钮清单。卡片里没有插件代码在跑——排版和点击分发都是宿主的。</div>
+</section>
+
+<section>
+  <h2>谁能用 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>谁</th><th>怎么用</th><th>权限</th></tr></thead>
+    <tbody>
+      <tr><td class="id">插件渲染器代码</td><td>在自己的界面 / 交互里 <code>await pi.ui.ask(...)</code></td><td>随渲染档（<code>renderer.extension</code>），不单列</td></tr>
+      <tr><td class="id">插件 headless</td><td><b>不能用</b>——没有界面侧，问不出用户</td><td>—</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>场景 <span class="tag proposal">典型用法</span></h2>
+  <table>
+    <thead><tr><th>#</th><th>场景</th><th>按钮配置</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>危险操作前确认：删分支、清缓存</td><td>取消 + 主按钮「删除」</td></tr>
+      <tr><td>2</td><td>二选一：覆盖还是追加</td><td>两个同级按钮</td></tr>
+      <tr><td>3</td><td>知会并要一个「知道了」</td><td>单按钮</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li><b>不接管宿主权限审批卡。</b>那张卡是安全决策面，只属于宿主；旧接管槽取消。<code>ui.ask</code> 永远不进权限队列的决策路径。</li>
+    <li><b>不接受组件、不让自绘。</b>卡片里没有插件渲染的界面；内容只有 <code>title</code> + <code>description</code> 固定字段。</li>
+    <li><b>禁止 string | object 两态返回。</b>恒 <code>{ choice, reason? }</code>。</li>
+    <li><b>不给层机制。</b>确认卡不走注册、不参与层级仲裁；要自由界面走 <code>ui/self-dialog/</code>。</li>
+     <li><b>同名不同物——必须消歧。</b>agent 侧也有一个「确认」，返回的是布尔（允许 / 拒绝），走的是工具审批路径；本接口是渲染侧问用户一句话，返回 <code>{ choice, reason? }</code>。<b>本接口定名 <code>ui.ask</code></b>，不再叫 confirm。两者不得混用同一返回形状。</li>
+  </ul>
+  <div class="callout warn"><b>消歧一句话。</b>问用户点哪个按钮 → <code>ui.ask</code>（本目录）。工具要不要放行 → agent 侧布尔确认（宿主审批卡）。名字撞车是历史问题，改名是消歧手段，不是别名。</div>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag decided">已拍板</span></h2>
+  <table>
+    <thead><tr><th>问题</th><th>拍板</th></tr></thead>
+    <tbody>
+      <tr><td>返回形状</td><td><b>恒</b> <code>{ choice, reason? }</code>；禁止 string | object 两态</td></tr>
+      <tr><td>卸载落定</td><td><code>{ choice: "cancel", reason: "plugin-unloaded" }</code></td></tr>
+      <tr><td>卡壳与按钮</td><td>固定卡壳；按钮配置化（文案 / 档位），样式宿主定</td></tr>
+      <tr><td>权限审批卡</td><td><b>不接管</b>；决策路径永远在宿主</td></tr>
+       <tr><td>命名</td><td>定名 <code>ui.ask</code>（原 ui.confirm 语义）；与 agent 侧布尔确认同名不同物，消歧见「明确不做」</td></tr>
+      <tr><td>出站层</td><td>可选 H</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</body>
+</html>

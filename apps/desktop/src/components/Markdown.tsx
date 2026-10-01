@@ -42,6 +42,9 @@ import { TooltipButton } from "./ui";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { MarkdownTable } from "./MarkdownTable";
 import { markdownTableData } from "../lib/markdown-table";
+import { PluginBlockRenderer } from "./PluginBlockRenderer";
+import { blockRendererCandidate } from "../lib/block-renderer";
+import { useSlotEntryForKey } from "../plugins/renderer-slots/use-slots";
 import { api } from "../lib/api";
 import { openHttpUrl } from "../lib/open-http-url";
 import {
@@ -136,7 +139,7 @@ function getThemeSnapshot(): ThemeMode {
 }
 
 function useThemeMode(): ThemeMode {
-  return useSyncExternalStore(subscribeTheme, getThemeSnapshot);
+  return useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeSnapshot);
 }
 
 /* ---------- syntax highlighting ---------- */
@@ -171,7 +174,11 @@ function useHighlightedTokens(
 ): ThemedToken[][] | null {
   const resolved = resolveLang(lang);
   const mode = useThemeMode();
-  const version = useSyncExternalStore(subscribeHighlighter, getHighlightVersion);
+  const version = useSyncExternalStore(
+    subscribeHighlighter,
+    getHighlightVersion,
+    getHighlightVersion,
+  );
   useEffect(() => {
     if (resolved) ensureLang(resolved);
   }, [resolved]);
@@ -454,6 +461,12 @@ function PreBlock({
 }: ComponentProps<"pre"> & SourcePositionProps & { node?: unknown }) {
   const { closedFence, renderDiagrams } = useContext(MarkdownBlockContext);
   const info = extractCode(children);
+  // Hooks stay unconditional: the fence language and closed-ness can flip
+  // between streaming renders, so the lookup must run on every render.
+  const blockEntry = useSlotEntryForKey(
+    "blockRenderer",
+    closedFence ? blockRendererCandidate(info?.lang ?? "") : undefined,
+  );
   if (!info) return <pre {...rest}>{children}</pre>;
   if (
     renderDiagrams &&
@@ -461,6 +474,20 @@ function PreBlock({
     info.lang.toLowerCase() === "mermaid"
   ) {
     return <MermaidBlock code={info.code} {...sourcePositionProps(rest)} />;
+  }
+  if (blockEntry) {
+    return (
+      <PluginBlockRenderer
+        key={blockEntry.id}
+        entry={blockEntry}
+        language={info.lang}
+        source={info.code}
+        sourcePosition={sourcePositionProps(rest)}
+        fallback={
+          <CodeBlock code={info.code} lang={info.lang} {...sourcePositionProps(rest)} />
+        }
+      />
+    );
   }
   return <CodeBlock code={info.code} lang={info.lang} {...sourcePositionProps(rest)} />;
 }
@@ -574,9 +601,11 @@ function Anchor({
         action on the file's folder. `./` and `../` resolve against the markdown
         file on screen, which is the base this row already holds.
       */
-      const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
-      if (!rel || !openFileMenu) return;
-      openFileMenu(event, { path: rel, baseDir });
+      const decoded = safeDecodeUri(href);
+      const target = resolvePreviewTarget(decoded, root, baseDir);
+      const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
+      if (!ref || !openFileMenu) return;
+      openFileMenu(event, { path: ref, baseDir });
       return;
     }
     const target = href;
@@ -622,10 +651,12 @@ function Anchor({
       openHttpUrl(href);
       return;
     }
-    const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
-    if (rel) {
+    const decoded = safeDecodeUri(href);
+    const target = resolvePreviewTarget(decoded, root, baseDir);
+    const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
+    if (ref) {
       e.preventDefault();
-      openFileRef(rel, baseDir);
+      openFileRef(ref, baseDir);
     }
   };
   return (

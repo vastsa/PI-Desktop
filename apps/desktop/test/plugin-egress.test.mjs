@@ -273,7 +273,7 @@ test("the panel session filters requests and refuses device permissions", () => 
   // `sandbox: true` removes Node, not the network. Without a webRequest filter
   // the panel is an exfiltration channel that never consults net.fetch.
   assert.match(panelHostSrc, /webRequest\.onBeforeRequest/);
-  assert.match(panelHostSrc, /isNetUrlAllowed\(details\.url, domains\)/);
+  assert.match(panelHostSrc, /isNetUrlAllowedWithGrant\(details\.url, grant\)/);
   assert.match(panelHostSrc, /cancel: true/);
   assert.match(panelHostSrc, /setPermissionRequestHandler/);
   assert.match(panelHostSrc, /setPermissionCheckHandler/);
@@ -285,7 +285,7 @@ test("remote MCP endpoints answer to the same allowlist", () => {
   assert.match(runtimeSrc, /endpoint not in manifest\.net\.domains/);
   assert.match(
     runtimeSrc,
-    /if \(server\.transport === "http"\) \{[\s\S]*?isNetUrlAllowed\(url, this\.netDomains\(loaded\)\)/,
+    /if \(server\.transport === "http"\) \{[\s\S]*?isNetUrlAllowedWithGrant\(url, this\.netEgressGrant\(loaded\)\)/,
   );
 });
 

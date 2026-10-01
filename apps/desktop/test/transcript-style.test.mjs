@@ -297,6 +297,20 @@ test("wrapped user links keep plaintext alignment", () => {
   assert.match(userLinkStyles, /overflow-wrap:\s*anywhere;/);
 });
 
+test("user-message links stay selectable inside the inert button baseline", () => {
+  // base.css makes every <button> unselectable, and a class selector outranks
+  // that type rule. Without this opt-in a drag across the message skips the
+  // URL and copying drops it.
+  assert.match(
+    stylesSource,
+    /button,\s*\[role="button"\],[\s\S]*?\{\s*-webkit-user-select:\s*none;\s*user-select:\s*none;/,
+  );
+  const userLinkStyles = stylesSource.match(/\.chat-text-link \{([^}]*)\}/)?.[1];
+  assert.ok(userLinkStyles);
+  assert.match(userLinkStyles, /-webkit-user-select:\s*text;/);
+  assert.match(userLinkStyles, /(?<!-webkit-)user-select:\s*text;/);
+});
+
 test("user-message file chips reuse the composer chip node", () => {
   assert.match(transcriptSource, /className=\"composer-chip chat-file-chip\"/);
   assert.match(transcriptSource, /composer-chip-name/);

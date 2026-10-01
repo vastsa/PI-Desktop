@@ -1,10 +1,10 @@
 # ADR 0296: Signed macOS DMG is a two-icon install
 
-- Status: Accepted
+- Status: Accepted; ZIP guidance superseded by D634 / [ADR 0309](0309-remove-macos-first-launch-artifacts.md)
 - Date: 2026-09-19
 - Deciders: PI-Desktop release maintainers
 - Amends: [ADR 0232](0232-macos-dmg-text-only-opening-guidance.md), [ADR 0204](0204-unsigned-macos-first-launch-helper.md)
-- Related: D457, D450 / [ADR 0289](0289-signed-macos-github-releases.md), E2E-196b, E2E-196c
+- Related: D457, D450, D634 / [ADR 0289](0289-signed-macos-github-releases.md), [ADR 0309](0309-remove-macos-first-launch-artifacts.md), E2E-196b, E2E-196c
 
 ## Context
 
@@ -37,3 +37,9 @@ path for tagged builds and made the installer look like an error dialog.
 `apps/desktop/test/packaging-footprint.test.mjs` asserts the two-icon DMG
 contents, 720×440 / 1440×880 backgrounds, and retained ZIP helper assets.
 E2E-196b covers native archive inspection on macOS.
+
+## Amendment (D634 / ADR 0309)
+
+The ZIP no longer ships the opening note or executable helper. Neither macOS
+format includes first-launch guidance in signed releases or unsigned debug
+builds; the two-icon DMG layout remains unchanged.

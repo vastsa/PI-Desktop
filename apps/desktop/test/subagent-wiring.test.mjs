@@ -50,7 +50,7 @@ test("subagent models use the exact stored binding for thinking capability", () 
   assert.match(providerCatalogSource, /const effectiveSubagentModelConfig = \(/);
   assert.match(
     providerCatalogSource,
-    /const effectiveSubagentModelConfig = \([\s\S]*?bindingForModel\(provider, modelId\)[\s\S]*?modelConfigWithBinding\(/,
+    /const effectiveSubagentModelConfig = \([\s\S]*?modelsDevCatalog\.configureAccount\(provider\)[\s\S]*?modelsDevCatalog\.modelConfigFor\(/,
   );
   // The helper is used for definition pins, the pre-resolved delegation
   // catalog, and the on-demand Task.model path.
@@ -91,8 +91,8 @@ test("persisted subagent rows keep their attribution", () => {
     /function subagentTagged\(message: UiMessage, envelope: AgentEventEnvelope\)/,
   );
   assert.match(eventPersistenceSource, /message: subagentTagged\(event\.message, envelope\),/);
-  assert.match(eventPersistenceSource, /started\?\.parentToolCallId/);
-  assert.match(eventPersistenceSource, /started\?\.agentName/);
+  assert.match(eventPersistenceSource, /tagMessageToolLineage\(message, envelope\)/);
+  assert.match(eventPersistenceSource, /toolCallLineage\(started \?\? \{\}, envelope\)/);
   // host-core round-trips both through the message `meta` object.
   assert.match(hostSessionsSource, /pub parent_tool_call_id: Option<String>/);
   assert.match(hostSessionsSource, /meta_obj\.insert\("parentToolCallId"\.into\(\)/);

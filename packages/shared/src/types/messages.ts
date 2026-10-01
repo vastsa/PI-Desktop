@@ -4,47 +4,48 @@ import type { AppError } from "../errors.js";
 
 export type UiMessageRole = "user" | "assistant" | "system" | "tool";
 
-export type MessageUsage = {
+/** Minimal provenance for an accepted Live Voice work input. */
+export type VoiceOrigin = {
+  callId: string;
+  operationId: string;
+};
+
+export type MessageUsageCost = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+};
+
+export type UsageProvenance = {
+  /** Identifies one physical request, not a tool, artifact, or logical retry group. */
+  operationId?: string;
+  usageOrigin?: "pi" | "legacy";
+  costStatus?: "reported" | "estimated" | "unknown";
+  /** Physical billing binding, not a virtual model alias. */
+  providerId?: string;
+  modelId?: string;
+};
+
+export type MessageUsage = UsageProvenance & {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   reasoningTokens?: number;
   totalTokens: number;
+  cost?: MessageUsageCost;
+  aggregation?: "operation" | "aggregate";
+  /** Atomic records included in this rollup; never recursively nested. */
+  operations?: UsageOperation[];
 };
 
-/** Sum two provider usage records. Used for turn rollups, never to rewrite a message. */
-export function addUsage(
-  total: MessageUsage | undefined,
-  next: MessageUsage | undefined,
-): MessageUsage | undefined {
-  if (!next) return total;
-  if (!total) return next;
-  return {
-    inputTokens: total.inputTokens + next.inputTokens,
-    outputTokens: total.outputTokens + next.outputTokens,
-    ...(total.cacheReadTokens !== undefined || next.cacheReadTokens !== undefined
-      ? {
-          cacheReadTokens:
-            (total.cacheReadTokens ?? 0) + (next.cacheReadTokens ?? 0),
-        }
-      : {}),
-    ...(total.cacheWriteTokens !== undefined ||
-    next.cacheWriteTokens !== undefined
-      ? {
-          cacheWriteTokens:
-            (total.cacheWriteTokens ?? 0) + (next.cacheWriteTokens ?? 0),
-        }
-      : {}),
-    ...(total.reasoningTokens !== undefined || next.reasoningTokens !== undefined
-      ? {
-          reasoningTokens:
-            (total.reasoningTokens ?? 0) + (next.reasoningTokens ?? 0),
-        }
-      : {}),
-    totalTokens: total.totalTokens + next.totalTokens,
-  };
-}
+export type UsageOperation = Omit<MessageUsage, "operations" | "aggregation"> & {
+  operationId: string;
+};
+
+export { addUsage, withUsageIdentity } from "../message-usage.js";
 
 export type MessageAttachment = {
   kind: "image" | "file";
@@ -71,6 +72,8 @@ export type UiMessage = {
   content: string;
   /** Authenticated agent-to-agent provenance; never inferred from message text. */
   sessionMessage?: SessionMessageOrigin;
+  /** Present only on the durable user row created by a Live Voice operation. */
+  voiceOrigin?: VoiceOrigin;
   /** Files or images associated with a user turn, kept separate from text. */
   attachments?: MessageAttachment[];
   /** Accepted input to an existing turn; Stop must preserve it after reload. */
@@ -120,6 +123,8 @@ export type UiMessage = {
    * report enters its context.
    */
   parentToolCallId?: string;
+  /** Immediate tool-call parent, independent of the owning Task/subagent. */
+  nestedParentToolCallId?: string;
   /** Definition name of the subagent that produced this row. */
   agentName?: string;
   /**

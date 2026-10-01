@@ -16,6 +16,7 @@ const {
   toolResultChips,
   toolResultPayload,
 } = await import("../src/lib/tool-presentation.ts");
+const { getToolAction } = await import("../src/lib/tool-display.ts");
 
 /** A host tool result as pi-ai delivers it: structured details plus text echo. */
 function envelope(details) {
@@ -716,4 +717,20 @@ test("a malformed roster degrades instead of rendering blank rows", () => {
     }),
     [],
   );
+});
+
+test("TodoWrite has a checklist action and keeps its arguments visible", () => {
+  assert.equal(getToolAction("TodoWrite"), "todo");
+  const message = {
+    toolName: "TodoWrite",
+    toolArgs: { todos: [{ content: "Inspect", status: "pending", priority: "high" }] },
+    toolResult: envelope({
+      text: "Checklist updated: 0/1 completed",
+      revision: 1,
+      summary: { completed: 0, total: 1, inProgress: 0, cancelled: 0 },
+      warnings: [],
+    }),
+  };
+  assert.deepEqual(roles(buildToolPresentation(message)), ["input", "notice"]);
+  assert.match(byRole(buildToolPresentation(message), "input").text, /Inspect/);
 });

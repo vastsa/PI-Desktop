@@ -1,4 +1,33 @@
-pub(crate) const SCHEMA_LATEST: &str = r#"
+/// `session_todo` table and its partial unique index in one place, so the
+/// fresh schema and the v20 -> v21 migration cannot drift. `IF NOT EXISTS`
+/// keeps the migration idempotent for a database that was downgraded in
+/// place (a test fixture) while still being a no-op on an empty schema.
+macro_rules! session_todo_ddl {
+    () => {
+        r#"
+CREATE TABLE IF NOT EXISTS session_todo (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  position   INTEGER NOT NULL CHECK (position >= 0 AND position < 50),
+  content    TEXT NOT NULL CHECK (
+               length(content) > 0 AND length(content) <= 500
+               AND instr(content, char(0)) = 0
+             ),
+  status     TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+  priority   TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, position)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_todo_active
+  ON session_todo(session_id) WHERE status = 'in_progress';
+"#
+    };
+}
+
+/// Same DDL as the fresh schema, exposed for the v20 -> v21 migration.
+pub(crate) const SESSION_TODO_DDL: &str = session_todo_ddl!();
+
+pub(crate) const SCHEMA_LATEST: &str = concat!(
+    r#"
 CREATE TABLE kv (
   ns         TEXT NOT NULL,
   key        TEXT NOT NULL,
@@ -69,12 +98,18 @@ CREATE TABLE sessions (
   deleted_at  INTEGER,
   pinned      INTEGER NOT NULL DEFAULT 0,
   last_seq    INTEGER NOT NULL DEFAULT 0,
+  todo_revision INTEGER NOT NULL DEFAULT 0,
+  todo_updated_at INTEGER,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
 CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
 CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NOT NULL;
 CREATE INDEX idx_sessions_deleted ON sessions(deleted_at) WHERE deleted_at IS NOT NULL;
+
+"#,
+    session_todo_ddl!(),
+    r#"
 
 CREATE TABLE session_import_origins (
   plugin_id    TEXT NOT NULL,
@@ -116,9 +151,11 @@ CREATE TABLE turn_queue (
   content          TEXT NOT NULL,
   attachments_json TEXT,
   session_message_id TEXT,
+  user_message_id TEXT,
   permission_mode  TEXT NOT NULL,
   position         INTEGER NOT NULL,
   priority         INTEGER,
+  voice_origin_json TEXT,
   created_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
@@ -238,7 +275,8 @@ CREATE TABLE audit_log (
 CREATE INDEX idx_audit_ts ON audit_log(ts);
 CREATE INDEX idx_audit_session ON audit_log(session_id, ts) WHERE session_id IS NOT NULL;
 
-"#;
+"#,
+);
 
 /// Approval storage is kept in one batch so fresh databases and migrations
 /// cannot drift in table names, checks, or indexes.

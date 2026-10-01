@@ -80,6 +80,8 @@ import {
   delegateModelId,
   delegateThinkingLevel,
 } from "./model";
+import { PluginToolCard } from "./PluginToolCard";
+import { useSlotEntryForKey } from "../../../plugins/renderer-slots/use-slots";
 
 type ToolRowProps = {
   message: UiMessage;
@@ -142,7 +144,27 @@ function toolRowPropsEqual(
   );
 }
 
-export const ToolRow = memo(function ToolRow({
+/**
+ * One tool call. A call of a plugin's own tool renders the card that plugin
+ * registered for it (the `toolCard` slot); the host card below is its
+ * fallback, and the only card for every other call. Topology nodes and
+ * denied rows always keep the host card.
+ */
+export const ToolRow = memo(function ToolRow(props: ToolRowProps) {
+  const { message, variant = "default" } = props;
+  const cardEntry = useSlotEntryForKey(
+    "toolCard",
+    variant === "default" && message.toolStatus !== "denied" ? message.toolName : undefined,
+  );
+  const hostRow = <HostToolRow {...props} />;
+  return cardEntry ? (
+    <PluginToolCard key={cardEntry.id} entry={cardEntry} message={message} fallback={hostRow} />
+  ) : (
+    hostRow
+  );
+}, toolRowPropsEqual);
+
+function HostToolRow({
   message,
   delegate,
   variant = "default",
@@ -571,7 +593,7 @@ export const ToolRow = memo(function ToolRow({
       <ContextMenu state={fileMenu} onClose={closeFileMenu} />
     </div>
   );
-}, toolRowPropsEqual);
+}
 
 /**
  * What a delegate did, nested under the `Task` call that spawned it.

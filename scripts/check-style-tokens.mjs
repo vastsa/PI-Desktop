@@ -6,7 +6,9 @@
  *
  * Checked:
  *  - CSS: migrated settings/composer/plugin search fills cannot contain raw
- *    hex, color functions, white, or black (see style-surface-tokens.mjs).
+ *    hex, color functions, white, or black, nor non-token `--gray-*` /
+ *    `--accent-*` / `--color-*` variable references (see
+ *    style-surface-tokens.mjs).
  *  - CSS: font-size / font-weight / line-height / letter-spacing /
  *    border-radius values must be var(...) based (token definitions on
  *    `--custom-property` lines are exempt).

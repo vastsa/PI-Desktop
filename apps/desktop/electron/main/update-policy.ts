@@ -1,6 +1,6 @@
 import type { UpdateMode, UpdatePreference } from "@pi-desktop/shared";
 
-export type WindowsDistribution = "installed" | "zip";
+export type WindowsDistribution = "installed" | "zip" | "portable";
 
 export function supportsAutomaticUpdates(
   platform: NodeJS.Platform,
@@ -21,7 +21,7 @@ export function resolveDefaultUpdatePreference(
   if (!supportsAutomaticUpdates(platform, isPackaged, env)) return "manual";
   if (
     platform === "win32" &&
-    (Boolean(env.PORTABLE_EXECUTABLE_FILE) || distribution === "zip")
+    (Boolean(env.PORTABLE_EXECUTABLE_FILE) || distribution === "zip" || distribution === "portable")
   ) {
     return "manual";
   }

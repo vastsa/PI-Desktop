@@ -282,9 +282,13 @@ describe("native continuation review regressions", () => {
     const service = new NativePiSessionService(f);
     try {
       const [summary] = await service.list();
-      await service.prompt(summary.id, "same prompt", (e) => events.push(e), "optimistic-1");
+      const accepted = await service.prompt(summary.id, "same prompt", (e) => events.push(e), "optimistic-1");
       await expect.poll(() => calls).toBe(2);
       expect(events.filter((e) => e.event.type === "agent_end")).toHaveLength(0);
+      expect(service.status(summary.id).status).toMatchObject({ isRunning: true, currentTurnId: accepted.turnId });
+      const staleAbort = await Reflect.apply(service.abort, service, [summary.id, "different-turn"]);
+      expect(staleAbort).toEqual({ ok: false });
+      expect(service.status(summary.id).status.currentTurnId).toBe(accepted.turnId);
       expect(service.status(summary.id).status.isRunning).toBe(true);
       expect(service.detail(summary.id)?.capabilities).toMatchObject({ canPrompt: false, canStop: true });
       await expect(service.prompt(summary.id, "overlap", () => {})).rejects.toMatchObject({ errorCode: "AGENT_BUSY" });

@@ -415,7 +415,6 @@ impl PluginManager {
             }
             out.push(self.to_market_summary(&entry));
         }
-        out.sort_by_key(|plugin| plugin.name.to_lowercase());
         Ok(out)
     }
 

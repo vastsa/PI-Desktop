@@ -1,5 +1,7 @@
 import {
   addUsage,
+  usageForEvent,
+  ownsUsageTurn,
   applyMessageUpdate,
   type AgentEventEnvelope,
   type MessageUsage,
@@ -24,6 +26,7 @@ export type ActiveToolCall = {
   startedAtMs: number;
   turnId?: string;
   parentToolCallId?: string;
+  nestedParentToolCallId?: string;
   agentName?: string;
 };
 
@@ -160,6 +163,7 @@ export class TurnEventPipeline {
         startedAtMs: envelope.ts,
         turnId: envelope.turnId ?? this.options.ownership.activeTurnId(envelope.sessionId),
         ...(envelope.parentToolCallId ? { parentToolCallId: envelope.parentToolCallId } : {}),
+        ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
         ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
       });
     }
@@ -179,6 +183,15 @@ export class TurnEventPipeline {
     const event = envelope.event;
     const sessionId = envelope.sessionId;
     const turnId = this.options.ownership.activeTurnId(sessionId);
+    const usage = usageForEvent(envelope);
+    if (usage) {
+      if (ownsUsageTurn(envelope, turnId)) this.addTurnUsage(sessionId, usage);
+      const usageTurnId = envelope.turnId ?? turnId;
+      if (usageTurnId && (usage.operationId || usage.operations?.length)) {
+        void this.persistence.append({ sessionId, turnId: usageTurnId, usage });
+      }
+    }
+
     const finish = (status: "completed" | "aborted" | "error", errorCode: string | undefined) =>
       this.options.ownership
         .finishTurn(sessionId, status, errorCode, { turnId: envelope.turnId ?? "" })
@@ -213,7 +226,6 @@ export class TurnEventPipeline {
         void finish("completed", undefined);
         return;
       case "turn_end":
-        if (!envelope.parentToolCallId) this.addTurnUsage(sessionId, event.subagentUsage);
         return;
       case "message_end":
         return this.persistMessageEnd(envelope, event.message, event.precedingAssistant, turnId);
@@ -248,6 +260,7 @@ export class TurnEventPipeline {
           isError: event.isError,
           status: "complete",
           ...(started?.parentToolCallId ? { parentToolCallId: started.parentToolCallId } : {}),
+          ...(started?.nestedParentToolCallId ? { nestedParentToolCallId: started.nestedParentToolCallId } : {}),
           ...(started?.agentName ? { agentName: started.agentName } : {}),
         };
         void this.persistence.append({
@@ -284,7 +297,6 @@ export class TurnEventPipeline {
     }
     if (message.role === "assistant") {
       if (!envelope.parentToolCallId) {
-        if (message.usage) this.addTurnUsage(sessionId, message.usage);
         this.inflightSnapshots.delete(sessionId);
         const finalId = message.id;
         this.checkpointer.observe({ sessionId, turnId: envelope.turnId ?? turnId, message });
@@ -321,10 +333,11 @@ function toolKey(sessionId: string, toolCallId: string): string {
 }
 
 function subagentTagged(message: UiMessage, envelope: AgentEventEnvelope): UiMessage {
-  if (!envelope.parentToolCallId) return message;
+  if (!envelope.parentToolCallId && !envelope.nestedParentToolCallId) return message;
   return {
     ...message,
     parentToolCallId: envelope.parentToolCallId,
+    nestedParentToolCallId: envelope.nestedParentToolCallId,
     ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
   };
 }

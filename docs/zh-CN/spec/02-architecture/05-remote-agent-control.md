@@ -141,8 +141,8 @@ Host   -> turn terminal event, next queued turn starts
 远程审批使用与桌面相同的决策词汇：工具审批为 `allow-once`、
 `allow-session`、`deny`；Plan/Goal 审批为带显式权限模式的 `approve` 或
 `reject`；asktool 输入支持逐题回答或跳过。修改持久模式使用远端 Host profile
-的 `session/configure`，与本地一样仅限空闲时。审批寿命由 Host 策略决定：本地
-默认仍是 120 秒后拒绝，有远程订阅者接入时默认 30 分钟（D375），有界且可由运维调整。
+的 `session/configure`，与本地一样仅限空闲时。审批寿命由 Host 策略决定：本地桌面权限确认
+没有自动截止时间；有远程订阅者接入时，远程审批记录默认 30 分钟（D375），有界且可由运维调整。
 
 ## 6. 传输档案
 

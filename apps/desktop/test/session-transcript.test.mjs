@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import test from "node:test";
-import {
+
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const {
   dedupeSessionMessages,
   durableCoversLiveSessionMessages,
   mergeLiveSessionMessages,
   optimisticUserMessage,
   removeLiveSessionMessage,
   upsertLiveSessionMessage,
-} from "../src/lib/session-transcript.ts";
+} = await import("../src/lib/session-transcript.ts");
 
 const message = (id, overrides = {}) => ({
   id,

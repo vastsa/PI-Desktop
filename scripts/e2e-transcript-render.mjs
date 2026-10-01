@@ -24,7 +24,7 @@ try {
     platform: "browser",
     format: "iife",
     jsx: "automatic",
-    define: { "process.env.NODE_ENV": '"production"' },
+    define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "false" },
     // Styles are outside the render-count contract; component and hook code is real.
     loader: { ".css": "empty" },
     alias: {
@@ -35,6 +35,19 @@ try {
     },
     nodePaths: [join(root, "apps/desktop/node_modules")],
     plugins: [
+      {
+        name: "local-url-assets",
+        setup(build) {
+          // Composer imports the dormant voice worklet via Vite's ?url form.
+          // Preserve a real local asset URL; this fixture never activates voice.
+          build.onResolve({ filter: /\?url$/ }, ({ path, resolveDir }) => ({
+            path: join(resolveDir, path.slice(0, -4)), namespace: "local-url-asset",
+          }));
+          build.onLoad({ filter: /.*/, namespace: "local-url-asset" }, async ({ path }) => ({
+            contents: await readFile(path), loader: "file",
+          }));
+        },
+      },
       {
         name: "count-activity-group-renders",
         setup(build) {
@@ -133,11 +146,12 @@ app.whenReady().then(async () => {
   window.webContents.on("console-message", (event) => console.error(event.message));
   try {
     await window.loadFile(path.join(__dirname, "index.html"));
-    const result = await window.webContents.executeJavaScript("globalThis.transcriptRenderProbe().then((render) => globalThis.transcriptRuntimeSlotProbe().then((slot) => Object.assign({}, render, { runtimeSlot: slot, ok: render.ok && slot.ok })))");
+    await window.webContents.executeJavaScript("window.addEventListener('error', event => console.error(event.error?.stack ?? event.message)); window.addEventListener('unhandledrejection', event => console.error(event.reason?.stack ?? String(event.reason)));");
+    const result = await window.webContents.executeJavaScript("(async () => { const render = await globalThis.transcriptRenderProbe(); const slot = await globalThis.transcriptRuntimeSlotProbe(); const smoothText = await globalThis.smoothTextThrottleProbe(); const longHistory = await globalThis.transcriptLongHistoryProbe(); return { ...render, runtimeSlot: slot, smoothText, longHistory, ok: render.ok && slot.ok && smoothText.ok && longHistory.ok }; })()");
     console.log("TRANSCRIPT_RENDER_PROBE " + JSON.stringify(result));
     app.quit();
   } catch (error) {
-    console.error("TRANSCRIPT_RENDER_PROBE " + JSON.stringify({ ok: false, error: String(error) }));
+    console.error("TRANSCRIPT_RENDER_PROBE " + JSON.stringify({ ok: false, error: error?.stack ?? String(error) }));
     app.exit(1);
   }
 });
@@ -182,6 +196,11 @@ app.whenReady().then(async () => {
     result.runtimeSlot?.ok,
     true,
     `runtime status slot scenario failed: ${JSON.stringify(result.runtimeSlot?.failures)}`,
+  );
+  assert.equal(
+    result.smoothText?.ok,
+    true,
+    `smooth text cadence scenario failed: ${JSON.stringify(result.smoothText)}`,
   );
 } finally {
   await rm(temp, { recursive: true, force: true });

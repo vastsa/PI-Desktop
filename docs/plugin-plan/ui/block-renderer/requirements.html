@@ -1,0 +1,136 @@
+ <!-- status: finalized -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>块渲染器 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e;--surface:#161616;--surface-2:#1b1b1b;--line:#2a2a2a;--line-2:#353535;
+    --text:#ededed;--text-2:#b0b0b0;--muted:#7d7d7d;--faint:#5c5c5c;
+    --ok:#40c977;--warn:#ff8549;--error:#ff6764;
+    --ui:#c27aff;--host:#4c8dff;--plugin:#c27aff;--slot:#ff8549;
+    --ok-bg:rgba(64,201,119,.10);--warn-bg:rgba(255,133,73,.10);--error-bg:rgba(255,103,100,.10);
+    --host-bg:rgba(76,141,255,.10);--plugin-bg:rgba(194,122,255,.10);--slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  a{color:inherit}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .plan-nav .here{color:var(--text);padding:3px 8px}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:880px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px;border-top:1px solid var(--line);padding-top:14px}
+  section:first-child>h2{border-top:0;padding-top:0}
+  .tag{font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:99px}
+  .tag.decided{color:var(--ok);background:var(--ok-bg)}
+  .tag.open{color:var(--ui);background:var(--plugin-bg)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  p{margin:0 0 10px}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left-color:var(--ok)}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+</style>
+</head>
+<body>
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <span class="here">块渲染器</span>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="demo.html">演示</a>
+</nav>
+<header class="top">
+  <div class="crumb">docs/plugin-plan · ui/block-renderer</div>
+  <h1>块渲染器 · 需求</h1>
+  <p>AI 回复正文里的代码块。前缀 + 语言注册，整块接管渲染。</p>
+   <div class="meta">status: finalized · 无数据流页（原因见「本轮拍板」）</div>
+</header>
+<main>
+
+<section>
+  <h2>范围 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>只谈 AI 回复正文里<strong>代码块</strong>怎么显示。</li>
+    <li>不谈：消息正文其他部分、工具调用卡、markdown transformer。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>槽形状 <span class="tag decided">已定</span></h2>
+  <div class="callout ok"><b>前缀 + 语言。</b>语言注册必须是 <code>&lt;pluginId&gt;:lang</code>；<strong>不得注册已有语言</strong>（json / ts / mermaid 及宿主高亮语言）。</div>
+  <ul>
+    <li>整块接管：头部、复制、错误提示都是渲染器自己的。</li>
+    <li>没被注册的标签永远走宿主默认代码块。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>插件能拿到什么 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li><strong>props = {language, source}</strong> — 语言标签 + 代码块原文</li>
+    <li>原文全量、不解析；内容格式是渲染器和模型之间的事</li>
+    <li><strong>无宿主函数</strong>、无别的数据</li>
+  </ul>
+</section>
+
+<section>
+  <h2>插件场景 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>场景</th><th>装上插件之后</th></tr></thead>
+    <tbody>
+      <tr><td><code>demo:chart</code> 画统计图</td><td>JSON 数据画成柱状图</td></tr>
+      <tr><td><code>demo:csv</code> 画表格</td><td>CSV 文本画成表</td></tr>
+      <tr><td>渲染失败</td><td>渲染器自己显示错误 + 源码</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag decided">已定</span></h2>
+  <ul>
+    <li>不得注册已有语言（json / ts / mermaid 及宿主高亮语言）</li>
+    <li>不提供宿主函数</li>
+    <li>不递消息上下文、不让改写消息原文</li>
+    <li>不做多块联动、不做半截渲染</li>
+    <li>markdown transformer <strong>不做</strong></li>
+  </ul>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag decided">已定</span></h2>
+  <table>
+    <thead><tr><th>问题</th><th>决定</th></tr></thead>
+    <tbody>
+      <tr><td>语言注册</td><td>必须 <code>&lt;pluginId&gt;:lang</code>；不得注册已有语言</td></tr>
+      <tr><td>props</td><td><code>{language, source}</code>，无宿主函数</td></tr>
+      <tr><td>有没有数据流</td><td><strong>没有 data-flow.html。</strong>宿主只在渲染时交一次「language + source」，之后没有别的数据往来；复制、源码、错误提示都是渲染器自己的事</td></tr>
+    </tbody>
+  </table>
+   <div class="callout ok"><b>定稿：</b>流式未闭合围栏整段回退宿主默认代码块（显示原始语言串、不高亮、可复制），闭合后下一帧 props-once 挂载插件块；高度自管，宿主唯一兜底 4000px，超过按渲染失败处理（回退宿主块显示源码）。</div>
+</section>
+
+</main>
+</body>
+</html>

@@ -24,6 +24,8 @@ test("sent user-message file refs render as composer-like chips", () => {
   assert.match(transcript, /useOpenChatFileRef/);
   assert.match(transcript, /composer-chip-name/);
   assert.match(styles, /\.chat-file-chip[\s\S]*?appearance: none/);
+  assert.match(transcript, /mimeType=\{attachment\.mimeType\}/);
+  assert.match(transcript, /onOpen\(path, undefined, mimeType\)/);
 });
 
 test("a file chip is routed by where the reference resolved, never optimistically", () => {
@@ -53,7 +55,7 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   // The OS handoff is no longer what a chat click does; the channel itself
   // stays part of the public IPC surface.
   assert.doesNotMatch(hook, /api\.fsOpen\(/);
-  assert.match(api, /fsOpen: \(path: string\) => invoke\(IPC\.invoke\.fsOpen, \{ path \}\)/);
+  assert.match(api, /fsOpen: \(path: string, mimeType\?: string\) =>\s*invoke\(IPC\.invoke\.fsOpen, \{ path, mimeType \}\)/);
 });
 
 test("a tool row and a tool result row open a file where the message body does", () => {

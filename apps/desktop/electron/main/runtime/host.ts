@@ -133,6 +133,9 @@ export function createHostRuntime({
             ...(asking?.parentToolCallId
               ? { parentToolCallId: asking.parentToolCallId }
               : {}),
+            ...(asking?.nestedParentToolCallId
+              ? { nestedParentToolCallId: asking.nestedParentToolCallId }
+              : {}),
           },
         },
       };
@@ -304,6 +307,8 @@ export function createHostRuntime({
       );
     } else if (method === "plans.changed") {
       sendToRenderer(IPC.event.plansChanged, params);
+    } else if (method === "todos.changed") {
+      sendToRenderer(IPC.event.todosChanged, params);
     } else if (method === "configSync.changed") {
       sendToRenderer(IPC.event.configSyncChanged, params);
     } else if (method === "configSync.progress") {

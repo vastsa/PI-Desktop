@@ -85,3 +85,25 @@ test("an ideographic comma opens the slash menu from an empty draft (D405)", () 
     "the caret must land after the substituted slash",
   );
 });
+
+test("a dropped compositionend cannot leave the composer composing forever (#929)", () => {
+  // A Windows Chinese IME can drop compositionend when the composing text is
+  // deleted. The draft's `composing` flag is component state, so without a
+  // recovery path the slash menu stays frozen until the composer unmounts.
+  // An input event outside a composition is the browser telling us it is over.
+  const handler = inputSource.slice(
+    inputSource.indexOf("onInput={(event) => {"),
+    inputSource.indexOf("onCompositionStart="),
+  );
+  assert.match(
+    handler,
+    /if \(!\(event\.nativeEvent as InputEvent\)\.isComposing\) onSettledInput\(\);/,
+    "a settled input must clear the composing flag",
+  );
+  // It has to run before the draft update, so the very same input is judged
+  // against a cleared flag rather than the stale one.
+  assert.ok(
+    handler.indexOf("onSettledInput()") < handler.indexOf("onInput(source, start)"),
+    "the recovery must precede the draft update",
+  );
+});

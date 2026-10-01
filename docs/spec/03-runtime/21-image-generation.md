@@ -122,3 +122,18 @@ model/image HTTP fixtures: adjacent default settings, composer submission, batch
 previews, editing a generated file, collapsed results, and setup navigation.
 Live verification is opt-in via `scripts/test-image-generation-live.mjs`, limited
 to one generation plus one edit and never a default test command.
+
+## Pi 0.99.1 operation boundary
+
+Image generation and edits execute through account-scoped Pi `Models.generateImages`.
+Use native OpenRouter images or a registered compatible OpenAI-images adapter,
+with JSON generations and multipart edits preserved. Each prompt is one physical
+operation; no automatic retry may duplicate a billable image request. Batch
+workers preserve output order, propagate cancellation/timeouts, and bound download
+sizes and URL safety. Returned text, response ID and operation usage survive the
+artifact projection. Multiple images from one response count as one operation.
+
+The existing settings UI still excludes OAuth candidates. The internal adapter
+may accept OAuth only with an actual supported native image model and account
+auth resolver; it cannot fabricate entitlement or fall back to another account.
+Unknown pricing remains unknown. Images never route through the chat selector.

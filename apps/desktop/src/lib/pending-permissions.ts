@@ -1,10 +1,6 @@
 import type { ToolPermissionRequest } from "@pi-desktop/shared";
 
-export const PERMISSION_TIMEOUT_MS = 120_000;
-
-export type PendingPermission = ToolPermissionRequest & {
-  receivedAt: number;
-};
+export type PendingPermission = ToolPermissionRequest;
 
 /**
  * Per-session queue of permission requests, oldest first.
@@ -106,8 +102,4 @@ export function clearSessionPermissions(
   const next = { ...queues };
   delete next[sessionId];
   return next;
-}
-
-export function permissionSecondsLeft(receivedAt: number, now = Date.now()): number {
-  return Math.max(0, Math.ceil((receivedAt + PERMISSION_TIMEOUT_MS - now) / 1000));
 }

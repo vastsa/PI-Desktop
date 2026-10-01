@@ -10,6 +10,7 @@ import { api } from "../../../../lib/api";
 import {
   HOME_DRAFT_KEY,
   deleteComposerDraft,
+  draftFileReference,
   writeComposerDraft,
 } from "../../../../lib/composer-draft-cache";
 import {
@@ -139,7 +140,7 @@ export function useComposerAttachments({
         text: nextText,
         fileReferences: [
           ...previousReferences,
-          ...chips.map((chip) => toDraftReference(chip.reference)),
+          ...chips.map((chip) => draftFileReference(chip.reference)),
         ],
       });
       const currentSessionId = useAppStore.getState().activeSessionId;
@@ -229,7 +230,7 @@ export function useComposerAttachments({
           text: nextText,
           fileReferences: [
             ...previousReferences,
-            ...chips.map((chip) => toDraftReference(chip.reference)),
+            ...chips.map((chip) => draftFileReference(chip.reference)),
           ],
         });
         const currentSessionId = useAppStore.getState().activeSessionId;
@@ -343,7 +344,7 @@ export function useComposerAttachments({
         text: nextText,
         fileReferences: [
           ...previousReferences,
-          ...chips.map((chip) => toDraftReference(chip.reference)),
+          ...chips.map((chip) => draftFileReference(chip.reference)),
         ],
       });
       const currentSessionId = useAppStore.getState().activeSessionId;
@@ -427,15 +428,6 @@ export function useComposerAttachments({
   };
 }
 
-function toDraftReference(reference: ComposerFileReference): ComposerDraftSnapshot["fileReferences"][number] {
-  return {
-    path: reference.path,
-    name: reference.name,
-    kind: reference.kind,
-    ...(reference.mimeType ? { mimeType: reference.mimeType } : {}),
-    ...(reference.token ? { token: reference.token } : {}),
-  };
-}
 
 function showToast(
   t: TFunction,

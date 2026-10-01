@@ -1,0 +1,198 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>session-lifecycle · 会话生命周期（仅压缩前可否决） · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">session-lifecycle</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/session-lifecycle</div>
+  <h1>session-lifecycle · 需求</h1>
+  <p>会话生命周期五种时刻。只有压缩前（before_compact）可否决；其余全是通知。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.session.lifecycle</code> · 仅 before_compact 可否决</div>
+</header>
+
+<main>
+<section>
+  <h2>范围 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>只管会话级时刻：创建、删除、切换、分叉、压缩。</li>
+    <li>不谈：轮内事件（turn-watch）、读写消息（turn-recap / 其他接口）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>现状（代码核实） <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li><b>槽已注册并门控</b>：<code>runtime.session.lifecycle</code>。<br /><span class="cite">feat/528-plugin-slots@<sha> · packages/shared/src/trusted-extensions.ts · runtime.session.lifecycle</span></li>
+    <li><b>事件从三处来</b>：create / delete 由桌面发出，switch / fork 由桌面转发，compact 由 sidecar 自发。<br /><span class="cite">feat/528-plugin-slots@<sha> · apps/desktop/electron/ipc/session-ipc.ts · session 生命周期 emit</span><br /><span class="cite">feat/528-plugin-slots@<sha> · packages/agent-runtime/src/runtime.ts · session_compact / session_before_compact</span></li>
+    <li><b>before_compact 载荷（必须按此写）</b>：<code>{ type, reason, retentionMode, segment: { messages, messageCount, tokensBefore, retained } }</code>；可返回 <code>{ cancel?: boolean }</code>；<b>仅压缩前可否决</b>。</li>
+    <li><b>通知默认不等待</b>：除 before_compact 外全部通知式，不等插件、不可拦。</li>
+    <li><b>沙箱缺口</b>：沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。</li>
+  </ul>
+  <div class="callout warn"><b>否决权只给压缩。</b>切会话、fork、删除都是用户的直接操作——插件只能跟着知道，不能拦。压缩是后台自动行为，给插件一次「先别压，我还要读」的机会。</div>
+</section>
+
+<section>
+  <h2>契约（建议） <span class="tag proposal">建议</span></h2>
+      <table>
+    <thead><tr><th>时刻</th><th>载荷要点</th><th>可否决</th></tr></thead>
+    <tbody>
+      <tr><td class="id">created / deleted</td><td>会话 id 等标识</td><td>否（通知）</td></tr>
+      <tr><td class="id">before_switch / before_fork</td><td>从哪到哪 / 分叉来源</td><td>否（通知）</td></tr>
+      <tr><td class="id"><b>before_compact</b></td><td><code>{ type, reason, retentionMode, segment: { messages, messageCount, tokensBefore, retained } }</code></td><td><b>是</b>——返回 <code>{ cancel?: boolean }</code></td></tr>
+      <tr><td class="id">compact / compact_failed</td><td>压缩结果 / 失败原因</td><td>否（通知）</td></tr>
+    </tbody>
+  </table>
+  <div class="callout ok"><b>完整载荷写死。</b>before_compact 不是只给 <code>segment</code>——外层还有 <code>type, reason, retentionMode</code>；可返回 <code>{ cancel?: boolean }</code>；仅压缩前可否决。</div>
+</section>
+
+<section>
+  <h2>插件场景 <span class="tag proposal">建议</span></h2>
+      <table>
+    <thead><tr><th>#</th><th>场景</th><th>动作</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>切换留痕：记录用户何时换会话</td><td>before_switch 通知</td></tr>
+      <tr><td>2</td><td>压缩保护：before_compact 发现段里有未处理内容 → <code>{ cancel: true }</code>，先处理完再说</td><td>before_compact 否决</td></tr>
+      <tr><td>3</td><td>删除备份：deleted 时把插件自己的索引标脏</td><td>deleted 通知</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag open">待定</span></h2>
+      <table>
+    <thead><tr><th>问题</th><th>选项</th></tr></thead>
+    <tbody>
+      <tr><td>cancel 次数上限</td><td>A. 维持预算内一次　B. cancel 也计数，防无限拖延压缩</td></tr>
+      <tr><td>retentionMode 取值</td><td>A. 先写枚举草案进 SDK　B. 暂不暴露给插件</td></tr>
+      <tr><td>segment.messages 粒度</td><td>A. 完整行　B. 摘要 + 行引用</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>不让插件否决切换 / fork / 删除——用户直接操作不可拦。</li>
+    <li>不让通知事件等待插件——除 before_compact 外全部通知式。</li>
+    <li>不让插件改写压缩段内容——只能取消这一次压缩，不能改 messages。</li>
+    <li>不让插件改 retention 策略本身——retentionMode 只读。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>还没定的事 <span class="tag open">未定</span></h2>
+    <ul>
+    <li>cancel 次数上限、retentionMode 取值表、segment.messages 粒度。</li>
+    <li>沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。</li>
+  </ul>
+</section>
+
+<p class="omitted">省略：无界面</p>
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

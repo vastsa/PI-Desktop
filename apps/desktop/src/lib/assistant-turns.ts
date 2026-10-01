@@ -4,7 +4,7 @@ import type {
   MessageUsage,
   UiMessage,
 } from "@pi-desktop/shared";
-import { hostedSearchRounds } from "@pi-desktop/shared";
+import { addUsage, hostedSearchRounds } from "@pi-desktop/shared";
 import { isDelegationStartTool } from "./tool-display";
 
 export type AssistantActivityItem =
@@ -548,22 +548,5 @@ export function assistantTurnUsage(
   );
   if (usages.length === 0) return undefined;
 
-  const sum = (field: keyof MessageUsage) =>
-    usages.reduce((total, usage) => total + (usage[field] ?? 0), 0);
-  const optionalSum = (
-    field: "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens",
-  ) =>
-    usages.some((usage) => usage[field] !== undefined) ? sum(field) : undefined;
-  const cacheReadTokens = optionalSum("cacheReadTokens");
-  const cacheWriteTokens = optionalSum("cacheWriteTokens");
-  const reasoningTokens = optionalSum("reasoningTokens");
-
-  return {
-    inputTokens: sum("inputTokens"),
-    outputTokens: sum("outputTokens"),
-    totalTokens: sum("totalTokens"),
-    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
-    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
-    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-  };
+  return usages.reduce<MessageUsage | undefined>((total, usage) => addUsage(total, usage), undefined);
 }

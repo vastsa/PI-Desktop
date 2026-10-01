@@ -1,8 +1,19 @@
 import i18n from "i18next";
-import { projectMessageEnd, reconcilePersistedUserMessage } from "../../lib/session-transcript";
+import {
+  dedupeSessionMessages,
+  projectMessageEnd,
+  reconcilePersistedUserMessage,
+  upsertLiveSessionMessage,
+} from "../../lib/session-transcript";
+import {
+  getSessionMessageSnapshot,
+  getSessionToolMessagePositions,
+  registerSessionMessageReplacements,
+} from "../../lib/session-transcript-updates";
 import type {
   AgentEventEnvelope,
   PlanningStateEvent,
+  SessionTodoSnapshot,
   UiMessage,
 } from "@pi-desktop/shared";
 import {
@@ -59,6 +70,29 @@ export type EventsSliceDependencies = StoreAccess & {
     mark: NonNullable<AppState["sessionCompactions"][string]>[number],
   ) => NonNullable<AppState["sessionCompactions"][string]>;
 };
+function isSessionTodoSnapshot(value: unknown): value is SessionTodoSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const snapshot = value as SessionTodoSnapshot;
+  if (
+    typeof snapshot.sessionId !== "string" ||
+    !Number.isInteger(snapshot.revision) ||
+    snapshot.revision < 0 ||
+    typeof snapshot.updatedAt !== "number" ||
+    !Number.isFinite(snapshot.updatedAt) ||
+    !Array.isArray(snapshot.todos)
+  ) {
+    return false;
+  }
+  return snapshot.todos.every((todo) => {
+    if (!todo || typeof todo !== "object") return false;
+    const item = todo as SessionTodoSnapshot["todos"][number];
+    return (
+      typeof item.content === "string" &&
+      ["pending", "in_progress", "completed", "cancelled"].includes(item.status) &&
+      ["high", "medium", "low"].includes(item.priority)
+    );
+  });
+}
 
 export function createEventsSlice({
   get,
@@ -74,7 +108,7 @@ export function createEventsSlice({
   withCompactionMark,
 }: EventsSliceDependencies): Pick<
   AppState,
-  "handlePlansChanged" | "handleAgentEvent"
+  "handlePlansChanged" | "handleAgentEvent" | "applyTodosChanged"
 > {
   let flushingStreamUpdates = false;
   const streamUpdates = createFrameBatcher<AgentEventEnvelope>((envelopes) => {
@@ -89,6 +123,14 @@ export function createEventsSlice({
   });
 
   return {
+    applyTodosChanged: (snapshot: SessionTodoSnapshot) => {
+      if (!isSessionTodoSnapshot(snapshot)) return;
+      set((state) => {
+        const current = state.sessionTodos[snapshot.sessionId];
+        if (current && current.revision >= snapshot.revision) return state;
+        return { sessionTodos: { ...state.sessionTodos, [snapshot.sessionId]: snapshot } };
+      });
+    },
     handlePlansChanged: (event) => {
       if (!event?.sessionId) return;
       runtime.nextPlanSyncGeneration(event.sessionId);
@@ -354,6 +396,7 @@ export function createEventsSlice({
           ...(envelope.parentToolCallId
             ? { parentToolCallId: envelope.parentToolCallId }
             : {}),
+          ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
           ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
         });
       } else if (event.type === "tool_end") {
@@ -401,7 +444,6 @@ export function createEventsSlice({
           set((state) => ({
             pendingPermissions: enqueuePermission(state.pendingPermissions, {
               ...event.request,
-              receivedAt: envelope.ts,
             }),
           }));
           notifyInteractivePrompt(envelope.sessionId, "permission", {
@@ -464,28 +506,21 @@ export function createEventsSlice({
           break;
         case "message_start":
           set((state) =>
-            state.messages.some((message) => message.id === event.message.id)
+            getSessionMessageSnapshot(state.messages).positions.has(event.message.id)
               ? state
-              : { messages: [...state.messages, event.message] },
+              : { messages: upsertLiveSessionMessage(state.messages, event.message) },
           );
           break;
         case "message_update":
           set((state) => {
-            const index = state.messages.findIndex(
-              (message) => message.id === event.message.id,
-            );
+            const normalized = dedupeSessionMessages(state.messages);
+            const index = getSessionMessageSnapshot(normalized).positions.get(event.message.id);
             const nextMessage = applyMessageUpdate(
-              index >= 0 ? state.messages[index] : undefined,
+              index === undefined ? undefined : normalized[index],
               event,
             );
-            if (index >= 0 && state.messages[index] === nextMessage) return state;
-            const messages =
-              index >= 0
-                ? state.messages.map((message, messageIndex) =>
-                    messageIndex === index ? nextMessage : message,
-                  )
-                : [...state.messages, nextMessage];
-            return { messages };
+            const messages = upsertLiveSessionMessage(normalized, nextMessage);
+            return messages === state.messages ? state : { messages };
           });
           break;
         case "message_end":
@@ -510,6 +545,7 @@ export function createEventsSlice({
                 ...(envelope.parentToolCallId
                   ? { parentToolCallId: envelope.parentToolCallId }
                   : {}),
+                ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
                 ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
               },
             ],
@@ -517,21 +553,19 @@ export function createEventsSlice({
           break;
         case "tool_update":
           if (event.partialResult === undefined) break;
-          set((state) => ({
-            messages: state.messages.map((message) =>
-              message.toolCallId === event.toolCallId &&
-              message.toolStatus === "running"
-                ? {
-                    ...message,
-                    content:
-                      typeof event.partialResult === "string"
-                        ? event.partialResult
-                        : formatToolValue(event.partialResult),
-                    toolResult: event.partialResult,
-                  }
-                : message,
-            ),
-          }));
+          set((state) => {
+            const indices = getSessionToolMessagePositions(state.messages, event.toolCallId)
+              .filter((index) => state.messages[index].toolStatus === "running");
+            if (indices.length === 0) return state;
+            const content = typeof event.partialResult === "string"
+              ? event.partialResult
+              : formatToolValue(event.partialResult);
+            const messages = state.messages.slice();
+            for (const index of indices) {
+              messages[index] = { ...messages[index], content, toolResult: event.partialResult };
+            }
+            return { messages: registerSessionMessageReplacements(state.messages, messages, indices) };
+          });
           break;
         case "tool_end":
           set((state) => {
@@ -555,6 +589,7 @@ export function createEventsSlice({
               ...(toolStart?.parentToolCallId
                 ? { parentToolCallId: toolStart.parentToolCallId }
                 : {}),
+              ...(toolStart?.nestedParentToolCallId ? { nestedParentToolCallId: toolStart.nestedParentToolCallId } : {}),
               ...(toolStart?.agentName ? { agentName: toolStart.agentName } : {}),
               toolCompletedAt: completedAt,
               toolDurationMs: toolStart
@@ -587,7 +622,6 @@ export function createEventsSlice({
           set((state) => ({
             pendingPermissions: enqueuePermission(state.pendingPermissions, {
               ...event.request,
-              receivedAt: envelope.ts,
             }),
           }));
           notifyInteractivePrompt(envelope.sessionId, "permission", {

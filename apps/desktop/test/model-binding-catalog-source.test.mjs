@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
+import { fixtureProvider } from "./pi-catalog-fixtures.mjs";
 import { ModelsDevCatalog } from "../electron/main/models-dev-catalog.ts";
 
 const runtimeModule = new URL("../electron/main/runtime/provider-catalog.ts", import.meta.url);
@@ -23,33 +24,11 @@ const { createProviderCatalogRuntime } = await import(runtimeModule.href)
  */
 const CORRECTED_CONTEXT_WINDOW = 1_050_000;
 
-const fixture = {
-  requesty: {
-    name: "Requesty",
-    api: "https://router.requesty.ai/v1",
-    models: {
-      "terra": {
-        id: "terra",
-        reasoning: true,
-        modalities: { input: ["text"], output: ["text"] },
-        limit: { context: CORRECTED_CONTEXT_WINDOW, output: 64_000 },
-      },
-      "unpublished": {
-        id: "unpublished",
-        reasoning: false,
-        modalities: { input: ["text"], output: ["text"] },
-        // No published limit: values.dev has nothing to correct here.
-      },
-    },
-  },
-};
-
 async function fixtureRuntime() {
-  const catalog = new ModelsDevCatalog({
-    catalogPath: "unused-model-catalog.json",
-    fetchImpl: async () => new Response(JSON.stringify(fixture), { status: 200 }),
-  });
-  assert.equal(await catalog.refresh(), true);
+  const catalog = new ModelsDevCatalog({ providers: [fixtureProvider("requesty", [
+    { id: "terra", reasoning: true, contextWindow: CORRECTED_CONTEXT_WINDOW, maxTokens: 64_000 },
+  ], { baseUrl: "https://router.requesty.ai/v1" })] });
+  await catalog.ensureLoaded();
   return createProviderCatalogRuntime({
     getHost: () => null,
     modelsDevCatalog: catalog,
@@ -71,7 +50,7 @@ function enrichedContextWindow(runtime, binding) {
   return provider.models[0].contextWindow;
 }
 
-test("a catalog-sourced binding adopts a models.dev correction", async () => {
+test("a catalog-sourced binding adopts a Pi catalog correction", async () => {
   const runtime = await fixtureRuntime();
   // The value the binding snapshotted when the model was added.
   const binding = {

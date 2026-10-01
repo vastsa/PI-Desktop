@@ -76,9 +76,26 @@ test("settings overlays mount on a viewport-fixed host outside the app shell", a
 
   const pluginDialogs = await read("../src/features/plugins/PluginDialogs.tsx");
   assert.equal(
-    pluginDialogs.match(/portalOverlay\(/g)?.length,
+    pluginDialogs.match(/(?<!function )pluginModalPortal\(/g)?.length,
     3,
-    "each route-owned plugin modal must mount on the overlay host",
+    "each route-owned plugin modal must mount through pluginModalPortal",
+  );
+  assert.match(
+    pluginDialogs,
+    /function pluginModalPortal[\s\S]*portalOverlay\(/,
+    "pluginModalPortal must wrap portalOverlay",
+  );
+  assert.match(
+    pluginDialogs,
+    /PluginModalBlockingHost[\s\S]*useBlockingOverlay\(/,
+    "plugin modal host must register useBlockingOverlay",
+  );
+
+  const detailSheet = await read("../src/features/plugins/PluginDetailSheet.tsx");
+  assert.match(
+    detailSheet,
+    /useBlockingOverlay\(/,
+    "PluginDetailSheet must register useBlockingOverlay while open",
   );
 });
 

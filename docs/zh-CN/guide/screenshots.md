@@ -54,11 +54,7 @@ URL、浏览器预览或计划审批工件打开自己的选项卡时出现。�
 
 ## 目的地页
 
-合并请求、项目归档和定时任务都是从侧边栏进入的整页目的地。
-
-![合并请求页](../../public/screenshots/app/zh/pulls-live.webp)
-
-![深色主题下的合并请求页](../../public/screenshots/app/zh/dark-pulls.webp)
+项目归档和定时任务是整页目的地；项目归档从设置进入。
 
 ![项目归档](../../public/screenshots/app/zh/project-archive-live.webp)
 

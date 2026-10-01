@@ -155,7 +155,7 @@ export class AppUpdaterController {
       }
       const distribution = (packageJson as Record<string, unknown>)
         .piDistribution;
-      return distribution === "installed" || distribution === "zip"
+      return distribution === "installed" || distribution === "zip" || distribution === "portable"
         ? distribution
         : undefined;
     } catch (error) {

@@ -1,5 +1,16 @@
 # Unreleased changes
 
+- `/compact` and automatic context compaction work again on a gateway that
+  fronts a Codex backend. The summary request of a checkpoint now carries the
+  conversation identity every other turn of the session sends
+  (`prompt_cache_key`), instead of being the one request the gateway answers
+  with `400 invalid codex request`.
+
+- Claude models on a GitHub Copilot account no longer fail with "missing
+  required Authorization header". Their Anthropic Messages requests now
+  authenticate with `Authorization: Bearer` instead of sending the Copilot
+  token as `X-Api-Key`.
+
 - Google Gemini rows send requests again. A provider row on the native
   generative-AI endpoint no longer hands pi-ai's Google adapter the internal
   response-capture `fetch` it refuses before the request leaves, custom provider
@@ -53,3 +64,21 @@
 - OpenAI Codex OAuth models can now opt into provider-hosted native web search.
   The feature remains off by default and search history is replayed only for
   the same Codex model.
+
+- A Live Voice call bound to a work session now shows a waiting request instead
+  of only saying it must be handled on the desktop: the compact bar keeps a
+  waiting line, and Call Details shows the question, the tool awaiting
+  permission, or the plan awaiting approval together with an action that opens
+  that exact session. The decision itself still belongs to the session's own
+  card, so answering or approving from the call remains impossible.
+
+- A Live Voice work call can now answer the bound session's open AskTool
+  question by voice: the question and its own options are read out, and the
+  spoken answer may only select among those options. Permission, Plan, and Goal
+  approvals remain desktop decisions, and an answer that does not match an
+  offered option (or a session without exactly one open question) is refused
+  and sent back to the card instead of guessing.
+
+- Reloading the desktop renderer no longer drops the AskTool and permission
+  cards a session is still waiting on: the pending interactive requests are
+  read back from Host state and the cards come back.

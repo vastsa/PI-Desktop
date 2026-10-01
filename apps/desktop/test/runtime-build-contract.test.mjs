@@ -79,3 +79,8 @@ test("workspace packages keep their tsbuildinfo inside the output directory", as
     );
   }
 });
+
+test("Electron main defines __dirname from its ESM output location", async () => {
+  const config = await readFile(new URL("../electron.vite.config.ts", import.meta.url), "utf8");
+  assert.match(config, /"__dirname"\s*:\s*"import\.meta\.dirname"/);
+});

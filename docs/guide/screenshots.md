@@ -61,12 +61,7 @@ state a conversation starts in.
 
 ## Destinations
 
-Pull requests, the project archive, and scheduled tasks are full-page
-destinations reached from the sidebar.
-
-![The pull requests destination](../public/screenshots/app/en/pulls-live.webp)
-
-![The pull requests destination in the dark theme](../public/screenshots/app/en/dark-pulls.webp)
+The project archive and scheduled tasks are full-page destinations.
 
 ![The project archive](../public/screenshots/app/en/project-archive-live.webp)
 

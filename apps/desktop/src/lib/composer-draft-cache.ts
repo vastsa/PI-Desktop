@@ -1,4 +1,8 @@
-import type { ComposerDraftSnapshot } from "./composer-smart-stop";
+import type {
+  ComposerDraftFileReference,
+  ComposerDraftSnapshot,
+  ComposerPluginPart,
+} from "./composer-smart-stop";
 
 type CachedComposerDraft = ComposerDraftSnapshot & {
   /** Workspace that owned relative file references when the draft was captured. */
@@ -23,7 +27,55 @@ export type ComposerDraftFileInput = {
   kind?: "image" | "file";
   mimeType?: string;
   token?: string;
+  plugin?: ComposerPluginPart;
 };
+
+/** The draft-snapshot form of a live reference: its fields without session or id. */
+export function draftFileReference({
+  path,
+  name,
+  kind,
+  mimeType,
+  token,
+  plugin,
+}: ComposerDraftFileInput): ComposerDraftFileReference {
+  return {
+    path,
+    name,
+    kind,
+    ...(mimeType ? { mimeType } : {}),
+    ...(token ? { token } : {}),
+    ...(plugin ? { plugin } : {}),
+  };
+}
+
+function samePluginPart(a?: ComposerPluginPart, b?: ComposerPluginPart): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.kind !== b.kind || a.pluginId !== b.pluginId) return false;
+  switch (a.kind) {
+    case "mark":
+      return a.send === (b as typeof a).send;
+    case "fold":
+      return a.send === (b as typeof a).send && a.count === (b as typeof a).count;
+    case "attachment":
+      return a.id === (b as typeof a).id && a.size === (b as typeof a).size;
+  }
+}
+
+/** Whether two references are the same draft content, whatever their session or id. */
+export function sameDraftFileReference(
+  a: ComposerDraftFileInput,
+  b: ComposerDraftFileInput,
+): boolean {
+  return (
+    a.path === b.path &&
+    a.name === b.name &&
+    a.kind === b.kind &&
+    a.mimeType === b.mimeType &&
+    a.token === b.token &&
+    samePluginPart(a.plugin, b.plugin)
+  );
+}
 
 const cache = new Map<string, CachedComposerDraft>();
 const revisions = new Map<string, number>();
@@ -49,13 +101,7 @@ export function snapshotComposerDraft(
     text,
     fileReferences: fileReferences
       .filter((fileReference) => (fileReference.sessionId ?? "") === owner)
-      .map(({ path, name, kind, mimeType, token }) => ({
-        path,
-        name,
-        kind,
-        ...(mimeType ? { mimeType } : {}),
-        ...(token ? { token } : {}),
-      })),
+      .map(draftFileReference),
   };
   if (workspacePath !== undefined) snapshot.workspacePath = workspacePath;
   return snapshot;

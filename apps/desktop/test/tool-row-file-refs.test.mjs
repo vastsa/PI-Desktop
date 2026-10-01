@@ -56,6 +56,7 @@ const state = {
 
 /** What the next `fs.resolveRef` reply is; each case sets it. */
 let nextMatch = null;
+let nextReason = null;
 let resolveFails = false;
 
 const workPanelTabs = loadModule("../src/lib/work-panel-tabs.ts", {});
@@ -68,7 +69,7 @@ const { useOpenPreviewTarget } = loadModule("../src/hooks/use-preview-target.ts"
       fsResolveRef: async (ref) => {
         calls.resolved.push(ref);
         if (resolveFails) throw new Error("host unavailable");
-        return { match: nextMatch };
+        return { match: nextMatch, ...(nextReason ? { reason: nextReason } : {}) };
       },
     },
   },
@@ -85,6 +86,7 @@ function reset({ pluginView = false } = {}) {
     ? [{ pluginId: "pi.file-manager", viewId: "manager" }]
     : [];
   nextMatch = null;
+  nextReason = null;
   resolveFails = false;
 }
 
@@ -132,6 +134,16 @@ test("a project file a tool surface names opens in the bundled file view", async
     },
   ]);
   assert.deepEqual(calls.files, [], "the host file tab is not also opened");
+  assert.deepEqual(calls.toasts, []);
+});
+
+test("a Windows tool path reaches resolution intact and opens its exact project file", async () => {
+  reset({ pluginView: true });
+  const path = "C:\\demo project\\readme.md";
+  nextMatch = projectMatch({ relativePath: "readme.md", absolutePath: path, matchedBy: "exact-absolute" });
+  await click({ kind: "file", path });
+  assert.deepEqual(calls.resolved, [path]);
+  assert.equal(calls.tabs[0].location, "readme.md");
   assert.deepEqual(calls.toasts, []);
 });
 
@@ -186,13 +198,22 @@ test("a reference nothing answers reports itself and opens nothing", async () =>
   assert.equal(calls.toasts[0][0], "chat.fileRefMissing:missing-helper.js");
 });
 
+test("an absolute tool path outside allowed roots reports the access limit", async () => {
+  reset({ pluginView: true });
+  nextReason = "outside-allowed-roots";
+  await click({ kind: "file", path: "C:\\elsewhere\\readme.md" });
+  assert.deepEqual(calls.resolved, ["C:\\elsewhere\\readme.md"]);
+  assert.deepEqual(calls.tabs, []);
+  assert.equal(calls.toasts[0][0], "chat.fileRefRestricted:C:\\elsewhere\\readme.md");
+});
+
 test("a failing resolve is reported instead of opening a panel", async () => {
   reset({ pluginView: true });
   resolveFails = true;
   await click({ kind: "file", path: "src/dir/a.ts" });
   assert.deepEqual(calls.tabs, []);
   assert.deepEqual(calls.files, []);
-  assert.equal(calls.toasts[0][0], "chat.fileRefMissing:src/dir/a.ts");
+  assert.equal(calls.toasts[0][0], "chat.fileRefLookupFailed:");
 });
 
 test("a URL target keeps the embedded browser and never reaches file resolution", async () => {

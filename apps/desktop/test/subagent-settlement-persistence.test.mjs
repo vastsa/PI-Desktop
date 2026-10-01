@@ -63,6 +63,56 @@ test("a settled Task snapshot survives outbox recovery with its original turn an
 });
 
 
+for (const delegate of [false, true]) {
+  test(`nested ${delegate ? "delegate" : "root"} tool lineage survives outbox recovery`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-nested-tool-outbox-"));
+    const silent = () => undefined;
+    try {
+      const persistenceOutbox = new PersistenceOutbox(dir, silent);
+      const queued = [];
+      const enqueue = persistenceOutbox.enqueue.bind(persistenceOutbox);
+      persistenceOutbox.enqueue = (...args) => {
+        const pending = enqueue(...args);
+        queued.push(pending);
+        return pending;
+      };
+      const { persistAgentEvent } = createEventPersistence({
+        runtimeState: { host: null },
+        activeTurns: new Map([["session", "turn-1"]]),
+        activeToolCalls: new Map(),
+        activeToolCallKey: (sessionId, toolCallId) => `${sessionId}:${toolCallId}`,
+        approvedExecutionIdsBySession: new Map(),
+        approvedExecutionTurns: new Map(),
+        pendingExecutionFinishes: new Map(),
+        planSubmissionTurnIds: new Set(),
+        persistenceOutbox,
+        logger: { app: silent },
+      });
+      const lineage = {
+        nestedParentToolCallId: "code-1",
+        ...(delegate ? { parentToolCallId: "task-1", agentName: "reader" } : {}),
+      };
+      persistAgentEvent({ sessionId: "session", turnId: "turn-1", ts: 1_000, ...lineage,
+        event: { type: "tool_start", toolCallId: "read-1", toolName: "Read", args: { path: "a.ts" } } });
+      persistAgentEvent({ sessionId: "session", turnId: "turn-1", ts: 1_100, ...lineage,
+        event: { type: "tool_end", toolCallId: "read-1", result: "contents" } });
+      await Promise.all(queued);
+      const recovered = new PersistenceOutbox(dir, silent);
+      const writes = [];
+      await recovered.flush(() => ({ isAvailable: () => true, call: async (_method, params) => {
+        writes.push(params);
+        return {};
+      } }));
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].turnId, "turn-1");
+      assert.equal(writes[0].message.nestedParentToolCallId, "code-1");
+      assert.equal(writes[0].message.parentToolCallId, delegate ? "task-1" : undefined);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}
+
 test("settlement replacing an in-flight Task append is written after the initial snapshot", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pi-subagent-outbox-race-"));
   const outbox = new PersistenceOutbox(dir, () => undefined);
@@ -93,4 +143,33 @@ test("settlement replacing an in-flight Task append is written after the initial
     await outbox.flush(() => host);
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("independent usage aggregates survive an unavailable Host and outbox restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-usage-outbox-"));
+  try {
+    const outbox = new PersistenceOutbox(dir, () => undefined);
+    const queued = [];
+    const enqueue = outbox.enqueue.bind(outbox);
+    outbox.enqueue = (...args) => { const promise = enqueue(...args); queued.push(promise); return promise; };
+    const { persistAgentEvent } = createEventPersistence({
+      runtimeState: { host: null }, activeTurns: new Map([["session", "turn"]]),
+      activeToolCalls: new Map(), activeToolCallKey: (s, t) => `${s}:${t}`,
+      approvedExecutionIdsBySession: new Map(), approvedExecutionTurns: new Map(),
+      pendingExecutionFinishes: new Map(), planSubmissionTurnIds: new Set(),
+      persistenceOutbox: outbox, logger: { app: () => undefined }, addActiveTurnUsage: () => undefined,
+    });
+    for (const id of ["image-a", "image-b", "image-a"]) {
+      const operation = { operationId: id, inputTokens: 10, outputTokens: 2, totalTokens: 12 };
+      persistAgentEvent({ sessionId: "session", turnId: "turn", ts: 1, event: {
+        type: "usage", usage: { ...operation, operationId: undefined, aggregation: "aggregate", operations: [operation] },
+      } });
+    }
+    await Promise.all(queued);
+    const recovered = new PersistenceOutbox(dir, () => undefined);
+    const written = [];
+    await recovered.flush(() => ({ isAvailable: () => true, call: async (method, params) => { if (method === "session.recordUsage") written.push(params); return {}; } }));
+    assert.deepEqual(written.flatMap(row => row.usage.operations.map(op => op.operationId)).sort(), ["image-a", "image-b"]);
+    assert.ok(written.every(row => row.turnId === "turn"));
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

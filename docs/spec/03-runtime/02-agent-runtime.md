@@ -107,7 +107,7 @@ No host RPC or storage schema change is required.
 1. load the durable session and reject a missing session
 2. resolve that session's mode/provider/model and project binding (app/current
    workspace defaults are legacy fallback only)
-3. resolve the complete models.dev metadata record for the exact provider/API
+3. resolve the complete Pi catalog metadata record for the exact provider/API
    URL and model and clamp the durable session thinking level to its nearest
    supported value; an ID absent from the snapshot uses the explicit generic
    fallback
@@ -650,6 +650,16 @@ submitted Markdown bytes in a new immutable
 structured title/question in `plan_approvals`, and moves the live state to
 `awaiting_approval`.
 
+Plan/Goal requests retain Write/Edit declarations and, when subagents are
+configured, the Task/TaskWait/TaskList/TaskStop declarations. They are marked
+unavailable in the active mode. The execution allowlist remains unchanged:
+prohibited calls are blocked before extension call hooks and handlers, and a
+handler retained across a mode change rechecks that mode before executing.
+The model receives an ordinary error tool result with the original call id;
+no editing, delegation, fake user message or transcript deletion occurs.
+Other deferred/plugin tools keep their existing visibility rules. See
+[the declaration/permission decision](../../adr/plan-tool-declarations-and-execution-denials.md).
+
 Approval has only `approve` and `reject`. Approval commits `mode = agent`, the
 explicit permission mode, an execution ID, and `execution_state = queued` on
 the same `plan_approvals` row in one host transaction. The
@@ -696,7 +706,7 @@ criterion-by-criterion report of what was met and the evidence observed.
   not a catalog/binding capability: the runtime keeps agent bookkeeping at
   `off` and uses the low-level provider stream so no thinking override is
   synthesized (ADR 0194 / ADR 0295).
-- The bundled models.dev release snapshot is authoritative for published
+- The bundled Pi catalog release snapshot is authoritative for published
   reasoning support, thinking-level mapping, limits, input/output modalities,
   pricing, and other model metadata. pi-ai remains responsible for request
   serialization and adapter compatibility.
@@ -704,7 +714,7 @@ criterion-by-criterion report of what was met and the evidence observed.
   limits, or other model metadata. The explicit attachment capability fields
   are the exception: `supportsImages` and `supportsDocuments` are effective
   binding overrides for the endpoint.
-- Unsupported requested levels use the selected models.dev model's
+- Unsupported requested levels use the selected Pi catalog model's
   nearest-supported-level rule: scan upward first, then downward. A
   non-reasoning provider always resolves to `off`.
 - Vision support starts from the same published model record. An absent or
@@ -730,12 +740,13 @@ criterion-by-criterion report of what was met and the evidence observed.
   restores as an errored result; a tool row whose assistant row was lost
   gets a synthesized call-only assistant carrier so call/result pairs stay
   well-formed for every provider API.
-- Vision runtimes hydrate persisted image refs only from the session-bound
-  attachment, scratch, and project roots. Images within the 10 MB inline
-  safety bound become transient pi-ai image blocks; oversized or unavailable
-  images become safe `@path` fallbacks. Oversized history hydration copies
-  files without first loading their contents into memory. Base64 is never
-  restored into durable UI messages or transcript records.
+Vision runtimes hydrate persisted image refs only from the session-bound
+attachment, scratch, and project roots. Each image remains subject to the 10 MB
+safety bound, and restored history has a 30 MB aggregate raw-byte budget.
+The newest refs are considered first; all eligible images remain image blocks
+when the history fits, while over-budget or oversized images become safe
+`@path` fallbacks. Reads are bounded by the admitted file size. Base64 is
+transient and never restored into durable UI messages or transcript records.
 - Failed assistant messages remain durable diagnostic transcript entries but
   are never restored into pi model context on a later turn.
 - A tool-call id is unique in every request. The transcript is an append-only
@@ -898,7 +909,7 @@ No new event type or storage schema is required.
 process with the definition's system prompt, its (possibly pinned)
 provider/model, its declared tools, and the same host connection. A pinned or
 explicitly selected delegation model uses the exact provider/model binding
-saved in Settings for its effective thinking capability; models.dev supplies
+saved in Settings for its effective thinking capability; Pi catalog supplies
 the baseline only. It runs under
 the same bounded provider retry policy as the parent. A delegate has no turn
 limit: it ends when it finishes, when the parent calls `TaskStop`, when the user
@@ -920,10 +931,11 @@ keyboard-focus, and reduced-motion checks require project-provided browser
 tests or other tooling. Its statuses are `completed`, `failed`,
 `aborted`, `timed_out` and the registry-only `stopped`;
 the terminal ones surface through `TaskWait`, whose text is
-the report (bounded to `MAX_SUBAGENT_REPORT_CHARS`, 12k) and whose details
+the report (bounded to `MAX_SUBAGENT_REPORT_CHARS`, 12k; when exceeded, persisted to session scratch with a pointer notice per ADR 0062) and whose details
 carry `delegationId`, `agent`, `modelId`, `thinkingLevel`, `status`, `startedAt`,
-`completedAt` when settled, `turns`, `toolCalls` and, on failure or timeout,
-`error`. The same effective model and thinking fields are included in the
+`completedAt` when settled, `turns`, `toolCalls`, and `scratchReportPath` when
+the full report was spilled to scratch; on failure or timeout they carry
+`error` (including resume ID hints on `SUBAGENT_OUTPUT_TRUNCATED`). The same effective model and thinking fields are included in the
 immediate `Task` result and in lifecycle snapshots so live and restored
 delegation views do not re-derive them from definitions or parent settings.
 `startedAt` and `completedAt` are runtime timestamps in milliseconds and are the source of
@@ -948,9 +960,14 @@ they can end the parent turn even if a delegate ignores its abort. Ending the
 parent loop does not otherwise abort delegates.
 
 Fatal provider/stream errors (including exhausted HTTP 429) and parent aborts
-retain their existing `failed` and `aborted` outcomes. A terminal parent error
-also aborts leftover delegates, skips the resume prompt, and returns the
-session to idle so Continue is not `AGENT_BUSY` (D352).
+retain their existing `failed` and `aborted` outcomes. If an assistant response
+ends at the provider's output-token limit (`stopReason: "length"` or
+`"max_tokens"`) after emitting report text, the delegate instead settles as
+`failed` with `SUBAGENT_OUTPUT_TRUNCATED` and `outputTruncated: true`; its
+bounded partial report remains under the failure explanation for diagnosis. A
+later delegate turn that ends normally clears the marker and can complete. A
+terminal parent error also aborts leftover delegates, skips the resume prompt,
+and returns the session to idle so Continue is not `AGENT_BUSY` (D352).
 
 **Resumable delegations (ADR 0279).** `Task` accepts an optional `resume`
 parameter carrying the `delegationId` of a settled delegation in the same
@@ -1013,7 +1030,7 @@ multi-turn conversation under its latest `Task` card, with no separate
 "resumed" marker.
 
 **Model pins.** `model: <provider>/<model>` in the frontmatter is resolved once
-per launch in Electron main, where credentials and the models.dev snapshot live, against
+per launch in Electron main, where credentials and the Pi catalog snapshot live, against
 provider id, vendor key or display name, and capped at
 `MAX_SUBAGENT_PROVIDERS` (8) distinct providers. An unresolvable pin is omitted
 from the binding map on purpose; the runtime turns the missing entry into a tool
@@ -1185,10 +1202,10 @@ MVP UI always includes at least:
 
 Runtime responsibilities:
 - resolve `(providerId, modelId)`
-- resolve and serialize the complete models.dev record, or label an absent ID
+- resolve and serialize the complete Pi catalog record, or label an absent ID
   with the unknown generic fallback
 - resolve model reasoning capability and effective thinking level from the
-  models.dev record
+  Pi catalog record
 - fetch secrets via host (never cache raw secrets in logs)
 - translate vendor failures into provider AppError codes
 - stream tokens/events to orchestrator
@@ -1237,6 +1254,17 @@ function, so agent-runtime applies the header merge to the model collection it
 hands to compaction. That request carries the session's conversation id rather
 than the per-call id the harness would otherwise mint, so a summary reaches the
 same gateway backend as the conversation it summarizes.
+
+The same seam restores the conversation key itself. pi-agent-core asks for
+`cacheRetention: "none"` on a summary, and the Responses-shaped adapters read
+that as "no `prompt_cache_key`", so the summary alone drops the identity every
+other turn sends; a gateway fronting a Codex backend rejects such a request with
+400 `invalid_responses_request`. For `openai-responses` and
+`openai-codex-responses` the summary payload therefore carries the session id as
+`prompt_cache_key` (clamped to the adapter's 64-character limit) unless the
+adapter or a caller already set one. Every other wire API keeps its payload
+exactly as the adapter built it, and the key is added on a copy, so a caller's
+payload hook keeps its own object and its return value still wins.
 
 
 ## 7. System prompt composition
@@ -1539,7 +1567,7 @@ with the original v3 `SessionManager`, Pi `ModelRuntime`, `SettingsManager`, and
 leaf, compaction, model/thinking changes, and context-bearing custom messages;
 it is never reconstructed from renderer `UiMessage` rows.
 
-The 0.87.1 SDK also applies append-only `context_edit` entries to this model
+The 0.99.1 SDK also applies append-only `context_edit` entries to this model
 projection. An edit can omit or replace an earlier message for later provider
 requests without rewriting its raw JSONL entry or the visible native history.
 Native Pi extensions use the SDK's boundary hooks; all entries they append,
@@ -1591,11 +1619,16 @@ browseable.
 
 ### Provider certificate trust (issue #714)
 
-The desktop sidecar starts with Node's `--use-system-ca`, retaining bundled
-roots and inherited `NODE_EXTRA_CA_CERTS`. It uses the OS trust store without
-turning off chain or hostname validation. Restart after updating local trust
-or the extra-CA startup environment. Headless pi-host launch behavior and
-System/Direct/Custom proxy routing are unchanged.
+The desktop sidecar's effective trust set is the union of Node's bundled
+roots, the inherited `NODE_EXTRA_CA_CERTS` set, and the OS trust store, with
+chain and hostname validation on. On Windows and Linux the launcher passes
+Node's `--use-system-ca` to obtain the system roots. On macOS the Electron
+build applies that flag by replacing the bundled roots instead of adding them
+and its system enumeration misses public anchors (issue #1187), so the
+launcher omits the flag and the sidecar merges the three sets into the default
+CA set itself at startup (`agent-runtime system-ca`). Restart after updating
+local trust or the extra-CA startup environment. Headless pi-host launch
+behavior and System/Direct/Custom proxy routing are unchanged.
 
 Explicit certificate verification errors are terminal for both setup and
 stream recovery in main sessions and built-in delegates. Their structured
@@ -1603,3 +1636,18 @@ cause survives adapter message flattening, remains on the final error row,
 and never triggers a provider transport rebuild. Protocol errors such as
 `EPROTO` keep their existing retry behavior. See
 [certificate trust ADR](../../adr/provider-system-certificates.md).
+
+## Pi 0.99.1 execution boundary
+
+Published model metadata and account entitlement come from one account-scoped
+Pi Models collection. Effective binding projection is shared by launch, delegates
+and compaction. Dispatch thinking normalization uses the resolved physical Pi
+model; native null/unsupported mappings remain unavailable without mutating
+saved preferences. Agent bookkeeping and omitted request reasoning are distinct.
+
+Every physical stream attempt has an operation identity before dispatch. Usage
+survives stream/result projection and events through Host/remote/renderer paths;
+retries and images retain physical account/model attribution. Nested immediate
+parent and owning Task remain distinct. The migration does not add coding-agent
+AgentSession, Codemode or virtual routing. See the coding-agent design review for
+future adoption conditions.

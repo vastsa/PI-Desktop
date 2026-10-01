@@ -212,8 +212,18 @@ export function createPluginServices({
         message: `${input.title}${input.body ? `: ${input.body}` : ""}`,
       }),
     getNotificationPermission: getPluginNotificationPermission,
-    requestNotificationPermission: requestPluginNotificationPermission,
-    showNativeNotification: showPluginNativeNotification,
+    requestNotificationPermission: async () => {
+      const permission = await requestPluginNotificationPermission();
+      if (permission === "granted") {
+        sendToRenderer(IPC.event.notificationSound, {});
+      }
+      return permission;
+    },
+    showNativeNotification: async (input) => {
+      const result = await showPluginNativeNotification(input);
+      if (result.shown) sendToRenderer(IPC.event.notificationSound, {});
+      return result;
+    },
     openExternal: async (url) => {
       await safeOpenExternal(url);
     },
@@ -443,7 +453,7 @@ export function createPluginServices({
     },
     // Hot reload happens without anyone asking for it, so it has to report
     // itself: the plugins page reads status from the host, not from the edit.
-    onPluginReloaded: ({ pluginId, name, ok, message }) => {
+    onPluginReloaded: async ({ pluginId, name, ok, message }) => {
       logger.app("plugin", ok ? "info" : "error", "development plugin reloaded", {
         pluginId,
         data: { ok, message },
@@ -451,8 +461,9 @@ export function createPluginServices({
       sendToRenderer(IPC.event.toast, {
         message: ok ? `Reloaded ${name}` : `Reload failed: ${name} — ${message ?? ""}`,
       });
-      // Views were loaded from the previous revision of the plugin's files.
+      // Views and panels were loaded from the previous revision of the plugin's files.
       pluginViews.closePlugin(pluginId);
+      await pluginPanels.close(pluginId, { force: true });
       if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "reload", pluginId });
     },

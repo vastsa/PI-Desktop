@@ -29,6 +29,19 @@ The card has no countdown or expiration copy. On narrow screens options remain
 full-width and actions may share the row; question text and custom input may
 wrap naturally without clipping.
 
+## Rich-text content
+
+Question text and selectable option text may use CommonMark/GFM formatting,
+including emphasis, inline code, paragraphs, and lists. The card renders this
+content inline with its existing compact typography. In option buttons links are
+non-interactive text, images render as alt text, and raw HTML is ignored; this
+avoids nested interactive controls and external image loading. Plain strings
+remain supported, and `{ label, description? }` options render the label as
+Markdown while keeping the optional description as plain supporting text.
+Selecting an option returns its normalized source label unchanged; formatting
+is display-only. The custom-answer option is not
+Markdown-interpreted.
+
 ## Typography hierarchy
 
 The card uses a compact two-tier type scale — quiet labels, then content at

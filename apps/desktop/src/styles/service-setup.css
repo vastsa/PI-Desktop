@@ -123,8 +123,7 @@
   min-width: 0;
 }
 
-.service-chooser-tile-name,
-.service-chooser-tile-detail {
+.service-chooser-tile-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -138,6 +137,8 @@
 }
 
 .service-chooser-tile-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   line-height: var(--leading-tight);

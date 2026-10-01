@@ -357,6 +357,7 @@ test("local MCP control server authenticates, discovers, and invokes desktop ope
   assert.equal(describedIds.includes("providers/create"), false);
   assert.equal(describedIds.includes("settings/set"), false);
   assert.equal(describedIds.some((id) => id.startsWith("secrets/")), false);
+  assert.equal(describedIds.includes("pulls/list"), false);
   const configure = described.body.result.structuredContent.find((entry) => entry.id === "session/configure");
   assert.equal(configure.risk, "dangerous");
   assert.deepEqual(configure.argumentShape, ["id", "config"]);

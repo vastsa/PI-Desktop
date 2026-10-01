@@ -287,22 +287,20 @@ test("revealing a skill carries the level so project skills resolve", () => {
   const api = read("../src/lib/api.ts");
   assert.match(api, /revealUserSkill:\s*\(id: string, query\?: Partial<AgentCapabilityQuery>\)/);
   assert.match(api, /IPC\.invoke\.skillReveal, \{ id, \.\.\.query \}/);
-  const handler = electron.slice(
-    electron.indexOf("handle(\n    IPC.invoke.skillReveal"),
-    electron.indexOf("handle(IPC.invoke.skillRemove"),
-  );
+  const handler = skillImport.slice(skillImport.indexOf("IPC.invoke.skillReveal"));
   assert.match(handler, /typeof payload === "string" \? \{ id: payload \} : payload/);
   assert.match(handler, /host\.call<\{ skill: UserSkillRecord \| null \}>\("skills\.read", request\)/);
   assert.match(skills, /api\.revealUserSkill\(skill\.id, levelQuery\(level\)\)/);
 });
 
-test("skill import is one native file and is copied through the host", () => {
+test("skill file import stays single-select while folder import selects many", () => {
   assert.notEqual(skillImport, "", "skill import handler should be present");
   assert.match(skillImport, /properties:\s*\["openFile"\]/);
-  // Scan-and-import (a separate `skillImportScan` handler) opens a directory,
-  // but the single-file skill-import branch must never do that or select many.
-  assert.doesNotMatch(skillImport, /properties:\s*\[[^\]]*multiSelections/);
-  assert.match(skillImport, /host\.call\("skills\.import"/);
+  assert.match(skillImport, /properties:\s*\["openDirectory", "multiSelections"\]/);
+  assert.match(skillImport, /defaultPath: lastDirectory/);
+  assert.match(skillImport, /writeLastSkillImportDirectory\(dataDir, lastImportedPath\)/);
+  assert.match(skillImport, /importSkillFolders<UserSkillRecord>\(\s*picked\.filePaths/);
+  assert.match(skillImport, /currentHost\.call\("skills\.import"/);
   assert.match(read("../../../crates/host-core/src/user_skills.rs"), /fs::copy\(source, target\)/);
 });
 

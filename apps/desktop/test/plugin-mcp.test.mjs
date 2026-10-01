@@ -244,21 +244,34 @@ test("a stdio server that cannot start fails the handshake, not the process", as
   assert.match(String(failure.message), /exited with code/);
 });
 
-test("a slow server times out instead of hanging the load", async (t) => {
+test("a slow server times out instead of hanging the load", async () => {
   const dir = stdioPlugin();
-  writeFileSync(join(dir, "server.mjs"), "setInterval(() => {}, 1000);\n");
+  const pidFile = join(dir, "pid");
+  writeFileSync(
+    join(dir, "server.mjs"),
+    'import { writeFileSync } from "node:fs";\nwriteFileSync(process.env.STUB_PID_FILE, String(process.pid));\nsetInterval(() => {}, 1000);\n',
+  );
   const client = new McpServerClient({
     pluginId: "com.example.mcp",
     rootPath: dir,
     server: { id: "stub", transport: "stdio", command: "node", args: ["./server.mjs"] },
-    values: {},
+    values: { STUB_PID_FILE: pidFile },
     connectTimeoutMs: 250,
   });
-  t.after(() => client.close());
   await assert.rejects(client.connect(), (error) => {
     assert.equal(error.code, "TIMEOUT");
     return true;
   });
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.fail("timed-out stdio mcp child survived handshake cleanup");
 });
 
 /** Streamable-HTTP stub: JSON for the handshake, SSE for discovery. */
@@ -379,6 +392,57 @@ test("a remote MCP tool can run longer than the connection timeout", async (t) =
   assert.deepEqual((await client.connect()).map((tool) => tool.name), ["headers", "slow"]);
   const result = await client.callTool("slow", {});
   assert.equal(describeMcpContent(result.content), "finished");
+});
+test("an SSE reply is dispatched before the server closes the stream", async (t) => {
+  // A streamable-HTTP server may answer immediately and still hold the body
+  // open — gitmcp.io replies in ~2s and ends the stream ~12s later. Waiting for
+  // the body to end used to spend the whole connect budget on that gap.
+  const encoder = new TextEncoder();
+  let closeStream;
+  const keepOpen = new Promise((resolve) => {
+    closeStream = resolve;
+  });
+  const fetchImpl = async (_url, options) => {
+    const message = JSON.parse(options.body);
+    if (message.method === "notifications/initialized") {
+      return new Response(null, { status: 202 });
+    }
+    const result =
+      message.method === "initialize"
+        ? { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {} }
+        : { tools: [{ name: "streamed" }] };
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: message.id, result })}\n\n`,
+          ),
+        );
+        void keepOpen.then(() => controller.close());
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-sse-")),
+    server: { id: "streaming", transport: "http", url: "https://streaming.example/mcp" },
+    values: {},
+    connectTimeoutMs: 500,
+    discoveryTimeoutMs: 500,
+    fetchImpl,
+  });
+  t.after(() => {
+    closeStream();
+    client.close();
+  });
+
+  assert.deepEqual(
+    (await client.connect()).map((tool) => tool.name),
+    ["streamed"],
+  );
 });
 test("aborting one HTTP MCP call cancels its request", async (t) => {
   let callStarted;

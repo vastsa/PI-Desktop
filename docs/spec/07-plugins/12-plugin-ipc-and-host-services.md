@@ -235,7 +235,7 @@ permission gate and result envelope stay in host-core:
 1. Model calls `plugin_<pluginIdSafe>_<toolName>`; the sidecar forwards it
    to host `tools.execute` like any built-in tool.
 2. host-core resolves the durable operating mode first. In Agent it runs the
-   normal permission flow (risk, session grants, 120s timeout), then emits
+   normal permission flow (risk, session grants, no automatic deadline), then emits
    notification `plugins.execute`
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`. `turnId` is
    the runtime turn identity, forwarded unchanged so the plugin tool context can
@@ -249,10 +249,9 @@ permission gate and result envelope stay in host-core:
    (`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`, above both the 110s plugin tool budget
    and the widest MCP leg — a 10s lazy handshake, a 30s `tools/list` traversal,
    then the 100s call) and then maps to `TOOL_TIMEOUT`; an unknown/unloaded tool
-   maps to `TOOL_NOT_FOUND`. The transport deadline for these calls covers the
-   120s permission wait, the 30s admission queue wait, that dispatch, and 10s of
-   slack (`rpcTimeoutMs`), so no outer layer gives up before host-core reports
-   the outcome.
+   maps to `TOOL_NOT_FOUND`. The `tools.execute` transport has no deadline while
+   waiting for the explicit permission decision; after approval, host-core's
+   execution budget remains authoritative.
 
 The model-facing registry gains plugin tools per prompt: main passes registered
 defs (`fullName`, description, JSON-schema parameters) to `agent.prompt`, and

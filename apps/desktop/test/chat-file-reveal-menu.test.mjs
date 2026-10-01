@@ -366,7 +366,7 @@ test("every transcript surface that names a file opens that item", () => {
   // Inline code, a file link, and a local image each hand their own reference
   // to that surface; `./` and `../` keep the markdown base beside the path.
   assert.match(markdown, /openFileMenu\(event, \{ path: text \?\? target\.path, baseDir \}\)/);
-  assert.match(markdown, /openFileMenu\(event, \{ path: rel, baseDir \}\)/);
+  assert.match(markdown, /openFileMenu\(event, \{ path: ref, baseDir \}\)/);
   assert.match(markdown, /openFileMenu\(event, \{ path: localRef, baseDir \}\)/);
   assert.match(markdown, /onContextMenu=\{onLocalContextMenu\}/);
   // A local image that cannot be shown inline keeps a chip, and both carry the

@@ -839,3 +839,80 @@ pub(crate) fn migrate_v18_to_v19(conn: &Connection, path: &Path) -> Result<()> {
     let _ = conn.pragma_update(None, "foreign_keys", true);
     result
 }
+
+/// v20 persists stable user-message identity and Live Voice provenance on
+/// queued turns so a restart cannot lose source metadata before dispatch.
+pub(crate) fn migrate_v19_to_v20_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let has_queue: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turn_queue')",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_queue {
+        for (column, definition) in [("user_message_id", "TEXT"), ("voice_origin_json", "TEXT")] {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('turn_queue') WHERE name = ?1)",
+                [column],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                tx.execute_batch(&format!(
+                    "ALTER TABLE turn_queue ADD COLUMN {column} {definition};"
+                ))?;
+            }
+        }
+    }
+    tx.pragma_update(None, "user_version", 20i64)?;
+    Ok(())
+}
+
+pub(crate) fn migrate_v19_to_v20(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 19)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v19_to_v20_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v19 to v20 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}
+
+/// v21 adds the per-session Todo checklist: the `todo_revision` /
+/// `todo_updated_at` stamps on `sessions` and the ordered `session_todo`
+/// rows that the `TodoWrite` tool replaces atomically.
+///
+/// The table DDL is shared verbatim with the fresh schema, and both the
+/// column probe and `IF NOT EXISTS` keep a second run harmless: an existing
+/// test fixture that downgrades `user_version` in place already carries the
+/// table and columns.
+pub(crate) fn migrate_v20_to_v21_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let has_todo_revision: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'todo_revision')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_todo_revision {
+        tx.execute_batch(
+            "ALTER TABLE sessions ADD COLUMN todo_revision INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE sessions ADD COLUMN todo_updated_at INTEGER;",
+        )?;
+    }
+    tx.execute_batch(SESSION_TODO_DDL)?;
+    tx.pragma_update(None, "user_version", 21i64)?;
+    Ok(())
+}
+
+pub(crate) fn migrate_v20_to_v21(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 20)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v20_to_v21_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v20 to v21 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}

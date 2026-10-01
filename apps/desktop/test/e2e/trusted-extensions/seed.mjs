@@ -57,6 +57,7 @@ export default function (pi: any) {
 write("greet.ts", `import { appendFileSync } from "node:fs";
 const log = (line: string) => appendFileSync(${JSON.stringify(hookLog)}, line + "\\n");
 export default function (pi: any) {
+  pi.on("before_agent_start", (e) => ({ systemPrompt: e.systemPrompt + "\\n\\nE2E-MARKER-greet" }));
   pi.registerCommand("greet", { description: "Greets you", async handler(args: string, ctx: any) {
     const name = await ctx.ui.input("Your name?", "e.g. Ann");
     const color = await ctx.ui.select("Favourite colour", ["red", "blue"]);

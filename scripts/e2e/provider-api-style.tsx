@@ -52,6 +52,13 @@ globalThis.providerApiStyleProbe = async () => {
   };
   api.listProviderModels = async (input) => {
     discoveries.push(structuredClone(input));
+    if (input.baseUrl === "https://api.stepfun.com/step_plan/v1") {
+      return { models: [{
+        modelId: "step-5-preview", displayName: "Step 5 Preview", providerId: "stepfun-fixture",
+        source: "discovered", capabilities: ["text", "tools", "vision", "reasoning"],
+        supportedThinkingLevels: ["low", "medium", "high"], contextWindow: 1000000, maxTokens: 65536,
+      }], source: "remote" };
+    }
     return { models: [], source: "remote" };
   };
   /* The root container only mounts React; every production surface under test
@@ -172,6 +179,45 @@ globalThis.providerApiStyleProbe = async () => {
   try {
     for (const locale of ["en", "zh-CN"]) {
       await i18n.changeLanguage(locale);
+      render();
+      const beforeStepfunCreate = creates.length;
+      const beforeStepfunDiscovery = discoveries.length;
+      const stepfunTile = document.querySelector<HTMLElement>('[data-service-id="stepfun-plan"]');
+      assert(stepfunTile?.textContent?.includes("api.stepfun.com/step_plan/v1"),
+        `${locale}: StepFun chooser hides the subscription path`);
+      click(stepfunTile);
+      await frame();
+      assert(document.querySelector(".provider-service-chip-host")?.textContent === "api.stepfun.com/step_plan/v1",
+        `${locale}: StepFun connection summary hides the subscription path`);
+      const keyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
+      assert(keyInput, `${locale}: StepFun key input missing`);
+      flushSync(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!
+          .call(keyInput, "stepfun-fixture-key");
+        keyInput!.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await until(() => discoveries.length > beforeStepfunDiscovery, "StepFun discovery");
+      const discovery = discoveries.at(-1)!;
+      assert(discovery.baseUrl === "https://api.stepfun.com/step_plan/v1" &&
+        discovery.apiStyle === "anthropic_messages" && discovery.apiKey === "stepfun-fixture-key",
+        `${locale}: StepFun discovery used the wrong route or credentials`);
+      const stepfunCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+        .find((input) => input.closest("label")?.textContent?.includes("step-5-preview"));
+      await until(() => Boolean(stepfunCheckbox()), "StepFun discovered model");
+      // Exercise explicit selection even when the recommendation preselected it.
+      if (stepfunCheckbox()!.checked) click(stepfunCheckbox());
+      click(stepfunCheckbox());
+      assert(stepfunCheckbox()!.checked, `${locale}: StepFun model was not selected`);
+      await until(() => !control("settings.saveProvider").disabled, "StepFun save enabled");
+      click(control("settings.saveProvider"));
+      await until(() => creates.length === beforeStepfunCreate + 1, "StepFun saved");
+      const savedStepfun = creates.at(-1)!;
+      assert(savedStepfun.vendorKey === "stepfun-step-plan" &&
+        savedStepfun.baseUrl === "https://api.stepfun.com/step_plan/v1" &&
+        savedStepfun.apiStyle === "anthropic_messages", `${locale}: StepFun saved the wrong preset`);
+      assert(savedStepfun.models?.length === 1 && savedStepfun.models[0].id === "step-5-preview",
+        `${locale}: StepFun saved the wrong model selection`);
+      results.push(`${locale}:stepfun-plan-choose-key-discover-select-save`);
       render();
       // A new service opens on the chooser (D625, D626); the custom endpoint
       // leads the API-key tiles, and picking it moves to the form.
@@ -321,8 +367,6 @@ globalThis.providerApiStyleProbe = async () => {
       const codexAccount = { ...fixture("openai_codex_responses"), id: "codex-account", name: "OpenAI OAuth", vendorKey: "openai-codex", type: "native", protocol: "openai", authKind: "oauth" } satisfies ProviderPublic;
       let savedCodexAccount: VendorAccountForm | undefined;
       flushSync(() => root.render(<I18nextProvider i18n={i18n}><VendorAccountDialog provider={codexAccount} initialName={codexAccount.name} onClose={() => { closes++; }} onSave={(form) => { savedCodexAccount = structuredClone(form); }} saving={false} /></I18nextProvider>));
-      const accountAdvanced = document.querySelector<HTMLButtonElement>(".provider-chosen-advanced-toggle");
-      if (accountAdvanced?.getAttribute("aria-expanded") === "false") click(accountAdvanced);
       await pause(650);
       // The account editor opens straight on the model panel (D625): the
       // per-model controls sit behind the row's own Advanced disclosure.

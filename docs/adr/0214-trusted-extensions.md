@@ -51,6 +51,26 @@ replace the desktop runtime with `pi-coding-agent`'s `AgentSession`.
 
 ## Consequences
 
+### Prompt chaining amendment (2026-09-29, issue #1023)
+
+The desktop initially folded `before_agent_start` results while giving every
+handler the original prompt. Two extensions appending to that input therefore
+lost all but the last addition. Chain successful string replacements through a
+turn-local payload, retaining the existing extension and registration order.
+Reuse the runner's isolated handler inputs and lifecycle checks; only timely
+returned strings reach the next handler. Start from a fresh base on each turn.
+
+This matches the sequential prompt replacement behavior of the pinned Pi
+extension runner without sharing mutable handler inputs. A dedicated runner
+entry point keeps this event's composition out of the generic dispatcher and
+leaves other event contracts unchanged. Explicit full replacements still win;
+an additive-only API would require existing extensions to migrate and would not
+fix their current append pattern. Extensions that relied on always seeing the
+original base now see prior successful edits instead. No permissions or message
+roles change, and no provider-cache guarantee is added.
+
+### General consequences
+
 - Users can attach in-process tools, hooks, and commands to the agent loop
   without a new app release.
 - Two extension surfaces coexist and are explained in user documentation as

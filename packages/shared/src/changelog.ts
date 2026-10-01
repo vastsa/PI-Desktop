@@ -30,6 +30,33 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.16.0",
+    date: "2026-10-01",
+    highlights: [
+      "Live Voice is now available to everyone and calls start in the current session.",
+      "Add a session checklist that keeps its authoritative state after the local service restarts.",
+      "Show one-off notices in the shared toast stack instead of blocking dialogs.",
+      "Match model lists against official provider metadata so relay services and model names stay accurate.",
+    ],
+  },
+
+  {
+    version: "0.15.10",
+    date: "2026-09-28",
+    highlights: [
+      "Marketplace plugins now appear in a randomized order instead of alphabetically.",
+    ],
+  },
+
+  {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "Remove obsolete first-launch helper files from macOS DMG and ZIP packages.",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -843,6 +870,33 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.16.0",
+    date: "2026-10-01",
+    highlights: [
+      "实时语音现已面向所有用户开放，通话默认从当前会话开始。",
+      "新增会话级待办清单，本地服务重启后仍会保留权威状态。",
+      "一次性通知改用统一浮层提示，不再弹出阻塞式对话框。",
+      "模型列表与官方元数据对齐，中转服务与模型名称保持准确。",
+    ],
+  },
+
+  {
+    version: "0.15.10",
+    date: "2026-09-28",
+    highlights: [
+      "插件市场列表改为随机顺序展示，不再按名称排序。",
+    ],
+  },
+
+  {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "移除 macOS DMG 和 ZIP 包中已过时的首次启动助手与说明文件。",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -1655,6 +1709,33 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.16.0",
+    date: "2026-10-01",
+    highlights: [
+      "即時語音現已開放給所有使用者，通話預設從目前工作階段開始。",
+      "新增工作階段待辦清單，本機服務重新啟動後仍會保留權威狀態。",
+      "一次性通知改用統一的浮層提示，不再彈出阻擋式對話框。",
+      "模型清單與官方中繼資料對齊，中轉服務與模型名稱保持正確。",
+    ],
+  },
+
+  {
+    version: "0.15.10",
+    date: "2026-09-28",
+    highlights: [
+      "外掛市集改為隨機順序顯示，不再按名稱排序。",
+    ],
+  },
+
+  {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "Remove obsolete first-launch helper files from macOS DMG and ZIP packages.",
+    ],
+  },
+
   {
     version: "0.15.6",
     date: "2026-09-23",

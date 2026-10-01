@@ -128,4 +128,6 @@ export type FsChatRefMatch = {
 
 export type FsChatRefResolveResult = {
   match: FsChatRefMatch | null;
+  /** The supplied absolute path is not inside a project, scratch, or attachment root. */
+  reason?: "outside-allowed-roots";
 };

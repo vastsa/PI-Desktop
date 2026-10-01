@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
-import { generateImageBatch, generateOneImage, type ImageEditInput } from "./index.js";
+import { generateImageBatch, type ImageEditInput } from "./index.js";
+import { generateTestImage } from "./test-fixture.js";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9mQAAAAASUVORK5CYII=", "base64");
 const input: ImageEditInput = { bytes: png, mimeType: "image/png", extension: "png" };
@@ -28,7 +29,7 @@ async function fixture() {
   servers.push(server);
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
-  return { requests, failures, call: (modelId: string, images: ImageEditInput[] = []) => generateOneImage({ baseUrl, modelId }, "A cup", new AbortController().signal, fetch, images) };
+  return { requests, failures, call: (modelId: string, images: ImageEditInput[] = []) => generateTestImage({ baseUrl, modelId }, "A cup", new AbortController().signal, fetch, images) };
 }
 
 it("requests b64_json for DALL-E without sending response_format to GPT Image", async () => {
@@ -81,11 +82,11 @@ it("rejects more than four reference images before reading files or sending HTTP
 
 it("does not leak provider error bodies and bounds JSON before decoding", async () => {
   for (const status of [401, 403, 429, 500]) {
-    await expect(generateOneImage({ baseUrl: "https://example.invalid", modelId: "gpt-image-2.5" }, "cup", new AbortController().signal,
+    await expect(generateTestImage({ baseUrl: "https://example.invalid", modelId: "gpt-image-2.5" }, "cup", new AbortController().signal,
       async () => new Response("private upstream token", { status }),
     )).rejects.toMatchObject({ errorCode: [401, 403].includes(status) ? "IMAGE_AUTH_FAILED" : `IMAGE_HTTP_${status}` });
   }
-  await expect(generateOneImage({ baseUrl: "https://example.invalid", modelId: "gpt-image-2.5" }, "cup", new AbortController().signal,
+  await expect(generateTestImage({ baseUrl: "https://example.invalid", modelId: "gpt-image-2.5" }, "cup", new AbortController().signal,
     async () => new Response("", { headers: { "content-length": "999999999" } }),
   )).rejects.toMatchObject({ errorCode: "IMAGE_TOO_LARGE" });
 });

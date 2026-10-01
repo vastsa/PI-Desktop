@@ -1062,8 +1062,8 @@ Codex parity decisions (D034/D070) supersede any older value here.
 | Composer toolbar | MainChat `≥450px` | Left/right control groups stay on one row and do not shrink; mode/permission labels stay single-line and ellipsize |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
 | Chat message max width | 760px default band (user-resizable, min 560px) / 600px user plate | Band follows `min(pane, preferred)`; user turns stay compact |
-| Window min width | 1040px | Enforced by Electron for the whole app; opening the panel never changes native bounds |
-| Window min height | 700px | Enforced by Electron |
+| Window min width | 800px | Enforced by Electron for the whole app, capped to the current display work area (D635); opening the panel never changes native bounds |
+| Window min height | 560px | Enforced by Electron, capped to the current display work area (D635) |
 
 An open work panel is a fixed-width in-flow column inside the existing client
 area (ADR 0033 / ADR 0151). Its flex allocation comes from MainChat, but MainPane
@@ -1110,8 +1110,8 @@ header-height background behind the excluded lane without covering its controls.
   Frameless titlebar drag regions never replace the OS resize ownership. A
   300ms stable-bounds settle window prevents recovery logic from competing with
   a slow pointer gesture, and normal base bounds persist 600ms after the last
-  native resize/move event. Width < 1040px or height < 700px is unsupported and
-  prevented by Electron.
+  native resize/move event. Electron enforces an 800×560 minimum, capped to the
+  current display's work area (D635); smaller sizes are unsupported.
 
 ## 11. Component foundations
 

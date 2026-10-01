@@ -451,15 +451,18 @@ test("work panel separator exposes internal panel width resizing", () => {
 });
 
 test("Electron enforces the responsive shell minimum", () => {
-  assert.match(mainSource, /const WINDOW_MIN_WIDTH = 1040/);
-  assert.match(mainSource, /const WINDOW_MIN_HEIGHT = 700/);
-  // The window creation clamps the minimum to fit the current work area, so
-  // the props are the clamped `initialMin*` values, both derived from
-  // `windowMin*` via `Math.min(windowMin*, restoreWorkArea.*)`.
+  assert.match(mainSource, /export const WINDOW_MIN_WIDTH = 800/);
+  assert.match(mainSource, /export const WINDOW_MIN_HEIGHT = 560/);
+  // The window creation clamps the minimum to fit the current work area
+  // (issues #544 / #1175), so the props are the clamped `initialMin*` values.
   assert.match(mainSource, /minWidth:\s*initialMinWidth/);
   assert.match(mainSource, /minHeight:\s*initialMinHeight/);
-  assert.match(mainSource, /initialMinWidth = Math\.min\(windowMinWidth/);
-  assert.match(mainSource, /initialMinHeight = Math\.min\(windowMinHeight/);
+  assert.match(
+    mainSource,
+    /\{ width: initialMinWidth, height: initialMinHeight \} =\s*clampMinimumSizeToWorkArea\(/,
+  );
+  // Every unconditional app-minimum reassertion goes through the same clamp.
+  assert.doesNotMatch(mainSource, /setMinimumSize\(windowMinWidth, windowMinHeight\);\n\s*\/\/ Prefer normal layer/);
 });
 
 test("built-in terminal is absent while the work panel keeps its other surfaces", () => {

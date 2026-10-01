@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  WINDOW_MIN_HEIGHT,
+  WINDOW_MIN_WIDTH,
+  WORK_PANEL_CHAT_MIN_WIDTH,
   baseWindowBounds,
+  clampMinimumSizeToWorkArea,
   clampBoundsOriginToWorkArea,
   clampBoundsToWorkArea,
   displayWorkAreaKey,
@@ -25,10 +30,40 @@ test("legacy work-panel edge classifier remains available to geometry helpers", 
 });
 
 test("chat resize IPC accepts only bounded integer widths", () => {
-  assert.equal(parseWorkPanelChatWidth({ width: 1040 }), 1040);
+  assert.equal(parseWorkPanelChatWidth({ width: 800 }), 800);
   assert.equal(parseWorkPanelChatWidth({ width: 10000 }), 10000);
-  assert.equal(parseWorkPanelChatWidth({ width: 1039 }), null);
+  assert.equal(parseWorkPanelChatWidth({ width: 799 }), null);
+  assert.equal(parseWorkPanelChatWidth({ width: 10001 }), null);
   assert.equal(parseWorkPanelChatWidth({ width: 10000.5 }), null);
+});
+
+test("app-wide minimum window size is shared with the chat width floor", () => {
+  assert.equal(WINDOW_MIN_WIDTH, 800);
+  assert.equal(WINDOW_MIN_HEIGHT, 560);
+  assert.equal(WORK_PANEL_CHAT_MIN_WIDTH, WINDOW_MIN_WIDTH);
+});
+
+test("minimum window size is capped to the work area", () => {
+  const scaledWorkArea = { width: 1280, height: 672 };
+  assert.deepEqual(
+    clampMinimumSizeToWorkArea({ width: 1040, height: 700 }, scaledWorkArea),
+    { width: 1040, height: 672 },
+  );
+  assert.deepEqual(
+    clampMinimumSizeToWorkArea(
+      { width: WINDOW_MIN_WIDTH, height: WINDOW_MIN_HEIGHT },
+      workArea,
+    ),
+    { width: 800, height: 560 },
+  );
+  assert.deepEqual(
+    clampMinimumSizeToWorkArea({ width: 800, height: 560 }, { width: 640.7, height: 480.9 }),
+    { width: 640, height: 480 },
+  );
+  assert.deepEqual(
+    clampMinimumSizeToWorkArea({ width: 800, height: 560 }, { width: 0, height: 0.5 }),
+    { width: 1, height: 1 },
+  );
 });
 
 test("display work-area keys change with display geometry", () => {
@@ -485,4 +520,19 @@ test("reservation width parsing rejects coerced and malformed IPC input", () => 
   ]) {
     assert.equal(parseWorkPanelReservationWidth(input), null);
   }
+});
+
+test("display topology changes cap the reserved minimum instead of dropping it", () => {
+  const windowSource = readFileSync(
+    new URL("../electron/main/bootstrap/window.ts", import.meta.url),
+    "utf8",
+  );
+  const handler =
+    windowSource.match(/const reconcileDisplayTopology = \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+  assert.ok(handler, "reconcileDisplayTopology handler not found");
+  assert.match(
+    handler,
+    /clampMinimumSizeToWorkArea\(\s*\{ width: workPanelMinimumWindowWidth\(\), height: windowMinHeight \}/,
+  );
+  assert.doesNotMatch(handler, /\{ width: windowMinWidth, height: windowMinHeight \}/);
 });

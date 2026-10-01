@@ -37,9 +37,12 @@ test("window controls have a compositor layer above Settings destinations", () =
   const chrome = read("src/styles/chrome.css");
   assert.match(chrome, /\.window-controls\s*\{[\s\S]*?z-index:\s*1000/s);
   assert.match(chrome, /\.app-shell\s*>\s*\.window-controls\s*\{[\s\S]*?z-index:\s*1100/s);
-  assert.match(
-    chrome,
-    /\.app-shell\s*>\s*\.search-overlay,\s*\n\.app-shell\s*>\s*\.toast-viewport\s*\{[\s\S]*?z-index:\s*1200/s,
-  );
+  assert.match(chrome, /\.app-shell\s*>\s*\.search-overlay\s*\{[\s\S]*?z-index:\s*1200/s);
   assert.match(chrome, /\.app-shell\s*>\s*\.startup-splash\s*\{[\s\S]*?z-index:\s*1300/s);
+  // The toast stack is not a shell child any more: the shell isolates its
+  // layers, so a stack inside it would be painted under a dialog scrim. It is
+  // hosted on the body, where z-toast (50) keeps outranking z-dialog (40).
+  const toast = read("src/components/Toast.tsx");
+  assert.match(toast, /document\.body\.append\(element\)/);
+  assert.match(toast, /createPortal\(/);
 });

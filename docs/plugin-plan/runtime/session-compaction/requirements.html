@@ -1,0 +1,95 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>session.applyCompaction · 需求描述</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a><span class="sep">/</span><a href="index.html">session-compaction</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+<header class="top">
+  <h1>session.applyCompaction · 需求描述</h1>
+  <div class="meta">status: <b>draft · 设计稿</b> · 会话数据契约 · 规划出处：能力清单审查 N4 · 权限 <code>session.compact.write</code>（新增） · 尚无 SDK 实现</div>
+</header>
+<main>
+
+<section>
+  <h2><span class="n">1</span>用途与边界</h2>
+  <p class="lead">把插件算好的压缩摘要交宿主托管写回：宿主校验后写入压缩记录（挂现有 <code>session.appendCompaction</code> 链），界面显示压缩行，下一轮对话生效。插件永远不直接改消息列表。</p>
+  <pre class="sig">pi.session.applyCompaction(input: { sessionId: string; summary: string; retainedMessageIds?: string[]; reason?: string }): Promise&lt;PluginApplyCompactionResult&gt;</pre>
+  <p>权限：<code>session.compact.write</code>（新增 · high · 装时确认 · 操作界面可见可审计）。</p>
+</section>
+<section>
+  <h2><span class="n">2</span>典型场景</h2>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>DIY 压缩器（主场景）</b></td><td>用 <code>session.getContext</code> 读工作集 → 自算摘要（如 <code>agent.complete</code>）→ 提交本接口写回。</td></tr>
+<tr><td><b>领域压缩</b></td><td>按领域知识压缩（代码讨论保代码块、长文档保结论），比通用摘要更省 token。</td></tr>
+<tr><td><b>用户手动触发</b></td><td>插件面板放「立即压缩」按钮，用户主动瘦身话话。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h2><span class="n">3</span>明确不做什么</h2>
+  <p class="lead">不做静默改写：不提供 <code>replaceMessages</code>，摘要必须进压缩记录、界面可见、带来源戳。不做撤销/回滚（v1；压缩行可见可审计，回滚留后续版本）。summary 只收纯文本。</p>
+</section>
+<section>
+  <h2><span class="n">4</span>已拍板</h2>
+  <ul>
+    <li>权限开新域 <code>session.compact.write</code>（high，装时确认）；不做二次弹窗，靠界面可见 + 审计兜底。</li>
+    <li>实现挂点：宿主现有 <code>session.appendCompaction</code> RPC（已做形状校验、按 id 去重、下一请求生效），主进程注入 pluginId 作来源戳。</li>
+    <li>并发冲突显式报 <code>CONFLICT</code>，配合 <code>session.getContext</code> 的 <code>compactionCursor</code> 做乐观校验。</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type AnimationEvent } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type ToastItem, type ToastVariant } from "../stores/app-store";
 import {
@@ -9,6 +10,10 @@ import {
   IconTriangleAlert,
 } from "./icons";
 import { TooltipButton } from "./ui";
+import {
+  playNotificationChime,
+  shouldPlayToastSound,
+} from "../lib/notification-sound";
 
 const VARIANT_ICON: Record<ToastVariant, typeof IconInfo> = {
   info: IconInfo,
@@ -76,14 +81,52 @@ function ToastCard({ item }: { item: ToastItem }) {
   );
 }
 
+/**
+ * The toast stack lives on the body, not inside the shell.
+ *
+ * `.app-shell` isolates its own layers, and every dialog is portaled to the
+ * viewport overlay host at `z-dialog` (40). A stack rendered inside the shell
+ * paints inside that isolated context, so the dialog scrim covers it — the one
+ * surface a toast has to be seen above. A body-level host puts it back in the
+ * root stacking context, where its own `z-toast` (50) still outranks a dialog.
+ */
+function useToastHost(): HTMLElement | null {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    setHost(element);
+    return () => element.remove();
+  }, []);
+  return host;
+}
+
 /** Global toast stack — mount once per shell, above dialogs (z-toast). */
 export function ToastHost() {
   const toasts = useAppStore((s) => s.toasts);
-  return (
+  const visibleToastIds = useRef<Set<number>>(new Set());
+  const host = useToastHost();
+
+  useEffect(() => {
+    const nextVisibleIds = new Set<number>();
+    let shouldPlay = false;
+    for (const toast of toasts) {
+      nextVisibleIds.add(toast.id);
+      if (shouldPlayToastSound(toast, visibleToastIds.current)) shouldPlay = true;
+    }
+    visibleToastIds.current = nextVisibleIds;
+    if (shouldPlay) playNotificationChime();
+  }, [toasts]);
+
+  // The host is attached in an effect, so the first render deliberately paints
+  // nothing rather than mounting the stack inside the shell it must outrank.
+  if (!host) return null;
+  return createPortal(
     <div className="toast-viewport" aria-live="polite">
       {toasts.map((item) => (
         <ToastCard key={item.id} item={item} />
       ))}
-    </div>
+    </div>,
+    host,
   );
 }

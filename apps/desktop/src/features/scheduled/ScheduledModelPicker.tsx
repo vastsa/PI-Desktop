@@ -40,7 +40,7 @@ export function ScheduledModelPicker({ value, disabled, onChange }: {
     },
   });
   const selectedLabel = provider && selected
-    ? composerModelDisplayName(provider, value.modelId ?? "", selected.displayName)
+    ? composerModelDisplayName(provider, value.modelId ?? "")
     : value.modelId ?? "";
   const label = selected && provider?.enabled
     ? `${provider.name}${providers.some(p => p.id !== provider.id &&

@@ -819,7 +819,7 @@
   border: 2px solid var(--ds-bg-sidebar);
   border-radius: var(--radius-full);
   background: var(--ds-error);
-  color: var(--gray-0);
+  color: var(--ds-bg-primary);
   font-size: var(--text-3xs);
   font-weight: var(--font-weight-semibold);
   line-height: var(--leading-none);
@@ -1087,13 +1087,13 @@
 
 /* Electron resolves app-region hit testing across siblings. The controls must
  * be a later compositor layer than Settings, plugin content, or a work-panel
- * drag header. Direct-child overlays (search, toasts, splash) must still win. */
+ * drag header. Direct-child overlays (search, splash) must still win; the toast
+ * stack is not one of them — it lives on the body so a dialog cannot cover it. */
 .app-shell > .window-controls {
   z-index: 1100;
 }
 
-.app-shell > .search-overlay,
-.app-shell > .toast-viewport {
+.app-shell > .search-overlay {
   z-index: 1200;
 }
 
@@ -1128,7 +1128,7 @@
 }
 
 .window-control-btn.window-control-close:hover {
-  color: var(--gray-0);
+  color: var(--ds-bg-primary);
   background: var(--ds-error);
 }
 

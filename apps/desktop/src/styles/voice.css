@@ -1,7 +1,9 @@
-/* Voice input styles */
+/* Voice input styles. Every colour rides a --ds-* token: the old --color-*
+   aliases never existed in tokens.css, so each value below used to fall back
+   to a hardcoded literal that no contributed theme could reach. */
 
 .voice-active {
-  color: var(--color-danger, #ef4444) !important;
+  color: var(--ds-error) !important;
 }
 
 .voice-mic-active {
@@ -30,8 +32,8 @@
   justify-content: space-between;
   padding: 6px 12px;
   border-radius: var(--radius-xs);
-  background: var(--color-surface-elevated, #1e1e2e);
-  border: 1px solid var(--color-border, #333);
+  background: var(--ds-bg-elevated-opaque);
+  border: 1px solid var(--ds-border-default);
   font-size: var(--text-md);
   gap: 12px;
 }
@@ -52,7 +54,7 @@
   width: 8px;
   height: 8px;
   border-radius: var(--radius-round);
-  background: var(--color-danger, #ef4444);
+  background: var(--ds-error);
   animation: voice-pulse 1.2s ease-in-out infinite;
 }
 
@@ -64,8 +66,8 @@
 .voice-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid var(--color-border, #555);
-  border-top-color: var(--color-primary, #3b82f6);
+  border: 2px solid var(--ds-border-strong);
+  border-top-color: var(--ds-text-primary);
   border-radius: var(--radius-round);
   animation: voice-spin 0.8s linear infinite;
 }
@@ -78,13 +80,13 @@
   width: 80px;
   height: 4px;
   border-radius: var(--radius-3xs);
-  background: var(--color-border, #333);
+  background: var(--ds-bg-active);
   overflow: hidden;
 }
 
 .voice-volume-fill {
   height: 100%;
-  background: var(--color-primary, #3b82f6);
+  background: var(--ds-accent);
   border-radius: var(--radius-3xs);
   transition: width 100ms ease-out;
 }
@@ -94,18 +96,18 @@
   border-radius: var(--radius-3xs);
   font-size: var(--text-sm);
   background: transparent;
-  color: var(--color-text-secondary, #999);
-  border: 1px solid var(--color-border, #444);
+  color: var(--ds-text-secondary);
+  border: 1px solid var(--ds-border-strong);
   cursor: pointer;
   transition: background 150ms;
 }
 
 .voice-cancel-btn:hover {
-  background: var(--color-surface-hover, #2a2a3e);
+  background: var(--ds-bg-hover);
 }
 
 .voice-error {
-  color: var(--color-danger, #ef4444);
+  color: var(--ds-error);
 }
 
 /* ---- Voice settings: wider control column ---- */
@@ -113,4 +115,265 @@
   max-width: none;
 }
 
+.live-voice-control {
+  position: relative;
+}
 
+.live-voice-popup {
+  position: fixed;
+  z-index: 60;
+  visibility: hidden;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(560px, calc(100dvh - 32px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-dialog);
+  color: var(--ds-text-primary);
+}
+
+.live-voice-popup.is-open {
+  visibility: visible;
+}
+
+.live-voice-preparation,
+.live-voice-details {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.live-voice-preparation p,
+.live-voice-details p {
+  margin: 0;
+}
+
+.live-voice-panel-heading,
+.live-voice-service-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.live-voice-panel-heading strong,
+.live-voice-service-label strong {
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+}
+
+.live-voice-service-label,
+.live-voice-transcript-section {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.live-voice-work-disclosure.btn {
+  justify-content: flex-start;
+  gap: 8px;
+  padding-inline: 0;
+  color: var(--ds-text-secondary);
+}
+
+.live-voice-work-disclosure svg:last-child {
+  margin-inline-start: auto;
+  transition: transform 140ms ease;
+}
+
+.live-voice-work-disclosure .is-expanded {
+  transform: rotate(180deg);
+}
+
+.live-voice-start.btn {
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Details has no trigger row in this window any more: the docked widget's
+   button opens it, so it hangs from a fixed point above the composer. */
+.live-voice-details-anchor {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--composer-dock-height, 168px) + 12px);
+  width: 1px;
+  height: 1px;
+}
+
+.live-voice-call-bar {
+  max-width: 480px;
+  padding: 6px 8px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-dialog);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+}
+
+.live-voice-call-row,
+.live-voice-call-status,
+.live-voice-call-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-voice-call-row {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.live-voice-call-status {
+  min-width: 0;
+}
+
+.live-voice-call-status > svg,
+.live-voice-call-status > .voice-spinner,
+.live-voice-call-actions {
+  flex-shrink: 0;
+}
+
+.live-voice-status-text {
+  color: var(--ds-text-secondary);
+}
+
+.live-voice-call-actions {
+  gap: 2px;
+}
+
+.live-voice-call-actions .live-voice-end {
+  color: var(--ds-error);
+}
+
+.live-voice-call-actions .live-voice-muted {
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-active);
+}
+
+.live-voice-call-actions .live-voice-resume {
+  color: var(--ds-warning);
+}
+
+.live-voice-feedback {
+  margin: 4px 4px 2px 25px;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-voice-widget .voice-spinner,
+  .live-voice-widget .voice-mic-active,
+  .live-voice-preparation .voice-spinner {
+    animation: none;
+  }
+
+  .live-voice-work-disclosure svg:last-child {
+    transition: none;
+  }
+}
+
+.live-voice-hint {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.live-voice-work-setup,
+.live-voice-work-operations {
+  display: grid;
+  gap: 8px;
+}
+
+.live-voice-work-operation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+}
+
+.live-voice-work-operation-content {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The bound work session is blocked on a decision the call bar cannot take. */
+.live-voice-decision {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklab, var(--ds-warning) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--ds-warning) 12%, transparent);
+}
+
+.live-voice-decision-title {
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+}
+
+.live-voice-work-selections {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.live-voice-work-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.live-voice-work-summary {
+  color: var(--ds-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.live-voice-error {
+  color: var(--ds-error);
+  font-size: var(--text-sm);
+}
+
+/* The error code stays verbatim: it is what a log line or bug report needs,
+   and translating it would break the lookup the spec documents. */
+.live-voice-error-code {
+  display: block;
+  margin-top: 2px;
+  color: var(--ds-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.live-voice-transcripts {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-tile);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+.live-voice-transcripts p {
+  margin: 0;
+}
+
+.live-voice-transcripts p[data-role="user"] {
+  color: var(--ds-text-secondary);
+}

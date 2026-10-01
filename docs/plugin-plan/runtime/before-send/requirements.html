@@ -1,0 +1,205 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>before-send · 发送后、入队前 · 需求</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">before-send</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html" aria-current="page">需求</a>
+  <a href="data-flow.html">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/before-send</div>
+  <h1>before-send · 需求</h1>
+  <p>发送路径上的唯一拦截点：用户消息已落库、未进 agent。插件可放行（continue）、改写（transform）、拦截（handled）。改写必须留审计。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.send.before</code> · 风险 high · 三动作 continue / transform / handled</div>
+</header>
+
+<main>
+<section>
+  <h2>范围 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>只管 <b>rpc 发送路径</b>上的一刻：用户消息已持久化、还没进 agent 循环。</li>
+    <li>不谈：发送按钮与排队提示（输入区的事）、模型请求改写（before-request，已撤回）、审批卡。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>现状（代码核实） <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li><b>已经在 emit</b>：agent 运行时在发送路径上叫 <code>extensionBeforeSend</code>，事件名 <code>input</code>，权限 <code>runtime.send.before</code>。<br /><span class="cite">feat/528-plugin-slots@<sha> · packages/agent-runtime/src/runtime.ts · extensionBeforeSend</span><br /><span class="cite">feat/528-plugin-slots@<sha> · packages/shared/src/trusted-extensions.ts · SEND_BEFORE / runtime.send.before</span></li>
+    <li><b>三动作</b>：continue / transform / handled。handled 会抛 <code>pluginHandledPromptError</code>，这次发送不进 agent，reason 原样给用户看。</li>
+    <li><b>改写留审计</b>：transform 逐条记入 <code>plugin_rewrites</code>（diff 级）；用户消息行保留原文。<br /><span class="cite">feat/528-plugin-slots@<sha> · packages/agent-runtime/src/runtime.ts · plugin_rewrites 写入</span></li>
+    <li><b>信任档</b>：风险 high，装插件时单独确认；refusal 以 <code>permission_denied</code> 报出，不静默。</li>
+    <li><b>不写状态检查</b>：契约里没有「没轮在跑 → false」——未核到，不编。</li>
+    <li><b>沙箱插件还够不到</b>：沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。</li>
+  </ul>
+  <div class="callout ok"><b>分发机制是现成的。</b>可信扩展运行器统一按权限门控、拒绝已撤回事件、超时按无意见（continue）处理，永不卡死发送。</div>
+  <p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</section>
+
+<section>
+  <h2>契约（建议） <span class="tag proposal">建议</span></h2>
+      <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">何时触发</td><td>每次被接受的发送恰一次；仅在 rpc 发送路径</td></tr>
+      <tr><td class="id">拿到</td><td><code>{ sessionId, turnId, text, images, attachments, source: "rpc" }</code>——完整草稿文案 + 附件引用</td></tr>
+      <tr><td class="id">可返回</td><td>三动作：<code>{ action: "continue" }</code> 放行；<code>{ action: "transform", text }</code> 改写；<code>{ action: "handled", reason }</code> 拦下这一次发送</td></tr>
+      <tr><td class="id">链式顺序</td><td>多个插件按注册顺序依次处理，前一个的输出是后一个的输入</td></tr>
+      <tr><td class="id">改写审计</td><td>每次 transform 记入 <code>plugin_rewrites</code>（diff 级），不可抵赖</td></tr>
+      <tr><td class="id">预算</td><td>现值 30 秒；超时按无意见（continue）处理</td></tr>
+      <tr><td class="id">权限</td><td><code>runtime.send.before</code>，风险 high，装时确认</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>handled = 阻断。</b>reason 必须是给用户看的句子，不是内部日志。</div>
+</section>
+
+<section>
+  <h2>插件场景 <span class="tag proposal">建议</span></h2>
+      <table>
+    <thead><tr><th>#</th><th>场景</th><th>动作</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>外发守门：检测到密钥 / 内网地址等敏感内容，拦下并提示</td><td>handled</td></tr>
+      <tr><td>2</td><td>发送加固：自动为草稿附上会话上下文模板或风格约束</td><td>transform</td></tr>
+      <tr><td>3</td><td>只读观察：统计发送频率、记录外发摘要</td><td>continue</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>本轮拍板 <span class="tag open">待定</span></h2>
+      <table>
+    <thead><tr><th>问题</th><th>选项</th></tr></thead>
+    <tbody>
+      <tr><td>开放对象</td><td>A. 对普通插件开放（装时 high 风险确认，{ADR_SLOTS_ONCE} 的立场）　B. 先限高信任</td></tr>
+      <tr><td>handled 的用户提示形态</td><td>A. 发送按钮侧报错　B. 输入框上方提示条　C. 两者结合</td></tr>
+      <tr><td>预算时长</td><td>A. 维持 30 秒　B. 收紧到 2 秒（对齐 ADR {ADR['broker']} 的设计）</td></tr>
+      <tr><td>改写可见性</td><td>A. 维持现状（审计 + 原文保留，界面不打扰）　B. 改写后在对话里给一行提示</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>明确不做 <span class="tag verified">已核实</span></h2>
+    <ul>
+    <li>不让插件改附件（images / attachments 只读）。</li>
+    <li>不让插件改已落库的用户消息行——原文保留，改写只作用于进 agent 的文本并留审计。</li>
+    <li>不做发送排队 / 撤回——那是输入区与队列的事。</li>
+    <li>不写「没轮在跑 → false」这类状态检查（未核到）。</li>
+    <li>不碰工具参数（与 tool-gate 同一底线：改参数永久排除）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>还没定的事 <span class="tag open">未定</span></h2>
+    <ul>
+    <li>上面四条拍板项。</li>
+    <li>沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。 见「相关条目」。</li>
+  </ul>
+</section>
+
+<p class="omitted">省略：无界面</p>
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

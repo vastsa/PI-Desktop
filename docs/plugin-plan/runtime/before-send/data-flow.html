@@ -1,0 +1,254 @@
+<!-- status: draft -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>before-send · 发送后、入队前 · 数据流</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --host-bg:rgba(76,141,255,.10);
+    --plugin:#c27aff; --plugin-bg:rgba(194,122,255,.10);
+    --slot:#ff8549; --slot-bg:rgba(255,133,73,.10);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px}
+  .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:24px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top .crumb{font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.06em}
+  .top h1{margin:6px 0;font-size:21px;letter-spacing:-.01em}
+  .top p{margin:0;color:var(--text-2);max-width:80ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:920px;margin:0 auto;padding:24px 28px 80px}
+  section{margin:0 0 40px}
+  section > h2{display:flex;align-items:baseline;gap:8px;margin:0 0 10px;font-size:17px;border-top:1px solid var(--line);padding-top:14px}
+  section > h2:first-child{border-top:0;padding-top:0}
+  section > h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section > h2 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+  .tag.verified{color:var(--ok);background:var(--ok-bg)}
+  .tag.proposal{color:var(--warn);background:var(--warn-bg)}
+  .tag.open{color:var(--plugin);background:var(--plugin-bg)}
+  .tag.defect{color:var(--error);background:var(--error-bg)}
+  h3{margin:20px 0 6px;font-size:14.5px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 12px;padding-left:1.2em}
+  li{margin:3px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.03em;text-transform:uppercase}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2);white-space:nowrap}
+  pre{margin:0 0 14px;padding:12px 14px;border-radius:9px;background:#121212;border:1px solid var(--line);overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  pre .k{color:var(--plugin)}
+  pre .c{color:var(--faint)}
+  .callout{margin:0 0 14px;padding:11px 13px;border-radius:9px;background:var(--surface);color:var(--text-2);font-size:13px}
+  .callout.ok{border-left:2px solid var(--ok)}
+  .callout.warn{border-left:2px solid var(--warn)}
+  .callout.error{border-left:2px solid var(--error)}
+  .callout.open{border-left:2px solid var(--plugin)}
+  .callout b{color:var(--text);font-weight:560}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+  .chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .chip.host{color:var(--host);background:var(--host-bg)}
+  .chip.plugin{color:var(--plugin);background:var(--plugin-bg)}
+  .chip.slot{color:var(--slot);background:var(--slot-bg)}
+  .flow{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 0 16px}
+  .flow-head{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em}
+  .flow-head div{padding:9px 14px}
+  .flow-head div + div{border-left:1px solid var(--line)}
+  .flow-head .h{color:var(--host)}
+  .flow-head .s{color:var(--slot)}
+  .flow-head .p{color:var(--plugin)}
+  .flow-body{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .lane{padding:12px 14px;font-size:13px}
+  .lane + .lane{border-left:1px solid var(--line)}
+  .lane ul{margin:0;padding:0;list-style:none}
+  .lane li{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .lane li:last-child{border-bottom:0}
+  .lane .what{display:block;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .lane .why{display:block;color:var(--muted);font-size:12px}
+  .arrow-row{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line);background:var(--surface-2);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow-row div{padding:8px 14px}
+  .arrow-row div + div{border-left:1px solid var(--line)}
+  .arrow-row .x{color:var(--host)}
+  .arrow-row .y{color:var(--plugin)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{display:block;padding:14px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--line);text-decoration:none;color:inherit}
+  .card:hover{border-color:var(--line-2);background:#191919}
+  .card .name{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .card .what{margin:6px 0 0;font-size:13.5px}
+  .card .files{margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .omitted{margin:14px 0 0;padding:11px 13px;border-radius:9px;background:var(--surface);border:1px dashed var(--line-2);color:var(--muted);font-size:13px}
+  .cite{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+</style>
+</head>
+<body>
+
+<nav class="plan-nav">
+  <a href="../../index.html">插件插槽目录</a>
+  <span class="sep">/</span>
+  <a href="index.html">before-send</a>
+  <span class="spacer"></span>
+  <a href="index.html">目录</a>
+  <a href="requirements.html">需求</a>
+  <a href="data-flow.html" aria-current="page">数据流</a>
+</nav>
+
+<header class="top">
+  <div class="crumb">docs/plugin-plan · runtime/before-send</div>
+  <h1>before-send · 数据流</h1>
+  <p>用户按下发送之后、消息进 agent 之前，插件被叫到那一刻发生什么。六节固定：接口约定 / 数据怎么走 / 出错怎么办 / 不提供什么 / 相关条目 / 还没定的事。</p>
+  <div class="meta">status: draft · issue #561 · 权限 <code>runtime.send.before</code> · 风险 high · 三动作 continue / transform / handled</div>
+</header>
+
+<main>
+<!-- ============ 1 接口约定 ============ -->
+<section>
+  <h2><span class="n">1</span>接口约定 <span class="tag proposal">建议</span></h2>
+    <p class="lead">无界面钩子：插件在 agent 侧注册监听，权限 <code>runtime.send.before</code>，风险 high，装时确认。</p>
+<pre><span class="c">// 插件 headless 入口注册（建议形态）</span>
+pi.on(<span class="k">"input"</span>, async (payload) =&gt; {
+  <span class="c">// payload: { sessionId, turnId, text, images, attachments, source: "rpc" }</span>
+  <span class="k">if</span> (<span class="k">await</span> hasSecret(payload.text)) {
+    <span class="k">return</span> { <span class="k">action</span>: <span class="c">"handled"</span>, <span class="k">reason</span>: <span class="c">"检测到疑似密钥，已拦下这次发送"</span> };
+  }
+  <span class="k">return</span> { <span class="k">action</span>: <span class="c">"continue"</span> };
+})</pre>
+    <table>
+    <thead><tr><th>方面</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td class="id">输入</td><td><code>{ sessionId, turnId, text, images, attachments, source: "rpc" }</code></td></tr>
+      <tr><td class="id">输出</td><td>三动作：<code>continue</code> / <code>transform</code>（带 <code>text</code>）/ <code>handled</code>（带 <code>reason</code>）</td></tr>
+      <tr><td class="id">顺序</td><td>多插件按注册顺序链式；改写逐条记 <code>plugin_rewrites</code></td></tr>
+      <tr><td class="id">预算</td><td>30 秒（现值）；超时 = 无意见 = continue</td></tr>
+      <tr><td class="id">权限</td><td><code>runtime.send.before</code>，high，装时确认</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 2 数据怎么走 ============ -->
+<section>
+  <h2><span class="n">2</span>数据怎么走 <span class="tag verified">已核实</span></h2>
+    <div class="legend">
+    <span><span class="chip host">host</span> 宿主 / 内核</span>
+    <span><span class="chip slot">slot</span> 钩子边界</span>
+    <span><span class="chip plugin">plugin</span> 插件</span>
+  </div>
+  <div class="flow">
+    <div class="flow-head">
+      <div class="h">宿主</div>
+      <div class="s">钩子边界</div>
+      <div class="p">插件</div>
+    </div>
+    <div class="flow-body">
+      <div class="lane"><ul>
+          <li><span class="what">用户消息落库</span><span class="why">原文先持久化</span></li>
+          <li><span class="what">叫钩子</span><span class="why">按权限门控 + 30s 预算</span></li>
+          <li><span class="what">链式收集三动作</span><span class="why">transform 逐条记审计</span></li>
+          <li><span class="what">handled → 阻断</span><span class="why">不进 agent，reason 给用户</span></li>
+          <li><span class="what">最终文本进 agent</span><span class="why">消息行保留原文</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">可信运行器分发</span><span class="why">拒绝已撤回事件</span></li>
+          <li><span class="what">超时 = 无意见</span><span class="why">永不卡死发送</span></li>
+          <li><span class="what">refusal 可见</span><span class="why">permission_denied 报出</span></li>
+          <li><span class="what">沙箱缺口</span><span class="why">未接（ADR 0300）</span></li>
+      </ul></div>
+      <div class="lane"><ul>
+          <li><span class="what">收到完整草稿</span><span class="why">text + 附件引用</span></li>
+          <li><span class="what">三选一返回</span><span class="why">continue / transform / handled</span></li>
+          <li><span class="what">改写不可抵赖</span><span class="why">diff 进 plugin_rewrites</span></li>
+          <li><span class="what">不能改的</span><span class="why">附件、消息行、工具参数</span></li>
+      </ul></div>
+    </div>
+    <div class="arrow-row">
+      <div class="x">payload 下发 →</div>
+      <div class="x">链式传递 →</div>
+      <div class="y">← 三动作返回</div>
+    </div>
+  </div>
+  <h3>一次发送的一生</h3>
+    <table>
+    <thead><tr><th>时刻</th><th>发生什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">落库</td><td>用户消息行先持久化（原文）</td></tr>
+      <tr><td class="id">钩子</td><td>注册了的插件按序被叫</td></tr>
+      <tr><td class="id">链上</td><td>每个插件三选一；transform 改写进入下一个插件并留审计</td></tr>
+      <tr><td class="id">有人 handled</td><td>发送被阻断，reason 呈给用户；链中止</td></tr>
+      <tr><td class="id">全部放行 / 改写完</td><td>最终文本交给 agent，本轮开始</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>原文与进 agent 的文本是两份。</b>对话里显示、存储、编辑回填的都是原文；改写只作用于交给模型的那份，且逐条可审计。</div>
+</section>
+
+<!-- ============ 3 出错怎么办 ============ -->
+<section>
+  <h2><span class="n">3</span>出错怎么办 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>情况</th><th>结果</th><th>靠什么保证</th></tr></thead>
+    <tbody>
+      <tr><td class="id">插件超时</td><td>按无意见（continue）处理，发送不被卡死</td><td>30 秒预算</td></tr>
+      <tr><td class="id">插件抛错</td><td>该插件本轮无意见 + 诊断记录</td><td>运行器的拒绝与诊断</td></tr>
+      <tr><td class="id">handled</td><td>发送阻断，reason 给用户</td><td>内核发送路径</td></tr>
+      <tr><td class="id">无权限</td><td><code>permission_denied</code>，不静默</td><td>叫钩子前权限门控</td></tr>
+      <tr><td class="id">沙箱插件</td><td>目前根本收不到</td><td>ADR 0300 待实现</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 4 不提供什么 ============ -->
+<section>
+  <h2><span class="n">4</span>不提供什么 <span class="tag verified">已核实</span></h2>
+      <table>
+    <thead><tr><th>不给</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td class="id">附件的写权</td><td>images / attachments 只读</td></tr>
+      <tr><td class="id">消息行的写权</td><td>原文已落库，属于用户数据；改写仅作用于模型输入并留审计</td></tr>
+      <tr><td class="id">工具参数</td><td>改参数永久排除（{ADR_SLOTS_ONCE}）</td></tr>
+      <tr><td class="id">队列与撤回</td><td>发送排队、撤回是输入区 / 队列的事</td></tr>
+      <tr><td class="id">整段对话</td><td>这里只有这一条草稿；要读历史走 <code>runtime.turn.recap</code> 等接口</td></tr>
+      <tr><td class="id">状态检查闸门</td><td>不提供「没轮在跑 → false」——未核到，不写进契约</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 5 相关条目 ============ -->
+<section>
+  <h2><span class="n">5</span>相关条目</h2>
+      <table>
+    <thead><tr><th>谁</th><th>关系</th><th>位置</th></tr></thead>
+    <tbody>
+      <tr><td class="id">composer</td><td>发送按钮与排队在那边；这边只管已发出的那一刻</td><td><code>ui/composer/</code></td></tr>
+      <tr><td class="id">tool-gate</td><td>工具层的观察 / 拦截，改参数边界一致</td><td><code>runtime/tool-gate/</code></td></tr>
+      <tr><td class="id">before-request</td><td>模型请求层改写——已撤回；出站拦截改走本钩子</td><td><code>runtime/before-request/</code></td></tr>
+      <tr><td class="id">ADR 0300</td><td>沙箱插件接钩子的通道设计（未建）——沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。</td><td><code>docs/adr/0300</code></td></tr>
+      <tr><td class="id">ADR 0303</td><td>运行时槽位与权限的既定模型</td><td><code>docs/adr/0303</code></td></tr>
+    </tbody>
+  </table>
+  <p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</section>
+
+<!-- ============ 6 还没定的事 ============ -->
+<section>
+  <h2><span class="n">6</span>还没定的事</h2>
+    <p style="color:var(--text-2)">开放对象、handled 的用户提示形态、预算时长、改写可见性——见 requirements.html 的「本轮拍板」。</p>
+  <p style="color:var(--muted);font-size:13px">沙箱插件的接线通道（ADR 0300）未建——注册、预算、熔断都还没有。见本页「相关条目」。</p>
+</section>
+
+<p style="color:var(--faint);font-size:12px">引用中的 <sha> 为占位，合并前用 feat/528-plugin-slots 当时的提交号重戳。</p>
+</main>
+</body>
+</html>

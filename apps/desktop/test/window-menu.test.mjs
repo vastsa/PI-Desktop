@@ -145,6 +145,35 @@ test("developer mode gates every devtools entry point in the main process", () =
   );
 });
 
+test("the main app shell consumes unmodified Ctrl+R before Chromium reloads", () => {
+  const handlerStart = mainSource.indexOf(
+    'window.webContents.on("before-input-event"',
+  );
+  const handlerEnd = mainSource.indexOf("\n  });", handlerStart);
+  const handler = mainSource.slice(handlerStart, handlerEnd);
+  const reloadGuard = handler.slice(
+    handler.indexOf("if (isReloadChord)"),
+    handler.indexOf("const isPluginLauncherChord"),
+  );
+  assert.match(
+    handler,
+    /const isReloadChord =\s*input\.type === "keyDown" &&\s*input\.code === "KeyR" &&\s*input\.control &&\s*!input\.meta &&\s*!input\.alt &&\s*!input\.shift;/,
+  );
+  assert.match(reloadGuard, /event\.preventDefault\(\);\s*return;/);
+  assert.ok(
+    handler.indexOf("if (isReloadChord)") <
+      handler.indexOf("const isPluginLauncherChord"),
+    "reload prevention must run before other focused-window shortcuts",
+  );
+  assert.ok(
+    handler.indexOf("if (isReloadChord)") <
+      handler.indexOf(
+        'if (input.type !== "keyDown" || !windowState.developerMode) return;',
+      ),
+    "reload prevention must not depend on developer mode",
+  );
+});
+
 test("Windows and Linux use menu-free frameless chrome with window controls", () => {
   assert.match(
     mainSource,
