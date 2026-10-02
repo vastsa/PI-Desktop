@@ -80,14 +80,18 @@ test("every returned model is enriched through the published Pi catalog regardle
   assert.match(handler, /catalogModels\.map\(\(model\) => decorate\(model\)\)/);
 });
 
-test("a live answer no longer re-adds configured bindings the endpoint dropped", () => {
-  // Issue #1257: a key that lost model entitlement upstream must see the dead
-  // models disappear after a refresh. Only the catalog and fallback branches —
-  // which answer without the endpoint — keep the configured ids visible.
+test("the live answer unions configured bindings but persists only served rows", () => {
+  // Issue #1257 is about *persistence*: the durable cache must narrow to what
+  // the endpoint still serves (`forget_missing_discovered_models`), while the
+  // settings return unions configured bindings so their published record stays
+  // readable (model-advanced-capabilities). The live branch therefore keeps
+  // the union, and only endpoint-served rows reach `cacheForCurrentProvider`.
   const cacheCallAt = handler.indexOf("await cacheForCurrentProvider(models);");
   const liveBranch = handler.slice(cacheCallAt, handler.indexOf('source: "remote" as const', cacheCallAt));
-  assert.ok(!liveBranch.includes("withConfiguredBindings"),
-    "the live branch must return exactly what the endpoint served");
+  assert.ok(liveBranch.includes("withConfiguredBindings(models)"),
+    "the live return keeps configured-record enrichment for the settings panel");
+  assert.ok(liveBranch.indexOf("cacheForCurrentProvider(models)") < liveBranch.indexOf("withConfiguredBindings(models)"),
+    "the cache write sees only the endpoint-served rows, before the union");
   assert.ok(handler.slice(handler.indexOf("modelsDevCatalog.modelsForProvider(")).includes("withConfiguredBindings("),
     "the catalog fallback keeps configured bindings so offline editing stays usable");
 });
