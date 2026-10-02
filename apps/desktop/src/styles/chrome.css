@@ -593,6 +593,45 @@
   line-height: var(--leading-compact);
 }
 
+/*
+ * Where a scheduled run's conversation was opened from: the session list keeps
+ * automation transcripts out of the project groups, so this is the way back to
+ * the task and the run the reader was reading. It sits in the title's own lane,
+ * so a long task title truncates exactly as it did before.
+ */
+.conversation-topbar .ct-back {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 24px;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0 8px 0 4px;
+  background: transparent;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.conversation-topbar .ct-back:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.conversation-topbar .ct-back-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
+}
+
 /* One geometry and one seat for every chrome icon control: the topbar's dock
    toggle, the viewport-fixed work-panel toggle, the preview/route-band lane
    actions, and the work-panel header's create and maximize controls. The seat is

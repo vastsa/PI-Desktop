@@ -1,6 +1,6 @@
 # ADR 0027: Make pi-ai authoritative for model metadata
 
-- Status: Accepted
+- Status: Superseded for chat metadata by [models.dev catalog authority](models-dev-catalog-authority.md)
 - Date: 2026-07-27
 
 ## Context

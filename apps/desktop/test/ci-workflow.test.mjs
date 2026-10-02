@@ -150,17 +150,69 @@ test("manual Linux package validation covers the RPM desktop identity", () => {
 test("release workflow publishes the Linux ASAR beside installers", () => {
   assert.match(
     releaseWorkflowSource,
-    /if: matrix\.platform == 'linux'[\s\S]*?node scripts\/export-linux-asar\.mjs/,
+    /if: matrix\.platform == 'linux'[\s\S]*?node scripts\/export-linux-asar\.mjs --arch \$\{\{ matrix\.arch \}\}/,
   );
   assert.match(releaseWorkflowSource, /apps\/desktop\/release\/\*\.asar/);
   assert.match(
     releaseAsarScriptSource,
-    /linux-unpacked\/resources\/app\.asar/,
+    /linuxUnpackedDirName\(releaseArch\)\}\/resources\/app\.asar/,
   );
   assert.match(
     releaseAsarScriptSource,
-    /PI-Desktop-\$\{releaseVersion\}-linux-x64\.asar/,
+    /PI-Desktop-\$\{releaseVersion\}-linux-\$\{releaseArch\}\.asar/,
   );
+});
+
+test("the release matrix ships native Linux x64 and arm64 lanes", () => {
+  assert.match(
+    releaseWorkflowSource,
+    /name: Linux arm64[\s\S]*?os: ubuntu-22\.04-arm[\s\S]*?arch: arm64[\s\S]*?runner_arch: aarch64[\s\S]*?artifact: linux-arm64[\s\S]*?platform: linux[\s\S]*?dist: dist:linux/,
+    "the arm64 lane runs on a native arm64 runner",
+  );
+  // A runner that is not the architecture it packages would pair one
+  // architecture's Electron app with the other's Rust sidecar.
+  assert.match(
+    releaseWorkflowSource,
+    /name: Verify native runner architecture[\s\S]*?if: matrix\.runner_arch/,
+  );
+  // electron-builder already names each Linux lane's feed after its own
+  // architecture (`latest-linux.yml` on x64, `latest-linux-arm64.yml` on
+  // arm64) — the names electron-updater requests — so the lanes cannot
+  // overwrite each other's feed during the publish merge, and the lane
+  // verifies the name it will publish instead of renaming it.
+  assert.match(
+    releaseWorkflowSource,
+    /name: Verify the Linux update feed[\s\S]*?feed="apps\/desktop\/release\/\$\{\{ matrix\.feed \}\}"/,
+  );
+  assert.match(releaseWorkflowSource, /feed: latest-linux\.yml/);
+  assert.match(releaseWorkflowSource, /feed: latest-linux-arm64\.yml/);
+  // The pi-host bundles the SSH bootstrap installs track the desktop's Linux
+  // lanes one for one.
+  assert.match(
+    releaseWorkflowSource,
+    /pi-host-bundle:[\s\S]*?- arch: x64[\s\S]*?os: ubuntu-22\.04[\s\S]*?- arch: arm64[\s\S]*?os: ubuntu-22\.04-arm/,
+  );
+});
+
+test("the Linux package config lets the workflow choose the architecture", () => {
+  const build = JSON.parse(desktopPackageSource).build;
+  // electron-builder prefers a target's configured arch list over the CLI
+  // `--x64`/`--arm64` flag, so pinning both here would make each Linux lane
+  // build the other architecture around its own native host-core.
+  for (const entry of build.linux.target) {
+    assert.equal(
+      entry.arch,
+      undefined,
+      `linux target ${entry.target} must not pin an arch`,
+    );
+  }
+  assert.match(
+    build.linux.artifactName,
+    /-linux-\$\{arch\}\.\$\{ext\}$/,
+    "the AppImage name carries its architecture",
+  );
+  assert.equal(build.deb.artifactName, "pi-desktop_${version}_${arch}.${ext}");
+  assert.equal(build.rpm.artifactName, "pi-desktop-${version}-${arch}.${ext}");
 });
 
 test("release matrix packages both native macOS architectures", () => {

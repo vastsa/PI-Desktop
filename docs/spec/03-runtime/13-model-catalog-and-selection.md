@@ -14,8 +14,8 @@ Therefore:
 ## 2. Selection UX
 
 Model configuration is **discovery-first**: the AI service is the authority on
-which models it serves, so the service's own endpoint is asked first and
-Pi catalog is used only to enrich what came back. The bundled catalog is never
+which models it serves, so the service's own endpoint is asked first and the
+models.dev catalog is used only to enrich what came back. The bundled catalog is never
 presented as a browsable list of every published model — a deployment does not
 necessarily host everything its vendor publishes, and a key is not necessarily
 entitled to it.
@@ -69,8 +69,11 @@ entitled to it.
   mapping, the runtime sends that canonical value through to the adapter rather
   than letting the adapter clamp it to `high`. Existing non-null catalog
   mappings remain authoritative for providers that translate the level.
-- The wire API is derived from the provider's published `npm` adapter
-  (`apiStyleForAdapter`) and is only editable inside **Advanced**.
+- Named service defaults may derive their wire API from the provider's
+  published `npm` adapter (`apiStyleForAdapter`). A custom endpoint's saved
+  API style is the selected gateway format and takes precedence over a model's
+  published adapter; named and OAuth providers may keep a model-level wire API
+  pin when their catalog requires it.
 - A custom model ID is always accepted, so a gateway without a `/models` route
   stays usable.
 
@@ -136,7 +139,12 @@ The answer also replaces the previous one. A probe that no longer publishes a
 model drops that model's row, so the pane stops painting a model the endpoint
 retired and a hand-typed id stops inheriting its old limits; a row whose source
 is not discovery — the user's own — is never dropped this way, and a configured
-binding stays visible even when the service stops listing it. Cached rows carry
+binding stays visible in the chosen-model pane even when the service stops
+listing it. After a live refresh, the service-model pane displays only rows
+actually served, excluding configured-only rows marked `source: "user"`.
+Catalog enrichment preserves that origin independently of published metadata;
+cache, catalog and manual fallbacks still expose configured rows for editing.
+Cached rows carry
 no endpoint of their own, so a save that moves the base URL or the wire format
 drops the answer the previous endpoint produced, and the next probe records the
 new one. A failed or empty probe is not an answer: it never reaches the cache,
@@ -251,16 +259,16 @@ If user selects model tagged without tools while in Agent mode:
 
 ## 6. Refresh behavior
 
-The pinned pi-ai 0.99.1 catalog is the startup baseline. Startup reads no remote
-catalog and uses no ambient credentials. `providers.refreshModelCatalog` invokes
-Pi's public refresh API; settings metadata lookups themselves are local.
+The bundled models.dev snapshot is the startup baseline. Startup reads no
+remote catalog and uses no ambient credentials. `providers.refreshModelCatalog`
+refreshes models.dev explicitly; settings metadata lookups themselves are local.
 
-For keyed endpoints, live discovery supplies IDs and the central Pi catalog
-adapter enriches their metadata. For OAuth, the account provider refresh hook
-publishes live entitlement IDs into its existing Models collection. Successful
-account lists are authoritative; a failed list preserves the pinned baseline.
-Same-tier fallback for live-only IDs preserves transport and thinking behavior
-but cannot invent known prices.
+For keyed endpoints, live discovery supplies IDs and models.dev enriches their
+metadata. For OAuth, the live account endpoint supplies entitled IDs, which are
+then enriched from models.dev. Successful account lists are authoritative; a
+failed list preserves the last usable IDs. A live-only ID with no models.dev
+match stays generic; pi-ai sibling metadata never supplies its chat limits,
+reasoning or price.
 
 `source: "cache"` reads Host caches and configured bindings without network.
 `source: "refresh"` probes the selected endpoint/account and decorates returned
@@ -277,9 +285,9 @@ If refresh fails / offline:
 - allow custom model id
 - still allow providers with known model ids
 - when a saved provider cache is empty or partial, append every configured
-  model binding before applying Pi catalog metadata decoration, so multi-model
+  model binding before applying models.dev metadata decoration, so multi-model
   settings remain editable and per-model capability state stays aligned
-- if no matching pinned Pi metadata is available offline, keep the configured IDs visible with generic text-only metadata
+- if no matching bundled models.dev metadata is available offline, keep the configured IDs visible with generic metadata
 
 ## 8. Catalog item schema
 
@@ -306,7 +314,7 @@ type ModelCatalogItem = {
     "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
   >
   /** Which known catalog supplied metadata for this row. */
-  catalogSource?: "pi"
+  catalogSource?: "models.dev"
 }
 ```
 
@@ -316,13 +324,13 @@ When UI/search requests models for picker:
 
 1. recent models for enabled providers
 2. user-defined models
-3. Pi catalog records for the matching provider/API URL
+3. models.dev records for the matching provider/API URL
 4. provider discovery/cache for custom or account-specific models
 5. always include "custom model id" entry action
 
 Deduplicate by `(providerId, modelId)` with priority:
-`user > Pi catalog > provider-discovered > recent-only`. The `catalogSource`
-field records a Pi catalog match; a provider cache stores only normalized
+`user > models.dev catalog > provider-discovered > recent-only`. The `catalogSource`
+field records a models.dev match; a provider cache stores only normalized
 selection fields and is re-decorated from the local raw catalog on the next
 read.
 
@@ -333,11 +341,11 @@ model window and output cap. Bindings record their provenance independently:
 `contextWindowSource` belongs to `contextWindow`, and `maxTokensSource` belongs
 to `maxTokens`.
 
-- `catalog` — that limit is a Pi catalog snapshot, so a later correction to its
-  published field replaces it. A refreshed context such as `gpt-5.6-luna`
+- `catalog` — that limit is a models.dev snapshot, so a later correction to its
+  published field replaces it. A refreshed context such as `gpt-6.1-sol`
   (`1,050,000` tokens) stops appearing as a 128k model, and a row added while
   nothing published its id stops reporting the generic 8.2k output once the
-  record resolves. Only a resolved Pi catalog record counts as published: when
+  record resolves. Only a resolved models.dev record counts as published: when
   lookup falls back to the generic shape (for example a gateway serving an id
   several publishers list), its 128k / 8.2k values are not a correction and the
   stored catalog snapshot stays in force.
@@ -350,8 +358,11 @@ Bindings written before either marker preserve their stored window and output
 cap, including 128,000 and 8,192, because old records cannot distinguish generic
 seeds from user choices. Only explicit `catalog` provenance follows later
 corrections. Unknown models use conservative
-128k / 8.2k limits and are never promoted from an ID pattern alone. Both markers
-are optional, so old configs remain readable and downgrade clients ignore them.
+128k / 8.2k runtime limits and are never promoted from an ID pattern alone.
+Settings shows an em dash for an unpublished limit unless the user explicitly
+configured that value; the Advanced inputs retain the conservative runtime
+limits until the user edits them. Both markers are optional, so old configs
+remain readable and downgrade clients ignore them.
 
 The configured user value remains persisted and visible in Advanced settings, but
 provider safety does not trust an enlarged override beyond a known published
@@ -502,10 +513,10 @@ generic metadata and explicit binding overrides.
 - refresh failures keep previous cache and surface non-fatal error
 
 Electron decorates cached and freshly returned model rows from the local
-Pi catalog snapshot. Runtime model resolution passes the same full Pi catalog
-configuration to the selected pi-ai transport adapter. Provider discovery
-remains an ID-only fallback for custom/account-specific models absent from the
-snapshot.
+models.dev snapshot. Runtime model resolution uses the same resolved metadata
+for limits and capabilities while pi-ai remains the selected transport
+adapter. Provider discovery remains the ID source for custom/account-specific
+models absent from the snapshot.
 
 ## 13. Search behavior
 
@@ -558,11 +569,12 @@ same model to the check mark, the toggle and the duplicate guard.
 - [ ] the settings picker always exposes the canonical thinking ladder;
       published levels seed known models and explicit binding levels clamp the
       same way in Composer, Electron main, and the pi sidecar
-- [ ] Pi catalog metadata wins for a matching provider/model; an ID absent from
-      it uses the generic shape while pi-ai supplies only transport/OAuth
+- [ ] models.dev metadata wins for a matching provider/model; an ID absent from
+      it uses the generic shape while pi-ai supplies only transport/OAuth and
+      typed non-chat operation support
 - [ ] provider settings and cached discovery cannot replace known catalog
       capabilities; explicit binding edits remain persisted configuration
-- [ ] a Pi catalog limit correction reaches an already saved `catalog` binding
+- [ ] a models.dev limit correction reaches an already saved `catalog` binding
       without deleting and re-adding the model, while a number the user entered in
       Advanced (`user`) survives every correction, a hand-entered `128,000`
       included
@@ -572,7 +584,7 @@ same model to the check mark, the toggle and the duplicate guard.
 - [ ] the provenance marker survives a provider save/read round trip and an
       unmarked record keeps working
 - [ ] unknown free-form models remain runnable without invented capabilities
-- [ ] a Pi catalog record and an unknown generic record resolve through the same
+- [ ] a models.dev record and an unknown generic record resolve through the same
       selected transport without sending provider credentials to the remote catalog
 - [ ] compact limit text never reads above the published value, keeps the
       neighbouring 1M-line windows apart (`1M` / `1.05M` / `1.1M`), and never

@@ -1,22 +1,16 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import {
+  bundleAgentRuntime,
+  writeBundlePackageManifest,
+} from "../../../packages/agent-runtime/scripts/bundle.mjs";
 
-// Issue #507: packaged installs copy packages/agent-runtime/dist-bundle to
-// resources/agent-runtime via electron-builder extraResources. The esbuild
-// output is ESM (.js entry + import banner), but Node resolves module type
-// from the nearest package.json. Without dist-bundle/package.json declaring
-// "type":"module", sidecar.js loads as CommonJS and dies at startup.
-//
-// Tradeoff: the unit suite asserts the bundle-script contract (source + a
-// real execution of the chained write step in a temp dir) instead of running
-// full esbuild. A full bundle depends on a freshly built packages/shared/dist
-// and takes multi-second CPU time, which is too heavy/flaky for this runner;
-// packaging CI already rebuilds workspace deps before bundling.
-
+// The split ESM output uses relative chunk imports. Electron packaging copies
+// the complete dist-bundle directory, including its module-type marker.
 const desktopPackageJson = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
@@ -26,8 +20,11 @@ const agentRuntimePackageJson = JSON.parse(
     "utf8",
   ),
 );
-
 const bundleScript = agentRuntimePackageJson.scripts.bundle ?? "";
+const bundleSource = await readFile(
+  new URL("../../../packages/agent-runtime/scripts/bundle.mjs", import.meta.url),
+  "utf8",
+);
 
 test("desktop packaging ships the whole agent-runtime dist-bundle directory", () => {
   const entry = desktopPackageJson.build.extraResources.find(
@@ -40,82 +37,153 @@ test("desktop packaging ships the whole agent-runtime dist-bundle directory", ()
       from: "../../packages/agent-runtime/dist-bundle",
       to: "agent-runtime",
     },
-    "extraResources must copy dist-bundle (including its package.json) to resources/agent-runtime",
+    "extraResources must copy the entry, package marker, and chunks to resources/agent-runtime",
   );
 });
 
-test("agent-runtime bundle emits an ESM sidecar entry", () => {
-  assert.match(bundleScript, /esbuild\b/);
-  assert.match(bundleScript, /--format=esm\b/);
-  assert.match(bundleScript, /--outfile=dist-bundle\/sidecar\.js\b/);
+test("agent-runtime bundle uses hashed ESM chunks and a stable sidecar entry", () => {
+  assert.equal(bundleScript, "node scripts/bundle.mjs");
+  assert.match(bundleSource, /splitting:\s*true/);
+  assert.match(bundleSource, /outdir:\s*stagingDir/);
+  assert.match(bundleSource, /entryNames:\s*"sidecar"/);
+  assert.match(bundleSource, /chunkNames:\s*"chunks\/\[name\]-\[hash\]"/);
+  assert.match(bundleSource, /format:\s*"esm"/);
+  assert.match(bundleSource, /createRequire as __piCreateRequire/);
+  assert.match(bundleSource, /rename\(stagingDir, outputDir\)/);
 });
 
-test("agent-runtime bundle writes dist-bundle/package.json with type module", () => {
-  // The write must be chained after esbuild so a successful bundle always
-  // produces the ESM marker that electron-builder will ship beside sidecar.js.
+test("agent-runtime bundle declares the bundled-Node flag for the extension loader", () => {
   assert.match(
-    bundleScript,
-    /&&/,
-    "bundle must chain the package.json write after esbuild so it cannot be skipped on success",
-  );
-  assert.match(
-    bundleScript,
-    /dist-bundle\/package\.json/,
-    "bundle must write dist-bundle/package.json",
-  );
-  // Accept either JSON ("type":"module") or a JS object literal
-  // ({ type: 'module' }) inside the chained node -e write.
-  assert.match(
-    bundleScript,
-    /(?:["']type["']|type)\s*:\s*["']module["']/,
-    'dist-bundle/package.json must set "type":"module"',
+    bundleSource,
+    /define:\s*\{\s*PI_BUNDLED_NODE:\s*"true"\s*\}/,
+    "bundle must define PI_BUNDLED_NODE for packaged native Pi extensions",
   );
 });
 
-test("the chained write step produces a package.json Node will treat as ESM", async () => {
-  const writeStep = bundleScript
-    .split("&&")
-    .map((part) => part.trim())
-    .find((part) => part.includes("dist-bundle/package.json"));
-
-  assert.ok(
-    writeStep,
-    "bundle script must contain a chained write step for dist-bundle/package.json",
-  );
-
+test("the bundle manifest helper produces a package.json Node treats as ESM", async () => {
   const workDir = await mkdtemp(join(tmpdir(), "pi-agent-runtime-bundle-"));
   try {
-    await mkdir(join(workDir, "dist-bundle"), { recursive: true });
+    const bundleDir = join(workDir, "dist-bundle");
+    await mkdir(bundleDir, { recursive: true });
+    await writeBundlePackageManifest(bundleDir);
 
-    // Execute the real write command from package.json against a scratch
-    // dist-bundle so the payload (not just the source string) is validated.
-    execFileSync("bash", ["-c", writeStep], {
-      cwd: workDir,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    const written = JSON.parse(
-      await readFile(join(workDir, "dist-bundle/package.json"), "utf8"),
-    );
+    const written = JSON.parse(await readFile(join(bundleDir, "package.json"), "utf8"));
     assert.equal(
       written.type,
       "module",
-      'dist-bundle/package.json must declare {"type":"module"} so sidecar.js loads as ESM',
+      'dist-bundle/package.json must declare {"type":"module"} for the entry and chunks',
     );
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
 });
 
-test("agent-runtime bundle declares the bundled-Node flag for the kernel extension loader", () => {
-  // pi-coding-agent's extension loader embeds typebox and the kernel modules
-  // only for compiled or bundled Node distributions. Without the define it
-  // resolves them from the importing file, which a packaged install under
-  // resources/agent-runtime cannot satisfy, so every native Pi extension fails
-  // with "Cannot find module 'typebox'" (see bundle.test.ts for the behavior).
-  assert.match(
-    bundleScript,
-    /--define:PI_BUNDLED_NODE=true\b/,
-    "bundle must define PI_BUNDLED_NODE so the packaged sidecar can load native Pi extensions",
-  );
-});
+test(
+  "split sidecar starts outside node_modules and loads native session chunks on demand",
+  { timeout: 60_000 },
+  async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "pi-agent-runtime-sidecar-"));
+    const bundleDir = join(workDir, "resources", "agent-runtime");
+    let child;
+    try {
+      await mkdir(join(bundleDir, "chunks"), { recursive: true });
+      await writeFile(join(bundleDir, "chunks", "stale.js"), "stale build output");
+      await bundleAgentRuntime(bundleDir);
+      assert.equal(
+        (await readdir(join(bundleDir, "chunks"))).includes("stale.js"),
+        false,
+        "replacing a bundle must not ship stale chunks from an earlier build",
+      );
+      const sidecarSource = await readFile(join(bundleDir, "sidecar.js"), "utf8");
+      assert.ok(
+        Buffer.byteLength(sidecarSource) < 500 * 1024,
+        `sidecar entry must stay below esbuild's 500 KiB size-warning threshold; got ${Buffer.byteLength(sidecarSource)} bytes`,
+      );
+      assert.match(sidecarSource, /import\(["']\.\/chunks\/native-pi-session-/);
+      assert.match(sidecarSource, /import\(["']\.\/chunks\/runner-/);
+
+      const childEnv = {
+        ...process.env,
+        HOME: workDir,
+        USERPROFILE: workDir,
+        TMPDIR: workDir,
+      };
+      delete childEnv.NODE_PATH;
+      delete childEnv.PI_DESKTOP_PROXY_JSON;
+      child = spawn(process.execPath, [join(bundleDir, "sidecar.js")], {
+        cwd: workDir,
+        env: childEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      const received = new Map();
+      const result = await new Promise((resolve, reject) => {
+        let stdout = "";
+        let stderr = "";
+        let closed = false;
+        let exitCode;
+        let settled = false;
+        const fail = (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(error);
+        };
+        const timer = setTimeout(() => {
+          child.kill();
+          fail(new Error(`sidecar bundle smoke timed out: ${stderr}`));
+        }, 30_000);
+        const finish = () => {
+          if (settled || !closed || received.size !== 2) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve({ exitCode, stderr });
+        };
+
+        child.stdout.setEncoding("utf8");
+        child.stderr.setEncoding("utf8");
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk;
+          const lines = stdout.split("\n");
+          stdout = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line) continue;
+            const message = JSON.parse(line);
+            received.set(message.id, message);
+          }
+          finish();
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk;
+        });
+        child.on("error", (error) => {
+          fail(error);
+        });
+        child.on("close", (code) => {
+          exitCode = code;
+          closed = true;
+          if (received.size !== 2) {
+            fail(new Error(`sidecar closed before both responses arrived: ${stderr}`));
+            return;
+          }
+          finish();
+        });
+        child.stdin.end(
+          `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "sidecar.health", params: {} })}\n` +
+            `${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "native.session.list", params: {} })}\n`,
+        );
+      });
+
+      assert.equal(result.exitCode, 0, result.stderr);
+      assert.deepEqual(received.get(1)?.result, { ok: true, runtimes: 0 });
+      assert.deepEqual(received.get(2)?.result?.sessions, []);
+    } finally {
+      if (child && child.exitCode === null && child.signalCode === null) {
+        const closed = new Promise((resolve) => child.once("close", resolve));
+        child.kill();
+        await closed;
+      }
+      await rm(workDir, { recursive: true, force: true });
+    }
+  },
+);

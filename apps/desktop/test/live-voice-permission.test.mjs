@@ -54,7 +54,12 @@ test("Live Voice media permission requires the trusted main frame and an active 
   assert.equal(requestDecision({ requestingUrl: trustedUrl, isMainFrame: false, mediaTypes: ["audio"] }), false);
   assert.equal(requestDecision({ requestingUrl: "https://outside.example", isMainFrame: true, mediaTypes: ["audio"] }), false);
   assert.equal(checkDecision({ mediaType: "audio" }, "https://outside.example"), false);
-  assert.equal(requestDecision({ requestingUrl: trustedUrl, isMainFrame: true, mediaTypes: ["audio"] }, "notifications"), false);
+  // Regression: the microphone policy must not shadow permissions it does not own.
+  // The default session carries the main renderer, where the transcript and table
+  // copy buttons rely on `clipboard-sanitized-write`; denying it broke them.
+  assert.equal(requestDecision({ requestingUrl: trustedUrl, isMainFrame: true, mediaTypes: ["audio"] }, "notifications"), true);
+  assert.equal(requestDecision({ requestingUrl: trustedUrl, isMainFrame: true, mediaTypes: ["audio"] }, "clipboard-sanitized-write"), true);
+  assert.equal(checkDecision({ mediaType: "unknown" }, "http://localhost:5173", "clipboard-sanitized-write"), true);
   assert.equal(requestDecision({ requestingUrl: trustedUrl, isMainFrame: true, mediaTypes: ["audio"] }, "media", {}), false);
   leaseActive = false;
   assert.equal(requestDecision({ requestingUrl: trustedUrl, isMainFrame: true, mediaTypes: ["audio"] }), false);

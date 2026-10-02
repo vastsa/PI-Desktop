@@ -136,6 +136,39 @@ describe("withCompactionRequestHeaders", () => {
     expect(wrapped.getModel("row-uuid", "glm-5.3-flash")).toBe(model);
     expect(getModel).toHaveBeenCalledWith("row-uuid", "glm-5.3-flash");
   });
+
+  it("reports the bounded payload shape for every wire API", async () => {
+    const completeSimple = vi.fn(
+      async (_model: Model<Api>, _context: unknown, options: ModelsSimpleStreamOptions) => {
+        await options.onPayload?.(
+          { messages: [{ role: "user", content: "private" }], max_tokens: 512 },
+          model,
+        );
+        return "assistant-message";
+      },
+    );
+    const shapes: unknown[] = [];
+    const collection = { completeSimple } as unknown as Models;
+    const wrapped = withCompactionRequestHeaders(
+      collection,
+      provider,
+      "session-1",
+      undefined,
+      (shape) => shapes.push(shape),
+    );
+
+    await wrapped.completeSimple(model, { messages: [{ role: "user" }] } as never);
+
+    expect(shapes).toEqual([
+      {
+        api: "openai-completions",
+        topLevelFields: ["messages", "max_tokens"],
+        roleCounts: { user: 1 },
+        toolCount: 0,
+        outputLimit: 512,
+      },
+    ]);
+  });
 });
 
 describe("compaction summary conversation key", () => {

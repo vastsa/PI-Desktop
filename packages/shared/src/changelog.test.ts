@@ -6,6 +6,7 @@ import {
   normalizeChangelogVersion,
   resolveChangelogLocale,
 } from "./changelog.js";
+import { loadChangelogCatalog } from "./changelog-loader.js";
 
 const STABLE_FROM = "0.1.1";
 
@@ -154,5 +155,12 @@ describe("changelog catalog", () => {
     );
     expect(formatChangelogNotes("9.9.9", "en")).toBeUndefined();
     expect(formatChangelogNotes("0.2.0-rc.6", "en")).toBeUndefined();
+  });
+
+  it("loads and caches the catalog for the resolved locale", async () => {
+    const catalog = await loadChangelogCatalog("fr-CA");
+
+    expect(catalog).toBe(CHANGELOG.fr);
+    expect(await loadChangelogCatalog("fr")).toBe(catalog);
   });
 });

@@ -223,6 +223,15 @@ async function connectedScenario() {
     })()`);
   await evaluate("window.liveVoiceFixture.setWidgetWindowWidth(420)");
   await frame();
+  // The pending decision lives in the owner window's store, which the widget
+  // window does not have: the owner frame reports it, main forwards it, and the
+  // bar names it. Seeding the owner store is therefore the whole test.
+  await evaluate("window.liveVoiceFixture.pendingAsk('fixture-session-1', 'Ship beta.1?')");
+  await check("a decision the bound session waits on reaches the widget bar",
+    `document.querySelector('.live-voice-call-bar')?.textContent.includes('waiting for your answer or approval') === true`);
+  await evaluate("window.liveVoiceFixture.clearPendingAsks()");
+  await check("the waiting hint clears with the decision",
+    `document.querySelector('.live-voice-call-bar')?.textContent.includes('waiting for your answer or approval') === false`);
   await capture("call-connected");
   await evaluate("window.liveVoiceFixture.setPhase('reconnecting')");
   await check("reconnecting keeps an explicit End action", `ui.state('reconnecting') && ${button("End call", bar)} && !${button("Cancel", bar)} && !${button("Unmute microphone", bar)}`);

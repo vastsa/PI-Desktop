@@ -248,6 +248,36 @@ export function createSidecarRuntime({
         } satisfies AgentEventEnvelope);
       }
     }
+    if (method === "agent.diagnostic") {
+      const diagnostic = params as {
+        kind?: unknown;
+        sessionId?: unknown;
+        turnId?: unknown;
+        requestId?: unknown;
+        data?: unknown;
+      };
+      if (
+        (diagnostic.kind === "compaction_failure" || diagnostic.kind === "compaction_shape") &&
+        typeof diagnostic.sessionId === "string" &&
+        typeof diagnostic.requestId === "string" &&
+        diagnostic.data && typeof diagnostic.data === "object"
+      ) {
+        const isFailure = diagnostic.kind === "compaction_failure";
+        logger.app(
+          "session",
+          isFailure ? "warn" : "info",
+          isFailure ? "context compaction failed" : "context compaction request shape",
+          {
+            sessionId: diagnostic.sessionId,
+            ...(typeof diagnostic.turnId === "string" ? { turnId: diagnostic.turnId } : {}),
+            requestId: diagnostic.requestId,
+            event: isFailure ? "session.compaction.failed" : "session.compaction.request_shape",
+            data: diagnostic.data,
+          },
+        );
+      }
+      return;
+    }
     // permissions.request reaches the renderer once, via wireHost; the
     // sidecar no longer relays it (agent-sidecar.setHost filters it out).
   });

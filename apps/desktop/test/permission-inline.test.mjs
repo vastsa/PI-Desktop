@@ -171,7 +171,7 @@ test("asktool card is a stepwise, non-expiring composer question surface", () =>
   assert.match(askCardSource, /draft\.skipped/);
   assert.doesNotMatch(askCardSource, /permissionSecondsLeft|setInterval/);
   assert.match(messageStyleSource, /\.asktool-options[\s\S]*?overflow-y:\s*auto/);
-  assert.match(messageStyleSource, /\.asktool-options[\s\S]*?max-height:\s*min\(320px,\s*36dvh\)/);
+  assert.match(messageStyleSource, /\.asktool-options[\s\S]*?max-height:\s*min\(208px,\s*24dvh\)/);
   assert.match(messageStyleSource, /\.asktool-options[\s\S]*?overscroll-behavior-y:\s*contain/);
   // The card is a dock surface, not an in-flow tile: it paints the composer
   // plate with its shadow and its rows are inlaid on that plate (issue #360).

@@ -29,6 +29,8 @@ const [
   enSource,
   zhSource,
   changelogSource,
+  changelogLoaderSource,
+  englishChangelogSource,
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
   readSharedTypesSource(),
@@ -47,6 +49,8 @@ const [
   read("../../../packages/i18n/src/locales/en/index.ts"),
   read("../../../packages/i18n/src/locales/zh-CN/index.ts"),
   read("../../../packages/shared/src/changelog.ts"),
+  read("../../../packages/shared/src/changelog-loader.ts"),
+  read("../../../packages/shared/src/changelog-en.ts"),
 ]);
 
 test("update IPC channels are declared and whitelisted for the preload bridge", () => {
@@ -186,8 +190,14 @@ test("renderer exposes the updates API, banner and settings row", () => {
   assert.match(settingsSource, /update-settings-notes/);
   assert.match(settingsSource, /updates\.whatsNew/);
   assert.match(settingsSource, /updates\.releaseNotes/);
+  assert.match(settingsSource, /const ReleaseNotesDialog = lazy\(\(\) =>/);
+  assert.match(settingsSource, /<Suspense[\s\S]*?<ReleaseNotesDialog/);
+  assert.match(settingsSource, /role="status"[\s\S]*?app\.loadingView/);
   assert.match(settingsSource, /<ReleaseNotesDialog/);
-  assert.match(releaseNotesDialogSource, /CHANGELOG\[locale\]/);
+  assert.match(releaseNotesDialogSource, /loadChangelogCatalog\(locale\)/);
+  assert.match(releaseNotesDialogSource, /setLoadedCatalog\(\{ locale, entries: catalog \}\)/);
+  assert.match(changelogLoaderSource, /import\("\.\/changelog-en\.js"\)/);
+  assert.match(changelogLoaderSource, /import\("\.\/changelog-zh-CN\.js"\)/);
   assert.match(releaseNotesDialogSource, /new Intl\.DateTimeFormat\(locale,/);
   assert.match(releaseNotesDialogSource, /role="dialog"/);
   assert.match(releaseNotesDialogSource, /aria-modal="true"/);
@@ -314,7 +324,7 @@ test("shared shipped-locale changelog is the in-app notes source of truth", () =
   assert.match(changelogSource, /formatChangelogNotes/);
   assert.match(changelogSource, /"zh-CN"/);
   assert.match(changelogSource, /"zh-TW"/);
-  assert.match(changelogSource, /version: "0\.2\.7"/);
+  assert.match(englishChangelogSource, /version: "0\.2\.7"/);
   assert.match(
     mainSource,
     /getLocale:\s*\(\)\s*=>\s*(?:updaterLocale|mainState\.updaterLocale)/,

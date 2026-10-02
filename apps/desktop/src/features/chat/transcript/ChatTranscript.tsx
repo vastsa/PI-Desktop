@@ -133,6 +133,7 @@ function TranscriptBody({
     veilPhase,
     handleScroll,
     revealEarlierHistory,
+    releaseFollow,
     jumpToLatest,
     disclosureAnchorNotifier,
   } = useTranscriptScroll({
@@ -241,6 +242,7 @@ function TranscriptBody({
           hasEarlier={hasEarlierHistory}
           loadingEarlier={loadingOlder}
           onRevealEarlier={revealEarlierHistory}
+          onReleaseFollow={releaseFollow}
         />
       ) : null}
       <div

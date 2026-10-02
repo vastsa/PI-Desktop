@@ -1,16 +1,20 @@
-import { useMemo, type RefObject } from "react";
+import { type RefObject } from "react";
 import type { TFunction } from "i18next";
 import { IconClose, IconInfo, IconMic, IconMicOff, IconPhoneOff, IconSettings, IconVolume, IconWaveform } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 import type { LiveVoiceSnapshot } from "./live-call-controller";
-import { useAppStore } from "../../../stores/app-store";
 import { liveVoiceMode, type liveVoiceIssue } from "./live-voice-presentation";
-import { liveWorkDecision, operationAwaitsDecision } from "./live-work-decision";
 
 type CallBarProps = {
   t: TFunction;
   snapshot: LiveVoiceSnapshot;
   issue: ReturnType<typeof liveVoiceIssue>;
+  /**
+   * True while the bound work session waits on a decision the user has to make
+   * elsewhere. The widget window has no session store, so the owner frame
+   * reports this instead of the bar deriving it (live-work-decision).
+   */
+  decisionWaiting: boolean;
   detailsOpen: boolean;
   detailsRef: RefObject<HTMLButtonElement | null>;
   actionPending: "mute" | "playback" | null;
@@ -32,7 +36,7 @@ type CallBarProps = {
  * code, because nothing else on screen could name it.
  */
 export function LiveVoiceCallBar({
-  t, snapshot, issue, detailsOpen, detailsRef, actionPending,
+  t, snapshot, issue, decisionWaiting, detailsOpen, detailsRef, actionPending,
   onCancel, onMute, onEnd, onDetails, onResume, onSettings, onDismiss,
 }: CallBarProps) {
   const mode = liveVoiceMode(snapshot);
@@ -47,24 +51,6 @@ export function LiveVoiceCallBar({
                 : "liveVoice.phase.connected";
   const unmute = call?.muted !== false;
   const speaking = mode === "connected" && (call?.assistantSpeaking || (call?.userSpeaking && !call.muted));
-  // A waiting work session outlives a spoken announcement: the user may be
-  // reading another session when the decision appears, and the card that
-  // answers it lives in the bound session, not in this bar.
-  const boundSessionId = call?.workBinding?.workSessionId;
-  const planCheckpoints = useAppStore((state) => state.planCheckpoints);
-  const pendingPermissions = useAppStore((state) => state.pendingPermissions);
-  const pendingAsks = useAppStore((state) => state.pendingAsks);
-  const decisionWaiting = useMemo(
-    () => Boolean(liveWorkDecision({
-      sessionId: boundSessionId,
-      awaiting: operationAwaitsDecision(call?.workOperations, boundSessionId),
-      asks: pendingAsks,
-      permissions: pendingPermissions,
-      planCheckpoints,
-    })),
-    [boundSessionId, call?.workOperations, pendingAsks, pendingPermissions, planCheckpoints],
-  );
-
   return (
     <div className="live-voice-call-bar" data-state={mode}>
       <div className="live-voice-call-row">

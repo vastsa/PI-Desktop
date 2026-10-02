@@ -17,7 +17,7 @@ const devScriptUrl = new URL(
 );
 
 const mainSource = await readMainSource();
-const mainIndexSource = await readMainModule("index.ts");
+const installationSource = await readMainModule("installation.ts");
 const brandingSource = await readMainModule("bootstrap/app-lifecycle.ts");
 const windowSource = await readMainModule("bootstrap/window.ts");
 const startupSource = await readMainModule("bootstrap/startup.ts");
@@ -44,9 +44,9 @@ test("Windows runtime registers the canonical native application identity", () =
   const appId = protocolSource.match(/APP_ID = "([^"]+)"/)?.[1];
   assert.equal(appId, packageJson.build.appId);
   assert.ok(startupSource.includes("app.whenReady()"), "main process readiness hook");
-  assert.match(mainIndexSource, /app\.setName\(APP_NAME\)/);
+  assert.match(installationSource, /app\.setName\(APP_NAME\)/);
   assert.match(
-    mainIndexSource,
+    installationSource,
     /process\.platform === "win32"[\s\S]*app\.setAppUserModelId\(APP_ID\)/,
   );
 });

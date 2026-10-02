@@ -45,8 +45,9 @@ import {
   nativePiSnapshot,
   type NativePiSnapshot,
 } from "./native-pi-session-lease.js";
+import { NATIVE_PI_SESSION_PREFIX } from "./native-pi-session-id.js";
 
-export const NATIVE_PI_SESSION_PREFIX = "native-pi:";
+export { NATIVE_PI_SESSION_PREFIX };
 
 export type NativePiReadOnlyReason =
   | "busy"

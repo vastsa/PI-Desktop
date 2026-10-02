@@ -34,6 +34,11 @@
 | D634 | 移除 macOS 首次启动辅助文件 | **修订 D457 / ADR 0296 及 ADR 0232 / ADR 0204 中的 macOS 分发约定：macOS DMG 与 ZIP 均不再附带 `PI-Desktop-macOS-open.command`、`PI-Desktop-macOS-opening-help.txt`，或其他捆绑的 quarantine 清理助手/打开说明。ZIP 根目录只包含 `PI-Desktop.app`；DMG 仍为双图标安装。该规定适用于签名发布和本地或可选的未签名调试构建。见 ADR 0309 与 E2E-196b。** | 已签名发布通道不再需要未签名首次启动兜底；随调试包附带此类文件可能误导用户绕过 Gatekeeper。 |
 | D635 | 按工作区上限裁剪的 800×560 窗口最小尺寸 | **取代 D156 / D447 中的 1040×700 窗口最小尺寸（及 ADR 0029 / ADR 0238 的对应条款）和 `window/setWorkPanelChatWidth` 的 `1040..10000` 范围（ADR 0146）：Electron 强制 800×560 最小尺寸，并由 `clampMinimumSizeToWorkArea` 按维度裁剪到当前显示器工作区。聊天宽度 IPC 与渲染层接受 `800..10000`。窄窗口下沿用现有 `workPanelLayout` 预算：限制停靠面板宽度以保证 MainChat 的 450px 下限，并优先收起侧边栏。见 US-UI-19 与 E2E-167。** | Windows 150% 缩放下工作区约为 1280×672 DIP，固定最小尺寸可能超过屏幕，导致窗口无法适配。 |
 | D636 | 本地权限确认没有自动截止时间 | **修订 D005 / ADR 0011：需要权限的 `tools.execute` 请求会在 host-core、渲染层和传输中保持待处理，直到用户选择允许一次、允许会话或拒绝，或请求被取消/进程关闭。移除 120 秒倒计时以及本地权限契约中的超时字段。工具自身执行预算以及独立的 RACP/Plan 审批时限保持不变。见 ADR 0310、issue #1214 与 E2E-017。** | 用户可能在其他工作期间错过可见的权限请求；保持取消和执行预算即可保留控制与资源安全，又不会把“未注意”变成一个决定。 |
+| D637 | 移除 Windows 无边框窗口的缩放边缘 | **关闭 Windows 主窗口的厚边框，同时保留 Electron 43.6 原生无边框窗口的边缘和角落缩放。默认应用 4 DIP 原生圆角；获得授权的插件主题可选择 0 至 24 DIP 的整数半径。保留 D635 的最小尺寸约定和现有工作面板缩放归属。见 ADR 0317 与 E2E-167。** | 厚边框绘制了主题无法移除的左、下、右边缘。原生命中检测和窗口形状在不新增渲染层缩放 IPC 的情况下保留缩放能力及透明外角。 |
+| D638 | 发布原生 Linux arm64 工件 | **修订 D126 / D285 / D603 / ADR 0022：标签发布构建并发布原生 Linux arm64 的 AppImage、deb 和 rpm 包，它们在 GitHub 原生 `ubuntu-22.04-arm` 运行器上构建并携带 arm64 `pi-desktop-host-core`。静态 Linux 目标去掉固定的 `arch`，改用工作流的 `--x64` / `--arm64` 参数；`linux.artifactName` 变为 `PI-Desktop-<version>-linux-<arch>.AppImage`；每条 Linux 通道校验按架构命名的更新源（x64 为 `latest-linux.yml`，arm64 为 `latest-linux-arm64.yml`）；ASAR 导出读取 `linux-unpacked` 或 `linux-arm64-unpacked` 并发布 `PI-Desktop-<version>-linux-<arch>.asar`。`pi-host-bundle` 构建两个 Linux 架构，`PUBLISHED_TARGETS` 增加 `linux-arm64`。更新器归属、签名和交付模式不变。见 ADR 0318、issue #1281 与 E2E-192a。** | arm64 Linux 设备无法安装或运行已发布的 x64 工件，而交叉构建或模拟的通道会随包发布架构不匹配的 Rust sidecar。 |
+| D639 | models.dev 拥有已发布的聊天模型元数据 | **就聊天元数据而言，取代 D136 / D266 和 ADR `pi-ai-core-0991-authority`：随应用打包并可显式刷新的 models.dev 目录提供已发布的聊天模型上下文 / 输出上限、模态、推理元数据、名称和价格。优先采用所选官方发布方；其没有记录时，只有安全且无歧义的匹配才采用其他发布方，否则保留通用元数据。仓库中的预设身份是优先集合；不要声称存在未经证实的 39 家固定名单。实时端点 / OAuth 发现仍决定可选模型 ID。Pi 仍负责 OAuth、wire 身份、传输和有类型的非聊天操作，但不再为聊天模型提供同档模型的上限、推理能力或价格。明确的用户绑定覆盖仍具权威性。不向 models.dev 发送凭据；不改主机模式 / 协议或持久化。见 ADR `models-dev-catalog-authority` 与 E2E-162 / E2E-MODEL-catalog-window-correction-reaches-saved-bindings。** | Pi 同档模型默认值曾把 GPT 模型的上下文窗口设为 272,000；所选 models.dev 记录实际发布的是 1,050,000，导致设置页显示和运行时上下文预算错误。 |
+| D640 | 用户 MCP 工具保持常规审批路径 | **host-core 将 `mcp_<serverId>_<tool>` 调用视为 `medium` 风险：在 `ask` 与 `accept-edits` 下每次调用都显示审批卡片（"MCP server tool requires approval"），允许一次与本会话允许保持原有范围（单次调用 / 该会话内同一工具名），`auto` 不显示卡片直接执行，Plan/Goal 仍然拒绝。MCP 服务器对自身工具声明的标注或风险值被忽略，绝不降低审批路径。分发、只读模式处理与 `mcp_` 命名空间不变；不改主机协议或持久化。见 ADR `mcp-tool-approval-risk` 与 E2E-MCP-tool-requires-approval。** | MCP 工具此前按 `low` 风险自动放行，已配置的服务器在 `ask` 下可以不经提示写文件、访问网络或执行命令。配置服务器意味着同意启动它，而不是同意其不透明工具的每一个操作。 |
+| D641 | 自定义端点 API 格式优先级 | **自定义端点始终优先使用 provider 行上保存的 `apiStyle`，再考虑模型目录适配器 API。对于具名与 OAuth provider，如果已发布配置要求不同传输，仍可沿用模型级 wire API 固定项。这可确保用户为自定义 endpoint 选择的格式不会被静默覆盖，同时保留 OpenCode Go Responses 模型等特定路由。不改变持久化格式或协议。见 E2E-005E 与 issue #1313。** | 发布方的适配器默认值不应把请求从用户已选择的自定义网关格式静默重定向。 |
 | D450 | 签名的 macOS GitHub Release | **修订 D078 / ADR 0022：GitHub tag 发布使用身份 `Developer ID Application: XingYu Liu (DUV63RKYTW)` / 团队 `DUV63RKYTW`，通过 Actions 密钥（`CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`）对 macOS DMG/ZIP 做 Developer ID 签名、`notarytool` 公证、装订和 Gatekeeper 校验；缺少密钥则失败。无证书的本地未签名打包仍可用。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物。打包的 macOS 走应用内 `electron-updater`（ZIP + 合并后的 `latest-mac.yml`）；Linux deb/rpm 与 Windows 便携版 ZIP 仍为通知并打开发布页。禁止 afterPack/afterSign adhoc 签名（ADR 0278）。** | 正式 DMG 应无需 Gatekeeper 警告即可打开，已签名 macOS 安装可下载并重启到新 tag。见 ADR 0289、E2E-196c、E2E-067A。 |
 
 ## B. 辅助实现默认值
@@ -318,7 +323,7 @@
 
 | 身份证号 | 主题 | 决定 | 基本原理 |
 |---|---|---|---|
-| D266 | 以 models.dev 作为主要模型目录 | **修订 D136 / ADR 0027：Electron main 加载 `https://models.dev/api.json` 作为主要的提供商/模型元数据来源，按提供商键或规范化后的 API URL 匹配，并把它的上限、模态、推理选项、工具调用、结构化输出、显示名称和成本字段映射到既有的模型界面。固定版本的 `pi-ai` 目录仍是远端记录不可用/缺失时的本地回退，并在 models.dev 没有等价物时提供适配器专有的兼容性数据。提供商端点发现和显式模型 ID 对自定义/账户专有模型仍然可用；不向 models.dev 发送任何提供商凭据，也不引入主机模式/协议变更。** | 固定的 pi-ai 目录对运行时适配器是准确的，但落后于更广泛的市场目录。一次有界的、在主进程中完成的 models.dev 抓取，让设置页和输入框拥有当前的模型覆盖面，同时保留离线/本地行为以及 pi-ai 的传输回退。 |
+| D266 | 以 models.dev 作为主要模型目录 | *历史决策；聊天元数据部分已由 D639 / ADR `models-dev-catalog-authority` 取代。* 旧决定：Electron main 加载 `https://models.dev/api.json` 作为主要提供商 / 模型元数据来源，固定版本的 `pi-ai` 目录作为本地回退。提供商端点发现和显式模型 ID 对自定义 / 账户专有模型仍然可用；不向 models.dev 发送提供商凭据，也不改主机模式 / 协议。 | 主进程中的有界 models.dev 抓取最初用于扩大设置页和输入框的目录覆盖面。D639 移除了会导致上下文上限错误的 Pi 同档聊天元数据回退。 |
 ## M.Agent 运行时决策
 
 | 身份证号 | 主题 | 决定 | 基本原理 |
@@ -328,7 +333,7 @@
 | D132 | Composer权限菜单仅显示有效模式 | **代理模式 Composer 芯片和菜单仅公开 `ask`、`accept-edits` 和 `auto`，直接选择有效模式，没有 global-default/inherit 条目或出处标签。选择一个项目会存储显式会话覆盖。在用户选择模式之前，D115 中现有的 `inherit` 持久性和分辨率保持不变。这仅取代 D115 的输入框演示条款。** | 继承的条目重复了可选择的模式并暴露了存储来源，而不是用户选择的权限状态；三种有效模式的呈现，在不改变主机执行的情况下，让控制变得直接 |
 | D116 | 提供商失败作为辅助消息 | **每个 provider/model 转向失败都会通过可选的 `UiMessage.error` 附加到持久的 `role=assistant`、`status=error` 转录消息。该消息显示本地化的摘要和稳定的代码，将经过编辑的提供程序详细信息保留在可访问的披露后面，并提供适合上下文的重试或设置操作。消息绑定失败从不使用 toast/global 横幅呈现，也从不重新进入以后的模型上下文。** | 错误属于失败的回合；将它们保留在转录本中使得响应在会话 switches/restarts 之后可诊断，而不会污染下一个模型请求或暴露凭据 |
 | D127 | 上下文保留重新播种+传输重试 | **除了 user/assistant 文本和思考之外，从持久记录中重新播种重新创建的 pi 运行时还会恢复工具 call/result 对（来自工具行的 `role=assistant`/`status=error`/`UiMessage.error`）。中断的工具行恢复为错误结果；孤立的工具行获得一个合成的仅呼叫辅助载体，因此对保持相邻且格式良好。失败的助理将仅保留成绩单。另外，请求设置使用一次有界 pi-ai 重试来处理暂时的 transport/provider 失败；响应后流恢复由 D186 定义。** | 在任何运行时重新创建（regenerate/edit、配置更改、重新启动）后，纯文本重新播种会崩溃会话的上下文：模型丢失了它收集的所有工具结果，并且在没有可见工具使用的情况下看到自己的历史答案，停止调用工具，将代理会话降级为裸聊天。事件触发器是一个未重试的提供程序超时，迫使用户重新生成。 D127 更正最初重复的 D120 标识符； D120 仍然是由基线 0.4.6 冻结的早期应用程序更新决策。 |
-| D136 | pi-ai 拥有已知模型元数据 | **对于从固定 pi-ai 目录解析的每个模型，Electron main 将完整的 pi 模型快照传递到 sidecar，而 PI-Desktop 仅替换连接标识。提供商设置和模型菜单不会覆盖推理支持、思维水平、context/output 限制、温度或兼容性。通过明确的通用纯文本、非推理回退，未知的自由格式 ID 仍然可用。这取代了 D102 和 D096/D107 的提供商覆盖条款。** | 第二个桌面拥有的模型矩阵丢弃了 pi 元数据，偏离了适配器行为，并使模型语义依赖于冲突的配置；针对已知模型的修复现在属于 pi-ai 或 pi-ai 升级。 |
+| D136 | pi-ai 拥有已知模型元数据 | *历史决策；聊天元数据部分已由 D639 / ADR `models-dev-catalog-authority` 取代。* 旧决定：固定 pi-ai 目录解析的模型以 Pi 记录决定已发布元数据；未知 ID 使用通用元数据。**这曾取代 D102 和 D096/D107 的提供商覆盖条款。** | 第二个桌面拥有的模型矩阵曾丢弃 Pi 元数据；后续 D639 的根因证据表明 Pi 同档模型默认值会错误描述所选模型的上下文窗口。 |
 | D183 | 分段工具和模型延迟日志 *（被 D385 / ADR 0212 取代；UI 子句被 D184 取代）* | **每个 `tools.execute` 调用都按分段计时，而不是一个不透明的持续时间：host-core 在 `host` 通道上发出 `tool timing` 行，并在现有通道旁边保留 `prompted`、`permissionWaitMs`、`overheadMs` 和 `totalMs` `durationMs` 在 `tool_execute` / `tool_denied` 审核行上； sidecar 将 grepable `[timing] kind=tool …` (`hostRttMs`) 和 `[timing] kind=model …` (`providerWaitMs`、`streamMs`，包括 failed/aborted 匝) 线写入 `agent` 通道，可通过 `PI_DESKTOP_TIMING=0` 进行抑制。原来的 no-UI 条款被 D184 取代；日志记录保持不变。** | 从日志中无法诊断出“执行命令很慢”：批准等待、工具主体和提供程序往返无法区分，因此两个持续时间为 0 毫秒的审核行之间的 45 秒间隙无法说明是用户、模型还是主机。拆分阶段可以使答案可读，而无需重现运行。 |
 | D158 | 回合边界上下文检查点压缩*（软边界、模型工具和可见性条款被 D200 取代；模型工具和可见性由 D203 以 Codex 的形式恢复）* | **PI-Desktop 重用 pi-agent-core 的上下文估计、会话上下文和压缩原语，但拥有编排和持久性。在每个 `turn_end` 之后，在任何下一个提供程序请求之前，运行时都会评估模型感知的 soft/hard 预算。瞬态重复数据删除指令可以要求模型调用内部`CompactContext`工具；该工具的正常活动行是 visible/durable，而指令则不是。跨越硬预算会强制生成检查点并阻止失败的请求。达到硬预算一半的最终原子工具批次仅在检查点副本中相当 head/tail-truncated，具有显式标记并保留每个 call/result 信封；原始成绩单行保持完整。精确提供程序溢出会从模型上下文中删除失败的助手，创建一个检查点，然后重试一次。主机协议 v6 在未触及的可见 JSONL 转录本旁边附加检查点记录；重新启动、后期截断和包含边界分叉保留最新的有效检查点。禁用自动压缩会删除该工具和所有自动 threshold/overflow 恢复，而 `/compact` 仍然可用。 OpenCode DCP 仅是 AGPL-3.0 行为参考，既不链接也不复制 (ADR 0030)。** | pi 的仅运行结束行为无法保护长工具循环，并且仅靠模型提醒无法保证提供程序的安全。重用 pi 的经过测试的压缩格式，同时添加确定性 `turn_end` 门，可以防止另一个提供商请求跨越已知窗口，保留用户可见的历史记录，并避免导入不兼容的 plugin/runtime 和许可证边界。 |
 | D185 | 惰性每转刀具激活 *（始终有效的 `CompactContext` 子句在 D200 下无效，在 D203 下再次适用于 `new_context`；激活恢复由 D400 / ADR 0225 修订）* | **sidecar 保留完整的本地工具注册表，但在每个新提示上仅发送模式核心集和本地 `ToolSearch`。`BrowserPreview`、插件工具、`Skill` 和插件开发助手显示为有界紧凑目录条目，并通过精确名称或功能搜索激活；下一轮接收其架构，在支持时使用本机 pi-ai 延迟搜索，并且内存中的集合在下一个用户提示之前重置，然后只恢复有效上下文中仍存在且当前目录和模式允许的成功激活证据。主机权限、遏制、超时和审核保持不变。** | 完整的工具模式使得简单的第一个请求变得不成比例地大，并且跨轮重复的可选功能成本。pi 风格的活动集保留了核心编码人体工程学，同时使辅助工具按需付费且独立于提供商；恢复成功的上下文证据可避免模型看到能力标记却收不到对应架构。 |
@@ -2120,7 +2125,7 @@ D193 和 D194。
   `03-runtime/04-data-storage.md`、`04-ux/08-component-spec.md` §11.7–11.8
   和 E2E-102c–102e。
 
-## 2026-08-19 —— models.dev 成为首选模型目录
+## 2026-08-19 —— models.dev 首次取代 Pi 成为主要模型目录（历史）
 
 - D266 修订 D136 / ADR 0027。Electron main 以有界超时加载公开的
   `https://models.dev/api.json` 目录，并按厂商 key 或归一化后的 API URL 匹配
@@ -2129,10 +2134,18 @@ D193 和 D194。
   标志以及价格映射到既有的模型界面。请求从不携带 API 密钥或 OAuth 凭据。
   `catalogSource` 在渲染器元数据里区分 models.dev 与 pi-ai 回退，不改动主机
   schema。
-- 若远程目录无法加载或没有匹配记录，则由钉住版本的 pi-ai 目录提供已知的原生
-  模型和适配器兼容性。回退之后，自定义或账户特定的提供商发现以及显式 ID 仍然
-  可用。参见 ADR 0133、`03-runtime/11-provider-model-system.md`、
+- D639 后来移除了 Pi 同档聊天元数据回退；这里保留历史决策记录。参见 ADR 0133、
+  `03-runtime/11-provider-model-system.md`、
   `03-runtime/13-model-catalog-and-selection.md` 和 E2E-066/E2E-080/E2E-154。
+
+## 2026-10-02 —— models.dev 成为聊天模型元数据权威
+
+- D639 取代 Pi 0.99.1 元数据权威决策和 Pi 同档模型回退。随应用打包的
+  models.dev 快照提供聊天模型上下文 / 输出上限与能力；优先所选官方发布方，
+  再采用安全且无歧义的第三方记录。缺失或冲突时保持通用元数据。
+- 实时端点和 OAuth 响应仍决定可选模型 ID。Pi 继续负责 OAuth 与传输适配，
+  并只为有类型的非聊天操作提供元数据。明确的用户绑定值仍保持固定；不向
+  models.dev 发送提供商密钥。见 ADR `models-dev-catalog-authority`。
 
 ## 2026-08-19 — 工作面板成为插件扩展点
 
@@ -4509,7 +4522,7 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 ## 2026-09-19 —— 远端主机的 SSH 引导（D453）
 
 - 桌面用系统 `ssh` 客户端在用户已能通过 SSH 到达的机器上安装并配对 `pi-host`，因此 `~/.ssh/config`、agent 与跳板机照常生效，应用不持有任何 SSH 密钥；`BatchMode=yes` 让需要交互式密码或口令短语的主机立即以带类型的错误失败，而不是把模态框吊在一个不可见的提示后面。
-- 桌面按远端平台、以自己的版本解析 `pi-host` 包，持有发布随附的 SHA-256，并在任何下载之前拒绝未发布的目标（目前只有 `linux-x64`）。上传的脚本在远端 `$HOME` 下下载、校验并安装该包；SSH 通道上不传输任何可执行字节。
+- 桌面按远端平台、以自己的版本解析 `pi-host` 包，持有发布随附的 SHA-256，并在任何下载之前拒绝未发布的目标（目前为 `linux-x64` 与 `linux-arm64`）。上传的脚本在远端 `$HOME` 下下载、校验并安装该包；SSH 通道上不传输任何可执行字节。
 - 脚本以 `umask 077` 运行并回显 `PI_HOST_READY` / `PI_HOST_PAIRING_TOKEN`，因此一次性配对令牌只存在于工作文件和 SSH 通道上，既不落在全局可读路径，也不出现在 URL 中（安全规格 §3.4）。`PI_HOST_READY.version` 必须与桌面版本一致；不一致为 `HOST_VERSION_MISMATCH`（D375），并在建立转发之前就已检查。
 - 已配对主机的记录改存 SSH 描述符（`metadata.transport = "ssh"`）而非 URL，因为本地转发端口在每次启动间并不稳定；隧道管理器在每次启动时重新建立 `ssh -N -L`，并收编（adopt）引导自己打开的存活转发，使配对只建立一条隧道。描述符在每次读取注册表时都会重新校验，格式不合规时降级为「非 SSH 主机」，而不会用垃圾参数去 spawn `ssh`。
 - `pi-desktop/remoteHost/bootstrap` 加入 `list` / `pair` / `remove`，`connection/pair` 交换被抽成单一的 `exchangePairingToken`，粘贴 URL 与 SSH 引导两条路径共用。
@@ -5155,3 +5168,48 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 权限请求不再携带 `timeoutMs`；pending 快照不再暴露 `expiresAt` 或
   `remainingMs`，UI 也不再显示倒计时。工具自身的命令/插件执行预算以及独立的
   Plan/Goal 和 RACP 审批时限保持不变。见 ADR 0310、issue #1214 与 E2E-017。
+
+## 2026-09-29 —— 移除 Windows 无边框窗口的缩放边缘（D637）
+
+- Windows 主窗口关闭 Electron 厚边框，移除左、下、右侧的原生可见边缘。
+  Electron 43.6 仍保留无边框窗口的原生边缘与角落命中检测，因此不新增渲染层
+  缩放路径或几何 IPC。macOS/Linux 的窗口行为和工作面板的缩放归属不变。
+- Windows 主窗口默认使用 4 DIP 原生圆角，圆角外的像素和命中区域均不存在。
+  获得授权的插件主题可将半径设为 0 至 24 DIP 的整数；撤销主题后恢复 4 DIP。
+  D635 按工作区裁剪的最小尺寸仍然生效。移除厚边框后，主题无法控制原生阴影；
+  外部阴影需要单独决定窗口几何结构。见 ADR 0317 与 E2E-167。
+
+## 2026-10-01 —— 发布原生 Linux arm64 工件（D638）
+
+- 标签发布在 x64 包之外同时发布 Linux arm64 的 AppImage、deb 和 rpm 包。每条通道都在
+  GitHub 托管的原生 Ubuntu 22.04 运行器上运行（`ubuntu-22.04` 与
+  `ubuntu-22.04-arm`），并打包它刚刚构建出的 `pi-desktop-host-core` 二进制，因此 sidecar
+  架构始终与 Electron 应用匹配。两条通道都保持 glibc 2.35 下限。
+- Linux 目标不再固定 `arch`：electron-builder 优先采用配置里的架构列表而不是 CLI
+  参数，把两个架构都固定下来会让每条通道围绕自己的 sidecar 去构建另一个架构。
+  工作流改为传入匹配的 `--x64` / `--arm64` 参数，并在打包前校验 `uname -m`。
+- AppImage 名称带上自己的架构
+  （`PI-Desktop-<version>-linux-x64.AppImage`、
+  `PI-Desktop-<version>-linux-arm64.AppImage`）。因此 x64 资产从之前仅带版本号的名称
+  改名；应用内更新不受影响，因为更新器读取的是已发布的更新源。
+- electron-builder 会按构建的架构为每条 Linux 通道的更新源命名（x64 为
+  `latest-linux.yml`，arm64 为 `latest-linux-arm64.yml`），这正是
+  `electron-updater` 在这些架构上请求的名称，因此两条通道不会互相覆盖更新源，
+  每条通道在上传前校验该名称而不是改名。发布作业可以合并两份工件而不丢失任何更新源。
+- `scripts/export-linux-asar.mjs` 接收通道架构，并从 `linux-unpacked`（x64）或
+  `linux-arm64-unpacked`（arm64）导出 `PI-Desktop-<version>-linux-<arch>.asar`。
+- `release.yml` 的 `pi-host-bundle` 作业构建两个 Linux 架构，`PUBLISHED_TARGETS`
+  发布 `linux-x64` 与 `linux-arm64`，因此 arm64 桌面可以引导 arm64 远端主机（D375 / ADR 0292）。
+- 已知限制：除 Raspberry Pi 板卡之外的 arm64 Linux 设备仍无法采集麦克风，因为
+  `@picovoice/pvrecorder-node` 对 Linux arm64 只认识 Raspberry Pi 的 CPU part。
+  语音转写和应用的其余部分没有架构相关的依赖。见 ADR 0318、issue #1281 与 E2E-192a。
+
+## 2026-10-03 —— 用户 MCP 工具保持常规审批路径（D640）
+
+- D640 在 `PermissionManager` 中把 `mcp_` 工具从 `low` 调整为 `medium` 风险。在 `ask` 与
+  `accept-edits` 下每次调用都显示审批卡片，原因为 "MCP server tool requires approval"；
+  `auto` 不显示卡片直接执行，Plan/Goal 即使存在会话授权也拒绝。
+- 本会话允许只覆盖该会话内同一 `mcp_<serverId>_<tool>` 名称，不覆盖该服务器的其他工具。
+  服务器对自身工具声明的风险标注不被信任，绝不降低审批路径。
+- 通过 `plugins.execute` 的分发、只读模式处理与 `mcp_` 命名空间不变。见 ADR
+  `mcp-tool-approval-risk` 与 E2E-MCP-tool-requires-approval。

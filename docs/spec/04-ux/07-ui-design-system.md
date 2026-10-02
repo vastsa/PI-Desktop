@@ -1102,12 +1102,24 @@ header-height background behind the excluded lane without covering its controls.
 - The inner panel divider changes the panel width in the renderer. Moving it
   left takes internal space from MainChat until the 450px floor is reached, at
   which point the expanded sidebar yields; moving it right returns that space.
-  Native window edges resize only the fixed app window.
+  Window edges resize only the fixed app window.
 - Panel open and collapse change only the in-flow flex allocation. No positive
   native reservation is requested, and the panel's preferred width remains a
   renderer-local setting.
-- The outer shell keeps native edge/corner resizing enabled on every platform.
-  Frameless titlebar drag regions never replace the OS resize ownership. A
+- All platforms retain native edge/corner resizing. On Windows the main window
+  disables the frameless `WS_THICKFRAME` rim while Electron 43.6's frameless
+  hit test continues to own edge and corner resizing; no border is painted on
+  the left, right, or bottom. The Windows main window uses a 4 DIP rounded
+  hit/draw shape by
+  default: pixels outside its corners have no fill or mouse target. A selected
+  plugin theme with `ui.window.appearance` may set `cornerRadius` to an integer
+  from 0 through 24 DIP; removing that theme restores 4 DIP. The shape becomes
+  rectangular while maximized or fullscreen and follows every resize. Native
+  window background colors remain theme-owned inside the shape. Electron's borderless
+  fullscreen fallback fills the display without reporting `isFullScreen()`;
+  Main tracks its state so toggling back restores the previous bounds and
+  fullscreen geometry is never persisted. Frameless titlebar drag
+  regions remain separate from window-edge resizing. A
   300ms stable-bounds settle window prevents recovery logic from competing with
   a slow pointer gesture, and normal base bounds persist 600ms after the last
   native resize/move event. Electron enforces an 800×560 minimum, capped to the

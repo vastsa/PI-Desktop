@@ -96,3 +96,12 @@ and the two never share `pi.sqlite`, the outbox, or the log tree. An explicit
 throwaway profile with it. Only the development side moved: a shipped
 installation keeps `PI-Desktop` and `~/.pi-desktop`, so no existing profile is
 relocated. See D599.
+
+## Amendment: explicit storage relocation (2026-10-01)
+
+Issue #1213 adds an explicitly confirmed, offline relocation of the complete app
+and Chromium profile. The stable `userData` installation lock is retained, while
+Chromium `sessionData` may follow the copied browser profile. No silent relocation
+or reset of existing renderer state is introduced. The original rejection of
+implicitly relocating `userData` for locking remains valid. See
+[Custom storage location](custom-storage-location.md).

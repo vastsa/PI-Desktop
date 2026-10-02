@@ -21,6 +21,25 @@ function placeholders(value) {
 
 const english = flattenCatalog(en);
 
+test("offline storage maintenance has localized progress and recovery copy before renderer startup", () => {
+  const fields = ["progressTitle", "progressHint", "failedTitle", "failedHint", "continueOriginal", "unavailableHint"];
+  const stages = ["scanning", "copying", "verifying", "relocating", "cleaning", "complete", "failed"];
+  for (const [locale, catalog] of Object.entries(catalogs)) {
+    const copy = catalog.settings.storage;
+    for (const field of fields) {
+      assert.equal(typeof copy[field], "string", `${locale}: ${field}`);
+      assert.ok(copy[field].trim(), `${locale}: ${field} must not be blank`);
+    }
+    assert.deepEqual(Object.keys(copy.stages).sort(), [...stages].sort(), locale);
+    for (const stage of stages) assert.ok(copy.stages[stage].trim(), `${locale}: ${stage}`);
+    if (locale !== "en") {
+      assert.notEqual(copy.progressTitle, en.settings.storage.progressTitle, locale);
+      assert.notEqual(copy.failedHint, en.settings.storage.failedHint, locale);
+      assert.notEqual(copy.unavailableHint, en.settings.storage.unavailableHint, locale);
+    }
+  }
+});
+
 test("every shipped catalog matches English keys and interpolation variables", () => {
   for (const [id, catalog] of Object.entries(catalogs)) {
     const flat = flattenCatalog(catalog);

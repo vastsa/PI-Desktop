@@ -20,7 +20,7 @@ export type {
   StderrHandler,
 } from "@pi-desktop/host-runtime";
 
-function resolveHostBinary(): string {
+export function resolveHostBinary(): string {
   if (process.env.PI_DESKTOP_HOST_BIN && existsSync(process.env.PI_DESKTOP_HOST_BIN)) {
     return process.env.PI_DESKTOP_HOST_BIN;
   }

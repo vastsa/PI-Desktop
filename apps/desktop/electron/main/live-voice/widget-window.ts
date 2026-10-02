@@ -39,12 +39,12 @@ export type LiveVoiceWidget = {
   /** Push the authoritative call view; the window appears on the first call. */
   publish: (view: LiveCallView | null) => void;
   /**
-   * The owner frame's own failure code for this call (`LIVE_PLAYBACK_FAILED`, a
-   * refused action). It never appears in the call view — it is local to the
-   * frame that ran the action — so the widget can only name it if the owner
-   * reports it, and it is dropped as soon as the call it belongs to changes.
+   * What only the owner frame knows about this call: its own failure code (a
+   * refused action) and whether the bound work session is waiting on a decision.
+   * Neither is in the call view, so the widget can only show them because the
+   * owner reports them, and both are dropped when the call they belong to changes.
    */
-  setIssue: (issue: { callId: string; code: string | null }) => void;
+  setOwnerState: (state: { callId: string; errorCode: string | null; decisionWaiting: boolean }) => void;
   /** True when these contents are the widget window's own renderer. */
   owns: (webContentsId: number) => boolean;
   /** Follow the widget's own presentation decision and measured content box. */
@@ -65,6 +65,7 @@ export function createLiveVoiceWidget(input: {
   let loaded = false;
   let lastView: LiveCallView | null = null;
   let lastErrorCode: string | undefined;
+  let lastDecisionWaiting = false;
   let visible = false;
   let size: LiveVoiceWidgetSize = { ...LIVE_VOICE_WIDGET_SIZE };
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -126,6 +127,7 @@ export function createLiveVoiceWidget(input: {
     current.webContents.send(IPC.event.liveVoiceWidgetState, {
       call: lastView,
       ...(lastErrorCode ? { errorCode: lastErrorCode } : {}),
+      ...(lastDecisionWaiting ? { decisionWaiting: true } : {}),
     });
   }
 
@@ -229,15 +231,19 @@ export function createLiveVoiceWidget(input: {
 
   return {
     publish(view) {
-      // A new call starts blank: the previous call's failure must not be named
-      // over the next one.
-      if (view?.callId !== lastView?.callId) lastErrorCode = undefined;
+      // A new call starts blank: the previous call's failure and its pending
+      // decision must not be reported over the next one.
+      if (view?.callId !== lastView?.callId) {
+        lastErrorCode = undefined;
+        lastDecisionWaiting = false;
+      }
       lastView = view;
       if (view || window) void ensureWindow().then(sendView);
     },
-    setIssue(issue) {
-      if (lastView?.callId !== issue.callId) return;
-      lastErrorCode = issue.code ?? undefined;
+    setOwnerState(state) {
+      if (lastView?.callId !== state.callId) return;
+      lastErrorCode = state.errorCode ?? undefined;
+      lastDecisionWaiting = state.decisionWaiting;
       sendView();
     },
     owns(webContentsId) {

@@ -72,7 +72,7 @@ test("only a live answer is written back to the model cache", () => {
   assert.match(handler, /const requestBaseUrl = baseUrl\.replace/);
 });
 
-test("every returned model is enriched through the published Pi catalog regardless of origin", () => {
+test("every returned model is enriched through the published models.dev catalog regardless of origin", () => {
   // `decorate` is what attaches published limits, modalities and thinking
   // levels, so all three branches must route through it.
   assert.match(handler, /const modelsDevModel = .*modelsDevCatalog\.publishedModelFor/);

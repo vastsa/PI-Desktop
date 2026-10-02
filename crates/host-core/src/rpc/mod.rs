@@ -5130,7 +5130,7 @@ mod tests {
 
         // First: a wedged holder starves one budgeted request.
         {
-            let guard = holder.lock().await;
+            let _guard = holder.lock().await;
             let waiter_state = state.clone();
             let error = with_request_budget(Some(40), async move {
                 let _st = waiter_state.lock().await;

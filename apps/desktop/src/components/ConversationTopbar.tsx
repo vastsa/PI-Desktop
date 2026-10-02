@@ -8,6 +8,11 @@ import {
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import {
+  scheduledReturnFor,
+  scheduledReturnUsesHistory,
+} from "../features/scheduled/scheduled-return";
+import {
+  IconChevronLeft,
   IconSidebar,
   IconNewSession,
   IconSearch,
@@ -45,6 +50,10 @@ export function ConversationTopbar({
   const sessions = useAppStore((s) => s.sessions);
   const workspace = useAppStore((s) => s.workspace);
   const keybindings = useAppStore((s) => s.settings?.keybindings);
+  const navStack = useAppStore((s) => s.navStack);
+  const navIndex = useAppStore((s) => s.navIndex);
+  const navBack = useAppStore((s) => s.navBack);
+  const setPage = useAppStore((s) => s.setPage);
   const platform = (
     typeof window === "undefined" ? "darwin" : window.piDesktop?.platform ?? "darwin"
   ) as ShortcutPlatform;
@@ -81,6 +90,23 @@ export function ConversationTopbar({
 
   const activeSession = sessions.find((session) => session.id === activeSessionId);
 
+  /*
+   * A scheduled run's conversation is read from the Scheduled route, and the
+   * session list keeps automation transcripts out, so this row is the way
+   * back. The remembered origin is what restores the task and run exactly.
+   */
+  const scheduledSession = activeSession?.scheduledRun === true ? activeSession : null;
+  const scheduledReturn = scheduledSession ? scheduledReturnFor(scheduledSession.id) : null;
+  const backAction = t("nav.backToScheduledAction");
+  const backTooltip = scheduledReturn
+    ? t("nav.backToScheduledTask", { title: scheduledReturn.taskTitle })
+    : backAction;
+  const goBackToScheduled = () => {
+    /* History first: it re-enters the route with the reader's own stack. */
+    if (scheduledReturnUsesHistory(navStack, navIndex)) navBack();
+    else setPage("scheduled");
+  };
+
   const fullTaskTitle = isDefaultSessionTitle(activeSession?.title)
     ? t("chat.untitledTask")
     : activeSession?.title || t("chat.untitledTask");
@@ -112,6 +138,19 @@ export function ConversationTopbar({
             <IconSidebar size={15} />
           </TooltipButton>
         </div>
+        {scheduledSession ? (
+          <button
+            type="button"
+            className="ct-back"
+            data-nav="back-to-scheduled"
+            aria-label={backAction}
+            title={backTooltip}
+            onClick={goBackToScheduled}
+          >
+            <IconChevronLeft size={13} aria-hidden />
+            <span className="ct-back-label">{t("nav.backToScheduled")}</span>
+          </button>
+        ) : null}
         <div
           className="ct-title-wrap"
           title={project ? `${project} · ${fullTaskTitle}` : fullTaskTitle}

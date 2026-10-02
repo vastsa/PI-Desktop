@@ -7,6 +7,10 @@ use crate::db::{now_ms, Database};
 
 const TASK_PERMISSION_MODES: [&str; 3] = ["ask", "accept-edits", "auto"];
 
+/// Whether a run opens its own conversation or continues the task's previous
+/// one. `perRun` is the historical behavior.
+pub const TASK_SESSION_MODES: [&str; 2] = ["perRun", "reuse"];
+
 pub fn validate_execution_input(input: &Value) -> Result<()> {
     if let Some(value) = input.get("thinkingLevel") {
         if !value.is_null()
@@ -40,6 +44,15 @@ pub fn validate_execution_input(input: &Value) -> Result<()> {
             bail!("providerId and modelId must be nonempty strings together, or both null");
         }
     }
+    if let Some(value) = input.get("sessionMode") {
+        if !value.is_null()
+            && !value
+                .as_str()
+                .is_some_and(|mode| TASK_SESSION_MODES.contains(&mode))
+        {
+            bail!("sessionMode must be perRun, reuse, or null");
+        }
+    }
     Ok(())
 }
 
@@ -68,6 +81,13 @@ pub(crate) fn configure_execution(config: &mut Value, input: &Value) {
         } else {
             object.insert("providerId".into(), input["providerId"].clone());
             object.insert("modelId".into(), input["modelId"].clone());
+        }
+    }
+    if let Some(value) = input.get("sessionMode") {
+        if value.is_null() {
+            object.remove("sessionMode");
+        } else if let Some(mode) = value.as_str() {
+            object.insert("sessionMode".into(), json!(mode));
         }
     }
 }
@@ -103,11 +123,21 @@ pub fn configure(config: &mut Value, input: &Value, cadence: &str, now: i64) -> 
         || input.get("cadence").is_some()
         || input.get("enabled").is_some()
     {
-        let next = config
+        let armed = config
             .get("schedule")
-            .and_then(|value| serde_json::from_value::<Schedule>(value.clone()).ok())
-            .and_then(|schedule| schedule.next(cadence, now));
-        config["nextRunAt"] = json!(next);
+            .and_then(|value| serde_json::from_value::<Schedule>(value.clone()).ok());
+        // An interval task is armed by its own value: a schedule without
+        // intervalMinutes would leave the next occurrence empty, so the input
+        // is refused instead of saved as a task that never fires.
+        if cadence == "interval"
+            && armed
+                .as_ref()
+                .and_then(|schedule| schedule.interval_minutes)
+                .is_none()
+        {
+            bail!("an interval schedule requires intervalMinutes");
+        }
+        config["nextRunAt"] = json!(armed.and_then(|schedule| schedule.next(cadence, now)));
     }
     Ok(())
 }
@@ -222,5 +252,50 @@ mod tests {
                 .status,
             "aborted"
         );
+    }
+
+    #[test]
+    fn interval_tasks_wait_their_own_minutes_and_need_their_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open_in_dir(dir.path()).unwrap();
+        let rejected = create_task(
+            &db,
+            &json!({"prompt":"check", "cadence":"interval", "schedule":{"hour":0,"minute":0,"weekday":0}}),
+        );
+        assert!(
+            rejected.is_err(),
+            "an interval schedule without its value would never fire"
+        );
+
+        let task = create_task(
+            &db,
+            &json!({"prompt":"check", "cadence":"interval",
+                    "schedule":{"hour":0,"minute":0,"weekday":0,"intervalMinutes":15}}),
+        )
+        .unwrap();
+        let next = crate::db::ts_to_ms(task.next_run_at.as_ref().unwrap());
+        let now = now_ms();
+        assert!(next > now && next <= now + 15 * 60_000 + 5_000);
+        assert!(due(&db, next - 60_000).unwrap().is_empty(), "not due yet");
+        assert_eq!(due(&db, next).unwrap(), vec![task.id.clone()]);
+
+        // A cadence switch keeps the value for the way back and arms the new
+        // rule from it instead.
+        let daily = update_task(
+            &db,
+            &json!({"id":task.id,"cadence":"daily",
+                    "schedule":{"hour":9,"minute":30,"weekday":0,"intervalMinutes":15}}),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(daily.cadence, "daily");
+        assert_eq!(
+            daily
+                .schedule
+                .as_ref()
+                .and_then(|item| item.interval_minutes),
+            Some(15)
+        );
+        assert!(daily.next_run_at.is_some(), "a daily task keeps its clock");
     }
 }

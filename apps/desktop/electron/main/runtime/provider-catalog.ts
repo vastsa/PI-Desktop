@@ -11,10 +11,12 @@ import {
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
+  modelConfigWithBinding,
   type ModelConfig,
   visionFromModelConfig,
   type ThinkingCapabilities,
 } from "@pi-desktop/agent-runtime";
+import { resolveBindingLimits } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
 import {
   catalogModelConfigFor,
@@ -97,7 +99,14 @@ export function createProviderCatalogRuntime({
     const modelConfig = modelsDevCatalog.modelConfigFor({
       providerId: provider.id, vendorKey: provider.vendorKey, baseUrl: provider.baseUrl, modelId,
     }, catalogModelConfig);
-    return { modelConfig, capabilities: capabilitiesFromModelConfig(modelConfig) };
+    const effectiveModelConfig = modelConfigWithBinding(
+      modelConfig,
+      bindingForModel(provider, modelId),
+    );
+    return {
+      modelConfig: effectiveModelConfig,
+      capabilities: capabilitiesFromModelConfig(effectiveModelConfig),
+    };
   };
 
   const enrichProvider = <T extends RuntimeProvider>(
@@ -111,14 +120,26 @@ export function createProviderCatalogRuntime({
       provider.defaultModelId ||
       "";
     modelsDevCatalog.configureAccount(provider);
-    const modelConfig = catalogModelConfigFor(modelsDevCatalog, {
+    const catalogConfig = catalogModelConfigFor(modelsDevCatalog, {
       providerId: provider.id, vendorKey: provider.vendorKey, baseUrl: provider.baseUrl, modelId,
     });
+    const modelConfig = modelConfigWithBinding(
+      catalogConfig,
+      bindingForModel(provider, modelId),
+    );
     const models = provider.models?.map((binding) => {
-      const effective = catalogModelConfigFor(modelsDevCatalog, {
+      const catalogConfig = catalogModelConfigFor(modelsDevCatalog, {
         providerId: provider.id, vendorKey: provider.vendorKey, baseUrl: provider.baseUrl, modelId: binding.id,
       });
-      return { ...binding, contextWindow: effective.contextWindow, maxTokens: effective.maxTokens, maxTokensSource: binding.maxTokensSource ?? "user" as const };
+      // A user-pinned window/cap is never replaced by the published number
+      // (spec §9.1, issue #1176); an inherited one keeps following the catalog.
+      const limits = resolveBindingLimits(catalogConfig, binding);
+      return {
+        ...binding,
+        contextWindow: limits.binding.contextWindow ?? limits.catalogConfig.contextWindow,
+        maxTokens: limits.binding.maxTokens ?? limits.catalogConfig.maxTokens,
+        maxTokensSource: binding.maxTokensSource ?? "user" as const,
+      };
     });
     return {
       ...provider,
@@ -321,9 +342,13 @@ export function createProviderCatalogRuntime({
     }
     const { provider, modelId } = target;
     modelsDevCatalog.configureAccount(provider);
-    const modelConfig = catalogModelConfigFor(modelsDevCatalog, {
+    const catalogConfig = catalogModelConfigFor(modelsDevCatalog, {
       providerId: provider.id, vendorKey: provider.vendorKey, baseUrl: provider.baseUrl, modelId,
     });
+    const modelConfig = modelConfigWithBinding(
+      catalogConfig,
+      bindingForModel(provider, modelId),
+    );
     return {
       ...session,
       ...capabilitiesFromModelConfig(modelConfig),

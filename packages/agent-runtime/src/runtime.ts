@@ -59,10 +59,10 @@ import {
   type TrustedExtensionSpec,
   type TrustedExtensionUiResponse,
 } from "@pi-desktop/shared";
-import {
+import type {
   TrustedExtensionRunner,
-  type RegisteredTrustedExtensionAgent,
-  type TrustedExtensionBridge,
+  RegisteredTrustedExtensionAgent,
+  TrustedExtensionBridge,
 } from "./extensions/runner.js";
 import type {
   AgentActivity,
@@ -214,6 +214,7 @@ import {
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
+import type { CompactionRequestShape } from "./compaction-diagnostics.js";
 import {
   addSummaryUsage,
   compactionSummaryInputLimit,
@@ -951,6 +952,8 @@ export type AgentRuntimeOptions = {
    * a second containment root. */
   scratchDir?: string;
   onEvent: (envelope: AgentEventEnvelope) => void;
+  /** Bounded diagnostics routed to the Electron logger, never the transcript. */
+  onDiagnostic?: (diagnostic: AgentRuntimeDiagnostic) => void;
   /**
    * Subagent definitions this session may delegate to (ADR 0062), already
    * merged and capped by Electron main. Empty means no `Task` tool at all.
@@ -965,6 +968,14 @@ export type AgentRuntimeOptions = {
   subagentProviders?: Record<string, RuntimeProviderConfig>;
   /** Resolved keys explicitly opted into Task.model selection; pins alone grant no override. */
   subagentModelKeys?: string[];
+};
+
+export type AgentRuntimeDiagnostic = {
+  kind: "compaction_failure" | "compaction_shape";
+  sessionId: string;
+  turnId?: string;
+  requestId: string;
+  data: Record<string, unknown>;
 };
 
 export type RuntimeMatchConfig = {
@@ -1456,16 +1467,12 @@ function selectRetainedUserMessages(
 
 /** Rebuild a pi-ai tool result from a persisted tool row. Rows that never
  * finished (app quit / abort mid-tool) restore as errored results so the
- * model knows the call produced nothing. */
-function toolResultFromUi(
+ * model knows the call produced nothing. Exported for tests. */
+export function toolResultFromUi(
   m: UiMessage,
   timestamp: number,
 ): ToolResultMessage {
-  const raw = m.toolResult as
-    | { content?: unknown; details?: unknown }
-    | string
-    | null
-    | undefined;
+  const raw: unknown = m.toolResult;
   const blocks: ToolResultMessage["content"] = [];
   const rawBlocks =
     isRecord(raw) && Array.isArray(raw.content) ? raw.content : undefined;
@@ -1485,7 +1492,27 @@ function toolResultFromUi(
   } else if (typeof raw === "string" && raw.trim()) {
     blocks.push({ type: "text", text: raw });
   } else if (raw !== undefined && raw !== null) {
-    blocks.push({ type: "text", text: safeJson(raw) });
+    // A host Read of an image file returns a top-level `images` array rather
+    // than content blocks; restore those as real image content so the model
+    // sees the picture across a restart, not just the JSON text (#1073).
+    const rawObject = isRecord(raw) ? raw : undefined;
+    const images = rawObject?.images;
+    if (rawObject && Array.isArray(images)) {
+      const rest = { ...rawObject };
+      delete rest.images;
+      blocks.push({ type: "text", text: safeJson(rest) });
+      for (const image of images) {
+        if (
+          isRecord(image) &&
+          typeof image.data === "string" &&
+          typeof image.mimeType === "string"
+        ) {
+          blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
+        }
+      }
+    } else {
+      blocks.push({ type: "text", text: safeJson(raw) });
+    }
   }
   const interrupted = m.toolStatus === "running";
   const rawRecord: Record<string, unknown> | undefined = isRecord(raw)
@@ -1595,6 +1622,7 @@ export class DesktopAgentRuntime {
   private thinkingLevel: SessionThinkingLevel;
   private host: RuntimeHost;
   private onEvent: (envelope: AgentEventEnvelope) => void;
+  private onDiagnostic: (diagnostic: AgentRuntimeDiagnostic) => void;
   private streamSink: StreamCoalescer;
   private baseSystemPrompt: string;
   private customSystemPrompt?: CustomSystemPrompt;
@@ -1605,6 +1633,7 @@ export class DesktopAgentRuntime {
   private pluginSkills: PluginSkillDef[];
   private trustedExtensionSpecs: TrustedExtensionSpec[];
   private extensionRunner?: TrustedExtensionRunner;
+  private trustedExtensionLoad?: Promise<void>;
   private extensionSessionName?: string;
   private extensionTurnIndex = 0;
   /** Headers an extension edited in `before_provider_headers` for the current turn. */
@@ -1793,6 +1822,13 @@ export class DesktopAgentRuntime {
   private activeToolProgressCleanups = new Set<(flush: boolean) => void>();
   private hostCloseUnsubscribe?: () => void;
   private turnSubagentUsage?: MessageUsage;
+  private compactionRequestShape?: CompactionRequestShape;
+  private compactionShapeLogged = false;
+  private compactionDiagnosticBudget?: {
+    hardLimit: number;
+    outputBudget: number;
+    plannedChunks: number;
+  };
 
   constructor(opts: AgentRuntimeOptions) {
     this.sessionId = opts.sessionId;
@@ -1803,6 +1839,7 @@ export class DesktopAgentRuntime {
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
     this.host = opts.host;
+    this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
       this.cleanupActiveToolProgress();
     });
@@ -2453,6 +2490,19 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * never fails the session.
    */
   async loadTrustedExtensions(): Promise<void> {
+    if (this.disposed || this.extensionRunner || this.trustedExtensionSpecs.length === 0) return;
+    if (this.trustedExtensionLoad) return this.trustedExtensionLoad;
+    const loading = this.loadTrustedExtensionsForSession();
+    this.trustedExtensionLoad = loading;
+    try {
+      await loading;
+    } finally {
+      if (this.trustedExtensionLoad === loading) this.trustedExtensionLoad = undefined;
+    }
+  }
+
+  private async loadTrustedExtensionsForSession(): Promise<void> {
+    const { TrustedExtensionRunner } = await import("./extensions/runner.js");
     if (this.disposed || this.extensionRunner || this.trustedExtensionSpecs.length === 0) return;
     const runner = new TrustedExtensionRunner({
       specs: this.trustedExtensionSpecs,
@@ -5232,7 +5282,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private resetDeferredToolsForPrompt(): void {
-    this.activeDeferredToolNames.clear();
+    // Sticky activation (#1225): on-demand tools stay active for the whole
+    // session instead of being reset at every prompt. A context-only restore
+    // drops the activation whenever the announcing rows fall out of the window
+    // (compaction, long turns), and the next direct call then fails with
+    // "Tool <name> not found" at name resolution — the intermittent 0 ms
+    // rejection on Windows. `rebuildToolCatalog` still prunes names that left
+    // the catalog (mode switches, extension reloads), so the set cannot
+    // outlive the tools it names.
     this.restoreDeferredToolsFromContext();
     this.setAgentTools(this.activeTools());
   }
@@ -6420,6 +6477,55 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     });
   }
 
+  private emitCompactionDiagnostic(
+    kind: AgentRuntimeDiagnostic["kind"],
+    requestId: string,
+    data: Record<string, unknown>,
+  ): void {
+    this.onDiagnostic({
+      kind,
+      sessionId: this.sessionId,
+      ...(this.turnId ? { turnId: this.turnId } : {}),
+      requestId,
+      data,
+    });
+  }
+
+  private emitCompactionFailureDiagnostic(
+    requestId: string,
+    reason: CompactionFailureReason,
+    tokensBefore: number | undefined,
+    error: unknown,
+    extra: Record<string, unknown> = {},
+  ): void {
+    if (!this.compactionShapeLogged) {
+      this.emitCompactionDiagnostic("compaction_shape", requestId, {
+        requestShape: extra.requestShape ?? "unobserved",
+        ...(this.compactionRequestShape ?? {}),
+      });
+      this.compactionShapeLogged = true;
+    }
+    const candidate = error as {
+      code?: unknown;
+      details?: { providerStatus?: unknown; requestId?: unknown };
+    };
+    this.emitCompactionDiagnostic("compaction_failure", requestId, {
+      provider: this.provider.id,
+      model: this.provider.modelId,
+      reason,
+      ...(typeof candidate.code === "string" ? { errorCode: candidate.code } : {}),
+      ...(typeof candidate.details?.providerStatus === "number"
+        ? { httpStatus: candidate.details.providerStatus }
+        : {}),
+      ...(typeof candidate.details?.requestId === "string"
+        ? { upstreamRequestId: candidate.details.requestId }
+        : {}),
+      ...(tokensBefore !== undefined ? { tokensBefore } : {}),
+      ...(this.compactionDiagnosticBudget ?? {}),
+      ...extra,
+    });
+  }
+
 
   private reasoningReplayIdentity(): ReasoningReplayIdentity {
     const requiresCompletionsReasoningReplay =
@@ -6873,23 +6979,53 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     signal: AbortSignal,
   ): Promise<Awaited<ReturnType<typeof compact>>> {
     const usageTurnId = this.turnId;
-    return compact(
-      preparation,
-      // The summary is a provider request like any other turn, but
-      // pi-agent-core builds its options itself and never reaches `streamFn`,
-      // so the headers have to ride on the collection.
-      withCompactionRequestHeaders(this.models, this.provider, this.sessionId,
-        usage => this.emit({ type: "usage", usage }, usageTurnId)),
-      this.model,
-      undefined,
-      agentThinkingLevel(this.thinkingLevel),
-      // Without a policy pi-ai returns the first failed response as-is, which
-      // made a single dropped stream or 503 discard the whole summary (#543).
-      // pi's classifier decides what is transient; the waits honour `signal`.
-      COMPACTION_SUMMARY_RETRY_POLICY,
-      undefined,
-      withAbortSignal(signal, BACKGROUND_CONTEXT),
+    const requestId = randomUUID();
+    this.compactionRequestShape = undefined;
+    this.compactionShapeLogged = false;
+    const models = withCompactionRequestHeaders(
+      this.models,
+      this.provider,
+      this.sessionId,
+      (usage) => this.emit({ type: "usage", usage }, usageTurnId),
+      (shape) => {
+        this.compactionRequestShape = shape;
+        this.compactionShapeLogged = true;
+        this.emitCompactionDiagnostic("compaction_shape", requestId, {
+          requestShape: "observed",
+          ...shape,
+        });
+      },
     );
+    try {
+      const result = await compact(
+        preparation,
+        // The summary is a provider request like any other turn, but
+        // pi-agent-core builds its options itself and never reaches `streamFn`,
+        // so the headers have to ride on the collection.
+        models,
+        this.model,
+        undefined,
+        agentThinkingLevel(this.thinkingLevel),
+        // Without a policy pi-ai returns the first failed response as-is, which
+        // made a single dropped stream or 503 discard the whole summary (#543).
+        // pi's classifier decides what is transient; the waits honour `signal`.
+        COMPACTION_SUMMARY_RETRY_POLICY,
+        undefined,
+        withAbortSignal(signal, BACKGROUND_CONTEXT),
+      );
+      if (!result.ok) {
+        this.emitCompactionFailureDiagnostic(
+          requestId,
+          "summary_provider",
+          preparation.tokensBefore,
+          result.error,
+        );
+      }
+      return result;
+    } catch (error) {
+      this.emitCompactionFailureDiagnostic(requestId, "summary_provider", preparation.tokensBefore, error);
+      throw error;
+    }
   }
 
   /**
@@ -6949,6 +7085,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     signal: AbortSignal,
     retentionMode: CompactionRetentionMode,
   ): Promise<CheckpointBuild> {
+    this.compactionDiagnosticBudget = undefined;
     const entries = this.entriesWithCompaction();
     const context = buildSessionContext(entries, this.reasoningReplayIdentity());
     const budget = this.contextBudget(context.messages);
@@ -6959,6 +7096,21 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       retentionMode,
     );
     if (!preparation.ok || !preparation.value) {
+      this.emitCompactionFailureDiagnostic(
+        randomUUID(),
+        preparation.ok ? "no_new_history" : "summary_budget",
+        undefined,
+        preparation.ok ? "No new context is available to compact" : preparation.error,
+        {
+          requestShape: "not_sent",
+          hardLimit: budget.hardLimit,
+          outputBudget: compactionSummaryOutputBudget({
+            requestHeadroom: budget.requestHeadroom,
+            modelMaxTokens: this.model.maxTokens,
+          }),
+          plannedChunks: 0,
+        },
+      );
       return {
         ok: false,
         entries,
@@ -6982,7 +7134,30 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const chunks = summaryInput
       ? undefined
       : this.planSummaryRequests(preparation.value, budget);
+    this.compactionDiagnosticBudget = {
+      hardLimit: budget.hardLimit,
+      outputBudget: compactionSummaryOutputBudget({
+        requestHeadroom: budget.requestHeadroom,
+        modelMaxTokens: this.model.maxTokens,
+      }),
+      plannedChunks: chunks?.length ?? 1,
+    };
     if (!summaryInput && !chunks) {
+      this.emitCompactionFailureDiagnostic(
+        randomUUID(),
+        "summary_budget",
+        preparation.value.tokensBefore,
+        "Compaction summary input exceeds the safe model budget",
+        {
+          requestShape: "not_sent",
+          hardLimit: budget.hardLimit,
+          outputBudget: compactionSummaryOutputBudget({
+            requestHeadroom: budget.requestHeadroom,
+            modelMaxTokens: this.model.maxTokens,
+          }),
+          plannedChunks: 0,
+        },
+      );
       return {
         ok: false,
         entries,

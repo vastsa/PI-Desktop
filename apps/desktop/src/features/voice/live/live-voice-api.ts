@@ -50,12 +50,12 @@ export const liveVoiceApi = {
     invoke<{ ok: true }>(IPC.invoke.liveVoiceWidgetVisibility, input),
   requestWidgetAction: (action: LiveVoiceWidgetAction) =>
     invoke<{ ok: true }>(IPC.invoke.liveVoiceWidgetAction, { action }),
-  reportWidgetIssue: (input: { callId: string; code: string | null }) =>
-    invoke<{ ok: true }>(IPC.invoke.liveVoiceWidgetIssue, input),
+  reportWidgetOwnerState: (input: { callId: string; errorCode: string | null; decisionWaiting: boolean }) =>
+    invoke<{ ok: true }>(IPC.invoke.liveVoiceWidgetOwnerState, input),
   onView: (listener: (view: LiveCallView) => void) => subscribe(IPC.event.liveVoiceChanged, listener),
   onControl: (listener: (event: LiveControlEvent) => void) => subscribe(IPC.event.liveVoiceControl, listener),
   onTranscript: (listener: (event: LiveTranscriptEvent) => void) => subscribe(IPC.event.liveVoiceTranscript, listener),
-  onWidgetState: (listener: (state: { call: LiveCallView | null; errorCode?: string }) => void) =>
+  onWidgetState: (listener: (state: { call: LiveCallView | null; errorCode?: string; decisionWaiting?: boolean }) => void) =>
     subscribe(IPC.event.liveVoiceWidgetState, listener),
   onWidgetAction: (listener: (event: { action: LiveVoiceWidgetAction }) => void) =>
     subscribe(IPC.event.liveVoiceWidgetAction, listener),

@@ -1,0 +1,864 @@
+import type { ChangelogEntry } from "./changelog.js";
+
+export const enEntries: ChangelogEntry[] = [
+  {
+    version: "0.16.0",
+    date: "2026-10-02",
+    highlights: [
+      "Choose a custom data location, follow migration progress, and safely reclaim regenerable caches in Settings.",
+      "Live Voice is now available to everyone and calls start in the current session.",
+      "Add a session checklist that keeps its authoritative state after the local service restarts.",
+      "Show one-off notices in the shared toast stack instead of blocking dialogs.",
+      "Match model lists against official provider metadata so relay services and model names stay accurate.",
+      "Dock the Live Voice call bar as a desktop widget and answer the bound session's open question by voice.",
+      "A Live Voice call bound to a work session shows the question, permission, or plan it is waiting for, with an action that opens that session.",
+      "Plugins can fill seven finalized UI slots and draw their own layered dialogs.",
+      "Plugins can read and rewrite the composer draft, and request any-host network access at install time.",
+      "Cancelling a trusted extension retires its SDK commands, tool updates, subprocesses, and queued prompts; startup, shutdown, and notification handlers now have bounded waits.",
+      "Spill large subagent scratch output to disk and show resume hints instead of failing the turn.",
+      "Resuming a subagent no longer picks another definition's private model binding, and revoked delegation permissions apply on the next turn.",
+      "Subagent topology cards and their live process rows now follow the main conversation's width.",
+      "Claude models on a GitHub Copilot account authenticate with a Bearer token instead of failing with a missing Authorization header.",
+      "Google Gemini provider rows send requests again (issue #1072).",
+      "Deleting a provider drops the image-generation default bound to it.",
+      "OpenAI Codex OAuth models can opt into provider-hosted native web search.",
+      "Hosted web search has a complete replay and estimation contract, and histories written before the contract change stay usable.",
+      "Compaction works again on a gateway that fronts a Codex backend.",
+      "Copy individual Markdown tables, download them as CSV, or expand them for reading.",
+      "Open chat file references at complete paths inside project roots, and keep user-message links selectable and copyable.",
+      "The Composer reasoning slider moves smoothly to clicked or keyboard-selected levels, follows dragging, and now paints its filled track and hover highlights consistently.",
+      "Keep long conversations responsive while streaming and release every host request slot under a wall-clock budget.",
+      "Keep MCP connections reliable: streamable-HTTP replies arrive before the SSE stream closes, and OAuth issuer paths and resource scopes survive.",
+      "Accept the legacy old_string/new_string tool shape that older models still send to Edit.",
+      "Lower the window minimum to 800×560 capped to the work area and remove the Windows frameless rim.",
+      "Reloading the renderer keeps a session's pending approval and question cards.",
+    ],
+  },
+
+  {
+    version: "0.15.10",
+    date: "2026-09-28",
+    highlights: [
+      "Marketplace plugins now appear in a randomized order instead of alphabetically.",
+    ],
+  },
+
+  {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "Remove obsolete first-launch helper files from macOS DMG and ZIP packages.",
+    ],
+  },
+
+  {
+    version: "0.15.6",
+    date: "2026-09-23",
+    highlights: [
+      "Enable native search directly on existing DeepSeek, xAI and OpenAI services without changing their saved connection settings.",
+      "Support GPT-6 Astra, Sol, and Luna across the OpenAI and ChatGPT/Codex model catalogs.",
+    ],
+  },
+
+  {
+    version: "0.15.5",
+    date: "2026-09-23",
+    highlights: [
+      "Support GPT-6 Astra, Sol, and Luna across the OpenAI and ChatGPT/Codex model catalogs.",
+    ],
+  },
+
+  {
+    version: "0.15.2",
+    date: "2026-09-21",
+    highlights: [
+      "Generate and edit images in chat, choose one image model, and create batches with the built-in imagegen skill.",
+      "Keep tool activity aligned with the conversation width and contain long activity labels cleanly.",
+      "Preserve pasted file attachments when a paste finishes after switching sessions.",
+      "Keep the selected default model when editing providers, and fall back safely when it is removed.",
+      "Make nested thinking and tool activity disclosures easier to read, navigate, and recover.",
+      "Improve Composer layouts, reasoning controls, and theme consistency across the workspace.",
+      "Add an opt-in Settings switch to keep retrying network and transient provider failures until they succeed.",
+    ],
+  },
+
+  {
+    version: "0.15.1",
+    date: "2026-09-19",
+    highlights: [
+      "Pair and manage remote hosts over SSH from Settings, including password login, install, and reconnect on launch.",
+      "Configure prompt enhancement (template, model, and reasoning) from the AI settings card.",
+      "Drag selected models to reorder them, and add an omit thinking level that sends no provider override.",
+      "Resize or collapse the sidebar, and restore default sidebar or panel width with a double-click.",
+      "Manage projects in a grouped archive with an inspector, and import each kind from its own workbench.",
+      "Scan and batch-import skills and MCP servers from other agent tools.",
+      "Keep the macOS menu-bar extra on a native status item, with bounded tray session shortcuts.",
+      "Ship signed and notarized official macOS builds with in-app updates.",
+      "Install from a two-icon signed macOS DMG; the unsigned-opening note stays in the ZIP only.",
+      "Open Review only when you ask, and land on the latest turn when opening a session.",
+      "Recover a stuck send queue, and ignore forged steering origin.",
+    ],
+  },
+
+  {
+    version: "0.15.0",
+    date: "2026-09-17",
+    highlights: [
+      "Reorder, edit, lock, and promote queued prompts so a later message can run next.",
+      "Clone a git repository from the create-project dialog.",
+      "Drag the conversation content width inside the chat column.",
+      "Show skill-market install failures with a retry instead of a dead button.",
+      "Show plugin-declared providers as native rows, including API keys and trusted custom agents.",
+      "Add plugin real-time connections, global shortcuts, capability permissions, and an official channel with backups.",
+      "Let plugins register theme variables, theme assets, and a transparent floating widget.",
+      "Delete a project together with its owned sessions, after a second-click confirm.",
+      "Give subagents an ordered model fallback list, resume a settled one from the same Task card, and switch shipped builtins from Settings.",
+      "Open file references from tool rows, keep the reading position when expanding details, and paint Plan approval hover as an opaque plate.",
+    ],
+  },
+
+  {
+    version: "0.14.9",
+    date: "2026-09-17",
+    highlights: [
+      "Reorder, edit, lock, and promote queued prompts so a later message can run next.",
+      "Clone a git repository from the create-project dialog.",
+      "Drag the conversation content width inside the chat column.",
+      "Show skill-market install failures with a retry instead of a dead button.",
+      "Show plugin-declared providers as native rows, including API keys and trusted custom agents.",
+      "Add plugin real-time connections, global shortcuts, capability permissions, and an official channel with backups.",
+      "Let plugins register theme variables, theme assets, and a transparent floating widget.",
+      "Delete a project together with its owned sessions, after a second-click confirm.",
+      "Give subagents an ordered model fallback list, and switch shipped builtins from Settings.",
+      "Open file references from tool rows, keep the reading position when expanding details, and paint Plan approval hover as an opaque plate.",
+    ],
+  },
+
+  {
+    version: "0.14.8",
+    date: "2026-09-14",
+    highlights: [
+      "Browse and install MCP servers from the official registry and user-configured sources in the MCP market.",
+      "Browse and install skills from curated and GitHub sources in the Skill market, with public-HTTPS and size gates.",
+      "Ship the file view as the vendored File Manager plugin, and let a bundled plugin keep a marketplace update.",
+      "Add a work-panel preview mode, raise the chat column floor to 450px, and prioritize MainChat in the three-column shell.",
+      "Discover independent sessions, send host-owned collaboration messages, and open collaboration links.",
+      "Let subagents inherit parent tools, list shipped builtins in Settings, add a UI-designer builtin, and show a distinct creating state.",
+      "Steer an active turn with Alt+Enter, and expand pasted text files in the composer for editing.",
+      "Redesign project creation with multi-folder workspaces, project-owned memory, and a visual memory editor.",
+      "Install declared dependencies and skills from imported pi packages behind a host-owned security boundary.",
+      "Add preset chips for model context-window and max-output, show Read line ranges on tool chips, and keep context recoverable after a failed compaction.",
+    ],
+  },
+  {
+    version: "0.14.6",
+    date: "2026-09-10",
+    highlights: [
+      "Warn when this build is older than your local data, or is the Intel build running on Apple Silicon, instead of failing silently.",
+      "Add a local MCP desktop control plane, and let reviewed plugins drive the desktop only after native consent.",
+      "Add subagent preset templates, a provider-bounded model picker, and the effective thinking level on delegation cards.",
+      "Alias configured models, copy model IDs, and honor a model's own wire API over the provider-wide style.",
+      "Replace textual Edit matching with line-anchored operations, with error-specific recovery guidance.",
+      "Retry providers up to ten times with a visible countdown, and recover autonomous progress-only turns.",
+      "Redesign the macOS installer, add a Windows portable exe and Linux RPM package, and restore GNOME tray and dock icons.",
+      "Copy conversation IDs and open session folders from the sidebar, with localized tooltips on icon-only actions.",
+      "Show live process status and quiet intervals on the activity row, and add a viewport-fixed work panel toggle.",
+      "Enforce workspace ignore rules, resolve dangling symlinks, and re-check plugin network egress on every redirect.",
+      "Honor proxy bypass rules, keep pasted private-use glyphs, and load file previews without blocking the composer.",
+    ],
+  },
+  {
+    version: "0.14.5",
+    date: "2026-09-09",
+    highlights: [
+      "Label every macOS DMG and ZIP with its native arm64 or x64 architecture.",
+    ],
+  },
+  {
+    version: "0.14.4",
+    date: "2026-09-09",
+    highlights: [
+      "Add bounded large-file range reads and gesture-bound dropped-file grants for plugins.",
+      "Make macOS signing and notarization explicit opt-in, with opening guidance for trusted unsigned builds.",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-09-09",
+    highlights: [
+      "Label Intel macOS release downloads explicitly so the installer architecture is clear.",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-09-08",
+    highlights: [
+      "Add a context usage inspector that follows the selected model and shows compaction guidance.",
+      "Improve provider and model setup with searchable selection, bulk actions, and clearer fetch errors.",
+      "Summarize session titles automatically and let you rename projects with names that persist across restarts.",
+      "Refine the subagent side sheet with live status, compact task bubbles, model identity, and latest-output navigation.",
+      "Deliver native notifications for interactive asks and approvals while keeping routine completions out of the inbox.",
+      "Add Korean shell localization and improve localized settings, clipboard history, and safe link handling.",
+    ],
+  },
+  {
+    version: "0.14.1",
+    date: "2026-09-08",
+    highlights: [
+      "Make subagent delegation inherit the parent model when no delegation model is configured.",
+      "Prevent echoed parent model IDs from being rejected as unavailable delegation models.",
+    ],
+  },
+  {
+    version: "0.14.0",
+    date: "2026-09-08",
+    highlights: [
+      "Configure outbound HTTP proxies per provider, with validation and clear handling for unsupported SOCKS4 credentials.",
+      "Import provider profiles and model configurations from CC Switch and local agent stores.",
+      "Add custom provider headers, User-Agent settings, and a MiniMax preset with clearer model-fetch errors.",
+      "Attach files from the unified picker with session-scratch copies and inline image support.",
+      "Add Traditional Chinese, German, Spanish, and French shell locales, plus searchable appearance and provider settings.",
+      "Adjust reading font sizes, typography, and icons consistently, and show the selected subagent model in delegation cards.",
+    ],
+  },
+  {
+    version: "0.13.11",
+    date: "2026-09-07",
+    highlights: [
+      "Let plugins list models, read in-flight session context, and request host-owned completions without receiving credentials.",
+    ],
+  },
+  {
+    version: "0.13.10",
+    date: "2026-09-07",
+    highlights: [
+      "Confirm before quitting (Cmd+Q, tray, or menu) to prevent accidental data loss.",
+    ],
+  },
+  {
+    version: "0.13.9",
+    date: "2026-09-06",
+    highlights: [
+      "Version bump for release infrastructure.",
+    ],
+  },
+  {
+    version: "0.13.8",
+    date: "2026-09-06",
+    highlights: [
+      "Search and preview project files, including images, then open them with the default app from a dedicated viewer page.",
+      "Run the work-panel Browser as a bundled plugin, with the same isolation as other plugin views.",
+      "Keep @ file chips after Enter, and pulse the mode chip while planning.",
+      "Open only http(s) and mailto links from chat, plugins, and previews.",
+    ],
+  },
+  {
+    version: "0.13.7",
+    date: "2026-09-06",
+    highlights: [
+      "Keep completed AI replies after restart, instead of showing only the user messages.",
+      "Keep background subagents running until you stop them or the parent stops them.",
+      "Let the agent choose a Bash timeout up to six hours so long jobs are not killed at 60 seconds.",
+    ],
+  },
+  {
+    version: "0.13.6",
+    date: "2026-09-06",
+    highlights: [
+      "Keep pasted-file user messages sized to their content instead of stretching across the thread.",
+    ],
+  },
+  {
+    version: "0.13.5",
+    date: "2026-09-06",
+    highlights: [
+      "Remove the A2A broker and peer-to-peer conversation tools.",
+      "Fix agent-runtime tests that broke after the A2A removal.",
+    ],
+  },
+  {
+    version: "0.13.4",
+    date: "2026-09-05",
+    highlights: [
+      "Add Turkish and a searchable language picker in Settings → General.",
+      "Make theme a searchable picker like language, including plugin themes.",
+      "Flatten the add-provider Service list, add Xiaomi, Zhipu, and Z.AI, and make Service searchable.",
+      "Report a problem from Settings → Info with version and OS already filled.",
+      "Keep streaming conversation turns in chronological order when the live transcript merges.",
+    ],
+  },
+  {
+    version: "0.13.3",
+    date: "2026-09-05",
+    highlights: [
+      "Open New Task to an empty destination immediately, without keeping the previous transcript on screen.",
+      "Treat a filled Read window as complete and keep the truncated chip for actual cuts.",
+      "Keep later conversation turns when switching regenerate variants, instead of restoring a stale archive.",
+    ],
+  },
+  {
+    version: "0.13.2",
+    date: "2026-09-05",
+    highlights: [
+      "Keep unsent composer drafts, including file chips, when the input remounts or the window is hidden.",
+      "Start new sessions at the model binding's default thinking level instead of always using the strongest.",
+      "Keep expanded subagent runs scrolled to the latest output, with a jump-to-latest control after you scroll up.",
+      "Keep the thinking-level menu available when pinning a level while a turn is running.",
+      "Keep add-provider fields fully visible and focused in a narrow window.",
+      "Match the macOS startup splash to the sidebar glass so the window no longer flashes an opaque panel.",
+    ],
+  },
+  {
+    version: "0.13.1",
+    date: "2026-09-05",
+    highlights: [
+      "Insert atomic attachment chips on the composer input line, with a three-line default height.",
+      "Checkpoint streaming replies so they survive quit, sidecar loss, and Stop without rewriting the transcript.",
+      "Hide successful completions from the notification inbox.",
+      "Remove in-flow borders and dividers, and show scrollbars only on hover or while scrolling.",
+      "Play light and dark GIF mascots on the empty-home screen.",
+    ],
+  },
+  {
+    version: "0.13.0",
+    date: "2026-09-04",
+    highlights: [
+      "Add a rich hover card on sidebar session rows showing workspace, branch, and update time.",
+      "Switch macOS sidebar to the under-window vibrancy material for deeper glass depth.",
+      "Remove the macOS sidebar dock seam for a borderless glass edge.",
+      "Play theme-specific eight-frame waving mascots on the empty-home screen.",
+      "Fix a sidebar crash on first render caused by a forward-referenced variable.",
+    ],
+  },
+  {
+    version: "0.12.4",
+    date: "2026-09-04",
+    highlights: [
+      "Keep the right work panel inside the application window so MainChat reflows like the left sidebar.",
+      "Resize the work panel from its inner divider with pointer or keyboard controls while preserving window bounds.",
+      "Deduplicate paged transcript reads during session switching for smoother navigation.",
+      "Add a native macOS sidebar surface treatment without changing the sidebar's layout behavior.",
+    ],
+  },
+  {
+    version: "0.12.3",
+    date: "2026-09-03",
+    highlights: [
+      "Show context usage against the selected model's published context window.",
+      "Keep model-specific context limits consistent across provider settings, the Composer, and the runtime.",
+      "Keep Composer contextual guidance stable while switching models and during active turns.",
+    ],
+  },
+  {
+    version: "0.12.2",
+    date: "2026-09-03",
+    highlights: [
+      "Fix user message row appearing before host round trip completes.",
+      "Clear draft prompt before sending to prevent stale content.",
+      "Settle long transcripts under a skeleton veil for smoother rendering.",
+    ],
+  },
+  {
+    version: "0.12.1",
+    date: "2026-09-03",
+    highlights: [
+      "Keep models enabled for subagent delegation available after saving provider settings and restarting the app.",
+      "Keep live replies visible when reopening sessions.",
+    ],
+  },
+  {
+    version: "0.12.0",
+    date: "2026-09-02",
+    highlights: [
+      "Coordinate concurrent subagents over the Agent2Agent (A2A) protocol: discover running peers as Agent Cards, exchange durable tasks and typed messages, and stream task updates — replacing the previous in-process peer messaging.",
+    ],
+  },
+  {
+    version: "0.11.4",
+    date: "2026-09-01",
+    highlights: [
+      "Publish native macOS Intel DMG and ZIP installers alongside Apple Silicon builds.",
+      "Keep macOS updater feeds unified across both native architectures.",
+    ],
+  },
+  {
+    version: "0.11.3",
+    date: "2026-08-31",
+    highlights: [
+      "Assign each subagent its own model from a delegation catalog, or let it inherit the parent conversation's pick.",
+      "Let concurrent subagents message each other with topic-filtered, threaded peer messaging.",
+      "Run structured roundtable discussions where multiple subagents debate a topic across rounds and summarize the outcome.",
+      "Keep model configuration controls — delegation checkbox, custom model section, and font sizes — harmonized across panels.",
+      "Replace the delegation hint text with a cleaner icon tooltip.",
+    ],
+  },
+  {
+    version: "0.11.2",
+    date: "2026-08-31",
+    highlights: [
+      "Switch between recent conversations without the chat area flashing: each one keeps its own pane and reappears exactly as you left it, scroll position included.",
+      "Return to a conversation you had scrolled up in and land back at that spot, while a session opened for the first time still starts at its newest turn.",
+      "Keep reading the current conversation while a new one loads, instead of watching the transcript dim.",
+      "Retry an edited prompt even when you left the text unchanged.",
+      "Keep working on the task at hand after an automatic context compaction, instead of the agent picking up an older request.",
+    ],
+  },
+  {
+    version: "0.11.0",
+    date: "2026-08-30",
+    highlights: [
+      "Set up a provider in one discovery-driven form that asks the AI service for its own models before falling back to the bundled catalog.",
+      "Pick a model from a searchable list that shows capability badges and context size, sourced from the models.dev catalog.",
+      "Override attachment capabilities and the default thinking level per model binding, and see only the thinking levels a model publishes.",
+      "Read a lone subagent delegation as its own card with lifecycle rows, and scroll an expanded delegate run instead of stretching the transcript.",
+      "Keep the conversation outline reachable while history still loads, and see a skeleton instead of an empty list while sessions load.",
+      "Paste a large block of text into the composer and have it spill into a session file, with typing kept off the reflow path.",
+      "Keep a window where you dropped it when dragging across displays, and keep the titlebar band reserved on macOS destination pages.",
+      "Lose fewer turns to rejected file and search tool calls, and to a command timeout given in milliseconds.",
+    ],
+  },
+  {
+    version: "0.10.9",
+    date: "2026-08-28",
+    highlights: [
+      "Manage skills, subagents, and MCP servers from one capability workbench in Settings, with level filters, search, and confirmed removal.",
+      "Keep the capability workbench and the settings top band legible in both themes, with correctly sized toolbar and empty-state controls.",
+      "Keep long conversations responsive while scrolling, switching sessions, and hovering the minimap, without the transcript jumping into place.",
+      "Load every transcript line written by older builds instead of showing a past session as empty.",
+      "Cut the transcript at the message you chose when regenerating or resending an edit, and always list a forked session in the sidebar.",
+      "Judge subagent liveness by any response, cap each builtin subagent's turns, and report an expired wait as still running instead of failed.",
+      "Retry a transient provider failure up to four times with 1/2/4/8s waits on one shared budget per turn, and report the real attempt mid-stream.",
+    ],
+  },
+  {
+    version: "0.10.8",
+    date: "2026-08-26",
+    highlights: [
+      "Keep Windows native window controls isolated from panel actions across the frameless shell.",
+      "Give temporary chats isolated scratch workspaces so their files stay separate from project work.",
+      "Restore prompt enhancement in the command launcher with a clearer bot model icon.",
+      "Reveal sidebar scrollbars on hover while keeping them quiet at rest.",
+    ],
+  },
+  {
+    version: "0.10.7",
+    date: "2026-08-25",
+    highlights: [
+      "Keep the Composer send and stop controls in one stable slot so drafts and running turns stay aligned.",
+      "Keep prompt enhancement available from the command launcher without a standalone toolbar icon.",
+      "Make sidebar scrollbars quieter at rest while keeping them discoverable during navigation.",
+    ],
+  },
+  {
+    version: "0.10.6",
+    date: "2026-08-25",
+    highlights: [
+      "Show Thinking capabilities for the exact model selected in the Composer, including before a new session is created.",
+      "Start new sessions at the selected reasoning model's strongest published level.",
+    ],
+  },
+  {
+    version: "0.10.5",
+    date: "2026-08-25",
+    highlights: [
+      "Keep Windows window controls isolated from panel actions across the frameless shell.",
+      "Open Windows project folders and files reliably, including paths with the extended-length prefix.",
+      "Edit CRLF files without changing their original line-ending style.",
+    ],
+  },
+  {
+    version: "0.10.4",
+    date: "2026-08-25",
+    highlights: [
+      "Show only configured provider models in the conversation picker, while keeping saved models available when discovery is unavailable.",
+      "Keep the frameless window control band opaque so page content never shows through native controls.",
+      "Keep chat width stable while the work panel is open and restore chat-only window bounds after it collapses.",
+    ],
+  },
+  {
+    version: "0.10.3",
+    date: "2026-08-25",
+    highlights: [
+      "Improve one-shot prompt enhancement so it keeps the current draft and file references intact.",
+      "Keep the composer send and stop actions aligned with the visible draft and running session.",
+      "Preserve background delegation metadata across TaskWait turns and renderer reloads.",
+      "Keep forked sessions' history and transcript available immediately after branching.",
+    ],
+  },
+  {
+    version: "0.10.2",
+    date: "2026-08-24",
+    highlights: [
+      "Keep chat content and the composer comfortably centered when the sidebar is collapsed.",
+      "Prepare large image attachments without loading the whole file into memory, including when replaying history.",
+    ],
+  },
+  {
+    version: "0.10.1",
+    date: "2026-08-24",
+    highlights: [
+      "Queue prompts sent while a run is active and deliver them in order without losing the current draft.",
+      "Bound background subagents with idle and total-duration timeouts and show when a delegate times out.",
+      "Load long session histories in bounded pages and fetch earlier messages as you scroll upward.",
+    ],
+  },
+  {
+    version: "0.10.0",
+    date: "2026-08-21",
+    highlights: [
+      "Configure multiple models per provider and switch between them directly from the composer.",
+      "Manage agent capabilities in a redesigned Settings studio with clearer scope blocks and menus.",
+      "Expose host clipboard history to plugins as a new capability.",
+      "Keep empty sessions durable so they can be shown and reused after relaunch.",
+      "Make the model picker easier to use with a clearer provider hierarchy and steady scrolling.",
+      "Always report total line counts in Read results so large files can be paged reliably.",
+      "Recover rate-limited streams more reliably across retries.",
+      "Reveal selected files in the file manager when opening them from the Files panel.",
+    ],
+  },
+  {
+    version: "0.9.1",
+    date: "2026-08-20",
+    highlights: [
+      "Make pinned project icons distinct so they are easier to recognize in the sidebar.",
+      "Keep subagent activity from remaining stuck on Running after it finishes.",
+      "Align plugin pages and panels more closely with the rest of the app chrome.",
+      "Reduce typing and send latency in the composer.",
+      "Make long transcripts scroll more smoothly and avoid a flash while switching sessions.",
+      "Restore the empty-home supporting line and bottom-aligned composer layout.",
+    ],
+  },
+  {
+    version: "0.9.0",
+    date: "2026-08-20",
+    highlights: [
+      "Browse project files in the bundled Files panel and open them with the operating system's default app.",
+      "Add isolated plugin-contributed views to the work panel and keep marketplace provenance and withdrawn-version status visible.",
+      "Remove the built-in interactive terminal while keeping Bash output in the conversation and interactive shells in the external terminal.",
+      "Retry provider rate limits in place without duplicate assistant messages, then offer Continue when the retry budget is exhausted.",
+      "Use a compact context summary to see model, tool, cache, and compaction usage at a glance.",
+      "Teach the five core session commands through localized slash-command hints in the composer.",
+      "Keep home and conversation composers aligned while their welcome and command hints rotate smoothly.",
+    ],
+  },
+  {
+    version: "0.8.1",
+    date: "2026-08-19",
+    highlights: [
+      "Sign in to multiple vendor accounts and choose the account used for each provider.",
+      "Use each model's capabilities to decide when image attachments are supported.",
+      "Choose reasoning effort directly from the composer for models that expose it.",
+      "Keep one PI-Desktop instance per data directory to prevent conflicting sessions.",
+      "Organize Settings into clearer groups and simplify provider account management.",
+      "Keep built-in subagents aligned with the parent conversation's permission mode.",
+    ],
+  },
+  {
+    version: "0.8.0",
+    date: "2026-08-17",
+    highlights: [
+      "Delegate background subagents and wait for their results without blocking the conversation.",
+      "Raise the running subagent cap to 10 and apply each agent's permission scope to delegated work.",
+      "Add built-in explorer and fixer subagents for common background tasks.",
+      "Ask once whether closing the window should minimize to the tray or quit, then remember the choice.",
+      "Let plugin panels follow the app language and color mode.",
+      "Retry mid-stream rate-limit errors in the same turn instead of stopping the reply.",
+      "Recover approved Plan runs after a sidecar interruption.",
+      "Keep sidecar crash notices from breaking a window that is already gone.",
+    ],
+  },
+  {
+    version: "0.7.0",
+    date: "2026-08-15",
+    highlights: [
+      "Restrict plugin file access to each plugin's declared file scope, and send deleted files to the trash for easy recovery.",
+      "Show each plugin's declared file scope next to its permissions.",
+      "Confine plugin network requests to each plugin's declared domain allowlist.",
+      "Forward unknown plugin panel channels to the plugin so deeper integrations keep working.",
+      "Stop the sidebar collapse from flickering when toggled.",
+      "Make agent edits line-anchored so an interrupted edit recovers gracefully instead of ending the turn silently.",
+      "Harmonize card typography hierarchy for a more consistent interface.",
+      "Upgrade the desktop shell and agent runtime to the latest Electron and pi releases.",
+    ],
+  },
+  {
+    version: "0.6.0",
+    date: "2026-08-14",
+    highlights: [
+      "Open the context usage inspector on click to see token and cache statistics.",
+      "Toggle work panel visibility with a new keyboard shortcut.",
+      "Keep new-task drafts out of history until the first message is sent.",
+      "Add a custom global font picker with bundled OFL fonts for personalized typography.",
+      "Remember recently used plugins in the launcher for faster access.",
+      "Add copy session path to the context menu for developer mode.",
+      "Fix font picker clipping and System default reset issues.",
+      "Keep macOS PI-Desktop in the Dock and Cmd+Tab after window close.",
+      "Keep chat transcript pinned when composer collapses after sending.",
+      "Give the work panel a real empty state with clearer guidance.",
+    ],
+  },
+  {
+    version: "0.5.11",
+    date: "2026-08-13",
+    highlights: [
+      "Add offline availability and metadata refresh for the plugin marketplace.",
+      "Cache composer drafts per conversation for faster session recovery.",
+      "Localize plugin panel titles and adapt panel window chrome.",
+      "Fix mascot key colour on dark surfaces.",
+      "Reduce macOS launcher shortcut latency for snappier interactions.",
+    ],
+  },
+  {
+    version: "0.5.10",
+    date: "2026-08-13",
+    highlights: [
+      "Refine plugin panel window chrome and safe areas so plugin content stays clear of native controls.",
+      "Polish the Plugins page hierarchy and reduce overview copy for a clearer extension workflow.",
+      "Use the correct macOS tray template icon for a sharper menu bar appearance.",
+    ],
+  },
+  {
+    version: "0.5.9",
+    date: "2026-08-13",
+    highlights: [
+      "Make Goal mode use automatic permission handling for a more consistent workflow.",
+      "Prewarm the global plugin launcher so it opens faster, including while another app is focused.",
+      "Give plugin panels native window chrome with reliable minimize, maximize, and close controls.",
+      "Refresh the bilingual documentation site with complete English and Simplified Chinese guides and specifications.",
+    ],
+  },
+  {
+    version: "0.5.8",
+    date: "2026-08-12",
+    highlights: [
+      "Restore the Windows Alt+Space global plugin launcher, including when another app is focused.",
+      "Keep PI-Desktop available from the system tray when minimized across macOS, Windows, and Linux.",
+      "Improve native select menu readability in light and dark themes.",
+    ],
+  },
+  {
+    version: "0.5.7",
+    date: "2026-08-12",
+    highlights: [
+      "Add asktool questions with single-select, multi-select, custom answers, skip, and decline flows.",
+      "Keep multi-question progress visible with answered, unanswered, and skipped indicators.",
+      "Place interactive questions in the same composer approval surface as Plan and Goal approvals.",
+      "Simplify approval cards and remember the selected approval mode for the next request.",
+    ],
+  },
+  {
+    version: "0.5.6",
+    date: "2026-08-11",
+    highlights: [
+      "Open installed plugins from a global keyboard launcher without leaving the current workspace.",
+      "Collapse expanded thinking, tool, and subagent details to keep long conversations readable.",
+      "Keep task configuration available during active turns and show throughput statistics after stopping.",
+      "Refine corner hierarchy across the interface for clearer visual grouping.",
+    ],
+  },
+  {
+    version: "0.5.5",
+    date: "2026-08-11",
+    highlights: [
+      "Visualize parallel subagents and their task relationships directly in the conversation.",
+      "Keep pasted file references compact and restore their chips after stopping a turn.",
+      "Keep mode controls available during session creation and the transcript pinned after sending.",
+      "Recover more gracefully when native tools receive an incorrect file path.",
+      "Polish sidebar footer actions and wrapped links in user messages.",
+    ],
+  },
+  {
+    version: "0.5.4",
+    date: "2026-08-08",
+    highlights: [
+      "Refine the empty-home mascot with slower idle pose changes and continuous playback on hover.",
+    ],
+  },
+  {
+    version: "0.5.0",
+    date: "2026-08-07",
+    highlights: [
+      "Run bounded subagents behind a Task tool, with user-defined agents, pinned models, attribution, and session persistence.",
+      "Manage subagents from Extensions with registry reloads and clearer read-only status.",
+      "Prepare and install context checkpoints during idle time while preserving transcript history and showing compaction rows and warnings.",
+      "Add Goal mode as a second contract mode and preserve pasted file references through mode commands.",
+      "Restore subagent and host-backed panels when the host reconnects, with quieter routine teardown diagnostics.",
+      "Polish work panel and extension surfaces with clearer metadata, controls, and dark-theme contrast.",
+    ],
+  },
+  {
+    version: "0.4.3",
+    date: "2026-08-05",
+    highlights: [
+      "Complete the Agent-only Plan workflow with durable Markdown checkpoints, approval, and queued execution.",
+      "Add project-scoped MCP servers and Skills with one Extensions scope control.",
+      "Harden external path permissions and native search scoping across workspaces.",
+      "Make Plan approval surfaces close after resolution and mode commands switch the active session.",
+      "Long conversations compact automatically: the transcript keeps every message, marks where each compaction happened, and warns you so you can decide whether to start a fresh session.",
+    ],
+  },
+  {
+    version: "0.4.2",
+    date: "2026-08-03",
+    highlights: [
+      "Show context cache hit rate in chat transcript header for better transparency.",
+    ],
+  },
+  {
+    version: "0.4.1",
+    date: "2026-08-02",
+    highlights: [
+      "Update GitHub Releases and auto-update links to the canonical PI-Desktop repository.",
+      "Refresh project, plugin, and release documentation to use the PI-Desktop repository name.",
+    ],
+  },
+  {
+    version: "0.4.0",
+    date: "2026-08-01",
+    highlights: [
+      "Plugins can now contribute skills, themes, MCP servers, resident services, and an inter-plugin message bus.",
+      "The plugin SDK declares all new capability types so authors can activate them from manifest.",
+      "Host core validates capability contributions and derives per-plugin permissions automatically.",
+      "Agent system prompt now includes plugin-declared skills for tool-aware conversations.",
+      "Plugins page redesigned with a template picker, hot reload on save, and authoring tools.",
+      "Creating a plugin from a template now opens the scaffolded folder as the project.",
+      "Unified work panel header menu with cleaner controls and context actions.",
+      "Styles split into per-surface partials; duplicate and dead CSS removed.",
+    ],
+  },
+  {
+    version: "0.3.0",
+    date: "2026-07-31",
+    highlights: [
+      "Settings project archive now shows grouped sections (Pinned / All / Archived) with per-section counts, live search, and sort controls.",
+      "Work panel dock width is narrower for better layout proportions.",
+      "Fix switch on-track styling in light theme.",
+    ],
+  },
+  {
+    version: "0.2.11",
+    date: "2026-07-31",
+    highlights: [
+      "Global Search now finds chats, pages, Settings, and built-in or plugin commands in one place.",
+      "Appearance controls now use theme and language preview cards, with automatic language correctly following the OS locale.",
+      "Settings now has dedicated AI and Shortcuts sections for clearer navigation.",
+      "The agent now loads layered AGENTS.md/CLAUDE.md project instructions, with editors for global and project AGENTS.md.",
+      "Project archive now searches session titles and shows newest-first activity, session counts, timestamps, and expandable history.",
+      "Fix a desktop startup failure caused by the sandboxed preload regression.",
+      "Reduce the audited macOS unpacked app footprint by about 55% while retaining offline syntax highlighting and native terminal support.",
+    ],
+  },
+  {
+    version: "0.2.10",
+    date: "2026-07-30",
+    highlights: [
+      "Add Codex/WorkBuddy-style conversation top bar with improved controls.",
+      "Refresh chat transcript and markdown prose styling for better readability.",
+      "Unify work panel header with context menu and animate sidebar collapse.",
+      "Combine tool launchers into one create dropdown for cleaner interface.",
+      "Dock work panel inside fixed window instead of expanding it.",
+      "Polish top bar controls: de-duplicate toggle, protect controls, macOS alignment.",
+    ],
+  },
+  {
+    version: "0.2.8",
+    date: "2026-07-29",
+    highlights: [
+      "Update prompts and Settings now open complete localized release notes.",
+      "Work panel expansion and collapse animations feel smoother.",
+      "Long conversations compact oversized tool-result batches more reliably.",
+    ],
+  },
+  {
+    version: "0.2.7",
+    date: "2026-07-28",
+    highlights: [
+      "Markdown replies can render images, audio, and video inline.",
+      "Remote images display with updated content security policy.",
+      "Media markup is sanitized so only safe tags are allowed.",
+    ],
+  },
+  {
+    version: "0.2.6",
+    date: "2026-07-28",
+    highlights: [
+      "Turn-boundary context checkpoints compact long chats without hiding history.",
+      "Smoother conversation switching with cached transcripts and a stable frame.",
+      "Docked tools keep a fixed width so chat stays readable beside the work panel.",
+      "Project menu can open the folder in your system file manager.",
+      "Composer prompt rows no longer show a leading brand icon.",
+    ],
+  },
+  {
+    version: "0.2.5",
+    date: "2026-07-28",
+    highlights: [
+      "Work panel navigation redesigned with a clearer tool rail.",
+      "Window resizing is panel-aware so layout stays predictable.",
+      "Streaming renders are isolated for snappier interaction.",
+      "New reasoning sessions default to maximum thinking when available.",
+      "Transcript stays pinned to the latest message after you send.",
+    ],
+  },
+  {
+    version: "0.2.4",
+    date: "2026-07-28",
+    highlights: [
+      "Composer chips keep descenders fully visible.",
+      "Updated pi-ai for newer Claude models including Opus 5 support.",
+    ],
+  },
+  {
+    version: "0.2.3",
+    date: "2026-07-28",
+    highlights: [
+      "Shell copy rewritten in plain user language across locales.",
+      "Selection, CJK labels, and hover motion polish.",
+      "Work panel and Settings light surfaces refined.",
+      "Prerelease installs now discover newer stable GitHub releases.",
+    ],
+  },
+  {
+    version: "0.2.2",
+    date: "2026-07-27",
+    highlights: [
+      "Plugin marketplace with official remote catalog and detail panes.",
+      "Isolated plugin panels and gated high-risk APIs.",
+      "Right-click section toolbars to create projects or sessions.",
+      "Startup splash, smoother motion, and i18n polish.",
+      "Work panel top nav supports right-click to open tools.",
+    ],
+  },
+  {
+    version: "0.2.1",
+    date: "2026-07-27",
+    highlights: [
+      "Work panel tools are retained per conversation.",
+      "Review entry is scoped to the session that made the edits.",
+    ],
+  },
+  {
+    version: "0.2.0",
+    date: "2026-07-27",
+    highlights: [
+      "Sidebar separates projects and sessions with clearer task status.",
+      "Fork or edit assistant replies; icon-only message toolbars.",
+      "Workspace review entry after successful file edits.",
+      "Keyboard shortcut mappings and developer mode for DevTools.",
+      "pi model catalog is the authority for provider models.",
+      "Thinking control sits beside mode in the composer.",
+    ],
+  },
+  {
+    version: "0.1.1",
+    date: "2026-07-26",
+    highlights: [
+      "First public release: local-first AI coding agent desktop client.",
+      "Chat and Agent modes with streaming, thinking levels, and model management.",
+      "Workspace tools with permission gating, terminal, browser, and git review.",
+      "Rust host core for storage, secrets, sessions, and notifications.",
+      "Plugin foundation plus dual English / 简体中文 UI.",
+      "Update checks against GitHub Releases (in-app where supported).",
+    ],
+  },
+];

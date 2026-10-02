@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/shared",
-  "version": "0.16.0-beta.1",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -17,6 +17,10 @@
     "./theme": {
       "types": "./dist/theme.d.ts",
       "import": "./dist/theme.js"
+    },
+    "./changelog-loader": {
+      "types": "./dist/changelog-loader.d.ts",
+      "import": "./dist/changelog-loader.js"
     }
   },
   "scripts": {

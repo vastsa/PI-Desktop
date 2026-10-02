@@ -100,12 +100,27 @@ test("a bound work session's pending decision reaches the voice surfaces", async
     if (!options) return key;
     return [key, ...Object.entries(options).map(([name, value]) => `${name}=${value}`)].join("|");
   };
+  // The bar is presentational: the owner frame derives the waiting flag from its
+  // own store and reports it to the widget window, which has no store of its own.
+  // This harness derives it the same way, so the assertions still run against the
+  // real component fed by the real helper.
+  const deriveDecisionWaiting = (nextCall) => {
+    const state = useAppStore.getState();
+    return Boolean(liveWorkDecision({
+      sessionId: nextCall?.workBinding?.workSessionId,
+      awaiting: operationAwaitsDecision(nextCall?.workOperations, nextCall?.workBinding?.workSessionId),
+      asks: state.pendingAsks,
+      permissions: state.pendingPermissions,
+      planCheckpoints: state.planCheckpoints,
+    }));
+  };
   const renderBar = (nextCall) => {
     const snapshot = { status, call: nextCall, transcripts: [], starting: false, stopping: false };
     return renderToStaticMarkup(React.createElement(LiveVoiceCallBar, {
       t: translate,
       snapshot,
       issue: liveVoiceIssue(snapshot),
+      decisionWaiting: deriveDecisionWaiting(nextCall),
       detailsOpen: false,
       detailsRef: { current: null },
       actionPending: null,

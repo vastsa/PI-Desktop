@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgentInstructionFile, AppSettings, UpdatePreference } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -6,10 +6,15 @@ import { useAppStore } from "../../stores/app-store";
 import { useUpdateState } from "../../hooks/use-update-state";
 import { Button } from "../../components/ui";
 import { IconFileText } from "../../components/icons";
-import { ReleaseNotesDialog } from "../../components/ReleaseNotesDialog";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { persistUpdatePreference } from "./update-preference";
 import { SettingsCard, SettingsRow } from "./primitives";
+
+const ReleaseNotesDialog = lazy(() =>
+  import("../../components/ReleaseNotesDialog").then((module) => ({
+    default: module.ReleaseNotesDialog,
+  })),
+);
 
 export function AgentInstructionsSection() {
   const { t } = useTranslation();
@@ -251,14 +256,25 @@ export function UpdatesRow({
           ) : null}
         </div>
         {releaseNotesOpen ? (
-          <ReleaseNotesDialog
-            currentVersion={update?.currentVersion ?? currentVersion}
-            availableVersion={update?.availableVersion}
-            onClose={closeReleaseNotes}
-          />
+          <Suspense
+            fallback={
+              <div
+                className="route-pending"
+                role="status"
+                aria-label={t("app.loadingView")}
+              >
+                <span className="route-pending-indicator" aria-hidden />
+              </div>
+            }
+          >
+            <ReleaseNotesDialog
+              currentVersion={update?.currentVersion ?? currentVersion}
+              availableVersion={update?.availableVersion}
+              onClose={closeReleaseNotes}
+            />
+          </Suspense>
         ) : null}
       </SettingsRow>
     </>
   );
 }
-

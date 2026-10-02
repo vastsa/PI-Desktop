@@ -530,6 +530,64 @@
   color: var(--ds-danger);
 }
 
+.settings-storage-path,
+.settings-storage-message,
+.settings-storage-confirmation dd {
+  overflow-wrap: anywhere;
+}
+
+.settings-storage-message {
+  margin: 12px 16px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.settings-storage-message.error {
+  color: var(--ds-danger);
+}
+
+.settings-storage-confirmation {
+  margin: 12px 16px 16px;
+  padding: 16px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.settings-storage-confirmation h4 {
+  margin: 0 0 12px;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+}
+
+.settings-storage-confirmation p {
+  margin: 8px 0;
+}
+
+.settings-storage-confirmation dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+
+.settings-storage-confirmation dd {
+  margin: 0;
+  color: var(--ds-text-primary);
+}
+
+.settings-storage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .settings-config-sync-refresh {
   display: flex;
   align-items: center;

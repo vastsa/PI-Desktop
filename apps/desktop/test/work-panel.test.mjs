@@ -52,6 +52,26 @@ test("work panel replaces the context panel overlay", async () => {
   assert.doesNotMatch(appSource, /key\.toLowerCase\(\) === "j"/);
 });
 
+test("work panel code is preloaded on demand behind an accessible dock fallback", () => {
+  assert.match(
+    appSource,
+    /const loadWorkPanel = \(\) => import\("\.\.\/\.\.\/components\/workpanel\/WorkPanel"\)/,
+  );
+  assert.match(appSource, /const WorkPanel = lazy\(\(\) =>\s*loadWorkPanel\(\)/);
+  assert.match(
+    appSource,
+    /if \(!ready \|\| page !== "chat" \|\| !workPanelOpen\) return;[\s\S]*?loadWorkPanel\(\)\.catch/,
+  );
+  assert.match(
+    appSource,
+    /<Suspense[\s\S]*?className="work-panel work-panel-pending"[\s\S]*?role="status"[\s\S]*?aria-label=\{t\("app\.loadingView"\)\}[\s\S]*?<WorkPanel/,
+  );
+  assert.match(
+    appSource,
+    /className="work-panel work-panel-pending"[\s\S]*?"--work-panel-width": `\$\{pendingWorkPanelWidth\}px`/,
+  );
+});
+
 test("a viewport-fixed toggle is the sole pointer collapse control", () => {
   assert.match(appSource, /className="app-work-panel-toggle no-drag"/);
   assert.match(appSource, /aria-pressed=\{workPanelOpen \|\| presentedWorkPanelOpen\}/);
@@ -176,7 +196,7 @@ test("work panel uses the fixed-window internal dock", () => {
   // before unmounting, so MainChat reflows continuously in both directions.
   assert.match(
     appSource,
-    /<\/section>\s*\)\}\s*\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<WorkPanel/,
+    /<\/section>\s*\)\}\s*\{\(presentedWorkPanelOpen \|\| workPanelExiting\) && \(?\s*<Suspense[\s\S]*?<WorkPanel/,
   );
   assert.doesNotMatch(
     appSource,

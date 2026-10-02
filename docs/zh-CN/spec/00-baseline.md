@@ -24,7 +24,7 @@
 > 在 D120 / ADR 0022 中打包应用程序更新模式，同时保留 D010。
 > `0.4.7` 通过 D126 提升了 D010 仅适用于 macOS 的发行范围：标签构建
 > 发布 macOS arm64、Windows x64 的安装程序和电子更新程序源，
-> 和 Linux x64。
+> 和 Linux x64 及 arm64。
 > D285 在 arm64 通道旁增加本机 macOS Intel x64 标签通道；两个 macOS
 > 架构都从匹配的运行器发布 DMG/ZIP 工件。
 > `0.4.8` 将持久项目索引从主页侧边栏移至
@@ -124,7 +124,7 @@
 26.插件信任第一步：**sha256校验和；稍后签名**
 27. 第一个发布平台：**macOS 仅arm64** — 在 preload/D126 中提升；
     标签构建现在发布本机 macOS arm64 和 Intel x64、Windows x64 及
-    Linux x64 AppImage、deb 和 rpm 工件
+    Linux x64 及 arm64 AppImage、deb 和 rpm 工件
 28. TS模式库：**typebox**
 29. i18n 库：**i18next**
 30. Bash：**非交互式、流式传输并从可选择的 shell 解析

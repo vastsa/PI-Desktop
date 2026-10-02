@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.16.0-beta.1",
+  "version": "0.16.0",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -254,24 +254,16 @@
     "linux": {
       "executableName": "pi-desktop",
       "syncDesktopName": true,
+      "artifactName": "PI-Desktop-${version}-linux-${arch}.${ext}",
       "target": [
         {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
+          "target": "AppImage"
         },
         {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
+          "target": "deb"
         },
         {
-          "target": "rpm",
-          "arch": [
-            "x64"
-          ]
+          "target": "rpm"
         }
       ],
       "category": "Development",

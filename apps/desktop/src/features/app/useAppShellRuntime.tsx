@@ -511,7 +511,11 @@ export function useAppShellRuntime() {
       // the plugin theme is gone from the catalog, so there is nothing left to
       // pass and the host colour wins.
       void api
-        .setWindowBackgroundColor(resolvedTheme, pluginTheme?.windowBackground?.[resolvedTheme])
+        .setWindowBackgroundColor(
+          resolvedTheme,
+          pluginTheme?.windowBackground?.[resolvedTheme],
+          pluginTheme?.windowCornerRadius,
+        )
         .catch(() => undefined);
     };
     apply();

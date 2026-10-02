@@ -3,7 +3,8 @@
 > **翻译说明：** 本页是与 [英文源规格](/spec/06-delivery/06-release-runbook) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
 
-> 范围：macOS arm64、Intel x64、Windows x64 和 Linux x64 的 D126/D285/D603 标记工件；
+> 范围：macOS arm64、Intel x64、Windows x64 和 Linux x64 及 arm64 的 D126/D285/D603 标记工件，
+> 包括 Linux 系统 Electron ASAR 资产；
 > macOS signing/notarization 保留下面的详细资格通道。
 > 交叉引用：[里程碑](/zh-CN/spec/06-delivery/01-mvp-milestones) · [进程模型](/zh-CN/spec/03-runtime/07-process-model) · [安全性](/zh-CN/spec/05-security/01-security)
 
@@ -91,8 +92,8 @@ Windows 可执行文件和原生窗口图标中使用 `build/icon.ico`。渲染�
 | 位置 | 要求 |
 |---|---|
 | `apps/desktop/resources/models.dev/api.json` | 打标签前从 https://models.dev/api.json 刷新；发布工作流按该快照原样打包 |
-| `packages/shared/src/changelog.ts` | 英文、zh-CN、zh-TW 条目按最新优先排列，亮点条数一致 |
-| `packages/shared/src/changelog-de.ts`、`changelog-es.ts`、`changelog-fr.ts`、`changelog-ko.ts`、`changelog-tr.ts` | 版本集合与亮点条数与英文一致 |
+| `packages/shared/src/changelog-en.ts` | 英文条目按最新优先排列（事实来源，ADR 0009） |
+| `packages/shared/src/changelog-zh-CN.ts`、`changelog-zh-TW.ts`、`changelog-tr.ts`、`changelog-de.ts`、`changelog-es.ts`、`changelog-fr.ts`、`changelog-ko.ts`、`changelog-pt-BR.ts` | 版本集合与亮点条数与英文一致；新增的已发货语言还需在 `packages/shared/src/changelog.ts` 注册 |
 | `packages/shared/src/changelog.test.ts` | 该版本加入最新优先清单的首位 |
 | `package.json`、`apps/*/package.json`、`packages/*/package.json`、`docs/package.json` | 版本号一致（`docs` 是第三个工作区根，不在 `apps`/`packages` 之下） |
 | `Cargo.toml` 的 `[workspace.package]`、`Cargo.lock` 的 `host-core` | 版本号一致 |
@@ -106,10 +107,10 @@ Windows 可执行文件和原生窗口图标中使用 `build/icon.ico`。渲染�
    （已经是最新）仍然算通过：被打标签的树里的快照才是产物会带上的内容。
    不要把单行压缩 JSON 的 diff 当成“文件不存在”。
 2. 在 `node scripts/release.mjs <version>` / `git tag` **之前**编辑
-   `packages/shared/src/changelog.ts`：
-   - 在 `en` 和每个已发货产品语言下各添加**最新优先**的条目（本文件中的
-     `zh-CN` / `zh-TW`；`packages/shared/src/changelog-*.ts` 中的
-     `de` / `es` / `fr` / `ko` / `tr`）。
+   `packages/shared/src/changelog-en.ts`：
+   - 在 `en` 和每个已发货产品语言下各添加**最新优先**的条目（`zh-CN` / `zh-TW`
+     位于 `changelog-zh-CN.ts` / `changelog-zh-TW.ts`；其余语言目录是同级的
+     `packages/shared/src/changelog-*.ts` 文件）。
    - 稳定版使用相同的 `version` 字符串（semver，**不带**前导 `v`，与
      `apps/desktop` / `APP_VERSION` 一致）。
    - 可选的 ISO `date`（`YYYY-MM-DD`）。
@@ -143,8 +144,8 @@ Windows 可执行文件和原生窗口图标中使用 `build/icon.ico`。渲染�
 打标签前清单：
 
 - [ ] `apps/desktop/resources/models.dev/api.json` 已刷新，或已确认打标签的树中为最新
-- [ ] `packages/shared/src/changelog.ts` 含有正在发布或预览的稳定版本的英文 /
-      zh-CN / zh-TW 条目
+- [ ] `packages/shared/src/changelog-en.ts` 及每个已发货语言目录含有正在发布或
+      预览的稳定版本条目
 - [ ] `packages/shared/src/changelog-de.ts` 及其他语言目录与英文版本集合、
       亮点条数一致
 - [ ] 各语言的亮点条数一致
@@ -216,7 +217,15 @@ macOS ZIP 在安装包根目录包含 `PI-Desktop.app`。DMG 和 ZIP 都不附�
 DMG、ZIP、NSIS、AppImage、deb、rpm、块图和更新程序提要输出已
 压缩或压缩不敏感。因此，工作流程会上传它们的
 发布作业之前压缩级别为零的临时操作工件
-组装 GitHub 版本。
+组装 GitHub 版本。Linux 运行器还会在上传前
+把各自解压出的 `resources/app.asar`（x64 为 `linux-unpacked`，arm64 为
+`linux-arm64-unpacked`）复制为带版本的
+`PI-Desktop-<version>-linux-<arch>.asar` 资产。这保留了 Linux 安装器用于
+以系统 Electron 下游重新打包时使用的那份确切归档。
+
+Linux 更新源带上它们所构建的架构：x64 为 `latest-linux.yml`，arm64 为
+`latest-linux-arm64.yml`。这正是 `electron-updater` 在对应架构上请求的通道文件，
+因此某条通道若缺少自己的更新源，会在上传前就失败。
 
 ### 4.4 CNB 镜像触发
 
@@ -476,15 +485,15 @@ project/Temporary 使用消息加会话图标创建控件。
 macOS Apple Silicon: pnpm --filter @pi-desktop/desktop run dist:mac -- --arm64
 macOS Intel:         pnpm --filter @pi-desktop/desktop run dist:mac -- --x64
 Windows: pnpm --filter @pi-desktop/desktop dist:win
-Linux:   pnpm --filter @pi-desktop/desktop dist:linux
+Linux:   pnpm --filter @pi-desktop/desktop dist:linux -- --x64|--arm64
 ```
 
 Windows 的 `dist:win` 命令会运行 `scripts/build-desktop-release.mjs`，分别调用
 一次 electron-builder 构建 NSIS 和 ZIP，确保每个包写入正确的更新器发行类型标记。
 
-macOS 软件包包括按本机架构构建的 `bin/pi-desktop-host-core`；Windows
-软件包包括 `bin/pi-desktop-host-core.exe`；Linux 包括
-`bin/pi-desktop-host-core`。签名、回滚和安装程序升级资质仍保持发布
+macOS 软件包包括按本机架构构建的 `bin/pi-desktop-host-core`；
+Linux 软件包在其本机 x64 与 arm64 运行器上做同样的事；Windows
+软件包包括 `bin/pi-desktop-host-core.exe`。签名、回滚和安装程序升级资质仍保持发布
 硬化工作；发布本身已在 D126/D285/D603 下启用。
 
 Native-runner 输出矩阵：
@@ -495,8 +504,9 @@ Native-runner 输出矩阵：
   `PI-Desktop-<version>-x64-mac.zip`
 - Windows x64：NSIS 安装程序 `PI-Desktop-Setup-<version>.exe` 和便携版
   ZIP `PI-Desktop-Portable-<version>.zip`
-- Linux x64：AppImage、deb 和 rpm
-- Linux x64 系统 Electron 产物：`PI-Desktop-<version>-linux-x64.asar`
+- Linux x64 和 arm64：AppImage、deb 和 rpm
+- Linux 系统 Electron 资产：`PI-Desktop-<version>-linux-x64.asar` 和
+  `PI-Desktop-<version>-linux-arm64.asar`
 
 便携版 Windows ZIP 目标不会写入 `latest.yml`。Windows 发布脚本会分别构建 NSIS
 和 ZIP，并给 ZIP 的应用元数据写入 `piDistribution = "zip"`；已打包的 ZIP 运行使用
@@ -513,7 +523,7 @@ Electron 二进制文件的应用发生冲突。
 与目标软件包内的本机主机及其他资源放在一起，然后用以下命令启动：
 
 ```bash
-electron PI-Desktop-<version>-linux-x64.asar
+electron PI-Desktop-<version>-linux-<arch>.asar
 ```
 
 每个本机运行器上的外壳冒烟测试：
@@ -529,5 +539,12 @@ electron PI-Desktop-<version>-linux-x64.asar
 ## 7. 已知限制
 
 - Linux deb/rpm 和 Windows 便携版 ZIP 仍保持通知和链接更新模式。打包的 macOS、Windows NSIS 和 Linux AppImage 使用应用内 `electron-updater`。
-- Linux x64 包在 Ubuntu 22.04 上构建，因此 host-core 需要 glibc 2.35 或更高版本（Ubuntu 22.04、Debian 12、Fedora 36+）。标签作业运行 `scripts/check-linux-host-glibc.mjs`，拒绝需要更新 glibc 的二进制文件。
+- Linux x64 和 arm64 包在 Ubuntu 22.04 上构建（本机 `ubuntu-22.04` 和
+  `ubuntu-22.04-arm` 运行器），因此 host-core 需要 glibc 2.35 或更高版本
+  （Ubuntu 22.04、Debian 12、Fedora 36+）。每个标签作业都会运行
+  `scripts/check-linux-host-glibc.mjs`，拒绝需要更新 glibc 的二进制文件。
+- Linux arm64 的麦克风采集仅在 Raspberry Pi 板卡上可用：
+  `@picovoice/pvrecorder-node` 按 `/proc/cpuinfo` 的 CPU part 判定 Linux
+  arm64。语音转写（`transcribe-cpp` 随附 `linux-arm64-cpu-vulkan` 包）以及
+  其余所有功能在任何 arm64 Linux 设备上都可用。
 - 回滚、分阶段部署和预发布渠道政策仍是开放的发布工作。现有未签名 macOS 安装可能需要先手动安装一次已签名 DMG，之后应用内更新才能成功。

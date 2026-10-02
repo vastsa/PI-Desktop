@@ -449,6 +449,14 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
                 }
             }
         }
+        if let Some(radius) = obj.get("cornerRadius") {
+            match radius.as_u64() {
+                Some(value) if value <= 24 => {}
+                _ => bail!(
+                    "PLUGIN_INVALID: contributes.windowAppearance.cornerRadius must be an integer from 0 to 24"
+                ),
+            }
+        }
     }
 
     if let Some(views) = map.get("views") {

@@ -240,7 +240,9 @@ test("a contributed window background needs its own grant", () => {
   const register = runtimeSrc.slice(runtimeSrc.indexOf("private registerThemes"));
   assert.match(register, /permissions\.has\("ui\.window\.appearance"\)/);
   assert.match(register, /resolveWindowBackground\(/);
+  assert.match(register, /resolveWindowCornerRadius\(/);
   assert.match(runtimeSrc, /windowBackground\?: \{ light\?: string; dark\?: string \}/);
+  assert.match(runtimeSrc, /windowCornerRadius\?: number/);
 });
 
 test("the shipped example theme survives sanitation", () => {

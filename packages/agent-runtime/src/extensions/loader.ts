@@ -1,8 +1,8 @@
 /**
  * Loader for trusted extension modules (spec 07-plugins/16 §4.2).
  *
- * Uses `jiti/static` so the babel transform is bundled into the sidecar's
- * single-file build and no path resolution happens at runtime. Kernel
+ * Uses `jiti/static` so the babel transform ships in the sidecar bundle and
+ * no path resolution happens at runtime. Kernel
  * packages reach extensions through jiti `virtualModules`: the same module
  * objects the sidecar already holds, plus a shim for
  * `@earendil-works/pi-coding-agent` and an inert stub for
@@ -150,7 +150,7 @@ export async function loadExtensionFactory(
   virtualModules: Record<string, unknown>,
 ): Promise<ExtensionFactory | undefined> {
   // Lazy so Electron main, which bundles this package for discovery, never
-  // pulls jiti into its own bundle; the sidecar bundle inlines it.
+  // pulls jiti into its own bundle; the sidecar loads its split chunk on demand.
   const { createJiti } = await import("jiti/static");
   const jiti = createJiti(import.meta.url, {
     moduleCache: false,

@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { GlobalPermissionMode, ProjectRecord, ScheduledTask } from "@pi-desktop/shared";
+import type {
+  GlobalPermissionMode,
+  ProjectRecord,
+  ScheduledSessionMode,
+  ScheduledTask,
+  ScheduledTaskSchedule,
+} from "@pi-desktop/shared";
 import { Button, Field, Input, Textarea } from "../../components/ui";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { ScheduledWeekdaySelect } from "./ScheduledWeekdaySelect";
+import { convertInterval, intervalAmount, SCHEDULED_INTERVAL_MINUTES } from "./scheduled-format";
 import {
   ScheduledExecutionSettings,
   type ScheduledModelSelection,
@@ -17,6 +24,7 @@ export type ScheduledDraft = Pick<ScheduledTask, "title" | "prompt" | "cadence" 
   providerId?: string | null;
   modelId?: string | null;
   thinkingLevel?: ScheduledTask["thinkingLevel"] | null;
+  sessionMode?: ScheduledSessionMode;
 };
 
 export function ScheduledEditor({
@@ -52,6 +60,38 @@ export function ScheduledEditor({
     task?.permissionMode ?? "ask",
   );
   const [permissionTouched, setPermissionTouched] = useState(false);
+  // A conversation mode always has a value, so it is saved with every draft.
+  const [sessionMode, setSessionMode] = useState<ScheduledSessionMode>(
+    task?.sessionMode ?? "perRun",
+  );
+
+  // An interval is one number plus the unit it reads in. The stored value is
+  // always minutes, which is what the host arms and what the rail reports.
+  const storedInterval = intervalAmount(task?.schedule?.intervalMinutes) ?? {
+    unit: "minutes" as const,
+    value: 30,
+  };
+  const [intervalValue, setIntervalValue] = useState(String(storedInterval.value));
+  const [intervalUnit, setIntervalUnit] = useState<"minutes" | "hours">(storedInterval.unit);
+  const intervalMinutes =
+    intervalUnit === "hours" ? Number(intervalValue) * 60 : Number(intervalValue);
+  const validInterval =
+    Number.isInteger(Number(intervalValue)) &&
+    intervalMinutes >= SCHEDULED_INTERVAL_MINUTES.min &&
+    intervalMinutes <= SCHEDULED_INTERVAL_MINUTES.max;
+  const intervalFloor = intervalUnit === "hours" ? 1 : SCHEDULED_INTERVAL_MINUTES.min;
+  const intervalCeiling =
+    intervalUnit === "hours"
+      ? SCHEDULED_INTERVAL_MINUTES.max / 60
+      : SCHEDULED_INTERVAL_MINUTES.max;
+  /** The same span in the other unit, clamped into the stored range. */
+  const switchIntervalUnit = (unit: "minutes" | "hours") => {
+    const current = Number(intervalValue);
+    setIntervalValue(
+      String(convertInterval(Number.isFinite(current) ? current : 30, intervalUnit, unit)),
+    );
+    setIntervalUnit(unit);
+  };
   const defaultModel = !task && settings?.defaultProviderId && settings.defaultModelId
     ? { providerId: settings.defaultProviderId, modelId: settings.defaultModelId }
     : {};
@@ -71,7 +111,8 @@ export function ScheduledEditor({
     Number(minute) >= 0 && Number(minute) < 60;
   const valid = !!prompt.trim() && !!title.trim() &&
     ((cadence !== "daily" && cadence !== "weekly") || validTime) &&
-    (cadence !== "weekly" || weekdays.length > 0);
+    (cadence !== "weekly" || weekdays.length > 0) &&
+    (cadence !== "interval" || validInterval);
   const periods = [
     { id: "morning", label: t("scheduled.morning"), hour: "09" },
     { id: "afternoon", label: t("scheduled.afternoon"), hour: "14" },
@@ -82,9 +123,32 @@ export function ScheduledEditor({
   const cadences = [
     ["manual", "scheduled.cadenceManual"],
     ["hourly", "scheduled.cadenceHourly"],
+    ["interval", "scheduled.interval"],
     ["daily", "scheduled.cadenceDaily"],
     ["weekly", "scheduled.cadenceWeekly"],
   ] as const;
+
+  // The interval value rides along with every armed cadence, so a task that
+  // switches between a calendar and an interval keeps the value for the way
+  // back. A number the field refuses is left out rather than saved.
+  const scheduleFor = (): ScheduledTaskSchedule | null => {
+    if (cadence === "manual") return null;
+    const base = {
+      hour: 0,
+      minute: 0,
+      weekday: 0,
+      ...(validInterval ? { intervalMinutes } : {}),
+    };
+    if (cadence === "hourly" || cadence === "interval") return base;
+    return {
+      ...base,
+      hour: Number(hour),
+      minute: Number(minute),
+      weekday: weekdays[0] ?? 0,
+      ...(cadence === "weekly" ? { weekdays } : {}),
+    };
+  };
+
   return (
     <form
       className="dest-create space-y-3"
@@ -93,7 +157,7 @@ export function ScheduledEditor({
         if (busy || !valid) return;
         const executionSettings: Pick<
           ScheduledDraft,
-          "workspacePath" | "permissionMode" | "providerId" | "modelId" | "thinkingLevel"
+          "workspacePath" | "permissionMode" | "providerId" | "modelId" | "thinkingLevel" | "sessionMode"
         > = {};
         if (!task || task.workspacePath || workspaceTouched) {
           if (workspacePath) executionSettings.workspacePath = workspacePath;
@@ -108,19 +172,13 @@ export function ScheduledEditor({
         if (modelTouched || task?.thinkingLevel) {
           executionSettings.thinkingLevel = modelSelection.thinkingLevel ?? null;
         }
+        // The mode always has a value, so it is saved with every draft.
+        executionSettings.sessionMode = sessionMode;
         void save({
           title: title.trim(),
           prompt: prompt.trim(),
           cadence,
-          schedule:
-            cadence === "manual"
-              ? null
-              : cadence === "hourly"
-                ? { hour: 0, minute: 0, weekday: 0 }
-                : {
-                    hour: Number(hour), minute: Number(minute), weekday: weekdays[0] ?? 0,
-                    ...(cadence === "weekly" ? { weekdays } : {}),
-                  },
+          schedule: scheduleFor(),
           ...executionSettings,
         });
       }}
@@ -152,6 +210,7 @@ export function ScheduledEditor({
             projects={projects}
             permissionMode={permissionMode}
             modelSelection={modelSelection}
+            sessionMode={sessionMode}
             busy={busy}
             onWorkspaceChange={(path) => {
               setWorkspacePath(path);
@@ -165,12 +224,19 @@ export function ScheduledEditor({
               setModelSelection(selection);
               setModelTouched(true);
             }}
+            onSessionModeChange={setSessionMode}
           />
         </div>
       </Field>
       {permissionMode === "auto" && (
         <p className="dest-row-meta scheduled-permission-warning" role="status">
           {t("scheduled.autoPermissionHint")}
+        </p>
+      )}
+
+      {sessionMode === "reuse" && (
+        <p className="dest-row-meta" role="status">
+          {t("scheduled.sessionModeHint")}
         </p>
       )}
       <div className="scheduled-fields">
@@ -183,6 +249,33 @@ export function ScheduledEditor({
             onChange={(value) => setCadence(value as ScheduledTask["cadence"])}
           />
         </Field>
+        {cadence === "interval" && (
+          <Field label={t("scheduled.interval")}>
+            <div className="scheduled-interval">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={intervalFloor}
+                max={intervalCeiling}
+                step={1}
+                disabled={busy}
+                value={intervalValue}
+                aria-label={t("scheduled.interval")}
+                onChange={(event) => setIntervalValue(event.target.value)}
+              />
+              <SettingsMenuSelect
+                label={t("scheduled.interval")}
+                value={intervalUnit}
+                disabled={busy}
+                options={[
+                  { id: "minutes", label: t("scheduled.intervalUnitMinutes") },
+                  { id: "hours", label: t("scheduled.intervalUnitHours") },
+                ]}
+                onChange={(unit) => switchIntervalUnit(unit === "hours" ? "hours" : "minutes")}
+              />
+            </div>
+          </Field>
+        )}
         {(cadence === "daily" || cadence === "weekly") && (
           <Field label={t("scheduled.time")}>
             <SettingsMenuSelect label={t("scheduled.time")} disabled={busy}
@@ -209,6 +302,7 @@ export function ScheduledEditor({
         </p>
       )}
       {cadence === "hourly" && <p className="dest-row-meta">{t("scheduled.hourlyHint")}</p>}
+      {cadence === "interval" && <p className="dest-row-meta">{t("scheduled.intervalHint")}</p>}
       <p className="dest-row-meta">{t("scheduled.localTimeHint")}</p>
       <div className="flex gap-2">
         <Button type="submit" variant="primary" disabled={busy || !valid}>

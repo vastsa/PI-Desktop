@@ -13,8 +13,6 @@ import {
 } from "./network-proxy";
 import { installInsecureEndpointNotice } from "./network-notice";
 import {
-  APP_ID,
-  APP_NAME,
   APP_VERSION,
   IPC,
   IPC_WHITELIST,
@@ -32,7 +30,7 @@ import {
   refreshProjectGroups,
 } from "./workspace-roots";
 import { PersistenceOutbox } from "./persistence-outbox";
-import { Logger, ignoreBrokenStdio } from "./logger";
+import { Logger } from "./logger";
 import { describeError, installMainProcessErrorHandlers } from "./main-process-errors";
 import {
   ModelsDevCatalog,
@@ -47,7 +45,8 @@ import {
 } from "./work-panel-window";
 import { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import { withGitBranch } from "./workspace-git";
-import { applyDevelopmentUserData, desktopDataDir } from "./data-paths";
+import { hasSingleInstanceLock, isDevelopmentBuild } from "./installation";
+import { getStorageBootstrap } from "./storage/bootstrap";
 import { createPlanUiProbe } from "./plan-ui-probe";
 import { registerIpcHandlers } from "./ipc/register";
 import { createVoiceService } from "./voice-service";
@@ -82,46 +81,6 @@ import { createWorkPanelRuntime } from "./bootstrap/work-panel";
 import { createCloseBehaviorRuntime } from "./bootstrap/close-behavior";
 import { registerShutdownHandlers } from "./bootstrap/shutdown";
 import { stripWinLongPrefix } from "./path-utils";
-
-// A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
-// surface as Electron's "Uncaught Exception: write EPIPE" dialog. The same
-// default dialog must not appear for a stray uncaughtException (non-ASCII
-// HTTP headers from a system proxy, destroyed webContents, etc.).
-ignoreBrokenStdio();
-installMainProcessErrorHandlers();
-
-const isDevelopmentBuild =
-  process.env.PI_DESKTOP_DEV === "1" || !app.isPackaged;
-
-app.setName(APP_NAME);
-applyDevelopmentUserData(app, isDevelopmentBuild);
-if (process.platform === "win32") {
-  app.setAppUserModelId(APP_ID);
-}
-
-// Chromium's accessibility tree serializer has a known CHECK failure in
-// AXBlockFlowData::ComputeNeighborOnLine (chromium #552018997) that kills
-// the renderer when an AT client reads the tree while the DOM is being
-// mutated — exactly what happens during streaming agent responses.
-// The switch prevents Chromium from building the in-renderer accessibility
-// tree unless the user explicitly opts in via --force-renderer-accessibility.
-// This is a workaround until the upstream fix lands.
-app.commandLine.appendSwitch("disable-renderer-accessibility");
-
-// One installation, one process. The lock lives in `userData` (set just
-// above), so it is taken after `setName` and before anything else here
-// touches the data directory. A development build is its own installation;
-// `PI_DESKTOP_DATA_DIR` still opts a run out of the lock (E2E, capture rig).
-const singleInstanceRequired = !process.env.PI_DESKTOP_DATA_DIR;
-const hasSingleInstanceLock = singleInstanceRequired
-  ? app.requestSingleInstanceLock()
-  : true;
-if (!hasSingleInstanceLock) {
-  // Nothing has booted yet: no window, no tray, no child process, no log line.
-  // Quit here and let the instance that holds the lock surface itself from
-  // `second-instance`.
-  app.quit();
-}
 
 // Native resize streams can pause briefly while the pointer crosses a display
 // scale boundary. Keep recovery out of that gesture and only run it after the
@@ -207,7 +166,8 @@ const {
   safeOpenExternal,
 } = desktopServices;
 
-const dataDir = desktopDataDir(isDevelopmentBuild);
+const storage = getStorageBootstrap();
+const dataDir = storage.preferences.roots.data;
 // The plugin runtime resolves this root from the environment rather than taking
 // it as a parameter, and a profile split across two directories is the
 // divergence D236 closes.
@@ -301,7 +261,11 @@ const updater = new AppUpdaterController({
  * this process; the renderer sees progress events and the sidecar sees only
  * resolved request auth.
  */
-const modelsDevCatalog = new ModelsDevCatalog();
+const modelsDevCatalog = new ModelsDevCatalog({
+  catalogPath: app.isPackaged
+    ? join(process.resourcesPath, "models.dev", "api.json")
+    : join(app.getAppPath(), "resources", "models.dev", "api.json"),
+});
 
 const vendorOAuth = new VendorOAuth({
   call: <T,>(method: string, params?: unknown): Promise<T> => {
@@ -868,6 +832,11 @@ const liveCallService = createLiveCallService({
 
 function registerIpc() {
   return registerIpcHandlers({
+    restartForStorage: () => {
+      shutdownState.quitConfirmed = true;
+      app.relaunch({ args: [...process.argv.slice(1).filter((arg) => arg !== "--pi-managed-storage"), "--pi-managed-storage"] });
+      app.quit();
+    },
     traySessions: applicationLifecycle!.traySessions,
     taskbarUnreadBadge: applicationLifecycle!.taskbarUnreadBadge,
     ipcMain,
@@ -997,7 +966,7 @@ app.on("browser-window-created", (_event, window) => {
     });
   });
 });
-app.once("ready", () => {
+void app.whenReady().then(() => {
   installLiveMicrophonePermissionHandlers({
     targetSession: session.defaultSession,
     getMainWindow,

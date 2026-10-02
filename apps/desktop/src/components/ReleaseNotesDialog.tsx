@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ChangelogEntry } from "@pi-desktop/shared";
 import {
-  CHANGELOG,
+  loadChangelogCatalog,
   normalizeChangelogVersion,
   resolveChangelogLocale,
-} from "@pi-desktop/shared";
+} from "@pi-desktop/shared/changelog-loader";
 import { Badge, cx, portalOverlay, TooltipButton } from "./ui";
 import { IconClose } from "./icons";
 
@@ -20,12 +21,37 @@ export function ReleaseNotesDialog({
   const { t, i18n } = useTranslation();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const [loadedCatalog, setLoadedCatalog] = useState<{
+    locale: string;
+    entries: readonly ChangelogEntry[];
+  } | null>(null);
   const locale = resolveChangelogLocale(
     i18n.resolvedLanguage ?? i18n.language,
   );
-  const entries = CHANGELOG[locale];
+  const entries = loadedCatalog?.locale === locale ? loadedCatalog.entries : null;
   const normalizedCurrent = normalizeChangelogVersion(currentVersion);
   const normalizedAvailable = normalizeChangelogVersion(availableVersion);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadChangelogCatalog(locale).then(
+      (catalog) => {
+        if (!cancelled) setLoadedCatalog({ locale, entries: catalog });
+      },
+    ).catch(async (error: unknown) => {
+      console.error(`Failed to load ${locale} release notes`, error);
+      if (locale === "en") return;
+      try {
+        const fallback = await loadChangelogCatalog("en");
+        if (!cancelled) setLoadedCatalog({ locale, entries: fallback });
+      } catch (fallbackError) {
+        console.error("Failed to load English release notes fallback", fallbackError);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
 
   const dateFormatter = useMemo(
     () =>
@@ -95,7 +121,9 @@ export function ReleaseNotesDialog({
           <div className="release-notes-heading">
             <h2 id="release-notes-title">{t("updates.releaseNotes")}</h2>
             <p id="release-notes-summary">
-              {t("updates.releaseCount", { count: entries.length })}
+              {entries
+                ? t("updates.releaseCount", { count: entries.length })
+                : t("app.loadingView")}
             </p>
           </div>
           <TooltipButton
@@ -111,7 +139,8 @@ export function ReleaseNotesDialog({
         </header>
 
         <div className="release-notes-list selectable">
-          {entries.map((entry) => {
+          {entries ? (
+            entries.map((entry) => {
             const isAvailable = entry.version === normalizedAvailable;
             const isCurrent = entry.version === normalizedCurrent;
             return (
@@ -152,7 +181,12 @@ export function ReleaseNotesDialog({
                 </ul>
               </article>
             );
-          })}
+            })
+          ) : (
+            <div className="route-pending" role="status">
+              <span className="route-pending-indicator" aria-hidden />
+            </div>
+          )}
         </div>
       </div>
     </div>,

@@ -173,7 +173,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 
 | 要求 | 详情 |
 |---|---|
-| 平台 | macOS arm64、Intel x64、Windows x64 和 Linux x64 发行目标 (D126/D285) |
+| 平台 | macOS arm64、Intel x64、Windows x64 和 Linux x64 及 arm64 发行目标 (D126/D285、D638 / ADR 0318) |
 | 公司简介 | 干净的 `~/.pi-desktop` 配置文件（无需事先配置） |
 | 固定装置 | 示例项目目录 (`examples/fixtures/sample-project/`) |
 | 示例插件 | 从本地路径加载 `examples/plugins/hello` |
@@ -1526,6 +1526,14 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **关联规格**：`03-runtime/01-ipc-protocol.md` §12a、`07-plugins/04-plugin-security.md` §8.1
 - **状态**：客户端及会话隔离已有单元测试；完整桌面流程待验证
 
+#### E2E-MCP-tool-requires-approval：用户 MCP 工具在 ask 与 accept-edits 下需要审批
+
+- **先决条件**：一个绑定项目的 Agent 会话；一个用户配置的 stdio MCP 服务器，其工具列表把某个工具标注为只读/低风险。
+- **步骤**：1) 会话处于 `ask` 时，让代理调用该 MCP 工具。2) 以“允许一次”回应卡片后再次调用，再以“本会话允许”回应并第三次调用。3) 在新会话中切到 `accept-edits` 并重复调用。4) 切到 `auto` 调用。5) 依次切到 Plan、Goal 调用。
+- **预期**：在 `ask` 与 `accept-edits` 下，每次调用都显示审批卡片，原因为 "MCP server tool requires approval"，风险为 `medium`，与服务器自行声明的标注无关。“允许一次”只覆盖该次调用；“本会话允许”只在该会话内对同一 `mcp_<serverId>_<tool>` 名称不再提示，不覆盖该服务器的其他工具。`auto` 不显示卡片直接执行。Plan 与 Goal 即使存在会话授权也拒绝。
+- **关联规格**：`03-runtime/03-tools-and-permissions.md`、`05-security/01-security.md`、D640、ADR `mcp-tool-approval-risk`
+- **状态**：已有单元测试（host-core `permissions.rs` MCP 风险与模式测试）；桌面流程待验证
+
 #### E2E-024L：常驻插件服务受监督且可见
 
 - **先决条件**：在授予 `background.service` 的情况下启用 `examples/plugins/hello`。
@@ -1745,7 +1753,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 #### E2E-195：Linux glibc 低于 2.35 时列出支持的发行版
 
-- **先决条件**：Linux x64 打包应用；本机 glibc 低于 2.35（例如 Ubuntu 20.04 /
+- **先决条件**：Linux x64 或 arm64 打包应用；本机 glibc 低于 2.35（例如 Ubuntu 20.04 /
   Debian 11 / Fedora 35），或测试将 `process.report` 设为 `2.31`。
 - **步骤**：1) 启动 AppImage、deb 或 rpm。2) 观察主窗口和致命横幅。3) 确认
   host-core 没有进入重启循环。
@@ -1816,6 +1824,31 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **状态**：源代码/单元已覆盖（`apps/desktop/test/agent-capability-settings.test.mjs`、
   `apps/desktop/test/subagent-wiring.test.mjs`、`packages/agent-runtime/src/subagent-definitions.test.ts`、
   `packages/shared/src/subagent-presets.test.ts`）；完整 UI 旅程为草稿
+
+#### E2E-192a：Linux arm64 发布通道发布原生 arm64 包
+
+- **先决条件**：`vX.Y.Z` 标签与 `apps/desktop/package.json` 一致；仓库可使用 GitHub
+  的 arm64 `ubuntu-22.04-arm` 运行器。
+- **步骤**：1) 运行标签发布工作流程。2) 确认 arm64 通道运行在
+  `aarch64` 运行器上，且打包出的
+  `target/release/pi-desktop-host-core` 是 AArch64 二进制。3) 检查
+  已发布的 Release 资产中是否有 `PI-Desktop-X.Y.Z-linux-arm64.AppImage`、
+  `pi-desktop_X.Y.Z_arm64.deb`、`pi-desktop-X.Y.Z-aarch64.rpm`、
+  `PI-Desktop-X.Y.Z-linux-arm64.asar`，以及带 `.sha256` 的
+  `pi-host-X.Y.Z-linux-arm64.tar.gz`。4) 确认
+  `latest-linux.yml` 仍列出 x64 AppImage，而
+  `latest-linux-arm64.yml` 列出 arm64 的那个。5) 在 arm64 Linux 机器上安装 arm64
+  的 AppImage、deb 或 rpm 并启动它。
+- **预期**：两个更新源各自只描述一个带架构标记的 AppImage，
+  arm64 包携带 arm64 host-core，应用能在 arm64 Linux 上启动，
+  且合并通道永远不会用 arm64 更新源替换 x64 更新源。
+- **链接规格**：`06-delivery/06-release-runbook.md`、`01-product/01-product-scope.md`
+- **验收**：质量（发布工件与打包兼容性）
+- **里程碑**：M6+
+- **状态**：矩阵、更新源命名、工件命名和 ASAR 导出由单元/源代码契约覆盖
+  （`ci-workflow.test.mjs`、`release-asar.test.mjs`）；
+  原生 arm64 安装仍需运行器验证。麦克风采集在 arm64 Linux 上仍仅限
+  Raspberry Pi (D638 / ADR 0318)。
 
 #### E2E-200：Linux RPM 保留 Wayland 桌面身份
 
@@ -5604,6 +5637,9 @@ eleven-tool-round desktop paths are verified by
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
 而不是 A-H 标准；他们的黄金来源是捕获套件。
 
+发布工件路径由 E2E-192、E2E-192a、E2E-196a、E2E-196b、E2E-196c 和 E2E-200 覆盖
+（质量，M6+）。
+
 ---
 
 ## 9. AI 必须如何更新本文档
@@ -8687,16 +8723,17 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 - **前提：** 独立桌面配置、构建后的任务候选版本、本地 SSE 模拟模型；不使用真实
   服务凭据或付费 API。
-- **步骤：** 点击页脚时钟；创建每天上午 09:00 的任务；选择另一个已保存项目、Auto 权限和非默认模型；编辑名称；暂停／启用；立即运行；
-  打开结果会话；验证周期／四个时段主题下拉菜单、星期多选及选中标记、保存回显、空选择与固定时间；
+- **步骤：** 点击页脚时钟；创建每天上午 09:00 的任务；选择另一个已保存项目、Auto 权限和非默认模型；编辑名称；暂停／启用；立即运行并在任务页面内读取刚准入运行的转写；从该页面打开结果会话，确认顶部栏提供返回定时任务的入口，返回后仍选中同一个任务与同一次运行；验证周期／四个时段主题下拉菜单、星期多选及选中标记、保存回显、空选择与固定时间；
   验证方向键、Home/End、Enter、Escape／Tab 和外部点击关闭；
   验证每小时无时间输入且首次等待一小时；设置每天任务在下一个真实分钟执行；
+  选择间隔周期并填入 30 分钟，确认任务行显示该跨度而不是时钟，再切到每周周期后切回，确认该值仍然保留；打开编辑表单，确认任务列与任务页面让位；
+  让一个任务积累超过共享窗口的运行记录、另一个任务保持空闲，确认空闲任务仍然显示自己的最近一次结果；
   观察自动完成；删除已结束的任务。普通 Agent 对话经模型工具调用发现、创建、查询、
   修改任务到 15:30，再删除；验证页面显示具体时间，改名保存不覆盖。模型为本地确定性夹具。
 - **预期：** 项目、权限和精确 provider/model 只保存在该任务，重新打开仍显示相同值并实际传到 sidecar，其他任务不受影响；项目、权限和模型控件保持嵌在“指令”框的 Composer 风格底栏中，窄窗口也不产生横向溢出；缺少新增字段的旧记录保持原默认行为。配置持久化并显示下次时间；暂停后不触发；手动与自动入口均调用真实
-  Agent sidecar；历史记录链接到持久化会话；自动执行不依赖渲染器发送提示词。
+  Agent sidecar；本任务的运行记录列出每次运行的状态与耗时，「打开会话」到达持久化会话，而会话列表与会话搜索不会列出它，该会话顶部栏可返回同一个任务与同一次运行；间隔任务按表单给出的跨度排程并在任务行中显示，表单打开时独占本页；让一个任务积累超过共享窗口的运行记录、另一个保持空闲时，空闲任务仍显示自己的最近一次结果；自动执行不依赖渲染器发送提示词。
   宿主测试补充验证重复准入、错过时段、无效输入和重启恢复。
-- **规格：** 04-ux/01-ui-ia §3.3；03-runtime/04-data-storage §4.11；
+- **规格：** 04-ux/01-ui-ia §3.3；04-ux/08-component-spec §6、§20A；03-runtime/04-data-storage §4.11；
   ADR scheduled-desktop-automations；ADR 0305。
 - **验收：** 定时执行与可恢复的运行历史。
 - **里程碑：** MVP 后的桌面自动化。

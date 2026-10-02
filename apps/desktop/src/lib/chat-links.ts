@@ -357,7 +357,6 @@ export type MdastNode = {
 
 const SKIP_MDAST = new Set([
   "code",
-  "inlineCode",
   "link",
   "image",
   "definition",
@@ -383,6 +382,34 @@ export function linkifyMdastTree(
     const next: MdastNode[] = [];
     for (const child of node.children) {
       if (!child || typeof child.type !== "string") continue;
+      if (!nextSkip && child.type === "inlineCode" && typeof child.value === "string") {
+        // The reported path in #1169 arrives as inline code; a code run that
+        // resolves to a real file reference becomes a link (styled inline
+        // code stays intact via the renderer's own code handling). A spaced
+        // token must still look path-like the way the text scanner demands —
+        // absolute or drive-letter anchored — so ordinary prose code runs
+        // never turn into chips.
+        const value = child.value.trim();
+        const spacedPathLike = /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("~/");
+        const target =
+          spacedPathLike || !value.includes(" ")
+            ? resolvePreviewTarget(value, root, baseDir)
+            : null;
+        if (target) {
+          const url =
+            target.kind === "url"
+              ? target.url
+              : /^[A-Za-z]:[\\/]/.test(target.path) || target.path.startsWith("\\\\")
+                ? encodeURIComponent(target.path)
+                : target.path;
+          next.push({
+            type: "link",
+            url,
+            children: [child],
+          });
+          continue;
+        }
+      }
       if (!nextSkip && child.type === "text" && typeof child.value === "string") {
         const segments = splitChatText(child.value, root, baseDir);
         if (segments.length === 1 && segments[0].kind === "text") {

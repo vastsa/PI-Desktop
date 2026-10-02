@@ -8,6 +8,35 @@
 
 ## 1. Goals
 
+### E2E-STORAGE-custom-location-and-maintenance
+
+- **Preconditions:** Dedicated request worktree, current remote-main base, shared
+  compatible host toolchain, built host-core and desktop, isolated temporary data
+  and Chromium profiles. No user's running desktop, provider, or network is used.
+- **Steps:** Through the production Settings page, choose/cancel a destination,
+  confirm/retry migration, and confirm cache/backup cleanup. Seed a real host with
+  sessions, queued attachments, project metadata, credentials and a local installed
+  plugin. Stop it, copy with the production migration service, invoke the real Rust
+  offline relocation process, and reopen the host. Seed default/persistent Chromium
+  localStorage, execute the production cold bootstrap in real Electron, restart with
+  its pointer, clear caches, and then separately remove old backups.
+- **Expected:** Data and browser source paths are visible, confirmation receives
+  focus, duplicate actions are locked, environment overrides disable changes and
+  failures allow recovery. Copy/verification/path-relocation progress is localized
+  and uses a sandboxed nonpersistent window. Host data, credential decryption,
+  installed plugin locations, main localStorage and plugin persistent storage
+  survive migration/restart. Cache cleanup preserves durable state; backup cleanup
+  retains active data and the stable bootstrap pointer. Filesystem regression tests
+  reject unsafe targets, redirecting links, wrong ownership and active-root overlap.
+- **Coverage:** `pnpm test:e2e:storage` runs `e2e-storage-settings.mjs`,
+  `e2e-storage-migration.mjs`, and `e2e-storage-bootstrap.mjs`. The first uses the
+  production renderer/API with only preload mocked; the latter suites run real
+  host/Electron processes and production maintenance. The bootstrap harness
+  intercepts relaunch to inspect its result, then explicitly starts another isolated
+  child; it does not launch the user's desktop. `storage-maintenance.test.mjs`
+  and Rust `data_relocation` tests cover rollback and path/filesystem boundaries.
+
+
 ### E2E-LIVE-VOICE-public-settings-and-reconnect
 
 - **Preconditions:** A built production Renderer and real Electron/Main/Host,
@@ -262,6 +291,38 @@
   session IPC contract tests, and real-model desktop acceptance. A local model
   fixture or mocked component result is not real-model acceptance evidence.
 
+### E2E-CONVERSATION-minimap-jump-leaves-follow
+
+- **Preconditions:** One Desktop conversation long enough that the transcript
+  overflows its viewport, opened at the bottom so follow mode is pinned, with
+  the conversation outline (minimap) visible on the transcript's left edge.
+- **Steps:** Click the outline dash of an earlier turn without scrolling the
+  transcript first.
+- **Expected:** The transcript scrolls to that turn and stays there: the turn
+  lands just below the scroller's top edge and the jump-to-latest control
+  appears, because the jump leaves follow mode before it scrolls. A pinned
+  follow must never re-bottom the view one frame after the click. The outline's
+  earlier-history control keeps its existing reveal behavior.
+- **Status:** Automated in `pnpm test:e2e:transcript-minimap-jump`, which mounts
+  the production `ChatTranscript` in a real Chromium page with a synthetic
+  session, clicks an outline dash while follow is pinned, and asserts the
+  scroller's distance from the bottom once the exchange has settled.
+
+### E2E-ASKTOOL-compact-card-interaction
+
+- **Preconditions:** No live provider is required; the fixture stubs
+  `api.resolveAskTool` and seeds one two-question ask through the real store
+  slice.
+- **Steps:** Mount the production `AskToolCard`, assert the header Tab order
+  (decline, skip, next) with no legacy bottom action row, then walk select →
+  next → submit, skip → submit, decline-all, and a custom answer, remounting
+  with a fresh request id between flows.
+- **Expected:** Every flow resolves through the store's `resolveAsk` with the
+  exact answers (skips recorded as `null`), and no render errors are reported.
+- **Status:** Automated in `pnpm test:e2e:asktool-card`, which mounts the
+   production `AskToolCard` in a real Chromium page and clicks through the
+   header actions.
+
 ### E2E-POWER-keep-awake-setting
 
 - **Preconditions:** An isolated desktop profile with the setting absent; no
@@ -368,9 +429,16 @@
   select a daily time period from four fixed defaults; open the weekday menu,
   select custom days, save and reopen; reject empty days; verify the four defaults,
   arrows, Home/End, Enter, Escape/Tab and outside dismissal; select hourly without time
-  fields and verify its first occurrence is one hour away; pause/resume; Run now;
-  open the result conversation; configure a daily task for the next real minute;
-  observe automatic completion; delete the settled task. In a normal Agent
+  fields and verify its first occurrence is one hour away; pause/resume; Run now
+  and read the admitted run's transcript inside the task page; select an interval
+  cadence, enter 30 minutes and verify the row states that span instead of a
+  clock, then switch to a weekly cadence and back to confirm the value survived;
+  open the edit form and verify the task column and the task page step aside;
+  let one task accumulate more runs than the shared window while another stays
+  idle, and verify the idle task still reports its own last outcome; open the
+  result conversation from that page and verify its top bar offers the way back
+  to the scheduled task; return and confirm the same task and run are still
+  selected; observe automatic completion; delete the settled task. In a normal Agent
   conversation, use model tool calls to discover, create, list, update to 15:30
   and delete a task. Verify the custom time appears in the form and survives
   renaming. The model is a local deterministic fixture, not a live provider.
@@ -380,12 +448,19 @@
   Composer-style bottom toolbar, including at the narrow viewport, with no horizontal overflow.
   Legacy rows without the new fields retain their previous defaults. Configuration
   persists, next time is visible, paused tasks do
-  not dispatch, both execution paths reach the real Agent sidecar, history links
-  to the persisted transcript, and automatic execution does not require a
+  not dispatch, both execution paths reach the real Agent sidecar, the task's own
+  history lists each run with its status and duration and Open conversation
+  reaches the persisted transcript while the SessionList and session search never
+  list it, that conversation's top bar returns to the same task and run, an
+  interval task arms from the span the form states and reports it in its row,
+  the task form owns the page while it is open, a task that stayed idle while
+  another accumulated more runs than the shared window still reports its own
+  last outcome, and
+  automatic execution does not require a
   renderer prompt. Host tests additionally prove duplicate admission rejection,
   stale/missed occurrence handling, invalid input rejection and recovery.
-- **Specs:** 04-ux/01-ui-ia §3.3; 03-runtime/04-data-storage §4.11;
-  ADR scheduled-desktop-automations; ADR 0305.
+- **Specs:** 04-ux/01-ui-ia §3.3; 04-ux/08-component-spec §6, §20A;
+  03-runtime/04-data-storage §4.11; ADR scheduled-desktop-automations; ADR 0305.
 - **Acceptance:** Scheduled task execution and recoverable run history.
 - **Milestone:** Post-MVP desktop automations.
 - **Status:** Automated in `node scripts/e2e-scheduled.mjs`; run against the
@@ -502,7 +577,7 @@ levels does not waive the relevant E2E gate.
 
 | Requirement | Detail |
 |---|---|
-| Platform | macOS arm64 and Intel x64, Windows x64, and Linux x64 release targets (D126/D285) |
+| Platform | macOS arm64 and Intel x64, Windows x64, and Linux x64 and arm64 release targets (D126/D285, D638 / ADR 0318) |
 | Profile | Clean `~/.pi-desktop` profile (no prior config) |
 | Fixtures | Sample project directory (`examples/fixtures/sample-project/`) |
 | Sample plugin | `examples/plugins/hello` loaded from local path |
@@ -627,7 +702,11 @@ identify the platform validation still needed.
   restart. 5) Allow the persistence outbox to flush.
 - **Expected**: Active shell processes never exceed the configured global and
   per-session limits. Excess work returns `HOST_OVERLOADED` or waits in the
-  bounded queue. Only one restart loop runs; stale-generation calls fail fast
+  bounded queue. Queued requests do not reserve execution capacity: with four
+  running Bash calls and twelve queued Bash calls, another session can still
+  Read and Write. A saturated session cannot reserve spare class capacity, and
+  admission-future cancellation/timeout restores queue and execution counters.
+  Only one restart loop runs; stale-generation calls fail fast
   as `HOST_UNAVAILABLE`; no repeated `ERR_STREAM_DESTROYED` persistence storm
   is emitted. Temporary OS thread pressure during the same burst does not
   terminate host-core through its stdio control path; the host remains on one
@@ -638,7 +717,10 @@ identify the platform validation still needed.
   `03-runtime/09-logging-and-observability.md`, ADR 0051
 - **Acceptance**: A (runtime health), C (tool execution and recovery)
 - **Milestone**: M5
-- **Status**: Documented; automation pending
+- **Status**: Cross-session admission is automated by
+  `node scripts/e2e-tool-admission.mjs` against an isolated real host. Class,
+  session, global, mutation, queue bounds, fairness, cancellation, and timeout
+  are unit-covered by `tool_budget/tests.rs`; restart coverage remains pending.
 
 ### Release & Packaging
 
@@ -646,7 +728,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: A `vX.Y.Z` tag matches `apps/desktop/package.json`; the
   Linux x64 release runner can complete `dist:linux` and has a system Electron
-  available for repackaging validation.
+  available for repackaging validation. The arm64 lane is E2E-192a.
 - **Steps**: 1) Run the tag release workflow. 2) Inspect the published GitHub
   Release assets. 3) Confirm the versioned
   `PI-Desktop-X.Y.Z-linux-x64.asar` asset is present. 4) Place that archive in
@@ -661,6 +743,31 @@ identify the platform validation still needed.
 - **Milestone**: M6+
 - **Status**: Documented; artifact export is unit-covered, native system-Electron
   repackaging remains runner validation
+
+#### E2E-192a: Linux arm64 release lane publishes native arm64 packages
+
+- **Preconditions**: A `vX.Y.Z` tag matches `apps/desktop/package.json`; GitHub's
+  arm64 `ubuntu-22.04-arm` runner is available to the repository.
+- **Steps**: 1) Run the tag release workflow. 2) Confirm the arm64 lane ran on
+  an `aarch64` runner and that the packaged
+  `target/release/pi-desktop-host-core` is an AArch64 binary. 3) Inspect the
+  published Release assets for `PI-Desktop-X.Y.Z-linux-arm64.AppImage`,
+  `pi-desktop_X.Y.Z_arm64.deb`, `pi-desktop-X.Y.Z-aarch64.rpm`,
+  `PI-Desktop-X.Y.Z-linux-arm64.asar`, and
+  `pi-host-X.Y.Z-linux-arm64.tar.gz` with its `.sha256`. 4) Confirm
+  `latest-linux.yml` still lists the x64 AppImage while
+  `latest-linux-arm64.yml` lists the arm64 one. 5) Install the arm64 AppImage,
+  deb, or rpm on an arm64 Linux machine and launch it.
+- **Expected**: Both feeds describe exactly one architecture-labelled AppImage
+  each, the arm64 packages carry an arm64 host-core, the app starts on arm64
+  Linux, and merging the lanes never replaces the x64 feed with the arm64 one.
+- **Specs linked**: `06-delivery/06-release-runbook.md`, `01-product/01-product-scope.md`
+- **Acceptance**: Quality (release artifact and packaging compatibility)
+- **Milestone**: M6+
+- **Status**: The matrix, feed naming, artifact naming, and the ASAR export are
+  unit/source-contract covered (`ci-workflow.test.mjs`, `release-asar.test.mjs`);
+  native arm64 installation remains runner validation. Microphone capture stays
+  Raspberry Pi only on arm64 Linux (D638 / ADR 0318).
 
 #### E2E-200: Linux RPM preserves the Wayland desktop identity
 
@@ -795,14 +902,19 @@ identify the platform validation still needed.
   resources, and the tray starts without a missing-icon warning. Key lifecycle
   and error records are written to the categorized logs. GitHub auto-update is
   not started until after `ensureWindow`, and a hung feed cannot keep updater
-  status on `checking` for Chromium's ~60s timeout.
+  status on `checking` for Chromium's ~60s timeout. The Main output root also
+  resolves from inside Rollup shared chunks (`out/main/chunks/*.js`), so the
+  renderer entry, preloads, and the forked plugin host keep their authored
+  relative paths instead of resolving one level too deep (black screen).
 - **Specs linked**: `03-runtime/07-process-model.md`, `04-ux/01-ui-ia.md`,
   `03-runtime/09-logging-and-observability.md`
 - **Acceptance**: A (app startup)
 - **Milestone**: M1
 - **Status**: Partially automated (`runtime-build-contract.test.mjs` covers the
   dependency build contract; `update-timeout.test.mjs` and
-  `auto-update.test.mjs` cover the bounded auto-check contract; Electron window
+  `auto-update.test.mjs` cover the bounded auto-check contract;
+  `main-module-path.test.mjs` covers the Main output-root contract from the
+  entry bundle and from inside `out/main/chunks/`; Electron window
   launch remains Draft)
 
 #### E2E-002: IPC bridge is functional
@@ -989,18 +1101,22 @@ identify the platform validation still needed.
 - **Status**: Unit-covered (header merge, one-shot stream options, and the
   compaction summary request)
 
-#### E2E-005E: Model-level wire API wins over the provider style
+#### E2E-005E: Provider and model wire API precedence stays explicit
 
 - **Preconditions**: An OpenCode Go provider is configured; a deterministic
   fixture serves `muse-spark-1.3-contributor` on `/responses` and 500s it on
-  `/chat/completions`. A second generic provider serves the same model id on
-  `/chat/completions`.
+  `/chat/completions`. A generic provider and a custom endpoint each serve the
+  same model id; the custom model metadata pins `openai-completions`, while its
+  saved provider style is Responses.
 - **Steps**: 1) Select the muse model on the OpenCode Go provider and send a
   turn. 2) Capture the outbound request path. 3) Repeat against the generic
-  provider with the same model id.
+  provider with the same model id. 4) Select the model on the custom endpoint
+  and send a turn, then capture its outbound request path.
 - **Expected**: The OpenCode Go turn posts to `/responses` (the model-level
   `api: "openai-responses"` pin wins); the generic turn still posts to
-  `/chat/completions`. Replayed history carries the resolved API.
+  `/chat/completions`; the custom endpoint posts to `/responses` because its
+  saved provider style wins over the model metadata. Replayed history carries
+  the resolved API.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`,
   `03-runtime/12-provider-config-schema.md`, ADR 0116
 - **Acceptance**: F (runtime provider requests)
@@ -1211,6 +1327,11 @@ identify the platform validation still needed.
   during the edit debounce after a URL becomes valid. Automatic discovery on
   credential edits is unchanged. The same control is present for both
   credential kinds because both dialogs render the shared picker.
+- **Revocation regression**: Configure two served models, revoke one upstream,
+  add another, then Fetch list. The left service pane shows the current served
+  pair, including when the revoked ID has a published catalog record. The right
+  chosen pane retains both saved bindings and their overrides; refresh does not
+  delete configuration. A manual/offline fallback still exposes configured IDs.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`,
   `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`
 - **Acceptance**: B (multi-model provider configuration)
@@ -1472,11 +1593,13 @@ identify the platform validation still needed.
 
 - **Preconditions**: A session can produce both a deliberately delayed first
   token and a streaming response.
-- **Steps**: 1) Send ordinary text and stop before assistant text, thinking, or
-  a tool row begins. 2) Confirm the user row is undone and the text returns to
-  the composer. 3) Send again, wait for partial output, then stop during the
-  stream. 4) Observe the transcript and composer.
-- **Expected**: The unanswered send is undone and its draft restored. The
+- **Steps**: 1) Send ordinary text and click Stop immediately, including while
+  the prompt is still being admitted. 2) Confirm the user row is undone and
+  the text returns to the composer after that first Stop. 3) Send again, wait
+  for partial output, then stop during the stream. 4) Observe the transcript
+  and composer.
+- **Expected**: The first Stop is honored even if prompt admission is still in
+  progress; the unanswered send is undone and its draft restored. The
   streaming send stops with its partial response preserved and no draft
   restoration or duplicate user turn. The session remains usable.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`
@@ -3134,12 +3257,12 @@ identify the platform validation still needed.
 
 #### E2E-024J: Plugin theme applies and falls back when withdrawn
 
-- **Preconditions**: A marketplace/package-installable `examples/plugins/hello` variant (`demo.hello`) whose `midnight` theme CSS references a declared package-relative image at `art/preview.png`; a plugin with CSS using `@import` or remote `url()` for rejection plus a comment-only variant; an asset theme with `windowAppearance` variants with and without `ui.window.appearance`.
+- **Preconditions**: A marketplace/package-installable `examples/plugins/hello` variant (`demo.hello`) whose `midnight` theme CSS references a declared package-relative image at `art/preview.png`; a plugin with CSS using `@import` or remote `url()` for rejection plus a comment-only variant; an asset theme with `windowAppearance` variants with and without `ui.window.appearance`, including `cornerRadius: 0` and an invalid value above 24.
 - **Steps**: 1) Install the packaged Hello variant from Marketplace or its `.piplug` package and select `Hello Midnight` in Settings → General → Theme. 2) Restart the app. 3) Disable the providing plugin. 4) Re-enable it, then uninstall it. 5) Load the plugin with unsafe CSS. 6) Load the comment-only variant. 7) Select the asset variant's theme on Windows/Linux and on macOS, verify the package-relative image renders through `plugin-asset:` in the shell and the plugin's panel, and load a sheet with an undeclared package-relative `url()` to verify it is refused. 8) Deselect its theme after removing `ui.window.appearance`.
-- **Expected**: The packaged plugin installs successfully with its relative image resolved inside the plugin root; its theme appears in the picker alongside the built-ins and applies immediately, with the image served through `plugin-asset:`; the choice survives restart as `plugin:demo.hello:midnight`; disabling or uninstalling the provider falls back to `system` instead of an unstyled shell; unsafe CSS is refused at load with the reason logged and no `<style>` element injected; the comment-only sheet loads and contributes its theme, because the sanitizer only inspects CSS the browser would apply; the declared asset paints through `plugin-asset:` in the shell and in the plugin's own panel, an undeclared reference is refused with the reason logged, the declared background colours the native window on Windows/Linux and is never sent on macOS, and deselecting the theme or dropping the grant returns the window to the host background; the whole shell follows the theme, including the work-panel column, its header, and the browser/file viewer strips, all of which read `--ds-bg-dock` / `--ds-bg-dock-raised` rather than a literal.
+- **Expected**: The packaged plugin installs successfully with its relative image resolved inside the plugin root; its theme appears in the picker alongside the built-ins and applies immediately, with the image served through `plugin-asset:`; the choice survives restart as `plugin:demo.hello:midnight`; disabling or uninstalling the provider falls back to `system` instead of an unstyled shell; unsafe CSS is refused at load with the reason logged and no `<style>` element injected; the comment-only sheet loads and contributes its theme, because the sanitizer only inspects CSS the browser would apply; the declared asset paints through `plugin-asset:` in the shell and in the plugin's own panel, an undeclared reference is refused with the reason logged, the declared background colours the native window on Windows/Linux and is never sent on macOS, and `cornerRadius: 0` makes only the Windows main window rectangular while the authorized theme is selected. Deselecting the theme or dropping the grant restores the host background and 4 DIP Windows corners; a radius above 24 rejects without changing the window. The whole shell follows the theme, including the work-panel column, its header, and the browser/file viewer strips, all of which read `--ds-bg-dock` / `--ds-bg-dock-raised` rather than a literal.
 - **Specs linked**: `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/04-plugin-security.md` §3.1, `04-ux/07-ui-design-system.md`, D175
 - **Acceptance**: G (theme contribution) + Security
-- **Status**: Unit-covered (`plugin-themes.test.mjs`, `theme-css` SDK tests, host-core package-relative asset/install tests); visual scenario Draft
+- **Status**: Unit-covered (`plugin-themes.test.mjs`, `theme-css` SDK tests, host-core package-relative asset/install tests). `test:e2e:window-controls` selects an authorized test plugin theme with `cornerRadius: 0` and returns to a built-in theme, verifying the native shape follows both choices. The broader asset visual scenario remains Draft.
 
 #### E2E-PLUGIN-runtime-theme-apis
 
@@ -3195,6 +3318,28 @@ identify the platform validation still needed.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` §12a,
   `07-plugins/04-plugin-security.md` §8.1
 - **Status**: Client and session-isolation unit-covered; full desktop journey Draft
+
+#### E2E-MCP-tool-requires-approval: User MCP tools prompt under ask and accept-edits
+
+- **Preconditions**: A project-bound Agent session; one user-configured stdio
+  MCP server whose tool list annotates a tool as read-only/low risk.
+- **Steps**: 1) With the session in `ask`, ask the agent to call the MCP tool.
+  2) Answer the card with allow-once, call it again, then answer with
+  allow-session and call it a third time. 3) Switch to `accept-edits` in a new
+  session and repeat the call. 4) Switch to `auto` and call it. 5) Switch to
+  Plan, then Goal, and call it.
+- **Expected**: Under `ask` and `accept-edits` every call shows an approval card
+  with reason "MCP server tool requires approval" at `medium` risk, regardless of
+  the server's self-declared annotation. Allow-once covers only that call;
+  allow-session suppresses further cards for the same `mcp_<serverId>_<tool>`
+  name in that session only, and does not cover other tools of the server.
+  `auto` runs the tool without a card. Plan and Goal deny it even with a
+  session grant.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
+  `05-security/01-security.md`, D640, ADR `mcp-tool-approval-risk`
+- **Acceptance**: E (tools & permissions) + Security
+- **Status**: Unit-covered (host-core `permissions.rs` MCP risk and mode tests);
+  desktop journey Draft
 
 #### E2E-024L: Resident plugin service is supervised and visible
 
@@ -3436,7 +3581,7 @@ identify the platform validation still needed.
 
 #### E2E-195: Linux glibc below 2.35 names supported distros
 
-- **Preconditions**: Linux x64 packaged app; the machine glibc is older than
+- **Preconditions**: Linux x64 or arm64 packaged app; the machine glibc is older than
   2.35 (for example Ubuntu 20.04 / Debian 11 / Fedora 35), or a test doubles
   `process.report` to `2.31`.
 - **Steps**: 1) Launch the AppImage, deb, or rpm. 2) Observe the main window and
@@ -3908,7 +4053,7 @@ identify the platform validation still needed.
   and native bounds while opening, repeating the same open action, resizing the
   panel, collapsing, reopening, and closing the final resource. Repeat collapse
   on Windows while watching the entire frameless window. 9) With the panel open,
-  resize the application from each native edge and confirm only the application
+  resize the application from each edge and confirm only the application
   bounds change; the panel remains at its renderer-committed width. Resize from
   the left edge and repeat after toggling the sidebar. 10) Open, resize, and
   collapse on a small work area, then repeat while maximized and fullscreen. 11)
@@ -4714,7 +4859,12 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   inspect the sidecar model snapshot/request metadata. 4) Use Settings → Model
   configuration to force a models.dev refresh and confirm the new record is
   visible without changing the bundled file or writing a user cache. 5) Repeat
-  with an ID absent from models.dev.
+  with an ID absent from models.dev and confirm its limits display as unknown
+  in Settings. 6) Open the picker at a wide but short
+  viewport (1254 × 772 CSS px): confirm the model panes remain side by side,
+  both lists scroll inside their panes, and a selected model's Advanced fields
+  are reachable. Narrow the viewport to 520 × 480 CSS px and confirm the panes
+  stack while both lists and Advanced remain reachable.
 - **Expected**: The matching models.dev record is authoritative, including its
   `limit`, `modalities`, `reasoning_options`, `tool_call`,
   `structured_output`, dates, and cost fields; no provider secret is sent to
@@ -4723,14 +4873,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   model shows PDF in its modality metadata; PDF attachments remain bounded file
   references until the selected transport exposes a native PDF block. A
   provider-discovered or explicitly configured ID absent from models.dev remains
-  runnable with the generic text-only, non-reasoning shape; pi-ai supplies only
-  the selected wire adapter, OAuth flow, and account model availability. A
-  ChatGPT Plus/Pro or GitHub Copilot account lists `gpt-6-sol`, `gpt-6-luna`,
-  and `grok-4.7` from the pinned pi-ai 0.99.1 catalog; the account Pi adapter then
-  supplies their published metadata.
+  runnable with the generic text-only, non-reasoning shape; Settings shows an
+  em dash instead of presenting its 128k / 8.2k runtime fallback as a published
+  model limit. Explicit user limits remain visible. pi-ai supplies only
+  the selected wire adapter, OAuth flow, and fallback account IDs. The custom
+  endpoint keeps its selected API style even if the published model adapter
+  differs; named providers may retain a model-level route when required. A
+  ChatGPT Plus/Pro or GitHub Copilot account lists IDs returned by its live
+  account endpoint; matching models.dev records supply their published metadata, while
+  live-only IDs absent from models.dev keep generic chat limits and capabilities.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
-  `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
+  `03-runtime/13-model-catalog-and-selection.md`, ADR `models-dev-catalog-authority`
 - **Acceptance**: B (model config), C (conversation & stream), Security
 - **Milestone**: M5
 - **Status**: Unit-covered (`model-capabilities.test.ts`,
@@ -7864,7 +8018,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 #### E2E-102e: Unknown model ids fail closed for vision transport
 
-- **Preconditions**: A custom provider/model id absent from the pi-ai catalog,
+- **Preconditions**: A custom provider/model id absent from the models.dev catalog,
   discovery data that incorrectly labels it `vision`, no explicit
   `supportsImages` binding override, and a pasted PNG.
 - **Steps**:
@@ -8684,21 +8838,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      release file or writing a user cache. 4. Add an ID absent from models.dev
      and inspect its generic fallback card. 5. In the OAuth protocol fixture,
      sign in to an account that offers a new Claude ID absent from models.dev
-     but with a pinned same-tier sibling. Resolve its runtime binding, apply
-     runtime model configuration without a saved model binding, and send `high`,
-     `xhigh`, and `max` through the real Anthropic adapter to an intercepted HTTP
-     boundary. Repeat with null-disabled levels, an all-disabled map, a
-     non-reasoning sibling, and an ID with no same-tier sibling.
+     while a same-tier Pi sibling exists. Resolve its runtime binding, apply
+     runtime model configuration without a saved model binding, and send a
+     request through the real Anthropic adapter to an intercepted HTTP boundary.
+     Confirm the sibling does not supply chat limits, reasoning levels or effort
+     mappings.
 - **Expected**: models.dev fields prefill known model bindings and remain the
   published metadata source. Provider keys are never included in the fixed
   models.dev request. Custom IDs without metadata retain generic defaults.
-  An OAuth live-only ID may use the existing same-tier fallback: protocol
-  compatibility and effort mappings travel with borrowed reasoning. Requests
-  use adaptive thinking and the requested effort, without legacy token budgets;
-  sparse mappings retain defaults and explicit nulls remain unsupported. A
-  non-reasoning sibling remains off-only, and no same-tier sibling means no
-  inferred reasoning. Published metadata and explicit mapping/compatibility
-  values take precedence. Copilot Bearer authentication remains unchanged.
+  An OAuth live-only ID does not inherit metadata from a Pi sibling; only an
+  exact models.dev match supplies its chat limits and reasoning shape. The
+  selected adapter keeps its wire behavior, and Copilot Bearer authentication
+  remains unchanged.
 - **Specs linked**: `03-runtime/11-provider-model-system.md` §6.2 and §8a,
   `03-runtime/13-model-catalog-and-selection.md` §11.1–§12, ADR 0134
 - **Acceptance**: B (model config), C (conversation & stream), Security
@@ -9178,9 +9329,8 @@ The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
 rather than the A–H criteria; their gold source is the capture suite.
 
-The release artifact paths are covered by E2E-192, E2E-196a, E2E-196b, E2E-196c,
-and E2E-200
-(Quality, M6+).
+The release artifact paths are covered by E2E-192, E2E-192a, E2E-196a,
+E2E-196b, E2E-196c, and E2E-200 (Quality, M6+).
 
 ---
 
@@ -11543,10 +11693,11 @@ This test plan spec is accepted when:
   adoption, previous-display replan regression, work-area clamping); the
   two-display desktop journey and the relaunch/hotplug legs are pending
 
-#### E2E-167: Native edge resize stays smooth and persists the settled bounds
+#### E2E-167: Window edge resize stays smooth and persists the settled bounds
 
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
-  macOS, Windows, or Linux. Run the case with the work panel closed and once
+  macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must
+  have no visible native border. Run the case with the work panel closed and once
   with it open at a committed width.
 - **Steps**:
   1. Drag each reachable window edge and one corner slowly, including a brief
@@ -11558,21 +11709,38 @@ This test plan spec is accepted when:
      native bounds stay fixed. Repeat below the panel minimum and above its
      maximum, then verify the target follows the live budget (`client width - 360px - expanded sidebar`) instead of a fixed cap.
   4. Close and relaunch the app after the resize settles.
+  5. On Windows, start an edge gesture, press Escape, and verify original bounds
+     return. Release the pointer outside the original window bounds, then
+     maximize and enter fullscreen; native hit regions must not block
+     window controls or content in those states.
+  6. On Windows, inspect the default 4 DIP corner cutouts before and after
+     resizing. Apply an authorized theme with `cornerRadius: 0`, then return to
+     a built-in theme. Reject an out-of-range radius without changing the shape.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 800×560 (capped to the display
   work area), and the recovery watchdog does not
   compete with a slow resize stream. The renderer-owned divider updates the
   bounded panel target without changing native bounds; the last settled window
-  bounds and the committed panel width reopen after relaunch. No temporary
+  bounds and the committed panel width reopen after relaunch. Windows uses
+  Electron's frameless native hit regions without the thick-frame rim; no left, bottom,
+  or right native rim is visible. No temporary
   work-panel reservation width is persisted or restored.
+  The four normal-window corners have no painted or interactive pixels outside
+  the active radius; the default is 4 DIP, an authorized theme may choose 0..24
+  DIP, and maximized/fullscreen windows are rectangular.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   ADR 0029 / ADR 0151
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
-- **Status**: Unit/source-contract covered; native desktop edge/corner journey
-  remains pending
+- **Status**: `test:e2e:window-controls` covers corner cutouts, theme radius
+  changes, fullscreen, maximize, and controls in an isolated profile.
+  `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
+  drags and the 800×560 minimum; run it on a dedicated interactive desktop,
+  since another app can take foreground or pointer input during the gesture.
+  Relaunch persistence remains for native qualification; macOS/Linux native
+  edge behavior is unchanged.
 
 #### E2E-168: Expanded sidebar width follows an anchored resize gesture
 
@@ -11636,7 +11804,9 @@ This test plan spec is accepted when:
   account model and save. 5) Reopen the account editor and read that model's
   chips. 6) For an OpenAI Codex account, inspect `gpt-6-astra` (or another
   account model also published under models.dev's `openai` provider) and confirm
-  its published context/output limits and reasoning levels are present. 7) In
+  its published context/output limits and reasoning levels are present. For
+  `gpt-6.1-sol`, verify a 1,050,000-token context and 128,000-token output cap.
+  7) In
   the account editor, hand-type a custom model ID the catalog does not publish,
   enable a thinking level on it, and save.
 - **Expected**: Both dialogs render the same picker — the same discovered list,
@@ -11649,8 +11819,9 @@ This test plan spec is accepted when:
   generic 128,000 / 8,192 / no-reasoning defaults. The authenticated ChatGPT
   list comes from `GET {base}/codex/models` on the account token, so an id the
   pin does not know yet is selectable when that response includes it; pi-ai is
-  only the fallback when the request fails. models.dev cannot add a missing
-  OAuth ID. A model with no published record keeps its explicit levels, starts
+  only the OAuth/transport adapter; it supplies no sibling chat-model limits.
+  models.dev enriches an ID only when its record matches. A model with no
+  published record keeps its explicit levels, starts
   at `off` when no binding default is stored, and keeps all choices available
   for manual opt-in. The account's default model stays the head binding.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
@@ -14443,6 +14614,21 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Status**: Unit-covered (`apps/desktop/test/project-create-dialog.test.mjs`,
   `apps/desktop/test/git-clone.test.mjs`); full UI scenario Draft (run only in a
   capable environment when this surface changes)
+
+#### E2E-261: Creating from a closed project folder reopens its group
+
+- **Preconditions**: A durable project group exists for a local folder and is
+  closed from the sidebar; its directory remains available.
+- **Steps**: Open Create project, select only that folder, and click Create.
+- **Expected**: The existing group reopens at its primary root, appears in the
+  sidebar, and the dialog closes. Its existing name, roots, chats, instructions,
+  and memory remain intact; no duplicate project group is created.
+- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0249.
+- **Acceptance**: The production creation action resolves the host group before
+  attempting creation and activates the existing primary path.
+- **Milestone**: M5 (project organization maintenance).
+- **Status**: Unit/source-contract covered (`apps/desktop/test/project-create-dialog.test.mjs`);
+  full UI scenario remains Draft.
 #### E2E-257: Importing into an archived project restores its visibility
 
 - **Preconditions**: A durable project has been archived in the renderer
@@ -15280,14 +15466,14 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 #### E2E-MODEL-catalog-window-correction-reaches-saved-bindings
 
-- **Goal**: a Pi catalog limit correction — the context window or the output cap —
+- **Goal**: a models.dev limit correction — the context window or the output cap —
   reaches an already saved binding without deleting and re-adding the model, while
   a number the user entered in Settings is never overwritten.
 - **Steps**:
-  1. Configure a provider, select a model Pi publishes a context window
+  1. Configure a provider, select a model models.dev publishes a context window
      for, and save. Open the row's Advanced body and read the context-window field
      and its hint.
-  2. Serve a corrected catalog record for that model (a different published
+  2. Serve a corrected models.dev record for that model (a different published
      window), reopen Settings, and read the row, the context inspector, and the
      window a new session launches with.
   3. Type a window in the Advanced field — the preset ladder once and a

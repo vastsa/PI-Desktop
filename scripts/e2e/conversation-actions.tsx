@@ -15,13 +15,14 @@ declare global {
 window.addEventListener("error", (event) => console.error(event.error?.stack ?? event.message));
 await i18n.init({ lng: "en", resources: { en: { translation: en } } });
 const date = "2026-01-01T00:00:00Z";
-let records = ["alpha", "beta"].map((id) => ({
+let records = ["alpha", "beta", "scheduled-run"].map((id) => ({
   id,
   title: id,
   projectPath: null,
   createdAt: date,
   updatedAt: date,
   messageCount: 0,
+  scheduledRun: id === "scheduled-run",
 }));
 const deleted: string[] = [];
 api.renameSession = async (id, title) => {
@@ -46,7 +47,7 @@ useAppStore.setState({
   openProjectPaths: [],
   openProjects: [],
   projectMeta: {},
-  sessionMeta: {},
+  sessionMeta: { "scheduled-run": { pinned: true } },
   runningSessions: {},
   sessionView: { sort: "recent", archived: false },
   page: "chat",
@@ -114,6 +115,8 @@ function escape() {
 const row = (id: string) =>
   document.querySelector<HTMLElement>(`[data-sidebar-session-row="${id}"]`);
 globalThis.conversationActionsProbe = async () => {
+  await until(() => row("alpha") && row("beta"), "ordinary sidebar sessions");
+  check(!row("scheduled-run"), "automation transcripts stay out of sidebar and pins");
   await openHeader();
   const initialActions = [
     ...document.querySelectorAll(".conversation-actions-menu [data-action]"),

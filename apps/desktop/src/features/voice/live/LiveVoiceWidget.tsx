@@ -8,7 +8,7 @@ import { liveVoiceIssue, liveVoiceWidgetSnapshot, liveVoiceWidgetVisible } from 
 import "../../../styles/voice.css";
 import "../../../styles/live-voice-widget.css";
 
-type WidgetState = { call: LiveCallView | null; errorCode?: string };
+type WidgetState = { call: LiveCallView | null; errorCode?: string; decisionWaiting?: boolean };
 
 /**
  * The docked call widget: the call chrome as its own always-on-top window, so a
@@ -98,6 +98,7 @@ export function LiveVoiceWidget() {
           t={t}
           snapshot={snapshot}
           issue={issue}
+          decisionWaiting={state.decisionWaiting === true}
           detailsOpen={false}
           detailsRef={detailsRef}
           actionPending={null}

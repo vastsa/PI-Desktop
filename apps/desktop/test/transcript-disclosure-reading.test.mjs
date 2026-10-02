@@ -86,9 +86,16 @@ test("the transcript restores the held title inside its resize observer", () => 
 });
 
 test("holding a disclosure leaves follow without a delayed grab-back", () => {
+  // Leaving follow mode has one definition, shared by the disclosure hold and
+  // every reader-driven jump: no timer and no animation frame, so the hold ends
+  // on real input or an explicit re-pin, never by taking the bottom back later.
   assert.match(
     transcript,
-    /const enterDisclosureReading = useCallback\(\(\) => \{\s*cancelFollowScroll\(\);\s*pinnedRef\.current = false;\s*setShowJump\(true\);/,
+    /const releaseFollow = useCallback\(\(\) => \{\s*cancelFollowScroll\(\);\s*pinnedRef\.current = false;\s*setShowJump\(true\);/,
+  );
+  assert.match(
+    transcript,
+    /const enterDisclosureReading = useCallback\(\(\) => \{\s*releaseFollow\(\);/,
   );
   assert.match(
     transcript,

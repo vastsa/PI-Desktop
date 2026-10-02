@@ -369,6 +369,29 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         context: { requestId: `live-voice:${input.sessionId}` },
       }));
     },
+    /**
+     * Resolve a Composer ask card through the Host-owned input path, matched
+     * by the runtime request id the card carries. Returns `null` when this
+     * Host holds no matching open input so the caller falls back to the
+     * direct sidecar resolve; otherwise the pending input is deleted before
+     * the sidecar settles, so a later `pendingInteractiveRequests` read (for
+     * example after switching windows back to the session) no longer
+     * resurrects the already answered card.
+     */
+    async resolveAskByRequestId(resolution: AskToolResolution): Promise<{ ok: boolean } | null> {
+      const sessionId = String(resolution?.sessionId ?? "").trim();
+      const requestId = String(resolution?.requestId ?? "").trim();
+      if (!sessionId || !requestId) return null;
+      const entry = agentHost.pendingInputRequests(sessionId)
+        .find((candidate) => candidate.original.requestId === requestId);
+      if (!entry) return null;
+      await forIpc(() => agentHost.respondInput(DESKTOP_PRINCIPAL, {
+        inputId: entry.input.id,
+        answers: resolution.answers,
+        context: { requestId },
+      }));
+      return { ok: true };
+    },
     lookupWorkAdmission(request: {
       sessionId: string;
       idempotencyKey: string;

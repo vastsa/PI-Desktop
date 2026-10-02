@@ -1,6 +1,6 @@
 # ADR 0134: Use models.dev as the sole model metadata source with a local snapshot
 
-- Status: Superseded by [Pi 0.99.1 authority](pi-ai-core-0991-authority.md)
+- Status: Superseded for chat metadata by [models.dev catalog authority](models-dev-catalog-authority.md)
 - Date: 2026-08-29
 - Deciders: PI-Desktop core
 - Amends: ADR 0027, ADR 0133, D136, D266

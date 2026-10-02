@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionSummary } from "@pi-desktop/shared";
 import { isDefaultSessionTitle, useAppStore } from "../../stores/app-store";
+import { listableSessions } from "../../lib/session-origin";
 import {
   getGlobalPinnedSessions,
   normalizeProjectPath,
@@ -104,9 +105,10 @@ export function useSessionNavigation() {
   );
 
   const filtered = useMemo(() => {
-    const candidates = showArchived
-      ? sessions
-      : sessions.filter((session) => !sessionArchived(session, sessionMeta[session.id]));
+    // Scheduled run transcripts are entered from their task's history, never
+    // from sidebar groups, pins, or replacement-conversation navigation.
+    const candidates = listableSessions(sessions)
+      .filter((session) => showArchived || !sessionArchived(session, sessionMeta[session.id]));
     // Empty sessions are durable sidebar rows now. Their message count, not
     // their title, controls New Task reuse, so a manual rename never changes
     // the empty-slot behavior.

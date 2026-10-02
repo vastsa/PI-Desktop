@@ -28,7 +28,7 @@ import {
 import { matchesExpectedTurnId } from "./turn-target.js";
 import { applyNodeNetworkProxy } from "./node-proxy.js";
 import { applyAdditiveDefaultCaCertificates } from "./system-ca.js";
-import { NATIVE_PI_SESSION_PREFIX, nativePiService } from "./native-pi-session.js";
+import { NATIVE_PI_SESSION_PREFIX } from "./native-pi-session-id.js";
 import {
   isCommandShellOption,
   normalizeMode,
@@ -50,6 +50,16 @@ import type {
 } from "@pi-desktop/shared";
 
 type RuntimeMap = Map<string, DesktopAgentRuntime>;
+
+type NativePiServiceFactory = typeof import("./native-pi-session.js")["nativePiService"];
+let nativePiServiceFactory: NativePiServiceFactory | undefined;
+
+async function getNativePiService() {
+  if (!nativePiServiceFactory) {
+    nativePiServiceFactory = (await import("./native-pi-session.js")).nativePiService;
+  }
+  return nativePiServiceFactory();
+}
 
 const runtimes: RuntimeMap = new Map();
 const hostProxy = new ParentHostProxy();
@@ -300,6 +310,7 @@ async function runtimeFor(
         ? params.scratchDir
         : undefined,
     onEvent: (envelope: AgentEventEnvelope) => notify("agent.event", envelope),
+    onDiagnostic: (diagnostic) => notify("agent.diagnostic", diagnostic),
   });
   runtimes.set(sessionId, runtime);
   // Load failures are diagnostics, never a failed prompt (spec 16 §4.4).
@@ -365,28 +376,36 @@ async function handle(method: string, params: any): Promise<unknown> {
     }
     case "sidecar.health":
       return { ok: true, runtimes: runtimes.size };
-    case "native.session.list":
-      return { sessions: await nativePiService().list() };
-    case "native.session.search":
-      return nativePiService().search(String(params.query ?? ""));
-    case "native.session.get":
+    case "native.session.list": {
+      const service = await getNativePiService();
+      return { sessions: await service.list() };
+    }
+    case "native.session.search": {
+      const service = await getNativePiService();
+      return service.search(String(params.query ?? ""));
+    }
+    case "native.session.get": {
+      const service = await getNativePiService();
       return {
-        session: nativePiService().detail(String(params.id ?? ""), {
+        session: service.detail(String(params.id ?? ""), {
           messageBefore: params.messageBefore,
           messageLimit: params.messageLimit,
           messageAround: params.messageAround,
           contentLimit: params.contentLimit,
         }),
       };
-    case "native.session.fork":
+    }
+    case "native.session.fork": {
+      const service = await getNativePiService();
       return {
-        session: nativePiService().fork({
+        session: service.fork({
           id: String(params.id ?? ""),
           title: typeof params.title === "string" ? params.title : undefined,
           throughMessageId:
             typeof params.throughMessageId === "string" ? params.throughMessageId : undefined,
         }),
       };
+    }
     case "agent.testRuntimeIdentity": {
       return testRuntimeIdentity(String(params.sessionId ?? ""));
     }
@@ -394,7 +413,8 @@ async function handle(method: string, params: any): Promise<unknown> {
       const sessionId = String(params.sessionId);
       const content = String(params.content ?? "");
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().prompt(sessionId, content, (envelope) =>
+        const service = await getNativePiService();
+        return service.prompt(sessionId, content, (envelope) =>
           notify("native.agent.event", envelope),
           typeof params.userMessageId === "string" ? params.userMessageId : undefined,
         );
@@ -494,7 +514,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       const sessionId = String(params.sessionId);
       const turnId = typeof params.turnId === "string" ? params.turnId : undefined;
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().abort(sessionId, turnId);
+        return (await getNativePiService()).abort(sessionId, turnId);
       }
       const runtime = runtimes.get(sessionId);
       if (!matchesExpectedTurnId(runtime?.getStatus().currentTurnId, turnId)) return { ok: false, aborted: false };
@@ -508,7 +528,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       const sessionId = String(params.sessionId);
       const turnId = typeof params.turnId === "string" ? params.turnId : undefined;
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().abort(sessionId, turnId);
+        return (await getNativePiService()).abort(sessionId, turnId);
       }
       const runtime = runtimes.get(sessionId);
       if (!matchesExpectedTurnId(runtime?.getStatus().currentTurnId, turnId)) {
@@ -543,7 +563,7 @@ async function handle(method: string, params: any): Promise<unknown> {
     case "agent.getStatus": {
       const sessionId = String(params.sessionId);
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        return nativePiService().status(sessionId);
+        return (await getNativePiService()).status(sessionId);
       }
       const runtime = runtimes.get(sessionId);
       return {
@@ -557,7 +577,7 @@ async function handle(method: string, params: any): Promise<unknown> {
     case "agent.disposeSession": {
       const sessionId = String(params.sessionId);
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
-        nativePiService().dispose(sessionId);
+        (await getNativePiService()).dispose(sessionId);
         return { ok: true };
       }
       const runtime = runtimes.get(sessionId);
@@ -610,7 +630,9 @@ readNdjsonLines(process.stdin, async (line) => {
 // host call) must not take every session's runtime down with it: Node's
 // default for `unhandledRejection` is to exit the process. Log and carry on;
 // the affected session surfaces its own error through the normal event path.
-process.on("exit", () => nativePiService().disposeAll());
+process.on("exit", () => {
+  nativePiServiceFactory?.().disposeAll();
+});
 
 process.on("unhandledRejection", (reason) => {
   const detail =

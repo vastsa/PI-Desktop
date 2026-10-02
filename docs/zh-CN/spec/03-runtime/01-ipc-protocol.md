@@ -1887,8 +1887,8 @@ unchanged. See [provider configuration](12-provider-config-schema.md).
 | `pi-desktop/voice/live/event/transcript` | Main → Renderer | 当前通话的临时、有界字幕事件 |
 | `pi-desktop/voice/live/widget/visibility` | 挂件 → Main | 挂件自身的展示决定与所需内容盒尺寸；Main 据此显示或隐藏该窗口 |
 | `pi-desktop/voice/live/widget/action` | 挂件 → Main | 在挂件中按下的通话操作；Main 校验发送方后转发给 owner frame 执行 |
-| `pi-desktop/voice/live/widget/issue` | 主窗口 → Main | owner frame 自身为该通话记录的错误码（例如被拒绝的静音），通话视图不会携带它 |
-| `pi-desktop/voice/live/event/widgetState` | Main → 挂件 | 权威通话视图加上 owner 的错误码，推送给停靠挂件窗口 |
+| `pi-desktop/voice/live/widget/ownerState` | 主窗口 → Main | 只有 owner frame 才知道的信息：它自身的错误码（例如被拒绝的静音）以及绑定工作会话是否在等待决策；两者都不在通话视图中 |
+| `pi-desktop/voice/live/event/widgetState` | Main → 挂件 | 权威通话视图加上 owner 自身的错误码与等待决策标记，推送给停靠挂件窗口 |
 | `pi-desktop/voice/live/event/widgetAction` | Main → 主窗口 | 需要 owner frame 执行的挂件操作 |
 
 只有 owner 验证成功后才会创建 `MessagePort`，之后由 preload 中继到 renderer 窗口。owner 在首个 `hello` 中回送每通电话独有的 nonce；Main 仅在 call ID 和 nonce 均匹配时接受该端口一次。二进制帧包含有界 PCM 音频、采集 epoch、释放确认、播放游标和协议就绪信号。它不是通用 IPC 隧道：不会传输 Provider 凭证、任意命令、工作区路径、Agent 消息或持久化字幕。通话结束或 owner 丢失时会关闭端口。

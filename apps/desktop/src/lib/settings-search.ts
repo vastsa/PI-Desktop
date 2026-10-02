@@ -63,6 +63,11 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     group: "preferences",
     keywordKeys: [
       "settings.appearance",
+      "settings.storage.title",
+      "settings.storage.dataPath",
+      "settings.storage.cache",
+      "settings.storage.clearCache",
+      "settings.storage.backup",
       "settings.theme",
       "settings.language",
       "settings.languageAuto",

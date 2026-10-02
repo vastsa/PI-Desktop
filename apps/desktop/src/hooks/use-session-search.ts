@@ -2,6 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { api } from "../lib/api";
 import { SessionSearchController } from "../lib/session-search";
+import { isAutomationSession } from "../lib/session-origin";
 
 /** Transient search state survives closing the palette, never goes to disk. */
 export const useSessionSearchState = create<{
@@ -27,7 +28,12 @@ export function useSessionSearch(open: boolean, query: string) {
   }, [controller, normalized, open]);
   return {
     ...state,
-    hits: state.query === normalized ? state.hits : [],
+    // Scheduled run transcripts are reached from the Scheduled page, so search
+    // never offers them as a conversation to switch to (issue #1291).
+    hits:
+      state.query === normalized
+        ? state.hits.filter((hit) => !isAutomationSession(hit.session))
+        : [],
     nextOffset: state.query === normalized ? state.nextOffset : null,
     error: state.query === normalized ? state.error : undefined,
     loading: Boolean(normalized) && (state.query !== normalized || state.loading),

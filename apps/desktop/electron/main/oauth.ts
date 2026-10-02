@@ -19,7 +19,7 @@
 import { randomUUID } from "node:crypto";
 import { createInstallationIdentity } from "./installation-identity.ts";
 
-import { getSupportedThinkingLevels, InMemoryModelsStore } from "@earendil-works/pi-ai";
+import { InMemoryModelsStore } from "@earendil-works/pi-ai";
 import type {
   Api,
   AuthEvent,
@@ -37,7 +37,6 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import {
   capabilitiesFromModelConfig,
   genericModelConfig,
-  modelConfigFromPi,
   installProviderHeadersFetch,
   runWithProviderHeaders,
   type ModelConfig,
@@ -46,12 +45,12 @@ import {
 import {
   isConversationModelId,
   parseVendorModelIds,
-  pinnedSiblingId,
   readVendorModelList,
   VendorModelListError,
   vendorModelListRequest,
   wireForLiveModel,
 } from "./vendor-live-models.ts";
+import type { ThinkingLevel } from "@pi-desktop/shared";
 import {
   OAUTH_AUTH_KIND,
   type OAuthLoginEvent,
@@ -98,6 +97,19 @@ export function apiStyleForWireApi(api: string): string {
 
 function wireApiForStyle(style: string): Api {
   return Object.entries(API_STYLE_BY_WIRE_API).find(([, value]) => value === style)?.[0] ?? "openai-completions";
+}
+
+/** Interpret an explicitly supplied wire map without borrowing another model's record. */
+function withMappedThinkingLevels(config: ModelConfig): ModelConfig {
+  if (!config.thinkingLevelMap) return config;
+  const supportedThinkingLevels = Object.entries(config.thinkingLevelMap).flatMap(([level, value]) =>
+    typeof value === "string" ? [level as ThinkingLevel] : [],
+  );
+  return {
+    ...config,
+    reasoning: supportedThinkingLevels.some((level) => level !== "off"),
+    supportedThinkingLevels,
+  };
 }
 
 export function protocolForApiStyle(apiStyle: string): string {
@@ -536,57 +548,15 @@ export class VendorOAuth {
       vendorKey: account.vendorId,
       option,
     }).catch(() => undefined);
-    const modelConfig = await this.withPinnedSiblingFallback(account, option, published);
+    const modelConfig = withMappedThinkingLevels(
+      published ?? genericModelConfig(option.modelId, option.baseUrl),
+    );
     const capabilities = capabilitiesFromModelConfig(modelConfig);
     return {
       apiStyle: option.apiStyle,
       baseUrl: option.baseUrl,
       modelConfig,
       ...capabilities,
-    };
-  }
-
-  /**
-   * models.dev is authoritative for known ids. Live-only models inherit limits,
-   * thinking levels, and adapter compatibility from a pinned same-tier sibling.
-   * xAI uses an explicit newest-first order so pin order cannot pick an older Grok.
-   */
-  private async withPinnedSiblingFallback(
-    account: AccountModels,
-    option: OAuthModelOption,
-    published: ModelConfig | undefined,
-  ): Promise<ModelConfig> {
-    const config = published ?? genericModelConfig(option.modelId, option.baseUrl);
-    if (config.source !== "generic") return config;
-    const pinned = account.pinnedProvider?.getModels() ?? await account.models.getAvailable(account.vendorId);
-    if (pinned.some((model) => model.id === option.modelId)) return config;
-    const siblingId = pinnedSiblingId(
-      account.vendorId,
-      option.modelId,
-      pinned.map((model) => model.id),
-    );
-    const sibling = siblingId ? pinned.find((model) => model.id === siblingId) : undefined;
-    if (!sibling) return config;
-    const input = (sibling.input ?? []).filter(
-      (modality): modality is "text" | "image" => modality === "text" || modality === "image",
-    );
-    const thinkingLevelMap = config.thinkingLevelMap ?? sibling.thinkingLevelMap;
-    const supportedThinkingLevels = getSupportedThinkingLevels({ ...sibling, thinkingLevelMap });
-    return {
-      ...config,
-      // Keep the protocol and wire effort mapping paired with borrowed reasoning.
-      compat: { ...sibling.compat, ...config.compat },
-      thinkingLevelMap,
-      reasoning: supportedThinkingLevels.some((level) => level !== "off"),
-      input: input.length > 0 ? input : config.input,
-      contextWindow: sibling.contextWindow,
-      maxTokens: sibling.maxTokens,
-      limit: {
-        context: sibling.contextWindow,
-        input: sibling.contextWindow,
-        output: sibling.maxTokens,
-      },
-      supportedThinkingLevels,
     };
   }
 
@@ -859,13 +829,18 @@ export class VendorOAuth {
           const live = await this.withRowHeaders(providerId, () => this.liveAccountModels(account));
           if (!live) return;
           const projected = await Promise.all(live.map(async option => {
-            const known = original.getModels().find(model => model.id === option.modelId);
-            const config = known ? modelConfigFromPi(known) : await this.withPinnedSiblingFallback(account, option, undefined);
+            const config = withMappedThinkingLevels(await this.deps.modelConfigFor?.({
+              providerId,
+              vendorKey: account.vendorId,
+              option,
+            }).catch(() => undefined) ?? genericModelConfig(option.modelId, option.baseUrl));
             return {
               ...config, id: option.modelId, provider: vendorId,
               api: wireApiForStyle(option.apiStyle), baseUrl: option.baseUrl,
-              // A sibling supplies capabilities, never the price of a new ID.
-              cost: known?.cost ?? { input: NaN, output: NaN, cacheRead: NaN, cacheWrite: NaN },
+              // Generic limits and zero-price defaults are not published data.
+              cost: config.source === "generic"
+                ? { input: NaN, output: NaN, cacheRead: NaN, cacheWrite: NaN }
+                : config.cost ?? { input: NaN, output: NaN, cacheRead: NaN, cacheWrite: NaN },
             } as Model<Api>;
           }));
           context.signal.throwIfAborted();

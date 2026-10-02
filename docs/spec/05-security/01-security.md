@@ -96,6 +96,13 @@ and byte size, and only then creates the `plan_approvals` record with
 structured title/question fields. Renderer and sidecar state cannot write or
 replace an artifact.
 
+Tools from user-configured MCP servers (`mcp_<serverId>_<tool>`) are never
+low-risk by default: host-core classifies them `medium` and ignores any risk
+level the MCP server declares for itself. `ask` and `accept-edits` require
+approval (an `allow-session` grant covers the same tool name for the rest of
+that session, in memory only), `auto` auto-allows, and Plan/Goal still deny
+them (D640, ADR `mcp-tool-approval-risk`).
+
 ## 4.1 Skill market egress
 
 The renderer does not fetch skill catalogs or SKILL.md documents. Electron

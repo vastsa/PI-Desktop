@@ -145,11 +145,11 @@ destination, chat as the home surface, tools and permissions inline.
   panel across the client area beside the sidebar; leaving preview restores the
   prior panel width and sidebar state without changing native bounds. The
   renderer-measured panel
-  rectangle continues to position the native Browser view. Native window edges
+  rectangle continues to position the native Browser view. Window edges
   resize the app window only; they do not change the panel target. The outer
-  window remains natively resizable from all OS edges and corners, with a
-  minimum supported size of 800×560, capped to the current display's work
-  area (D635). Replaces
+  window remains natively resizable from all OS edges and corners, including
+  Electron's frameless hit regions on Windows, with a minimum supported size
+  of 800×560, capped to the current display's work area (D635). Replaces
   the former context-panel overlay; workspace/model/status info lives in the
   composer chips and Settings instead.
 - **Composer**: workspace-agnostic floating pill anchored to the conversation
@@ -253,9 +253,11 @@ destination, chat as the home surface, tools and permissions inline.
   focus.
 
 ### 3.3 Scheduled
-Tasks and Run history views, with an explicit create/edit form, a cadence dropdown, time,
-next occurrence, saved project, per-task permission/model selection, pause/resume and delete confirmation. Hourly
-schedules repeat at one-hour intervals without a time selector. Daily schedules
+A task column beside the selected task's page, with an explicit create/edit form, a cadence dropdown, time,
+next occurrence, saved project, per-task permission/model selection, a per-task conversation mode (a new conversation per run, or one conversation every run continues), pause/resume and delete confirmation. Hourly
+schedules repeat at one-hour intervals without a time selector. An interval
+schedule states its own span as a count with a minute or hour unit (5 minutes to
+24 hours) and counts elapsed time from the moment it was armed. Daily schedules
 use a themed time-period dropdown: Morning 09:00, Afternoon 14:00, Evening
 19:00, Night 22:00. The form does not expose hour/minute editing. AI tools may
 set an exact time; a non-preset time displays as Custom with its HH:mm value
@@ -263,10 +265,26 @@ and survives other form edits until the user explicitly selects a preset. Weekly
 separate dropdown listing Monday through Sunday with selection markers.
 Each day toggles independently; there are no preset combinations. An empty
 selection disables saving. The menu supports arrows, Home/End, Enter/Space,
-Escape/outside dismissal, and exposes selected states. The footer clock and global search open
-this route. Run now dispatches in the background and selects Run history; a
-conversation link opens the real transcript. The latest 100 runs show running,
-completed, failed or interrupted status. Automatic runs never steal foreground
+Escape/outside dismissal, exposes selected states, and owns the page while it is
+open: the task column and the task page step aside rather than compete with the
+draft. The form also states an interval as a count with a minute or hour unit
+(5 minutes to 24 hours) and keeps that value while another cadence is selected,
+so switching a task between a calendar and an interval loses neither. The column
+reports each task's cadence and clock, the outcome of that task's own newest run
+— read per task from the host, so a task that has been idle while others ran is
+never reported as never run — with its duration, and whether it is paused or
+running. The task page shows that task's last run, next
+occurrence, project, permission and model, its instruction behind a disclosure,
+its own run history newest first (status, start time, duration, stable error
+code), and the transcript of the selected run read in the page through a bounded
+read. A run's transcript belongs to this route: the SessionList and global
+session search never list it, and Open conversation is the explicit action that
+carries it into the chat route, and the chat top bar then offers that
+conversation's own way back: the row names the task it belongs to, and returning
+restores the same task and the same run, reusing the navigation history when
+this route is directly behind it. The footer clock and global search open
+this route. Run now dispatches in the background, selects the run it admitted,
+and leaves the reader on this page. Automatic runs never steal foreground
 focus. See [desktop automations](../../adr/scheduled-desktop-automations.md).
 
 The application must remain running. The host polls every 30 seconds and skips

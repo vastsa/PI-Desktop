@@ -96,20 +96,24 @@ test("installMainProcessErrorHandlers is idempotent", () => {
   assert.equal(process.listenerCount("unhandledRejection"), afterFirstRej);
 });
 
-test("Electron main installs handlers and does not use Electron's default dialog path", async () => {
+test("Electron startup installs handlers before boot and wires the logger", async () => {
   const index = await readFile(
     new URL("../electron/main/index.ts", import.meta.url),
     "utf8",
   );
-  assert.match(index, /installMainProcessErrorHandlers\(\)/);
+  const installation = await readFile(
+    new URL("../electron/main/installation.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(installation, /installMainProcessErrorHandlers\(\)/);
   assert.match(index, /installMainProcessErrorHandlers\(\{/);
   assert.match(index, /emit:/);
   assert.doesNotMatch(
-    index,
+    `${installation}\n${index}`,
     /process\.on\("unhandledRejection"/,
   );
   assert.doesNotMatch(
-    index,
+    `${installation}\n${index}`,
     /process\.on\("uncaughtException"/,
   );
 });

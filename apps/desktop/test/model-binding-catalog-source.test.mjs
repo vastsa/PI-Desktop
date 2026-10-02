@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
-import { fixtureProvider } from "./pi-catalog-fixtures.mjs";
 import { ModelsDevCatalog } from "../electron/main/models-dev-catalog.ts";
 
 const runtimeModule = new URL("../electron/main/runtime/provider-catalog.ts", import.meta.url);
@@ -25,10 +24,10 @@ const { createProviderCatalogRuntime } = await import(runtimeModule.href)
 const CORRECTED_CONTEXT_WINDOW = 1_050_000;
 
 async function fixtureRuntime() {
-  const catalog = new ModelsDevCatalog({ providers: [fixtureProvider("requesty", [
-    { id: "terra", reasoning: true, contextWindow: CORRECTED_CONTEXT_WINDOW, maxTokens: 64_000 },
-  ], { baseUrl: "https://router.requesty.ai/v1" })] });
-  await catalog.ensureLoaded();
+  const catalog = new ModelsDevCatalog({
+    catalogPath: new URL("../resources/models.dev/api.json", import.meta.url).pathname,
+  });
+  await catalog.loadLocal();
   return createProviderCatalogRuntime({
     getHost: () => null,
     modelsDevCatalog: catalog,
@@ -38,9 +37,9 @@ async function fixtureRuntime() {
 function providerFor(binding) {
   return {
     id: "provider-row",
-    name: "Requesty",
-    vendorKey: "requesty",
-    baseUrl: "https://router.requesty.ai/v1",
+    name: "OpenAI",
+    vendorKey: "openai",
+    baseUrl: "https://api.openai.com/v1",
     models: [binding],
   };
 }
@@ -50,11 +49,11 @@ function enrichedContextWindow(runtime, binding) {
   return provider.models[0].contextWindow;
 }
 
-test("a catalog-sourced binding adopts a Pi catalog correction", async () => {
+test("a catalog-sourced binding adopts the bundled models.dev value", async () => {
   const runtime = await fixtureRuntime();
   // The value the binding snapshotted when the model was added.
   const binding = {
-    id: "terra",
+    id: "gpt-6.1-sol",
     contextWindow: 1_048_576,
     contextWindowSource: "catalog",
     maxTokens: 64_000,
@@ -66,7 +65,7 @@ test("a catalog-sourced binding adopts a Pi catalog correction", async () => {
 test("a user output cap stays pinned independently of its catalog window", async () => {
   const runtime = await fixtureRuntime();
   const edited = {
-    id: "terra",
+    id: "gpt-6.1-sol",
     contextWindow: 1_048_576,
     contextWindowSource: "catalog",
     maxTokens: 8_192,
@@ -87,7 +86,7 @@ test("a user output cap stays pinned independently of its catalog window", async
 test("a legacy non-generic output cap stays explicit when the window follows catalog", async () => {
   const runtime = await fixtureRuntime();
   const legacy = {
-    id: "terra",
+    id: "gpt-6.1-sol",
     contextWindow: 1_048_576,
     contextWindowSource: "catalog",
     maxTokens: 4_096,
@@ -104,7 +103,7 @@ test("a hand-edited window that equals the generic seed is still the user's", as
   // user who picks exactly that number for a smaller endpoint must not be read
   // as "follow models.dev".
   const explicit = {
-    id: "terra",
+    id: "gpt-6.1-sol",
     contextWindow: 128_000,
     contextWindowSource: "user",
     maxTokens: 8_192,
@@ -116,13 +115,13 @@ test("a hand-edited window that equals the generic seed is still the user's", as
 test("unmarked records keep the rule they were written under", async () => {
   const runtime = await fixtureRuntime();
   const legacySeed = {
-    id: "terra",
+    id: "gpt-6.1-sol",
     contextWindow: 128_000,
     maxTokens: 8_192,
     thinkingLevels: ["off"],
   };
   const legacyOverride = {
-    id: "terra",
+    id: "gpt-6.1-sol",
     contextWindow: 400_000,
     maxTokens: 8_192,
     thinkingLevels: ["off"],
@@ -135,7 +134,7 @@ test("unmarked records keep the rule they were written under", async () => {
 test("a catalog value leaves the binding marked as catalog-sourced", async () => {
   const runtime = await fixtureRuntime();
   const legacySeed = {
-    id: "terra",
+    id: "gpt-6.1-sol",
     contextWindow: 128_000,
     contextWindowSource: "catalog",
     maxTokens: 8_192,

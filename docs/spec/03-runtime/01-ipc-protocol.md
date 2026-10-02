@@ -1931,7 +1931,17 @@ platform, and minimize-to-tray needs it whichever close behavior is stored.
 Maximize/unmaximize changes also emit
 `window/event/maximized`. Unknown actions fail. These Electron-only channels
 do not cross into host-core and do not change the host RPC protocol version.
-The preload intentionally exposes no arbitrary BrowserWindow resize channel.
+The preload exposes no arbitrary BrowserWindow bounds or resize channel.
+Windows retains Electron's native frameless edge/corner hit testing with
+`thickFrame: false`; the renderer does not submit window geometry.
+The Windows borderless fullscreen fallback is tracked in Main because Electron
+reports `isFullScreen() === false` while it uses display bounds for that mode;
+the window-control state and fullscreen event use the tracked value.
+`window/setBackgroundColor` remains Electron-local and main-renderer-only. Its
+optional `cornerRadius` is an integer from 0 to 24 DIP; omission restores the
+Windows main-window default of 4. Main applies the native shape on theme
+selection and resize, and clears the corner cutouts during maximize/fullscreen.
+Malformed values fail with `INVALID_ARGUMENT` before changing the background.
 Plugin panel chrome uses a separate Electron-local
 `pi-plugin-panel-window-control` channel with the same four semantic actions,
 but the handler resolves the target strictly from the sender's live panel
@@ -2413,8 +2423,8 @@ owner derivation.
 | `pi-desktop/voice/live/event/transcript` | Main → Renderer | transient bounded transcript event for the current call |
 | `pi-desktop/voice/live/widget/visibility` | Widget → Main | the docked widget's own presentation decision and the content box it needs; Main shows or hides that window accordingly |
 | `pi-desktop/voice/live/widget/action` | Widget → Main | a call action pressed in the docked widget; Main validates the sender and forwards it to the owner frame, which runs it |
-| `pi-desktop/voice/live/widget/issue` | Main window → Main | the owner frame's own failure code for its call (for example a refused mute), which the call view never carries |
-| `pi-desktop/voice/live/event/widgetState` | Main → Widget | the authoritative call view plus the owner's failure code, pushed to the docked widget window |
+| `pi-desktop/voice/live/widget/ownerState` | Main window → Main | what only the owner frame knows: its own failure code (for example a refused mute) and whether the bound work session waits on a decision; neither is in the call view |
+| `pi-desktop/voice/live/event/widgetState` | Main → Widget | the authoritative call view plus the owner's own failure code and waiting-decision flag, pushed to the docked widget window |
 | `pi-desktop/voice/live/event/widgetAction` | Main → Main window | the forwarded widget action the owner frame has to run |
 
 The `MessagePort` is provisioned only after successful owner validation, then

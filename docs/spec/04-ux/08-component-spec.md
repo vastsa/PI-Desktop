@@ -81,7 +81,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 - Work panel resize: its inner left-edge handle changes the committed panel
   width in the renderer, so dragging left gives the panel more internal space
   and dragging right returns space to MainChat (§5.4)
-- Window resize: native edges and corners resize the fixed application window;
+- Window resize: native edges and corners on all platforms resize the fixed
+  application window; Windows keeps Electron's frameless hit test without its
+  painted thick-frame rim;
   they never resize or reserve the work panel. Responsive layout follows
   [07-ui-design-system.md](07-ui-design-system.md) §10.1
 
@@ -523,7 +525,12 @@ visually distinct from list content.
   one logical project group: the primary folder is activated and names the
   group, while every other selected folder is retained as a group root and is
   shown in Project archive details, not as an open project tab. Group chats,
-  instructions, and memory use the same group identity. A source selector
+  instructions, and memory use the same group identity. If a local selection
+  contains exactly one root already owned by a durable group, Create reopens
+  that group at its primary root instead of creating a duplicate group; this
+  applies when the group was closed from the sidebar. A multi-folder selection
+  that overlaps an existing group remains subject to host duplicate-root
+  validation. A source selector
   offers This computer and Git repository: the git source swaps the folder
   list for a repository URL field plus a clone destination row and creates
   the project by cloning into the chosen folder first. The dialog follows
@@ -1107,12 +1114,12 @@ entirely inside the plugin's isolated page:
 | Preview (maximize) | MainChat is unmounted and the panel fills the client area beside the sidebar. The mode is transient and restores the prior panel width and sidebar state when left. |
 | Multiple artifacts | The header keeps a horizontally scrollable tab strip. The fixed `+` action creates a new launcher tab; its buttons open Review and all in-scope plugin views without duplicating open resource tabs. |
 | Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
-| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window. |
+| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window on every platform. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the New launcher. Clicking `+` creates an explicit, closable New tab with the same launcher rows. Activating a row from that tab replaces it with or selects the singleton view. Closing the final tab leaves the panel open in the no-resource state. |
 | Constrained work area | The panel is capped by the shared three-column budget inside the existing client area; MainChat never drops below its 450px floor and the expanded sidebar yields at the threshold |
 | New launcher active | The body hosts concise Review and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
-| Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
+| Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. Embedded plugin documents start with zero root/body margin and border and a transparent background, so the host panel and plugin theme own the visible surface edge. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
 | Plugin out of scope | A view contributed by a plugin that is not active in the current project disappears from the New launcher when the project changes. Unlike contributed themes, which are one global setting and stay unfiltered, a view is scoped work |
 
 ### 5.4 Interactions
@@ -1309,6 +1316,12 @@ List user sessions inside the sidebar: global pinned shortcuts, followed by
 unpinned history for retained project tabs and path-less sessions.
 Pin/archive/collapse state is a presentation over durable host
 sessions, not a replacement persistence model.
+
+A scheduled-task run's transcript is never part of this list: the run owns its
+session (`task_runs.session_id`), the host reports that ownership as
+`scheduledRun` on every session summary, and the Scheduled route is its entry
+point. Global session search hides the same rows. Deleting the task releases the
+transcript back into the ordinary lists (issue #1291).
 
 ### 6.2 Anatomy
 
@@ -3199,7 +3212,9 @@ has four presentation states:
   work, and the resulting state returns through the same authoritative view the
   owner receives. A failure only the owner frame can observe — a refused mute, a
   playback retry that failed — is reported so the bar names it in place next to
-  its verbatim `LIVE_*` code; the bar is the only call chrome the user sees.
+  its verbatim `LIVE_*` code; the bar is the only call chrome the user sees. The
+  same report carries whether the bound work session waits on a decision the user
+  has to make in that session's own card, which the widget window cannot see.
 - The main window draws no call bar. It keeps the details surface, which the
   widget's Details action opens after bringing that window forward, and it stays
   the frame that runs the actions. Feature disable hides the idle icon; the
@@ -3890,6 +3905,13 @@ default nor provider configuration. OAuth accounts remain in their separate sect
   and resize; model selection immediately adds or removes its configuration
   row. Configuration rows stay compact until expanded; expanding one row does
   not expand or collapse any other row.
+- Model rows show the published context and output limits. A generic runtime
+  fallback is not shown as a published limit; Settings displays an em dash
+  until models.dev publishes a value or the user pins one in Advanced.
+- The two model panes remain side by side when the viewport is wide enough,
+  including short wide windows; their lists scroll inside the panes. They stack
+  only when the viewport is too narrow for readable columns, and their lists
+  remain reachable in that layout.
 - The left-pane list header carries a checkbox that selects or clears every
   currently visible row. A search filter narrows which rows "all" means;
   already-chosen bindings keep their advanced overrides. The checkbox is
@@ -4071,6 +4093,83 @@ Sidebar footer                                        Popover (360px max)
   prompt banners are transient native surfaces outside the inbox.
 
 ---
+
+## 20A. ScheduledWorkspace
+
+### 20A.1 Purpose
+
+Read and operate scheduled tasks: what each task did last, what it will do next,
+and the transcript of any run — without leaving the route. See
+[desktop automations](../../adr/scheduled-desktop-automations.md) and issue #1291.
+
+### 20A.2 Anatomy
+
+A task column beside the selected task's page:
+
+```text
+TASKS (2)                     │ Nightly dependency check   [Enabled] [Run now][Edit][Pause][Delete]
+● Nightly dependency check    │ LAST RUN   Failed · 2 hours ago · 1m 12s
+  Daily · 09:05               │ NEXT RUN   in 21 hours · Jan 3, 2026, 9:05 AM
+  Failed · 2 hours ago · 1m12s│ CADENCE    Daily · 09:05
+○ PR sweep           [Disabled]│ PROJECT   ~/project  PERMISSION Auto  MODEL custom / fixture
+  Manual                      │ INSTRUCTION  Summarize the dependency state…   [Show full instruction]
+  Not run yet                 │ RUN HISTORY (2)
+                              │  Failed    Jan 2, 2026, 12:00 AM · 1m 12s · PROVIDER_ERROR
+                              │  Completed Jan 1, 2026, 12:00 AM · 42s
+                              │ RUN CONTENT
+                              │  Completed · Jan 1, 2026 · 42s        [Open conversation]
+                              │  USER       Summarize the dependency state…
+                              │  ASSISTANT  Scheduled review complete.
+```
+
+### 20A.3 States
+
+| State | Appearance |
+|---|---|
+| Selected task | Accent-tinted raised tile with the shared raised shadow and a 2px accent bar on the leading edge, and one `aria-current="true"`. The tint matters in both themes: a plain raised fill is white on white in the light theme |
+| Selected run | The same accent tint with the leading bar, one step lighter because the row sits inside a card |
+| Running task | Warning-coloured dot in the row plus a `Running / awaiting input` badge |
+| Paused task | `Disabled` chip; the row still reports its last outcome |
+| Never run | `Not run yet` in the row's outcome line |
+| Completed run | Success glyph, status, moment and duration |
+| Failed run | Error glyph and the stable error code beside the moment |
+| Running run | No duration yet; the status reads as running |
+| Empty history | The history card states the task has no runs |
+| No transcript | The run content card states the run stored no transcript |
+| Read failure | The card reports the failure instead of showing an empty pane |
+
+### 20A.4 Interaction
+
+- Selecting a task moves the page; the previously selected run is released, and
+  the first task is selected when none is.
+- Selecting a run reads it in place through a bounded session read (60 newest
+  messages, 20 000 characters per field) and moves the content card to it.
+- The instruction is disclosed on demand and starts collapsed.
+- Run now dispatches in the background, selects the run it admitted, and keeps
+  the reader on the route.
+- The conversation mode decides who owns a run's transcript: `perRun` opens a
+  conversation for each run, and `reuse` continues the task's previous one while
+  it still exists and still belongs to the same project.
+- The task form owns the page while it is open: the task column and the task
+  page are not rendered, so the draft never competes with the page it came from.
+- An interval task states a count with a minute or hour unit (5 minutes to 24
+  hours, stored as minutes, refused outside that range). The value rides along
+  with every armed cadence, so switching between a calendar and an interval
+  loses neither, and the row reports the span instead of a clock.
+- Ownership is derived, so the two windows are visible: the host keeps the newest
+  100 runs per task and the page reads at most 200, and a run older than either
+  leaves both the task's history and its transcript's `scheduledRun` marker. See
+  [data storage](../03-runtime/04-data-storage.md) §4.11.
+- Open conversation is the only action that leaves for the chat route. A
+  scheduled run's conversation then shows a back row in the chat top bar,
+  labelled with the route and, when the row's own origin is known, the task it
+  belongs to; returning restores that task and that run, and steps back through
+  the navigation history when this route is directly behind the conversation.
+- Above 900px the task column sticks below the titlebar band; below it the
+  column stacks above the page.
+- Motion: colour and chevron transitions only, disabled under
+  `prefers-reduced-motion`, including the running dot's pulse.
+
 
 ## 21. Acceptance criteria (all components)
 

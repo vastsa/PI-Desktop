@@ -1,10 +1,38 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
-import { fixtureProvider } from "./pi-catalog-fixtures.mjs";
 import { genericModelConfig } from "@pi-desktop/agent-runtime";
 import { ModelsDevCatalog } from "../electron/main/models-dev-catalog.ts";
+
+const fixtureDirectory = await mkdtemp(join(tmpdir(), "models-dev-runtime-fixture-"));
+const catalogPath = join(fixtureDirectory, "api.json");
+await writeFile(catalogPath, JSON.stringify({
+  example: {
+    name: "Example",
+    api: "https://models.example/v1",
+    models: {
+      "catalog-model": {
+        id: "catalog-model",
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["low", "high"] }],
+        tool_call: true,
+        modalities: { input: ["text", "image"], output: ["text"] },
+        limit: { context: 128_000, output: 8_192 },
+      },
+      "text-model": {
+        id: "text-model",
+        reasoning: false,
+        modalities: { input: ["text"], output: ["text"] },
+        limit: { context: 128_000, output: 8_192 },
+      },
+    },
+  },
+}), "utf8");
+test.after(() => rm(fixtureDirectory, { recursive: true, force: true }));
 
 const runtimeModule = new URL("../electron/main/runtime/provider-catalog.ts", import.meta.url);
 // The production bundler resolves this extensionless TypeScript import.
@@ -20,10 +48,7 @@ const { createProviderCatalogRuntime } = await import(runtimeModule.href)
   .finally(() => resolution.deregister());
 
 async function fixtureRuntime() {
-  const catalog = new ModelsDevCatalog({ providers: [fixtureProvider("example", [
-    { id: "catalog-model", reasoning: true, input: ["text", "image"] },
-    { id: "text-model" },
-  ])] });
+  const catalog = new ModelsDevCatalog({ catalogPath });
   await catalog.ensureLoaded();
   const runtime = createProviderCatalogRuntime({
     getHost: () => null,
@@ -73,8 +98,7 @@ for (const modelId of ["catalog-model", "unpublished-model"]) {
     const restored = runtime.enrichSession(session, [provider]);
     assert.equal(restored.supportsReasoning, true);
     assert.equal(restored.supportsVision, true);
-    assert.deepEqual(restored.supportedThinkingLevels, modelId === "catalog-model"
-      ? ["off", "minimal", "low", "medium", "high"] : ["max"]);
+    assert.deepEqual(restored.supportedThinkingLevels, ["max"]);
     assert.deepEqual(provider.models[0].thinkingLevels, ["max"], "saved preferences remain intact");
     assert.equal(catalog.findModel(input), published, "binding edits do not replace catalog metadata");
     assert.deepEqual(session, { id: "session-one", providerId: provider.id, modelId });
@@ -108,7 +132,7 @@ test("a bulk session refresh reuses catalog matches while preserving each sessio
   const input = { vendorKey: provider.vendorKey, modelId: "catalog-model" };
   const match = catalog.findModel(input);
   assert.ok(match);
-  const modelId = match.id;
+  const modelId = match.modelId;
   let modelReads = 0;
   Object.defineProperty(match, "name", {
     configurable: true,
@@ -130,7 +154,7 @@ test("a bulk session refresh reuses catalog matches while preserving each sessio
       ...session,
       supportsReasoning: true,
       supportsVision: true,
-      supportedThinkingLevels: ["off", "minimal", "low", "medium", "high"],
+      supportedThinkingLevels: ["low", "high"],
     })));
   }
   assert.ok(modelReads <= 4, "bulk session reads reuse the one effective projection");
@@ -152,9 +176,9 @@ test("full wire IDs isolate configured bindings while catalog aliases remain met
   };
   const catalogConfig = genericModelConfig(modelId, provider.baseUrl);
   assert.equal(runtime.bindingForModel(provider, ` ${modelId} `), provider.models[1]);
-  assert.equal(runtime.modelsDevModelFor(provider, modelId), undefined, "wire prefixes do not borrow another model");
+  assert.equal(runtime.modelsDevModelFor(provider, modelId)?.modelId, "catalog-model");
   const selected = runtime.effectiveSubagentModelConfig(provider, modelId, catalogConfig);
-  assert.equal(selected.modelConfig.name, modelId, "request wire ID is not rewritten");
+  assert.equal(selected.modelConfig.name, "catalog-model", "the display name follows the published record");
   assert.equal(selected.modelConfig.contextWindow, 32_000);
   assert.deepEqual(selected.capabilities.supportedThinkingLevels, ["high"]);
   const session = { providerId: provider.id, modelId };
@@ -166,10 +190,11 @@ test("full wire IDs isolate configured bindings while catalog aliases remain met
   provider.models = [provider.models[0]];
   assert.equal(runtime.bindingForModel(provider, modelId), undefined);
   assert.equal(runtime.effectiveSubagentModelConfig(provider, modelId, catalogConfig).modelConfig.contextWindow, 128_000);
-  assert.deepEqual(runtime.enrichSession(session, [provider]).supportedThinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(runtime.enrichSession(session, [provider]).supportedThinkingLevels, ["low", "high"]);
   assert.equal(runtime.effectiveSubagentModelConfig(provider, modelId).modelConfig.contextWindow, 128_000);
   const otherProvider = { ...provider, id: "other-provider", models: [binding(modelId, 48_000, ["off"])] };
-  assert.deepEqual(runtime.enrichSession(session, [otherProvider, provider]).supportedThinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+  // A different account's exact wire binding must not leak into this row.
+  assert.deepEqual(runtime.enrichSession(session, [otherProvider, provider]).supportedThinkingLevels, ["low", "high"]);
 });
 
 test("unmatched models expose selectable thinking in providers, sessions and subagents", async () => {
@@ -198,4 +223,28 @@ test("a saved missing or disabled account never inherits another account's capab
     assert.equal(result.supportsVision, false);
   }
   assert.equal(runtime.enrichSession({}, [provider], defaults).supportsVision, true);
+});
+
+test("a user-pinned context window is never replaced by the catalog number (#1176)", async () => {
+  const { runtime } = await fixtureRuntime();
+  // A relay model whose catalog hit publishes 16k while the user pinned 1M.
+  const provider = {
+    id: "relay",
+    name: "Relay",
+    vendorKey: "example",
+    baseUrl: "https://models.example/v1",
+    models: [
+      { id: "catalog-model", contextWindow: 1_000_000, maxTokens: 8_192, thinkingLevels: [] },
+      { id: "hand-typed-model", contextWindow: 1_000_000, maxTokens: 8_192, thinkingLevels: [] },
+    ],
+  };
+  const enriched = runtime.enrichProvider(provider).models;
+  assert.equal(enriched[0].contextWindow, 1_000_000, "a user pin on a catalog hit stays");
+  assert.equal(enriched[1].contextWindow, 1_000_000, "a user pin on an unmatched id stays");
+  // An inherited row keeps following the catalog.
+  const inherited = runtime.enrichProvider({
+    ...provider,
+    models: [{ id: "catalog-model", contextWindow: 8_000, maxTokens: 8_192, thinkingLevels: [], contextWindowSource: "catalog" }],
+  }).models;
+  assert.equal(inherited[0].contextWindow, 128_000, "a catalog-sourced window follows the published value");
 });

@@ -85,7 +85,8 @@ pub fn search(db: &Database, query: &str, offset: i64) -> Result<SearchPage> {
                 s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
                 p.name, COALESCE(matched.count, 0),
                 (pi_search_contains(s.title, ?1) OR pi_search_contains(p.name, ?1)
-                 OR pi_search_contains(p.path, ?1)) AS metadata_match
+                 OR pi_search_contains(p.path, ?1)) AS metadata_match,
+                EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run
          FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
          LEFT JOIN matched ON matched.session_id = s.id
          WHERE s.deleted_at IS NULL AND (matched.count > 0 OR metadata_match)

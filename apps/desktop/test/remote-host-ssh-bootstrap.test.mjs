@@ -171,14 +171,37 @@ test("a remote host running a different release is refused before the forward", 
 });
 
 test("an unpublished target fails without downloading anything", async () => {
-  // arm64 Linux is in the release matrix's shape but not in its published set.
-  const transport = fakeTransport({ uname: "Linux\naarch64\n" });
+  // macOS is in the bootstrap's `uname` vocabulary but the release publishes no
+  // pi-host bundle for it.
+  const transport = fakeTransport({ uname: "Darwin\nx86_64\n" });
   const { bootstrap, fetched } = harness({ transport });
   const error = await catchError(() => bootstrap.bootstrap(request()));
   assert.equal(error.errorCode, "HOST_BOOTSTRAP_FAILED");
-  assert.equal(error.target, "linux-arm64");
+  assert.equal(error.target, "darwin-x64");
   assert.deepEqual(fetched, [], "no checksum request for a bundle that does not exist");
   assert.deepEqual(transport.calls.uploads, []);
+});
+
+test("an arm64 Linux remote installs the published arm64 bundle", async () => {
+  // The arm64 lane publishes its own bundle, so the desktop resolves the arm64
+  // artifact and pins its published digest instead of reusing the x64 one.
+  const arm64Artifact = `pi-host-${VERSION}-linux-arm64.tar.gz`;
+  const transport = fakeTransport({ uname: "Linux\naarch64\n" });
+  const { bootstrap, fetched } = harness({
+    transport,
+    checksum: `${DIGEST}  ${arm64Artifact}\n`,
+  });
+
+  const outcome = await bootstrap.bootstrap(request());
+
+  assert.equal(
+    fetched[0],
+    `https://github.com/vastsa/PI-Desktop/releases/download/v${VERSION}/${arm64Artifact}.sha256`,
+  );
+  assert.equal(outcome.ssh.version, VERSION);
+  const upload = transport.calls.uploads[0];
+  assert.ok(upload.input.includes(`/${arm64Artifact}'`), "the script downloads the arm64 tarball");
+  assert.ok(upload.input.includes(`EXPECTED_SHA256='${DIGEST}'`));
 });
 
 test("a checksum file with no digest for this artifact fails the bootstrap", async () => {

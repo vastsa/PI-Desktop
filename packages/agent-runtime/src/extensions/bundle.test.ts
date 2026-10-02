@@ -1,8 +1,7 @@
 /**
- * E2E-245 contract: the single-file sidecar bundle (esbuild, same flags as
- * `pnpm bundle`) must load a TypeScript extension through jiti from a
- * directory with no node_modules, with the kernel packages reachable through
- * virtual modules.
+ * E2E-245 contract: the packaged sidecar output must load a TypeScript
+ * extension through jiti from a directory with no node_modules, with the
+ * kernel packages reachable through virtual modules.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -24,7 +23,7 @@ afterEach(() => {
 });
 
 describe("bundled loader (E2E-245)", () => {
-  it("loads a TypeScript extension from a bundle outside the repo", async () => {
+  it("loads a TypeScript extension through split ESM chunks outside the repo", async () => {
     const entry = join(work, "entry.ts");
     writeFileSync(
       entry,
@@ -46,18 +45,23 @@ const result = tool ? await tool.execute("1", { a: 20, b: 22 }) : undefined;
 process.stdout.write(JSON.stringify({ state: report.state, diagnostics: runner.getDiagnostics(), text: result?.content[0] }));
 `,
     );
+    const bundleDir = join(work, "bundle");
     await build({
       entryPoints: [entry],
       bundle: true,
       platform: "node",
       format: "esm",
       minify: true,
-      outfile: join(work, "bundle.mjs"),
+      splitting: true,
+      outdir: bundleDir,
+      entryNames: "sidecar",
+      chunkNames: "chunks/[name]-[hash]",
       logLevel: "silent",
       banner: {
         js: "import { createRequire as __piCreateRequire } from 'node:module'; const require = __piCreateRequire(import.meta.url);",
       },
     });
+    writeFileSync(join(bundleDir, "package.json"), '{"type":"module"}\n');
     const extension = join(work, "typed.ts");
     writeFileSync(
       extension,
@@ -73,7 +77,7 @@ export default function (pi: any) {
 }
 `,
     );
-    const out = execFileSync(process.execPath, [join(work, "bundle.mjs"), extension], {
+    const out = execFileSync(process.execPath, [join(bundleDir, "sidecar.js"), extension], {
       cwd: work,
       encoding: "utf8",
     });
@@ -109,20 +113,16 @@ describe("packaged sidecar extension loader", () => {
     "loader.js",
   );
 
-  /** The esbuild `--define:` flags the shipped bundle script carries. */
+  /** Read the esbuild defines from the production bundle configuration. */
   function bundleDefines(): Record<string, string> {
-    const manifest = JSON.parse(readFileSync(resolve(here, "..", "..", "package.json"), "utf8")) as {
-      scripts: Record<string, string>;
-    };
-    const defines: Record<string, string> = {};
-    for (const [, name, value] of manifest.scripts.bundle.matchAll(/--define:([A-Za-z0-9_]+)=(\S+)/g)) {
-      defines[name] = value;
-    }
-    return defines;
+    const source = readFileSync(resolve(here, "..", "..", "scripts", "bundle.mjs"), "utf8");
+    const value = source.match(/PI_BUNDLED_NODE:\s*"([^"]+)"/)?.[1];
+    return value ? { PI_BUNDLED_NODE: value } : {};
   }
 
   it("loads a typebox-importing extension from a bundle outside the repo", async () => {
     expect(existsSync(extensionLoader)).toBe(true);
+    expect(bundleDefines()).toEqual({ PI_BUNDLED_NODE: "true" });
     const entry = join(work, "entry.mjs");
     writeFileSync(
       entry,

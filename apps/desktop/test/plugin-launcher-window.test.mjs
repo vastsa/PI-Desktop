@@ -50,7 +50,14 @@ test("launcher never turns the app into a macOS accessory process", () => {
 });
 
 test("launcher renderer supports keyboard selection and has no window controls", () => {
-  assert.match(renderer, /rendererSurface === "plugin-launcher" \? <PluginLauncher \/>/);
+  assert.match(
+    renderer,
+    /const PluginLauncher = React\.lazy\(\(\) =>\s*import\("\.\/components\/PluginLauncher"\)\.then\(\(module\) => \(\{\s*default: module\.PluginLauncher,/,
+  );
+  assert.match(
+    renderer,
+    /rendererSurface === "plugin-launcher" \? \([\s\S]*?<ErrorBoundary>\s*<PluginLauncher \/>/,
+  );
   assert.match(launcher, /event\.nativeEvent\.isComposing/);
   assert.match(launcher, /event\.key === "ArrowDown" \|\| event\.key === "ArrowUp"/);
   assert.match(launcher, /event\.key === "Enter"/);

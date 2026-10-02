@@ -1,5 +1,5 @@
 import { BrowserWindow } from "electron";
-import { isWindowBackgroundColor } from "@pi-desktop/plugin-sdk";
+import { isWindowBackgroundColor, MAX_WINDOW_CORNER_RADIUS } from "@pi-desktop/plugin-sdk";
 import {
   builtinWindowBackground,
   ErrorCodes,
@@ -18,6 +18,10 @@ import {
   parseWorkPanelReservationWidth,
   type WorkPanelReservationState,
 } from "../work-panel-window";
+import {
+  DEFAULT_WINDOW_CORNER_RADIUS,
+  setWindowCornerRadius,
+} from "../window-shape";
 import type { IpcRegistrar } from "./types";
 
 export type WindowIpcDependencies = {
@@ -49,7 +53,6 @@ export function registerWindowIpc({
   setTraySessionPreferences,
 }: WindowIpcDependencies): void {
   const { handle, handleWithEvent } = registrar;
-
   handleWithEvent(IPC.invoke.traySetSessionPreferences, async (event, input: unknown) => {
     registrar.assertMainWindowSender(event);
     const preferences = parseTraySessionPreferences(input);
@@ -94,7 +97,8 @@ export function registerWindowIpc({
     return { requested, applied: setter(requested) };
   });
 
-  handle(IPC.invoke.windowSetBackgroundColor, async (input: unknown = {}) => {
+  handleWithEvent(IPC.invoke.windowSetBackgroundColor, async (event, input: unknown = {}) => {
+    registrar.assertMainWindowSender(event);
     const theme = (input as { theme?: unknown })?.theme;
     if (!isThemeColorScheme(theme)) {
       throw Object.assign(new Error("invalid window background theme"), {
@@ -113,6 +117,16 @@ export function registerWindowIpc({
         errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
+    const requestedRadius = (input as { cornerRadius?: unknown })?.cornerRadius;
+    if (
+      requestedRadius !== undefined && requestedRadius !== null &&
+      (typeof requestedRadius !== "number" || !Number.isInteger(requestedRadius) ||
+        requestedRadius < 0 || requestedRadius > MAX_WINDOW_CORNER_RADIUS)
+    ) {
+      throw Object.assign(new Error("invalid window corner radius"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
     if (process.platform === "darwin") return { applied: false, theme };
     const mainWindow = getMainWindow();
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -121,8 +135,14 @@ export function registerWindowIpc({
     const color = isWindowBackgroundColor(requested)
       ? requested
       : builtinWindowBackground(theme);
+    const cornerRadius = process.platform === "win32"
+      ? setWindowCornerRadius(
+          mainWindow,
+          typeof requestedRadius === "number" ? requestedRadius : DEFAULT_WINDOW_CORNER_RADIUS,
+        )
+      : null;
     mainWindow.setBackgroundColor(color);
-    return { applied: true, theme, color };
+    return { applied: true, theme, color, cornerRadius };
   });
 
   handle(IPC.invoke.windowControl, async (input: { action?: string } = {}) => {

@@ -115,6 +115,13 @@ pub struct SessionSummary {
     pub permission_mode: String,
     pub updated_at: String,
     pub created_at: String,
+    /// True when this session is the transcript owned by a scheduled-task run.
+    /// Automation transcripts are entered from the Scheduled page, so the
+    /// sidebar and session search hide them (issue #1291). The value is derived
+    /// from `task_runs.session_id` on read; no session column stores it, and
+    /// deleting the task frees its sessions back into the ordinary lists.
+    #[serde(default)]
+    pub scheduled_run: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1175,7 +1182,8 @@ fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
 
 const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
-            s.thinking_level, s.permission_mode, s.updated_at, s.created_at
+            s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
+            EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
@@ -1192,6 +1200,9 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         permission_mode: row.get(8)?,
         updated_at: ms_to_ts(row.get(9)?),
         created_at: ms_to_ts(row.get(10)?),
+        // Read by name: search and listing build their own column lists, so the
+        // alias keeps this mapper independent of any one query's column order.
+        scheduled_run: row.get("scheduled_run")?,
     })
 }
 
@@ -1357,6 +1368,8 @@ pub fn create_session_with_options(
         permission_mode,
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
+        // The run row that owns this transcript is written after creation.
+        scheduled_run: false,
     })
 }
 
@@ -1717,6 +1730,8 @@ pub fn fork_session_through(
         permission_mode: source.summary.permission_mode,
         updated_at: created_at.clone(),
         created_at,
+        // A fork is the user's own conversation, not the automation's transcript.
+        scheduled_run: false,
     };
     let messages = records.into_iter().map(record_to_ui).collect();
     Ok(ForkSessionResult::Created(Box::new(SessionDetail {
@@ -4431,6 +4446,8 @@ mod tests {
             mode: "agent".into(),
             thinking_level: "off".into(),
             permission_mode: "inherit".into(),
+            // Ownership is derived from `task_runs`, so an import is never one.
+            scheduled_run: false,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
         };
@@ -4481,6 +4498,8 @@ mod tests {
             mode: "agent".into(),
             thinking_level: "off".into(),
             permission_mode: "inherit".into(),
+            // Ownership is derived from `task_runs`, so an import is never one.
+            scheduled_run: false,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };
@@ -5306,6 +5325,8 @@ mod tests {
             mode: "agent".into(),
             thinking_level: "medium".into(),
             permission_mode: "inherit".into(),
+            // Ownership is derived from `task_runs`, so an import is never one.
+            scheduled_run: false,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };

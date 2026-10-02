@@ -30,6 +30,7 @@ import {
   type RuntimeProviderConfig,
 } from "./provider-binding.js";
 import { mergeProviderHeaders, withProviderHeaders } from "./provider-headers.js";
+import { compactionRequestShape, type CompactionRequestShape } from "./compaction-diagnostics.js";
 
 /**
  * The header set `streamFn` puts on a turn, applied to a summary request.
@@ -107,12 +108,13 @@ export function withCompactionRequestHeaders(
   provider: RuntimeProviderConfig,
   sessionId: string,
   onUsage?: UsageObserver,
+  onRequestShape?: (shape: CompactionRequestShape) => void,
 ): Models {
   const completeSimple: Models["completeSimple"] = async (model, context, options) => {
     const identity = { ...requestUsageIdentity(model, provider.id), costStatus: nativeCostStatus(provider.modelConfig?.nativeCost) };
     const requestOptions = compactionRequestOptions({ provider, sessionId, model, context, options });
     const previousOnPayload = requestOptions.onPayload;
-    if (SUMMARY_CONVERSATION_APIS.has(model.api)) {
+    if (SUMMARY_CONVERSATION_APIS.has(model.api) || onRequestShape) {
       requestOptions.onPayload = async (payload, requestModel) => {
         const replacement = await previousOnPayload?.(payload, requestModel);
         const base = replacement === undefined ? payload : replacement;
@@ -123,6 +125,12 @@ export function withCompactionRequestHeaders(
         });
         // Nothing to change keeps the hook's own return value, so an untouched
         // payload stays the adapter's object instead of a copy of it.
+        onRequestShape?.(compactionRequestShape({
+          model: requestModel,
+          payload: keyed ?? base,
+          messages: context.messages,
+          tools: (context as Context & { tools?: readonly unknown[] }).tools,
+        }));
         return keyed === base ? replacement : keyed;
       };
     }

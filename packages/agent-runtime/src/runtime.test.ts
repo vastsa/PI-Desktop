@@ -15,6 +15,7 @@ import {
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
   looksLikePseudoToolCall,
+  toolResultFromUi,
   type CompactionStrategy,
   type PluginToolDef,
   type RuntimeMatchConfig,
@@ -2190,7 +2191,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     await runtime.dispose();
   });
 
-  it("resets deferred capabilities at the beginning of a new prompt", async () => {
+  it("keeps deferred capabilities sticky at the beginning of a new prompt (#1225)", async () => {
     const runtime = createRuntime();
     const agent = (runtime as any).agent;
     const search = agent.state.tools.find(
@@ -2207,11 +2208,17 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       true,
     );
 
+    // Sticky activation: the next prompt does not drop what the model still
+    // sees and calls, even when the announcing rows leave the context window.
     (runtime as any).resetDeferredToolsForPrompt();
     expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
-      false,
+      true,
     );
-    expect(getCurrentTools(agent.state.messages)).toEqual(agent.state.tools.map(toToolDeclaration));
+    // Tool deltas append new declarations; catalog order is not semantic.
+    const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+    expect([...getCurrentTools(agent.state.messages)].sort(byName)).toEqual(
+      agent.state.tools.map(toToolDeclaration).sort(byName),
+    );
   });
 });
 
@@ -8741,6 +8748,36 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     await runtime.dispose();
   });
 
+  it("keeps an activated tool sticky across prompts after its activation rows leave the context (#1225)", async () => {
+    // The tool was activated and used earlier in the session, but those rows
+    // have since fallen out of the visible context (compaction, long turns).
+    // The prompt-time restore finds nothing to reactivate, so sticky
+    // activation is what keeps the tool in the schema and prevents the
+    // intermittent "Tool BrowserPreview not found" 0 ms rejection.
+    const runtime = createRuntime({ history: [] });
+    (runtime as any).activeDeferredToolNames.add("BrowserPreview");
+
+    (runtime as any).resetDeferredToolsForPrompt();
+
+    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    await runtime.dispose();
+  });
+
+  it("does not resurrect a sticky activation after the catalog prunes the tool", async () => {
+    // rebuildToolCatalog prunes both sets when a tool leaves the catalog
+    // (mode switch, extension reload); the prompt-time restore must not
+    // re-add a name the catalog no longer holds.
+    const runtime = createRuntime({ history: [] });
+    (runtime as any).activeDeferredToolNames.add("BrowserPreview");
+    (runtime as any).deferredToolNames.delete("BrowserPreview");
+    (runtime as any).activeDeferredToolNames.delete("BrowserPreview");
+
+    (runtime as any).resetDeferredToolsForPrompt();
+
+    expect(hasTool(runtime, "BrowserPreview")).toBe(false);
+    await runtime.dispose();
+  });
+
   it("restores legacy activation markers for an unused tool", async () => {
     const fixtures: Array<{ details: Record<string, unknown>; addedToolNames?: string[] }> = [
       { details: { activated: ["BrowserPreview"] } },
@@ -10361,5 +10398,52 @@ describe("DesktopAgentRuntime summary conversation key", () => {
       stderr.mockRestore();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("toolResultFromUi image restoration (issue #1073)", () => {
+  const timestamp = 1;
+
+  it("restores a host Read image result as real image content blocks", () => {
+    const row = {
+      id: "call-1",
+      role: "tool" as const,
+      content: "",
+      createdAt: new Date(timestamp).toISOString(),
+      toolCallId: "call-1",
+      toolName: "Read",
+      // Host tool_read returns a top-level images array, not content blocks.
+      toolResult: {
+        path: "shot.png",
+        text: "Image file shot.png (17 bytes, image/png); the image is attached to this result.",
+        images: [{ data: "cG5nLWJ5dGVz", mimeType: "image/png" }],
+      },
+      toolStatus: "success" as const,
+      isError: false,
+    };
+    const restored = toolResultFromUi(row, timestamp);
+    expect(restored.content).toEqual([
+      { type: "text", text: expect.stringContaining("shot.png") },
+      { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+    ]);
+  });
+
+  it("drops malformed image entries instead of failing the restore", () => {
+    const row = {
+      id: "call-2",
+      role: "tool" as const,
+      content: "",
+      createdAt: new Date(timestamp).toISOString(),
+      toolCallId: "call-2",
+      toolName: "Read",
+      toolResult: {
+        path: "broken.png",
+        images: [{ data: 42 }, "not-an-object", { data: "ok", mimeType: 7 }],
+      },
+      toolStatus: "success" as const,
+      isError: false,
+    };
+    const restored = toolResultFromUi(row, timestamp);
+    expect(restored.content).toEqual([{ type: "text", text: expect.stringContaining("broken.png") }]);
   });
 });

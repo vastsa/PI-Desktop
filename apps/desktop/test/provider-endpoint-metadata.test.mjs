@@ -109,7 +109,7 @@ test("a custom row on a published host gets that publisher's model metadata", as
 
   const [model] = result.models;
   assert.equal(model.modelId, "glm-5.3", "the wire id is the one the service served");
-  assert.equal(model.catalogSource, "pi", "the host identified the publisher");
+  assert.equal(model.catalogSource, "models.dev", "the host identified the publisher");
   assert.equal(model.contextWindow, 1_000_000);
   assert.equal(model.maxTokens, 131_072);
   for (const capability of ["tools", "reasoning"]) {
@@ -129,7 +129,7 @@ test("a relay's list reads the shipped publisher's record for a known id", async
 
   const byId = new Map(result.models.map((model) => [model.modelId, model]));
   const known = byId.get("claude-sonnet-4-5");
-  assert.equal(known.catalogSource, "pi", "several publishers state this id");
+  assert.equal(known.catalogSource, "models.dev", "several publishers state this id");
   // Anthropic's published window, not a median dragged down by resellers that
   // state a smaller deployment of the same id.
   assert.equal(known.contextWindow, 1_000_000);
@@ -187,29 +187,31 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
 
   // No official publisher states this leaf, so a reseller must not decide it.
   assert.equal(byId.get("deepseek-v4-flash").catalogSource, undefined);
-  // The mimo family's owner publishes the base ID; both served IDs inherit it.
+  // Reseller copies disagree; an unanchored relay stays on the generic shape.
   for (const id of ["mimo-v2.5-pro", "mimo-v2.5-pro-1m"]) {
     const mimo = byId.get(id);
     assert.equal(mimo.modelId, id); // lookup never rewrites the served wire ID
-    assert.equal(mimo.contextWindow, 1_048_576);
-    assert.equal(mimo.maxTokens, 131_072);
+    assert.equal(mimo.catalogSource, undefined);
+    assert.equal(mimo.contextWindow, 128_000);
+    assert.equal(mimo.maxTokens, 8_192);
   }
 
-  // A unique operation-metadata leaf still enriches without becoming a Pi chat.
+  // Matching Xiaomi reseller records agree on the published speech limits.
   const tts = byId.get("mimo-v2.5-tts");
-  assert.equal(tts.source, "bundled");
-  assert.equal(tts.catalogSource, undefined);
+  assert.equal(tts.source, "discovered");
+  assert.equal(tts.catalogSource, "models.dev");
   assert.ok(tts.capabilities.includes("audio"));
   assert.equal(tts.contextWindow, 8_192);
 
-  // Official publisher disambiguation also applies after a `-1m` deployment tag.
+  // This relay is unanchored and Google / Vertex records conflict, so a `-1m`
+  // alias cannot choose one official endpoint's metadata.
   const gemini = byId.get("gemini-2.5-pro-1m");
-  assert.equal(gemini.catalogSource, "pi");
-  assert.equal(gemini.contextWindow, 1_048_576);
+  assert.equal(gemini.catalogSource, undefined);
+  assert.equal(gemini.contextWindow, 128_000);
 
   // Official Anthropic disambiguation still enriches exact leaves.
   const claude = byId.get("claude-sonnet-4-5");
-  assert.equal(claude.catalogSource, "pi");
+  assert.equal(claude.catalogSource, "models.dev");
   assert.equal(claude.contextWindow, 1_000_000);
 });
 test("a relay enriches a uniquely published dated leaf without reseller majority voting", async (t) => {
@@ -223,7 +225,7 @@ test("a relay enriches a uniquely published dated leaf without reseller majority
 
   const [model] = result.models;
   // Accept either enrichment from an exact leaf hit, or generic when ambiguous.
-  if (model.catalogSource === "pi") {
+  if (model.catalogSource === "models.dev") {
     assert.ok(model.contextWindow > 0);
   } else {
     assert.equal(model.catalogSource, undefined);

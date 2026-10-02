@@ -499,6 +499,16 @@ describe("contributed theme assets and window appearance", () => {
       }),
     ).toBeUndefined();
     expect(validateContributions({ windowAppearance: {} })).toBeUndefined();
+    expect(validateContributions({ windowAppearance: { cornerRadius: 4 } })).toBeUndefined();
+  });
+
+  it("bounds the native window corner radius", () => {
+    for (const cornerRadius of [-1, 1.5, 25, "4"]) {
+      expect(validateContributions({ windowAppearance: { cornerRadius } } as never))
+        .toMatch(/cornerRadius/);
+    }
+    expect(validateContributions({ windowAppearance: { cornerRadius: 0 } })).toBeUndefined();
+    expect(validateContributions({ windowAppearance: { cornerRadius: 24 } })).toBeUndefined();
   });
 
   it("rejects a window background that is not #rrggbb or #rrggbbaa", () => {
@@ -520,6 +530,13 @@ describe("contributed theme assets and window appearance", () => {
     );
     expect(
       validateManifest({ ...base, permissions: ["ui.window.appearance"], contributes }).ok,
+    ).toBe(true);
+    const radiusOnly = { windowAppearance: { cornerRadius: 4 } };
+    expect(validateManifest({ ...base, contributes: radiusOnly }).error).toMatch(
+      /ui\.window\.appearance permission/,
+    );
+    expect(
+      validateManifest({ ...base, permissions: ["ui.window.appearance"], contributes: radiusOnly }).ok,
     ).toBe(true);
   });
 });

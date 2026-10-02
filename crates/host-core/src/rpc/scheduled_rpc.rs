@@ -196,23 +196,43 @@ fn handle_with_workspace_policy(
             let uses_task_execution_settings = task.permission_mode.is_some()
                 || task.thinking_level.is_some()
                 || (task.provider_id.is_some() && task.model_id.is_some());
-            let session = if automatic || uses_task_execution_settings {
-                sessions::create_session_with_options(&st.db, options)
+            // A `reuse` task continues its own previous conversation, but only
+            // while that conversation still exists and still belongs to the same
+            // project; a deleted one, or a re-pointed task, opens a fresh one.
+            let target_project = options.project_path.clone();
+            let reused = if task.session_mode == "reuse" {
+                scheduled::reusable_session(&st.db, id, target_project.as_deref())
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
             } else {
-                sessions::create_session(
-                    &st.db,
-                    options.title,
-                    options.mode,
-                    options.provider_id,
-                    options.model_id,
-                    options.project_path,
-                )
-            }
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            let run_id = match scheduled::begin_run(&st.db, id, Some(&session.id)) {
+                None
+            };
+            let starting_fresh = reused.is_none();
+            let session_id = match reused {
+                Some(session_id) => session_id,
+                None => {
+                    let session = if automatic || uses_task_execution_settings {
+                        sessions::create_session_with_options(&st.db, options)
+                    } else {
+                        sessions::create_session(
+                            &st.db,
+                            options.title,
+                            options.mode,
+                            options.provider_id,
+                            options.model_id,
+                            options.project_path,
+                        )
+                    }
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                    session.id
+                }
+            };
+            let run_id = match scheduled::begin_run(&st.db, id, Some(&session_id)) {
                 Ok(run_id) => run_id,
                 Err(error) => {
-                    let _ = sessions::delete_session(&st.db, &session.id);
+                    // Only a conversation this dispatch opened is cleaned up.
+                    if starting_fresh {
+                        let _ = sessions::delete_session(&st.db, &session_id);
+                    }
                     return Err(rpc_err(1000, error.to_string(), "INTERNAL"));
                 }
             };
@@ -220,7 +240,7 @@ fn handle_with_workspace_policy(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
                 .unwrap_or(task);
             Ok(json!({
-                "sessionId": session.id,
+                "sessionId": session_id,
                 "prompt": task.prompt,
                 "task": task,
                 "runId": run_id
@@ -251,6 +271,24 @@ fn handle_with_workspace_policy(
         }
         "scheduled.listRuns" => {
             let task_id = params.get("taskId").and_then(|v| v.as_str());
+            // The task column needs each task's own newest run: a global window
+            // would report an idle task as "never run" once other tasks fill it.
+            if params
+                .get("latestPerTask")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                if task_id.is_some() {
+                    return Err(rpc_err(
+                        1002,
+                        "latestPerTask cannot be scoped to a single task",
+                        "INVALID_PARAMS",
+                    ));
+                }
+                let runs = scheduled::latest_run_per_task(&st.db)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                return Ok(json!({ "runs": runs }));
+            }
             let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(50);
             let runs = scheduled::list_runs(&st.db, task_id, limit)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
@@ -287,6 +325,157 @@ fn validate_execution_input(params: &Value) -> Result<(), JsonRpcError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A run's transcript reports its automation ownership, the reader the
+    /// Scheduled page uses sees the same flag, search carries it through the
+    /// query that builds its own column list, and deleting the task releases the
+    /// transcript back into the ordinary lists (issue #1291).
+    #[tokio::test]
+    async fn automation_sessions_are_marked_and_released_with_their_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        let id = handle(
+            &st,
+            "scheduled.create",
+            json!({"title":"Nightly","prompt":"Summarize the dependencies",
+                   "cadence":"manual","schedule":null}),
+        )
+        .unwrap()["task"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let run = handle(&st, "scheduled.run", json!({"id":id})).unwrap();
+        let run_session = run["sessionId"].as_str().unwrap().to_string();
+        let ordinary = sessions::create_session(
+            &st.db,
+            Some("Hand written".into()),
+            Some("agent".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let flag = |session_id: &str| {
+            sessions::list_sessions(&st.db)
+                .unwrap()
+                .into_iter()
+                .find(|session| session.id == session_id)
+                .map(|session| session.scheduled_run)
+        };
+        assert_eq!(
+            flag(&run_session),
+            Some(true),
+            "a run's transcript is marked as automation output"
+        );
+        assert_eq!(
+            flag(&ordinary.id),
+            Some(false),
+            "an ordinary conversation is never marked"
+        );
+        let detail = sessions::get_session(&st.db, &run_session)
+            .unwrap()
+            .expect("the run's session exists");
+        assert!(detail.summary.scheduled_run);
+
+        let page = crate::session_search::search(&st.db, "Nightly", 0).unwrap();
+        let hit = page
+            .hits
+            .iter()
+            .find(|hit| hit.session.id == run_session)
+            .expect("search finds the run's transcript");
+        assert!(
+            hit.session.scheduled_run,
+            "search reports the same ownership as the list"
+        );
+
+        // A task with a run still in flight cannot be deleted yet.
+        let settled = handle(
+            &st,
+            "scheduled.finishRun",
+            json!({"runId": run["runId"].as_str().unwrap(), "status": "completed"}),
+        )
+        .unwrap();
+        assert_eq!(settled["ok"], json!(true));
+        handle(&st, "scheduled.delete", json!({"id":id})).unwrap();
+        assert_eq!(
+            flag(&run_session),
+            Some(false),
+            "deleting the task releases its transcripts"
+        );
+        assert!(
+            flag(&ordinary.id).is_some(),
+            "the conversation itself survives the task deletion"
+        );
+    }
+
+    /// A `reuse` task keeps one conversation; the default keeps one per run.
+    #[tokio::test]
+    async fn reuse_tasks_continue_one_conversation_and_per_run_tasks_do_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        let create = |mode: Option<&str>| {
+            let mut params =
+                json!({"title":"Nightly","prompt":"Summarize","cadence":"manual","schedule":null});
+            if let Some(mode) = mode {
+                params["sessionMode"] = json!(mode);
+            }
+            handle(&st, "scheduled.create", params).unwrap()["task"].clone()
+        };
+        let dispatch = |id: &str| handle(&st, "scheduled.run", json!({"id":id})).unwrap();
+        let settle = |launch: &Value| {
+            handle(
+                &st,
+                "scheduled.finishRun",
+                json!({"runId":launch["runId"].as_str().unwrap(),"status":"completed"}),
+            )
+            .unwrap();
+        };
+
+        let per_run = create(None);
+        assert_eq!(
+            per_run["sessionMode"],
+            json!("perRun"),
+            "a task without the setting keeps the historical shape"
+        );
+        let per_run_id = per_run["id"].as_str().unwrap();
+        let first = dispatch(per_run_id);
+        settle(&first);
+        let second = dispatch(per_run_id);
+        settle(&second);
+        assert_ne!(
+            first["sessionId"], second["sessionId"],
+            "a per-run task opens a conversation per run"
+        );
+
+        let reuse = create(Some("reuse"));
+        assert_eq!(reuse["sessionMode"], json!("reuse"));
+        let reuse_id = reuse["id"].as_str().unwrap();
+        let first = dispatch(reuse_id);
+        settle(&first);
+        let second = dispatch(reuse_id);
+        settle(&second);
+        assert_eq!(
+            first["sessionId"], second["sessionId"],
+            "a reuse task continues the conversation its previous run used"
+        );
+
+        // Deleting that conversation starts a fresh one instead of failing.
+        sessions::delete_session(&st.db, first["sessionId"].as_str().unwrap()).unwrap();
+        let third = dispatch(reuse_id);
+        settle(&third);
+        assert_ne!(third["sessionId"], first["sessionId"]);
+
+        let invalid = handle(
+            &st,
+            "scheduled.create",
+            json!({"title":"Bad","prompt":"Summarize","cadence":"manual",
+                   "schedule":null,"sessionMode":"sometimes"}),
+        );
+        assert!(invalid.is_err(), "an unknown conversation mode is refused");
+    }
 
     #[tokio::test]
     async fn review_deleted_project_is_not_recreated_by_automatic_task() {
@@ -729,5 +918,58 @@ mod tests {
             assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
         }
         assert!(scheduled::list_tasks(&state.db).unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_task_column_asks_for_one_newest_run_per_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut st = AppState::open(dir.path()).unwrap();
+        st.handshook = true;
+        let create = |title: &str| {
+            handle(
+                &st,
+                "scheduled.create",
+                json!({ "title": title, "prompt": "Review", "cadence": "manual", "schedule": null }),
+            )
+            .unwrap()["task"]["id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let idle = create("Idle");
+        let busy = create("Busy");
+        // The idle task ran first; afterwards the busy one produced two runs.
+        for (index, task) in [(0i64, &idle), (1, &idle), (2, &busy), (3, &busy)] {
+            let started = 1_000 + index * 100;
+            st.db
+                .conn()
+                .execute(
+                    &format!(
+                        "INSERT INTO task_runs
+                           (id, task_id, session_id, status, error_code, started_at, ended_at)
+                         VALUES ('run-{index}', '{task}', NULL, 'completed', NULL, {started}, {})",
+                        started + 500
+                    ),
+                    [],
+                )
+                .unwrap();
+        }
+
+        let scoped = handle(&st, "scheduled.listRuns", json!({ "latestPerTask": true })).unwrap();
+        let runs = scoped["runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 2, "one run per task");
+        assert_eq!(runs[0]["id"], "run-3");
+        assert_eq!(
+            runs[1]["id"], "run-1",
+            "the idle task reports its own newest run"
+        );
+
+        let rejected = handle(
+            &st,
+            "scheduled.listRuns",
+            json!({ "latestPerTask": true, "taskId": idle }),
+        )
+        .unwrap_err();
+        assert_eq!(rejected.data.unwrap()["errorCode"], "INVALID_PARAMS");
     }
 }

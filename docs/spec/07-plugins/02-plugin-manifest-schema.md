@@ -149,7 +149,7 @@ type PluginContributes = {
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
  scenicThemes?: PluginScenicThemesContrib;
- windowAppearance?: PluginWindowAppearanceContrib; // native window background; needs `ui.window.appearance`
+ windowAppearance?: PluginWindowAppearanceContrib; // native window background and Windows corner radius; needs `ui.window.appearance`
  mcpServers?: PluginMcpServerContrib[];
   services?: PluginServiceContrib[];
   bus?: PluginBusContrib;
@@ -236,7 +236,13 @@ type PluginScenicThemesContrib = {
 
 type PluginWindowAppearanceContrib = {
  backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
+ cornerRadius?: number; // integer 0..24 DIP, Windows main window only; default 4
 };
+
+`cornerRadius` belongs to the contributing plugin and applies while any of its
+declared themes is selected. It does not change macOS/Linux native corners.
+Removing the theme or its `ui.window.appearance` grant restores the Windows
+main-window default of 4 DIP. Invalid or fractional values reject the manifest.
 
 type PluginSkillContrib = {
  id?: string; // defaults to the file name without its extension

@@ -26,6 +26,10 @@ const scheduledSource = await readFile(
   new URL("../src/pages/ScheduledPage.tsx", import.meta.url),
   "utf8",
 );
+const scheduledFormatSource = await readFile(
+  new URL("../src/features/scheduled/scheduled-format.ts", import.meta.url),
+  "utf8",
+);
 const pluginsPageSource = await readPluginsSource();
 const marketplaceSettingsSource = await readFile(
   new URL(
@@ -71,6 +75,10 @@ const protocolSource = await readFile(
 );
 const languageSource = await readFile(
   new URL("../src/lib/app-language.ts", import.meta.url),
+  "utf8",
+);
+const rendererLanguageSource = await readFile(
+  new URL("../src/lib/renderer-language.ts", import.meta.url),
   "utf8",
 );
 const enLocaleSource = await readFile(
@@ -242,16 +250,20 @@ test("basics gates developer tools behind a persisted developer mode", () => {
 
 test("stored language drives i18n and native labels at startup and on settings change", () => {
   assert.match(languageSource, /export function initLanguageSync/);
-  assert.match(languageSource, /changeLanguage/);
-  assert.match(languageSource, /resolveLocale/);
+  assert.match(rendererLanguageSource, /changeLanguage/);
+  assert.match(rendererLanguageSource, /resolveLocale/);
   assert.match(mainSource, /initLanguageSync\(\)/);
   assert.match(electronMainSource, /catalogs\[resolveLocale\(locale\)\]/);
 });
 
 test("date copy follows the active application locale", () => {
+  // The page resolves one locale and hands it to every moment it renders; the
+  // formatter is what actually builds the string.
+  assert.match(scheduledSource, /const locale = i18n\.resolvedLanguage \?\? i18n\.language;/);
+  assert.match(scheduledSource, /locale=\{locale\}/);
   assert.match(
-    scheduledSource,
-    /toLocaleString\(\s*i18n\.resolvedLanguage \?\? i18n\.language/s,
+    scheduledFormatSource,
+    /new Intl\.DateTimeFormat\(locale \|\| undefined/,
   );
   assert.match(
     providersSource,

@@ -33,6 +33,7 @@ import {
   OPENCODE_GO_API_STYLE,
   OPENCODE_GO_BASE_URL,
   resolveApiStyle,
+  normalizeApiStyle,
   resolveNativeWebSearch,
   nativeWebSearchTransport,
   deepseekRequestCompat,
@@ -184,15 +185,38 @@ export function providerRequestKey(provider: RuntimeProviderConfig): string {
  * Resolve the wire API for one provider row. A catalog entry may pin a wire
  * API that differs from the provider-wide style (e.g. responses-only models
  * under an opencode_go provider, which defaults to Chat Completions). Honor
- * the model-level api when present so such models are not sent through the
- * wrong adapter (the gateway answers 500, see #105).
+ * the model-level api when compatible or when the provider has no explicit
+ * wire style; never let a foreign-family catalog match (e.g. Google Generative AI
+ * on a Gemini model served by an OpenAI-compatible relay) overwrite the provider's
+ * wire protocol (see #105, #1310).
  */
 export function apiBindingForProviderModel(provider: RuntimeProviderConfig): ApiBinding {
   return apiBindingForStyle(providerRequestTransport(provider).apiStyle);
 }
 
 function providerRequestTransport(provider: RuntimeProviderConfig) {
-  const apiStyle = resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle;
+  const modelStyle = resolveApiStyle(provider.modelConfig?.api);
+  const resolvedProviderStyle = resolveApiStyle(provider.apiStyle);
+  const providerStyle = resolvedProviderStyle ?? (provider.apiStyle ? normalizeApiStyle(provider.apiStyle) : undefined);
+  const customEndpoint = provider.vendorKey?.trim().toLowerCase() === "custom";
+  const isOpenAiStyle = (style: string | undefined) =>
+    style === "chat_completions" ||
+    style === "responses" ||
+    style === "openai_codex_responses" ||
+    style === OPENCODE_GO_API_STYLE;
+  const isCompatible =
+    !providerStyle ||
+    !modelStyle ||
+    modelStyle === providerStyle ||
+    (isOpenAiStyle(providerStyle) && isOpenAiStyle(modelStyle));
+  // A custom endpoint's saved API format describes the user's actual gateway.
+  // Published model metadata may describe another publisher's default adapter;
+  // it cannot silently retarget that request. Other providers may use a
+  // compatible model-level pin, such as OpenCode Go's Responses route (#105),
+  // but foreign catalog protocols must not replace the provider's wire style.
+  const apiStyle = customEndpoint
+    ? provider.apiStyle ?? modelStyle
+    : (isCompatible ? modelStyle : undefined) ?? provider.apiStyle;
   return nativeWebSearchTransport({
     apiStyle,
     baseUrl: provider.baseUrl ?? provider.modelConfig?.baseUrl ?? apiBindingForStyle(apiStyle).defaultBaseUrl,

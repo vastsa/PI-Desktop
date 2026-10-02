@@ -121,11 +121,11 @@ test("widget IPC handlers enforce renderer ownership", async (t) => {
     },
   };
   const actions = [];
+  const ownerStates = [];
   const widget = {
     owns: (id) => id === widgetId,
-    setPresentation() {},
     requestAction: (action) => actions.push(action),
-    setIssue() {},
+    setOwnerState: (state) => ownerStates.push(state),
   };
   const service = new Proxy({}, { get: () => async () => ({}) });
   registerLiveVoiceIpc({ registrar, service, getMainWindow: () => ({ webContents: { id: mainId } }), widget });
@@ -135,6 +135,35 @@ test("widget IPC handlers enforce renderer ownership", async (t) => {
   await assert.rejects(() => invoke("pi-desktop/voice/live/widget/action", mainId, { action: "mute" }), { errorCode: "PERMISSION_DENIED" });
   await assert.rejects(() => invoke("pi-desktop/voice/live/widget/visibility", mainId, { visible: true, width: 380, height: 60 }), { errorCode: "PERMISSION_DENIED" });
   await assert.rejects(() => invoke("pi-desktop/voice/live/widget/action", 33, { action: "end" }), { errorCode: "PERMISSION_DENIED" });
-  await invoke("pi-desktop/voice/live/widget/issue", mainId, { callId: "call-a", code: null });
-  await assert.rejects(() => invoke("pi-desktop/voice/live/widget/issue", widgetId, { callId: "call-a", code: null }), { errorCode: "PERMISSION_DENIED" });
+  // The owner frame reports its own view; the widget window may not forge it.
+  await invoke("pi-desktop/voice/live/widget/ownerState", mainId, { callId: "call-a", errorCode: null, decisionWaiting: true });
+  assert.deepEqual(ownerStates, [{ callId: "call-a", errorCode: null, decisionWaiting: true }]);
+  await assert.rejects(
+    () => invoke("pi-desktop/voice/live/widget/ownerState", widgetId, { callId: "call-a", errorCode: null, decisionWaiting: true }),
+    { errorCode: "PERMISSION_DENIED" },
+  );
+});
+
+test("the owner frame's own view of the call is validated before the widget sees it", async (t) => {
+  const { ipc } = await desktopModules(t);
+
+  assert.deepEqual(
+    ipc.parseWidgetOwnerState({ callId: "call-a", errorCode: "LIVE_PLAYBACK_FAILED", decisionWaiting: true }),
+    { callId: "call-a", errorCode: "LIVE_PLAYBACK_FAILED", decisionWaiting: true },
+    "the owner's failure code and a waiting decision travel together",
+  );
+  assert.deepEqual(
+    ipc.parseWidgetOwnerState({ callId: "call-a", errorCode: null, decisionWaiting: false }),
+    { callId: "call-a", errorCode: null, decisionWaiting: false },
+    "clearing both is a normal report, not a silent no-op",
+  );
+  assert.throws(() => ipc.parseWidgetOwnerState({ callId: "call-a", errorCode: null }), { errorCode: "LIVE_PROTOCOL_ERROR" },
+    "a report missing the decision flag is rejected instead of guessed");
+  assert.throws(() => ipc.parseWidgetOwnerState({ callId: "call-a", errorCode: null, decisionWaiting: "yes" }), { errorCode: "LIVE_PROTOCOL_ERROR" });
+  assert.throws(() => ipc.parseWidgetOwnerState({ callId: "call-a", errorCode: "", decisionWaiting: false }), { errorCode: "LIVE_PROTOCOL_ERROR" });
+  assert.throws(
+    () => ipc.parseWidgetOwnerState({ callId: "call-a", errorCode: null, decisionWaiting: false, text: "raw" }),
+    { errorCode: "LIVE_PROTOCOL_ERROR" },
+    "no free-form text can ride along into the widget",
+  );
 });

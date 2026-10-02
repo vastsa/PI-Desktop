@@ -26,6 +26,19 @@ const REFRESH_AFTER_INVOKE = new Set<string>([
 ]);
 
 /** Main owns native presentation; durable records still come exclusively from Host. */
+/**
+ * Scheduled-task run transcripts are entered from the Scheduled page, so the
+ * tray never offers one as a recent conversation — or as a running session it
+ * could switch to (issue #1291). Ownership is reported by the host as
+ * `scheduledRun` on each summary; this is the main-process twin of the
+ * renderer's `isAutomationSession`.
+ */
+export function trayVisibleSessions(
+  sessions: readonly SessionSummary[],
+): SessionSummary[] {
+  return sessions.filter((session) => session.scheduledRun !== true);
+}
+
 export function createTraySessions({
   getHost,
   getRunningSessionIds,
@@ -86,7 +99,7 @@ export function createTraySessions({
             continue;
           }
           if (observed !== revision) continue;
-          sessions = listed.sessions;
+          sessions = trayVisibleSessions(listed.sessions);
           const running = new Set(agentAvailable ? getRunningSessionIds() : []);
           if (agentAvailable) {
             for (const [id, active] of runningOverrides) {

@@ -51,7 +51,7 @@ const ending = new Map();
 // The widget window is a view of the call: main pushes the owner's view into it
 // and forwards its presses back to the owner frame. Both directions are faked
 // here so the mounted production widget runs its real code path.
-const widgetReports = { presentation: null, actions: [], errorCode: undefined };
+const widgetReports = { presentation: null, actions: [], errorCode: undefined, decisionWaiting: false };
 const emit = (channel, value) => {
   for (const listener of listeners.get(channel) ?? []) listener(structuredClone(value));
 };
@@ -60,6 +60,7 @@ function pushWidgetState() {
   emit(IPC.event.liveVoiceWidgetState, {
     call,
     ...(widgetReports.errorCode ? { errorCode: widgetReports.errorCode } : {}),
+    ...(widgetReports.decisionWaiting ? { decisionWaiting: true } : {}),
   });
 }
 function updateCall(patch) {
@@ -92,8 +93,10 @@ async function handleInvoke(channel, request) {
           contextEnabled: request.shareSelectedSessionContext === true,
         } } : {}),
       };
-      // A new call starts blank: main drops the previous call's failure code.
+      // A new call starts blank: main drops the previous call's failure code and
+      // its waiting-decision flag.
       widgetReports.errorCode = undefined;
+      widgetReports.decisionWaiting = false;
       updateCall({});
       const prepared = {
         callId: call.callId, requestId: request.requestId, bindingId: call.bindingId,
@@ -147,10 +150,15 @@ async function handleInvoke(channel, request) {
       widgetReports.actions.push(request.action);
       emit(IPC.event.liveVoiceWidgetAction, { action: request.action });
       return { ok: true };
-    case IPC.invoke.liveVoiceWidgetIssue:
-      // The owner frame's own failure code, cached for the call it belongs to
-      // and pushed into the widget exactly as main does.
+    case IPC.invoke.liveVoiceWidgetOwnerState:
+      // What only the owner frame knows — its failure code and whether the bound
+      // session waits on a decision — cached for that call and pushed into the
+      // widget exactly as main does.
       if (request.callId !== call?.callId) return { ok: true };
+      widgetReports.errorCode = request.errorCode ?? undefined;
+      widgetReports.decisionWaiting = request.decisionWaiting === true;
+      pushWidgetState();
+      return { ok: true };
       widgetReports.errorCode = request.code ?? undefined;
       pushWidgetState();
       return { ok: true };
@@ -335,6 +343,25 @@ window.liveVoiceFixture = {
   },
   // Narrow the window main gives the widget, so a status line no longer fits: a
   // bar that folds or under-reports its width fails the assertion after it.
+  // The pending queues live in the owner window's store; the widget window has
+  // none. Seeding one here exercises the "owner reports it, main forwards it"
+  // path end to end instead of the bar reading a store it does not have.
+  pendingAsk(sessionId, question) {
+    useAppStore.setState((state) => ({
+      pendingAsks: {
+        ...state.pendingAsks,
+        [sessionId]: [{
+          requestId: "ask-fixture",
+          sessionId,
+          toolCallId: "call_ask",
+          questions: [{ question, options: [{ label: "yes" }] }],
+        }],
+      },
+    }));
+  },
+  clearPendingAsks() {
+    useAppStore.setState({ pendingAsks: {} });
+  },
   setWidgetWindowWidth(width) { setFixtureWidgetWidth(width); },
   inspect() {
     return {
@@ -346,6 +373,7 @@ window.liveVoiceFixture = {
         presentation: widgetReports.presentation,
         actions: [...widgetReports.actions],
         visible: widgetReports.presentation?.visible === true,
+        ownerState: { errorCode: widgetReports.errorCode ?? null, decisionWaiting: widgetReports.decisionWaiting },
       },
     };
   },

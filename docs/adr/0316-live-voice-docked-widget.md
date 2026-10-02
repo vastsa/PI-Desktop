@@ -1,4 +1,4 @@
-# ADR 0314: The Live Voice call bar is a docked desktop widget window
+# ADR 0316: The Live Voice call bar is a docked desktop widget window
 
 - Status: Accepted
 - Date: 2026-10-01

@@ -1111,6 +1111,17 @@ fn window_appearance_requires_permission_and_a_hex_colour() {
     );
     assert!(read_manifest_err(&no_perm).contains("ui.window.appearance permission"));
 
+    let no_perm_radius = dir.path().join("no-perm-radius");
+    write_plugin(
+        &no_perm_radius,
+        capability_manifest(
+            json!({ "windowAppearance": { "cornerRadius": 4 } }),
+            json!([]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&no_perm_radius).contains("ui.window.appearance permission"));
+
     let bad_colour = dir.path().join("bad-colour");
     write_plugin(
         &bad_colour,
@@ -1122,11 +1133,22 @@ fn window_appearance_requires_permission_and_a_hex_colour() {
     );
     assert!(read_manifest_err(&bad_colour).contains("#rrggbb or #rrggbbaa"));
 
+    let bad_radius = dir.path().join("bad-radius");
+    write_plugin(
+        &bad_radius,
+        capability_manifest(
+            json!({ "windowAppearance": { "cornerRadius": 25 } }),
+            json!(["ui.window.appearance"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&bad_radius).contains("cornerRadius"));
+
     let ok = dir.path().join("ok");
     write_plugin(
         &ok,
         capability_manifest(
-            json!({ "windowAppearance": { "backgroundColor": { "light": "#f5f5f5", "dark": "#0d1424cc" } } }),
+            json!({ "windowAppearance": { "backgroundColor": { "light": "#f5f5f5", "dark": "#0d1424cc" }, "cornerRadius": 4 } }),
             json!(["ui.window.appearance"]),
         ),
         &[],

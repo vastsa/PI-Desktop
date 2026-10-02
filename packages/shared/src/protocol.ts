@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.16.0-beta.1";
+export const APP_VERSION = "0.16.0";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -50,6 +50,11 @@ export type WindowControlAction = (typeof WINDOW_CONTROL_ACTIONS)[number];
 
 export const IPC = {
   invoke: {
+    storageGet: "pi-desktop/storage/get",
+    storageChoose: "pi-desktop/storage/choose",
+    storageMigrate: "pi-desktop/storage/migrate",
+    storageClearCache: "pi-desktop/storage/clearCache",
+    storageRemoveBackup: "pi-desktop/storage/removeBackup",
     appGetVersion: "pi-desktop/app/getVersion",
     appOpenFeedback: "pi-desktop/app/openFeedback",
     appHealth: "pi-desktop/app/health",
@@ -105,7 +110,7 @@ export const IPC = {
     liveVoiceStopWorkOperation: "pi-desktop/voice/live/work/stopOperation",
     liveVoiceCancelQueuedOperation: "pi-desktop/voice/live/work/cancelQueuedOperation",
     liveVoiceWidgetAction: "pi-desktop/voice/live/widget/action",
-    liveVoiceWidgetIssue: "pi-desktop/voice/live/widget/issue",
+    liveVoiceWidgetOwnerState: "pi-desktop/voice/live/widget/ownerState",
     liveVoiceWidgetVisibility: "pi-desktop/voice/live/widget/visibility",
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",

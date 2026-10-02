@@ -1760,10 +1760,10 @@
 
 /* ------------------------------------------------------------ responsive */
 
-@media (max-width: 940px), (max-height: 800px) {
-  /* Two panes stop being readable before the dialog itself gets narrow,
-     and when vertical space is constrained (such as Windows high-DPI scaling)
-     the stacked layout prevents the panes from being crushed. */
+@media (max-width: 940px) {
+  /* Stack only when the viewport is too narrow for readable side-by-side
+     panes. Short, wide windows keep both lists visible and let each list
+     scroll inside its pane. */
   .provider-setup-field-row,
   .provider-setup-custom-identity-row,
   .provider-setup-custom-auth-row {

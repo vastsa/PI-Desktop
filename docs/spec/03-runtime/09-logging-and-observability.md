@@ -141,6 +141,15 @@ record.
 - host/agent spawn, handshake, and unexpected exit;
 - session create/delete;
 - prompt accepted/aborted;
+- failed context compaction: one `session.compaction.failed` record and one
+  `session.compaction.request_shape` record per summary request. The failure
+  record carries only provider/model identifiers, closed-vocabulary failure
+  reason, bounded token budgets, status/error codes, and a request-shape state
+  (`observed`, `not_sent`, or `unobserved`). The shape record carries the wire
+  API, bounded top-level field names, role counts, tool count, and numeric
+  output limit (or `omitted`). It never carries prompt text, tool schemas,
+  endpoint URLs, credentials, or provider error prose. Retries and chunked
+  summaries use a fresh request id at every request boundary.
 - tool completion/failure/interruption and permission request/decision/cancellation;
 - Plan artifact creation, approval, expiry, rejection, execution transition,
   and startup interruption;

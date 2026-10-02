@@ -710,7 +710,12 @@ export function registerAgentIpc({
 
   handle(IPC.invoke.agentAbort, async (req: { sessionId: string; turnId?: string }) => {
     if (!sidecar) throw new Error("sidecar unavailable");
-    const releaseSessionOperation = req.turnId ? await acquireSessionOperation(req.sessionId) : undefined;
+    // Prompt admission holds this same session operation until the sidecar has
+    // accepted the turn. Waiting here closes the startup window where the
+    // renderer already shows Stop but activeTurns/runtime are not ready yet.
+    // Without the wait, agent.abort can return successfully while finding no
+    // runtime, and the prompt then starts after the user's first click.
+    const releaseSessionOperation = await acquireSessionOperation(req.sessionId);
     try {
     const abortedTurnId = activeTurns.get(req.sessionId);
     if (req.turnId && abortedTurnId !== req.turnId) return { ok: false, aborted: false };
@@ -832,6 +837,17 @@ export function registerAgentIpc({
     const sessionId = String(resolution?.sessionId ?? "").trim();
     const requestId = String(resolution?.requestId ?? "").trim();
     if (!sessionId || !requestId) throw new Error("asktool resolution identity required");
+    // Prefer the Host-owned input path when it still holds this ask: it
+    // deletes the pending input before settling the sidecar, so switching
+    // windows back to the session cannot resurrect the answered card via
+    // `pendingInteractiveRequests`. Unknown requests keep the direct
+    // sidecar resolve for compatibility.
+    const settled = await agentHostBridge?.resolveAskByRequestId({
+      ...resolution,
+      sessionId,
+      requestId,
+    });
+    if (settled) return settled;
     return sidecar.call("asktool.resolve", {
       ...resolution,
       sessionId,

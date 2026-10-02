@@ -39,12 +39,19 @@ export const ConversationMinimap = memo(function ConversationMinimap({
   hasEarlier = false,
   loadingEarlier = false,
   onRevealEarlier,
+  onReleaseFollow,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   messages: UiMessage[];
   hasEarlier?: boolean;
   loadingEarlier?: boolean;
   onRevealEarlier?: () => void;
+  /**
+   * Leaves the transcript's follow mode before a dash scrolls to its turn.
+   * While follow is still pinned, the jump's scroll carries no input gesture,
+   * so the scroller reads it as a layout clamp and re-bottoms the view.
+   */
+  onReleaseFollow?: () => void;
 }) {
   const { t } = useTranslation();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -266,6 +273,10 @@ export const ConversationMinimap = memo(function ConversationMinimap({
       if (!el) return;
       const target = getOffsets().find((entry) => entry.id === id);
       if (!target) return;
+      // Leaving follow mode is part of the jump, not a side effect: a scroll
+      // with no input gesture behind it is read as a layout clamp, and follow
+      // would re-bottom the transcript before the reader saw the turn.
+      onReleaseFollow?.();
       const reduceMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)",
       ).matches;
@@ -274,7 +285,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
         behavior: reduceMotion ? "auto" : "smooth",
       });
     },
-    [scrollRef, getOffsets],
+    [scrollRef, getOffsets, onReleaseFollow],
   );
 
   /* Dock magnification, applied imperatively so mousemove never re-renders.

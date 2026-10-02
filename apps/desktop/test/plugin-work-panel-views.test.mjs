@@ -200,6 +200,10 @@ test("an embedded view drops the window-control chrome", () => {
     preloadSource,
     /if \(isEmbeddedPanel\(\)\) \{[\s\S]*--pi-plugin-titlebar-height", "0px"[\s\S]*return;/,
   );
+  assert.match(preloadSource, /resetEmbeddedSurfaceChrome\(\)/);
+  assert.match(preloadSource, /element\.style\.setProperty\("margin", "0"\)/);
+  assert.match(preloadSource, /element\.style\.setProperty\("border", "0"\)/);
+  assert.match(preloadSource, /element\.style\.setProperty\("background", "transparent"\)/);
   // The bridge is identical either way, so one HTML entry works in both.
   assert.match(preloadSource, /contextBridge\.exposeInMainWorld\("pluginBridge", bridge\)/);
 });

@@ -99,15 +99,13 @@ async function loadChangelogCatalog() {
   const typescript = require("typescript");
   const tempDir = mkdtempSync(path.join(root, ".release-changelog-"));
   writeFileSync(path.join(tempDir, "package.json"), '{"type":"module"}\n', "utf8");
-  const sources = [
-    "packages/shared/src/changelog.ts",
-    "packages/shared/src/changelog-de.ts",
-    "packages/shared/src/changelog-es.ts",
-    "packages/shared/src/changelog-fr.ts",
-    "packages/shared/src/changelog-ko.ts",
-    "packages/shared/src/changelog-pt-BR.ts",
-    "packages/shared/src/changelog-tr.ts",
-  ];
+  // Derive the module list from the directory: a new shipped locale or a
+  // further split of the catalog must not silently fall out of this preflight.
+  const changelogSrcDir = "packages/shared/src";
+  const sources = readdirSync(path.join(root, changelogSrcDir))
+    .filter((name) => /^changelog(-[A-Za-z-]+)?\.ts$/.test(name))
+    .sort()
+    .map((name) => `${changelogSrcDir}/${name}`);
   try {
     for (const relPath of sources) {
       const output = typescript.transpileModule(read(relPath), {

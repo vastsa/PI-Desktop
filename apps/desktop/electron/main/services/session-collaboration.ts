@@ -284,8 +284,13 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
             checkCurrent(host, input.signal);
             const models = listReadyPluginModels(listed.providers, settings);
             const requested = text(data, "modelKey", false);
-            const chosen = requested ? models.find((item) => item.key === requested)
-              : models.find((item) => item.availableForSubagents) ?? models.find((item) => item.isDefault);
+            // No isDefault fallback here: naming a default the user never
+            // opted into delegation would spend a model the Task gate
+            // refuses (issue #1183). Omitting modelKey must fall back to the
+            // spawn path's own inheritance, not to an un opted-in default.
+            const chosen = requested
+              ? models.find((item) => item.key === requested)
+              : models.find((item) => item.availableForSubagents);
             if (!chosen) fail("MODEL_NOT_CONFIGURED", "No matching configured model is available");
             // A worker the agent starts is AI-driven delegation, so naming a model here
             // needs that model's own `availableForSubagents` opt-in — the gate `Task.model`

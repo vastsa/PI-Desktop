@@ -48,7 +48,7 @@ test("screenshot fixtures stay out of the production App bundle", () => {
 test("the crash fallback never interprets the error as markup", () => {
   assert.doesNotMatch(main, /innerHTML/);
   assert.match(main, /detail\.textContent = String\(error\);/);
-  assert.match(main, /heading\.textContent = crashCatalog\.app\.uiCrashed;/);
+  assert.match(main, /heading\.textContent = i18n\.t\("app\.uiCrashed"/);
 });
 
 test("window controls draw through the icon wrappers", () => {

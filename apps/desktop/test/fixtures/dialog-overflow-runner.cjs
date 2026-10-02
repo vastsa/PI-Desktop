@@ -80,13 +80,16 @@ app.whenReady().then(async () => {
       check('rename releases native preview after close', await evaluate('!window.dialogFixture.isBlockingOverlayActive()'));
     }
   }
-  win.setContentSize(1100, 620);
+  win.setContentSize(1254, 772);
   await evaluate('window.dialogFixture.show("models", { theme: "dark", locale: "zh-CN" })');
   const modelRows = await evaluate(`(() => {
+    const panes = document.querySelector('.provider-setup-panes');
+    const paneBounds = [...panes.children].map(pane => pane.getBoundingClientRect());
     const list = document.querySelector('.provider-chosen-list');
     const bounds = list.getBoundingClientRect();
     const rows = [...list.querySelectorAll('.provider-chosen-row')];
     return {
+      sideBySide: paneBounds.length === 2 && paneBounds[0].right <= paneBounds[1].left,
       ids: rows.map(row => row.querySelector('.provider-chosen-row-id')?.textContent),
       expanded: rows.filter(row => !row.querySelector('.provider-chosen-row-body')?.hidden).length,
       allVisible: rows.every(row => {
@@ -95,6 +98,7 @@ app.whenReady().then(async () => {
       }),
     };
   })()`);
+  check('a short but wide viewport keeps both model panes visible', modelRows.sideBySide, modelRows);
   check('chosen model names are visible before Advanced opens',
     modelRows.ids.length === 4 && modelRows.ids.every(Boolean) && modelRows.expanded === 0 && modelRows.allVisible,
     modelRows);
@@ -102,6 +106,27 @@ app.whenReady().then(async () => {
   await click('.provider-chosen-advanced-toggle');
   check('Advanced still expands one selected model on demand',
     await evaluate(`document.querySelectorAll('.provider-chosen-row-body:not([hidden])').length === 1 && document.querySelector('.provider-chosen-advanced-toggle').getAttribute('aria-expanded') === 'true'`));
+  win.setContentSize(520, 480);
+  await evaluate('window.dialogFixture.show("models", { theme: "dark", locale: "zh-CN" })');
+  const narrowModelPanes = await evaluate(`(() => {
+    const panes = document.querySelector('.provider-setup-panes');
+    const surface = document.querySelector('.dialog-fixture-models');
+    const paneBounds = [...panes.children].map(pane => pane.getBoundingClientRect());
+    const list = document.querySelector('.provider-chosen-list');
+    const bounds = surface.getBoundingClientRect();
+    return {
+      stacked: paneBounds.length === 2 && paneBounds[0].bottom <= paneBounds[1].top,
+      contained: bounds.left >= -1 && bounds.right <= innerWidth + 1 &&
+        bounds.top >= -1 && bounds.bottom <= innerHeight + 1,
+      listCanScroll: list.scrollHeight >= list.clientHeight,
+    };
+  })()`);
+  check('a narrow high-DPI-sized viewport stacks panes and keeps its list reachable',
+    narrowModelPanes.stacked && narrowModelPanes.contained && narrowModelPanes.listCanScroll,
+    narrowModelPanes);
+  await click('.provider-chosen-advanced-toggle');
+  check('Advanced stays operable after the narrow viewport stacks the panes',
+    await evaluate(`document.querySelectorAll('.provider-chosen-row-body:not([hidden])').length === 1`));
   writeFileSync(join(process.env.PI_DIALOG_ARTIFACT_DIR, 'results.json'), JSON.stringify(results, null, 2));
   const failed = results.filter(r => !r.ok).length;
   console.log('SUMMARY ' + (results.length-failed) + '/' + results.length + ' passed');

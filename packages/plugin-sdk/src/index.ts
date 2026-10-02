@@ -535,7 +535,11 @@ export type PluginProviderContrib = {
 export type PluginWindowAppearanceContrib = {
   /** `#rrggbb` or `#rrggbbaa`, applied per resolved palette. */
   backgroundColor?: { light?: string; dark?: string };
+  /** Windows main-window radius in DIP. Applies while a contributed theme is selected. */
+  cornerRadius?: number;
 };
+
+export const MAX_WINDOW_CORNER_RADIUS = 24;
 
 /** The only colour form a contributed window background may take. */
 export const WINDOW_BACKGROUND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
@@ -1806,6 +1810,14 @@ export function validateContributions(
       return "contributes.windowAppearance must be an object";
     }
     const backgroundColor = windowAppearance.backgroundColor;
+    const cornerRadius = windowAppearance.cornerRadius;
+    if (
+      cornerRadius !== undefined &&
+      (typeof cornerRadius !== "number" || !Number.isInteger(cornerRadius) ||
+        cornerRadius < 0 || cornerRadius > MAX_WINDOW_CORNER_RADIUS)
+    ) {
+      return `contributes.windowAppearance.cornerRadius must be an integer from 0 to ${MAX_WINDOW_CORNER_RADIUS}`;
+    }
     if (backgroundColor !== undefined) {
       if (
         typeof backgroundColor !== "object" ||

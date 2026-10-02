@@ -64,12 +64,14 @@ test("resolveTarget refuses a platform or architecture the release cannot serve"
   assert.equal(resolveTarget(""), null);
 });
 
-test("isPublishedTarget matches the release matrix, which ships linux-x64 only", () => {
+test("isPublishedTarget matches the release matrix's Linux architectures", () => {
   assert.equal(targetKey(LINUX_X64), "linux-x64");
   assert.equal(isPublishedTarget(LINUX_X64), true);
+  // The desktop matrix publishes Linux x64 and arm64, and release.yml's
+  // pi-host-bundle job builds one bundle per lane.
+  assert.equal(isPublishedTarget({ platform: "linux", arch: "arm64" }), true);
   // Publishing parity: a 404 halfway through a download is what this guard
   // exists to prevent, so every unpublished cell must be refused here.
-  assert.equal(isPublishedTarget({ platform: "linux", arch: "arm64" }), false);
   assert.equal(isPublishedTarget({ platform: "darwin", arch: "x64" }), false);
   assert.equal(isPublishedTarget({ platform: "darwin", arch: "arm64" }), false);
 });

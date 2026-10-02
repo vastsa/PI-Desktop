@@ -17,7 +17,7 @@ export function registerLiveVoiceIpc(input: {
   service: LiveCallServiceImpl;
   getMainWindow: () => BrowserWindow | null;
   /** The docked widget window: not a call owner, but allowed to drive its chrome. */
-  widget: Pick<LiveVoiceWidget, "owns" | "setPresentation" | "requestAction" | "setIssue">;
+  widget: Pick<LiveVoiceWidget, "owns" | "setPresentation" | "requestAction" | "setOwnerState">;
 }): void {
   const { registrar, service, getMainWindow, widget } = input;
   const owner = (event: IpcMainInvokeEvent): LiveOwner => {
@@ -92,12 +92,13 @@ export function registerLiveVoiceIpc(input: {
     widget.requestAction(parseWidgetAction(raw));
     return { ok: true };
   });
-  // The owner frame's own failure code: a refused action is local to the frame
-  // that ran it and never appears in the call view, so the widget can only name
-  // it if the owner reports it here.
-  registrar.handleWithEvent(IPC.invoke.liveVoiceWidgetIssue, async (event, raw: unknown) => {
+  // What only the owner frame knows about this call: its own failure code (a
+  // refused action is local to the frame that ran it) and whether the bound work
+  // session is waiting on a decision the user has to make elsewhere. Neither is
+  // in the call view, so the widget can only show them if the owner reports them.
+  registrar.handleWithEvent(IPC.invoke.liveVoiceWidgetOwnerState, async (event, raw: unknown) => {
     registrar.assertMainWindowSender(event);
-    widget.setIssue(parseWidgetIssue(raw));
+    widget.setOwnerState(parseWidgetOwnerState(raw));
     return { ok: true };
   });
 }
@@ -268,10 +269,11 @@ export function parseWidgetPresentation(raw: unknown): { visible: boolean } & Li
   return { visible: input.visible, width: input.width as number, height: input.height as number };
 }
 
-/** The owner frame's own failure code for the call it is running. */
-export function parseWidgetIssue(raw: unknown): { callId: string; code: string | null } {
+/** The owner frame's own view of the call: its failure code and pending decision. */
+export function parseWidgetOwnerState(raw: unknown): { callId: string; errorCode: string | null; decisionWaiting: boolean } {
   const input = record(raw);
-  exactKeys(input, ["callId", "code"]);
-  if (input.code !== null && (typeof input.code !== "string" || !input.code || input.code.length > 80)) return invalid();
-  return { callId: callId(input.callId), code: input.code as string | null };
+  exactKeys(input, ["callId", "errorCode", "decisionWaiting"]);
+  if (input.errorCode !== null && (typeof input.errorCode !== "string" || !input.errorCode || input.errorCode.length > 80)) return invalid();
+  if (typeof input.decisionWaiting !== "boolean") return invalid();
+  return { callId: callId(input.callId), errorCode: input.errorCode as string | null, decisionWaiting: input.decisionWaiting };
 }

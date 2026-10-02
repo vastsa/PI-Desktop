@@ -25,6 +25,15 @@ export function installLiveMicrophonePermissionHandlers(input: {
   hasReservation: (owner: LiveOwner) => boolean;
 }): void {
   input.targetSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    // Installing a handler replaces the platform default for every permission on
+    // the session, and this session also carries the main renderer. Keep the
+    // microphone policy to `media` so unrelated web APIs keep working: denying
+    // the rest silently broke the app's own copy buttons, which need
+    // `clipboard-sanitized-write`.
+    if (permission !== "media") {
+      callback(true);
+      return;
+    }
     const owner = requestOwner(input.getMainWindow(), contents, details.requestingUrl, details.isMainFrame);
     const allowed = allowsLiveMicrophonePermission({
       permission,
@@ -37,6 +46,8 @@ export function installLiveMicrophonePermissionHandlers(input: {
   });
 
   input.targetSession.setPermissionCheckHandler((contents, permission, requestingOrigin, details) => {
+    // Same scope rule as the request handler above.
+    if (permission !== "media") return true;
     const owner = contents ? checkOwner(input.getMainWindow(), contents, requestingOrigin) : null;
     return allowsLiveMicrophonePermission({
       permission,

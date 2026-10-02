@@ -46,6 +46,13 @@ export type SessionSummary = {
   /** Effective image-input capability for this session's exact model. */
   supportsVision?: boolean;
   supportedThinkingLevels?: ThinkingLevel[];
+  /**
+   * True when this session is the transcript owned by a scheduled-task run.
+   * The automation owns it: the SessionList and global session search hide it,
+   * and the Scheduled page is its entry point (`todos`-style automation output).
+   * Older hosts omit it, so `undefined` means an ordinary conversation.
+   */
+  scheduledRun?: boolean;
   updatedAt: string;
   createdAt: string;
 };

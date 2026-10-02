@@ -1,6 +1,6 @@
 # ADR 0133: Use models.dev as the primary model catalog with pi-ai fallback
 
-- Status: Superseded by ADR 0134
+- Status: Superseded for chat metadata by [models.dev catalog authority](models-dev-catalog-authority.md)
 - Date: 2026-08-29
 - Deciders: PI-Desktop core
 - Amends: ADR 0027, D136, D243

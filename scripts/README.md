@@ -42,13 +42,16 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 
 ## End-to-end
 
-Do not run these from an agent session, and do not trigger the remote jobs by
-hand, unless the request explicitly asks for it (see `AGENTS.md`). The scenarios
-they cover are specified in
+Run relevant task-candidate E2E from the dedicated request worktree, reusing
+the provisioned host environment as required by `AGENTS.md`. `verify:ui:*`,
+live providers, paid APIs, and the user's running desktop require explicit
+request authorization. Use isolated profiles and deterministic local fixtures.
+The scenarios are specified in
 [the E2E test plan](../docs/spec/06-delivery/04-e2e-test-plan.md).
 
 | Script | Alias | Purpose |
 |---|---|---|
+| `e2e-tool-admission.mjs` | `node scripts/e2e-tool-admission.mjs` | Isolated real-host tool admission: queued Bash burst leaves capacity for another session's Read/Write and recovers all counters |
 | `e2e-smoke.mjs` | `pnpm test:e2e` | Protocol-level E2E against host-core, plus an optional live model |
 | `e2e-plan.mjs` | `pnpm test:e2e:plan` | Plan state, checkpoint artifact, and approval transitions |
 | `e2e-plan-ui.mjs` | `pnpm test:e2e:plan-ui` | Plan approval through the rendered UI |
@@ -85,8 +88,9 @@ validates the tag against `apps/desktop/package.json` before packaging, then
 runs the native `dist:mac`, `dist:win`, or `dist:linux` command. The Linux
 job uses Ubuntu 22.04 so host-core stays on glibc 2.35, then
 `scripts/check-linux-host-glibc.mjs` refuses a binary that needs a newer
-glibc. The Linux runner also exports the exact app.asar from `linux-unpacked`
-as a versioned release asset; the macOS matrix covers arm64 and Intel x64 and
+glibc. Each Linux runner (native x64 and arm64) also exports the exact
+app.asar from its own unpacked tree as a versioned release asset; the macOS
+matrix covers arm64 and Intel x64 and
 the publish job assembles the GitHub Release. Tag builds Developer ID-sign,
 notarize, and staple macOS artifacts; `workflow_dispatch` may set
 `sign_macos: false` only for unsigned debug artifacts. See the [release

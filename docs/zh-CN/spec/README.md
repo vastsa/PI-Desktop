@@ -97,5 +97,5 @@ docs/spec/
    v11 撤回 v10 添加的 A2A 方法域。
 10、本地权限确认无自动截止时间；Bash 超时默认 60 秒
 11.本地用户可安装的插件（稍后上市）
-12. 标签版本 = macOS arm64、Intel x64、Windows x64 和 Linux x64 (D126/D285)
+12. 标签版本 = macOS arm64、Intel x64、Windows x64 和 Linux x64 及 arm64 (D126/D285、D638/ADR 0318)
 13. 通用 provider/model 覆盖范围（原生 + OpenAI 兼容 + 定制）

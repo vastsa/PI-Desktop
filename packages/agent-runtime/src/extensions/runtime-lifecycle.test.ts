@@ -16,6 +16,45 @@ function deferred<T>() {
 }
 
 describe("Desktop extension lifecycle", () => {
+  it("loads trusted extensions once when the first calls race the lazy import", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-hooks-load-race-"));
+    const entry = join(root, "extension.ts");
+    writeFileSync(entry, `export default function (pi) { pi.registerCommand("hello", { handler: () => {} }); }`);
+    let commandPublications = 0;
+    const runtime = new DesktopAgentRuntime({
+      host: {
+        call: async (method: string) => {
+          if (method === "extensions.commands.publish") commandPublications += 1;
+          return {};
+        },
+        onNotification: () => () => {},
+      } as never,
+      sessionId: "hooks-load-race",
+      projectPath: root,
+      mode: "agent",
+      thinkingLevel: "off",
+      provider: {
+        id: "fixture", name: "Fixture", apiKey: "", authKind: "none",
+        baseUrl: "http://127.0.0.1:1/v1", modelId: "fixture",
+        supportsReasoning: false, supportedThinkingLevels: ["off"],
+      },
+      commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
+      trustedExtensions: [{ id: entry, entry, label: "Lifecycle", root, source: "plugin" }],
+      onEvent: () => {},
+    });
+
+    try {
+      await Promise.all([runtime.loadTrustedExtensions(), runtime.loadTrustedExtensions()]);
+      expect(commandPublications).toBe(1);
+      expect(runtime.getTrustedExtensionReports()).toMatchObject([
+        { extensionId: entry, state: "loaded", commandNames: ["hello"] },
+      ]);
+    } finally {
+      await runtime.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("does not apply a session rename locally after its invocation is cancelled", async () => {
     const rename = deferred<Record<string, never>>();
     const runtime = new DesktopAgentRuntime({

@@ -18,6 +18,8 @@ const {
 } = await import("../electron/main/data-paths.ts");
 
 const indexSource = await readMainModule("index.ts");
+const installationSource = await readMainModule("installation.ts");
+const entrySource = await readMainModule("entry.ts");
 
 test("a development build owns a different data directory than the shipped app", () => {
   const home = join(tmpdir(), "pi-desktop-profile-home");
@@ -98,9 +100,9 @@ test("a development build takes its own userData before the single-instance lock
   // Electron asks for it; otherwise a running packaged app refuses the lock and
   // `pnpm dev` quits on arrival.
   const pathsSource = await readMainModule("data-paths.ts");
-  const apply = indexSource.indexOf("applyDevelopmentUserData(app, isDevelopmentBuild)");
-  const setName = indexSource.indexOf("app.setName(APP_NAME)");
-  const lock = indexSource.indexOf("app.requestSingleInstanceLock()");
+  const apply = installationSource.indexOf("applyDevelopmentUserData(app, isDevelopmentBuild)");
+  const setName = installationSource.indexOf("app.setName(APP_NAME)");
+  const lock = installationSource.indexOf("app.requestSingleInstanceLock()");
 
   assert.ok(apply > 0, "main must give the development build its own userData");
   assert.ok(lock > 0, "main must request the single-instance lock");
@@ -121,14 +123,17 @@ test("a development build takes its own userData before the single-instance lock
 
   // The two profiles are told apart by the same verdict everywhere, and it is
   // reached before the name the lock path derives from.
-  const development = indexSource.search(
+  const development = installationSource.search(
     /const isDevelopmentBuild =\s*\n?\s*process\.env\.PI_DESKTOP_DEV === "1" \|\| !app\.isPackaged;/,
   );
   assert.ok(development > 0 && development < apply);
 });
 
 test("main resolves one data directory and publishes it to everything below", () => {
-  assert.match(indexSource, /const dataDir = desktopDataDir\(isDevelopmentBuild\);/);
+  assert.match(installationSource, /const defaultDataDir = desktopDataDir\(isDevelopmentBuild\);/);
+  assert.match(entrySource, /prepareStorage\(defaultDataDir, !singleInstanceRequired\)/);
+  assert.match(indexSource, /const storage = getStorageBootstrap\(\);/);
+  assert.match(indexSource, /const dataDir = storage\.preferences\.roots\.data;/);
   // The plugin runtime resolves this root from the environment rather than
   // taking it as a parameter, so the resolved value has to be the one it reads.
   assert.match(indexSource, /process\.env\.PI_DESKTOP_DATA_DIR = dataDir;/);
@@ -137,13 +142,13 @@ test("main resolves one data directory and publishes it to everything below", ()
   // Publishing happens after the lock verdict, which reads the same variable:
   // moving the write above `singleInstanceRequired` would make every launch
   // look like it had been given an explicit data directory and skip the lock.
-  const lockVerdict = indexSource.indexOf(
+  const lockVerdict = installationSource.indexOf(
     "const singleInstanceRequired = !process.env.PI_DESKTOP_DATA_DIR;",
   );
   assert.ok(lockVerdict > 0);
-  assert.ok(
-    indexSource.indexOf("process.env.PI_DESKTOP_DATA_DIR = dataDir;") > lockVerdict,
-  );
+  assert.doesNotMatch(installationSource, /process\.env\.PI_DESKTOP_DATA_DIR = dataDir;/);
+  assert.match(entrySource, /from ["']\.\/installation["']/);
+  assert.match(entrySource, /\.then\([\s\S]*?import\(["']\.\/index["']\)/);
 });
 
 test("downstream data directories follow the profile instead of the shipped default", async () => {

@@ -277,6 +277,8 @@ export type PluginTheme = {
    * and holds `ui.window.appearance` (ADR 0248).
    */
   windowBackground?: { light?: string; dark?: string };
+  /** Validated `contributes.windowAppearance.cornerRadius`, in DIP. */
+  windowCornerRadius?: number;
 };
 
 export type PluginServiceState = "starting" | "running" | "stopped" | "failed";

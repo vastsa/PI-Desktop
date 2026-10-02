@@ -571,7 +571,7 @@ UI 可能会显示层级提示，但默认情况下不得硬阻止未知模型�
 
 这是**通用逃生舱**，保证超出原生集成之外的市场覆盖范围。
 
-目录条目还可以额外固定模型级 wire API（例如 `api: "openai-responses"`）。存在时它优先于 provider 级 `apiStyle`，因此 `opencode_go` 下的 responses-only 模型会走 Responses adapter 而非 Chat Completions；没有模型级固定时保持 provider 级风格不变。
+目录条目还可以额外固定模型级 wire API（例如 `api: "openai-responses"`）。当该 API 与 provider 的协议族兼容时，它优先于 provider 级 `apiStyle`（因此 `opencode_go` 下的 responses-only 模型会走 Responses adapter 而非 Chat Completions）。外部 catalog 的异构 wire API（例如 relay 端点上匹配到的 `google-generative-ai` 或 `anthropic-messages`）不会覆盖 OpenAI-compatible provider 配置的 wire style（issue #1310）；没有模型级固定时保持 provider 级风格不变。
 
 ### 16.1 Responses 流终止（pi-ai 补丁）
 

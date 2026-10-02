@@ -121,3 +121,15 @@
   border-color: var(--ds-text-primary);
   color: var(--ds-bg-primary);
 }
+
+/* A count and its unit are one control: the number field keeps the shared
+   field metric but takes only the width a two-digit count needs. */
+.scheduled-interval {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduled-interval .field-input {
+  width: 92px;
+}

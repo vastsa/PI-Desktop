@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.16.0-beta.1",
+  "version": "0.16.0",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@12.8.1+sha512.f64ba907507f5ceafe06c8d38e6052d0179444580ec1279ddd5bfc11cb48aa8a2644b66598e07e761da84872a9fc57d5f902b87fa49d024198d558612aabbe45",
   "engines": {
@@ -21,6 +21,8 @@
     "test": "pnpm build:js && pnpm -r --if-present test && cargo test -p host-core",
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",
+    "test:e2e:storage": "node scripts/e2e-storage-settings.mjs && node scripts/e2e-storage-migration.mjs && node scripts/e2e-storage-bootstrap.mjs",
+    "test:e2e:asktool-card": "node scripts/e2e-asktool-card.mjs",
     "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
     "test:e2e:keep-awake": "node scripts/e2e-keep-awake.mjs",
     "test:e2e:live-voice": "node scripts/e2e-live-voice.mjs",
@@ -34,6 +36,7 @@
     "test:e2e:composer-model-selection": "node scripts/e2e-composer-model-selection.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
+    "test:e2e:transcript-minimap-jump": "node scripts/e2e-transcript-minimap-jump.mjs",
     "test:e2e:copy-tex": "node scripts/e2e-copy-tex.mjs",
     "test:e2e:transcript-disclosure": "node scripts/e2e-transcript-disclosure-anchor.mjs",
     "test:e2e:images": "node scripts/e2e-image-generation.mjs && node scripts/e2e-image-generation-ui.mjs && node scripts/e2e-image-chat.mjs",
@@ -48,6 +51,7 @@
     "test:e2e:config-sync": "node scripts/e2e-config-sync-multidevice.mjs",
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
+    "test:e2e:window-resize-native": "node scripts/e2e-window-controls.mjs --native-edge-drag",
     "test:e2e:work-panel-reorder": "node scripts/e2e-work-panel-reorder.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",
     "test:e2e:subagents": "node scripts/e2e-subagents.mjs",

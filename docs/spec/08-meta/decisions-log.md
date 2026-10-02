@@ -1,7 +1,7 @@
 # Decisions Log
 
-> Baseline delta: `0.3.0` → `0.4.16`
-> Date: `2026-08-14`
+> Baseline delta: `0.3.0` → `0.4.20`
+> Date: `2026-10-02`
 > Status: Accepted for implementation
 
 This log freezes previously open questions into concrete decisions.
@@ -31,6 +31,11 @@ This log freezes previously open questions into concrete decisions.
 | D634 | Remove bundled macOS first-launch guidance | **Amend D457 / ADR 0296 and the macOS distribution provisions of ADR 0232 / ADR 0204: neither macOS DMG nor ZIP ships `PI-Desktop-macOS-open.command`, `PI-Desktop-macOS-opening-help.txt`, or another bundled quarantine-clearing helper or opening note. The ZIP contains `PI-Desktop.app` at its root; the DMG remains a two-icon install. This applies to signed releases and local or opt-in unsigned debug builds. See ADR 0309 and E2E-196b.** | The signed release lane has eliminated the user need for an unsigned first-launch workaround; shipping it beside debug builds risks suggesting a Gatekeeper bypass. |
 | D635 | Work-area-capped 800×560 window minimum | **Supersede the 1040×700 window minimum in D156 / D447 (and the matching clauses of ADR 0029 / ADR 0238) and the `1040..10000` `window/setWorkPanelChatWidth` range (ADR 0146): Electron enforces an 800×560 minimum, capped per dimension to the current display work area by `clampMinimumSizeToWorkArea`. The chat-width IPC and renderer accept `800..10000`. On narrow windows the existing `workPanelLayout` budget caps the docked panel so MainChat keeps its 450px floor, collapsing the sidebar first. See US-UI-19 and E2E-167.** | At 150% Windows scaling the work area is about 1280×672 DIP, so a fixed minimum could exceed the screen and leave the window unfittable. |
 | D636 | Local permission approvals have no automatic deadline | **Amend D005 / ADR 0011 and supersede the local tool-permission timeout clauses in the runtime and UX specs: a permission-gated `tools.execute` request remains pending in host-core, the renderer, and the transport until the user chooses Allow once, Allow for session, or Deny, or the request is cancelled / the process shuts down. Remove the 120-second countdown and timeout fields from the local permission contract. Tool-specific execution budgets and the separate RACP/Plan approval lifetimes remain unchanged. See ADR 0310, issue #1214, and E2E-017.** | A visible permission request could be missed while the user worked elsewhere; automatic denial after 120 seconds silently prevented the requested action. Keeping cancellation and execution budgets preserves control and resource safety without turning inattention into a decision. |
+| D637 | Remove the Windows frameless resize rim | **Disable the Windows main window's thick frame while retaining Electron 43.6 native frameless edge and corner resizing. Apply a 4 DIP native rounded shape by default; authorized plugin themes may choose an integer radius from 0 to 24 DIP. Keep the D635 minimum-size contract and existing work-panel resize ownership. See ADR 0317 and E2E-167.** | The thick frame paints an unwanted left, bottom, and right rim that themes cannot remove. Native hit testing and shape keep resizing and transparent outer corners without renderer resize IPC. |
+| D638 | Publish native Linux arm64 artifacts | **Amend D126 / D285 / D603 / ADR 0022: tag releases publish native Linux arm64 AppImage, deb, and rpm packages, built on GitHub's native `ubuntu-22.04-arm` runner and carrying an arm64 `pi-desktop-host-core`. The static Linux targets drop their pinned `arch` and take the workflow's `--x64` / `--arm64` flag; `linux.artifactName` becomes `PI-Desktop-<version>-linux-<arch>.AppImage`; each Linux lane verifies its architecture-named updater feed (`latest-linux.yml` on x64, `latest-linux-arm64.yml` on arm64); the ASAR export reads `linux-unpacked` or `linux-arm64-unpacked` and publishes `PI-Desktop-<version>-linux-<arch>.asar`. `pi-host-bundle` builds both Linux architectures and `PUBLISHED_TARGETS` gains `linux-arm64`. Updater ownership, signing, and delivery modes are unchanged. See ADR 0318, issue #1281, and E2E-192a.** | arm64 Linux devices could not install or run the published x64 artifact, and a cross-built or emulated lane would ship a mismatched Rust sidecar. |
+| D639 | models.dev owns published chat-model metadata | **Supersede D136 / D266 and ADR `pi-ai-core-0991-authority` for chat metadata: the bundled and explicitly refreshed models.dev catalog supplies published chat-model limits, modalities, reasoning metadata, names, and prices. Prefer the selected official publisher; when it has no record, accept another publisher only for a safe, unambiguous match, otherwise keep generic metadata. The checked-in preset identities are the priority set; do not assert an unsupported fixed count of 39. Live endpoint/OAuth discovery still owns selectable IDs. Pi remains responsible for OAuth, wire identity, transport and typed non-chat operations, but never supplies sibling chat limits, reasoning or prices. Explicit user binding overrides remain authoritative. No credentials are sent to models.dev; no host schema/protocol or persistence change. See ADR `models-dev-catalog-authority` and E2E-162 / E2E-MODEL-catalog-window-correction-reaches-saved-bindings.** | A Pi sibling default assigned a 272,000-token window to GPT models whose selected models.dev records publish 1,050,000 tokens, changing the Settings display and runtime context budget. |
+| D640 | User MCP tools keep the normal approval path | **`mcp_<serverId>_<tool>` calls are `medium` risk in host-core: under `ask` and `accept-edits` each call shows the approval card ("MCP server tool requires approval"), allow-once and allow-session keep their usual scope (one call / that exact tool name in that session), `auto` runs without a card, and Plan/Goal still deny. Annotations or risk values the MCP server declares about its own tools are ignored and never lower the path. Dispatch, read-only-mode handling and the `mcp_` namespace are unchanged; no host protocol or persistence change. See ADR `mcp-tool-approval-risk` and E2E-MCP-tool-requires-approval.** | MCP tools were auto-allowed as `low` risk, so a configured server could write files, call networks or run commands without any prompt under `ask`. Configuring a server is consent to launch it, not to every action its opaque tools take. |
+| D641 | Custom endpoint API style precedence | **A custom endpoint uses the saved provider-row `apiStyle` ahead of a model catalog's adapter API. Named and OAuth providers can continue to use a model-level wire API pin where their published configuration requires a different transport. This keeps a user's explicit endpoint choice stable without removing model-specific routing such as OpenCode Go Responses models. No persisted format or protocol change. See E2E-005E and issue #1313.** | A publisher's adapter default must not silently redirect a custom gateway whose user-selected API format is different. |
 | D450 | Signed macOS GitHub Releases | **Amend D078 / ADR 0022: GitHub tag releases Developer ID-sign, notarize (`notarytool` via electron-builder 26), staple, and Gatekeeper-verify macOS DMG/ZIP before upload, using identity `Developer ID Application: XingYu Liu (DUV63RKYTW)` / team `DUV63RKYTW` from Actions secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). Missing secrets fail the job. Local unsigned packaging without a certificate remains. `workflow_dispatch` may set `sign_macos: false` only for unsigned debug artifacts. Packaged macOS uses in-app `electron-updater` (ZIP + merged `latest-mac.yml`); Linux deb/rpm and Windows portable ZIP stay notify-and-link. No afterPack/afterSign adhoc codesign (ADR 0278).** | Production DMGs must open without a Gatekeeper warning, and signed macOS installs can download and restart into a new tag. See ADR 0289, E2E-196c, E2E-067A. |
 
 ## B. Secondary implementation defaults
@@ -315,7 +320,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
-| D266 | Use models.dev as the primary model catalog | **Amend D136 / ADR 0027: Electron main loads `https://models.dev/api.json` as the primary provider/model metadata source, matches by provider key or normalized API URL, and maps its limits, modalities, reasoning options, tool-call, structured-output, display-name, and cost fields into the existing model surfaces. The pinned `pi-ai` catalog remains the local fallback for unavailable/missing remote records and supplies adapter-specific compatibility data where models.dev has no equivalent. Provider endpoint discovery and explicit model IDs remain available for custom/account-specific models; no provider credential is sent to models.dev, and no host schema/protocol change is introduced.** | The pinned pi-ai catalog is accurate for runtime adapters but lags the broader market catalog. A bounded, main-process models.dev fetch gives Settings and Composer current model coverage while preserving offline/local behavior and pi-ai's transport fallback. |
+| D266 | Use models.dev as the primary model catalog | **Historical decision, superseded for chat metadata by D639 / ADR `models-dev-catalog-authority`.** Previous text: Electron main loads `https://models.dev/api.json` as the primary provider/model metadata source, with the pinned `pi-ai` catalog as local fallback. Provider endpoint discovery and explicit model IDs remain available for custom/account-specific models; no provider credential is sent to models.dev, and no host schema/protocol change is introduced. | A bounded, main-process models.dev fetch was first introduced to give Settings and Composer broader catalog coverage. D639 removes Pi sibling metadata as the chat fallback after it assigned wrong context limits. |
 
 ## M. Agent runtime decisions
 
@@ -326,7 +331,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D132 | Composer permission menu shows effective modes only | **The agent-mode composer chip and menu expose only `ask`, `accept-edits`, and `auto`, with the effective mode selected directly and no global-default/inherit entry or provenance label. Choosing an item stores that explicit session override. Existing `inherit` persistence and resolution from D115 remain unchanged until the user chooses a mode. This supersedes only D115's composer-presentation clause.** | The inherited entry repeated a selectable mode and exposed storage provenance instead of the permission posture the user is choosing; presenting the three effective modes makes the control direct without changing host enforcement |
 | D116 | Provider failures as assistant messages | **Every provider/model turn failure is attached to a durable `role=assistant`, `status=error` transcript message through optional `UiMessage.error`. The message shows a localized summary and stable code, keeps redacted provider detail behind an accessible disclosure, and offers context-appropriate Retry or Settings actions. Message-bound failures never use toast/global banner presentation and never re-enter later model context.** | Errors belong to the failed turn; preserving them in the transcript makes the response diagnosable after session switches/restarts without contaminating the next model request or exposing credentials |
 | D127 | Context-preserving reseed + transport retry | **Reseeding a recreated pi runtime from the persisted transcript restores tool call/result pairs (from tool rows' `toolCallId`/`toolArgs`/`toolResult`) in addition to user/assistant text and thinking. Interrupted tool rows restore as errored results; orphaned tool rows get a synthesized call-only assistant carrier so pairs stay adjacent and well-formed. Failed assistant turns stay transcript-only. Separately, request setup uses one bounded pi-ai retry for transient transport/provider failures; post-response stream recovery is defined by D186.** | Text-only reseed collapsed a session's context after any runtime recreation (regenerate/edit, config change, restart): the model lost every tool result it had gathered and — seeing its own history answer without visible tool use — stopped calling tools, degrading agent sessions into bare chat. The incident trigger was a single un-retried provider timeout that forced the user into regenerate. D127 corrects the initially duplicated D120 identifier; D120 remains the earlier application-update decision frozen by baseline 0.4.6. |
-| D136 | pi-ai owns known-model metadata | **For every model resolved from the pinned pi-ai catalog, Electron main passes the complete pi model snapshot to the sidecar and PI-Desktop replaces only connection identity. Provider Settings and the model menu do not override reasoning support, thinking levels, context/output limits, temperature, or compatibility. Unknown free-form ids remain usable through an explicit generic text-only, non-reasoning fallback. This supersedes D102 and the provider-override clauses of D096/D107.** | A second desktop-owned model matrix discarded pi metadata, drifted from adapter behavior, and made model semantics depend on conflicting configurations; fixes for known models now belong in pi-ai or a pi-ai upgrade. |
+| D136 | pi-ai owns known-model metadata | **Historical decision, superseded for chat metadata by D639 / ADR `models-dev-catalog-authority`.** Previous text: resolved Pi records governed published metadata; unknown IDs used generic metadata. **This supersedes D102 and the provider-override clauses of D096/D107.** | A second desktop-owned model matrix had previously discarded Pi metadata. The later D639 root-cause evidence showed that Pi sibling defaults could misstate the selected model's context window. |
 | D183 | Segmented tool and model latency logs *(superseded by D385 / ADR 0212; UI clause superseded by D184)* | **Every `tools.execute` call is timed in segments instead of one opaque duration: host-core emits a `tool timing` line on the `host` channel and persists `prompted`, `permissionWaitMs`, `overheadMs`, and `totalMs` next to the existing `durationMs` on `tool_execute` / `tool_denied` audit rows; the sidecar writes greppable `[timing] kind=tool …` (`hostRttMs`) and `[timing] kind=model …` (`providerWaitMs`, `streamMs`, including failed/aborted turns) lines to the `agent` channel, suppressible with `PI_DESKTOP_TIMING=0`. The original no-UI clause is superseded by D184; logging remains unchanged.** | "Executing a command is slow" was undiagnosable from the logs: approval waiting, the tool body, and the provider round trip were indistinguishable, so a 45s gap between two audit rows with 0ms durations gave no clue whether it was the user, the model, or the host. Splitting the stages makes the answer readable without reproducing the run. |
 | D158 | Turn-boundary context checkpoint compaction *(soft-boundary, model-tool, and visibility clauses superseded by D200; the model tool and visibility restored in Codex's shape by D203)* | **PI-Desktop reuses pi-agent-core's context estimation, session-context, and compaction primitives but owns the orchestration and durability. After every `turn_end`, before any next provider request, the runtime evaluates model-aware soft/hard budgets. A transient deduplicated instruction can ask the model to call the internal `CompactContext` tool; the tool's normal activity row is visible/durable, while the instruction is not. Crossing the hard budget forces checkpoint generation and blocks the request on failure. A final atomic tool batch that reaches half the hard budget is fairly head/tail-truncated only in the checkpoint copy, with explicit markers and every call/result envelope retained; original transcript rows remain complete. Exact provider overflow removes the failed assistant from model context, creates one checkpoint, and retries once. Host protocol v6 appends checkpoint records beside the untouched visible JSONL transcript; restart, late truncation, and included-boundary forks preserve the newest valid checkpoint. Disabling automatic compaction removes the tool and all automatic threshold/overflow recovery, while `/compact` remains available. OpenCode DCP is an AGPL-3.0 behavioral reference only and is neither linked nor copied (ADR 0030).** | pi's end-of-run-only behavior cannot protect long tool loops, and a model reminder alone cannot guarantee provider safety. Reusing pi's tested compaction format while adding a deterministic `turn_end` gate prevents another provider request from crossing the known window, retains user-visible history, and avoids importing an incompatible plugin/runtime and license boundary. |
 | D185 | Lazy per-turn tool activation *(the always-active `CompactContext` clause is void under D200, and holds again for `new_context` under D203; activation restoration amended by D400 / ADR 0225)* | **The sidecar keeps a complete local tool registry but sends only the mode core set and local `ToolSearch` on each new prompt. `BrowserPreview`, plugin tools, `Skill`, and plugin-development helpers appear as bounded compact catalog entries and are activated by exact-name or capability search; the next turn receives their schemas, native pi-ai deferred search is used when supported, and the in-memory set resets before the next user prompt, then restores only successful activation evidence still present in the effective context and allowed by the current catalog and mode. Host permissions, containment, timeouts, and audits are unchanged.** | Full tool schemas made simple first requests disproportionately large and repeated optional capability cost across turns. A pi-style active set preserves core coding ergonomics while making ancillary tools pay-as-you-go and provider-independent; restoring successful context evidence prevents the model from seeing a capability marker without receiving the corresponding schema. |
@@ -2356,7 +2361,7 @@ D193, and D194.
   `03-runtime/13-model-catalog-and-selection.md` §11.2,
   `04-ux/08-component-spec.md` §11.7–11.8, and E2E-163.
 
-## 2026-08-19 — models.dev is the primary model catalog
+## 2026-08-19 — models.dev first replaces Pi as the primary model catalog (historical)
 
 - D266 amends D136 / ADR 0027. Electron main loads the public
   `https://models.dev/api.json` catalog with a bounded timeout and matches
@@ -2367,11 +2372,21 @@ D193, and D194.
   existing model surfaces. API keys and OAuth credentials never accompany the
   request. `catalogSource` distinguishes models.dev from the pi-ai fallback in
   renderer metadata without changing the host schema.
-- If the remote catalog cannot be loaded or has no matching record, the pinned
-  pi-ai catalog supplies known native models and adapter compatibility. Custom
-  or account-specific provider discovery and explicit IDs remain available
-  after that fallback. See ADR 0133, `03-runtime/11-provider-model-system.md`,
+- D639 later removes the Pi sibling chat-metadata fallback. The historical
+  decision remains here to preserve the record of the migration. See ADR 0133,
+  `03-runtime/11-provider-model-system.md`,
   `03-runtime/13-model-catalog-and-selection.md`, and E2E-066/E2E-080/E2E-154.
+
+## 2026-10-02 — models.dev is the chat model metadata authority
+
+- D639 supersedes the Pi 0.99.1 metadata decision and the Pi sibling fallback.
+  The bundled models.dev snapshot supplies chat context/output limits and
+  capabilities; the selected official publisher wins, followed by safe,
+  unambiguous third-party records. Missing or conflicting records stay generic.
+- Live endpoint and OAuth responses still determine selectable IDs. Pi remains
+  the OAuth and transport adapter and supplies typed non-chat operations only.
+  Explicit user binding values remain pinned, and no provider secrets are sent
+  to models.dev. See ADR `models-dev-catalog-authority`.
 
 ## 2026-08-19 — The work panel becomes a plugin extension point
 
@@ -6209,9 +6224,9 @@ that was sitting at the bottom — including after the turn had finished.
   typed error instead of hanging behind an invisible prompt.
 - The desktop resolves the bundle for the remote platform at its own version,
   holds the SHA-256 the release publishes, and refuses an unpublished target
-  (`linux-x64` only today) before any download. The uploaded script downloads,
-  verifies, and installs the bundle under the remote `$HOME`; no executable
-  bytes cross the SSH channel.
+  (`linux-x64` and `linux-arm64`) before any download. The uploaded script
+  downloads, verifies, and installs the bundle under the remote `$HOME`; no
+  executable bytes cross the SSH channel.
 - The script runs under `umask 077` and echoes `PI_HOST_READY` /
   `PI_HOST_PAIRING_TOKEN`, so the single-use pairing token exists only in a work
   file and on the SSH channel, never in a world-readable path or a URL
@@ -7334,3 +7349,64 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   Tool-specific command/plugin execution budgets and the independent Plan/Goal
   and RACP approval lifetimes are unchanged. See ADR 0310, issue #1214, and
   E2E-017.
+
+## 2026-09-29 — Remove the Windows frameless resize rim (D637)
+
+- The Windows main window disables Electron's thick frame, removing the native
+  left, bottom, and right rim. Electron 43.6 retains its frameless native edge
+  and corner hit test, so no renderer resize path or geometry IPC is added.
+  macOS/Linux window behavior and work-panel resize ownership remain unchanged.
+  The Windows main window defaults to a native 4 DIP shape whose corner pixels
+  and hit targets are absent; an authorized plugin theme may choose an integer
+  radius from 0 to 24 DIP, reverting to 4 when the theme is withdrawn. The
+  D635 work-area-capped minimum remains in force. The removed thick frame
+  leaves no native shadow control for themes; external shadow needs a separate
+  window-geometry decision. See ADR 0317 and E2E-167.
+
+## 2026-10-01 — Publish native Linux arm64 artifacts (D638)
+
+- Tag releases publish Linux arm64 AppImage, deb, and rpm packages beside the
+  x64 ones. Each lane runs on a native GitHub-hosted Ubuntu 22.04 runner
+  (`ubuntu-22.04` and `ubuntu-22.04-arm`) and packs the `pi-desktop-host-core`
+  binary it just built, so the sidecar architecture always matches the Electron
+  app. Both lanes keep the glibc 2.35 floor.
+- The Linux targets no longer pin `arch`: electron-builder prefers a
+  configuration arch list over the CLI flag, so pinning both architectures
+  would make each lane build the other one around its own sidecar. The
+  workflow passes the matching `--x64` / `--arm64` flag and verifies
+  `uname -m` before packaging.
+- The AppImage name carries its architecture
+  (`PI-Desktop-<version>-linux-x64.AppImage`,
+  `PI-Desktop-<version>-linux-arm64.AppImage`). The x64 asset is therefore
+  renamed from its previous version-only name; in-app updates are unaffected
+  because the updater reads the published feed.
+- electron-builder names each Linux feed after the architecture it built
+  (`latest-linux.yml` on x64, `latest-linux-arm64.yml` on arm64), which is what
+  `electron-updater` requests on those architectures, so the lanes cannot
+  overwrite each other's feed and each lane verifies that name before upload
+  instead of renaming it. The publish job merges both artifacts without losing
+  a feed.
+- `scripts/export-linux-asar.mjs` takes the lane architecture and exports
+  `PI-Desktop-<version>-linux-<arch>.asar` from `linux-unpacked` (x64) or
+  `linux-arm64-unpacked` (arm64).
+- `release.yml`'s `pi-host-bundle` job builds both Linux architectures and
+  `PUBLISHED_TARGETS` publishes `linux-x64` and `linux-arm64`, so an arm64
+  desktop can bootstrap an arm64 remote host (D375 / ADR 0292).
+- Known limitation: microphone capture stays unavailable on arm64 Linux
+  devices other than Raspberry Pi boards, because `@picovoice/pvrecorder-node`
+  knows only Raspberry Pi CPU parts for Linux arm64. Speech-to-text and the
+  rest of the app have no architecture-specific dependency. See ADR 0318,
+  issue #1281, and E2E-192a.
+
+## 2026-10-03 — User MCP tools keep the normal approval path (D640)
+
+- D640 moves `mcp_` tools from `low` to `medium` risk in
+  `PermissionManager`. Under `ask` and `accept-edits` every call shows the
+  approval card with the reason "MCP server tool requires approval"; `auto`
+  runs it without a card, and Plan/Goal deny it even with a session grant.
+- Allow-session covers only the exact `mcp_<serverId>_<tool>` name in that
+  session, not the server's other tools. Risk annotations the server declares
+  about its own tools are not trusted and never lower the path.
+- Dispatch over `plugins.execute`, read-only-mode handling and the `mcp_`
+  namespace are unchanged. See ADR `mcp-tool-approval-risk` and
+  E2E-MCP-tool-requires-approval.

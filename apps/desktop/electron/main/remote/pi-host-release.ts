@@ -22,12 +22,12 @@ export type PiHostTarget = {
 };
 
 /**
- * Release-matrix parity. `release.yml`'s `pi-host-bundle` job publishes Linux
- * x64 only today; the desktop matrix ships no other Linux platform. A target
+ * Release-matrix parity. `release.yml`'s `pi-host-bundle` job publishes the
+ * Linux architectures the desktop build matrix ships (x64 and arm64). A target
  * outside this list is refused with a typed failure instead of a 404 halfway
  * through a download.
  */
-const PUBLISHED_TARGETS: readonly string[] = ["linux-x64"];
+const PUBLISHED_TARGETS: readonly string[] = ["linux-x64", "linux-arm64"];
 
 export function targetKey(target: PiHostTarget): string {
   return `${target.platform}-${target.arch}`;

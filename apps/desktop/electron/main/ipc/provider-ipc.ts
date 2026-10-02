@@ -445,6 +445,9 @@ export function registerProviderIpc({
             };
         return {
           ...info,
+          // Catalog enrichment must not turn a configured-only row into
+          // evidence that the endpoint still serves it.
+          source: model.source ?? info.source,
           modelId: model.modelId,
           displayName: info.displayName || modelConfig.name,
           providerId: provider?.id ?? "",
@@ -459,7 +462,7 @@ export function registerProviderIpc({
           // ModelInfo is catalog metadata. Keep its published reasoning fields
           // intact; Composer and runtime resolve the exact user binding when
           // they need effective per-provider capabilities.
-          ...(modelsDevModel ? { catalogSource: "pi" as const } : {}),
+          ...(modelsDevModel ? { catalogSource: "models.dev" as const } : {}),
         };
       };
 

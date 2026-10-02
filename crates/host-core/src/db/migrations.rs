@@ -10,6 +10,13 @@ impl Database {
             "CREATE INDEX IF NOT EXISTS idx_turns_ended_at ON turns(ended_at DESC)",
             [],
         );
+        // Session summaries and session search both ask whether a run owns a
+        // session, so the probe wants an index of the sessions that have one.
+        let _ = self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_task_runs_session ON task_runs(session_id)
+             WHERE session_id IS NOT NULL",
+            [],
+        );
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "UPDATE turns

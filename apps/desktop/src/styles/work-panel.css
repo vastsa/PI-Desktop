@@ -30,6 +30,12 @@
     both;
 }
 
+.work-panel-pending {
+  align-items: center;
+  justify-content: center;
+  animation: none;
+}
+
 .work-panel.is-exit-pending,
 .work-panel.is-exiting {
   pointer-events: none;

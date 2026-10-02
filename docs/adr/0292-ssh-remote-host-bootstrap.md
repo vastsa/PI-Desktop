@@ -48,7 +48,7 @@ extended boot hook, and one new IPC channel.
 2. **Pure release coordinates (`pi-host-release.ts`).** The artifact is resolved
    for the *remote* platform at the *desktop's* version, and the SHA-256 the
    release publishes is the trust anchor. `PUBLISHED_TARGETS` is the release
-   matrix (`linux-x64` today), so any other target is refused with
+   matrix (`linux-x64` and `linux-arm64`), so any other target is refused with
    `HOST_BOOTSTRAP_FAILED` before a download starts rather than as a 404 halfway
    through one. URL derivation, `uname` parsing, checksum-file parsing,
    constant-work digest comparison, and the version-parity rule are all pure
@@ -135,7 +135,8 @@ Still open for R2b and later:
   closed with `MODEL_NOT_CONFIGURED` until a provider is configured on it.
 - **The resync watchdog**: `resync.required` events are still dropped.
 - **Non-Linux remote targets, and Windows as a *remote* target.** Only
-  `linux-x64` is published, so both are refused before a download starts.
+  `linux-x64` and `linux-arm64` are published (D638 / ADR 0318), so both are
+  refused before a download starts.
 
 ## Alternatives considered
 

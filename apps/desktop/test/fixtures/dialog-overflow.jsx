@@ -53,7 +53,16 @@ function ModelPickerFixture() {
     maxTokens: 4_000,
   }));
   return (
-    <div style={{ height: 520, padding: 24 }}>
+    <div
+      className="dialog-fixture-models"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "min(520px, calc(100vh - 48px))",
+        minHeight: 0,
+        padding: 24,
+      }}
+    >
       <ModelSelectionPanes
         discovery={{ status: "success", source: "remote", models: [], error: "" }}
         selection={{

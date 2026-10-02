@@ -94,6 +94,11 @@ CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：�
 结构化 title/question 字段。 Renderer 和 sidecar 状态无法写入或
 替换一个工件。
 
+用户配置的 MCP 服务器提供的工具（`mcp_<serverId>_<tool>`）默认绝不视为低风险：
+host-core 将其归类为 `medium`，并忽略 MCP 服务器为自身声明的任何风险级别。
+`ask` 和 `accept-edits` 需要审批（`allow-session` 授权在该会话剩余时间内覆盖同一
+工具名，仅保存在内存中），`auto` 自动允许，Plan/Goal 仍然拒绝（D640，ADR `mcp-tool-approval-risk`）。
+
 ## 4.1 技能市场出网
 
 渲染层不拉取技能目录或 SKILL.md。Electron 主进程按公网策略发起 HTTPS 请求（ADR 0243 / D413，由 ADR 0272 / D436 修订）：仅 `https`、共享的公网主机语法检查、`redirect: "manual"`，以及按请求实际会走的线路逐跳判定。每一跳之前，客户端都会向承载 `net.fetch` 的会话询问它自己的代理判定（`Session.resolveProxy`）：`proxied` 线路上按线路判定，因此容忍解析器自身产物的那一类（`benchmark`，TUN fake-IP）；`direct` 或读不出线路时默认保留完整的本地分类，回环、RFC1918、ULA、link-local、mapped IPv6 以及其他所有非公网类别一律拒绝。显式 `allowFakeIp` 选项仅可为透明路由器/TUN 部署额外放行 benchmark 占位地址。安装只通过 `skills.create` 写入 markdown。内联相邻 markdown 后仍受 128 KiB 宿主上限约束。

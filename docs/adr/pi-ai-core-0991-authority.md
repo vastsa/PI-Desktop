@@ -1,6 +1,6 @@
 # ADR: Pi 0.99.1 account model authority
 
-- Status: Accepted for the current migration candidate
+- Status: Superseded for chat model metadata by [models.dev catalog authority](models-dev-catalog-authority.md)
 - Date: 2026-09-30
 - Supersedes: ADR 0134 model metadata source
 

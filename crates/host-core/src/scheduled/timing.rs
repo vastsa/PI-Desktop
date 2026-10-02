@@ -2,7 +2,15 @@ use anyhow::{bail, Result};
 use chrono::{Datelike, Local, TimeZone, Timelike};
 use serde::{Deserialize, Serialize};
 
-/// Daily/weekly schedules use local time; hourly schedules use elapsed time.
+/// Elapsed minutes between runs of an `interval` task: five minutes to 24
+/// hours. The floor keeps an occurrence from being skipped the moment it is
+/// admitted, because the host polls every 30 s and drops one more than 90 s
+/// late. Mirrored by `SCHEDULED_INTERVAL_MINUTES` in the renderer.
+pub const INTERVAL_MIN_MINUTES: u32 = 5;
+pub const INTERVAL_MAX_MINUTES: u32 = 1440;
+
+/// Daily/weekly schedules use local time; hourly and interval schedules count
+/// elapsed time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Schedule {
@@ -13,6 +21,10 @@ pub struct Schedule {
     /// When present, replaces the legacy single weekday. Monday = 0.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weekdays: Option<Vec<u32>>,
+    /// Elapsed minutes between runs of an `interval` task. Only that cadence
+    /// reads it, so switching cadence keeps the value for the way back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_minutes: Option<u32>,
 }
 
 impl Schedule {
@@ -32,6 +44,11 @@ impl Schedule {
                 bail!("weekdays must contain unique days from 0 to 6");
             }
         }
+        if let Some(minutes) = self.interval_minutes {
+            if !(INTERVAL_MIN_MINUTES..=INTERVAL_MAX_MINUTES).contains(&minutes) {
+                bail!("intervalMinutes must be between {INTERVAL_MIN_MINUTES} and {INTERVAL_MAX_MINUTES}");
+            }
+        }
         Ok(())
     }
 
@@ -40,11 +57,17 @@ impl Schedule {
     }
 
     fn next_in<T: TimeZone>(&self, cadence: &str, after: i64, zone: &T) -> Option<i64> {
-        if self.validate().is_err() || !matches!(cadence, "hourly" | "daily" | "weekly") {
+        if self.validate().is_err()
+            || !matches!(cadence, "hourly" | "daily" | "weekly" | "interval")
+        {
             return None;
         }
         if cadence == "hourly" {
             return after.checked_add(3_600_000);
+        }
+        if cadence == "interval" {
+            let minutes = i64::from(self.interval_minutes?);
+            return after.checked_add(minutes.checked_mul(60_000)?);
         }
         let first = after
             .div_euclid(60_000)
@@ -84,6 +107,7 @@ mod tests {
             minute: 15,
             weekday: 0,
             weekdays: Some(vec![0, 2, 4]),
+            interval_minutes: None,
         };
         let monday = Utc
             .with_ymd_and_hms(2026, 9, 21, 9, 15, 0)
@@ -146,6 +170,7 @@ mod tests {
             minute: 15,
             weekday: 0,
             weekdays: None,
+            interval_minutes: None,
         };
         let start = Utc
             .with_ymd_and_hms(2026, 9, 21, 10, 42, 37)
@@ -191,6 +216,7 @@ mod tests {
             minute: 30,
             weekday: 0,
             weekdays: None,
+            interval_minutes: None,
         };
         assert_eq!(
             spring.next("daily", timestamp("2026-03-08T06:00:00Z")),
@@ -201,6 +227,7 @@ mod tests {
             minute: 30,
             weekday: 0,
             weekdays: None,
+            interval_minutes: None,
         };
         assert_eq!(
             fall.next("daily", timestamp("2026-11-01T05:30:00Z")),
@@ -219,6 +246,7 @@ mod tests {
             minute: 15,
             weekday: 0,
             weekdays: None,
+            interval_minutes: None,
         };
         let monday = Utc
             .with_ymd_and_hms(2026, 9, 21, 9, 15, 0)
@@ -246,6 +274,7 @@ mod tests {
             minute: 0,
             weekday: 0,
             weekdays: None,
+            interval_minutes: None,
         }
         .validate()
         .is_err());
@@ -254,6 +283,7 @@ mod tests {
             minute: 60,
             weekday: 0,
             weekdays: None,
+            interval_minutes: None,
         }
         .validate()
         .is_err());
@@ -262,8 +292,62 @@ mod tests {
             minute: 0,
             weekday: 7,
             weekdays: None,
+            interval_minutes: None,
         }
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn interval_cadence_waits_its_own_minutes_and_requires_them() {
+        let start = Utc
+            .with_ymd_and_hms(2026, 9, 21, 10, 42, 37)
+            .unwrap()
+            .timestamp_millis();
+        let mut schedule = Schedule {
+            hour: 0,
+            minute: 0,
+            weekday: 0,
+            weekdays: None,
+            interval_minutes: Some(30),
+        };
+        assert_eq!(
+            schedule.next_in("interval", start, &Utc),
+            Some(start + 30 * 60_000),
+            "an interval task counts elapsed time, not a calendar"
+        );
+        schedule.interval_minutes = Some(INTERVAL_MIN_MINUTES);
+        assert_eq!(
+            schedule.next_in("interval", start, &Utc),
+            Some(start + 300_000)
+        );
+        schedule.interval_minutes = Some(INTERVAL_MAX_MINUTES);
+        assert_eq!(
+            schedule.next_in("interval", start, &Utc),
+            Some(start + 86_400_000)
+        );
+        assert_eq!(
+            schedule.next_in("hourly", start, &Utc),
+            Some(start + 3_600_000),
+            "another cadence spends its own rule, not the interval"
+        );
+        for minutes in [
+            Some(0),
+            Some(INTERVAL_MIN_MINUTES - 1),
+            Some(INTERVAL_MAX_MINUTES + 1),
+        ] {
+            schedule.interval_minutes = minutes;
+            assert!(schedule.validate().is_err());
+            assert_eq!(schedule.next_in("interval", start, &Utc), None);
+        }
+        schedule.interval_minutes = None;
+        assert!(schedule.validate().is_ok(), "the value is optional");
+        assert_eq!(
+            schedule.next_in("interval", start, &Utc),
+            None,
+            "an interval task without its value never fires"
+        );
+        schedule.interval_minutes = Some(30);
+        assert_eq!(schedule.next_in("interval", i64::MAX, &Utc), None);
     }
 }

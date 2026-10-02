@@ -10,8 +10,9 @@ const reservationHandler = mainSource.slice(
   mainSource.indexOf("IPC.invoke.windowSetWorkPanelChatWidth"),
 );
 
-test("the main window keeps native edge and corner resizing enabled", () => {
+test("the main window keeps native edge resizing without the Windows thick frame", () => {
   assert.match(mainSource, /resizable:\s*true/);
+  assert.match(mainSource, /process\.platform === "win32" \? \{ thickFrame: false \}/);
   // The BrowserWindow props use the clamped `initialMin*` values so a small
   // work area does not lock the window past the display's own width.
   assert.match(mainSource, /minWidth:\s*initialMinWidth/);

@@ -3,9 +3,10 @@ import { useTranslation } from "react-i18next";
 import {
   type GlobalPermissionMode,
   type ProjectRecord,
+  type ScheduledSessionMode,
   type SessionThinkingLevel,
 } from "@pi-desktop/shared";
-import { IconFolder } from "../../components/icons";
+import { IconChat, IconFolder } from "../../components/icons";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { useAppStore } from "../../stores/app-store";
 import { ScheduledModelPicker } from "./ScheduledModelPicker";
@@ -33,6 +34,8 @@ export function ScheduledExecutionSettings({
   onWorkspaceChange,
   onPermissionChange,
   onModelChange,
+  sessionMode,
+  onSessionModeChange,
 }: {
   workspacePath: string;
   projects: readonly ProjectRecord[];
@@ -42,6 +45,8 @@ export function ScheduledExecutionSettings({
   onWorkspaceChange: (path: string) => void;
   onPermissionChange: (mode: GlobalPermissionMode) => void;
   onModelChange: (selection: ScheduledModelSelection) => void;
+  sessionMode: ScheduledSessionMode;
+  onSessionModeChange: (mode: ScheduledSessionMode) => void;
 }) {
   const { t } = useTranslation();
   const [permissionOpen, setPermissionOpen] = useState(false);
@@ -86,6 +91,19 @@ export function ScheduledExecutionSettings({
           permissionOpen={permissionOpen} setPermissionOpen={setPermissionOpen}
           controlsBlocked={busy} onCloseOtherMenus={() => {}}
           onSelect={onPermissionChange} />
+        <SettingsMenuSelect
+          className="scheduled-execution-session"
+          triggerClassName="icon-btn mode-chip scheduled-execution-trigger"
+          leading={<IconChat size={14} />}
+          label={t("scheduled.sessionMode")}
+          value={sessionMode}
+          disabled={busy}
+          options={[
+            { id: "perRun", label: t("scheduled.sessionModePerRun") },
+            { id: "reuse", label: t("scheduled.sessionModeReuse") },
+          ]}
+          onChange={(value) => onSessionModeChange(value === "reuse" ? "reuse" : "perRun")}
+        />
       </div>
       <div className="composer-right">
         <ScheduledModelPicker value={modelSelection} disabled={busy} onChange={onModelChange} />

@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import type { LiveVoiceWidgetAction } from "@pi-desktop/shared";
+import { useAppStore } from "../../../stores/app-store";
 import { getLiveCallController } from "./live-call-controller";
 import { liveVoiceApi } from "./live-voice-api";
 import { openLiveVoiceSettings } from "./live-voice-navigation";
+import { liveWorkDecision, operationAwaitsDecision } from "./live-work-decision";
 import { liveVoiceIssue, liveVoiceMode } from "./live-voice-presentation";
 import { LiveVoiceDetails } from "./LiveVoiceDetails";
 import "../../../styles/voice.css";
@@ -45,12 +47,33 @@ export function LiveVoiceStatusHost() {
     if (mode === "stopping" || mode === "idle") setDetailsOpen(false);
   }, [mode]);
 
-  // The widget window is the only call chrome, so the failure this frame owns —
-  // a refused mute, a playback retry that failed — has to reach it.
+  // The bound work session can wait on a decision the user has to make in that
+  // session's own card, while the user is looking at the widget instead. Those
+  // queues live in this window's store and the widget window has none, so the
+  // waiting flag is reported with the failure code below.
+  const boundSessionId = snapshot.call?.workBinding?.workSessionId;
+  const planCheckpoints = useAppStore((state) => state.planCheckpoints);
+  const pendingPermissions = useAppStore((state) => state.pendingPermissions);
+  const pendingAsks = useAppStore((state) => state.pendingAsks);
+  const decisionWaiting = useMemo(
+    () => Boolean(liveWorkDecision({
+      sessionId: boundSessionId,
+      awaiting: operationAwaitsDecision(snapshot.call?.workOperations, boundSessionId),
+      asks: pendingAsks,
+      permissions: pendingPermissions,
+      planCheckpoints,
+    })),
+    [boundSessionId, snapshot.call?.workOperations, pendingAsks, pendingPermissions, planCheckpoints],
+  );
+
+  // The widget window is the only call chrome and has neither this store nor a
+  // toast surface, so everything only this frame knows — the failure it owns and
+  // the waiting decision — has to be reported to it.
   useEffect(() => {
     if (!callId) return;
-    void liveVoiceApi.reportWidgetIssue({ callId, code: issue?.code ?? null }).catch(() => undefined);
-  }, [callId, issue?.code]);
+    void liveVoiceApi.reportWidgetOwnerState({ callId, errorCode: issue?.code ?? null, decisionWaiting })
+      .catch(() => undefined);
+  }, [callId, decisionWaiting, issue?.code]);
 
   const runAction = useCallback((action: () => Promise<void>, pending?: "mute" | "playback") => {
     setActionFailure(null);

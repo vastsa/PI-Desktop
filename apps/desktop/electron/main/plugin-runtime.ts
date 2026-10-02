@@ -43,6 +43,7 @@ import {
   validatePluginThemeVariables,
   THEME_ASSET_MAX_BYTES,
   THEME_CSS_MAX_BYTES,
+  MAX_WINDOW_CORNER_RADIUS,
   WINDOW_BACKGROUND_COLOR_PATTERN,
   resolvePluginLocalizedString,
   validateManifest,
@@ -204,6 +205,7 @@ export type RegisteredPluginTheme = {
    * `ui.window.appearance` (ADR 0248).
    */
   windowBackground?: { light?: string; dark?: string };
+  windowCornerRadius?: number;
 };
 
 export type PluginPanelRequest = {
@@ -1206,6 +1208,15 @@ function resolveWindowBackground(
     }
   }
   return result.light || result.dark ? result : undefined;
+}
+
+function resolveWindowCornerRadius(value: unknown): number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const radius = (value as { cornerRadius?: unknown }).cornerRadius;
+  return typeof radius === "number" && Number.isInteger(radius) &&
+    radius >= 0 && radius <= MAX_WINDOW_CORNER_RADIUS
+    ? radius
+    : undefined;
 }
 
 /** Default spawner: an Electron utilityProcess per plugin. */
@@ -3342,6 +3353,9 @@ export class PluginRuntime {
     const windowBackground = loaded.permissions.has("ui.window.appearance")
       ? resolveWindowBackground(loaded.manifest.contributes?.windowAppearance)
       : undefined;
+    const windowCornerRadius = loaded.permissions.has("ui.window.appearance")
+      ? resolveWindowCornerRadius(loaded.manifest.contributes?.windowAppearance)
+      : undefined;
     if (windowAppearanceDeclared && !loaded.permissions.has("ui.window.appearance")) {
       this.services.audit?.({
         pluginId,
@@ -3426,6 +3440,7 @@ export class PluginRuntime {
           ? { variablesCss: this.themeVariablesCss(loaded, id, contrib.variables) }
           : {}),
         ...(windowBackground ? { windowBackground } : {}),
+        ...(windowCornerRadius !== undefined ? { windowCornerRadius } : {}),
       });
       accepted += 1;
     }
@@ -4751,6 +4766,9 @@ export class PluginRuntime {
             base,
             css: sanitized.css,
             ...(previous?.windowBackground ? { windowBackground: previous.windowBackground } : {}),
+            ...(previous?.windowCornerRadius !== undefined
+              ? { windowCornerRadius: previous.windowCornerRadius }
+              : {}),
           });
           this.services.onPluginThemesChanged?.(pluginId);
           this.services.audit?.({
