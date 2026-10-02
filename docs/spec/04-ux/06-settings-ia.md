@@ -134,6 +134,13 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     shared Lucide icon scales in proportion without a reload. Window Zoom
     In/Out/Reset stays independent. The UI never asks for a px value
     (D343 / ADR 0180)
+  - **Notification sound**: a compact picker defaults to the built-in system
+    chime when `AppSettings.notificationSound` is absent or set to `system`.
+    Choosing `custom` opens an audio-file picker; the selected file is saved as
+    a bounded self-contained data URL in the existing app settings object so it
+    remains available after restart. The row shows the filename and offers a
+    preview action. Unsupported files, unreadable data, or playback failure
+    fall back to the system chime without blocking notification delivery.
   - **Auto language detection** resolves the OS locale through the main process
     (`app.getLocale()`) rather than the renderer's `navigator.language`, and the
     Auto option shows the detected language inline (e.g. "Currently 简体中文")

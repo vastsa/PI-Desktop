@@ -1,16 +1,16 @@
 /** Shared public types grouped by the owning application domain. */
 import type { CommandShellId } from "../command-shells.js";
 import type { KeybindingOverrides } from "../keyboard-shortcuts.js";
-import type { NetworkProxySettings } from "../network-proxy.js";
 import type { NetworkPolicySettings } from "../network-policy.js";
-import type { ContextCompactionSettings } from "./sessions.js";
+import type { NetworkProxySettings } from "../network-proxy.js";
 import type { Mode } from "./common.js";
-import type { GlobalPermissionMode } from "./permissions.js";
-import type { PluginMarketSource } from "./plugins.js";
-import type { SpeechSettings } from "./speech.js";
-import type { ThinkingLevel } from "./models.js";
-import type { UpdatePreference } from "./platform.js";
 import type { LiveVoiceSettings } from "./live-voice.js";
+import type { ThinkingLevel } from "./models.js";
+import type { GlobalPermissionMode } from "./permissions.js";
+import type { UpdatePreference } from "./platform.js";
+import type { PluginMarketSource } from "./plugins.js";
+import type { ContextCompactionSettings } from "./sessions.js";
+import type { SpeechSettings } from "./speech.js";
 
 export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 
@@ -23,6 +23,16 @@ export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
  * - `quit`: close the window and exit the app (legacy behavior)
  */
 export type CloseBehavior = "ask" | "tray" | "quit";
+
+/** Sound used for task, prompt, toast, and plugin notification feedback. */
+export type NotificationSoundSettings = {
+  /** `system` uses the built-in short chime; `custom` uses customDataUrl. */
+  mode: "system" | "custom";
+  /** Self-contained audio data so a selected file remains available after restart. */
+  customDataUrl?: string;
+  /** Original filename shown in Settings. */
+  customName?: string;
+};
 
 export type AppSettings = {
   imageGeneration?: import("../image-generation.js").ImageGenerationBinding | null;
@@ -38,6 +48,8 @@ export type AppSettings = {
   speech?: SpeechSettings;
   /** App-owned real-time voice bindings; separate from local dictation. */
   liveVoice?: LiveVoiceSettings;
+  /** Notification feedback sound; absent means the built-in system chime. */
+  notificationSound?: NotificationSoundSettings;
   defaultMode: Mode;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.

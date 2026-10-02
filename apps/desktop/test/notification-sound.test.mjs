@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  createNotificationSoundPlayer,
   createNotificationChime,
+  normalizeNotificationSoundSettings,
   shouldPlayToastSound,
 } from "../src/lib/notification-sound.ts";
 
@@ -115,6 +117,39 @@ test("notification chime coalesces rapid events and skips unavailable audio", ()
   play();
   assert.equal(created, 2);
   assert.doesNotThrow(() => createNotificationChime(() => undefined, () => 1_000)());
+});
+
+test("custom notification sounds use the persisted audio data and invalid values fall back", async () => {
+  const source = "data:audio/wav;base64,AAAA";
+  assert.deepEqual(
+    normalizeNotificationSoundSettings({ mode: "custom", customDataUrl: source, customName: "done.wav" }),
+    { mode: "custom", customDataUrl: source, customName: "done.wav" },
+  );
+  assert.deepEqual(
+    normalizeNotificationSoundSettings({ mode: "custom", customDataUrl: "file:///unsafe.mp3" }),
+    { mode: "system" },
+  );
+
+  const calls = { play: 0, pause: 0, system: 0 };
+  const audio = {
+    currentTime: 2,
+    pause: () => { calls.pause += 1; },
+    play: () => { calls.play += 1; return Promise.resolve(); },
+  };
+  const player = createNotificationSoundPlayer(
+    () => { calls.system += 1; },
+    (requestedSource) => {
+      assert.equal(requestedSource, source);
+      return audio;
+    },
+  );
+  player.setSettings({ mode: "custom", customDataUrl: source });
+  player.play();
+  assert.equal(calls.play, 1);
+  assert.equal(calls.pause, 1);
+  player.setSettings({ mode: "system" });
+  player.play();
+  assert.equal(calls.system, 1);
 });
 
 test("toast chimes only for newly visible toasts that have not opted out", () => {

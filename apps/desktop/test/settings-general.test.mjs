@@ -120,6 +120,10 @@ const voiceSettingsSource = await readFile(
   new URL("../src/features/settings/voice/VoiceSettingsSection.tsx", import.meta.url),
   "utf8",
 );
+const notificationSoundSource = await readFile(
+  new URL("../src/components/settings/NotificationSoundRow.tsx", import.meta.url),
+  "utf8",
+);
 
 test("Basics and AI tabs expose their respective app and AI controls", () => {
   const generalStart = settingsPageSource.indexOf('{tab === "general" && settings && (');
@@ -134,6 +138,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(generalSource, /<LanguageRow /);
   assert.match(generalSource, /<FontFamilyRow /);
   assert.match(generalSource, /<FontSizeRow /);
+  assert.match(generalSource, /<NotificationSoundRow /);
   assert.match(generalSource, /<NetworkProxySection /);
   assert.doesNotMatch(generalSource, /\(\["auto", "zh-CN", "en"\] as const\)/);
   assert.doesNotMatch(generalSource, /defaultMode: value/);
@@ -191,6 +196,18 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.doesNotMatch(stylesSource, /\.settings-speech/);
   assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
   assert.match(protocolSource, /speechTranscribe: "pi-desktop\/speech\/transcribe"/);
+});
+
+test("notification sound settings keep the system default and support custom audio", () => {
+  assert.match(sharedTypesSource, /notificationSound\?: NotificationSoundSettings/);
+  assert.match(notificationSoundSource, /settings\.notificationSound/);
+  assert.match(notificationSoundSource, /accept="audio\/\*"/);
+  assert.match(notificationSoundSource, /notificationSoundSystem/);
+  assert.match(notificationSoundSource, /notificationSoundCustom/);
+  assert.match(notificationSoundSource, /notificationSoundPreview/);
+  assert.match(settingsSearchSource, /settings\.notificationSound/);
+  assert.match(enLocaleSource, /notificationSoundDesc:/);
+  assert.match(zhLocaleSource, /notificationSoundDesc:/);
 });
 
 test("language persists as part of shared app settings", () => {

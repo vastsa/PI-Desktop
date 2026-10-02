@@ -963,6 +963,37 @@
   min-width: 0;
 }
 
+.settings-notification-sound-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: min(100%, 560px);
+  flex-wrap: wrap;
+}
+
+.settings-row:has(.settings-notification-sound-control) .settings-row-control {
+  max-width: none;
+}
+
+.settings-notification-sound-name {
+  max-width: 170px;
+  overflow: hidden;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-notification-sound-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .settings-number-control {
   display: flex;
   flex-direction: column;
