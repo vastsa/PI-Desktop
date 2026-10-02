@@ -1163,7 +1163,10 @@ export function Sidebar({
       // session that really exists.
       const known = useAppStore.getState().sessions.some((session) => session.id === sessionId);
       if (!known) {
-        const detail = await api.getSession(sessionId);
+        // Only presence is read from this reply, so ask for the smallest window
+        // the host accepts. The uncapped read moved every message of the
+        // session over IPC to answer one boolean.
+        const detail = await api.getSession(sessionId, { messageLimit: 1 });
         if (!detail.session) {
           reportError(new Error(t("sessionCollaboration.sessionMissing")));
           return;

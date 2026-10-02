@@ -274,7 +274,10 @@ test("global session search merges native sidecar hits with Desktop results", as
   const result = await search({ query: "side chat", offset: 0 });
   assert.deepEqual(result.hits.map((hit) => hit.session.id), ["native-pi:child", "desktop-session"]);
   assert.deepEqual(sidecarCalls, [{ method: "native.session.search", input: { query: "side chat" } }]);
-  assert.deepEqual(hostCalls, [{ method: "search.sessions", input: { query: "side chat", offset: 0 } }]);
+  assert.deepEqual(hostCalls, [{
+    method: "search.sessions",
+    input: { query: "side chat", offset: 0, limit: 30 },
+  }]);
 });
 
 test("native fork routes to the sidecar and never to the Desktop host", async () => {

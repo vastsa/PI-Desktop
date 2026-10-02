@@ -115,6 +115,14 @@ impl Database {
         PRAGMA trusted_schema = ON;
         "#,
         )?;
+        // rusqlite's default plan cache is 16 statements and its eviction is
+        // LRU, while this crate prepares well over a hundred distinct ones. The
+        // write path alone runs four lookups per appended message, and an
+        // evicted plan is a fresh `sqlite3_prepare` — a parse of the SQL text
+        // and a query-plan search on the thread that holds the single
+        // `Mutex<AppState>`. 128 keeps the hot paths resident with a bounded,
+        // per-connection cost.
+        conn.set_prepared_statement_cache_capacity(128);
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         match version {
             0 => {

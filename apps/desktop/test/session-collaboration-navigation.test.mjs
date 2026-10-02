@@ -82,7 +82,13 @@ test("the hover card polls only while it is connected, visible and focused", () 
 test("hover-card navigation refuses to select a session that no longer exists", () => {
   assert.ok(hoverHandler.length > 0, "the hover navigation handler must exist");
   assert.match(hoverHandler, /useAppStore\.getState\(\)\.sessions\.some\(/);
-  assert.match(hoverHandler, /const detail = await api\.getSession\(sessionId\)/);
+  // Only presence is read from this reply, so the read must stay bounded: an
+  // uncapped detail read moves every message of the session over IPC to
+  // answer one boolean.
+  assert.match(
+    hoverHandler,
+    /const detail = await api\.getSession\(sessionId, \{ messageLimit: 1 \}\)/,
+  );
   assert.match(hoverHandler, /if \(!detail\.session\) \{/);
   assert.match(hoverHandler, /reportError\(new Error\(t\("sessionCollaboration\.sessionMissing"\)\)\)/);
   assert.match(hoverHandler, /await selectSession\(sessionId\)/);

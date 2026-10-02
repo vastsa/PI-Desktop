@@ -42,7 +42,9 @@ fn invalid(message: &str) -> JsonRpcError {
 }
 
 fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpcError> {
-    let session = sessions::get_session(&st.db, &p.session_id)
+    // The index row answers both questions this needs — does the session exist,
+    // and what is its project? — so no transcript is materialized here.
+    let summary = sessions::session_summary(&st.db, &p.session_id)
         .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
         .ok_or_else(|| rpc_err(1007, "session not found", "SESSION_NOT_FOUND"))?;
     if sessions::session_mode(&st.db, &p.session_id)
@@ -56,7 +58,7 @@ fn execute_inner(st: &AppState, p: &ToolsExecuteParams) -> Result<Value, JsonRpc
             "TOOL_DISABLED_IN_PLAN",
         ));
     }
-    let workspace = session.summary.project_path;
+    let workspace = summary.project_path;
     let args = p
         .args
         .as_object()

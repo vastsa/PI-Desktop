@@ -20,8 +20,16 @@ function compareHits(
  * Merge Desktop SQLite search with the sidecar's canonical native-session
  * search while keeping the existing 30-item global-search cursor contract.
  * Native search returns its complete bounded catalog because it has no SQLite
- * cursor; the host is read from the beginning until enough rows are available
- * to make the merged ordering deterministic.
+ * cursor, so the host prefix has to be long enough to make the merged ordering
+ * deterministic.
+ *
+ * That prefix is requested in one host call per page rather than one call per
+ * already-emitted page. Walking it thirty rows at a time issued
+ * `offset / 30 + 1` calls for page `offset / 30` — quadratic in the number of
+ * pages — and the statement behind them aggregates the whole `messages` table
+ * regardless of `OFFSET`, so every one of those calls paid a full scan. The
+ * host clamps a single request to a bounded prefix, so the loop below asks only
+ * for the rows it is still missing: one call for every prefix that cap covers.
  */
 export async function searchSessionsAcrossSources(
   host: RpcClient,
@@ -43,17 +51,19 @@ export async function searchSessionsAcrossSources(
 
   const hostHits: SessionSearchPage["hits"] = [];
   let hostNextOffset: number | null = null;
-  let hostOffset = 0;
-  do {
+  while (hostHits.length < requiredHostRows) {
     const page = await host.call<SessionSearchPage>("search.sessions", {
       ...request,
-      offset: hostOffset,
+      // Rows come back in one stable global order, so the number already
+      // accumulated is the offset of the next missing row.
+      offset: hostHits.length,
+      limit: requiredHostRows - hostHits.length,
     });
     hostHits.push(...page.hits);
     hostNextOffset = page.nextOffset;
-    if (hostNextOffset === null || hostHits.length >= requiredHostRows) break;
-    hostOffset = hostNextOffset;
-  } while (true);
+    // A short page means the host ran out, and `nextOffset` is null with it.
+    if (hostNextOffset === null || page.hits.length === 0) break;
+  }
 
   const nativePage = await nativeSearch;
   const hitsById = new Map<string, SessionSearchPage["hits"][number]>();

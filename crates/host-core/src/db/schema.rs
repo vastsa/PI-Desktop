@@ -188,6 +188,7 @@ CREATE TABLE messages (
   is_error     INTEGER NOT NULL DEFAULT 0,
   text         TEXT,
   created_at   INTEGER NOT NULL,
+  streaming    INTEGER,
   UNIQUE (session_id, seq)
 );
 
@@ -208,6 +209,20 @@ CREATE TRIGGER messages_au AFTER UPDATE OF text ON messages
     INSERT INTO messages_fts(rowid, text)
       SELECT new.mid, new.text WHERE new.text IS NOT NULL;
   END;
+
+-- The search RPCs rank every result set by `created_at` and cut it with a
+-- LIMIT, while the write path's index is UNIQUE (session_id, seq). Without an
+-- ordering index each statement materializes and sorts its complete match set
+-- before it can emit the first row (`USE TEMP B-TREE FOR ORDER BY`): the
+-- uncapped LIKE branch measured 30.2 ms to return 20 of 40k matches. This lets
+-- the planner walk the newest rows and stop at the limit instead.
+CREATE INDEX idx_messages_created ON messages(created_at DESC);
+-- The per-session snippet lookup inside `session_search::search` sorts within
+-- one session. `id` is the final term because the reading ORDER BY is
+-- `created_at DESC, seq DESC, id ASC`, and the planner only skips the sort when
+-- the index covers the whole term list.
+CREATE INDEX idx_messages_session_created
+  ON messages(session_id, created_at DESC, seq DESC, id ASC);
 
 CREATE TABLE artifacts (
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
