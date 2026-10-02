@@ -130,42 +130,49 @@ export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queu
   return (
     <section className="asktool-card" role="region" aria-label={t("askTool.title")}>
       <div className="asktool-card-header">
-        <div>
-          <div className="asktool-card-title" role="status" aria-live="polite">
+        <div className="asktool-card-header-main">
+          <span className="asktool-card-title" role="status" aria-live="polite">
             {t("askTool.title")}
-          </div>
-          <div className="asktool-card-progress">
+          </span>
+          <span className="asktool-card-progress">
             {t("askTool.progress", { current: index + 1, total: request.questions.length })}
             {queued > 0 ? <span> · {t("askTool.queued", { count: queued })}</span> : null}
+          </span>
+          <div className="asktool-indicators" aria-label={t("askTool.indicatorLabel")}>
+            {statuses.map((status, statusIndex) => (
+              <button
+                key={`${request.requestId}-${statusIndex}`}
+                type="button"
+                className={`asktool-indicator ${status} ${statusIndex === index ? "current" : ""}`}
+                aria-label={t(`askTool.status.${status}`, { number: statusIndex + 1 })}
+                aria-current={statusIndex === index ? "step" : undefined}
+                onClick={() => setIndex(statusIndex)}
+              />
+            ))}
           </div>
         </div>
-        <button
-          type="button"
-          className="asktool-decline"
-          disabled={resolving}
-          onClick={() => void submit(drafts, request.questions.map(() => null))}
-        >
-          {t("askTool.decline")}
-        </button>
-      </div>
-
-      <div className="asktool-indicators" aria-label={t("askTool.indicatorLabel")}>
-        {statuses.map((status, statusIndex) => (
+        <div className="asktool-card-header-actions">
           <button
-            key={`${request.requestId}-${statusIndex}`}
             type="button"
-            className={`asktool-indicator ${status} ${statusIndex === index ? "current" : ""}`}
-            aria-label={t(`askTool.status.${status}`, { number: statusIndex + 1 })}
-            aria-current={statusIndex === index ? "step" : undefined}
-            onClick={() => setIndex(statusIndex)}
-          />
-        ))}
+            className="asktool-decline"
+            disabled={resolving}
+            onClick={() => void submit(drafts, request.questions.map(() => null))}
+          >
+            {t("askTool.decline")}
+          </button>
+          <Button variant="ghost" size="sm" disabled={resolving} onClick={skip}>
+            {t("askTool.skip")}
+          </Button>
+          <Button variant="primary" size="sm" disabled={resolving} onClick={next}>
+            {index === request.questions.length - 1 ? t("askTool.submit") : t("askTool.next")}
+          </Button>
+        </div>
       </div>
 
-      <div className="asktool-question-number">
-        {t("askTool.questionNumber", { number: index + 1 })}
-      </div>
       <h3 className="asktool-question">
+        <span className="asktool-question-number">
+          {t("askTool.questionNumber", { number: index + 1 })}
+        </span>
         <AskToolRichText source={current.question} />
       </h3>
       <div className="asktool-options" role={current.multiSelect ? "group" : "radiogroup"}>
@@ -220,14 +227,6 @@ export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queu
         />
       ) : null}
 
-      <div className="asktool-card-actions">
-        <Button variant="ghost" disabled={resolving} onClick={skip}>
-          {t("askTool.skip")}
-        </Button>
-        <Button variant="primary" disabled={resolving} onClick={next}>
-          {index === request.questions.length - 1 ? t("askTool.submit") : t("askTool.next")}
-        </Button>
-      </div>
     </section>
   );
 }
