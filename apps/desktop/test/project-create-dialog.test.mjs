@@ -67,6 +67,10 @@ test("project creation creates one logical group with a primary workspace", () =
   assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\)/);
   assert.match(store, /const orderedFolders = \[/);
   assert.match(store, /api\.createProjectGroup\(normalizedName, orderedFolders\)/);
+  assert.match(store, /const \{ groups \} = await api\.listProjectGroups\(\)/);
+  assert.match(store, /group\.roots\.some\(\(root\) => normalizeProjectPath\(root\.path\) === selectedPath\)/);
+  assert.match(store, /const existingPrimary = existing\.primaryPath \|\| orderedFolders\[0\]/);
+  assert.match(store, /get\(\)\.activateProject\(existingPrimary/);
   assert.match(store, /created\.group\.primaryPath/);
   assert.doesNotMatch(store, /for \(const path of orderedFolders\)/);
   assert.match(store, /get\(\)\.renameProject\(groupPrimary, normalizedName\)/);

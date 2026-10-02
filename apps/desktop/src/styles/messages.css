@@ -69,21 +69,33 @@
 
 .asktool-card {
   width: min(100%, var(--chat-prose-max-width, 720px));
-  margin: 10px 0;
-  padding: 14px 16px;
+  margin: 8px 0;
+  padding: 10px 12px;
   border-radius: var(--radius-md);
   background: var(--ds-tile);
 }
 
 .asktool-card-header,
-.asktool-card-actions {
+.asktool-card-header-actions {
   display: flex;
   align-items: center;
 }
-
 .asktool-card-header {
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.asktool-card-header-actions {
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+}
+.asktool-card-header-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .asktool-card-title {
@@ -92,14 +104,16 @@
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
+  white-space: nowrap;
 }
-
 .asktool-card-progress {
   color: var(--ds-text-faint);
   font-size: var(--text-2xs);
+  white-space: nowrap;
 }
 
 .asktool-question-number {
+  flex: none;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
@@ -122,22 +136,21 @@
 
 .asktool-indicators {
   display: flex;
-  gap: 6px;
-  margin: 12px 0 14px;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
 }
-
 .asktool-indicator {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   padding: 0;
   border-radius: var(--radius-full);
   background: var(--ds-tile-deep);
   cursor: pointer;
 }
-
 .asktool-indicator.current {
   outline: 2px solid color-mix(in oklab, var(--ds-accent) 30%, transparent);
-  outline-offset: 2px;
+  outline-offset: 1px;
 }
 
 .asktool-indicator.answered {
@@ -148,24 +161,23 @@
   background: var(--ds-text-muted);
 }
 
-.asktool-question-number {
-  margin-bottom: 8px;
-}
-
 .asktool-question {
-  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
   color: var(--ds-text-primary);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-snug);
 }
 
 .asktool-options {
   display: grid;
-  gap: 8px;
-  max-height: min(320px, 36vh);
-  max-height: min(320px, 36dvh);
-  margin-top: 12px;
+  gap: 6px;
+  max-height: min(208px, 24vh);
+  max-height: min(208px, 24dvh);
+  margin-top: 8px;
   padding: 2px 4px 2px 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -181,14 +193,15 @@
   width: 100%;
   align-items: flex-start;
   gap: 8px;
-  min-height: 30px;
-  padding: 4px 8px;
+  min-height: 28px;
+  padding: 5px 8px;
   border-radius: var(--radius-sm);
   background: var(--ds-tile-deep);
   color: var(--ds-text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
   text-align: start;
   transition: background-color var(--motion-duration-fast) var(--motion-ease-out);
 }
@@ -289,7 +302,7 @@
 .asktool-option-description {
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-snug);
   overflow-wrap: anywhere;
 }
 
@@ -324,14 +337,14 @@
 .asktool-custom-input {
   box-sizing: border-box;
   width: 100%;
-  margin-top: 10px;
+  margin-top: 8px;
   padding: 6px 8px;
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
   font: inherit;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
 }
 
 .asktool-custom-input:focus-visible {
@@ -339,23 +352,15 @@
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
 }
 
-.asktool-card-actions {
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
+.asktool-card-header-actions .btn {
+  padding: 2px 10px;
+  font-size: var(--text-xs);
 }
-
-.asktool-card-actions .btn {
-  padding: 4px 10px;
-  font-size: var(--text-sm);
-}
-
 @media (max-width: 560px) {
   .asktool-card-header {
     align-items: flex-start;
   }
-
-  .asktool-card-actions .btn {
+  .asktool-card-header-actions .btn {
     flex: 1 1 auto;
   }
 }

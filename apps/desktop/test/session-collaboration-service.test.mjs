@@ -331,3 +331,32 @@ test("spawn without a model key still prefers an enabled model over the default 
   assert.equal(spawns.length, 1);
   assert.equal(spawns[0].params.modelId, "delegable-model");
 });
+
+test("spawn without a model key never selects an un opted-in default model (#1183)", async () => {
+  // No model carries availableForSubagents, so the old isDefault fallback
+  // silently spent the default model for delegation.
+  const providers = [
+    {
+      id: "provider-a",
+      name: "Provider A",
+      enabled: true,
+      authKind: "none",
+      models: [{ id: "default-model" }, { id: "private-model" }],
+    },
+  ];
+  const stored = sessionMessage({ id: "spawn-message", status: "completed", kind: "task" });
+  const host = createHost("host-1", (method) => {
+    if (method === "providers.list") return { providers };
+    if (method === "settings.get") {
+      return { defaultProviderId: "provider-a", defaultModelId: "default-model" };
+    }
+    if (method === "session.collaboration.spawn") return { message: stored };
+    return { messages: [] };
+  });
+
+  await assert.rejects(
+    invokeSpawn(spawnService(host), { task: "Review the diff" }),
+    { code: "MODEL_NOT_CONFIGURED" },
+  );
+  assert.deepEqual(methodCalls(host, "session.collaboration.spawn"), []);
+});

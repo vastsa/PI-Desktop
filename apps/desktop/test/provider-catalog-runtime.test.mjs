@@ -199,3 +199,27 @@ test("a saved missing or disabled account never inherits another account's capab
   }
   assert.equal(runtime.enrichSession({}, [provider], defaults).supportsVision, true);
 });
+
+test("a user-pinned context window is never replaced by the catalog number (#1176)", async () => {
+  const { runtime } = await fixtureRuntime();
+  // A relay model whose catalog hit publishes 16k while the user pinned 1M.
+  const provider = {
+    id: "relay",
+    name: "Relay",
+    vendorKey: "example",
+    baseUrl: "https://models.example/v1",
+    models: [
+      { id: "catalog-model", contextWindow: 1_000_000, maxTokens: 8_192, thinkingLevels: [] },
+      { id: "hand-typed-model", contextWindow: 1_000_000, maxTokens: 8_192, thinkingLevels: [] },
+    ],
+  };
+  const enriched = runtime.enrichProvider(provider).models;
+  assert.equal(enriched[0].contextWindow, 1_000_000, "a user pin on a catalog hit stays");
+  assert.equal(enriched[1].contextWindow, 1_000_000, "a user pin on an unmatched id stays");
+  // An inherited row keeps following the catalog.
+  const inherited = runtime.enrichProvider({
+    ...provider,
+    models: [{ id: "catalog-model", contextWindow: 8_000, maxTokens: 8_192, thinkingLevels: [], contextWindowSource: "catalog" }],
+  }).models;
+  assert.equal(inherited[0].contextWindow, 128_000, "a catalog-sourced window follows the published value");
+});

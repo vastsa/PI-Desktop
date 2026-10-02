@@ -525,7 +525,12 @@ visually distinct from list content.
   one logical project group: the primary folder is activated and names the
   group, while every other selected folder is retained as a group root and is
   shown in Project archive details, not as an open project tab. Group chats,
-  instructions, and memory use the same group identity. A source selector
+  instructions, and memory use the same group identity. If a local selection
+  contains exactly one root already owned by a durable group, Create reopens
+  that group at its primary root instead of creating a duplicate group; this
+  applies when the group was closed from the sidebar. A multi-folder selection
+  that overlaps an existing group remains subject to host duplicate-root
+  validation. A source selector
   offers This computer and Git repository: the git source swaps the folder
   list for a repository URL field plus a clone destination row and creates
   the project by cloning into the chosen folder first. The dialog follows

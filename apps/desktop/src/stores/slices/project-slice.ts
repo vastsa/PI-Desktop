@@ -96,6 +96,28 @@ async function createNamedProjectGroup(
     ),
   ];
   const intent = runtime.beginNavigationIntent();
+  // Closing a project only removes it from the sidebar. Its host-owned group
+  // remains durable, so choosing that one folder again means reopen the group
+  // instead of trying to create a duplicate owner for the same path.
+  if (orderedFolders.length === 1) {
+    const { groups } = await api.listProjectGroups();
+    if (!runtime.navigationIntentIsCurrent(intent)) return;
+    const selectedPath = normalizeProjectPath(orderedFolders[0]);
+    const existing = groups.find((group) =>
+      group.roots.some((root) => normalizeProjectPath(root.path) === selectedPath),
+    );
+    if (existing) {
+      const existingPrimary = existing.primaryPath || orderedFolders[0];
+      const workspace = await get().activateProject(existingPrimary, {
+        navigationIntent: intent,
+      });
+      if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
+      const onboarding = await api.getOnboarding();
+      if (!runtime.navigationIntentIsCurrent(intent)) return;
+      set({ createProjectDialogOpen: false, onboarding, page: "chat" });
+      return;
+    }
+  }
   const created = await api.createProjectGroup(normalizedName, orderedFolders);
   if (!runtime.navigationIntentIsCurrent(intent)) return;
   const groupPrimary = created.group.primaryPath || primary;

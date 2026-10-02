@@ -308,6 +308,21 @@
   session, clicks an outline dash while follow is pinned, and asserts the
   scroller's distance from the bottom once the exchange has settled.
 
+### E2E-ASKTOOL-compact-card-interaction
+
+- **Preconditions:** No live provider is required; the fixture stubs
+  `api.resolveAskTool` and seeds one two-question ask through the real store
+  slice.
+- **Steps:** Mount the production `AskToolCard`, assert the header Tab order
+  (decline, skip, next) with no legacy bottom action row, then walk select →
+  next → submit, skip → submit, decline-all, and a custom answer, remounting
+  with a fresh request id between flows.
+- **Expected:** Every flow resolves through the store's `resolveAsk` with the
+  exact answers (skips recorded as `null`), and no render errors are reported.
+- **Status:** Automated in `pnpm test:e2e:asktool-card`, which mounts the
+   production `AskToolCard` in a real Chromium page and clicks through the
+   header actions.
+
 ### E2E-POWER-keep-awake-setting
 
 - **Preconditions:** An isolated desktop profile with the setting absent; no
@@ -14544,6 +14559,21 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Status**: Unit-covered (`apps/desktop/test/project-create-dialog.test.mjs`,
   `apps/desktop/test/git-clone.test.mjs`); full UI scenario Draft (run only in a
   capable environment when this surface changes)
+
+#### E2E-261: Creating from a closed project folder reopens its group
+
+- **Preconditions**: A durable project group exists for a local folder and is
+  closed from the sidebar; its directory remains available.
+- **Steps**: Open Create project, select only that folder, and click Create.
+- **Expected**: The existing group reopens at its primary root, appears in the
+  sidebar, and the dialog closes. Its existing name, roots, chats, instructions,
+  and memory remain intact; no duplicate project group is created.
+- **Specs linked**: `04-ux/08-component-spec.md`, ADR 0249.
+- **Acceptance**: The production creation action resolves the host group before
+  attempting creation and activates the existing primary path.
+- **Milestone**: M5 (project organization maintenance).
+- **Status**: Unit/source-contract covered (`apps/desktop/test/project-create-dialog.test.mjs`);
+  full UI scenario remains Draft.
 #### E2E-257: Importing into an archived project restores its visibility
 
 - **Preconditions**: A durable project has been archived in the renderer
