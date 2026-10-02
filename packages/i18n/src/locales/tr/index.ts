@@ -384,6 +384,8 @@ export const tr = {
     usageThroughput: "{{count}} token/sn",
     usageThroughputEstimated: "≈ {{count}} token/sn",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/sn",
+    usageLiveThroughputEstimated: "≈ {{count}} tok/sn",
     usageProviderUsage: "Servis kullanımı",
     usageInput: "Girdi",
     usageOutput: "Çıktı",

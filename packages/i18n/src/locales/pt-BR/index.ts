@@ -372,6 +372,8 @@ export const ptBR = {
     usageThroughputLabel: "Velocidade de geração",
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "≈ {{count}} tokens/s",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "≈ {{count}} tok/s",
     usageThroughputUnavailable: "—",
     usageProviderUsage: "Uso do provedor",
     usageInput: "Entrada",

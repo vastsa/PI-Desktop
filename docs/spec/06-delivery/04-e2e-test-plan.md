@@ -7820,7 +7820,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     not restore or duplicate text or chips.
   - Scratch bytes remain under the existing session lifecycle.
 - **Specs linked**: `04-ux/08-component-spec.md` §11.5/§11.8,
-  `04-ux/09-interaction-patterns.md` §3.2/§8a.2,
+  `04-ux/09-interaction-patterns.md` §3.2a/§8a.2,
   `03-runtime/10-session-state-machine.md`, `08-meta/decisions-log.md` (D209),
   ADR 0070
 - **Acceptance**: C (conversation & stream), F (persistence), Quality
@@ -8334,6 +8334,36 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Milestone**: M6
 - **Status**: Unit/source-contract covered; full cross-platform UI journey Draft
   (run only in a capable environment when this surface changes)
+
+
+#### E2E-CHAT-live-token-rate-shows-during-stream
+
+- **Preconditions**: A session with a configured provider that streams answer
+  tokens (or a test double that emits text deltas on a known cadence).
+- **Steps**:
+  1. Send a prompt that produces a multi-second streamed answer.
+  2. While the working / run-activity indicator is visible (before answer text),
+     observe the status strip.
+  3. Once answer tokens begin streaming, confirm the working indicator stays
+     visible and keeps showing the live rate.
+  4. Optionally pause or throttle the upstream stream long enough for the
+     sliding window to drain, then resume.
+  5. Let the turn finish and confirm the live rate clears; open the context
+     usage inspector and confirm completed-turn Generation speed is still shown.
+- **Expected**:
+  - Live rate appears as `N tok/s` (or the locale equivalent) next to the
+    stream-health indicator, updating during the turn.
+  - When provider output usage is absent mid-stream, the reading is labeled as
+    approximate (`≈`).
+  - A stall drops the live rate toward `0 tok/s` without clearing the chip
+    while the turn remains active.
+  - Idle clears the live chip; inspector Generation speed remains the
+    completed-turn snapshot (D639).
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3,
+  `04-ux/09-interaction-patterns.md` §3.2a, D639
+- **Acceptance**: C (conversation & stream)
+- **Milestone**: M6
+- **Status**: Unit-covered for windowed rate math; UI journey Draft
 
 #### E2E-121: Goal approval resumes autonomous acceptance-criteria execution
 
@@ -9147,7 +9177,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
-| C — Conversation & stream | E2E-CHAT-long-history-stream-keeps-responsive, E2E-CHAT-running-status-survives-output-pauses, E2E-008, E2E-008d, E2E-008e, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-259, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
+| C — Conversation & stream | E2E-CHAT-long-history-stream-keeps-responsive, E2E-CHAT-running-status-survives-output-pauses, E2E-008, E2E-008d, E2E-008e, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-COMPOSER-narrow-controls, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-CHAT-live-token-rate-shows-during-stream, E2E-121, E2E-218, E2E-259, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
 | C — Conversation & stream (composer drafts) | E2E-011c, E2E-011c-1 |
 | D — Workspace | E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
