@@ -1,11 +1,9 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import {
   AgentSidecar as RuntimeAgentSidecar,
   type StderrHandler,
 } from "@pi-desktop/host-runtime";
+import { resolveSidecarEntry } from "./agent-sidecar-entry.mjs";
 import { redactValue } from "./logger";
-import { getModuleDirectory } from "./module-path";
 
 export type {
   LocalToolHandler,
@@ -15,27 +13,6 @@ export type {
   TrustedExtensionSidecarBridge,
   VendorAuthResolver,
 } from "@pi-desktop/host-runtime";
-
-function resolveSidecarEntry(): string {
-  const candidates = [
-    join(process.resourcesPath || "", "agent-runtime/sidecar.js"),
-    join(
-      getModuleDirectory(import.meta.url),
-      "../../../agent-runtime/dist/sidecar.js",
-    ),
-    join(
-      getModuleDirectory(import.meta.url),
-      "../../../../packages/agent-runtime/dist/sidecar.js",
-    ),
-  ];
-  for (const c of candidates) {
-    if (c && existsSync(c)) return c;
-  }
-  return join(
-    getModuleDirectory(import.meta.url),
-    "../../../../packages/agent-runtime/dist/sidecar.js",
-  );
-}
 
 function fallbackStderrLogger(text: string): void {
   console.error(
@@ -73,7 +50,7 @@ export class AgentSidecar extends RuntimeAgentSidecar {
         args: [
           "--max-old-space-size=2048",
           ...(process.platform === "darwin" ? [] : ["--use-system-ca"]),
-          resolveSidecarEntry(),
+          resolveSidecarEntry(import.meta.url, process.resourcesPath || ""),
         ],
         env: {
           ...process.env,
