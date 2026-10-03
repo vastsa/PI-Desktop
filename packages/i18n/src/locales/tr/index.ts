@@ -2293,6 +2293,10 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     },
     mcp: {
       addTitle: "MCP sunucusu ekle",
+      connectTimeout: "Bağlantı zaman aşımı (ms)",
+      callTimeout: "Araç çağrısı zaman aşımı (ms)",
+      timeoutHint:
+        "Masaüstü varsayılanları için boş bırakın (10 sn bağlantı, 100 sn çağrı). Yavaş başlayan sunucular için artırın.",
       editTitle: "MCP sunucusunu düzenle",
       sheetSubtitle: "Yerel bir komut çalıştırın veya bir HTTP uç noktası çağırın.",
       searchPlaceholder: "Sunucu ara",
@@ -2359,6 +2363,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       errorIdShape: "Harf, rakam, - ve _ kullanın; harfle başlayın.",
       errorCommand: "Bir komut gerekli.",
       errorCommandDots: "Komut '..' içeremez.",
+      errorTimeout: "Zaman aşımları boş veya pozitif milisaniye sayısı olmalıdır.",
       errorUrl: "Bir URL gerekli.",
       errorUrlShape: "Bu geçerli bir URL değil.",
       errorUrlScheme: "http veya https URL kullanın.",

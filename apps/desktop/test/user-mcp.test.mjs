@@ -528,6 +528,36 @@ test("configurationChanged separates what a server is from who may use it", () =
   assert.equal(configurationChanged({ ...base, enabled: false }, base), false);
 });
 
+test("editing a timeout budget invalidates the live client so new budgets apply", () => {
+  const base = {
+    id: "s",
+    label: "S",
+    transport: "stdio",
+    command: "node",
+    args: ["a.mjs"],
+    enabled: true,
+    scope: { mode: "global", projects: [] },
+  };
+
+  // A saved timeout edit must recreate the client: budgets are applied at
+  // construction, so an unchanged comparison would leave the old ones live.
+  assert.equal(configurationChanged(base, { ...base, connectTimeoutMs: 30000 }), true);
+  assert.equal(configurationChanged(base, { ...base, callTimeoutMs: 120000 }), true);
+  // Clearing an override (adding the field back as undefined) also counts.
+  assert.equal(
+    configurationChanged({ ...base, connectTimeoutMs: 30000 }, base),
+    true,
+  );
+  // Unrelated timeout staying equal must not force a reconnect.
+  assert.equal(
+    configurationChanged(
+      { ...base, connectTimeoutMs: 30000, callTimeoutMs: 120000 },
+      { ...base, connectTimeoutMs: 30000, callTimeoutMs: 120000 },
+    ),
+    false,
+  );
+});
+
 test("a server whose catalog cannot be listed lands as failed with the reason", async (t) => {
   const dir = stubDir();
   const rt = runtime(t);

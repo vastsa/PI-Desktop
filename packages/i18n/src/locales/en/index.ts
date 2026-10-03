@@ -2313,6 +2313,10 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     },
     mcp: {
       addTitle: "Add an MCP server",
+      connectTimeout: "Connect timeout (ms)",
+      callTimeout: "Tool call timeout (ms)",
+      timeoutHint:
+        "Leave blank to follow the desktop defaults (10s connect, 100s call). Raise it for servers that need long initialization or slow first calls.",
       editTitle: "Edit MCP server",
       sheetSubtitle: "Run a local command or call an HTTP endpoint.",
       searchPlaceholder: "Search servers",
@@ -2379,6 +2383,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       errorIdShape: "Use letters, digits, - and _, starting with a letter.",
       errorCommand: "A command is required.",
       errorCommandDots: "The command can't contain '..'.",
+      errorTimeout: "Timeouts must be blank or a positive number of milliseconds.",
       errorUrl: "A URL is required.",
       errorUrlShape: "That isn't a valid URL.",
       errorUrlScheme: "Use an http or https URL.",

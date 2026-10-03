@@ -16,6 +16,20 @@ const MAX_ENV_ENTRIES: usize = 64;
 const MAX_HEADERS: usize = 32;
 const MAX_VALUE_BYTES: usize = 4096;
 const MCP_KIND: &str = "mcp";
+/// Per-server timeout bounds. The floor keeps a mistyped `0` or `1` from
+/// turning every connect into an instant failure; the ceiling bounds how long
+/// one server can hold a session's tool path hostage.
+const MIN_TIMEOUT_MS: u64 = 1_000;
+const MAX_TIMEOUT_MS: u64 = 600_000;
+
+fn valid_timeout(value: Option<u64>, field: &str) -> Result<()> {
+    if let Some(value) = value {
+        if !(MIN_TIMEOUT_MS..=MAX_TIMEOUT_MS).contains(&value) {
+            bail!("MCP_INVALID: {field} must be {MIN_TIMEOUT_MS}-{MAX_TIMEOUT_MS} ms");
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +55,14 @@ pub struct McpServerRecord {
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers: BTreeMap<String, String>,
+    /// Per-server connect (initialize) budget in ms; falls back to the
+    /// desktop default when unset (issue #1323).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connect_timeout_ms: Option<u64>,
+    /// Per-server tool-call budget in ms; falls back to the desktop default
+    /// when unset (issue #1323).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_timeout_ms: Option<u64>,
     pub enabled: bool,
     #[serde(default)]
     pub scope: ActivationScope,
@@ -68,6 +90,10 @@ struct McpConfig {
     url: Option<String>,
     #[serde(default)]
     headers: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    connect_timeout_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    call_timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -84,6 +110,10 @@ pub struct McpServerInput {
     pub env: Option<BTreeMap<String, String>>,
     pub url: Option<String>,
     pub headers: Option<BTreeMap<String, String>>,
+    /// Per-server connect (initialize) budget in ms (issue #1323).
+    pub connect_timeout_ms: Option<u64>,
+    /// Per-server tool-call budget in ms (issue #1323).
+    pub call_timeout_ms: Option<u64>,
     pub enabled: Option<bool>,
     /// Kept for protocol compatibility; capability state is app-local instead.
     #[allow(dead_code)]
@@ -242,6 +272,8 @@ impl McpServerRegistry {
                 env: config.env,
                 url: config.url,
                 headers: config.headers,
+                connect_timeout_ms: config.connect_timeout_ms,
+                call_timeout_ms: config.call_timeout_ms,
                 enabled,
                 scope: scope_for(level, owner_project_path.as_deref()),
                 created_at: updated_at.clone(),
@@ -319,6 +351,8 @@ impl McpServerRegistry {
         if let Some(description) = &config.description {
             check_len("description", description)?;
         }
+        valid_timeout(config.connect_timeout_ms, "connectTimeoutMs")?;
+        valid_timeout(config.call_timeout_ms, "callTimeoutMs")?;
         match config.transport.as_str() {
             "stdio" => {
                 let command = config
@@ -411,6 +445,20 @@ impl McpServerRegistry {
                 .filter(|value| !value.is_empty())
                 .or_else(|| current.and_then(|record| record.description.clone())),
             transport,
+            // An explicit 0 clears the override so the server follows the
+            // desktop defaults again; an absent field keeps the stored one.
+            // The editor always sends the field, so absent only reaches this
+            // path over the raw API.
+            connect_timeout_ms: match input.connect_timeout_ms {
+                Some(0) => None,
+                Some(value) => Some(value),
+                None => current.and_then(|record| record.connect_timeout_ms),
+            },
+            call_timeout_ms: match input.call_timeout_ms {
+                Some(0) => None,
+                Some(value) => Some(value),
+                None => current.and_then(|record| record.call_timeout_ms),
+            },
             ..Default::default()
         };
         if config.transport == "stdio" {

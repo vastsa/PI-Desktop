@@ -47,6 +47,10 @@ export type McpDraft = {
   env: KeyValuePair[];
   url: string;
   headers: KeyValuePair[];
+  /** Blank string = follow the desktop default (#1323). */
+  connectTimeoutMs: string;
+  /** Blank string = follow the desktop default (#1323). */
+  callTimeoutMs: string;
   enabled: boolean;
   scope: ActivationScope;
 };
@@ -62,6 +66,8 @@ export function emptyMcpDraft(): McpDraft {
     env: [],
     url: "",
     headers: [],
+    connectTimeoutMs: "",
+    callTimeoutMs: "",
     enabled: true,
     scope: GLOBAL_SCOPE,
   };
@@ -78,6 +84,14 @@ export function draftFromRecord(record: McpServerRecord): McpDraft {
     env: recordToPairs(record.env),
     url: record.url ?? "",
     headers: recordToPairs(record.headers),
+    connectTimeoutMs:
+      record.connectTimeoutMs === undefined || record.connectTimeoutMs === null
+        ? ""
+        : String(record.connectTimeoutMs),
+    callTimeoutMs:
+      record.callTimeoutMs === undefined || record.callTimeoutMs === null
+        ? ""
+        : String(record.callTimeoutMs),
     enabled: record.enabled,
     scope: resolveScope(record.scope),
   };
@@ -128,6 +142,19 @@ export function mcpIdFromLabel(label: string): string {
   return /^[a-z]/.test(cleaned) ? cleaned : "";
 }
 
+/**
+ * Editor timeout drafts are strings so the field can be blank. Blank or
+ * non-numeric input sends `0`, which host-core reads as "clear the override
+ * and follow the desktop default" — the editor always sends the field, so a
+ * cleared input reliably resets a stored value (#1323).
+ */
+function parseTimeoutDraft(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+}
+
 export function draftToInput(
   draft: McpDraft,
   context?: { level?: AgentCapabilityLevel; projectPath?: string },
@@ -138,6 +165,11 @@ export function draftToInput(
     ...(context?.projectPath ? { projectPath: context.projectPath } : {}),
     label: draft.label.trim() || draft.id.trim(),
     description: draft.description.trim() || undefined,
+    // Blank means "follow the desktop default"; the editor always sends the
+    // field so a cleared input resets a stored override (host-core reads 0
+    // as "clear").
+    connectTimeoutMs: parseTimeoutDraft(draft.connectTimeoutMs),
+    callTimeoutMs: parseTimeoutDraft(draft.callTimeoutMs),
     enabled: draft.enabled,
     scope: draft.scope,
   };
@@ -203,6 +235,15 @@ function ManagementScope({
 export function mcpDraftError(draft: McpDraft): string | null {
   if (!draft.id.trim()) return "extensions.mcp.errorId";
   if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(draft.id.trim())) return "extensions.mcp.errorIdShape";
+  // Timeout drafts must be blank or a positive integer before they may be
+  // saved; silent coercion to 0 would clear a stored override (#1323).
+  for (const value of [draft.connectTimeoutMs, draft.callTimeoutMs]) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (!/^\d+$/.test(trimmed) || Number(trimmed) <= 0) {
+      return "extensions.mcp.errorTimeout";
+    }
+  }
   if (draft.transport === "stdio") {
     if (!draft.command.trim()) return "extensions.mcp.errorCommand";
     if (draft.command.includes("..")) return "extensions.mcp.errorCommandDots";
@@ -492,6 +533,28 @@ export function McpEditorSheet({
               onChange={(event) => set("description", event.target.value)}
             />
           </Field>
+
+          <div className="ext-field-pair">
+            <Field
+              label={t("extensions.mcp.connectTimeout")}
+              hint={t("extensions.mcp.timeoutHint")}
+            >
+              <Input
+                inputMode="numeric"
+                value={draft.connectTimeoutMs}
+                placeholder="10000"
+                onChange={(event) => set("connectTimeoutMs", event.target.value)}
+              />
+            </Field>
+            <Field label={t("extensions.mcp.callTimeout")}>
+              <Input
+                inputMode="numeric"
+                value={draft.callTimeoutMs}
+                placeholder="100000"
+                onChange={(event) => set("callTimeoutMs", event.target.value)}
+              />
+            </Field>
+          </div>
 
           <div className="ext-field-group">
             <div className="ext-field-label">

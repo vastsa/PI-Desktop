@@ -2303,6 +2303,10 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     },
     mcp: {
       addTitle: "MCP 서버 추가",
+      connectTimeout: "연결 시간 초과(ms)",
+      callTimeout: "도구 호출 시간 초과(ms)",
+      timeoutHint:
+        "비워 두면 기본값(연결 10초, 호출 100초)을 따릅니다. 초기화가 느린 서버는 값을 늘리세요.",
       editTitle: "MCP 서버 편집",
       sheetSubtitle: "로컬 명령을 실행하거나 HTTP 엔드포인트를 호출합니다.",
       searchPlaceholder: "서버 검색",
@@ -2369,6 +2373,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       errorIdShape: "문자 또는 숫자로 시작하고 문자, 숫자, - 및 _만 사용하세요.",
       errorCommand: "명령을 입력하세요.",
       errorCommandDots: "명령에 '..'을 포함할 수 없습니다.",
+      errorTimeout: "타임아웃은 비워 두거나 양의 밀리초 수여야 합니다.",
       errorUrl: "URL을 입력하세요.",
       errorUrlShape: "올바른 URL이 아닙니다.",
       errorUrlScheme: "http 또는 https URL을 사용하세요.",

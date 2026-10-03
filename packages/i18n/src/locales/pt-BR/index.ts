@@ -2220,6 +2220,10 @@ export const ptBR = {
     },
     mcp: {
       addTitle: "Adicionar um servidor MCP",
+      connectTimeout: "Tempo limite de conexão (ms)",
+      callTimeout: "Tempo limite de chamada (ms)",
+      timeoutHint:
+        "Deixe em branco para seguir os padrões (10 s de conexão, 100 s de chamada). Aumente para servidores com inicialização lenta.",
       editTitle: "Editar servidor MCP",
       sheetSubtitle: "Execute um comando local ou chame um endpoint HTTP.",
       searchPlaceholder: "Pesquisar servidores",
@@ -2285,6 +2289,7 @@ export const ptBR = {
       errorIdShape: "Use letras, dígitos, - e _, começando com uma letra.",
       errorCommand: "Um comando é obrigatório.",
       errorCommandDots: "O comando não pode conter '..'.",
+      errorTimeout: "Os tempos limite devem estar vazios ou ser um número positivo de milissegundos.",
       errorUrl: "Uma URL é obrigatória.",
       errorUrlShape: "Esta não é uma URL válida.",
       errorUrlScheme: "Use uma URL http ou https."

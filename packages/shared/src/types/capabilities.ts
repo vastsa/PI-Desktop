@@ -62,6 +62,10 @@ export type McpServerRecord = {
   /** http: absolute endpoint; HTTP is allowed for local and LAN servers. */
   url?: string;
   headers?: Record<string, string>;
+  /** Per-server connect (initialize) budget in ms; unset follows the desktop default (#1323). */
+  connectTimeoutMs?: number;
+  /** Per-server tool-call budget in ms; unset follows the desktop default (#1323). */
+  callTimeoutMs?: number;
   enabled: boolean;
   scope?: ActivationScope;
   createdAt: string;
@@ -81,6 +85,10 @@ export type McpServerInput = {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /** Per-server connect (initialize) budget in ms; `0` clears an override (#1323). */
+  connectTimeoutMs?: number;
+  /** Per-server tool-call budget in ms; `0` clears an override (#1323). */
+  callTimeoutMs?: number;
   enabled?: boolean;
   scope?: ActivationScope;
 };

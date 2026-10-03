@@ -2257,6 +2257,10 @@ sklm: {
     },
     mcp: {
       addTitle: "新增 MCP 伺服器",
+      connectTimeout: "連線逾時（毫秒）",
+      callTimeout: "工具呼叫逾時（毫秒）",
+      timeoutHint:
+        "留空跟隨預設（連線 10 秒、呼叫 100 秒）。初始化或首次呼叫較慢的服務可調大。",
       editTitle: "編輯 MCP 伺服器",
       sheetSubtitle: "執行本地命令或呼叫 HTTP 地址。",
       searchPlaceholder: "搜尋伺服器",
@@ -2322,6 +2326,7 @@ sklm: {
       errorIdShape: "只能用字母、數字、- 和 _，且以字母開頭。",
       errorCommand: "命令不能為空。",
       errorCommandDots: "命令中不能包含 '..'。",
+      errorTimeout: "逾時必須留空或為正整數毫秒。",
       errorUrl: "地址不能為空。",
       errorUrlShape: "這不是一個有效的 URL。",
       errorUrlScheme: "請使用 http 或 https 地址。",

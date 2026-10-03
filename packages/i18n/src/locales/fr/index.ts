@@ -2270,6 +2270,10 @@ sklm: {
     },
     "mcp": {
       "addTitle": "Ajouter un serveur MCP",
+      "connectTimeout": "Délai de connexion (ms)",
+      "callTimeout": "Délai d'appel d'outil (ms)",
+      "timeoutHint":
+        "Laissez vide pour les valeurs par défaut (10 s connexion, 100 s appel). Augmentez pour les serveurs à initialisation lente.",
       "editTitle": "Modifier le serveur MCP",
       "sheetSubtitle": "Exécutez une commande locale ou appelez un point de terminaison HTTP.",
       "searchPlaceholder": "Serveurs de recherche",
@@ -2335,6 +2339,7 @@ sklm: {
       "errorIdShape": "Utilisez des lettres, des chiffres, - et _, en commençant par une lettre.",
       "errorCommand": "Une commande est requise.",
       "errorCommandDots": "La commande ne peut pas contenir '..'.",
+      "errorTimeout": "Les délais doivent être vides ou un nombre positif de millisecondes.",
       "errorUrl": "Une URL est requise.",
       "errorUrlShape": "Ce n'est pas une URL valide.",
       "errorUrlScheme": "Utilisez une URL http ou https."
