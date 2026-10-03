@@ -21,6 +21,8 @@ import {
   type RemoteEventBridge,
   type RemoteLifecycleEvent,
 } from "./remote-event-bridge.js";
+import { pendingAsksRegistry } from "../pending-asks";
+import { REMOTE_SESSION_PREFIX } from "./backend-router.js";
 
 /**
  * The transport surface this connection needs. {@link RemoteRacpClient} covers
@@ -147,6 +149,12 @@ export function createRemoteHostConnection(
       bridge = null;
       for (const remoteSessionId of registered) router.unregisterBackend(remoteSessionId);
       registered.clear();
+      // A host that went away can never resolve its asks, and no later event
+      // will arrive to settle or clear them: `input.resolved` and
+      // `session.archived` both come from the same dead stream. Without this the
+      // dead entries stay visible in unfiltered listings and their buckets are
+      // never reclaimed. The namespaced id makes the prefix exact for this host.
+      pendingAsksRegistry.clearSessionsWithPrefix(`${REMOTE_SESSION_PREFIX}${hostKey}:`);
     },
   };
 }

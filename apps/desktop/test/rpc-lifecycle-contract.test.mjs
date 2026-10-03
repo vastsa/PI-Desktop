@@ -301,6 +301,7 @@ test("sidecar crash reports carry the last stderr lines", () => {
   );
   // The crash kind is classified once from the tail and reaches both the
   // settlement code and the log line, so an OOM death never reads as an
+  // unrelated plan-approval interruption (issue #1077).
   assert.match(runtimeSidecarSource, /classifySidecarCrash\(stderrTail\)/);
   assert.match(runtimeSidecarSource, /sidecarCrashErrorCode\(crash\.kind\)/);
   assert.match(runtimeSidecarSource, /crashKind: crash\.kind/);
@@ -314,5 +315,30 @@ test("sidecar crash reports carry the last stderr lines", () => {
   assert.match(
     runtimeSidecarSource,
     /finishTurn\(sessionId, "aborted", errorCode, \{/,
+  );
+});
+
+test("a resolved ask leaves the pending-ask registry on every resolve path", async () => {
+  // `agent/askTool/resolve` has two exits since the Host input path landed:
+  // the Host-owned settle and the direct sidecar call. The pending-ask
+  // registry is Electron-main state that neither path touches on its own, so
+  // both must clear it or a read-back would report an already answered ask.
+  const agentIpcSource = await readMainModule("ipc/agent-ipc.ts");
+  const resolveStart = agentIpcSource.indexOf("IPC.invoke.askToolResolve");
+  assert.ok(resolveStart > 0, "the asktool resolve handler is registered");
+  const resolveEnd = agentIpcSource.indexOf(
+    "IPC.invoke.pendingInteractive",
+    resolveStart,
+  );
+  const handler = agentIpcSource.slice(resolveStart, resolveEnd);
+  assert.match(
+    handler,
+    /if \(settled\) \{[\s\S]*?pendingAsksRegistry\.settle\(sessionId, requestId\);[\s\S]*?return settled;/,
+    "the Host-settled path clears the registry",
+  );
+  assert.match(
+    handler,
+    /const result = await sidecar\.call\("asktool\.resolve", \{[\s\S]*?pendingAsksRegistry\.settle\(sessionId, requestId\);[\s\S]*?return result;/,
+    "the direct sidecar path clears the registry",
   );
 });

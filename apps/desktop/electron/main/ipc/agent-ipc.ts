@@ -13,6 +13,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { ComposerCommandService } from "./composer-ipc";
 import type { IpcRegistrar } from "./types";
 import { withPromptEnhancementTimeout } from "../prompt-enhancement-timeout";
+import { pendingAsksRegistry } from "../pending-asks";
 
 export type AgentIpcDependencies = {
   registrar: IpcRegistrar;
@@ -736,6 +737,7 @@ export function registerAgentIpc({
       agentExtensions.cancelPrompts(req.sessionId);
       cancelSessionTools(req.sessionId, "Session turn was aborted");
       result = await sidecar.call("agent.abort", req);
+      pendingAsksRegistry.clearSession(req.sessionId);
     } finally {
       // A turn that already stopped owning the session is refused inside the
       // finalizer, so the identity captured above is the only one used here.
@@ -832,6 +834,15 @@ export function registerAgentIpc({
     return resolved;
   });
 
+  handle(
+    IPC.invoke.askToolPending,
+    async (input: { sessionId?: unknown } = {}) => {
+      const sessionId =
+        typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+      return pendingAsksRegistry.list(sessionId || undefined);
+    },
+  );
+
   handle(IPC.invoke.askToolResolve, async (resolution: AskToolResolution) => {
     if (!sidecar) throw new Error("sidecar unavailable");
     const sessionId = String(resolution?.sessionId ?? "").trim();
@@ -847,12 +858,20 @@ export function registerAgentIpc({
       sessionId,
       requestId,
     });
-    if (settled) return settled;
-    return sidecar.call("asktool.resolve", {
+    if (settled) {
+      // The pending-ask registry is Electron-main state that neither resolve
+      // path touches, so a Host-settled answer must clear it just like the
+      // direct sidecar call below.
+      pendingAsksRegistry.settle(sessionId, requestId);
+      return settled;
+    }
+    const result = await sidecar.call("asktool.resolve", {
       ...resolution,
       sessionId,
       requestId,
     });
+    pendingAsksRegistry.settle(sessionId, requestId);
+    return result;
   });
 
   /**

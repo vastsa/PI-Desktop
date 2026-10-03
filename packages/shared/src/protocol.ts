@@ -196,6 +196,8 @@ export const IPC = {
     scheduledListRuns: "pi-desktop/scheduled/listRuns",
     toolResolvePermission: "pi-desktop/tool/resolvePermission",
     todosGet: "pi-desktop/todos/get",
+    /** Process-memory registry of pending Agent asktool questions. */
+    askToolPending: "pi-desktop/agent/askTool/pending",
     askToolResolve: "pi-desktop/agent/askTool/resolve",
     plansPending: "pi-desktop/plans/pending",
     pendingInteractive: "pi-desktop/agent/pendingInteractive",
