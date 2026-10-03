@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   PROJECT_REORDER_ARM_PX,
   projectGroupKeyFromPoint,
+  projectPinZoneFromPoint,
+  projectPinZoneOf,
   projectReorderInsertAfter,
   projectReorderShouldArm,
   sameProjectReorderBucket,
@@ -62,4 +64,51 @@ test("project group hit-testing reads the nearest group under the pointer", () =
     height: 40,
   });
   assert.equal(projectGroupKeyFromPoint(0, 0, doc), null);
+});
+
+test("a project belongs to the zone its pin state puts it in", () => {
+  assert.equal(projectPinZoneOf({}), "rest");
+  assert.equal(projectPinZoneOf({ pinned: false }), "rest");
+  assert.equal(projectPinZoneOf({ pinned: true }), "pinned");
+});
+
+test("pin-zone hit-testing reads the half of the list under the pointer", () => {
+  // Crossing buckets cannot be decided from a row, because the half being
+  // entered may hold no rows at all — so the zone is carried by the list
+  // containers and is found from whatever is under the pointer, including the
+  // label and the padding around it.
+  const zone = (value) => ({
+    getAttribute(name) {
+      return name === "data-sidebar-project-pin-zone" ? value : null;
+    },
+  });
+  const leafOver = (value) => ({
+    closest(selector) {
+      return selector === "[data-sidebar-project-pin-zone]" ? zone(value) : null;
+    },
+  });
+  const doc = {
+    elementFromPoint(x) {
+      if (x === 10) return leafOver("pinned");
+      if (x === 20) return leafOver("rest");
+      return null;
+    },
+  };
+  assert.equal(projectPinZoneFromPoint(10, 0, doc), "pinned");
+  assert.equal(projectPinZoneFromPoint(20, 0, doc), "rest");
+  // Off the list entirely: no zone, so no pin or unpin is offered.
+  assert.equal(projectPinZoneFromPoint(30, 0, doc), null);
+});
+
+test("an unrecognised zone attribute is not treated as a drop target", () => {
+  const doc = {
+    elementFromPoint() {
+      return {
+        closest: () => ({
+          getAttribute: () => "somewhere-else",
+        }),
+      };
+    },
+  };
+  assert.equal(projectPinZoneFromPoint(0, 0, doc), null);
 });
