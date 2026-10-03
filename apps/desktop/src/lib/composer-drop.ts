@@ -9,6 +9,27 @@ export type ComposerDropItem = {
   isDirectory: boolean;
 };
 
+export type ComposerWorkspaceFileDrop = {
+  path: string;
+  name: string;
+};
+
+/** Suppress the direct drop and forwarded drag-end copies of one gesture. */
+export function createComposerWorkspaceDropDeduper(windowMs = 500) {
+  let lastKey = "";
+  let lastReceivedAt = Number.NEGATIVE_INFINITY;
+  return (drop: ComposerWorkspaceFileDrop, receivedAt = Date.now()): boolean => {
+    const key = `${drop.path}\0${drop.name}`;
+    if (key === lastKey && receivedAt - lastReceivedAt < windowMs) return false;
+    lastKey = key;
+    lastReceivedAt = receivedAt;
+    return true;
+  };
+}
+
+export const COMPOSER_WORKSPACE_FILE_MIME =
+  "application/x-pi-desktop-workspace-file";
+
 type DataTransferItemWithEntry = DataTransferItem & {
   webkitGetAsEntry?: () => FileSystemEntry | null;
 };
@@ -21,9 +42,41 @@ function isDirectoryItem(item: DataTransferItemWithEntry, file: File): boolean {
 /** True when the data transfer contains native files or directories. */
 export function hasComposerFileDrag(data: DataTransfer): boolean {
   return (
+    Array.from(data.types ?? []).includes(COMPOSER_WORKSPACE_FILE_MIME) ||
     data.files.length > 0 ||
     Array.from(data.items).some((item) => item.kind === "file")
   );
+}
+
+/** Parse and validate the private file-tree drag payload. */
+export function parseComposerWorkspaceFileDrop(
+  raw: string,
+): ComposerWorkspaceFileDrop | null {
+  try {
+    const value = JSON.parse(raw) as { path?: unknown; name?: unknown };
+    if (typeof value.path !== "string" || typeof value.name !== "string") return null;
+    const path = value.path.trim().replace(/\\/g, "/");
+    const name = value.name.trim();
+    if (
+      !path ||
+      !name ||
+      path.startsWith("/") ||
+      /^[A-Za-z]:\//.test(path) ||
+      path.split("/").some((part) => part === "..")
+    ) {
+      return null;
+    }
+    return { path, name };
+  } catch {
+    return null;
+  }
+}
+
+export function composerWorkspaceFileDrop(
+  data: DataTransfer,
+): ComposerWorkspaceFileDrop | null {
+  if (!Array.from(data.types ?? []).includes(COMPOSER_WORKSPACE_FILE_MIME)) return null;
+  return parseComposerWorkspaceFileDrop(data.getData(COMPOSER_WORKSPACE_FILE_MIME));
 }
 
 /**
