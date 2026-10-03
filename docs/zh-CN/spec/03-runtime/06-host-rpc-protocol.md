@@ -185,6 +185,19 @@ type ToolBudgetHealth = {
 - `workspace.set`
 - `workspace.clear`
 
+### 工作区索引
+- `index.status({rootPath?})` 返回 host 所有、可丢弃的工作区索引生命周期状态，不暴露文件内容。
+- `index.rebuild({rootPath?})` 将所选工作区扫描进独立的
+  `<data-dir>/index/index.db` 缓存。省略 `rootPath` 时使用当前工作区；操作受固定文件数和字节预算限制。
+- `indexGrepBoost` 开启时，`workspace.set` 会对变更的工作区触发后台
+`ensure_index` + 重建；关闭时，切换工作区绝不触碰索引。
+`index.clear({rootPath?})` 删除当前工作区的 root namespace；提供 `rootPath` 时必须与当前工作区一致，省略时也选择当前工作区。
+
+索引数据库是可重建的优化缓存，不是文件系统事实来源。任何工具都不读取它：
+无论索引是否存在，`tools.execute` 的行为完全一致，索引 RPC 是该缓存唯一的消费方。
+root 状态包括 `fresh`、`building`、`stale`、`failed`、`partial`、
+`disabled`、`skipped_over_limit`。
+
 ### 查看快照 (ADR 0043)
 - `review.rollback({sessionId, snapshotId})` — 验证当前的后期工具
   hash，恢复会话拥有的先前字节，并返回其中之一
