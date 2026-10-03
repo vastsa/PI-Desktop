@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   KEYBOARD_SHORTCUTS,
   keybindingDisplayParts,
@@ -13,6 +14,7 @@ import {
 import {
   IconChevronLeft,
   IconSidebar,
+  IconBranch,
   IconNewSession,
   IconSearch,
 } from "./icons";
@@ -48,6 +50,7 @@ export function ConversationTopbar({
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspace = useAppStore((s) => s.workspace);
+  const refreshProject = useAppStore((s) => s.refreshProject);
   const keybindings = useAppStore((s) => s.settings?.keybindings);
   const navStack = useAppStore((s) => s.navStack);
   const navIndex = useAppStore((s) => s.navIndex);
@@ -88,6 +91,17 @@ export function ConversationTopbar({
     : t("nav.search");
 
   const activeSession = sessions.find((session) => session.id === activeSessionId);
+  const projectPath = workspace?.path;
+
+  useEffect(() => {
+    if (!projectPath) return;
+    const refreshBranch = () => {
+      void refreshProject(projectPath);
+    };
+    refreshBranch();
+    window.addEventListener("focus", refreshBranch);
+    return () => window.removeEventListener("focus", refreshBranch);
+  }, [activeSessionId, projectPath, refreshProject]);
 
   /*
    * A scheduled run's conversation is read from the Scheduled route, and the
@@ -110,6 +124,7 @@ export function ConversationTopbar({
     ? t("chat.untitledTask")
     : activeSession?.title || t("chat.untitledTask");
   const project = projectName(workspace?.path, workspace?.name);
+  const branch = workspace?.branch?.trim();
 
   return (
     <div
@@ -155,6 +170,16 @@ export function ConversationTopbar({
           title={project ? `${project} · ${fullTaskTitle}` : fullTaskTitle}
         >
           <span className="ct-title">{fullTaskTitle}</span>
+          {branch ? (
+            <span
+              className="ct-branch"
+              aria-label={t("nav.hoverCardBranchAria", { name: branch })}
+              title={branch}
+            >
+              <IconBranch size={12} aria-hidden />
+              <span>{branch}</span>
+            </span>
+          ) : null}
         </div>
       </div>
 
