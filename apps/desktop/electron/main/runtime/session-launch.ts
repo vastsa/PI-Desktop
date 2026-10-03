@@ -1,22 +1,6 @@
 import { join } from "node:path";
 import {
-  ErrorCodes as SharedErrorCodes,
-  isActiveInProject,
-  isCommandShellCatalog,
-  imageGenerationBindings,
-  isImageGenerationModel,
-  normalizeMode,
-  trustedExtensionAgentKeyFromProviderId,
-  type CommandShellCatalog,
-  type McpServerRecord,
-  type ModelBinding,
-  type Mode,
-  type Risk,
-  type SessionThinkingLevel,
-  type UserSkillRecord,
-  type UserSubagentRecord,
-} from "@pi-desktop/shared";
-import {
+  builtinSubagentOverridesDir,
   capabilitiesFromModelConfig,
   clampThinkingLevel,
   loadCustomSystemPrompt,
@@ -25,21 +9,38 @@ import {
   modelConfigWithBinding,
   optionalProviderHeaders,
   resolveSubagentProviders,
-  visionFromModelConfig,
   type UserSubagentDocument,
+  visionFromModelConfig,
 } from "@pi-desktop/agent-runtime";
+import {
+  type CommandShellCatalog,
+  imageGenerationBindings,
+  isActiveInProject,
+  isCommandShellCatalog,
+  isImageGenerationModel,
+  type McpServerRecord,
+  type Mode,
+  type ModelBinding,
+  normalizeMode,
+  type Risk,
+  type SessionThinkingLevel,
+  ErrorCodes as SharedErrorCodes,
+  trustedExtensionAgentKeyFromProviderId,
+  type UserSkillRecord,
+  type UserSubagentRecord,
+} from "@pi-desktop/shared";
 import { builtinSkills } from "../builtin-skills";
-import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
+import type { Logger } from "../logger";
 import {
   catalogModelConfigFor,
   type ModelsDevCatalog,
 } from "../models-dev-catalog";
-import type { Logger } from "../logger";
+import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { PluginRuntime } from "../plugin-runtime";
+import type { LoadedSkillDocument } from "../skill-document";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { RuntimeProvider } from "./provider-catalog";
-import type { LoadedSkillDocument } from "../skill-document";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -472,6 +473,9 @@ export function createSessionLaunchRuntime({
       userDocuments: await activeUserSubagentDocuments(projectPath),
       // A switched-off builtin is dropped from what this prompt may delegate to.
       disabledBuiltins: await disabledBuiltinSubagents(),
+      // Builtin overrides (ADR 0319) are re-read with the other sources, so an
+      // edit reaches every session — this one included — on its next prompt.
+      builtinOverridesDir: builtinSubagentOverridesDir(dataDir),
     });
     const subagentBindings = await resolveSubagentProviders({
       definitions: subagentCatalog.definitions,

@@ -7458,6 +7458,40 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Milestone**: M6+
 - **Status**: Automated by `test:e2e:subagents` (host-core create/read/on-disk/active/loader inherit round-trip) and `test:e2e:subagent-models` (real sidecar/local transport Task spawn, inherited Skill/plugin catalog minus the deny list, and builtin explorer isolation). Unit coverage remains in `packages/shared`, `packages/agent-runtime`, and host-core `user_subagents`; the UI inherit-checkbox journey remains Draft. Required suites: `test:e2e`, `test:e2e:subagents`, `test:e2e:subagent-models`.
 
+#### E2E-1175: Builtin override documents retune shipped delegates without adding rows
+
+- **Preconditions**: A project-bound Agent session; the app data dir contains
+  `subagent-overrides/test-runner.md` whose frontmatter re-pins the model and
+  whose body replaces the prompt; a second override document named
+  `no-such-builtin.md`; Settings > Agent > Subagents reachable.
+- **Steps**:
+  1. Start a prompt. Verify the `Task` catalog offers `test-runner` with the
+     override's model pin (visible in the delegation's details), while the
+     other four builtins keep their shipped definitions.
+  2. Open Settings > Agent > Subagents. Verify `test-runner` renders one row
+     showing the retuned document, with the ADR 0270 switch still governing it;
+     no sixth row appears for the override.
+  3. Switch `test-runner` off in Settings, run another prompt, and verify the
+     delegate is absent from the catalog.
+  4. Check the catalog diagnostics surface and verify the
+     `no-such-builtin.md` override appears as a diagnostic that matches no
+     builtin, not as a delegate.
+  5. Edit `test-runner.md` while a session is open, run one more prompt, and
+     verify the next delegation uses the edited definition (re-read per launch).
+- **Expected**: Override documents retune the named builtin only; the override
+  never adds a delegate or a Settings row, stays under the ADR 0270 switch, and
+  loses its handle to a same-named user document; an unknown name is a
+  diagnostic; edits apply on the next prompt.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f, ADR 0319, ADR 0270
+- **Acceptance**: E (tools & permissions), Quality
+- **Milestone**: M6+
+- **Status**: Unit coverage in
+  `packages/agent-runtime/src/subagent-definitions.test.ts` (override merge,
+  unknown-name diagnostic, user-document precedence, disabled-builtin
+  interplay) and `apps/desktop/test/subagent-builtin-overrides.test.mjs`
+  (session-launch wiring reads `<data>/subagent-overrides` per launch).
+  Desktop journey remains Draft.
+
 #### E2E-145: Tool results read as structured blocks, never JSON
 
 - **Preconditions**: A project-bound Agent session with permissions allowed for

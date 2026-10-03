@@ -811,13 +811,19 @@ transient and never restored into durable UI messages or transcript records.
 The session Agent can hand separable pieces of work to delegates that run in
 their own context, in the background, and report back on demand.
 
-**Catalog.** Definitions are Markdown documents from two sources: the five
+**Catalog.** Definitions are Markdown documents from three sources: the five
 builtins shipped inline in `agent-runtime` (`explorer`, `code-reviewer`,
-`test-runner`, `fixer`, `ui-designer`) and the global user documents under
-`~/.agents/subagents/*.md`. There is no project-level subagent directory and
-`.pi/agents` is not scanned for capabilities. User documents are filtered by
+`test-runner`, `fixer`, `ui-designer`), the global user documents under
+`~/.agents/subagents/*.md`, and the app-owned builtin override documents under
+`<data>/subagent-overrides/*.md` (ADR 0319) — the last of which retunes a
+shipped builtin by name and can neither add a delegate nor outrank a user
+document; a name no builtin uses is a diagnostic. There is no project-level
+subagent directory and `.pi/agents` is not scanned for capabilities. User
+documents are filtered by
 the app-local enabled state before they reach the loader, and the shipped
-builtins are filtered by that same app-local state inside it (ADR 0270).
+builtins are filtered by that same app-local state inside it (ADR 0270) —
+an override document parses as builtin source, so the ADR 0270 switch governs
+the retuned definition and Settings renders one row, not two.
 Electron main loads
 `subagentProviders` in the sidecar params, so editing a definition takes effect
 on the next prompt. The catalog is capped at `MAX_SUBAGENT_DEFINITIONS` (16);

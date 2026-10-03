@@ -22,6 +22,8 @@ export type SkillsIpcDependencies = {
   activeUserSubagentDocuments: (projectPath: string | undefined) => Promise<UserSubagentDocument[]>;
   /** Handles whose shipped definition the user turned off (builtin activation). */
   disabledBuiltinSubagents: () => Promise<string[]>;
+  /** App-owned directory of builtin override documents (ADR 0319). */
+  builtinOverridesDir: string;
   stripWinLongPrefix: (path: string) => string;
   sendToRenderer: (channel: string, payload?: unknown) => void;
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) => Promise<SkillMarketSearchResult>;
@@ -36,6 +38,7 @@ export function registerSkillsIpc({
   optionalWorkspaceRoot,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
+  builtinOverridesDir,
   stripWinLongPrefix,
   sendToRenderer,
   searchSkillMarket,
@@ -322,6 +325,7 @@ export function registerSkillsIpc({
       {
         userDocuments: await activeUserSubagentDocuments(projectPath),
         disabledBuiltins: disabled,
+        builtinOverridesDir,
       },
     );
     const off = new Set(disabled);
