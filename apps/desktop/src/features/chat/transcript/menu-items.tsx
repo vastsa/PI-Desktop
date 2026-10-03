@@ -20,6 +20,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconCopy,
+  IconNewSession,
   IconPencil,
   IconReview,
   IconTextSelect,
@@ -30,6 +31,7 @@ import type { ContextMenuItem } from "../../../components/ContextMenu";
 /** Actions the builders call; the components own their real implementations. */
 export type MenuItemActions = {
   copyText: (text: string, selection?: string) => void;
+  addToConversation: (text: string, selection?: string) => void;
   selectText: (element: HTMLElement | null) => void;
 };
 
@@ -72,6 +74,12 @@ export function userMessageMenuItems({
       label: t("chat.copy"),
       icon: copyIcon(),
       onSelect: (selection) => actions.copyText(text, selection),
+    });
+    items.push({
+      id: "add-to-conversation",
+      label: t("chat.addToConversation"),
+      icon: addToConversationIcon(),
+      onSelect: (selection) => actions.addToConversation(text, selection),
     });
     items.push({
       id: "select-text",
@@ -154,6 +162,12 @@ export function assistantTurnMenuItems({
       label: t("chat.copy"),
       icon: copyIcon(),
       onSelect: (selection) => actions.copyText(answer, selection),
+    });
+    items.push({
+      id: "add-to-conversation",
+      label: t("chat.addToConversation"),
+      icon: addToConversationIcon(),
+      onSelect: (selection) => actions.addToConversation(answer, selection),
     });
     items.push({
       id: "select-text",
@@ -244,6 +258,10 @@ export function conversationMenuItems({
 */
 function copyIcon() {
   return <IconCopy size={14} />;
+}
+
+function addToConversationIcon() {
+  return <IconNewSession size={14} />;
 }
 
 function selectIcon() {

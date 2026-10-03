@@ -348,6 +348,7 @@ Each ADR includes:
 | 0310 | [Keep local permission approvals pending until resolved](0310-local-permission-approvals-without-deadline.md) | Accepted for implementation |
 | 0311 | [Recheck Live Work workspace identity at Host admission](0311-live-work-workspace-admission-guard.md) | Implemented candidate |
 | 0312 | [Session-scoped Todo checklist](0312-session-scoped-todo-checklist.md) | Accepted for implementation |
+| selection-add-to-conversation | [Add selected transcript text to the conversation draft](selection-add-to-conversation.md) | Proposed (amends ADR 0268; issue #921) |
 | 0317 | [Preserve Windows resizing without the native frameless rim](0317-windows-borderless-window-resize.md) | Accepted (D637) |
 | 0313 | [Default Live Work to the Current Composer Session](0313-live-voice-default-session-target.md) | Accepted |
 | 0315 | [A spoken answer selects among an open asktool question's own options](0315-live-voice-spoken-asktool-answers.md) | Accepted for implementation (amends the Live Voice Work Session decision path for AskTool only) |

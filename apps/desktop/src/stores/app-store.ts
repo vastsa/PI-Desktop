@@ -11,6 +11,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
 import { rememberProject } from "../lib/recent-projects";
+import { appendComposerDraftExcerpt } from "../lib/composer-draft-cache";
 import {
   RETAINED_SESSION_PANE_LIMIT,
   clearSessionPanes,
@@ -466,7 +467,21 @@ export const useAppStore = create<AppState>((set, get) => {
       sessionRuntime.isSessionSelectionPending(sessionId),
   }),
 
-
+  appendComposerText: (sessionId, text) =>
+    set({
+      composerPrefill: {
+        sessionId,
+        text,
+        fileReferences: [],
+        mode: "append",
+      },
+    }),
+  addComposerExcerpt: (sessionId, text) => {
+    if (get().activeSessionId !== sessionId) return false;
+    if (!appendComposerDraftExcerpt(sessionId, text)) return false;
+    set((state) => ({ composerExcerptVersion: state.composerExcerptVersion + 1 }));
+    return true;
+  },
   clearComposerPrefill: () => set({ composerPrefill: null }),
   };
 });

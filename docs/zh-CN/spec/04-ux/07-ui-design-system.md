@@ -1197,6 +1197,8 @@ Linux 保留淡入淡出和滑动退出。
 - 使用 Lucide/Heroicons SVG 图标 — 切勿使用表情符号作为 UI 可供性
 - 使用紧凑的填充和紧密的间距——开发人员密度，而不是消费者间距
 - 首次启动遵循系统主题（参见§主题切换）；深色是首要设计目标
+- 使用 `components/ui.tsx` 中的共用组件（`Button`、`Badge`、`SettingsToggle`、`SegmentedControl`、`Checkbox`、`Input`、`Textarea`、`Select`、`Field`、`Panel`、`HelpIcon`、`TooltipButton`），不得内联重做
+- 设置页的下拉菜单使用 `SettingsMenuSelect`，不得使用原生 `<select>`
 
 ### 不要
 
@@ -1210,6 +1212,8 @@ Linux 保留淡入淡出和滑动退出。
 - 不要对全宽面板（侧边栏、顶栏）应用圆角
 - 不要在按钮和输入上使用 `border-radius: 0`（至少使用 `radius-sm`）
 - 不要在任何 UI 界面中显示原始 API 键
+- 不要内联编写 `<button role="switch">`、`<div className="settings-segment">` 或 `<label><input type="checkbox">`，应使用对应共用组件
+- 不要在设置页使用原生 `Select`（`<select>`），应使用 `SettingsMenuSelect`
 
 ## 15. 验收标准
 

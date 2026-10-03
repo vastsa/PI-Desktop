@@ -47,7 +47,11 @@ function loadComponent(name, extras = {}) {
     "./menu-items": { userMessageMenuItems: () => [] },
     "./TranscriptMenu": {
       useTranscriptMenu: () => () => {},
-      useChatTextActions: () => ({ copyText: () => {}, selectText: () => {} }),
+      useChatTextActions: () => ({
+        copyText: () => {},
+        addToConversation: () => {},
+        selectText: () => {},
+      }),
     },
     "./ActionBarSlots": { ActionSlotSide: () => null },
     "../../../plugins/renderer-slots/slot-message": { slotMessage: () => undefined },

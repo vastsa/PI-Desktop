@@ -9,6 +9,7 @@ import {
 } from "@pi-desktop/shared";
 import type { AppState } from "../../../../stores/app-store";
 import { useAppStore } from "../../../../stores/app-store";
+import { serializeComposerExcerpts, type ComposerExcerpt } from "../../../../lib/composer-excerpts";
 import { api } from "../../../../lib/api";
 import { draftKeyForSession } from "../../../../lib/composer-draft-cache";
 import { runExtensionCommand, runPaletteCommand } from "../../../../lib/commands";
@@ -32,6 +33,7 @@ type UseComposerSubmitOptions = {
   sendBlocked: boolean;
   pasting: boolean;
   activeFileReferences: ComposerFileReference[];
+  excerpts: ComposerExcerpt[];
   t: TFunction;
   sendPrompt: AppState["sendPrompt"];
   steerPrompt: AppState["steerPrompt"];
@@ -77,6 +79,7 @@ export function useComposerSubmit({
   sendBlocked,
   pasting,
   activeFileReferences,
+  excerpts,
   t,
   sendPrompt,
   steerPrompt,
@@ -199,12 +202,12 @@ export function useComposerSubmit({
 
   const submit = async (steering = false) => {
     const text = draft.ref.current ? readEditorValue(draft.ref.current) : value;
-    const inlineContent = serializeInlineComposerFileReferences(
-      text,
-      activeFileReferences,
+    const inlineContent = serializeComposerExcerpts(
+      serializeInlineComposerFileReferences(text, activeFileReferences),
+      excerpts,
     );
     const serializedContent = serializeComposerFileReferences(text, activeFileReferences);
-    if (!serializedContent) return;
+    if (!serializedContent && !excerpts.length) return;
     if (sendBlocked) {
       if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
       return;
@@ -243,6 +246,10 @@ export function useComposerSubmit({
         return;
       }
       if (dispatch.action === "dispatch") {
+        if (excerpts.length) {
+          showToast(t("chat.removeExcerptsBeforeCommand"), { variant: "info" });
+          return;
+        }
         const command = dispatch.command;
         const commandBody = dispatch.body;
         const isModeCommand =

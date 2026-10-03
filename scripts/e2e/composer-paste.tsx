@@ -53,17 +53,24 @@ const noop = () => {};
 let controller: ComposerDraftController;
 let pastePending: Promise<unknown> | undefined;
 let submitted = 0;
+let rejectedContent = "";
+let acceptSubmission = false;
 let rejectSubmission: () => Promise<void>;
-let historySendPrompt: AppState["sendPrompt"] = async () => false;
+let historySendPrompt: AppState["sendPrompt"] = async (content) => {
+  rejectedContent = content;
+  return acceptSubmission;
+};
 let latestSubmission: Promise<void> = Promise.resolve();
 function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunction; workspacePath: string }) {
+  const composerPrefill = useAppStore((state) => state.composerPrefill);
+  const clearComposerPrefill = useAppStore((state) => state.clearComposerPrefill);
   const draft = useComposerDraft({
     variant: "docked",
     activeSessionId: sessionId || null,
     workspacePath,
     sessions,
-    composerPrefill: null,
-    clearComposerPrefill: noop,
+    composerPrefill,
+    clearComposerPrefill,
     t,
     invalidatePromptEnhancement: noop,
     inputBlocked: false,
@@ -78,6 +85,7 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
     value: draft.value, draftKey: draft.draftKey, activeSessionId: sessionId || null,
     thinkingLevel: "off", modelReady: true, sendBlocked: false, pasting: false,
     activeFileReferences: draft.activeFileReferences, t, draft,
+    excerpts: draft.excerpts,
     recordHistory: inputHistory.record,
     sendPrompt: (...args) => historySendPrompt(...args),
     steerPrompt: async () => false, showToast: noop,
@@ -102,6 +110,8 @@ function Fixture({ sessionId, t, workspacePath }: { sessionId: string; t: TFunct
       <div className="composer-shell">
       <ComposerInput
         imagePreview={draft.imagePreview}
+        excerpts={draft.excerpts}
+        onRemoveExcerpt={draft.removeExcerpt}
         inputRef={draft.ref}
         value={draft.value}
         placeholderText=""
@@ -261,6 +271,110 @@ globalThis.composerPasteProbe = async () => {
       "changing workspace while the composer is unmounted must remove the previous workspace's chip");
     assert(controller.fileReferences.length === 1 && controller.fileReferences[0].path === references[1].path,
       "changing workspace must preserve scratch references");
+
+    // Transcript excerpts append to the active draft without replacing its
+    // text or attachments, and leave the caret ready for editing.
+    await reset("Keep this", 9, 9);
+    const retainedReference = createFileReference(
+      "/scratch/paste-a/retained.txt",
+      "retained.txt",
+      "paste-a",
+      { kind: "file" },
+    );
+    flushSync(() => controller.setFileReferences([retainedReference]));
+    flushSync(() =>
+      useAppStore.getState().appendComposerText(
+        "paste-a",
+        "> selected\n>\n> excerpt",
+      ),
+    );
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    const appended = "Keep this\n\n> selected\n>\n> excerpt";
+    assert(
+      readEditorValue(controller.ref.current!) === appended,
+      "transcript excerpt replaced or malformed the existing draft",
+    );
+    assert(
+      controller.fileReferences.length === 1 &&
+        controller.fileReferences[0].path === retainedReference.path,
+      "transcript excerpt removed an existing file reference",
+    );
+    assert(
+      editorSelectionRange(controller.ref.current!).start === appended.length,
+      "transcript excerpt did not focus the composer caret at the end",
+    );
+    render("paste-b");
+    await new Promise(requestAnimationFrame);
+    flushSync(() => controller.applyEditorDraft("Session B", [], 9));
+    flushSync(() =>
+      useAppStore.getState().appendComposerText("paste-a", "> stale excerpt"),
+    );
+    await new Promise(requestAnimationFrame);
+    assert(
+      readEditorValue(controller.ref.current!) === "Session B" &&
+        useAppStore.getState().composerPrefill === null,
+      "an excerpt queued for another session changed the active draft",
+    );
+    render("paste-a");
+    await new Promise(requestAnimationFrame);
+    assert(
+      !readEditorValue(controller.ref.current!).includes("stale excerpt"),
+      "a stale excerpt appeared after returning to its original session",
+    );
+
+    // Selected transcript text is a compact draft attachment, not editable
+    // prompt text. Its contents follow the draft through a session switch and
+    // return after a rejected send.
+    await reset("Keep this", 9, 9);
+    assert(useAppStore.getState().addComposerExcerpt("paste-a", "first line\nsecond line"),
+      "could not attach selected text");
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    assert(readEditorValue(controller.ref.current!) === "Keep this",
+      "selected text was inserted into the editable prompt");
+    assert(document.querySelector(".composer-excerpts-badge")?.textContent?.includes("1 annotation"),
+      "the selected-text count badge was not shown");
+    flushSync(() => (document.querySelector(".composer-excerpts-badge") as HTMLButtonElement).click());
+    assert(document.querySelector(".composer-excerpt blockquote")?.textContent === "first line\nsecond line",
+      "the count badge did not reveal the selected source");
+    assert(useAppStore.getState().addComposerExcerpt("paste-a", "another excerpt"),
+      "could not attach a second selection");
+    await new Promise(requestAnimationFrame);
+    assert(document.querySelector(".composer-excerpts-badge")?.textContent?.includes("2 annotations"),
+      "multiple selections did not share a count badge");
+    render("paste-b");
+    await new Promise(requestAnimationFrame);
+    assert(!document.querySelector(".composer-excerpts-badge"),
+      "session B showed session A's selected text");
+    assert(!useAppStore.getState().addComposerExcerpt("paste-a", "stale selection"),
+      "a selection was attached after leaving its session");
+    render("paste-a");
+    await new Promise(requestAnimationFrame);
+    assert(controller.excerpts.length === 2,
+      "selected text was lost across a session switch");
+    await rejectSubmission();
+    await new Promise(requestAnimationFrame);
+    assert(rejectedContent.includes("Keep this\n\nSelected conversation excerpts:") &&
+      rejectedContent.includes("> first line\n> second line") &&
+      rejectedContent.includes("> another excerpt"),
+      "the submitted prompt did not include the attached selections");
+    assert(controller.excerpts.length === 2 && readEditorValue(controller.ref.current!) === "Keep this",
+      "a rejected send did not restore the selected-text attachments");
+    if (!document.querySelector(".composer-excerpt-remove")) {
+      flushSync(() => (document.querySelector(".composer-excerpts-badge") as HTMLButtonElement).click());
+    }
+    flushSync(() => (document.querySelector(".composer-excerpt-remove") as HTMLButtonElement).click());
+    assert(controller.excerpts.length === 1,
+      "removing an attached selection did not update the draft");
+    assert(document.querySelector(".composer-excerpts-badge")?.textContent?.includes("1 annotation"),
+      "removing an excerpt did not update the count badge");
+    acceptSubmission = true;
+    await rejectSubmission();
+    await new Promise(requestAnimationFrame);
+    assert(controller.excerpts.length === 0 && !document.querySelector(".composer-excerpts-badge"),
+      "an accepted send did not clear the attached selection");
+    acceptSubmission = false;
 
     // Keep the source attachment snapshot when a paste finishes in another session.
     await reset("keep \uE010 ", 7, 7);
@@ -773,7 +887,7 @@ globalThis.composerPasteProbe = async () => {
     render("paste-a");
     await new Promise(requestAnimationFrame);
     assert(controller.fileReferences[0]?.path === attachedId && document.querySelector(".composer-image-attachment"),
-      "image-only draft did not survive session switching");
+      `image-only draft did not survive session switching: ${JSON.stringify({ attachedId, current: controller.fileReferences, cached: readComposerDraft("paste-a") })}`);
 
     await paste("file names", nativeFiles);
     assert(
@@ -917,6 +1031,7 @@ globalThis.composerPasteProbe = async () => {
       imageZoomFocusAndRecovery: true,
       nativeMultipleFiles: true,
       selectionAndSessionDrafts: true,
+      transcriptExcerptAppend: true,
       workspaceReferencesAcrossRemount: true,
       pendingPasteAcrossSessionSwitch: true,
     };

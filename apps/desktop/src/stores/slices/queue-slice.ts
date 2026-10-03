@@ -150,6 +150,9 @@ export function createQueueSlice({
             fileReferences: draft.fileReferences.map((reference) => ({
               ...reference,
             })),
+            ...(draft.excerpts?.length
+              ? { excerpts: draft.excerpts.map((excerpt) => ({ ...excerpt })) }
+              : {}),
           }
         : { text: content, fileReferences: [] };
       const item: QueuedPrompt = {
@@ -239,6 +242,9 @@ export function createQueueSlice({
         fileReferences: item.draft.fileReferences.map((reference) => ({
           ...reference,
         })),
+        ...(item.draft.excerpts?.length
+          ? { excerpts: item.draft.excerpts.map((excerpt) => ({ ...excerpt })) }
+          : {}),
       };
       detachQueuedPrompt(sessionId, promptId);
       set({ composerPrefill: restored });
