@@ -533,7 +533,12 @@ type ModelDescriptor = {
   copy the same normalized JSON used for persistence
 - sign in to / out of a vendor account, and see which account a row uses
 - edit a vendor account's non-secret label, custom headers, and default model
-- enable/disable provider
+- enable/disable provider. A vendor subscription account carries the same
+  switch as an API service: disabling it removes its models from the model
+  picker and fails its session launch with `PROVIDER_DISABLED` (§11), and the
+  settings list keeps the row visible (with a disabled badge) so it can be
+  turned back on. A plugin-declared row has no switch — the plugin owns its
+  row and refreshes it from its manifest on every load.
 - test connection
 - select multiple models and edit each binding's context window, output limit,
   and enabled thinking levels; catalog metadata supplies the initial values for

@@ -13,6 +13,7 @@ import {
   serviceRowKind,
   serviceRowMeta,
   serviceRowTitle,
+  serviceRowToggle,
 } from "../src/components/settings/service-row-status.ts";
 
 // Echoes the key and its options, so assertions see which string was chosen.
@@ -145,4 +146,35 @@ test("the endpoint host survives an unparseable or missing base URL", () => {
   assert.equal(hostFromBaseUrl("https://api.openai.com/v1"), "api.openai.com");
   assert.equal(hostFromBaseUrl("api.example.com/v1"), "api.example.com");
   assert.equal(hostFromBaseUrl(undefined), "—");
+});
+
+test("the enable switch belongs to the user on a service and an account alike", () => {
+  // An API service keeps the switch it always had.
+  assert.deepEqual(serviceRowToggle(provider(), false), { show: true, locked: false });
+  // A vendor account is the user's to disable too (#930). Before this the row
+  // rendered no switch at all, even though the host already filtered a
+  // disabled provider out of the model picker and failed its session launch.
+  assert.deepEqual(serviceRowToggle(account(), false), { show: true, locked: false });
+  // A signed-out account is still the user's to toggle; the row already says
+  // "needs sign-in" through its own badge.
+  assert.deepEqual(serviceRowToggle(account({ hasOauth: false }), false), {
+    show: true,
+    locked: false,
+  });
+  // A disabled account keeps its switch so the user can turn it back on.
+  assert.deepEqual(serviceRowToggle(account({ enabled: false }), false), {
+    show: true,
+    locked: false,
+  });
+});
+
+test("only a plugin-declared row hides and locks the enable switch", () => {
+  const plugin = provider({ ownerPluginId: "acme" });
+  // A plugin refreshes its row from its manifest on every load, so the switch
+  // is not the user's to flip — hidden rather than merely disabled.
+  assert.deepEqual(serviceRowToggle(plugin, false), { show: false, locked: true });
+  // A busy request greys out whatever switch the row does have, without
+  // changing whether it is shown.
+  assert.deepEqual(serviceRowToggle(provider(), true), { show: true, locked: true });
+  assert.deepEqual(serviceRowToggle(account(), true), { show: true, locked: true });
 });
