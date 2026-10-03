@@ -16400,7 +16400,7 @@ renderer's durable transcript reads. No real model or provider is contacted.
   regressions also cover legacy identities and genuine account/model changes. Cache
   percentages are observations, not deterministic pass thresholds.
 
-### E2E-FIXED-TOOL-DECLARATIONS: Stable Flash schemas with independent activation
+### E2E-FIXED-TOOL-DECLARATIONS: Stable schemas across transports with independent activation
 
 - Fixture: production AgentSidecar and isolated Host, official Pi Flash binding,
   and a child-process fetch boundary redirected to local HTTP/SSE. Credentials
@@ -16432,3 +16432,18 @@ renderer's durable transcript reads. No real model or provider is contacted.
   failed assistant before compaction, and reuse one visible assistant message
   through successful recovery. Terminal failure and Stop retain their existing
   closure behavior. Covered by the parameterized runtime overflow user-path test.
+
+- Cross-provider acceptance: `fixed-tool-providers.test.ts` enters the real runtime
+  prompt/ToolSearch/execution path and captures each Desktop-selectable Pi
+  adapter's actual serialized payload at `onPayload`, before network dispatch.
+  Cover Chat Completions, Anthropic (native system on/off), Responses and Codex
+  (fallback, additional tools, client tool search), Gemini and Pi Messages.
+  Search A, execute A, search B, execute B, then finish: all five requests retain
+  their top-level schema state and prior semantic message prefix. Native routes
+  retain deferred schema additions. Activation JSON never reaches the provider.
+  This proves request construction, not server cache hits or paid API acceptance.
+- The local HTTP/SSE fixture additionally covers official Flash, unflagged Chat
+  Completions and a compatible relay. Canonical activation restoration, denial
+  before Host execution, mode/account/catalog invalidation and compaction remain
+  required. Fixed declarations increase first-request size; oversized catalogs
+  explicitly fall back without a cache-stability guarantee.

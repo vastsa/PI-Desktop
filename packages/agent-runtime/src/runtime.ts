@@ -3830,7 +3830,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     return [
       "# On-demand tools",
-      `The following capabilities are available on demand. Call ${TOOL_SEARCH_NAME} with an exact tool name or a short capability description before using an on-demand tool that has not been activated. A visible schema is not activation; the tool_activation section, when present, records active names.`,
+      `The following capabilities are available on demand. Call ${TOOL_SEARCH_NAME} with an exact tool name or a short capability description before using an on-demand tool that has not been activated. A visible schema is not activation. Successful ToolSearch results identify activated tools; if unsure, search again.`,
       ...lines,
     ].join("\n");
   }

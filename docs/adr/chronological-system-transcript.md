@@ -53,20 +53,34 @@ Desktop allowlist; remove the hunk when an upgraded Pi catalog carries it.
 The model/API/endpoint binding check still excludes aliases and relays. Native
 tool-addition and tool-change flags are not enabled by this correction.
 
-## Fixed declarations for the verified Flash route
+## Stable declarations across provider transports
 
-For the exact official `deepseek-flash` / `openai-completions` binding with
-verified chronological system support, declare the complete current tool catalog
-in deterministic name order from the first request. ToolSearch changes execution
-activation only. This is a Desktop declaration policy, not an additional Pi
-transport capability or an endpoint switch. Other bindings keep on-demand
-schema publication; native tool-state flags alone do not prove cache stability.
+Choose the declaration strategy by the bound Pi transport capabilities, not a
+model-name allowlist. Responses (OpenAI/Codex) with verified system support
+and `additional_tools` or client tool search, Chat Completions with verified
+system/tool additions, and Pi's transcript transport retain native chronological
+additions. Other transports declare the complete current catalog in deterministic
+name order from the first request. In particular Anthropic's native transition
+blocks still grow its request-level schemas, so they use fixed declarations.
+This policy also covers compatible relays without enabling unsupported native
+message roles or switching their configured API.
+
+Desktop currently exposes Chat Completions, Responses, Codex Responses,
+Anthropic Messages, Gemini and Pi Messages bindings. This change does not add
+new selectable Azure, Vertex, Bedrock or Mistral native bindings; models offered
+through existing compatible endpoints follow that endpoint's adapter.
 
 Keep activation separate from declarations in a versioned `tool_activation`
 system section. The section records active deferred names and a SHA-256 identity
 of the account, model, API, endpoint, declarations and deferred-name set. Updates
 append after tool results and persist through the existing Host journal and
-compaction checkpoint. Restoration never interprets the complete declaration
+compaction checkpoint. Before provider conversion, omit this Desktop-only
+activation section and any resulting empty metadata-only message. Preserve all
+other instruction sections, content and tool deltas. Providers that fold system
+messages must not rewrite their leading instructions just because execution
+activation changed. ToolSearch results tell the model which tools were activated;
+uncertain models may search again. Canonical persisted history is not mutated.
+Restoration never interprets the complete declaration
 snapshot as permission to execute every tool. Successful ToolSearch results
 newer than the saved activation section recover an interrupted activation.
 Invalid, unknown-version or mismatched state grants no activation. Legacy
@@ -79,8 +93,8 @@ removed tools cannot be invoked. Temporary prompt replacement must preserve the
 activation metadata. Current runtime activation remains authoritative between
 prompts; declarations do not re-grant revoked activation.
 
-DeepSeek limits a request to 128 functions. If the full catalog exceeds that
-limit, or its estimated prompt/schema cost leaves less than the ordinary
+Use 128 functions as a conservative shared fixed-catalog ceiling, including
+DeepSeek Chat Completions' limit. If the full catalog exceeds that ceiling, or its estimated prompt/schema cost leaves less than the ordinary
 retained-tail budget below the automatic compaction threshold, use the existing
 on-demand path and log the fallback reason. Never truncate a catalog. Context
 estimation charges the full declared catalog while fixed declarations are active.

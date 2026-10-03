@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { Agent } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream, getCurrentTools, getCurrentSystemPrompt, type AssistantMessage, type Message } from "@earendil-works/pi-ai";
 import type { UiMessage } from "@pi-desktop/shared";
+import { modelConfigFromPi } from "./model-capabilities.js";
+import { DEEPSEEK_MODELS } from "@earendil-works/pi-ai/providers/deepseek.models";
 import { DesktopAgentRuntime, type RuntimeProviderConfig } from "./runtime.js";
 
 const provider: RuntimeProviderConfig = {
   id: "fixture", name: "Fixture", modelId: "fixture", apiKey: "", authKind: "none",
+  modelConfig: modelConfigFromPi({ ...Object.values(DEEPSEEK_MODELS)[0], id: "fixture", provider: "fixture", baseUrl: "https://fixture.invalid/v1",
+    compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolAdditions: true } }),
   baseUrl: "https://fixture.invalid/v1", supportsReasoning: false, supportedThinkingLevels: ["off"],
 };
 const skill = { id: "fixture/notes", name: "First catalog", description: "Summarize notes" };
