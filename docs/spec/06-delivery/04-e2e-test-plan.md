@@ -9308,7 +9308,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
-| Post-baseline local automation | E2E-220 |
+| Post-baseline local automation | E2E-220, E2E-221 |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -13325,6 +13325,33 @@ are withdrawn with ADR 0165.
 - **Status**: MCP protocol/unit-covered by `apps/desktop/test/mcp-control.test.mjs`;
   full Electron journey documented and remains deferred by the no-local-E2E
   policy
+
+#### E2E-221: Agent events are delivered over SSE and batch status replaces per-session polling
+
+- **Preconditions**: Start PI-Desktop with `PI_DESKTOP_MCP_CONTROL=1` and a
+  clean profile. The desktop exposes `mcp-control.json`; a fixture session can
+  be prompted and the local Electron main process is reachable.
+- **Steps**: 1) Read `eventsUrl` and the bearer token from `mcp-control.json`.
+  2) Open `GET /events?sessionId=<fixture>` before sending a prompt and verify
+  the authenticated `ready` frame. 3) Send `pi_agent_prompt`. 4) Collect the
+  `agent` SSE frames through `agent_end`; close the stream and reconnect. 5)
+  Call `pi_agent_status_batch` for the fixture and a second session. 6) Send a
+  second prompt while the stream is filtered to the other session.
+- **Expected**: The stream is loopback-only and rejects missing tokens and
+  disallowed Origins; the ready frame arrives before Agent events; message/tool
+  progress, retry/error, and terminal events arrive with the existing
+  `AgentEventEnvelope` shape and session id; the filtered stream never leaks the
+  other session; reconnect succeeds; batch status returns one result per valid
+  id in one desktop operation; no per-session status fan-out is required for
+  initial list/detail state. A slow/disconnected client is cleaned up and does
+  not keep the desktop process alive.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §13d, `03-runtime/10-session-state-machine.md`,
+  `03-runtime/19-remote-agent-control-protocol.md` §4.1
+- **Acceptance**: C (conversation & stream), Security, Quality
+- **Milestone**: M6+
+- **Status**: Protocol/unit-covered by `apps/desktop/test/agent-events.test.mjs`;
+  full Electron journey remains deferred by the no-local-E2E policy and must be
+  run on a capable candidate before merge.
 
 #### E2E-234: Workspace security denylist and ignore layers
 

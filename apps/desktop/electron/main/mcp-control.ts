@@ -4,7 +4,7 @@ import { isIP } from "node:net";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SESSION_COLLABORATION_OPERATIONS } from "./session-collaboration-control";
-
+import { agentEventHub, type AgentEventHub } from "./agent-events";
 /** A small JSON Schema subset used by MCP's tools/list response. */
 export type McpJsonSchema = {
   type?: "object" | "array" | "string" | "number" | "integer" | "boolean";
@@ -55,6 +55,7 @@ export type McpControlConnectionInfo = {
   serverName: string;
   protocol: "streamable-http";
   url: string;
+  eventsUrl: string;
   token: string;
   pid: number;
   startedAt?: string;
@@ -206,7 +207,7 @@ const CONTROL_OPERATION_SPECS: OperationSpec[] = [
   spec("agentAbort", "agent/abort", "Abort an active Agent turn.", "write", ["request"]),
   spec("agentStop", "agent/stop", "Request a graceful Agent stop.", "write", ["request"]),
   spec("agentGetStatus", "agent/getStatus", "Read Agent runtime status.", "read", ["sessionId"]),
-  spec("sessionList", "session/list", "List durable sessions.", "read", []),
+  spec("agentGetStatuses", "agent/getStatuses", "Read Agent runtime status for multiple sessions in one desktop call.", "read", ["sessionIds"]),
   spec("sessionCreate", "session/create", "Create a durable session.", "write", ["input"]),
   spec("sessionFork", "session/fork", "Fork a session.", "write", ["input"]),
   spec("sessionGet", "session/get", "Read a session and its transcript.", "read", ["input"]),
@@ -382,6 +383,13 @@ const CORE_TOOL_SPECS = [
     objectSchema({ sessionId: stringSchema("Target session id.") }, ["sessionId"]),
     "agent/getStatus",
     (input) => [input.sessionId],
+  ),
+  coreTool(
+    "pi_agent_status_batch",
+    "Read runtime status for multiple sessions in one desktop call.",
+    objectSchema({ sessionIds: { type: "array", items: stringSchema("Session id.") } }, ["sessionIds"]),
+    "agent/getStatuses",
+    (input) => [input],
   ),
   coreTool(
     "pi_agent_stop",
@@ -722,6 +730,7 @@ export type McpControlServerOptions = {
   invoke: IpcInvoke;
   channels: Readonly<Record<string, string>>;
   controller?: McpControlController;
+  eventHub?: AgentEventHub;
   host?: string;
   port?: number;
   version?: string;
@@ -751,19 +760,21 @@ export class McpControlServer {
   private readonly operations: McpControlOperation[];
   private readonly operationById = new Map<string, McpControlOperation>();
   private readonly toolsList: McpTool[];
-  private readonly sessions = new Set<string>();
   private readonly serverName = MCP_SERVER_NAME;
+  private readonly sessions = new Set<string>();
+  private readonly eventHub: AgentEventHub;
+  private readonly eventConnections = new Map<ServerResponse, () => void>();
   private server: ReturnType<typeof createServer> | null = null;
   private token = "";
   private port: number | null = null;
   private startedAt: string | undefined;
-
   constructor(options: McpControlServerOptions) {
     this.dataDir = options.dataDir;
     this.host = options.host ?? DEFAULT_HOST;
     this.requestedPort = options.port ?? DEFAULT_PORT;
     this.version = options.version ?? "1";
     this.log = options.log ?? (() => undefined);
+    this.eventHub = options.eventHub ?? agentEventHub;
     this.controller = options.controller ?? createMcpControlController({
       channels: options.channels,
       invoke: options.invoke,
@@ -785,6 +796,7 @@ export class McpControlServer {
       active: this.isRunning,
       serverName: this.serverName,
       protocol: "streamable-http",
+      eventsUrl: `http://${hostname}:${this.port}/events`,
       url: `http://${hostname}:${this.port}/mcp`,
       token: this.token,
       pid: process.pid,
@@ -859,6 +871,10 @@ export class McpControlServer {
     const server = this.server;
     this.server = null;
     this.sessions.clear();
+    for (const [response, cleanup] of [...this.eventConnections.entries()]) {
+      cleanup();
+      if (!response.writableEnded) response.end();
+    }
     if (server) {
       if (typeof server.closeAllConnections === "function") {
         server.closeAllConnections();
@@ -964,20 +980,24 @@ export class McpControlServer {
     }
     if (request.method === "OPTIONS") {
       result.writeHead(204, {
-        Allow: "POST, DELETE, OPTIONS",
+        Allow: "GET, POST, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Authorization, Content-Type, Mcp-Session-Id, MCP-Protocol-Version, X-Pi-Desktop-Token",
-        "Access-Control-Allow-Methods": "POST, DELETE, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
       });
       result.end();
       return;
     }
     const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
-    if (pathname !== "/mcp" && pathname !== "/mcp/") {
+    if (pathname !== "/mcp" && pathname !== "/mcp/" && pathname !== "/events" && pathname !== "/events/") {
       this.sendHttp(result, 404, { error: "not found" });
       return;
     }
     if (!this.isAuthorized(request)) {
       this.sendHttp(result, 401, { error: "unauthorized" }, { "WWW-Authenticate": "Bearer" });
+      return;
+    }
+    if (pathname === "/events" || pathname === "/events/") {
+      await this.handleEvents(request, result);
       return;
     }
     if (request.method === "DELETE") {
@@ -992,7 +1012,7 @@ export class McpControlServer {
       return;
     }
     if (request.method === "GET") {
-      this.sendHttp(result, 405, { error: "SSE stream not supported" }, { Allow: "POST, DELETE, OPTIONS" });
+      this.sendHttp(result, 405, { error: "method not allowed" }, { Allow: "POST, DELETE, OPTIONS" });
       return;
     }
     if (request.method !== "POST") {
@@ -1120,6 +1140,76 @@ export class McpControlServer {
     if (method === "logging/setLevel") return { response: response(id, {}) };
     if (!method) return { response: rpcError(id, -32600, "method is required") };
     return { response: rpcError(id, -32601, `method not found: ${method}`) };
+  }
+
+  private async handleEvents(request: IncomingMessage, result: ServerResponse): Promise<void> {
+    if (request.method !== "GET") {
+      this.sendHttp(result, 405, { error: "method not allowed" }, { Allow: "GET, OPTIONS" });
+      return;
+    }
+    const url = new URL(request.url ?? "/events", "http://127.0.0.1");
+    const requestedIds = [
+      ...url.searchParams.getAll("sessionId"),
+      ...url.searchParams.getAll("sessionIds").flatMap((value) => value.split(",")),
+    ]
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const sessionIds = requestedIds.length > 0 ? [...new Set(requestedIds)].slice(0, 256) : undefined;
+    let subscription: ReturnType<AgentEventHub["subscribe"]>;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let closed = false;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      if (heartbeat) clearInterval(heartbeat);
+      subscription?.unsubscribe();
+      this.eventConnections.delete(result);
+    };
+    result.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    result.write(`event: ready\ndata: ${JSON.stringify({ protocol: "pi-agent-events", version: 1 })}\n\n`);
+    subscription = this.eventHub.subscribe(
+      (envelope) => {
+        if (closed || result.destroyed || result.writableEnded) return;
+        try {
+          const ok = result.write(`event: agent\ndata: ${JSON.stringify(envelope)}\n\n`);
+          if (!ok) {
+            cleanup();
+            result.destroy();
+          }
+        } catch {
+          cleanup();
+          result.destroy();
+        }
+      },
+      sessionIds ? { sessionIds } : undefined,
+    );
+    if (!subscription) {
+      cleanup();
+      if (!result.writableEnded) result.end();
+      return;
+    }
+    heartbeat = setInterval(() => {
+      if (closed || result.destroyed || result.writableEnded) {
+        cleanup();
+        return;
+      }
+      try {
+        result.write(": heartbeat\n\n");
+      } catch {
+        cleanup();
+        result.destroy();
+      }
+    }, 15_000);
+    this.eventConnections.set(result, cleanup);
+    request.on("close", cleanup);
+    request.on("error", cleanup);
+    result.on("close", cleanup);
+    result.on("error", cleanup);
   }
 
   private buildTools(): McpTool[] {

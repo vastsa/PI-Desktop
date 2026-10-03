@@ -779,6 +779,13 @@ export function registerAgentIpc({
     return sidecar.call("agent.getStatus", { sessionId });
   });
 
+  handle(IPC.invoke.agentGetStatuses, async (req: { sessionIds: string[] }) => {
+    if (!sidecar) throw new Error("sidecar unavailable");
+    return sidecar.call("agent.getStatuses", {
+      sessionIds: Array.isArray(req?.sessionIds) ? req.sessionIds : [],
+    });
+  });
+
   // The Host-owned turn queue (D375 / D386). The renderer mirrors it; the
   // headless module admits, orders, and drains it.
   handle(IPC.invoke.agentQueuePush, async (req: AgentQueuePushRequest) => {

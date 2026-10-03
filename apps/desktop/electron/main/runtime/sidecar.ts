@@ -14,6 +14,7 @@ import { resolveLocalFile } from "../browser-view";
 import { catalogModelConfigFor } from "../models-dev-catalog";
 import { AgentSidecar } from "../agent-sidecar";
 import { relaxedNetworkPolicyEnabled } from "../endpoint-policy";
+import { agentEventHub } from "../agent-events";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { BrowserHost } from "../browser-host";
@@ -101,6 +102,7 @@ export function createSidecarRuntime({
     // the current turn's state in Agent Host or the renderer. Persistence is a
     // separate call, so dropping it here still archives it as history.
     if (isStaleTerminalEvent(envelope)) return;
+    agentEventHub.ingest(envelope);
     runtimeState.agentHostBridge?.ingest(envelope);
     sendToRenderer(IPC.event.agentMessage, envelope);
   };
@@ -184,7 +186,9 @@ export function createSidecarRuntime({
     if (method === "native.agent.event") {
       // Native AgentSession already persisted the event to its canonical Pi
       // JSONL. It owns neither the Desktop outbox nor Host queue/turn state.
-      sendToRenderer(IPC.event.agentMessage, params as AgentEventEnvelope);
+      const envelope = params as AgentEventEnvelope;
+      agentEventHub.ingest(envelope);
+      sendToRenderer(IPC.event.agentMessage, envelope);
       return;
     }
     if (method === "agent.event") {

@@ -5597,7 +5597,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
-| 基线后本地自动化 | E2E-220 |
+| 基线后本地自动化 | E2E-220、E2E-221 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -7591,6 +7591,25 @@ eleven-tool-round desktop paths are verified by
 - **里程碑**：M6+
 - **状态**：由 `apps/desktop/test/mcp-control.test.mjs` 覆盖 MCP 协议/单元；完整 Electron
   旅程已记录，仍按策略延后
+
+#### E2E-221：Agent 事件通过 SSE 送达，批量状态取代逐会话轮询
+
+- **前提条件**：使用 `PI_DESKTOP_MCP_CONTROL=1` 和干净配置启动 PI-Desktop。
+  `mcp-control.json` 可读，fixture 会话可发送 prompt，Electron Main 可访问。
+- **步骤**：1）从 `mcp-control.json` 读取 `eventsUrl` 和 bearer token。2）在发送 prompt
+  前打开 `GET /events?sessionId=<fixture>`，确认认证后的 `ready` 帧。3）调用
+  `pi_agent_prompt`。4）收集到 `agent_end` 的 SSE 帧，关闭后重新连接。5）调用
+  `pi_agent_status_batch` 查询 fixture 和另一个会话。6）将流过滤到另一个会话后再次发送 prompt。
+- **预期**：事件端点只绑定回环，缺 token 和禁止的 Origin 被拒绝；`ready` 先于 Agent 事件；
+  消息/工具进度、重试/错误和终态事件保持现有 `AgentEventEnvelope` 形状并带 session id；
+  过滤流不会泄漏另一个会话；重连成功；批量状态一次桌面操作返回每个有效 id 的结果，
+  首次列表/详情不再需要逐会话状态扇出；慢客户端/断开客户端会被清理，不阻止桌面退出。
+- **链接规格**：`03-runtime/01-ipc-protocol.md` §13d、`03-runtime/10-session-state-machine.md`、
+  `03-runtime/19-remote-agent-control-protocol.md` §4.1
+- **验收**：C（会话与流）、安全、质量
+- **里程碑**：M6+
+- **状态**：`apps/desktop/test/agent-events.test.mjs` 已覆盖协议/单元；完整 Electron 旅程按策略
+  延后，合入前须在具备条件的候选版本上运行。
 
 ## 受信任扩展场景（R7 v1）
 

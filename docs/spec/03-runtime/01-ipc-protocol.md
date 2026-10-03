@@ -2202,10 +2202,13 @@ server uses MCP protocol version `2025-06-18` and supports `initialize`,
 `notifications/initialized`, `ping`, `tools/list`, `tools/call`,
 `resources/list`, and `logging/setLevel`. `initialize` negotiates `2025-06-18`
 or the compatible `2025-03-26` value and never echoes an unsupported client
-version. Listen is asserted to be loopback after bind. It accepts the standard
-POST transport; GET is handled with 405 because this server does not offer an
-SSE stream. Clients poll `pi_session_get` or `pi_agent_status` for turn
-progress.
+version. Listen is asserted to be loopback after bind. The MCP `/mcp` path accepts the standard POST transport; its GET behavior
+remains 405. The authenticated `/events` path provides an SSE stream of the
+same normalized `AgentEventEnvelope` values already delivered to the renderer,
+and `pi_agent_status_batch` provides one bounded status snapshot for multiple
+sessions. Clients MUST subscribe to `/events` before prompting, use the batch
+snapshot on initial load/reconnect, and use single-session status only as a
+compatibility fallback.
 
 ### Connection and authentication
 
@@ -2219,6 +2222,7 @@ connection record to `mcp-control.json`:
   "serverName": "pi-desktop",
   "protocol": "streamable-http",
   "url": "http://127.0.0.1:37123/mcp",
+  "eventsUrl": "http://127.0.0.1:37123/events",
   "token": "<redacted>",
   "pid": 12345,
   "startedAt": "2026-09-09T00:00:00.000Z"
@@ -2229,8 +2233,12 @@ Both files are written with mode `0600` where the platform supports POSIX
 permissions. Every request must include `Authorization: Bearer <token>` (the
 `X-Pi-Desktop-Token` header is retained for simple local clients). Requests to
 other paths, requests without the token, and methods other than
-POST/DELETE/OPTIONS are rejected. The server is stopped before Electron waits
-for host shutdown and the manifest is marked inactive.
+GET/POST/DELETE/OPTIONS are rejected. `/events` accepts only GET and returns
+`text/event-stream`; it supports repeated `sessionId` query parameters for a
+session-scoped stream, sends a `ready` event followed by `agent` events, and
+sends comment heartbeats. The stream is process-memory only and is closed when
+the client disconnects or the desktop stops. The server is stopped before
+Electron waits for host shutdown and the manifest is marked inactive.
 
 When an `Origin` header is present, its hostname must be `localhost`,
 `127.0.0.1`, or `::1`; absent Origin is allowed for non-browser MCP clients.
@@ -2248,8 +2256,8 @@ The named tools cover the common Agent workflow:
 - `pi_session_list`, `pi_session_create`, `pi_session_get`,
   `pi_session_rename`, `pi_session_fork`, `pi_session_delete`,
   `pi_session_configure`
-- `pi_agent_prompt`, `pi_agent_status`, `pi_agent_stop`, `pi_agent_abort`,
-  `pi_agent_compact`
+- `pi_agent_prompt`, `pi_agent_status`, `pi_agent_status_batch`,
+  `pi_agent_stop`, `pi_agent_abort`, `pi_agent_compact`
 - `pi_plans_pending`, `pi_plans_resolve`
 - `pi_workspace_diff`, `pi_fs_list`, `pi_fs_read`
 

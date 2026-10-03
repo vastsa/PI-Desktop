@@ -574,6 +574,27 @@ async function handle(method: string, params: any): Promise<unknown> {
         },
       };
     }
+    case "agent.getStatuses": {
+      const rawIds: unknown[] = Array.isArray(params.sessionIds) ? params.sessionIds : [];
+      const sessionIds = [...new Set(rawIds
+        .filter((value: unknown): value is string => typeof value === "string")
+        .map((value: string) => value.trim())
+        .filter((value: string) => value.length > 0))].slice(0, 256);
+      const statuses: Record<string, unknown> = {};
+      for (const sessionId of sessionIds) {
+        if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {
+          statuses[sessionId] = nativePiService().status(sessionId).status;
+          continue;
+        }
+        const runtime = runtimes.get(sessionId);
+        statuses[sessionId] = runtime?.getStatus() ?? {
+          sessionId,
+          isRunning: false,
+          pendingToolConfirmations: 0,
+        };
+      }
+      return { statuses };
+    }
     case "agent.disposeSession": {
       const sessionId = String(params.sessionId);
       if (sessionId.startsWith(NATIVE_PI_SESSION_PREFIX)) {

@@ -1737,8 +1737,10 @@ Electron Main 只绑定 `127.0.0.1`，并在 `/mcp` 提供 Streamable HTTP MCP�
 `notifications/initialized`、`ping`、`tools/list`、`tools/call`、
 `resources/list` 和 `logging/setLevel`。`initialize` 只协商 `2025-06-18` 或兼容的
 `2025-03-26`，不会回显不支持的客户端版本。监听地址在 bind 后必须仍是回环。
-服务接受标准 POST 传输；由于不提供 SSE 流，GET 会返回 405。客户端通过轮询
-`pi_session_get` 或 `pi_agent_status` 观察回合进度。
+`/mcp` 仍接受标准 POST 传输，GET 继续返回 405；同时认证后的 `/events` 提供
+SSE 事件流，发送与 renderer 相同的标准化 `AgentEventEnvelope`，并新增
+`pi_agent_status_batch` 一次读取多个会话状态。客户端必须先订阅 `/events`，
+首次进入或重连时使用批量快照；单会话状态查询只作为兼容性兜底。
 
 ### 连接与认证
 
@@ -1751,6 +1753,7 @@ Electron Main 只绑定 `127.0.0.1`，并在 `/mcp` 提供 Streamable HTTP MCP�
   "serverName": "pi-desktop",
   "protocol": "streamable-http",
   "url": "http://127.0.0.1:37123/mcp",
+  "eventsUrl": "http://127.0.0.1:37123/events",
   "token": "<redacted>",
   "pid": 12345,
   "startedAt": "2026-09-09T00:00:00.000Z"
@@ -1759,8 +1762,10 @@ Electron Main 只绑定 `127.0.0.1`，并在 `/mcp` 提供 Streamable HTTP MCP�
 
 在支持 POSIX 权限的平台上，两个文件都以 `0600` 模式写入。每个请求都必须包含
 `Authorization: Bearer <token>`（保留 `X-Pi-Desktop-Token` 头，方便简单的本地客户端）。
-其他路径、缺少 token 的请求，以及除 POST/DELETE/OPTIONS 以外的方法都会被拒绝。
-Electron 等待主机关闭之前会停止服务，并将清单标记为非活动。
+其他路径、缺少 token 的请求，以及除 GET/POST/DELETE/OPTIONS 以外的方法都会被拒绝。
+`/events` 只接受 GET，返回 `text/event-stream`；支持重复的 `sessionId` 查询参数，
+先发送 `ready`，随后发送 `agent` 事件，并发送注释心跳。事件流只存在于进程内，
+客户端断开或桌面停止时自动关闭。Electron 等待主机关闭之前会停止服务，并将清单标记为非活动。
 
 如果请求带有 `Origin` 头，其主机名必须是 `localhost`、`127.0.0.1` 或 `::1`；
 非浏览器 MCP 客户端可以省略 `Origin`。初始化后，请求必须携带服务端发出的
@@ -1776,8 +1781,8 @@ Electron 等待主机关闭之前会停止服务，并将清单标记为非活�
 - `pi_session_list`、`pi_session_create`、`pi_session_get`、
   `pi_session_rename`、`pi_session_fork`、`pi_session_delete`、
   `pi_session_configure`
-- `pi_agent_prompt`、`pi_agent_status`、`pi_agent_stop`、`pi_agent_abort`、
-  `pi_agent_compact`
+- `pi_agent_prompt`、`pi_agent_status`、`pi_agent_status_batch`、
+  `pi_agent_stop`、`pi_agent_abort`、`pi_agent_compact`
 - `pi_plans_pending`、`pi_plans_resolve`
 - `pi_workspace_diff`、`pi_fs_list`、`pi_fs_read`
 
