@@ -121,7 +121,8 @@ try {
       const saved = await detail();
       const states = saved.messages.filter((row) => row.modelSystem);
       assert.equal(states.length, 2);
-      assert(JSON.parse(states[1].modelSystem.messageJson).toolsAdded.some((tool) => tool.name === "BrowserPreview"));
+      assert(JSON.parse(JSON.parse(states[1].modelSystem.messageJson).sections.tool_activation).active.includes("BrowserPreview"));
+      assert.deepEqual(requests[1].tools, requests[0].tools);
       assert(requests[1].tools.some((tool) => tool.function.name === "BrowserPreview"));
       console.log("PASS: sidecar ToolSearch and acknowledged Host persistence");
       await sidecar.dispose();
