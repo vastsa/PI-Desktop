@@ -235,6 +235,15 @@ function ManagementScope({
 export function mcpDraftError(draft: McpDraft): string | null {
   if (!draft.id.trim()) return "extensions.mcp.errorId";
   if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(draft.id.trim())) return "extensions.mcp.errorIdShape";
+  // Timeout drafts must be blank or a positive integer before they may be
+  // saved; silent coercion to 0 would clear a stored override (#1323).
+  for (const value of [draft.connectTimeoutMs, draft.callTimeoutMs]) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (!/^\d+$/.test(trimmed) || Number(trimmed) <= 0) {
+      return "extensions.mcp.errorTimeout";
+    }
+  }
   if (draft.transport === "stdio") {
     if (!draft.command.trim()) return "extensions.mcp.errorCommand";
     if (draft.command.includes("..")) return "extensions.mcp.errorCommandDots";

@@ -2383,6 +2383,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       errorIdShape: "Use letters, digits, - and _, starting with a letter.",
       errorCommand: "A command is required.",
       errorCommandDots: "The command can't contain '..'.",
+      errorTimeout: "Timeouts must be blank or a positive number of milliseconds.",
       errorUrl: "A URL is required.",
       errorUrlShape: "That isn't a valid URL.",
       errorUrlScheme: "Use an http or https URL.",

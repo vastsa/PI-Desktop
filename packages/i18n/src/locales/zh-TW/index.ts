@@ -2326,6 +2326,7 @@ sklm: {
       errorIdShape: "只能用字母、數字、- 和 _，且以字母開頭。",
       errorCommand: "命令不能為空。",
       errorCommandDots: "命令中不能包含 '..'。",
+      errorTimeout: "逾時必須留空或為正整數毫秒。",
       errorUrl: "地址不能為空。",
       errorUrlShape: "這不是一個有效的 URL。",
       errorUrlScheme: "請使用 http 或 https 地址。",

@@ -2339,6 +2339,7 @@ sklm: {
       "errorIdShape": "Utilice letras, dígitos, - y _, comenzando con una letra.",
       "errorCommand": "Se requiere un comando.",
       "errorCommandDots": "El comando no puede contener '..'.",
+      "errorTimeout": "Los tiempos de espera deben estar vacíos o ser un número positivo de milisegundos.",
       "errorUrl": "Se requiere una URL.",
       "errorUrlShape": "Esa no es una URL válida.",
       "errorUrlScheme": "Utilice una URL http o https."

@@ -473,6 +473,10 @@ export function configurationChanged(before: McpServerRecord, after: McpServerRe
     JSON.stringify(before.args ?? []) !== JSON.stringify(after.args ?? []) ||
     JSON.stringify(before.env ?? {}) !== JSON.stringify(after.env ?? {}) ||
     before.url !== after.url ||
-    JSON.stringify(before.headers ?? {}) !== JSON.stringify(after.headers ?? {})
+    JSON.stringify(before.headers ?? {}) !== JSON.stringify(after.headers ?? {}) ||
+    // Timeout budgets are applied at client construction; a saved edit must
+    // recreate the client so the new budgets take effect (#1323).
+    (before.connectTimeoutMs ?? null) !== (after.connectTimeoutMs ?? null) ||
+    (before.callTimeoutMs ?? null) !== (after.callTimeoutMs ?? null)
   );
 }

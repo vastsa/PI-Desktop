@@ -2339,6 +2339,7 @@ sklm: {
       "errorIdShape": "Verwenden Sie Buchstaben, Ziffern, - und _, beginnend mit einem Buchstaben.",
       "errorCommand": "Ein Befehl ist erforderlich.",
       "errorCommandDots": "Der Befehl darf „..\" nicht enthalten.",
+      "errorTimeout": "Zeitlimits müssen leer oder eine positive Millisekundenzahl sein.",
       "errorUrl": "Eine URL ist erforderlich.",
       "errorUrlShape": "Das ist keine gültige URL.",
       "errorUrlScheme": "Verwenden Sie eine http- oder https-URL."

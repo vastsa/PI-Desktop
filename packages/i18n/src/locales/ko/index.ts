@@ -2373,6 +2373,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       errorIdShape: "문자 또는 숫자로 시작하고 문자, 숫자, - 및 _만 사용하세요.",
       errorCommand: "명령을 입력하세요.",
       errorCommandDots: "명령에 '..'을 포함할 수 없습니다.",
+      errorTimeout: "타임아웃은 비워 두거나 양의 밀리초 수여야 합니다.",
       errorUrl: "URL을 입력하세요.",
       errorUrlShape: "올바른 URL이 아닙니다.",
       errorUrlScheme: "http 또는 https URL을 사용하세요.",

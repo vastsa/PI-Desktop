@@ -2363,6 +2363,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       errorIdShape: "Harf, rakam, - ve _ kullanın; harfle başlayın.",
       errorCommand: "Bir komut gerekli.",
       errorCommandDots: "Komut '..' içeremez.",
+      errorTimeout: "Zaman aşımları boş veya pozitif milisaniye sayısı olmalıdır.",
       errorUrl: "Bir URL gerekli.",
       errorUrlShape: "Bu geçerli bir URL değil.",
       errorUrlScheme: "http veya https URL kullanın.",
