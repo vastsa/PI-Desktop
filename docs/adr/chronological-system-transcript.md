@@ -60,8 +60,10 @@ model-name allowlist. Responses (OpenAI/Codex) with verified system support
 and `additional_tools` or client tool search, Chat Completions with verified
 system/tool additions, and Pi's transcript transport retain native chronological
 additions. Other transports declare the complete current catalog in deterministic
-name order from the first request. In particular Anthropic's native transition
-blocks still grow its request-level schemas, so they use fixed declarations.
+name order from the first request. In particular the pinned Pi 1.0 Anthropic
+adapter's native transition blocks still grow its request-level schemas, so they use fixed declarations.
+Anthropic's separate inline-definition beta is not wired by that adapter;
+mid-conversation system/tool-reference support alone must not enable it.
 This policy also covers compatible relays without enabling unsupported native
 message roles or switching their configured API.
 

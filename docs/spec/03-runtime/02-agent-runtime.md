@@ -1458,8 +1458,10 @@ support plus `supportsAdditionalTools` or `supportsToolSearch`, Chat Completions
 with verified system/tool additions, and Pi Messages retain native additions.
 Other bindings, including Anthropic Messages, Gemini, ordinary Chat Completions,
 older Responses/Codex models and compatible relays, declare the complete catalog
-in deterministic name order on the first request. Anthropic's native tool-change
-blocks still grow request-level schemas, so do not exempt them. ToolSearch changes
+in deterministic name order on the first request. The pinned Pi 1.0 Anthropic
+adapter's native tool-change blocks still grow request-level schemas, so do not exempt them. The separate
+inline-definition beta is not wired by this adapter; do not infer it from
+system-message or tool-reference capability flags. ToolSearch changes
 activation without changing the declared schemas. A visible schema does not
 permit execution: inactive deferred calls are rejected before extension hooks
 and the Host; activated calls still require the existing mode and Host checks.

@@ -992,9 +992,11 @@ epochs fail closed. Inactive declared tools are blocked before extension/Host
 execution, and activation never bypasses mode or approval checks. The full
 catalog is deterministic from the first request. More than 128 tools or an
 insufficient context budget falls back to on-demand declarations with a
-diagnostic, without truncation. Responses and Chat Completions bindings with verified anchored additions, and
-Pi Messages, retain native incremental publication. Anthropic native tool changes
-still grow request schemas and therefore use fixed declarations. Strip only the
+diagnostic, without truncation. Responses and Chat Completions bindings with
+verified anchored additions, and Pi Messages, retain native incremental
+publication. The pinned Pi 1.0 adapter's Anthropic native tool changes still grow
+request schemas and therefore use fixed declarations. Its separate inline-definition
+beta is not wired; system-message/tool-reference flags do not enable it. Strip only the
 private activation section from provider projection, preserving canonical state
 and all other instructions. This also stabilizes ToolSearch on folding APIs and
 compatible relays without enabling new transport capabilities.
