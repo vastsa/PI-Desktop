@@ -281,7 +281,6 @@ export const es = {
       "progress": "{{completed}}/{{total}} completadas",
       "current": "{{completed}}/{{total}} · Actual: {{content}}",
       "completed": "{{completed}}/{{total}} completadas",
-      "more": "{{count}} elementos más",
       "updated": "Lista actualizada",
       "updating": "Actualizando lista",
       "status": { "pending": "Pendiente", "in_progress": "En curso", "completed": "Completada", "cancelled": "Cancelada" }

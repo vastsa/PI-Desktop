@@ -6,8 +6,6 @@ import { IconCheck, IconChevronDown, IconChevronUp } from "./icons";
 import { useSessionTodosRecovery } from "../features/chat/todos/useSessionTodosRecovery";
 import { useAppStore } from "../stores/app-store";
 
-const VISIBLE_LIMIT = 8;
-
 function statusSymbol(status: TodoStatus): string {
   switch (status) {
     case "in_progress":
@@ -38,8 +36,9 @@ export function TodoDock({ sessionId }: { sessionId: string }) {
   const finished = snapshot.todos.every(
     (todo) => todo.status === "completed" || todo.status === "cancelled",
   );
-  const visible = snapshot.todos.slice(0, VISIBLE_LIMIT);
-  const remaining = Math.max(0, snapshot.todos.length - VISIBLE_LIMIT);
+  // Expanded shows the whole list; the dock list scrolls internally instead
+  // of truncating to a static "N more" line (#1319).
+  const todos = snapshot.todos;
   const statusLabel = allCancelled
     ? t("chat.todo.status.cancelled")
     : finished
@@ -65,14 +64,9 @@ export function TodoDock({ sessionId }: { sessionId: string }) {
       </Button>
       <div className="todo-dock-content" aria-hidden={!expanded}>
         <div className="todo-dock-list" role="list">
-          {visible.map((todo, index) => (
+          {todos.map((todo, index) => (
             <TodoRow key={`${index}:${todo.content}`} todo={todo} />
           ))}
-          {remaining > 0 ? (
-            <div className="todo-dock-more" role="status">
-              {t("chat.todo.more", { count: remaining })}
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

@@ -59,9 +59,8 @@ window.todoChecklistProbe = async () => {
   assert(header()?.getAttribute("aria-expanded") === "false", "Dock starts collapsed");
   flushSync(() => header()!.click());
   await until(() => header()?.getAttribute("aria-expanded") === "true", "Click must expand dock");
-  assert(document.querySelectorAll(".todo-dock-row").length === 8, "Expanded list is capped at eight rows");
-  assert(document.querySelector(".todo-dock-more")?.textContent?.includes("2"), "Overflow count must render");
-  checks.push("agent-prompt-tool-discovery-host-write-event-dock-expand-bounded-list");
+  assert(document.querySelectorAll(".todo-dock-row").length === 10, "Expanded list must render every todo row");
+  checks.push("agent-prompt-tool-discovery-host-write-event-dock-expand-full-list");
   const normalized = await write(first, [
     { content: "😀".repeat(501), status: "in_progress", priority: "high" },
     { content: "Second active item", status: "in_progress", priority: "medium" },

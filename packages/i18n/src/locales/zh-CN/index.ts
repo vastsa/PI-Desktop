@@ -283,7 +283,6 @@ export const zhCN = {
       progress: "已完成 {{completed}}/{{total}}",
       current: "{{completed}}/{{total}} · 当前：{{content}}",
       completed: "已完成 {{completed}}/{{total}}",
-      more: "还有 {{count}} 项",
       updated: "清单已更新",
       updating: "正在更新清单",
       status: { pending: "待办", in_progress: "进行中", completed: "已完成", cancelled: "已取消" },

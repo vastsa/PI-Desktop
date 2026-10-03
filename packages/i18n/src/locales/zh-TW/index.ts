@@ -283,7 +283,6 @@ export const zhTW = {
       progress: "已完成 {{completed}}/{{total}}",
       current: "{{completed}}/{{total}} · 目前：{{content}}",
       completed: "已完成 {{completed}}/{{total}}",
-      more: "還有 {{count}} 項",
       updated: "清單已更新",
       updating: "正在更新清單",
       status: { pending: "待辦", in_progress: "進行中", completed: "已完成", cancelled: "已取消" },

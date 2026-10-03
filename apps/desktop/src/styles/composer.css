@@ -826,6 +826,14 @@
   overflow: hidden;
 }
 
+/* The expanded dock shows the whole list and scrolls inside (#1319) instead
+   of truncating to a static "N more" line. */
+.todo-dock.is-expanded .todo-dock-list {
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .todo-dock-row {
   display: flex;
   min-width: 0;
@@ -867,11 +875,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.todo-dock-more {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
 }
 
 @media (prefers-reduced-motion: reduce) {

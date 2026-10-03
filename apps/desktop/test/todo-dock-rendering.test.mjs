@@ -53,7 +53,10 @@ test("TodoDock renders bounded session progress and cancelled state", async () =
     assert.match(html, /aria-expanded="false"/);
     assert.match(html, /class="todo-dock-content" aria-hidden="true"/);
     assert.match(html, /extra-0/);
-    assert.match(html, /4 more items/);
+    // The expanded list renders every row; the dock scrolls internally
+    // instead of truncating to a static "N more" line (#1319).
+    assert.match(html, /extra-9/);
+    assert.doesNotMatch(html, /more items/);
     assert.match(html, /lucide-check/);
 
     Object.assign(useAppStore.getInitialState(), {
