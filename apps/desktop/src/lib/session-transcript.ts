@@ -202,9 +202,38 @@ export function mergeLiveSessionMessages(
   }
 
   const used = new Set<string>();
+  // An optimistic prompt whose reconcile event was missed survives with its
+  // temporary id, so id-based merging replays it next to the durable echo of
+  // the same prompt (#1308: prompt reappears after switching away and back).
+  // Each durable completed user row grants one collapse credit: an orphan
+  // live user row with equal text consumes one and is dropped. A genuinely
+  // repeated prompt keeps every durable row because two sends persist two
+  // rows while each live orphan still only consumes one credit.
+  const durableUserTextCredits = new Map<string, number>();
+  for (const message of durable) {
+    if (message.role !== "user") continue;
+    durableUserTextCredits.set(
+      message.content,
+      (durableUserTextCredits.get(message.content) ?? 0) + 1,
+    );
+  }
   const merged: UiMessage[] = [];
   const push = (message: UiMessage) => {
     if (used.has(message.id)) return;
+    if (
+      message.role === "user" &&
+      !isInFlightMessage(message) &&
+      !durableIds.has(message.id)
+    ) {
+      const credits = durableUserTextCredits.get(message.content) ?? 0;
+      if (credits > 0) {
+        durableUserTextCredits.set(message.content, credits - 1);
+        // Record the drop so a later merge pass cannot replay the orphan
+        // after its collapse credit has been consumed.
+        used.add(message.id);
+        return;
+      }
+    }
     used.add(message.id);
     merged.push(message);
   };
@@ -246,7 +275,19 @@ export function mergeLiveSessionMessages(
   }
 
   for (const message of liveNormalized) {
-    if (!used.has(message.id)) push(message);
+    if (used.has(message.id)) continue;
+    if (
+      message.role === "user" &&
+      !isInFlightMessage(message) &&
+      !durableIds.has(message.id)
+    ) {
+      const credits = durableUserTextCredits.get(message.content) ?? 0;
+      if (credits > 0) {
+        durableUserTextCredits.set(message.content, credits - 1);
+        continue;
+      }
+    }
+    push(message);
   }
 
   const unchanged =

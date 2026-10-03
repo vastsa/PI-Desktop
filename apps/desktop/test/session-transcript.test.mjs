@@ -109,6 +109,58 @@ test("repeated transcript rows keep one position and the latest value", () => {
   );
 });
 
+test("an orphan optimistic prompt collapses into its durable echo (D334)", () => {
+  // The prompt was sent, the renderer switched away, and the reconcile event
+  // was missed: the optimistic row survives under its temporary id while the
+  // durable page carries the same prompt under the host id.
+  const orphan = message(
+    "11111111-2222-4333-8444-555555555555",
+    { role: "user", content: "1", createdAt: "2026-08-31T00:00:00.000Z" },
+  );
+  const echoed = message("sdk-user-1", {
+    role: "user",
+    content: "1",
+    createdAt: "2026-08-31T00:00:01.000Z",
+  });
+  const answer = message("sdk-answer-1", { content: "reply" });
+  const durable = [echoed, answer];
+  const live = [orphan, echoed, answer];
+
+  assert.deepEqual(
+    mergeLiveSessionMessages(durable, live).map(({ id, content }) => ({ id, content })),
+    [
+      { id: "sdk-user-1", content: "1" },
+      { id: "sdk-answer-1", content: "reply" },
+    ],
+  );
+});
+
+test("a genuinely repeated prompt stays visible after a switch", () => {
+  // Two real sends of the same text persist two durable rows; one live orphan
+  // may consume one, but the second repeat must survive the merge.
+  const orphan = message(
+    "11111111-2222-4333-8444-555555555555",
+    { role: "user", content: "1", createdAt: "2026-08-31T00:02:00.000Z" },
+  );
+  const first = message("sdk-user-1", {
+    role: "user",
+    content: "1",
+    createdAt: "2026-08-31T00:00:01.000Z",
+  });
+  const second = message("sdk-user-2", {
+    role: "user",
+    content: "1",
+    createdAt: "2026-08-31T00:02:01.000Z",
+  });
+  const durable = [first, second];
+  const live = [orphan, first, second];
+
+  assert.deepEqual(
+    mergeLiveSessionMessages(durable, live).map(({ id }) => id),
+    ["sdk-user-1", "sdk-user-2"],
+  );
+});
+
 test("live event upserts preserve array identity for unchanged rows", () => {
   const original = [message("answer", { status: "streaming" })];
   const updated = upsertLiveSessionMessage(original, {
