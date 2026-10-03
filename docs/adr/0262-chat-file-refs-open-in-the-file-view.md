@@ -48,13 +48,17 @@ work-panel tab already carries was honoured by main for `pi.browser` only.
    - a reference that matches nothing opens **nothing** and reports itself. No
      empty panel, no blank browser page.
 2. **The destination follows where the reference resolved.** A project file
-   opens in the `pi.file-manager` view. A file in the session scratch or
-   attachment store opens in the host `file:` tab, because it lives outside that
-   view's project root — see point 4. A workspace `.html` / `.htm` file still
-   opens in the side browser (ADR 0163), for an agent reply and a user chip
-   alike: it is a page to run, not a file to read. When the file view is not
-   loaded, a project file falls back to the host `file:` tab, so the click never
-   regresses to nothing.
+   opens in the `pi.file-manager` view, except a `path:line` reference, which
+   opens in the host's read-only `file:` tab so the requested source line can
+   be brought into view. The bundled view accepts opaque path locations and has
+   no line-navigation contract; this keeps the path unchanged and uses the
+   host viewer's existing scroll support. A file in the session scratch or
+   attachment store opens in the
+   host `file:` tab, because it lives outside that view's project root — see
+   point 4. A workspace `.html` / `.htm` file still opens in the side browser
+   (ADR 0163), for an agent reply and a user chip alike: it is a page to run,
+   not a file to read. When the file view is not loaded, a project file falls
+   back to the host `file:` tab, so the click never regresses to nothing.
 3. **A contributed view's `location` stops being browser-only.** It travels as
    the view entry URL's `piViewOpen` query parameter on creation — the only
    channel that cannot race a document that has not run yet — and as the

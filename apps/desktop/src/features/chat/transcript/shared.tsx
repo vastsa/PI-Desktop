@@ -423,13 +423,22 @@ export function FileRefChip({
   kind,
   mimeType,
   onOpen,
+  line,
+  column,
   ...position
 }: {
   name: string;
   path: string;
   kind?: "image" | "file";
   mimeType?: string;
-  onOpen: (path: string, baseDir?: string, mimeType?: string) => void;
+  onOpen: (
+    path: string,
+    baseDir?: string,
+    mimeType?: string,
+    position?: { line?: number; column?: number },
+  ) => void;
+  line?: number;
+  column?: number;
 } & SourcePositionProps) {
   const { t } = useTranslation();
   const Icon = fileChipIcon(name, kind);
@@ -443,7 +452,7 @@ export function FileRefChip({
         {...position}
         title={`${html ? t("chat.previewUrl") : t("chat.openFile")} — ${path}`}
         aria-label={`${name} — ${path}`}
-        onClick={() => onOpen(path, undefined, mimeType)}
+        onClick={() => onOpen(path, undefined, mimeType, { line, column })}
         onContextMenu={(event) => openFileMenu(event, { path })}
       >
         <span className="composer-chip-icon" aria-hidden>
@@ -556,6 +565,8 @@ export function LinkifiedText({ text, attachments }: { text: string; attachments
             key={index}
             name={segment.label}
             path={segment.target.path}
+            line={segment.target.line}
+            column={segment.target.column}
             onOpen={openFileRef}
             {...position}
           />

@@ -27,7 +27,12 @@ export function useOpenPreviewTarget() {
   const openFileRef = useOpenChatFileRef();
   return useCallback(
     (target: ChatPreviewTarget) =>
-      target.kind === "file" ? openFileRef(target.path) : openHttpUrl(target.url),
+      target.kind === "file"
+        ? openFileRef(target.path, undefined, undefined, {
+            line: target.line,
+            column: target.column,
+          })
+        : openHttpUrl(target.url),
     [openFileRef],
   );
 }
@@ -131,10 +136,13 @@ function useResolveChatFileRef() {
  * Open a file reference the conversation mentioned.
  *
  * A workspace `.html` page in the primary folder stays with the side browser
- * (ADR 0163): it is a page to run, not a file to read. A project file opens in
- * the bundled file view when that view is installed and on the host file tab
- * otherwise; scratch and attachment files live outside the project and always
- * take the host file tab.
+ * (ADR 0163): it is a page to run, not a file to read. A plain project file
+ * opens in the bundled file view when available; a positioned `path:line`
+ * reference uses the host file tab, which can scroll to the requested line.
+ * The plugin view accepts opaque path locations and has no line-navigation
+ * contract, so positioned references keep their path unchanged and use the
+ * host viewer's existing scroll support. Scratch and attachment files also use
+ * the host file tab.
  */
 export function useOpenChatFileRef() {
   const resolveRef = useResolveChatFileRef();
@@ -149,11 +157,20 @@ export function useOpenChatFileRef() {
   );
 
   return useCallback(
-    (path: string, baseDir?: string, mimeType?: string) => {
+    (
+      path: string,
+      baseDir?: string,
+      mimeType?: string,
+      position?: { line?: number; column?: number },
+    ) => {
+      const line = position?.line;
+      const column = position?.column;
       void (async () => {
         const resolved = await resolveRef(path, baseDir);
         if (!resolved) return;
+        const hasPosition = line !== undefined || column !== undefined;
         if (
+          !hasPosition &&
           resolved.inProject &&
           resolved.primary &&
           resolved.relativePath &&
@@ -162,11 +179,15 @@ export function useOpenChatFileRef() {
           openUrl(resolved.relativePath);
           return;
         }
-        if (resolved.inProject && fileViewAvailable) {
+        if (
+          resolved.inProject &&
+          fileViewAvailable &&
+          !hasPosition
+        ) {
           openTab(fileManagerPluginTab(resolved.path));
           return;
         }
-        openFile(resolved.path, mimeType);
+        openFile(resolved.path, mimeType, { line, column });
       })();
     },
     [fileViewAvailable, openFile, openTab, openUrl, resolveRef],

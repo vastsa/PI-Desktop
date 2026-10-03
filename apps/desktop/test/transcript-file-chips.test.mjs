@@ -8,13 +8,14 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [transcript, styles, hook, api, toolDetails, toolRow] = await Promise.all([
+const [transcript, styles, hook, api, toolDetails, toolRow, filesTab] = await Promise.all([
   readTranscriptSource(),
   read("../src/styles/chat-links.css"),
   read("../src/hooks/use-preview-target.ts"),
   read("../src/lib/api.ts"),
   read("../src/components/ToolDetails.tsx"),
   readTranscriptModule("ToolRow.tsx"),
+  read("../src/components/workpanel/FilesTab.tsx"),
 ]);
 
 test("sent user-message file refs render as composer-like chips", () => {
@@ -25,7 +26,7 @@ test("sent user-message file refs render as composer-like chips", () => {
   assert.match(transcript, /composer-chip-name/);
   assert.match(styles, /\.chat-file-chip[\s\S]*?appearance: none/);
   assert.match(transcript, /mimeType=\{attachment\.mimeType\}/);
-  assert.match(transcript, /onOpen\(path, undefined, mimeType\)/);
+  assert.match(transcript, /onOpen\(path, undefined, mimeType, \{ line, column \}\)/);
 });
 
 test("a file chip is routed by where the reference resolved, never optimistically", () => {
@@ -44,14 +45,23 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   assert.match(hook, /resolved\.primary &&/);
   assert.match(hook, /isHtmlFilePath\(resolved\.relativePath\)/);
   assert.match(hook, /openUrl\(resolved\.relativePath\)/);
-  // A project file prefers the bundled file view; without that plugin the
-  // host file tab is the same surface this hook used before.
+  // Plain project files prefer the bundled file view. A path:line reference
+  // uses the host file tab because the bundled view has no line-navigation API.
   assert.match(hook, /FILE_MANAGER_PLUGIN_TAB/);
+  assert.match(hook, /const hasPosition = line !== undefined \|\| column !== undefined/);
+  assert.match(hook, /!hasPosition[\s\S]*?isHtmlFilePath/);
+  assert.match(hook, /!hasPosition[\s\S]*?fileViewAvailable/);
   assert.match(hook, /fileManagerPluginTab\(resolved\.path\)/);
+  assert.match(filesTab, /data-line=\{i \+ 1\}/);
+  assert.match(filesTab, /viewerBodyRef\.current\?\.querySelector/);
+  assert.match(filesTab, /if \(!file \|\| selectedLine == null\) return/);
+  assert.match(filesTab, /data-line="\$\{selectedLine\}"/);
+  assert.match(filesTab, /return \(\) => cancelAnimationFrame\(frame\)/);
+  assert.match(filesTab, /selectedLine === undefined/);
   // Session scratch and attachment files live outside the plugin's project
-  // roots, so completion hands them back as an absolute path.
+  // roots, and positioned references need the host viewer's line navigation.
   assert.match(hook, /inProject: false/);
-  assert.match(hook, /openFile\(resolved\.path, mimeType\)/);
+  assert.match(hook, /openFile\(resolved\.path, mimeType, \{ line, column \}\)/);
   // The OS handoff is no longer what a chat click does; the channel itself
   // stays part of the public IPC surface.
   assert.doesNotMatch(hook, /api\.fsOpen\(/);
@@ -65,10 +75,8 @@ test("a tool row and a tool result row open a file where the message body does",
   // row land in the bundled file view too (ADR 0262). The call this replaces is
   // the one that let those surfaces pick the destination themselves.
   assert.match(hook, /const openFileRef = useOpenChatFileRef\(\);/);
-  assert.match(
-    hook,
-    /target\.kind === "file" \? openFileRef\(target\.path\) : openHttpUrl\(target\.url\)/,
-  );
+  assert.match(hook, /target\.kind === "file"[\s\S]*?openFileRef\(target\.path, undefined, undefined, \{/);
+  assert.match(hook, /line: target\.line,[\s\S]*?column: target\.column/);
   assert.doesNotMatch(hook, /openFile\(target\.path\)/);
   // Both surfaces still call that opener, and neither reaches the host viewer's
   // store action directly: the tool row summary carries the call's own path,

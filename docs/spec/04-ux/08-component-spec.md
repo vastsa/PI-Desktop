@@ -1537,6 +1537,10 @@ storage but compose into one assistant turn until the next user message.
   content's left rule is itself a pointer and keyboard-focusable collapse
   control.
 - Hover code block: copy button appears
+- Click a transcript file reference with `:line[:column]`: resolve the file
+  first, then open it in the host `file:` tab and scroll the requested line into
+  view. Plain project-file references still prefer the bundled file view, whose
+  open contract does not carry a line position.
 - Hover or focus a minimap marker: show the localized sender and a bounded
   plaintext preview; multiple assistant fragments produced within one user
   turn are combined into one AI-response marker and preview; nearby markers
@@ -3414,6 +3418,8 @@ Anatomy:
   in the bundled `pi.file-manager` view (the host `file:` tab when that view is
   unavailable), a session-scratch or attachment file in the host `file:` tab,
   and a `.html`/`.htm` page of the primary folder in the side browser. A
+  positioned `path:line` reference uses the host read-only `file:` tab and
+  scrolls the requested line into view. A
   primary-folder file is addressed to the view as a project-relative path and a
   sibling-folder file as an absolute one, which is also how scratch and
   attachment files are addressed. A reference that matches no file opens nothing

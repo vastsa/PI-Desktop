@@ -526,9 +526,13 @@ test("work panel context is retained by session instead of cleared on selection"
 
 test("file preview request ids stay unique across session contexts", () => {
   assert.match(storeSource, /let workPanelFileRequestSeq = 0/);
+  assert.match(
+    storeSource,
+    /const nextFileRequest = \(tab\?: WorkPanelTab\)[\s\S]*?createWorkPanelFileRequest\(tab, \+\+workPanelFileRequestSeq\)/,
+  );
   assert.ok(
-    storeSource.match(/seq:\s*\+\+workPanelFileRequestSeq/g)?.length >= 3,
-    "open and activation paths must use the shared request sequence",
+    storeSource.match(/nextFileRequest\((?:tab|activeTab)\)/g)?.length === 4,
+    "open, replace, activation, and close paths must share the position-preserving request",
   );
   assert.doesNotMatch(storeSource, /seq:\s*\([^)]*fileRequest\?\.seq[^)]*\) \+ 1/);
 });
