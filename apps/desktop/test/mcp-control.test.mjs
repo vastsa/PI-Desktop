@@ -16,6 +16,7 @@ const {
   isLoopbackBindHost,
   mcpControlRendererEvent,
   negotiateMcpProtocolVersion,
+  projectSessionGetResult,
   stripSecretMaterial,
   tokensEqual,
 } = await import("../electron/main/mcp-control.ts");
@@ -504,6 +505,72 @@ test("control-plane helpers clamp protocol versions, strip secrets, and bound re
   assert.equal(bounded.truncated, true);
   assert.equal(bounded.reason, "MCP_RESULT_LIMIT");
   assert.ok(JSON.stringify(bounded).length < 600_000);
+});
+
+test("session/get compaction metadata is projected before bounding (mocode #495)", () => {
+  const messages = [
+    { id: "m1", role: "user", content: "hello" },
+    { id: "m2", role: "assistant", content: "hi" },
+  ];
+  const huge = "x".repeat(700_000);
+  const raw = {
+    session: {
+      id: "s1",
+      title: "Long session",
+      modelId: "deepseek/deepseek-v4.1-flash",
+      mode: "agent",
+      messageStart: 0,
+      hasMoreBefore: false,
+      compaction: {
+        id: "cp1",
+        throughMessageId: "m900",
+        tokensBefore: 12_345,
+        createdAt: "2026-10-03T07:37:04.094Z",
+        summary: huge,
+        retainedTail: [{ huge }],
+        details: { generation: 13, modifiedFiles: ["a", "b", "c"] },
+        providerId: "p1",
+        modelId: "deepseek/deepseek-v4.1-flash",
+      },
+      messages,
+    },
+  };
+
+  // Without the projection the whole answer is replaced by a half-JSON preview
+  // and `messages` becomes unreachable — exactly what the phone hit.
+  const unprojected = boundMcpResult(raw);
+  assert.equal(unprojected.truncated, true);
+
+  const projected = projectSessionGetResult(raw);
+  const bounded = boundMcpResult(projected);
+  assert.notEqual(bounded.truncated, true, "projected answer must fit the limit");
+
+  const session = bounded.session;
+  assert.deepEqual(session.messages, messages, "messages must survive");
+  assert.equal(session.title, "Long session");
+  assert.equal(session.modelId, "deepseek/deepseek-v4.1-flash");
+  // The compact identity external clients rely on is kept ...
+  assert.equal(session.compaction.createdAt, "2026-10-03T07:37:04.094Z");
+  assert.equal(session.compaction.details.generation, 13);
+  // ... and the unbounded fields are dropped.
+  assert.equal(session.compaction.summary, undefined);
+  assert.equal(session.compaction.retainedTail, undefined);
+  assert.equal(session.compaction.details.modifiedFiles, undefined);
+});
+
+test("session/get projection leaves a small session untouched (mocode #495)", () => {
+  const raw = {
+    session: {
+      id: "s1",
+      compaction: { createdAt: "t", details: { generation: 1 } },
+      messages: [],
+    },
+  };
+  const projected = projectSessionGetResult(raw);
+  assert.deepEqual(projected.session.compaction, raw.session.compaction);
+  // Non-session shapes and sessions without a compaction record pass through.
+  assert.deepEqual(projectSessionGetResult({ ok: true }), { ok: true });
+  assert.deepEqual(projectSessionGetResult({ session: { id: "s2" } }), { session: { id: "s2" } });
 });
 
 test("renderer refresh events fire only for mutating control operations", () => {

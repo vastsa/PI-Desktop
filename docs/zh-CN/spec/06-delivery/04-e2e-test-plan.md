@@ -5632,6 +5632,7 @@ eleven-tool-round desktop paths are verified by
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
 | 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
+| 基线后本地自动化（MCP `pi_session_get` 超大 compaction） | E2E-MCP-session-get-projects-large-compaction |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -7631,6 +7632,26 @@ eleven-tool-round desktop paths are verified by
 - **里程碑**：M6+
 - **状态**：由 `apps/desktop/test/mcp-control.test.mjs` 覆盖 MCP 协议/单元；完整 Electron
   旅程已记录，仍按策略延后
+
+#### E2E-MCP-session-get-projects-large-compaction：超大 compaction 记录不再让 pi_session_get 整包截断
+
+- **前提条件**：使用 `PI_DESKTOP_MCP_CONTROL=1` 启动 PI-Desktop。存在一个持久会话，其
+  `session.compaction` 记录（`summary` / `retainedTail` / `details.modifiedFiles`）单独
+  序列化即超过 512 KiB 的 MCP 结果上限。
+- **步骤**：1）读取 `mcp-control.json`，用其 URL 和 bearer token 完成 MCP 握手。2）对该会话
+  调用 `pi_session_get`，`messageLimit` / `contentLimit` / `messageBefore` 取任意值。3）检查
+  `structuredContent`。4）对一个普通小会话重复。
+- **预期**：答复不是 `{truncated: true, reason: "MCP_RESULT_LIMIT", preview}` 信封；
+  `session.messages` 带回请求的转写页；`session.compaction` 保留 `createdAt` 与
+  `details.generation`，而 `summary`、`retainedTail`、`details.modifiedFiles` 不存在。
+  小会话的答复不变。
+- **链接规格**：`03-runtime/01-ipc-protocol.md` §13d
+- **验收**：C（会话）、质量
+- **里程碑**：M6+
+- **状态**：由 `apps/desktop/test/mcp-control.test.mjs` 单元覆盖
+  （`session/get compaction metadata is projected before bounding`、
+  `session/get projection leaves a small session untouched`）；完整 Electron 旅程仍按
+  无本地 E2E 策略延后
 
 ## 受信任扩展场景（R7 v1）
 

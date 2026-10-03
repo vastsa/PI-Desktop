@@ -1798,7 +1798,13 @@ Electron 等待主机关闭之前会停止服务，并将清单标记为非活�
 `read`、`write` 或 `dangerous`；通用危险操作，以及命名的删除会话、配置会话和决议
 计划工具，都要求 `confirm: true`。该标志是 Agent 确认，不是桌面用户弹窗。所有调用
 仍会经过现有 IPC 处理器的校验、主机权限、工作区边界和错误模型。文本负载和
-`structuredContent` 都有大小上限。
+`structuredContent` 都有大小上限：512 KiB（`MAX_RESULT_CHARS`）。超出上限的答复不会被
+原样返回，而是替换为 `{truncated: true, reason: "MCP_RESULT_LIMIT", preview: "<JSON 前
+512 KiB>"}`，因此外部调用方永远不会收到被静默缩短的负载。`session/get`
+（`pi_session_get`）在设限前还会把会话的 `compaction` 记录投影为精简身份（`createdAt`
+与 `details.generation`）：长会话的 `ContextCompactionRecord`（`summary` /
+`retainedTail` / `details.modifiedFiles`）会无界增长，否则会把整包答复——包括
+`messages`——推过上限，令外部调用方读不到任何转写。
 
 六个 `session/collaboration/*` 操作仅限第一方插件：它们要求经过认证的插件工具调用上下文，
 因此会出现在 `pi.desktop.listOperations` 中并可通过 `pi.desktop.invoke` 调用，但被排除在

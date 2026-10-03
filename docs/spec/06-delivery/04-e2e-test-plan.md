@@ -9371,6 +9371,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
+| Post-baseline local automation (MCP `pi_session_get` large compaction) | E2E-MCP-session-get-projects-large-compaction |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
@@ -13406,6 +13407,29 @@ are withdrawn with ADR 0165.
 - **Status**: MCP protocol/unit-covered by `apps/desktop/test/mcp-control.test.mjs`;
   full Electron journey documented and remains deferred by the no-local-E2E
   policy
+
+#### E2E-MCP-session-get-projects-large-compaction
+
+- **Preconditions**: Start PI-Desktop with `PI_DESKTOP_MCP_CONTROL=1`. A durable
+  session exists whose `session.compaction` record (`summary` / `retainedTail` /
+  `details.modifiedFiles`) alone serializes to more than the 512 KiB MCP result
+  limit.
+- **Steps**: 1) Read `mcp-control.json`, use its URL and bearer token, and
+  complete the MCP handshake. 2) Call `pi_session_get` for that session with any
+  `messageLimit` / `contentLimit` / `messageBefore`. 3) Inspect
+  `structuredContent`. 4) Repeat for a small session.
+- **Expected**: The answer is not the `{truncated: true, reason:
+  "MCP_RESULT_LIMIT", preview}` envelope; `session.messages` carries the
+  requested transcript page; `session.compaction` keeps `createdAt` and
+  `details.generation` while `summary`, `retainedTail`, and
+  `details.modifiedFiles` are absent. The small session's answer is unchanged.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §13d
+- **Acceptance**: C (sessions), Quality
+- **Milestone**: M6+
+- **Status**: Unit-covered by `apps/desktop/test/mcp-control.test.mjs`
+  (`session/get compaction metadata is projected before bounding`,
+  `session/get projection leaves a small session untouched`); the full Electron
+  journey remains deferred by the no-local-E2E policy
 
 #### E2E-234: Workspace security denylist and ignore layers
 
