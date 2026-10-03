@@ -87,12 +87,13 @@ export async function loadProjectInstructions(
   const target = workspacePath?.trim()
     ? resolve(root, workspacePath)
     : root;
-  if (!isWithinRoot(root, target)) return undefined;
-
-  const targetDirectory = workspacePath?.trim() ? dirname(target) : root;
+  // Instructions are never read from outside the project. A target outside the
+  // root, or the root itself (whose parent lies outside), keeps the root's own
+  // chain instead of dropping every project instruction.
+  const targetDirectory =
+    isWithinRoot(root, target) && target !== root ? dirname(target) : root;
   const directories: string[] = [];
   for (let current = targetDirectory; ; current = dirname(current)) {
-    if (!isWithinRoot(root, current)) return undefined;
     directories.unshift(current);
     if (current === root) break;
   }

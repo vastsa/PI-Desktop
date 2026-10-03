@@ -88,13 +88,50 @@ describe("loadProjectInstructions", () => {
     expect(loaded!.entries[0].content.endsWith("中")).toBe(true);
   });
 
-  it("treats missing, blank, and out-of-workspace files as absent", async () => {
+  it("treats missing and blank project instructions as absent", async () => {
     root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
     await expect(loadProjectInstructions(root)).resolves.toBeUndefined();
 
     await writeFile(join(root, "AGENTS.md"), " \n\t ");
     await expect(loadProjectInstructions(root)).resolves.toBeUndefined();
     await expect(loadProjectInstructions(root, "../outside/file.ts")).resolves.toBeUndefined();
+  });
+
+  it("falls back to the project-root chain for a target outside the workspace", async () => {
+    root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
+    const outside = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-outside-"));
+    await writeFile(join(root, "AGENTS.md"), "Use root conventions.");
+    await writeFile(join(outside, "AGENTS.md"), "Use outside rules.");
+
+    try {
+      await expect(
+        loadProjectInstructions(root, join(outside, "attached.txt")),
+      ).resolves.toEqual({
+        entries: [{ source: "AGENTS.md", content: "Use root conventions." }],
+      });
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the project-root chain when the workspace root itself is the target", async () => {
+    root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
+    await writeFile(join(root, "AGENTS.md"), "Use root conventions.");
+
+    await expect(loadProjectInstructions(root, root)).resolves.toEqual({
+      entries: [{ source: "AGENTS.md", content: "Use root conventions." }],
+    });
+  });
+
+  it("does not fabricate instructions without a project or a project-root file", async () => {
+    root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
+
+    await expect(
+      loadProjectInstructions(root, join(root, "..", "outside", "attached.txt")),
+    ).resolves.toBeUndefined();
+    await expect(
+      loadProjectInstructions(undefined, join(root, "..", "outside", "attached.txt")),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -106,6 +143,22 @@ describe("loadInstructionChain", () => {
     await writeFile(join(root, "AGENTS.md"), "Use project conventions.");
 
     await expect(loadInstructionChain(root, undefined, globalPath)).resolves.toEqual({
+      entries: [
+        { source: "~/.pi/agent/AGENTS.md", content: "Use global conventions." },
+        { source: "AGENTS.md", content: "Use project conventions." },
+      ],
+    });
+  });
+
+  it("keeps the global and root entries when the target is outside the workspace", async () => {
+    root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
+    const globalPath = join(root, "global-AGENTS.md");
+    await writeFile(globalPath, "Use global conventions.");
+    await writeFile(join(root, "AGENTS.md"), "Use project conventions.");
+
+    await expect(
+      loadInstructionChain(root, join(root, "..", "outside", "attached.txt"), globalPath),
+    ).resolves.toEqual({
       entries: [
         { source: "~/.pi/agent/AGENTS.md", content: "Use global conventions." },
         { source: "AGENTS.md", content: "Use project conventions." },
