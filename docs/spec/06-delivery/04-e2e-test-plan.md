@@ -9270,13 +9270,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   all-cancelled label, then clear the checklist and reload/restart the host.
   Deliver an out-of-order older `todos.changed` event and confirm it cannot
   replace the newer snapshot. Exercise invalid payload, Plan/Goal, delegated,
-  and remote-session paths.
+  and remote-session paths. Compact the context while items are unfinished and
+  continue the turn.
 - **Expected**: Host SQLite is authoritative; each successful full replacement
   advances revision, including clear, and emits one committed `todos.changed`
   snapshot. Invalid or unauthorized writes do not mutate or emit. TodoDock
   renders plain text, does not take focus, resets expansion on session changes,
   rejects stale events, and skips local recovery for `remote:` sessions because
-  RACP v1 has no Todo snapshot operation.
+  RACP v1 has no Todo snapshot operation. After compaction the next model
+  request carries the checklist after the checkpoint summary, the TodoDock is
+  unchanged, and a restart rebuilds the same model context from the checkpoint.
 - **Specs**: `03-runtime/03-tools-and-permissions.md`,
   `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`,
   `04-ux/08-component-spec.md`, ADR 0312.
@@ -9292,6 +9295,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   cached-snapshot reconciliation, and stale-event rejection. Runtime
   `runtime-todos.test.ts` exercises Agent tool validation, overlong content
   normalization, and continuation through a deterministic provider.
+  Compaction coverage is runtime `runtime.test.ts` (checkpoint copy, failed
+  read, finished list, budget drop, restored checkpoint),
+  `checkpoint-todos.test.ts` (projection), and host-runtime
+  `sidecar-todo-proxy.test.ts` (read-only proxy allowlist).
 - **Status**: Run against the exact request candidate after building the
   desktop and host. Host-core and targeted renderer tests are companion checks,
   not substitutes for the Electron journey.

@@ -18,6 +18,7 @@ import {
   createCompactionSummaryMessage,
 } from "./pi-runtime-messages.js";
 import type { Entry } from "./pi-runtime-types.js";
+import { summaryWithCheckpointTodos } from "./checkpoint-todos.js";
 import {
   retainedReasoningFromDetails,
   retainedReasoningToMessages,
@@ -61,8 +62,10 @@ export function sessionEntryToContextMessages(
       return [
         ...(entry.details && typeof entry.details === "object" && "systemMessageJson" in entry.details
           ? [readSystemMessage(entry.details.systemMessageJson)] : []),
+        // The checklist copy lives in `details`, not `summary`, so the stored
+        // summary a later compaction carries forward never holds a stale list.
         createCompactionSummaryMessage(
-          entry.summary,
+          summaryWithCheckpointTodos(entry.summary, entry.details),
           entry.tokensBefore,
           entry.timestamp,
         ),

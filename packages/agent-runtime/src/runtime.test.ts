@@ -2779,6 +2779,46 @@ describe("DesktopAgentRuntime plan transitions", () => {
     await runtime.dispose();
   });
 
+  it.each(["plan", "goal"] as const)(
+    "asks an approved %s execution to keep the session checklist (#1177)",
+    async (kind) => {
+      const runtime = createRuntime();
+      const agent = (runtime as any).agent;
+      agent.continue = vi.fn(async () => undefined);
+      agent.waitForIdle = vi.fn(async () => undefined);
+      runtime.setMode(kind);
+
+      await runtime.executeApprovedPlan(
+        {
+          id: `execution-${kind}`,
+          proposalId: `proposal-${kind}`,
+          sessionId: "session-1",
+          kind,
+          plan: "# Approved",
+          title: "Approved",
+          question: "Proceed?",
+          artifact: {
+            relativePath: `.pi/${kind}/proposal.md`,
+            sha256: "abc123",
+            sizeBytes: 10,
+          },
+          targetPermissionMode: "auto",
+          state: "running",
+        },
+        `execution-turn-${kind}`,
+      );
+
+      const internal = (runtime as any).fullEntries.at(-1).message;
+      expect(internal.content).toContain(
+        "activate TodoWrite with ToolSearch if it is deferred",
+      );
+      expect(internal.content).toContain(
+        "finish with every item completed or cancelled",
+      );
+      await runtime.dispose();
+    },
+  );
+
   it("counts request system prompt and tools once despite system transcript rows", async () => {
     const runtime = createRuntime();
     const internal = runtime as any;
@@ -6155,9 +6195,11 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       true,
     );
 
-    const checkpoint = host.call.mock.calls[0]?.[0] === "session.appendCompaction"
-      ? (host.call.mock.calls[0]?.[1] as any).compaction
-      : undefined;
+    const checkpoint = (
+      host.call.mock.calls.find(
+        ([method]) => method === "session.appendCompaction",
+      )?.[1] as any
+    )?.compaction;
     expect(checkpoint).toEqual(
       expect.objectContaining({
         throughMessageId: "recent-user",
@@ -6912,6 +6954,153 @@ describe("DesktopAgentRuntime inline context compaction", () => {
       )?.[1].compaction.details,
     ).toMatchObject({ strategy: "summary" });
     await runtime.dispose();
+  });
+
+  describe("session checklist (#1177)", () => {
+    const CHECKLIST = {
+      sessionId: "session-1",
+      todos: [
+        { content: "Add the migration", status: "completed", priority: "medium" },
+        { content: "Wire the dock", status: "in_progress", priority: "high" },
+        { content: "Sync the docs", status: "pending", priority: "medium" },
+      ],
+      revision: 7,
+      updatedAt: 1_700,
+    };
+
+    function hostAnswering(todos: () => unknown) {
+      return {
+        call: vi.fn(async (method: string) =>
+          method === "todos.get" ? todos() : undefined,
+        ),
+      };
+    }
+
+    function appendedCheckpoint(host: { call: ReturnType<typeof vi.fn> }) {
+      return host.call.mock.calls.find(
+        ([method]) => method === "session.appendCompaction",
+      )?.[1].compaction;
+    }
+
+    function modelContext(runtime: DesktopAgentRuntime): string {
+      return JSON.stringify((runtime as any).rebuiltAgentContext().messages);
+    }
+
+    it("carries the checklist in the checkpoint and shows it after the summary", async () => {
+      const host = hostAnswering(() => CHECKLIST);
+      const runtime = createRuntime({ host, history });
+      budgetSpy(runtime);
+      vi.spyOn(runtime as any, "generateCompaction").mockResolvedValue(
+        summaryResult(),
+      );
+
+      await (runtime as any).prepareNextTurn(nextTurn);
+
+      expect(host.call).toHaveBeenCalledWith("todos.get", {
+        sessionId: "session-1",
+      });
+      const checkpoint = appendedCheckpoint(host);
+      // The stored summary stays clean; the copy lives in details.
+      expect(checkpoint.summary).toBe(SUMMARY);
+      expect(checkpoint.details.todoSnapshot).toEqual({
+        revision: 7,
+        updatedAt: 1_700,
+        todos: CHECKLIST.todos,
+      });
+      const context = modelContext(runtime);
+      expect(context).toContain('<session_checklist revision=\\"7\\">');
+      expect(context).toContain("2. [in_progress] Wire the dock");
+      expect(context.indexOf(SUMMARY)).toBeLessThan(
+        context.indexOf("session_checklist"),
+      );
+      await runtime.dispose();
+    });
+
+    it("installs the checkpoint without a checklist when the host cannot read one", async () => {
+      const host = hostAnswering(() => {
+        throw new Error("host method not allowed from sidecar: todos.get");
+      });
+      const onEvent = vi.fn();
+      const runtime = createRuntime({ host, onEvent, history });
+      budgetSpy(runtime);
+      vi.spyOn(runtime as any, "generateCompaction").mockResolvedValue(
+        summaryResult(),
+      );
+
+      await (runtime as any).prepareNextTurn(nextTurn);
+
+      expect(appendedCheckpoint(host).details).not.toHaveProperty("todoSnapshot");
+      expect(modelContext(runtime)).not.toContain("session_checklist");
+      expect(onEvent.mock.calls.map(([envelope]) => (envelope as any).event)).toContainEqual(
+        expect.objectContaining({ type: "compaction_end", ok: true }),
+      );
+      await runtime.dispose();
+    });
+
+    it("leaves a finished checklist out of the checkpoint", async () => {
+      const host = hostAnswering(() => ({
+        ...CHECKLIST,
+        todos: [
+          { content: "Add the migration", status: "completed", priority: "medium" },
+          { content: "Drop the shim", status: "cancelled", priority: "low" },
+        ],
+      }));
+      const runtime = createRuntime({ host, history });
+      budgetSpy(runtime);
+      vi.spyOn(runtime as any, "generateCompaction").mockResolvedValue(
+        summaryResult(),
+      );
+
+      await (runtime as any).prepareNextTurn(nextTurn);
+
+      expect(appendedCheckpoint(host).details).not.toHaveProperty("todoSnapshot");
+      await runtime.dispose();
+    });
+
+    it("drops the checklist copy rather than pushing a fitting checkpoint over budget", async () => {
+      const host = hostAnswering(() => CHECKLIST);
+      const runtime = createRuntime({ host, history });
+      vi.spyOn(runtime as any, "contextBudget").mockImplementation(
+        ((messages: unknown) => {
+          const text = JSON.stringify(messages);
+          return text.includes(SUMMARY) && !text.includes("session_checklist")
+            ? { ...overBudget(), tokens: 40_000 }
+            : overBudget();
+        }) as never,
+      );
+      vi.spyOn(runtime as any, "generateCompaction").mockResolvedValue(
+        summaryResult(),
+      );
+
+      await (runtime as any).prepareNextTurn(nextTurn);
+
+      const checkpoint = appendedCheckpoint(host);
+      expect(checkpoint.summary).toBe(SUMMARY);
+      expect(checkpoint.details).not.toHaveProperty("todoSnapshot");
+      expect(checkpoint.details).not.toHaveProperty("fallback");
+      await runtime.dispose();
+    });
+
+    it("shows the checklist a restored checkpoint carries", async () => {
+      const runtime = createRuntime({
+        history,
+        compaction: {
+          id: "compact-1",
+          summary: SUMMARY,
+          throughMessageId: "recent-user",
+          tokensBefore: 220_000,
+          retainedTail: [],
+          details: {
+            generation: 1,
+            todoSnapshot: { revision: 7, updatedAt: 1_700, todos: CHECKLIST.todos },
+          },
+          createdAt: "2026-07-28T00:00:02Z",
+        },
+      });
+
+      expect(modelContext(runtime)).toContain("3. [pending] Sync the docs");
+      await runtime.dispose();
+    });
   });
 });
 

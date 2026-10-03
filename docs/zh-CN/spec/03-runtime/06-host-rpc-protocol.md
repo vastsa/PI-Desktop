@@ -349,6 +349,10 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   `todos.changed`；事件负载与 `todos.get` 返回的完整快照一致。
 - SQLite 只由 host-core 拥有。渲染器通过 Electron Main IPC 接收快照，按 session id 保存并忽略
   更旧或相同 revision。远程 RACP 会话在这条垂直切片中保持 local-only，因为 RACP v1 尚无 Todo 快照操作。
+- Agent sidecar 可以经主机代理调用 `todos.get`；这是该白名单上唯一的 Todo 方法，且只读。运行时安装上下文压缩
+  检查点时会读取一次本会话清单，仅在仍有待办或进行中条目时把 `{ revision, updatedAt, todos }` 写入
+  `details.todoSnapshot`。模型上下文在检查点摘要之后渲染这份副本；存储的摘要、渲染器和转录都不使用它。
+  读取失败时照常安装不带副本的检查点（ADR 0312）。
 
 ### Plan 和 Goal 状态和批准
 
