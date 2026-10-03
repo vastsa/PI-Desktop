@@ -527,12 +527,22 @@ export function stripSecretMaterial(value: unknown): unknown {
   return output;
 }
 
-export function boundMcpResult(value: unknown): unknown {
-  let text: string;
+function serializeMcpResult(value: unknown): string {
   try {
-    text = JSON.stringify(value ?? null);
+    return JSON.stringify(value ?? null);
   } catch {
-    text = JSON.stringify({ value: String(value) });
+    return JSON.stringify({ value: String(value) });
+  }
+}
+
+export function boundMcpResult(
+  value: unknown,
+  projectOversized?: (value: unknown) => unknown,
+): unknown {
+  let text = serializeMcpResult(value);
+  if (text.length > MAX_RESULT_CHARS && projectOversized) {
+    value = projectOversized(value);
+    text = serializeMcpResult(value);
   }
   if (text.length <= MAX_RESULT_CHARS) {
     try {
@@ -546,6 +556,55 @@ export function boundMcpResult(value: unknown): unknown {
     reason: "MCP_RESULT_LIMIT",
     preview: text.slice(0, MAX_RESULT_CHARS),
   };
+}
+
+/** Scalar compaction fields small enough to keep in a control-plane answer. */
+const COMPACTION_SCALAR_KEYS = [
+  "id",
+  "firstKeptMessageId",
+  "throughMessageId",
+  "tokensBefore",
+  "providerId",
+  "modelId",
+  "createdAt",
+] as const;
+
+/**
+ * Bounds the `session/get` answer for the control plane (mocode #495).
+ *
+ * A durable session's `ContextCompactionRecord` (`summary` / `retainedTail` /
+ * `details.modifiedFiles`) grows without bound: on a long session it alone can
+ * exceed {@link MAX_RESULT_CHARS}, so {@link boundMcpResult} replaced the WHOLE
+ * answer with a half-JSON `preview` and external clients (`pi_session_get`)
+ * could never reach `messages` — the phone reported it as an "unexpected
+ * format" and the session was unopenable.
+ *
+ * External clients only need the compact identity the tools contract promises
+ * (`compaction.createdAt` and `details.generation`), never the summary text,
+ * the retained tail, or the artifact list. Keep that whitelist and drop the
+ * rest, so the transcript survives bounding. Non-`session/get` shapes and
+ * sessions without a compaction record are returned untouched.
+ */
+export function projectSessionGetResult(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const root = value as Record<string, unknown>;
+  const session = root.session;
+  if (!session || typeof session !== "object" || Array.isArray(session)) return value;
+  const compaction = (session as Record<string, unknown>).compaction;
+  if (!compaction || typeof compaction !== "object" || Array.isArray(compaction)) return value;
+
+  const source = compaction as Record<string, unknown>;
+  const bounded: Record<string, unknown> = {};
+  for (const key of COMPACTION_SCALAR_KEYS) {
+    if (source[key] !== undefined) bounded[key] = source[key];
+  }
+  const details = source.details;
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    const generation = (details as Record<string, unknown>).generation;
+    if (generation !== undefined) bounded.details = { generation };
+  }
+
+  return { ...root, session: { ...(session as Record<string, unknown>), compaction: bounded } };
 }
 
 function errorInfo(error: unknown): { code: string; message: string; details?: unknown } {
@@ -1099,7 +1158,13 @@ export class McpControlServer {
       const tool = this.toolsList.find((candidate) => candidate.name === name);
       if (!tool) return { response: rpcError(id, -32602, `unknown tool: ${name}`) };
       try {
-        const value = boundMcpResult(await tool.execute(input));
+        const raw = await tool.execute(input);
+        // Preserve ordinary session details; project oversized session/get
+        // compaction metadata only before falling back to the truncation envelope.
+        const value = boundMcpResult(
+          raw,
+          name === "pi_session_get" ? projectSessionGetResult : undefined,
+        );
         return {
           response: response(id, {
             content: [{ type: "text", text: JSON.stringify(value) }],
