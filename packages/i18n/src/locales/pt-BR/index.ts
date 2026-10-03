@@ -280,7 +280,6 @@ export const ptBR = {
       progress: "{{completed}}/{{total}} concluídos",
       current: "{{completed}}/{{total}} · Atual: {{content}}",
       completed: "{{completed}}/{{total}} concluídos",
-      more: "Mais {{count}} itens",
       updated: "Checklist atualizado",
       updating: "Atualizando checklist",
       status: { pending: "Pendente", in_progress: "Em andamento", completed: "Concluído", cancelled: "Cancelado" },

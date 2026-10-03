@@ -290,7 +290,6 @@ export const tr = {
       progress: "{{completed}}/{{total}} tamamlandı",
       current: "{{completed}}/{{total}} · Geçerli: {{content}}",
       completed: "{{completed}}/{{total}} tamamlandı",
-      more: "{{count}} öğe daha",
       updated: "Kontrol listesi güncellendi",
       updating: "Kontrol listesi güncelleniyor",
       status: { pending: "Bekliyor", in_progress: "Devam ediyor", completed: "Tamamlandı", cancelled: "İptal edildi" },

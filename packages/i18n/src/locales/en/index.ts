@@ -288,7 +288,6 @@ export const en = {
       progress: "{{completed}}/{{total}} completed",
       current: "{{completed}}/{{total}} · Current: {{content}}",
       completed: "{{completed}}/{{total}} completed",
-      more: "{{count}} more items",
       updated: "Checklist updated",
       updating: "Updating checklist",
       status: {

@@ -290,7 +290,6 @@ export const ko = {
       progress: "{{completed}}/{{total}} 완료",
       current: "{{completed}}/{{total}} · 현재: {{content}}",
       completed: "{{completed}}/{{total}} 완료",
-      more: "{{count}}개 더 있음",
       updated: "체크리스트 업데이트됨",
       updating: "체크리스트 업데이트 중",
       status: { pending: "대기", in_progress: "진행 중", completed: "완료", cancelled: "취소됨" },
