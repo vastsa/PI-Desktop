@@ -247,6 +247,16 @@
   padding: 5px 8px;
 }
 
+.composer-model-settings-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--ds-border-subtle);
+}
+
+.composer-model-settings-link > svg:last-child {
+  margin-left: auto;
+}
+
 /* Reasoning slider (issue #417): the menu root carries the slider itself, so a
    level is one drag instead of opening a list of levels.
 
