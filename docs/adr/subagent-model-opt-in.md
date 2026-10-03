@@ -52,12 +52,12 @@ own pin is on the Task path. `models.list` keeps reporting every ready model
 with its `availableForSubagents` flag — the flag is advice to the caller and
 authority only in main, which is the side a plugin cannot rewrite (#386).
 
-D278's priority remains Task.model → definition pin → session model. The
-existing exact-session-model exception remains unchanged. Repeating the
-target definition's own pin key is treated as omitting `model`, so catalog
-echo does not become a tool error. The Task catalog displays each definition
-default and says that omitting or repeating that key keeps it; this does not
-prohibit deliberately selecting an opted-in override for a different model.
+This decision originally retained D278's Task.model-first priority. The
+subsequent [pinned-model priority amendment](subagent-pinned-model-priority.md)
+makes a definition pin authoritative for new delegations. Task.model and the
+exact-session-model exception now select only for unpinned definitions.
+Repeating the target definition's own pin remains a quiet no-op. The opt-in
+boundary defined here is unchanged; it does not authorize replacing a pin.
 
 ## Consequences
 
@@ -69,4 +69,6 @@ prohibit deliberately selecting an opted-in override for a different model.
 - Runtime, model transport, and launch wiring regression coverage prove the
   boundary. The deterministic sidecar E2E uses a local OpenAI-compatible model
   fixture; provider UI interaction and external provider quality are separate.
-- Reversing model-selection priority is a product decision outside this fix.
+- The original opt-in fix left priority unchanged; the subsequent
+  [pinned-model amendment](subagent-pinned-model-priority.md) is a separate
+  product decision and does not relax opt-in authorization.

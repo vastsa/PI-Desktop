@@ -173,6 +173,13 @@ async function run(id, args, expectedModel, keys = ["fixture/allowed"], sessionI
   const system = parent.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
   assert.ok(!system.includes("`fixture/private`"), "private pin must not enter override catalog");
   assert.ok(parent.tools.find((t) => t.function?.name === "Task").function.description.includes(`Default model: fixture/${primaryModel}`));
+  if (args.agent === "reviewer" && args.model && args.model !== `fixture/${primaryModel}`) {
+    const started = events.find((e) => e.sessionId === sessionId && e.turnId === id &&
+      e.event.type === "tool_end" && e.event.result?.details?.agent === "reviewer");
+    assert.equal(started?.event.result.details.modelId, primaryModel, "Task reports the configured primary");
+    assert.ok(JSON.stringify(started.event.result.content).includes("supplied `model` was ignored"),
+      "the parent is told that its model selection did not override the pin");
+  }
   const delegates = captured.filter((p) => !p.tools?.some((t) => t.function?.name === "Task"));
   assert.ok(delegates.every((p) => p.fixtureAccount !== "private-account"), "resume must not send a request using another definition's private binding");
   if (expectedModel) assert.deepEqual(delegates.map((p) => p.model), options.expectedAttempts ?? [expectedModel]);
@@ -263,7 +270,11 @@ try {
   await run("definition-default", { agent: "reviewer" }, "private");
   await run("own-pin-echo", { agent: "reviewer", model: "fixture/private" }, "private");
   assert.deepEqual(resolutions, ["fixture/private"]);
-  await run("allowed-overrides-pin", { agent: "reviewer", model: "fixture/allowed" }, "allowed");
+  await run("pin-precedes-opted-in-model", { agent: "reviewer", model: "fixture/allowed" }, "private");
+  await run("pin-precedes-parent-echo", { agent: "reviewer", model: "fixture/parent" }, "private");
+  await run("pin-precedes-on-demand-model", { agent: "reviewer", model: "fixture/dynamic" }, "private");
+  await run("pin-precedes-unknown-model", { agent: "reviewer", model: "unknown/missing" }, "private");
+  assert.deepEqual(resolutions, ["fixture/private"], "pinned definitions must not resolve Task.model overrides");
   const demand = await run("on-demand-opt-in", { agent: "explorer", model: "fixture/dynamic" }, "dynamic", ["fixture/allowed"], "demand");
   const demandAgain = await run("on-demand-reuse", { agent: "explorer", model: "fixture/dynamic" }, "dynamic", ["fixture/allowed"], "demand");
   assert.equal(demand.runtimeId, demandAgain.runtimeId, "on-demand grants must not retire an idle runtime");
@@ -308,7 +319,7 @@ try {
     const expectedAttempts = [...unavailable, "fallback-private"];
     const chain = [...expectedAttempts, "unused-tail"];
     const id = `model-fallback-${failedCount}-unavailable`;
-    await run(id, { agent: "reviewer" }, "fallback-private", [], id, {
+    await run(id, { agent: "reviewer", model: "fixture/allowed" }, "fallback-private", ["fixture/allowed"], id, {
       primaryModel: chain[0],
       fallbackModels: chain.slice(1),
       bindings: Object.fromEntries(chain.map((name) => [`fixture/${name}`, model(name)])),
@@ -316,7 +327,7 @@ try {
     });
   }
   const unavailable = ["unavailable-primary", "unavailable-secondary", "unavailable-third", "unavailable-fourth"];
-  await run("model-fallback-all-unavailable", { agent: "reviewer" }, "unavailable-fourth", [], "fallback-exhausted", {
+  await run("model-fallback-all-unavailable", { agent: "reviewer", model: "fixture/allowed" }, "unavailable-fourth", ["fixture/allowed"], "fallback-exhausted", {
     fallbackModels: unavailable.slice(1),
     bindings: Object.fromEntries(unavailable.map((name) => [`fixture/${name}`, model(name)])),
     expectedAttempts: unavailable,
