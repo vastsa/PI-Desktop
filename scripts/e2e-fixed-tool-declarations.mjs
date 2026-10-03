@@ -36,12 +36,15 @@ const server = createServer(async (req, res) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
-const model = Object.values(DEEPSEEK_MODELS).find((model) => model.id === "deepseek-flash");
-const provider = { id: "fixture", name: "Flash fixture", modelId: model.id, baseUrl: model.baseUrl,
+const flash = Object.values(DEEPSEEK_MODELS).find((model) => model.id === "deepseek-flash");
+const model = process.env.PI_FIXED_TOOL_FIXTURE_ROUTE === "compatible"
+  ? { ...flash, id: "compatible-fixture", baseUrl: "https://fixture.invalid/v1", compat: undefined }
+  : flash;
+const provider = { id: "fixture", name: "Fixed tools fixture", modelId: model.id, baseUrl: model.baseUrl,
   modelConfig: modelConfigFromPi(model), apiKey: "fixture", authKind: "api_key", supportsReasoning: false, supportedThinkingLevels: ["off"] };
 const fetchHook = join(root, "fixture-fetch.mjs");
 await writeFile(fetchHook, `const fetch = globalThis.fetch; globalThis.fetch = (url, init) => {
-  if (String(url) !== "https://api.deepseek.com/chat/completions") throw new Error("Unexpected fixture endpoint");
+  if (String(url) !== ${JSON.stringify(`${model.baseUrl}/chat/completions`)}) throw new Error("Unexpected fixture endpoint");
   return fetch(${JSON.stringify(baseUrl)}, init);
 };`);
 let pluginTools = ["plugin_alpha", "plugin_beta"].map((name) => ({ name,

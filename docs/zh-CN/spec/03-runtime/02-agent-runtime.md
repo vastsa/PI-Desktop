@@ -983,7 +983,7 @@ sidecar 最多激活四个匹配项，并将名称写入 canonical
 
 Deferred activation remains sticky within a live runtime. Restoration uses
 successful activation evidence and the current catalog; old declarations do not
-re-grant tools revoked from the live activation set. For official bound Flash,
+re-grant tools revoked from the live activation set. For routes without verified native anchored tool additions,
 full declarations and execution activation are independent: versioned
 `tool_activation` sections carry the account/model/API/endpoint/catalog identity
 and active names through restart and compaction. Only matching, valid state and
@@ -992,7 +992,12 @@ epochs fail closed. Inactive declared tools are blocked before extension/Host
 execution, and activation never bypasses mode or approval checks. The full
 catalog is deterministic from the first request. More than 128 tools or an
 insufficient context budget falls back to on-demand declarations with a
-diagnostic, without truncation. Other bindings retain their existing projection.
+diagnostic, without truncation. Responses and Chat Completions bindings with verified anchored additions, and
+Pi Messages, retain native incremental publication. Anthropic native tool changes
+still grow request schemas and therefore use fixed declarations. Strip only the
+private activation section from provider projection, preserving canonical state
+and all other instructions. This also stabilizes ToolSearch on folding APIs and
+compatible relays without enabling new transport capabilities.
 Fixed declarations may increase total cost for short conversations. See the
 English section 7.1 and the chronological-system-transcript ADR for the complete
 contract.

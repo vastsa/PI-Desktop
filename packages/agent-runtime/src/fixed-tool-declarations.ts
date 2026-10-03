@@ -17,7 +17,24 @@ export type ToolDeclarationPolicy = {
   fallback?: "tool-count" | "context-budget";
 };
 
-/** The verified Flash route has chronological system updates, but no tool deltas. */
+/** Only these Pi transports keep new schemas out of the request's initial tools. */
+function hasAnchoredToolAdditions(model: Model<Api>): boolean {
+  if (model.api === "pi-messages") return true;
+  const compat = model.compat;
+  if (!compat || !("supportsMidConvoSystemMessages" in compat)
+    || compat.supportsMidConvoSystemMessages !== true) return false;
+  if (model.api === "openai-completions") {
+    return "supportsMidConvoToolAdditions" in compat && compat.supportsMidConvoToolAdditions === true;
+  }
+  if (["openai-responses", "openai-codex-responses"].includes(model.api)) {
+    return ("supportsAdditionalTools" in compat && compat.supportsAdditionalTools === true)
+      || ("supportsToolSearch" in compat && compat.supportsToolSearch === true);
+  }
+  // Anthropic's native tool-change blocks still grow its request-level schemas.
+  return false;
+}
+
+/** Keep native anchored additions, otherwise stabilize the complete catalog. */
 export function toolDeclarationPolicy(
   model: Model<Api>, tools: readonly AgentTool[], deferred: ReadonlySet<string>, prompt: string, accountId: string,
 ): ToolDeclarationPolicy {
@@ -26,11 +43,9 @@ export function toolDeclarationPolicy(
     account: accountId, model: model.id, api: model.api, endpoint: model.baseUrl.replace(/\/+$/, ""),
     tools: ordered.map(toToolDeclaration), deferred: [...deferred].sort(),
   })).digest("hex");
-  if (model.id !== "deepseek-flash" || model.api !== "openai-completions"
-    || model.baseUrl.replace(/\/+$/, "") !== "https://api.deepseek.com"
-    || !model.compat || !("supportsMidConvoSystemMessages" in model.compat)
-    || model.compat.supportsMidConvoSystemMessages !== true) return { key };
-  // DeepSeek Chat Completions permits at most 128 functions. Never truncate.
+  if (hasAnchoredToolAdditions(model)) return { key };
+  // Conservative shared ceiling, including Chat Completions' 128-function limit.
+  // Larger catalogs retain on-demand loading; never truncate or raise API limits.
   if (ordered.length > 128) return { key, fallback: "tool-count" };
   const budget = contextBudgetLimitsFor(model);
   const tokens = estimateOutputCapInputTokens({ messages: [], systemPrompt: prompt, tools: ordered }, model);

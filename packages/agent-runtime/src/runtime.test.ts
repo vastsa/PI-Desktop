@@ -1962,7 +1962,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
         },
       ],
     });
-    const tools = (runtime as any).agent.state.tools as Array<{ name: string }>;
+    const tools = (runtime as unknown as { activeTools(): Array<{ name: string }> }).activeTools();
     const names = tools.map((tool) => tool.name);
 
     expect(names).toEqual([
@@ -2162,7 +2162,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     expect(result.details.activated).toEqual(["BrowserPreview"]);
     expect(result.details.addedToolNames).toEqual(["BrowserPreview"]);
     expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
-      false,
+      true,
     );
 
     const next = await (runtime as any).prepareNextTurn({
@@ -2184,9 +2184,8 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     expect(next.context.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
       true,
     );
-    // The Pi loop declares changes immediately before conversion; preparation
-    // only changes the executable tool catalog.
-    expect(getCurrentTools(next.context.messages).some((tool) => tool.name === "BrowserPreview")).toBe(false);
+    // The full catalog is stable; preparation updates execution activation.
+    expect(getCurrentTools(next.context.messages).some((tool) => tool.name === "BrowserPreview")).toBe(true);
 
     await runtime.dispose();
   });
@@ -2214,9 +2213,8 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     expect(agent.state.tools.some((tool: any) => tool.name === "BrowserPreview")).toBe(
       true,
     );
-    // Reset retains executability; Pi declares it at the next dispatch, not
-    // while this test calls preparation helpers outside the agent loop.
-    expect(getCurrentTools(agent.state.messages).some((tool) => tool.name === "BrowserPreview")).toBe(false);
+    // The full schema was already declared; activation remains sticky.
+    expect(getCurrentTools(agent.state.messages).some((tool) => tool.name === "BrowserPreview")).toBe(true);
     await runtime.dispose();
   });
 });
@@ -6864,10 +6862,10 @@ describe("DesktopAgentRuntime inline context compaction", () => {
 
     // The point of this family: the window is bought back without paying for a
     // summary, so no provider request is made at all.
-    expect(agent.state.messages[0]).toEqual(prefix);
+    expect(agent.state.messages[0]).toMatchObject({ ...prefix, timestamp: expect.any(Number) });
     expect(getCurrentTools(agent.state.messages)).toEqual(agent.state.tools.map(toToolDeclaration));
-    expect(getCurrentSystemMessage(agent.state.messages)?.sections).toEqual({ rules: "Keep checkpoint rules" });
-    expect((runtime as any).rebuiltAgentContext().messages[0]).toEqual(prefix);
+    expect(getCurrentSystemMessage(agent.state.messages)?.sections).toMatchObject({ rules: "Keep checkpoint rules" });
+    expect((runtime as any).rebuiltAgentContext().messages[0]).toMatchObject({ ...prefix, timestamp: expect.any(Number) });
     expect(generateCompaction).not.toHaveBeenCalled();
     const compaction = host.call.mock.calls.find(
       ([method]) => method === "session.appendCompaction",
@@ -9039,7 +9037,7 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     status: "complete",
   };
   const hasTool = (runtime: DesktopAgentRuntime, name: string) =>
-    (runtime as any).agent.state.tools.some((tool: any) => tool.name === name);
+    (runtime as unknown as { activeTools(): Array<{ name: string }> }).activeTools().some((tool) => tool.name === name);
 
   it("keeps a tool active across prompts while its ToolSearch activation is in context", async () => {
     const runtime = createRuntime({ history: [assistantRow, searchRow()] });
@@ -9165,31 +9163,29 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     (runtime as any).resetDeferredToolsForPrompt();
     expect(hasTool(runtime, "BrowserPreview")).toBe(false);
 
-    (runtime as any).fullEntries.push(
-      ...(createRuntime({
-        history: [
-          assistantRow,
-          {
-            id: "tool-preview-ok",
-            role: "tool",
-            content: "",
-            createdAt: now(),
-            status: "complete",
-            toolName: "BrowserPreview",
-            toolCallId: "call-preview-ok",
-            toolStatus: "success",
-            toolArgs: {},
-            toolResult: { content: [{ type: "text", text: "opened" }] },
-          },
-        ],
-      }) as any).fullEntries,
-    );
-    (runtime as any).resetDeferredToolsForPrompt();
-    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    const restored = createRuntime({
+      history: [
+        assistantRow,
+        {
+          id: "tool-preview-ok",
+          role: "tool",
+          content: "",
+          createdAt: now(),
+          status: "complete",
+          toolName: "BrowserPreview",
+          toolCallId: "call-preview-ok",
+          toolStatus: "success",
+          toolArgs: {},
+          toolResult: { content: [{ type: "text", text: "opened" }] },
+        },
+      ],
+    });
+    expect(hasTool(restored, "BrowserPreview")).toBe(true);
+    await restored.dispose();
     await runtime.dispose();
   });
 
-  it("restores the activation again after a mode round trip", async () => {
+  it("requires activation again after a fixed-catalog mode round trip", async () => {
     const runtime = createRuntime({ history: [assistantRow, searchRow()] });
     (runtime as any).resetDeferredToolsForPrompt();
     expect(hasTool(runtime, "BrowserPreview")).toBe(true);
@@ -9197,7 +9193,7 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     runtime.setMode("plan");
     runtime.setMode("agent");
 
-    expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    expect(hasTool(runtime, "BrowserPreview")).toBe(false);
     await runtime.dispose();
   });
 });

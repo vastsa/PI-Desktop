@@ -1,6 +1,7 @@
 import type { Message } from "@earendil-works/pi-ai";
 import { hostedSearchReplayProjection } from "@earendil-works/pi-ai/utils/hosted-search";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { TOOL_ACTIVATION_SECTION } from "./fixed-tool-declarations.js";
 
 export type CompactionSummaryMessage = {
   role: "compactionSummary";
@@ -136,6 +137,20 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
         }));
         break;
       case "system":
+        // Activation is Desktop execution metadata, not a model instruction.
+        // Persist it canonically, but omit it before Pi folds system messages:
+        // otherwise each ToolSearch rewrites the prefix on non-native APIs.
+        if (runtimeMessage.sections && TOOL_ACTIVATION_SECTION in runtimeMessage.sections) {
+          const sections = Object.fromEntries(Object.entries(runtimeMessage.sections)
+            .filter(([name]) => name !== TOOL_ACTIVATION_SECTION));
+          if (Object.keys(sections).length || textFromContent(runtimeMessage.content)
+            || runtimeMessage.toolsAdded?.length || runtimeMessage.toolsRemoved?.length) {
+            converted.push(asProviderMessage({ ...runtimeMessage, sections }));
+          }
+          break;
+        }
+        converted.push(asProviderMessage(runtimeMessage));
+        break;
       case "user":
       case "assistant":
       case "toolResult":

@@ -1412,10 +1412,9 @@ grammar and validated against another fails every call.
 
 ### 7.1 Active tool context and on-demand loading (D185, ADR 0048)
 
-The sidecar builds one complete tool registry. By default, each provider request
-declares the mode's core set plus activated deferred tools. The verified Flash
-binding uses the fixed-declaration policy below, while preserving the same
-execution activation rules:
+The sidecar builds one complete tool registry. Native anchored-addition routes
+declare core tools and add activated deferred tools in place. Other routes use
+the fixed-declaration policy below. Both preserve these execution activation rules:
 
 - Agent: `Read`, `Bash`, `Edit`, and `Write` (matching pi's coding-agent core)
 - Agent: `Skill` whenever the skill catalog is non-empty (D404, ADR 0230) — the
@@ -1454,9 +1453,13 @@ results from deferred tools also restore their names. Failed results,
 missing-result placeholders and assistant/user prose never activate tools.
 Only names in the current mode's deferred catalog are eligible.
 
-For the exact official `deepseek-flash` Chat Completions binding with verified
-mid-conversation system support, the runtime instead declares the complete
-catalog in deterministic name order on the first request. ToolSearch changes
+Select by the bound transport, not a model name. Responses with verified system
+support plus `supportsAdditionalTools` or `supportsToolSearch`, Chat Completions
+with verified system/tool additions, and Pi Messages retain native additions.
+Other bindings, including Anthropic Messages, Gemini, ordinary Chat Completions,
+older Responses/Codex models and compatible relays, declare the complete catalog
+in deterministic name order on the first request. Anthropic's native tool-change
+blocks still grow request-level schemas, so do not exempt them. ToolSearch changes
 activation without changing the declared schemas. A visible schema does not
 permit execution: inactive deferred calls are rejected before extension hooks
 and the Host; activated calls still require the existing mode and Host checks.
@@ -1466,7 +1469,12 @@ Fixed declarations persist separately from activation. A version-1
 `tool_activation` section records active names and a fingerprint of the account,
 model, API, endpoint, schema catalog and deferred set. Activation changes append
 at the continuation boundary, and the existing system journal/checkpoint saves
-both declarations and activation. Restore only validated activation for a
+both declarations and activation. Strip the activation section only from the
+provider projection, dropping metadata-only empty messages but preserving all
+other sections/content/tool deltas. This prevents folding APIs from moving an
+activation change into the leading prompt; persisted state remains complete.
+Model guidance uses successful ToolSearch results, not private activation JSON.
+Restore only validated activation for a
 matching fingerprint, plus successful ToolSearch results newer than that state;
 never activate tools merely because the full snapshot declared them. Malformed,
 unknown-version and mismatched activation state fail closed. A catalog/schema,
@@ -1476,8 +1484,9 @@ activation. Removal immediately removes the tool from executable registration.
 If the full catalog exceeds 128 functions or its prompt/schema estimate cannot
 leave the normal retained-tail budget below the compaction threshold, retain
 on-demand declarations and emit a diagnostic explaining that ToolSearch cache
-stability is not guaranteed. Do not truncate tools. Other models and unverified
-routes retain the existing Pi projection. First-request schema overhead increases;
+stability is not guaranteed. The 128-function ceiling is conservative across
+fixed-catalog APIs. Do not truncate tools or opt unknown endpoints into native
+capabilities. First-request schema overhead increases;
 cache stability does not imply that short conversations become cheaper.
 
 For user-visible HTML deliverables, the default system prompt asks the agent to
