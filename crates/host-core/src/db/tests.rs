@@ -1315,7 +1315,7 @@ fn project_group_roundtrips_roots_and_shared_context() {
 }
 
 #[test]
-fn project_group_update_adjusts_roots_without_orphaning_chats() {
+fn project_group_update_detaches_roots_with_chats_without_orphaning_them() {
     let dir = tempfile::tempdir().unwrap();
     let primary = dir.path().join("primary");
     let first = dir.path().join("first");
@@ -1378,15 +1378,28 @@ fn project_group_update_adjusts_roots_without_orphaning_chats() {
         Some(canonical_second.as_str())
     );
 
-    assert!(db
+    let detached = db
         .update_project_group(
             &updated.id,
             "Adjusted again",
             &[primary.to_string_lossy().into()],
         )
-        .unwrap_err()
-        .to_string()
-        .contains("still has chats"));
+        .expect("a root with chats can be detached from the group");
+    assert_eq!(detached.roots.len(), 1);
+    assert_eq!(detached.roots[0].path, group.primary_path);
+    assert_eq!(detached.detached_paths.len(), 1);
+
+    let groups = db.list_project_groups().unwrap();
+    assert_eq!(groups.len(), 2);
+    let standalone = groups
+        .iter()
+        .find(|candidate| candidate.roots[0].path == canonical_second)
+        .expect("the detached project's chats remain reachable");
+    assert!(standalone.legacy);
+    assert_eq!(
+        db.project_session_ids(&canonical_second).unwrap(),
+        [session.id]
+    );
 }
 
 #[test]

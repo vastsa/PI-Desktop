@@ -20,17 +20,15 @@ overrides:
   # Custom Highlight API selector `::highlight()`. The parser fix ships in
   # lightningcss 1.33.0.
   '@tailwindcss/node>lightningcss': 1.33.0
-  # Build toolchain only (electron-builder, node-gyp) — never reaches users.
-  # Kept current so `pnpm audit` stays quiet and a finding that *does* reach
-  # users stands out.
+  # Used by build tooling and the bundled Pi coding-agent runtime via minimatch.
   brace-expansion@1: '>=1.1.17 <2' # GHSA via minimatch@3
   brace-expansion@2: '>=2.1.4 <3' # GHSA via @electron/universal, jake
-  brace-expansion@5: '>=5.0.9 <6' # GHSA via app-builder-lib
+  brace-expansion@5: '>=5.0.12 <6' # GHSA via app-builder-lib and pi-coding-agent
   # Ships in the app. mermaid allows ^3.3.3 but resolves its own copy, so the
   # renderer would load an unpatched sanitizer next to our patched one.
   dompurify@3: '>=3.4.13 <4' # detached-subtree XSS, via mermaid
   fast-uri@3: '>=3.1.5 <4' # GHSA via ajv@8
-  js-yaml@4: '>=4.3.1 <5' # CVE-2026-59870 via app-builder-lib
+  js-yaml@4: '>=4.3.2 <5' # CVE-2026-59870 via electron-updater and electron-builder
   undici@6: '>=6.28.0 <7' # GHSA via node-gyp@12
   # Docs site only. vitepress 1.6.4 asks for vite ^5.4.14 and no vite 5 is
   # patched — the fixes for all four advisories (server.fs.deny bypass, esbuild

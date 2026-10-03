@@ -1663,7 +1663,7 @@ sklm: {
     openActions: "開啟“{{name}}”的操作選單",
     reorder: "調整「{{name}}」順序",
     editTitle: "編輯專案",
-    editDescription: "調整專案名稱與資料夾。",
+    editDescription: "移除含有對話的資料夾後，它會成為獨立專案，對話仍會保留。",
     editAction: "儲存變更",
     editSaving: "儲存中…",
     editCancel: "取消",

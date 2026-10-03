@@ -3809,7 +3809,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: One retained logical project is visible in the sidebar and
   in Settings → Project archive; it has a primary folder and one additional
-  folder.
+  folder without chats.
 - **Steps**: 1) Open the project's overflow menu in the sidebar and choose
   Edit project. 2) Change the name, remove the additional folder, and add it
   again with the native folder picker. 3) Confirm the Primary row cannot be
@@ -3825,14 +3825,35 @@ identify the platform validation still needed.
   Primary folder as the first row, and updates the root count without removing
   another row. Saving persists one logical group with the adjusted roots; the
   name survives restart, while normalized paths, workspace identity, sessions,
-  and on-disk folders remain unchanged. A root with existing chats is rejected
-  instead of orphaning those chats.
+  and on-disk folders remain unchanged.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md`
 - **Acceptance**: D (workspace identity), F (local presentation persistence)
 - **Milestone**: M5
 - **Status**: Unit-covered (`project-edit.test.mjs`,
   `sidebar-preferences.test.mjs`); rendered scenario Draft
+
+#### E2E-048c: Detach a project folder with chats and delete it
+
+- **Preconditions**: One retained logical project has a primary folder and an
+  additional folder with at least one saved chat. All chats are idle.
+- **Steps**: 1) Open Edit project and remove the additional folder. 2) Save and
+  inspect the remaining group and the standalone project row for the detached
+  folder. 3) Open the detached project's chat and confirm its transcript is
+  intact. 4) Delete the detached project using its two-click delete action.
+  5) Inspect the remaining group, project list, chat list, and folder on disk.
+- **Expected**: Removing the folder from the group preserves its project row,
+  chats, and transcripts, and exposes it as a standalone project. Future chats
+  use the detached project's path-scoped context; shared instructions and
+  memory remain with the original group. The confirmed delete then removes that
+  project's sessions and transcripts while keeping its folder on disk; the
+  original group remains with its primary folder.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, ADR 0249,
+  ADR 0251.
+- **Acceptance**: C (project and chat interaction), F (persistence), Quality.
+- **Milestone**: M5
+- **Status**: Host RPC integration-covered; full UI scenario Draft
 
 #### E2E-048A: Project session lists fold after the ten most recent rows
 
@@ -9287,6 +9308,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
 | C / Quality — Destination loading and focus | E2E-087b |
 | A / H / Quality — Renderer process crash recovery | E2E-RUNTIME-renderer-crash-recovery |
+| C / F / Quality — Project folder with chats detaches and deletes safely | E2E-048c |
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | B / F / Quality — Selected model order | E2E-MODEL-selected-order-persists |
 | E / F / Quality — MCP server timeout override | E2E-261 |
@@ -16447,3 +16469,13 @@ renderer's durable transcript reads. No real model or provider is contacted.
   before Host execution, mode/account/catalog invalidation and compaction remain
   required. Fixed declarations increase first-request size; oversized catalogs
   explicitly fall back without a cache-stability guarantee.
+
+### Imported-extension GUI executable discovery regression (#1173)
+
+Start dependency installation with a GUI-like PATH that cannot resolve Node/npm
+and a trusted fixture installation in `~/.local/bin`. Validation and both npm
+stages must use that installation, preserve the application PATH, and avoid shell
+startup probing. Explicit selections keep their bin directory first. Missing
+installations still return `npm-unavailable` and retain native picker recovery.
+The executable integration fixture uses real isolated child processes and checks
+registry-only installation and credential isolation.

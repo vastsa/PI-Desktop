@@ -14,7 +14,7 @@
  * lifecycle scripts are allowed to run. Fixture B never accesses the network.
  */
 import { createRequire, register } from "node:module";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 
@@ -114,7 +114,24 @@ try {
     });
 
     let runner;
+    const originalPath = process.env.PATH;
+    const originalHome = process.env.HOME;
+    const guiPath = join(tempRoot, "gui-empty-bin");
     try {
+      if (process.platform !== "win32") {
+        const npm = (originalPath ?? "").split(delimiter)
+          .filter(isAbsolute).map((directory) => join(directory, "npm"))
+          .find((path) => existsSync(path));
+        if (!npm) throw new Error("The E2E requires npm on the original PATH");
+        const home = join(tempRoot, "gui-home");
+        const bin = join(home, ".local", "bin");
+        mkdirSync(bin, { recursive: true });
+        mkdirSync(guiPath);
+        symlinkSync(process.execPath, join(bin, "node"));
+        symlinkSync(npm, join(bin, "npm"));
+        process.env.HOME = home;
+        process.env.PATH = guiPath;
+      }
       const generated = generateImportedExtensionPlugin(sourceRoot, importRoot);
       const copiedPackage = JSON.parse(readFileSync(join(generated.path, "package.json"), "utf8"));
       const workspacesStripped = !Object.hasOwn(copiedPackage, "workspaces");
@@ -150,7 +167,8 @@ try {
         registryOnly &&
         nodeModulesCreated &&
         lifecycleSuppressed &&
-        loaded;
+        loaded &&
+        (process.platform === "win32" || process.env.PATH === guiPath);
       record(
         "E2E-PLUGIN-import-extension-installs-dependencies",
         ok,
@@ -169,6 +187,10 @@ try {
       );
     } finally {
       await runner?.dispose();
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
     }
   }
 
@@ -187,6 +209,9 @@ try {
       const dataDir = join(tempRoot, "picker-data");
       const emptyPath = join(tempRoot, "empty-bin");
       mkdirSync(emptyPath);
+      // A stale configured path must still prompt instead of silently changing
+      // the user's chosen installation through automatic GUI lookup.
+      writeNpmPath(dataDir, join(emptyPath, name));
       writeExtensionSource(sourceRoot, {
         name: "picker-extension", version: "1.0.0",
         pi: { extensions: ["index.mjs"] }, dependencies: { "is-number": "7.0.0" },

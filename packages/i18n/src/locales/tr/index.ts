@@ -1682,7 +1682,7 @@ sklm: {
     openActions: "{{name}} eylemlerini aç",
     reorder: "{{name}} sırasını değiştir",
     editTitle: "Projeyi düzenle",
-    editDescription: "Proje adını ve klasörlerini güncelleyin.",
+    editDescription: "Sohbetleri olan bir klasör kaldırıldığında ayrı bir proje olur; sohbetleri korunur.",
     editAction: "Değişiklikleri kaydet",
     editSaving: "Kaydediliyor…",
     editCancel: "İptal",

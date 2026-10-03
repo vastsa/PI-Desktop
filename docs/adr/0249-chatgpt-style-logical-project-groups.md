@@ -40,7 +40,10 @@ policy.
 6. The project overflow action is named **Edit project**. The editor can change
    the group name and adjust its root list through the additive
    `project.group.update` capability. The primary root remains first and cannot
-   be removed; a root with existing chats cannot be detached.
+   be removed. An additional root can be detached even when it has chats; those
+   chats remain available under the detached path as a standalone project.
+   Future chats use that project's path-scoped context, while the group's shared
+   instructions and memory remain with the original group.
 7. Group creation, editing, shared instruction editing, and shared memory editing
    are additive IPC capabilities. Legacy path-scoped instruction and memory
    APIs remain available for legacy single-root groups.
@@ -53,9 +56,9 @@ policy.
   presentation metadata.
 - The first folder remains meaningful as the default execution root and cannot
   be reordered in this iteration. Additional roots can be adjusted from Edit
-  project, subject to chat-preservation and host ownership checks, and are
-  available only through explicit absolute paths that pass host canonical
-  containment.
+  project; detaching one with chats preserves those sessions as a standalone
+  project. Group membership and path access still pass host ownership checks
+  and explicit absolute paths through host canonical containment.
 - Selecting another group still changes the one visible host workspace; a
   background session remains bound to its own primary path.
 - The native picker remains local-only. Remote project sources are not implied.

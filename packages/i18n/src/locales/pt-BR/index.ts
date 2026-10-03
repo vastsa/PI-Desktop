@@ -1632,7 +1632,7 @@ export const ptBR = {
     openActions: "Abrir ações de {{name}}",
     reorder: "Reordenar {{name}}",
     editTitle: "Editar projeto",
-    editDescription: "Atualize o nome e as pastas deste projeto.",
+    editDescription: "Uma pasta removida com conversas vira um projeto separado, e as conversas são mantidas.",
     editAction: "Salvar alterações",
     editSaving: "Salvando…",
     editCancel: "Cancelar",

@@ -1677,7 +1677,7 @@ sklm: {
     "openActions": "Abrir acciones para {{name}}",
     "reorder": "Reordenar {{name}}",
     "editTitle": "Editar proyecto",
-    "editDescription": "Actualiza el nombre y las carpetas del proyecto.",
+    "editDescription": "Una carpeta quitada con chats pasa a ser un proyecto independiente y conserva sus chats.",
     "editAction": "Guardar cambios",
     "editSaving": "Guardando…",
     "editCancel": "Cancelar",

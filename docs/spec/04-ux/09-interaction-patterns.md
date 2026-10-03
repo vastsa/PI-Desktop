@@ -251,9 +251,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   trims and persists a 1–80 Unicode-code-point group name and lists every
   registered folder. The Primary folder stays first and cannot be removed;
   additional folders can be added through the native multi-selection picker or
-  removed individually. Saving updates the host-owned group while preserving
-  the normalized paths, workspace identity, sessions, transcripts, and on-disk
-  folders. A folder with existing chats cannot be removed.
+  removed individually. Saving updates group membership without rewriting path
+  identities, workspace identity, session ownership, transcripts, or on-disk
+  folders. Removing an additional folder with chats detaches it as a standalone
+  project and keeps its chats available there. Future chats use that project's
+  path-scoped context; shared instructions and memory stay with the original
+  group.
 - **Pin** toggles presentation priority. Pinned projects/conversations appear
   before unpinned rows within the selected secondary order. In the sidebar, a
   pinned project replaces its Folder glyph with a filled accent Star so its

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { register, syncBuiltinESMExports } from "node:module";
 import childProcess from "node:child_process";
+import fs from "node:fs";
 import { EventEmitter } from "node:events";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -57,7 +58,13 @@ if (args[0] === 'install') fs.writeFileSync(path.join(process.cwd(), 'package-lo
 `);
   chmodSync(cli, 0o755);
   writeFileSync(join(plugin, "package.json"), JSON.stringify({ dependencies: { example: "^1" } }));
-  setEnv(t, { PATH: emptyPath });
+  // Keep executable discovery inside the fixture on every developer/CI host.
+  const realExists = fs.existsSync;
+  fs.existsSync = (path) => ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"].includes(String(path))
+    ? false : realExists(path);
+  syncBuiltinESMExports();
+  t.after(() => { fs.existsSync = realExists; syncBuiltinESMExports(); });
+  setEnv(t, { PATH: emptyPath, HOME: join(root, "home") });
   return { root, bin, plugin, emptyPath, log, node, npm, cli };
 }
 
@@ -102,6 +109,24 @@ test("selected npm uses its directory PATH for both stages, without inheriting s
       assert.equal(call.env.npm_config_noproxy, "");
     }
   }
+});
+
+test("GUI imports discover Node and npm in user bins without running a login shell", { skip: windows }, async (t) => {
+  const f = fixture(t);
+  const userBin = join(f.root, "home", ".local", "bin");
+  mkdirSync(userBin, { recursive: true });
+  symlinkSync(f.node, join(userBin, "node"));
+  symlinkSync(f.npm, join(userBin, "npm"));
+  const result = await installExtensionDependencies(f.plugin);
+  assert.deepEqual(result, { state: "installed" });
+  const recorded = calls(f);
+  assert.deepEqual(recorded.map((call) => call.args[0]), ["--version", "install", "ci"]);
+  for (const call of recorded) {
+    assert.equal(call.env.PATH, `${f.emptyPath}${delimiter}${userBin}`);
+    assert.equal(call.env.NODE_AUTH_TOKEN, undefined);
+    assert.equal(call.env.NODE_OPTIONS, undefined);
+  }
+  assert.equal(process.env.PATH, f.emptyPath, "discovery does not mutate the app environment");
 });
 
 test("symlinked npm keeps the selected bin directory, not the real npm-cli directory", { skip: windows }, async (t) => {

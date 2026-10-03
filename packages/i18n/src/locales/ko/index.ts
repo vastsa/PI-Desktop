@@ -1692,7 +1692,7 @@ sklm: {
     openActions: "{{name}} 작업 열기",
     reorder: "{{name}} 순서 변경",
     editTitle: "프로젝트 편집",
-    editDescription: "프로젝트 이름과 폴더를 수정하세요.",
+    editDescription: "대화가 있는 폴더를 제거하면 별도 프로젝트로 분리되며 대화는 유지됩니다.",
     editAction: "변경 사항 저장",
     editSaving: "저장 중…",
     editCancel: "취소",

@@ -1677,7 +1677,7 @@ sklm: {
     "openActions": "Ouvrir les actions pour {{name}}",
     "reorder": "Réorganiser {{name}}",
     "editTitle": "Modifier le projet",
-    "editDescription": "Mettez à jour le nom et les dossiers du projet.",
+    "editDescription": "Un dossier retiré qui contient des discussions devient un projet distinct ; ses discussions sont conservées.",
     "editAction": "Enregistrer les modifications",
     "editSaving": "Enregistrement…",
     "editCancel": "Annuler",

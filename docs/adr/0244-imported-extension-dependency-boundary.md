@@ -43,8 +43,11 @@ does not ship a standalone Node/npm executable.
    `<dataDir>/npm-path.json` and revalidated on future imports. Stale choices
    prompt again; save failure warns without preventing the current install.
    Validation uses bounded npm/Node version checks and the install child alone
-   receives the selected directory in `PATH`. No shell startup probing, global
-   environment mutation, or credential inheritance is introduced. Recovery
+   receives the selected directory in `PATH`. Unconfigured macOS/Linux imports
+   append existing well-known user binary directories after inherited `PATH`
+   to recover GUI launches without changing configured executable precedence.
+   No shell startup probing, global environment mutation, or credential
+   inheritance is introduced. Recovery
    retries the existing generated directory and registers it exactly once.
 
 ## Consequences

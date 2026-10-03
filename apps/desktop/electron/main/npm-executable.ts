@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { accessSync, constants, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, extname, isAbsolute, join } from "node:path";
+import { mergePathParts, wellKnownUserBinDirs } from "./user-login-path";
 
 /** Injectable so installer tests never run npm. */
 export type DependencyCommandRunner = (
@@ -142,7 +143,7 @@ function requireFile(path: string, executable: boolean): void {
   accessSync(path, executable && process.platform !== "win32" ? constants.X_OK : constants.R_OK);
 }
 
-/** No shell probing: only the inherited PATH and the explicitly selected directory. */
+/** No shell probing: inherited PATH, known user bins, or an explicit selection. */
 export async function prepareNpmExecutable(
   npmPath?: string,
   timeoutMs = NPM_VALIDATION_TIMEOUT_MS,
@@ -153,6 +154,11 @@ export async function prepareNpmExecutable(
   try {
     const tool: NpmExecutable = { command: npmPath ?? "npm", args: [], env: {} };
     let node = process.platform === "win32" ? "node.exe" : "node";
+    if (npmPath === undefined && process.platform !== "win32") {
+      // GUI launches miss Homebrew/user bins. Keep inherited commands first and
+      // extend only this install's environment; never execute shell startup files.
+      tool.env.PATH = mergePathParts(process.env.PATH, wellKnownUserBinDirs().join(delimiter));
+    }
     if (npmPath !== undefined) {
       requireFile(npmPath, true); // stat follows symlinks; keep the selected directory.
       const directory = dirname(npmPath);

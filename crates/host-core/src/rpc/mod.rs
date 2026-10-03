@@ -5365,6 +5365,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn grouped_folder_with_chats_can_be_detached_and_deleted_separately() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let primary = data_dir.path().join("primary");
+        let member = data_dir.path().join("member");
+        fs::create_dir_all(&primary).unwrap();
+        fs::create_dir_all(&member).unwrap();
+        let primary_input = primary.to_string_lossy().to_string();
+        let member_input = member.to_string_lossy().to_string();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+
+        let group_response = handle_request(
+            state.clone(),
+            "project.group.create",
+            json!({ "name": "Grouped", "folders": [primary_input, member_input] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let group_id = group_response["group"]["id"].as_str().unwrap().to_string();
+        let primary_path = group_response["group"]["primaryPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let member_path = group_response["group"]["roots"][1]["path"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // This chat predates removing the member from the group.
+        let session_id = {
+            let st = state.lock().await;
+            sessions::create_session_with_options(
+                &st.db,
+                sessions::SessionCreateOptions {
+                    project_path: Some(member_path.clone()),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .id
+        };
+
+        let updated = handle_request(
+            state.clone(),
+            "project.group.update",
+            json!({ "groupId": group_id, "name": "Grouped", "folders": [primary_path] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .expect("a member with chats can be detached from the group");
+        assert_eq!(updated["group"]["roots"].as_array().unwrap().len(), 1);
+
+        let detached_groups = handle_request(
+            state.clone(),
+            "project.groups.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(detached_groups["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|group| {
+                group["legacy"] == json!(true) && group["roots"][0]["path"] == json!(member_path)
+            }));
+
+        let removed = handle_request(
+            state.clone(),
+            "projects.remove",
+            json!({ "path": member_path }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .expect("the detached project can then be deleted through the project action");
+        assert_eq!(removed["removed"], json!(true));
+        assert_eq!(removed["sessionsRemoved"], json!(1));
+        assert!(member.exists());
+
+        let groups_after_delete = handle_request(
+            state.clone(),
+            "project.groups.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(groups_after_delete["groups"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            groups_after_delete["groups"][0]["roots"][0]["path"],
+            json!(primary_path)
+        );
+
+        let sessions_after_delete = handle_request(
+            state,
+            "session.list",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert!(sessions_after_delete["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|session| session["id"] != json!(session_id)));
+    }
+
+    #[tokio::test]
     async fn project_group_rpc_roundtrips_context_and_roots() {
         let data_dir = tempfile::tempdir().unwrap();
         let primary = data_dir.path().join("primary");

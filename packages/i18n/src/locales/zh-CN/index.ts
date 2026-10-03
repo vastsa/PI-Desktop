@@ -1663,7 +1663,7 @@ sklm: {
     openActions: "打开“{{name}}”的操作菜单",
     reorder: "调整“{{name}}”顺序",
     editTitle: "编辑项目",
-    editDescription: "调整项目名称和文件夹。",
+    editDescription: "移除含有对话的文件夹后，它会成为独立项目，对话仍会保留。",
     editAction: "保存更改",
     editSaving: "保存中…",
     editCancel: "取消",

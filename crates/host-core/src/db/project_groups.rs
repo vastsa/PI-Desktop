@@ -35,7 +35,7 @@ pub struct ProjectGroupRecord {
     pub last_opened_at: i64,
     #[serde(default)]
     pub legacy: bool,
-    /// Roots removed from the group remain suppressed as legacy projections.
+    /// Roots removed without chats remain suppressed as legacy projections.
     #[serde(default)]
     pub detached_paths: Vec<String>,
 }
@@ -266,6 +266,7 @@ impl Database {
             .map(|root| root.path.as_str())
             .filter(|path| !ordered.iter().any(|candidate| candidate == path))
             .collect::<Vec<_>>();
+        let mut removed_without_sessions = Vec::new();
         for path in &removed {
             let has_sessions: bool = self.conn.query_row(
                 "SELECT EXISTS(
@@ -276,10 +277,8 @@ impl Database {
                 params![path],
                 |row| row.get(0),
             )?;
-            if has_sessions {
-                return Err(anyhow!(
-                    "cannot remove a folder that still has chats: {path}"
-                ));
+            if !has_sessions {
+                removed_without_sessions.push(*path);
             }
         }
         for path in &ordered {
@@ -306,7 +305,7 @@ impl Database {
             })
             .collect::<Vec<_>>();
         let mut detached_paths = current.detached_paths;
-        for path in removed {
+        for path in removed_without_sessions {
             if !detached_paths.iter().any(|candidate| candidate == path) {
                 detached_paths.push(path.to_string());
             }

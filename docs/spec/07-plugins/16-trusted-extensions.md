@@ -144,9 +144,13 @@ reuse it after validation; a stale saved path returns to the recovery prompt.
 If persistence fails, a native warning explains that the choice could not be
 saved but the current import can still use the validated executable.
 
-The selected executable's directory is added only to the install child's `PATH`
-so npm can find `node`; no shell startup probing or global environment mutation
-is permitted. Version checks and installation retain a minimal environment with
+When no npm executable is configured on macOS/Linux, validation and installation
+append existing well-known user binary directories (including Homebrew and
+`~/.local/bin`) after the inherited `PATH`. This lets GUI imports find an existing
+Node.js/npm installation without executing shell startup files. A configured
+executable keeps its selected directory first and does not use these fallbacks.
+Only the install child's environment changes; the application `PATH` is unchanged.
+No shell startup probing or global environment mutation is permitted. Version checks and installation retain a minimal environment with
 no inherited credentials. The registry-only proxy, isolated npm configuration,
 bounded two-step install, disabled git resolution, and disabled lifecycle scripts
 remain unchanged. Configured Windows `.cmd`/`.bat` launchers use the adjacent

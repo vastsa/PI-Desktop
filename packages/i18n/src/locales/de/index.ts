@@ -1677,7 +1677,7 @@ sklm: {
     "openActions": "Aktionen für {{name}} öffnen",
     "reorder": "Reihenfolge von {{name}} ändern",
     "editTitle": "Projekt bearbeiten",
-    "editDescription": "Projektname und Ordner aktualisieren.",
+    "editDescription": "Ein entfernter Ordner mit Chats wird zu einem eigenen Projekt; die Chats bleiben erhalten.",
     "editAction": "Änderungen speichern",
     "editSaving": "Speichern…",
     "editCancel": "Abbrechen",

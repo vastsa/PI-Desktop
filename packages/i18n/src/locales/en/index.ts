@@ -1700,7 +1700,7 @@ sklm: {
     openActions: "Open actions for {{name}}",
     reorder: "Reorder {{name}}",
     editTitle: "Edit project",
-    editDescription: "Update this project's name and folders.",
+    editDescription: "A removed folder with chats becomes its own project, and those chats stay available.",
     editAction: "Save changes",
     editSaving: "Saving…",
     editCancel: "Cancel",

@@ -47,7 +47,9 @@ Two integrity facts constrain the fix:
 4. A path that is a root of a stored multi-folder project group is refused with
    a structured error. The user removes the folder from the group first, which
    keeps the group's primary root valid; legacy single-root projections are not
-   affected and delete normally.
+   affected and delete normally. Edit project can detach an additional root
+   even when it has chats; those chats remain available as a standalone project
+   until the user explicitly deletes it.
 5. Deleting is a renderer action behind a second confirmation that names the
    project and the number of sessions it owns. On success the renderer drops the
    matching renderer-local record in the same operation: the archived/pinned
@@ -96,10 +98,11 @@ Two integrity facts constrain the fix:
   transcript directory and still look like a project in the index.
 - **Delete the project's folder on disk too.** Rejected: an application action
   must not remove user files.
-- **Detach the root from a multi-folder group inside the same call.** Rejected
-  for now: `project.group.update` refuses to detach a root that has chats, and
-  silently rewriting group structure during a delete makes the outcome hard to
-  predict. The refusal path can be relaxed by a later ADR.
+- **Detach the root from a multi-folder group inside the same call.** Rejected:
+  root membership changes remain an explicit Edit project action, separate
+  from the destructive project-delete confirmation. When a detached root has
+  chats, the edit preserves them as a standalone project so the user can review
+  or delete them separately.
 - **Abort the running turns inside the same call.** Rejected: host-core can
   settle a turn's own bookkeeping but cannot stop the agent runtime that is
   still streaming into that session, so an aborted-then-deleted session can
