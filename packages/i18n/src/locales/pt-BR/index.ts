@@ -2220,6 +2220,10 @@ export const ptBR = {
     },
     mcp: {
       addTitle: "Adicionar um servidor MCP",
+      connectTimeout: "Tempo limite de conexão (ms)",
+      callTimeout: "Tempo limite de chamada (ms)",
+      timeoutHint:
+        "Deixe em branco para seguir os padrões (10 s de conexão, 100 s de chamada). Aumente para servidores com inicialização lenta.",
       editTitle: "Editar servidor MCP",
       sheetSubtitle: "Execute um comando local ou chame um endpoint HTTP.",
       searchPlaceholder: "Pesquisar servidores",

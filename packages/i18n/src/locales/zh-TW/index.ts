@@ -2257,6 +2257,10 @@ sklm: {
     },
     mcp: {
       addTitle: "新增 MCP 伺服器",
+      connectTimeout: "連線逾時（毫秒）",
+      callTimeout: "工具呼叫逾時（毫秒）",
+      timeoutHint:
+        "留空跟隨預設（連線 10 秒、呼叫 100 秒）。初始化或首次呼叫較慢的服務可調大。",
       editTitle: "編輯 MCP 伺服器",
       sheetSubtitle: "執行本地命令或呼叫 HTTP 地址。",
       searchPlaceholder: "搜尋伺服器",

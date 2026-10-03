@@ -2270,6 +2270,10 @@ sklm: {
     },
     "mcp": {
       "addTitle": "Ajouter un serveur MCP",
+      "connectTimeout": "Délai de connexion (ms)",
+      "callTimeout": "Délai d'appel d'outil (ms)",
+      "timeoutHint":
+        "Laissez vide pour les valeurs par défaut (10 s connexion, 100 s appel). Augmentez pour les serveurs à initialisation lente.",
       "editTitle": "Modifier le serveur MCP",
       "sheetSubtitle": "Exécutez une commande locale ou appelez un point de terminaison HTTP.",
       "searchPlaceholder": "Serveurs de recherche",

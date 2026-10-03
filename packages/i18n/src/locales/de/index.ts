@@ -2270,6 +2270,10 @@ sklm: {
     },
     "mcp": {
       "addTitle": "MCP-Server hinzufügen",
+      "connectTimeout": "Verbindungs-Timeout (ms)",
+      "callTimeout": "Tool-Call-Timeout (ms)",
+      "timeoutHint":
+        "Leer lassen für die Desktop-Standards (10 s Verbindung, 100 s Aufruf). Für Server mit langer Initialisierung erhöhen.",
       "editTitle": "MCP-Server bearbeiten",
       "sheetSubtitle": "Führen Sie einen lokalen Befehl aus oder rufen Sie einen HTTP-Endpunkt auf.",
       "searchPlaceholder": "Server durchsuchen",

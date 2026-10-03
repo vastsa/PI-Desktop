@@ -439,8 +439,10 @@ export class UserMcpRuntime {
       values: record.transport === "stdio" ? (record.env ?? {}) : headers,
       audit: this.options.audit,
       auditScope: "mcp",
-      connectTimeoutMs: this.options.connectTimeoutMs,
-      callTimeoutMs: this.options.callTimeoutMs,
+      // A per-server override from the record wins; the desktop defaults
+      // apply when the server does not configure one (issue #1323).
+      connectTimeoutMs: record.connectTimeoutMs ?? this.options.connectTimeoutMs,
+      callTimeoutMs: record.callTimeoutMs ?? this.options.callTimeoutMs,
       discoveryTimeoutMs: this.options.discoveryTimeoutMs,
     });
     const entry: Entry = {

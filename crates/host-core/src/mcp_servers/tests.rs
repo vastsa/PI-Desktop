@@ -51,6 +51,50 @@ fn config_round_trips_without_activation_fields() {
 }
 
 #[test]
+fn per_server_timeouts_round_trip_validate_and_clear() {
+    let dir = tempdir().unwrap();
+    let mut registry = McpServerRegistry::new(dir.path());
+
+    // Out-of-range overrides are rejected at the boundary.
+    let mut too_fast = stdio("fast");
+    too_fast.connect_timeout_ms = Some(500);
+    assert!(registry.upsert(too_fast).is_err());
+    let mut too_slow = stdio("slow");
+    too_slow.call_timeout_ms = Some(700_000);
+    assert!(registry.upsert(too_slow).is_err());
+
+    // A valid override persists and round-trips through the stored config.
+    let mut slow = stdio("slow");
+    slow.label = Some("Slow".into());
+    slow.connect_timeout_ms = Some(60_000);
+    slow.call_timeout_ms = Some(300_000);
+    let record = registry.upsert(slow).unwrap();
+    assert_eq!(record.connect_timeout_ms, Some(60_000));
+    assert_eq!(record.call_timeout_ms, Some(300_000));
+    let stored = registry
+        .find("slow", Some(CapabilityLevel::Global), None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.connect_timeout_ms, Some(60_000));
+    assert_eq!(stored.call_timeout_ms, Some(300_000));
+
+    // An absent field keeps the stored override; an explicit 0 clears it so
+    // the server follows the desktop defaults again.
+    registry.upsert(stdio("slow")).unwrap();
+    let kept = registry
+        .find("slow", Some(CapabilityLevel::Global), None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.connect_timeout_ms, Some(60_000));
+    let mut clear = stdio("slow");
+    clear.connect_timeout_ms = Some(0);
+    clear.call_timeout_ms = Some(0);
+    let cleared = registry.upsert(clear).unwrap();
+    assert_eq!(cleared.connect_timeout_ms, None);
+    assert_eq!(cleared.call_timeout_ms, None);
+}
+
+#[test]
 fn disabled_project_server_shadows_global_server() {
     let global = McpServerRecord {
         id: "files".into(),
@@ -65,6 +109,8 @@ fn disabled_project_server_shadows_global_server() {
         env: BTreeMap::new(),
         url: None,
         headers: BTreeMap::new(),
+        connect_timeout_ms: None,
+        call_timeout_ms: None,
         enabled: true,
         scope: ActivationScope::default(),
         created_at: String::new(),

@@ -2293,6 +2293,10 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     },
     mcp: {
       addTitle: "MCP sunucusu ekle",
+      connectTimeout: "Bağlantı zaman aşımı (ms)",
+      callTimeout: "Araç çağrısı zaman aşımı (ms)",
+      timeoutHint:
+        "Masaüstü varsayılanları için boş bırakın (10 sn bağlantı, 100 sn çağrı). Yavaş başlayan sunucular için artırın.",
       editTitle: "MCP sunucusunu düzenle",
       sheetSubtitle: "Yerel bir komut çalıştırın veya bir HTTP uç noktası çağırın.",
       searchPlaceholder: "Sunucu ara",
