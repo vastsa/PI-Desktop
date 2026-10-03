@@ -4,7 +4,8 @@
 - Status: Accepted for implementation (definition roots amended by ADR 0112;
   timeout policy amended by ADR 0119; delegation presentation amended by D265;
   opt-in parent-tool inherit amended by ADR 0246; resumable delegations amended
-  by ADR 0279; report spillover amended by RFC #1196)
+  by ADR 0279; report spillover amended by RFC #1196; builtin retune source
+  amended by ADR 0319)
 - Date: 2026-08-06
 - Deciders: PI-Desktop core
 - Related: D201, ADR 0041 (persistence outbox), ADR 0048 (lazy per-turn tool
@@ -42,7 +43,9 @@ delegate's system prompt, mirroring prompt templates (D123):
 
 PI-Desktop ships three builtins inline in `agent-runtime` (`explorer`,
 `code-reviewer`, `test-runner`). User documents under `~/.agents/subagents`
-are combined with the builtins by name. There is no project-level subagent
+are combined with the builtins by name. An app-owned override directory
+(`<data>/subagent-overrides`, ADR 0319) retunes a shipped builtin by name
+without adding a delegate or a second Settings row. There is no project-level subagent
 capability source; the global user catalog is the only user-managed layer.
 The catalog is re-read
 on every session launch, capped at `MAX_SUBAGENT_DEFINITIONS` (16), and a

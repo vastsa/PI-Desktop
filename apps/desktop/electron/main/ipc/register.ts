@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { dialog, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron";
 import { err, ErrorCodes, IPC, ok, type Result } from "@pi-desktop/shared";
+import { builtinSubagentOverridesDir } from "@pi-desktop/agent-runtime";
 import type { AgentHostBridge } from "../agent-host-bridge";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
@@ -441,6 +442,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     optionalWorkspaceRoot,
     activeUserSubagentDocuments,
     disabledBuiltinSubagents,
+    builtinOverridesDir: builtinSubagentOverridesDir(dataDir),
     stripWinLongPrefix,
     sendToRenderer,
     logger,

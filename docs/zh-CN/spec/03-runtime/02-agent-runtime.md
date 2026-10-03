@@ -608,10 +608,13 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
 并按需取回报告。
 
 **目录。** 定义是来自两个来源的 Markdown 文档：`agent-runtime` 中内嵌的五个
-内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），以及
-`~/.agents/subagents/*.md` 下的全局用户文档。没有项目级子代理目录，`.pi/agents`
+内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），
+`~/.agents/subagents/*.md` 下的全局用户文档，以及 `<data>/subagent-overrides/*.md`
+下的应用内置覆盖文档（ADR 0319）——后者按名字重调内置定义，既不能新增委托，也不会
+压过用户文档；名字与任何内置定义都不匹配时仅产生诊断。没有项目级子代理目录，`.pi/agents`
 不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤，
-内置定义则由加载器按同一份应用本地状态过滤（ADR 0270）。
+内置定义则由加载器按同一份应用本地状态过滤（ADR 0270）——覆盖文档按内置来源解析，
+因此 ADR 0270 的开关管辖重调后的定义，设置页也只渲染一行而不是两行。
 Electron main 每次启动加载全局目录，并在 sidecar 参数中传递
 `subagents` / `subagentProviders`，因此编辑定义会在下一次提示时生效。目录上限
 为 `MAX_SUBAGENT_DEFINITIONS`（16）；格式错误或不可读文档只产生启动诊断，

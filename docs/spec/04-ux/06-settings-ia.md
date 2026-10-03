@@ -554,7 +554,10 @@ system while preserving their different data ownership:
   user document of the same name shadows that builtin in the Task catalog, so
   the Built-in row is omitted while the user row remains. A disabled user
   document of the same name leaves the builtin in the catalog (and on the
-  Built-in list) because Task uses the shipped definition again. Built-in rows
+  Built-in list) because Task uses the shipped definition again. An override document under `<data>/subagent-overrides`
+  (ADR 0319) retunes its builtin inside that same Built-in row — the row shows
+  the retuned definition and the switch governs it; it never adds a second row.
+  Built-in rows
   carry a source badge, **Copy as mine** (opens the create sheet pre-filled from
   that definition, with the matching template chip selected), and the same
   enablement switch a user row has (D202 activation, ADR 0270): turning one off

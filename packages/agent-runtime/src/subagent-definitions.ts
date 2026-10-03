@@ -23,6 +23,7 @@ import {
   subagentPinnedProviders,
   OAUTH_AUTH_KIND,
   type SubagentDefinition,
+  type SubagentSource,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -47,6 +48,16 @@ export type VendorModelBinding = ThinkingCapabilitySet & {
 /** Global directory for user-owned definitions; project roots are not consulted. */
 export function subagentDefinitionDir(_workspaceRoot: string): string {
   return join(homedir(), ".agents", "subagents");
+}
+
+/**
+ * App-owned directory, inside the installation data dir, whose Markdown
+ * documents retune shipped builtin definitions by name (ADR 0319). Read on
+ * every session launch like the other definition sources, so an edit reaches
+ * every session — open ones included — on its next prompt.
+ */
+export function builtinSubagentOverridesDir(dataDir: string): string {
+  return join(dataDir, "subagent-overrides");
 }
 
 /**
@@ -225,8 +236,9 @@ function builtinSubagents(): {
   return { definitions, diagnostics };
 }
 
-async function loadGlobalSubagents(
+async function loadDirDocuments(
   dir: string,
+  source: SubagentSource,
 ): Promise<{ definitions: SubagentDefinition[]; diagnostics: string[] }> {
   const definitions: SubagentDefinition[] = [];
   const diagnostics: string[] = [];
@@ -234,7 +246,7 @@ async function loadGlobalSubagents(
   try {
     names = (await readdir(dir)).filter((name) => /\.md$/i.test(name)).sort();
   } catch {
-    // No `~/.agents/subagents` directory is the common case, not an error.
+    // A missing directory is the common case, not an error.
     return { definitions, diagnostics };
   }
   for (const name of names) {
@@ -249,13 +261,41 @@ async function loadGlobalSubagents(
       continue;
     }
     const parsed = parseSubagentDefinition(raw, {
-      source: "user",
+      source,
       fallbackName: name,
       filePath,
     });
     for (const warning of parsed.warnings) diagnostics.push(`${filePath}: ${warning}`);
     if (parsed.ok) definitions.push(parsed.definition);
     else diagnostics.push(`${filePath}: ${parsed.errors.join("; ")}`);
+  }
+  return { definitions, diagnostics };
+}
+
+/**
+ * Builtin override documents (ADR 0319): app-owned Markdown that retunes a
+ * shipped builtin by name. They parse as builtin source, so the Settings
+ * switch (ADR 0270) keeps governing the handle and the row shows the retuned
+ * definition, and they never outrank the user's own registry documents. A
+ * name no builtin uses is a diagnostic, not a new delegate: the override
+ * directory retunes, it does not add.
+ */
+async function loadBuiltinOverrides(
+  dir: string | undefined,
+  builtinNames: ReadonlySet<string>,
+): Promise<{ definitions: SubagentDefinition[]; diagnostics: string[] }> {
+  if (!dir) return { definitions: [], diagnostics: [] };
+  const loaded = await loadDirDocuments(dir, "builtin");
+  const definitions: SubagentDefinition[] = [];
+  const diagnostics: string[] = [...loaded.diagnostics];
+  for (const definition of loaded.definitions) {
+    if (builtinNames.has(definition.name)) {
+      definitions.push(definition);
+    } else {
+      diagnostics.push(
+        `${definition.filePath ?? definition.name}: override matches no builtin "${definition.name}"; new delegates belong in ~/.agents/subagents`,
+      );
+    }
   }
   return { definitions, diagnostics };
 }
@@ -279,6 +319,12 @@ export type LoadSubagentOptions = {
   overrideDir?: string;
   /** Documents already scanned by host-core from `~/.agents/subagents`. */
   userDocuments?: readonly UserSubagentDocument[];
+  /**
+   * App-owned directory, inside the installation data dir, whose Markdown
+   * documents retune shipped builtin definitions by name (ADR 0319). Read on
+   * every launch with the other sources; see `builtinSubagentOverridesDir`.
+   */
+  builtinOverridesDir?: string;
   /**
    * Handles whose shipped definition the user turned off (D202 activation for
    * builtins, which are constants rather than documents). Their definitions
@@ -308,14 +354,15 @@ function loadUserSubagents(documents: readonly UserSubagentDocument[]): {
 }
 
 /**
- * Definitions offered to a session: the user's global documents and the
- * builtins, minus the builtins the user turned off. Load failures degrade to
- * diagnostics: a malformed document must not cost the session its other
- * delegates, let alone its turn.
+ * Definitions offered to a session: the user's global documents, builtin
+ * override documents, and the builtins, minus the builtins the user turned
+ * off. Load failures degrade to diagnostics: a malformed document must not
+ * cost the session its other delegates, let alone its turn.
  *
- * `builtins` carries every shipped definition that still wins its handle,
- * whether or not it is switched on, so Settings can render an off builtin as a
- * row with its own switch; `definitions` is what `Task` may actually offer.
+ * `builtins` carries every shipped definition that still wins its handle —
+ * including one retuned by an override document — whether or not it is
+ * switched on, so Settings can render an off builtin as a row with its own
+ * switch; `definitions` is what `Task` may actually offer.
  */
 export async function loadSubagentDefinitions(
   workspaceRoot: string | null | undefined,
@@ -326,22 +373,31 @@ export async function loadSubagentDefinitions(
   diagnostics: string[];
 }> {
   const builtin = builtinSubagents();
+  const builtinNames = new Set(
+    builtin.definitions.map((definition) => definition.name),
+  );
   const dir =
     options.overrideDir ??
     (workspaceRoot ? subagentDefinitionDir(workspaceRoot) : undefined);
   const disk =
     options.userDocuments === undefined && dir
-      ? await loadGlobalSubagents(dir)
+      ? await loadDirDocuments(dir, "user")
       : { definitions: [], diagnostics: [] };
   const user = loadUserSubagents(options.userDocuments ?? []);
+  const overrides = await loadBuiltinOverrides(
+    options.builtinOverridesDir,
+    builtinNames,
+  );
   const merged = mergeSubagentDefinitions([
     ...disk.definitions,
     ...user.definitions,
+    ...overrides.definitions,
     ...builtin.definitions,
   ]);
   const diagnostics = [
     ...disk.diagnostics,
     ...user.diagnostics,
+    ...overrides.diagnostics,
     ...builtin.diagnostics,
   ];
   if (merged.dropped.length > 0) {

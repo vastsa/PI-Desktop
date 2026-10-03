@@ -11,6 +11,7 @@ import {
 } from "@pi-desktop/shared";
 import {
   BUILTIN_SUBAGENT_DOCUMENTS,
+  builtinSubagentOverridesDir,
   findSubagentProviderSource,
   loadSubagentDefinitions,
   resolveSubagentProviders,
@@ -222,6 +223,144 @@ describe("loadSubagentDefinitions", () => {
     expect(diagnostics.join("\n")).toContain("missing `description`");
     // The builtins are untouched by one bad registry entry.
     expect(definitions.map((d) => d.name)).toContain("explorer");
+  });
+});
+
+describe("builtin override documents", () => {
+  let overrides: string;
+
+  beforeEach(async () => {
+    overrides = await mkdtemp(join(tmpdir(), "pi-overrides-"));
+  });
+
+  afterEach(async () => {
+    await rm(overrides, { recursive: true, force: true });
+  });
+
+  it("live under a fixed directory inside the data dir", () => {
+    expect(builtinSubagentOverridesDir(join("data", "root"))).toBe(
+      join("data", "root", "subagent-overrides"),
+    );
+  });
+
+  it("retune a builtin by name and stay builtin-sourced", async () => {
+    await writeFile(
+      join(overrides, "explorer.md"),
+      "---\nname: explorer\ndescription: Retuned explorer.\ntools: [Read, Grep]\n---\nFind it faster.\n",
+      "utf8",
+    );
+
+    const { definitions, builtins, diagnostics } = await loadSubagentDefinitions(null, {
+      builtinOverridesDir: overrides,
+    });
+
+    expect(diagnostics).toEqual([]);
+    const explorer = definitions.find((d) => d.name === "explorer")!;
+    expect(explorer.source).toBe("builtin");
+    expect(explorer.description).toBe("Retuned explorer.");
+    expect(explorer.tools).toEqual(["Read", "Grep"]);
+    expect(explorer.prompt).toBe("Find it faster.");
+    expect(definitions.filter((d) => d.name === "explorer")).toHaveLength(1);
+    // The Settings row shows the retuned definition; the other builtins and
+    // the delegation catalog are untouched.
+    expect(builtins.find((d) => d.name === "explorer")!.description).toBe(
+      "Retuned explorer.",
+    );
+    expect(definitions.find((d) => d.name === "code-reviewer")!.source).toBe("builtin");
+  });
+
+  it("still lose to the user's own registry document", async () => {
+    await writeFile(
+      join(overrides, "explorer.md"),
+      "---\nname: explorer\ndescription: Retuned explorer.\ntools: [Read]\n---\nOverride.\n",
+      "utf8",
+    );
+
+    const { definitions, builtins } = await loadSubagentDefinitions(null, {
+      userDocuments: [
+        {
+          id: "explorer",
+          document: "---\nname: explorer\ndescription: Mine.\ntools: [Grep]\n---\nMine.\n",
+          filePath: "/home/.agents/subagents/explorer.md",
+        },
+      ],
+      builtinOverridesDir: overrides,
+    });
+
+    expect(definitions.find((d) => d.name === "explorer")!.source).toBe("user");
+    expect(definitions.find((d) => d.name === "explorer")!.description).toBe("Mine.");
+    // The overridden builtin no longer wins its handle, so it is not a row.
+    expect(builtins.map((d) => d.name)).not.toContain("explorer");
+  });
+
+  it("obey the builtin switch like the shipped definition did", async () => {
+    await writeFile(
+      join(overrides, "explorer.md"),
+      "---\nname: explorer\ndescription: Retuned explorer.\ntools: [Read]\n---\nOverride.\n",
+      "utf8",
+    );
+
+    const { definitions, builtins } = await loadSubagentDefinitions(null, {
+      builtinOverridesDir: overrides,
+      disabledBuiltins: ["explorer"],
+    });
+
+    expect(definitions.map((d) => d.name)).not.toContain("explorer");
+    expect(builtins.find((d) => d.name === "explorer")!.description).toBe(
+      "Retuned explorer.",
+    );
+  });
+
+  it("report a name no builtin uses instead of adding a delegate", async () => {
+    await writeFile(
+      join(overrides, "new-delegate.md"),
+      "---\ndescription: Not a builtin.\ntools: [Read]\n---\nNo.\n",
+      "utf8",
+    );
+
+    const { definitions, diagnostics } = await loadSubagentDefinitions(null, {
+      builtinOverridesDir: overrides,
+    });
+
+    expect(definitions.map((d) => d.name)).not.toContain("new-delegate");
+    expect(diagnostics.join("\n")).toContain('override matches no builtin "new-delegate"');
+    expect(diagnostics.join("\n")).toContain(
+      "new delegates belong in ~/.agents/subagents",
+    );
+  });
+
+  it("report a malformed override without losing the retuned ones", async () => {
+    await writeFile(join(overrides, "broken.md"), "---\ntools: [Read]\n---\n\n", "utf8");
+    await writeFile(
+      join(overrides, "explorer.md"),
+      "---\nname: explorer\ndescription: Retuned explorer.\ntools: [Read]\n---\nOverride.\n",
+      "utf8",
+    );
+
+    const { definitions, diagnostics } = await loadSubagentDefinitions(null, {
+      builtinOverridesDir: overrides,
+    });
+
+    expect(definitions.find((d) => d.name === "explorer")!.description).toBe(
+      "Retuned explorer.",
+    );
+    expect(definitions.map((d) => d.name)).not.toContain("broken");
+    expect(diagnostics.join("\n")).toContain("missing `description`");
+  });
+
+  it("treat a missing directory as the common case", async () => {
+    const { definitions, diagnostics } = await loadSubagentDefinitions(null, {
+      builtinOverridesDir: join(overrides, "absent"),
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(definitions.map((d) => d.name)).toEqual([
+      "explorer",
+      "code-reviewer",
+      "test-runner",
+      "fixer",
+      "ui-designer",
+    ]);
   });
 });
 
