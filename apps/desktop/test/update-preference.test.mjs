@@ -87,3 +87,10 @@ test("Settings → Info saves only valid automatic/manual preferences", async ()
   assert.match(updateSettingsSource, /persistUpdatePreference\(value, saveSettings\)/);
   assert.match(updateBannerSource, /manualReminder === true/);
 });
+
+test("dismissed update banner hides via persisted state, not component memory", () => {
+  // The banner must consult the durable `dismissed` flag from UpdateState and
+  // record the dismissal through the updatesDismiss IPC channel (#1317).
+  assert.match(updateBannerSource, /update\.dismissed === true/);
+  assert.match(updateBannerSource, /api\.updatesDismiss\(\)/);
+});

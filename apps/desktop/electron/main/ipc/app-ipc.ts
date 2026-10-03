@@ -235,4 +235,8 @@ export function registerAppIpc({
     await updater.openReleases();
     return { ok: true };
   });
+  handle(IPC.invoke.updatesDismiss, async () => {
+    await updater.dismiss();
+    return { ok: true };
+  });
 }

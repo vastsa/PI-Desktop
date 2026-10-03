@@ -84,6 +84,7 @@ export const MANUAL_CHECK_TIMEOUT_MS = 15_000;
 export type UpdaterSettings = {
   updatePreference?: unknown;
   lastNotifiedUpdateVersion?: unknown;
+  updateDismissedVersion?: unknown;
 };
 
 export type UpdaterOptions = {
@@ -92,6 +93,8 @@ export type UpdaterOptions = {
   currentVersion: string;
   readUpdateSettings?: () => Promise<UpdaterSettings>;
   persistLastNotifiedVersion?: (version: string) => Promise<void>;
+  /** Persists the version whose update notice the user dismissed (#1317). */
+  persistDismissedVersion?: (version: string | null) => Promise<void>;
   /**
    * Active product UI locale for shipped-locale release notes.
    * Called when attaching notes to update state; defaults to English.
@@ -120,6 +123,9 @@ export class AppUpdaterController {
   private readonly automaticSupported: boolean;
   private readonly readUpdateSettings?: () => Promise<UpdaterSettings>;
   private readonly persistLastNotifiedVersion?: (version: string) => Promise<void>;
+  private readonly persistDismissedVersion?: (
+    version: string | null,
+  ) => Promise<void>;
   private readonly manualReminderTracker = new ManualUpdateReminderTracker();
   private preference: UpdatePreference;
   private preferenceRevision = 0;
@@ -127,6 +133,8 @@ export class AppUpdaterController {
   private autoCheckStarted = false;
   private disposed = false;
   private state: UpdateState;
+  /** Version whose notice the user dismissed; cleared when a new one appears. */
+  private dismissedVersion?: string;
   private manualRequested = false;
   private initialTimer: NodeJS.Timeout | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
@@ -198,6 +206,7 @@ export class AppUpdaterController {
     );
     this.readUpdateSettings = options.readUpdateSettings;
     this.persistLastNotifiedVersion = options.persistLastNotifiedVersion;
+    this.persistDismissedVersion = options.persistDismissedVersion;
     const mode = resolveUpdateModePolicy(
       platform,
       isPackaged,
@@ -274,6 +283,17 @@ export class AppUpdaterController {
           lastNotifiedVersion.length <= 128
         ) {
           this.manualReminderTracker.hydrate(lastNotifiedVersion);
+        }
+        const dismissedVersion = settings.updateDismissedVersion;
+        if (
+          typeof dismissedVersion === "string" &&
+          dismissedVersion.length > 0 &&
+          dismissedVersion.length <= 128
+        ) {
+          this.dismissedVersion = dismissedVersion;
+          if (this.state.availableVersion === dismissedVersion) {
+            this.setState({ dismissed: true });
+          }
         }
         const preference = resolveStoredUpdatePreference(
           settings.updatePreference,
@@ -364,6 +384,26 @@ export class AppUpdaterController {
     this.applyPreference(preference, true);
   }
 
+  /**
+   * Records the user's decision to stop nudging about `availableVersion`
+   * until a newer version is detected (#1317). The banner hides itself from
+   * the pushed `dismissed` flag, so the decision survives restarts.
+   */
+  async dismiss(): Promise<void> {
+    const version = this.state.availableVersion;
+    if (!version) return;
+    this.dismissedVersion = version;
+    this.setState({ dismissed: true });
+    if (!this.persistDismissedVersion) return;
+    try {
+      await this.persistDismissedVersion(version);
+    } catch (error) {
+      this.logger.app("updater", "warn", "update dismissal persistence failed", {
+        data: { detail: String(error), version },
+      });
+    }
+  }
+
   private attachListeners() {
     if (this.listenersAttached) return;
     this.listenersAttached = true;
@@ -403,11 +443,19 @@ export class AppUpdaterController {
     });
     this.autoUpdater.on("update-available", (info: UpdateInfo) => {
       const automatic = this.state.mode === "in-app";
+      // A newly discovered version supersedes any earlier dismissal.
+      if (this.dismissedVersion && this.dismissedVersion !== info.version) {
+        this.dismissedVersion = undefined;
+        if (this.persistDismissedVersion) {
+          void this.persistDismissedVersion(null).catch(() => undefined);
+        }
+      }
       this.setState({
         status: automatic ? "downloading" : "available",
         availableVersion: info.version,
         releaseNotes: this.notesFor(info.version),
         progressPercent: automatic ? 0 : undefined,
+        dismissed: this.dismissedVersion === info.version,
         manualReminder: automatic
           ? false
           : this.manualReminderFor(info.version),

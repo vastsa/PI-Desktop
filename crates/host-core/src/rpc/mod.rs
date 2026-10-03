@@ -1013,6 +1013,27 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
+    if let Some(version) = object.get("updateDismissedVersion") {
+        match version {
+            serde_json::Value::Null => {}
+            serde_json::Value::String(version) => {
+                if version.trim().is_empty() || version.len() > 128 {
+                    return Err(rpc_err(
+                        1002,
+                        "updateDismissedVersion must contain 1 to 128 characters",
+                        "INVALID_PARAMS",
+                    ));
+                }
+            }
+            _ => {
+                return Err(rpc_err(
+                    1002,
+                    "updateDismissedVersion must be a string or null",
+                    "INVALID_PARAMS",
+                ));
+            }
+        }
+    }
     if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
         if !infinite_retry.is_boolean() {
             return Err(rpc_err(
@@ -9463,6 +9484,8 @@ mod update_settings_tests {
             json!({"updatePreference": "automatic"}),
             json!({"updatePreference": "manual"}),
             json!({"lastNotifiedUpdateVersion": "0.15.9"}),
+            json!({"updateDismissedVersion": "0.15.9"}),
+            json!({"updateDismissedVersion": null}),
         ] {
             assert!(validate_settings_value(&value).is_ok(), "{value}");
         }
@@ -9472,6 +9495,9 @@ mod update_settings_tests {
             json!({"lastNotifiedUpdateVersion": "  "}),
             json!({"lastNotifiedUpdateVersion": 12}),
             json!({"lastNotifiedUpdateVersion": "x".repeat(129)}),
+            json!({"updateDismissedVersion": "  "}),
+            json!({"updateDismissedVersion": 12}),
+            json!({"updateDismissedVersion": "x".repeat(129)}),
         ] {
             assert!(validate_settings_value(&value).is_err(), "{value}");
         }

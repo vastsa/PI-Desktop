@@ -78,6 +78,11 @@ export type UpdateState = {
   error?: string;
   /** True when the transition came from a user-initiated check. */
   manual?: boolean;
+  /**
+   * True when the user dismissed the notice for `availableVersion`. Stays
+   * dismissed across restarts until a newer version is detected (#1317).
+   */
+  dismissed?: boolean;
   releasesUrl: string;
 };
 
