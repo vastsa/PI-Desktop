@@ -282,6 +282,7 @@
   --ds-info: #5d5d5d;
   --ds-purple: #7c3aed;
   --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.12);
+  /* Preserve the opaque light model menu's existing stroke and lift. */
   --ds-shadow-model-menu:
     0 0 0 0.5px color-mix(in oklab, #1a1c1f 10%, transparent),
     0 8px 32px rgba(0, 0, 0, 0.1),
