@@ -1456,12 +1456,12 @@ Only names in the current mode's deferred catalog are eligible.
 Select by the bound transport, not a model name. Responses with verified system
 support plus `supportsAdditionalTools` or `supportsToolSearch`, Chat Completions
 with verified system/tool additions, and Pi Messages retain native additions.
-Other bindings, including Anthropic Messages, Gemini, ordinary Chat Completions,
+The Pi 1.0.1 Anthropic adapter with verified system and tool-change support also
+retains native additions, carrying full definitions in later `tool_addition`
+blocks. System-message support alone does not enable this path. Other bindings,
+including Claude without native tool changes, Gemini, ordinary Chat Completions,
 older Responses/Codex models and compatible relays, declare the complete catalog
-in deterministic name order on the first request. The pinned Pi 1.0 Anthropic
-adapter's native tool-change blocks still grow request-level schemas, so do not exempt them. The separate
-inline-definition beta is not wired by this adapter; do not infer it from
-system-message or tool-reference capability flags. ToolSearch changes
+in deterministic name order on the first request. ToolSearch changes
 activation without changing the declared schemas. A visible schema does not
 permit execution: inactive deferred calls are rejected before extension hooks
 and the Host; activated calls still require the existing mode and Host checks.

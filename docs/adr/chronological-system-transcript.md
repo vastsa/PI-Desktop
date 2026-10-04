@@ -45,7 +45,7 @@ transport support from a models.dev metadata match or an account endpoint
 override. Both Pi and models.dev metadata projections can carry that binding;
 unverified routes and generic records retain the conservative fallback.
 
-The Pi 1.0.0 dependency patch adds the missing mid-conversation system
+The Pi 1.0.1 dependency patch adds the missing mid-conversation system
 capability to its `deepseek-flash` catalog entry. Authorized official-endpoint
 experiments confirmed both preserved cache reuse and effective updated
 instructions. Keep this correction in the single Pi catalog, not a parallel
@@ -60,10 +60,11 @@ model-name allowlist. Responses (OpenAI/Codex) with verified system support
 and `additional_tools` or client tool search, Chat Completions with verified
 system/tool additions, and Pi's transcript transport retain native chronological
 additions. Other transports declare the complete current catalog in deterministic
-name order from the first request. In particular the pinned Pi 1.0 Anthropic
-adapter's native transition blocks still grow its request-level schemas, so they use fixed declarations.
-Anthropic's separate inline-definition beta is not wired by that adapter;
-mid-conversation system/tool-reference support alone must not enable it.
+name order from the first request. The pinned Pi 1.0.1 Anthropic adapter now
+supports inline tool definitions: verified system and tool-change support retain
+native `tool_addition` messages without growing the initial schema list. Claude
+bindings with only system-message support still use fixed declarations. Do not
+infer tool-change support from a model name or unverified relay.
 This policy also covers compatible relays without enabling unsupported native
 message roles or switching their configured API.
 

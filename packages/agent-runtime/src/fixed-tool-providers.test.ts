@@ -9,7 +9,8 @@ const base = Object.values(DEEPSEEK_MODELS).find((model) => model.id === "deepse
 const routes: { api: Api; compat?: Model<Api>["compat"]; native?: boolean; label: string }[] = [
   { label: "Chat Completions", api: "openai-completions" },
   { label: "Claude without native transitions", api: "anthropic-messages" },
-  { label: "Claude with native transitions", api: "anthropic-messages", compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true } },
+  { label: "Claude with native transitions", api: "anthropic-messages", native: true, compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true } },
+  { label: "Claude with system updates only", api: "anthropic-messages", compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: false } },
   { label: "OpenAI Responses fallback", api: "openai-responses" },
   { label: "Codex fallback", api: "openai-codex-responses" },
   { label: "Gemini", api: "google-generative-ai" },
@@ -19,7 +20,8 @@ const routes: { api: Api; compat?: Model<Api>["compat"]; native?: boolean; label
   { label: "Codex native additions", api: "openai-codex-responses", native: true, compat: { supportsMidConvoSystemMessages: true, supportsAdditionalTools: true } },
   { label: "Pi transcript", api: "pi-messages", native: true },
 ];
-// Cache markers move with the last message; they are not model input text.
+// Compare semantic prefixes; cache breakpoints move with the last message.
+// This intentionally does not assert server cache placement or hit rates.
 function semantic(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(semantic);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value)
@@ -86,6 +88,9 @@ describe("ToolSearch user path through every Desktop-selectable Pi request adapt
       else {
         expect(JSON.stringify(requests[0].tools) ?? "").not.toContain("plugin_beta");
         expect(JSON.stringify(requests.at(-1)?.messages)).toContain("plugin_beta");
+        if (api === "anthropic-messages") {
+          expect(JSON.stringify(requests.at(-1)?.messages)).toContain('"type":"tool_definition"');
+        }
       }
       for (let index = 1; index < requests.length; index++) {
         expect(requests[index].tools).toEqual(requests[0].tools);

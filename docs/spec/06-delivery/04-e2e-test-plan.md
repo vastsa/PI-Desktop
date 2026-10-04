@@ -16523,13 +16523,17 @@ renderer's durable transcript reads. No real model or provider is contacted.
 - Cross-provider acceptance: `fixed-tool-providers.test.ts` enters the real runtime
   prompt/ToolSearch/execution path and captures each Desktop-selectable Pi
   adapter's actual serialized payload at `onPayload`, before network dispatch.
-  Cover Chat Completions, Anthropic (native system on/off), Responses and Codex
+  Cover Chat Completions, Anthropic (no native updates, system-only, inline tools), Responses and Codex
   (fallback, additional tools, client tool search), Gemini and Pi Messages.
   Search A, execute A, search B, execute B, then finish: all five requests retain
   their top-level schema state and prior semantic message prefix. Native routes
   retain deferred schema additions. Activation JSON never reaches the provider.
+  Anthropic inline definitions must remain absent from the first request and
+  appear as `tool_definition` blocks after successful ToolSearch.
   This proves request construction, not server cache hits or paid API acceptance.
-- The local HTTP/SSE fixture additionally covers official Flash, unflagged Chat
+- Run `node scripts/e2e-fixed-tool-declarations.mjs` for the official Flash
+  binding and `PI_FIXED_TOOL_FIXTURE_ROUTE=compatible node scripts/e2e-fixed-tool-declarations.mjs`
+  for the compatible binding. The local HTTP/SSE fixture covers official Flash, unflagged Chat
   Completions and a compatible relay. Canonical activation restoration, denial
   before Host execution, mode/account/catalog invalidation and compaction remain
   required. Fixed declarations increase first-request size; oversized catalogs

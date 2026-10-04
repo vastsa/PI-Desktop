@@ -26,11 +26,14 @@ function hasAnchoredToolAdditions(model: Model<Api>): boolean {
   if (model.api === "openai-completions") {
     return "supportsMidConvoToolAdditions" in compat && compat.supportsMidConvoToolAdditions === true;
   }
+  if (model.api === "anthropic-messages") {
+    // Pi 1.0.1 sends later schemas inline rather than growing top-level tools.
+    return "supportsMidConvoToolChanges" in compat && compat.supportsMidConvoToolChanges === true;
+  }
   if (["openai-responses", "openai-codex-responses"].includes(model.api)) {
     return ("supportsAdditionalTools" in compat && compat.supportsAdditionalTools === true)
       || ("supportsToolSearch" in compat && compat.supportsToolSearch === true);
   }
-  // Anthropic's native tool-change blocks still grow its request-level schemas.
   return false;
 }
 
