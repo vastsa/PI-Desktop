@@ -4,6 +4,25 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const targetVersion = "1.0.1";
+// Proof chain that pnpm installed the patched instance: the root lockfile's
+// patchedDependencies section maps `name@version` to a 64-hex patch hash, and
+// the virtual-store lockfile embeds that hash in the installed snapshot's
+// `version: <v>(patch_hash=<hash>)` line. realpath-based matching cannot work
+// on Windows, where pnpm shortens `.pnpm` directory names (long-path limit)
+// and the literal `patch_hash=` segment disappears from resolved paths
+// (#1361).
+const rootLockfile = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
+const virtualStoreLockfile = readFileSync(join(root, "node_modules/.pnpm/lock.yaml"), "utf8");
+
+function installedPatchHash(packageName) {
+  const declared = rootLockfile.match(
+    new RegExp(`'?${packageName.replace("/", "/")}@${targetVersion}'?:[ \\t]*([a-f0-9]{64})`),
+  )?.[1];
+  if (!declared) return undefined;
+  return virtualStoreLockfile.includes(`(patch_hash=${declared}`)
+    ? declared
+    : undefined;
+}
 
 function readJson(path) {
   return JSON.parse(readFileSync(join(root, path), "utf8"));
@@ -25,7 +44,7 @@ function assertInstalled(packagePath, expectedName, { patched = false } = {}) {
   if (manifest.name !== expectedName || manifest.version !== targetVersion) {
     throw new Error(`${packagePath} resolves to ${manifest.name}@${manifest.version}, expected ${expectedName}@${targetVersion}`);
   }
-  if (patched && !resolved.includes("patch_hash=")) {
+  if (patched && !installedPatchHash(expectedName)) {
     throw new Error(`${packagePath} does not resolve to pnpm's patched package instance`);
   }
 }
