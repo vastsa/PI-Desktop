@@ -7,8 +7,10 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
+  IconSettings,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
+import { useAppStore } from "../../../stores/app-store";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
 import { ThinkingLevelSlider } from "./ThinkingLevelSlider";
 
@@ -58,6 +60,13 @@ export function ComposerModelPicker({
     commitThinkingLevel,
     onMenuKeyDown,
   } = controller;
+
+  const openModelSettings = () => {
+    setOpen(false);
+    const store = useAppStore.getState();
+    store.setSettingsAnchor(null);
+    store.setSettingsTab("agent");
+  };
 
   return (
     <AnchoredMenu
@@ -151,6 +160,17 @@ export function ComposerModelPicker({
             setModelHighlight={setModelHighlight} selectModel={selectModel}
             selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}
           />
+          <div className="composer-model-settings-divider" />
+          <button
+            type="button"
+            className="composer-menu-entry composer-model-settings-link"
+            role="menuitem"
+            onClick={openModelSettings}
+          >
+            <IconSettings size={14} aria-hidden="true" />
+            <span>{t("settings.modelConfigurations")}</span>
+            <IconChevronRight size={14} aria-hidden="true" />
+          </button>
         </>
       )}
     </AnchoredMenu>

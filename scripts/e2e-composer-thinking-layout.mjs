@@ -138,6 +138,10 @@ app.whenReady().then(async()=>{
     if(result.reduced.animations!==0 || Math.abs(result.reduced.gap)>0.6 || (await probe('snapshot()')).level!=='omit') result.failures.push('Reduced motion selection did not update immediately');
     await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[]});
     window.webContents.debugger.detach();
+    result.modelSettings=await probe('openModelSettings()');
+    if(result.modelSettings.page!=='settings' || result.modelSettings.tab!=='agent' || result.modelSettings.anchor!==null ||
+       !result.modelSettings.menuClosed || !result.modelSettings.linkVisible)
+      result.failures.push('Model settings shortcut did not close the menu and open Models settings');
     result.ok=result.failures.length===0;
     console.log('THINKING_LAYOUT_RESULT '+JSON.stringify(result));
     app.exit(result.ok?0:1);
