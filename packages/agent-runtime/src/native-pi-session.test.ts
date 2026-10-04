@@ -61,6 +61,24 @@ describe("NativePiSessionService", () => {
     expect(readFileSync(f.file)).toEqual(before);
   });
 
+  it("collapses copied session files onto one entry per native id (#1359)", async () => {
+    const f = fixture();
+    // A backup copy of the session under a subdirectory of the scan root:
+    // same header id, different path. It must not become a second session.
+    const backupDir = join(f.sessionRoot, "backup");
+    mkdirSync(backupDir, { recursive: true });
+    writeFileSync(join(backupDir, "fixture-copy.jsonl"), f.text);
+
+    // Control: without the copy, list() names the original file's id.
+    const control = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const [original] = await control.list();
+
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const sessions = await service.list();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].id).toBe(original.id);
+  });
+
   it("searches native metadata and active-branch message text without rewriting JSONL", async () => {
     const f = fixture();
     const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
