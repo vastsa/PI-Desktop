@@ -24,7 +24,8 @@ The export path is an explicit per-domain allowlist in
 `crates/host-core/src/config_sync/domains.rs`. It never serializes the
 database, the secrets directory, or an arbitrary filesystem tree. Local paths,
 window state, readiness flags, OAuth sessions, plugin binaries, and device
-approvals are local overlays or excluded data.
+approvals are local overlays or excluded data. Application imports apply the
+same field allowlist, preserving excluded installation-local settings.
 The same module exposes an adapter registry declaring schema version,
 portable/secret fields, local overlays, identity and references, merge
 granularity, activation, and recovery policy for every supported domain.

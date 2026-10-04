@@ -80,6 +80,8 @@ export type AppSettings = {
    */
   promptEnhancementThinkingLevel?: ThinkingLevel;
   defaultPermissionMode?: GlobalPermissionMode;
+  /** Opt in all active user MCP tools for Plan/Goal; absent is off. Approval rules still apply. */
+  allowMcpInPlanGoal?: boolean;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */
   language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR";

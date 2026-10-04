@@ -102,6 +102,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAsk",
       "settings.permissionModeAcceptEdits",
       "settings.permissionModeAuto",
+      "settings.allowMcpInPlanGoal",
+      "settings.allowMcpInPlanGoalDesc",
       "settings.defaultsTitle",
       "settings.imageModel",
       "settings.mode",
@@ -389,7 +391,11 @@ export function searchSettings(
     }
     for (const key of entry.keywordKeys) {
       if (t(key).toLowerCase().includes(q)) {
-        hits.push({ tab: entry.id, tabLabelKey: entry.labelKey, rowKey: key });
+        hits.push({
+          tab: entry.id,
+          tabLabelKey: entry.labelKey,
+          rowKey: key === "settings.allowMcpInPlanGoalDesc" ? "settings.allowMcpInPlanGoal" : key,
+        });
       }
     }
   }

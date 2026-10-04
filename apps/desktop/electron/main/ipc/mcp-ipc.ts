@@ -2,7 +2,7 @@ import { IPC, parseMcpImport, type ActivationScope, type AgentCapabilityMove, ty
 import type { McpOAuthManager } from "../mcp-oauth";
 import type { HostProcess } from "../host-process";
 import type { McpRegistrySearchResult } from "../mcp-registry-catalog";
-import type { UserMcpRuntime } from "../user-mcp";
+import { configurationChanged, type UserMcpRuntime } from "../user-mcp.ts";
 import type { IpcRegistrar } from "./types";
 
 export type McpIpcDependencies = {
@@ -73,12 +73,17 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
 
   handle(IPC.invoke.mcpUpsert, async (server: McpServerInput) => {
     if (!host) throw new Error("host unavailable");
+    const previous = userMcp.listRecords().find((record) => record.id === server.id);
     const res = await host.call<{ server: McpServerRecord }>("mcp.upsert", { server });
-    await refreshUserMcp(currentWorkspacePath());
+    const current = (await refreshUserMcp(currentWorkspacePath()))
+      .find((record) => record.id === res.server?.id);
     sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server?.id });
-    if (res.server && res.server.enabled !== false) {
+    if (
+      current && current.enabled !== false &&
+      (!previous || previous.enabled === false || configurationChanged(previous, current))
+    ) {
       void userMcp
-        .test(res.server.id)
+        .test(current.id)
         .then(() => {
           sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server.id });
         })

@@ -967,6 +967,8 @@ export type PluginToolDef = {
    * modes; host-core enforces the per-action restriction.
    */
   planSafeActions?: readonly string[];
+  /** Raw routing identity captured with this runtime's admission metadata. */
+  mcpTool?: { serverId: string; toolName: string };
 };
 
 export type AgentRuntimeOptions = {
@@ -3353,15 +3355,15 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                     timeoutMs,
                   }
                 : {}),
-              ...(toolName.startsWith("plugin_")
+              ...(toolName.startsWith("plugin_") || toolName.startsWith("mcp_")
                 ? (() => {
                     const def = this.pluginTools.find(
                       (tool) => tool.name === toolName,
                     );
                     return {
-                      declaredRisk: def?.risk,
-                      // Plan-safe action list lets host-core admit the
-                      // plugin tool in Plan/Goal modes (ADR 0211).
+                      ...(toolName.startsWith("plugin_") ? { declaredRisk: def?.risk } : {}),
+                      ...(toolName.startsWith("mcp_") && def?.mcpTool ? { mcpTool: def.mcpTool } : {}),
+                      // Host admission uses plugin actions or an exact MCP full name.
                       ...(Array.isArray(def?.planSafeActions) &&
                       def!.planSafeActions.length > 0
                         ? { planSafeActions: [...def!.planSafeActions] }

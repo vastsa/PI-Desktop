@@ -169,6 +169,7 @@ export function createProviderCatalogRuntime({
     ) as T & { defaultCommandShell?: unknown };
     return {
       ...(value as T),
+      allowMcpInPlanGoal: (value as T & { allowMcpInPlanGoal?: unknown }).allowMcpInPlanGoal === true,
       infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
         .infiniteProviderRetry === true,
       keepAwakeWhileRunning: (value as T & { keepAwakeWhileRunning?: unknown })
@@ -186,6 +187,7 @@ export function createProviderCatalogRuntime({
     const value = settings as T & {
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
+      allowMcpInPlanGoal?: unknown;
       keepAwakeWhileRunning?: unknown;
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
@@ -199,13 +201,12 @@ export function createProviderCatalogRuntime({
         errorCode: ErrorCodes.COMMAND_SHELL_INVALID,
       });
     }
-    if (
-      Object.prototype.hasOwnProperty.call(value, "infiniteProviderRetry") &&
-      typeof value.infiniteProviderRetry !== "boolean"
-    ) {
-      throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
-        errorCode: ErrorCodes.INVALID_PARAMS,
-      });
+    for (const field of ["infiniteProviderRetry", "allowMcpInPlanGoal"] as const) {
+      if (Object.prototype.hasOwnProperty.call(value, field) && typeof value[field] !== "boolean") {
+        throw Object.assign(new Error(field + " is invalid"), {
+          errorCode: ErrorCodes.INVALID_PARAMS,
+        });
+      }
     }
     if (
       Object.prototype.hasOwnProperty.call(value, "keepAwakeWhileRunning") &&

@@ -745,6 +745,8 @@ fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<Strin
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
         object.remove("planApprovalPermissionMode");
+        let allow_mcp = object.get("allowMcpInPlanGoal") == Some(&Value::Bool(true));
+        object.insert("allowMcpInPlanGoal".into(), Value::Bool(allow_mcp));
         if object.get("defaultMode").and_then(Value::as_str) == Some("chat") {
             object.insert("defaultMode".into(), Value::String("plan".into()));
         }
@@ -1034,11 +1036,11 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             }
         }
     }
-    if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
-        if !infinite_retry.is_boolean() {
+    for field in ["infiniteProviderRetry", "allowMcpInPlanGoal"] {
+        if object.get(field).is_some_and(|value| !value.is_boolean()) {
             return Err(rpc_err(
                 1002,
-                "infiniteProviderRetry must be a boolean",
+                format!("{field} must be a boolean"),
                 "INVALID_PARAMS",
             ));
         }
@@ -1467,6 +1469,7 @@ async fn execute_plugin_tool(
     p: &ToolsExecuteParams,
     timeout_ms: u64,
     session_mode: &str,
+    mcp_tool: Option<&Value>,
 ) -> tools::ToolsExecuteResult {
     let started = std::time::Instant::now();
     let execution_id = uuid::Uuid::new_v4().to_string();
@@ -1490,6 +1493,7 @@ async fn execute_plugin_tool(
             // (ADR 0211).
             "mode": session_mode,
             "planSafeActions": p.plan_safe_actions,
+            "mcpTool": mcp_tool,
         }),
     )
     .await;
@@ -4040,6 +4044,7 @@ async fn handle_request(
                         &p,
                         tools::desktop_dispatch_timeout_ms(p.timeout_ms),
                         &durable_mode,
+                        params.get("mcpTool"),
                     )
                     .await
                 } else if scheduled_tools::recognizes(&p.tool_name) {
@@ -6808,6 +6813,98 @@ mod tests {
         assert!(content.contains("temporary"), "{content}");
         assert_eq!(read.content["tag"].as_str().unwrap().len(), 4);
         assert!(!active_project.join("notes.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn mcp_execution_forwards_the_admitted_raw_identity() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        app_state
+            .db
+            .set_setting("app", &json!({ "defaultPermissionMode": "auto" }))
+            .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let session = handle_request(
+            state.clone(),
+            "session.create",
+            json!({ "title": "MCP identity", "mode": "goal" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let identity = json!({ "serverId": "ctx-docs", "toolName": "search-docs" });
+        let mut request = tokio::spawn(handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({ "sessionId": session["session"]["id"], "toolCallId": "mcp-route",
+                "toolName": "mcp_ctx_docs_search_docs", "args": {}, "mode": "goal",
+                "planSafeActions": ["mcp_ctx_docs_search_docs"], "mcpTool": identity }),
+            tx.clone(),
+        ));
+        let notification = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let encoded = tokio::select! {
+                    message = rx.recv() => message.unwrap(),
+                    result = &mut request => panic!("MCP execution ended before dispatch: {result:?}"),
+                };
+                let message: Value = serde_json::from_str(&encoded).unwrap();
+                if message["method"] == "plugins.execute" { break message; }
+            }
+        }).await.unwrap();
+        handle_request(
+            state.clone(), "plugins.resolveExecution",
+            json!({ "executionId": notification["params"]["executionId"], "ok": true, "content": "fixture" }),
+            tx,
+        ).await.unwrap();
+        assert_eq!(request.await.unwrap().unwrap()["ok"], true);
+        assert_eq!(notification["params"]["mcpTool"], identity);
+    }
+
+    #[tokio::test]
+    async fn allow_mcp_in_plan_goal_settings_round_trip() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(settings["allowMcpInPlanGoal"], false);
+        for enabled in [true, false] {
+            handle_request(
+                state.clone(),
+                "settings.set",
+                json!({ "allowMcpInPlanGoal": enabled }),
+                tx.clone(),
+            )
+            .await
+            .unwrap();
+            let mut reopened = AppState::open(data_dir.path()).unwrap();
+            reopened.handshook = true;
+            let saved = handle_request(
+                Arc::new(Mutex::new(reopened)),
+                "settings.get",
+                json!({}),
+                tx.clone(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(saved["allowMcpInPlanGoal"], enabled);
+        }
+        for invalid in [json!("yes"), json!(null)] {
+            let error = handle_request(
+                state.clone(),
+                "settings.set",
+                json!({ "allowMcpInPlanGoal": invalid }),
+                tx.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
     }
 
     #[tokio::test]

@@ -239,7 +239,11 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   The control is a menu select on the shared anchored-menu surface rather than
   a platform-drawn `<select>` popup, so every Settings picker opens the same
   way. The closed trigger sizes to the current label, capped by the settings
-  control column.
+  control column. The same card includes **Allow MCP in Plan and Goal**, a
+  shared `SettingsToggle` persisted as `allowMcpInPlanGoal`. It defaults off;
+  enabling it admits all active user MCP tools, including mutating tools,
+  without changing approval rules. Off restores per-server tool lists. Its
+  help text explains that new sessions or runtime rebuilds read changes.
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
   command shell selection, Link open destination, context usage display
   (remaining or used), thinking display mode, Enter-to-send control, the

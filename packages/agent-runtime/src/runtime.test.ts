@@ -2151,6 +2151,36 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
     await runtime.dispose();
   });
 
+  it.each(["plan", "goal"] as const)("forwards a named MCP tool allowlist in %s mode", async (mode) => {
+    const name = "mcp_ctx_docs_search_docs";
+    const host = { call: vi.fn(async () => ({ ok: true, content: "docs" })) };
+    const runtime = createRuntime({
+      mode,
+      host,
+      pluginTools: [
+        { name, description: "docs", parameters: {}, risk: "low", planSafeActions: [name],
+          mcpTool: { serverId: "ctx-docs", toolName: "search-docs" } },
+        { name: "mcp_ctx_docs_write", description: "write", parameters: {} },
+      ],
+    });
+    try {
+      const tools = runtime["agent"].state.tools;
+      expect(tools.some((tool) => tool.name === "mcp_ctx_docs_write")).toBe(false);
+      const tool = tools.find((tool) => tool.name === name);
+      expect(tool).toBeDefined();
+      await tool!.execute("mcp-safe-1", {});
+      expect(host.call).toHaveBeenCalledWith("tools.execute", expect.objectContaining({
+        toolName: name, mode, planSafeActions: [name],
+        mcpTool: { serverId: "ctx-docs", toolName: "search-docs" },
+      }));
+      expect(host.call).not.toHaveBeenCalledWith("tools.execute", expect.objectContaining({
+        declaredRisk: "low",
+      }));
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("activates matching tools for the next model turn", async () => {
     const runtime = createRuntime();
     const agent = (runtime as any).agent;

@@ -360,6 +360,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
+    allowMcpInPlanGoal: settings.allowMcpInPlanGoal === true,
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
     defaultCommandShell: isCommandShellId(
@@ -397,6 +398,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     fontScale?: unknown;
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
+    allowMcpInPlanGoal?: unknown;
     smoothStreaming?: unknown;
     updatePreference?: unknown;
     lastNotifiedUpdateVersion?: unknown;
@@ -436,13 +438,12 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       });
     }
   }
-  if (
-    Object.prototype.hasOwnProperty.call(value, "infiniteProviderRetry") &&
-    typeof value.infiniteProviderRetry !== "boolean"
-  ) {
-    throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
-      errorCode: "INVALID_PARAMS",
-    });
+  for (const field of ["infiniteProviderRetry", "allowMcpInPlanGoal"] as const) {
+    if (Object.prototype.hasOwnProperty.call(value, field) && typeof value[field] !== "boolean") {
+      throw Object.assign(new Error(field + " is invalid"), {
+        errorCode: "INVALID_PARAMS",
+      });
+    }
   }
   if (
     Object.prototype.hasOwnProperty.call(value, "smoothStreaming") &&

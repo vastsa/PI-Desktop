@@ -4,7 +4,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { UserMcpRuntime, configurationChanged } from "../electron/main/user-mcp.ts";
+import { IPC } from "@pi-desktop/shared";
+import { registerMcpIpc } from "../electron/main/ipc/mcp-ipc.ts";
+import { UserMcpRuntime, configurationChanged, reconnectAuthorizedMcp } from "../electron/main/user-mcp.ts";
 import { McpServerClient } from "../electron/main/plugin-mcp.ts";
 
 /**
@@ -39,7 +41,7 @@ function handle(msg) {
       jsonrpc: "2.0",
       id: msg.id,
       result: {
-        tools: [{ name: "lookup", description: "Look something up" }, { name: "ping" }],
+        tools: [{ name: process.env.STUB_TOOL_NAME ?? "lookup", description: "Look something up" }, { name: "ping" }],
         // A server that keeps handing back the same cursor can never be listed
         // to its last page, so the client has to refuse it.
         ...(process.env.STUB_REPEAT_CURSOR ? { nextCursor: "more" } : {}),
@@ -103,6 +105,7 @@ test("a global server contributes mcp_-prefixed tools to any session", async (t)
     tools.map((tool) => tool.fullName),
     ["mcp_stub_lookup", "mcp_stub_ping"],
   );
+  assert.equal(tools.every((tool) => tool.planSafe === false), true);
   assert.equal(tools[0].description, "Look something up");
   // A tool with no description of its own still gets one the model can read.
   assert.match(tools[1].description, /Stub/);
@@ -157,6 +160,85 @@ test("refreshing HTTP MCP status detects a server that went offline", async (t) 
   assert.deepEqual(await pendingCall, { content: [{ type: "text", text: "completed" }] });
   assert.equal(pings, 2);
 });
+
+test("an OAuth wait cannot reuse an obsolete server configuration", async (t) => {
+  const oldToken = Promise.withResolvers();
+  const newToken = Promise.withResolvers();
+  const tokens = [oldToken, newToken];
+  const connectedUrls = [];
+  const calledUrls = [];
+  const rt = runtime(t, {
+    oauth: {
+      getValidAccessToken: () => tokens.shift()?.promise ?? Promise.resolve(null),
+      hasOAuth: async () => false,
+    },
+    createClient: ({ server }) => {
+      let connected = false;
+      return {
+        connect: async () => { connected = true; connectedUrls.push(server.url); return [{ name: "lookup" }]; },
+        getTools: () => connected ? [{ name: "lookup" }] : [],
+        isConnected: () => connected,
+        close: () => { connected = false; },
+        callTool: async () => { calledUrls.push(server.url); return server.url; },
+      };
+    },
+  });
+  const old = stubRecord("/unused", {
+    transport: "http", command: undefined, args: undefined,
+    url: "http://old.invalid/mcp", planSafeTools: [],
+  });
+  rt.setRecords([old]);
+  const discovery = rt.toolsForProject("/repo");
+  const saved = { ...old, url: "http://new.invalid/mcp", planSafeTools: ["lookup"] };
+  rt.setRecords([saved]);
+  const testing = rt.test(saved.id);
+  oldToken.resolve(null);
+  const obsolete = await discovery;
+  newToken.resolve(null);
+  assert.equal((await testing).state, "ready");
+  const tools = await rt.toolsForProject("/repo");
+  assert.equal(tools[0].planSafe, true);
+  assert.equal(await rt.callTool("mcp_stub_lookup", {}, "/repo"), saved.url);
+  assert.deepEqual(obsolete, []);
+  assert.deepEqual(connectedUrls, [saved.url]);
+  assert.deepEqual(calledUrls, [saved.url]);
+});
+
+test("authorization completion cannot restore a superseded server", async (t) => {
+  const connectedUrls = [];
+  const rt = runtime(t, {
+    createClient: ({ server }) => {
+      let connected = false;
+      return {
+        connect: async () => { connected = true; connectedUrls.push(server.url); return [{ name: "lookup" }]; },
+        getTools: () => connected ? [{ name: "lookup" }] : [],
+        isConnected: () => connected,
+        close: () => { connected = false; },
+        callTool: async () => server.url,
+      };
+    },
+  });
+  const captured = stubRecord("/unused", {
+    transport: "http", command: undefined, args: undefined,
+    url: "http://old.invalid/mcp", enabled: true,
+  });
+  for (const current of [undefined, { ...captured, url: "http://new.invalid/mcp", enabled: false }]) {
+    const status = await reconnectAuthorizedMcp(rt, captured, current);
+    assert.equal(status.state, "failed");
+  }
+  assert.deepEqual(connectedUrls, []);
+  assert.deepEqual(rt.listRecords(), []);
+
+  const status = await reconnectAuthorizedMcp(rt, captured, captured);
+  assert.equal(status.state, "ready");
+  assert.deepEqual(connectedUrls, [captured.url]);
+  assert.deepEqual(rt.listRecords(), []);
+  rt.setRecords([captured]);
+  assert.equal((await reconnectAuthorizedMcp(rt, captured, captured)).state, "ready");
+  assert.deepEqual(rt.listRecords().map((item) => item.url), [captured.url]);
+
+});
+
 test("stopping one session cancels only its active MCP call", async (t) => {
   const started = new Map();
   const finish = new Map();
@@ -323,13 +405,28 @@ test("an advertised tool reconnects after transport loss without another search"
 });
 
 test("reconnection revalidates the advertised tool list before dispatch", async (t) => {
-  const { rt, client, state } = reconnectingRuntime(t);
-  await rt.toolsForProject("/repo");
-  client.close();
-  state.advertised = [{ name: "replacement" }];
-  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "TOOL_NOT_FOUND" });
-  assert.equal(state.handshakes, 2);
-  assert.deepEqual(state.calls, []);
+  for (const advertised of [[{ name: "replacement" }], [{ name: "search-docs" }, { name: "search_docs" }], [{ name: "search_docs" }]]) {
+    const { rt, client, state } = reconnectingRuntime(t);
+    rt.setRecords([stubRecord("/unused", { planSafeTools: ["search-docs"] })]);
+    state.advertised = [{ name: "search-docs" }];
+    const [admitted] = await rt.toolsForProject("/repo");
+    assert.equal(admitted.planSafe, true);
+    client.close();
+    state.advertised = advertised;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await assert.rejects(rt.callTool(admitted.fullName, {}, "/repo", "old-session", admitted), { errorCode: "TOOL_NOT_FOUND" });
+    }
+    const renamed = advertised.length === 1 && advertised[0].name === "search_docs";
+    assert.equal(rt.hasTool(admitted.fullName), renamed);
+    assert.equal(state.handshakes, 2);
+    assert.deepEqual(state.calls, []);
+    if (renamed) {
+      const [fresh] = await rt.toolsForProject("/repo");
+      assert.equal(fresh.planSafe, false, "The renamed raw tool is not in the saved Plan/Goal list");
+      assert.equal(await rt.callTool(fresh.fullName, {}, "/repo", "new-agent-session", fresh), "search_docs");
+      assert.deepEqual(state.calls, ["search_docs"]);
+    }
+  }
 });
 
 test("a failed reconnect reports unavailability without repeated handshakes", async (t) => {
@@ -545,6 +642,126 @@ test("a server whose catalog cannot be listed lands as failed with the reason", 
   // A server that already failed this run is not handshaken again per session.
   assert.deepEqual(await rt.toolsForProject("/repo"), []);
   assert.equal(rt.statusFor("stub").state, "failed");
+});
+
+test("hyphenated raw names are marked before full-name conversion and dispatched unchanged", async (t) => {
+  const dir = stubDir();
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir, {
+    id: "ctx-docs", env: { STUB_TOOL_NAME: "search-docs" }, planSafeTools: ["search-docs"],
+  })]);
+  const tools = await rt.toolsForProject("/repo");
+  const search = tools.find((tool) => tool.toolName === "search-docs");
+  assert.equal(search?.planSafe, true);
+  assert.equal(search?.fullName, "mcp_ctx_docs_search_docs");
+  assert.equal(tools.find((tool) => tool.toolName === "ping")?.planSafe, false);
+  const result = await rt.callTool(search.fullName, {}, "/repo");
+  assert.equal(result.content[0].text, "untagged:search-docs");
+});
+
+test("ambiguous full names cannot mix admission with another raw tool or server", async (t) => {
+  const release = Promise.withResolvers();
+  const secondReady = Promise.withResolvers();
+  const completed = [];
+  const calls = [];
+  const rt = runtime(t, {
+    createClient: ({ server }) => {
+      let connected = false;
+      const tools = server.id === "ctx-docs"
+        ? [{ name: "lookup" }, { name: "search-docs" }, { name: "search_docs" }]
+        : [{ name: "lookup" }];
+      return {
+        connect: async () => {
+          if (server.id === "ctx-docs") await release.promise;
+          connected = true;
+          completed.push(server.id);
+          if (server.id === "ctx_docs") secondReady.resolve();
+          return tools;
+        },
+        getTools: () => tools,
+        isConnected: () => connected,
+        close: () => { connected = false; },
+        callTool: async (name) => { calls.push([server.id, name]); return name; },
+      };
+    },
+  });
+  rt.setRecords([
+    stubRecord("/unused", { id: "ctx-docs", planSafeTools: ["lookup", "search-docs"] }),
+    stubRecord("/unused", { id: "ctx_docs", planSafeTools: [] }),
+  ]);
+  const pending = rt.toolsForProject("/repo");
+  await secondReady.promise;
+  release.resolve();
+  const tools = await pending;
+  assert.deepEqual(completed, ["ctx_docs", "ctx-docs"]);
+  for (const name of ["mcp_ctx_docs_lookup", "mcp_ctx_docs_search_docs"]) {
+    await assert.rejects(rt.callTool(name, {}, "/repo"), { errorCode: "TOOL_NOT_FOUND" });
+    assert.equal(rt.hasTool(name), false);
+  }
+  assert.deepEqual(tools, []);
+  assert.deepEqual(calls, []);
+});
+
+test("saving planSafeTools through IPC updates the next tool list without reconnecting", async (t) => {
+  const dir = stubDir();
+  const pidFile = join(dir, "pid");
+  const rt = runtime(t);
+  let record = stubRecord(dir, { level: "global", env: { STUB_PID_FILE: pidFile }, planSafeTools: ["lookup"] });
+  let shadow = null;
+  const handlers = new Map();
+  registerMcpIpc({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    getHost: () => ({
+      call: async (method, payload) => {
+        if (method === "mcp.list") return { servers: [record] };
+        assert.equal(method, "mcp.upsert");
+        record = { ...record, ...payload.server };
+        return { server: record };
+      },
+    }),
+    userMcp: rt,
+    currentWorkspacePath: () => "/repo",
+    refreshUserMcp: async () => { const active = [shadow ?? record]; rt.setRecords(active); return active; },
+    describeError: String,
+    sendToRenderer: () => {},
+    searchMcpMarket: async () => ({ entries: [] }),
+  });
+  const save = handlers.get(IPC.invoke.mcpUpsert);
+  rt.setRecords([record]);
+  const before = await rt.toolsForProject("/repo");
+  const pid = readFileSync(pidFile, "utf8");
+  assert.equal(before.find((tool) => tool.toolName === "lookup")?.planSafe, true);
+  await save({ id: record.id, planSafeTools: ["ping"] });
+  const after = await rt.toolsForProject("/repo");
+  assert.equal(after.find((tool) => tool.toolName === "lookup")?.planSafe, false);
+  assert.equal(after.find((tool) => tool.toolName === "ping")?.planSafe, true);
+  assert.equal(readFileSync(pidFile, "utf8"), pid);
+  assert.equal((await rt.callTool("mcp_stub_ping", {}, "/repo")).content[0].text, "untagged:ping");
+  await save({ id: record.id, planSafeTools: [] });
+  assert.equal((await rt.toolsForProject("/repo")).every((tool) => !tool.planSafe), true);
+  assert.equal(readFileSync(pidFile, "utf8"), pid);
+
+  await save({ id: record.id, env: { ...record.env, STUB_TAG: "edited" } });
+  assert.equal((await rt.callTool("mcp_stub_lookup", {}, "/repo")).content[0].text, "edited:lookup");
+  const editedPid = readFileSync(pidFile, "utf8");
+  assert.notEqual(editedPid, pid);
+  const tested = await handlers.get(IPC.invoke.mcpTest)({ id: record.id });
+  assert.equal(tested.status.state, "ready");
+  assert.notEqual(readFileSync(pidFile, "utf8"), editedPid);
+
+  const projectPidFile = join(dir, "project-pid");
+  shadow = stubRecord(dir, {
+    level: "project", projectPath: "/repo", planSafeTools: ["lookup"],
+    env: { STUB_PID_FILE: projectPidFile, STUB_TAG: "project" },
+  });
+  rt.setRecords([shadow]);
+  await rt.toolsForProject("/repo");
+  const projectPid = readFileSync(projectPidFile, "utf8");
+  await save({ id: record.id, level: "global", planSafeTools: ["ping"] });
+  const projectTools = await rt.toolsForProject("/repo");
+  assert.equal(readFileSync(projectPidFile, "utf8"), projectPid);
+  assert.equal(projectTools.find((tool) => tool.toolName === "lookup")?.planSafe, true);
+  assert.equal((await rt.callTool("mcp_stub_ping", {}, "/repo")).content[0].text, "project:ping");
 });
 
 test("custom timeoutSeconds overrides default connect and call timeouts on client creation", () => {

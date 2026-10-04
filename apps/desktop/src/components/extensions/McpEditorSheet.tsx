@@ -12,7 +12,7 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
+import { Button, CheckboxGroup, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
@@ -20,6 +20,11 @@ import {
   MCP_STDIO_LAUNCHER_PRESETS,
   mcpStdioLauncherChoice,
 } from "./mcp-stdio-launcher";
+import {
+  missingPlanSafeTools,
+  normalizePlanSafeTools,
+  planSafeToolsError,
+} from "./mcp-plan-safe";
 
 /**
  * Tool names shown beside a test result.
@@ -44,9 +49,12 @@ export type McpDraft = {
   transport: McpTransport;
   command: string;
   args: string;
+  /** The one-line field cannot losslessly represent every saved argument vector. */
+  originalArgs?: string[];
   env: KeyValuePair[];
   url: string;
   headers: KeyValuePair[];
+  planSafeTools: string[];
   enabled: boolean;
   scope: ActivationScope;
   timeoutSeconds: string;
@@ -63,6 +71,7 @@ export function emptyMcpDraft(): McpDraft {
     env: [],
     url: "",
     headers: [],
+    planSafeTools: [],
     enabled: true,
     scope: GLOBAL_SCOPE,
     timeoutSeconds: "",
@@ -77,9 +86,11 @@ export function draftFromRecord(record: McpServerRecord): McpDraft {
     transport: record.transport,
     command: record.command ?? "",
     args: (record.args ?? []).join(" "),
+    originalArgs: [...(record.args ?? [])],
     env: recordToPairs(record.env),
     url: record.url ?? "",
     headers: recordToPairs(record.headers),
+    planSafeTools: [...(record.planSafeTools ?? [])],
     enabled: record.enabled,
     scope: resolveScope(record.scope),
     timeoutSeconds: record.timeoutSeconds !== undefined ? String(record.timeoutSeconds) : "",
@@ -149,6 +160,7 @@ export function draftToInput(
     ...(context?.projectPath ? { projectPath: context.projectPath } : {}),
     label: draft.label.trim() || draft.id.trim(),
     description: draft.description.trim() || undefined,
+    planSafeTools: normalizePlanSafeTools(draft.planSafeTools),
     ...timeoutInput,
     enabled: draft.enabled,
     scope: draft.scope,
@@ -165,7 +177,9 @@ export function draftToInput(
     ...base,
     transport: "stdio",
     command: draft.command.trim(),
-    args: splitArgs(draft.args),
+    args: draft.originalArgs && draft.args === draft.originalArgs.join(" ")
+      ? [...draft.originalArgs]
+      : splitArgs(draft.args),
     env: pairsToRecord(draft.env),
   };
 }
@@ -224,18 +238,23 @@ export function mcpDraftError(draft: McpDraft): string | null {
   if (draft.transport === "stdio") {
     if (!draft.command.trim()) return "extensions.mcp.errorCommand";
     if (draft.command.includes("..")) return "extensions.mcp.errorCommandDots";
-    return null;
+  } else {
+    const url = draft.url.trim();
+    if (!url) return "extensions.mcp.errorUrl";
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return "extensions.mcp.errorUrlShape";
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "extensions.mcp.errorUrlScheme";
+    }
   }
-  const url = draft.url.trim();
-  if (!url) return "extensions.mcp.errorUrl";
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "extensions.mcp.errorUrlShape";
-  }
-  if (parsed.protocol === "http:" || parsed.protocol === "https:") return null;
-  return "extensions.mcp.errorUrlScheme";
+  const planSafe = planSafeToolsError(draft.planSafeTools);
+  if (planSafe === "shape") return "extensions.mcp.errorPlanSafeShape";
+  if (planSafe === "count") return "extensions.mcp.errorPlanSafeCount";
+  return null;
 }
 
 export function McpEditorSheet({
@@ -324,6 +343,9 @@ export function McpEditorSheet({
   );
   const insecureHttp =
     draft.transport === "http" && isNonLoopbackHttpMcpUrl(draft.url.trim());
+  const advertised = status?.state === "ready" ? status.toolNames : undefined;
+  const selectedPlanSafe = draft.planSafeTools.map((name) => name.trim()).filter(Boolean);
+  const missingPlanSafe = missingPlanSafeTools(selectedPlanSafe, advertised);
 
   return portalOverlay(
     <div
@@ -502,6 +524,34 @@ export function McpEditorSheet({
               </div>
             </>
           )}
+
+          <div className="ext-field-group">
+            <Field label={t("extensions.mcp.planSafe")} hint={t("extensions.mcp.planSafeHint")}>
+              <Input
+                value={draft.planSafeTools.join(",")}
+                placeholder={t("extensions.mcp.planSafePlaceholder")}
+                onChange={(event) => {
+                  // Keep blank segments so a typed comma survives the next render.
+                  set("planSafeTools", event.target.value.split(","));
+                }}
+              />
+            </Field>
+            {advertised?.length ? (
+              <CheckboxGroup
+                className="ext-plan-safe-tools"
+                itemClassName="ext-plan-safe-tool"
+                label={t("extensions.mcp.planSafe")}
+                options={advertised.map((name) => ({ value: name, label: name }))}
+                values={selectedPlanSafe}
+                onChange={(values) => set("planSafeTools", values)}
+              />
+            ) : null}
+            {missingPlanSafe.length ? (
+              <p className="ext-sheet-warning" role="note">
+                {t("extensions.mcp.planSafeMissing", { names: missingPlanSafe.join(", ") })}
+              </p>
+            ) : null}
+          </div>
 
           <Field label={t("extensions.mcp.description")}>
             <Input

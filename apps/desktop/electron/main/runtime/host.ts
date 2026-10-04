@@ -155,6 +155,7 @@ export function createHostRuntime({
           toolName: string;
           args: unknown;
           mode?: string;
+          mcpTool?: { serverId: string; toolName: string };
         };
         const projectPath = q.sessionId
           ? (sessionProjects.get(q.sessionId) ?? null)
@@ -163,7 +164,7 @@ export function createHostRuntime({
         let payload: Record<string, unknown>;
         if (q.toolName.startsWith("mcp_")) {
           try {
-            const result = await userMcp.callTool(q.toolName, q.args, projectPath, q.sessionId);
+            const result = await userMcp.callTool(q.toolName, q.args, projectPath, q.sessionId, q.mcpTool);
             payload = { executionId: q.executionId, ok: true, content: result ?? null };
           } catch (e) {
             payload = {

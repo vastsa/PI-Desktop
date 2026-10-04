@@ -206,25 +206,20 @@ impl PermissionManager {
         // intentionally precedes low-risk classification, auto, grants, and
         // scratch paths, and covers Goal as well as Plan (D198).
         //
-        // Plugin tools get a narrow carve-out: a plugin may declare a
-        // non-empty `planSafeActions` list (ADR 0211). When the runtime
-        // forwards that list, host-core admits the plugin tool in
-        // contract modes and the plugin-runtime enforces the per-action
-        // restriction at execute time. Without the list the plugin tool
-        // stays Plan-denied, exactly as ADR 0052 / ADR 0053 require.
+        // Two opt-ins, both forwarded as `planSafeActions` (ADR 0211).
+        // A plugin tool is admitted when the list is non-empty; its runtime
+        // still rejects any action outside that list. An MCP tool has no
+        // action argument, so the list has to name that exact tool.
         if crate::sessions::is_contract_mode(mode) && !Self::plan_mode_allows(tool_name) {
-            if tool_name.starts_with("plugin_") {
-                if let Some(actions) = plan_safe_actions {
-                    if !actions.is_empty() {
-                        // Fall through; plugin-runtime will gate the
-                        // actual action.
-                    } else {
-                        return Some(PermissionDecision::Deny);
-                    }
-                } else {
-                    return Some(PermissionDecision::Deny);
-                }
+            let admitted = if tool_name.starts_with("plugin_") {
+                plan_safe_actions.is_some_and(|actions| !actions.is_empty())
+            } else if tool_name.starts_with("mcp_") {
+                plan_safe_actions
+                    .is_some_and(|actions| actions.iter().any(|name| name == tool_name))
             } else {
+                false
+            };
+            if !admitted {
                 return Some(PermissionDecision::Deny);
             }
         }
@@ -783,6 +778,41 @@ mod tests {
                     ),
                     Some(PermissionDecision::Deny),
                     "mcp tool must be denied in {contract} + {mode}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn contract_mode_admits_an_mcp_tool_only_when_its_own_name_is_listed() {
+        let pm = PermissionManager::default();
+        let listed = ["mcp_ctx_search".to_string()];
+        let other = ["mcp_ctx_write".to_string()];
+        for mode in ["plan", "goal"] {
+            for (actions, permission_mode, expected) in [
+                (
+                    listed.as_slice(),
+                    "auto",
+                    Some(PermissionDecision::AllowOnce),
+                ),
+                (other.as_slice(), "auto", Some(PermissionDecision::Deny)),
+                (listed.as_slice(), "ask", None),
+            ] {
+                assert_eq!(
+                    pm.evaluate_auto_with_permission_mode_and_risk_and_path(
+                        PermissionEvaluationParams {
+                            session_id: "s",
+                            tool_name: "mcp_ctx_search",
+                            mode,
+                            permission_mode,
+                            session_grants: &no_grants(),
+                            declared_risk: None,
+                            requires_external_path_permission: false,
+                            plan_safe_actions: Some(actions),
+                        },
+                    ),
+                    expected,
+                    "{mode}/{permission_mode}: {actions:?}"
                 );
             }
         }

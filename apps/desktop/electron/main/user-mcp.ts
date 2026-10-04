@@ -25,6 +25,8 @@ export type UserMcpToolDescriptor = {
   toolName: string;
   description: string;
   schema?: unknown;
+  /** True when the user named this tool for Plan and Goal. */
+  planSafe: boolean;
 };
 
 /** The slice of {@link McpServerClient} this runtime drives. */
@@ -185,24 +187,17 @@ export class UserMcpRuntime {
       });
     }
     const lists = await Promise.all(admitted.map((record) => this.connect(record)));
-    const out: UserMcpToolDescriptor[] = [];
-    admitted.forEach((record, index) => {
-      for (const tool of lists[index]) {
-        out.push({
-          fullName: userMcpToolName(record.id, tool.name),
-          serverId: record.id,
-          toolName: tool.name,
-          description: tool.description ?? `${record.label} tool "${tool.name}" (MCP)`,
-          schema: tool.inputSchema,
-        });
-      }
-    });
-    return out;
+    const connected = new Set(
+      admitted.filter((_, index) => lists[index].length > 0).map((record) => record.id),
+    );
+    return [...this.toolCatalog().values()].filter(
+      (tool): tool is UserMcpToolDescriptor => tool !== undefined && connected.has(tool.serverId),
+    );
   }
 
   /** Whether a saved server advertised this name (not a readiness check). */
   hasTool(fullName: string): boolean {
-    return this.findTool(fullName) !== undefined;
+    return this.toolCatalog().get(fullName) !== undefined;
   }
 
   /**
@@ -216,8 +211,9 @@ export class UserMcpRuntime {
     args: unknown,
     projectPath: string | null | undefined,
     sessionId?: string,
+    expected?: Pick<UserMcpToolDescriptor, "serverId" | "toolName">,
   ): Promise<unknown> {
-    return this.calls.run(sessionId, (signal) => this.callToolActive(fullName, args, projectPath, signal));
+    return this.calls.run(sessionId, (signal) => this.callToolActive(fullName, args, projectPath, signal, expected));
   }
 
   private async callToolActive(
@@ -225,9 +221,11 @@ export class UserMcpRuntime {
     args: unknown,
     projectPath: string | null | undefined,
     signal?: AbortSignal,
+    expected?: Pick<UserMcpToolDescriptor, "serverId" | "toolName">,
   ): Promise<unknown> {
-    const found = this.findTool(fullName);
-    if (!found) {
+    const found = this.toolCatalog().get(fullName);
+    // A reused runtime must not acquire a different raw route after reconnection.
+    if (!found || (expected && (found.serverId !== expected.serverId || found.toolName !== expected.toolName))) {
       throw Object.assign(new Error(`unknown mcp tool: ${fullName}`), {
         errorCode: "TOOL_NOT_FOUND",
       });
@@ -257,7 +255,11 @@ export class UserMcpRuntime {
         errorCode: "UNAVAILABLE",
       });
     }
-    if (!entry.client.getTools().some((tool) => tool.name === found.toolName)) {
+    const resolved = this.toolCatalog().get(fullName);
+    if (
+      !resolved || resolved.serverId !== found.serverId || resolved.toolName !== found.toolName ||
+      !entry.client.getTools().some((tool) => tool.name === found.toolName)
+    ) {
       throw Object.assign(new Error(`unknown mcp tool: ${fullName}`), {
         errorCode: "TOOL_NOT_FOUND",
       });
@@ -326,21 +328,23 @@ export class UserMcpRuntime {
     this.calls.cancelSession(sessionId);
   }
 
-  private findTool(fullName: string): UserMcpToolDescriptor | undefined {
-    for (const [serverId, tools] of this.discoveredTools) {
-      for (const tool of tools) {
-        if (userMcpToolName(serverId, tool.name) === fullName) {
-          return {
-            fullName,
-            serverId,
-            toolName: tool.name,
-            description: tool.description ?? tool.name,
-            schema: tool.inputSchema,
-          };
-        }
+  private toolCatalog(): Map<string, UserMcpToolDescriptor | undefined> {
+    const catalog = new Map<string, UserMcpToolDescriptor | undefined>();
+    for (const record of this.records) {
+      for (const tool of this.discoveredTools.get(record.id) ?? []) {
+        const fullName = userMcpToolName(record.id, tool.name);
+        // Public name conversion is lossy; ambiguous names must not authorize another tool.
+        catalog.set(fullName, catalog.has(fullName) ? undefined : {
+          fullName,
+          serverId: record.id,
+          toolName: tool.name,
+          description: tool.description ?? `${record.label} tool "${tool.name}" (MCP)`,
+          schema: tool.inputSchema,
+          planSafe: (record.planSafeTools ?? []).includes(tool.name),
+        });
       }
     }
-    return undefined;
+    return catalog;
   }
 
   private async connect(record: McpServerRecord): Promise<McpTool[]> {
@@ -353,8 +357,17 @@ export class UserMcpRuntime {
       }
     }
 
+    // OAuth lookup can outlive a saved edit or removal.
+    const current = this.records.find((candidate) => candidate.id === record.id);
+    if (!current || configurationChanged(record, current)) return [];
+
     let existing = this.entries.get(record.id);
-    if (existing && record.transport === "http" && existing.oauthToken !== oauthToken) {
+    if (
+      existing && (
+        configurationChanged(existing.record, current) ||
+        (current.transport === "http" && existing.oauthToken !== oauthToken)
+      )
+    ) {
       existing.client.close();
       this.entries.delete(record.id);
       existing = undefined;
@@ -367,8 +380,8 @@ export class UserMcpRuntime {
     // the connect timeout again.
     if (existing?.status.state === "failed") return [];
 
-    const entry = existing ?? this.createEntry(record, oauthToken);
-    entry.connecting = this.handshake(record, entry).finally(() => {
+    const entry = existing ?? this.createEntry(current, oauthToken);
+    entry.connecting = this.handshake(current, entry).finally(() => {
       entry.connecting = undefined;
     });
     return entry.connecting;
@@ -478,4 +491,39 @@ export function configurationChanged(before: McpServerRecord, after: McpServerRe
     JSON.stringify(before.headers ?? {}) !== JSON.stringify(after.headers ?? {}) ||
     before.timeoutSeconds !== after.timeoutSeconds
   );
+}
+
+/**
+ * Reconnect the server only when the saved record is still the one that
+ * started login. A captured record is not a connection to restore.
+ */
+export async function reconnectAuthorizedMcp(
+  userMcp: UserMcpRuntime,
+  captured: McpServerRecord | undefined,
+  current: McpServerRecord | undefined,
+): Promise<McpServerStatus> {
+  const serverId = current?.id ?? captured?.id ?? "";
+  if (
+    !current || current.enabled === false ||
+    (captured && configurationChanged(captured, current))
+  ) {
+    return {
+      serverId,
+      state: "failed",
+      toolCount: 0,
+      message: "mcp server configuration changed",
+      updatedAt: Date.now(),
+    };
+  }
+  const existed = userMcp.listRecords().some((item) => item.id === current.id);
+  if (!existed) userMcp.setRecords([...userMcp.listRecords(), current]);
+  userMcp.invalidate(current.id);
+  try {
+    return await userMcp.test(current.id);
+  } finally {
+    if (!existed) {
+      userMcp.invalidate(current.id);
+      userMcp.setRecords(userMcp.listRecords().filter((item) => item.id !== current.id));
+    }
+  }
 }

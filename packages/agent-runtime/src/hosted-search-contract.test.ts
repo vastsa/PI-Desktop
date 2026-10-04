@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 
+import { agentLoop } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 /**
@@ -418,8 +419,6 @@ describe("pi-agent-core hosted web search forwarding", () => {
     // Locks the agent-loop patch (patches/@earendil-works__pi-agent-core@0.87.1.patch):
     // without it the loop's switch drops the event and search rounds render only
     // after the whole turn finishes.
-    const { agentLoop } = await import("@earendil-works/pi-agent-core");
-
     const partial = {
       role: "assistant",
       content: [

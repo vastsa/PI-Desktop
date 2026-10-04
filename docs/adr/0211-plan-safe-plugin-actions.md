@@ -116,11 +116,29 @@ Amended again by D439: the toggle ships on `Alt+Shift+W`, not on the `Mod+W`
 this ADR's D438 amendment first named, because the key is registered
 process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 
+### 8. User MCP admission
+
+User MCP tools have no plugin action dispatcher. Each admitted tool therefore
+receives `planSafeActions: [fullName]`, and host-core requires exact membership.
+The user selects raw names in each server's `planSafeTools` list; wildcards are
+unsupported. With `allowMcpInPlanGoal` off, an empty list admits no tools.
+The local Settings permission explicitly opts in all active user MCP tools,
+including mutators, without trusting server safety annotations or lowering
+`medium` risk. Approval and plugin action checks remain unchanged. New or
+rebuilt runtimes read changes; existing runtimes retain their snapshots.
+
+Each runtime also snapshots the raw `serverId` and `toolName` in `mcpTool`.
+The identity travels unchanged through `tools.execute` and `plugins.execute`.
+Dispatch rejects normalized-name collisions and raw-route substitution on every
+call, including repeated retries after reconnect. A fresh runtime discovers the
+current raw tools and evaluates their admission independently.
+
 ## Consequences
 
 - Plan and Goal modes can inspect external resources through any plugin
   whose author opts in. The bundled Browser plugin is the first
-  beneficiary; MCP tools can do the same with the same declaration.
+  beneficiary; user MCP tools use a user-selected per-tool list or an
+  explicit global permission instead.
 - Plugin authors remain responsible for declaring exactly which actions
   are read-only. A wrong declaration fails at plugin registration, not
   at the user's prompt.

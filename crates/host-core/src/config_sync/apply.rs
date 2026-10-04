@@ -119,11 +119,12 @@ fn apply_entity(
             (current.as_object_mut(), entity.payload.as_object())
         {
             for field in domains::PORTABLE_APPLICATION_FIELDS {
-                if !incoming.contains_key(*field) {
+                if let Some(value) = incoming.get(*field) {
+                    current.insert((*field).into(), value.clone());
+                } else {
                     current.remove(*field);
                 }
             }
-            current.extend(incoming.clone());
         }
         return st.db.set_setting("app", &current);
     }
@@ -771,4 +772,62 @@ pub(crate) fn recover_import_journal(
         .or_else(|| base.clone())
         .unwrap_or_else(empty_manifest);
     apply_bundle_locked(st, config, key, base.as_ref(), &local_before, bundle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent_capabilities::test_support;
+
+    #[test]
+    fn application_sync_cannot_overwrite_local_mcp_admission() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let agents_dir = tempfile::tempdir().unwrap();
+        test_support::with_global_agents(agents_dir.path(), || {
+            let mut state = AppState::open(data_dir.path()).unwrap();
+            state.db.set_setting("app", &json!({
+                "theme": "light", "allowMcpInPlanGoal": false, "defaultPermissionMode": "ask",
+            })).unwrap();
+            let (header, _) = create_vault("test-password", "test-vault").unwrap();
+            let mut config = config_from_input(
+                None,
+                &json!({
+                    "endpoint": "https://example.test", "deviceLabel": "test",
+                }),
+                header,
+            )
+            .unwrap();
+            let bundle = PendingBundle {
+                manifest: empty_manifest(),
+                local_before: None,
+                resources: BTreeMap::new(),
+                approvals: Vec::new(),
+                conflicts: Vec::new(),
+                journal_state: default_journal_state(),
+                remote_revision_id: "test".into(),
+            };
+            let entity = PortableEntity {
+                domain: domains::DOMAIN_APPLICATION.into(),
+                entity_id: "application".into(),
+                label: "Application".into(),
+                deleted: false,
+                requires_approval: false,
+                secret_bearing: false,
+                mapping_required: false,
+                digest: "test".into(),
+                payload: json!({
+                    "theme": "dark", "allowMcpInPlanGoal": true, "defaultPermissionMode": "auto",
+                }),
+                resource_ids: Vec::new(),
+            };
+            apply_entity(&mut state, &mut config, &bundle, &entity).unwrap();
+            let saved = state.db.get_setting("app").unwrap().unwrap();
+            assert_eq!(saved["allowMcpInPlanGoal"], false);
+            assert_eq!(saved["defaultPermissionMode"], "ask");
+            assert_eq!(saved["theme"], "dark");
+            drop(state);
+            let reopened = AppState::open(data_dir.path()).unwrap();
+            assert_eq!(reopened.db.get_setting("app").unwrap(), Some(saved));
+        });
+    }
 }

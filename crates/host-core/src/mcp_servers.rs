@@ -14,6 +14,7 @@ const MAX_SERVERS: usize = 128;
 const MAX_ARGS: usize = 64;
 const MAX_ENV_ENTRIES: usize = 64;
 const MAX_HEADERS: usize = 32;
+const MAX_PLAN_SAFE_TOOLS: usize = 32;
 const MAX_VALUE_BYTES: usize = 4096;
 const MCP_KIND: &str = "mcp";
 
@@ -41,6 +42,10 @@ pub struct McpServerRecord {
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers: BTreeMap<String, String>,
+    /// Raw MCP names admitted in Plan/Goal when the global MCP opt-in is off.
+    /// Always serialized so config sync propagates an explicitly cleared list.
+    #[serde(default)]
+    pub plan_safe_tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_seconds: Option<u64>,
     pub enabled: bool,
@@ -70,6 +75,8 @@ struct McpConfig {
     url: Option<String>,
     #[serde(default)]
     headers: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    plan_safe_tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     timeout_seconds: Option<u64>,
 }
@@ -88,6 +95,10 @@ pub struct McpServerInput {
     pub env: Option<BTreeMap<String, String>>,
     pub url: Option<String>,
     pub headers: Option<BTreeMap<String, String>>,
+    /// Absent or `null` keeps the list already stored. An array replaces it,
+    /// and an empty array clears it.
+    #[serde(default)]
+    pub plan_safe_tools: Option<Vec<String>>,
     #[serde(default, deserialize_with = "deserialize_timeout_override")]
     pub timeout_seconds: Option<Option<u64>>,
     pub enabled: Option<bool>,
@@ -117,6 +128,15 @@ fn valid_id(id: &str) -> bool {
     first.is_ascii_alphabetic()
         && id.len() <= 64
         && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// A Plan/Goal allowlist entry is one raw MCP tool name. Wildcards are
+/// rejected because a server mixes read and write tools under one prefix.
+fn valid_plan_safe_tool(name: &str) -> bool {
+    !name.is_empty()
+        && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
@@ -257,6 +277,7 @@ impl McpServerRegistry {
                 env: config.env,
                 url: config.url,
                 headers: config.headers,
+                plan_safe_tools: config.plan_safe_tools,
                 timeout_seconds: config.timeout_seconds,
                 enabled,
                 scope: scope_for(level, owner_project_path.as_deref()),
@@ -395,6 +416,15 @@ impl McpServerRegistry {
             }
             _ => bail!("MCP_INVALID: transport must be \"stdio\" or \"http\""),
         }
+        if config.plan_safe_tools.len() > MAX_PLAN_SAFE_TOOLS {
+            bail!("MCP_INVALID: at most {MAX_PLAN_SAFE_TOOLS} planSafeTools");
+        }
+        for name in &config.plan_safe_tools {
+            if !valid_plan_safe_tool(name) {
+                bail!("MCP_INVALID: planSafeTools entry \"{name}\" is not a tool name");
+            }
+            check_len("planSafeTools", name)?;
+        }
         Ok(())
     }
 
@@ -423,6 +453,12 @@ impl McpServerRegistry {
             bail!("MCP_INVALID: a server with this name already exists at this level");
         }
         let previous_same_transport = current.filter(|record| record.transport == transport);
+        let plan_safe_tools = match &input.plan_safe_tools {
+            Some(tools) => tools.iter().map(|name| name.trim().to_string()).collect(),
+            None => current
+                .map(|record| record.plan_safe_tools.clone())
+                .unwrap_or_default(),
+        };
         let mut config = McpConfig {
             id: input.id.trim().to_string(),
             label,
@@ -432,6 +468,7 @@ impl McpServerRegistry {
                 .filter(|value| !value.is_empty())
                 .or_else(|| current.and_then(|record| record.description.clone())),
             transport,
+            plan_safe_tools,
             timeout_seconds: input
                 .timeout_seconds
                 .unwrap_or_else(|| current.and_then(|record| record.timeout_seconds)),

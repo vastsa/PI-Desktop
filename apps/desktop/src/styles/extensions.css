@@ -1320,6 +1320,15 @@
   word-break: break-word;
 }
 
+.ext-plan-safe-tools {
+  flex-wrap: wrap;
+}
+
+.ext-plan-safe-tool {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+}
+
 .ext-test-tools {
   flex: 1 1 100%;
   color: var(--ds-text-muted);

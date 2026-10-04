@@ -6,6 +6,7 @@ import {
   type ActivationScope,
   type AppSettings,
   type BrowserState,
+  type McpServerRecord,
   type McpServerStatus,
   type ModelBinding,
   type ShortcutPlatform,
@@ -37,7 +38,7 @@ import { createSpeechService } from "./speech-service";
 import { PluginShortcutRegistry } from "../plugin-shortcut-registry";
 import { PluginWebSocketRegistry } from "../plugin-websocket";
 import { hostGlobalShortcutBindings } from "../bootstrap/launcher";
-import { UserMcpRuntime } from "../user-mcp";
+import { UserMcpRuntime, reconnectAuthorizedMcp } from "../user-mcp";
 import {
   MCP_CALL_TIMEOUT_MS,
   MCP_CONNECT_TIMEOUT_MS,
@@ -479,16 +480,20 @@ export function createPluginServices({
     openExternal: (url) => safeOpenExternal(url),
     log: (level, message, data) => logger.app("plugin", level, message, { data }),
     onAuthorized: async (serverId, record): Promise<McpServerStatus> => {
-      const existed = userMcp.listRecords().some((item) => item.id === serverId);
-      if (record && !existed) {
-        userMcp.setRecords([...userMcp.listRecords(), record]);
+      let current: McpServerRecord | undefined;
+      const host = getHost();
+      if (host) {
+        try {
+          const listed = await host.call<{ servers?: McpServerRecord[] }>("mcp.list", {
+            level: record?.level ?? "global",
+            ...(record?.projectPath ? { projectPath: record.projectPath } : {}),
+          });
+          current = listed.servers?.find((item) => item.id === serverId);
+        } catch {
+          current = undefined;
+        }
       }
-      userMcp.invalidate(serverId);
-      const status: McpServerStatus = await userMcp.test(serverId);
-      if (!existed) {
-        userMcp.invalidate(serverId);
-        userMcp.setRecords(userMcp.listRecords().filter((item) => item.id !== serverId));
-      }
+      const status = await reconnectAuthorizedMcp(userMcp, record, current);
       sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: serverId });
       return status;
     },

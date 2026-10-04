@@ -62,6 +62,11 @@ export type McpServerRecord = {
   /** http: absolute endpoint; HTTP is allowed for local and LAN servers. */
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * Raw names admitted in Plan/Goal when allowMcpInPlanGoal is off.
+   * Absent or empty admits none.
+   */
+  planSafeTools?: string[];
   /** Handshake/connection timeout in seconds (optional override). */
   timeoutSeconds?: number;
   enabled: boolean;
@@ -83,6 +88,11 @@ export type McpServerInput = {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * An array replaces the stored list; an empty array clears it. `null` or
+   * omitting the field keeps the stored list.
+   */
+  planSafeTools?: string[] | null;
   /** Set to null to clear an existing server-specific timeout override. */
   timeoutSeconds?: number | null;
   enabled?: boolean;

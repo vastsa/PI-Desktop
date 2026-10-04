@@ -37,6 +37,7 @@ import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
 import { ThinkingDisplayModeRow } from "../../components/settings/ThinkingDisplayModeRow";
+import { PlanGoalMcpRow } from "../../components/settings/PlanGoalMcpRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
@@ -475,6 +476,7 @@ export function SettingsPage() {
                     ]}
                   />
                 </SettingsRow>
+                <PlanGoalMcpRow settings={settings} saveSettings={saveSettings} />
               </SettingsCard>
 
               <SettingsCard title={t("settings.defaultsTitle")}>
