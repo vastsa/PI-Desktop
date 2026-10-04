@@ -249,6 +249,25 @@ indefinitely until the user stops the turn.
 Settings reads expose an explicit boolean for this flag: absent or disabled
 values normalize to `false`. Read-modify-write operations on unrelated settings
 must remain valid without enabling retries; non-boolean writes stay invalid.
+
+Two optional numeric settings customize the same retry machinery without
+removing its guard rails. `providerRetryMaxAttempts` replaces the ten-retry
+ceiling for both the 429 and the transient budget with any non-negative
+integer: `0` means unlimited, exactly like the `infiniteProviderRetry`
+switch, and the switch keeps winning over any configured ceiling.
+`providerRetryInitialDelayMs` replaces the shipped first-retry wait (2 s for
+429 backoff, 1 s for transient backoff) with any non-negative number of
+milliseconds; `0` retries immediately. Later retries keep doubling from the
+configured wait, and the exponential cap rises with it (`max(shipped cap,
+configured wait)`), so a long custom interval is honored rather than
+truncated. Server-provided `Retry-After` values keep precedence over both
+backoffs at all times. Both fields are normalized on read and validated on
+write at both renderer and main boundaries: absent, NaN, negative, or
+fractional values are dropped or rejected, never coerced into a bounded
+default. The `retrying` activity reports the effective ceiling through
+`maxAttempts` so the transcript status reflects the configured budget, and
+toggling `infiniteProviderRetry` off restores the configured ceiling instead
+of leaving the budget accidentally unlimited.
 Each retry is abortable and reports its current backoff through the normalized
 status event. The `retrying` activity carries the classified error code, the
 bounded/redacted provider message, and the HTTP status when known. The main

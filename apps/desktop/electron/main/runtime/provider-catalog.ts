@@ -186,6 +186,8 @@ export function createProviderCatalogRuntime({
     const value = settings as T & {
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
+      providerRetryMaxAttempts?: unknown;
+      providerRetryInitialDelayMs?: unknown;
       keepAwakeWhileRunning?: unknown;
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
@@ -206,6 +208,38 @@ export function createProviderCatalogRuntime({
       throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "providerRetryMaxAttempts") &&
+      value.providerRetryMaxAttempts !== undefined
+    ) {
+      const max = value.providerRetryMaxAttempts;
+      if (
+        typeof max !== "number" ||
+        !Number.isFinite(max) ||
+        Math.floor(max) !== max ||
+        max < 0
+      ) {
+        throw Object.assign(new Error("providerRetryMaxAttempts is invalid"), {
+          errorCode: ErrorCodes.INVALID_PARAMS,
+        });
+      }
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "providerRetryInitialDelayMs") &&
+      value.providerRetryInitialDelayMs !== undefined
+    ) {
+      const delay = value.providerRetryInitialDelayMs;
+      if (
+        typeof delay !== "number" ||
+        !Number.isFinite(delay) ||
+        Math.floor(delay) !== delay ||
+        delay < 0
+      ) {
+        throw Object.assign(new Error("providerRetryInitialDelayMs is invalid"), {
+          errorCode: ErrorCodes.INVALID_PARAMS,
+        });
+      }
     }
     if (
       Object.prototype.hasOwnProperty.call(value, "keepAwakeWhileRunning") &&

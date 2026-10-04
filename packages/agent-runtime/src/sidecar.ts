@@ -105,6 +105,10 @@ type RuntimeParams = {
   turnId?: string;
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
+  /** Ceiling for retryable provider failures; 0 means unlimited. */
+  providerRetryMaxAttempts?: number;
+  /** First wait, in ms, before the first retry of a retryable request. */
+  providerRetryInitialDelayMs?: number;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
@@ -243,7 +247,11 @@ async function runtimeFor(
   if (reusable) {
     reusable.setPluginSkills(pluginSkills);
     reusable.setCompactionSettings(params.compactionSettings);
-    reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
+    reusable.setProviderRetryPolicy(
+      params.infiniteProviderRetry === true,
+      params.providerRetryMaxAttempts,
+      params.providerRetryInitialDelayMs,
+    );
     reusable.setMode(mode);
     return reusable;
   }
@@ -292,6 +300,8 @@ async function runtimeFor(
     commandShell: params.commandShell,
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
+    providerRetryMaxAttempts: params.providerRetryMaxAttempts,
+    providerRetryInitialDelayMs: params.providerRetryInitialDelayMs,
     history,
     compaction,
     compactionSettings: params.compactionSettings,

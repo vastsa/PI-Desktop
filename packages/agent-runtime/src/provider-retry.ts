@@ -9,7 +9,10 @@ import {
   type Model,
   type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import { PROVIDER_RETRY_MAX_RETRIES } from "@pi-desktop/shared";
+import {
+  PROVIDER_RETRY_INITIAL_DELAY_MS,
+  PROVIDER_RETRY_MAX_RETRIES,
+} from "@pi-desktop/shared";
 import {
   classifyAgentError,
   type ClassifiedAgentError,
@@ -22,7 +25,7 @@ import {
 } from "./provider-transport-recovery.js";
 /** Maximum number of retries after the first rate-limited request. */
 export const PROVIDER_RATE_LIMIT_MAX_RETRIES = PROVIDER_RETRY_MAX_RETRIES;
-export const PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS = 2_000;
+export const PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS = PROVIDER_RETRY_INITIAL_DELAY_MS;
 export const PROVIDER_RATE_LIMIT_JITTER_FACTOR = 0.25;
 /** Keep a provider outage bounded even when it sends an unusably long delay. */
 export const PROVIDER_RATE_LIMIT_MAX_DELAY_MS = 30_000;
@@ -140,6 +143,8 @@ export type ProviderRetryController = {
   status?: () => number | undefined;
   /** Cause captured for the attempt that just failed, when the fetch rejected. */
   failure?: () => ProviderFetchFailure | undefined;
+  /** Custom first-retry wait in ms; undefined uses the shipped backoff. */
+  initialDelayMs?: () => number | undefined;
   onRetry?: (input: {
     error: ClassifiedAgentError;
     phase: ProviderRetryPhase;
@@ -238,19 +243,21 @@ export function providerRateLimitDelayMs(
   headers?: Readonly<Record<string, string>>,
   now = Date.now(),
   random = Math.random(),
+  initialDelayMs?: number,
 ): number {
-  const serverDelay = serverRetryDelayMs(
-    headers,
-    PROVIDER_RATE_LIMIT_MAX_DELAY_MS,
-    now,
-  );
+  // A custom first-retry wait raises the ceiling with it, so a user-chosen
+  // interval longer than the shipped 30 s cap is honored, not truncated.
+  const maxDelayMs = initialDelayMs === undefined
+    ? PROVIDER_RATE_LIMIT_MAX_DELAY_MS
+    : Math.max(PROVIDER_RATE_LIMIT_MAX_DELAY_MS, initialDelayMs);
+  const serverDelay = serverRetryDelayMs(headers, maxDelayMs, now);
   if (serverDelay !== undefined) return serverDelay;
 
   const safeAttempt = Math.max(1, Math.floor(attempt));
-  const base = PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS * 2 ** (safeAttempt - 1);
+  const base = (initialDelayMs ?? PROVIDER_RATE_LIMIT_INITIAL_DELAY_MS) * 2 ** (safeAttempt - 1);
   const jitter = Math.min(1, Math.max(0, random));
   return Math.min(
-    PROVIDER_RATE_LIMIT_MAX_DELAY_MS,
+    maxDelayMs,
     Math.ceil(base + base * PROVIDER_RATE_LIMIT_JITTER_FACTOR * jitter),
   );
 }
@@ -270,19 +277,21 @@ export function providerSetupRetryDelayMs(
   random?: number,
   headers?: Readonly<Record<string, string>>,
   now = Date.now(),
+  initialDelayMs?: number,
 ): number {
   void random;
-  const serverDelay = serverRetryDelayMs(
-    headers,
-    PROVIDER_SETUP_MAX_RETRY_DELAY_MS,
-    now,
-  );
+  // A custom first-retry wait raises the ceiling with it (same rationale
+  // as the rate-limit path).
+  const maxDelayMs = initialDelayMs === undefined
+    ? PROVIDER_SETUP_MAX_RETRY_DELAY_MS
+    : Math.max(PROVIDER_SETUP_MAX_RETRY_DELAY_MS, initialDelayMs);
+  const serverDelay = serverRetryDelayMs(headers, maxDelayMs, now);
   // A server-stated delay wins outright, including one shorter than the
   // caller's floor: the gateway knows when it will be ready again.
   if (serverDelay !== undefined) return serverDelay;
   const safeAttempt = Math.max(1, Math.floor(attempt));
-  const base = PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS * 2 ** (safeAttempt - 1);
-  return Math.min(PROVIDER_SETUP_MAX_RETRY_DELAY_MS, base);
+  const base = (initialDelayMs ?? PROVIDER_SETUP_RETRY_INITIAL_DELAY_MS) * 2 ** (safeAttempt - 1);
+  return Math.min(maxDelayMs, base);
 }
 
 function requestAbortedError(): Error {
@@ -506,16 +515,22 @@ export function createProviderRetryStream(
       // The failed event has already ended this inner stream. Awaiting its
       // result keeps providers with deferred cleanup from overlapping retries.
       await inner.result();
+      const initialDelayMs = controller.initialDelayMs?.();
       const delayMs =
         retry.error.code === "PROVIDER_RATE_LIMITED"
           ? providerRateLimitDelayMs(
               retry.attempt,
               controller.headers(),
+              undefined,
+              undefined,
+              initialDelayMs,
             )
           : providerSetupRetryDelayMs(
               retry.attempt,
               undefined,
               controller.headers(),
+              undefined,
+              initialDelayMs,
             );
       controller.onRetry?.({
         error: retry.error,

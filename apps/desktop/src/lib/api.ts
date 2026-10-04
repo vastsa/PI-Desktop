@@ -132,6 +132,8 @@ import {
   normalizeMode,
   normalizeNetworkProxy,
   normalizeNetworkPolicy,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryMaxAttempts,
   resolveFontScale,
   normalizeChatContentMaxWidth,
   validateNetworkPolicy,
@@ -351,9 +353,41 @@ export type SessionHistoryReadOptions = {
   contentLimit?: number;
 };
 
-export function normalizeSettings(settings: AppSettings): AppSettings {
+/**
+ * Optional numeric retry fields: absent or invalid values stay absent, so a
+ * stored partial patch keeps the shipped defaults instead of pinning zero.
+ */
+function resolvedProviderRetryFields(
+  rawRetryMaxAttempts: unknown,
+  rawRetryInitialDelayMs: unknown,
+): {
+  providerRetryMaxAttempts?: number;
+  providerRetryInitialDelayMs?: number;
+} {
+  const maxAttempts = normalizeProviderRetryMaxAttempts(
+    rawRetryMaxAttempts as number | undefined,
+  );
+  const initialDelayMs = normalizeProviderRetryInitialDelayMs(
+    rawRetryInitialDelayMs as number | undefined,
+  );
   return {
-    ...settings,
+    ...(maxAttempts === undefined ? {} : { providerRetryMaxAttempts: maxAttempts }),
+    ...(initialDelayMs === undefined
+      ? {}
+      : { providerRetryInitialDelayMs: initialDelayMs }),
+  };
+}
+
+export function normalizeSettings(settings: AppSettings): AppSettings {
+  // Drop the raw retry numbers first: junk values must not survive the
+  // spread below, and the resolved fields re-add only valid integers.
+  const {
+    providerRetryMaxAttempts: rawRetryMaxAttempts,
+    providerRetryInitialDelayMs: rawRetryInitialDelayMs,
+    ...settingsWithoutRetryFields
+  } = settings;
+  return {
+    ...settingsWithoutRetryFields,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
@@ -366,6 +400,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     largePasteThreshold: normalizeLargePasteThreshold(
       (settings as { largePasteThreshold?: unknown }).largePasteThreshold,
     ),
+    ...resolvedProviderRetryFields(rawRetryMaxAttempts, rawRetryInitialDelayMs),
     fontScale: resolveFontScale(settings),
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
@@ -392,6 +427,8 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     fontScale?: unknown;
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
+    providerRetryMaxAttempts?: unknown;
+    providerRetryInitialDelayMs?: unknown;
     smoothStreaming?: unknown;
     updatePreference?: unknown;
     lastNotifiedUpdateVersion?: unknown;
@@ -422,6 +459,38 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     throw Object.assign(new Error("fontScale is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "providerRetryMaxAttempts") &&
+    value.providerRetryMaxAttempts !== undefined
+  ) {
+    const max = value.providerRetryMaxAttempts;
+    if (
+      typeof max !== "number" ||
+      !Number.isFinite(max) ||
+      Math.floor(max) !== max ||
+      max < 0
+    ) {
+      throw Object.assign(new Error("providerRetryMaxAttempts is invalid"), {
+        errorCode: "INVALID_PARAMS",
+      });
+    }
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "providerRetryInitialDelayMs") &&
+    value.providerRetryInitialDelayMs !== undefined
+  ) {
+    const delay = value.providerRetryInitialDelayMs;
+    if (
+      typeof delay !== "number" ||
+      !Number.isFinite(delay) ||
+      Math.floor(delay) !== delay ||
+      delay < 0
+    ) {
+      throw Object.assign(new Error("providerRetryInitialDelayMs is invalid"), {
+        errorCode: "INVALID_PARAMS",
+      });
+    }
   }
   if (Object.prototype.hasOwnProperty.call(value, "chatContentMaxWidth")) {
     const next = normalizeChatContentMaxWidth(value.chatContentMaxWidth);

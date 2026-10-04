@@ -175,6 +175,9 @@ function createRuntime(
     pluginSkills: import("./plugin-skills-prompt.js").PluginSkillDef[];
     commandShell: CommandShellOption;
     turnId: string;
+    infiniteProviderRetry: boolean;
+    providerRetryMaxAttempts: number;
+    providerRetryInitialDelayMs: number;
     host: { call: ReturnType<typeof vi.fn>; onNotification?: ReturnType<typeof vi.fn> };
     onEvent: (envelope: unknown) => void;
   }> = {},
@@ -187,6 +190,9 @@ function createRuntime(
     provider: overrides.provider ?? provider,
     commandShell: overrides.commandShell ?? commandShell,
     thinkingLevel: overrides.thinkingLevel ?? "medium",
+    infiniteProviderRetry: overrides.infiniteProviderRetry,
+    providerRetryMaxAttempts: overrides.providerRetryMaxAttempts,
+    providerRetryInitialDelayMs: overrides.providerRetryInitialDelayMs,
     history: overrides.history,
     compaction: overrides.compaction,
     compactionSettings: overrides.compactionSettings,
@@ -4756,7 +4762,7 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
 
   it("allows the opt-in retry mode to claim beyond both bounded budgets", async () => {
     const runtime = createRuntime({ onEvent: vi.fn() });
-    runtime.setInfiniteProviderRetry(true);
+    runtime.setProviderRetryPolicy(true);
     const claim = (runtime as any).claimProviderRetry.bind(runtime);
     const transient = classifyAgentError("fetch failed");
     const rateLimited = classifyAgentError("429: too many requests");
@@ -4778,6 +4784,70 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
       expect(claim(transient, "request")).toBe(attempt);
     }
     expect(claim(transient, "request")).toBeUndefined();
+    await runtime.dispose();
+  });
+
+  it("honors a smaller custom ceiling across both budgets", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn(), providerRetryMaxAttempts: 2 });
+    const claim = (runtime as any).claimProviderRetry.bind(runtime);
+    const transient = classifyAgentError("fetch failed");
+    const rateLimited = classifyAgentError("429: too many requests");
+
+    expect(claim(transient, "request")).toBe(1);
+    expect(claim(transient, "stream")).toBe(2);
+    expect(claim(transient, "request")).toBeUndefined();
+
+    (runtime as any).resetRunRecoveryState();
+    expect(claim(rateLimited, "request")).toBe(1);
+    expect(claim(rateLimited, "stream")).toBe(2);
+    expect(claim(rateLimited, "request")).toBeUndefined();
+
+    await runtime.dispose();
+  });
+
+  it("treats a zero ceiling as unlimited without the legacy switch", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn(), providerRetryMaxAttempts: 0 });
+    const claim = (runtime as any).claimProviderRetry.bind(runtime);
+    const transient = classifyAgentError("fetch failed");
+    for (let attempt = 1; attempt <= PROVIDER_TRANSIENT_MAX_RETRIES + 5; attempt += 1) {
+      expect(claim(transient, "request")).toBe(attempt);
+    }
+    await runtime.dispose();
+  });
+
+  it("keeps the configured ceiling after toggling the infinite switch off", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn(), providerRetryMaxAttempts: 3 });
+    runtime.setProviderRetryPolicy(true, 3);
+    (runtime as any).resetRunRecoveryState();
+    runtime.setProviderRetryPolicy(false, 3);
+    const claim = (runtime as any).claimProviderRetry.bind(runtime);
+    const transient = classifyAgentError("fetch failed");
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      expect(claim(transient, "request")).toBe(attempt);
+    }
+    expect(claim(transient, "request")).toBeUndefined();
+    await runtime.dispose();
+  });
+
+  it("exposes the effective ceiling on the retrying activity", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn(), providerRetryMaxAttempts: 4 });
+    const internals = runtime as any;
+    const activities: any[] = [];
+    internals.setAgentActivity = (activity: any) => activities.push(structuredClone(activity));
+    internals.agent.state.messages = [
+      { role: "user", content: "hello", timestamp: 1 },
+      { role: "assistant", content: [], timestamp: 2 },
+    ];
+    internals.agent.continue = vi.fn(async () => undefined);
+    internals.waitForIdleAndSteering = vi.fn(async () => undefined);
+    internals.providerRateLimitRetryAttempt = 1;
+    internals.providerRetryHeaders = {};
+    internals.providerRetryInitialDelayMs = 1_500;
+    internals.pendingProviderRetry = classifyAgentError("429: too many requests");
+    await internals.retryPendingProviderFailure();
+    const retrying = activities.find((activity) => activity.phase === "retrying");
+    expect(retrying).toMatchObject({ maxAttempts: 4 });
+    expect(retrying.infinite).toBeUndefined();
     await runtime.dispose();
   });
 

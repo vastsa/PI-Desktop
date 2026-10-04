@@ -1,22 +1,5 @@
 import { join } from "node:path";
 import {
-  ErrorCodes as SharedErrorCodes,
-  isActiveInProject,
-  isCommandShellCatalog,
-  imageGenerationBindings,
-  isImageGenerationModel,
-  normalizeMode,
-  trustedExtensionAgentKeyFromProviderId,
-  type CommandShellCatalog,
-  type McpServerRecord,
-  type ModelBinding,
-  type Mode,
-  type Risk,
-  type SessionThinkingLevel,
-  type UserSkillRecord,
-  type UserSubagentRecord,
-} from "@pi-desktop/shared";
-import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
   loadCustomSystemPrompt,
@@ -25,21 +8,38 @@ import {
   modelConfigWithBinding,
   optionalProviderHeaders,
   resolveSubagentProviders,
-  visionFromModelConfig,
   type UserSubagentDocument,
+  visionFromModelConfig,
 } from "@pi-desktop/agent-runtime";
+import {
+  type CommandShellCatalog,
+  imageGenerationBindings,
+  isActiveInProject,
+  isCommandShellCatalog,
+  isImageGenerationModel,
+  type McpServerRecord,
+  type Mode,
+  type ModelBinding,
+  normalizeMode,
+  type Risk,
+  type SessionThinkingLevel,
+  ErrorCodes as SharedErrorCodes,
+  trustedExtensionAgentKeyFromProviderId,
+  type UserSkillRecord,
+  type UserSubagentRecord,
+} from "@pi-desktop/shared";
 import { builtinSkills } from "../builtin-skills";
-import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
+import type { Logger } from "../logger";
 import {
   catalogModelConfigFor,
   type ModelsDevCatalog,
 } from "../models-dev-catalog";
-import type { Logger } from "../logger";
+import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { PluginRuntime } from "../plugin-runtime";
+import type { LoadedSkillDocument } from "../skill-document";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { RuntimeProvider } from "./provider-catalog";
-import type { LoadedSkillDocument } from "../skill-document";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -623,6 +623,8 @@ export function createSessionLaunchRuntime({
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        providerRetryMaxAttempts: settings.providerRetryMaxAttempts,
+        providerRetryInitialDelayMs: settings.providerRetryInitialDelayMs,
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         attachmentsDir: join(dataDir, "attachments"),
