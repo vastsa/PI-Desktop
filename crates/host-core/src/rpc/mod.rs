@@ -1988,26 +1988,29 @@ async fn handle_request(
                     "CONFLICT",
                 ));
             }
-            // A path that belongs to a multi-folder project group must stay put:
-            // deleting one root would orphan the rest of the group, so callers
-            // remove the folder from the group first. A single-folder stored
-            // group is just a wrapper around one project, so removing that
-            // project also removes the now-empty group record.
+            // A path in a multi-folder project group is detached from the
+            // group as part of the delete: this handler already bulk-deletes
+            // the project's sessions, so requiring the user to remove the
+            // folder from the group first would deadlock against the group's
+            // own "still has chats" guard (#1358). The group keeps its
+            // primary when it is not the deleted path; otherwise the first
+            // remaining root becomes primary. A single-folder stored group is
+            // just a wrapper around one project, so removing that project
+            // also removes the now-empty group record.
             if let Some(group) = st
                 .db
                 .stored_project_group_for_path(&path)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
             {
                 if group.roots.len() > 1 {
-                    return Err(rpc_err(
-                        1002,
-                        "project belongs to a multi-folder project group; remove the folder from the group first",
-                        "INVALID_PARAMS",
-                    ));
+                    st.db
+                        .remove_project_from_group(&group.id, &path)
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                } else {
+                    st.db
+                        .delete_project_group_record(&group.id)
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
                 }
-                st.db
-                    .delete_project_group_record(&group.id)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             }
             let session_ids = st
                 .db

@@ -1403,6 +1403,75 @@ fn project_group_update_detaches_roots_with_chats_without_orphaning_them() {
 }
 
 #[test]
+fn remove_project_from_group_detaches_even_with_chats_and_may_move_primary() {
+    let dir = tempfile::tempdir().unwrap();
+    let primary = dir.path().join("primary");
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir_all(&primary).unwrap();
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group(
+            "Deadlock",
+            &[
+                primary.to_string_lossy().into(),
+                first.to_string_lossy().into(),
+                second.to_string_lossy().into(),
+            ],
+        )
+        .unwrap();
+    // The project has chats: `update_project_group` refuses to detach it, so
+    // `projects.remove` must not depend on that path (#1358).
+    let session = crate::sessions::create_session(
+        &db,
+        Some("Blocked chat".into()),
+        Some("agent".into()),
+        None,
+        None,
+        Some(primary.to_string_lossy().into_owned()),
+    )
+    .unwrap();
+    assert_eq!(
+        db.project_session_ids(&group.primary_path).unwrap(),
+        [session.id]
+    );
+
+    // Removing the primary moves the role to the first remaining root and
+    // keeps the other root in the group.
+    let after_primary = db
+        .remove_project_from_group(&group.id, &group.primary_path)
+        .unwrap()
+        .expect("group survives removing its primary");
+    let canonical_first = crate::db::canonical_project_path(&first.to_string_lossy()).unwrap();
+    let canonical_second = crate::db::canonical_project_path(&second.to_string_lossy()).unwrap();
+    assert_eq!(after_primary.primary_path, canonical_first);
+    assert_eq!(after_primary.roots.len(), 2);
+    assert_eq!(after_primary.roots[0].path, canonical_first);
+
+    // Removing a non-primary root keeps the primary in place.
+    let after_second = db
+        .remove_project_from_group(&group.id, &canonical_second)
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_second.primary_path, canonical_first);
+    assert_eq!(after_second.roots.len(), 1);
+
+    // Removing the last root deletes the group record.
+    let gone = db
+        .remove_project_from_group(&group.id, &canonical_first)
+        .unwrap();
+    assert!(gone.is_none());
+    assert_eq!(db.list_project_groups().unwrap().len(), 0);
+    // The chats of removed roots stay reachable for the caller's bulk delete.
+    assert_eq!(
+        db.project_session_ids(&group.primary_path).unwrap(),
+        [session.id]
+    );
+}
+
+#[test]
 fn editing_a_legacy_project_with_an_extra_folder_upgrades_it_to_a_group() {
     let dir = tempfile::tempdir().unwrap();
     let primary = dir.path().join("primary");

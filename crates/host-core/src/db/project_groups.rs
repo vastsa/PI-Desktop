@@ -369,6 +369,80 @@ impl Database {
         Ok(group)
     }
 
+    /// Removes one root from a stored group as part of that project's delete
+    /// (#1358). Unlike `update_project_group` this never rejects a path with
+    /// sessions — the caller deletes them right after — and it may remove the
+    /// primary, in which case the first remaining root becomes primary.
+    /// Removing the last root deletes the group record.
+    pub fn remove_project_from_group(
+        &self,
+        id: &str,
+        path: &str,
+    ) -> Result<Option<ProjectGroupRecord>> {
+        let Some(current) = self.group_by_id(id.trim())? else {
+            return Err(anyhow!("project group not found"));
+        };
+        if current.legacy {
+            return Ok(Some(current));
+        }
+        let Some(removed) = current
+            .roots
+            .iter()
+            .find(|root| root.path == path)
+            .map(|root| root.path.clone())
+        else {
+            return Ok(Some(current));
+        };
+        let remaining: Vec<String> = current
+            .roots
+            .iter()
+            .map(|root| root.path.clone())
+            .filter(|candidate| candidate != &removed)
+            .collect();
+        if remaining.is_empty() {
+            self.delete_project_group_record(&current.id)?;
+            return Ok(None);
+        }
+        // The primary moves to the first remaining root when it is removed.
+        let primary = if current.primary_path == removed {
+            remaining[0].clone()
+        } else {
+            current.primary_path.clone()
+        };
+        let ordered = vec![primary.clone()];
+        let mut ordered = ordered;
+        ordered.extend(
+            remaining
+                .into_iter()
+                .filter(|candidate| candidate != &primary),
+        );
+
+        let now = now_ms();
+        let roots = ordered
+            .iter()
+            .enumerate()
+            .map(|(position, candidate)| ProjectGroupRoot {
+                path: candidate.clone(),
+                name: project_display_name(candidate),
+                position: position as i64,
+            })
+            .collect::<Vec<_>>();
+        let group = ProjectGroupRecord {
+            id: current.id,
+            name: current.name,
+            primary_path: primary,
+            roots,
+            created_at: current.created_at,
+            updated_at: now,
+            pinned: current.pinned,
+            last_opened_at: current.last_opened_at,
+            legacy: false,
+            detached_paths: current.detached_paths,
+        };
+        self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
+        Ok(Some(group))
+    }
+
     pub fn rename_project_group(&self, id: &str, name: &str) -> Result<ProjectGroupRecord> {
         let name = name.trim();
         if name.is_empty() || name.chars().count() > MAX_PROJECT_GROUP_NAME_CHARS {
