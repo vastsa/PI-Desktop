@@ -1,16 +1,16 @@
 /** Shared public types grouped by the owning application domain. */
 import type { CommandShellId } from "../command-shells.js";
 import type { KeybindingOverrides } from "../keyboard-shortcuts.js";
-import type { NetworkProxySettings } from "../network-proxy.js";
 import type { NetworkPolicySettings } from "../network-policy.js";
-import type { ContextCompactionSettings } from "./sessions.js";
+import type { NetworkProxySettings } from "../network-proxy.js";
 import type { Mode } from "./common.js";
-import type { GlobalPermissionMode } from "./permissions.js";
-import type { PluginMarketSource } from "./plugins.js";
-import type { SpeechSettings } from "./speech.js";
-import type { ThinkingLevel } from "./models.js";
-import type { UpdatePreference } from "./platform.js";
 import type { LiveVoiceSettings } from "./live-voice.js";
+import type { ThinkingLevel } from "./models.js";
+import type { GlobalPermissionMode } from "./permissions.js";
+import type { UpdatePreference } from "./platform.js";
+import type { PluginMarketSource } from "./plugins.js";
+import type { ContextCompactionSettings } from "./sessions.js";
+import type { SpeechSettings } from "./speech.js";
 
 export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 
@@ -44,6 +44,18 @@ export type AppSettings = {
    * Absent and false use the bounded ten-retry policy.
    */
   infiniteProviderRetry?: boolean;
+  /**
+   * Ceiling for retryable provider failures (rate limit plus transient).
+   * Absent uses the shipped default; 0 means unlimited. The
+   * infiniteProviderRetry switch keeps overriding any value to unlimited.
+   */
+  providerRetryMaxAttempts?: number;
+  /**
+   * First wait, in milliseconds, before the first retry of a retryable
+   * provider request. 0 retries immediately; absent uses the shipped 2000 ms.
+   * Server Retry-After values still win over this backoff.
+   */
+  providerRetryInitialDelayMs?: number;
   /** Prevent idle system sleep while this desktop app runs; off when absent. */
   keepAwakeWhileRunning?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */

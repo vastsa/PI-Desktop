@@ -1201,3 +1201,43 @@ describe("stream idle watchdog", () => {
     }
   });
 });
+
+describe("custom retry pacing", () => {
+  it("scales the rate-limit backoff from a custom first wait", () => {
+    expect(providerRateLimitDelayMs(1, undefined, 0, 0, 5_000)).toBe(5_000);
+    expect(providerRateLimitDelayMs(2, undefined, 0, 0, 5_000)).toBe(10_000);
+    // The shipped 30 s cap still bounds a shorter custom wait.
+    expect(providerRateLimitDelayMs(4, undefined, 0, 0, 5_000)).toBe(30_000);
+    // Jitter keeps riding on top of the custom wait.
+    expect(providerRateLimitDelayMs(1, undefined, 0, 1, 4_000)).toBe(5_000);
+  });
+
+  it("raises the rate-limit ceiling so a long custom wait is not truncated", () => {
+    expect(providerRateLimitDelayMs(1, undefined, 0, 0, 120_000)).toBe(120_000);
+    expect(providerRateLimitDelayMs(20, undefined, 0, 0, 120_000)).toBe(120_000);
+    // A short custom wait leaves the shipped cap in place.
+    expect(providerRateLimitDelayMs(20, undefined, 0, 0, 500)).toBe(30_000);
+  });
+
+  it("scales the transient backoff from a custom first wait with its cap raised", () => {
+    expect(providerSetupRetryDelayMs(1, 0, undefined, 0, 3_000)).toBe(3_000);
+    expect(providerSetupRetryDelayMs(2, 0, undefined, 0, 3_000)).toBe(6_000);
+    expect(providerSetupRetryDelayMs(3, 0, undefined, 0, 3_000)).toBe(8_000);
+    expect(providerSetupRetryDelayMs(20, 0, undefined, 0, 3_000)).toBe(8_000);
+    // A wait beyond the shipped 8 s cap raises the cap with it.
+    expect(providerSetupRetryDelayMs(1, 0, undefined, 0, 20_000)).toBe(20_000);
+    expect(providerSetupRetryDelayMs(20, 0, undefined, 0, 20_000)).toBe(20_000);
+    // An unusably long server delay clamps at the raised ceiling.
+    expect(providerSetupRetryDelayMs(1, 0, { "retry-after": "600" }, 0, 20_000)).toBe(20_000);
+  });
+
+  it("keeps server Retry-After ahead of the custom pacing", () => {
+    expect(providerRateLimitDelayMs(1, { "retry-after-ms": "1250" }, 0, 0, 5_000)).toBe(1250);
+    expect(providerSetupRetryDelayMs(1, 0, { "retry-after-ms": "100" }, 0, 5_000)).toBe(100);
+  });
+
+  it("retries immediately when the custom first wait is zero", () => {
+    expect(providerRateLimitDelayMs(1, undefined, 0, 0, 0)).toBe(0);
+    expect(providerSetupRetryDelayMs(1, 0, undefined, 0, 0)).toBe(0);
+  });
+});

@@ -1,5 +1,3 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import type {
   AppSettings,
   CommandShellCatalog,
@@ -9,11 +7,17 @@ import {
   MAX_LARGE_PASTE_THRESHOLD,
   MIN_LARGE_PASTE_THRESHOLD,
   normalizeLargePasteThreshold,
+  normalizeProviderRetryInitialDelayMs,
+  normalizeProviderRetryMaxAttempts,
+  PROVIDER_RETRY_INITIAL_DELAY_MS,
+  PROVIDER_RETRY_MAX_RETRIES,
 } from "@pi-desktop/shared";
+import { type ReactNode, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
+import { HelpIcon, Input, SegmentedControl } from "../../components/ui";
 import { api } from "../../lib/api";
 import { resolveContextUsageDisplay } from "../../lib/context-usage";
-import { HelpIcon, Input, SegmentedControl } from "../../components/ui";
-import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { useAppStore } from "../../stores/app-store";
 
 /**
@@ -342,5 +346,115 @@ export function LargePasteThresholdRow({
         />
       </div>
     </SettingsRow>
+  );
+}
+
+
+/**
+ * Custom provider retry controls (settings > General, next to the infinite
+ * retry switch): a retry ceiling where 0 means unlimited and a first-retry
+ * wait in milliseconds where 0 retries immediately. Both stay effective even
+ * when infinite retry is on: the wait customizes the backoff pacing.
+ */
+export function ProviderRetryRows({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const showToast = useAppStore((state) => state.showToast);
+  const maxAttempts = normalizeProviderRetryMaxAttempts(
+    settings.providerRetryMaxAttempts,
+  ) ?? PROVIDER_RETRY_MAX_RETRIES;
+  const initialDelayMs = normalizeProviderRetryInitialDelayMs(
+    settings.providerRetryInitialDelayMs,
+  ) ?? PROVIDER_RETRY_INITIAL_DELAY_MS;
+  const [attemptDraft, setAttemptDraft] = useState(String(maxAttempts));
+  const [delayDraft, setDelayDraft] = useState(String(initialDelayMs));
+
+  useEffect(() => {
+    setAttemptDraft(String(maxAttempts));
+  }, [maxAttempts]);
+  useEffect(() => {
+    setDelayDraft(String(initialDelayMs));
+  }, [initialDelayMs]);
+
+  const commitAttempts = async () => {
+    const parsed = Number(attemptDraft.trim());
+    const next = Number.isInteger(parsed) && parsed >= 0 ? parsed : maxAttempts;
+    setAttemptDraft(String(next));
+    if (next === maxAttempts) return;
+    try {
+      await saveSettings({ providerRetryMaxAttempts: next });
+    } catch {
+      setAttemptDraft(String(maxAttempts));
+      showToast(t("settings.providerRetrySaveError"), { variant: "error" });
+    }
+  };
+
+  const commitDelay = async () => {
+    const parsed = Number(delayDraft.trim());
+    const next = Number.isInteger(parsed) && parsed >= 0 ? parsed : initialDelayMs;
+    setDelayDraft(String(next));
+    if (next === initialDelayMs) return;
+    try {
+      await saveSettings({ providerRetryInitialDelayMs: next });
+    } catch {
+      setDelayDraft(String(initialDelayMs));
+      showToast(t("settings.providerRetrySaveError"), { variant: "error" });
+    }
+  };
+
+  return (
+    <>
+      <SettingsRow
+        title={t("settings.providerRetryMaxAttempts")}
+        description={t("settings.providerRetryMaxAttemptsDesc")}
+      >
+        <div className="settings-number-control">
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            value={attemptDraft}
+            aria-label={t("settings.providerRetryMaxAttempts")}
+            onChange={(event) => setAttemptDraft(event.target.value)}
+            onBlur={() => void commitAttempts()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+      </SettingsRow>
+      <SettingsRow
+        title={t("settings.providerRetryInitialDelay")}
+        description={t("settings.providerRetryInitialDelayDesc")}
+      >
+        <div className="settings-number-control">
+          <Input
+            type="number"
+            min={0}
+            step={100}
+            inputMode="numeric"
+            value={delayDraft}
+            aria-label={t("settings.providerRetryInitialDelay")}
+            onChange={(event) => setDelayDraft(event.target.value)}
+            onBlur={() => void commitDelay()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+      </SettingsRow>
+    </>
   );
 }

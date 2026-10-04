@@ -1,8 +1,8 @@
 /** Shared public types grouped by the owning application domain. */
 import type { Mode } from "./common.js";
+import type { UiMessage } from "./messages.js";
 import type { SessionThinkingLevel, ThinkingLevel } from "./models.js";
 import type { PermissionMode } from "./permissions.js";
-import type { UiMessage } from "./messages.js";
 import type { PlanningState } from "./plans.js";
 
 /**
@@ -187,6 +187,8 @@ export type AgentActivity =
       attempt: number;
       /** The retry budget is unbounded for this active turn. */
       infinite?: boolean;
+      /** Effective retry ceiling; absent falls back to the shipped default. */
+      maxAttempts?: number;
       retryDelayMs?: number;
       error?: AgentActivityError;
     }

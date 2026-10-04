@@ -199,6 +199,8 @@ not temporary retry activity. See the English source section 5d and ADR 0206.
 开启后可能在用户停止回合前持续消耗 API 用量。
 设置读取对此开关返回明确布尔值：缺省或关闭均规范化为 `false`。修改并保存其他设置不得因此校验失败或启用重试；非布尔值写入仍被拒绝。
 
+两个可选数字设置在不移除护栏的前提下定制同一套重试机制。`providerRetryMaxAttempts` 以任意非负整数替换 429 与瞬时故障两条预算共用的十次上限：`0` 表示不限制，与 `infiniteProviderRetry` 开关语义一致，且开关始终优先于任何配置的上限。`providerRetryInitialDelayMs` 以任意非负毫秒数替换默认首次重试等待（429 退避为 2 秒，瞬时退避为 1 秒）；`0` 表示立即重试。后续重试仍从配置值开始倍增退避，指数上限随之抬升（取“默认上限与配置等待的较大者”），因此较长的自定义间隔会被完整执行而非截断。服务器返回的 `Retry-After` 始终优先于两种退避。两个字段在渲染进程与主进程两侧均执行读取规范化与写入校验：缺省、NaN、负数或小数将被丢弃或拒绝，绝不静默折算成有界默认值。`retrying` 活动通过 `maxAttempts` 上报生效上限，使转写状态反映配置的预算；关闭 `infiniteProviderRetry` 后恢复配置上限，预算不会意外残留为无限。
+
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
