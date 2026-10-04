@@ -1543,6 +1543,21 @@ export function toolResultFromUi(
         blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
       }
     }
+  } else if (Array.isArray(raw)) {
+    // Plugin tools may return a bare content-block array; restore its text
+    // and image blocks so a restart does not flatten them into JSON (#1360).
+    for (const b of raw) {
+      if (!isRecord(b)) continue;
+      if (b.type === "text" && typeof b.text === "string") {
+        blocks.push({ type: "text", text: b.text });
+      } else if (
+        b.type === "image" &&
+        typeof b.data === "string" &&
+        typeof b.mimeType === "string"
+      ) {
+        blocks.push({ type: "image", data: b.data, mimeType: b.mimeType });
+      }
+    }
   } else if (typeof raw === "string" && raw.trim()) {
     blocks.push({ type: "text", text: raw });
   } else if (raw !== undefined && raw !== null) {
@@ -3448,8 +3463,54 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         const imageBlocks: Array<{ type: "image"; data: string; mimeType: string }> = [];
         let text: string;
         let details: unknown = rawContent;
+        const vision = visionFromModelConfig(this.provider.modelConfig);
+        // Collect image blocks from a content-block array; only well-formed
+        // image entries ({ type, data, mimeType }) are accepted.
+        const collectImageBlocks = (blocks: unknown[]): void => {
+          for (const block of blocks) {
+            if (
+              isRecord(block) &&
+              block.type === "image" &&
+              typeof block.data === "string" &&
+              typeof block.mimeType === "string"
+            ) {
+              if (vision) {
+                imageBlocks.push({
+                  type: "image",
+                  data: block.data,
+                  mimeType: block.mimeType,
+                });
+              }
+            }
+          }
+        };
         if (typeof rawContent === "string") {
           text = rawContent;
+        } else if (Array.isArray(rawContent)) {
+          // Plugin tools may return a bare content-block array
+          // ([{ type: "text" }, { type: "image" }]); render the text blocks
+          // and hand images to the model instead of stringifying (#1360).
+          const textParts: string[] = [];
+          for (const block of rawContent) {
+            if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+              textParts.push(block.text);
+            }
+          }
+          collectImageBlocks(rawContent);
+          text = textParts.join("\n") || JSON.stringify(rawContent, null, 2);
+          details = { blocks: rawContent, imageCount: imageBlocks.length };
+        } else if (isRecord(rawContent) && Array.isArray(rawContent.content)) {
+          // MCP tools return `content: [{ type: "image" | "text", ... }]`.
+          const contentBlocks = rawContent.content;
+          const textParts: string[] = [];
+          for (const block of contentBlocks) {
+            if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+              textParts.push(block.text);
+            }
+          }
+          collectImageBlocks(contentBlocks);
+          text = textParts.join("\n") || JSON.stringify(rawContent, null, 2);
+          details = { ...rawContent, imageCount: imageBlocks.length };
         } else if (isRecord(rawContent) && Array.isArray(rawContent.images)) {
           text =
             typeof rawContent.text === "string"
@@ -3459,7 +3520,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                   null,
                   2,
                 );
-          const vision = visionFromModelConfig(this.provider.modelConfig);
           for (const image of rawContent.images) {
             if (
               !isRecord(image) ||

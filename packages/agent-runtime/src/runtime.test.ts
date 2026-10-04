@@ -10748,6 +10748,30 @@ describe("toolResultFromUi image restoration (issue #1073)", () => {
     const restored = toolResultFromUi(row, timestamp);
     expect(restored.content).toEqual([{ type: "text", text: expect.stringContaining("broken.png") }]);
   });
+
+  it("restores a bare plugin content-block array without flattening it to JSON (#1360)", () => {
+    const row = {
+      id: "call-3",
+      role: "tool" as const,
+      content: "",
+      createdAt: new Date(timestamp).toISOString(),
+      toolCallId: "call-3",
+      toolName: "plugin_shot",
+      // A plugin tool returned a bare content-block array rather than an
+      // object with `content` or a top-level `images` field.
+      toolResult: [
+        { type: "text", text: "here is the screenshot" },
+        { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+      ],
+      toolStatus: "success" as const,
+      isError: false,
+    };
+    const restored = toolResultFromUi(row, timestamp);
+    expect(restored.content).toEqual([
+      { type: "text", text: "here is the screenshot" },
+      { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+    ]);
+  });
 });
 
 it("does not reuse stale plugin declarations when schema or permission metadata changes", async () => {
