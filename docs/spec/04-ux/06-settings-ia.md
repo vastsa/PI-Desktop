@@ -57,6 +57,8 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   10. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync)
   11. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
   12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
+  9. **Import / 导入** — Lucide `Download` (bring sessions and model configuration in from other tools)
+  11. **Index / 索引** — Lucide `Database` (workspace index health and lifecycle)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
 - The directory remains a flat searchable list in the same exact order. For
@@ -65,6 +67,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
   (Projects), and `System` / `系统` (Cloud sync, Remote Hosts, Info;
   Remote Hosts is developer-only). Headings are
+  (Import, Projects, Index), and `System` / `系统` (Cloud sync, Remote Hosts,
   muted, non-interactive labels and use whitespace for separation; no divider
   lines are rendered. These are visual landmarks only, not a second navigation
   level.
@@ -784,6 +787,29 @@ system while preserving their different data ownership:
 - Activating a project or project session returns to chat; archive and close
   actions keep Project archive open even when the active workspace changes
 
+### Index library (`index` tab, `Workspace` group)
+- One health card for the host-owned workspace index cache: status, indexed
+  file count, indexed size, unreadable-file count, and last-update time
+- A standalone `Codebase` section below the health card carries the single
+  opt-in toggle, `Workspace indexing` (`indexGrepBoost`, default off). When
+  on, opening a different workspace marks its index `building` and rebuilds
+  it on the blocking pool, so `workspace.set` stays fast and the health card
+  polls `index.status` once a second while building, pausing when the window
+  is hidden. No tool reads the index: it is reported on, rebuilt, and cleared
+  from this page alone. A second "index new folders" toggle would either
+  duplicate this switch or build an index that nothing uses, so the section
+  carries exactly one
+- Actions are Rebuild index and Clear index; both call the host lifecycle
+  RPCs and refresh the card from the returned status. Rebuild is offered only
+  while the opt-in toggle is on, because an index the switch never feeds is
+  just a scan and some disk; Clear stays available so a leftover index can
+  still be removed
+- The copy states that the index is a rebuildable local cache whose data
+  never leaves the machine
+- Empty state: no root yet for the active workspace, with Build index as the
+  single action, gated the same way. Load failure shows a retry instead of a
+  blank card
+
 ### Info
 - app/host/protocol versions + open logs
 - **Report a problem** row: one action opens the GitHub bug issue form in
@@ -847,6 +873,11 @@ system while preserving their different data ownership:
    mode on. The rows are grouped under Preferences / 偏好,
    Agent / 智能体, Workspace / 工作区, and System / 系统. There is no
    Usage / 用量 destination.
+   Subagents / 子智能体, Import / 导入, Projects / 项目, Index / 索引, Cloud sync /
+   云同步, and Info / 信息 in that order. Cloud sync / 云同步
+   and Remote Hosts / 远程主机 appear only while developer mode is on. The rows are grouped
+   under Preferences / 偏好, Agent / 智能体, Workspace / 工作区, and
+   System / 系统. There is no Usage / 用量 destination.
 3. Appearance is part of General and has no standalone rail destination
 4. Providers is part of Agent and has no standalone rail destination
 5. Plugins has no Settings destination; the app-shell Plugins page supports

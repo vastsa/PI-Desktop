@@ -775,6 +775,7 @@ export const ptBR = {
       mcp: "MCP",
       subagents: "Subagentes",
       projects: "Projetos",
+      index: "Índice",
       sync: "Sincronização",
       remoteHosts: "Hosts remotos",
       info: "Sobre",
@@ -1001,6 +1002,7 @@ export const ptBR = {
     subagentCreated: "{{name}} criado",
     subagentSaved: "Salvo {{name}}",
     projectArchive: "Arquivo de projeto",
+    index: "Biblioteca de índices",
     remoteHosts: {
       title: "Hosts remotos",
       listError: "Falha ao carregar hosts",
@@ -2573,6 +2575,51 @@ export const ptBR = {
       retry: "Tentar novamente",
       continue: "Continuar",
       dismiss: "Dispensar"
+    }
+  },
+  index: {
+    loading: "Carregando status do índice…",
+    grepBoost: "Indexação do espaço de trabalho",
+    grepBoostDesc: "Com esta opção ativada, os espaços de trabalho recém-abertos são indexados em segundo plano e esta página informa o status. Tudo permanece nesta máquina.",
+    loadErrorTitle: "Status do índice indisponível",
+    loadErrorDesc: "O host não respondeu.",
+    retry: "Tentar novamente",
+    statusDesc: "O índice é um cache local reconstruível.",
+    indexSubtitle: "O índice local é um cache reconstruível; esta página informa o status e a saúde dele.",
+    nudgeText: "Tudo é executado localmente e nunca envia o conteúdo do seu espaço de trabalho.",
+    nudgeDismiss: "Dispensar",
+    sectionCode: "Base de código",
+    progressFiles: "{{done}} / {{total}} arquivos",
+    progressFallback: "O índice é construído em segundo plano; você pode continuar trabalhando.",
+    emptyTitle: "Nenhum índice para o espaço de trabalho atual",
+    emptyDesc: "Construa um para ver a contagem de arquivos e o tamanho. O índice permanece nesta máquina.",
+    actions: "Ações do índice",
+    actionsDesc: "Construa ou reconstrua o índice do espaço de trabalho atual. Ele não pode ser construído com a opção desativada, pois nada o utilizaria.",
+    localOnly: "Tudo é armazenado localmente e nunca enviado.",
+    rebuilding: "Indexando…",
+    clearing: "Limpando…",
+    actionError: "A ação do índice falhou. Você pode tentar novamente.",
+    card: {
+      health: "Saúde do índice",
+      status: "Status",
+      files: "Arquivos indexados",
+      size: "Tamanho indexado",
+      errors: "Arquivos ilegíveis",
+      updated: "Última atualização"
+    },
+    action: {
+      rebuild: "Reconstruir índice",
+      build: "Construir índice",
+      clear: "Limpar índice"
+    },
+    status: {
+      fresh: "Pronto",
+      building: "Construindo",
+      stale: "Atualizando",
+      failed: "Falhou",
+      partial: "Parcial",
+      disabled: "Desativado",
+      skipped_over_limit: "Acima do orçamento"
     }
   }
 } satisfies EnglishCatalog;

@@ -152,8 +152,11 @@ export function prepareMacDevelopmentBundle({
 
 function run() {
   const env = { ...process.env, PI_DESKTOP_DEV: "1" };
-  // Electron 43+ downloads its platform binary when its package is resolved.
-  // electron-vite requires the resulting path.txt marker on every platform.
+  // Resolving the electron package is what triggers the platform binary
+  // download (and path.txt) on a fresh clone — electron-vite only reads
+  // path.txt and never triggers the download itself (#1144). Resolve on
+  // every platform; macOS additionally reuses the resolved executable for
+  // the branded development bundle.
   const electron = resolveElectronInstallation();
   if (process.platform === "darwin") {
     env.ELECTRON_EXEC_PATH = prepareMacDevelopmentBundle({

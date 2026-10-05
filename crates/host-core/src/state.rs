@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 
 use crate::db::Database;
+use crate::index::IndexStore;
 use crate::mcp_servers::McpServerRegistry;
 use crate::permissions::PermissionManager;
 use crate::plans::PlanManager;
@@ -27,6 +28,14 @@ const PLUGIN_DELETE_RATE_LIMIT: usize = 20;
 pub struct AppState {
     pub data_dir: std::path::PathBuf,
     pub db: Database,
+    /// Workspace content index (FTS5 store under `<data>/index/index.db`).
+    /// Lifecycle only — status/rebuild/clear; it does not participate in any
+    /// tool execution.
+    pub index: IndexStore,
+    /// normalized root → join handle of the background build that
+    /// `workspace.set`/`settings.set` spawned, so callers (and tests) can
+    /// await a build's completion instead of polling the wall clock.
+    pub index_builds: HashMap<String, tokio::task::JoinHandle<()>>,
     pub secrets: SecretStore,
     pub workspace: WorkspaceState,
     pub permissions: PermissionManager,
@@ -102,6 +111,17 @@ impl AppState {
             Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
         }
         let secrets = SecretStore::open(data_dir)?;
+        // The index is an optimization layer: if its store cannot be opened
+        // even after the quarantine-and-retry, degrade to a disabled store
+        // (the status RPC reports unavailable) instead of costing the host
+        // its boot.
+        let index = match IndexStore::open(data_dir) {
+            Ok(index) => index,
+            Err(error) => {
+                tracing::warn!(%error, "index store unavailable; indexing stays disabled");
+                IndexStore::disabled()
+            }
+        };
         // The marketplace channel is read before the manager builds its first
         // catalog, so a source configured for networks without GitHub access
         // applies on launch instead of only after a manual refresh.
@@ -127,6 +147,8 @@ impl AppState {
         Ok(Self {
             data_dir: data_dir.to_path_buf(),
             db,
+            index,
+            index_builds: HashMap::new(),
             secrets,
             workspace: WorkspaceState::default(),
             permissions: PermissionManager::default(),
