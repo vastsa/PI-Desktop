@@ -16,9 +16,9 @@ import { CapabilityRowMenu, type CapabilityMenuItem } from "./AgentCapabilityLay
 import { ServiceMonogram } from "./ServiceMonogram";
 import {
   serviceRowBadges,
-  serviceRowKind,
   serviceRowMeta,
   serviceRowTitle,
+  serviceRowToggle,
 } from "./service-row-status";
 import type { AccountEntry } from "./useVendorAccounts";
 
@@ -70,10 +70,10 @@ export function ServiceRow({
   reorderEvents,
 }: ServiceRowProps) {
   const { t } = useTranslation();
-  const kind = serviceRowKind(provider);
   const title = serviceRowTitle(provider, entry, t);
   const badges = serviceRowBadges(provider, { isDefault, entry }, t);
   const meta = serviceRowMeta(provider, t);
+  const toggle = serviceRowToggle(provider, busy);
   // Read at pointerdown, before the outside press has closed the menu.
   const menuWasOpen = useRef(false);
   const { onPointerDown, onClickCapture, onKeyDown, ...reorderAttributes } = reorderEvents;
@@ -167,13 +167,11 @@ export function ServiceRow({
       </div>
 
       <div className="model-provider-row-actions">
-        {/* A plugin refreshes its row from its manifest on every load, so the
-            switch is not the user's to flip; an account has none at all. */}
-        {kind !== "account" ? (
+        {toggle.show ? (
           <SettingsToggle
             checked={provider.enabled}
             label={t("settings.enabledToggle")}
-            disabled={busy || kind === "plugin"}
+            disabled={toggle.locked}
             onChange={onToggleEnabled}
           />
         ) : null}

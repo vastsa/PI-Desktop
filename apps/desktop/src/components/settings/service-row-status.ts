@@ -96,6 +96,26 @@ export function serviceRowBadges(
 }
 
 /**
+ * Whether a row shows the enable switch, and whether the switch is locked.
+ *
+ * A plugin refreshes its row from its manifest on every load, so the switch is
+ * not the user's to flip: it is hidden there. An API service and a vendor
+ * account are both the user's to enable or disable (#930); a disabled provider
+ * is filtered out of the model picker (`providers.list` with
+ * `includeDisabled=false`) and fails session launch with `PROVIDER_DISABLED`,
+ * so the same switch carries the same meaning on each kind. `busy` only ever
+ * greys the switch out mid-request.
+ */
+export function serviceRowToggle(
+  provider: ProviderPublic,
+  busy: boolean,
+): { show: boolean; locked: boolean } {
+  const kind = serviceRowKind(provider);
+  const show = kind !== "plugin";
+  return { show, locked: kind === "plugin" || busy };
+}
+
+/**
  * The quiet second line: where an API service points and how many models it
  * serves. An account has no endpoint worth showing, and a signed-out one says
  * what to do instead.

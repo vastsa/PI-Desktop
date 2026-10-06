@@ -342,9 +342,12 @@ test("a service row opens its editor and keeps only a switch and one menu", () =
   // presses on the row's own controls never open the editor.
   assert.match(serviceRowSource, /const OWN_CONTROLS = "button, input, select, textarea, a, label/);
   assert.match(serviceRowSource, /event\.target !== event\.currentTarget \|\| !onOpen \|\| busy/);
-  // An account has no enable switch; a plugin's switch belongs to the plugin.
-  assert.match(serviceRowSource, /kind !== "account" \? \(/);
-  assert.match(serviceRowSource, /disabled=\{busy \|\| kind === "plugin"\}/);
+  // An account and an API service both get the enable switch; only a plugin's
+  // switch belongs to the plugin. The row delegates that call to the pure
+  // helper, whose behavior is covered in service-row-status.test.mjs (#930).
+  assert.match(serviceRowSource, /const toggle = serviceRowToggle\(provider, busy\)/);
+  assert.match(serviceRowSource, /\{toggle\.show \? \(/);
+  assert.match(serviceRowSource, /disabled=\{toggle\.locked\}/);
   // A plugin owns its row, so neither edit nor remove is offered for one.
   assert.match(serviceListSource, /if \(kind !== "plugin"\) \{\s*items\.push\(\{\s*key: "edit"/);
   assert.match(serviceListSource, /if \(kind !== "plugin"\) \{\s*const isArmed/);
