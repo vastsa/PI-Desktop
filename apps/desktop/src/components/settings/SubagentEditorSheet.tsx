@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import {
   DEFAULT_SUBAGENT_TOOLS,
@@ -13,6 +13,7 @@ import {
   isSubagentMutatingTool,
   resolveScope,
   type ActivationScope,
+  type ProjectGroupRecord,
   type SubagentDefinition,
   type SubagentPreset,
   type SubagentThinkingLevel,
@@ -30,6 +31,11 @@ import {
 } from "./subagent-models";
 import { SubagentModelPicker } from "./SubagentModelPicker";
 import { SubagentFallbackModels } from "./SubagentFallbackModels";
+import { api } from "../../lib/api";
+import { buildProjectIndex } from "../../lib/project-archive";
+import { loadRecentProjects } from "../../lib/recent-projects";
+import { collectSessionProjects } from "../../lib/session-projects";
+import { ScopeControl } from "../extensions/ScopeControl";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 
 /** Hard cap host-core enforces on a definition document. */
@@ -352,34 +358,47 @@ function PresetPicker({
   );
 }
 
-/**
- * Subagents are global-only (D202), so there is no level to choose: this states
- * where the document lands and leaves only the active decision.
- */
-function ManagementScope({
-  draft,
-  setDraft,
-}: {
+/** Definitions stay global; activation can be limited to selected projects. */
+function ManagementScope({ draft, setDraft }: {
   draft: SubagentDraft;
-  setDraft: (next: SubagentDraft) => void;
+  setDraft: Dispatch<SetStateAction<SubagentDraft>>;
 }) {
-  const { t } = useTranslation();
+  const [groups, setGroups] = useState<ProjectGroupRecord[]>([]);
+  const [recents] = useState(loadRecentProjects);
+  const workspace = useAppStore((state) => state.workspace);
+  const sessions = useAppStore((state) => state.sessions);
+  const projectMeta = useAppStore((state) => state.projectMeta);
+  const projects = useMemo(() => buildProjectIndex({
+    durableProjects: groups, recents, workspace, projectMeta,
+    sessionProjects: collectSessionProjects(sessions),
+  }).flatMap((project) => project.roots.map((root) => ({
+    path: root.path,
+    name: project.roots.length === 1 ? project.name : `${project.name} / ${root.name}`,
+  }))), [groups, recents, workspace, projectMeta, sessions]);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void api.listProjectGroups().then(({ groups }) => {
+      if (cancelled) return;
+      setGroups(groups);
+    }).catch((error: unknown) => {
+      if (!cancelled) setProjectError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const projectPath = useAppStore((state) => state.workspace?.path);
   return (
-    <div className="agent-mcp-scope">
-      <div className="agent-mcp-scope-copy">
-        <span className="agent-mcp-scope-label">
-          {t("settings.globalScope")}
-          {/* Why there is no scope choice here: the answer belongs to the label
-              it applies to, not to a line under it. */}
-          <HelpIcon label={t("settings.subagentsOnlyGlobal")} />
-        </span>
-      </div>
-      <SettingsToggle
-        checked={draft.enabled}
-        label={t("settings.enableCapability", { name: draft.name || draft.id })}
-        onChange={() => setDraft({ ...draft, enabled: !draft.enabled })}
-      />
-    </div>
+    <>
+    <ScopeControl
+      inlineProjects
+      target={draft}
+      label={draft.name || draft.id}
+      projects={projects}
+      currentProjectPath={projectPath}
+      onSetScope={(scope) => setDraft((current) => ({ ...current, scope }))}
+    />
+    {projectError ? <p role="alert" className="ext-sheet-error">{projectError}</p> : null}
+    </>
   );
 }
 
@@ -399,7 +418,7 @@ function ModelField({
   orphanModel,
 }: {
   draft: SubagentDraft;
-  setDraft: (next: SubagentDraft) => void;
+  setDraft: Dispatch<SetStateAction<SubagentDraft>>;
   modelChoices: ReturnType<typeof subagentModelChoices>;
   modelGroups: ReturnType<typeof groupSubagentModelChoices>;
   orphanModel: string | null;
@@ -487,7 +506,7 @@ function AdvancedFields({
   open: boolean;
   onToggle: () => void;
   draft: SubagentDraft;
-  setDraft: (next: SubagentDraft) => void;
+  setDraft: Dispatch<SetStateAction<SubagentDraft>>;
   modelChoices: ReturnType<typeof subagentModelChoices>;
   modelGroups: ReturnType<typeof groupSubagentModelChoices>;
   orphanModel: string | null;
@@ -562,7 +581,7 @@ export function SubagentEditorSheet({
   onReveal,
 }: {
   draft: SubagentDraft;
-  setDraft: (next: SubagentDraft) => void;
+  setDraft: Dispatch<SetStateAction<SubagentDraft>>;
   editing: UserSubagentRecord | null;
   saving: boolean;
   /** Template chip to select on create, e.g. after Copy as mine. */

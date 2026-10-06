@@ -832,7 +832,7 @@ builtins shipped inline in `agent-runtime` (`explorer`, `code-reviewer`,
 `test-runner`, `fixer`, `ui-designer`) and the global user documents under
 `~/.agents/subagents/*.md`. There is no project-level subagent directory and
 `.pi/agents` is not scanned for capabilities. User documents are filtered by
-the app-local enabled state before they reach the loader, and the shipped
+the app-local enabled state and the session project scope before they reach the loader, and the shipped
 builtins are filtered by that same app-local state inside it (ADR 0270).
 Electron main loads
 `subagentProviders` in the sidecar params, so editing a definition takes effect

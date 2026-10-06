@@ -16902,3 +16902,24 @@ host-created files. The full app's file-preview viewer is covered separately.
   image model selection and provider configuration remain available.
 - Coverage: recent-models.test.mjs, recent-model-flow.test.mjs,
   default-model-picker.test.mjs, and scripts/e2e-composer-model-selection.mjs.
+
+
+### User subagent project scope (#1431)
+
+- Load choices from the durable project groups used by the sidebar, including
+  groups absent from the legacy single-folder project list. Selecting Projects
+  does not automatically select the current folder.
+- Edit a disabled user subagent, select Projects, choose the current project A
+  and a second project B, then save. Reopen and verify the scope and that the
+  subagent remains disabled. Scope choices do not include Off; enablement stays
+  on the list row toggle. Project choices expand inline below the scope selector,
+  inside the scrolling editor rather than in a floating overlay.
+  Switch to Everywhere and back: selections survive.
+- Through real host RPC, verify a project-only definition is absent from other
+  projects and a projectless catalog, but present in the selected project and
+  its descendants. Global definitions remain available. Verify the resulting
+  runtime loader catalog, restart persistence, rename, disable, and delete.
+- Coverage: `apps/desktop/test/subagent-project-scope.test.mjs` (isolated Electron
+  settings interaction with IPC fixtures) and
+  `scripts/e2e-subagent-project-scope.mjs` (real host and runtime loader; no model
+  or external provider). Existing builtin and plugin activation is unchanged.

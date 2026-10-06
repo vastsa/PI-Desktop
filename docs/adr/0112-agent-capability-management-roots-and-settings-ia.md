@@ -67,7 +67,10 @@ visible again.
 
 Skills, MCP, and Subagents are three independent Settings destinations, not tabs.
 Skills and MCP use fixed-height global/project columns; their project column has
-a recent-project picker. Subagents use one global column and no project picker.
+a recent-project picker. Subagents use one global storage column. Their editor selects activation in
+all projects or selected projects without creating project-local documents.
+Enablement stays on the list row toggle; changing scope does not enable a disabled
+subagent.
 The Extensions destination keeps only Installed and Marketplace tabs.
 
 Skills expose one single-file native import action per column and physically copy
@@ -81,7 +84,12 @@ MCP connection reports the result in the editor and a toast.
 Capability list, read, remove, import, and enable calls carry `level` and,
 when needed, `projectPath`. A project-level request without `projectPath` is
 invalid. Runtime activation uses the merged `mcp.active` and `skills.active`
-results for the selected project; subagent activation is global-only.
+results for the selected project. `agents.active` similarly filters global
+subagent documents by app-local project scope. Scope metadata has its own
+`agent-capabilities/subagent-scopes.json` file so older enablement writers do
+not erase it. Missing entries remain globally active for compatibility; older
+application versions cannot enforce these scopes. Plugin and builtin activation
+remain unchanged.
 
 ## Consequences
 
