@@ -45,7 +45,7 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 
 ### R4 — Marketplace Read-only ✅
 - market provider abstraction (official remote GitHub catalog provider)
-- Official-source browse/search from `vastsa/pi-desktop-plugins`
+- Official-source browse/search from `vastsa/pi-desktop-plugins` *(superseded: the official source is the plugin center, `plugins.aiuo.net`)*
 - Download + checksum install
 - updates list (manual update)
 

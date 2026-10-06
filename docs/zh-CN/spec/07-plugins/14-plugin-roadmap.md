@@ -42,7 +42,7 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 
 ### R4 — 市场只读 ✅
 - 市场提供商抽象（官方远程 GitHub 目录提供商）
-- 来自 `vastsa/pi-desktop-plugins` 的官方来源 browse/search
+- 来自 `vastsa/pi-desktop-plugins` 的官方来源 browse/search（已被取代：官方来源是插件中心 `plugins.aiuo.net`）
 - 下载+校验和安装
 - 更新列表（手动更新）
 

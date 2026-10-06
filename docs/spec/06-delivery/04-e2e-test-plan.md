@@ -3195,8 +3195,8 @@ identify the platform validation still needed.
 #### E2E-024F: Refresh official remote marketplace repository
 
 - **Preconditions**: Network available to GitHub raw content.
-- **Steps**: 1) Open Extensions → Marketplace. 2) Use the header Refresh marketplace action. 3) Confirm the source line points at `vastsa/pi-desktop-plugins`.
-- **Expected**: Catalog refreshes from the remote official repo; card grid updates; offline fallback still works if fetch fails.
+- **Steps**: 1) Open Extensions → Marketplace. 2) Use the header Refresh marketplace action. 3) Confirm the source line names the official channel (`plugins.aiuo.net`) and that the GitHub and CNB backups are selectable.
+- **Expected**: Catalog refreshes from the selected channel; card grid updates; offline fallback still works if fetch fails.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md`
 - **Acceptance**: G (remote marketplace source)
 - **Status**: Documented / host-core unit covered

@@ -30,9 +30,9 @@ The host is responsible for:
 
 ### Phase B ✅
 - Browse/search + download install are implemented against the official provider
-- Official provider is the dedicated GitHub repo `vastsa/pi-desktop-plugins`
-- Default catalog URL: `https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json`
-- Package URLs may be absolute `https://` / `http://` / `file://`, or relative paths resolved against the catalog URL
+- Official provider: the plugin center, `plugins.aiuo.net` (Phase B originally pointed at the GitHub repository `vastsa/pi-desktop-plugins`; see "Catalog source selection" below and [ADR 0276](../../adr/0276-official-plugin-channel-and-backup-channels.md))
+- Default catalog URL: `https://plugins.aiuo.net/catalog.json`
+- Package URLs may be absolute `https://` / `http://` / `file://`, or a relative path resolved against the catalog's `artifactBaseUrl` when it declares one, and otherwise against the catalog URL
 - HTTPS fetch uses `curl` in host-core
 - curl diagnostics are decoded as UTF-8 first and as the active Windows ANSI
   code page when needed; a network failure remains `PLUGIN_NETWORK`, but its
@@ -379,7 +379,7 @@ Before publishing or diagnosing a release, run the repository preflight:
 
 ```bash
 pnpm check:marketplace -- \
-  --url https://raw.githubusercontent.com/vastsa/pi-desktop-plugins/main/catalog.json \
+  --url https://plugins.aiuo.net/catalog.json \
   --plugin <plugin-id>
 ```
 
