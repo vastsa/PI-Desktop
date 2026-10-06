@@ -57,10 +57,11 @@ test("skills and MCP filter one list by level instead of stacking two sections",
   assert.match(layout, /agent-capability-list/);
   assert.match(layout, /<SegmentedControl[\s\S]*?value=\{filter\}/);
   assert.match(layout, /settings\.capabilityFilterAll/);
-  // Subagents are global-only, so they get no level filter and no project.
+  // Subagent definitions share one list; each row shows its activation scope.
   assert.doesNotMatch(subagents, /AgentProjectPicker|projectPath|CapabilityFilter/);
   assert.doesNotMatch(subagentSettings, /AgentProjectPicker|projectPath|CapabilityFilter/);
-  assert.match(subagents, /settings\.globalOnly/);
+  assert.match(subagents, /extensions\.scope\.global/);
+  assert.match(subagents, /extensions\.scope\.projectCount/);
   assert.match(subagents, /t\("settings\.subagentsEmpty"\)/);
   assert.doesNotMatch(subagents, /settings\.subagents\.empty|t\("subagents\.empty"\)/);
 });
