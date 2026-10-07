@@ -105,7 +105,7 @@ import {
   type LucideProps,
 } from "lucide-react";
 
-export type IconProps = LucideProps;
+export type IconProps = LucideProps & SVGProps<SVGSVGElement>;
 
 /**
  * Lucide sizes are fixed px attributes. Multiply them by `--font-scale` so

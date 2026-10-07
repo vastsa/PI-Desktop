@@ -8,7 +8,9 @@
  * the user-visible paths: the new header action order, select → next →
  * submit, skip → submit, decline-all, and a custom answer.
  *
- * Scenario: E2E-ASKTOOL-compact-card-interaction.
+ * Scenario: E2E-ASKTOOL-compact-card-interaction. It also pins the compact
+ * question block: a multi-paragraph question body stays one stacked text
+ * column rather than lining its blocks up in a row.
  */
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -67,6 +69,15 @@ const QUESTIONS: FixtureQuestion[] = [
   },
 ];
 
+// A question body with several markdown blocks must render as stacked
+// paragraphs. The compact header row once made every block a flex item, so
+// the blocks lined up side by side and every sentence wrapped inside a column.
+const MULTI_BLOCK_QUESTION: FixtureQuestion = {
+  question:
+    "The old host 124.71.12.42 is unreachable and the new database is empty, so nothing has been restored yet.\n\nThe S3 bucket still holds every page file, so a rebuild can recover the HTML body plus its title.",
+  options: [{ label: "delta", description: "Fourth choice" }],
+};
+
 export async function asktoolCardProbe() {
   await i18n.init({ lng: "en", resources: { en: { translation: en } } });
   const initial = useAppStore.getState();
@@ -110,8 +121,8 @@ export async function asktoolCardProbe() {
   // question independent of the active locale.
   const questionText = () =>
     element(".asktool-question").textContent ?? "";
-  const mount = (requestId: string) => {
-    const request = askRequest(requestId, QUESTIONS);
+  const mount = (requestId: string, questions: FixtureQuestion[] = QUESTIONS) => {
+    const request = askRequest(requestId, questions);
     useAppStore.setState({
       pendingAsks: { [SESSION_ID]: [request] },
     });
@@ -248,6 +259,46 @@ export async function asktoolCardProbe() {
       JSON.stringify(resolutions[3]!.answers) ===
         JSON.stringify([["my reason"], ["gamma"]]),
       `custom text survives, saw ${JSON.stringify(resolutions[3]!.answers)}`,
+    );
+
+    // Flow E: a multi-block question body keeps its blocks stacked in the
+    // card's text column instead of lining them up as flex items.
+    mount("ask-layout", [MULTI_BLOCK_QUESTION]);
+    await until(() => options().length > 0, "layout flow mounts");
+    const paragraphs = [
+      ...host.querySelectorAll<HTMLElement>(
+        ".asktool-question .asktool-rich-paragraph",
+      ),
+    ];
+    assert(
+      paragraphs.length === 2,
+      `the multi-block question renders one paragraph per block, saw ${paragraphs.length}`,
+    );
+    const cardWidth = element(".asktool-card").getBoundingClientRect().width;
+    const boxes = paragraphs.map((node) => node.getBoundingClientRect());
+    assert(
+      boxes[1]!.top >= boxes[0]!.bottom - 1,
+      `question blocks stack vertically (tops ${boxes[0]!.top}, ${boxes[1]!.top})`,
+    );
+    assert(
+      Math.abs(boxes[1]!.left - boxes[0]!.left) < 1,
+      `question blocks share a left edge (${boxes[0]!.left}, ${boxes[1]!.left})`,
+    );
+    assert(
+      boxes[0]!.width > cardWidth / 2,
+      `a question block spans the text column (${boxes[0]!.width} of ${cardWidth})`,
+    );
+    const numberBox = element(
+      ".asktool-question-number",
+    ).getBoundingClientRect();
+    assert(
+      numberBox.right <= boxes[0]!.left + 1,
+      `the question number sits left of the text column (${numberBox.right}, ${boxes[0]!.left})`,
+    );
+    assert(
+      numberBox.top >= boxes[0]!.top - 1 &&
+        numberBox.bottom <= boxes[0]!.top + 26,
+      `the question number shares the first line with the question text (${numberBox.top}, ${boxes[0]!.top})`,
     );
 
     assert(errors.length === 0, `render errors: ${errors.map(String)}`);

@@ -772,7 +772,9 @@ attachment, scratch, and project roots. Each image remains subject to the 10 MB
 safety bound, and restored history has a 30 MB aggregate raw-byte budget.
 The newest refs are considered first; all eligible images remain image blocks
 when the history fits, while over-budget or oversized images become safe
-`@path` fallbacks. Reads are bounded by the admitted file size. Base64 is
+`@path` fallbacks. An image whose message names it inline (`inlinePath`) is
+spliced back into the prompt at that position, so a restored turn keeps the
+order the user wrote. Reads are bounded by the admitted file size. Base64 is
 transient and never restored into durable UI messages or transcript records.
 - Failed assistant messages remain durable diagnostic transcript entries but
   are never restored into pi model context on a later turn.

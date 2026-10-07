@@ -119,11 +119,16 @@ Surfaces in scope:
 
 Blocking steps:
 
-1. Refresh `apps/desktop/resources/models.dev/api.json` **before** tagging.
-   `scripts/release.mjs` does this by default for every bump, including
-   prereleases. A no-op refresh (already current) still counts: the snapshot
-   in the tagged tree is what artifacts ship. Do not treat a minified
-   one-line JSON diff as absent.
+1. Refresh `apps/desktop/resources/models.dev/api.json` **before** tagging:
+
+   ```bash
+   curl -fsSL https://models.dev/api.json -o apps/desktop/resources/models.dev/api.json
+   ```
+
+   The version-bump script does not fetch this catalog. The release preflight
+   checks that the snapshot is a valid provider catalog, and the tagged tree
+   determines what artifacts ship. A no-op refresh (already current) still
+   counts. Do not treat a minified one-line JSON diff as absent.
 2. Edit `packages/shared/src/changelog-en.ts` **before**
    `node scripts/release.mjs <version>` / `git tag`:
    - Add a **newest-first** entry under `en` and every shipped product locale
@@ -156,8 +161,8 @@ Blocking steps:
    checked even though `scripts/release.mjs` skips that preflight for
    `x.y.z-beta.*` / `x.y.z-rc.*`. The preflight compiles the TypeScript
    changelog in a temporary directory, so it does not require a prior
-   workspace build. `scripts/release.mjs` still refreshes models.dev for
-   prereleases; `--skip-docs-check` exists only for a deliberate
+   workspace build. Refresh the models.dev snapshot explicitly for stable and
+   prerelease builds; `--skip-docs-check` exists only for a deliberate
    non-release bump.
 7. Commit the documentation updates so the tagged commit contains notes and
    accurate version claims for that version (alone or adjacent to the bump).

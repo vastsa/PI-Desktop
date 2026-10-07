@@ -4,7 +4,9 @@ import test from "node:test";
 import * as React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
+import { splitInlineContent } from "@pi-desktop/shared";
 import ts from "typescript";
+import { getExtraMessageAttachments } from "../src/features/chat/transcript/extra-attachments.ts";
 
 const t = (key, values) => values?.name ? `${key}: ${values.name}` : key;
 const store = {
@@ -22,7 +24,8 @@ const shared = {
   CopyButton: ({ label }) => React.createElement("button", { "aria-label": label }),
   FileRefChip: () => null,
   LinkifiedText: ({ text }) => text,
-  MessageAttachmentImage: () => null,
+  MessageAttachmentImage: ({ attachment }) =>
+    React.createElement("span", { "data-image": attachment.name }),
   MessageTimestamp: () => null,
 };
 
@@ -51,6 +54,8 @@ function loadComponent(name, extras = {}) {
     },
     "./ActionBarSlots": { ActionSlotSide: () => null },
     "../../../plugins/renderer-slots/slot-message": { slotMessage: () => undefined },
+    // The row renders the user's own order through the shared placement helper.
+    "@pi-desktop/shared": { splitInlineContent },
     ...extras,
   };
   const module = { exports: {} };
@@ -64,7 +69,7 @@ function loadComponent(name, extras = {}) {
 const origin = loadComponent("SessionMessageOrigin");
 const { MessageRow } = loadComponent("MessageRow", {
   "./SessionMessageOrigin": origin,
-  "./extra-attachments": { getExtraMessageAttachments: () => [] },
+  "./extra-attachments": { getExtraMessageAttachments },
 });
 const userMessage = {
   id: "incoming-row",
@@ -121,4 +126,42 @@ test("ordinary text cannot forge another session's provenance", () => {
   assert.match(html, /class="message-row user"/);
   assert.match(html, /aria-label="chat.editMessage"/);
   assert.doesNotMatch(html, /session-message-origin|data-session-message-kind/);
+});
+
+test("a user message keeps the place of an image the draft named inline", () => {
+  const content = "before @/scratch/pasted/a.png after";
+  const html = render({
+    ...userMessage,
+    content,
+    attachments: [
+      {
+        kind: "image",
+        name: "a.png",
+        ref: "attachments/abc",
+        mimeType: "image/png",
+        inlinePath: "@/scratch/pasted/a.png",
+      },
+    ],
+  });
+  const before = html.indexOf("before ");
+  const image = html.indexOf('data-image="a.png"');
+  const after = html.indexOf(" after");
+  assert.ok(before >= 0 && image > before && after > image, html);
+  // The message names the image once, in place: the path text becomes the chip
+  // and the attachment never repeats below the body.
+  assert.doesNotMatch(html, /scratch\/pasted\/a\.png/);
+  assert.equal(html.match(/data-image="a\.png"/g)?.length, 1);
+});
+
+test("an image without a recorded position still follows the body", () => {
+  const html = render({
+    ...userMessage,
+    content: "look at this",
+    attachments: [
+      { kind: "image", name: "b.png", ref: "attachments/def", mimeType: "image/png" },
+    ],
+  });
+  const text = html.indexOf("look at this");
+  const image = html.indexOf('data-image="b.png"');
+  assert.ok(text >= 0 && image > text, html);
 });

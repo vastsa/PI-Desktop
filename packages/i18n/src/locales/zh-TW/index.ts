@@ -233,6 +233,10 @@ export const zhTW = {
   chat: {
     tableActions: "表格操作",
     markdownPlainTextFallback: "內容較長，為維持介面回應速度，現以純文字顯示。",
+    largeTextPageControls: "大型輸出分頁",
+    largeTextPage: "第 {{current}} / {{total}} 部分",
+    largeTextPreviousPage: "上一部分",
+    largeTextNextPage: "下一部分",
     copyTableMarkdown: "複製表格為 Markdown",
     exportTableCsv: "下載表格為 CSV",
     tablePreview: "放大表格",

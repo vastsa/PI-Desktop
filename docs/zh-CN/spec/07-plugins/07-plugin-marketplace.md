@@ -33,7 +33,7 @@
 
 ### B阶段✅
 - Browse/search + 下载安装是针对官方提供商实施的
-- 官方提供商是插件中心 `plugins.aiuo.net`（B 阶段最初指向 GitHub 仓库 `vastsa/pi-desktop-plugins`；见下方「目录来源选择」与 [ADR 0276](../../../adr/0276-official-plugin-channel-and-backup-channels.md)）
+- 官方提供商是插件中心 `plugins.aiuo.net`（B 阶段最初指向 GitHub 仓库 `vastsa/pi-desktop-plugins`；见下方「目录来源选择」与 [ADR 0276](/adr/0276-official-plugin-channel-and-backup-channels)）
 - 默认目录 URL：`https://plugins.aiuo.net/catalog.json`
 - 包 URL 可以是绝对 `https://` / `http://` / `file://`，或相对路径：目录声明了 `artifactBaseUrl` 时按它解析，否则按目录 URL 解析
 - HTTPS 获取在 host-core 中使用 `curl`

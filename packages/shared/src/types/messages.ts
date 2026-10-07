@@ -61,6 +61,13 @@ export type MessageAttachment = {
    * with the user's message; other attachment kinds never carry it.
    */
   text?: string;
+  /**
+   * The `@path` text this attachment occupies inside the message content, when
+   * the user placed it between words. The transcript renders the attachment at
+   * that position instead of appending it after the text; absent means the
+   * attachment follows the body (a formatted, expanded, or legacy message).
+   */
+  inlinePath?: string;
   /** Sidecar-only hydrated image data; never persisted or sent by the host. */
   data?: string;
 };

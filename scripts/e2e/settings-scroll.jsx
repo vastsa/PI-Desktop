@@ -120,10 +120,13 @@ async function setSettingsSearch(value) {
   await settle();
 }
 async function checkCloudSyncVisibility() {
-  // Cloud sync is a regular destination: no developer mode and no badge.
+  // Cloud sync is still a development-build surface: this harness compiles the
+  // renderer with `import.meta.env.DEV` true, so the not-yet-open cloud backup
+  // is expected here. Packaged builds omit the destination, which the
+  // settings-search unit tests pin; developer mode never gated it.
   await setSettingsSearch("Cloud sync");
   const syncButton = navButton("Cloud sync");
-  assert(syncButton, "Cloud sync must appear in settings search without developer mode");
+  assert(syncButton, "Cloud sync must appear in settings search in a development build");
   assert(
     !syncButton.querySelector(".settings-nav-experimental"),
     "Cloud sync's rail entry must not carry the Experimental badge",
@@ -133,7 +136,7 @@ async function checkCloudSyncVisibility() {
   await settle();
   assert(
     useAppStore.getState().settingsTab === "sync",
-    "Cloud sync must open its page without developer mode",
+    "Cloud sync must open its page in a development build",
   );
   assert(
     !document.querySelector(".settings-section-title")?.textContent?.includes("Experimental"),
@@ -141,7 +144,7 @@ async function checkCloudSyncVisibility() {
   );
   await setSettingsSearch("");
 
-  // Developer mode no longer gates this destination, so it cannot hide the page.
+  // Developer mode does not gate this destination, so it cannot hide the page.
   settings = { ...settings, developerMode: true };
   flushSync(() => useAppStore.setState({ settings }));
   await settle();

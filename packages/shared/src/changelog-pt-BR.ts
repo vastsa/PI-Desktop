@@ -2,6 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    "version": "0.17.0",
+    "date": "2026-10-07",
+    "highlights": [
+      "Anexe imagens em linha enquanto escreve e visualize as imagens enviadas dentro da conversa.",
+      "As referências de conversa aparecem como chips legíveis e abrem diretamente a sessão vinculada.",
+      "Escolha quais servidores MCP e ferramentas cada prompt pode usar.",
+      "Volte rapidamente aos modelos usados recentemente pelo seletor.",
+      "Gere e edite imagens com sua conta ChatGPT conectada.",
+      "Provedores de plugins agora podem autenticar contas por OAuth.",
+      "Use comandos de barra com namespace para encontrar a Skill desejada.",
+      "Expanda a lista Todo para revisar todos os itens de uma checklist.",
+      "Importe modelos, Skills e servidores MCP nas respectivas páginas de Configurações.",
+      "As solicitações a provedores e mercados respeitam o proxy do sistema.",
+      "Saídas grandes de ferramentas são paginadas e os históricos são atualizados mais rápido para manter o chat responsivo.",
+      "Painéis de plugins que nunca terminam de carregar agora exibem uma falha clara.",
+    ],
+  },
+  {
     "version": "0.16.1",
     "date": "2026-10-04",
     "highlights": [

@@ -138,6 +138,8 @@ record.
 ### Always
 
 - app boot and shutdown;
+- the confirmed shutdown record is synchronously appended before any awaited
+  teardown; cancelling the quit does not write it;
 - host/agent spawn, handshake, and unexpected exit;
 - session create/delete;
 - prompt accepted/aborted;

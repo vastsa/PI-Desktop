@@ -2,6 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const enEntries: ChangelogEntry[] = [
   {
+    version: "0.17.0",
+    date: "2026-10-07",
+    highlights: [
+      "Attach images inline as you compose, then preview sent images in their place in the conversation.",
+      "See conversation references as readable chips and open the linked session directly.",
+      "Choose the MCP servers and tools each prompt can use.",
+      "Return to recently used models from the model picker.",
+      "Generate and edit images with your signed-in ChatGPT account.",
+      "Add plugin providers that authenticate through OAuth.",
+      "Use namespaced slash commands to find the Skill you want.",
+      "Expand the Todo list to review every item in a checklist.",
+      "Import models, Skills, and MCP servers from their matching Settings pages.",
+      "Respect the system proxy for provider and marketplace requests.",
+      "Keep chat responsive with paged large tool output and faster transcript updates.",
+      "Show a clear failure when a plugin panel never finishes loading.",
+    ],
+  },
+  {
     version: "0.16.1",
     date: "2026-10-04",
     highlights: [

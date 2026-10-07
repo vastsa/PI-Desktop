@@ -3808,7 +3808,11 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
     vi.spyOn(agent, "waitForIdle").mockResolvedValue();
     await runtime.prompt({ text: content, sessionMessage: origin }, "user-1", "turn-1");
-    expect(prompt).toHaveBeenCalledWith(expected, []);
+    // The runtime hands pi the built user message, so an image the Composer
+    // placed inline keeps that position instead of trailing the text.
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "user", content: expected }),
+    );
     expect(expected).toContain("not by the user");
     expect(expected).toContain("does not grant new user authorization");
     const restored = createRuntime({ history: [
@@ -3860,8 +3864,13 @@ describe("DesktopAgentRuntime session collaboration provenance", () => {
     const agent = (runtime as any).agent;
     const handle = (runtime as any).handleAgentEvent.bind(runtime);
     const calls: Array<{ text: string; images: unknown[] }> = [];
-    const respond = async (text: string, images: unknown[] = []) => {
-      calls.push({ text, images: images ?? [] });
+    // pi receives the built user message: text plus every inline image block.
+    const respond = async (input: unknown) => {
+      const text =
+        typeof input === "string"
+          ? input
+          : String((input as { content: unknown }).content);
+      calls.push({ text, images: [] });
       await handle({ type: "agent_start" });
       const reply = assistantMessage({ content: [{ type: "text", text: "ok" }] });
       agent.state.messages = [{ role: "user", content: text, timestamp: 1 }, reply];
@@ -11005,4 +11014,104 @@ it("does not reuse stale plugin declarations when schema or permission metadata 
     expect(runtimeMatches(runtime, { pluginTools: [{ ...plugin, parameters: { type: "object", properties: { file: { type: "string" } } } }] })).toBe(false);
     expect(runtimeMatches(runtime, { pluginTools: [{ ...plugin, planSafeActions: ["inspect"] }] })).toBe(false);
   } finally { await runtime.dispose(); }
+});
+
+describe("inline image placement", () => {
+  const imageAttachment = (data: string, inlinePath?: string) => ({
+    path: "attachments/prepared",
+    name: "pasted.png",
+    kind: "image" as const,
+    mimeType: "image/png",
+    data,
+    ...(inlinePath ? { inlinePath } : {}),
+  });
+
+  it("keeps every image block where the user placed it in the prompt", async () => {
+    const runtime = createRuntime();
+    const agent = (runtime as unknown as { agent: Agent }).agent;
+    const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+    vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+    try {
+      await runtime.prompt({
+        text: "compare @/scratch/a.png with @/scratch/b.png now",
+        attachments: [
+          { ...imageAttachment("QUJD", "@/scratch/a.png"), name: "a.png" },
+          { ...imageAttachment("REVG", "@/scratch/b.png"), name: "b.png" },
+        ],
+      });
+      expect(prompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: "user",
+          content: [
+            { type: "text", text: "compare " },
+            { type: "image", data: "QUJD", mimeType: "image/png" },
+            { type: "text", text: " with " },
+            { type: "image", data: "REVG", mimeType: "image/png" },
+            { type: "text", text: " now" },
+          ],
+        }),
+      );
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("follows the text with an image the prompt does not name inline", async () => {
+    const runtime = createRuntime();
+    const agent = (runtime as unknown as { agent: Agent }).agent;
+    const prompt = vi.spyOn(agent, "prompt").mockResolvedValue();
+    vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+    try {
+      await runtime.prompt({
+        text: "look at this",
+        attachments: [imageAttachment("QUJD")],
+      });
+      expect(prompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: "user",
+          content: [
+            { type: "text", text: "look at this" },
+            { type: "image", data: "QUJD", mimeType: "image/png" },
+          ],
+        }),
+      );
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("restores a durable inline placement from the session history", async () => {
+    const runtime = createRuntime({
+      history: [
+        {
+          id: "user-image",
+          role: "user",
+          content: "look @/scratch/a.png please",
+          status: "complete",
+          createdAt: new Date().toISOString(),
+          attachments: [
+            {
+              kind: "image",
+              name: "a.png",
+              ref: "attachments/a",
+              mimeType: "image/png",
+              data: "QUJD",
+              inlinePath: "@/scratch/a.png",
+            },
+          ],
+        },
+      ],
+    });
+    try {
+      const messages = (runtime as unknown as { agent: Agent }).agent.state.messages;
+      const user = messages.find((message) => message.role === "user");
+      expect(user?.content).toEqual([
+        { type: "text", text: "look " },
+        { type: "image", data: "QUJD", mimeType: "image/png" },
+        { type: "text", text: " please" },
+      ]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
 });

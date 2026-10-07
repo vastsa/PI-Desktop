@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { HighlightedCode, useCopy } from "./Markdown";
+import { LargeTextPreview } from "./LargeTextPreview";
 import { IconCheck, IconCircleAlert, IconCopy, IconInfo } from "./icons";
 import { TooltipButton, cx } from "./ui";
 import { toWorkspaceRel } from "../lib/chat-links";
@@ -157,17 +158,18 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
   );
 }
 
-function BlockBody({ block }: { block: ToolBlock }) {
+function BlockBody({ block, streaming }: { block: ToolBlock; streaming: boolean }) {
   switch (block.kind) {
     case "code":
       return (
-        <pre className={cx("tool-row-content", block.tone === "error" && "is-error")}>
-          {block.highlight ? (
-            <HighlightedCode code={block.text} lang={block.lang} />
-          ) : (
-            block.text
-          )}
-        </pre>
+        <LargeTextPreview
+          text={block.text}
+          followLatest={streaming}
+          preClassName={cx("tool-row-content", block.tone === "error" && "is-error")}
+          renderPage={(page) =>
+            block.highlight ? <HighlightedCode code={page} lang={block.lang} /> : page
+          }
+        />
       );
     case "diff":
       return (
@@ -229,9 +231,11 @@ function BlockBody({ block }: { block: ToolBlock }) {
 export function ToolDetailBlocks({
   blocks,
   plain = false,
+  streaming = false,
 }: {
   blocks: ToolBlock[];
   plain?: boolean;
+  streaming?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -251,7 +255,7 @@ export function ToolDetailBlocks({
             ) : (
               <BlockHead label={label} copy={blockCopyText(block)} />
             )}
-            <BlockBody block={block} />
+            <BlockBody block={block} streaming={streaming} />
           </section>
         );
       })}

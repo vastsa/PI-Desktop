@@ -74,7 +74,7 @@ impl Roots {
                         // Never rewrite narrative content, shell commands, source
                         // code, credentials, or arbitrary serialized user input.
                         "text" | "content" | "summary" | "command" | "code" | "prompt"
-                        | "markdown" | "instructions" | "env" => {}
+                        | "markdown" | "instructions" | "env" | "inlinePath" => {}
                         _ => changed |= self.structured(item),
                     }
                 }

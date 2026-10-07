@@ -186,6 +186,8 @@ Root 用户轮次可能包括 `revisionRootId`、`revisionCount` 和
  输入框
 附件可供性保持隐藏，直到 main、sidecar、pi 模型
 功能和持久性都会消耗有效负载。
+草稿内联命名过位置的图片会带上 `inlinePath`，运行时按它把图片块放回原位置，
+而不是统一追加在提示文本之后。
 
 ### 5.1a 向当前回合补充指令
 
@@ -1860,7 +1862,7 @@ unchanged. See [provider configuration](12-provider-config-schema.md).
 
 ## 15. 云配置同步
 
-设置 → 云同步页面使用以下 Renderer-to-Main 通道；所有通道都会转发到 Host 所有的 `configSync.*` RPC 方法：
+设置 → 云同步页面使用以下 Renderer-to-Main 通道；所有通道都会转发到 Host 所有的 `configSync.*` RPC 方法。该页面当前仅在开发构建可见；通道与其 Host 契约不变：
 
 | IPC 通道 | Host 方法 | 契约 |
 |---|---|---|

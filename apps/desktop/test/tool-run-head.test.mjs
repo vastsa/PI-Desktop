@@ -73,7 +73,10 @@ test("a run row states what the command did, not what the call did", () => {
 });
 
 test("the body is the output, with no card around it", () => {
-  assert.match(transcript, /<ToolDetailBlocks blocks=\{blocks\} plain=\{runHead\} \/>/);
+  assert.match(
+    transcript,
+    /<ToolDetailBlocks blocks=\{blocks\} plain=\{runHead\} streaming=\{status === "running"\} \/>/,
+  );
   // No heading, no frame — but the channel keeps a name, so stderr is not told
   // apart by its tint alone.
   assert.match(details, /plain \? \(\s*\/\/[\s\S]*?<span className="sr-only">\{label\}<\/span>/);

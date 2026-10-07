@@ -166,6 +166,10 @@ unchanged.
 
 ## 5. Settings workflow
 
+The destination is a development-build-only surface for now: a packaged build
+omits the Settings → Cloud sync row, page, and settings-search hits, while
+the Host-owned sync behavior described here is unchanged.
+
 Settings → Cloud sync provides WebDAV endpoint credentials, vault password,
 device label, server compatibility mode, category selection, a capability test,
 sync-now, unlock, pause, folder mapping, approval/rejection, revision

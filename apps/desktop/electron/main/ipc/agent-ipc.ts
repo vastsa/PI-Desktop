@@ -295,8 +295,12 @@ export function registerAgentIpc({
           Boolean(req.attachments?.length),
         )
       : null;
+    // The inline text the user's draft carried decides both what the message
+    // shows and where each image block sits in the prompt.
+    const steerContent = mcpExpansion?.expanded ?? req.content;
     const prepared = await preparePromptAttachments(
-      dataDir, req.sessionId, context.projectPath, req.attachments ?? [], context.supportsVision,
+      dataDir, req.sessionId, context.projectPath, req.attachments ?? [],
+      context.supportsVision, steerContent,
     );
     const session = await host.call<{ session?: { messages?: UiMessage[] } }>("session.get", {
       id: req.sessionId, messageLimit: 1,
@@ -304,7 +308,7 @@ export function registerAgentIpc({
     const message: UiMessage = {
       id: durableUserMessageId(req.messageId, session.session?.messages ?? []),
       role: "user",
-      content: mcpExpansion?.expanded ?? req.content,
+      content: steerContent,
       ...(mcpExpansion ? { command: mcpExpansion.command } : {}),
       status: "complete",
       createdAt: new Date().toISOString(),
@@ -316,11 +320,12 @@ export function registerAgentIpc({
     // never turn into a normal prompt or alter the next turn's configuration.
     return sidecar.call<{ accepted: boolean; turnId: string }>("agent.steer", {
       sessionId: req.sessionId, expectedTurnId: req.expectedTurnId, message,
-      content: appendPromptFallbackPaths(mcpExpansion?.expanded ?? req.content, prepared),
+      content: appendPromptFallbackPaths(steerContent, prepared),
       ...(mcpExpansion ? { mcpServerIds: mcpExpansion.mcpServerIds, mcpToolNames: mcpExpansion.mcpToolNames } : {}),
       attachments: prepared.filter((attachment) => attachment.inlineData).map((attachment) => ({
         path: attachment.message.ref, name: attachment.message.name, kind: attachment.message.kind,
         mimeType: attachment.message.mimeType, size: attachment.message.size, data: attachment.inlineData,
+        ...(attachment.message.inlinePath ? { inlinePath: attachment.message.inlinePath } : {}),
       })),
     });
   });
@@ -560,6 +565,9 @@ export function registerAgentIpc({
           : undefined,
         req.attachments ?? [],
         supportsVision,
+        // The text the durable message will hold: an image chip the Composer
+        // left inline keeps its place in the prompt and in the transcript.
+        promptContent,
       );
     } catch (error) {
       await finishTurn(req.sessionId, "error", (error as any)?.errorCode, {
@@ -677,6 +685,9 @@ export function registerAgentIpc({
                 mimeType: attachment.message.mimeType,
                 size: attachment.message.size,
                 data: attachment.inlineData,
+                ...(attachment.message.inlinePath
+                  ? { inlinePath: attachment.message.inlinePath }
+                  : {}),
               })),
             // A referenced conversation crosses the sidecar as quoted text for
             // this turn; the durable record above keeps it for later turns.

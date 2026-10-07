@@ -216,6 +216,10 @@ renderer-facing status):
 
 ## 5. Shutdown order
 
+After a confirmed quit, Electron Main synchronously records `app shutdown`
+before the first awaited teardown step. A force-terminated process therefore
+retains the lifecycle boundary whenever the local log write succeeds.
+
 1. Reject new prompts
 2. Flush the in-flight reply checkpoints, then abort active turns through the
    sidecar and wait, bounded (2 s total), for their aborted final rows to

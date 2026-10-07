@@ -240,6 +240,10 @@ export const ko = {
   chat: {
     tableActions: "표 작업",
     markdownPlainTextFallback: "긴 응답은 화면의 반응성을 유지하기 위해 일반 텍스트로 표시됩니다.",
+    largeTextPageControls: "대용량 출력 페이지",
+    largeTextPage: "{{total}}개 중 {{current}}번째 부분",
+    largeTextPreviousPage: "이전 부분",
+    largeTextNextPage: "다음 부분",
     copyTableMarkdown: "표를 Markdown으로 복사",
     exportTableCsv: "표를 CSV로 다운로드",
     tablePreview: "표 확대",

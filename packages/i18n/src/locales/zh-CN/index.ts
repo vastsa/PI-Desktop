@@ -233,6 +233,10 @@ export const zhCN = {
   chat: {
     tableActions: "表格操作",
     markdownPlainTextFallback: "内容较长，为保持界面响应速度，现以纯文本显示。",
+    largeTextPageControls: "大段输出分页",
+    largeTextPage: "第 {{current}} / {{total}} 部分",
+    largeTextPreviousPage: "上一部分",
+    largeTextNextPage: "下一部分",
     copyTableMarkdown: "复制表格为 Markdown",
     exportTableCsv: "下载表格为 CSV",
     tablePreview: "放大表格",

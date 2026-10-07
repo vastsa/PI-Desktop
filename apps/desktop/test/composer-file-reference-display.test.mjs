@@ -79,7 +79,7 @@ test("composer renders atomic inline chips and serializes paths on send", () => 
   assert.match(composer, /chip\.title = origin/);
   assert.match(
     composer,
-    /serializeComposerFileReferences\(outgoing\.text, outgoing\.references\)/,
+    /serializeComposerFileReferences\(rawText, activeFileReferences\)/,
   );
   assert.match(
     composer,

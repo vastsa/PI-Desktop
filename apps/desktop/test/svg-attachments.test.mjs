@@ -45,7 +45,7 @@ for (const [name, mimeType, expectedName] of [
     assert.equal(saved.mimeType, SVG_MIME);
     assert.equal(saved.name, expectedName);
     assert.deepEqual(await readFile(saved.path), svg);
-    const prepared = await preparePromptAttachments(data, sessionId, undefined, [saved], true);
+    const prepared = await preparePromptAttachments(data, sessionId, undefined, [saved], true, "");
     assert.equal(prepared[0].message.kind, "file");
     assert.equal(prepared[0].inlineData, undefined);
     assert.equal(prepared[0].message.mimeType, SVG_MIME);
@@ -64,7 +64,7 @@ test("picker import and project-path drop use the same SVG fallback", async (t) 
   assert.deepEqual(await readFile(picked.path), svg);
   const dropped = { path: source, name: "diagram.SVG", kind: "image", mimeType: "image/png" };
   for (const supportsVision of [false, true]) {
-    const prepared = await preparePromptAttachments(data, sessionId, project, [picked, dropped], supportsVision);
+    const prepared = await preparePromptAttachments(data, sessionId, project, [picked, dropped], supportsVision, "");
     assert.ok(prepared.every((item) => item.message.kind === "file" && item.inlineData === undefined));
     assert.ok(prepared.every((item) => item.message.mimeType === SVG_MIME));
     assert.ok(appendPromptFallbackPaths("Explain both", prepared).includes("diagram.SVG"));
@@ -83,7 +83,7 @@ test("legacy content-store SVG retries produce a session-readable file, not an i
   ]) {
     const attachment = { kind: "image", path: ref, ...metadata };
     const before = structuredClone(attachment);
-    const [prepared] = await preparePromptAttachments(data, sessionId, undefined, [attachment], true);
+    const [prepared] = await preparePromptAttachments(data, sessionId, undefined, [attachment], true, "");
     assert.equal(prepared.message.kind, "file");
     assert.equal(prepared.message.ref, ref);
     assert.equal(prepared.message.mimeType, SVG_MIME);
@@ -101,7 +101,7 @@ test("mixed SVG and PNG paste keeps PNG image bytes and SVG file references", as
     { name: "diagram.svg", mimeType: SVG_MIME, data: svg },
     { name: "pixel.png", mimeType: "image/png", data: png },
   ]);
-  const prepared = await preparePromptAttachments(data, sessionId, undefined, saved, true);
+  const prepared = await preparePromptAttachments(data, sessionId, undefined, saved, true, "");
   assert.deepEqual(prepared.map((item) => item.message.kind), ["file", "image"]);
   assert.equal(prepared[0].inlineData, undefined);
   assert.equal(prepared[1].message.mimeType, "image/png");
@@ -110,7 +110,7 @@ test("mixed SVG and PNG paste keeps PNG image bytes and SVG file references", as
   assert.ok(text.startsWith("Compare\n"));
   assert.ok(text.includes(saved[0].path));
   assert.ok(!text.includes(saved[1].path));
-  const nonVision = await preparePromptAttachments(data, sessionId, undefined, saved, false);
+  const nonVision = await preparePromptAttachments(data, sessionId, undefined, saved, false, "");
   assert.ok(nonVision.every((item) => item.inlineData === undefined));
   assert.ok(appendPromptFallbackPaths("Compare", nonVision).includes(saved[1].path));
 });
@@ -122,7 +122,7 @@ test("SVG classification does not bypass attachment roots or mutate failed input
   const attachment = { kind: "image", path: outside, name: "outside.svg", mimeType: SVG_MIME };
   const before = structuredClone(attachment);
   await assert.rejects(
-    preparePromptAttachments(data, sessionId, project, [attachment], true),
+    preparePromptAttachments(data, sessionId, project, [attachment], true, ""),
     { errorCode: "PATH_OUTSIDE_WORKSPACE" },
   );
   assert.deepEqual(attachment, before);
@@ -135,7 +135,7 @@ test("SVG classification does not bypass attachment roots or mutate failed input
     throw error;
   }
   await assert.rejects(
-    preparePromptAttachments(data, sessionId, project, [{ ...attachment, path: link }], true),
+    preparePromptAttachments(data, sessionId, project, [{ ...attachment, path: link }], true, ""),
     { errorCode: "PATH_OUTSIDE_WORKSPACE" },
   );
 });
@@ -232,7 +232,7 @@ test("existing non-SVG image metadata is not narrowed to a new provider allowlis
     const bytes = Buffer.from(`transport fixture: ${extension}`);
     const [saved] = await saveComposerPasteFiles(data, sessionId, [{ name: `fixture.${extension}`, mimeType, data: bytes }]);
     assert.equal(saved.kind, "image");
-    const [prepared] = await preparePromptAttachments(data, sessionId, undefined, [saved], true);
+    const [prepared] = await preparePromptAttachments(data, sessionId, undefined, [saved], true, "");
     assert.equal(prepared.message.kind, "image");
     assert.equal(prepared.message.mimeType, mimeType);
     assert.deepEqual(Buffer.from(prepared.inlineData, "base64"), bytes);

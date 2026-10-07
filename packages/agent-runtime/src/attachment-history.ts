@@ -241,9 +241,14 @@ export async function hydrateAttachmentHistory(
     const resolved = resolvedHistory[index];
     if (!resolved) return message;
     const fallbackPaths = resolved
-      .map((item) => item.fallbackPath)
-      .filter((path): path is string => Boolean(path))
-      .map((path) => formatFileInsert(path, "file"))
+      .filter(
+        (item) =>
+          Boolean(item.fallbackPath) &&
+          // A path the message already names at the user's own position needs no
+          // second copy at the end; a rewritten replay copy still travels.
+          formatFileInsert(item.fallbackPath!, "file").trim() !== item.attachment.inlinePath,
+      )
+      .map((item) => formatFileInsert(item.fallbackPath!, "file"))
       .join("")
       .trim();
     const content = message.content.trim()

@@ -2,6 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    "version": "0.17.0",
+    "date": "2026-10-07",
+    "highlights": [
+      "Ajoutez des images en ligne pendant la rédaction, puis prévisualisez-les dans la conversation une fois envoyées.",
+      "Les références aux conversations s'affichent sous forme de pastilles lisibles et ouvrent directement la session liée.",
+      "Choisissez les serveurs MCP et les outils que chaque message peut utiliser.",
+      "Retrouvez rapidement les modèles utilisés récemment depuis le sélecteur.",
+      "Générez et modifiez des images avec votre compte ChatGPT connecté.",
+      "Les fournisseurs de plugins peuvent désormais authentifier les comptes via OAuth.",
+      "Utilisez des commandes slash avec espace de noms pour trouver le Skill souhaité.",
+      "Développez la liste Todo pour consulter tous les éléments d'une checklist.",
+      "Importez des modèles, des Skills et des serveurs MCP depuis leurs pages de paramètres respectives.",
+      "Les requêtes aux fournisseurs et aux places de marché respectent le proxy système.",
+      "Les longues sorties d'outils s'affichent par pages et les transcriptions se mettent à jour plus vite pour garder un chat fluide.",
+      "Un panneau de plugin qui ne termine pas son chargement affiche maintenant clairement son échec.",
+    ],
+  },
+  {
     "version": "0.16.1",
     "date": "2026-10-04",
     "highlights": [

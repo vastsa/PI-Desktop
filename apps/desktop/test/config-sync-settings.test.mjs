@@ -33,6 +33,9 @@ const syncError = await read(
 test("cloud sync rendering follows the settings visibility gate", () => {
   assert.match(settingsPage, /tab === "sync" && !tabHidden && <ConfigSyncPage \/>/);
   assert.match(settingsIndex, /id: "sync"/);
+  // The cloud backup ships hidden from packaged builds: the destination stays
+  // a development-build surface until it opens.
+  assert.match(settingsIndex, /id: "sync"[\s\S]{0,400}developmentOnly: true/);
   assert.doesNotMatch(settingsIndex, /experimentalBadgeKey: "settings\.configSync\.experimental"/);
   assert.match(settingsIndex, /settings\.configSync\.connectionTitle/);
 });

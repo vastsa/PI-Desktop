@@ -60,10 +60,16 @@ test("tool rows render structured blocks instead of dumping JSON", async () => {
   assert.match(transcriptSource, /if \(variant !== "topology" && open && hasDetails && disclosure\.parentVisible/);
   assert.match(transcriptSource, /const blocks = variant !== "topology" && open && hasDetails \? presentation\.current\?\.blocks : null/);
   assert.match(transcriptSource, /<ToolChips chips=\{chips\} \/>/);
-  assert.match(transcriptSource, /<ToolDetailBlocks blocks=\{blocks\} plain=\{runHead\} \/>/);
+  assert.match(
+    transcriptSource,
+    /<ToolDetailBlocks blocks=\{blocks\} plain=\{runHead\} streaming=\{status === "running"\} \/>/,
+  );
   assert.match(permissionSource, /<ToolDetailBlocks blocks=\{argBlocks\} \/>/);
   // Code bodies share the transcript highlighter rather than a second cache.
-  assert.match(detailsSource, /<HighlightedCode code=\{block\.text\} lang=\{block\.lang\} \/>/);
+  assert.match(
+    detailsSource,
+    /block\.highlight \? <HighlightedCode code=\{page\} lang=\{block\.lang\} \/> : page/,
+  );
   // Diffs reuse the review card rails; hits and paths open in the work panel.
   assert.match(detailsSource, /className="diff-hunk"/);
   assert.match(detailsSource, /openTarget\(\{ kind: "file", path: rel \}\)/);

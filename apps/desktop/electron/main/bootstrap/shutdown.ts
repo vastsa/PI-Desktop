@@ -123,6 +123,9 @@ export function registerShutdownHandlers({
     }
 
     state.quitting = true;
+    // Persist the confirmed shutdown before any awaited cleanup so a forced
+    // process termination still leaves an observable lifecycle boundary.
+    logger.app("lifecycle", "info", "app shutdown");
     disposePowerSaveBlockers();
     state.tray?.destroy();
     state.tray = null;
@@ -164,7 +167,6 @@ export function registerShutdownHandlers({
         pluginPanels.closeAll(),
         pluginViews.dispose(),
       ]);
-      logger.app("lifecycle", "info", "app shutdown");
       await pluginSurfacesShutdown;
       const hostShutdown = getHost()?.dispose();
       const mcpShutdown = getMcpControl()?.stop();

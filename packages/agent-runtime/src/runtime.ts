@@ -108,6 +108,7 @@ import {
   normalizeSubagentName,
   proposalKindForMode,
   resolveSubagentToolNames,
+  splitInlineContent,
   subagentModelKey,
   subagentToolsLabel,
   type ProposalKind,
@@ -316,39 +317,47 @@ function promptText(input: RuntimePrompt): string {
     : input.text;
 }
 
-function promptContent(input: string | RuntimePrompt): UserMessage["content"] {
-  if (typeof input === "string") return input;
-  const text = promptText(input);
-  const images = (input.attachments ?? []).filter(
+/** One provider image block for an attachment whose bytes crossed this turn. */
+function promptImageBlock(attachment: RuntimePromptAttachment): ImageContent {
+  return {
+    type: "image" as const,
+    data: attachment.data!,
+    mimeType: attachment.mimeType || "image/png",
+  };
+}
+
+/** Attachments carrying image bytes this call may inline for the model. */
+function promptImages(input: RuntimePrompt): RuntimePromptAttachment[] {
+  return (input.attachments ?? []).filter(
     (attachment) =>
       attachment.kind === "image" &&
       typeof attachment.data === "string" &&
       attachment.data.length > 0,
   );
-  if (!images.length) return text;
-  return [
-    ...(text.trim() ? [{ type: "text" as const, text }] : []),
-    ...images.map((attachment) => ({
-      type: "image" as const,
-      data: attachment.data!,
-      mimeType: attachment.mimeType || "image/png",
-    })),
-  ];
 }
 
-function promptImages(input: RuntimePrompt): ImageContent[] {
-  return (input.attachments ?? [])
-    .filter(
-      (attachment) =>
-        attachment.kind === "image" &&
-        typeof attachment.data === "string" &&
-        attachment.data.length > 0,
-    )
-    .map((attachment) => ({
-      type: "image" as const,
-      data: attachment.data!,
-      mimeType: attachment.mimeType || "image/png",
-    }));
+/**
+ * The prompt the model receives. An image the user placed between words carries
+ * the `@path` the Composer serialized, so it becomes a block at that position
+ * instead of following every text block (the pre-placement behavior, which is
+ * still what an image without an `inlinePath` gets).
+ */
+function promptContent(input: string | RuntimePrompt): UserMessage["content"] {
+  if (typeof input === "string") return input;
+  const text = promptText(input);
+  const images = promptImages(input);
+  if (!images.length) return text;
+  const { parts, trailing } = splitInlineContent(text, images);
+  const blocks: Array<{ type: "text"; text: string } | ImageContent> = parts.flatMap(
+    (part): Array<{ type: "text"; text: string } | ImageContent> =>
+      part.kind === "text"
+        ? part.text
+          ? [{ type: "text" as const, text: part.text }]
+          : []
+        : [promptImageBlock(part.attachment)],
+  );
+  blocks.push(...trailing.map(promptImageBlock));
+  return blocks;
 }
 
 function runtimeAttachmentFromMessage(
@@ -362,6 +371,9 @@ function runtimeAttachmentFromMessage(
     ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
     ...(attachment.size !== undefined ? { size: attachment.size } : {}),
     ...(attachment.text ? { text: attachment.text } : {}),
+    // Recorded placement: the message content names this image at that spot, so
+    // the restored prompt keeps the block there too.
+    ...(attachment.inlinePath ? { inlinePath: attachment.inlinePath } : {}),
     ...(data ? { data } : {}),
   };
 }
@@ -8554,7 +8566,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       if (typeof modelInput === "string") {
         await this.agent.prompt(modelInput);
       } else {
-        await this.agent.prompt(promptText(modelInput), promptImages(modelInput));
+        // pi's `(text, images)` form appends every image after the text; the
+        // message form keeps an inline image block where the user placed it,
+        // which is the same content `promptContent` already built above.
+        await this.agent.prompt(incomingUserMessage);
       }
       await this.waitForIdleAndSteering();
       void this.extensionRunner?.emit("agent_settled", { type: "agent_settled" });

@@ -173,7 +173,9 @@ export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queu
         <span className="asktool-question-number">
           {t("askTool.questionNumber", { number: index + 1 })}
         </span>
-        <AskToolRichText source={current.question} />
+        <span className="asktool-question-body">
+          <AskToolRichText source={current.question} />
+        </span>
       </h3>
       <div className="asktool-options" role={current.multiSelect ? "group" : "radiogroup"}>
         {current.options.map((option, optionIndex) => {

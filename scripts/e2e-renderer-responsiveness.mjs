@@ -55,10 +55,10 @@ try {
   assert(css.length, "Build the app with pnpm build:js before running this check");
   await cp(join(renderer, "assets"), join(temp, "assets"), { recursive: true });
   await writeFile(
-    join(temp, "index.html"),
+      join(temp, "index.html"),
     `<!doctype html><meta charset="utf-8"><title>Renderer responsiveness</title>${css
       .map((path) => `<link rel="stylesheet" href="${path}">`)
-      .join("")}<style>body{margin:0;padding:16px}header{display:flex;gap:8px}#scroll-area{height:360px;overflow:auto;border:1px solid #777;margin-top:12px}#message{min-height:600px}.markdown-plain-fallback pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}</style><div id="root"></div><script src="renderer.js"></script>`,
+      .join("")}<style>body{margin:0;padding:16px}header{display:flex;gap:8px}#large-tool-result,#streaming-tool-result{max-height:200px;overflow:auto}#scroll-area{height:360px;overflow:auto;border:1px solid #777;margin-top:12px}#message{min-height:600px}.markdown-plain-fallback pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}</style><div id="root"></div><script src="renderer.js"></script>`,
   );
 
   const mainSource = `
@@ -85,10 +85,17 @@ async function until(predicate, label, ms = 4000) {
     if (await evaluate("(() => " + predicate + ")()")) return;
     await wait(15);
   }
-  throw new Error("timed out waiting for " + label);
+  const details = await evaluate("({ body: document.body.innerText.slice(0, 500), tool: document.querySelector('#large-tool-result')?.innerHTML.slice(0, 1200) })");
+  throw new Error("timed out waiting for " + label + ": " + JSON.stringify(details));
 }
 async function nativeClick(id) {
   const rect = await evaluate("(() => { const r = document.getElementById(" + JSON.stringify(id) + ").getBoundingClientRect(); return { x:r.left+r.width/2, y:r.top+r.height/2 }; })()");
+  windowRef.webContents.sendInputEvent({ type: "mouseMove", x: Math.round(rect.x), y: Math.round(rect.y) });
+  windowRef.webContents.sendInputEvent({ type: "mouseDown", x: Math.round(rect.x), y: Math.round(rect.y), button: "left", clickCount: 1 });
+  windowRef.webContents.sendInputEvent({ type: "mouseUp", x: Math.round(rect.x), y: Math.round(rect.y), button: "left", clickCount: 1 });
+}
+async function nativeClickByLabel(label, containerId) {
+  const rect = await evaluate("(() => { const root = " + JSON.stringify(containerId) + " ? document.getElementById(" + JSON.stringify(containerId) + ") : document; const e = [...root.querySelectorAll('button[aria-label]')].find(button => button.getAttribute('aria-label') === " + JSON.stringify(label) + "); if (!e) throw new Error('missing button: ' + " + JSON.stringify(label) + "); const r = e.getBoundingClientRect(); return { x:r.left+r.width/2, y:r.top+r.height/2 }; })()");
   windowRef.webContents.sendInputEvent({ type: "mouseMove", x: Math.round(rect.x), y: Math.round(rect.y) });
   windowRef.webContents.sendInputEvent({ type: "mouseDown", x: Math.round(rect.x), y: Math.round(rect.y), button: "left", clickCount: 1 });
   windowRef.webContents.sendInputEvent({ type: "mouseUp", x: Math.round(rect.x), y: Math.round(rect.y), button: "left", clickCount: 1 });
@@ -118,6 +125,8 @@ app.whenReady().then(async () => {
   windowRef.show();
   windowRef.focus();
   await until("document.getElementById('native-action') !== null", "fixture mount");
+  await until("document.querySelector('#large-tool-result .large-text-preview[data-page-count]') !== null", "large tool output page");
+  await until("document.querySelector('#streaming-tool-result .large-text-preview[data-page-count]') !== null", "streaming tool output page");
   await evaluate("window.startRendererStream()");
 
   let expected = "";
@@ -152,6 +161,14 @@ app.whenReady().then(async () => {
 
   const timings = [];
   timings.push(await nativeAction("button click", () => nativeClick("native-action"), "window.readRendererProbe().nativeClicks === 1"));
+  const streamingToolPageCount = await evaluate("Number(document.querySelector('#streaming-tool-result .large-text-preview')?.dataset.pageCount ?? 0)");
+  timings.push(await nativeAction("previous live tool output page", () => nativeClickByLabel("Previous part", "streaming-tool-result"), "document.querySelector('#streaming-tool-result .large-text-preview')?.dataset.pageIndex === " + JSON.stringify(String(streamingToolPageCount - 2))));
+  timings.push(await nativeAction("return live tool output to newest page", () => nativeClickByLabel("Next part", "streaming-tool-result"), "document.querySelector('#streaming-tool-result .large-text-preview')?.dataset.pageIndex === " + JSON.stringify(String(streamingToolPageCount - 1))));
+  const liveDelta = String.fromCharCode(10) + ("tool-stream-line" + String.fromCharCode(10)).repeat(2048) + "streaming-tool-final-marker";
+  await evaluate("window.appendStreamingToolOutput(" + JSON.stringify(liveDelta) + ")");
+  await until("Number(document.querySelector('#streaming-tool-result .large-text-preview')?.dataset.pageIndex) === Number(document.querySelector('#streaming-tool-result .large-text-preview')?.dataset.pageCount) - 1 && document.querySelector('#streaming-tool-result .large-text-preview pre')?.textContent?.includes('streaming-tool-final-marker') === true", "newest streaming tool output page");
+  timings.push(await nativeAction("next tool output page", () => nativeClickByLabel("Next part"), "document.querySelector('#large-tool-result .large-text-preview')?.dataset.pageIndex === '1'"));
+  timings.push(await nativeAction("previous tool output page", () => nativeClickByLabel("Previous part"), "document.querySelector('#large-tool-result .large-text-preview')?.dataset.pageIndex === '0'"));
   timings.push(await nativeAction("text input", async () => {
     await nativeClick("native-input");
     for (const event of [
@@ -164,6 +181,16 @@ app.whenReady().then(async () => {
   timings.push(await nativeAction("return to streaming session", () => nativeClick("switch-session"), "window.readRendererProbe().activeSession === 'session-a'"));
   timings.push(await nativeAction("collapse transcript", () => nativeClick("toggle-collapse"), "window.readRendererProbe().collapsed === true"));
   timings.push(await nativeAction("expand transcript", () => nativeClick("toggle-collapse"), "window.readRendererProbe().collapsed === false"));
+  const toolPageCount = await evaluate("Number(document.querySelector('#large-tool-result .large-text-preview')?.dataset.pageCount ?? 0)");
+  for (let page = 2; page <= toolPageCount; page += 1) {
+    await nativeClickByLabel("Next part");
+    await until(
+      "document.querySelector('#large-tool-result .large-text-preview')?.dataset.pageIndex === " + JSON.stringify(String(page - 1)),
+      "tool output page " + page,
+    );
+  }
+  const toolOutputTailMarker = await evaluate("document.querySelector('#large-tool-result .large-text-preview pre')?.textContent?.includes('tool-result-final-marker') === true");
+  if (!toolOutputTailMarker) throw new Error("last tool-output page lost its final marker");
   timings.push(await nativeAction("transcript scroll", async () => {
     await nativeClick("scroll-area");
     windowRef.webContents.sendInputEvent({ type: "keyDown", keyCode: "PageDown" });
@@ -184,15 +211,16 @@ app.whenReady().then(async () => {
   await wait(100);
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   const sourceMatches = await evaluate("window.verifyRendererSource(" + JSON.stringify(expected) + ")");
-  const finalSnapshot = await evaluate("({ ...window.readRendererProbe(), finalMarker: document.getElementById('message').textContent.includes('final-sequence-180') })");
+  const finalSnapshot = await evaluate("({ ...window.readRendererProbe(), finalMarker: document.getElementById('message').textContent.includes('final-sequence-180'), largeToolOutputPaged: window.verifyLargeToolOutput(), streamingToolTracksLatest: Number(document.querySelector('#streaming-tool-result .large-text-preview')?.dataset.pageIndex) === Number(document.querySelector('#streaming-tool-result .large-text-preview')?.dataset.pageCount) - 1 })");
   const sorted = timings.map((item) => item.durationMs).sort((a, b) => a - b);
   const p95Ms = sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)];
   const result = {
-    ok: sourceMatches && finalSnapshot.sequence === 180 && !finalSnapshot.streaming && finalSnapshot.finalMarker && scrollTop > 0 && p95Ms <= 100,
+    ok: sourceMatches && finalSnapshot.sequence === 180 && !finalSnapshot.streaming && finalSnapshot.finalMarker && finalSnapshot.largeToolOutputPaged && finalSnapshot.streamingToolTracksLatest && toolOutputTailMarker && scrollTop > 0 && p95Ms <= 100,
     sourceMatches,
     sequence: finalSnapshot.sequence,
     finalSourceLength: finalSnapshot.receivedSource.length,
     finalMarker: finalSnapshot.finalMarker,
+    toolOutputTailMarker,
     scrollTop,
     timings,
     p95Ms,

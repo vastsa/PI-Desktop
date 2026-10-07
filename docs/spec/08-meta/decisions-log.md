@@ -37,11 +37,12 @@ This log freezes previously open questions into concrete decisions.
 | D640 | User MCP tools keep the normal approval path | **`mcp_<serverId>_<tool>` calls are `medium` risk in host-core: under `ask` and `accept-edits` each call shows the approval card ("MCP server tool requires approval"), allow-once and allow-session keep their usual scope (one call / that exact tool name in that session), `auto` runs without a card, and Plan/Goal still deny. Annotations or risk values the MCP server declares about its own tools are ignored and never lower the path. Dispatch, read-only-mode handling and the `mcp_` namespace are unchanged; no host protocol or persistence change. See ADR `mcp-tool-approval-risk` and E2E-MCP-tool-requires-approval.** | MCP tools were auto-allowed as `low` risk, so a configured server could write files, call networks or run commands without any prompt under `ask`. Configuring a server is consent to launch it, not to every action its opaque tools take. |
 | D641 | Custom endpoint API style precedence | **A custom endpoint uses the saved provider-row `apiStyle` ahead of a model catalog's adapter API. Named and OAuth providers can continue to use a model-level wire API pin where their published configuration requires a different transport. This keeps a user's explicit endpoint choice stable without removing model-specific routing such as OpenCode Go Responses models. No persisted format or protocol change. See E2E-005E and issue #1313.** | A publisher's adapter default must not silently redirect a custom gateway whose user-selected API format is different. |
 | D642 | Cloud sync is a public Experimental destination *(amended by D643)* | **Remove the developer-mode and packaged-build gates from the Settings `sync` destination: its rail row, page, and settings-search hits exist for every user in every build, and a saved `sync` tab no longer falls back to General. Remote Hosts keeps both gates and its own badge. The destination keeps its Experimental badge on the rail row and page title; sync behavior, protocol, host schema, and persisted data are unchanged. See `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.** | Encrypted WebDAV backup is the app's only multi-device configuration path, and a developer-mode gate left it undiscoverable for the users who need it. |
-| D643 | Cloud sync ships without an Experimental badge | **Amend D642: the Settings `sync` destination drops `experimentalBadgeKey`, and `settings.configSync.experimental` is removed from every bundled locale. Cloud sync stays available to every user in every build. Remote Hosts keeps its own badge and both gates. Sync behavior, protocol, host schema, and persisted data are unchanged. See `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.** | Cloud sync is the app's shipped multi-device path, so an Experimental label no longer described it and only made the destination look unfinished. |
+| D643 | Cloud sync ships without an Experimental badge *(amended by D649)* | **Amend D642: the Settings `sync` destination drops `experimentalBadgeKey`, and `settings.configSync.experimental` is removed from every bundled locale. Cloud sync stays available to every user in every build. Remote Hosts keeps its own badge and both gates. Sync behavior, protocol, host schema, and persisted data are unchanged. See `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.** | Cloud sync is the app's shipped multi-device path, so an Experimental label no longer described it and only made the destination look unfinished. |
 | D644 | Portable instruction files have no size cap | **Remove the 32 KiB per-file cap Host enforced on portable instruction files. Global and project instruction content is bounded only by the same portable-entity payload bound every other domain already has, checked when a revision is uploaded and when a remote one is validated. UTF-8 validation, symlink rejection, scope selection, mapping, and approval rules are unchanged. See `03-runtime/22-config-sync.md` §2.** | A 33 KiB project `AGENTS.md` failed the entire capture with `CONFIG_SYNC_LIMIT_EXCEEDED: instruction file is too large`, which the Settings page could only show as a generic backup-size error. |
 | D450 | Signed macOS GitHub Releases | **Amend D078 / ADR 0022: GitHub tag releases Developer ID-sign, notarize (`notarytool` via electron-builder 26), staple, and Gatekeeper-verify macOS DMG/ZIP before upload, using identity `Developer ID Application: XingYu Liu (DUV63RKYTW)` / team `DUV63RKYTW` from Actions secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). Missing secrets fail the job. Local unsigned packaging without a certificate remains. `workflow_dispatch` may set `sign_macos: false` only for unsigned debug artifacts. Packaged macOS uses in-app `electron-updater` (ZIP + merged `latest-mac.yml`); Linux deb/rpm and Windows portable ZIP stay notify-and-link. No afterPack/afterSign adhoc codesign (ADR 0278).** | Production DMGs must open without a Gatekeeper warning, and signed macOS installs can download and restart into a new tag. See ADR 0289, E2E-196c, E2E-067A. |
 
 | D648 | Skill Market pins an acceptable address for mixed direct DNS answers | **Amend ADR 0272: on a direct route, when DNS includes both rejected and acceptable answers, Skill Market selects and pins one acceptable address instead of letting Chromium choose among them. Third-party content prefers a public answer; the benchmark fake-IP is eligible only under the existing opt-in. ULA-only and other non-public-only answers remain blocked. Proxied and unreadable routes keep the existing policy. See ADR 0321 and E2E-SKILL-MARKET-NET-BOUNDARY.** | Dual-stack and transparent-proxy DNS can include an unused synthetic ULA answer beside an address the request can safely use; pinning prevents the rejected address from being dialed while avoiding the false refusal. |
+| D649 | Cloud backup stays closed to users | **Amend D642 / D643: the Settings `sync` destination carries `developmentOnly: true` again, so a packaged build omits its rail row, page, and settings-search hits and falls back to General, while development builds keep it. Developer mode stays irrelevant to the destination and it still carries no Experimental badge. Sync behavior, protocol, host schema, and persisted data are unchanged; dropping the flag reopens it for packaged builds. See `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.** | The encrypted WebDAV backup is not ready to be offered to packaged-build users yet, so it stays implemented but out of the way until it opens. |
 
 ## B. Secondary implementation defaults
 
@@ -7420,7 +7421,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   available to every user in every build, and a saved `sync` tab no longer
   falls back to General. Remote Hosts keeps both gates.
 - The destination kept its Experimental badge on the rail row and page title
-  at that time (amended by D643).
+  at that time (amended by D643 and D649).
 - Covered by `apps/desktop/test/settings-developer-only-destinations.test.mjs`
   and the Cloud sync probe in `pnpm test:e2e:settings-scroll`. See
   `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.
@@ -7430,7 +7431,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - D643 amends D642: the Settings `sync` destination drops its
   `experimentalBadgeKey`, and `settings.configSync.experimental` is removed
   from every bundled locale. Cloud sync stays available to every user in
-  every build.
+  every build (amended by D649).
 - Remote Hosts keeps its own badge and both gates. Sync behavior, protocol,
   host schema, and persisted data are unchanged.
 - Covered by the badge assertions in
@@ -7517,3 +7518,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   benchmark/ULA cases in `apps/desktop/test/public-https-fetch-route.test.mjs`.
   See ADR 0321, `05-security/01-security.md` §4.1, and
   E2E-SKILL-MARKET-NET-BOUNDARY.
+
+## 2026-10-07 — Cloud backup stays closed to users (D649)
+
+- D649 amends D642 / D643: the Settings `sync` destination is
+  development-build-only again. A packaged build omits its rail row, page, and
+  settings-search hits, and a saved `sync` tab returns to General; development
+  builds keep the destination, and developer mode still plays no part.
+- The destination still carries no Experimental badge, and sync behavior,
+  protocol, host schema, and persisted data are unchanged. Removing
+  `developmentOnly: true` from the destination entry reopens it for packaged
+  builds.
+- Covered by `apps/desktop/test/settings-developer-only-destinations.test.mjs`
+  and `apps/desktop/test/config-sync-settings.test.mjs`; the Cloud sync probe in
+  `pnpm test:e2e:settings-scroll` runs a development build. See
+  `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.

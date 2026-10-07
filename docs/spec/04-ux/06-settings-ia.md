@@ -54,7 +54,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   7. **MCP** — Lucide `Server` (agent connections)
   8. **Subagents / 子智能体** — Lucide `Bot` (built-in and personal parallel agents)
   9. **Projects / 项目** — Lucide `Archive` (durable project index)
-  10. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync)
+  10. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync; development builds only)
   11. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
   12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
@@ -63,8 +63,8 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   scanability, the destinations are shown in four titled visual clusters:
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
-  (Projects), and `System` / `系统` (Cloud sync, Remote Hosts, Info;
-  Remote Hosts is developer-only). Headings are
+  (Projects), and `System` / `系统` (Cloud sync, Remote Hosts, Info; Cloud sync
+  is development-build-only, Remote Hosts is developer-only). Headings are
   muted, non-interactive labels and use whitespace for separation; no divider
   lines are rendered. These are visual landmarks only, not a second navigation
   level.
@@ -74,12 +74,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   requirement. Its rail row, page, search hits, and idle Composer entry are
   available to all users.
   It is the only place to enable Live Voice. See the Voice section below.
-- **Cloud sync / 云同步** is a regular `System` / `系统` destination
-  available to every user in every build: its rail row, page, and
-  settings-search hits never depend on developer mode and never fall back to
-  General. It ships as a stable destination, so neither the rail row nor the
-  page title carries an Experimental badge, and nothing about the sync
-  behavior itself changes.
+- **Cloud sync / 云同步** is not open to users yet: it is a
+  development-build-only `System` / `系统` destination. Its rail row, page,
+  and settings-search hits exist in development builds only; a packaged build
+  omits them, and a rail position left on it falls back to General. Developer
+  mode is not a gate either way, neither the rail row nor the page title
+  carries an Experimental badge, and nothing about the sync behavior itself
+  changes. Removing the destination's `developmentOnly` flag reopens it for
+  packaged builds.
 - **Remote Hosts / 远程主机** is a developer-only, Experimental destination: its
   rail row, its page, and its settings-search hits exist only while
   `AppSettings.developerMode` is `true`. With developer mode off the row is
@@ -832,7 +834,9 @@ system while preserving their different data ownership:
 - Developer-only destinations join and leave the rail, the page, and settings
   search as one unit: while developer mode is off the rail omits the row,
   settings search returns no hit for it, and an open Remote Hosts page returns
-  to General. Cloud sync is a regular destination and always stays reachable
+  to General. Cloud sync is development-build-only for now: packaged builds
+  omit its rail row, page, and settings-search hits and fall back to General,
+  while developer mode never gates it.
 
 ## 4. Acceptance
 
@@ -840,9 +844,9 @@ system while preserving their different data ownership:
 2. Rail shows the search pill at the top, the back-to-app action pinned at the
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
-    Subagents / 子智能体, Projects / 项目, Cloud sync / 云同步,
-   Remote Hosts / 远程主机, and Info / 信息 in that order. Cloud sync / 云同步 is
-   available to every user; Remote Hosts appears only in developer mode. Voice
+   Subagents / 子智能体, Projects / 项目, Cloud sync / 云同步 (development
+   builds only), Remote Hosts / 远程主机 (developer mode only), and Info / 信息
+   in that order. A packaged build leaves Cloud sync out; Voice
    appears between AI and Shortcuts only in development builds with developer
    mode on. The rows are grouped under Preferences / 偏好,
    Agent / 智能体, Workspace / 工作区, and System / 系统. There is no

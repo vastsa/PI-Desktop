@@ -73,23 +73,17 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-async function nextUntil(predicate, message) {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (predicate()) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  throw new Error(message);
-}
-
-test("OAuth provider hooks cross the plugin process and use permission-gated host prompts", async (t) => {
+const testOAuthProviderHooks = async (t) => {
   const audits = [];
   const notices = [];
+  const notificationSeen = deferred();
   const promptSeen = deferred();
   const promptAnswer = deferred();
   const runtime = createRuntime(t, {
     audit: (entry) => audits.push(entry),
     providerOAuthNotify: async (pluginId, loginId, event) => {
       notices.push({ pluginId, loginId, event });
+      notificationSeen.resolve();
     },
     providerOAuthPrompt: async (pluginId, loginId, input) => {
       promptSeen.resolve({ pluginId, loginId, input });
@@ -127,7 +121,7 @@ test("OAuth provider hooks cross the plugin process and use permission-gated hos
     providerId: "gateway",
     loginId: "login-fixture",
   }, undefined, provider.runtimeId);
-  await nextUntil(() => notices.length > 0, "plugin did not notify the host");
+  await notificationSeen.promise;
   assert.deepEqual(notices, [{
     pluginId: "demo.oauth",
     loginId: "login-fixture",
@@ -166,7 +160,13 @@ test("OAuth provider hooks cross the plugin process and use permission-gated hos
     }),
     (error) => error.code === "PERMISSION_DENIED",
   );
-});
+};
+
+test(
+  "OAuth provider hooks cross the plugin process and use permission-gated host prompts",
+  { timeout: 10_000 },
+  testOAuthProviderHooks,
+);
 
 test("unloading a plugin aborts its in-flight OAuth callback context", async (t) => {
   const progress = [];

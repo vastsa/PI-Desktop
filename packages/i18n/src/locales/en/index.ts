@@ -238,6 +238,10 @@ export const en = {
   chat: {
     tableActions: "Table actions",
     markdownPlainTextFallback: "Large response shown as plain text to keep the conversation responsive.",
+    largeTextPageControls: "Large output pages",
+    largeTextPage: "Part {{current}} of {{total}}",
+    largeTextPreviousPage: "Previous part",
+    largeTextNextPage: "Next part",
     copyTableMarkdown: "Copy table as Markdown",
     exportTableCsv: "Download table as CSV",
     tablePreview: "Expand table",

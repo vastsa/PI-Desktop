@@ -66,6 +66,13 @@ export type AgentPromptAttachment = {
   kind: "image" | "file";
   mimeType?: string;
   size?: number;
+  /**
+   * The `@path` text this attachment occupies inline in `content`. Electron main
+   * fills it for an attachment the user's draft placed between words, so the
+   * runtime keeps the image block at that position instead of trailing the
+   * prompt text. Absent for older callers and formatted messages.
+   */
+  inlinePath?: string;
 };
 
 export type AgentSteerRequest = Pick<

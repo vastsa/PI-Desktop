@@ -535,9 +535,12 @@ export function SessionLinkChip({ sessionId, ...position }: { sessionId: string 
 export function MessageAttachmentImage({
   attachment,
   onOpenFile,
+  inline = false,
 }: {
   attachment: MessageAttachment;
   onOpenFile: (path: string, baseDir?: string, mimeType?: string) => void;
+  /** Inline placement inside the message prose; only the trailing list has a list parent. */
+  inline?: boolean;
 }) {
   const dataUrl = useReferencedImageDataUrl(attachment.ref, attachment.mimeType);
   const [anchor, setAnchor] = useState<ImageHoverAnchor | null>(null);
@@ -554,7 +557,7 @@ export function MessageAttachmentImage({
       <span
         ref={chipRef}
         className="message-attachment-image-chip"
-        role="listitem"
+        role={inline ? undefined : "listitem"}
         onPointerEnter={reveal}
         onPointerLeave={dismiss}
         onFocus={reveal}
@@ -574,7 +577,16 @@ export function MessageAttachmentImage({
 }
 
 /** Plain user text: @paths become composer-like chips; URLs stay text links. */
-export function LinkifiedText({ text, attachments }: { text: string; attachments?: readonly MessageAttachment[] }) {
+export function LinkifiedText({
+  text,
+  attachments,
+  sourceOffset = 0,
+}: {
+  text: string;
+  attachments?: readonly MessageAttachment[];
+  /** Where this run starts in the message content, so offsets stay absolute. */
+  sourceOffset?: number;
+}) {
   const { t } = useTranslation();
   const openTarget = useOpenPreviewTarget();
   const openFileRef = useOpenChatFileRef();
@@ -583,9 +595,9 @@ export function LinkifiedText({ text, attachments }: { text: string; attachments
   return (
     <>
       {segments.map((segment, index) => {
-        const start = offset;
+        const start = sourceOffset + offset;
         offset += segment.text.length;
-        const position = { "data-source-start": start, "data-source-end": offset };
+        const position = { "data-source-start": start, "data-source-end": sourceOffset + offset };
         return segment.kind === "text" ? (
           <span key={index} {...position}>{segment.text}</span>
         ) : segment.target.kind === "file" ? (

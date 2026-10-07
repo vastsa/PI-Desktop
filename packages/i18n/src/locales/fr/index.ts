@@ -231,6 +231,10 @@ export const fr = {
   "chat": {
     "tableActions": "Actions du tableau",
     "markdownPlainTextFallback": "La réponse volumineuse est affichée en texte brut pour préserver la réactivité.",
+    "largeTextPageControls": "Pages de la sortie volumineuse",
+    "largeTextPage": "Partie {{current}} sur {{total}}",
+    "largeTextPreviousPage": "Partie précédente",
+    "largeTextNextPage": "Partie suivante",
     "copyTableMarkdown": "Copier le tableau en Markdown",
     "exportTableCsv": "Télécharger le tableau en CSV",
     "tablePreview": "Agrandir le tableau",

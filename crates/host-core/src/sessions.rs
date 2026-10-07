@@ -159,6 +159,11 @@ pub struct MessageAttachment {
     /// link. Travels with the user message so the model keeps reading it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// The `@path` text this attachment occupies inside the message content when
+    /// the user placed it between words. The transcript renders the attachment
+    /// at that position instead of appending it after the body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inline_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -456,6 +461,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
                 if let Some(text) = &attachment.text {
                     block.insert("text".into(), json!(text));
                 }
+                if let Some(inline_path) = &attachment.inline_path {
+                    block.insert("inlinePath".into(), json!(inline_path));
+                }
                 blocks.push(Value::Object(block));
             }
         }
@@ -595,6 +603,10 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
                 size: block.get("size").and_then(|v| v.as_i64()),
                 text: block
                     .get("text")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                inline_path: block
+                    .get("inlinePath")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
             })
@@ -4998,6 +5010,7 @@ mod tests {
             mime_type: Some("image/png".into()),
             size: Some(42),
             text: None,
+            inline_path: Some("@/scratch/pasted/image.png".into()),
         }]);
 
         append_message(&db, &session.id, &user, None).unwrap();
@@ -5014,6 +5027,7 @@ mod tests {
         let blocks = record.blocks;
         assert_eq!(blocks[1]["type"], "attachment");
         assert_eq!(blocks[1]["ref"], "attachments/abc123");
+        assert_eq!(blocks[1]["inlinePath"], "@/scratch/pasted/image.png");
         assert!(blocks[1].get("data").is_none());
     }
 

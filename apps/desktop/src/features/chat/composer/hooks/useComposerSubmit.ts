@@ -18,7 +18,6 @@ import {
   resolveSlashDispatch,
 } from "../slash-dispatch";
 import { readEditorValue, setEditorCaret, type ComposerFileReference } from "../editor";
-import { detachImageTokens } from "../image-attachments";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import type { ComposerDraftController } from "./useComposerDraft";
 
@@ -200,14 +199,11 @@ export function useComposerSubmit({
 
   const submit = async (steering = false) => {
     const rawText = draft.ref.current ? readEditorValue(draft.ref.current) : value;
-    // Images stay inline chips while editing; the model still receives them as
-    // the structured attachment, so their tokens leave the prompt text here.
-    const outgoing = detachImageTokens(rawText, activeFileReferences, 0);
-    const inlineContent = serializeInlineComposerFileReferences(
-      outgoing.text,
-      outgoing.references,
-    );
-    const serializedContent = serializeComposerFileReferences(outgoing.text, outgoing.references);
+    // An image chip keeps its place in the prompt: main resolves the `@path` it
+    // serializes to against the attachment it prepared, so the image block
+    // arrives where the user put it instead of trailing the text.
+    const inlineContent = serializeInlineComposerFileReferences(rawText, activeFileReferences);
+    const serializedContent = serializeComposerFileReferences(rawText, activeFileReferences);
     if (!serializedContent) return;
     if (sendBlocked) {
       if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
@@ -262,11 +258,10 @@ export function useComposerSubmit({
               visibleCommandEnd === -1
                 ? ""
                 : visibleDraft.slice(visibleCommandEnd).trim();
-            const outgoingBody = detachImageTokens(visibleCommandBody, activeFileReferences, 0);
             const accepted = await sendPrompt(
               serializeInlineComposerFileReferences(
-                outgoingBody.text,
-                outgoingBody.references,
+                visibleCommandBody,
+                activeFileReferences,
               ),
               draft.draftSnapshot(visibleCommandBody),
               activeSessionId ?? undefined,

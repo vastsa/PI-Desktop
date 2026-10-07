@@ -157,7 +157,6 @@
 }
 
 .asktool-question-number {
-  flex: none;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
@@ -206,14 +205,20 @@
 }
 
 .asktool-question {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: baseline;
-  gap: 8px;
+  column-gap: 8px;
   margin: 8px 0 0;
   color: var(--ds-text-primary);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
   line-height: var(--leading-snug);
+}
+
+.asktool-question-body {
+  display: block;
+  min-width: 0;
 }
 
 .asktool-options {
@@ -2932,6 +2937,20 @@
   line-height: var(--leading-relaxed);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.large-text-preview-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.large-text-preview-status {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .tool-row-content.is-error {

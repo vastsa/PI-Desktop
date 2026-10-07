@@ -47,9 +47,15 @@ test("hovering an image chip reveals a read-only preview card", () => {
   assert.match(hoverCard, /const target = controller\.preview \? null : hover;/);
 });
 
-test("image tokens leave the prompt text only at submission", () => {
-  assert.match(submitHook, /const outgoing = detachImageTokens\(rawText, activeFileReferences, 0\);/);
-  assert.match(submitHook, /serializeComposerFileReferences\(outgoing\.text, outgoing\.references\)/);
+test("image tokens stay in the prompt so the image keeps its place", () => {
+  // The chip's `@path` reaches main inline, which records it on the attachment
+  // and sends the image block at that position; only the bytes travel detached.
+  assert.match(
+    submitHook,
+    /const inlineContent = serializeInlineComposerFileReferences\(rawText, activeFileReferences\);/,
+  );
+  assert.match(submitHook, /const serializedContent = serializeComposerFileReferences\(rawText, activeFileReferences\);/);
+  assert.doesNotMatch(submitHook, /detachImageTokens/);
   assert.match(submitHook, /const submittedDraft = draft\.draftSnapshot\(rawText\);/);
   assert.match(composer, /attachImageTokens\(/);
 });

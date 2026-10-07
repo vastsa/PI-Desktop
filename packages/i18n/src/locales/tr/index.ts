@@ -240,6 +240,10 @@ export const tr = {
   chat: {
     tableActions: "Tablo işlemleri",
     markdownPlainTextFallback: "Büyük yanıtlar arayüzün duyarlı kalması için düz metin olarak gösterilir.",
+    largeTextPageControls: "Büyük çıktı sayfaları",
+    largeTextPage: "{{total}} bölümden {{current}}. bölüm",
+    largeTextPreviousPage: "Önceki bölüm",
+    largeTextNextPage: "Sonraki bölüm",
     copyTableMarkdown: "Tabloyu Markdown olarak kopyala",
     exportTableCsv: "Tabloyu CSV olarak indir",
     tablePreview: "Tabloyu büyüt",

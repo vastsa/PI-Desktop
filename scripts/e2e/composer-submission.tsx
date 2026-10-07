@@ -8,6 +8,7 @@ import { api } from "../../apps/desktop/src/lib/api";
 import { writeComposerDraft, deleteComposerDraft } from "../../apps/desktop/src/lib/composer-draft-cache";
 import type { ComposerDraftSnapshot } from "../../apps/desktop/src/lib/composer-smart-stop";
 import { readEditorValue } from "../../apps/desktop/src/features/chat/composer/editor";
+import { formatPromptPathText } from "@pi-desktop/shared";
 
 const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const painted = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -124,8 +125,12 @@ export async function verifyComposerSubmission(imagePath: string, i18n: i18n) {
     accepted = true;
     sendButton().click();
     await painted();
-    assert(sent.length === 2 && sent[1].content === "" && sent[1].draft?.fileReferences[0]?.path === imagePath,
-      "image-only send must preserve the attachment at the submission boundary");
+    assert(
+      sent.length === 2 &&
+        sent[1].content === formatPromptPathText(imagePath) &&
+        sent[1].draft?.fileReferences[0]?.path === imagePath,
+      "image-only send must keep the image path at the user's position and the attachment at the submission boundary",
+    );
     assert(imageChips().length === 0 && sendButton().disabled,
       "accepted image-only submission must clear the composer");
 

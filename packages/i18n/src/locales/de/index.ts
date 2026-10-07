@@ -231,6 +231,10 @@ export const de = {
   "chat": {
     "tableActions": "Tabellenaktionen",
     "markdownPlainTextFallback": "Große Antworten werden zur besseren Reaktionsfähigkeit als Klartext angezeigt.",
+    "largeTextPageControls": "Seiten der großen Ausgabe",
+    "largeTextPage": "Abschnitt {{current}} von {{total}}",
+    "largeTextPreviousPage": "Vorheriger Abschnitt",
+    "largeTextNextPage": "Nächster Abschnitt",
     "copyTableMarkdown": "Tabelle als Markdown kopieren",
     "exportTableCsv": "Tabelle als CSV herunterladen",
     "tablePreview": "Tabelle vergrößern",
