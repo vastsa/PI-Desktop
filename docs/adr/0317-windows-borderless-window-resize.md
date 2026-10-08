@@ -31,14 +31,16 @@ Electron's `thickFrame: false` fullscreen path changes display bounds without
 setting the value returned by `isFullScreen()`. Main tracks this fallback so
 fullscreen toggles, renderer events, and persisted normal bounds remain correct.
 
-Apply a native 4 DIP rounded shape to the Windows main window. Electron's
+Apply the global `--radius-md` shape (12 DIP) to the Windows main window.
+The previous 4 DIP cutout was too small to read as a rounded corner and did not
+match the shared design scale. Electron's
 `setShape` removes both drawing and pointer hit testing outside its rectangles,
 so the corner cutouts have no opaque fill while the existing native background
 colour remains theme-owned inside the window. Main reapplies the shape on
 resize, and makes it rectangular while maximized or fullscreen. A plugin with
 `ui.window.appearance` may declare an integer `cornerRadius` from 0 to 24 DIP
 alongside its background colours. The selected theme supplies it through the
-existing window-appearance IPC; removing the theme restores 4 DIP. Main validates
+existing window-appearance IPC; removing the theme restores 12 DIP. Main validates
 the value and the calling renderer before changing the native shape.
 
 ## Alternatives

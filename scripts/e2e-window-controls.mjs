@@ -8,7 +8,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -16,6 +16,10 @@ import { assertDesktopBuild, repositoryRoot, resolveElectronBinary } from "./e2e
 import { Host, resolveHostBinary } from "./e2e/host.mjs";
 
 const root = repositoryRoot();
+const radiusTokens = await readFile(join(root, "apps/desktop/src/styles/tokens.css"), "utf8");
+const mediumRadius = radiusTokens.match(/^\s*--radius-md:\s*(\d+(?:\.\d+)?)px;/m);
+assert.ok(mediumRadius, "the global medium radius token is defined");
+const defaultWindowCornerRadius = Number(mediumRadius[1]);
 const runNativeEdgeDrag = process.argv.includes("--native-edge-drag");
 const execFileAsync = promisify(execFile);
 const { appDir } = assertDesktopBuild(root);
@@ -104,7 +108,7 @@ async function checkControls(label) {
   assert.ok(ok, label);
 }
 
-async function checkWindowsRoundedCorners(label, rounded = true) {
+async function checkWindowsRoundedCorners(label, rounded = true, radius = defaultWindowCornerRadius) {
   if (process.platform !== "win32") return;
   let corners;
   let probeError;
@@ -116,11 +120,12 @@ async function checkWindowsRoundedCorners(label, rounded = true) {
         const { stdout } = await execFileAsync("pwsh.exe", [
           "-NoLogo", "-NoProfile", "-File",
           fileURLToPath(new URL("./e2e/probe-window-corners.ps1", import.meta.url)),
-          String(child.pid),
+          String(child.pid), String(radius),
         ]);
         corners = JSON.parse(stdout.trim());
         probeError = undefined;
-        return corners.topLeftCutout === rounded && corners.bottomRightCutout === rounded &&
+        return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
+          corners.bottomLeftCutout === rounded && corners.bottomRightCutout === rounded &&
           corners.innerCornerOwned === true;
       } catch (error) {
         probeError = String(error);
@@ -132,6 +137,8 @@ async function checkWindowsRoundedCorners(label, rounded = true) {
   }
   assert.deepEqual(corners, {
     topLeftCutout: rounded,
+    topRightCutout: rounded,
+    bottomLeftCutout: rounded,
     bottomRightCutout: rounded,
     innerCornerOwned: true,
     thickFrameStyle: false,
@@ -316,8 +323,8 @@ try {
     await checkWindowsRoundedCorners("theme can request square corners", false);
     assert.equal((await setRadius(25)).ok, false, "out-of-range radius is rejected");
     await checkWindowsRoundedCorners("invalid radius leaves the current shape", false);
-    assert.equal((await setRadius(4)).ok, true);
-    await checkWindowsRoundedCorners("theme switch restores the 4px default");
+    assert.equal((await setRadius(defaultWindowCornerRadius)).ok, true);
+    await checkWindowsRoundedCorners("theme switch restores the global radius token");
     const loaded = await evaluate(`window.piDesktop.invoke(
       'pi-desktop/plugin/loadDevConfirm',
       { path: ${JSON.stringify(radiusPluginPath)}, grantedPermissions: ['ui.theme', 'ui.window.appearance'] }

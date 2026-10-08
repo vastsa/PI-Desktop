@@ -970,7 +970,10 @@ Linux 保留淡入淡出和滑动退出。
   collapsed lane uses two controls, 4px spacing and an 8px gap.
   Right native-control exclusion is unchanged. Header-height background
   paint fills the excluded lane without covering panel controls.
-- 外层外壳在每个平台上都保留原生边缘/角落调整大小。无边框标题栏的
+- 外层外壳在每个平台上都保留原生边缘/角落调整大小。Windows 主窗口默认
+  使用全局 `--radius-md`（12 DIP）原生圆角，与界面的中型半径令牌一致；
+  获得 `ui.window.appearance` 授权的插件主题可选择 0 至 24 DIP，退出主题后
+  恢复为 12 DIP。最大化和全屏时窗口保持矩形。无边框标题栏的
   拖动区域不会替代操作系统的调整大小所有权。300ms 的稳定边界等待窗口
   可避免恢复逻辑与慢速指针手势竞争，原生调整大小/移动事件停止 600ms 后
   才保存正常基础边界。Electron 强制 800×560 最小尺寸，并按当前显示器

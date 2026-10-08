@@ -1974,8 +1974,9 @@ reports `isFullScreen() === false` while it uses display bounds for that mode;
 the window-control state and fullscreen event use the tracked value.
 `window/setBackgroundColor` remains Electron-local and main-renderer-only. Its
 optional `cornerRadius` is an integer from 0 to 24 DIP; omission restores the
-Windows main-window default of 4. Main applies the native shape on theme
-selection and resize, and clears the corner cutouts during maximize/fullscreen.
+Windows main-window default of 12 DIP, matching the global `--radius-md` token.
+Main applies the native shape on theme selection and resize, and clears the
+corner cutouts during maximize/fullscreen.
 Malformed values fail with `INVALID_ARGUMENT` before changing the background.
 Plugin panel chrome uses a separate Electron-local
 `pi-plugin-panel-window-control` channel with the same four semantic actions,
