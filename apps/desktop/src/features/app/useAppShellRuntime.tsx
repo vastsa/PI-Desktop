@@ -464,10 +464,16 @@ export function useAppShellRuntime() {
   }, [ready]);
 
   // Work panel views are filtered by activation scope, so opening a different
-  // project changes the list as much as installing a plugin does.
+  // project changes the list as much as installing a plugin does. The New
+  // launcher's panel group rides the same event: panels are application-level
+  // windows (no activation scope), but they still appear and vanish when a
+  // plugin loads, reloads, or is disabled.
   useEffect(() => {
     if (!ready) return;
-    const refresh = () => void useAppStore.getState().refreshPluginViews();
+    const refresh = () => {
+      void useAppStore.getState().refreshPluginViews();
+      void useAppStore.getState().refreshPluginPanels();
+    };
     refresh();
     return api.onPluginChanged(refresh);
   }, [ready, projectPath]);

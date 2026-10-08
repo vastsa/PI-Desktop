@@ -1898,7 +1898,8 @@ sklm: {
     "tabsLabel": "Seitenpanel-Tabs",
     "new": {
       "title": "Neu",
-      "open": "Neu"
+      "open": "Neu",
+      "pluginPanels": "Plugin-Panels"
     },
     "closeTab": "Schließen {{name}}",
     "tabs": {

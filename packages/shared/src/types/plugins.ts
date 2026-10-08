@@ -138,6 +138,21 @@ export type PluginViewMeta = {
   order: number;
 };
 
+/**
+ * One openable plugin panel (`ui.panel`), resolved for the work panel's New
+ * launcher the same way a contributed view is: the main process resolves the
+ * localized title against the active locale and filters by permission, and the
+ * renderer only draws the row. Opening it asks the host channel the same entry
+ * the installed row uses, so an unloadable panel fails visibly both ways.
+ */
+export type PluginPanelMeta = {
+  pluginId: string;
+  /** Already resolved against the host locale; falls back to the plugin name. */
+  title: string;
+  /** Mirrors `ui.shape`: `"panel"` (default) or the floating `"widget"`. */
+  shape?: "panel" | "widget";
+};
+
 /** A data-only scenic Settings destination rendered by the host React tree. */
 export type PluginScenicThemesDestinationMeta = {
   pluginId: string;

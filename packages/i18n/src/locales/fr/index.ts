@@ -1898,7 +1898,8 @@ sklm: {
     "tabsLabel": "Onglets du panneau latéral",
     "new": {
       "title": "Nouveau",
-      "open": "Nouveau"
+      "open": "Nouveau",
+      "pluginPanels": "Panneaux de plugins"
     },
     "closeTab": "Fermer {{name}}",
     "tabs": {

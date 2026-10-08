@@ -1922,6 +1922,7 @@ sklm: {
     new: {
       title: "New",
       open: "New",
+      pluginPanels: "Plugin panels",
     },
     closeTab: "Close {{name}}",
     tabs: {

@@ -35,6 +35,7 @@ export function createCatalogSlice({
   | "refreshPlugins"
   | "refreshPluginThemes"
   | "refreshPluginViews"
+  | "refreshPluginPanels"
   | "refreshNotifications"
   | "receiveNotification"
   | "markNotificationRead"
@@ -180,6 +181,14 @@ export function createCatalogSlice({
         set({ pluginViews: await api.listPluginViews() });
       } catch {
         set({ pluginViews: [] });
+      }
+    },
+
+    refreshPluginPanels: async () => {
+      try {
+        set({ pluginPanels: await api.listPluginPanels() });
+      } catch {
+        set({ pluginPanels: [] });
       }
     },
 

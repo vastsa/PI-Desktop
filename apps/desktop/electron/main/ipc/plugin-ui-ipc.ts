@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { IPC, type PluginScenicThemesDestinationMeta, type PluginViewMeta } from "@pi-desktop/shared";
+import { IPC, type PluginPanelMeta, type PluginScenicThemesDestinationMeta, type PluginViewMeta } from "@pi-desktop/shared";
 import { normalizeThemeAssetPath, pluginThemeId, resolvePluginLocalizedString, themeAssetUrl } from "@pi-desktop/plugin-sdk";
 import type { BrowserHost } from "../browser-host";
 import { BROWSER_PLUGIN_ID, BROWSER_VIEW_ID } from "../browser-host";
@@ -102,6 +102,38 @@ export function registerPluginUiIpc({
         a.order - b.order ||
         a.pluginName.localeCompare(b.pluginName) ||
         a.viewId.localeCompare(b.viewId),
+    );
+  });
+
+  /**
+   * Openable plugin panels (`ui.panel`, ADR 0104's detached counterpart).
+   *
+   * Unlike views, a panel is an application-level window — it reads no project
+   * context, so activation scope does not filter this list. What it does
+   * require is the granted `ui.panel` permission, the same check the open
+   * channel enforces, so the launcher offers nothing the row entry would
+   * refuse.
+   */
+  handle(IPC.invoke.pluginPanels, async () => {
+    const panels: PluginPanelMeta[] = [];
+    for (const loaded of plugins.listLoaded()) {
+      if (!loaded.manifest.ui?.panel) continue;
+      if (!loaded.permissions.has("ui.panel")) continue;
+      panels.push({
+        pluginId: loaded.manifest.id,
+        title: resolvePluginLocalizedString(
+          loaded.manifest.ui.title,
+          getUpdaterLocale(),
+          loaded.manifest.name,
+        ),
+        shape: loaded.manifest.ui.shape,
+      });
+    }
+    // Stable order across refreshes: localized title, then plugin id, so the
+    // launcher rows never reshuffle when an unrelated plugin loads.
+    return panels.sort(
+      (a, b) =>
+        a.title.localeCompare(b.title) || a.pluginId.localeCompare(b.pluginId),
     );
   });
 

@@ -488,6 +488,22 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* The panel group is the launcher's second readout (#998 item 2): smaller than
+   the page title, above its own rows, in the muted voice group labels use. */
+.work-panel-launcher-group {
+  display: grid;
+  gap: 2px;
+}
+
+.work-panel-launcher-group-label {
+  padding: 8px 8px 4px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
 .work-panel-launcher-list {
   display: flex;
   flex-direction: column;

@@ -22,8 +22,9 @@ import {
   subagentTabDisplayLabels,
   toolWorkPanelTab,
 } from "../../lib/work-panel-tabs";
-import type { PluginViewMeta } from "@pi-desktop/shared";
+import type { PluginPanelMeta, PluginViewMeta } from "@pi-desktop/shared";
 import { pluginViewIcon, pluginViewInitial } from "../../lib/plugin-view-icons";
+import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import type { WorkPanelTab } from "../../stores/app-store";
 import { cx } from "../ui";
@@ -34,6 +35,7 @@ import {
   IconClose,
   IconDiff,
   IconFileText,
+  IconPanel,
   IconPanelMaximize,
   IconPanelRestore,
   IconPlug,
@@ -203,6 +205,8 @@ export function WorkPanel({
   const openWorkPanelTab = useAppStore((s) => s.openWorkPanelTab);
   const openNewWorkPanelTab = useAppStore((s) => s.openNewWorkPanelTab);
   const replaceWorkPanelTab = useAppStore((s) => s.replaceWorkPanelTab);
+  const pluginPanels = useAppStore((s) => s.pluginPanels);
+  const showToast = useAppStore((s) => s.showToast);
   const setWidth = useAppStore((s) => s.setWorkPanelWidth);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const tools = workPanelTools(t, pluginViews);
@@ -562,6 +566,23 @@ export function WorkPanel({
       else openWorkPanelTab(item.tab);
     },
     [activateTab, openWorkPanelTab, replaceWorkPanelTab, tabs],
+  );
+
+  /**
+   * A plugin panel opens its own window (issue #998 item 2), so it claims no
+   * work-panel tab: the New page the click came from closes, and the failure
+   * toast uses the same store surface every other action reports through.
+   */
+  const selectPanel = useCallback(
+    (panel: PluginPanelMeta, sourceTabId?: string) => {
+      if (sourceTabId) closeTab(sourceTabId);
+      void api.openPluginPanel(panel.pluginId).catch((error: unknown) =>
+        showToast(error instanceof Error ? error.message : String(error), {
+          variant: "error",
+        }),
+      );
+    },
+    [closeTab, showToast],
   );
 
   const closeTabAndFocus = useCallback(
@@ -999,6 +1020,38 @@ export function WorkPanel({
                     </button>
                   ))}
                 </div>
+                {pluginPanels.length > 0 && (
+                  <div className="work-panel-launcher-group">
+                    <div className="work-panel-launcher-group-label">
+                      {t("panel.new.pluginPanels")}
+                    </div>
+                    <div
+                      className="work-panel-launcher-list"
+                      role="group"
+                      aria-label={t("panel.new.pluginPanels")}
+                    >
+                      {pluginPanels.map((panel) => (
+                        <button
+                          key={panel.pluginId}
+                          type="button"
+                          className="work-panel-launcher-row"
+                          data-work-panel-launcher-item={`panel:${panel.pluginId}`}
+                          onClick={() =>
+                            selectPanel(
+                              panel,
+                              activeTab?.kind === "new" ? activeTab.id : undefined,
+                            )
+                          }
+                        >
+                          <span className="work-panel-launcher-icon" aria-hidden>
+                            <IconPanel size={15} />
+                          </span>
+                          <span className="work-panel-launcher-label">{panel.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

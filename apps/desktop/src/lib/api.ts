@@ -63,6 +63,7 @@ import type {
   PluginSettingDefinition,
   PluginServiceStatus,
   PluginViewMeta,
+  PluginPanelMeta,
   PluginScenicThemesDestinationMeta,
   PluginTheme,
   MarketPluginSummary,
@@ -1279,6 +1280,11 @@ export const api = {
    * entry existence, with titles resolved for the active locale (ADR 0104).
    */
   listPluginViews: () => invoke<PluginViewMeta[]>(IPC.invoke.pluginViews),
+  /**
+   * Openable `ui.panel` plugin windows, already filtered by permission, with
+   * titles resolved for the active locale — the New launcher's panel group.
+   */
+  listPluginPanels: () => invoke<PluginPanelMeta[]>(IPC.invoke.pluginPanels),
   /** Create or reuse the view's web contents. Does not show it. */
   pluginViewOpen: (
     pluginId: string,

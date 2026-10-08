@@ -20,6 +20,7 @@ import type {
   PlanningStateEvent,
   PluginSummary,
   PluginTheme,
+  PluginPanelMeta,
   PluginViewMeta,
   ProjectWorkspace,
   ProviderPublic,
@@ -165,6 +166,8 @@ export type AppState = {
   pluginThemes: PluginTheme[];
   /** Work panel views contributed by loaded plugins, in menu order. */
   pluginViews: PluginViewMeta[];
+  /** Openable `ui.panel` plugin windows, for the New launcher's panel group. */
+  pluginPanels: PluginPanelMeta[];
   /** Per-session permission queue, oldest first. */
   pendingPermissions: PermissionQueues;
   /** Inline asktool requests, queued per session without an expiry. */
@@ -328,6 +331,8 @@ export type AppState = {
   refreshPluginThemes: () => Promise<void>;
   /** Reload contributed work panel views. */
   refreshPluginViews: () => Promise<void>;
+  /** Reload openable plugin panels (`ui.panel`). */
+  refreshPluginPanels: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
   /** Returns true only when this event was accepted as a new durable row. */
   receiveNotification: (notification: AppNotification) => boolean;

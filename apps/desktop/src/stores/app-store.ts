@@ -404,6 +404,10 @@ export const useAppStore = create<AppState>((set, get) => {
       // restore, so the approval artifact does not fall back to the host file tab
       // and then take a second tab from `selectSession`.
       await get().refreshPluginViews();
+      // The New launcher's panel group reads the resolved list too; the
+      // launcher only draws the group when one exists, so an empty read here
+      // costs one IPC and nothing else.
+      void get().refreshPluginPanels();
       for (const proposal of activePendingPlans) {
         openPlanArtifact(
           proposal,

@@ -296,6 +296,7 @@ export const IPC = {
     pluginScenicThemesSetBlur: "pi-desktop/plugin/scenicThemes/setBlur",
     pluginServices: "pi-desktop/plugin/services",
     pluginViews: "pi-desktop/plugin/views",
+    pluginPanels: "pi-desktop/plugin/panels",
     pluginViewOpen: "pi-desktop/plugin/view/open",
     pluginViewClose: "pi-desktop/plugin/view/close",
     pluginViewSetBounds: "pi-desktop/plugin/view/setBounds",
