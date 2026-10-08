@@ -95,6 +95,22 @@ function isAbsoluteFilePath(path: string): boolean {
   return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
 }
 
+function encodeWindowsPathForHref(path: string): string {
+  return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\")
+    ? encodeURIComponent(path)
+    : path;
+}
+
+function normalizeMarkdownWindowsPath(url: string): string {
+  // Keep a drive letter from being interpreted as a URI scheme by the
+  // renderer and sanitizer; the anchor decodes this back before file lookup.
+  const decoded = safeDecodeUri(url);
+  if (!/^[A-Za-z]:[\\/]/.test(decoded)) return url;
+  const path = parseFileRef(decoded);
+  if (path !== decoded) return url;
+  return encodeWindowsPathForHref(path);
+}
+
 /**
  * Returns the cleaned path when `text` plausibly names a file (trailing
  * `:line[:col]` refs are stripped), otherwise null. A leading `@` — the
@@ -241,6 +257,23 @@ export function resolvePreviewTarget(
   return rel ? { kind: "file", path: rel, ...(position ?? {}) } : null;
 }
 
+/** Route a plain click on a local Markdown link through the existing file opener. */
+export function handleMarkdownFileLinkClick(
+  event: { preventDefault(): void },
+  href: string,
+  root: string | null | undefined,
+  baseDir: string | undefined,
+  openFileRef: (path: string, baseDir?: string) => void,
+): boolean {
+  const decoded = safeDecodeUri(href);
+  const target = resolvePreviewTarget(decoded, root, baseDir);
+  const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
+  if (!ref) return false;
+  event.preventDefault();
+  openFileRef(ref, baseDir);
+  return true;
+}
+
 /** Tool-call args → preview target (Read/Write/Edit paths, fetch URLs). */
 export function getToolPreviewTarget(
   args: unknown,
@@ -381,6 +414,12 @@ const SKIP_MDAST = new Set([
   "html",
 ]);
 
+function normalizeMarkdownLinkDestination(node: MdastNode): void {
+  if ((node.type === "link" || node.type === "definition") && typeof node.url === "string") {
+    node.url = normalizeMarkdownWindowsPath(node.url);
+  }
+}
+
 /**
  * Turn bare file/URL tokens in markdown phrasing into link nodes so the
  * existing markdown Anchor handler can preview them. Skips fenced code,
@@ -411,6 +450,7 @@ export function linkifyMdastTree(
   function walk(node: MdastNode | null | undefined, skip: boolean) {
     if (!node || typeof node.type !== "string") return;
     inputNodeCount += 1;
+    normalizeMarkdownLinkDestination(node);
     if ((node.type === "text" || node.type === "inlineCode") && typeof node.value === "string") {
       sourceLength += node.value.length;
     }
@@ -449,9 +489,7 @@ export function linkifyMdastTree(
               ? target.url
               : target.kind === "session"
                 ? formatSessionLink(target.sessionId)
-                : /^[A-Za-z]:[\\/]/.test(target.path) || target.path.startsWith("\\\\")
-                  ? encodeURIComponent(target.path)
-                  : target.path;
+                : encodeWindowsPathForHref(target.path);
           next.push({
             type: "link",
             url,
@@ -476,9 +514,7 @@ export function linkifyMdastTree(
               ? segment.target.url
               : segment.target.kind === "session"
                 ? formatSessionLink(segment.target.sessionId)
-                : (/^[A-Za-z]:[\\/]/.test(segment.target.path) || segment.target.path.startsWith("\\\\"))
-                  ? encodeURIComponent(segment.target.path)
-                  : segment.target.path;
+                : encodeWindowsPathForHref(segment.target.path);
           next.push({
             type: "link",
             url,

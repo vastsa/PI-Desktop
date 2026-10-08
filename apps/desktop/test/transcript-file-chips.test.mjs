@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+const markdown = await read("../src/components/Markdown.tsx");
 
 const [transcript, styles, hook, api, toolDetails, toolRow, filesTab] = await Promise.all([
   readTranscriptSource(),
@@ -66,6 +67,10 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   // stays part of the public IPC surface.
   assert.doesNotMatch(hook, /api\.fsOpen\(/);
   assert.match(api, /fsOpen: \(path: string, mimeType\?: string\) =>\s*invoke\(IPC\.invoke\.fsOpen, \{ path, mimeType \}\)/);
+});
+
+test("Markdown file anchors route clicks through the existing file opener", () => {
+  assert.match(markdown, /handleMarkdownFileLinkClick\(e, href, root, baseDir, openFileRef\)/);
 });
 
 test("a tool row and a tool result row open a file where the message body does", () => {

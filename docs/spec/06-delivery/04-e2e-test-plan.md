@@ -12746,14 +12746,18 @@ are withdrawn with ADR 0165.
   every allowed root. Repeat the path-recognition checks with a POSIX project
   path containing a space on macOS or Linux.
 - **Steps**: 1) Click the full path in the Write row. 2) Click the same full
-  path as inline code and as ordinary text in the assistant reply. 3) Click a
+  path as inline code and as ordinary text in the assistant reply. On Windows,
+  also click it as a Markdown link with an angle-bracketed destination, for
+  example `[readme.md](<C:\workspace with spaces\readme.md>)`. 3) Click a
   relative path whose middle directory contains a space, then a first-segment
   spaced path using an explicit `@"..."` reference. 4) Click the outside
   absolute path.
 - **Expected**: Every allowed reference opens the exact file in the existing
   side file view; no path is truncated to its suffix or redirected to the
-  same-name file. The outside path opens nothing and reports the access limit,
-  while a missing in-root file reports that no file matches.
+  same-name file. The Windows Markdown link keeps a valid sanitized address
+  and reaches the existing file opener with the original drive path. The outside
+  path opens nothing and reports the access limit, while a missing in-root file
+  reports that no file matches.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` § fs,
   `04-ux/08-component-spec.md` §8.3.
 - **Acceptance**: C (conversation & stream), D (workspace), Quality

@@ -75,6 +75,7 @@ import {
   type ChatFileMenuTarget,
 } from "../hooks/use-chat-file-menu";
 import {
+  handleMarkdownFileLinkClick,
   remarkChatFileLinks,
   resolvePreviewTarget,
   safeDecodeUri,
@@ -666,13 +667,7 @@ function Anchor({
       openHttpUrl(href);
       return;
     }
-    const decoded = safeDecodeUri(href);
-    const target = resolvePreviewTarget(decoded, root, baseDir);
-    const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
-    if (ref) {
-      e.preventDefault();
-      openFileRef(ref, baseDir);
-    }
+    handleMarkdownFileLinkClick(e, href, root, baseDir, openFileRef);
   };
   return (
     <>
