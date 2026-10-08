@@ -9746,6 +9746,14 @@ This test plan spec is accepted when:
   rename a task from its session menu and send a first prompt if it was still
   using a default title. Expect the custom label to remain unchanged while the
   default-title task receives the normal first-prompt title.
+- Settings → AI → Session title generation (ADR 0322): pin a different title
+  model, set the ideal length to 12 and the truncation length to 20, and save
+  a custom prompt (for example "Reply with an English title"). Send a first
+  prompt in a new task; expect the generated title to follow the custom prompt
+  and never exceed 20 characters. Restore the default prompt; expect the
+  "Custom prompt active" detail to disappear and the editor to reopen on the
+  built-in prompt. Pin a model whose provider is then disabled; expect titles
+  to still be generated with the session's model.
 
 ### US-UI-08 Shortcut-only destination history
 - Navigate Settings → Project archive → a project session → Plugins.

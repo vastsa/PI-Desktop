@@ -1,4 +1,5 @@
 mod config_sync_rpc;
+mod one_shot_settings;
 mod scheduled_rpc;
 mod scheduled_tools;
 mod todos;
@@ -743,37 +744,6 @@ fn drop_session_side_data(st: &AppState, id: &str) {
 const DEFAULT_LARGE_PASTE_THRESHOLD: i64 = 600;
 const MIN_LARGE_PASTE_THRESHOLD: i64 = 1;
 const MAX_LARGE_PASTE_THRESHOLD: i64 = 1_000_000;
-/// Upper bound for one stored prompt-enhancement template, in characters.
-/// Mirrored by `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH` in
-/// `packages/shared/src/prompt-enhancement.ts`; keep the two in step.
-const MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS: usize = 8000;
-/// The placeholder a usable user template must carry.
-const PROMPT_ENHANCEMENT_DRAFT_VARIABLE: &str = "{{draft}}";
-
-/// A template override is either absent, blank (meaning "use the default"), or
-/// a non-blank string within the length bound; a user template must also carry
-/// the draft variable, or the draft never reaches the model.
-fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<String> {
-    let Some(text) = value.as_str() else {
-        return Some(format!("{field} must be a string"));
-    };
-    if text.trim().is_empty() {
-        return None;
-    }
-    if text.chars().count() > MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS {
-        return Some(format!(
-            "{field} must not exceed {MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS} characters"
-        ));
-    }
-    if field == "promptEnhancementUserTemplate" && !text.contains(PROMPT_ENHANCEMENT_DRAFT_VARIABLE)
-    {
-        return Some(format!(
-            "promptEnhancementUserTemplate must contain {PROMPT_ENHANCEMENT_DRAFT_VARIABLE}"
-        ));
-    }
-    None
-}
-
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
         object.remove("planApprovalPermissionMode");
@@ -833,25 +803,9 @@ fn normalize_settings_value(mut value: Value) -> Value {
             }
             object.insert("networkPolicy".into(), Value::Object(next));
         }
-        // A blank override means "use the built-in default", and an unusable
-        // one (wrong type, oversized, or a user template without the draft
-        // variable) falls back to the default too, rather than leaving a
-        // prompt that would silently drop the user's draft.
-        // The system prompt is part of the feature contract, not a preference:
-        // an override written by an older build is dropped so the store cannot
-        // hold a value that would never be read.
-        object.remove("promptEnhancementSystemPrompt");
-        let template_field = "promptEnhancementUserTemplate";
-        let unusable_template = match object.get(template_field) {
-            None => false,
-            Some(value) => match prompt_enhancement_template_error(template_field, value) {
-                Some(_) => true,
-                None => value.as_str().is_some_and(|text| text.trim().is_empty()),
-            },
-        };
-        if unusable_template {
-            object.remove(template_field);
-        }
+        // Prompt-enhancement and session-title prompts and lengths: blank or
+        // unusable values fall back to the built-in defaults.
+        one_shot_settings::normalize_one_shot_settings(object);
     }
     value
 }
@@ -1013,13 +967,8 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             }
         }
     }
-    if let Some(template_value) = object.get("promptEnhancementUserTemplate") {
-        if let Some(message) =
-            prompt_enhancement_template_error("promptEnhancementUserTemplate", template_value)
-        {
-            return Err(rpc_err(1002, message, "INVALID_PARAMS"));
-        }
-    }
+    one_shot_settings::validate_one_shot_settings(object)
+        .map_err(|message| rpc_err(1002, message, "INVALID_PARAMS"))?;
     if let Some(preference) = object.get("updatePreference") {
         if !matches!(preference.as_str(), Some("automatic") | Some("manual")) {
             return Err(rpc_err(
@@ -7103,6 +7052,81 @@ mod tests {
         .await
         .unwrap();
         assert!(cleared.get("promptEnhancementUserTemplate").is_none());
+    }
+
+    #[tokio::test]
+    async fn session_title_settings_round_trip_and_validate() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Nothing stored: every field is absent, so the built-in prompt and
+        // default lengths apply.
+        let settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        for field in [
+            "sessionTitleCustomPrompt",
+            "sessionTitlePrompt",
+            "sessionTitleIdealLength",
+            "sessionTitleMaxLength",
+        ] {
+            assert!(settings.get(field).is_none(), "{field}");
+        }
+
+        // A custom prompt needs no variable; it and the lengths persist.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "sessionTitleCustomPrompt": true,
+                "sessionTitlePrompt": "Short titles only.",
+                "sessionTitleProviderId": "p",
+                "sessionTitleModelId": "m",
+                "sessionTitleThinkingLevel": "low",
+                "sessionTitleIdealLength": 12,
+                "sessionTitleMaxLength": 40,
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let stored = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(stored["sessionTitlePrompt"], "Short titles only.");
+        assert_eq!(stored["sessionTitleCustomPrompt"], true);
+        assert_eq!(stored["sessionTitleIdealLength"], 12);
+        assert_eq!(stored["sessionTitleMaxLength"], 40);
+        assert_eq!(stored["sessionTitleThinkingLevel"], "low");
+
+        for patch in [
+            json!({ "sessionTitlePrompt": "x".repeat(8001) }),
+            json!({ "sessionTitleIdealLength": 61 }),
+            json!({ "sessionTitleMaxLength": 15 }),
+        ] {
+            let error = handle_request(state.clone(), "settings.set", patch, tx.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
+
+        // A blank prompt means "restore the built-in prompt".
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "sessionTitlePrompt": "", "sessionTitleCustomPrompt": false }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let cleared = handle_request(state, "settings.get", json!({}), tx)
+            .await
+            .unwrap();
+        assert!(cleared.get("sessionTitlePrompt").is_none());
+        assert_eq!(cleared["sessionTitleIdealLength"], 12);
     }
 
     #[tokio::test]

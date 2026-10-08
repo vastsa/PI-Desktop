@@ -77,7 +77,11 @@ fn require_provider_reference(st: &AppState, value: &Value, context: &str) -> Re
 }
 
 pub(crate) fn validate_application_references(st: &AppState, payload: &Value) -> Result<()> {
-    for provider_key in ["defaultProviderId", "promptEnhancementProviderId"] {
+    for provider_key in [
+        "defaultProviderId",
+        "promptEnhancementProviderId",
+        "sessionTitleProviderId",
+    ] {
         let Some(provider_id) = payload.get(provider_key).and_then(Value::as_str) else {
             continue;
         };

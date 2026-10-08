@@ -94,6 +94,30 @@ export type AppSettings = {
    * stored level is always one the model can run.
    */
   promptEnhancementThinkingLevel?: ThinkingLevel;
+  /**
+   * Whether `sessionTitlePrompt` replaces the built-in session title prompt
+   * (ADR 0322). Absent means off. Turning it off keeps the stored text.
+   */
+  sessionTitleCustomPrompt?: boolean;
+  /**
+   * Session title system-prompt override, applied only while
+   * `sessionTitleCustomPrompt` is on. `{{idealLength}}` is optional. Blank
+   * means "built-in"; host-core rejects values beyond
+   * `SESSION_TITLE_PROMPT_MAX_LENGTH`.
+   */
+  sessionTitlePrompt?: string;
+  /**
+   * Model the one-shot title summary runs on. Absent means "follow the
+   * session's model"; an unusable pin falls back to it with a warning log.
+   */
+  sessionTitleProviderId?: string;
+  sessionTitleModelId?: string;
+  /** Reasoning effort for the title one-shot. Absent means `off`. */
+  sessionTitleThinkingLevel?: ThinkingLevel;
+  /** Ideal title length substituted for `{{idealLength}}`; absent means 25. */
+  sessionTitleIdealLength?: number;
+  /** Hard cap on a generated title in code points; absent means 80. */
+  sessionTitleMaxLength?: number;
   defaultPermissionMode?: GlobalPermissionMode;
   theme: ThemePreference;
   /** UI language; `auto` (and absent) follows the OS locale. */

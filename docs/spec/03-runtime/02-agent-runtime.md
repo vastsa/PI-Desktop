@@ -94,12 +94,30 @@ finalization. A steering failure must not terminate the active run.
 
 The renderer applies a short first-prompt fallback immediately so sending a
 prompt never waits on title generation. After the first turn emits `agent_end`,
-Electron main resolves the session's effective provider/model and invokes the
-runtime's `summarizeSessionTitle` one-shot path with thinking disabled. The
-runtime supplies the initial user prompt and an optional assistant reply,
-returns only sanitized title text, and treats an empty/failing completion as a
-non-fatal result. The renderer persists a successful title through the existing
-`session.rename` path.
+Electron main reads the title settings and invokes the runtime's
+`summarizeSessionTitle` one-shot path. The runtime supplies the initial user
+prompt and an optional assistant reply in a built-in user message, returns
+only sanitized title text truncated to the configured length, and treats an
+empty/failing completion as a non-fatal result. The renderer persists a
+successful title through the existing `session.rename` path.
+
+Settings → AI → Session title generation (ADR 0322) configures the one-shot:
+
+- **Model:** request model, then the `sessionTitleProviderId` /
+  `sessionTitleModelId` pin, then the session's model. A pin that cannot launch
+  logs a warning and falls back to the session's model.
+- **Reasoning:** `sessionTitleThinkingLevel`, default `off`, clamped to the
+  launched model's ladder.
+- **System prompt:** the built-in `SESSION_TITLE_DEFAULT_PROMPT` unless
+  `sessionTitleCustomPrompt` is on with a non-blank `sessionTitlePrompt`
+  (≤ 8000 code points). Every `{{idealLength}}` is replaced literally with the
+  effective ideal length.
+- **Lengths:** `sessionTitleIdealLength` (default 25, 8–60) and
+  `sessionTitleMaxLength` (default 80, 16–200, in code points). An absent or
+  out-of-range value uses its default; the ideal length is clamped to the
+  truncation length.
+- The one-shot is bounded by a 60-second timeout; a timeout leaves the
+  fallback title in place. The 48-character first-prompt fallback is fixed.
 
 The renderer also persists a `manualTitle` marker in its local session metadata.
 Automatic summarization is skipped for that marker and for any persisted title

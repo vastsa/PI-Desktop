@@ -43,6 +43,7 @@ This log freezes previously open questions into concrete decisions.
 
 | D648 | Skill Market pins an acceptable address for mixed direct DNS answers | **Amend ADR 0272: on a direct route, when DNS includes both rejected and acceptable answers, Skill Market selects and pins one acceptable address instead of letting Chromium choose among them. Third-party content prefers a public answer; the benchmark fake-IP is eligible only under the existing opt-in. ULA-only and other non-public-only answers remain blocked. Proxied and unreadable routes keep the existing policy. See ADR 0321 and E2E-SKILL-MARKET-NET-BOUNDARY.** | Dual-stack and transparent-proxy DNS can include an unused synthetic ULA answer beside an address the request can safely use; pinning prevents the rejected address from being dialed while avoiding the false refusal. |
 | D649 | Cloud backup stays closed to users | **Amend D642 / D643: the Settings `sync` destination carries `developmentOnly: true` again, so a packaged build omits its rail row, page, and settings-search hits and falls back to General, while development builds keep it. Developer mode stays irrelevant to the destination and it still carries no Experimental badge. Sync behavior, protocol, host schema, and persisted data are unchanged; dropping the flag reopens it for packaged builds. See `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.** | The encrypted WebDAV backup is not ready to be offered to packaged-build users yet, so it stays implemented but out of the way until it opens. |
+| D650 | Session title generation is configurable | **Amend D359 / ADR 0186: Settings → AI gains a Session title generation card. The title one-shot reads, per request in Electron main, an optional custom system prompt (default = the built-in prompt with `{{idealLength}}`), a model pin (request model > pin > session model; an unlaunchable pin falls back), reasoning (default `off`), an ideal length (default 25, 8–60), and a truncation length (default 80, 16–200). Output sanitization, truncation, and the fallback title always apply; the 48-character first-prompt fallback is fixed. The one-shot is bounded by a 60-second timeout. Host-core validates the seven `sessionTitle*` keys; the IPC request shape and storage schema are unchanged. See ADR 0322 and US-UI-06.** | Users want a cheaper title model and control over title style and length; the prompt-enhancement card already established the Settings pattern, and defaults reproduce the previous behavior. |
 
 ## B. Secondary implementation defaults
 
@@ -7535,3 +7536,22 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   and `apps/desktop/test/config-sync-settings.test.mjs`; the Cloud sync probe in
   `pnpm test:e2e:settings-scroll` runs a development build. See
   `04-ux/06-settings-ia.md` and E2E-CONFIG-SYNC-webdav-portable-configuration.
+
+## 2026-10-07 — Session title generation is configurable (D650)
+
+- D650 amends D359 / ADR 0186: Settings → AI → Session title generation sets
+  the title one-shot's system prompt, model, reasoning, ideal length, and
+  truncation length. Electron main reads the settings per request; the
+  `session/summarizeTitle` request shape is unchanged.
+- The default prompt is the shipped prompt with the ideal length as the
+  optional `{{idealLength}}` variable, so default settings produce the same
+  request as before. Saving the default (or blank text) clears the override.
+- A pinned model that cannot launch falls back to the session's model, and
+  the one-shot is bounded by a 60-second timeout; either way the first-prompt
+  fallback title stays in place on failure.
+- Covered by `packages/shared/src/session-title.test.ts`,
+  `packages/agent-runtime/src/session-title-summarize.test.ts`, the host-core
+  `one_shot_settings` and settings round-trip tests, and the desktop source
+  contracts in `session-auto-title.test.mjs`, `prompt-enhancement.test.mjs`,
+  and `settings-general.test.mjs`. See ADR 0322,
+  `03-runtime/02-agent-runtime.md` §4.1, and US-UI-06.

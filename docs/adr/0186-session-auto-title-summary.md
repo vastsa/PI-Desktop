@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-08
+- Updated: 2026-10-07 (model, reasoning, prompt, and lengths are configurable; see ADR 0322)
 
 ## Context
 

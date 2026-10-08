@@ -152,6 +152,8 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /ContextUsageDisplayRow/);
   assert.match(aiSource, /PromptEnhancementCard/);
   assert.doesNotMatch(aiSource, /EnhancementModelCard/);
+  // Session title generation sits below prompt enhancement (ADR 0322).
+  assert.match(aiSource, /PromptEnhancementCard[\s\S]*SessionTitleCard/);
   assert.match(
     settingsPageSource,
     /saveSettings\(\{ contextUsageDisplay: value \}\)/,

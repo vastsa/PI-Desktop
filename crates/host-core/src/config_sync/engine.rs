@@ -1113,6 +1113,14 @@ mod tests {
         assert!(error
             .to_string()
             .starts_with("CONFIG_SYNC_DEPENDENCY: defaultProviderId"));
+        let title_error = validate_application_references(
+            &state,
+            &json!({ "sessionTitleProviderId": "provider-from-remote" }),
+        )
+        .expect_err("missing title provider should be staged");
+        assert!(title_error
+            .to_string()
+            .starts_with("CONFIG_SYNC_DEPENDENCY: sessionTitleProviderId"));
     }
 
     fn pending_approvals(value: &Value) -> Vec<(String, String, String)> {

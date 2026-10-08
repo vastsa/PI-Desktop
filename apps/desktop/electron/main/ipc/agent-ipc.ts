@@ -14,7 +14,8 @@ import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
 import type { ComposerCommandService } from "./composer-ipc";
 import type { IpcRegistrar } from "./types";
-import { withPromptEnhancementTimeout } from "../prompt-enhancement-timeout";
+import { SESSION_TITLE_TIMEOUT_MS, sessionTitleTimeoutError, withOneShotTimeout, withPromptEnhancementTimeout } from "../prompt-enhancement-timeout";
+import { pinnedOneShotModel, resolvePinnedOneShotLaunch, type OneShotModelChoice } from "../one-shot-launch";
 
 export type AgentIpcDependencies = {
   registrar: IpcRegistrar;
@@ -144,18 +145,14 @@ export function registerAgentIpc({
     }
     const settings = await host.call<any>("settings.get");
     const launchSessionId = sessionId || `prompt-enhancement:${crypto.randomUUID()}`;
-    // A pinned enhancement model is a preference, not a hard requirement: a
-    // pin whose provider was disabled, whose account was signed out, or whose
-    // binding no longer exists must not take the action down. Try the pin,
-    // fall back to the Composer's current model, and record why (ADR 0121).
-    const pinnedProviderId =
-      typeof settings?.promptEnhancementProviderId === "string"
-        ? settings.promptEnhancementProviderId.trim()
-        : "";
-    const pinnedModelId =
-      typeof settings?.promptEnhancementModelId === "string"
-        ? settings.promptEnhancementModelId.trim()
-        : "";
+    // A pinned enhancement model is a preference, not a hard requirement: try
+    // the pin, fall back to the Composer's current model, and record why
+    // (ADR 0121).
+    const pinned = pinnedOneShotModel(
+      settings,
+      "promptEnhancementProviderId",
+      "promptEnhancementModelId",
+    );
     const composerProviderId =
       typeof req.providerId === "string" ? req.providerId.trim() : undefined;
     const composerModelId =
@@ -174,23 +171,19 @@ export function registerAgentIpc({
         modelId,
         thinkingLevel: (enhancementThinkingLevel || "off") as ThinkingLevel,
       });
-    let launch: Awaited<ReturnType<typeof launchFor>>;
-    if (pinnedProviderId) {
-      try {
-        launch = await launchFor(pinnedProviderId, pinnedModelId || undefined);
-      } catch (error) {
+    const launch = await resolvePinnedOneShotLaunch({
+      pinned,
+      fallback: { providerId: composerProviderId, modelId: composerModelId },
+      launch: launchFor,
+      onPinUnavailable: (error) =>
         logger.app("session", "warn", "prompt enhancement model unavailable", {
           data: {
-            pinnedProviderId,
-            pinnedModelId: pinnedModelId || undefined,
+            pinnedProviderId: pinned.providerId,
+            pinnedModelId: pinned.modelId,
             error: error instanceof Error ? error.message : String(error),
           },
-        });
-        launch = await launchFor(composerProviderId, composerModelId);
-      }
-    } else {
-      launch = await launchFor(composerProviderId, composerModelId);
-    }
+        }),
+    });
     const runtimeProvider = {
       ...launch.sidecarParams.provider,
       ...(launch.sidecarParams.provider.authKind === OAUTH_AUTH_KIND
@@ -235,17 +228,40 @@ export function registerAgentIpc({
       });
     }
     const settings = await host.call<any>("settings.get");
-    const launch = await resolveAgentRuntimeLaunch(
-      `title-summary:${sessionId}`,
-      session,
-      settings,
-      {
-        mode: "agent",
-        providerId: typeof req.providerId === "string" ? req.providerId.trim() : undefined,
-        modelId: typeof req.modelId === "string" ? req.modelId.trim() : undefined,
-        thinkingLevel: "off",
-      },
-    );
+    // Title settings are read here per request (ADR 0322), so a change applies
+    // to the next title and never rewrites existing ones. An explicit model in
+    // the request wins over the settings pin; a pin that cannot launch falls
+    // back to the session's model, which is the pre-settings behavior.
+    const requestProviderId =
+      typeof req.providerId === "string" ? req.providerId.trim() : undefined;
+    const requestModelId = typeof req.modelId === "string" ? req.modelId.trim() : undefined;
+    const pinned: OneShotModelChoice = requestProviderId
+      ? {}
+      : pinnedOneShotModel(settings, "sessionTitleProviderId", "sessionTitleModelId");
+    const titleThinkingLevel =
+      typeof settings?.sessionTitleThinkingLevel === "string"
+        ? settings.sessionTitleThinkingLevel.trim()
+        : "";
+    const launch = await resolvePinnedOneShotLaunch({
+      pinned,
+      fallback: { providerId: requestProviderId, modelId: requestModelId },
+      launch: (providerId?: string, modelId?: string) =>
+        resolveAgentRuntimeLaunch(`title-summary:${sessionId}`, session, settings, {
+          mode: "agent",
+          providerId,
+          modelId,
+          thinkingLevel: (titleThinkingLevel || "off") as ThinkingLevel,
+        }),
+      onPinUnavailable: (error) =>
+        logger.app("session", "warn", "session title model unavailable", {
+          sessionId,
+          data: {
+            pinnedProviderId: pinned.providerId,
+            pinnedModelId: pinned.modelId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        }),
+    });
     const runtimeProvider = {
       ...launch.sidecarParams.provider,
       ...(launch.sidecarParams.provider.authKind === OAUTH_AUTH_KIND
@@ -253,12 +269,35 @@ export function registerAgentIpc({
         : {}),
     } as RuntimeProviderConfig;
 
-    const title = await summarizeSessionTitle(
-      runtimeProvider,
-      userPrompt,
-      req.assistantReply,
-      "off",
-      { sessionId },
+    // Bounded like prompt enhancement: reasoning can make a title slow, and a
+    // timeout leaves the first-prompt fallback title in place.
+    const title = await withOneShotTimeout(
+      (signal) =>
+        summarizeSessionTitle(
+          runtimeProvider,
+          userPrompt,
+          req.assistantReply,
+          canonicalThinkingLevel(launch.sidecarParams.thinkingLevel),
+          {
+            signal,
+            sessionId,
+            customPrompt: settings?.sessionTitleCustomPrompt === true,
+            prompt:
+              typeof settings?.sessionTitlePrompt === "string"
+                ? settings.sessionTitlePrompt
+                : undefined,
+            idealLength:
+              typeof settings?.sessionTitleIdealLength === "number"
+                ? settings.sessionTitleIdealLength
+                : undefined,
+            maxLength:
+              typeof settings?.sessionTitleMaxLength === "number"
+                ? settings.sessionTitleMaxLength
+                : undefined,
+          },
+        ),
+      SESSION_TITLE_TIMEOUT_MS,
+      sessionTitleTimeoutError,
     );
     logger.app("session", "info", "session title summarized", {
       sessionId,

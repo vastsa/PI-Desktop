@@ -44,6 +44,7 @@
 | D644 | 便携指令文件没有体积上限 | **移除 Host 对便携指令文件施加的 32 KiB 单文件上限。全局与项目指令内容只受其他域同样拥有的便携实体负载上限约束，并在上传修订与校验远端修订时检查。UTF-8 校验、symlink 拒绝、作用域选择、映射与审批规则均不变。见 `03-runtime/22-config-sync.md` §2。** | 一个 33 KiB 的项目 `AGENTS.md` 会让整次采集以 `CONFIG_SYNC_LIMIT_EXCEEDED: instruction file is too large` 失败，而设置页只能把它显示为泛化的备份体积错误。 |
 | D648 | 混合直接 DNS 结果时固定使用可接受地址 | **修订 ADR 0272：在直连路由上，当 DNS 同时包含被拒绝与可接受的结果时，技能市场会选择并固定到一个可接受地址，而不会让 Chromium 在这些地址中自行选择。第三方内容优先使用公网地址；仅在现有策略允许时使用 `benchmark` 假 IP。仅返回 ULA 或其他非公网地址时仍会拦截。代理与无法读取的路由保持现有策略。见 ADR 0321 与 E2E-SKILL-MARKET-NET-BOUNDARY。** | 双栈与透明代理 DNS 可能在可安全使用的地址旁返回未使用的合成 ULA 地址；固定已通过校验的地址可避免连接到被拒绝结果并消除误拦截。 |
 | D649 | 云备份暂不对外开放 | **修订 D642 / D643：设置中的 `sync` 目的地重新带上 `developmentOnly: true`，因此打包构建会省略其导轨行、页面和设置搜索命中并回落到常规，开发构建则保留该目的地。开发者模式与它无关，它仍不带实验性徽章。同步行为、协议、Host schema 与持久化数据均不变；移除该标记即可对打包构建重新开放。见 `04-ux/06-settings-ia.md` 与 E2E-CONFIG-SYNC-webdav-portable-configuration。** | 加密 WebDAV 备份尚未准备好提供给打包构建用户，因此先保持已实现但不出现在界面上，直到正式开放。 |
+| D650 | 会话标题生成可配置 | **修订 D359 / ADR 0186：设置 → AI 新增“会话标题生成”卡片。标题一次性补全由 Electron 主进程按请求读取：可选的自定义系统提示词（默认即内置提示词，带 `{{idealLength}}`）、模型固定（请求模型 > 固定模型 > 会话模型；无法启动的固定模型会回退）、思考强度（默认 `off`）、理想长度（默认 25，8–60）与截断长度（默认 80，16–200）。输出清理、截断与回退标题始终生效；48 字符的首轮提示回退长度固定不变。一次性补全受 60 秒超时约束。Host-core 校验 7 个 `sessionTitle*` 键；IPC 请求结构与存储 schema 不变。见 ADR 0322 与 US-UI-06。** | 用户希望用更便宜的模型生成标题，并控制标题风格与长度；提示词增强卡片已建立了设置模式，默认值复现原有行为。 |
 | D450 | 签名的 macOS GitHub Release | **修订 D078 / ADR 0022：GitHub tag 发布使用身份 `Developer ID Application: XingYu Liu (DUV63RKYTW)` / 团队 `DUV63RKYTW`，通过 Actions 密钥（`CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`）对 macOS DMG/ZIP 做 Developer ID 签名、`notarytool` 公证、装订和 Gatekeeper 校验；缺少密钥则失败。无证书的本地未签名打包仍可用。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物。打包的 macOS 走应用内 `electron-updater`（ZIP + 合并后的 `latest-mac.yml`）；Linux deb/rpm 与 Windows 便携版 ZIP 仍为通知并打开发布页。禁止 afterPack/afterSign adhoc 签名（ADR 0278）。** | 正式 DMG 应无需 Gatekeeper 警告即可打开，已签名 macOS 安装可下载并重启到新 tag。见 ADR 0289、E2E-196c、E2E-067A。 |
 
 ## B. 辅助实现默认值
@@ -5299,3 +5300,18 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   `apps/desktop/test/config-sync-settings.test.mjs` 覆盖，`pnpm test:e2e:settings-scroll`
   的云同步探针跑的是开发构建。见 `04-ux/06-settings-ia.md` 与
   E2E-CONFIG-SYNC-webdav-portable-configuration。
+
+## 2026-10-07 —— 会话标题生成可配置（D650）
+
+- D650 修订 D359 / ADR 0186：设置 → AI → 会话标题生成可设置标题一次性补全的系统提示词、
+  模型、思考强度、理想长度与截断长度。Electron 主进程按请求读取这些设置；
+  `session/summarizeTitle` 请求结构不变。
+- 默认提示词即原内置提示词，只是把理想长度改为可选的 `{{idealLength}}` 变量，因此默认设置
+  发出的请求与之前一致。保存默认文本（或空白文本）会清除自定义覆盖。
+- 无法启动的固定模型会回退到会话模型，一次性补全受 60 秒超时约束；失败时首轮提示回退标题
+  保持不变。
+- 由 `packages/shared/src/session-title.test.ts`、
+  `packages/agent-runtime/src/session-title-summarize.test.ts`、host-core 的
+  `one_shot_settings` 与设置往返测试，以及 `session-auto-title.test.mjs`、
+  `prompt-enhancement.test.mjs`、`settings-general.test.mjs` 中的桌面源码契约覆盖。见 ADR 0322、
+  `03-runtime/02-agent-runtime.md` §4.1 与 US-UI-06。

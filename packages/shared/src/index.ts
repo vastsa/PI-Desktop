@@ -68,6 +68,7 @@ export * from "./session-outcomes.js";
 export * from "./tray-sessions.js";
 export * from "./window-chrome.js";
 export * from "./prompt-enhancement.js";
+export * from "./session-title.js";
 export * from "./native-web-search.js";
 export * from "./native-web-search-transport.js";
 export * from "./header-value.js";

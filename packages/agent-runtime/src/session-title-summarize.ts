@@ -6,17 +6,27 @@ import type {
   SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@pi-desktop/shared";
+import {
+  SESSION_TITLE_DEFAULT_PROMPT,
+  SESSION_TITLE_IDEAL_LENGTH_DEFAULT,
+  SESSION_TITLE_MAX_LENGTH_DEFAULT,
+  renderSessionTitleSystemPrompt,
+  resolveSessionTitleSystemPrompt,
+  resolveSessionTitleLengths,
+  type SessionTitleSettingsOverrides,
+} from "@pi-desktop/shared";
 import { completeOneShot } from "./one-shot-complete.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 
-export const SESSION_TITLE_SUMMARIZE_SYSTEM_PROMPT =
-  "You generate a short, concise, descriptive session title summarizing the conversation based on the user's initial prompt and context.\n" +
-  "Rules:\n" +
-  "1. Output ONLY the title text. Do NOT wrap in quotes, brackets, or backticks.\n" +
-  "2. Do not include markdown formatting, trailing punctuation, or emojis.\n" +
-  "3. Keep it under 25 characters (or 4-7 words).\n" +
-  "4. Use the primary language of the user's prompt (e.g. Chinese for Chinese requests, English for English requests).\n" +
-  "5. Focus on the key topic or action (e.g. \"Debug WebSocket reconnect\", \"重构用户认证模块\").";
+/**
+ * The built-in prompt rendered with the default ideal length. Kept as a
+ * runtime-owned alias so callers and specs that name it keep working now that
+ * the text lives in `@pi-desktop/shared` (ADR 0322).
+ */
+export const SESSION_TITLE_SUMMARIZE_SYSTEM_PROMPT = renderSessionTitleSystemPrompt(
+  SESSION_TITLE_DEFAULT_PROMPT,
+  SESSION_TITLE_IDEAL_LENGTH_DEFAULT,
+);
 
 export type SessionTitleSummarizeStream = (
   model: Model<Api>,
@@ -24,15 +34,26 @@ export type SessionTitleSummarizeStream = (
   options?: SimpleStreamOptions,
 ) => AssistantMessageEventStream;
 
-export type SessionTitleSummarizeOptions = {
+/**
+ * `customPrompt` / `prompt` / `idealLength` / `maxLength` carry the user's
+ * saved settings; absent or unusable values fall back to the built-in prompt
+ * and default lengths.
+ */
+export type SessionTitleSummarizeOptions = SessionTitleSettingsOverrides & {
   signal?: AbortSignal;
   stream?: SessionTitleSummarizeStream;
   sessionId?: string;
 };
 
+/**
+ * Build the one-shot context. The system prompt is overridable; the user
+ * message framing is built in so a custom prompt can never drop the
+ * conversation content.
+ */
 export function sessionTitleSummarizeContext(
   userPrompt: string,
   assistantReply?: string,
+  overrides: SessionTitleSettingsOverrides = {},
 ): Context {
   const cleanPrompt = userPrompt.trim().slice(0, 1000);
   const cleanReply = assistantReply ? assistantReply.trim().slice(0, 500) : "";
@@ -41,7 +62,7 @@ export function sessionTitleSummarizeContext(
     : `User Prompt:\n${cleanPrompt}`;
 
   return {
-    systemPrompt: SESSION_TITLE_SUMMARIZE_SYSTEM_PROMPT,
+    systemPrompt: resolveSessionTitleSystemPrompt(overrides),
     messages: [
       {
         role: "user",
@@ -52,7 +73,15 @@ export function sessionTitleSummarizeContext(
   };
 }
 
-export function cleanSummarizedTitle(raw: string): string {
+/**
+ * Sanitize a model answer into a title, capped at `maxLength` Unicode code
+ * points so a cut never leaves half a surrogate pair. This runs whatever the
+ * prompt says, which is why the prompt itself can be user-editable.
+ */
+export function cleanSummarizedTitle(
+  raw: string,
+  maxLength: number = SESSION_TITLE_MAX_LENGTH_DEFAULT,
+): string {
   let text = raw.trim();
   // Remove markdown quotes, code blocks, bold markers
   text = text.replace(/^[`"'\u201c\u201d\u300c\u300d]+|[`"'\u201c\u201d\u300c\u300d]+$/g, "").trim();
@@ -62,7 +91,8 @@ export function cleanSummarizedTitle(raw: string): string {
   text = text.replace(/\s+/g, " ");
   // Remove trailing period or punctuation
   text = text.replace(/[.。!！?？]+$/, "").trim();
-  return text.slice(0, 80);
+  const codePoints = [...text];
+  return codePoints.length > maxLength ? codePoints.slice(0, maxLength).join("") : text;
 }
 
 /**
@@ -77,7 +107,7 @@ export async function summarizeSessionTitle(
 ): Promise<string> {
   const result = await completeOneShot(
     provider,
-    sessionTitleSummarizeContext(userPrompt, assistantReply),
+    sessionTitleSummarizeContext(userPrompt, assistantReply, options),
     thinkingLevel,
     {
       signal: options.signal,
@@ -87,5 +117,5 @@ export async function summarizeSessionTitle(
       emptyErrorMessage: "The model returned an empty session title.",
     },
   );
-  return cleanSummarizedTitle(result.text);
+  return cleanSummarizedTitle(result.text, resolveSessionTitleLengths(options).maxLength);
 }

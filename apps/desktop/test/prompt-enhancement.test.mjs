@@ -80,9 +80,10 @@ test("prompt enhancement has complete English-first locale coverage", () => {
 
 test("prompt-enhancement settings expose templates, restore, and the draft variable", async () => {
   const card = await read("../src/features/settings/prompt-enhancement-card.tsx");
+  const sheet = await read("../src/features/settings/one-shot-prompt-editor-sheet.tsx");
   const settingsPage = await read("../src/features/settings/SettingsPage.tsx");
   const shared = await read("../../../packages/shared/src/prompt-enhancement.ts");
-  const hostCore = await read("../../../crates/host-core/src/rpc/mod.rs");
+  const hostCore = await read("../../../crates/host-core/src/rpc/one_shot_settings.rs");
 
   // The card is reachable from the AI settings tab.
   assert.match(settingsPage, /PromptEnhancementCard/);
@@ -90,10 +91,13 @@ test("prompt-enhancement settings expose templates, restore, and the draft varia
   assert.match(card, /promptEnhancementUserTemplate/);
   // The system prompt is not overridable; the card must not offer a field for it.
   assert.doesNotMatch(card, /promptEnhancementSystemPrompt/);
-  // Editing happens in a sheet, opened from the card, matching the subagent editor.
-  assert.match(card, /ext-sheet-overlay/);
-  assert.match(card, /ext-sheet-actions/);
-  assert.match(card, /portalOverlay/);
+  // Editing happens in a sheet, opened from the card, matching the subagent
+  // editor. The sheet is shared with session title generation (ADR 0322).
+  assert.match(card, /OneShotPromptEditorSheet/);
+  assert.match(card, /PROMPT_ENHANCEMENT_DRAFT_VARIABLE/);
+  assert.match(sheet, /ext-sheet-overlay/);
+  assert.match(sheet, /ext-sheet-actions/);
+  assert.match(sheet, /portalOverlay/);
   assert.match(card, /promptEnhancementCustomTemplate/);
   // No switch — the edit button is the only control on the row; saving a
   // non-empty template activates it, restoring default deactivates.
@@ -125,9 +129,10 @@ test("prompt-enhancement settings expose templates, restore, and the draft varia
 
   // host-core validates before persisting, so no other writer can store a
   // template that would silently drop the draft.
-  assert.match(hostCore, /fn prompt_enhancement_template_error/);
-  assert.match(hostCore, /MAX_PROMPT_ENHANCEMENT_TEMPLATE_CHARS/);
-  assert.match(hostCore, /promptEnhancementUserTemplate must contain/);
+  assert.match(hostCore, /fn one_shot_template_error/);
+  assert.match(hostCore, /MAX_ONE_SHOT_TEMPLATE_CHARS/);
+  assert.match(hostCore, /PROMPT_ENHANCEMENT_DRAFT_VARIABLE: &str = "\{\{draft\}\}"/);
+  assert.match(hostCore, /must contain \{variable\}/);
 
   // The one-shot keeps its boundary: no history, no tools.
   assert.match(runtime, /promptEnhancementContext/);
@@ -195,6 +200,7 @@ test("the enhancement model and reasoning are rows on the Prompt enhancement car
   const modelPage = await read("../src/components/settings/ModelConfigPage.tsx");
   const search = await read("../src/lib/settings-search.ts");
   const card = await read("../src/components/settings/EnhancementModelCard.tsx");
+  const rows = await read("../src/components/settings/OneShotModelRows.tsx");
 
   const aiStart = settingsPage.indexOf('{tab === "ai" && settings && (');
   const shortcutsStart = settingsPage.indexOf('{tab === "shortcuts" && settings && (');
@@ -218,19 +224,21 @@ test("the enhancement model and reasoning are rows on the Prompt enhancement car
   assert.match(card, /t\("settings\.promptEnhancementModel"\)/);
 
   // Same control as the default-model row: one anchored menu, one search field.
-  assert.match(card, /AnchoredMenu/);
-  assert.match(card, /model-default-anchor/);
+  // The rows are shared (OneShotModelRows); the wrapper binds the keys and copy.
+  assert.match(card, /OneShotModelRows/);
+  assert.match(rows, /AnchoredMenu/);
+  assert.match(rows, /model-default-anchor/);
   assert.match(card, /promptEnhancementProviderId/);
   assert.match(card, /promptEnhancementModelId/);
   assert.match(card, /promptEnhancementModelFollow/);
   assert.match(card, /promptEnhancementModelUnavailable/);
-  assert.match(card, /pickModel/);
+  assert.match(rows, /pickModel/);
 
-  assert.match(card, /SettingsRow/);
+  assert.match(rows, /SettingsRow/);
 });
 
 test("the reasoning row follows the selected model's real ladder", async () => {
-  const card = await read("../src/components/settings/EnhancementModelCard.tsx");
+  const card = await read("../src/components/settings/OneShotModelRows.tsx");
 
   // Reuse the Composer's model-aware resolution instead of the canonical list.
   assert.match(card, /thinkingProviderForModel/);

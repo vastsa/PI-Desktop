@@ -1068,11 +1068,17 @@ Minimal interface:
   `INVALID_PARAMS`; a successful rename changes only session metadata and does
   not alter transcript content, message count, or activity timestamps.
 - `session/summarizeTitle({ sessionId, userPrompt, assistantReply? }) ->
-  { title }` validates the session and prompt in Electron main, resolves that
-  session's provider/model, and runs one `thinkingLevel: "off"` one-shot
-  completion. It never writes the title itself; the renderer applies the
-  result through `session/rename` only while the session still has a default or
-  first-prompt fallback title. A one-shot failure leaves that fallback intact.
+  { title }` validates the session and prompt in Electron main, reads the
+  session-title settings, and runs one one-shot completion bounded by a
+  60-second timeout. The model is the request model, else the
+  `sessionTitleProviderId` / `sessionTitleModelId` pin, else the session's
+  model (a pin that cannot launch falls back to the session's model);
+  reasoning is `sessionTitleThinkingLevel`, default `"off"`. The custom prompt
+  and ideal/truncation lengths apply as described in
+  `02-agent-runtime.md` §4.1 (ADR 0322). The request shape is unchanged. It
+  never writes the title itself; the renderer applies the result through
+  `session/rename` only while the session still has a default or first-prompt
+  fallback title. A one-shot failure or timeout leaves that fallback intact.
 - `session/getScratchPath({ sessionId }) -> { path }` returns the session
   scratch directory `<data_dir>/scratch/<sessionId>/` without creating it.
 - `session/openScratchPath({ sessionId }) -> { ok, path }` resolves that same

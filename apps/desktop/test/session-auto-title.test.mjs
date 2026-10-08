@@ -21,8 +21,27 @@ test("session title summarization is wired through the full desktop path", () =>
   assert.match(main, /handle\(IPC\.invoke\.sessionSummarizeTitle/);
   assert.match(main, /resolveAgentRuntimeLaunch\(/);
   assert.match(main, /summarizeSessionTitle\(/);
-  assert.match(main, /thinkingLevel: "off"/);
   assert.match(runtime, /completeOneShot\(/);
+});
+
+test("title generation reads its settings per request (ADR 0322)", () => {
+  // Request model > settings pin > session model; a pin that cannot launch
+  // falls back instead of failing the title.
+  assert.match(main, /pinnedOneShotModel\(settings, "sessionTitleProviderId", "sessionTitleModelId"\)/);
+  assert.match(main, /resolvePinnedOneShotLaunch\(/);
+  assert.match(main, /session title model unavailable/);
+  // Reasoning defaults to off, matching the pre-settings behavior.
+  assert.match(main, /settings\.sessionTitleThinkingLevel/);
+  assert.match(main, /\(titleThinkingLevel \|\| "off"\)/);
+  // Bounded like prompt enhancement.
+  assert.match(main, /withOneShotTimeout\(/);
+  assert.match(main, /SESSION_TITLE_TIMEOUT_MS/);
+  // Prompt and lengths are forwarded to the runtime.
+  assert.match(main, /customPrompt: settings\?\.sessionTitleCustomPrompt === true/);
+  assert.match(main, /settings\.sessionTitlePrompt/);
+  assert.match(main, /settings\.sessionTitleIdealLength/);
+  assert.match(main, /settings\.sessionTitleMaxLength/);
+  assert.match(runtime, /resolveSessionTitleSystemPrompt/);
 });
 
 test("automatic title generation runs after the first turn and respects restart-safe custom titles", () => {

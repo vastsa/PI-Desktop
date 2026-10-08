@@ -45,6 +45,29 @@ export function withPromptEnhancementTimeout<T>(
   start: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number = PROMPT_ENHANCEMENT_TIMEOUT_MS,
 ): Promise<T> {
+  return withOneShotTimeout(start, timeoutMs, promptEnhancementTimeoutError);
+}
+
+/** Hard ceiling for one session title summary request (ADR 0322). */
+export const SESSION_TITLE_TIMEOUT_MS = 60_000;
+
+export function sessionTitleTimeoutError(timeoutMs: number): Error & { errorCode: "TIMEOUT" } {
+  return Object.assign(
+    new Error(`Session title generation timed out after ${Math.round(timeoutMs / 1000)}s.`),
+    { errorCode: "TIMEOUT" as const },
+  );
+}
+
+/**
+ * Generic one-shot bound shared by prompt enhancement and session title
+ * generation: abort best-effort, race the promise, and reject with the
+ * caller's classified timeout error.
+ */
+export function withOneShotTimeout<T>(
+  start: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  timeoutError: (timeoutMs: number) => Error,
+): Promise<T> {
   const controller = new AbortController();
   const work = start(controller.signal);
   return new Promise<T>((resolve, reject) => {
@@ -57,7 +80,7 @@ export function withPromptEnhancementTimeout<T>(
     };
     const timer = setTimeout(() => {
       controller.abort();
-      finish(() => reject(promptEnhancementTimeoutError(timeoutMs)));
+      finish(() => reject(timeoutError(timeoutMs)));
     }, timeoutMs);
     work.then(
       (value) => finish(() => resolve(value)),
