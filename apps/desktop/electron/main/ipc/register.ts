@@ -17,6 +17,7 @@ import { searchMcpMarket } from "../mcp-registry-catalog";
 import { registerNotificationIpc } from "./notification-ipc";
 import { registerPluginIpc } from "./plugin-ipc";
 import { registerPluginUiIpc } from "./plugin-ui-ipc";
+import { registerJevIpc } from "./jev-ipc";
 import { registerProviderIpc } from "./provider-ipc";
 import { registerScheduledIpc } from "./scheduled-ipc";
 import { registerSessionIpc } from "./session-ipc";
@@ -298,6 +299,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     bindingForModel,
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
+  registerJevIpc({ registrar, logger });
   const loadComposerTemplatesCached = createComposerTemplateLoader(logger);
   const composerCommandService = registerComposerIpc({
     registrar,
@@ -385,7 +387,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
       userMcp.cancelSessionCalls(sessionId);
     },
     logger,
-    vendorOAuth,
     agentExtensions,
     persistenceOutbox,
     dataDir,

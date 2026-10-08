@@ -18,7 +18,6 @@ const REFRESH_AFTER_INVOKE = new Set<string>([
   IPC.invoke.sessionRename,
   IPC.invoke.sessionDelete,
   IPC.invoke.sessionMoveProject,
-  IPC.invoke.sessionSummarizeTitle,
   IPC.invoke.sessionImportRun,
   IPC.invoke.notificationMarkRead,
   IPC.invoke.notificationMarkAllRead,

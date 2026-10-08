@@ -97,7 +97,10 @@ test("image generation selection hides the summary when nothing can be chosen", 
   );
   assert.match(pickerSource, /imageModelIds\?\.some\([\s\S]*?modelId\.toLowerCase\(\) === binding\.id\.toLowerCase\(\)/);
   assert.match(pickerSource, /onImageModelChange\(binding\.id, event\.target\.checked\)/);
-  assert.match(imageModelRowSource, /imageGenerationBindings\(settings\.imageGenerationModels, null\)/);
+  // The row's own rule — the stored candidate list, the legacy single binding
+  // only while no list was ever saved, plus a signed-in vendor account's image
+  // model — now lives in the shared helper, pinned by image-generation-default.test.mjs.
+  assert.ok(imageModelRowSource.includes("imageGenerationPickerCandidates("));
   assert.match(imageModelRowSource, /if \(!options\.some\(\(option\) => !option\.disabled\)\) return null;/);
   assert.match(imageModelRowSource, /if \(candidates\.length === 0\) return null;/);
   assert.match(imageModelRowSource, /imageModelUnavailable/);

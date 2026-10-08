@@ -100,20 +100,6 @@ test("the default picker's query reaches an account by its label", () => {
   assert.equal(matches("gpt-5.5").length, 2);
 });
 
-test("the Settings model pickers name providers through the shared helper", async () => {
-  for (const rel of [
-    "../src/components/settings/EnhancementModelCard.tsx",
-  ]) {
-    const source = await read(rel);
-    assert.match(source, /providerDisplayName\(provider\)/, rel);
-    assert.match(source, /aria-label=\{`\$\{providerDisplayName\(provider\)\} · \$\{modelId\}`\}/, rel);
-    assert.match(source, /`\$\{providerSearchText\(provider\)\} \$\{modelId\}`/, rel);
-    // The raw vendor name must not come back for a picker row or its query.
-    assert.doesNotMatch(source, /`\$\{provider\.name\} \$\{modelId\}`/, rel);
-    assert.doesNotMatch(source, /aria-label=\{`\$\{provider\.name\} · \$\{modelId\}`\}/, rel);
-  }
-});
-
 test("the Composer keeps resolving its heading through the same helper", async () => {
   const source = await read(
     "../src/features/chat/composer/hooks/useComposerModelMenu.ts",

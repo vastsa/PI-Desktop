@@ -80,10 +80,10 @@ CNB mirror          cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/…
 ```
 
 Because the mirror is a Git mirror, packages and catalog move together and stay
-byte-identical, so a source switch mid-session cannot cross providers or invalidate
-a checksum. Declaring `artifactBaseUrl` is what keeps that true when the catalog is
-served from a host that does not itself host the packages; a catalog without it
-falls back to its own directory and can route a download at the wrong host.
+byte-identical. Declaring `artifactBaseUrl` keeps package URLs on the intended
+host when a catalog is served from a host that does not itself host the
+packages; a catalog without it falls back to its own directory and can route a
+download at the wrong host.
 
 ### 3.3 What replaces WORM
 
@@ -362,9 +362,11 @@ user picked one, and a stable device identifier (`deviceId`), so the platform ca
 de-duplicate a download and rate-limit per device instead of per source address.
 The byte sibling of that route, `GET /download/{id}/{version}`, is the
 marketplace page and console path, not the client's. Browse and update checking
-still need nothing but static files, and an install whose resolve call cannot
-reach the platform falls back to the catalog's own package URL, so the API can
-be unavailable without making published plugins unreachable. The client-side
+still need nothing but static files. The client gives the resolve request three
+seconds; a timeout, rate limit, or `NO_DOWNLOAD_SOURCE` answer falls back to the
+catalog's own package URL, with the catalog digest still verified. This keeps a
+slow API from holding installation open while preserving the publication
+refusals for unpublished, archived, or missing versions. The client-side
 contract — channels, mirrors, digest verification, and how the identifier is
 derived — is in [07-plugin-marketplace.md](07-plugin-marketplace.md).
 

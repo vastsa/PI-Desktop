@@ -1,23 +1,17 @@
-import { useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import {
-  canonicalThinkingLevel,
-  restoreInlineComposerFileReferenceTokens,
   serializeComposerFileReferences,
   serializeInlineComposerFileReferences,
-  stripInlineComposerFileReferenceTokens,
 } from "@pi-desktop/shared";
 import type { AppState } from "../../../../stores/app-store";
-import { useAppStore } from "../../../../stores/app-store";
 import { api } from "../../../../lib/api";
-import { draftKeyForSession } from "../../../../lib/composer-draft-cache";
 import { runExtensionCommand, runPaletteCommand } from "../../../../lib/commands";
 import { resolveComposerCommand } from "../../../../hooks/use-composer-autocomplete";
 import {
   parseSlashSubmission,
   resolveSlashDispatch,
 } from "../slash-dispatch";
-import { readEditorValue, setEditorCaret, type ComposerFileReference } from "../editor";
+import { readEditorValue, type ComposerFileReference } from "../editor";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import type { ComposerDraftController } from "./useComposerDraft";
 
@@ -25,11 +19,9 @@ type UseComposerSubmitOptions = {
   value: string;
   draftKey: string;
   activeSessionId: string | null | undefined;
-  providerId?: string;
-  modelId?: string;
-  thinkingLevel: Parameters<AppState["configureActiveSession"]>[0]["thinkingLevel"];
   modelReady: boolean;
   sendBlocked: boolean;
+  invalidateComposerTransforms: () => void;
   pasting: boolean;
   activeFileReferences: ComposerFileReference[];
   t: TFunction;
@@ -45,36 +37,23 @@ type UseComposerSubmitOptions = {
     | "draftRevision"
     | "clearDraftForKey"
     | "restoreDraftForKey"
-    | "setValue"
-    | "setCursor"
   >;
 };
 
-export type ComposerSubmitController = {
-  enhancingPrompt: boolean;
-  enhancementUndoText: string | null;
-  enhancementError: { message: string; code: string } | null;
-  clearEnhancementError: () => void;
-  invalidatePromptEnhancement: () => void;
-  enhancePrompt: () => Promise<void>;
-  undoPromptEnhancement: () => void;
-  submit: (steering?: boolean) => Promise<void>;
-};
+export type ComposerSubmitController = { submit: (steering?: boolean) => Promise<void> };
 
 /**
- * Own prompt enhancement and send orchestration. It deliberately receives the
- * draft controller as a narrow dependency so command dispatch and optimistic
- * draft clearing remain independent from editor rendering.
+ * Own send orchestration. It receives the draft controller as a narrow
+ * dependency so command dispatch and optimistic draft clearing remain
+ * independent from editor rendering.
  */
 export function useComposerSubmit({
   value,
   draftKey,
   activeSessionId,
-  providerId,
-  modelId,
-  thinkingLevel,
   modelReady,
   sendBlocked,
+  invalidateComposerTransforms,
   pasting,
   activeFileReferences,
   t,
@@ -84,119 +63,6 @@ export function useComposerSubmit({
   recordHistory,
   draft,
 }: UseComposerSubmitOptions): ComposerSubmitController {
-  const [enhancingPrompt, setEnhancingPrompt] = useState(false);
-  const [enhancementUndoText, setEnhancementUndoText] = useState<string | null>(null);
-  const [enhancementError, setEnhancementError] = useState<{
-    message: string;
-    code: string;
-  } | null>(null);
-  const enhancementVersionRef = useRef(0);
-  const enhancementRequestRef = useRef<symbol | null>(null);
-
-  const invalidatePromptEnhancement = () => {
-    enhancementVersionRef.current += 1;
-    setEnhancementUndoText(null);
-    setEnhancementError(null);
-  };
-
-  const enhancePrompt = async () => {
-    const sourceText = value;
-    const textToEnhance = stripInlineComposerFileReferenceTokens(
-      sourceText,
-      activeFileReferences,
-    );
-    const sourceKey = draftKey;
-    const sourceVersion = enhancementVersionRef.current;
-    if (
-      !textToEnhance.trim() ||
-      textToEnhance.trim().startsWith("/") ||
-      !modelReady ||
-      sendBlocked ||
-      enhancingPrompt
-    ) {
-      return;
-    }
-
-    const requestToken = Symbol("prompt-enhancement");
-    enhancementRequestRef.current = requestToken;
-    setEnhancingPrompt(true);
-    setEnhancementUndoText(null);
-    setEnhancementError(null);
-    try {
-      const result = await api.enhancePrompt({
-        sessionId: activeSessionId,
-        draft: textToEnhance,
-        providerId,
-        modelId,
-        thinkingLevel: canonicalThinkingLevel(thinkingLevel),
-      });
-      const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
-      if (
-        enhancementRequestRef.current !== requestToken ||
-        currentKey !== sourceKey ||
-        enhancementVersionRef.current !== sourceVersion
-      ) {
-        return;
-      }
-      const modelDraft = result.enhancedDraft.trim();
-      if (
-        !modelDraft ||
-        !stripInlineComposerFileReferenceTokens(modelDraft, activeFileReferences).trim()
-      ) {
-        throw Object.assign(new Error("The model returned an empty enhanced draft."), {
-          code: "PROMPT_ENHANCEMENT_EMPTY",
-        });
-      }
-      const enhancedDraft = restoreInlineComposerFileReferenceTokens(
-        sourceText,
-        modelDraft,
-        activeFileReferences,
-      );
-      enhancementVersionRef.current += 1;
-      draft.setValue(enhancedDraft);
-      draft.setCursor(enhancedDraft.length);
-      setEnhancementUndoText(sourceText);
-      requestAnimationFrame(() => {
-        const element = draft.ref.current;
-        if (!element) return;
-        element.focus();
-        setEditorCaret(element, enhancedDraft.length);
-      });
-    } catch (error) {
-      const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
-      if (
-        enhancementRequestRef.current !== requestToken ||
-        currentKey !== sourceKey ||
-        enhancementVersionRef.current !== sourceVersion
-      ) {
-        return;
-      }
-      const typed = error as Error & { code?: string };
-      setEnhancementError({
-        message:
-          typed.code === "TIMEOUT"
-            ? t("chat.enhancementTimeout")
-            : typed.message || t("chat.enhancementFailed"),
-        code: typed.code || "PROMPT_ENHANCEMENT_FAILED",
-      });
-    } finally {
-      if (enhancementRequestRef.current === requestToken) setEnhancingPrompt(false);
-    }
-  };
-
-  const undoPromptEnhancement = () => {
-    if (enhancementUndoText === null) return;
-    invalidatePromptEnhancement();
-    draft.setValue(enhancementUndoText);
-    draft.setCursor(enhancementUndoText.length);
-    requestAnimationFrame(() => {
-      const element = draft.ref.current;
-      if (!element) return;
-      element.focus();
-      setEditorCaret(element, enhancementUndoText.length);
-    });
-  };
-
   const submit = async (steering = false) => {
     const rawText = draft.ref.current ? readEditorValue(draft.ref.current) : value;
     // An image chip keeps its place in the prompt: main resolves the `@path` it
@@ -209,7 +75,7 @@ export function useComposerSubmit({
       if (pasting) showToast(t("chat.pasteInProgress"), { variant: "info" });
       return;
     }
-    invalidatePromptEnhancement();
+    invalidateComposerTransforms();
     const submittedDraftKey = draftKey;
     const submittedDraftRevision = draft.draftRevision(submittedDraftKey);
     const submittedDraft = draft.draftSnapshot(rawText);
@@ -320,14 +186,5 @@ export function useComposerSubmit({
     else remember();
   };
 
-  return {
-    enhancingPrompt,
-    enhancementUndoText,
-    enhancementError,
-    clearEnhancementError: () => setEnhancementError(null),
-    invalidatePromptEnhancement,
-    enhancePrompt,
-    undoPromptEnhancement,
-    submit,
-  };
+  return { submit };
 }

@@ -57,7 +57,6 @@ import {
   SettingsRow,
 } from "./primitives";
 import { AgentInstructionsSection, UpdatesRow } from "./agent-sections";
-import { PromptEnhancementCard } from "./prompt-enhancement-card";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
 import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
 import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
@@ -534,10 +533,6 @@ export function SettingsPage() {
                 />
               </SettingsCard>
 
-              <PromptEnhancementCard
-                settings={settings}
-                saveSettings={saveSettings}
-              />
             </div>
           )}
 

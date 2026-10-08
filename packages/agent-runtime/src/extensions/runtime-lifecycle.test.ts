@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +13,44 @@ function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
+}
+
+type CwdProbe = { cwd: string; getCwd: string; exec: string };
+
+/** A trusted extension whose `where` command reports every cwd it can see (#1459). */
+async function probeExtensionCwd(options: { projectPath?: string; scratchDir: string; root: string }) {
+  const key = `__piCwdProbe_${Math.random().toString(36).slice(2)}`;
+  const entry = join(options.root, "cwd-probe.ts");
+  writeFileSync(entry, `export default function (pi) {
+    pi.registerCommand("where", { handler: async (_args, ctx) => {
+      const run = await pi.exec(process.execPath, ["-e", "process.stdout.write(process.cwd())"]);
+      globalThis[${JSON.stringify(key)}] = { cwd: ctx.cwd, getCwd: ctx.sessionManager.getCwd(), exec: run.stdout };
+    } });
+  }`);
+  const runtime = new DesktopAgentRuntime({
+    host: { call: async () => ({}), onNotification: () => () => {} } as never,
+    sessionId: "cwd-probe",
+    ...(options.projectPath ? { projectPath: options.projectPath } : {}),
+    scratchDir: options.scratchDir,
+    mode: "agent",
+    thinkingLevel: "off",
+    provider: {
+      id: "fixture", name: "Fixture", apiKey: "", authKind: "none",
+      baseUrl: "http://127.0.0.1:1/v1", modelId: "fixture",
+      supportsReasoning: false, supportedThinkingLevels: ["off"],
+    },
+    commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
+    trustedExtensions: [{ id: entry, entry, label: "Cwd probe", root: options.root, source: "plugin" }],
+    onEvent: () => {},
+  });
+  try {
+    await runtime.loadTrustedExtensions();
+    expect(await runtime.runTrustedExtensionCommand("where", "")).toEqual({ handled: true });
+    return (globalThis as Record<string, unknown>)[key] as CwdProbe;
+  } finally {
+    await runtime.dispose();
+    delete (globalThis as Record<string, unknown>)[key];
+  }
 }
 
 describe("Desktop extension lifecycle", () => {
@@ -51,6 +89,35 @@ describe("Desktop extension lifecycle", () => {
       ]);
     } finally {
       await runtime.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gives extensions the session scratch as cwd in a temporary session (#1459)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-hooks-cwd-scratch-"));
+    // Scratch is created lazily (D114): it does not exist before the first use.
+    const scratchDir = join(root, "data", "scratch", "cwd-probe");
+    try {
+      const seen = await probeExtensionCwd({ scratchDir, root });
+      expect(existsSync(scratchDir)).toBe(true);
+      expect(seen.cwd).toBe(scratchDir);
+      expect(seen.getCwd).toBe(scratchDir);
+      expect(realpathSync(seen.exec)).toBe(realpathSync(scratchDir));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the project root as extension cwd in a project session", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-hooks-cwd-project-"));
+    const scratchDir = join(root, "data", "scratch", "cwd-probe");
+    try {
+      const seen = await probeExtensionCwd({ projectPath: root, scratchDir, root });
+      expect(seen.cwd).toBe(root);
+      expect(seen.getCwd).toBe(root);
+      expect(realpathSync(seen.exec)).toBe(realpathSync(root));
+      expect(existsSync(scratchDir)).toBe(false);
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });

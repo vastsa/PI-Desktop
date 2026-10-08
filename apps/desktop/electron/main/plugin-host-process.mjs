@@ -316,6 +316,8 @@ function buildApi() {
     },
     session: {
       getLlmContext: () => call("session.getLlmContext"),
+      getAutoTitleContext: (input) => call("session.getAutoTitleContext", [input ?? {}]),
+      setAutoTitle: (input) => call("session.setAutoTitle", [input ?? {}]),
       list: (input) => call("session.list", [input ?? {}]),
       get: (input) => call("session.get", [input ?? {}]),
       listMessages: (input) => call("session.listMessages", [input ?? {}]),
@@ -638,6 +640,25 @@ async function handleParentCall(method, payload, invocationId, callId) {
         throw error;
       }
       return JSON.parse(text);
+    }
+    case "composer.transform": {
+      const handler = pluginModule?.onComposerTransform;
+      if (typeof handler !== "function") {
+        const error = new Error("plugin does not implement onComposerTransform");
+        error.code = "PLUGIN_TRANSFORM_NO_HANDLER";
+        throw error;
+      }
+      const answer = await handler({
+        id: String(payload?.id ?? ""),
+        text: String(payload?.text ?? ""),
+        ...(typeof payload?.modelKey === "string" ? { modelKey: payload.modelKey } : {}),
+      });
+      if (typeof answer !== "string") {
+        const error = new Error("onComposerTransform must return a text string");
+        error.code = "PLUGIN_INVALID_RESULT";
+        throw error;
+      }
+      return answer;
     }
     case "lifecycle.unload": {
       for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");

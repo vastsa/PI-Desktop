@@ -147,6 +147,31 @@ test("closing the panel keeps a pending page hidden until the panel returns", as
   h.surface(); assert.equal(h.panes[0].visible, true);
 });
 
+test("plugin browser operations are unavailable while the Browser view is hidden", async () => {
+  const h = harness(); await open(h, "A", "a", "A.html");
+  assert.equal(h.host.getStateForPlugin().url, "A.html");
+  const pendingNavigation = h.host.navigate({ url: "https://fixture.invalid/hidden" });
+  h.surface(false);
+  h.roots.at(-1).resolve("/projects/A");
+  await assert.rejects(pendingNavigation, (error) => error?.code === "UNAVAILABLE");
+  h.surface(false);
+  const unavailable = (error) => error?.code === "UNAVAILABLE";
+
+  assert.equal(h.host.getState().url, "A.html", "host UI state remains readable");
+  assert.throws(() => h.host.getStateForPlugin(), unavailable);
+  assert.throws(() => h.host.action("reload"), unavailable);
+  assert.throws(() => h.host.openExternal(), unavailable);
+  assert.throws(() => h.host.console(), unavailable);
+  await assert.rejects(h.host.navigate({ url: "https://fixture.invalid/hidden" }), unavailable);
+  await assert.rejects(h.host.snapshot(), unavailable);
+  await assert.rejects(h.host.screenshot(), unavailable);
+  await assert.rejects(h.host.click("uid"), unavailable);
+  await assert.rejects(h.host.fill("uid", "text"), unavailable);
+  await assert.rejects(h.host.evaluate("document.title"), unavailable);
+  await assert.rejects(h.host.cdpCommand("Page.enable"), unavailable);
+  assert.equal(h.loads.length, 1, "hidden navigation must not reach the page");
+});
+
 test("closing a tab and disposing the host cancel pending ownership and release pages", async () => {
   const h = harness(); await open(h, "A", "a", "A.html");
   h.host.setChromeSession("A", "pending", "pending.html"); const root = h.roots.at(-1);

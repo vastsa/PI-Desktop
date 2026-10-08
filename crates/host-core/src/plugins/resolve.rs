@@ -4,14 +4,16 @@
 //! answers with the digest and every mirror that can serve the package; the
 //! client picks one and verifies what it got.
 //!
-//! Two kinds of failure are worth telling apart, because the caller answers
-//! them differently: a platform that could not be *reached* is covered by the
-//! catalog's own URL (the platform's contract says so explicitly), while a
-//! platform that *answered* has an opinion — not published, archived, unknown,
-//! rate limited — and papering over it would install something it is not
-//! offering.
+//! The resolve request is bounded so a slow platform cannot hold an install
+//! open for a long time. Network failures, rate limits, and missing platform
+//! mirrors use the freshly loaded catalog URL instead. Publication refusals
+//! remain authoritative and are never bypassed.
 
 use super::*;
+
+/// The resolve endpoint answers only with metadata; keep it from blocking an
+/// install longer than the catalog-backed download path needs to start.
+const RESOLVE_TIMEOUT_SECONDS: &str = "3";
 
 /// One place a package can be fetched from.
 #[derive(Debug, Clone, Deserialize)]
@@ -67,86 +69,46 @@ pub(crate) fn request(
         "version": version,
     })
     .to_string();
-    match resolve_once(&endpoint, &body) {
-        Ok(resolved) => Ok(resolved),
-        Err(Attempt::Failed(error)) => Err(error),
-        // The platform answers a caller that asks too often with the interval
-        // to wait. One retry is what its contract describes, and a longer loop
-        // would be the broken client the limit exists to catch.
-        Err(Attempt::RateLimited { wait, .. }) => {
-            std::thread::sleep(wait);
-            match resolve_once(&endpoint, &body) {
-                Ok(resolved) => Ok(resolved),
-                Err(Attempt::Failed(error)) | Err(Attempt::RateLimited { error, .. }) => Err(error),
-            }
-        }
-    }
-}
-
-/// What one resolve attempt produced.
-enum Attempt {
-    /// The platform could not answer, or answered something unusable.
-    Failed(anyhow::Error),
-    /// It answered `429` and named how long to wait.
-    RateLimited {
-        error: anyhow::Error,
-        wait: Duration,
-    },
+    resolve_once(&endpoint, &body)
 }
 
 /// One resolve request.
-fn resolve_once(endpoint: &str, body: &str) -> std::result::Result<ResolvedDownload, Attempt> {
-    let (status, payload, headers) = post_json(endpoint, body).map_err(Attempt::Failed)?;
+fn resolve_once(endpoint: &str, body: &str) -> Result<ResolvedDownload> {
+    let (status, payload) = post_json(endpoint, body)?;
     if status != 200 {
         let error = refusal(status, &payload);
-        if status == 429 {
-            return Err(Attempt::RateLimited {
-                error,
-                wait: retry_after(&headers).unwrap_or(Duration::from_secs(1)),
-            });
-        }
-        return Err(Attempt::Failed(error));
+        return Err(error);
     }
     let resolved: ResolvedDownload = serde_json::from_slice(&payload).map_err(|error| {
-        Attempt::Failed(anyhow!(
-            "PLUGIN_MARKET_INVALID: the plugin center's answer is not readable: {error}"
-        ))
+        anyhow!("PLUGIN_MARKET_INVALID: the plugin center's answer is not readable: {error}")
     })?;
     if resolved.sha256.trim().is_empty() {
-        return Err(Attempt::Failed(anyhow!(
+        return Err(anyhow!(
             "PLUGIN_MARKET_INVALID: the plugin center named no digest"
-        )));
+        ));
     }
     if resolved.downloads.is_empty() {
-        return Err(Attempt::Failed(anyhow!(
+        return Err(anyhow!(
             "PLUGIN_MARKET_INVALID: the plugin center listed no download"
-        )));
+        ));
     }
     Ok(resolved)
 }
 
-/// Seconds the platform asked the caller to wait, when it said so.
+/// Whether the catalog's package URL may safely answer a resolve failure.
 ///
-/// Clamped: a deployment may name a longer interval than an install should
-/// block on, and the platform's own default is sixty seconds.
-fn retry_after(headers: &str) -> Option<Duration> {
-    let value = headers.lines().find_map(|line| {
-        let (name, value) = line.split_once(':')?;
-        name.trim()
-            .eq_ignore_ascii_case("retry-after")
-            .then(|| value.trim())
-    })?;
-    let seconds: u64 = value.parse().ok()?;
-    Some(Duration::from_secs(seconds.clamp(1, 60)))
-}
-
-/// Whether a resolve failure is one the catalog's own URL may answer.
-///
-/// Only a transport failure or an unavailable deployment: those are the cases
-/// the platform's contract covers with "install from the catalog's URL". Every
-/// refusal keeps its own error so the surface can say what happened.
-pub(crate) fn is_recoverable(error: &anyhow::Error) -> bool {
-    error.to_string().starts_with("PLUGIN_NETWORK")
+/// A rate limit or missing platform mirror affects distribution metadata, not
+/// the publication decision; the catalog package remains checksum-verified.
+/// Explicit publication refusals and malformed responses stay authoritative.
+pub(crate) fn allows_catalog_fallback(error: &anyhow::Error) -> bool {
+    let message = error.to_string();
+    [
+        "PLUGIN_NETWORK",
+        "PLUGIN_MARKET_RATE_LIMITED",
+        "PLUGIN_MARKET_NO_SOURCE",
+    ]
+    .iter()
+    .any(|prefix| message.starts_with(prefix))
 }
 
 /// The error a non-2xx answer becomes.
@@ -179,15 +141,12 @@ fn refusal(status: u16, payload: &[u8]) -> anyhow::Error {
 
 /// POST a JSON body with curl.
 ///
-/// Answers with the status, the response body and the response headers: the
-/// body carries the platform's error envelope, and the headers carry the
-/// interval a rate-limited caller is asked to wait. The body is written to a
-/// scratch file and the status is read from `--write-out`, so an error answer
-/// still yields the envelope instead of a curl diagnostic.
-fn post_json(url: &str, body: &str) -> Result<(u16, Vec<u8>, String)> {
+/// Answers with the status and response body. The body is written to a scratch
+/// file and the status is read from `--write-out`, so an error answer still
+/// yields the platform's error envelope instead of a curl diagnostic.
+fn post_json(url: &str, body: &str) -> Result<(u16, Vec<u8>)> {
     let body_path = super::install::download_scratch_path();
     let response_path = super::install::download_scratch_path();
-    let headers_path = super::install::download_scratch_path();
     fs::write(&body_path, body).with_context(|| format!("write resolve body for {url}"))?;
 
     let mut args: Vec<String> = vec![
@@ -203,13 +162,10 @@ fn post_json(url: &str, body: &str) -> Result<(u16, Vec<u8>, String)> {
         format!("@{}", body_path.to_string_lossy()),
         "--output".into(),
         response_path.to_string_lossy().into_owned(),
-        // The retry interval arrives in a header, so the headers are kept.
-        "--dump-header".into(),
-        headers_path.to_string_lossy().into_owned(),
         "--write-out".into(),
         "%{http_code}".into(),
         "--max-time".into(),
-        "30".into(),
+        RESOLVE_TIMEOUT_SECONDS.into(),
         "--max-redirs".into(),
         "3".into(),
         "--location".into(),
@@ -238,8 +194,7 @@ fn post_json(url: &str, body: &str) -> Result<(u16, Vec<u8>, String)> {
                 .parse::<u16>()
                 .unwrap_or(0);
             let payload = fs::read(&response_path).unwrap_or_default();
-            let headers = fs::read_to_string(&headers_path).unwrap_or_default();
-            Ok((status, payload, headers))
+            Ok((status, payload))
         }
         Ok(output) => {
             let err = decode_curl_output(&output.stderr);
@@ -253,7 +208,6 @@ fn post_json(url: &str, body: &str) -> Result<(u16, Vec<u8>, String)> {
     };
     let _ = fs::remove_file(&body_path);
     let _ = fs::remove_file(&response_path);
-    let _ = fs::remove_file(&headers_path);
     result
 }
 
@@ -281,53 +235,46 @@ mod tests {
     }
 
     #[test]
-    fn a_refusal_is_not_recoverable_and_a_dead_deployment_is() {
+    fn publication_refusals_stay_authoritative_but_unavailable_resolve_uses_catalog() {
         let refused = refusal(
             403,
             br#"{"error":{"code":"NOT_PUBLISHED","message":"not yet"}}"#,
         );
         let text = refused.to_string();
         assert!(text.starts_with("PLUGIN_MARKET_NOT_PUBLISHED"), "{text}");
-        assert!(!is_recoverable(&refused));
+        assert!(!allows_catalog_fallback(&refused));
 
         let archived = refusal(403, br#"{"error":{"code":"PLUGIN_ARCHIVED"}}"#);
         assert!(archived.to_string().starts_with("PLUGIN_MARKET_ARCHIVED"));
+        assert!(!allows_catalog_fallback(&archived));
+
+        let missing = refusal(404, br#"{"error":{"code":"NOT_FOUND"}}"#);
+        assert!(missing.to_string().starts_with("PLUGIN_MARKET_NOT_FOUND"));
+        assert!(!allows_catalog_fallback(&missing));
 
         let limited = refusal(429, br#"{"error":{"code":"TOO_MANY_REQUESTS"}}"#);
         assert!(limited
             .to_string()
             .starts_with("PLUGIN_MARKET_RATE_LIMITED"));
+        assert!(allows_catalog_fallback(&limited));
 
         let no_source = refusal(503, br#"{"error":{"code":"NO_DOWNLOAD_SOURCE"}}"#);
         assert!(no_source.to_string().starts_with("PLUGIN_MARKET_NO_SOURCE"));
+        assert!(allows_catalog_fallback(&no_source));
 
         let down = refusal(502, b"<html>bad gateway</html>");
         assert!(down.to_string().starts_with("PLUGIN_NETWORK"), "{down}");
-        assert!(is_recoverable(&down));
+        assert!(allows_catalog_fallback(&down));
 
         // A body this client mangled is its own defect: falling back to the
         // catalog would install something the platform was never asked for.
         let mangled = refusal(400, br#"{"error":{"code":"BAD_BODY"}}"#);
         assert!(mangled.to_string().starts_with("PLUGIN_MARKET_INVALID"));
-        assert!(!is_recoverable(&mangled));
+        assert!(!allows_catalog_fallback(&mangled));
     }
 
     #[test]
-    fn a_rate_limit_waits_what_the_platform_asked_for() {
-        let headers = "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\n\r\n";
-        assert_eq!(retry_after(headers), Some(Duration::from_secs(12)));
-        // The header name is case-insensitive and the value may carry spaces.
-        assert_eq!(
-            retry_after("retry-after:   7  \r\n"),
-            Some(Duration::from_secs(7))
-        );
-        // A deployment may ask for longer than an install should block on.
-        assert_eq!(
-            retry_after("Retry-After: 600\r\n"),
-            Some(Duration::from_secs(60))
-        );
-        // No header, or one that is not a number of seconds: wait the minimum.
-        assert_eq!(retry_after("HTTP/1.1 429\r\n\r\n"), None);
-        assert_eq!(retry_after("Retry-After: soon\r\n"), None);
+    fn resolve_metadata_request_has_a_three_second_deadline() {
+        assert_eq!(RESOLVE_TIMEOUT_SECONDS, "3");
     }
 }

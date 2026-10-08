@@ -104,6 +104,30 @@
 }
 
 /*
+  The Jev service form: an explanation, the one key field and what saving does.
+  It is the whole form, so it stacks without the provider form's labelled rows.
+*/
+.jev-setup {
+  display: grid;
+  gap: 10px;
+}
+
+.jev-setup-description,
+.jev-setup-privacy,
+.jev-setup-status,
+.jev-setup-note {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+/* The key's current state, beside the field that would replace it. */
+.jev-setup-status {
+  color: var(--ds-text-primary);
+}
+
+/*
   Named services are Service + key. Custom is Service, then Name beside URL,
   then the key beside API format. An unchosen service is one searchable picker
   so the first decision is which endpoint, not which of five fields.

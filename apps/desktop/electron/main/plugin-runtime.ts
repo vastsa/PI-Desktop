@@ -67,6 +67,7 @@ import {
   type PluginProviderContrib,
   type PluginServiceContrib,
   type PluginSettingContrib,
+  type PluginComposerTransformInput,
   type PluginSkillContrib,
   type PluginThemeVariableContrib,
 } from "@pi-desktop/plugin-sdk";
@@ -77,6 +78,7 @@ import {
   type PluginRendererDescriptor,
   type PluginServiceStatus,
   type PluginSettingDefinition,
+  type PluginComposerTransformMeta,
   type PluginWorkspaceInfo,
   BUILTIN_SPEECH_PROTOCOL_IDS,
 } from "@pi-desktop/shared";
@@ -117,6 +119,11 @@ import {
   type PluginShortcutRegistry,
 } from "./plugin-shortcut-registry";
 import { repairImportedExtensionWrapper } from "./imported-plugin-wrapper";
+import {
+  migrateLegacyPromptEnhancementSettings,
+  PROMPT_ENHANCEMENT_PLUGIN_ID,
+  type LegacyPromptEnhancementSettings,
+} from "./plugin-prompt-enhancement-migration";
 
 export type RegisteredCommand = {
   id: string;
@@ -308,6 +315,12 @@ export type PluginHostServices = {
   agentExtensionsChanged?: () => void;
   getLocale?: () => string;
   getAppVersion?: () => string;
+  /** Legacy host-owned prompt enhancement settings, used only for one-time migration. */
+  getLegacyPromptEnhancementSettings?: () =>
+    | LegacyPromptEnhancementSettings
+    | null
+    | undefined
+    | Promise<LegacyPromptEnhancementSettings | null | undefined>;
   /**
    * The appearance the host is currently showing (palette, language, active
    * plugin theme). Panels and plugin processes read it through `app.getAppearance`;
@@ -472,6 +485,8 @@ export type PluginHostServices = {
     list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     get: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     listMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    getAutoTitleContext: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    setAutoTitle: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     import: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     importBatch: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     rename: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
@@ -566,6 +581,8 @@ const HOST_API_ALLOWLIST = new Set([
   "browser.cdp",
   "models.list",
   "session.getLlmContext",
+  "session.getAutoTitleContext",
+  "session.setAutoTitle",
   "session.list",
   "session.get",
   "session.listMessages",
@@ -598,6 +615,9 @@ const PLUGIN_DISPOSE_ALL_TIMEOUT_MS = 3_000;
 const PLUGIN_COMMAND_TIMEOUT_MS = 30_000;
 /** Kept under host-core's 120s tool budget so the plugin-side error wins. */
 const PLUGIN_TOOL_TIMEOUT_MS = 110_000;
+/** User-invoked Composer transforms share the bounded plugin tool budget. */
+const PLUGIN_COMPOSER_TRANSFORM_TIMEOUT_MS = PLUGIN_TOOL_TIMEOUT_MS;
+const MAX_COMPOSER_TRANSFORM_TEXT_LENGTH = 100_000;
 /** Side completions sit under the plugin tool budget (ADR 0174). */
 export const PLUGIN_COMPLETE_TIMEOUT_MS = 90_000;
 /** Fixed panel operations are user-facing and must not hang the renderer. */
@@ -1619,6 +1639,102 @@ export class PluginRuntime {
     );
   }
 
+  /** User-facing transform actions from loaded plugins with explicit consent. */
+  getComposerTransforms(pluginId?: string): PluginComposerTransformMeta[] {
+    const locale = this.services.getLocale?.();
+    const result: PluginComposerTransformMeta[] = [];
+    const candidates = pluginId
+      ? [this.loaded.get(pluginId)].filter((plugin): plugin is LoadedPlugin => Boolean(plugin))
+      : [...this.loaded.values()];
+    for (const loaded of candidates) {
+      if (loaded.disposing || !loaded.permissions.has("composer.transform")) continue;
+      const transforms = loaded.manifest.contributes?.composerTransforms ?? [];
+      for (const transform of transforms) {
+        result.push({
+          pluginId: loaded.manifest.id,
+          pluginName: loaded.manifest.name,
+          id: transform.id,
+          title: resolvePluginLocalizedString(transform.title, locale, transform.id),
+          undoTitle: resolvePluginLocalizedString(
+            transform.undoTitle,
+            locale,
+            `Undo ${resolvePluginLocalizedString(transform.title, locale, transform.id)}`,
+          ),
+        });
+      }
+    }
+    return result;
+  }
+
+  /** Invoke only a declared action; the plugin receives the draft text alone. */
+  async runComposerTransform(
+    input: PluginComposerTransformInput & { pluginId: string },
+  ): Promise<string> {
+    const pluginId = typeof input?.pluginId === "string" ? input.pluginId.trim() : "";
+    const transformId = typeof input?.id === "string" ? input.id.trim() : "";
+    const text = typeof input?.text === "string" ? input.text : "";
+    const modelKey = typeof input?.modelKey === "string" ? input.modelKey.trim() : undefined;
+    if (
+      !pluginId ||
+      !transformId ||
+      !text.trim() ||
+      text.length > MAX_COMPOSER_TRANSFORM_TEXT_LENGTH
+    ) {
+      throw apiError("INVALID_ARGUMENT", "composer transform input is invalid");
+    }
+    if (modelKey && modelKey.length > 512) {
+      throw apiError("INVALID_ARGUMENT", "composer transform modelKey is invalid");
+    }
+    const loaded = this.loaded.get(pluginId);
+    if (!loaded || loaded.disposing || !loaded.child) {
+      throw apiError("NOT_FOUND", "composer transform plugin is not loaded");
+    }
+    this.assertPermission(loaded, "composer.transform");
+    const transform = (loaded.manifest.contributes?.composerTransforms ?? []).find(
+      (entry) => entry.id === transformId,
+    );
+    if (!transform) throw apiError("NOT_FOUND", "composer transform is not declared");
+
+    const startedAt = Date.now();
+    try {
+      const result = await this.sendToChild(
+        loaded,
+        {
+          t: "call",
+          method: "composer.transform",
+          payload: { id: transformId, text, ...(modelKey ? { modelKey } : {}) },
+        },
+        PLUGIN_COMPOSER_TRANSFORM_TIMEOUT_MS,
+      );
+      if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+        throw apiError("PLUGIN_UNLOADED", "composer transform plugin was unloaded");
+      }
+      if (typeof result !== "string" || result.length > MAX_COMPOSER_TRANSFORM_TEXT_LENGTH) {
+        throw apiError("PLUGIN_INVALID_RESULT", "composer transform must return a text string");
+      }
+      this.services.audit?.({
+        pluginId,
+        api: "composer.transform",
+        ok: true,
+        transformId,
+        durationMs: Date.now() - startedAt,
+        ts: Date.now(),
+      });
+      return result;
+    } catch (error) {
+      this.services.audit?.({
+        pluginId,
+        api: "composer.transform",
+        ok: false,
+        transformId,
+        errorCode: (error as PluginApiError)?.code ?? "PLUGIN_TRANSFORM_FAILED",
+        durationMs: Date.now() - startedAt,
+        ts: Date.now(),
+      });
+      throw error;
+    }
+  }
+
   getLoaded(pluginId: string): LoadedPlugin | undefined {
     return this.loaded.get(pluginId);
   }
@@ -1912,6 +2028,38 @@ export class PluginRuntime {
               (perm) => declared.has(perm),
             ),
           );
+
+    if (
+      manifest.id === PROMPT_ENHANCEMENT_PLUGIN_ID &&
+      granted.has("composer.transform") &&
+      (manifest.contributes?.composerTransforms?.length ?? 0) > 0 &&
+      this.services.getLegacyPromptEnhancementSettings
+    ) {
+      try {
+        const legacy = await this.services.getLegacyPromptEnhancementSettings();
+        const migration = migrateLegacyPromptEnhancementSettings(
+          this.pluginDataDir(manifest.id),
+          legacy,
+        );
+        if (migration.migrated.length > 0) {
+          this.services.audit?.({
+            pluginId: manifest.id,
+            api: "plugin.settings.migrate",
+            ok: true,
+            keys: migration.migrated,
+            ts: Date.now(),
+          });
+        }
+      } catch (error) {
+        this.services.audit?.({
+          pluginId: manifest.id,
+          api: "plugin.settings.migrate",
+          ok: false,
+          errorCode: (error as PluginApiError)?.code ?? "MIGRATION_FAILED",
+          ts: Date.now(),
+        });
+      }
+    }
 
     const entry =
       this.services.hostEntry ??
@@ -2830,6 +2978,59 @@ export class PluginRuntime {
       }
       case "session.getLlmContext": {
         return this.readSessionContext(loaded);
+      }
+      case "session.getAutoTitleContext": {
+        this.assertPermission(loaded, "session.autoTitle");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+        if (!sessionId || sessionId.length > 128) {
+          throw apiError("INVALID_PARAMS", "sessionId must be a non-empty string");
+        }
+        if (!this.services.session?.getAutoTitleContext) {
+          throw apiError("UNSUPPORTED", "host api not available: session.getAutoTitleContext");
+        }
+        const context = await this.services.session.getAutoTitleContext(
+          loaded.manifest.id,
+          { sessionId },
+        );
+        this.services.audit?.({
+          pluginId,
+          api,
+          ok: true,
+          sessionId,
+          ts: Date.now(),
+        });
+        return context;
+      }
+      case "session.setAutoTitle": {
+        this.assertPermission(loaded, "session.autoTitle");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+        const expectedTitle = typeof input.expectedTitle === "string" ? input.expectedTitle : "";
+        const title = typeof input.title === "string" ? input.title : "";
+        if (!sessionId || sessionId.length > 128 || !expectedTitle || !title) {
+          throw apiError("INVALID_PARAMS", "sessionId, expectedTitle and title are required");
+        }
+        if ([...expectedTitle].length > 80 || [...title].length > 80) {
+          throw apiError("LIMIT_EXCEEDED", "session title exceeds 80 characters");
+        }
+        if (!this.services.session?.setAutoTitle) {
+          throw apiError("UNSUPPORTED", "host api not available: session.setAutoTitle");
+        }
+        const result = await this.services.session.setAutoTitle(loaded.manifest.id, {
+          sessionId,
+          expectedTitle,
+          title,
+        }) as { updated?: unknown };
+        this.services.audit?.({
+          pluginId,
+          api,
+          ok: true,
+          sessionId,
+          updated: result?.updated === true,
+          ts: Date.now(),
+        });
+        return result;
       }
       case "session.import": {
         this.assertPermission(loaded, "session.import");

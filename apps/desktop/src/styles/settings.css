@@ -1064,8 +1064,27 @@
   min-height: var(--ds-field-height);
 }
 
+.jev-settings-privacy-note {
+  margin: 0;
+  padding: 0 16px 12px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
 /*
-  A toggle paired with an icon action (prompt enhancement). The control column
+  The Jev row's control column: two actions and the switch. The row metric
+  above only matches a bare toggle, so the group keeps its own height.
+*/
+.jev-settings-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--ds-field-height);
+}
+
+/*
+  A toggle paired with an icon action. The control column
   has no gap of its own, so the two would otherwise touch.
 */
 .settings-row-control:has(> .settings-toggle + .settings-icon-button) {
@@ -1593,19 +1612,28 @@
 .settings-font-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: max-content;
   max-width: 100%;
   min-width: 0;
-  /* One closed-trigger height for every picker: the metric a text input in the
-     same Settings row resolves to, so the two never disagree (see the token). */
-  height: var(--ds-field-height);
-  padding: 0 10px 0 12px;
+  padding: 0 10px;
   border-radius: var(--radius-full);
   background: var(--ds-raised);
   box-shadow: var(--ds-raised-shadow);
   color: var(--ds-text-primary);
   font-size: var(--text-sm-plus);
+}
+
+.settings-language-trigger,
+.settings-theme-trigger,
+.settings-font-trigger {
+  /* Appearance values are brief; the compact trigger frees vertical space
+     while SettingsMenuSelect continues to align with adjacent field inputs. */
+  height: var(--ds-settings-picker-height);
+}
+
+.settings-menu-select-trigger {
+  height: var(--ds-field-height);
 }
 
 .settings-menu-select-anchor.is-full .settings-menu-select-trigger {

@@ -22,7 +22,9 @@ import {
   MAX_IMAGE_GENERATION_MODELS,
   imageGenerationBindings,
   imageModelOfferedByProvider,
+  vendorAccountImageCandidates,
   type ImageGenerationBinding,
+  type ImageProviderFacts,
   type ProviderPublic,
   modelWireIdsEqual as sameComposerModelId,
 } from "@pi-desktop/shared";
@@ -56,6 +58,43 @@ export function resolvesImageGenerationDefault(
   if (!binding) return false;
   const provider = providers.find((candidate) => candidate.id === binding.providerId);
   return imageGenerationBindingAvailable(provider, binding.modelId);
+}
+
+/**
+ * Every binding the image-model picker offers, in the order it shows them: a
+ * stored candidate list is the user's own selection, the single stored default
+ * is the legacy fallback only while no list was ever saved, and a signed-in
+ * vendor account contributes the image model it answers with — which its chat
+ * model list does not carry.
+ *
+ * The row that renders these options and the settings page that accepts the
+ * user's choice must read this one list. When they composed it separately, the
+ * page validated against the narrower one, so picking the image model of a
+ * signed-in ChatGPT (Codex) account saved nothing at all.
+ */
+export function imageGenerationPickerCandidates(
+  stored: readonly ImageGenerationBinding[] | null | undefined,
+  active: ImageGenerationBinding | null | undefined,
+  providers: readonly ImageProviderFacts[],
+): ImageGenerationBinding[] {
+  const configured = Array.isArray(stored)
+    ? imageGenerationBindings(stored, null)
+    : imageGenerationBindings(undefined, active);
+  return imageGenerationBindings(
+    [...configured, ...vendorAccountImageCandidates(providers)],
+    null,
+  );
+}
+
+/** Whether `(providerId, modelId)` is one of the candidates a picker offered. */
+export function isImageGenerationPickerCandidate(
+  candidates: readonly ImageGenerationBinding[],
+  providerId: string,
+  modelId: string,
+): boolean {
+  return candidates.some((entry) =>
+    entry.providerId === providerId && sameComposerModelId(entry.modelId, modelId),
+  );
 }
 
 export type ImageGenerationDefaultDraft = {

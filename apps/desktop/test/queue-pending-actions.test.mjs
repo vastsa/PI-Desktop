@@ -6,6 +6,68 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { IPC } from "@pi-desktop/shared";
 
+test("sending the first prompt keeps the default session title for the title plugin", async (t) => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  const previousWindow = globalThis.window;
+  try {
+    const { createQueueSlice } = await server.ssrLoadModule("/src/stores/slices/queue-slice.ts");
+    const invoked = [];
+    globalThis.window = { piDesktop: { invoke: async (channel, payload) => {
+      invoked.push([channel, payload]);
+      if (channel !== IPC.invoke.agentPrompt) throw new Error(`Unexpected IPC: ${channel}`);
+      return { ok: true, data: { turnId: "turn-1" } };
+    } } };
+    let state = {
+      activeSessionId: "session-a",
+      sessions: [{ id: "session-a", title: "New task", source: "desktop" }],
+      messages: [],
+      pendingPlans: {},
+      runningSessions: {},
+      latestTurnResults: {},
+      sessionOutcomes: {},
+      showToast: assert.fail,
+      rememberModel() {},
+    };
+    const runtime = {
+      submittedComposerDrafts: new Map(),
+      sessionTranscriptCache: new Map(),
+      insertOptimisticUserMessage() {},
+      retractOptimisticUserMessage() {},
+    };
+    const slice = createQueueSlice({
+      get: () => state,
+      set: (update) => {
+        const next = typeof update === "function" ? update(state) : update;
+        state = { ...state, ...next };
+      },
+      runtime,
+      promptAttachmentsFromDraft: () => [],
+      withoutRecordKey: (record, key) => {
+        const next = { ...record };
+        delete next[key];
+        return next;
+      },
+      viewingSessionIdForPrompt: () => "session-a",
+      messageErrorFromUnknown: (error) => ({ code: "FAILED", message: String(error) }),
+      assistantErrorMessage: () => ({ role: "assistant", content: "failed" }),
+      materializeDraftSession: async () => null,
+    });
+
+    assert.equal(await slice.sendPrompt("Summarize the first turn", undefined, "session-a"), true);
+    assert.equal(state.sessions[0].title, "New task");
+    assert.deepEqual(invoked.map(([channel]) => channel), [IPC.invoke.agentPrompt]);
+  } finally {
+    globalThis.window = previousWindow;
+    await server.close();
+  }
+});
+
 test("pending queue actions stay locked until admission succeeds", async (t) => {
   const server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),

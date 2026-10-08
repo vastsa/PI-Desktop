@@ -71,7 +71,7 @@ export function useComposerCompletions({
   fileReferencesRef,
   applyEditorDraft,
   handleInput,
-  invalidatePromptEnhancement,
+  invalidateComposerTransforms,
 }: {
   value: string;
   cursor: number;
@@ -81,7 +81,7 @@ export function useComposerCompletions({
   fileReferencesRef: RefObject<ComposerFileReference[]>;
   applyEditorDraft: (text: string, references: ComposerFileReference[], caret: number) => void;
   handleInput: (source: string, caret: number) => string;
-  invalidatePromptEnhancement: () => void;
+  invalidateComposerTransforms: () => void;
 }) {
   const host = useComposerAutocomplete({ value, cursor, composing, enabled });
   const { triggers } = useSyncExternalStore(
@@ -176,7 +176,7 @@ export function useComposerCompletions({
     if (index >= hostItems.length) {
       const item = pluginItems[index - hostItems.length];
       if (!item || !match) return;
-      invalidatePromptEnhancement();
+      invalidateComposerTransforms();
       const text = value.slice(0, match.tokenStart) + value.slice(match.tokenEnd);
       const placed = placePluginMark(
         fileReferencesRef.current,
@@ -194,7 +194,7 @@ export function useComposerCompletions({
     }
     const result = host.accept(index);
     if (!result) return;
-    invalidatePromptEnhancement();
+    invalidateComposerTransforms();
     // File accept strips the @ token (empty insert) and used to store a
     // token-less chip above the textarea. Inline chips only paint when a
     // sentinel is in the draft, so Enter looked like the reference vanished.

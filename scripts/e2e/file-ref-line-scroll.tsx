@@ -4,6 +4,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { IPC } from "@pi-desktop/shared";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
+import { Markdown } from "../../apps/desktop/src/components/Markdown";
 import { FilesTab } from "../../apps/desktop/src/components/workpanel/FilesTab";
 import { LinkifiedText } from "../../apps/desktop/src/features/chat/transcript/shared";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
@@ -15,6 +16,15 @@ const content = Array.from({ length: 90 }, (_, index) => `line ${index + 1}`).jo
 const resolveRefs: string[] = [];
 const readPaths: string[] = [];
 const scrollCalls: Array<{ line: string | undefined; block?: string }> = [];
+const pluginEnableCalls: string[] = [];
+let pluginViews: Array<{ pluginId: string; viewId: string }> = [];
+let fileManagerPlugin = {
+  id: "pi.file-manager",
+  bundled: true,
+  enabled: false,
+  permissions: ["ui.view"],
+  scope: { mode: "global", projects: [] as string[] },
+};
 
 window.piDesktop = {
   platform: "darwin",
@@ -25,18 +35,32 @@ window.piDesktop = {
     if (channel === IPC.invoke.fsResolveRef) {
       const ref = String(input?.ref ?? "");
       resolveRefs.push(ref);
+      const relativePath = ref === "核查报告.md" ? ref : targetPath;
       return {
         ok: true,
         data: {
           match: {
             root: "workspace",
-            relativePath: targetPath,
-            absolutePath: `/workspace/${targetPath}`,
+            relativePath,
+            absolutePath: `/workspace/${relativePath}`,
             matchedBy: "exact-relative",
             projectRoot: { path: "/workspace", name: "Fixture", primary: true },
           },
         },
       };
+    }
+    if (channel === IPC.invoke.pluginViews) {
+      return { ok: true, data: pluginViews };
+    }
+    if (channel === IPC.invoke.pluginList) {
+      return { ok: true, data: { plugins: [fileManagerPlugin] } };
+    }
+    if (channel === IPC.invoke.pluginEnable) {
+      const pluginId = String(args[0] ?? "");
+      pluginEnableCalls.push(pluginId);
+      fileManagerPlugin = { ...fileManagerPlugin, enabled: true };
+      pluginViews = [{ pluginId, viewId: "manager" }];
+      return { ok: true, data: undefined };
     }
     if (channel === IPC.invoke.fsList) {
       return { ok: true, data: { entries: [] } };
@@ -53,7 +77,7 @@ window.piDesktop = {
 useAppStore.setState({
   workspace: { path: "/workspace", name: "Fixture" },
   activeSessionId: "fixture-session",
-  pluginViews: [{ pluginId: "pi.file-manager", viewId: "manager" }],
+  pluginViews: [],
   workPanelOpen: false,
   workPanelTabs: [],
   activeWorkPanelTabId: null,
@@ -88,6 +112,9 @@ void i18n
           <div className="fixture-chat">
             <LinkifiedText text={`Review ${targetPath}:${targetLine}:4.`} />
           </div>
+          <div className="fixture-markdown">
+            <Markdown source="[核查报告.md](核查报告.md)" renderDiagrams={false} />
+          </div>
           <FilesTab />
         </I18nextProvider>,
       ),
@@ -101,6 +128,31 @@ void i18n
         }
         return false;
       };
+
+      const markdownLink = document.querySelector<HTMLAnchorElement>(
+        ".fixture-markdown a",
+      );
+      if (!markdownLink) throw new Error("Markdown file link did not render");
+      markdownLink.click();
+      const managerStarted = await until(
+        () =>
+          pluginEnableCalls.length === 1 &&
+          useAppStore.getState().workPanelTabs.some(
+            (tab) => tab.id === "plugin:pi.file-manager/manager",
+          ),
+        "on-demand File Manager tab",
+      );
+      if (!managerStarted) {
+        throw new Error(
+          `Markdown click did not start the File Manager: ${JSON.stringify({
+            pluginEnableCalls,
+            workPanelTabs: useAppStore.getState().workPanelTabs,
+          })}`,
+        );
+      }
+      const fileManagerTab = useAppStore.getState().workPanelTabs.find(
+        (tab) => tab.id === "plugin:pi.file-manager/manager",
+      );
 
       if (!(await until(
         () => Boolean(document.querySelector<HTMLButtonElement>(".chat-file-chip")),
@@ -123,6 +175,8 @@ void i18n
         fileManagerAvailable: useAppStore.getState().pluginViews.some(
           (view) => view.pluginId === "pi.file-manager" && view.viewId === "manager",
         ),
+        pluginEnableCalls,
+        fileManagerLocation: fileManagerTab?.location ?? null,
         selectedPath: document.querySelector(".file-viewer-path")?.textContent,
         segments: splitChatText(`Review ${targetPath}:${targetLine}:4.`, "/workspace"),
         resolveRefs,
@@ -149,6 +203,8 @@ declare global {
     };
     fileRefLineScrollProbe: () => Promise<{
       fileManagerAvailable: boolean;
+      pluginEnableCalls: string[];
+      fileManagerLocation: string | null;
       selectedPath: string | null | undefined;
       segments: unknown[];
       resolveRefs: string[];

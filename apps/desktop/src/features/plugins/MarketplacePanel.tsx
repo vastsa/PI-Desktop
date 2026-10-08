@@ -1,6 +1,5 @@
 import { Button, cx } from "../../components/ui";
 import { IconCheck, IconSearch, IconShield } from "../../components/icons";
-import { MarketplaceSourceSettings } from "../../components/plugins/MarketplaceSourceSettings";
 import { PermissionChips } from "./presentation";
 import {
   formatDate,
@@ -12,11 +11,9 @@ import type { PluginsPageModel } from "./usePluginsPage";
 export function MarketplacePanel({
   t,
   locale,
-  settings,
   query,
   setQuery,
   refreshMarket,
-  setMarketSource,
   categories,
   category,
   setCategory,
@@ -36,16 +33,6 @@ export function MarketplacePanel({
             aria-labelledby="plugins-tab-market"
             className="plugins-panel"
           >
-            {settings ? (
-              <MarketplaceSourceSettings
-                settings={settings}
-                onSourceRefreshed={(source) => {
-                  setMarketSource(source);
-                  void refreshMarket(query);
-                }}
-              />
-            ) : null}
-
             {categories.length > 1 ? (
               <div
                 className="plugins-filters"

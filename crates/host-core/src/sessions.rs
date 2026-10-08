@@ -20,6 +20,21 @@ pub const MODES: [&str; 3] = ["plan", "goal", "agent"];
 
 /// Maximum number of Unicode scalar values accepted for a user-defined title.
 pub const MAX_SESSION_TITLE_CHARS: usize = 80;
+const TITLE_SOURCE_DEFAULT: &str = "default";
+const TITLE_SOURCE_MANUAL: &str = "manual";
+const TITLE_SOURCE_GENERATED: &str = "generated";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTitleContext {
+    pub session_id: String,
+    pub expected_title: String,
+    pub user_prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assistant_reply: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_key: Option<String>,
+}
 
 /// Compatibility normalization for v7 callers and imported records. The
 /// persisted operating profile is now always `plan`, `goal` or `agent`.
@@ -1275,50 +1290,13 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
 
 // ---- sessions ---------------------------------------------------------------
 
-fn first_user_title(db: &Database, session_id: &str) -> Result<Option<String>> {
-    let mut stmt = db.conn().prepare_cached(
-        "SELECT text FROM messages
-         WHERE session_id = ?1 AND role = 'user' AND text IS NOT NULL
-         ORDER BY seq ASC LIMIT 1",
-    )?;
-    let content: Option<String> = stmt
-        .query_row(params![session_id], |row| row.get(0))
-        .optional()?;
-    Ok(content.and_then(|c| {
-        let t = c.trim().replace('\n', " ");
-        let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
-        if t.is_empty() {
-            None
-        } else {
-            let mut out = t.chars().take(48).collect::<String>();
-            if t.chars().count() > 48 {
-                out.push('…');
-            }
-            Some(out)
-        }
-    }))
-}
-
 pub fn list_sessions(db: &Database) -> Result<Vec<SessionSummary>> {
     let sql = format!("{SUMMARY_SELECT} ORDER BY s.updated_at DESC");
     let mut stmt = db.conn().prepare_cached(&sql)?;
     let rows = stmt.query_map([], summary_from_row)?;
     let mut out = Vec::new();
     for row in rows {
-        let mut session = row?;
-        if is_default_title(&session.title) {
-            if let Some(title) = first_user_title(db, &session.id)? {
-                // Persist so Recents stays stable across restarts. Each write is
-                // its own commit, which looks like an obvious batching win —
-                // batching them into one transaction measured 0.114 ms -> 0.022 ms
-                // for forty sessions, and was left out anyway: a
-                // session stops having a default title the first time this runs,
-                // so the extra commits happen once per session, not per read.
-                let _ = rename_session(db, &session.id, &title);
-                session.title = title;
-            }
-        }
-        out.push(session);
+        out.push(row?);
     }
     Ok(out)
 }
@@ -1394,6 +1372,11 @@ pub fn create_session_with_options(
     let now = now_ms();
     let id = Uuid::new_v4().to_string();
     let title = title.unwrap_or_else(|| "New task".into());
+    let title_source = if is_default_title(&title) {
+        TITLE_SOURCE_DEFAULT
+    } else {
+        TITLE_SOURCE_MANUAL
+    };
     let mode = normalize_mode(mode.as_deref());
     let thinking_level = thinking_level.unwrap_or_else(default_thinking_level);
     validate_thinking_level(&thinking_level)?;
@@ -1414,8 +1397,8 @@ pub fn create_session_with_options(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+                permission_mode, title_source, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
         )?
         .execute(params![
             id,
@@ -1426,6 +1409,7 @@ pub fn create_session_with_options(
             mode,
             thinking_level,
             permission_mode,
+            title_source,
             now
         ])?;
     Ok(SessionSummary {
@@ -1941,8 +1925,98 @@ pub fn rename_session(db: &Database, id: &str, title: &str) -> Result<bool> {
     let title = normalize_session_title(title)?;
     let n = db
         .conn()
-        .prepare_cached("UPDATE sessions SET title = ?1 WHERE id = ?2")?
-        .execute(params![title, id])?;
+        .prepare_cached("UPDATE sessions SET title = ?1, title_source = ?2 WHERE id = ?3")?
+        .execute(params![title, TITLE_SOURCE_MANUAL, id])?;
+    Ok(n > 0)
+}
+
+/// Return only the first-turn text needed to name an untouched session.
+/// The dedicated plugin API must not become a transcript-reading shortcut.
+pub fn auto_title_context(db: &Database, id: &str) -> Result<Option<AutoTitleContext>> {
+    let row: Option<(String, String, Option<String>, Option<String>)> = db
+        .conn()
+        .query_row(
+            "SELECT title, title_source, provider_id, model_id
+             FROM sessions WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()?;
+    let Some((title, title_source, provider_id, model_id)) = row else {
+        return Ok(None);
+    };
+    if title_source != TITLE_SOURCE_DEFAULT {
+        return Ok(None);
+    }
+
+    let first_user: Option<(i64, Option<String>, String)> = db
+        .conn()
+        .query_row(
+            "SELECT seq, turn_id, text FROM messages
+             WHERE session_id = ?1 AND role = 'user' AND text IS NOT NULL
+             ORDER BY seq ASC LIMIT 1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let Some((user_seq, turn_id, user_prompt)) = first_user else {
+        return Ok(None);
+    };
+    if user_prompt.trim().is_empty() {
+        return Ok(None);
+    }
+    let assistant_reply: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT text FROM messages
+             WHERE session_id = ?1 AND role = 'assistant' AND text IS NOT NULL AND seq > ?2
+               AND (?3 IS NULL OR turn_id = ?3)
+             ORDER BY seq ASC LIMIT 1",
+            params![id, user_seq, turn_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let user_prompt = truncate_title_context(&user_prompt, 1_000);
+    let assistant_reply = assistant_reply
+        .map(|reply| truncate_title_context(&reply, 500))
+        .filter(|reply| !reply.trim().is_empty());
+    Ok(Some(AutoTitleContext {
+        session_id: id.to_string(),
+        expected_title: title,
+        user_prompt,
+        assistant_reply,
+        model_key: provider_id
+            .zip(model_id)
+            .map(|(provider, model)| format!("{provider}/{model}")),
+    }))
+}
+
+fn truncate_title_context(value: &str, limit: usize) -> String {
+    value.chars().take(limit).collect()
+}
+
+/// Apply a plugin-generated title only if the exact default title read by the
+/// plugin is still current and no manual or generated title has won the race.
+pub fn set_automatic_session_title(
+    db: &Database,
+    id: &str,
+    expected_title: &str,
+    title: &str,
+) -> Result<bool> {
+    let title = normalize_session_title(title)?;
+    let n = db
+        .conn()
+        .prepare_cached(
+            "UPDATE sessions SET title = ?1, title_source = ?2
+             WHERE id = ?3 AND title = ?4 AND title_source = ?5 AND deleted_at IS NULL",
+        )?
+        .execute(params![
+            title,
+            TITLE_SOURCE_GENERATED,
+            id,
+            expected_title,
+            TITLE_SOURCE_DEFAULT
+        ])?;
     Ok(n > 0)
 }
 
@@ -4620,6 +4694,65 @@ mod tests {
             rename_session(&db, &session.id, &"x".repeat(MAX_SESSION_TITLE_CHARS + 1),).is_err()
         );
         assert!(!rename_session(&db, "missing", "Valid").unwrap());
+    }
+
+    #[test]
+    fn auto_title_context_is_limited_to_the_first_turn_and_bounded() {
+        let db = test_db();
+        let session = create_session_with_options(
+            &db,
+            SessionCreateOptions {
+                provider_id: Some("provider".into()),
+                model_id: Some("model".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let first_prompt = "p".repeat(1_100);
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("user-1", &first_prompt, "2026-01-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        let mut first_reply = user_msg("assistant-1", &"r".repeat(600), "2026-01-01T00:00:02Z");
+        first_reply.role = "assistant".into();
+        append_message(&db, &session.id, &first_reply, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("user-2", "later prompt", "2026-01-01T00:00:03Z"),
+            None,
+        )
+        .unwrap();
+        let mut later_reply = user_msg("assistant-2", "later reply", "2026-01-01T00:00:04Z");
+        later_reply.role = "assistant".into();
+        append_message(&db, &session.id, &later_reply, None).unwrap();
+
+        let context = auto_title_context(&db, &session.id).unwrap().unwrap();
+        assert_eq!(context.session_id, session.id);
+        assert_eq!(context.expected_title, "New task");
+        assert_eq!(context.user_prompt, "p".repeat(1_000));
+        assert_eq!(context.assistant_reply, Some("r".repeat(500)));
+        assert_eq!(context.model_key.as_deref(), Some("provider/model"));
+    }
+
+    #[test]
+    fn automatic_title_compare_and_set_respects_manual_and_stale_titles() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(set_automatic_session_title(&db, &session.id, "New task", "Generated").unwrap());
+        assert!(auto_title_context(&db, &session.id).unwrap().is_none());
+        assert!(!set_automatic_session_title(&db, &session.id, "New task", "Stale").unwrap());
+
+        let manual = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(rename_session(&db, &manual.id, "Picked by user").unwrap());
+        assert!(!set_automatic_session_title(&db, &manual.id, "New task", "Generated").unwrap());
+        assert_eq!(
+            get_session(&db, &manual.id).unwrap().unwrap().summary.title,
+            "Picked by user"
+        );
     }
 
     #[test]

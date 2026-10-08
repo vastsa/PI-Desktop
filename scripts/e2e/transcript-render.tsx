@@ -188,7 +188,6 @@ globalThis.resetContextOverflowRecoveryProbe = async () => {
       sessionModeForPlanningState: () => "agent",
       openPlanArtifact: () => undefined,
       notifyInteractivePrompt: () => undefined,
-      triggerAutoTitleSummarization: async () => undefined,
       flushPendingSessionConfiguration: async () => undefined,
       assistantErrorMessage: (error) =>
         assistantErrorMessage({

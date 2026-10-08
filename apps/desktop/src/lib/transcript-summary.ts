@@ -32,7 +32,6 @@ export type AssistantTurnSummary = {
   hasContent: boolean;
   process: AssistantTurnPart[];
   responses: Extract<AssistantTurnPart, { kind: "message" }>[];
-  lastActivityPart?: AssistantTurnPart;
 };
 
 const summaries = new WeakMap<readonly AssistantTurnPart[], AssistantTurnSummary>();
@@ -56,7 +55,6 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
   for (const part of entry.parts) {
     if (part.kind === "activity") {
       result.process.push(part);
-      result.lastActivityPart = part;
       for (const item of part.items) {
         result.activityItems.push(item);
         if (item.kind !== "tool") continue;

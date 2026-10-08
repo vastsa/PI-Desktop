@@ -38,6 +38,7 @@ export type ShutdownDependencies = {
   activeTurns: Map<string, string>;
   persistenceOutbox: PersistenceOutbox;
   inflightCheckpointer: InflightCheckpointer;
+  flushEventPersistence: () => Promise<void>;
   pluginPanels: Pick<PluginPanelHost, "closeAll">;
   plugins: Pick<PluginRuntime, "disposeAll">;
   userMcp: Pick<UserMcpRuntime, "disposeAll">;
@@ -62,6 +63,7 @@ export function registerShutdownHandlers({
   activeTurns,
   persistenceOutbox,
   inflightCheckpointer,
+  flushEventPersistence,
   pluginPanels,
   plugins,
   userMcp,
@@ -168,6 +170,27 @@ export function registerShutdownHandlers({
         pluginViews.dispose(),
       ]);
       await pluginSurfacesShutdown;
+      // Stop event production before draining the terminal writes. A finished
+      // turn can already have left activeTurns while its branch archive is
+      // still awaiting the host; closing host-core first loses that archive.
+      const sidecarShutdown = getSidecar()?.dispose();
+      await Promise.allSettled([sidecarShutdown]);
+      await inflightCheckpointer.flushAll();
+      let persistenceTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const settled = await Promise.race([
+          flushEventPersistence().then(() => true),
+          new Promise<boolean>((resolve) => {
+            persistenceTimer = setTimeout(() => resolve(false), QUIT_TURN_SETTLE_BUDGET_MS);
+          }),
+        ]);
+        if (!settled) {
+          logger.app("lifecycle", "warn", "quit before event persistence settled");
+        }
+      } finally {
+        if (persistenceTimer) clearTimeout(persistenceTimer);
+      }
+      await persistenceOutbox.flush(getHost);
       const hostShutdown = getHost()?.dispose();
       const mcpShutdown = getMcpControl()?.stop();
       updater.dispose();
@@ -179,7 +202,6 @@ export function registerShutdownHandlers({
       mcpOAuth?.disposeAll();
       browserHost.dispose();
       inflightCheckpointer.dispose();
-      const sidecarShutdown = getSidecar()?.dispose();
 
       try {
         await hostShutdown;

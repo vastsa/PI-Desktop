@@ -60,6 +60,12 @@ fn manifest_with_providers(ids: &[&str]) -> PluginManifest {
     serde_json::from_value(value).unwrap()
 }
 
+fn manifest_with_dynamic_provider() -> PluginManifest {
+    let mut value = serde_json::to_value(manifest()).unwrap();
+    value["contributes"]["providers"][0]["models"] = json!([]);
+    serde_json::from_value(value).unwrap()
+}
+
 fn write_plugin(root: &std::path::Path, manifest: Value) {
     fs::create_dir_all(root).unwrap();
     fs::write(root.join("main.js"), "export function onLoad() {}").unwrap();
@@ -91,9 +97,11 @@ fn declaration_manifest(providers: Value, permissions: Value) -> Value {
 #[test]
 fn a_new_database_carries_the_owner_column_at_the_current_schema_version() {
     let (_dir, db, _secrets) = test_context();
-    // v17 added the owner column, v18 the turn-queue priority column, v19 session omit, and v21 the session Todo checklist; a fresh
-    // database is stamped with the newest, so the column set is the current one.
-    assert_eq!(SCHEMA_VERSION, 21);
+    // v17 added the owner column, v18 the turn-queue priority column,
+    // v19 session omit, v21 the session Todo checklist, and v22 the
+    // session-list index. A fresh database is stamped with the newest version,
+    // so the column set is the current one.
+    assert_eq!(SCHEMA_VERSION, 23);
     let version: i64 = db
         .conn()
         .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -134,6 +142,61 @@ fn declared_providers_reads_the_manifest() {
     // A model that declares no limits falls back to the runtime default
     // instead of storing a zero window.
     assert_eq!(provider.models[1].context_window, 0);
+}
+
+#[test]
+fn provider_declarations_have_no_eight_row_cap() {
+    let ids: Vec<String> = (0..18).map(|index| format!("site-{index}")).collect();
+    let borrowed: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let declared = declared_providers(&manifest_with_providers(&borrowed));
+    assert_eq!(declared.len(), 18);
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("plugin");
+    write_plugin(
+        &root,
+        serde_json::to_value(manifest_with_providers(&borrowed)).unwrap(),
+    );
+    assert!(PluginManager::read_manifest(&root).is_ok());
+}
+
+#[test]
+fn empty_api_key_model_list_uses_the_cached_endpoint_discovery() {
+    let (_dir, db, secrets) = test_context();
+    let declared = declared_providers(&manifest_with_dynamic_provider());
+    assert!(declared[0].models.is_empty());
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("plugin");
+    write_plugin(
+        &root,
+        serde_json::to_value(manifest_with_dynamic_provider()).unwrap(),
+    );
+    assert!(PluginManager::read_manifest(&root).is_ok());
+    sync_plugin_providers(&db, &secrets, "demo.provider", &declared, true).unwrap();
+    providers::set_provider_secret(
+        &db,
+        &secrets,
+        "plugin:demo.provider:demo",
+        Some("fixture-key"),
+    )
+    .unwrap();
+    providers::cache_discovered_models(
+        &db,
+        "plugin:demo.provider:demo",
+        &[providers::DiscoveredModelInput {
+            model_id: "demo-chat".to_string(),
+            display_name: "Demo Chat".to_string(),
+            capabilities: vec!["text".to_string()],
+            context_window: Some(128_000),
+        }],
+    )
+    .unwrap();
+
+    let listed = providers::list_providers(&db, &secrets, true).unwrap();
+    assert_eq!(listed[0].models.len(), 1);
+    assert_eq!(listed[0].models[0].id, "demo-chat");
+    assert_eq!(listed[0].models[0].alias.as_deref(), Some("Demo Chat"));
+    assert_eq!(listed[0].default_model_id.as_deref(), Some("demo-chat"));
 }
 
 #[test]
@@ -511,7 +574,42 @@ fn the_declaration_shape_is_validated() {
     );
     assert!(read_manifest_err(&root).contains("http(s) URL"));
 
-    // A model list is required and bounded.
+    // Localized labels are bounded by characters, including full-width text.
+    let long_localized_provider = json!([{
+        "id": "demo",
+        "name": "Demo",
+        "category": { "en": "C".repeat(128), "zh-CN": "公".repeat(128) },
+        "description": { "en": "A".repeat(280), "zh-CN": "公益".repeat(140) },
+        "baseUrl": "https://api.example.com/v1",
+        "models": [{ "id": "m" }]
+    }]);
+    write_plugin(
+        &root,
+        declaration_manifest(long_localized_provider, permissions.clone()),
+    );
+    assert!(PluginManager::read_manifest(&root).is_ok());
+
+    write_plugin(
+        &root,
+        declaration_manifest(
+            json!([{ "id": "demo", "name": "Demo", "category": { "en": "Community" },
+                     "baseUrl": "https://api.example.com/v1", "models": [{ "id": "m" }] }]),
+            permissions.clone(),
+        ),
+    );
+    assert!(read_manifest_err(&root).contains("category must be a string or localized strings"));
+
+    write_plugin(
+        &root,
+        declaration_manifest(
+            json!([{ "id": "demo", "name": "Demo", "description": "公".repeat(281),
+                     "baseUrl": "https://api.example.com/v1", "models": [{ "id": "m" }] }]),
+            permissions.clone(),
+        ),
+    );
+    assert!(read_manifest_err(&root).contains("description must be a string or localized strings"));
+
+    // Dynamic discovery needs an endpoint when an API-key model list is empty.
     write_plugin(
         &root,
         declaration_manifest(
@@ -519,7 +617,8 @@ fn the_declaration_shape_is_validated() {
             permissions.clone(),
         ),
     );
-    assert!(read_manifest_err(&root).contains("1 to 64 models"));
+    assert!(read_manifest_err(&root)
+        .contains("may omit models only for an API-key provider with a baseUrl"));
 
     write_plugin(
         &root,

@@ -511,6 +511,7 @@ test("capability badges include every declared plugin capability", () => {
     "panel",
     "views",
     "rendererUi",
+    "composerTransform",
     "commands",
     "tools",
     "agentExtension",

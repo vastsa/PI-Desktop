@@ -130,12 +130,15 @@ export function registerPluginIpc({
         // row: a plugin that is not running has nothing to load.
         const renderer = plugin?.id ? plugins.rendererDescriptor(plugin.id) : undefined;
         const withRenderer = renderer ? { ...withExtension, renderer } : withExtension;
-        if (!plugin?.settings?.length || !plugins.getLoaded(plugin.id)) return withRenderer;
+        const withComposerTransforms = plugin?.id
+          ? { ...withRenderer, composerTransforms: plugins.getComposerTransforms(plugin.id) }
+          : withRenderer;
+        if (!plugin?.settings?.length || !plugins.getLoaded(plugin.id)) return withComposerTransforms;
         try {
           const settings = await plugins.getPluginSettings(plugin.id);
-          return { ...withRenderer, settings };
+          return { ...withComposerTransforms, settings };
         } catch {
-          return withRenderer;
+          return withComposerTransforms;
         }
       }),
     );
@@ -152,6 +155,31 @@ export function registerPluginIpc({
         throw rendererCallError("INVALID_ARGUMENT", "pluginId and method are required");
       }
       return plugins.callRenderer(pluginId, method, args);
+    },
+  );
+
+  registrar.handleWithEvent(
+    IPC.invoke.pluginComposerTransform,
+    async (event, payload: unknown) => {
+      registrar.assertMainWindowSender(event);
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw rendererCallError("INVALID_ARGUMENT", "composer transform input is invalid");
+      }
+      const input = payload as Record<string, unknown>;
+      if (
+        typeof input.pluginId !== "string" ||
+        typeof input.id !== "string" ||
+        typeof input.text !== "string" ||
+        (input.modelKey !== undefined && typeof input.modelKey !== "string")
+      ) {
+        throw rendererCallError("INVALID_ARGUMENT", "composer transform input is invalid");
+      }
+      return plugins.runComposerTransform({
+        pluginId: input.pluginId,
+        id: input.id,
+        text: input.text,
+        ...(typeof input.modelKey === "string" ? { modelKey: input.modelKey } : {}),
+      });
     },
   );
 

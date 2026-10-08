@@ -75,8 +75,54 @@ pub fn list_providers(
     let mut stmt = db.conn().prepare_cached(&sql)?;
     let rows = stmt.query_map([], |row| provider_from_row(row, secrets))?;
     let mut providers = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    for provider in &mut providers {
+        hydrate_dynamic_plugin_models(db, provider)?;
+    }
     super::order::apply_saved_order(db, &mut providers)?;
     Ok(providers)
+}
+
+/// An empty model declaration opts an API-key plugin provider into using the
+/// endpoint's cached discovery results. Static manifest models stay authoritative
+/// whenever the plugin declares at least one.
+fn hydrate_dynamic_plugin_models(db: &Database, provider: &mut ProviderPublic) -> Result<()> {
+    if provider.owner_plugin_id.is_none() || !provider.models.is_empty() {
+        return Ok(());
+    }
+    provider.models = list_models(db, Some(&provider.id))?
+        .into_iter()
+        .map(|model| {
+            let alias = (model.display_name != model.model_id).then_some(model.display_name);
+            ModelBinding {
+                id: model.model_id,
+                alias,
+                context_window_source: None,
+                max_tokens_source: None,
+                context_window: model.context_window.unwrap_or(DEFAULT_CONTEXT_WINDOW),
+                max_tokens: DEFAULT_MAX_TOKENS,
+                thinking_levels: Vec::new(),
+                default_thinking_level: None,
+                thinking_protocol: None,
+                supports_images: model
+                    .capabilities
+                    .iter()
+                    .any(|value| value == "vision")
+                    .then_some(true),
+                supports_documents: None,
+                available_for_subagents: None,
+                native_web_search: None,
+            }
+        })
+        .collect();
+    if provider
+        .default_model_id
+        .as_deref()
+        .map(|value| value.is_empty())
+        .unwrap_or(true)
+    {
+        provider.default_model_id = provider.models.first().map(|model| model.id.clone());
+    }
+    Ok(())
 }
 
 pub fn create_provider(
@@ -513,11 +559,15 @@ pub fn get_provider(
     id: &str,
 ) -> Result<Option<ProviderPublic>> {
     let sql = format!("{PROVIDER_SELECT} WHERE id = ?1");
-    db.conn()
+    let mut provider = db
+        .conn()
         .prepare_cached(&sql)?
         .query_row(params![id], |row| provider_from_row(row, secrets))
-        .optional()
-        .map_err(Into::into)
+        .optional()?;
+    if let Some(provider) = provider.as_mut() {
+        hydrate_dynamic_plugin_models(db, provider)?;
+    }
+    Ok(provider)
 }
 
 /// Whether `id` names a row, whoever owns it.

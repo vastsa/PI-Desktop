@@ -1122,6 +1122,62 @@ pub fn rename(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Va
     Ok(json!({ "updated": true }))
 }
 
+/// Narrow title-context access for plugins that hold `session.autoTitle`.
+/// The Electron broker performs the permission check; this method still
+/// returns only the first user prompt and first assistant reply, and only for
+/// sessions whose title remains eligible for automatic replacement.
+pub fn auto_title_context(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
+    validate_payload(params_value)?;
+    if plugin_id.trim().is_empty() {
+        return Err(invalid("pluginId is required"));
+    }
+    let session_id = required_text(
+        params_value
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "sessionId",
+        128,
+    )?;
+    Ok(sessions::auto_title_context(db, &session_id)?
+        .map(|context| json!(context))
+        .unwrap_or(Value::Null))
+}
+
+/// Compare-and-set the title of an untouched default/fallback session.
+pub fn set_auto_title(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
+    validate_payload(params_value)?;
+    if plugin_id.trim().is_empty() {
+        return Err(invalid("pluginId is required"));
+    }
+    let session_id = required_text(
+        params_value
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "sessionId",
+        128,
+    )?;
+    let expected_title = required_text(
+        params_value
+            .get("expectedTitle")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "expectedTitle",
+        MAX_TITLE_CHARS,
+    )?;
+    let title = required_text(
+        params_value
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "title",
+        MAX_TITLE_CHARS,
+    )?;
+    let updated = sessions::set_automatic_session_title(db, &session_id, &expected_title, &title)?;
+    Ok(json!({ "updated": updated }))
+}
+
 pub fn delete(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Value> {
     validate_payload(params_value)?;
     let session_id = required_text(
@@ -1195,6 +1251,24 @@ mod tests {
                 "createdAt": message_time
             }]
         })
+    }
+
+    fn append_text_message(
+        db: &Database,
+        session_id: &str,
+        id: &str,
+        role: &str,
+        content: &str,
+        second: u8,
+    ) {
+        let message: UiMessage = serde_json::from_value(json!({
+            "id": id,
+            "role": role,
+            "content": content,
+            "createdAt": format!("2026-01-01T00:00:{second:02}Z")
+        }))
+        .unwrap();
+        sessions::append_message(db, session_id, &message, None).unwrap();
     }
 
     #[test]
@@ -1401,6 +1475,61 @@ mod tests {
         let reimported = import(&db, "plugin.one", &input).unwrap();
         assert_eq!(reimported["imported"], true);
         assert_ne!(reimported["sessionId"], id);
+    }
+
+    #[test]
+    fn auto_title_plugin_api_exposes_only_first_turn_and_uses_compare_and_set() {
+        let (_dir, db) = db();
+        let session = sessions::create_session_with_options(
+            &db,
+            sessions::SessionCreateOptions {
+                provider_id: Some("provider".into()),
+                model_id: Some("model".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        append_text_message(&db, &session.id, "u1", "user", "first prompt", 1);
+        append_text_message(&db, &session.id, "a1", "assistant", "first reply", 2);
+        append_text_message(&db, &session.id, "u2", "user", "later prompt", 3);
+        append_text_message(&db, &session.id, "a2", "assistant", "later reply", 4);
+
+        let context =
+            auto_title_context(&db, "plugin.title", &json!({ "sessionId": session.id })).unwrap();
+        assert_eq!(context["userPrompt"], "first prompt");
+        assert_eq!(context["assistantReply"], "first reply");
+        assert_eq!(context["modelKey"], "provider/model");
+        assert!(context.get("messages").is_none());
+
+        let update = json!({
+            "sessionId": session.id,
+            "expectedTitle": "New task",
+            "title": "Plugin generated"
+        });
+        assert_eq!(
+            set_auto_title(&db, "plugin.title", &update).unwrap()["updated"],
+            true
+        );
+        assert_eq!(
+            set_auto_title(&db, "plugin.title", &update).unwrap()["updated"],
+            false
+        );
+        assert_eq!(
+            auto_title_context(&db, "plugin.title", &json!({ "sessionId": session.id })).unwrap(),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn auto_title_plugin_api_does_not_return_manually_named_sessions() {
+        let (_dir, db) = db();
+        let session = sessions::create_session(&db, None, None, None, None, None).unwrap();
+        append_text_message(&db, &session.id, "u1", "user", "first prompt", 1);
+        sessions::rename_session(&db, &session.id, "Picked by user").unwrap();
+        assert_eq!(
+            auto_title_context(&db, "plugin.title", &json!({ "sessionId": session.id })).unwrap(),
+            Value::Null
+        );
     }
 
     #[test]

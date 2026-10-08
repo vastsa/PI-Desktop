@@ -2,7 +2,8 @@ import type { BrowserWindow, Rectangle } from "electron";
 import { MAX_WINDOW_CORNER_RADIUS } from "@pi-desktop/plugin-sdk";
 import { isWindowFullScreen } from "./window-fullscreen.ts";
 
-export const DEFAULT_WINDOW_CORNER_RADIUS = 4;
+/** Matches the renderer's global `--radius-md` token (12px). */
+export const DEFAULT_WINDOW_CORNER_RADIUS = 12;
 const controllers = new WeakMap<BrowserWindow, { setRadius: (radius: number) => number }>();
 
 /** Pixel rows approximate a quarter circle without changing window bounds. */

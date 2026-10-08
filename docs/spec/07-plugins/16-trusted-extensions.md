@@ -419,7 +419,10 @@ the UI broker's own prompt timeout does not extend that budget.
 4. Every execution writes an audit line with extension id, tool name, and
    duration. Parameters are not logged.
 5. `exec` runs in the sidecar with the session's working directory and the
-   session's proxy and environment settings.
+   session's proxy and environment settings. That directory, also `ctx.cwd`,
+   is the project root; a temporary session uses its own scratch directory
+   (D114), which the runtime creates before extensions load, never the
+   sidecar's process directory.
 
 ## 8. Commands
 

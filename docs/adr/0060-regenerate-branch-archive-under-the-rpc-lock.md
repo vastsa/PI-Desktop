@@ -58,6 +58,16 @@ an idempotent stamp destroyed a message.
    which the caller already logs as a skipped archive rather than treating as
    data loss. Nothing a v9 client relies on changes.
 
+## Quit-time lifecycle correction (2026-10-07)
+
+An archive can outlive `activeTurns` and an empty append outbox. Previously,
+quitting in that interval disposed host-core while `session.saveActiveRevision`
+was pending. Electron now tracks terminal event writes, stops sidecar event
+production, and drains those writes before host disposal. The drain is bounded
+using the existing two-second quit budget and warns if the host remains
+unresponsive. This preserves the single-RPC archival contract without adding a
+second archive path or changing stored transcript formats.
+
 ## Alternatives considered
 
 - **Await the outbox and keep the four-call rewrite:** narrows the window but

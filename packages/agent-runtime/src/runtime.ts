@@ -1,3 +1,8 @@
+import {
+  MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
+  RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
+  mutationTerminationAdvice, mutationTerminationMessage,
+} from "./mutation-recovery.js";
 import { resolveMcpToolSelection } from "./mcp-tool-selection.js";
 import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, restoredToolActivation, syncToolActivation, type ToolDeclarationPolicy } from "./fixed-tool-declarations.js";
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
@@ -9,9 +14,11 @@ import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
+import { createJevClassifierTool } from "./jev-classifier-tool.js";
 import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { withPiFileOpToolNames } from "./pi-file-ops.js";
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import {
   settledDelegationMessage,
   taskMessageSnapshot,
@@ -201,6 +208,7 @@ import {
   SUBAGENT_TOOL_NAME,
   SUBAGENT_WAIT_TOOL_NAME,
   type SubagentRunResult,
+  type SubagentToolOutcome,
 } from "./subagent.js";
 import {
   composeModeSystemPrompt,
@@ -402,45 +410,6 @@ export function sessionReferenceBlock(attachment: RuntimePromptAttachment): stri
 // pi-ai's adapter retry is disabled here so setup and mid-stream 429s share
 // one runtime-owned budget instead of multiplying nested retry loops.
 const PROVIDER_REQUEST_MAX_RETRIES = 0;
-const MAX_MUTATION_RECOVERY_FAILURES = 3;
-const BASH_PATCH_FAILURE_KEY = "__bash_patch_command__";
-/**
- * Edit failures the line-anchored contract expects and already answers: each
- * one hands back the live tag, or the content of the lines it refused to write
- * blind (spec 18-line-anchored-edit-contract §9.3). One honest retry is the designed response, so each of
- * these codes gets a single free attempt per path before it counts toward the
- * recovery guard. Everything else — malformed ops, bad ranges, a no-op apply —
- * counts immediately, because a second one is the model guessing.
- */
-const RECOVERABLE_MUTATION_ERROR_CODES = new Set([
-  "EDIT_TAG_MISMATCH",
-  "EDIT_TAG_UNKNOWN",
-  "EDIT_LINES_UNSEEN",
-]);
-
-function mutationTerminationAdvice(
-  kind: "edit" | "patch-command",
-  errorCode?: string,
-): string {
-  if (kind === "patch-command") {
-    return "Use Edit on the specific lines instead of repeating a shell patch command.";
-  }
-  if (errorCode === "EDIT_PARSE_FAILED") {
-    return "Fix the Edit ops syntax and retry with a corrected payload; do not repeat the same ops. A PUT with body rows must end its header with `:`, for example `PUT 48.=48:`.";
-  }
-  if (errorCode === "EDIT_RANGE_INVALID") {
-    return "Correct the Edit range or operation overlap before retrying; re-reading is not needed unless the file changed.";
-  }
-  if (errorCode === "EDIT_NO_CHANGE") {
-    return "Send only changed body rows, or use CUT when the intended result is deletion.";
-  }
-  if (RECOVERABLE_MUTATION_ERROR_CODES.has(errorCode ?? "")) {
-    return errorCode === "EDIT_LINES_UNSEEN"
-      ? "Use the revealed lines for one unchanged retry when the reveal is complete; otherwise re-read the range and regenerate the Edit."
-      : "Re-read the live file and regenerate the Edit with the fresh tag and narrower anchors.";
-  }
-  return "Re-read the live file, regenerate a narrower Edit, and avoid repeating the same payload.";
-}
 export const TOOL_SEARCH_NAME = "ToolSearch";
 /** Stands in for a persisted tool row that never recorded a result. */
 const MISSING_TOOL_RESULT_PLACEHOLDER = "[no tool result recorded]";
@@ -999,6 +968,8 @@ export type AgentRuntimeOptions = {
   thinkingLevel: SessionThinkingLevel;
   /** Persisted opt-in for retrying transient provider failures until success. */
   infiniteProviderRetry?: boolean;
+  /** TypeSafe Jev credential, resolved by Electron main only when enabled. */
+  jevApiKey?: string;
   systemPrompt?: string;
   /** pi-compatible SYSTEM.md / APPEND_SYSTEM.md resolved for the session (issue #542). */
   customSystemPrompt?: CustomSystemPrompt;
@@ -1063,6 +1034,7 @@ export type RuntimeMatchConfig = {
   mode: Mode;
   provider: RuntimeProviderConfig;
   thinkingLevel: SessionThinkingLevel;
+  jevApiKey?: string;
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
   trustedExtensions?: TrustedExtensionSpec[];
@@ -1126,23 +1098,6 @@ function boundedText(value: string, maxChars: number): string {
   const headChars = Math.ceil(available / 2);
   const tailChars = Math.floor(available / 2);
   return `${text.slice(0, headChars)}${marker}${text.slice(-tailChars)}`;
-}
-
-function mutationFailureKey(path: unknown): string {
-  return String(path).replaceAll("\\", "/").replace(/^\.\//, "");
-}
-
-function isPatchCommand(command: unknown): boolean {
-  if (typeof command !== "string") return false;
-  return (
-    /(?:^|[;&|]\s*)(?:env\s+|command\s+)?(?:\S+\/)?apply_patch(?:\s|$)/m.test(
-      command,
-    ) ||
-    /\bgit(?:\s+\S+)*\s+apply(?:\s|$)/m.test(command) ||
-    /(?:^|[;&|]\s*)(?:env\s+|command\s+)?(?:\S+\/)?patch(?:\s|$)/m.test(
-      command,
-    )
-  );
 }
 
 type CheckpointPersistResult = "persisted" | "oversized" | "failed";
@@ -1843,6 +1798,7 @@ export class DesktopAgentRuntime {
   private providerRateLimitRetryAttempt = 0;
   /** Opt-in mode removes only the retry-count ceiling; abort and backoff stay intact. */
   private infiniteProviderRetry = false;
+  private jevApiKey?: string;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
   private suppressProviderRetryRunEnd = false;
@@ -1885,6 +1841,8 @@ export class DesktopAgentRuntime {
   private mutationFailureCounts = new Map<string, number>();
   /** `<failure key> <error code>` pairs that already spent their free retry. */
   private mutationRecoveryGraces = new Set<string>();
+  /** Tool-call ownership keeps concurrent delegates' mutation budgets apart. */
+  private mutationOwners = new Map<string, string>();
   /** Why the recovery guard ended the turn, pending its visible error row. */
   private pendingMutationTermination?: {
     kind: "edit" | "patch-command";
@@ -1892,6 +1850,7 @@ export class DesktopAgentRuntime {
     lastErrorCode?: string;
   };
   private terminatingToolCalls = new Set<string>();
+  private delegateMutationTerminations = new Map<string, { code: string; message: string }>();
   private fullEntries: MessageEntry[];
   private readonly systemJournal = new SystemTranscriptJournal();
   private composedSections: Record<string, string> = {};
@@ -1940,6 +1899,7 @@ export class DesktopAgentRuntime {
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
+    this.jevApiKey = opts.jevApiKey;
     this.host = opts.host;
     this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
@@ -2399,13 +2359,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    */
   private resolveOwnToolOutcome({
     toolCall,
-  }: AfterToolCallContext): AfterToolCallResult | undefined {
+  }: AfterToolCallContext): SubagentToolOutcome | undefined {
     const terminate = this.terminatingToolCalls.delete(toolCall.id);
     const failed = this.failedHostToolCalls.delete(toolCall.id);
+    const error = this.delegateMutationTerminations.get(toolCall.id);
+    this.delegateMutationTerminations.delete(toolCall.id);
     if (!failed) return terminate ? { terminate: true } : undefined;
     return {
       isError: true,
       ...(terminate ? { terminate: true } : {}),
+      ...(error ? { error } : {}),
     };
   }
 
@@ -2607,6 +2570,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       !this.disposed &&
       providerMatches &&
       this.mode === config.mode &&
+      this.jevApiKey === config.jevApiKey &&
       this.thinkingLevel ===
         clampThinkingLevel(config.provider, config.thinkingLevel) &&
       current === next &&
@@ -2765,11 +2729,28 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   getTrustedExtensionReports() {
     return this.extensionRunner?.getLoadReports() ?? [];
   }
+  /**
+   * The working directory extensions see: the project root, or the session
+   * scratch for a temporary session. Scratch is otherwise created lazily by the
+   * first host tool call (D114), so it is created here; a failure leaves the
+   * path in place, because loading extensions must not fail the session.
+   */
+  private extensionCwd(): string {
+    if (this.projectPath) return this.projectPath;
+    if (!this.scratchDir) return process.cwd();
+    try {
+      mkdirSync(this.scratchDir, { recursive: true });
+    } catch {
+      // pi.exec reports the missing directory itself.
+    }
+    return this.scratchDir;
+  }
+
   private createExtensionBridge(): TrustedExtensionBridge {
     const runtime = this;
     return {
       sessionId: this.sessionId,
-      cwd: this.projectPath ?? process.cwd(),
+      cwd: this.extensionCwd(),
       getModel: () => runtime.model,
       setModel: (model, signal) => runtime.setExtensionModel(model, signal),
       modelRegistry: runtime.extensionModelRegistry(),
@@ -3281,6 +3262,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         signal,
         onUpdate,
       ) => {
+        const mutationPath = PATH_MUTATING_TOOLS.has(toolName) && isRecord(params) && typeof params.path === "string"
+          ? await mutationFailureKey(params.path, this.projectPath ?? this.scratchDir)
+          : undefined;
         await this.loadPathInstructions(toolName, params);
         const isBash = toolName === "Bash";
         const timeoutMs = isBash ? commandTimeoutMs(params) : undefined;
@@ -3435,17 +3419,21 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           toolName === "Edit" &&
           failedToolExecution &&
           typeof recordParams?.path === "string"
-            ? mutationFailureKey(recordParams.path)
+            ? recordParams.path
             : undefined;
         const failedPatchCommand =
           toolName === "Bash" &&
           failedToolExecution &&
           isPatchCommand(recordParams?.command);
-        const failureKey = failedEditPath
-          ? failedEditPath
+        const mutationOwner = this.mutationOwners.get(toolCallId);
+        const targetKey = failedEditPath
+          ? mutationPath
           : failedPatchCommand
             ? BASH_PATCH_FAILURE_KEY
             : undefined;
+        const failureKey = targetKey
+          ? `${mutationOwner ?? "parent"}\0${targetKey}`
+          : undefined;
         const mutationFailureKind = failedEditPath
           ? "edit"
           : failedPatchCommand
@@ -3480,12 +3468,15 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // progress, so it clears that path's history instead of leaving one
         // stale strike to terminate the next unrelated failure.
         if (!failureKey && result.ok) {
-          const succeededKey =
+          const succeededTarget =
             PATH_MUTATING_TOOLS.has(toolName) && typeof recordParams?.path === "string"
-              ? mutationFailureKey(recordParams.path)
+              ? mutationPath
               : toolName === "Bash" && isPatchCommand(recordParams?.command)
                 ? BASH_PATCH_FAILURE_KEY
                 : undefined;
+          const succeededKey = succeededTarget
+            ? `${mutationOwner ?? "parent"}\0${succeededTarget}`
+            : undefined;
           if (succeededKey !== undefined) {
             this.mutationFailureCounts.delete(succeededKey);
             for (const key of this.mutationRecoveryGraces) {
@@ -3500,13 +3491,25 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           // The loop stops after this batch, so nothing downstream would
           // explain why. Hold the reason for agent_end to turn into a visible
           // row instead of a turn that just ends.
-          this.pendingMutationTermination = {
-            kind: mutationFailureKind ?? "edit",
-            target: failedEditPath ?? "the patch command",
-            ...(typeof result.errorCode === "string"
-              ? { lastErrorCode: result.errorCode }
-              : {}),
-          };
+          if (!mutationOwner) {
+            this.pendingMutationTermination = {
+              kind: mutationFailureKind ?? "edit",
+              target: failedEditPath ?? "the patch command",
+              ...(typeof result.errorCode === "string"
+                ? { lastErrorCode: result.errorCode }
+                : {}),
+            };
+          } else {
+            const kind = mutationFailureKind ?? "edit";
+            this.delegateMutationTerminations.set(toolCallId, {
+              code: "MUTATION_RETRY_BUDGET_EXHAUSTED",
+              message: mutationTerminationMessage(
+                kind,
+                failedEditPath ?? "the patch command",
+                result.errorCode,
+              ),
+            });
+          }
         }
         const rawContent = result.content;
         const imageBlocks: Array<{ type: "image"; data: string; mimeType: string }> = [];
@@ -3698,6 +3701,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       tools.push("PluginScaffold", "PluginPack", "GenerateImages", ...Object.keys(scheduledToolParameters));
     }
     const builtins = tools.map(exec);
+    const jevTools: AgentTool[] =
+      this.mode === "agent" && this.jevApiKey
+        ? [createJevClassifierTool(this.jevApiKey)]
+        : [];
 
     // Plugins contribute Agent tools by default. Plan/Goal modes only
     // expose plugins that declare plan-safe actions (ADR 0211); the
@@ -3774,6 +3781,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const extensionTools = this.extensionRunner?.getAgentTools() ?? [];
     return [
       ...builtins,
+      ...jevTools,
       askTool,
       ...pluginTools,
       ...skillTools,
@@ -4686,7 +4694,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         this.delegations.set(delegationId, record);
         let subagentRun: SubagentRun;
         try {
-          const scopedTools = this.scopeDelegateTools(tools, definition);
+          const scopedTools = this.scopeDelegateTools(tools, definition, delegationId);
           subagentRun = new SubagentRun({
             definition,
             sessionId: this.sessionId,
@@ -4803,23 +4811,25 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     };
   }
 
-  /** Wrap a delegate's tools so each call carries the definition's permission
-   * scope to host-core (ADR 0089). Keyed by tool call id, so concurrent
-   * delegates with different scopes never cross over. */
+  /** Wrap a delegate's tools with its permission and mutation-recovery scope. */
   private scopeDelegateTools(
     tools: AgentTool[],
     definition: SubagentDefinition,
+    mutationOwner: string,
   ): AgentTool[] {
     const scope = definition.permission ?? DEFAULT_SUBAGENT_PERMISSION;
-    if (scope === DEFAULT_SUBAGENT_PERMISSION) return tools;
     return tools.map((tool) => ({
       ...tool,
       execute: async (toolCallId, args, signal, onUpdate) => {
-        this.delegatePermissionScopes.set(toolCallId, scope);
+        this.mutationOwners.set(toolCallId, mutationOwner);
+        if (scope !== DEFAULT_SUBAGENT_PERMISSION) {
+          this.delegatePermissionScopes.set(toolCallId, scope);
+        }
         try {
           return await tool.execute(toolCallId, args, signal, onUpdate);
         } finally {
           this.delegatePermissionScopes.delete(toolCallId);
+          this.mutationOwners.delete(toolCallId);
         }
       },
     }));
@@ -4858,6 +4868,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // its calls left behind rather than pinning those arguments for the session.
       for (const toolCallId of record.pendingToolCallIds ?? []) {
         this.delegateToolCalls.delete(toolCallId);
+        this.delegateMutationTerminations.delete(toolCallId);
       }
       record.pendingToolCallIds = undefined;
       this.publishDelegationSettlement(record);
@@ -4866,6 +4877,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         `[agent-runtime] delegation settlement side effect failed (session=${this.sessionId} delegation=${record.delegationId})\n`,
       );
     } finally {
+      this.clearMutationRecovery(record.delegationId);
       this.refreshDelegationWait();
       this.refreshResumablePrompt();
       this.pruneFinishedDelegations();
@@ -6073,6 +6085,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     );
   }
 
+  private clearMutationRecovery(owner: string): void {
+    const prefix = `${owner}\0`;
+    for (const key of this.mutationFailureCounts.keys()) {
+      if (key.startsWith(prefix)) this.mutationFailureCounts.delete(key);
+    }
+    for (const key of this.mutationRecoveryGraces) {
+      if (key.startsWith(prefix)) this.mutationRecoveryGraces.delete(key);
+    }
+  }
+
   /**
    * Clear the per-run recovery state that every entry point driving the agent
    * loop must start from. Each recovery arms itself mid-run by setting a
@@ -6105,10 +6127,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.suppressProgressTurnRunEnd = false;
     this.providerRetryAbort?.abort();
     this.providerRetryAbort = undefined;
-    this.mutationFailureCounts.clear();
-    this.mutationRecoveryGraces.clear();
+    this.clearMutationRecovery("parent");
     this.pendingMutationTermination = undefined;
-    this.terminatingToolCalls.clear();
     this.turnHadError = false;
   }
 
@@ -8247,13 +8267,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       termination.kind,
       termination.lastErrorCode,
     );
-    const lastError = termination.lastErrorCode
-      ? ` Last error: ${termination.lastErrorCode}.`
-      : "";
-    const message =
-      termination.kind === "edit"
-        ? `Stopped after ${MAX_MUTATION_RECOVERY_FAILURES} failed Edit attempts on ${termination.target}.${lastError} ${recovery}`
-        : `Stopped after ${MAX_MUTATION_RECOVERY_FAILURES} failed patch commands.${lastError} ${recovery}`;
+    const message = mutationTerminationMessage(
+      termination.kind,
+      termination.target,
+      termination.lastErrorCode,
+    );
     const error = {
       code: "MUTATION_RETRY_BUDGET_EXHAUSTED",
       message,
@@ -8806,6 +8824,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.failedHostToolCalls.clear();
     this.mutationFailureCounts.clear();
     this.mutationRecoveryGraces.clear();
+    this.mutationOwners.clear();
+    this.delegateMutationTerminations.clear();
     this.pendingMutationTermination = undefined;
     this.terminatingToolCalls.clear();
     this.delegateToolCalls.clear();

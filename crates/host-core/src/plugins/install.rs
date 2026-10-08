@@ -299,10 +299,10 @@ impl PluginManager {
             report.phase(InstallPhase::Resolve);
             match self.download_market_package_via_resolve(info, report, &mut tried) {
                 Ok(fetched) => return Ok(fetched),
-                // A refusal is an answer, and so is a cancellation: install
-                // nothing, fall back to nothing, and say why.
+                // Publication refusals and cancellations are authoritative:
+                // never install through the catalog URL after either one.
                 Err(error)
-                    if !super::resolve::is_recoverable(&error)
+                    if !super::resolve::allows_catalog_fallback(&error)
                         || super::progress::is_cancelled(&error) =>
                 {
                     return Err(report.failed(tried, error))
@@ -311,12 +311,13 @@ impl PluginManager {
                     plugin = %info.plugin_id,
                     version = %info.version,
                     %error,
-                    "the plugin center did not answer; using the catalog url"
+                    "the plugin center resolve path is unavailable; using the catalog url"
                 ),
             }
         }
-        // The catalog's own URL, which is also the documented fallback for a
-        // platform that cannot be reached.
+        // The catalog's own URL avoids waiting for a slow resolve endpoint and
+        // remains safe because download_market_package verifies its digest.
+        report.phase(InstallPhase::Download);
         report.mirror(None, 0, 0);
         match self.download_market_package(info, &info.url, &info.shasum, info.size_bytes, report) {
             Ok(path) => Ok((path, info.shasum.clone())),

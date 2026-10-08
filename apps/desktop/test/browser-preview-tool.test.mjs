@@ -21,6 +21,10 @@ const runtimeSource = await readFile(
   new URL("../../../packages/agent-runtime/src/runtime.ts", import.meta.url),
   "utf8",
 );
+const browserPluginSource = await readFile(
+  new URL("../resources/plugins/pi.browser/main.js", import.meta.url),
+  "utf8",
+);
 
 test("sidecar routes main-local tools before the host-core proxy", () => {
   // Local tools short-circuit tools.execute; other methods still proxy.
@@ -102,4 +106,27 @@ test("agent runtime exposes BrowserPreview in every mode and prompts for it", ()
   );
   // BrowserPreview tool description mentions live-reload behaviour.
   assert.match(runtimeSource, /live-reloads/);
+});
+
+test("Browser tool prompt requires the work-panel view to stay visible", () => {
+  assert.match(
+    browserPluginSource,
+    /Before any browser operation, ensure the Browser view is open and visible in the work panel/,
+  );
+  assert.match(
+    browserPluginSource,
+    /For a workspace HTML file, call BrowserPreview first; it opens and reveals a Browser tab/,
+  );
+  assert.match(
+    browserPluginSource,
+    /For other URLs, open or activate Browser from the work-panel launcher before navigating/,
+  );
+  assert.match(
+    browserPluginSource,
+    /If you cannot make the view visible, ask the user to open it and wait before continuing/,
+  );
+  assert.match(
+    browserPluginSource,
+    /Run only after confirming the Browser view is open and visible in the work panel/,
+  );
 });

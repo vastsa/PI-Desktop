@@ -1,5 +1,11 @@
 # ADR 0276: Official plugin channel and backup channels
 
+> Amended 2026-10-08: the marketplace UI and persisted settings now use only
+> the official channel; legacy source values are ignored. The resolve request
+> is capped at three seconds and falls back to the official catalog URL after
+> a timeout, rate limit, or `NO_DOWNLOAD_SOURCE`. Publication refusals remain
+> authoritative.
+
 - Status: Accepted for implementation
 - Date: 2026-09-17
 - Deciders: PI-Desktop plugin and distribution maintainers
@@ -47,57 +53,61 @@ client's download allowlist; the CNB mirror still served an older distribution
 92951 bytes). A version string may contain `+` (for example `0.3.0+0.2.0`), so
 the platform's byte route cannot be assumed to carry every published version.
 
-The client's source model therefore has to become "the center first, the two Git
-hosts as backups", and the install path has to follow the platform's contract.
+The original implementation decision made the center primary and offered the
+two Git hosts as catalog backups. The 2026-10-08 amendment retires those
+user-selectable catalog sources while keeping package mirrors returned by the
+official platform.
 
 ## Decision
 
-### 1. Four channels, and `official` keeps its meaning
+### 1. The product uses the official channel
 
-| # | Channel | Value | Catalog URL | Install path |
-| --- | --- | --- | --- | --- |
-| 1 | Official channel | `official` (default) | `https://plugins.aiuo.net/catalog.json` | Platform resolve |
-| 2 | GitHub backup | `github` (new) | `https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json` | Static relative URL |
-| 3 | CNB backup | `mirror` (unchanged) | `https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json` | Static relative URL |
-| 4 | Custom | `custom` (unchanged) | user-provided | Static relative URL |
+The product always reads `https://plugins.aiuo.net/catalog.json`; the Plugins
+page has no source selector. `pluginMarketSource` and `pluginMarketCustomUrl`
+remain in persisted settings so older settings can be read without migration,
+but host-core ignores them. The development-only
+`PI_DESKTOP_PLUGIN_MARKET_URL` override remains available to tests and local
+development.
 
-`official` keeps meaning "the project's own first-party channel" and now points
-at the center, so an unset value and an unrecognized value resolve to it and no
-persisted setting is migrated. `mirror` keeps meaning CNB; `github` is new
-because the GitHub backup no longer is the default. Display names are
-localized — Official channel / GitHub backup / CNB backup / Custom in English.
-A package URL never crosses providers: whichever channel served the catalog also
-serves the package.
+| Channel | Value | Catalog URL | Install path |
+| --- | --- | --- | --- |
+| Official channel | `official` | `https://plugins.aiuo.net/catalog.json` | Platform resolve |
+
+`official` means the project's first-party plugin center. A package URL never
+crosses providers: the official catalog supplies its package URL, and fallback
+downloads remain inside the official channel.
 
 ### 2. The official channel resolves through the platform
 
 1. Refresh the catalog, then `POST {center origin}/api/v1/download/resolve` with
-   `{ deviceId, pluginId, version }` — once per install or update. POST rather
-   than GET, because the platform documents that a device id in a query string
-   ends up in access logs.
+   `{ deviceId, pluginId, version }` — once per install or update. The client
+   gives this metadata request a three-second total deadline. POST rather than
+   GET, because the platform documents that a device id in a query string ends
+   up in access logs.
 2. Try the returned `downloads` entries in order. Every attempt is downloaded to
    a temporary file, checked against the returned `sha256` and the announced
    `sizeBytes`, and extracted only when both agree. A mirror that fails —
    network error, HTTP error, digest mismatch, size mismatch — is abandoned and
    the next one is tried. Requests stay on the download allowlist.
-3. Only when the platform could not be reached, or when no mirror in the list
-   could serve the version, the client falls back to the catalog's own package
-   URL (`artifactBaseUrl` plus the relative `url`). That is the fallback the
-   platform defines, and that install is not counted.
+3. When the request times out or fails at the transport boundary, the platform
+   rate-limits the device, or it answers `503 NO_DOWNLOAD_SOURCE`, the client
+   immediately falls back to the catalog's own package URL (`artifactBaseUrl`
+   plus the relative `url`). The catalog digest and size are still verified,
+   and that install is not counted. If every usable returned mirror fails at
+   the transport boundary, use the same fallback. A malformed resolve response
+   or integrity failure does not use this fallback.
 4. The answer is never cached (`Cache-Control: no-store` is the platform's
    confirmation of this), so two installs of the same version are two calls.
 5. The resolve digest is authoritative on the resolve path; the catalog's
-   `shasum` stays authoritative on the fallback and on the backup channels.
-   `sizeBytes` is a sanity check on both.
-6. Refusals are reported, not papered over: `403 NOT_PUBLISHED` (no retry),
+   `shasum` stays authoritative on the catalog fallback. `sizeBytes` is a
+   sanity check on both paths.
+6. Publication refusals are reported, not papered over: `403 NOT_PUBLISHED`,
    `403 PLUGIN_ARCHIVED` (hide the plugin from install and update selection),
-   `404` (the platform has no such version — including a `+`-suffixed version
-   the byte route cannot carry), `429` (wait the `Retry-After` interval, retry
-   once, then report), `503` (report the deployment problem; `NO_DOWNLOAD_SOURCE`
-   means no mirror can serve the version).
-7. Nothing switches the channel automatically. An unreachable platform is
-   reported after the fallback, and the user switches through the existing
-   selector.
+   and `404` (the platform has no such version — including a `+`-suffixed
+   version the byte route cannot carry). A rate limit or no-source deployment
+   answer uses the checked catalog URL without waiting or retrying.
+7. A resolve fallback does not change the selected channel. The product always
+   remains on the official channel and has no user-facing channel selector.
 
 ### 3. A stable device identifier, sent as a digest
 
@@ -121,22 +131,19 @@ read once per process, is stable for an installation across restarts, is never
 shown in the UI, and is not a setting. It is a counting and rate-limit key, not
 an account.
 
-### 4. The backup channels and `custom` are unchanged
+### 4. Legacy catalog-source settings are ignored
 
-`github`, `mirror`, and `custom` keep the static relative-URL resolution,
-including `artifactBaseUrl` precedence, the download allowlist, redirect
-re-validation, and shasum verification, byte for byte. The persisted source
-keeps working for existing users, the cache stays keyed by `sourceUrl` so a
-switch ignores rather than deletes another channel's snapshot, and an installed
-record's `providerId` now names the channel it actually came from — already
-installed records are not rewritten.
+The legacy `github`, `mirror`, and `custom` settings no longer select a catalog.
+The platform may still return GitHub or CNB package mirrors for the official
+catalog; these use the platform's digest and the same download allowlist. The
+cache stays keyed by `sourceUrl`, so an older snapshot from another catalog is
+ignored rather than deleted; installed records are not rewritten.
 
-### 5. Trust tiers follow the trusted channels
+### 5. Trust follows the official catalog
 
-`verified` renders as written only from the three project channels (official,
-GitHub backup, CNB backup). `custom` still degrades to `community`, and a v1
-catalog's boolean `verified` mapping is unchanged. The predicate changes from
-"is this the official source" to "is this a trusted channel".
+`verified` renders as written only from the official catalog. A v1 catalog's
+boolean `verified` mapping is unchanged. Package mirrors returned by the
+official platform do not change the catalog's trust source.
 
 ### 6. The download allowlist does not change
 
@@ -187,26 +194,28 @@ action.
 
 - The official channel gains per-mirror fallback, withdrawal and archive
   signals, and download counting, and it acquires a dependency: an install asks
-  the platform. The documented catalog-URL fallback and the two backup channels
-  are the mitigation.
+  the platform. The catalog-URL fallback is the mitigation; users cannot select
+  another channel from the marketplace page.
 - Per-mirror digest verification becomes the reason a divergent mirror cannot
   break an install. The measured CNB divergence (`pi.todo-0.6.5` at 92487 bytes
   versus 92951) is exactly the case this absorbs.
 - A first third-party service now receives an installation-level identifier.
   Only a digest is sent, the platform stores counts rather than identities, and
   the privacy policy and the decisions log state it.
-- `429` costs at most one `Retry-After` wait per install; a batch update makes
-  one call per plugin, not one per mirror.
+- A resolve timeout is capped at three seconds. `429` no longer waits for
+  `Retry-After`; timeout, rate-limit, and no-source responses use the checked
+  catalog package URL. A batch update still makes one resolve call per plugin,
+  not one per mirror.
 - An install is no longer opaque: the interface sees the phase, the mirror being
   tried, and the byte count, and a user can stop a download without leaving a
   half-installed plugin. The cost is progress notifications on the RPC channel,
   bounded by the 200 ms throttle and the per-phase reports.
 - No `.piplug` or manifest change, no catalog v1/v2 parsing change, no
-  permission-review change, no storage schema change, no migration of persisted
-  source values, and no change to the two backup install paths.
-- Still open, deliberately: signature verification (optional as before), any
-  automatic channel switching, and the center's own byte route, which stays the
-  marketplace page and console path.
+  permission-review change, and no storage schema change. Legacy persisted
+  source values are retained but ignored; approved package mirror hosts and
+  integrity checks remain unchanged.
+- Still open, deliberately: signature verification (optional as before) and the
+  center's own byte route, which stays the marketplace page and console path.
 
 ## Rejected alternatives
 

@@ -1,4 +1,7 @@
-param([Parameter(Mandatory = $true)][int]$targetProcessId)
+param(
+  [Parameter(Mandatory = $true)][int]$targetProcessId,
+  [Parameter(Mandatory = $true)][int]$cornerRadius
+)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
@@ -35,7 +38,9 @@ function Test-AppAt([int]$pointX, [int]$pointY) {
 
 @{
   topLeftCutout = -not (Test-AppAt $rect.Left $rect.Top)
+  topRightCutout = -not (Test-AppAt ($rect.Right - 1) $rect.Top)
+  bottomLeftCutout = -not (Test-AppAt $rect.Left ($rect.Bottom - 1))
   bottomRightCutout = -not (Test-AppAt ($rect.Right - 1) ($rect.Bottom - 1))
-  innerCornerOwned = Test-AppAt ($rect.Left + 4) ($rect.Top + 4)
+  innerCornerOwned = Test-AppAt ($rect.Left + $cornerRadius + 1) ($rect.Top + $cornerRadius + 1)
   thickFrameStyle = ([CornerProbe]::GetWindowLong($appWindow, -16) -band 0x00040000) -ne 0
 } | ConvertTo-Json -Compress

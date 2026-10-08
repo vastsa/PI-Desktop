@@ -47,7 +47,7 @@ test("responsive rules preserve the semantic model trigger and action controls",
   assert.match(composerSource, /ariaLabel=\{`\$\{t\("chat\.model"\)\}: \$\{modelLabel\}\./);
   assert.match(composerSource, /className=\"composer-model-thinking-chevron\"/);
   assert.match(composerSource, /ContextUsageInspector/);
-  assert.match(composerSource, /className=\{`icon-btn icon-btn-square composer-enhance-btn/);
+  assert.match(composerSource, /composer-plugin-transform-btn/);
   assert.match(composerSource, /className="send-btn"/);
   assert.match(composerSource, /className="stop-btn"/);
 });

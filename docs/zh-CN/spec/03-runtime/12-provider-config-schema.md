@@ -232,7 +232,7 @@ IPC 方法、存储 schema 或权限边界。
 | `opencode_go` | `openai_compatible` | `api_key_and_base_url` | `OpenCode Go` | `https://opencode.ai/zen/go/v1` |
 
 OpenCode Go（以及任何 `opencode.ai` 主机）的 LLM 请求必须带稳定的
-`x-opencode-session`。agent-runtime 在会话、子代理、提示增强与插件 one-shot
+`x-opencode-session`。agent-runtime 在会话、子代理、插件拥有的提示词增强与其它插件 one-shot
 上发送该头，并附带 `x-opencode-client: pi-desktop` 与
 `User-Agent: pi-desktop/<APP_VERSION>`。行上可选的 `headers` 会覆盖这些默认值；留空则保持适配器默认。
 

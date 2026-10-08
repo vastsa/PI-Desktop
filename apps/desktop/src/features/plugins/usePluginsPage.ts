@@ -38,7 +38,6 @@ export function usePluginsPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const plugins = useAppStore((s) => s.plugins);
-  const settings = useAppStore((s) => s.settings);
   const refreshPlugins = useAppStore((s) => s.refreshPlugins);
   const showToast = useAppStore((s) => s.showToast);
   const activateProject = useAppStore((s) => s.activateProject);
@@ -78,7 +77,6 @@ export function usePluginsPage() {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [templatePick, setTemplatePick] = useState<TemplateId | null>(null);
   const [creating, setCreating] = useState(false);
-  const [marketSource, setMarketSource] = useState("");
   const [headerMenu, setHeaderMenu] = useState(false);
   const [rowMenu, setRowMenu] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -115,7 +113,6 @@ export function usePluginsPage() {
     try {
       if (opts?.refreshRemote) {
         const meta = await api.marketRefresh(true);
-        setMarketSource(meta.sourceUrl || meta.homepage || "");
         showToast(
           t("plugins.marketRefreshed", {
             count: meta.pluginCount,
@@ -126,11 +123,6 @@ export function usePluginsPage() {
       }
       const res = await api.marketSearch(q);
       setMarket((res.plugins ?? []).filter(isClientVisibleMarketPlugin));
-      if (!marketSource) {
-        // The host reports the catalog URL actually in effect, so a mirror or
-        // custom source shows up here instead of the official repo.
-        setMarketSource(res.sourceUrl || res.providerId || "");
-      }
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
     } finally {
@@ -662,7 +654,6 @@ export function usePluginsPage() {
     t,
     locale,
     plugins,
-    settings,
     refreshPlugins,
     showToast,
     activateProject,
@@ -687,8 +678,6 @@ export function usePluginsPage() {
     templatePick,
     setTemplatePick,
     creating,
-    marketSource,
-    setMarketSource,
     headerMenu,
     setHeaderMenu,
     rowMenu,

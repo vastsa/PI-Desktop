@@ -84,15 +84,6 @@
     display: none;
   }
 
-  .composer-enhance-btn.is-loading {
-    width: 28px;
-    max-width: 28px;
-    padding-inline: 0;
-  }
-
-  .composer-enhance-btn.is-loading > span:not(.tool-spinner) {
-    display: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

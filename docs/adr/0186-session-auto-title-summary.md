@@ -1,6 +1,6 @@
 # ADR 0186: Summarize First-Turn Session Titles with a Main-Owned One-Shot
 
-- Status: Accepted
+- Status: Superseded by ADR 0323
 - Date: 2026-09-08
 
 ## Context
@@ -10,7 +10,7 @@ prompt is noisy and can obscure the task's topic. The title summary must use the
 same provider/model as the session without moving model execution into the
 renderer or changing host-owned session storage.
 
-## Decision
+## Decision (historical)
 
 Keep the normalized first-prompt fallback synchronous from the renderer's point
 of view. After the initial turn emits `agent_end`, the renderer calls the
@@ -27,7 +27,7 @@ the deterministic first-prompt fallback. This protects manual titles made
 before the marker existed and prevents a completed summary from being replaced
 on a later renderer restart. No host RPC or storage schema version changes.
 
-## Consequences
+## Consequences (historical)
 
 - New sessions get immediate, readable fallback labels and a concise background
   summary when the configured provider succeeds.

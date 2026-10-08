@@ -107,6 +107,48 @@ pi.commands.register(def: {
 pi.commands.unregister(id: string): Promise<void>
 ```
 
+### 输入框文本转换（`composer.transform`）
+
+插件可通过 `manifest.contributes.composerTransforms` 声明由用户主动触发的文本操作。
+非空贡献需要 `composer.transform` 权限。宿主只会列出已加载且当前获得该权限的插件操作；
+操作标题和可选的撤销标题来自 manifest。
+
+```ts
+type PluginComposerTransformInput = {
+  id: string;
+  text: string;
+  modelKey?: string; // 当前 Composer 提供商/模型 key；不含凭据
+};
+
+type PluginModule = {
+  onComposerTransform?: (
+    input: PluginComposerTransformInput,
+  ) => Promise<string> | string;
+};
+```
+
+回调只收到草稿文本和可选模型 key，不会收到会话 id、转录内容或单独的附件/文件引用元数据。
+宿主在调用前移除行内文件引用 token，成功后再恢复。回调返回字符串；输入与输出各限制为
+100,000 个字符，调用超时为 110 秒。宿主会重新检查插件是否仍已加载、操作是否仍在声明中、
+权限是否仍获授，并审计成功与失败。若用户在等待时编辑、发送或切换会话，Composer 会丢弃
+过期结果；成功后提供一步撤销。若插件还要请求模型，必须另外声明对应 API 所需权限，例如
+`agent.complete` 与 `models.list`。
+
+```json
+{
+  "permissions": ["composer.transform"],
+  "contributes": {
+    "composerTransforms": [
+      {
+        "id": "enhance",
+        "title": { "en": "Enhance prompt", "zh-CN": "增强提示词" },
+        "undoTitle": { "en": "Undo", "zh-CN": "撤销" }
+      }
+    ]
+  }
+}
+```
+
 ### 语音（`speech.adapter.register`）
 ```ts
 pi.speech.registerAdapter(adapter: {
@@ -353,6 +395,35 @@ pi.session.getLlmContext(): Promise<PluginLlmContext>
 正在飞行的工具调用会从尾部剥掉。compaction 摘要替换检查点之前的历史。
 合计内容上限 200k 字符。
 
+### 会话自动标题（需要 `session.autoTitle`）
+
+此能力与 `session.read` 分开：它不会开放任意转录窗口或消息查询，仅用于在回合完成后生成标题。
+
+```ts
+type PluginAutoTitleContext = {
+  sessionId: string
+  expectedTitle: string
+  userPrompt: string // 第一条用户消息，最多 1,000 个字符
+  assistantReply?: string // 第一条助手回复，最多 500 个字符
+  modelKey?: string // 来自会话配置的 providerId/modelId
+}
+
+pi.session.getAutoTitleContext(input: {
+  sessionId: string
+}): Promise<PluginAutoTitleContext | null>
+
+pi.session.setAutoTitle(input: {
+  sessionId: string
+  expectedTitle: string
+  title: string
+}): Promise<{ updated: boolean }>
+```
+
+只有活动会话且标题来源仍为 `default` 时才返回上下文。宿主不会返回附件、工具调用、后续回合
+或其他转录内容。标题长度为 1–80 个 Unicode 码点，并通过精确的 `expectedTitle` 比较并设置；
+手动重命名或另一项更新发生后返回 `{ updated: false }`。两个方法都需要高风险权限
+`session.autoTitle`，因为持有 `agent.complete` 的插件可能将首轮文本发送给模型。
+
 ### 插件拥有的会话（P0/P1；需要对应权限）
 
 插件只能导入和管理归属于自身的会话。来源必须在
@@ -536,8 +607,8 @@ pi.agent.complete(input: {
 }>
 ```
 
-宿主解析凭据，并通过与 Composer 提示增强相同的路径发起 `tools: []` 的一次性补全。
-插件拿不到密钥。`includeSessionContext: true` 还需要 `session.read` 以及进行中的
+宿主解析凭据，并发起 `tools: []` 的一次性补全；插件拿不到密钥。独立提示词增强插件会在
+`onComposerTransform` 回调中使用此 API。`includeSessionContext: true` 还需要 `session.read` 以及进行中的
 工具会话。system ≤ 32 KiB；消息合计 ≤ 200k 字符；每个插件每滚动 60 秒 8 次
 （`RATE_LIMITED`）；预算 90 秒（`TIMEOUT`）。
 
@@ -585,6 +656,9 @@ pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 `setBounds` 相对调用插件视图的内容区，并被夹紧，因此访客页不能盖住聊天/输入框。
 `cdp` 默认拒绝；cookie、storage、target 和网络拦截方法以 `PERMISSION_DENIED` 失败。
 代理调用的会话身份来自进行中的 `plugins.execute` `sessionId`，而不是插件参数（D333 / ADR 0170）。
+页面操作（`navigate`、`action`、`openExternal`、`getState`、snapshot、screenshot 和 CDP 调用）
+仅在 Browser 视图可见时可用。视图隐藏时调用会以 `UNAVAILABLE` 失败；应通过 `BrowserPreview`
+请求宿主显示 Browser 视图后再继续。
 
 `getHistory` 返回由主机明确记录的条目，按最新优先排列，文本和图片按捕获时间混排。
 通过 `writeText` 写入的内容，以及 Composer 用户主动粘贴事件提供的内容会被记录；主机

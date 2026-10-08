@@ -55,8 +55,18 @@ async function onRendererCall(method, args) {
   }
 }
 
+function onComposerTransform(input) {
+  if (input.id !== "lab-transform") {
+    throw Object.assign(new Error(`unknown Composer transform: ${input.id}`), {
+      code: "LAB_UNKNOWN_TRANSFORM",
+    });
+  }
+  return `Lab transformed: ${input.text}`;
+}
+
 module.exports = {
   onLoad,
   onUnload,
   onRendererCall,
+  onComposerTransform,
 };

@@ -26,8 +26,17 @@ const PLAN_SAFE_ACTIONS = ["navigate", "snapshot", "screenshot", "console"];
 export async function onLoad() {
   await pi.agent.registerTool({
     name: "Browser",
-    description:
-      "Drive PI-Desktop's work-panel browser via CDP: snapshot the accessibility tree, click/fill by uid, screenshot, evaluate JavaScript, read console output, or send an allowlisted raw CDP method. Call ToolSearch for \"browser\" or \"cdp\" to load this tool. Use BrowserPreview to open a workspace HTML file with live reload.",
+    description: [
+      "Drive PI-Desktop's work-panel browser via CDP.",
+      'Call ToolSearch for "browser" or "cdp" to load this tool.',
+      "Before any browser operation, ensure the Browser view is open and visible in the work panel.",
+      "Keep the panel visible while working.",
+      "For a workspace HTML file, call BrowserPreview first; it opens and reveals a Browser tab.",
+      "For other URLs, open or activate Browser from the work-panel launcher before navigating.",
+      "If you cannot make the view visible, ask the user to open it and wait before continuing.",
+      "Then snapshot the accessibility tree, click/fill by uid, take screenshots, evaluate JavaScript,",
+      "read console output, or send an allowlisted raw CDP method.",
+    ].join(" "),
     risk: "medium",
     planSafeActions: PLAN_SAFE_ACTIONS,
     schema: {
@@ -36,7 +45,7 @@ export async function onLoad() {
         action: {
           type: "string",
           enum: ACTIONS,
-          description: "Operation to run against the visible work-panel guest.",
+          description: "Run only after confirming the Browser view is open and visible in the work panel.",
         },
         url: { type: "string", description: "http(s) URL for action=navigate." },
         path: {

@@ -962,3 +962,25 @@ pub(crate) fn migrate_v20_to_v21(conn: &Connection, path: &Path) -> Result<()> {
     })?;
     Ok(())
 }
+
+pub(crate) fn migrate_v21_to_v22_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    tx.execute_batch(
+        "DROP INDEX IF EXISTS idx_sessions_updated;
+         CREATE INDEX IF NOT EXISTS idx_sessions_updated_id ON sessions(updated_at DESC, id DESC);",
+    )?;
+    tx.pragma_update(None, "user_version", 22i64)?;
+    Ok(())
+}
+
+pub(crate) fn migrate_v21_to_v22(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 21)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v21_to_v22_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v21 to v22 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}

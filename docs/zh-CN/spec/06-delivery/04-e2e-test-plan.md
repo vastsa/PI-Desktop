@@ -1302,9 +1302,9 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **预期**：两种模式都使用一个整体过程披露，末尾回答位于其外。详细模式的活动中和
   已完成过程默认展开；活动多项组展开，并且只在用户未操作时于完成后收起。紧凑模式
   的过程、组和所有载荷默认收起，推理正文隐藏；记录过失败／被拒工具的未操作活动过程
-  会在后续恢复期间保持展开。单项没有组包装。详细模式只在最后一个活动组的字面最后
-  一项是符合条件的工具／搜索时自动展开载荷；不会越过思考向前查找，失败／被拒保护会
-  保持叶子关闭。父级、子级和同级选择彼此独立；收起并重新展开父级会保留下级状态，
+  会在后续恢复期间保持展开。单项没有组包装。没有任何条目载荷会自动展开：工具／搜索
+  行在用户打开之前保持标题行，最后一个活动组的字面最后一项也不例外，而思考项保留
+  自身的叶子默认值。父级、子级和同级选择彼此独立；
   流式更新和完成不会覆盖用户接管的选择。保留窗格中的重新挂载保留选择；渲染器重启
   重新应用默认值，但工具名称、参数、结果和状态仍会恢复。组／过程标题显示有界运行和
   问题摘要，不会把整个回合标记为失败。
@@ -1406,12 +1406,12 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-022C：检查、打包、安装往返
 
 - **先决条件**：脚手架插件目录。
-- **步骤**：1) `pnpm pi-plugin check <dir>`。 2) 删除 `main` 命名的文件并再次运行 `check`。 3) 恢复它，声明 `contributes.skills` 而不声明 `agent.prompt.inject`，然后再次运行 `check`。 4) `pnpm pi-plugin pack <dir>`。 5) 从插件页面安装生成的 `.piplug`。 6) 要求代理在同一目录上运行 `PluginCheck` 和 `PluginPack`。
-- **预期**：脚手架插件检查干净并报告其文件计数和大小；缺少 `main` 是一个阻止 `pack` 的错误； inert-skills 情况是一个不会阻止的警告； `pack` 使用仅存储条目写入 `dist/<id>-<version>.piplug` 并打印其 sha256；该软件包通过正常的权限审查进行安装，并显示在“活动”下；代理工具会产生相同的判断并拒绝会话工作区之外的任何目录。
+- **步骤**：1) `pnpm pi-plugin check <dir>`。 2) 删除 `main` 命名的文件并再次运行 `check`；对声明了 `manifest.renderer` 的插件，删除它命名的文件后重复一次。 3) 恢复它，声明 `contributes.skills` 而不声明 `agent.prompt.inject`，然后再次运行 `check`。 4) `pnpm pi-plugin pack <dir>`。 5) 从插件页面安装生成的 `.piplug`。 6) 要求代理在同一目录上运行 `PluginCheck` 和 `PluginPack`。
+- **预期**：脚手架插件检查干净并报告其文件计数和大小；缺少 `main` 或 `manifest.renderer` 入口是一个阻止 `pack` 的错误； inert-skills 情况是一个不会阻止的警告； `pack` 使用仅存储条目写入 `dist/<id>-<version>.piplug` 并打印其 sha256；该软件包通过正常的权限审查进行安装，并显示在“活动”下；代理工具会产生相同的判断并拒绝会话工作区之外的任何目录。
 - **链接规格**：`07-plugins/10-plugin-devex.md` §5–§6、`07-plugins/06-plugin-packaging.md`、ADR 0039
 - **承兑**：G（本地包装往返）
 - **里程碑**：后 MVP
-- **状态**：部分自动化（`packages/plugin-devkit` vitest：脚手架→检查→按模板打包，存储方法标头，每个检查规则）；安装步骤已记录
+- **状态**：部分自动化（`packages/plugin-devkit` vitest：脚手架→检查→按模板打包，存储方法标头，每个检查规则，以及把 `permission.high-risk` 列表与权限矩阵 high 行对齐的一致性测试）；安装步骤已记录
 
 #### E2E-023：全局搜索中的插件命令并执行
 
@@ -1462,20 +1462,20 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **接受**：G（插件剪贴板历史）+ 安全
 - **状态**：单元覆盖（`clipboard-history.test.mjs`）；Electron 剪贴板捕获仍需手动验证
 
-#### E2E-024F：刷新官方远程市场存储库
+#### E2E-024F：刷新官方市场目录
 
-- **先决条件**：网络可用于 GitHub 原始内容。
-- **步骤**：1) 打开扩展 → 市场。 2) 使用标题刷新市场操作。 3) 确认来源行显示官方通道（`plugins.aiuo.net`），且 GitHub 备份与 CNB 备份可选。
-- **预期**：目录从所选通道刷新；卡片网格更新；如果获取失败，离线回退仍然有效。
+- **先决条件**：网络可访问 `plugins.aiuo.net`。
+- **步骤**：1) 打开扩展 → 市场。 2) 使用标题栏的刷新市场操作。 3) 确认官方目录刷新且卡片网格更新。
+- **预期**：市场使用 `plugins.aiuo.net/catalog.json`；页面没有来源选择器；刷新失败时仍可使用缓存的官方目录。
 - **链接规格**：`07-plugins/07-plugin-marketplace.md`
 - **接受**：G（远程市场来源）
 - **状态**：已记录/涵盖 host-core 单元
 
-#### E2E-024P：切换市场目录来源
+#### E2E-024P：市场忽略旧版来源设置
 
-- **先决条件**：网络可访问 `plugins.aiuo.net`、`raw.githubusercontent.com` 与 `cnb.cool`。
-- **步骤**：1) 在全新配置下打开扩展 → 市场，确认来源行显示官方渠道。 2) 依次切换到海外备份、国内备份、填写地址的自定义，再切回官方渠道。 3) 每次切换后确认同一页面完成目录刷新。 4) 先从官方渠道安装一个插件，再从国内备份安装一个。 5) 选择自定义地址但留空。
-- **预期**：全新配置默认停在官方渠道，其目录来自 `plugins.aiuo.net/catalog.json`；四个选项按官方渠道 / 海外备份 / 国内备份 / 自定义的顺序显示；切换后自动触发刷新并报告新的插件数量；来源选择器仍是唯一的来源状态控件，不显示重复的提供商说明或当前来源状态行；官方渠道的安装通过平台 resolve，国内备份的安装仍从镜像下载并通过与以前相同的 shasum 校验，因此两条备份路径逐字节不变；切回某个来源时直接复用其缓存快照而不是删除，也不产生额外往返；已安装记录标明插件来自哪个渠道；选择自定义地址但留空时回退到官方默认地址，而不是空端点。
+- **先决条件**：配置文件可预置旧版 `pluginMarketSource` 值 `github`、`mirror`、`custom`，其中包括一个自定义 URL；官方目录网络可用，或可使用本地请求存根。
+- **步骤**：1) 分别使用每种预置配置启动应用。 2) 打开扩展 → 市场并刷新。 3) 检查目录请求。 4) 从市场安装一个已发布插件。
+- **预期**：页面没有来源控制；所有配置都请求 `https://plugins.aiuo.net/catalog.json`，并忽略持久化来源与自定义 URL；安装使用官方平台 resolve，必要时从官方目录 URL 回退并校验摘要；旧版设置仍可读取，无需迁移。
 - **链接规格**：`07-plugins/07-plugin-marketplace.md` §2
 - **接受**：G（远程市场来源）
 - **状态**：已记录 / 涵盖 host-core 单元
@@ -2137,7 +2137,7 @@ hover/focus 不带移位标签，项目标题 hover/focus 路径显示
 
 - **先决条件**：一种编目推理模型、一种非推理模型，以及一个未知的自由格式模型 ID。
 - **步骤**：1) 打开 Composer 模型 × 推理芯片。2) 确认根层包含带当前值的模型和推理等级条目，以及推理等级条目正下方轨道上每个支持等级一个刻度点的滑杆；确认每个等级在轨道下方都保留可见标签、各自对齐到自己的刻度点。3) 拖动并点击滑杆跨过多档，再点击一个刻度标签，确认芯片更新且菜单留在根层、选中档的刻度点位于滑块正下方。4) 打开模型，搜索并从一个提供商分组选择模型；确认菜单仍在根层打开。5) 打开推理等级并从单选列表选择一档。6) 对非推理提供商和未知自由格式模型 ID 重复；练习 Escape、外部点击、上/下、Enter、左方向键和滑杆方向键。
-- **预期**：芯片在右侧工具栏，带 Bot 图标，位于独立提示词增强 Sparkles 动作和发送/中止之前；Off 省略等级文本。单个锚定菜单把根层原地替换成返回行和子菜单，从不打开标签页或第二个弹出层，再打开总是从根层开始。模型搜索过滤粘性提供商分组；推理等级来自 `omit` 然后绑定已启用档位的规范顺序。当列出一个以上等级时，根层在推理等级条目正下方承载拖动滑杆（单档绑定隐藏滑杆）。拖过多个刻度只持久化最后一次待提交的档位；刻度标签不是 Tab 停靠点。滑杆和刻度提交立即更新芯片且菜单留在根层。推理等级条目打开单选列表，使用单选语义、末尾勾选和当前模型支持说明。选择任一值立即更新芯片和根层值、清除模型过滤并保持菜单打开。非推理或未知模型从 `off` 开始，但显式 Settings 绑定可以提供其配置档位；发现不会自动提升。刷新发现的模型数据不能覆盖绑定。第一条消息创建会话之前，Composer 使用模型菜单里选中的精确模型而不是提供商默认模型；物化后仍保持同一精确模型能力。
+- **预期**：芯片在右侧工具栏，带 Bot 图标，位于可选的插件文本操作和发送/中止之前；宿主不内置提示词增强 Sparkles 操作。Off 省略等级文本。单个锚定菜单把根层原地替换成返回行和子菜单，从不打开标签页或第二个弹出层，再打开总是从根层开始。模型搜索过滤粘性提供商分组；推理等级来自 `omit` 然后绑定已启用档位的规范顺序。当列出一个以上等级时，根层在推理等级条目正下方承载拖动滑杆（单档绑定隐藏滑杆）。拖过多个刻度只持久化最后一次待提交的档位；刻度标签不是 Tab 停靠点。滑杆和刻度提交立即更新芯片且菜单留在根层。推理等级条目打开单选列表，使用单选语义、末尾勾选和当前模型支持说明。选择任一值立即更新芯片和根层值、清除模型过滤并保持菜单打开。非推理或未知模型从 `off` 开始，但显式 Settings 绑定可以提供其配置档位；发现不会自动提升。刷新发现的模型数据不能覆盖绑定。第一条消息创建会话之前，Composer 使用模型菜单里选中的精确模型而不是提供商默认模型；物化后仍保持同一精确模型能力。
 - **链接规格**：`03-runtime/11-provider-model-system.md`，
   `03-runtime/12-provider-config-schema.md`，
   `03-runtime/13-model-catalog-and-selection.md`、ADR 0018、ADR 0027
@@ -5677,7 +5677,7 @@ eleven-tool-round desktop paths are verified by
 | 基线后本地自动化 | E2E-220 |
 | 基线后本地自动化（MCP `pi_session_get` 超大 compaction） | E2E-MCP-session-get-projects-large-compaction |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
-| 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
+| 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | 受信任扩展（R7 v1 npm 恢复） | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP 回归覆盖（插件工具调度） | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |
 | M6+（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -5795,20 +5795,22 @@ eleven-tool-round desktop paths are verified by
 - Composer 省略本地工作区标签并显示 Agent/Plan/Goal 以及
   活动模型 ID；这两个区域设置都会公开 Plan 和 Goal 批准副本。
 
-### US-UI-06 会话自动标题
+### US-UI-06 会话标题插件
 - 创建一个新任务并发送第一个提示，例如“同步代码”。
-- 期望其项目或临时会话行标题成为截断形式
-  该提示而不是保留“新任务”。
+- 提示发送期间及完成后，核心都保留本地化默认标题。启用并授权
+  Session Titles 插件后，完成首轮可由插件按配置的提示词、模型和思考级别
+  生成标题；没有插件时标题继续保持默认值。
+- 手动重命名后再完成一轮，插件不得覆盖用户设置的标题。
 
 ### US-UI-08 仅快捷方式目的地历史记录
 - 导航设置 → 项目存档 → 项目会话 → 插件。
 - 扩展侧边栏或主标题栏中不会有 back/forward 按钮。
 - 按 `Cmd/Ctrl+[` 和 `Cmd/Ctrl+]`；期望他们能够穿越那段历史。
 
-### US-UI-09 分组会话标题回填
-- 打开先前显示“新任务”/“新聊天”但有第一条用户消息的旧会话。
-- 期望其范围侧边栏行显示截断的第一用户消息标题
-  会话列表加载后。
+### US-UI-09 默认会话标题持久化
+- 打开先前显示“新任务”/“新聊天”且有第一条用户消息的旧会话。
+- 未启用标题插件时，范围侧边栏行仍显示原默认标题；启用插件时，只有
+  首轮完成且插件获准后才更新标题。
 
 ### US-UI-11 空草稿重用
 - 单击“新任务”两次。
@@ -7024,16 +7026,21 @@ eleven-tool-round desktop paths are verified by
   2. 确认指针按下期间窗口持续跟随，没有跳回默认尺寸或显示器边缘。
   3. 工作面板打开时从外边缘调整大小，确认对话窗格回流，而面板宽度和
      分隔线首选项不变。
-  4. 等待调整大小稳定后关闭并重新启动应用。
-- **预期**：无边框外壳仍提供原生边缘和角落命中区域，最小尺寸保持
+  4. 在 Windows 上检查默认 12 DIP 圆角在调整大小前后保持一致；选择获授权
+     的 `cornerRadius: 0` 主题，再切回内置主题，确认恢复为全局 `--radius-md`；
+     输入超过 24 DIP 的半径应被拒绝。
+  5. 等待调整大小稳定后关闭并重新启动应用。
+- **预期**：无边框外壳仍提供原生边缘和角落命中区域；Windows 默认圆角使用
+  全局 12 DIP `--radius-md`，最大化/全屏时为矩形。最小尺寸保持
   800×560（按显示器工作区裁剪），恢复看门狗不会与慢速调整大小流竞争。最后稳定的基础边界会
   在重新启动后恢复；临时工作面板预留宽度不会被保存为用户的聊天窗口尺寸。
 - **链接规格**：`03-runtime/01-ipc-protocol.md`、`04-ux/01-ui-ia.md`、
   `04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md`、
-  `04-ux/09-interaction-patterns.md`、ADR 0029 / ADR 0122
+  `04-ux/09-interaction-patterns.md`、ADR 0029 / ADR 0122 / ADR 0317 / D637
 - **验收**：A（应用外壳）、F（坚持）、质量
 - **里程碑**：M6+
-- **状态**：单元/源码契约覆盖；原生桌面边缘/角落旅程仍待补
+- **状态**：`test:e2e:window-controls` 覆盖圆角裁切、主题半径变化、全屏、最大化和窗口控件；
+  Windows 原生拖动需在专用交互式桌面上运行 `test:e2e:window-resize-native`。
 
 #### E2E-168：展开侧边栏宽度跟随锚定的调整手势
 
@@ -7823,6 +7830,21 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：A（应用控制）、质量
 - **里程碑**：MVP 后（R7 v1）
 - **状态**：部分自动化（`pnpm test:e2e:trusted-extensions`）；全局/Composer 命令发现、提示 broker 往返、中止、会话重命名、exec 和 Host 队列已覆盖；无会话与远程控制仍需额外验证
+
+#### E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch：临时会话里的扩展在本会话 scratch 中工作
+
+- **前置条件**：一个已启用的夹具扩展，注册命令 `where`，报告 `ctx.cwd`、
+  `ctx.sessionManager.getCwd()`，以及不带 `cwd` 选项用 `pi.exec` 启动的子进程的
+  工作目录。
+- **步骤**：1）开一个临时会话（无项目），在任何工具调用之前运行 `/where`。
+  2）在项目会话中运行 `/where`。
+- **预期**：临时会话中三个值都是该会话的 `scratch/<sessionId>` 目录，该目录存在且
+  子进程在其中启动；没有一个是 sidecar 的进程目录。项目会话中三个值都是项目根，
+  且不会为扩展创建 scratch 目录。
+- **链接规格**：`07-plugins/16-trusted-extensions.md` §7；D114
+- **验收**：A（应用控制）、质量
+- **里程碑**：MVP 后（R7 v1）
+- **状态**：单元测试覆盖（`packages/agent-runtime/src/extensions/runtime-lifecycle.test.ts`）；Electron 流程已记录
 
 #### E2E-244：不支持的 API、加载错误与处理器超时降级为诊断
 
@@ -8632,11 +8654,11 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   目录、继承值保持 `catalog` 标记）；`packages/shared/src/model-catalog.test.ts` 覆盖
   四条来源规则；`crates/host-core/src/providers/catalog.rs` 覆盖配置往返、无标记记录与
   被丢弃的未知标记。端到端的设置旅程与实际启动窗口断言为草稿。
-#### E2E-PLUGIN-official-channel-resolves-through-the-platform：官方渠道的安装通过平台解析，并从第一个可用镜像安装
+#### E2E-PLUGIN-official-channel-resolves-through-the-platform：resolve 及时应答时官方渠道安装使用平台镜像
 
-- **先决条件**：全新配置停留在官方渠道；`plugins.aiuo.net/catalog.json` 中存在一个插件；平台与两个镜像主机各有请求日志（可用本地存根代替）。
-- **步骤**：1) 打开扩展 → 市场，确认来源行显示官方渠道，且目录来自 `plugins.aiuo.net`。 2) 安装该插件。 3) 抓取平台收到的请求。 4) 检查是哪个镜像提供了安装包。 5) 再安装第二个插件，然后重新安装第一个插件的同一版本。
-- **预期**：每次安装或更新只发出一次 `POST /api/v1/download/resolve`，JSON body 含 `deviceId`、`pluginId`，用户选定版本时含版本号；安装包来自 `downloads` 中第一个可应答的条目，且在解压之前其字节与返回的 `sha256` 和 `sizeBytes` 一致；不可达或失败的镜像被放弃并自动尝试下一个，无需用户操作；重新安装同一版本会发出新的 resolve 调用，而不是复用上一次的应答，因为响应从不缓存；插件通过常规权限审查安装，其记录标明来源为官方渠道。
+- **先决条件**：全新配置，目录中存在一个插件，并可记录平台与两个镜像主机的请求（各项都可由本地存根代替）。
+- **步骤**：1) 打开扩展 → 市场并确认目录已加载。 2) 捕获目录请求，确认使用 `plugins.aiuo.net`。 3) 安装插件。 4) 捕获平台收到的请求。 5) 检查哪个镜像提供了安装包。 6) 再安装第二个插件，然后重新安装第一个插件的同一版本。
+- **预期**：市场页面没有来源选择器；每次安装或更新只发出一次带 `deviceId`、`pluginId` 以及可选版本的 `POST /api/v1/download/resolve`；resolve 在三秒内应答时，按顺序尝试 `downloads` 并在解压前校验平台返回的 `sha256` 与 `sizeBytes`；某个镜像不可达或失败时无需用户操作即可尝试下一个；resolve 超时后从目录 URL 下载并校验目录摘要；重新安装同一版本会发起新的 resolve 请求，因为响应从不缓存；插件通过常规权限审查，安装记录标明官方渠道。
 - **链接规格**：`07-plugins/07-plugin-marketplace.md` §2、`07-plugins/15-plugin-center.md` §10
 - **验收**：G（远程市场来源）
 - **里程碑**：M6+
@@ -8652,11 +8674,11 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **里程碑**：M6+
 - **状态**：草稿
 
-#### E2E-PLUGIN-platform-unreachable-install-falls-back-to-the-catalog-url：平台不可达时安装回退到目录地址
+#### E2E-PLUGIN-platform-unreachable-install-falls-back-to-the-catalog-url：平台 resolve 缓慢或不可用时快速回退到目录地址
 
-- **先决条件**：官方目录已成功刷新并缓存；安装期间 `plugins.aiuo.net` 不可达（被阻断的存根，或被拒绝的 DNS/代理线路）。
-- **步骤**：1) 在平台可达时刷新目录，然后让它不可达。 2) 安装一个目录条目里带相对 `url` 的插件。 3) 确认是哪个主机提供了安装包，以及平台是否收到 resolve 请求。 4) 恢复可达后，依次安装平台分别以 `403 NOT_PUBLISHED`、`403 PLUGIN_ARCHIVED`、`404`、`429` 和 `503` 拒绝的版本。
-- **预期**：安装从目录自身的地址解析安装包——`artifactBaseUrl` 加相对 `url`——并在同样的 shasum 校验之后完成；该次安装不会向平台发出 resolve 请求，也不计入统计；resolve 失败的原因会出现在安装日志里而不是被隐藏；平台恢复应答后，各拒绝码各自给出对应的提示——尚未发布不重试、已归档会从安装与更新选择中隐藏该插件、平台没有该版本、限流按 `Retry-After` 等待一次、`503` 报部署问题——并且任何拒绝都不会静默切到别的渠道或别的版本。
+- **先决条件**：官方目录已刷新；本地存根可让 `POST /api/v1/download/resolve` 延迟超过三秒，或返回 `429`、`503 NO_DOWNLOAD_SOURCE` 与发布拒绝。
+- **步骤**：1) 让 resolve 存根延迟超过三秒并安装插件。 2) 确认界面离开 Resolve 阶段，开始从目录 URL 下载。 3) 分别用 `429` 和 `503 NO_DOWNLOAD_SOURCE` 重复。 4) 对所选版本分别返回 `403 NOT_PUBLISHED`、`403 PLUGIN_ARCHIVED` 和 `404`。
+- **预期**：慢 resolve 三秒后被放弃；超时、`429` 和 `503 NO_DOWNLOAD_SOURCE` 都从目录的 `artifactBaseUrl` 与相对 `url` 回退，且在安装前通过目录摘要校验；限流不等待、不重试；`403 NOT_PUBLISHED`、`403 PLUGIN_ARCHIVED` 和 `404` 仍明确报错，不会安装回退包；已归档插件仍从安装与更新选择中隐藏；所选渠道保持不变。
 - **链接规格**：`07-plugins/07-plugin-marketplace.md` §2
 - **验收**：G（远程市场来源）
 - **里程碑**：M6+
@@ -8933,8 +8955,8 @@ the latest destination. These assertions measure work counts, not device FPS.
   文字和待处理操作留在过程之外。详细模式的活动过程默认展开；未操作的过程在回合完成时
   收起，用户明确选择的状态继续保留。活动多项组默认展开，未操作组在完成时收起。紧凑模式
   的过程、组和载荷默认收起，隐藏推理；记录过失败／被拒工具的未操作活动过程会在恢复期间
-  保持展开，并在完成后收起。单项没有组。详细模式只自动展开最后一个活动组中符合条件的
-  字面最后工具／搜索项；不会越过思考向前查找，失败／被拒叶子保持关闭。父级、子级和同级
+  保持展开，并在完成后收起。单项没有组。没有任何条目载荷会自动展开：工具／搜索行在
+  用户打开之前保持收起，而思考项保留自身的叶子默认值。父级、子级和同级
   状态相互独立；窗格拥有的用户选择跨更新、模式切换和重新挂载保留，渲染器重启后重新应用
   默认值。搜索只展开拥有目标消息的过程和活动组，每个请求应用一次；条目级精确定位不在
   本次范围内，紧凑模式推理仍需显式切换到详细模式。已保存模式跨重启保留，缺失或未知设置

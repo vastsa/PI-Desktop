@@ -442,9 +442,9 @@ visually distinct from list content.
 | Archived row | Hidden by default; visible in the explicit archived view |
 | No retained project | Compact Open project entry; standalone Sessions rows remain available |
 | Empty group | Muted one-line empty state; group create action remains available |
-| Default session title | New task/New chat (localized where applicable) until the first prompt |
-| First prompt title | A normalized 48-character prompt fallback appears immediately; after the first turn, a successful background summary replaces it |
-| Manual session title | User-defined title remains stable across refresh and renderer restart; automatic summary never overwrites it |
+| Default session title | New task/New chat (localized where applicable) until the user or an installed title plugin sets one |
+| Plugin-generated session title | A title plugin may replace the default after the first completed turn when its permission is granted |
+| Manual session title | User-defined title remains stable across refresh and renderer restart; plugin updates use a host compare-and-set and never overwrite it |
 | Footer idle | Transparent 58px band; build and action controls remain visually quiet |
 | Footer hover/focus | Only the targeted control receives the semantic hover/focus treatment |
 | Profile menu open | Profile trigger is active; 280px menu opens 8px above the footer |
@@ -864,11 +864,11 @@ through later successful recovery, and closes on completion if still untouched.
 Group headers summarize count, running state and issue count without treating a
 failed child as a failed turn.
 
-In Detailed, only the literal final item of the last activity group receives the
-leaf auto-open default when it is an eligible tool-call or hosted-search row.
-Failed and denied rows remain closed, and a final thinking item does not cause a
-backward scan for an earlier tool. Compact keeps all tool/search payloads closed and
-suppresses reasoning text and excerpts; only its active thinking indicator remains.
+No item payload opens itself in either mode: a tool, hosted-search or plan call
+stays a header row until the user opens its disclosure. The activity group and
+the whole process keep their automatic open defaults, so a live turn still shows
+its work. Compact keeps all tool/search payloads closed and suppresses reasoning
+text and excerpts; only its active thinking indicator remains.
 
 Whole process, group and item are independent controls. Closing an ancestor keeps
 descendant choices and reopening restores them; opening a parent never expands all
@@ -2217,10 +2217,9 @@ ordinary processing group only when it has two or more visible items. A singleto
 uses its item disclosure directly, and Task topology keeps its existing container.
 While the turn is active, the ordinary group owning the execution segment opens in
 Detailed and remains closed in Compact; when it settles, an untouched Detailed
-group closes. Detailed auto-opens a leaf payload only when the literal final item
-of the last activity group is an eligible tool-call or hosted-search row. Earlier,
-failed and denied rows remain closed, and a final thinking item does not select an
-earlier tool. Compact keeps every tool/search payload closed.
+group closes. No item payload opens itself in either mode: a tool, hosted-search
+or plan row stays a header row until the user opens it, whichever item of the
+group it is. Compact keeps every tool/search payload closed.
 
 The group header shows `Processing · 12s` while active or `Processed for 12s`
 after completion, plus bounded item and issue counts. Expanding it reveals the
@@ -2252,10 +2251,9 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
   in the transcript after completion. In Detailed the active group starts open and
   closes on completion only if untouched; completed groups otherwise start closed.
   Compact groups start closed. A singleton has no group header.
-- Tool/search payloads remain collapsed in Compact. In Detailed, only an eligible
-  literal final item of the last activity group starts expanded; failed/denied
-  items remain closed, and a final thinking item does not select an earlier tool.
-  Live thinking follows its own disclosure policy and never opens sibling payloads.
+- Tool/search payloads stay collapsed in both modes until the user opens them; no
+  row auto-opens, so a final thinking item never selects an earlier tool. Live
+  thinking follows its own disclosure policy and never opens sibling payloads.
 - The processing group spans the full available assistant column, so expanded
   result details keep a usable width even when the header or payload is short.
 - The visible label is a natural-language action (`Read`, `Ran`, `Searched`),
@@ -2328,17 +2326,16 @@ twice.
 
 | State | Header treatment | Expanded content |
 |---|---|---|
-| Running | Progressive action with readable text and a pulsing marker; a `run` row also shows its spinner and pulses the status dot beside `Working…` | Detailed opens the active multi-item group; only an eligible literal-final tool/search payload opens. Compact payloads stay closed; live thinking follows its own indicator/disclosure policy |
-| Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown; an untouched active group closes on completion, while manual group/item choices and the detailed literal-final leaf state are retained |
+| Running | Progressive action with readable text and a pulsing marker; a `run` row also shows its spinner and pulses the status dot beside `Working…` | Detailed opens the active multi-item group; no item payload opens itself. Compact payloads stay closed; live thinking follows its own indicator/disclosure policy |
+| Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown; an untouched active group closes on completion, while manual group and item choices are retained |
 | Error | Past-tense action + compact danger status; details remain collapsed by default and open only on user request. A `run` row is in this state whenever its command exited nonzero, whatever the call reported (D227) | Error note first, then arguments |
 | Denied | Muted `Denied` status; payload remains closed until requested | Permission result when available |
 
 ### 9.6 Interactions
 
 - Click the row: expand/collapse only that result payload. Compact payloads start
-  closed. Detailed starts a payload open only when the row is the eligible literal
-  final item of the last activity group; earlier, failed and denied rows remain
-  closed until the user opens them.
+  closed. No payload opens itself in either mode, so the row the user opens is the
+  only expanded one; failed and denied rows behave the same.
 - A file path that a row or its result names is a link, not decoration: clicking
   the summary path of a `Read`, `Write`, `Edit`, or `fetch` row, or a path in a
   result's file list or match groups, completes the reference through the same
@@ -2823,16 +2820,16 @@ reasoning-level control.
   beside its selection indicator.
 - The right toolbar owns the remaining-capacity context inspector (when the
   newest assistant turn has usage) immediately left of one combined model ×
-  reasoning-level chip, then the standalone prompt-enhancement action and the
-  single Stop/Send submit slot (D347). The inspector trigger shows the ring
+  reasoning-level chip. Explicitly installed plugins may add user-invoked
+  Composer text actions after it; there is no built-in prompt-enhancement
+  action. The single Stop/Send submit slot follows plugin actions (D347). The inspector trigger shows the ring
   and percentage only. The chip shows Bot, the current model name, and the
   current canonical reasoning level value separated by `·`; `off` omits the
   level text. The canonical value is rendered as-is (`low`, `high`, `xhigh`,
-  or `max`) and is not localized. The
-  prompt-enhancement action shows Sparkles while idle, uses the shared
-  `.tool-spinner` and localized `Enhancing…` label while running, and remains
-  a one-shot draft rewrite action. Inline file-reference chips, including
-  pasted image chips, do not disable this action and remain in the draft.
+  or `max`) and is not localized. A contributed text action uses its plugin
+  title and shows a spinner while its callback runs. The callback receives only
+  the draft and optional model key; the host strips and restores inline file
+  reference tokens, including pasted image chips, around the transform.
 - MainPane and the chat surface keep a 450px hard minimum. The composer toolbar
   remains a single, non-wrapping row as its container narrows: the mode and
   permission labels stay on one line and ellipsize within their chips, while
@@ -2840,8 +2837,8 @@ reasoning-level control.
   560px it hides the reasoning level label, at 480px it tightens the model label
   cap, and at the 450px floor it becomes a 32px icon-only trigger. The trigger's
   menu and accessible name retain the complete model/reasoning selection. The
-  context inspector hides its percentage at the floor and the enhancement
-  loading state becomes icon-only, preserving the action hit targets without
+  context inspector hides its percentage at the floor and plugin action
+  loading states remain icon-only, preserving the action hit targets without
   clipping or overlapping toolbar content. Home and thread-docked composers
   use the same responsive rules.
 - The combined chip opens one anchored menu above itself. The menu starts with
@@ -3956,7 +3953,7 @@ default nor provider configuration. OAuth accounts remain in their separate sect
 | Busy row | Test/update/delete actions disabled for that card |
 
 ### 19.4 Interactions
-- Add provider opens a modal dialog on a full-window overlay portaled to `#pi-desktop-overlays` on the document element (it can shrink below its 1040px preferred width). Focused credential fields keep their 2px accent ring fully visible: the scrolling body reserves that gutter instead of clipping the ring. Cancel/close resets fields and dismisses the dialog
+- Add provider opens a modal dialog on a full-window overlay portaled to `#pi-desktop-overlays` on the document element (it can shrink below its 1040px preferred width). The chooser groups unconfigured API-key providers declared by loaded plugins under their optional category, searches their category / plugin / provider / endpoint / model labels, and shows the plugin name and endpoint on each tile. Selecting one opens a Host-owned key form for its existing provider row; saving uses the provider secret path and removes that row from the chooser. Category and provider metadata render as text. Focused credential fields keep their 2px accent ring fully visible: the scrolling body reserves that gutter instead of clipping the ring. Cancel/close resets fields and dismisses the dialog
 - The model picker searches and toggles multiple models without using a native
   multiple select. Its portaled menu closes on outside press, Escape, scroll,
   and resize; model selection immediately adds or removes its configuration

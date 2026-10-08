@@ -54,6 +54,7 @@ const NODE_LAUNCHERS: Record<string, true> = {
   yarn: true,
 };
 const UV_LAUNCHERS: Record<string, true> = { uv: true, uvx: true };
+const PYTHON_LAUNCHERS: Record<string, true> = { python: true, python3: true };
 
 export type McpLaunchFs = {
   isFile: (path: string) => boolean;
@@ -293,6 +294,57 @@ export function discoverUvExecutable(
   );
 }
 
+/**
+ * `%LOCALAPPDATA%\Microsoft\WindowsApps` holds the Microsoft Store app
+ * execution aliases. Without a Store Python, its `python.exe`/`python3.exe`
+ * only print an install hint and exit 9009, yet the directory is on PATH by
+ * default — usually ahead of a python.org or winget install.
+ */
+function isWindowsAppsDir(dir: string, paths: nodePath.PlatformPath): boolean {
+  return /[\\/]microsoft[\\/]windowsapps$/i.test(paths.normalize(dir).replace(/[\\/]+$/, ""));
+}
+
+/**
+ * Find a real Python 3 for a `python3`/`python` launcher on Windows.
+ *
+ * python.org and winget installs provide `python.exe` (and the `py` launcher)
+ * but no `python3.exe`, so a manifest that says `python3` lands on the Store
+ * alias. Look for either name outside WindowsApps first, then `py -3`. When
+ * nothing else exists the caller keeps the alias: with a Store Python it is
+ * the real interpreter.
+ */
+export function discoverWindowsPython(
+  options: Pick<McpStdioLaunchOptions, "hostEnv" | "fs"> & { launcher: "python" | "python3" },
+): { command: string; args: string[] } | undefined {
+  const hostEnv = options.hostEnv ?? process.env;
+  const fs = options.fs ?? defaultFs();
+  const paths = nodePath.win32;
+  const exts = pathextList(hostEnv, true);
+  const dirs = hostPath(hostEnv, true)
+    .split(paths.delimiter)
+    .filter((dir) => dir && !isWindowsAppsDir(dir, paths))
+    .join(paths.delimiter);
+  // Preserve the configured launcher when both names are available (for
+  // example, a virtual environment's `python.exe` before a system `python3`).
+  const names = options.launcher === "python" ? ["python", "python3"] : ["python3", "python"];
+  for (const name of names) {
+    const found = lookOnPath(name, dirs, paths, exts, fs.isFile);
+    if (found) return { command: found, args: [] };
+  }
+  const windir = hostValue(hostEnv, "SystemRoot", true) ?? hostValue(hostEnv, "WINDIR", true);
+  const localApp = hostValue(hostEnv, "LOCALAPPDATA", true);
+  const py =
+    lookOnPath("py", dirs, paths, exts, fs.isFile) ??
+    firstFile(
+      [
+        ...(windir ? [paths.join(windir, "py.exe")] : []),
+        ...(localApp ? [paths.join(localApp, "Programs", "Python", "Launcher", "py.exe")] : []),
+      ],
+      fs.isFile,
+    );
+  return py ? { command: py, args: ["-3"] } : undefined;
+}
+
 function siblingTool(
   executable: string,
   name: string,
@@ -416,8 +468,10 @@ function withToolPath(
 /**
  * Turn a configured stdio command into something `spawn({ shell: false })`
  * can actually start: resolve `npx`/`uvx` onto real binaries (fnm, uv,
- * nvm-windows, PATH), rewrite npm shims to `node` + `npx-cli.js`, and wrap
- * remaining Windows `.cmd` files with `cmd.exe` so arguments stay literal.
+ * nvm-windows, PATH), rewrite npm shims to `node` + `npx-cli.js`, map a bare
+ * `python3`/`python` on Windows past the Store alias to a real interpreter,
+ * and wrap remaining Windows `.cmd` files with `cmd.exe` so arguments stay
+ * literal.
  */
 export function resolveMcpStdioLaunch(options: McpStdioLaunchOptions): McpStdioLaunch {
   const platform = options.platform ?? process.platform;
@@ -481,6 +535,16 @@ export function resolveMcpStdioLaunch(options: McpStdioLaunchOptions): McpStdioL
       }
     } else if (uv) {
       launchCommand = uv;
+    }
+  } else if (win32 && PYTHON_LAUNCHERS[name] && !/[\\/]/.test(command)) {
+    const python = discoverWindowsPython({ hostEnv, fs, launcher: name === "python" ? "python" : "python3" });
+    if (python) {
+      launchCommand = python.command;
+      launchArgs = [...python.args, ...args];
+      env = withToolPath(env, python.command, paths, win32);
+    } else {
+      const found = lookOnPath(name, hostPath(hostEnv, win32), paths, pathextList(hostEnv, win32), fs.isFile);
+      if (found) launchCommand = found;
     }
   } else if (paths.isAbsolute(command) && fs.isFile(command)) {
     env = withToolPath(env, command, paths, win32);

@@ -229,7 +229,10 @@ retains the lifecycle boundary whenever the local log write succeeds.
 3. Interrupt pending/queued/running Plan and Goal work and reject late responses
 4. Unload plugins
 5. Stop Node agent sidecar
-6. Flush/close Rust host DB
+6. Drain terminal event writes (turn finalization and regenerate archival),
+   checkpoints and the outbox while Rust host-core remains available, then
+   flush/close its DB. Terminal writes use a bounded wait of 2 s; a timeout logs
+   `quit before event persistence settled` and allows quit to proceed.
 7. Stop Rust host
 8. Dispose update polling
 9. Close windows / exit

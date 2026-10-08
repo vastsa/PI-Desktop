@@ -189,7 +189,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - **Relaxed network mode**: one switch persisting as
     `AppSettings.networkPolicy.mode` (`relaxed` | `strict`), **on by default**.
     When it is on, an endpoint the user typed themselves — a model base URL, an
-    MCP server, a market source, a git remote — may be a loopback or LAN address,
+    MCP server, a git remote — may be a loopback or LAN address,
     may use plain `http`, and a transparent proxy's fake-IP answers are
     tolerated. Off returns those endpoints to the public-HTTPS-only boundary.
     The first plaintext hop to such an endpoint shows one informational notice.
@@ -260,23 +260,13 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   is remaining. The threshold controls when a text-only paste becomes a
   temporary session-scratch file; it defaults to 600 characters and accepts
   integer values from 1 through 1,000,000.
-- **Prompt enhancement** is a card controlling the Composer's Enhance prompt
-  action (ADR 0121). It carries a `Use a custom template` switch and the settings
-  icon button the subagent rows use for editing, which opens an editor sheet
-  (the subagent editor's pattern). The switch gates whether a stored template
-  applies, is disabled until one is saved, and turns on when a template is
-  saved; turning it off keeps the stored text. The sheet holds the user-template
-  editor, which shows the built-in default text when no override is stored and
-  offers an insert action for the draft variable; a save that would leave the
-  template without that variable is refused. The system prompt is built in and
-  exposes no field. The same card also has a `Default model` row using the same
-  anchored, searchable menu as the Models tab's default-model row; empty means
-  "follow the Composer's current model". Two rows therefore read `Default
-  model`, distinguished by their card headings (Prompt enhancement vs Models
-  Defaults). The reasoning row is a menu select listing the levels the selected
-  model actually supports (the row is disabled when it supports none), defaults
-  to Off, and has no follow-the-session entry. Settings search indexes the card,
-  its switch, the template row, the default-model row, and the reasoning row.
+- Composer text actions are contributed by explicitly installed plugins and
+  appear only while their plugin is enabled and its `composer.transform`
+  permission is granted. The host does not include a prompt-enhancement card or
+  install the standalone `pi.prompt-enhancement` plugin by default. Plugin-owned
+  settings are edited on the Plugins page; the one-time migration of legacy
+  prompt-enhancement preferences is specified in
+  `04-ux/12-prompt-enhancement.md`.
 - **Thinking display mode** uses a menu select with Detailed (default) and
   Compact. Both modes use one whole-process disclosure. Detailed starts the
   process open, keeps reasoning visible, opens the active multi-item activity
@@ -429,6 +419,13 @@ a usage tab.
   - provider cards with host, first configured model, secret status,
     and test / make-default / delete actions
   - Add account and Add provider use the same primary button treatment
+  - Add Service groups unconfigured API-key providers declared by loaded
+    plugins under each contribution's optional custom category. The category
+    defaults to the plugin name and supports English and Simplified Chinese.
+    Tiles show only the provider name; a one-sentence introduction appears on
+    hover or keyboard focus. Search also matches category, plugin, endpoint,
+    and model IDs. A selection opens the Host-owned API-key form; after saving,
+    that provider remains in the service list and leaves the chooser.
   - the add/edit dialog configures connection identity (name, endpoint, API
     style, and secret). It shrinks to the overlay on a narrow window, and a
     focused credential field keeps its 2px accent ring inside the dialog
@@ -540,6 +537,31 @@ session is in Agent, Plan, or Goal. In Plan and Goal it controls Bash
 confirmation only: Ask and Accept edits prompt, while Auto may run a mutating
 Bash command without confirmation. The AI Defaults card must describe that both
 contract modes are intent boundaries, not strict read-only security profiles.
+
+### Jev classifier
+
+- Keep Jev out of the chat provider/model list: it is a TypeSafe structured
+  classifier, not a conversation model, and it owns no provider row.
+- Offer it from **Add service**, in its own Classifiers group, on the add path
+  only: changing an existing row's service never turns it into a classifier.
+  The tile carries the TypeSafe address the key is spent on.
+- Adding Jev is one action with two steps: check the key against TypeSafe, then
+  store it and turn the classifier on. Nothing is written when the check fails,
+  and closing the dialog while the check is still running cancels the whole
+  action, so an enabled Jev always has a key the Agent can spend and an
+  abandoned dialog never leaves a credential behind. The credential is a
+  TypeSafe API key; this integration has no OAuth path.
+- The model configuration page shows the Jev card only once Jev has been added:
+  an install without it has nothing there to configure, and adding stays in the
+  service chooser. The card carries the stored-key state, the Agent-mode switch
+  and the actions that replace or remove the key; removing the key takes the
+  switch down first, then the card. The key itself is entered only in the
+  service dialog, which is also where it is checked. It stays in Host secure
+  storage; the renderer only learns whether one exists.
+- Explain that `JevClassify` sends only the state and questions the Agent passes
+  to TypeSafe, and warn users not to include secrets or personal information.
+- The tool is on demand and unavailable in Plan and Goal modes. Removing the
+  key turns Jev off first, then deletes it.
 
 ### Agent capability destinations (Skills / MCP / Subagents)
 
@@ -826,8 +848,6 @@ system while preserving their different data ownership:
 - Plugin management remains available from the app shell's independent
   **Plugins** destination, including load, enable, disable, and uninstall; it is
   not duplicated in Settings
-- The marketplace source selector lives inside **Plugins → Marketplace**, next
-  to the catalog controls; it is not a separate Settings destination.
 - Project archive is indexed by Settings search and is not duplicated as a home
   sidebar destination or standalone global-search page
 - Back to app returns to chat shell from the rail's pinned footer action

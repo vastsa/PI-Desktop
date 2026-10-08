@@ -154,8 +154,9 @@ type HandshakeResult = {
 9. 版本 11 撤回 A2A 协议栈（ADR 0165 / D326）。`a2a.*` 方法和通知
    已移除，握手不再声明 `a2a`；v10 主机或客户端必须在 UI 交互前拒绝。
 
-协议 v11 与 host-core 存储架构 v14 配对。v14 增加插件会话来源 sidecar
-和软删除字段；架构版本是内部持久性不变量，而不是额外的 JSON-RPC 字段，
+协议 v11 与 host-core 存储架构 v23 配对。v14 增加插件会话来源 sidecar
+和软删除字段；v23 增加 `sessions.title_source`，持久记录默认、手动和插件生成标题的归属。
+架构版本是内部持久性不变量，而不是额外的 JSON-RPC 字段，
 检查点架构仍然由主机拥有。
 
 ## 4. 方法目录(MVP)
@@ -242,7 +243,8 @@ type ToolBudgetHealth = {
 - `session.get`
 - `session.delete`
 - `session.getScratchPath` — 会话的 scratch 目录（D114），按需创建
-- `session.rename`
+- `session.rename` — 在主机边界裁剪并校验标题，接受 1–80 个 Unicode 码点；成功后将标题来源
+  标记为 `manual`，但不更新 `updated_at`、转录内容、消息数或历史通知标题快照。
 - `session.configure` — 以原子方式持久保存 `mode`、`providerId`、`modelId`，
   以及可选的 `thinkingLevel` 用于下一个 pi 回合； omitting/null
   `thinkingLevel` 保留当前值；返回无效模式或级别
@@ -324,6 +326,9 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
 - `plugin.session.importBatch` — 有界的 `skip` 或全有或全无 `fail` 批量导入
 - `plugin.session.list` / `plugin.session.get` / `plugin.session.listMessages` —
   只读取调用插件自己导入且仍处于活动状态的会话
+- `plugin.session.autoTitleContext` — 通过 Electron 的 `session.autoTitle` 权限校验后，
+  仅返回活动且标题来源为 `default` 的会话首条用户提示（≤1,000 字符）和首条助手回复（≤500 字符）
+- `plugin.session.setAutoTitle` — 仅在预期标题和 `default` 来源仍匹配时更新标题；返回 `{ updated }`
 - `plugin.session.rename` — 重命名自己拥有的活动导入会话
 - `plugin.session.delete` — `trash` 隐藏并保留转录本；`purge` 删除并允许重新导入
 - `plugin.usage.listTurns` — 未删除会话的已完成 turn 事实页（标识符与 token

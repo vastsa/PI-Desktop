@@ -111,7 +111,7 @@ test("extensions page draws no in-flow dividers", async () => {
   assert.match(pluginsCss, /\.plugins-card-foot\s*\{[^}]*padding:\s*2px 14px 12px/);
   assert.doesNotMatch(pluginsCss, /\.plugins-card-foot\s*\{[^}]*border/);
   assert.match(pluginsCss, /\.plugins-empty\s*\{[^}]*background:\s*var\(--plugins-tile\)/);
-  assert.match(pluginsCss, /\.plugins-market-settings\s*\{[^}]*background:\s*var\(--plugins-tile\)/);
+  assert.doesNotMatch(pluginsCss, /\.plugins-market-settings/);
 });
 
 test("installed rows default to a calm summary with accessible details", () => {

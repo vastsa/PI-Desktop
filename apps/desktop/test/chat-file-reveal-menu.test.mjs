@@ -65,6 +65,13 @@ const state = {
   openWorkPanelTab: (tab) => calls.tabs.push(tab),
   showToast: (...args) => calls.toasts.push(args),
 };
+const useAppStore = Object.assign(
+  (selector) => selector(state),
+  {
+    getState: () => state,
+    setState: (update) => Object.assign(state, update),
+  },
+);
 
 let nextMatch = null;
 let revealFails = false;
@@ -91,13 +98,16 @@ Object.defineProperty(globalThis, "navigator", {
 const translate = () => ({
   t: (key, values) => `${key}:${values?.name ?? ""}`,
 });
+const sharedPackage = await import("@pi-desktop/shared");
 
 const previewTarget = loadModule("../src/hooks/use-preview-target.ts", {
   react: React,
   "react-i18next": { useTranslation: translate },
-  "../stores/app-store": { useAppStore: (selector) => selector(state) },
+  "@pi-desktop/shared": sharedPackage,
+  "../stores/app-store": { useAppStore },
   "../lib/api": {
     api: {
+      listPluginViews: async () => state.pluginViews,
       fsResolveRef: async (ref) => {
         calls.resolved.push(ref);
         return { match: nextMatch };
@@ -109,7 +119,7 @@ const previewTarget = loadModule("../src/hooks/use-preview-target.ts", {
     },
   },
   "../lib/chat-links": loadModule("../src/lib/chat-links.ts", {
-    "@pi-desktop/shared": await import("@pi-desktop/shared"),
+    "@pi-desktop/shared": sharedPackage,
     "./chat-link-scanner.ts": loadModule("../src/lib/chat-link-scanner.ts", {
       "./render-diagnostics.ts": { beginRenderDiagnostic: () => () => {} },
     }),

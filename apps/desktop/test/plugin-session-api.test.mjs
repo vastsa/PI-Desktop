@@ -312,6 +312,121 @@ test("plugin session read, update, and delete permissions are independent", asyn
   ]);
 });
 
+test("plugin auto-title APIs require the narrow permission and forward only bounded inputs", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    session: {
+      getAutoTitleContext: async (pluginId, input) => {
+        calls.push(["context", pluginId, input]);
+        return {
+          sessionId: input.sessionId,
+          expectedTitle: "New task",
+          userPrompt: "Summarize this work",
+          assistantReply: "Updated the session title flow",
+        };
+      },
+      setAutoTitle: async (pluginId, input) => {
+        calls.push(["set", pluginId, input]);
+        return { updated: true };
+      },
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.auto-title",
+    permissions: ["session.autoTitle"],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "title",
+            title: "Title",
+            run: async () => {
+              const context = await pi.session.getAutoTitleContext({ sessionId: "s1" });
+              await pi.ui.showToast("prompt:" + context.userPrompt);
+              const result = await pi.session.setAutoTitle({
+                sessionId: "s1", expectedTitle: context.expectedTitle, title: "Concise title"
+              });
+              await pi.ui.showToast("updated:" + result.updated);
+              try {
+                await pi.session.setAutoTitle({
+                  sessionId: "s1", expectedTitle: "New task", title: "界".repeat(81)
+                });
+              } catch (error) { await pi.ui.showToast("long:" + error.code); }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["session.autoTitle"]);
+  await runCommand(runtime, "title");
+  assert.deepEqual(calls, [
+    ["context", "demo.auto-title", { sessionId: "s1" }],
+    ["set", "demo.auto-title", {
+      sessionId: "s1",
+      expectedTitle: "New task",
+      title: "Concise title",
+    }],
+  ]);
+  assert.deepEqual(runtime.drainToasts(), [
+    "prompt:Summarize this work",
+    "updated:true",
+    "long:LIMIT_EXCEEDED",
+  ]);
+});
+
+test("plugin auto-title APIs are refused without session.autoTitle", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    session: {
+      getAutoTitleContext: async () => calls.push("context"),
+      setAutoTitle: async () => calls.push("set"),
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.auto-title-denied",
+    permissions: [],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "denied",
+            title: "Denied",
+            run: async () => {
+              for (const [name, call] of [
+                ["context", () => pi.session.getAutoTitleContext({ sessionId: "s1" })],
+                ["set", () => pi.session.setAutoTitle({
+                  sessionId: "s1", expectedTitle: "New task", title: "Title"
+                })],
+              ]) {
+                try { await call(); }
+                catch (error) { await pi.ui.showToast(name + ":" + error.code); }
+              }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, []);
+  await runCommand(runtime, "denied");
+  assert.deepEqual(calls, []);
+  assert.deepEqual(runtime.drainToasts(), [
+    "context:PERMISSION_DENIED",
+    "set:PERMISSION_DENIED",
+  ]);
+});
+
 test("plugin usage listTurns requires usage.read and forwards the plugin id", async (t) => {
   const calls = [];
   const runtime = new PluginRuntime({

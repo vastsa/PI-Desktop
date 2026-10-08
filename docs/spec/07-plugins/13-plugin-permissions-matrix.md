@@ -11,7 +11,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `ui.panel` | low | Open the plugin panel | Granted at install | Needed by almost all UI plugins |
 | `ui.view` | low | `contributes.views` are listed in the work panel and may be opened | Granted at install | Same isolation as a panel window: sandboxed page, per-plugin partition, `net.domains` egress. Filtered by activation scope |
 | `ui.theme` | low | `contributes.themes` CSS is loaded and offered in Settings; runtime `pi.themes.upsert` / `remove` / `list` and `pi.app.setTheme` (ADR 0260) | Granted at install | CSS is sanitized by the host; it cannot script. Declared `assets` are served over the host's read-only `plugin-asset:` scheme. `setTheme` may only select a built-in preference or a currently registered plugin theme. There is no per-plugin theme count cap |
-| `ui.window.appearance` | low | `contributes.windowAppearance` sets the native window background and Windows main-window corner radius while one of the plugin's themes is selected | Granted at install | `#rrggbb` / `#rrggbbaa` background and integer `cornerRadius` 0..24 DIP; restores host background and 4 DIP radius when the theme is gone. macOS keeps vibrancy and native corners |
+| `ui.window.appearance` | low | `contributes.windowAppearance` sets the native window background and Windows main-window corner radius while one of the plugin's themes is selected | Granted at install | `#rrggbb` / `#rrggbbaa` background and integer `cornerRadius` 0..24 DIP; restores host background and the global 12 DIP `--radius-md` radius when the theme is gone. macOS keeps vibrancy and native corners |
 | `clipboard.read` | medium | `clipboard.readText`, `clipboard.getHistory` | Confirm on first use | May read sensitive information and retained clipboard history |
 | `clipboard.write` | medium | `clipboard.writeText` | Confirm on first use | Prevents clipboard pollution |
 | `notify` | low | `ui.notify`, `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | Can be granted by default | Native delivery is OS-controlled; avoid notification-spam abuse |
@@ -23,8 +23,10 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `fs.delete.workspace` | high | — | Downgraded on load to `fs.delete` with `own: true` | Legacy name; only the plugin's own output goes without asking |
 | `agent.tool.register` | high | Register an agent tool | Confirm at install | Tool execution is audited separately |
 | `agent.prompt.inject` | high | Inject a system prompt; activates `contributes.skills` | Deny by default / strong confirmation | Easily leads to behavior hijacking |
+| `composer.transform` | medium | `contributes.composerTransforms` and `onComposerTransform` | Confirm at install | Runs only after an explicit Composer action. Receives the draft and optional model key, not session history or separate attachment/file-reference metadata; request and result are capped at 100,000 characters and audited |
 | `agent.extension` | high | Run `contributes.agentExtensions` modules inside the agent process | Explicit confirmation; local imports and development plugins only in v1.1 | Same access as the agent's own tools; the plugin sandbox does not apply (spec 16) |
-| `provider.register` | high | `contributes.providers` become rows in the native provider list, owned by the plugin and refreshed from the manifest on load | Explicit confirmation; local imports and development plugins only in v1.1, matching `agent.extension` | The user path refuses edits to the row (`PROVIDER_OWNED_BY_PLUGIN`); API-key credentials stay in the Host secret store under the usual provider refs |
+| `renderer.extension` | high | `manifest.renderer` is evaluated inside the host renderer to mount UI slots; `rendererActions` and `rendererCallMethods` open the actions and `onRendererCall` methods that module may use | Explicit confirmation; local imports and development plugins only in v1.1, matching `agent.extension` | The module shares the host's own document, so a slot is a contract rather than a sandbox. A component may dispatch only the reviewed vocabulary (`plugin.call`, `composer.insertText`, `composer.readDraft`, `composer.replaceDraft`, `attachments.add` / `list` / `remove`), capped at 16, and `plugin.call` reaches only the calling plugin's own `onRendererCall` methods, capped at 32. Registrations are withdrawn when the plugin unloads; a self-drawn dialog lives in a layer the plugin opened itself |
+| `provider.register` | high | `contributes.providers` become rows in the native provider list, owned by the plugin and refreshed from the manifest on load; unconfigured API-key rows with an endpoint also appear in Add Service, grouped by optional `category` and with optional hover/focus `description` | Explicit confirmation; local imports and development plugins only in v1.1, matching `agent.extension` | The user path refuses edits to the row (`PROVIDER_OWNED_BY_PLUGIN`); Add Service saves the key through the existing Host secret path. Only loaded plugins with this grant contribute entries; the chooser does not expose secrets or run plugin code. An empty API-key model list discovers models after key save. |
 | `provider.oauth` | high | `onProviderOAuth`; host-rendered `pi.providers.oauth.prompt` / `notify` for a declared OAuth provider | Explicit confirmation | Required with `provider.register` for `authKind: "oauth"`. The callback can read and refresh only that contribution's encrypted credential. The Host keeps refresh tokens out of the renderer and Agent Runtime. Host-mediated callback egress still needs `net.fetch` and `manifest.net.domains`; plugin entry code itself is not an OS sandbox. One account is stored per provider contribution; sign out clears it |
 | `net.fetch` | high | `net.fetch` | Deny by default | Confined to `manifest.net.domains`; an empty or malformed list means no egress (§2A) |
 | `net.websocket` | high | `pi.net.websocket.connect` / `send` / `close` (host-owned sockets; at most 4 per plugin, 1 MiB frames) | Deny by default | Confined to `manifest.net.domains` like `net.fetch`; a refused host never reaches the transport, and every socket is closed when the plugin unloads, is disabled, or crashes |
@@ -44,6 +46,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `models.list` | medium | `pi.models.list` | Confirm at install | Ready provider/model rows only; no secrets |
 | `project.create` | high | `pi.project.create` and explicit `projectId` on session import | Confirm at install | Creates or reuses a durable project row without activating the workspace; imported sessions remain unbound unless the id is supplied |
 | `session.read` | high | `pi.session.getLlmContext` | Confirm at install | In-flight tool session only; compaction-aware projection (D019 / D336) |
+| `session.autoTitle` | high | `pi.session.getAutoTitleContext`, `pi.session.setAutoTitle` | Confirm at install | First user prompt (≤1,000 chars) and first assistant reply (≤500 chars) only, for default-titled sessions; title writes are compare-and-set. It does not grant transcript reads |
 | `session.import` | high | `pi.session.import`, `pi.session.importBatch` | Confirm at install | Imports only into the calling plugin's declared session sources; bounded and rate-limited |
 | `session.read.own` | medium | `pi.session.list`, `pi.session.get`, `pi.session.listMessages` | Confirm at install | Reads only sessions imported by the calling plugin; no cross-plugin access |
 | `session.update.own` | medium | `pi.session.rename` | Confirm at install | Renames only the calling plugin's active imported sessions |
@@ -134,6 +137,7 @@ so "Modify the files it lists" is followed by the list.
 | `agent.tool.register` | Provide executable tools to the AI Agent | 向 AI Agent 提供可执行工具 |
 | `agent.prompt.inject` | Adjust agent instructions | 调整智能体指令 |
 | `agent.extension` | Run code inside the agent | 在 agent 内运行代码 |
+| `renderer.extension` | Draw UI in chat slots | 在聊天插槽绘制界面 |
 | `net.fetch` | Access the network | 访问网络 |
 | `shell.openExternal` | Open external links | 打开外部链接 |
 | `ui.theme` | Provide a theme | 提供主题 |
@@ -153,6 +157,7 @@ so "Modify the files it lists" is followed by the list.
 | `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
 | `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
+| `composer.transform` | Transform text in the Composer | 转换输入框中的文本 |
 | `speech.adapter.register` | Register a speech adapter | 注册语音适配器 |
 | `audio.capture.background` | Use the microphone in the background | 后台使用麦克风 |
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |

@@ -23,9 +23,8 @@ pub struct PluginManager {
     /// build stops shipping must stop being protected immediately, whatever the
     /// row that survives it looks like.
     pub(crate) bundled_ids: BTreeSet<String>,
-    /// Catalog channel pinned by app settings, and the URL for `custom`.
+    /// Catalog channel pinned by app settings.
     pub(crate) market_channel: MarketChannel,
-    pub(crate) market_custom_url: Option<String>,
     /// Cancel token of the install currently running, when one is.
     ///
     /// The renderer's cancel action flips it and the download loop reads it.
@@ -41,22 +40,19 @@ pub struct PluginManager {
 }
 
 impl PluginManager {
-    /// Build a manager against a specific catalog channel.
+    /// Build a manager against the official catalog channel.
     ///
-    /// The channel is applied before the first catalog fetch so a non-default
-    /// source configured in settings is honoured on the very first launch, not
-    /// only after an explicit refresh.
+    /// The legacy custom URL argument is accepted and ignored for compatibility.
     pub fn new(
         data_dir: &Path,
         market_channel: MarketChannel,
-        market_custom_url: Option<String>,
+        _legacy_custom_url: Option<String>,
     ) -> Self {
         let mut mgr = Self {
             data_dir: data_dir.to_path_buf(),
             runtime: Vec::new(),
             bundled_ids: BTreeSet::new(),
             market_channel,
-            market_custom_url,
             install_cancel: None,
             locale: "en".into(),
         };

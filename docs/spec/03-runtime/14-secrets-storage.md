@@ -51,6 +51,7 @@ type SecretMeta = {
 ```text
 secret:provider:<providerId>:api_key
 secret:provider:<providerId>:oauth
+secret:app:typesafe-jev
 ```
 
 The two refs are independent, so one provider row may hold an API key, a vendor
@@ -58,6 +59,10 @@ account, or both. The OAuth ref stores the serialized pi-ai `OAuthCredential`
 (access token, refresh token, expiry) written through the generic `secrets.set`
 path, so it is encrypted by the same backend but is not indexed in
 `secrets_meta`; provider delete clears both refs and any metadata row for them.
+The Jev API key uses the fixed `secret:app:typesafe-jev` reference through the
+same encrypted Host store. Renderer access is limited to set/delete/has; Electron
+main reads it only for an explicitly enabled Agent launch and passes it
+ephemerally to the sidecar.
 
 ## 4a. Provider readiness flags
 

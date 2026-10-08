@@ -231,7 +231,7 @@ export function serializeInlineComposerFileReferences(
   return content.trim();
 }
 
-/** Remove renderer-only inline reference tokens before text-only enhancement. */
+/** Remove renderer-only inline reference tokens before a text transform. */
 export function stripInlineComposerFileReferenceTokens(
   draft: string,
   references: ReadonlyArray<{ token?: string }>,
@@ -246,7 +246,7 @@ export function stripInlineComposerFileReferenceTokens(
 }
 
 /**
- * Restore inline reference chips around an enhanced text-only draft. The
+ * Restore inline reference chips around a transformed text-only draft. The
  * model must never be trusted to preserve private renderer sentinels; tokens
  * keep their order and approximate relative text position instead.
  */

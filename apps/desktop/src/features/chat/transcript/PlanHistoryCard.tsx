@@ -11,13 +11,13 @@ import { useMessageRevealRequest } from "./shared";
 import "../../../styles/plan-history.css";
 
 /** Historical submissions are read-only; approval remains in PlanApprovalBar. */
-export function PlanHistoryCard({ message, proposal, autoOpen = false, onUserInteraction }: {
-  message: UiMessage; proposal: PlanProposal; autoOpen?: boolean; onUserInteraction?: () => void;
+export function PlanHistoryCard({ message, proposal, onUserInteraction }: {
+  message: UiMessage; proposal: PlanProposal; onUserInteraction?: () => void;
 }) {
   const { t } = useTranslation();
   const bodyId = useId();
   const reveal = useMessageRevealRequest(message.id);
-  const disclosure = useAutomaticDisclosure(autoOpen, reveal, disclosureKey("tool", message.id));
+  const disclosure = useAutomaticDisclosure(false, reveal, disclosureKey("tool", message.id));
   const openTab = useAppStore(state => state.openWorkPanelTabForSession);
   const views = useAppStore(state => state.pluginViews);
   const sessionId = useSlotSessionId() || proposal.sessionId;

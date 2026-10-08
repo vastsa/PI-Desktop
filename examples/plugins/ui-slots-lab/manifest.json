@@ -31,9 +31,16 @@
           }
         }
       }
+    ],
+    "composerTransforms": [
+      {
+        "id": "lab-transform",
+        "title": { "en": "Lab transform", "zh-CN": "实验室转换" },
+        "undoTitle": { "en": "Undo lab transform", "zh-CN": "撤销实验室转换" }
+      }
     ]
   },
-  "permissions": ["renderer.extension", "agent.tool.register"],
+  "permissions": ["renderer.extension", "agent.tool.register", "composer.transform"],
   "engines": {
     "piDesktop": ">=0.1.0"
   },

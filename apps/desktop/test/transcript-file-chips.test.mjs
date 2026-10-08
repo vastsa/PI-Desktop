@@ -8,7 +8,16 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [transcript, styles, hook, api, toolDetails, toolRow, filesTab] = await Promise.all([
+const [
+  transcript,
+  styles,
+  hook,
+  api,
+  toolDetails,
+  toolRow,
+  filesTab,
+  markdown,
+] = await Promise.all([
   readTranscriptSource(),
   read("../src/styles/chat-links.css"),
   read("../src/hooks/use-preview-target.ts"),
@@ -16,6 +25,7 @@ const [transcript, styles, hook, api, toolDetails, toolRow, filesTab] = await Pr
   read("../src/components/ToolDetails.tsx"),
   readTranscriptModule("ToolRow.tsx"),
   read("../src/components/workpanel/FilesTab.tsx"),
+  read("../src/components/Markdown.tsx"),
 ]);
 
 test("sent user-message file refs render as composer-like chips", () => {
@@ -48,9 +58,20 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   // Plain project files prefer the bundled file view. A path:line reference
   // uses the host file tab because the bundled view has no line-navigation API.
   assert.match(hook, /FILE_MANAGER_PLUGIN_TAB/);
+  const resolvedRefIndex = hook.indexOf("const resolved = await resolveRef(path, baseDir)");
+  const livePluginViewIndex = hook.indexOf("ensureFileManagerView(workspacePath)", resolvedRefIndex);
+  assert.ok(
+    livePluginViewIndex > resolvedRefIndex,
+    "actively ensure the bundled file view after async path resolution",
+  );
+  assert.match(hook, /api\.listPluginViews\(\)/);
+  assert.match(hook, /api\.enablePlugin\(fileManager\.id\)/);
+  assert.match(hook, /api\.reloadPlugin\(fileManager\.id\)/);
+  assert.match(hook, /isActiveInProject\(/);
+  assert.doesNotMatch(hook, /const pluginViews = useAppStore\(\(s\) => s\.pluginViews\)/);
   assert.match(hook, /const hasPosition = line !== undefined \|\| column !== undefined/);
   assert.match(hook, /!hasPosition[\s\S]*?isHtmlFilePath/);
-  assert.match(hook, /!hasPosition[\s\S]*?fileViewAvailable/);
+  assert.match(hook, /!hasPosition[\s\S]*?ensureFileManagerView/);
   assert.match(hook, /fileManagerPluginTab\(resolved\.path\)/);
   assert.match(filesTab, /data-line=\{i \+ 1\}/);
   assert.match(filesTab, /viewerBodyRef\.current\?\.querySelector/);
@@ -66,6 +87,14 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   // stays part of the public IPC surface.
   assert.doesNotMatch(hook, /api\.fsOpen\(/);
   assert.match(api, /fsOpen: \(path: string, mimeType\?: string\) =>\s*invoke\(IPC\.invoke\.fsOpen, \{ path, mimeType \}\)/);
+});
+
+test("Markdown file anchors use the same project-file opener as inline references", () => {
+  const anchorStart = markdown.indexOf("function Anchor(");
+  const imageStart = markdown.indexOf("/**\n * Local image references", anchorStart);
+  assert.ok(anchorStart >= 0 && imageStart > anchorStart);
+  const anchor = markdown.slice(anchorStart, imageStart);
+  assert.match(anchor, /handleMarkdownFileLinkClick\(e, href, root, baseDir, openFileRef\)/);
 });
 
 test("a tool row and a tool result row open a file where the message body does", () => {

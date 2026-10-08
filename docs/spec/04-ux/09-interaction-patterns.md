@@ -885,11 +885,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   groups otherwise start closed. Compact starts the process and groups closed,
   except an untouched active process with any recorded failed/denied tool remains
   open through recovery and closes on completion.
-- In Detailed, leaf auto-open applies only when the literal final item of the last
-  activity group is an eligible tool-call or hosted-search row. Failed/denied
-  items stay closed, and a final thinking item never causes a backward scan.
-  Compact keeps every item payload closed and hides reasoning text/excerpts while
-  retaining its active thinking indicator.
+- No item payload opens itself in either mode: a tool, hosted-search or plan call
+  stays a header row until the user opens it, including the literal final item of
+  the last activity group. Group and whole-process defaults are unchanged, so a
+  final thinking item never causes a backward scan. Compact keeps every item
+  payload closed and hides reasoning text/excerpts while retaining its active
+  thinking indicator.
 - Activating a process, group or item header toggles only that level. Closing a
   parent preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.

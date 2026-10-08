@@ -107,8 +107,7 @@ export async function transcriptLongHistoryProbe() {
   const originalDateNow = Date.now;
   const wallTime = Date.now();
   const originals = { getSession: api.getSession, listSessions: api.listSessions,
-    pendingPlans: api.pendingPlans, listQueuedPrompts: api.listQueuedPrompts, composerCommands: api.composerCommands,
-    summarizeSessionTitle: api.summarizeSessionTitle };
+    pendingPlans: api.pendingPlans, listQueuedPrompts: api.listQueuedPrompts, composerCommands: api.composerCommands };
   const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
   const sessions = [history(100), history(1000), history(10784)];
   const records = new Map(sessions.map((item) => [item.summary.id, item]));
@@ -177,11 +176,6 @@ export async function transcriptLongHistoryProbe() {
     api.pendingPlans = async () => ({ plans: [], state: "inactive" });
     api.listQueuedPrompts = async () => ({ entries: [] });
     api.composerCommands = async () => ({ commands: [] });
-    api.summarizeSessionTitle = async () => {
-      const error = new Error("Unexpected auto-title provider request in synthetic fixture");
-      errors.push(error);
-      throw error;
-    };
     Object.defineProperty(navigator, "clipboard", { configurable: true,
       value: { writeText: async (text: string) => { copied.push(text); } } });
     useAppStore.setState({

@@ -16,8 +16,6 @@ function itemKey(item: AssistantActivityItem) {
 
 type ActivityItemsProps = {
   items: readonly AssistantActivityItem[];
-  compact: boolean;
-  isLast: boolean;
   isActive: boolean;
   live: boolean;
   delegateItems: DelegationActivityItem[];
@@ -36,7 +34,7 @@ type ActivityItemBlockProps = Omit<ActivityItemsProps, "items" | "delegateItems"
 };
 
 const ActivityItemBlock = memo(function ActivityItemBlock({
-  block, compact, isLast, isActive, live, lastItem, topologyItem,
+  block, isActive, live, lastItem, topologyItem,
   delegateItems, delegationStatuses, delegationTimings, onUserInteraction,
 }: ActivityItemBlockProps) {
   return <>{block.items.map((item) => {
@@ -53,12 +51,11 @@ const ActivityItemBlock = memo(function ActivityItemBlock({
         onUserInteraction={onUserInteraction}
       />;
     }
-    // The literal last item of the last activity part owns this default,
-    // never the last item of an internal render block.
-    const autoOpenLatest = !compact && isLast && item === lastItem;
+    // A tool or hosted-search row always starts collapsed: only the user opens
+    // a payload, never the row's position in the turn.
     if (item.kind === "tool") return (
       <Fragment key={item.message.id}>
-        <ToolRow imagesInTurn message={item.message} autoOpen={autoOpenLatest}
+        <ToolRow imagesInTurn message={item.message}
           onUserInteraction={onUserInteraction} {...(item.delegate ? { delegate: item.delegate } : {})} />
         <ReviewChangeCard message={item.message} />
       </Fragment>
@@ -68,7 +65,6 @@ const ActivityItemBlock = memo(function ActivityItemBlock({
       messageId={item.message.id}
       round={item.round}
       streaming={isActive && item.message.status === "streaming"}
-      autoOpen={autoOpenLatest}
       onUserInteraction={onUserInteraction}
     />;
     return <ThinkingRow
@@ -91,8 +87,6 @@ export const ActivityItems = memo(function ActivityItems({ items, ...context }: 
     return <ActivityItemBlock
       key={block.key}
       block={block}
-      compact={context.compact}
-      isLast={ownsLast && context.isLast}
       isActive={context.isActive}
       live={context.live}
       lastItem={ownsLast ? lastItem : undefined}

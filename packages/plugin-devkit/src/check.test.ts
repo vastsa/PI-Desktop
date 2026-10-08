@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { check, HIGH_RISK_PERMISSIONS } from "./check.js";
 import { scaffold } from "./templates.js";
@@ -99,6 +100,37 @@ describe("check", () => {
     expect(result.errors.map((e) => e.code)).toContain("manifest.invalid-id");
   });
 
+  it("fails a manifest.renderer entry that does not exist, as the installer does (#1464)", async () => {
+    const dir = join(await tempDir(), "renderer-entry");
+    await scaffold({ dir, template: "panel-basic" });
+    await editManifest(dir, (m) => {
+      m.renderer = "renderer/index.mjs";
+      m.permissions = [...(m.permissions ?? []), "renderer.extension"];
+    });
+    const missing = await check(dir);
+    expect(missing.ok).toBe(false);
+    const error = missing.errors.find((e) => e.code === "renderer.missing");
+    expect(error?.message).toContain("renderer/index.mjs");
+
+    // A directory with a module name is not an entry either.
+    await mkdir(join(dir, "renderer/index.mjs"), { recursive: true });
+    expect((await check(dir)).errors.map((e) => e.code)).toContain("renderer.missing");
+
+    await rm(join(dir, "renderer"), { recursive: true });
+    await mkdir(join(dir, "renderer"), { recursive: true });
+    await writeFile(join(dir, "renderer/index.mjs"), "export function activate() {}\n", "utf8");
+    const present = await check(dir);
+    expect(present.errors.map((e) => e.code)).not.toContain("renderer.missing");
+
+    // An entry outside the package is already refused by the manifest validator.
+    await editManifest(dir, (m) => {
+      m.renderer = "../renderer/index.mjs";
+    });
+    const escaping = await check(dir);
+    expect(escaping.ok).toBe(false);
+    expect(escaping.errors.map((e) => e.code)).toEqual(["manifest.invalid"]);
+  });
+
   it("treats background audio and websocket access as high risk", () => {
     for (const permission of [
       "net.fetch",
@@ -109,9 +141,34 @@ describe("check", () => {
       "agent.tool.register",
       "browser.cdp",
       "audio.capture.background",
+      "session.autoTitle",
     ]) {
       expect(HIGH_RISK_PERMISSIONS).toContain(permission);
     }
+  });
+
+  it("warns on exactly the permissions the permissions matrix marks high (#1463)", async () => {
+    const matrix = await readFile(
+      fileURLToPath(
+        new URL("../../../docs/spec/07-plugins/13-plugin-permissions-matrix.md", import.meta.url),
+      ),
+      "utf8",
+    );
+    const high = [...matrix.matchAll(/^\| `([A-Za-z0-9.]+)` \| high \|/gm)].map((m) => m[1]);
+    expect(high).toContain("renderer.extension");
+    expect([...HIGH_RISK_PERMISSIONS].sort()).toEqual([...new Set(high)].sort());
+  });
+
+  it("names grants such as desktop.control and session.read in the high-risk warning", async () => {
+    const dir = join(await tempDir(), "high-risk-grants");
+    await scaffold({ dir, template: "panel-basic" });
+    await editManifest(dir, (m) => {
+      m.permissions = [...(m.permissions ?? []), "desktop.control", "session.read", "session.autoTitle"];
+    });
+    const highRisk = (await check(dir)).warnings.find((w) => w.code === "permission.high-risk");
+    expect(highRisk?.message).toContain("desktop.control");
+    expect(highRisk?.message).toContain("session.read");
+    expect(highRisk?.message).toContain("session.autoTitle");
   });
 
   it("warns when background capability permissions are declared but never called", async () => {

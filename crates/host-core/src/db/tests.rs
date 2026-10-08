@@ -122,6 +122,54 @@ fn v18_database_migrates_session_thinking_omit() {
     assert!(sql.contains("'omit'"), "{sql}");
 }
 
+#[test]
+fn v22_database_migrates_session_title_sources_without_losing_titles() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let (default_id, manual_id) = {
+        let db = Database::open(&path).unwrap();
+        let default_session =
+            crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
+        let manual_session = crate::sessions::create_session(
+            &db,
+            Some("A title chosen by the user".into()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute_batch("ALTER TABLE sessions DROP COLUMN title_source;")
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 22).unwrap();
+        (default_session.id, manual_session.id)
+    };
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 22).exists());
+    let sources: (String, String) = db
+        .conn()
+        .query_row(
+            "SELECT
+                (SELECT title_source FROM sessions WHERE id = ?1),
+                (SELECT title_source FROM sessions WHERE id = ?2)",
+            params![default_id, manual_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(sources, ("default".into(), "manual".into()));
+    assert_eq!(
+        crate::sessions::get_session(&db, &manual_id)
+            .unwrap()
+            .unwrap()
+            .summary
+            .title,
+        "A title chosen by the user"
+    );
+}
+
 /// v21 owns the session checklist. A real v20 database has neither the
 /// `sessions` stamps nor the `session_todo` table, so the upgrade must add
 /// both, keep the v20 rows, leave a readable pre-migration backup, and stay
@@ -158,6 +206,8 @@ fn v20_database_migrates_the_session_checklist_with_a_backup() {
              DROP TABLE IF EXISTS session_todo;
              ALTER TABLE sessions DROP COLUMN todo_revision;
              ALTER TABLE sessions DROP COLUMN todo_updated_at;
+             DROP INDEX IF EXISTS idx_sessions_updated_id;
+             CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
              PRAGMA user_version = 20;",
         )
         .unwrap();
@@ -1658,4 +1708,48 @@ fn a_v16_file_gains_the_provider_owner_column() {
         )
         .unwrap();
     assert!(owner.is_none());
+}
+
+#[test]
+fn migrates_v21_to_v22_replaces_session_index() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("pi.sqlite");
+    {
+        // Open a fresh database which creates the latest schema
+        let db = Database::open(&db_path).unwrap();
+        db.conn()
+            .execute_batch(
+                "
+            DROP INDEX IF EXISTS idx_sessions_updated_id;
+            CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
+            PRAGMA user_version = 21;
+            ",
+            )
+            .unwrap();
+    }
+
+    let db = Database::open(&db_path).unwrap();
+
+    let version: i64 = db
+        .conn()
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, crate::db::SCHEMA_VERSION);
+
+    let old_index_exists: bool = db.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_sessions_updated')",
+        [],
+        |r| r.get(0)
+    ).unwrap();
+    assert!(!old_index_exists, "idx_sessions_updated should be dropped");
+
+    let new_index_exists: bool = db.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_sessions_updated_id')",
+        [],
+        |r| r.get(0)
+    ).unwrap();
+    assert!(
+        new_index_exists,
+        "idx_sessions_updated_id should be created"
+    );
 }

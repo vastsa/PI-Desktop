@@ -111,7 +111,7 @@ type UseComposerDraftOptions = {
   clearComposerPrefill: () => void;
   prefill?: ComposerPrefill | null;
   t: TFunction;
-  invalidatePromptEnhancement: () => void;
+  invalidateComposerTransforms: () => void;
   inputBlocked: boolean;
 };
 
@@ -129,7 +129,7 @@ export function useComposerDraft({
   clearComposerPrefill,
   prefill,
   t,
-  invalidatePromptEnhancement,
+  invalidateComposerTransforms,
   inputBlocked,
 }: UseComposerDraftOptions): ComposerDraftController {
   const draftKey = draftKeyForSession(activeSessionId);
@@ -326,7 +326,7 @@ export function useComposerDraft({
     if (index === -1) return;
     const next = source.slice(0, index) + source.slice(index + 1);
     markComposerDraftEdited(draftKeyRef.current);
-    invalidatePromptEnhancement();
+    invalidateComposerTransforms();
     // Leave the DOM value stale so the layout effect removes the chip.
     pendingEditorCaretRef.current = index;
     setValue(next);
@@ -344,7 +344,7 @@ export function useComposerDraft({
         ? rewriteIdeographicCommaTrigger(source)
         : source;
     markComposerDraftEdited(draftKeyRef.current);
-    invalidatePromptEnhancement();
+    invalidateComposerTransforms();
     if (nextValue === source) {
       editorValueRef.current = nextValue;
     } else {
@@ -366,7 +366,7 @@ export function useComposerDraft({
     const nextValue = readEditorValue(element);
     const { start } = editorSelectionRange(element);
     markComposerDraftEdited(draftKeyRef.current);
-    invalidatePromptEnhancement();
+    invalidateComposerTransforms();
     editorValueRef.current = nextValue;
     valueRef.current = nextValue;
     setValue(nextValue);
@@ -396,7 +396,7 @@ export function useComposerDraft({
   useEffect(() => {
     const previousKey = draftKeyRef.current;
     if (previousKey !== draftKey) {
-      invalidatePromptEnhancement();
+      invalidateComposerTransforms();
       persistDraft(previousKey);
       if (previousKey === HOME_DRAFT_KEY) flushScheduledHomeDraftAdopt(draftKey);
       draftKeyRef.current = draftKey;
@@ -613,7 +613,7 @@ export function useComposerDraft({
       const nextReferences = fileReferencesRef.current.filter(
         (fileReference) => fileReference.token !== token,
       );
-      invalidatePromptEnhancement();
+      invalidateComposerTransforms();
       applyEditorDraft(nextText, nextReferences, index + result.content.length);
     } catch (error) {
       useAppStore.getState().showToast(
@@ -647,7 +647,7 @@ export function useComposerDraft({
         current.fileReferences.some((reference, index) =>
           !sameDraftFileReference(reference, submitted.fileReferences[index]))) return;
     }
-    invalidatePromptEnhancement();
+    invalidateComposerTransforms();
     deleteComposerDraft(key);
     if (currentKey !== key) return;
     deletedReferencesRef.current.clear();
@@ -703,7 +703,7 @@ export function useComposerDraft({
     imagePreview,
     removeImage: (id) => {
       if (inputBlocked) return;
-      invalidatePromptEnhancement();
+      invalidateComposerTransforms();
       setDraftFileReferences((current) => current.filter((reference) => reference.id !== id));
       ref.current?.focus();
     },

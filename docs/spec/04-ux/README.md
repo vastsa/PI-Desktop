@@ -13,4 +13,4 @@
 | [09-interaction-patterns.md](09-interaction-patterns.md) | Interaction patterns (keyboard, streaming, abort, collapse) |
 | [10-workbuddy-benchmark-ux.md](10-workbuddy-benchmark-ux.md) | WorkBuddy benchmark walkthrough + adopt/adapt/reject proposals |
 | [11-asktool-question-card.md](11-asktool-question-card.md) | Inline multi-question card |
-| [12-prompt-enhancement.md](12-prompt-enhancement.md) | Composer one-shot prompt enhancement |
+| [12-prompt-enhancement.md](12-prompt-enhancement.md) | Optional Composer text actions and prompt-enhancement plugin migration |

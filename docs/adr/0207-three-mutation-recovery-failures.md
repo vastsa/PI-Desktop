@@ -26,6 +26,16 @@ per-code grace, counters are scoped to the prompt and path, and a successful
 mutation clears that path's failure history. Provider retry budgets and other
 tool concurrency limits are unaffected.
 
+### Delegate ownership correction (2026-10-07)
+
+The prompt scope means the individual executing agent, not the whole session.
+Sharing path keys caused concurrent delegates to spend one another's attempts
+and report exhaustion on the parent. Recovery keys now include the parent or
+delegation owner; parent restarts do not reset detached work. Settlement releases
+the delegate's counters and graces. A terminal tool error is carried to the
+delegate result so earlier prose cannot classify an exhausted run as completed.
+The failed chain and its report remain resumable through the existing Task flow.
+
 ## Consequences
 
 - The model gets one additional bounded opportunity to correct an Edit or

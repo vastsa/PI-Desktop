@@ -31,13 +31,6 @@ const scheduledFormatSource = await readFile(
   "utf8",
 );
 const pluginsPageSource = await readPluginsSource();
-const marketplaceSettingsSource = await readFile(
-  new URL(
-    "../src/components/plugins/MarketplaceSourceSettings.tsx",
-    import.meta.url,
-  ),
-  "utf8",
-);
 // API services and vendor accounts share one list (D625).
 const serviceListSource = await readFile(
   new URL("../src/components/settings/ServiceList.tsx", import.meta.url),
@@ -150,7 +143,7 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /infiniteProviderRetry: settings\.infiniteProviderRetry !== true/);
   assert.match(aiSource, /LargePasteThresholdRow/);
   assert.match(aiSource, /ContextUsageDisplayRow/);
-  assert.match(aiSource, /PromptEnhancementCard/);
+  assert.doesNotMatch(aiSource, /PromptEnhancementCard|promptEnhancement/);
   assert.doesNotMatch(aiSource, /EnhancementModelCard/);
   assert.match(
     settingsPageSource,
@@ -447,7 +440,7 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
   assert.doesNotMatch(generalEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.commandShell/);
-  assert.match(aiEntry, /settings\.promptEnhancementModelTitle/);
+  assert.doesNotMatch(aiEntry, /settings\.promptEnhancementModelTitle/);
   assert.match(settingsSearchSource, /keywordKeys/);
   assert.match(settingsSearchSource, /settings\.projectArchive/);
   assert.doesNotMatch(stylesSource, /\.token-usage-page/);
@@ -487,12 +480,13 @@ test("settings rail uses short parallel labels and descriptive page titles", () 
   assert.match(settingsPageSource, /titleKey: entry\.titleKey/);
 });
 
-test("marketplace source settings live inside the Plugins marketplace surface", () => {
-  assert.match(pluginsPageSource, /<MarketplaceSourceSettings/);
-  assert.match(marketplaceSettingsSource, /api\.marketRefresh\(true\)/);
-  assert.match(marketplaceSettingsSource, /settings\.marketProvider/);
-  assert.match(marketplaceSettingsSource, /<SettingsMenuSelect/);
-  assert.doesNotMatch(marketplaceSettingsSource, /<Select/);
+test("Plugins marketplace keeps official refresh without source settings", () => {
+  assert.doesNotMatch(
+    pluginsPageSource,
+    /MarketplaceSourceSettings|pluginMarketSource|pluginMarketCustomUrl|marketProvider|marketCustomUrl|marketSource/,
+  );
+  assert.match(pluginsPageSource, /api\.marketRefresh\(true\)/);
+  assert.match(pluginsPageSource, /refreshMarket\(query, \{ refreshRemote: true \}\)/);
   assert.doesNotMatch(settingsPageSource, /ExtensionMarketSection/);
   assert.doesNotMatch(settingsPageSource, /tab === "extensions"/);
 });

@@ -604,6 +604,7 @@ pub fn apply_edit(
         text: next_text.clone(),
         ending: live.ending,
         bom: live.bom,
+        utf16: live.utf16,
     };
     Ok((
         next_file,
@@ -618,7 +619,7 @@ pub fn apply_edit(
 }
 
 pub fn encode_success(file: &NormalizedFile) -> Vec<u8> {
-    encode_bytes(&file.text, file.ending, file.bom)
+    encode_bytes(&file.text, file.ending, file.bom, file.utf16)
 }
 
 pub fn record_post_write(

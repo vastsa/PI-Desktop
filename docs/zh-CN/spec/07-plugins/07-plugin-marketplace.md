@@ -33,39 +33,32 @@
 
 ### B阶段✅
 - Browse/search + 下载安装是针对官方提供商实施的
-- 官方提供商是插件中心 `plugins.aiuo.net`（B 阶段最初指向 GitHub 仓库 `vastsa/pi-desktop-plugins`；见下方「目录来源选择」与 [ADR 0276](/adr/0276-official-plugin-channel-and-backup-channels)）
+- 官方提供商是插件中心 `plugins.aiuo.net`（B 阶段最初指向 GitHub 仓库 `vastsa/pi-desktop-plugins`；见下方「目录来源」与 [ADR 0276](/adr/0276-official-plugin-channel-and-backup-channels)）
 - 默认目录 URL：`https://plugins.aiuo.net/catalog.json`
 - 包 URL 可以是绝对 `https://` / `http://` / `file://`，或相对路径：目录声明了 `artifactBaseUrl` 时按它解析，否则按目录 URL 解析
 - HTTPS 获取在 host-core 中使用 `curl`
 
-### 目录来源选择
+### 目录来源
 
-「插件 → 市场」决定目录从哪里获取。共有四个渠道，用户可以随时切换：
+「插件 → 市场」始终使用插件中心的官方目录
+`https://plugins.aiuo.net/catalog.json`，页面不提供来源选择器。旧版本持久化的
+`pluginMarketSource` 和 `pluginMarketCustomUrl` 仍保留以兼容设置读取，但会被忽略；
+无需迁移数据。开发与测试仍可通过 `PI_DESKTOP_PLUGIN_MARKET_URL` 指向本地目录，
+但已发布界面不会因此开放目录配置。
 
-| # | 渠道 | `pluginMarketSource` | 目录地址 | 包地址解析 |
-| --- | --- | --- | --- | --- |
-| 1 | 官方渠道 | `"official"`（默认） | `https://plugins.aiuo.net/catalog.json` | 平台 resolve（见下） |
-| 2 | 海外备份 | `"github"` | `https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json` | 相对 URL + 目录 |
-| 3 | 国内备份 | `"mirror"` | `https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json` | 相对 URL + 目录 |
-| 4 | 自定义 | `"custom"` | `pluginMarketCustomUrl` | 相对 URL + 目录 |
+市场目录与安装包下载遵循设置 → 常规 → 网络。系统模式会让 host-core 的 `curl`
+通过 Electron 的认证回环 SOCKS 中继，并按当前操作系统代理/PAC 解析目标。直连模式
+强制市场请求直连；自定义模式使用所配置的代理与绕过列表。中继凭据仅在运行期使用，
+不会传给工作区 Shell。
 
-来源标签按应用语言本地化：简体中文为官方渠道、海外备份、国内备份、自定义。未设置与
-无法识别的取值都归到官方渠道，`mirror` 仍然表示 CNB，因此不需要迁移任何已持久化的
-设置。环境变量 `PI_DESKTOP_PLUGIN_MARKET_URL` 仍高于所有渠道，开发构建和测试可以指向
-本地目录而不改动持久化设置。
+官方目录是插件中心生成并发布的 `catalog.json`。安装时客户端向平台解析包地址，而不
+是把相对路径拼到基址。如果 resolve 缓慢或不可用，客户端会从官方目录自己的包地址下载，
+并校验目录摘要。官方 resolve 路径仍可使用平台返回的 GitHub 与 CNB 包镜像；这些是
+官方渠道内部的包镜像，不会切换目录来源。每个镜像的字节都会按其声明的摘要校验。
 
-官方渠道就是插件中心：它的目录是中心发布的 `catalog.json`，从中安装的包通过平台的
-下载接口解析，而不再把相对路径拼到基址上。两个备份渠道与自定义仍沿用静态解析：
-相对包 URL 按携带它的那份目录解析（先 `artifactBaseUrl`，再目录所在目录），因此包
-URL 绝不跨提供方，切换来源也不会改变正在校验的摘要。海外备份与国内备份用于无法访问
-`plugins.aiuo.net` 或彼此的网络环境。国内备份本应复制分发仓库，但可能滞后——实测该
-镜像上的目录更旧（22 个插件，且同一版本的字节与另一镜像不同）——所以官方渠道逐个
-校验镜像的字节，而不是信任单一地址。
-
-缓存目录会通过 `plugins/market/cache-meta.json` 记录其来源。来自其他来源的快照
-只被忽略而不删除——它的包 URL 指向用户刚切走的那个提供商——所以切回去时无需
-重新请求即可恢复该目录。`settings.set` 只在内存中重新指定来源；在那里发起抓取
-会让 host RPC 状态锁卡在市场超时上，因此切换后由渲染进程触发 `market.refresh`。
+缓存目录通过 `plugins/market/cache-meta.json` 按来源记录。官方目录缓存是市场快照；
+旧来源留下的缓存会被忽略但不会删除。`settings.set` 会让 host 的市场选择保持为官方；
+远程抓取仍由显式的 `market.refresh` 触发，避免设置写入因市场超时而持有 host RPC 状态锁。
 
 ### 设备标识
 
@@ -83,15 +76,18 @@ Windows 的 `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`、macOS 的平台
 
 官方渠道的每一次安装或更新都在刷新目录之后通过平台解析安装包：
 
-1. 刷新目录并选定插件与版本，与其他渠道完全一致。
+1. 刷新目录并选定插件与版本。
 2. `POST {中心 origin}/api/v1/download/resolve`——即提供该官方目录的 origin——JSON
    body 为 `{ deviceId, pluginId, version }`，用户选定版本时才带 `version`。使用
    POST 而非 GET，因为平台自己的契约指出设备 ID 出现在查询串里会落到访问日志。
+   元数据请求总时限为三秒且只发起一次，避免慢端点让安装一直停留在 `resolve`。
 3. 按顺序尝试返回的 `downloads` 每一项：下载、校验返回的 `sha256` 与声明的
    `sizeBytes`，再把字节交给安装器。某个镜像失败——网络错误、HTTP 错误、摘要不符、
    大小不符——就放弃它并尝试下一个。请求仍限于下文的白名单主机。
-4. 列表耗尽，或 resolve 本身失败时，回退到目录自身的包地址（`artifactBaseUrl` 加
-   相对 `url`）。这是平台文档规定的回退路径，该次安装不计入统计。
+4. resolve 超时、传输失败、返回 `429` 或 `503 NO_DOWNLOAD_SOURCE` 时，立即回退到
+   目录自身的包地址（`artifactBaseUrl` 加相对 `url`）。目录摘要与大小仍会校验，且
+   该次安装不计入统计。如果所有可用镜像都在传输层失败，也使用同一回退。响应格式
+   错误或完整性校验失败不会触发回退。
 5. 每次安装或更新只调用一次 resolve。响应从不缓存，这也是平台发送
    `Cache-Control: no-store` 的原因；`counted: false` 是正常应答，不是错误。
 
@@ -101,14 +97,13 @@ Windows 的 `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`、macOS 的平台
 - `403 PLUGIN_ARCHIVED`——插件已归档。从安装与更新选择中隐藏它。
 - `404`——平台没有该版本。报告它；字节路由无法承载的版本字符串（例如带 `+` 的构建
   元数据后缀）属于版本缺失，不能靠猜 URL 绕过。
-- `429`——平台按设备 ID 限流（默认每分钟 600 次）。按 `Retry-After` 等待后重试一次，
-  然后报告。
-- `503`——部署问题（没有任何镜像可服务该版本时为 `NO_DOWNLOAD_SOURCE`）。报告它，
-  不进入重试循环。
+- `429`——平台按设备 ID 限流（默认每分钟 600 次）。不等待或重试；改用目录地址，
+  并按目录摘要校验安装包。
+- `503 NO_DOWNLOAD_SOURCE`——平台没有可用镜像时使用目录地址。其他 `503` 部署错误也
+  快速回退到目录地址。
 
-这条路径上以 resolve 返回的摘要为准；两个备份渠道与第 4 步的回退仍以目录的 `shasum`
-为准。此处不会自动切换渠道：平台不可达会在回退之后如实报告，用户通过既有选择器切换
-渠道。
+resolve 镜像路径以平台返回的摘要为准；回退路径以目录的 `shasum` 为准。明确的 `403`
+或 `404` 发布拒绝不会回退到其他包来源。回退不会切换目录来源，产品始终使用官方渠道。
 
 ### 安装进度与取消
 
@@ -172,10 +167,8 @@ interface MarketProvider {
 }
 ```
 
-支持多个提供商：
-- `official`
-- `custom`（企业私有源）
-- `local-mock`（开发）
+已发布客户端目前只提供 `official` 提供商。开发专用的
+`PI_DESKTOP_PLUGIN_MARKET_URL` 覆盖允许本地测试目录，但不会在产品界面增加来源控制。
 
 ## 4. 数据模型
 
@@ -459,25 +452,10 @@ UI 必须使信任级别可见。
 布尔 `verified` 仍按原义映射为 `verified` / `community`，因为 v1 目录只有市场
 维护者能写入。
 
-## 9. 私人来源（面向企业）
+## 9. 私有来源（未来的企业支持）
 
-支持配置：
-
-```json
-{
- "marketProviders": [
- {
- "id": "official",
- "url": "https://market.example.com"
- },
- {
- "id": "corp",
- "url": "https://plugins.company.local",
- "tokenEnv": "PI_DESKTOP_MARKET_TOKEN"
- }
- ]
-}
-```
+已发布客户端不提供或持久化私有目录来源。`PI_DESKTOP_PLUGIN_MARKET_URL` 覆盖仅供本地
+开发与测试使用，不是产品设置。企业来源支持需要未来的产品决策，并需明确设计安全与授权。
 
 ## 10. 远程 API 草稿 (HTTP)
 

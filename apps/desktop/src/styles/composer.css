@@ -426,29 +426,6 @@
   transition: opacity var(--motion-duration-fast) var(--motion-ease-out), transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.composer-enhance-btn {
-  min-width: 28px;
-}
-
-/* While enhancing, this control carries a label and leaves the square geometry
-   its idle state gets from `.icon-btn-square`. */
-.icon-btn.composer-enhance-btn.is-loading {
-  width: auto;
-  flex: 0 0 auto;
-  cursor: wait;
-  padding-inline: 8px;
-}
-
-.composer-enhance-btn .tool-spinner {
-  margin-left: 0;
-  border-color: color-mix(in oklab, var(--ds-text-secondary) 45%, transparent);
-  border-top-color: var(--ds-text-primary);
-}
-
-.composer-enhance-undo {
-  color: var(--ds-text-secondary);
-}
-
 .send-btn:hover:not(:disabled) {
   opacity: 0.9;
 }

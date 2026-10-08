@@ -13,11 +13,6 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parse } from "yaml";
 
-/**
- * Prompt-enhancement templates live in `@pi-desktop/shared` so the runtime,
- * the settings UI, and the "restore default" action all read one copy
- * (`packages/shared/src/prompt-enhancement.ts`).
- */
 export type ComposerTemplateSource = "project" | "user";
 
 export type PromptTemplate = {

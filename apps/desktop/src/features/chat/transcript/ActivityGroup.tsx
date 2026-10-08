@@ -150,8 +150,6 @@ type ActivityGroupProps = {
   embedded?: boolean;
   isActive: boolean;
   endedAt?: string;
-  /** Last activity chunk of this assistant turn. */
-  isLast?: boolean;
   /** Current runtime wait phase, when the group owns the live turn tail. */
   runtimeActivity?: AgentActivity;
   /** Delegation statuses from the entire assistant turn (cross-activity-part). */
@@ -186,7 +184,6 @@ function activityGroupPropsEqual(
     previous.embedded !== next.embedded ||
     previous.isActive !== next.isActive ||
     previous.endedAt !== next.endedAt ||
-    previous.isLast !== next.isLast ||
     previous.runtimeActivity !== next.runtimeActivity ||
     previous.items.length !== next.items.length
   ) {
@@ -214,7 +211,6 @@ export const ActivityGroup = memo(function ActivityGroup({
   embedded: _embedded = false,
   isActive,
   endedAt,
-  isLast = false,
   runtimeActivity,
   turnDelegationStatuses,
   turnDelegationTimings,
@@ -332,8 +328,6 @@ export const ActivityGroup = memo(function ActivityGroup({
 
   const renderedItems = <ActivityItems
     items={items}
-    compact={compact}
-    isLast={isLast}
     isActive={isActive}
     live={live}
     delegateItems={delegateItems}

@@ -26,8 +26,8 @@ const settingsComponents = new Map(
     .map((name) => [name, readFileSync(join(settingsDir, name), "utf8")]),
 );
 const pageSrc = readPluginsSourceSync();
-const marketSettingsSrc = readFileSync(
-  join(here, "../src/components/plugins/MarketplaceSourceSettings.tsx"),
+const marketPanelSrc = readFileSync(
+  join(here, "../src/features/plugins/MarketplacePanel.tsx"),
   "utf8",
 );
 const settingsPageSrc = readSettingsSourceSync();
@@ -112,13 +112,14 @@ test("the extensions page uses tabs instead of the removed capability overview",
   assert.match(pageSrc, /className="plugins-segment"/);
 });
 
-test("marketplace source settings omit redundant explanatory copy", () => {
-  assert.match(marketSettingsSrc, /marketProviderTitle/);
+test("marketplace keeps refresh and install actions without source switching", () => {
+  const source = `${pageSrc}\n${marketPanelSrc}`;
   assert.doesNotMatch(
-    marketSettingsSrc,
-    /marketProviderDesc|marketProviderMirrorHint|marketActiveSource|plugins-market-settings-active/,
+    source,
+    /MarketplaceSourceSettings|pluginMarketSource|pluginMarketCustomUrl|marketProvider|marketCustomUrl|marketSource/,
   );
-  assert.match(marketSettingsSrc, /marketCustomUrlDesc/);
+  assert.match(marketPanelSrc, /refreshMarket\(query, \{ refreshRemote: true \}\)/);
+  assert.match(marketPanelSrc, /queueInstall/);
 });
 
 test("installed plugin rows keep secondary detail behind a disclosure", () => {

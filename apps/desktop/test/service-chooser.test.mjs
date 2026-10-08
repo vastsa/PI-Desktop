@@ -27,7 +27,7 @@ const rule = (selector) => {
 test("a new service starts on a searchable chooser, not a closed menu (D625)", () => {
   assert.match(setupSource, /<ServiceChooser/);
   assert.match(setupSource, /const chooserOpen = choosing \|\| !service/);
-  assert.match(setupSource, /\{chooserOpen \? chooserView : formView\}/);
+  assert.match(setupSource, /chooserOpen \? chooserView : pluginCatalogSetup/);
   assert.doesNotMatch(setupSource, /<ServicePicker/);
   assert.doesNotMatch(setupSource, /<optgroup/);
   assert.match(chooserSource, /settings\.searchService/);
@@ -35,6 +35,16 @@ test("a new service starts on a searchable chooser, not a closed menu (D625)", (
   // Matching itself is covered behaviorally in service-catalog.test.mjs.
   assert.match(chooserSource, /filterServiceOptions\(serviceOptions, query\)/);
   assert.match(chooserSource, /filterServiceOptions\(subscriptionOptions, query\)/);
+  assert.match(chooserSource, /filterServiceOptions\(pluginProviders, query\)/);
+  assert.match(chooserSource, /data-plugin-provider-category=\{category\}/);
+  assert.match(chooserSource, /tooltip=\{option\.description\}/);
+  assert.match(chooserSource, /aria-description=\{option\.description/);
+  const pluginChooserSource = chooserSource.slice(
+    chooserSource.indexOf("{pluginProviderGroups.map"),
+    chooserSource.indexOf("{visibleClassifiers.length > 0"),
+  );
+  assert.doesNotMatch(pluginChooserSource, /service-chooser-tile-detail|option\.endpoint/);
+  assert.match(setupSource, /api\.listPluginProviderCatalog\(\)/);
   // Filtering stays in the renderer; a keystroke must not IPC.
   assert.doesNotMatch(chooserSource, /\bapi\./);
   assert.doesNotMatch(catalogSource, /\bapi\.\w+\(/);
@@ -60,6 +70,12 @@ test("subscriptions and API services share the chooser, custom endpoint first", 
   assert.doesNotMatch(chooserSource, /presetGroupInternational|presetGroupChina/);
   assert.doesNotMatch(chooserSource, /NAMED_PRESET_GROUPS/);
   assert.doesNotMatch(catalogSource, /NAMED_PRESET_GROUPS/);
+  // Jev is a classifier, not a row anyone edits: it is offered on the add path
+  // only, and it renders its own view instead of the connection form.
+  assert.match(chooserSource, /settings\.chooserClassifiers/);
+  assert.match(chooserSource, /showClassifiers \? \[jevServiceOption\(t\)\] : \[\]/);
+  assert.match(setupSource, /showClassifiers=\{!editing\}/);
+  assert.match(setupSource, /const jevService = service === JEV_SERVICE/);
 });
 
 test("the chooser answers the keyboard and never dead-ends", () => {
@@ -75,6 +91,7 @@ test("the chooser answers the keyboard and never dead-ends", () => {
   assert.match(chooserSource, /settings\.useCustomEndpoint/);
   assert.match(chooserSource, /pickService\(CUSTOM_SERVICE\)/);
   assert.match(chooserSource, /data-service-id=\{option\.id\}/);
+  assert.match(chooserSource, /data-plugin-provider-id=\{option\.id\}/);
 });
 
 test("chooser tiles are toned in-flow surfaces without strokes (D297)", () => {

@@ -106,6 +106,8 @@ type RuntimeParams = {
   turnId?: string;
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
+  /** Opt-in TypeSafe classifier credential resolved by Electron main. */
+  jevApiKey?: string;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
@@ -229,6 +231,7 @@ async function runtimeFor(
     subagents,
     subagentProviders,
     subagentModelKeys,
+    jevApiKey: params.jevApiKey,
     projectInstructions: params.projectInstructions,
     customSystemPrompt: params.customSystemPrompt,
     projectMemory: params.projectMemory,
@@ -293,6 +296,7 @@ async function runtimeFor(
     commandShell: params.commandShell,
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
+    jevApiKey: params.jevApiKey,
     history,
     compaction,
     compactionSettings: params.compactionSettings,

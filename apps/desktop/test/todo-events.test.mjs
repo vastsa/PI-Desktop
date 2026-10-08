@@ -37,7 +37,6 @@ function makeSlice() {
       sessionModeForPlanningState: () => "agent",
       openPlanArtifact() {},
       notifyInteractivePrompt() {},
-      triggerAutoTitleSummarization: async () => {},
       flushPendingSessionConfiguration: async () => {},
       assistantErrorMessage: () => ({ role: "assistant", content: "" }),
       withCompactionMark: (marks, mark) => [...(marks ?? []), mark],

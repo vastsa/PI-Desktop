@@ -77,17 +77,21 @@ function findElectron() {
   }
 }
 
-async function freePort() {
-  const server = createServer();
-  await new Promise((resolvePromise, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolvePromise);
-  });
-  const address = server.address();
-  const port = typeof address === "object" && address ? address.port : null;
-  await new Promise((resolvePromise) => server.close(resolvePromise));
-  if (!port) throw new Error("failed to allocate a loopback port");
-  return port;
+async function freePort(allocatedPorts) {
+  for (;;) {
+    const server = createServer();
+    await new Promise((resolvePromise, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolvePromise);
+    });
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : null;
+    await new Promise((resolvePromise) => server.close(resolvePromise));
+    if (!port) throw new Error("failed to allocate a loopback port");
+    if (allocatedPorts.has(port)) continue;
+    allocatedPorts.add(port);
+    return port;
+  }
 }
 
 function spawnChild(label, command, args, options = {}) {
@@ -242,10 +246,10 @@ async function main() {
   mkdirSync(runRoot, { recursive: true });
   rmSync(homeDir, { recursive: true, force: true });
   rmSync(requestLog, { force: true });
-  const stubPort = await freePort();
-  const mcpPort = await freePort();
-  const cdpPort = await freePort();
-  if (stubPort === mcpPort) throw new Error("allocated duplicate E2E ports");
+  const allocatedPorts = new Set();
+  const stubPort = await freePort(allocatedPorts);
+  const mcpPort = await freePort(allocatedPorts);
+  const cdpPort = await freePort(allocatedPorts);
 
   await runCommand(
     "trusted-extension-seed",

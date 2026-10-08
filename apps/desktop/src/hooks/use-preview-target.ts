@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { isActiveInProject } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
 import { isHtmlFilePath, toWorkspaceRel, type ChatPreviewTarget } from "../lib/chat-links";
@@ -79,6 +80,66 @@ export type ResolvedChatFileRef = {
   primary: boolean;
 };
 
+/**
+ * Load the bundled file view on demand when a user explicitly opens a project
+ * file. Its enabled state can be off or its runtime can have failed even though
+ * the app still ships the plugin; project scope and the recorded ui.view grant
+ * remain authoritative.
+ */
+const fileManagerViewLoads = new Map<string, Promise<boolean>>();
+
+async function ensureFileManagerView(workspacePath: string | null): Promise<boolean> {
+  const key = workspacePath ?? "";
+  const pending = fileManagerViewLoads.get(key);
+  if (pending) return pending;
+
+  const load = (async () => {
+    try {
+      const views = await api.listPluginViews();
+      useAppStore.setState({ pluginViews: views });
+      if (hasPluginView(views, FILE_MANAGER_PLUGIN_TAB)) return true;
+
+      const { plugins } = await api.listPlugins();
+      const fileManager = plugins.find(
+        (plugin) => plugin.id === FILE_MANAGER_PLUGIN_TAB.pluginId,
+      );
+      if (
+        !fileManager?.bundled ||
+        !fileManager.permissions.includes("ui.view") ||
+        useAppStore.getState().workspace?.path !== workspacePath ||
+        !isActiveInProject(
+          { ...fileManager, enabled: true },
+          workspacePath,
+        )
+      ) {
+        return false;
+      }
+
+      if (!fileManager.enabled) {
+        await api.enablePlugin(fileManager.id);
+      } else {
+        // The host can finish booting before the bundled plugin runtime has
+        // restored its view. Reloading here joins that gap and retries a failed
+        // startup without changing the user's scope or permission grants.
+        const result = await api.reloadPlugin(fileManager.id);
+        if (result.review) return false;
+      }
+
+      const refreshedViews = await api.listPluginViews();
+      useAppStore.setState({ pluginViews: refreshedViews });
+      return hasPluginView(refreshedViews, FILE_MANAGER_PLUGIN_TAB);
+    } catch {
+      return false;
+    }
+  })();
+  fileManagerViewLoads.set(key, load);
+  try {
+    return await load;
+  } finally {
+    if (fileManagerViewLoads.get(key) === load) fileManagerViewLoads.delete(key);
+  }
+}
+
 function useResolveChatFileRef() {
   const { t } = useTranslation();
   const workspacePath = useAppStore((s) => s.workspace?.path ?? null);
@@ -142,25 +203,23 @@ function useResolveChatFileRef() {
  * Open a file reference the conversation mentioned.
  *
  * A workspace `.html` page in the primary folder stays with the side browser
- * (ADR 0163): it is a page to run, not a file to read. A plain project file
- * opens in the bundled file view when available; a positioned `path:line`
- * reference uses the host file tab, which can scroll to the requested line.
+ * (ADR 0163): it is a page to run, not a file to read. A direct click on a
+ * plain project file starts or retries the bundled file view; a positioned
+ * `path:line` reference uses the host file tab, which can scroll to the line.
  * The plugin view accepts opaque path locations and has no line-navigation
  * contract, so positioned references keep their path unchanged and use the
  * host viewer's existing scroll support. Scratch and attachment files also use
  * the host file tab.
  */
 export function useOpenChatFileRef() {
+  const { t } = useTranslation();
   const resolveRef = useResolveChatFileRef();
-  const pluginViews = useAppStore((s) => s.pluginViews);
+  const workspacePath = useAppStore((s) => s.workspace?.path ?? null);
+  const sessionId = useAppStore((s) => s.activeSessionId);
   const openFile = useAppStore((s) => s.openFileInWorkPanel);
   const openUrl = useAppStore((s) => s.openUrlInWorkPanel);
   const openTab = useAppStore((s) => s.openWorkPanelTab);
-
-  const fileViewAvailable = useMemo(
-    () => hasPluginView(pluginViews, FILE_MANAGER_PLUGIN_TAB),
-    [pluginViews],
-  );
+  const showToast = useAppStore((s) => s.showToast);
 
   return useCallback(
     (
@@ -174,6 +233,13 @@ export function useOpenChatFileRef() {
       void (async () => {
         const resolved = await resolveRef(path, baseDir);
         if (!resolved) return;
+        const current = useAppStore.getState();
+        if (
+          current.workspace?.path !== workspacePath ||
+          current.activeSessionId !== sessionId
+        ) {
+          return;
+        }
         const hasPosition = line !== undefined || column !== undefined;
         if (
           !hasPosition &&
@@ -185,18 +251,40 @@ export function useOpenChatFileRef() {
           openUrl(resolved.relativePath);
           return;
         }
-        if (
-          resolved.inProject &&
-          fileViewAvailable &&
-          !hasPosition
-        ) {
-          openTab(fileManagerPluginTab(resolved.path));
-          return;
+        if (resolved.inProject && !hasPosition) {
+          if (await ensureFileManagerView(workspacePath)) {
+            const latest = useAppStore.getState();
+            if (
+              latest.workspace?.path !== workspacePath ||
+              latest.activeSessionId !== sessionId
+            ) {
+              return;
+            }
+            openTab(fileManagerPluginTab(resolved.path));
+            return;
+          }
+          const latest = useAppStore.getState();
+          if (
+            latest.workspace?.path !== workspacePath ||
+            latest.activeSessionId !== sessionId
+          ) {
+            return;
+          }
+          showToast(t("chat.fileManagerUnavailable"), { variant: "error" });
         }
         openFile(resolved.path, mimeType, { line, column });
       })();
     },
-    [fileViewAvailable, openFile, openTab, openUrl, resolveRef],
+    [
+      openFile,
+      openTab,
+      openUrl,
+      resolveRef,
+      sessionId,
+      showToast,
+      t,
+      workspacePath,
+    ],
   );
 }
 

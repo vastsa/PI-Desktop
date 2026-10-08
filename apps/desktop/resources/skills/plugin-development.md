@@ -109,6 +109,49 @@ The panel receives `window.pluginBridge`, not `pi`. Use the fixed bridge channel
 Arbitrary Electron IPC and
 general custom panel RPC are not exposed.
 
+## Renderer slots
+
+A panel draws in its own window. A plugin that instead draws inside PI-Desktop's own window —
+controls in the composer, items on a message's action bar, a card for its own agent tool, a
+corner layer — declares a renderer entry module and asks for `renderer.extension`:
+
+```json
+{
+  "permissions": ["renderer.extension"],
+  "renderer": "renderer/index.mjs",
+  "rendererActions": ["plugin.call", "composer.insertText"],
+  "rendererCallMethods": ["openWorkspace"]
+}
+```
+
+The entry is an ES module that the host evaluates in its own window; the host hands it the
+renderer API, and the module registers components with `pi.slots.register({ slot, component })`.
+A component is a React function component that imports React from the host's import map
+(`import React from "react"`). Every registration returns a disposer and all of them run when
+the plugin unloads. The slots are:
+
+- `composerControl` — controls in the composer toolbar; `positions` picks left, right, or both
+- `composerTrigger` — the list behind one of the composer's trigger symbols: you supply the
+  items, the host draws the list
+- `userAction` / `assistantAction` — items on a message's action bar; `positions` picks a side
+- `entryExtra` — a block below an assistant reply
+- `toolCard` — the card for calls of one of your own agent tools; `toolName` names it
+- `blockRenderer` — a fenced code block tagged `<your-plugin-id>:<lang>`
+
+A dialog you draw yourself is not a slot: `pi.ui.openLayer()` hands you a layer to render into.
+Styles go through `pi.ui.injectStyle`, and the host is otherwise reached with `pi.dispatch`.
+
+Declare what you reach for. `rendererActions` whitelists the actions a component may dispatch —
+`plugin.call`, `composer.insertText`, `composer.readDraft`, `composer.replaceDraft`,
+`attachments.add`, `attachments.list`, `attachments.remove`, at most 16 — and
+`rendererCallMethods` whitelists the method names your `onRendererCall` answers for
+`plugin.call`, at most 32. A call outside those lists is refused, so a component can only act
+inside its own plugin. The module shares PI-Desktop's own document, so this is a contract rather
+than a sandbox: enable only code you trust.
+
+`examples/plugins/ui-slots-lab` mounts a sample on every slot, and
+`packages/plugin-sdk/src/renderer.ts` carries the types and the props each slot receives.
+
 ## Permissions
 
 Every permission is declared in the manifest and granted at install time; an undeclared call
@@ -116,8 +159,8 @@ fails at runtime. Ask for the least you need — the plugins page shows the risk
 user.
 
 - High risk: `net.fetch`, `fs.write`, `fs.delete`, `agent.prompt.inject`,
-  `agent.tool.register`, `agent.complete`, `session.read`, `mcp.server.local`,
-  `mcp.server.remote`
+  `agent.tool.register`, `agent.complete`, `renderer.extension`, `session.read`,
+  `mcp.server.local`, `mcp.server.remote`
 - Medium: `fs.read`, `clipboard.read`, `clipboard.write`, `shell.openExternal`,
   `background.service`, `bus.publish`, `bus.subscribe`, `models.list`, `usage.read`
 - Low: `ui.panel`, `ui.theme`, `notify` (Toast and best-effort native notifications)

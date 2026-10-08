@@ -17,11 +17,11 @@ import { parseProbe, probed, propsProbe, slotMounts, slotSsr } from "./helpers/s
 // Live Voice's idle entry is conditional on the feature setting and therefore
 // is not a permanent host slot in this disabled-by-default fixture.
 const HOST_LEFT = ["chat.addFiles", "settings.mode", "chat.permissionMode"];
-const HOST_RIGHT = ["context", "chat.model: Model. chat.reasoningLevel: Off", "chat.enhancePrompt", "chat.send"];
+const HOST_RIGHT = ["context", "chat.model: Model. chat.reasoningLevel: Off", "chat.send"];
 
-async function composer(t) {
+async function composer(t, toolbarProps = {}) {
   const ssr = await slotSsr(t);
-  return { ...ssr, toolbar: await composerToolbar(t, ssr) };
+  return { ...ssr, toolbar: await composerToolbar(t, ssr, toolbarProps) };
 }
 
 /**
@@ -56,6 +56,24 @@ test("the toolbar is the host's own until a plugin adds a control", async (t) =>
   assert.deepEqual(sidesOf(plain), { left: HOST_LEFT, right: HOST_RIGHT });
   ssr.register("demo.a", { slot: "userAction", component: propsProbe("user") });
   assert.equal(ssr.toolbar(), plain, "a control of another slot is not on the toolbar");
+});
+
+test("an installed plugin's Composer action appears after the model picker", async (t) => {
+  const action = {
+    pluginId: "demo.prompt-tool",
+    pluginName: "Prompt Tool",
+    id: "enhance",
+    title: "Enhance prompt",
+    undoTitle: "Undo enhancement",
+  };
+  const ssr = await composer(t, { composerTransforms: [action], value: "draft" });
+  const html = ssr.toolbar();
+  const model = html.indexOf("chat.model: Model. chat.reasoningLevel: Off");
+
+  assert.ok(model >= 0);
+  assert.ok(html.indexOf('aria-label="Enhance prompt"') > model);
+  assert.ok(html.indexOf('aria-label="chat.send"') > html.indexOf('aria-label="Enhance prompt"'));
+  assert.doesNotMatch(html, /chat\.enhancePrompt/);
 });
 
 test("controls follow the host's left row and lead its right row, in registration order", async (t) => {

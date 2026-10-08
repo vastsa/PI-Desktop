@@ -314,9 +314,9 @@ export const AssistantTurn = memo(function AssistantTurn({
       resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode),
     ),
   );
-  const { process, responses, lastActivityPart } = summary;
+  const { process, responses } = summary;
   const activePart = isActive ? entry.parts.at(-1) : undefined;
-  const partContext = { isActive, activePart, lastActivityPart, runtimeActivity, turnDelegationStatuses, turnDelegationTimings };
+  const partContext = { isActive, activePart, runtimeActivity, turnDelegationStatuses, turnDelegationTimings };
 
   return (
     <div

@@ -22,8 +22,12 @@ export type ProviderConnectionFieldsProps = {
   editing: boolean;
   saving: boolean;
   serviceLabel: string;
+  /** Optional hint for a key that belongs to a Host-owned plugin row. */
+  apiKeyHint?: string;
   /** Endpoint the named preset talks to; empty on a custom endpoint. */
   serviceBaseUrl: string;
+  /** Hides service switching when the manifest owns this provider row. */
+  lockedService?: boolean;
   onChangeService: () => void;
   apiKeyRef: RefObject<HTMLInputElement | null>;
   nameRef: RefObject<HTMLInputElement | null>;
@@ -49,7 +53,9 @@ export function ProviderConnectionFields({
   editing,
   saving,
   serviceLabel,
+  apiKeyHint,
   serviceBaseUrl,
+  lockedService = false,
   onChangeService,
   apiKeyRef,
   nameRef,
@@ -90,20 +96,22 @@ export function ProviderConnectionFields({
                 </span>
               ) : null}
             </span>
-            <button
-              type="button"
-              className="provider-service-chip-change"
-              disabled={saving}
-              onClick={onChangeService}
-            >
-              {t("settings.changeService")}
-            </button>
+            {!lockedService ? (
+              <button
+                type="button"
+                className="provider-service-chip-change"
+                disabled={saving}
+                onClick={onChangeService}
+              >
+                {t("settings.changeService")}
+              </button>
+            ) : null}
           </div>
         </div>
 
         {named ? (
           <div className="provider-setup-key">
-            <Field label={t("settings.apiKey")} hint={keyHint}>
+            <Field label={t("settings.apiKey")} hint={apiKeyHint ?? keyHint}>
               <Input
                 ref={apiKeyRef}
                 type="password"

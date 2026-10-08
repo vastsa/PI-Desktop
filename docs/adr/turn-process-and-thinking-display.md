@@ -44,12 +44,12 @@ on turn completion if still untouched. Compact mode keeps every tool/search
 payload closed and renders no reasoning text or excerpt; it shows only the
 active thinking indicator and omits empty completed thinking-only containers.
 
-Detailed mode preserves the leaf default only for the literal final item of the
-last activity group. If that item is an eligible tool-call or hosted-search row,
-its payload starts open; failed and denied items remain guarded closed. The
-renderer does not scan backward past a final thinking item to open an earlier
-tool. Opening a closed ancestor exposes the retained leaf state without opening
-all descendants.
+The leaf default that this decision first introduced was later removed. Item
+payloads never open themselves in either mode: a tool-call, hosted-search or
+plan row stays a header row until the user opens it, wherever it sits in the
+group. Group and whole-process defaults are unchanged, and opening a closed
+ancestor still exposes the retained item choices without opening all
+descendants.
 
 Each header toggles only its own level. Parent and child states are independent:
 closing a parent preserves descendant choices, reopening restores them, and

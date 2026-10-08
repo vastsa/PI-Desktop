@@ -141,7 +141,10 @@ export type PluginManifest = {
     /**
      * Providers this plugin adds to Settings' provider list. Requires the
      * `provider.register` permission; each row is read-only for the user and
-     * refreshed from this manifest on every load.
+     * refreshed from this manifest on every load. API-key providers are also
+     * offered in the Add Service chooser until the user stores a key. An
+     * optional category groups those chooser entries; it is display metadata
+     * and may be localized.
      */
     providers?: PluginProviderContrib[];
     settings?: PluginSettingContrib[];
@@ -163,6 +166,8 @@ export type PluginManifest = {
      * host registers, conflict-checks, and releases it with the plugin.
      */
     globalShortcuts?: PluginGlobalShortcutContrib[];
+    /** User-invoked text actions beside the Composer controls. */
+    composerTransforms?: PluginComposerTransformContrib[];
   };
   permissions?: string[];
   /**
@@ -195,6 +200,20 @@ export type PluginLocalizedString = {
 export type PluginSessionSourceContrib = {
   id: string;
   label?: string | PluginLocalizedString;
+};
+
+/** A user-invoked transformation of the current Composer text. */
+export type PluginComposerTransformContrib = {
+  id: string;
+  title: string | PluginLocalizedString;
+  undoTitle?: string | PluginLocalizedString;
+};
+
+/** Input excludes conversation history, attachments, and file paths. */
+export type PluginComposerTransformInput = {
+  id: string;
+  text: string;
+  modelKey?: string;
 };
 
 export type PluginSessionMessage =
@@ -298,6 +317,15 @@ export type PluginSessionGetResult = {
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Bounded first-turn data for an eligible default-titled session, never a full transcript. */
+export type PluginAutoTitleContext = {
+  sessionId: string;
+  expectedTitle: string;
+  userPrompt: string;
+  assistantReply?: string;
+  modelKey?: string;
 };
 
 /**
@@ -524,9 +552,6 @@ export type PluginProviderOAuthContext = {
   signal: AbortSignal;
 };
 
-/** Upper bound on `contributes.providers` entries one plugin may declare. */
-export const MAX_PLUGIN_PROVIDERS_PER_PLUGIN = 8;
-
 /** Upper bound on the model list of one contributed provider. */
 export const MAX_PLUGIN_PROVIDER_MODELS = 64;
 
@@ -566,6 +591,10 @@ export type PluginProviderContrib = {
   id: string;
   /** Display name for the provider row; required and non-empty. */
   name: string;
+  /** Optional Add Service chooser group; defaults to the plugin name. */
+  category?: string | PluginLocalizedString;
+  /** Optional short introduction shown on hover/focus in Add Service. */
+  description?: string | PluginLocalizedString;
   /** Vendor the row is attributed to; `custom` when omitted. */
   vendorKey?: string;
   /** Endpoint the runtime reaches; must be an absolute http(s) URL. */
@@ -574,7 +603,7 @@ export type PluginProviderContrib = {
   authKind?: PluginProviderAuthKind;
   /** OAuth sign-in metadata; valid only when `authKind` is `oauth`. */
   oauth?: PluginProviderOAuthContrib;
-  /** 1..64 models with unique ids. */
+  /** Up to 64 models with unique ids. An empty list enables endpoint discovery after key setup. */
   models: PluginProviderModelContrib[];
 };
 
@@ -1212,6 +1241,12 @@ export type PluginHostApi = {
   };
   session: {
     getLlmContext: () => Promise<PluginLlmContext>;
+    getAutoTitleContext: (input: { sessionId: string }) => Promise<PluginAutoTitleContext | null>;
+    setAutoTitle: (input: {
+      sessionId: string;
+      expectedTitle: string;
+      title: string;
+    }) => Promise<{ updated: boolean }>;
     list: (input?: {
       limit?: number;
       cursor?: string;
@@ -1341,6 +1376,10 @@ export type PluginModule = {
    * be JSON. Throw an `Error` with a `code` to hand that code to the caller.
    */
   onRendererCall?: (method: string, args: unknown) => Promise<unknown> | unknown;
+  /** Handle one explicitly invoked Composer text action. */
+  onComposerTransform?: (
+    input: PluginComposerTransformInput,
+  ) => Promise<string> | string;
 };
 
 /** Upper bound on ExtensionAPI modules one plugin may contribute. */
@@ -1364,6 +1403,7 @@ export const PLUGIN_PERMISSIONS = [
   "agent.tool.register",
   "agent.prompt.inject",
   "agent.complete",
+  "composer.transform",
   "agent.extension",
   // Renderer slots (`docs/plugin-plan/ui/`): the entry module loads into the
   // host renderer's own document, so the surface it can touch is the
@@ -1379,6 +1419,7 @@ export const PLUGIN_PERMISSIONS = [
   "session.read.own",
   "session.update.own",
   "session.delete.own",
+  "session.autoTitle",
   // Read-only usage facts (pi.usage.listTurns):
   // completed-turn counters and session titles, never message bodies.
   "usage.read",
@@ -1521,6 +1562,16 @@ export function validateManifest(raw: unknown): {
       error: "contributes.globalShortcuts requires the keyboard.globalShortcut permission",
     };
   }
+  if (
+    !contributesError &&
+    (m.contributes?.composerTransforms?.length ?? 0) > 0 &&
+    !(m.permissions ?? []).includes("composer.transform")
+  ) {
+    return {
+      ok: false,
+      error: "contributes.composerTransforms requires the composer.transform permission",
+    };
+  }
   if (contributesError) {
     return { ok: false, error: contributesError };
   }
@@ -1614,6 +1665,45 @@ export function validateContributions(
       return `global shortcut "${shortcut.id}" has an invalid default`;
     }
   }
+  const composerTransforms = contributes.composerTransforms ?? [];
+  if (!Array.isArray(composerTransforms)) {
+    return "contributes.composerTransforms must be an array";
+  }
+  const transformIds = new Set<string>();
+  for (const transform of composerTransforms) {
+    if (!transform || typeof transform !== "object" || Array.isArray(transform)) {
+      return "contributes.composerTransforms entries must be objects";
+    }
+    if (
+      typeof transform.id !== "string" ||
+      !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(transform.id)
+    ) {
+      return "composer transform id is missing or invalid";
+    }
+    if (transformIds.has(transform.id)) {
+      return `duplicate composer transform id "${transform.id}"`;
+    }
+    transformIds.add(transform.id);
+    if (transform.title === undefined) {
+      return `composer transform "${transform.id}" requires a title`;
+    }
+    const titleError = localizedStringError(
+      transform.title,
+      `composer transform "${transform.id}" title`,
+    );
+    if (titleError) return titleError;
+    if (typeof transform.title === "string" && !transform.title.trim()) {
+      return `composer transform "${transform.id}" title must not be empty`;
+    }
+    const undoTitleError = localizedStringError(
+      transform.undoTitle,
+      `composer transform "${transform.id}" undoTitle`,
+    );
+    if (undoTitleError) return undoTitleError;
+    if (typeof transform.undoTitle === "string" && !transform.undoTitle.trim()) {
+      return `composer transform "${transform.id}" undoTitle must not be empty`;
+    }
+  }
   for (const setting of settings) {
     if (!setting || typeof setting !== "object") {
       return "contributes.settings entries must be objects";
@@ -1702,9 +1792,6 @@ export function validateContributions(
 
   const declaredProviders = contributes.providers ?? [];
   if (!Array.isArray(declaredProviders)) return "contributes.providers must be an array";
-  if (declaredProviders.length > MAX_PLUGIN_PROVIDERS_PER_PLUGIN) {
-    return `contributes.providers allows at most ${MAX_PLUGIN_PROVIDERS_PER_PLUGIN} entries`;
-  }
   const providerIds = new Set<string>();
   for (const provider of declaredProviders) {
     if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
@@ -1719,6 +1806,44 @@ export function validateContributions(
     providerIds.add(provider.id);
     if (typeof provider.name !== "string" || !provider.name.trim()) {
       return `provider "${provider.id}" requires a name`;
+    }
+    const categoryError = localizedStringError(
+      provider.category,
+      `provider "${provider.id}" category`,
+    );
+    if (categoryError) return categoryError;
+    if (typeof provider.category === "string") {
+      if (!provider.category.trim()) {
+        return `provider "${provider.id}" category must not be empty`;
+      }
+      if (provider.category.length > 128) {
+        return `provider "${provider.id}" category must be at most 128 characters`;
+      }
+    } else if (provider.category) {
+      for (const locale of ["en", "zh-CN"] as const) {
+        if (provider.category[locale].length > 128) {
+          return `provider "${provider.id}" category.${locale} must be at most 128 characters`;
+        }
+      }
+    }
+    const descriptionError = localizedStringError(
+      provider.description,
+      `provider "${provider.id}" description`,
+    );
+    if (descriptionError) return descriptionError;
+    if (typeof provider.description === "string") {
+      if (!provider.description.trim()) {
+        return `provider "${provider.id}" description must not be empty`;
+      }
+      if (provider.description.length > 280) {
+        return `provider "${provider.id}" description must be at most 280 characters`;
+      }
+    } else if (provider.description) {
+      for (const locale of ["en", "zh-CN"] as const) {
+        if (provider.description[locale].length > 280) {
+          return `provider "${provider.id}" description.${locale} must be at most 280 characters`;
+        }
+      }
     }
     if (
       provider.vendorKey !== undefined &&
@@ -1788,8 +1913,14 @@ export function validateContributions(
     if (!Array.isArray(provider.models)) {
       return `provider "${provider.id}" requires models`;
     }
-    if (provider.models.length === 0 || provider.models.length > MAX_PLUGIN_PROVIDER_MODELS) {
-      return `provider "${provider.id}" declares 1 to ${MAX_PLUGIN_PROVIDER_MODELS} models`;
+    if (provider.models.length > MAX_PLUGIN_PROVIDER_MODELS) {
+      return `provider "${provider.id}" declares at most ${MAX_PLUGIN_PROVIDER_MODELS} models`;
+    }
+    if (
+      provider.models.length === 0 &&
+      ((provider.authKind ?? "api_key") !== "api_key" || !provider.baseUrl)
+    ) {
+      return `provider "${provider.id}" may omit models only for an API-key provider with a baseUrl`;
     }
     const modelIds = new Set<string>();
     for (const model of provider.models) {

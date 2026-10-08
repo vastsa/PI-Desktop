@@ -359,7 +359,9 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   const sameWireId = new Function("left", "right", `return ${identity[1]}`);
   assert.equal(sameWireId("PROXY/model", "proxy/MODEL"), true);
   assert.equal(sameWireId("proxy/model", "model"), false);
-  assert.match(pageSource, /isImageCandidate\(imageModels, provider\.id, id\)/);
+  // Image candidates are excluded by the same complete-id membership rule the
+  // picker row and the page's own selection check share.
+  assert.ok(pageSource.includes("isImageGenerationPickerCandidate(imageModels, provider.id, id)"));
   assert.match(pageSource, /!models\.some\(\(model\) => sameWireId\(model\.id, settings\.defaultModelId/);
   assert.doesNotMatch(pageSource, /modelIdsMatch|isImageGenerationModel/);
   assert.doesNotMatch(setupSource, /modelIdsMatch/);

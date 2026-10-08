@@ -59,8 +59,11 @@ differently.
    (D600). Bare `npx`/`uvx` resolve to real binaries: official Node
    (`node.exe` + `npx-cli.js`) first, then fnm/nvm/Volta, then a Windows
    `.cmd` shim through `cmd.exe /d /s /c` with quoted literal args (D624,
-   issue #789). `command` must be a bare PATH name or stay inside the plugin
-   directory; `url` may use `http` or `https`, with non-loopback HTTP subject
+   issue #789). On Windows a bare `python3`/`python` skips the Microsoft
+   Store alias in `WindowsApps` (it exits 9009 when no Store Python is
+   installed) for a `python3`/`python` elsewhere on PATH, then `py -3`, and
+   keeps the alias only when nothing else exists. `command` must be a bare
+   PATH name or stay inside the plugin directory; `url` may use `http` or `https`, with non-loopback HTTP subject
    to ADR 0142 and the plugin network allowlist.
 
 ## Consequences

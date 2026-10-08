@@ -53,6 +53,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "provider.oauth": "high",
   "desktop.control": "high",
   "session.read": "high",
+  "session.autoTitle": "high",
   "browser.cdp": "high",
   // Reading is a tier below writing because what makes a read dangerous is
   // where the data can go, and outbound requests are declared separately.
@@ -87,6 +88,7 @@ export const CAPABILITY_ORDER: PluginCapability[] = [
   "panel",
   "views",
   "rendererUi",
+  "composerTransform",
   "commands",
   "tools",
   "agentExtension",

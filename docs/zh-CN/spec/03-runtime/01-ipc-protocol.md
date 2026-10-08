@@ -21,7 +21,7 @@
 | `app` | 应用程序信息、健康检查 |
 | `agent` | 对话、中止、状态和交互式 Asktool 解决方案 |
 | `plan` | Plan 提案列出、决议和变更事件 |
-| `session` | 会话 CRUD/历史记录 |
+| `session` | 会话 CRUD/历史记录/标题元数据 |
 | `session collaboration` | 侧边栏投影使用的有界只读协作状态；变更仍通过已审查的插件网关完成 |
 | `settings` | 配置 read/write |
 | `secrets` | 秘密 write/delete/exists（绝不将明文返回到 UI 日志） |
@@ -870,6 +870,10 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 - `session/rename`
 - `session/importScan`
 - `session/importRun(candidates) -> { imported, skipped, failed }`
+
+`session/rename({ id, title })` 会裁剪标题并接受 1–80 个 Unicode 码点；空标题或
+超长标题返回 `INVALID_PARAMS`。成功重命名只更新会话元数据、不改活动时间，并将标题来源
+标为 `manual`，因此标题插件不能覆盖它。
 
 导入候选者携带 `projectPath: string | null` 与
 `messageCount: number | null`。扫描对每个源文件全量读取的上限为导入器的

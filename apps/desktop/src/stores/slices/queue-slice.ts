@@ -38,9 +38,6 @@ export type QueueSliceDependencies = StoreAccess & {
   runtime: SessionRuntime;
   promptAttachmentsFromDraft: PromptAttachmentConverter;
   withoutRecordKey: <T>(record: Record<string, T>, key: string) => Record<string, T>;
-  promptFallbackSessionTitle: (content: string, emptyTitle: string) => string;
-  untitledTaskTitle: () => string;
-  isDefaultSessionTitle: (title?: string | null) => boolean;
   viewingSessionIdForPrompt: (
     state: Pick<AppState, "page" | "activeSessionId">,
     sessionId: string,
@@ -56,9 +53,6 @@ export function createQueueSlice({
   runtime,
   promptAttachmentsFromDraft,
   withoutRecordKey,
-  promptFallbackSessionTitle,
-  untitledTaskTitle,
-  isDefaultSessionTitle,
   viewingSessionIdForPrompt,
   messageErrorFromUnknown,
   assistantErrorMessage,
@@ -439,20 +433,8 @@ export function createQueueSlice({
           submission.draft.fileReferences,
         );
         runtime.insertOptimisticUserMessage(startedIn, optimisticMessage);
+        const current = get().sessions.find((session) => session.id === sessionId);
         try {
-          const current = get().sessions.find((session) => session.id === sessionId);
-          if (isDefaultSessionTitle(current?.title)) {
-            const nextTitle = promptFallbackSessionTitle(
-              content,
-              untitledTaskTitle(),
-            );
-            api
-              .renameSession(sessionId, nextTitle)
-              .then(() => get().refreshSessions())
-              .catch(() => {
-                // Non-fatal title fallback.
-              });
-          }
           if (get().pendingPlans[sessionId]?.status === "pending") {
             runtime.submittedComposerDrafts.delete(startedIn);
             runtime.retractOptimisticUserMessage(startedIn, optimisticMessage);

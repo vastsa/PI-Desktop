@@ -92,7 +92,6 @@ export async function transcriptMinimapJumpProbe() {
     pendingPlans: api.pendingPlans,
     listQueuedPrompts: api.listQueuedPrompts,
     composerCommands: api.composerCommands,
-    summarizeSessionTitle: api.summarizeSessionTitle,
   };
   const messages = transcriptMessages();
   const errors: unknown[] = [];
@@ -124,9 +123,6 @@ export async function transcriptMinimapJumpProbe() {
     api.pendingPlans = async () => ({ plans: [], state: "inactive" });
     api.listQueuedPrompts = async () => ({ entries: [] });
     api.composerCommands = async () => ({ commands: [] });
-    api.summarizeSessionTitle = async () => {
-      throw new Error("unexpected auto-title provider request in fixture");
-    };
     useAppStore.setState({
       sessions: [sessionSummary()],
       providers: [],

@@ -31,6 +31,9 @@ Covered behavior (`E2E-PLUGIN-ui-slots-*` in the E2E test plan):
   press, stays open on an inside press, and runs the folded item
 - `plugin.call` round trips, a plugin error code passing through, and the
   2s `PLUGIN_CALL_TIMEOUT`; `composer.insertText` from every slot
+- an explicitly invoked `composer.transform` crossing the renderer, IPC, and
+  plugin process, with inline image and file chips preserved, one-step undo,
+  and no transcript row
 - `composerTrigger`: typing `#caret` lists the lab's matching row, and
   picking it leaves the plugin's mark chip in place of the typed token
 - the draft lab, a panel in the lab's own layer docked above the composer

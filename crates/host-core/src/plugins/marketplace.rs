@@ -10,68 +10,24 @@ pub(crate) use catalog::{built_in_catalog_at, bundled_package_bytes};
 /// a relative package URL against a git host.
 pub const OFFICIAL_CHANNEL_CATALOG_URL: &str = "https://plugins.aiuo.net/catalog.json";
 
-/// Backup channel: the GitHub copy of the distribution repository.
+/// The catalog source used by the plugin manager.
 ///
-/// Catalog and packages live in one tree, so a relative package URL resolves
-/// against whichever host served the catalog and a switch can never cross
-/// providers.
-pub const GITHUB_BACKUP_CHANNEL_CATALOG_URL: &str =
-    "https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json";
-
-/// Backup channel: the CNB copy, for networks that cannot reach GitHub.
-pub const MIRROR_MARKET_CATALOG_URL: &str =
-    "https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json";
-
-/// The catalog source a user chose.
-///
-/// `official` keeps its meaning — "the official one" — and the official one is
-/// now the plugin center. That is why a settings row written before this change
-/// keeps meaning what its author picked, and why no migration is needed.
+/// Application settings are pinned to `Official`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MarketChannel {
     /// The plugin center (the default).
     Official,
-    /// The GitHub backup.
-    Github,
-    /// The CNB backup.
-    Mirror,
-    /// A catalog URL the user typed.
-    Custom,
 }
 
 impl MarketChannel {
     /// Persisted value, and the `providerId` an install records.
     pub fn as_str(self) -> &'static str {
-        match self {
-            MarketChannel::Official => "official",
-            MarketChannel::Github => "github",
-            MarketChannel::Mirror => "mirror",
-            MarketChannel::Custom => "custom",
-        }
+        "official"
     }
 
-    /// Channel named by a persisted `pluginMarketSource` value.
-    ///
-    /// An absent value, the legacy `official`, and anything unrecognised all
-    /// mean the official channel: the old resolution fell back to its default
-    /// for exactly those three cases, and the default is now the center.
-    pub fn from_setting(value: Option<&str>) -> Self {
-        match value.map(str::trim) {
-            Some("github") => MarketChannel::Github,
-            Some("mirror") => MarketChannel::Mirror,
-            Some("custom") => MarketChannel::Custom,
-            _ => MarketChannel::Official,
-        }
-    }
-
-    /// Catalog URL, for every channel that has a fixed one.
+    /// Catalog URL for the fixed application channel.
     pub fn catalog_url(self) -> Option<&'static str> {
-        match self {
-            MarketChannel::Official => Some(OFFICIAL_CHANNEL_CATALOG_URL),
-            MarketChannel::Github => Some(GITHUB_BACKUP_CHANNEL_CATALOG_URL),
-            MarketChannel::Mirror => Some(MIRROR_MARKET_CATALOG_URL),
-            MarketChannel::Custom => None,
-        }
+        Some(OFFICIAL_CHANNEL_CATALOG_URL)
     }
 }
 
@@ -86,20 +42,12 @@ pub(crate) fn market_source_env_override() -> Option<String> {
         .filter(|url| !url.is_empty())
 }
 
-/// Channel and custom URL pinned by persisted app settings.
-pub fn market_channel_from_settings(settings: Option<&Value>) -> (MarketChannel, Option<String>) {
-    let Some(settings) = settings else {
-        return (MarketChannel::Official, None);
-    };
-    let channel =
-        MarketChannel::from_setting(settings.get("pluginMarketSource").and_then(Value::as_str));
-    let custom_url = settings
-        .get("pluginMarketCustomUrl")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .map(str::to_string);
-    (channel, custom_url)
+/// Application settings always use the official marketplace.
+///
+/// The legacy fields remain in persisted settings for compatibility, but no
+/// longer select a catalog or a custom URL.
+pub fn market_channel_from_settings(_settings: Option<&Value>) -> (MarketChannel, Option<String>) {
+    (MarketChannel::Official, None)
 }
 
 impl PluginManager {
@@ -111,33 +59,28 @@ impl PluginManager {
         if let Some(url) = market_source_env_override() {
             return url;
         }
-        match self.market_channel {
-            // A custom channel with no URL keeps the official default, which is
-            // what an empty setting meant before the channel existed.
-            MarketChannel::Custom => self
-                .market_custom_url
-                .clone()
-                .unwrap_or_else(|| OFFICIAL_CHANNEL_CATALOG_URL.to_string()),
-            channel => channel
-                .catalog_url()
-                .unwrap_or(OFFICIAL_CHANNEL_CATALOG_URL)
-                .to_string(),
-        }
+        self.market_channel
+            .catalog_url()
+            .unwrap_or(OFFICIAL_CHANNEL_CATALOG_URL)
+            .to_string()
     }
 
-    /// Channel the user selected.
+    /// Channel this manager currently uses.
     pub fn channel(&self) -> MarketChannel {
         self.market_channel
     }
 
-    /// Re-pin the catalog channel after the user switches sources.
+    /// Update the in-memory channel after a settings write.
     ///
     /// Cached snapshots are left on disk: they are keyed back to their source
     /// through `cache-meta.json`, so a snapshot from another channel is ignored
-    /// rather than deleted and switching back keeps working offline.
-    pub fn set_market_channel(&mut self, channel: MarketChannel, custom_url: Option<String>) {
+    /// rather than deleted if an internal caller changes the channel.
+    pub fn set_market_channel(
+        &mut self,
+        channel: MarketChannel,
+        _legacy_custom_url: Option<String>,
+    ) {
         self.market_channel = channel;
-        self.market_custom_url = custom_url;
     }
 
     /// Whether an install asks the plugin center where the package is.
@@ -268,9 +211,8 @@ impl PluginManager {
 
     /// Whether the snapshot on disk came from the source currently in effect.
     ///
-    /// Package URLs are rewritten to absolute form against the catalog they
-    /// arrived with, so a snapshot from another provider would keep installs
-    /// pointed at the source the user just switched away from.
+    /// Package URLs are rewritten to absolute form against their catalog, so a
+    /// snapshot left by an older source must not drive current installs.
     pub(crate) fn cached_catalog_matches_source(&self, catalog_url: &str) -> bool {
         match self.cached_catalog_source() {
             Some(cached) => cached == catalog_url,
@@ -354,8 +296,8 @@ impl PluginManager {
     /// refresh remains responsible for fetching the latest catalog.
     ///
     /// A snapshot left by a different source is skipped rather than deleted,
-    /// so switching back to a previously used provider recovers its catalog
-    /// without a round trip.
+    /// so its package URLs and checksums cannot be paired with the official
+    /// catalog.
     fn load_cached_catalog(&self) -> Result<MarketCatalogFile> {
         if self.cached_catalog_matches_source(&self.market_source_url()) {
             if let Ok(raw) = fs::read_to_string(self.catalog_path()) {
@@ -680,18 +622,13 @@ impl PluginManager {
         }
     }
 
-    /// Whether the catalog in effect is one this project issues.
+    /// Whether the catalog in effect is the official catalog.
     ///
-    /// The three channels are the project's own catalogs; a URL somebody typed
-    /// into `custom` may describe its own plugins but cannot assert a tier. The
-    /// comparison stays on the effective URL rather than on the setting, so a
-    /// catalog reached through `PI_DESKTOP_PLUGIN_MARKET_URL` counts only when
-    /// it actually names one of them.
+    /// The comparison stays on the effective URL, so a catalog reached through
+    /// `PI_DESKTOP_PLUGIN_MARKET_URL` is trusted only when it names the official
+    /// source.
     fn is_trusted_channel(&self) -> bool {
-        let url = self.market_source_url();
-        url == OFFICIAL_CHANNEL_CATALOG_URL
-            || url == GITHUB_BACKUP_CHANNEL_CATALOG_URL
-            || url == MIRROR_MARKET_CATALOG_URL
+        self.market_source_url() == OFFICIAL_CHANNEL_CATALOG_URL
     }
 }
 

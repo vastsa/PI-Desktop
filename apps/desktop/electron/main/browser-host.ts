@@ -121,6 +121,18 @@ export class BrowserHost {
     };
   }
 
+  private assertBrowserViewVisible(): void {
+    if (
+      this.chrome?.visible === true &&
+      this.chrome.pluginId === BROWSER_PLUGIN_ID &&
+      this.chrome.viewId === BROWSER_VIEW_ID
+    ) return;
+    throw Object.assign(
+      new Error("Browser view must be visible before browser operations can run"),
+      { code: "UNAVAILABLE" },
+    );
+  }
+
   private key(sessionId: string, tabId: string | null): string {
     return JSON.stringify([sessionId, tabId]);
   }
@@ -219,12 +231,13 @@ export class BrowserHost {
   }
 
   async navigate(input: BrowserNavigateInput, sessionId?: string, tabId?: string): Promise<BrowserState | null> {
+    this.assertBrowserViewVisible();
     const target = String(input.path ?? input.url ?? "").trim();
     if (!target) return this.getState();
     const id = sessionId?.trim() || this.active?.sessionId || "";
     if (tabId !== undefined) {
       const page = this.pages.get(this.key(id, tabId));
-      return page ? this.navigatePage(page, target) : null;
+      return page ? this.navigatePage(page, target, true) : null;
     }
     if (!this.active) {
       this.active = this.pageFor(id, this.selectedTabs.get(id) ?? null);
@@ -234,18 +247,43 @@ export class BrowserHost {
       this.rememberLocation(id, target);
       return null;
     }
-    return this.navigatePage(this.active, target);
+    return this.navigatePage(this.active, target, true);
   }
 
-  private async navigatePage(page: BrowserPage, target: string): Promise<BrowserState | null> {
+  private async navigatePage(page: BrowserPage, target: string, requireVisible = false): Promise<BrowserState | null> {
     const version = ++page.navigationVersion;
+    const previousLocation = this.locations.get(page.key);
     page.navigating = true;
     this.locations.set(page.key, target);
     const current = () => this.pages.get(page.key) === page && page.navigationVersion === version;
+    const assertVisible = () => {
+      if (!requireVisible) return;
+      try {
+        this.assertBrowserViewVisible();
+      } catch (error) {
+        page.navigating = false;
+        if (previousLocation === undefined) this.locations.delete(page.key);
+        else this.locations.set(page.key, previousLocation);
+        throw error;
+      }
+    };
+    let root: string | null;
+    try {
+      root = await this.deps.getFileRoot(page.sessionId || undefined);
+    } catch (error) {
+      if (!current()) return null;
+      assertVisible();
+      page.navigating = false;
+      page.started = false;
+      page.state = { url: target, title: "", isLoading: false, canGoBack: false,
+        canGoForward: false, loadError: error instanceof Error ? error.message : String(error) };
+      if (this.active === page) { this.publishCurrent(); this.applyGuest(); }
+      return null;
+    }
+    if (!current()) return null;
+    assertVisible();
     let state: BrowserState | null;
     try {
-      const root = await this.deps.getFileRoot(page.sessionId || undefined);
-      if (!current()) return null;
       state = await page.pane.navigateAndWait(target, root);
     } catch (error) {
       if (!current()) return null;
@@ -270,6 +308,7 @@ export class BrowserHost {
   }
 
   action(action: "back" | "forward" | "reload" | "stop", sessionId?: string, tabId?: string): void {
+    this.assertBrowserViewVisible();
     const page = sessionId !== undefined && tabId !== undefined
       ? this.pages.get(this.key(sessionId, tabId)) : this.active;
     if (page?.state) page.pane.action(action);
@@ -279,13 +318,20 @@ export class BrowserHost {
     return this.active?.state ? { ...this.active.state, ...this.getContext() } : null;
   }
 
+  getStateForPlugin(): BrowserState | null {
+    this.assertBrowserViewVisible();
+    return this.getState();
+  }
+
   openExternal(sessionId?: string, tabId?: string): void {
+    this.assertBrowserViewVisible();
     const page = sessionId !== undefined && tabId !== undefined
       ? this.pages.get(this.key(sessionId, tabId)) : this.active;
     if (page?.started) page.pane.openExternal();
   }
 
   private currentPage(): BrowserPage {
+    this.assertBrowserViewVisible();
     if (!this.active?.started) throw Object.assign(new Error("browser guest is not available"), { code: "UNAVAILABLE" });
     return this.active;
   }
@@ -317,6 +363,7 @@ export class BrowserHost {
   async fill(uid: string, text: string): Promise<void> { await this.currentPage().cdp.fill(this.requireWebContents(), uid, text); }
   async evaluate(expression: string): Promise<unknown> { return this.currentPage().cdp.evaluate(this.requireWebContents(), expression); }
   console(limit?: number): { messages: ReturnType<BrowserCdp["console"]> } {
+    this.assertBrowserViewVisible();
     if (!this.active?.started) return { messages: [] };
     const wc = this.requireWebContents();
     void this.active.cdp.attach(wc);

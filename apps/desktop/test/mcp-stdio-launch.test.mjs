@@ -299,3 +299,80 @@ test("wrapCmdShim outer-quotes survive when .cmd path contains spaces", () => {
   assert.match(inner, /"pkg&whoami"/, "metachar arg stays quoted");
   assert.match(inner, /"say ""hi"""/, "embedded quotes doubled");
 });
+
+// A python.org / winget Python on Windows is `python.exe`; the only
+// `python3.exe` on PATH is the Microsoft Store alias, which exits 9009.
+const winUser = win.join("C:", "Users", "zhao");
+const windowsApps = win.join(winUser, "AppData", "Local", "Microsoft", "WindowsApps");
+const pythonOrg = win.join(winUser, "AppData", "Local", "Programs", "Python", "Python311");
+
+function pythonLaunch(files, pathDirs, extraEnv = {}, command = "python3") {
+  const hostEnv = { PATH: pathDirs.join(";"), ...extraEnv };
+  return resolveMcpStdioLaunch({
+    command,
+    args: ["-m", "ictrp_mcp.server"],
+    env: { PATH: hostEnv.PATH },
+    platform: "win32",
+    home: winUser,
+    hostEnv,
+    fs: winFs(files),
+  });
+}
+
+test("Windows python3 skips the Store alias for a real python.exe", () => {
+  const real = win.join(pythonOrg, "python.exe");
+  const launch = pythonLaunch(
+    [win.join(windowsApps, "python3.exe"), win.join(windowsApps, "python.exe"), real],
+    [windowsApps, pythonOrg],
+  );
+  assert.equal(launch.command, real);
+  assert.deepEqual(launch.args, ["-m", "ictrp_mcp.server"]);
+});
+
+test("Windows python prefers the requested python.exe over a later python3", () => {
+  const activePython = win.join("C:", "venvs", "project", "Scripts", "python.exe");
+  const unrelatedPython3 = win.join("C:", "Program Files", "Python312", "python3.exe");
+  const launch = pythonLaunch(
+    [activePython, unrelatedPython3],
+    [win.dirname(activePython), win.dirname(unrelatedPython3)],
+    {},
+    "python",
+  );
+  assert.equal(launch.command, activePython);
+  assert.deepEqual(launch.args, ["-m", "ictrp_mcp.server"]);
+});
+
+test("Windows python3 falls back to the py launcher with -3", () => {
+  const systemRoot = win.join("C:", "Windows");
+  const py = win.join(systemRoot, "py.exe");
+  const launch = pythonLaunch(
+    [win.join(windowsApps, "python3.exe"), py],
+    [windowsApps, win.join(systemRoot, "System32")],
+    { SystemRoot: systemRoot },
+  );
+  assert.equal(launch.command, py);
+  assert.deepEqual(launch.args, ["-3", "-m", "ictrp_mcp.server"]);
+});
+
+test("Windows python3 keeps the WindowsApps entry when it is the only Python", () => {
+  // With a Store Python the alias is the real interpreter; never drop it.
+  const alias = win.join(windowsApps, "python3.exe");
+  const launch = pythonLaunch([alias], [windowsApps]);
+  assert.equal(launch.command, alias);
+  assert.deepEqual(launch.args, ["-m", "ictrp_mcp.server"]);
+});
+
+test("python3 outside Windows still resolves through PATH unchanged", () => {
+  const posix = path.posix;
+  const launch = resolveMcpStdioLaunch({
+    command: "python3",
+    args: ["-m", "ictrp_mcp.server"],
+    env: { PATH: "/usr/bin" },
+    platform: "darwin",
+    home: "/Users/zhao",
+    hostEnv: { PATH: "/opt/homebrew/bin:/usr/bin" },
+    fs: { isFile: (p) => p === posix.join("/usr/bin", "python3"), realpath: (p) => p },
+  });
+  assert.equal(launch.command, "/usr/bin/python3");
+  assert.deepEqual(launch.args, ["-m", "ictrp_mcp.server"]);
+});

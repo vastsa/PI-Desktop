@@ -23,6 +23,7 @@
 | MCP 服务器 | 从本地或远程 MCP 服务器发现的工具 | `contributes.mcpServers`，MCP 权限 |
 | 服务 | 驻地工作由主人监督 | `contributes.services`、`background.service` 权限 |
 | 消息总线 | 插件之间按约定类型化事件 | `contributes.bus`，总线权限 |
+| 渲染器插槽 | 在应用自身窗口内绘制界面：输入区控件、消息操作栏、回复下方区块、工具卡、代码块渲染器、角落浮层 | `renderer`、`renderer.extension` 权限、`packages/plugin-sdk/src/renderer.ts` |
 
 插件入口代码在专用的 Node 进程中运行。面板在沙盒中运行，
 上下文隔离的 Electron 窗口，没有 Node 集成。来自任一方的呼叫
@@ -694,6 +695,65 @@ export default function (pi) {
   Electron 头重建（`npx @electron/rebuild -v <electron 版本>`）即可修复。安装失败会清理
   部分依赖并显示警告 toast，不会阻塞导入；只有扩展实际加载失败时插件行才显示 load error。
 
+### 6.11 渲染器插槽
+
+上面每一种界面都是插件自己拥有的窗口或页面。**渲染模块**则绘制在 PI-Desktop 自己的窗口里：
+输入区工具栏上的控件、消息操作栏上的条目、助手回复下方的区块、自有 Agent 工具的卡片、
+代码块的渲染器，或者你自己管理的角落浮层。
+
+```json
+{
+  "permissions": ["renderer.extension"],
+  "renderer": "renderer/index.mjs",
+  "rendererActions": ["plugin.call", "composer.insertText"],
+  "rendererCallMethods": ["openWorkspace"]
+}
+```
+
+入口导出 `onLoad(pi)`，宿主在自己的窗口中求值它，并且每次加载都会给一份新的 `pi`。
+组件的 props 只携带数据，因此组件通过模块自己保存的那份 `pi` 访问宿主：
+
+```js
+import React from "react";
+
+let host = null;
+
+function InsertButton() {
+  return React.createElement(
+    "button",
+    { onClick: () => host.dispatch("composer.insertText", { text: "hello" }) },
+    "Insert",
+  );
+}
+
+export function onLoad(pi) {
+  host = pi;
+  pi.slots.register({ slot: "composerControl", component: InsertButton, positions: ["right"] });
+}
+```
+
+- `composerControl` —— 输入区工具栏上的控件；`positions: ["left"]` 或 `["right"]` 选择一侧，省略即两侧
+- `composerTrigger` —— 输入区某个触发符背后的条目列表：`{ slot: "composerTrigger", trigger: "#", items }`，列表由宿主绘制
+- `userAction` / `assistantAction` —— 消息操作栏上的条目
+- `entryExtra` —— 助手回复下方的区块
+- `toolCard` —— 自有 Agent 工具调用的卡片；用 `toolName` 指定工具
+- `blockRenderer` —— 形如 `<你的插件id>:<lang>` 的代码块渲染器；`language` 指定标签
+
+自绘弹窗不是插槽：`pi.ui.openLayer()` 交给你一个可以渲染的层，组件在其中绘制。样式通过
+`pi.ui.injectStyle` 注入；`react` / `react-dom` 会通过窗口的 import map 解析到应用自带的副本，
+不需要打包自己的 React。
+
+`rendererActions` 限定组件可派发的动作——`plugin.call`、`composer.insertText`、
+`composer.readDraft`、`composer.replaceDraft`、`attachments.add`、`attachments.list`、
+`attachments.remove`，最多 16 个——`rendererCallMethods` 限定 `onRendererCall` 为
+`plugin.call` 应答的方法名，最多 32 个。白名单之外的派发返回 `PLUGIN_ACTION_UNDECLARED`，
+词表之外的词返回 `PLUGIN_ACTION_UNKNOWN`。模块与应用同文档、共用同一份 React，因此
+`renderer.extension` 是高风险权限：只授予你信任的代码。
+
+`examples/plugins/ui-slots-lab` 在每个插槽上都挂了一个样例。
+`packages/plugin-sdk/src/renderer.ts` 里有类型和各插槽的 props，manifest 侧见
+[规格 07-plugins/02 §3.2](spec/07-plugins/02-plugin-manifest-schema.md)。
+
 ## 7.权限设计
 
 权限均在 `manifest.json` 中声明并由用户授予。
@@ -703,7 +763,7 @@ export default function (pi) {
 |---|---|
 | 低 | `ui.panel`、`ui.theme`、`notify` |
 | 中等 | `clipboard.read`、`clipboard.write`、`fs.read`、`shell.openExternal`、`background.service`、`bus.publish`、`bus.subscribe`、`audio.playback.background`、`keyboard.globalShortcut` |
-| 高 | `fs.write`、`fs.delete`、`agent.tool.register`、`agent.prompt.inject`、`net.fetch`、`mcp.server.local`、`mcp.server.remote`、`audio.capture.background`、`net.websocket` |
+| 高 | `fs.write`、`fs.delete`、`agent.tool.register`、`agent.prompt.inject`、`renderer.extension`、`net.fetch`、`mcp.server.local`、`mcp.server.remote`、`audio.capture.background`、`net.websocket` |
 
 `keyboard.globalShortcut` 与 `net.websocket` 已实现。`pi.audio.*` 已经存在并且
 可以调用，其方法仍由权限把关，但当前宿主还没有设备后端：获得授权的调用会以

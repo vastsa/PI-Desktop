@@ -20,9 +20,9 @@ import {
 } from "./walk.js";
 
 /**
- * Permissions the permission dialog surfaces as high risk. Kept in sync with
- * `PERMISSION_RISK` in apps/desktop/src/features/plugins/model.ts, which is the
- * copy the install dialog actually renders.
+ * Permissions the permissions matrix
+ * (docs/spec/07-plugins/13-plugin-permissions-matrix.md) marks high risk; a
+ * test keeps this list equal to the matrix's high rows.
  */
 export const HIGH_RISK_PERMISSIONS = [
   "net.fetch",
@@ -30,8 +30,23 @@ export const HIGH_RISK_PERMISSIONS = [
   "net.websocket",
   "fs.write",
   "fs.delete",
+  "fs.write.workspace",
+  "fs.delete.workspace",
   "agent.prompt.inject",
   "agent.tool.register",
+  "agent.extension",
+  "agent.complete",
+  "renderer.extension",
+  "provider.register",
+  "provider.oauth",
+  "desktop.control",
+  "project.create",
+  "session.read",
+  "session.autoTitle",
+  "session.import",
+  "session.delete.own",
+  "mcp.server.local",
+  "mcp.server.remote",
   "browser.cdp",
   "audio.capture.background",
   "speech.adapter.register",
@@ -210,6 +225,16 @@ export async function check(dirInput: string): Promise<CheckResult> {
   const panel = manifest.ui?.panel;
   if (panel && !(await fileExists(join(dir, panel)))) {
     errors.push({ code: "panel.missing", message: `ui.panel "${panel}" does not exist` });
+  }
+
+  // validateManifest has already refused an absolute or ".." spelling; the
+  // installer also refuses an entry that is not a file in the package.
+  const renderer = manifest.renderer;
+  if (renderer && !(await fileExists(join(dir, renderer)))) {
+    errors.push({
+      code: "renderer.missing",
+      message: `manifest.renderer "${renderer}" does not exist`,
+    });
   }
 
   for (const view of manifest.contributes?.views ?? []) {

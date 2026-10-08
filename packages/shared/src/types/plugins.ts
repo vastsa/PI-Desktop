@@ -3,12 +3,9 @@ import type { ActivationScope } from "../activation.js";
 import type { TrustedExtensionDiagnostic } from "../trusted-extensions.js";
 
 /**
- * Where the marketplace catalog comes from.
- *
- * `official` keeps its meaning — the official one — and the official one is the
- * plugin center, so a settings row written before the center existed keeps
- * meaning what its author picked instead of needing a migration. `github` and
- * `mirror` are the two backup channels, and `custom` is a URL the user typed.
+ * Legacy persisted marketplace-source values. The application ignores these
+ * values and always uses the official plugin center, but the union remains so
+ * existing settings can be read without a schema migration.
  */
 export type PluginMarketSource = "official" | "github" | "mirror" | "custom";
 
@@ -138,6 +135,30 @@ export type PluginViewMeta = {
   order: number;
 };
 
+/** A user-invoked text action available beside the Composer controls. */
+export type PluginComposerTransformMeta = {
+  pluginId: string;
+  pluginName: string;
+  id: string;
+  title: string;
+  undoTitle: string;
+};
+
+/**
+ * An API-key provider a loaded plugin has made available in Add Service.
+ * The host resolves the category for the active locale and returns no runtime
+ * code or credentials; the row itself remains host-owned.
+ */
+export type PluginProviderCatalogMeta = {
+  pluginId: string;
+  /** Host provider row id: `plugin:<pluginId>:<contributionId>`. */
+  providerId: string;
+  pluginName: string;
+  category: string;
+  /** Optional one-sentence introduction, resolved for the active app locale. */
+  description?: string;
+};
+
 /** A data-only scenic Settings destination rendered by the host React tree. */
 export type PluginScenicThemesDestinationMeta = {
   pluginId: string;
@@ -201,7 +222,9 @@ export type PluginCapability =
   /** `contributes.agentExtensions`: ExtensionAPI modules in the agent process. */
   | "agentExtension"
   /** `manifest.renderer`: the plugin ships a renderer slot entry (`docs/plugin-plan/ui/`). */
-  | "rendererUi";
+  | "rendererUi"
+  /** A plugin contributes explicit Composer text actions. */
+  | "composerTransform";
 
 /**
  * A loaded plugin's renderer extension as the renderer host sees it
@@ -339,6 +362,8 @@ export type PluginSummary = {
   /** Declared file scope, so the page can show it next to the permissions. */
   fs?: PluginFsPolicy;
   settings?: PluginSettingDefinition[];
+  /** Present while the plugin is loaded and its transform permission is granted. */
+  composerTransforms?: PluginComposerTransformMeta[];
   /** Live state of the plugin's `contributes.agentExtensions` modules, from
    * the most recent session that loaded them (spec 07-plugins/16 §11). */
   agentExtension?: PluginAgentExtensionStatus;

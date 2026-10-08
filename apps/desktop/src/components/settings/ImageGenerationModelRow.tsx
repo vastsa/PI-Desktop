@@ -1,14 +1,15 @@
 import { useTranslation } from "react-i18next";
 import {
-  imageGenerationBindings,
-  vendorAccountImageCandidates,
   type AppSettings,
   type ImageGenerationBinding,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import { sameComposerModelId } from "../../lib/composer-models";
+import {
+  imageGenerationBindingAvailable,
+  imageGenerationPickerCandidates,
+} from "./image-generation-default";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
-import { imageGenerationBindingAvailable } from "./image-generation-default";
 
 function imageModelOptionId(binding: ImageGenerationBinding): string {
   return `${binding.providerId}\u0000${binding.modelId}`;
@@ -27,16 +28,15 @@ export function ImageGenerationModelRow({
 }) {
   const { t } = useTranslation();
   const binding = settings.imageGeneration;
-  // An explicit candidate list is the user's selection. Do not put the stored
-  // default back when they cleared it; only a missing list is the legacy
-  // single-binding fallback. A signed-in vendor account also offers the image
-  // model it answers with, which its chat model list does not carry.
-  const configured = Array.isArray(settings.imageGenerationModels)
-    ? imageGenerationBindings(settings.imageGenerationModels, null)
-    : imageGenerationBindings(undefined, binding);
-  const candidates = imageGenerationBindings(
-    [...configured, ...vendorAccountImageCandidates(providers)],
-    null,
+  // The picker's options: the candidate list stored in settings is the user's
+  // selection (an explicitly cleared list is not resurrected), a missing list
+  // falls back to the legacy single binding, and a signed-in vendor account
+  // offers the image model it answers with. The settings page validates the
+  // user's choice against this same list, so every row shown here is selectable.
+  const candidates = imageGenerationPickerCandidates(
+    settings.imageGenerationModels,
+    binding,
+    providers,
   );
   if (candidates.length === 0) return null;
 

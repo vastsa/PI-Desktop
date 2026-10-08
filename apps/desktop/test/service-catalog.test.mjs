@@ -12,6 +12,7 @@ import {
   filterServiceOptions,
   endpointLabel,
   namedServiceOptions,
+  pluginProviderServiceOptions,
 } from "../src/components/settings/service-catalog.ts";
 
 // Stands in for i18next with localized labels, so a label-only match is
@@ -86,4 +87,93 @@ test("endpoint labels retain routes and ports without showing credentials or que
   assert.equal(endpointLabel("https://user:password@api.example:8443/plan/v1?key=private#fragment"),
     "api.example:8443/plan/v1");
   assert.equal(endpointLabel("https://api.example/"), "api.example");
+});
+
+test("plugin provider categories show only unconfigured API-key rows and search introductions", () => {
+  const provider = (id, ownerPluginId, hasSecret) => ({
+    id,
+    name: id.endsWith("hcnsec") ? "幻城网安公益 API" : "ChatAnywhere Free API",
+    vendorKey: "custom",
+    type: "openai_compatible",
+    protocol: "openai_compatible",
+    enabled: true,
+    baseUrl: id.endsWith("hcnsec")
+      ? "https://api.ifivem.com/v1"
+      : "https://api.chatanywhere.tech/v1",
+    authKind: "api_key",
+    hasSecret,
+    models: [{ id: "deepseek-chat" }],
+    supportsReasoning: false,
+    supportedThinkingLevels: [],
+    ownerPluginId,
+    createdAt: "2026-10-08T00:00:00.000Z",
+    updatedAt: "2026-10-08T00:00:00.000Z",
+  });
+  const providers = [
+    provider("plugin:community.ai-sites:hcnsec", "community.ai-sites", false),
+    provider("plugin:community.ai-sites:chatanywhere", "community.ai-sites", true),
+    { ...provider("plugin:community.ai-sites:disabled", "community.ai-sites", false), enabled: false },
+    provider("plugin:other:wrong-owner", "other", false),
+    { ...provider("plugin:community.ai-sites:oauth", "community.ai-sites", false), authKind: "oauth" },
+    { ...provider("plugin:community.ai-sites:no-endpoint", "community.ai-sites", false), baseUrl: undefined },
+  ];
+  const declarations = [
+    {
+      pluginId: "community.ai-sites",
+      providerId: "plugin:community.ai-sites:hcnsec",
+      pluginName: "PI Community AI Sites",
+      category: "公益站",
+      description: "签到获得额度的公益 API 服务。",
+    },
+    {
+      pluginId: "community.ai-sites",
+      providerId: "plugin:community.ai-sites:chatanywhere",
+      pluginName: "PI Community AI Sites",
+      category: "公益站",
+      description: "签到获得额度的公益 API 服务。",
+    },
+    {
+      pluginId: "community.ai-sites",
+      providerId: "plugin:community.ai-sites:disabled",
+      pluginName: "PI Community AI Sites",
+      category: "公益站",
+      description: "已停用的站点。",
+    },
+    {
+      pluginId: "community.ai-sites",
+      providerId: "plugin:other:wrong-owner",
+      pluginName: "PI Community AI Sites",
+      category: "公益站",
+      description: "其他站点。",
+    },
+    {
+      pluginId: "community.ai-sites",
+      providerId: "plugin:community.ai-sites:oauth",
+      pluginName: "PI Community AI Sites",
+      category: "公益站",
+      description: "OAuth 站点。",
+    },
+    {
+      pluginId: "community.ai-sites",
+      providerId: "plugin:community.ai-sites:no-endpoint",
+      pluginName: "PI Community AI Sites",
+      category: "公益站",
+      description: "缺少地址。",
+    },
+  ];
+
+  const options = pluginProviderServiceOptions(declarations, providers);
+  assert.equal(options.length, 1);
+  assert.equal(options[0].category, "公益站");
+  assert.equal(options[0].endpoint, "api.ifivem.com/v1 · PI Community AI Sites");
+  assert.equal(options[0].description, "签到获得额度的公益 API 服务。");
+  assert.deepEqual(filterServiceOptions(options, "deepseek-chat").map((option) => option.id), [
+    "plugin:community.ai-sites:hcnsec",
+  ]);
+  assert.deepEqual(filterServiceOptions(options, "公益站").map((option) => option.id), [
+    "plugin:community.ai-sites:hcnsec",
+  ]);
+  assert.deepEqual(filterServiceOptions(options, "签到获得额度").map((option) => option.id), [
+    "plugin:community.ai-sites:hcnsec",
+  ]);
 });

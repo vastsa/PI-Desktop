@@ -5,8 +5,8 @@
  * field must resolve to one height, or the dropdown reads as a different-sized
  * control than the input beside it. `--ds-field-height` is that metric.
  *
- * Compact surfaces — a menu search row, the dense subagent sheet, the
- * Settings-row pill, the model row body — own a smaller metric instead. They
+ * Compact surfaces — Appearance picker triggers, a menu search row, the dense
+ * subagent sheet, and the model row body — own a smaller metric instead. They
  * have to declare it as a *minimum*: the field vocabulary pins `min-height`, so
  * a bare `height` on one of their inputs would lose and the control would be
  * stretched to the field metric.
@@ -76,7 +76,6 @@ test("a stretched trigger takes the field metric without outranking a denser sur
 test("dropdowns that act as form fields take the field metric", () => {
   for (const [css, selector] of [
     [pluginsCss, ".plugins-setting-control .settings-menu-select-trigger"],
-    [pluginsCss, ".plugins-market-settings-control .settings-menu-select-trigger"],
     [scheduledCss, ".scheduled-fields .settings-menu-select-trigger"],
   ]) {
     assert.equal(
@@ -116,23 +115,23 @@ test("compact menu searches keep their own height as a minimum", () => {
   }
 });
 
-test("a Settings-row dropdown matches the row's input", () => {
+test("Appearance pickers compact while Settings-row selects match their input", () => {
   const rowInput = declarations(settingsCss, ".settings-row-control .field-input");
   const pill = declarations(
     settingsCss,
     ".settings-pill-select,\n.settings-row-control .field-select",
   );
-  const picker = declarations(
+  const appearancePicker = declarations(
     settingsCss,
-    ".settings-language-trigger,\n.settings-theme-trigger,\n.settings-menu-select-trigger,\n.settings-font-trigger",
+    ".settings-language-trigger,\n.settings-theme-trigger,\n.settings-font-trigger",
   );
-  // A Settings row can hold a text input, a select or a picker pill; all three
-  // resolve to the shared field metric, so the column has one control height.
+  const menuSelect = declarations(settingsCss, ".settings-menu-select-trigger");
+  // Appearance pickers are short, label-sized controls. General Settings-row
+  // selects stay at the shared field metric beside text inputs.
   assert.equal(heightValue(pill, "height"), "var(--ds-field-height)");
   assert.equal(heightValue(pill, "min-height"), "var(--ds-field-height)");
-  for (const rule of [picker]) {
-    assert.equal(heightValue(rule, "height"), "var(--ds-field-height)");
-  }
+  assert.equal(heightValue(appearancePicker, "height"), "var(--ds-settings-picker-height)");
+  assert.equal(heightValue(menuSelect, "height"), "var(--ds-field-height)");
   // The row's own text input takes the same metric through the field
   // vocabulary; a compact row input would have to declare its own minimum.
   assert.doesNotMatch(rowInput, /height:/);

@@ -200,8 +200,16 @@ test("the manifest declares exactly what the lab uses", () => {
   const validation = validateManifest(manifest);
   assert.ok(validation.ok, validation.error);
   assert.deepEqual(manifest.rendererActions, [...PLUGIN_RENDERER_ACTIONS], "every action word the host implements");
-  assert.deepEqual(manifest.permissions, ["renderer.extension", "agent.tool.register"]);
+  assert.deepEqual(manifest.permissions, [
+    "renderer.extension",
+    "agent.tool.register",
+    "composer.transform",
+  ]);
   assert.deepEqual(manifest.contributes.agentTools.map((tool) => tool.name), ["lab_probe"]);
+  assert.deepEqual(
+    manifest.contributes.composerTransforms.map((transform) => transform.id),
+    ["lab-transform"],
+  );
 
   // Every word a sample dispatches, and every method it calls, is declared;
   // every declared method is one a sample calls.

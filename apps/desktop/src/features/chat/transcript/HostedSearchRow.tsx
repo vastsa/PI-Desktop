@@ -35,13 +35,11 @@ export const HostedSearchRow = memo(function HostedSearchRow({
   messageId,
   round,
   streaming,
-  autoOpen = false,
   onUserInteraction,
 }: {
   messageId: string;
   round: HostedSearchRound;
   streaming: boolean;
-  autoOpen?: boolean;
   onUserInteraction?: () => void;
 }) {
   const { t } = useTranslation();
@@ -49,7 +47,8 @@ export const HostedSearchRow = memo(function HostedSearchRow({
   const searching = streaming && round.status === "searching";
   const failed = round.status === "failed";
   const revealRequest = useMessageRevealRequest(messageId);
-  const disclosure = useAutomaticDisclosure(autoOpen && !failed, revealRequest, disclosureKey("hostedSearch", messageId, round.id));
+  // The row never opens itself; its query and sources wait behind the header.
+  const disclosure = useAutomaticDisclosure(false, revealRequest, disclosureKey("hostedSearch", messageId, round.id));
   const { open, toggle: toggleDisclosure, collapse: collapseDisclosure } = disclosure;
   const titleRef = disclosure.titleRef;
   const toggleRow = useCallback(() => {
@@ -153,6 +152,5 @@ export const HostedSearchRow = memo(function HostedSearchRow({
   previous.messageId === next.messageId &&
   previous.round === next.round &&
   previous.streaming === next.streaming &&
-  previous.autoOpen === next.autoOpen &&
   previous.onUserInteraction === next.onUserInteraction,
 );

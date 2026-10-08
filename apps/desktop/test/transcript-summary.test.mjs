@@ -190,10 +190,9 @@ test("memo boundaries check scalar changes before identity and skip stable child
     const tail = { ...props, isRunning: true };
     assert.equal(TranscriptTail.compare(tail, { ...tail }), true);
     assert.equal(TranscriptTail.compare(tail, { ...tail, isRunning: false }), false);
-    const group = { items: part.items, isActive: true, isLast: true };
+    const group = { items: part.items, isActive: true };
     assert.equal(ActivityGroup.compare(group, { ...group }), true);
     assert.equal(ActivityGroup.compare(group, { ...group, isActive: false }), false);
-    assert.equal(ActivityGroup.compare(group, { ...group, isLast: false }), false);
     assert.equal(ActivityGroup.compare(group, { ...group, endedAt: "now" }), false);
     const opaque = new Proxy(item, { get() { throw new Error("stable item was inspected"); } });
     assert.equal(activityItemsEqual(opaque, opaque), true);

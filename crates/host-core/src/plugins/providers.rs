@@ -7,8 +7,6 @@ use crate::providers::{
 };
 use crate::secrets::SecretStore;
 
-/// Upper bound on `contributes.providers` entries. Matches the SDK constant.
-pub(crate) const MAX_PLUGIN_PROVIDERS: usize = 8;
 /// Upper bound on one declaration's model list.
 pub(crate) const MAX_PLUGIN_PROVIDER_MODELS: usize = 64;
 
@@ -123,7 +121,6 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
     };
     entries
         .iter()
-        .take(MAX_PLUGIN_PROVIDERS)
         .filter_map(|entry| {
             let obj = entry.as_object()?;
             let id = obj.get("id")?.as_str()?.trim().to_string();

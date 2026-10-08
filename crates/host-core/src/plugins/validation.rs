@@ -1,4 +1,9 @@
 use super::*;
+mod composer_transforms;
+mod contribution_ids;
+mod provider_catalog;
+
+use contribution_ids::is_contrib_id;
 
 pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> Result<()> {
     let Some(contributes) = manifest.contributes.as_ref() else {
@@ -170,6 +175,7 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
             }
         }
     }
+    composer_transforms::validate(map, manifest)?;
     if let Some(skills) = map.get("skills") {
         let entries = array_of(skills, "contributes.skills")?;
         for entry in entries {
@@ -217,11 +223,6 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
 
     if let Some(providers) = map.get("providers") {
         let entries = array_of(providers, "contributes.providers")?;
-        if entries.len() > MAX_PLUGIN_PROVIDERS {
-            bail!(
-                "PLUGIN_INVALID: contributes.providers allows at most {MAX_PLUGIN_PROVIDERS} entries"
-            );
-        }
         if !entries.is_empty() {
             require_permission(manifest, "provider.register", "contributes.providers")?;
         }
@@ -249,6 +250,7 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
             {
                 bail!("PLUGIN_INVALID: provider {id} requires a name");
             }
+            provider_catalog::validate_provider_catalog_fields(id, obj)?;
             if let Some(style) = obj.get("apiStyle") {
                 let style = style.as_str().ok_or_else(|| {
                     anyhow!("PLUGIN_INVALID: provider {id} apiStyle must be a string")
@@ -276,10 +278,17 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
                 Some(value) => array_of(value, "contributes.providers.models")?,
                 None => bail!("PLUGIN_INVALID: provider {id} requires models"),
             };
-            if models.is_empty() || models.len() > MAX_PLUGIN_PROVIDER_MODELS {
+            if models.len() > MAX_PLUGIN_PROVIDER_MODELS {
                 bail!(
-                    "PLUGIN_INVALID: provider {id} declares 1 to {MAX_PLUGIN_PROVIDER_MODELS} models"
+                    "PLUGIN_INVALID: provider {id} declares more than {MAX_PLUGIN_PROVIDER_MODELS} models"
                 );
+            }
+            let has_base_url = obj
+                .get("baseUrl")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty());
+            if models.is_empty() && (auth_kind != "api_key" || !has_base_url) {
+                bail!("PLUGIN_INVALID: provider {id} may omit models only for an API-key provider with a baseUrl");
             }
             let mut seen_models: Vec<&str> = Vec::new();
             for model in models {
@@ -695,7 +704,7 @@ fn is_shortcut_shape(value: &Value) -> bool {
         .all(|part| matches!(*part, "Mod" | "Ctrl" | "Alt" | "Shift"))
 }
 
-fn array_of<'a>(value: &'a Value, field: &str) -> Result<&'a [Value]> {
+pub(super) fn array_of<'a>(value: &'a Value, field: &str) -> Result<&'a [Value]> {
     value
         .as_array()
         .map(|a| a.as_slice())
@@ -825,17 +834,6 @@ fn is_window_background_color(value: &str) -> bool {
         .all(|character| character.is_ascii_hexdigit())
 }
 
-fn is_contrib_id(value: &str) -> bool {
-    if value.is_empty() || value.len() > 64 {
-        return false;
-    }
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-}
 /// Grammar shared with `contributes.globalShortcuts[].id` in the plugin SDK.
 /// Dots are allowed here (unlike `is_contrib_id`): a shortcut id names a
 /// namespace inside the plugin, e.g. `voice.pushToTalk`.

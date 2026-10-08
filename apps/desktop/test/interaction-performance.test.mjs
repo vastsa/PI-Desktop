@@ -92,12 +92,12 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
 });
 
 test("expanded live tool output stays local to the changed row", () => {
-  // Only the last detailed-mode tool opens automatically. Collapsed rows skip
-  // the payload walk so a Bash burst does not rerender every sibling.
+  // No row opens itself, so only a row the user opened walks its payload and a
+  // Bash burst does not rerender every sibling.
   assert.match(transcript, /const ToolRow = memo\(function ToolRow/);
   assert.match(transcript, /function toolRowPropsEqual\(/);
   assert.match(transcript, /if \(previous.variant !== "topology"\) return true;/);
-  assert.match(transcript, /const autoOpenLatest =\s*!compact && isLast && item === lastItem/);
+  assert.doesNotMatch(transcript, /autoOpenLatest/);
   assert.match(transcript, /if \(variant !== "topology" && open && hasDetails && disclosure\.parentVisible/);
   assert.match(transcript, /const blocks = variant !== "topology" && open && hasDetails \? presentation\.current\?\.blocks : null/);
 });
@@ -114,9 +114,9 @@ test("tool errors stay local to their rows instead of failing the activity group
   assert.doesNotMatch(toolRow, /const hasFailure = items.some/);
   assert.doesNotMatch(toolRow, /processingFailedAfter/);
   assert.doesNotMatch(toolRow, /tool-activity-group[\s\S]*?failed/);
-  // Failures remain visible in the row header; automatic open is last-tool
-  // ownership, not error ownership.
-  assert.match(toolRow, /const disclosure = useAutomaticDisclosure\(\s*autoOpen && !failed && status !== "denied",\s*revealRequest,\s*disclosureKey\("tool"/);
+  // Failures remain visible in the row header; no row opens its payload on its
+  // own, failed or not.
+  assert.match(toolRow, /const disclosure = useAutomaticDisclosure\(\s*false,\s*revealRequest,\s*disclosureKey\("tool", message\.id\),\s*\);/);
   assert.match(transcript, /bodyEvents: \{ onPointerDownCapture: claim, onFocusCapture: claim \}/);
   assert.match(toolRow, /status === "error"\s*\? t\("chat.toolFailed"\)/);
 });

@@ -70,14 +70,14 @@ test("composer send/stop button follows draft content and the visible session's 
   assert.match(submitSlot, /onClick=\{\(\) => void abort\(\)\}/);
   assert.doesNotMatch(composerRight, /\{runActive \? \(/);
   const modelIndex = composerRight.indexOf("<ComposerModelPicker");
-  const enhanceIndex = composerRight.indexOf("composer-enhance-btn");
+  const transformIndex = composerRight.indexOf("composerTransforms.map");
   const submitIndex = Math.max(
     composerRight.indexOf('className="stop-btn"'),
     composerRight.indexOf('className="send-btn"'),
   );
   assert.ok(
-    modelIndex >= 0 && modelIndex < enhanceIndex && enhanceIndex < submitIndex,
-    "The enhancement action should sit between model selection and the submit slot",
+    modelIndex >= 0 && modelIndex < transformIndex && transformIndex < submitIndex,
+    "Plugin Composer actions should sit between model selection and the submit slot",
   );
   const modelTrigger =
     composer.match(

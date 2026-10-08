@@ -206,7 +206,7 @@ loses that. See
 | `EDIT_REGISTER_EMPTY` | no | paste from an unset register |
 | `EDIT_REGISTER_AMBIGUOUS` | no | anonymous paste with more than one pending anonymous capture |
 | `EDIT_REPAIR_AMBIGUOUS` | no | boundary-repair candidates tied at minimum cost |
-| `EDIT_NO_CHANGE` | no | the apply produced text identical to the input |
+| `EDIT_NO_CHANGE` | no | the apply produced text identical to the input, or `MV` resolved to the source path; the entire call leaves the source bytes untouched |
 | `EDIT_AMPLIFICATION_LIMIT` | no | lowering exceeded the expansion cap |
 
 `EDIT_LINES_UNSEEN` is retriable **without** a further `Read` when its message

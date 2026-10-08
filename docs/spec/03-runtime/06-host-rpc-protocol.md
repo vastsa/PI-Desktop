@@ -171,12 +171,14 @@ Rules:
    advertises `"a2a"`. A v10 host or client is rejected before the UI becomes
    interactive, so a mixed pair cannot call a missing domain.
 
-Protocol v11 is paired with host-core storage schema v16. Schema v12 had added
+Protocol v11 is paired with host-core storage schema v23. Schema v12 had added
 the A2A tables (`a2a_tasks`, `a2a_messages`, `a2a_artifacts`,
 `a2a_push_configs`) via `migrate_v11_to_v12`; `migrate_v12_to_v13` drops those
 tables, and v14 adds the plugin-session ownership sidecar and soft-delete
 column. Schema v15 adds the Host-owned turn queue, and schema v16 adds the
-session collaboration ledger and its turn-queue binding. A fresh database
+session collaboration ledger and its turn-queue binding. Schema v23 adds
+`sessions.title_source` to preserve default, manual, and plugin-generated title
+ownership. A fresh database
 creates neither A2A tables nor unowned plugin-session rows. The schema version is an
 internal persistence invariant, not an additional JSON-RPC field; the
 checkpoint architecture remains host-owned.
@@ -331,8 +333,9 @@ to later refresh and inference; the vendor picker does not collect them.
 - `session.rename({ id, title })` trims and validates the title at the host
   boundary. It accepts 1–80 Unicode code points and returns `{ ok: boolean }`;
   blank or overlong titles are `INVALID_PARAMS`. A successful rename changes
-  only session metadata and does not update `updated_at`, transcript content,
-  message count, or historical notification title snapshots.
+  title metadata and marks the title source `manual`; it does not update
+  `updated_at`, transcript content, message count, or historical notification
+  title snapshots.
 - `session.configure` — atomically persists `mode`, `providerId`, `modelId`,
   and optional `thinkingLevel` (`off|minimal|low|medium|high|xhigh|max|omit`)
   for the next pi turn; omitting/null
@@ -447,6 +450,11 @@ Electron main after plugin permission and manifest-source checks:
 - `plugin.session.importBatch` — bounded `skip` or all-or-nothing `fail` batch
 - `plugin.session.list` / `plugin.session.get` / `plugin.session.listMessages` —
   read only the calling plugin's active imported sessions
+- `plugin.session.autoTitleContext` — under Electron's `session.autoTitle`
+  permission, return only the first user prompt (≤1,000 characters) and first
+  assistant reply (≤500 characters) for an active `default`-titled session
+- `plugin.session.setAutoTitle` — validate a title and update only when the
+  expected title and `default` source still match; returns `{ updated }`
 - `plugin.session.rename` — rename an owned active imported session
 - `plugin.session.delete` — `trash` hides and retains the transcript; `purge`
   removes it and permits re-import

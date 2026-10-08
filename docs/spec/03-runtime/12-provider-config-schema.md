@@ -266,7 +266,8 @@ normal secret-store path.
 OpenCode Go (and any `opencode.ai` host) requires a stable
 `x-opencode-session` header on LLM requests. Agent-runtime sends that header
 plus `x-opencode-client: pi-desktop` and `User-Agent: pi-desktop/<APP_VERSION>`
-on session turns, subagent turns, prompt enhancement, and plugin one-shots.
+on session turns, subagent turns, plugin-owned prompt enhancement, and other
+plugin one-shots.
 Caller-supplied headers override the client and User-Agent values; a missing
 or empty session header is always restored from the conversation id.
 
@@ -274,7 +275,8 @@ or empty session header is always restored from the conversation id.
 omitted, or update `{}` keeps the adapter default (pi-ai's `pi (…)` string,
 Anthropic OAuth's `claude-cli/<version>`, or OpenCode's
 `pi-desktop/<APP_VERSION>`). A non-empty map is last-writer on that row's
-outbound HTTP — session turns, subagents, prompt enhancement, plugin one-shots,
+outbound HTTP — session turns, subagents, plugin one-shots (including
+plugin-owned prompt enhancement),
 `/models` discovery (including unsaved form values), connection tests, and
 OAuth token refresh. A fetch wrapper is the last writer so Codex and the
 Anthropic SDK cannot overwrite it; pi-ai's Google adapters receive the same

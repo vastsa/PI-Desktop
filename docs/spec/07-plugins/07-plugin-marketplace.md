@@ -30,7 +30,7 @@ The host is responsible for:
 
 ### Phase B ✅
 - Browse/search + download install are implemented against the official provider
-- Official provider: the plugin center, `plugins.aiuo.net` (Phase B originally pointed at the GitHub repository `vastsa/pi-desktop-plugins`; see "Catalog source selection" below and [ADR 0276](../../adr/0276-official-plugin-channel-and-backup-channels.md))
+- Official provider: the plugin center, `plugins.aiuo.net` (Phase B originally pointed at the GitHub repository `vastsa/pi-desktop-plugins`; see "Catalog source" below and [ADR 0276](../../adr/0276-official-plugin-channel-and-backup-channels.md))
 - Default catalog URL: `https://plugins.aiuo.net/catalog.json`
 - Package URLs may be absolute `https://` / `http://` / `file://`, or a relative path resolved against the catalog's `artifactBaseUrl` when it declares one, and otherwise against the catalog URL
 - HTTPS fetch uses `curl` in host-core
@@ -38,24 +38,14 @@ The host is responsible for:
   code page when needed; a network failure remains `PLUGIN_NETWORK`, but its
   localized message must not cross the RPC boundary as replacement characters
 
-### Catalog source selection
+### Catalog source
 
-Plugins → Marketplace picks where the catalog comes from. There are four
-channels, and the user can switch between them at any time:
-
-| # | Channel | `pluginMarketSource` | Catalog URL | Package resolution |
-| --- | --- | --- | --- | --- |
-| 1 | Official channel | `"official"` (default) | `https://plugins.aiuo.net/catalog.json` | Platform resolve (below) |
-| 2 | GitHub backup | `"github"` | `https://raw.githubusercontent.com/AIUO-Net/pi-desktop-plugins/main/catalog.json` | Relative URL against the catalog |
-| 3 | CNB backup | `"mirror"` | `https://cnb.cool/aixk/pi-desktop-plugins/-/git/raw/main/catalog.json` | Relative URL against the catalog |
-| 4 | Custom | `"custom"` | `pluginMarketCustomUrl` | Relative URL against the catalog |
-
-The selector labels are localized; the English locale uses exactly these four
-strings: Official channel, GitHub backup, CNB backup, Custom. An unset value
-and an unrecognized value both resolve to the official channel, and `mirror`
-still means CNB, so no persisted setting is migrated. The environment override
-`PI_DESKTOP_PLUGIN_MARKET_URL` stays above every channel so dev builds and
-tests can point at a local catalog without touching persisted settings.
+Plugins → Marketplace always uses the official plugin center catalog at
+`https://plugins.aiuo.net/catalog.json`. The page has no source selector.
+Persisted `pluginMarketSource` and `pluginMarketCustomUrl` values from older
+versions are retained for settings compatibility but ignored; no data migration
+is needed. `PI_DESKTOP_PLUGIN_MARKET_URL` remains available to development and
+test runs without making the catalog configurable in the shipped interface.
 
 Marketplace catalog and package downloads follow Settings → General → Network.
 System mode sends host-core `curl` through Electron's authenticated loopback
@@ -64,27 +54,21 @@ configuration. Direct mode forces the marketplace request direct; Custom uses
 the configured proxy and bypass list. The relay credential is runtime-only and
 is not inherited by workspace shell commands.
 
-The official channel is the plugin center: its catalog is the generated
-`catalog.json` the center publishes, and a package installed from it is
-resolved through the platform's download API instead of by joining a relative
-path onto a base URL. The two backup channels and `custom` keep the static v1
-and v2 behavior: a relative package URL resolves against the catalog that
-carried it (`artifactBaseUrl` first, then the catalog directory), so a package
-URL never crosses providers and a source switch cannot change the checksum
-being verified. The GitHub and CNB backups exist for networks that cannot reach
-`plugins.aiuo.net` or each other. The CNB mirror is expected to replicate the
-distribution repository, but it can lag — a measured catalog there was older
-(22 plugins, and different bytes for a version the other mirror serves) — which
-is why the official channel verifies each mirror's bytes instead of trusting
-one URL.
+The official catalog is the generated `catalog.json` the center publishes, and
+an install asks the platform where the package is instead of joining a relative
+path onto a base URL. If resolve is slow or unavailable, the client downloads
+from the official catalog's own package URL and verifies its catalog digest.
+Packages on the official resolve path can still come from approved GitHub and
+CNB mirrors returned by the platform. These are package mirrors inside the
+official channel; they do not change the catalog source. Each mirror's bytes
+are checked against its announced digest.
 
 Cached catalogs are keyed to their source in `plugins/market/cache-meta.json`.
-A snapshot fetched from a different source is ignored rather than deleted —
-its package URLs point at the provider the user just switched away from — so
-switching back recovers that catalog without a round trip. `settings.set` only
-re-pins the source in memory; fetching there would hold the host RPC state lock
-behind a marketplace timeout, so the renderer triggers `market.refresh` after
-the switch.
+The official catalog cache remains the marketplace snapshot. Any cache left by
+an older selected source is ignored and not deleted. `settings.set` keeps the
+host's marketplace selection pinned to official; remote fetching remains an
+explicit `market.refresh` operation so a settings write never holds the host
+RPC state lock behind a marketplace timeout.
 
 ### Device identifier
 
@@ -114,21 +98,26 @@ the platform after the catalog has been refreshed:
    official catalog — with a JSON body of `{ deviceId, pluginId, version }`,
    where `version` is present when the user picked one. POST is used rather than
    GET because the platform's own contract notes that a device id in a query
-   string lands in access logs.
+   string lands in access logs. The metadata request has a three-second total
+   deadline and is made once; a slow endpoint cannot hold the install on
+   `resolve` for the download timeout or a `Retry-After` interval.
 3. Try every entry of the returned `downloads` array in order: download, verify
    the returned `sha256` and the announced `sizeBytes`, then hand the bytes to
    the installer. A mirror that fails — network error, HTTP error, digest
    mismatch, size mismatch — is abandoned and the next one is tried. Requests
    stay on the allowlisted hosts below.
-4. If the list is exhausted, or the resolve call itself failed, fall back to the
-   catalog's own package URL (`artifactBaseUrl` plus the relative `url`). That
-   is the fallback the platform documents, and the install is not counted.
+4. If the resolve request times out or fails at the transport boundary, or
+   returns `429` / `503 NO_DOWNLOAD_SOURCE`, use the catalog's own package URL
+   (`artifactBaseUrl` plus the relative `url`) immediately. The catalog digest
+   and size are still checked, and the install is not counted. If all usable
+   returned mirrors fail at the transport boundary, use the same fallback. A
+   malformed resolve response or an integrity failure does not take this path.
 5. One resolve call per install or update. The answer is never cached, which is
    why the platform sends `Cache-Control: no-store`; `counted: false` is a
    normal reply and never an error.
 
-A `200` response always carries a non-empty `downloads` array. Refusals are
-reported, never papered over:
+A `200` response always carries a non-empty `downloads` array. Publication
+refusals are reported, never papered over:
 
 - `403 NOT_PUBLISHED` — the version is not published. Report it and do not
   retry.
@@ -138,14 +127,16 @@ reported, never papered over:
   byte route cannot carry (a `+` build-metadata suffix, for example) is a
   missing version, not a URL to guess at.
 - `429` — the platform rate-limits per device id (600 requests per minute by
-  default). Wait the `Retry-After` interval, retry once, then report.
-- `503` — a deployment problem (`NO_DOWNLOAD_SOURCE` when no mirror can serve
-  the version). Report it without a retry loop.
+  default). Do not wait or retry; use the catalog URL, whose package is checked
+  against the catalog digest.
+- `503 NO_DOWNLOAD_SOURCE` — use the catalog URL because no platform mirror can
+  serve the version. Other `503` deployment failures use the same fast fallback.
 
-The resolve digest is authoritative on this path; the catalog's `shasum` stays
-authoritative on the two backup channels and on the step-4 fallback. Nothing
-here switches the channel automatically: an unreachable platform is reported
-after the fallback, and the user changes channels through the existing selector.
+The resolve digest is authoritative when mirrors are used; the catalog's
+`shasum` stays authoritative on the fallback. An explicit `403` or `404`
+publication refusal never falls through to a different package source. Nothing
+here switches the catalog source: the fallback stays inside the official
+channel.
 
 ### Install progress and cancellation
 
@@ -221,10 +212,9 @@ interface MarketProvider {
 }
 ```
 
-Supports multiple providers:
-- `official`
-- `custom` (enterprise private source)
-- `local-mock` (development)
+The shipped client currently exposes the `official` provider only. The
+development-only `PI_DESKTOP_PLUGIN_MARKET_URL` override supports local test
+catalogs without adding a source control to the product UI.
 
 ## 4. Data model
 
@@ -573,25 +563,12 @@ the catalog says so. A v1 catalog's boolean `verified` maps to `verified` /
 `community` unchanged, because a v1 catalog is only writable by marketplace
 maintainers.
 
-## 9. Private sources (enterprise-facing)
+## 9. Private sources (future enterprise support)
 
-Supports configuration:
-
-```json
-{
- "marketProviders": [
- {
- "id": "official",
- "url": "https://market.example.com"
- },
- {
- "id": "corp",
- "url": "https://plugins.company.local",
- "tokenEnv": "PI_DESKTOP_MARKET_TOKEN"
- }
- ]
-}
-```
+The shipped client does not expose or persist a private catalog source. The
+`PI_DESKTOP_PLUGIN_MARKET_URL` override is limited to local development and
+tests; it is not a product setting. Enterprise source support requires a
+future product decision and explicit security and authorization design.
 
 ## 10. Remote API draft (HTTP)
 
@@ -641,7 +618,7 @@ The distribution repository
 ([vastsa/pi-desktop-plugins](https://github.com/vastsa/pi-desktop-plugins)) holds the published
 `catalog.json` and the `packages/*.piplug` artifacts it references. Plugin sources are neither
 hosted nor reviewed there: the center packs, audits, records the SHA-256 and publishes from each
-publisher's own repository, then mirrors the catalog and packages for the GitHub backup channel
+publisher's own repository, then publishes the official catalog and package references
 ([15-plugin-center.md](15-plugin-center.md),
 [ADR 0276](../../adr/0276-official-plugin-channel-and-backup-channels.md)).
 

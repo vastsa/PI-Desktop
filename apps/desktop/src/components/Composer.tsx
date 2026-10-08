@@ -17,7 +17,6 @@ import {
   imageGenerationBindings,
   isImageGenerationModel,
   normalizeLargePasteThreshold,
-  stripInlineComposerFileReferenceTokens,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { latestTurnContextInspector } from "../lib/latest-turn-context";
@@ -50,6 +49,7 @@ import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDra
 import { useComposerInputHistory } from "../features/chat/composer/hooks/useComposerInputHistory";
 import { usePluginComposerBridge } from "../features/chat/composer/hooks/usePluginComposerBridge";
 import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSubmit";
+import { useComposerTransforms } from "../features/chat/composer/hooks/useComposerTransforms";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
 import { useComposerModelMenu } from "../features/chat/composer/hooks/useComposerModelMenu";
 import { useVoiceInput } from "../features/voice/useVoiceInput";
@@ -85,6 +85,14 @@ export function Composer({
     s.activeSessionId ? s.planningStates[s.activeSessionId] : undefined,
   );
   const settings = useAppStore((s) => s.settings);
+  const plugins = useAppStore((s) => s.plugins);
+  const composerTransforms = useMemo(
+    () =>
+      plugins
+        .filter((plugin) => plugin.enabled && plugin.status === "ready")
+        .flatMap((plugin) => plugin.composerTransforms ?? []),
+    [plugins],
+  );
   const imageGenerationCandidates = useMemo(
     () => imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration),
     [settings?.imageGenerationModels, settings?.imageGeneration],
@@ -136,13 +144,13 @@ export function Composer({
   );
 
   const [permissionOpen, setPermissionOpen] = useState(false);
-  const enhancementInvalidateRef = useRef<() => void>(() => {});
+  const composerTransformInvalidateRef = useRef<() => void>(() => {});
   const composerShellRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const publishedDockHeightRef = useRef(-1);
 
-  const invalidatePromptEnhancement = () => {
-    enhancementInvalidateRef.current();
+  const invalidateComposerTransforms = () => {
+    composerTransformInvalidateRef.current();
   };
 
   const draft = useComposerDraft({
@@ -154,7 +162,7 @@ export function Composer({
     clearComposerPrefill,
     prefill,
     t,
-    invalidatePromptEnhancement,
+    invalidateComposerTransforms,
     inputBlocked: planCheckpoint?.status === "pending" || nativeInputBlocked,
   });
   const {
@@ -229,10 +237,6 @@ export function Composer({
   const inputBlocked = approvalPending || pasting || nativeInputBlocked;
   const controlsBlocked = approvalPending || nativeSession;
   const sendBlocked = approvalPending || pasting || nativeInputBlocked;
-  const enhancementDraft = stripInlineComposerFileReferenceTokens(
-    value,
-    activeFileReferences,
-  );
   // Edit returns one queued row to the composer. The row is removed and its
   // captured draft becomes the input, so the input must be empty first: the
   // live read is the only current source (the draft cache is not per keystroke).
@@ -405,14 +409,26 @@ export function Composer({
     setPermissionOpen(false);
   }, [controlsBlocked]);
 
-  const submitController = useComposerSubmit({
+  const composerTransformController = useComposerTransforms({
+    transforms: composerTransforms,
     value,
     draftKey,
     activeSessionId,
     providerId: provider?.id,
     modelId,
-    thinkingLevel,
+    sendBlocked,
+    activeFileReferences,
+    draft: { ref, setValue, setCursor },
+    showToast,
+  });
+  composerTransformInvalidateRef.current = composerTransformController.invalidate;
+
+  const submitController = useComposerSubmit({
+    value,
+    draftKey,
+    activeSessionId,
     modelReady,
+    invalidateComposerTransforms,
     sendBlocked,
     pasting,
     activeFileReferences,
@@ -427,20 +443,9 @@ export function Composer({
       draftRevision,
       clearDraftForKey,
       restoreDraftForKey,
-      setValue,
-      setCursor,
     },
   });
-  enhancementInvalidateRef.current = submitController.invalidatePromptEnhancement;
-  const {
-    enhancingPrompt,
-    enhancementUndoText,
-    enhancementError,
-    clearEnhancementError,
-    enhancePrompt,
-    undoPromptEnhancement,
-    submit,
-  } = submitController;
+  const { submit } = submitController;
 
   // Both submit entry points (the composer's Enter and the toolbar's Send)
   // leave history browsing before the draft is cleared.
@@ -472,7 +477,7 @@ export function Composer({
     fileReferencesRef,
     applyEditorDraft,
     handleInput,
-    invalidatePromptEnhancement,
+    invalidateComposerTransforms,
   });
 
   // Plugin draft and attachment actions reach this composer while it takes input.
@@ -529,8 +534,6 @@ export function Composer({
           editQueuedPrompt={handleEditQueuedPrompt}
           sendQueuedNow={sendQueuedNow}
           approvalPending={approvalPending}
-          enhancementError={enhancementError}
-          clearEnhancementError={clearEnhancementError}
           droppedDirectories={droppedDirectories}
           openDroppedFolderAsProject={openDroppedFolderAsProject}
           insertDroppedDirectoryPaths={insertDroppedDirectoryPaths}
@@ -605,14 +608,14 @@ export function Composer({
             modelLabel={modelLabel}
             thinkingLabel={thinkingLabel}
             contextUsage={composerContextUsage ?? null}
-            enhancementDraft={enhancementDraft}
             value={value}
             modelReady={modelReady}
             sendBlocked={sendBlocked}
-            enhancingPrompt={enhancingPrompt}
-            enhancementUndoText={enhancementUndoText}
-            enhancePrompt={enhancePrompt}
-            undoPromptEnhancement={undoPromptEnhancement}
+            composerTransforms={composerTransforms}
+            activeTransformKey={composerTransformController.activeTransformKey}
+            undoTransform={composerTransformController.undo?.transform ?? null}
+            runComposerTransform={composerTransformController.run}
+            undoComposerTransform={composerTransformController.undoLast}
             runActive={runActive}
             hasDraftContent={hasDraftContent}
             abort={abort}

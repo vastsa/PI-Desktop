@@ -1,8 +1,8 @@
 # ADR 0121: Keep Composer prompt enhancement one-shot and main-owned
 
-- Status: Accepted
+- Status: Superseded by ADR 0324
 - Date: 2026-08-24
-- Updated: 2026-09-20 (one Prompt enhancement card on Settings → AI)
+- Updated: 2026-10-08 (feature moved to an optional standalone plugin)
 - Related: Issue #14, Issue #562
 
 ## Context
