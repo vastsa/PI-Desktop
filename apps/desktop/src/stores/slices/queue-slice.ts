@@ -492,7 +492,12 @@ export function createQueueSlice({
             onAccepted?.(startedIn);
             try {
               await get().refreshSessions();
-              if (get().activeSessionId === startedIn) await get().selectSession(startedIn);
+              // Refresh only the transcript still in view; never pull the user
+              // back from a page they opened while the send was refreshing.
+              const viewing = get();
+              if (viewing.activeSessionId === startedIn && viewing.page === "chat") {
+                await viewing.selectSession(startedIn);
+              }
             } catch {
               // Admission succeeded; a display refresh failure must not restore the draft.
             }
