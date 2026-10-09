@@ -17,6 +17,10 @@ const topbarSource = await readFile(
   new URL("../src/components/ConversationTopbar.tsx", import.meta.url),
   "utf8",
 );
+const stylesSource = await readFile(
+  new URL("../src/styles/chrome.css", import.meta.url),
+  "utf8",
+);
 
 test("project activation separates visible transcript state from background run state", () => {
   const activationBlock = storeSource.match(
@@ -95,6 +99,17 @@ test("global search stays on the conversation topbar, not the sidebar header", (
   assert.match(topbarSource, /onOpenSearch/);
   assert.match(topbarSource, /<IconSearch/);
   assert.match(topbarSource, /ariaLabel=\{t\("nav\.search"\)\}/);
+});
+
+test("conversation topbar shows and refreshes the active project's git branch", () => {
+  assert.match(topbarSource, /const branch = workspace\?\.branch\?\.trim\(\)/);
+  assert.match(topbarSource, /refreshProject\(projectPath\)/);
+  assert.match(topbarSource, /window\.addEventListener\("focus", refreshBranch\)/);
+  assert.match(topbarSource, /className="ct-branch"/);
+  assert.match(topbarSource, /hoverCardBranchAria/);
+  assert.match(topbarSource, /<IconBranch/);
+  assert.match(stylesSource, /\.conversation-topbar \.ct-branch\s*\{/);
+  assert.match(stylesSource, /text-overflow:\s*ellipsis/);
 });
 
 test("project rows expose press-and-move title drag and keyboard reorder behavior", () => {
