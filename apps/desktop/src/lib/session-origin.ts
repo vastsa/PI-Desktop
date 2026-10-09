@@ -26,9 +26,13 @@ export function isAutomationSession(
  * are entered from the Scheduled page — that task's run history reads them in
  * place — so the SessionList's groups, search's recents view, and the tray drop
  * them before they can be listed or switched to.
+ * Managed plugin transcripts use their owner's navigation instead. Ownership
+ * persists while disabled, keeping the ordinary lists free of duplicate entries.
  */
-export function listableSessions<T extends Pick<SessionSummary, "scheduledRun">>(
-  sessions: readonly T[],
-): T[] {
-  return sessions.filter((session) => !isAutomationSession(session));
+export function listableSessions<
+  T extends Pick<SessionSummary, "scheduledRun" | "managedByPlugin">,
+>(sessions: readonly T[]): T[] {
+  return sessions.filter(
+    (session) => !isAutomationSession(session) && !session.managedByPlugin,
+  );
 }

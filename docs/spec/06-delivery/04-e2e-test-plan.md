@@ -17275,3 +17275,35 @@ host-created files. The full app's file-preview viewer is covered separately.
 - Acceptance: Native transcript updates plus durable owner and message-count assertions; encrypted credential file does not contain the fixture plaintext.
 - Milestone: Plugin SDK.
 - Status: Isolated macOS Desktop fixture passed native submit/append/authors, exact retry, disabled draft retention, operation fences, restart and re-enable without model calls. Rust tests cover conflicting retry and foreign ownership. Physical multi-machine and Windows runs remain pending.
+
+
+### PLG-MANAGED-02: Session-scoped execution and native member-view entry
+
+- Preconditions: Isolated profile, local fixture plugin granted desktop.control
+  and renderer.extension; local provider fixture only, no production credentials.
+- Steps: Subscribe before prompting a background worker; observe text and tool
+  frames and the host terminal receipt; verify unrelated sessions are absent.
+  Abort a worker and verify persisted aborted. Make a terminal write fail and
+  verify unknown, then unload/reload and check subscription cleanup. From native
+  composer controls read the active chat and open a declared member view twice.
+- Expected: Correct session/turn identities, complete host stream observations,
+  no success inferred from timeout or raw agent_end; one existing work-panel tab,
+  native chat unchanged, stale-session and remote open refused.
+- Status: Process contracts and finalization regressions passed. Isolated macOS
+  Desktop fixture passed stream and persisted terminal delivery plus two real
+  member-entry clicks reusing one native work-panel tab; one local SSE request.
+  Managed live-to-final fixture passed with zero model calls.
+
+
+### PLG-MANAGED-03: Main shell contribution lifecycle
+
+- Preconditions: Isolated Desktop profile with a renderer extension contributing
+  navigationSection and an owned mainPage; no production credentials.
+- Steps: Register the page before navigation, open it from a real mouse gesture,
+  disable while active, re-enable, and visit a stale history route.
+- Expected: Native main-content rendering; own declared page only; disabled
+  contribution removed; stale routes reconcile to chat; other plugins unaffected.
+- Status: Isolated macOS shell fixture passed navigation, main page, disable and
+  re-enable without model calls. Actual room plugin also passed native category
+  order, independent Create/Join forms, one member tab, native broadcast, list
+  de-duplication, disable/re-enable and restart preservation without model calls.

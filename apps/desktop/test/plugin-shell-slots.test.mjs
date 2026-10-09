@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { register } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import test from 'node:test';
+const root=fileURLToPath(new URL('../../../',import.meta.url));
+register(pathToFileURL(join(root,'apps/desktop/test/helpers/ts-import-hooks.mjs')));
+const {SlotRegistry}=await import('../src/plugins/renderer-slots/registry.ts');
+const {runShellAction}=await import('../src/plugins/renderer-host/shell-actions.ts');
+test('main navigation and pages dispose per load and remain isolated by plugin',()=>{
+ const registry=new SlotRegistry(),component=()=>null;
+ const removeNav=registry.register('demo.rooms',{slot:'navigationSection',component},[]);
+ const removePage=registry.register('demo.rooms',{slot:'mainPage',pageId:'rooms',component},[]);
+ const removeOther=registry.register('demo.other',{slot:'mainPage',pageId:'rooms',component},[]);
+ const pages=[],routes={openPage:page=>pages.push(page)};
+ assert.equal(registry.entriesFor('navigationSection').length,1);
+ assert.deepEqual(runShellAction('demo.rooms',{pageId:'rooms'},true,routes,registry),{ok:true});
+ assert.deepEqual(pages,['plugin:demo.rooms/rooms']);
+ assert.throws(()=>runShellAction('demo.foreign',{pageId:'rooms'},true,routes,registry),{code:'PLUGIN_ACTION_UNDECLARED'});
+ assert.throws(()=>runShellAction('demo.rooms',{pageId:'rooms'},false,routes,registry),{code:'PLUGIN_DRAFT_REMOTE'});
+ assert.throws(()=>registry.register('demo.rooms',{slot:'mainPage',pageId:'rooms',component},[]),{code:'PLUGIN_SLOT_DUPLICATE'});
+ removeNav();removeNav();removePage();
+ assert.equal(registry.entriesFor('navigationSection').length,0);
+ assert.throws(()=>runShellAction('demo.rooms',{pageId:'rooms'},true,routes,registry),{code:'PLUGIN_ACTION_UNDECLARED'});
+ assert.deepEqual(runShellAction('demo.other',{pageId:'rooms'},true,routes,registry),{ok:true});removeOther();
+});
+test('main page keys and payloads reject foreign route syntax',()=>{
+ const registry=new SlotRegistry();
+ for(const pageId of ['', '../rooms','demo/rooms','x'.repeat(129)])assert.throws(()=>registry.register('demo.rooms',{slot:'mainPage',pageId,component:()=>null},[]),{code:'PLUGIN_SLOT_INVALID_KEY'});
+ for(const payload of [{pageId:'../rooms'},{pageId:42},{pageId:'rooms',pluginId:'other'}])assert.throws(()=>runShellAction('demo.rooms',payload,true,{openPage:()=>assert.fail()},registry),{code:'PLUGIN_ACTION_INVALID_PAYLOAD'});
+});

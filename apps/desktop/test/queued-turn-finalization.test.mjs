@@ -225,7 +225,7 @@ for (const status of ["completed", "error", "aborted"]) {
     assert.equal(f.persistedQueue.size, 2);
     // One host turn ends once, with the reason it actually ended for.
     assert.deepEqual(f.announcements, [
-      { sessionId: SESSION, turnId: FIRST_TURN, reason: status },
+      { sessionId: SESSION, turnId: FIRST_TURN, reason: status, persisted: true },
     ]);
 
     const next = f.finish();
@@ -266,7 +266,7 @@ test("a settled persistence failure does not leave the queue asleep", async () =
   // plugins are still told it ended: the announcement is not conditional on
   // persistence succeeding.
   assert.deepEqual(f.announcements, [
-    { sessionId: SESSION, turnId: FIRST_TURN, reason: "completed" },
+    { sessionId: SESSION, turnId: FIRST_TURN, reason: "completed", persisted: false },
   ]);
 });
 
@@ -295,7 +295,7 @@ test("a cancellation locked before the turn settles decides the announced reason
   await pending;
   await setImmediate();
   assert.deepEqual(f.announcements, [
-    { sessionId: SESSION, turnId: FIRST_TURN, reason: "aborted" },
+    { sessionId: SESSION, turnId: FIRST_TURN, reason: "aborted", persisted: true },
   ]);
   // The lock does not outlive the turn that owns it.
   assert.equal(
@@ -398,4 +398,15 @@ test("a stalled turn that main finalized never blocks the queue after a restart 
   // own turn map, and Agent Host must not keep a settled turn active.
   assert.equal(f.coordination.isActiveTurn(SESSION, FIRST_TURN), false);
   assert.deepEqual(f.prompts.map((prompt) => prompt.content), ["waiting follow-up"]);
+});
+
+
+test("a refused terminal write is not a durable completion", async () => {
+  const f = fixture();
+  const pending = f.finish();
+  await setImmediate();
+  f.writes[0].resolve({ ok: false });
+  await pending;
+  assert.equal(f.announcements[0].persisted, false);
+  assert.equal(f.turnFinalizations.size, 0);
 });

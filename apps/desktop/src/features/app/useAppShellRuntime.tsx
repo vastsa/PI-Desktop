@@ -281,8 +281,7 @@ export function useAppShellRuntime() {
   }, []);
 
   useEffect(() => {
-    const pageHidesWorkPanel =
-      page === "settings" || page === "plugins" || page === "scheduled";
+    const pageHidesWorkPanel = page !== "chat";
     const shouldPresent =
       ready && !pageHidesWorkPanel && workPanelOpen;
     const request = ++workPanelReservationRequest.current;

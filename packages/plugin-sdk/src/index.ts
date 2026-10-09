@@ -962,6 +962,29 @@ export type PluginFsRange = {
   totalSize: number;
 };
 
+/** Process event payload from desktop:agentEvent. Event data follows the host's
+ * AgentEvent union, including append-only deltas and tool/subagent identity. */
+export type PluginDesktopAgentEvent = {
+  subscriptionId: string;
+  sessionId: string;
+  turnId?: string;
+  ts: number;
+  event: { type: string; [key: string]: unknown };
+  parentToolCallId?: string;
+  nestedParentToolCallId?: string;
+  agentName?: string;
+};
+
+/** Process event payload from desktop:turnEnded. unknown means the durable
+ * terminal write was not acknowledged and must never be treated as success. */
+export type PluginDesktopTurnEnded = {
+  subscriptionId: string;
+  sessionId: string;
+  turnId: string;
+  reason: "completed" | "aborted" | "error" | "unknown";
+  persisted: boolean;
+};
+
 export type PluginDesktopOperation = {
   id: string;
   description: string;
@@ -1178,6 +1201,11 @@ export type PluginHostApi = {
   };
   /** Reviewed host operations shared with the local MCP control plane. */
   desktop: {
+    /** Requires desktop.control. Subscribe before prompting; no replay is provided.
+     * Events arrive as desktop:agentEvent and desktop:turnEnded with subscriptionId.
+     * A transport loss is unknown, never evidence of completion. */
+    subscribeAgentEvents: (input: { sessionId: string }) => Promise<{ subscriptionId: string }>;
+    unsubscribeAgentEvents: (input: { subscriptionId: string }) => Promise<void>;
     listOperations: () => Promise<PluginDesktopOperation[]>;
     invoke: (input: PluginDesktopInvokeInput) => Promise<unknown>;
   };
@@ -1268,6 +1296,12 @@ export type PluginHostApi = {
     /** Requires session.manage.own; existing ordinary/imported sessions cannot be claimed. */
     createManaged: (input: PluginManagedSessionCreateInput) => Promise<{ sessionId: string; created: boolean }>;
     appendManaged: (input: PluginManagedMessageInput) => Promise<{ messageId: string; appended: boolean }>;
+    /** Ephemeral native presentation only; appendManaged remains the durable record.
+     * Allowed types: message_start/update/end and tool_start/update/end. */
+    emitManagedEvent: (input: { sessionId: string; author?: string; envelope: {
+      turnId: string; ts: number; event: { type: string; [key: string]: unknown };
+      parentToolCallId?: string; nestedParentToolCallId?: string;
+    } }) => Promise<{ delivered: true }>;
     getLlmContext: () => Promise<PluginLlmContext>;
     getAutoTitleContext: (input: { sessionId: string }) => Promise<PluginAutoTitleContext | null>;
     setAutoTitle: (input: {

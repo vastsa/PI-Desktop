@@ -108,6 +108,7 @@ import {
 } from "./plugin-renderer-extension";
 import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
 import { parseAllowedExternalUrl } from "./safe-open-external";
+import { managedPresentationEvent } from "./plugin-managed-events";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
 import type { McpControlController, McpControlInvokeInput } from "./mcp-control";
 import {
@@ -482,6 +483,8 @@ export type PluginHostServices = {
   session?: {
     createManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     appendManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    managedOwner: (sessionId: string) => Promise<string | null>;
+    emitManagedEvent: (envelope: ReturnType<typeof managedPresentationEvent>) => void;
     list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     get: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     listMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
@@ -531,6 +534,8 @@ const HOST_API_ALLOWLIST = new Set([
   "ui.getNotificationPermission",
   "ui.requestNotificationPermission",
   "ui.showNativeNotification",
+  "desktop.subscribeAgentEvents",
+  "desktop.unsubscribeAgentEvents",
   "desktop.listOperations",
   "desktop.invoke",
   "workspace.get",
@@ -592,6 +597,7 @@ const HOST_API_ALLOWLIST = new Set([
   "secrets.delete",
   "session.createManaged",
   "session.appendManaged",
+  "session.emitManagedEvent",
   "session.import",
   "session.importBatch",
   "session.rename",
@@ -609,6 +615,8 @@ const HOST_API_ALLOWLIST = new Set([
 const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
 /** Lifecycle hooks time out per spec 05 §3. */
 const PLUGIN_HOOK_TIMEOUT_MS = 5_000;
+/** Explicit unload permits bounded durable execution cleanup before disconnect. */
+const PLUGIN_UNLOAD_HOOK_TIMEOUT_MS = 12_000;
 /**
  * The unload hook gets a shorter budget on quit than it does on an explicit
  * unload: the user has asked the app to close, and no plugin's cleanup is worth
@@ -789,10 +797,12 @@ type LoadedPlugin = {
   deletes: number[];
   /** Memory-only grants created by a real panel drop gesture. */
   dropGrants: Map<string, { fullPath: string; requestPath: string }>;
+  agentSubscriptions: Map<string, string>;
   child?: PluginProcessHandle;
   pending: Map<string, PendingCall>;
   nextCallId: number;
   disposing: boolean;
+  cleanupActive?: boolean;
 };
 
 type PluginApiError = Error & { code?: string };
@@ -1977,6 +1987,30 @@ export class PluginRuntime {
    * receive the same names through `pluginBridge.on`; this is the process
    * half (spec 07 §5).
    */
+  /** Session-scoped process-only execution events; never broadcast to panels. */
+  deliverAgentEvent(payload: { sessionId: string }): void {
+    this.deliverSubscribedEvent("desktop:agentEvent", payload);
+  }
+
+  deliverTurnEnded(payload: { sessionId: string; turnId: string; reason: "completed" | "aborted" | "error"; persisted?: boolean }): void {
+    this.deliverSubscribedEvent("desktop:turnEnded", { ...payload, persisted: payload.persisted === true, reason: payload.persisted === true ? payload.reason : "unknown" });
+  }
+
+  private deliverSubscribedEvent(event: string, payload: { sessionId: string; reason?: string; persisted?: boolean }): void {
+    for (const loaded of this.loaded.values()) {
+      if ((loaded.disposing && !loaded.cleanupActive) || !loaded.permissions.has("desktop.control")) continue;
+      for (const [subscriptionId, sessionId] of loaded.agentSubscriptions) {
+        if (payload.sessionId !== sessionId) continue;
+        try {
+          loaded.child?.postMessage({ t: "event", event, args: [{ subscriptionId, ...payload }] });
+        } catch {
+          this.services.audit?.({ pluginId: loaded.manifest.id, api: "desktop.agentEvents.delivery",
+            ok: false, errorCode: "PLUGIN_UNREACHABLE", ts: Date.now() });
+        }
+      }
+    }
+  }
+
   broadcastEvent(event: string, args: unknown[] = []): void {
     for (const loaded of this.loaded.values()) {
       try {
@@ -2094,6 +2128,7 @@ export class PluginRuntime {
       legacyFs: access.legacy,
       deletes: [],
       dropGrants: new Map(),
+      agentSubscriptions: new Map(),
       child,
       pending: new Map(),
       nextCallId: 1,
@@ -2174,15 +2209,19 @@ export class PluginRuntime {
     }
     if (loaded?.child) {
       loaded.disposing = true;
+      loaded.cleanupActive = true;
       try {
         await this.sendToChild(
           loaded,
           { t: "call", method: "lifecycle.unload", payload: {} },
-          PLUGIN_HOOK_TIMEOUT_MS,
+          PLUGIN_UNLOAD_HOOK_TIMEOUT_MS,
         );
       } catch {
         // A stuck or already-dead child must never block teardown.
+      } finally {
+        loaded.cleanupActive = false;
       }
+      loaded.agentSubscriptions.clear();
       this.rejectPending(loaded, apiError("PLUGIN_UNLOADED", `plugin unloaded: ${pluginId}`));
       try {
         loaded.child.kill();
@@ -2274,6 +2313,8 @@ export class PluginRuntime {
     ]);
     // Whatever survived the budget is killed outright; the app is going away.
     for (const loaded of loadedPlugins) {
+      loaded.cleanupActive = false;
+      loaded.agentSubscriptions.clear();
       try {
         loaded.child?.kill();
       } catch {
@@ -2289,6 +2330,7 @@ export class PluginRuntime {
     const pluginId = loaded.manifest.id;
     await this.stopServices(loaded);
     if (!loaded.child) return;
+    loaded.cleanupActive = true;
     try {
       await this.sendToChild(
         loaded,
@@ -2297,7 +2339,10 @@ export class PluginRuntime {
       );
     } catch {
       // A stuck or already-dead child must never block quit.
+    } finally {
+      loaded.cleanupActive = false;
     }
+    loaded.agentSubscriptions.clear();
     this.rejectPending(loaded, apiError("PLUGIN_UNLOADED", `plugin unloaded: ${pluginId}`));
     this.clearContributions(pluginId);
   }
@@ -3052,8 +3097,24 @@ export class PluginRuntime {
         });
         return result;
       }
+      case "session.emitManagedEvent": {
+        this.assertPermission(loaded, "session.manage.own");
+        const event = managedPresentationEvent(args[0]);
+        const session = this.services.session;
+        if (!session?.managedOwner || !session.emitManagedEvent) throw apiError("UNSUPPORTED", "Managed presentation is unavailable");
+        const owner = await session.managedOwner(event.sessionId);
+        this.assertPermission(loaded, "session.manage.own");
+        if (loaded.disposing || this.loaded.get(pluginId) !== loaded) throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        if (owner !== pluginId) throw apiError("PERMISSION_DENIED", "Session is not managed by this plugin");
+        session.emitManagedEvent(event);
+        return { delivered: true };
+      }
       case "session.createManaged":
       case "session.appendManaged": {
+        if (this.loaded.get(pluginId) !== loaded ||
+            (loaded.disposing && (api === "session.createManaged" || !loaded.cleanupActive))) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
         this.assertPermission(loaded, "session.manage.own");
         const input = normalizePluginSessionInput(args[0] ?? {}, "other");
         if (api === "session.createManaged") {
@@ -3218,6 +3279,7 @@ export class PluginRuntime {
   }
 
   private handleChildExit(loaded: LoadedPlugin, code: number): void {
+    loaded.agentSubscriptions.clear();
     this.toolInvocations.cancelOwner(loaded, "Plugin host process exited");
     if (loaded.disposing) return;
     if (this.loaded.get(loaded.manifest.id) !== loaded) return;
@@ -5099,7 +5161,7 @@ export class PluginRuntime {
       secrets: createPluginSecretsApi({
         pluginId: loaded.manifest.id,
         assertPermission: () => {
-          if (this.loaded.get(loaded.manifest.id) !== loaded || loaded.disposing) throw apiError("PERMISSION_DENIED", "Plugin is no longer active");
+          if (this.loaded.get(loaded.manifest.id) !== loaded || (loaded.disposing && !loaded.cleanupActive)) throw apiError("PERMISSION_DENIED", "Plugin is no longer active");
           this.assertPermission(loaded, "secrets.store");
         },
         callHost: (method, params) => {
@@ -5357,6 +5419,35 @@ export class PluginRuntime {
         },
       },
       desktop: {
+        subscribeAgentEvents: async (input: unknown) => {
+          this.assertPermission(loaded, "desktop.control");
+          if (loaded.disposing || this.loaded.get(pluginId) !== loaded) {
+            throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+          }
+          const sessionId = input && typeof input === "object" && !Array.isArray(input)
+            ? (input as { sessionId?: unknown }).sessionId : undefined;
+          if (typeof sessionId !== "string" || !sessionId.trim() || sessionId.length > 128) {
+            throw apiError("INVALID_PARAMS", "A bounded sessionId is required");
+          }
+          for (const [subscriptionId, existing] of loaded.agentSubscriptions) {
+            if (existing === sessionId.trim()) return { subscriptionId };
+          }
+          if (loaded.agentSubscriptions.size >= 64) {
+            throw apiError("BUSY", "Agent event subscription limit reached");
+          }
+          const subscriptionId = randomUUID();
+          loaded.agentSubscriptions.set(subscriptionId, sessionId.trim());
+          return { subscriptionId };
+        },
+        unsubscribeAgentEvents: async (input: unknown) => {
+          this.assertPermission(loaded, "desktop.control");
+          const subscriptionId = input && typeof input === "object" && !Array.isArray(input)
+            ? (input as { subscriptionId?: unknown }).subscriptionId : undefined;
+          if (typeof subscriptionId !== "string" || !subscriptionId) {
+            throw apiError("INVALID_PARAMS", "subscriptionId is required");
+          }
+          loaded.agentSubscriptions.delete(subscriptionId);
+        },
         listOperations: async () => {
           this.assertPermission(loaded, "desktop.control");
           const controller = this.services.desktopControl;
@@ -5380,6 +5471,9 @@ export class PluginRuntime {
           }
           const input = rawInput as Record<string, unknown>;
           const operation = typeof input.operation === "string" ? input.operation : "";
+          if (loaded.disposing && !["agent/abort", "session/get", "session/delete"].includes(operation)) {
+            throw apiError("PLUGIN_UNLOADED", "Only execution cleanup is available while unloading");
+          }
           const args = input.args === undefined ? [] : input.args;
           if (!Array.isArray(args)) {
             throw apiError("INVALID_PARAMS", "desktop.invoke args must be an array");

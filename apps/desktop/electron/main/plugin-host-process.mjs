@@ -262,6 +262,8 @@ function buildApi() {
       get: () => call("workspace.get"),
     },
     desktop: {
+      subscribeAgentEvents: (input) => call("desktop.subscribeAgentEvents", [input]),
+      unsubscribeAgentEvents: (input) => call("desktop.unsubscribeAgentEvents", [input]),
       listOperations: () => call("desktop.listOperations"),
       invoke: (input) => call("desktop.invoke", [input ?? {}]),
     },
@@ -320,6 +322,7 @@ function buildApi() {
       delete: (key) => call("secrets.delete", [key]),
     },
     session: {
+      emitManagedEvent: (input) => call("session.emitManagedEvent", [input ?? {}]),
       createManaged: (input) => call("session.createManaged", [input ?? {}]),
       appendManaged: (input) => call("session.appendManaged", [input ?? {}]),
       getLlmContext: () => call("session.getLlmContext"),

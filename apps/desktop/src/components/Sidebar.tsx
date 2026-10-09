@@ -1,4 +1,5 @@
 import { IconClock } from "./icons";
+import { PluginNavigationSections } from "../plugins/renderer-slots/ShellSlots";
 import {
   useCallback,
   useEffect,
@@ -2512,6 +2513,8 @@ export function Sidebar({
             </section>
           )}
         </div>
+
+        <PluginNavigationSections />
 
         <div className="sidebar-footer no-drag">
           <div className="footer-actions">
