@@ -1,6 +1,7 @@
 import { type CSSProperties, lazy, type ReactNode, Suspense, useEffect } from "react";
 import { ConversationTopbar } from "../../components/ConversationTopbar";
 import { ExtensionPromptHost } from "../../components/ExtensionPromptDialog";
+import { PluginMainPage } from "../../plugins/renderer-slots/ShellSlots";
 import { PluginRendererHost } from "../../plugins/renderer-host/PluginRendererHost";
 import {
   IconNewSession,
@@ -280,6 +281,8 @@ export function AppShell() {
                     <div className="route-surface route-page">
                       <PluginsPage />
                     </div>
+                  ) : page.startsWith("plugin:") ? (
+                    <div className="route-surface route-page"><PluginMainPage page={page} /></div>
                   ) : (
                     <ChatSurface visible={page === "chat"} />
                   )}

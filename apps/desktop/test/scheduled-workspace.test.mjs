@@ -311,7 +311,7 @@ test("the session list and search both consume the ownership rule", async () => 
   const search = await readFile(new URL("../src/hooks/use-session-search.ts", import.meta.url), "utf8");
   assert.match(
     search,
-    /state\.hits\.filter\(\(hit\) => !isAutomationSession\(hit\.session\)\)/,
+    /state\.hits\.filter\(\(hit\) => !isAutomationSession\(hit\.session\) && !hit\.session\.managedByPlugin\)/,
     "search never offers one as a conversation to open",
   );
   const palette = await readFile(
@@ -474,13 +474,14 @@ test("every session list the user can enter drops a run's transcript", async () 
     const listed = [
       { id: "plain" },
       { id: "automation", scheduledRun: true },
+      { id: "managed", managedByPlugin: "fixture.owner" },
       { id: "legacy" },
       { id: "explicit-false", scheduledRun: false },
     ];
     assert.deepEqual(
       origin.listableSessions(listed).map((session) => session.id),
       ["plain", "legacy", "explicit-false"],
-      "only a run's transcript leaves the list",
+      "owned transcripts leave ordinary lists, including disabled plugin owners",
     );
     assert.deepEqual(origin.listableSessions([]), []);
 

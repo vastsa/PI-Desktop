@@ -474,3 +474,26 @@ test("the default routes reach the draft bridge, the window's event and the main
     return true;
   });
 });
+
+
+test("session context and work-panel actions preserve plugin identity and reject stale or remote opens", async () => {
+  const { routes } = fakeRoutes({ gesture: () => true });
+  let context = { sessionId: "room", managedByPlugin: PLUGIN };
+  const opened = [];
+  routes.session = { readContext: () => context, openView: (...args) => opened.push(args) };
+  const channel = createDispatchChannel(PLUGIN, ["session.readContext", "workPanel.openView"], routes);
+  assert.deepEqual(await channel.dispatch("session.readContext", {}), context);
+  assert.deepEqual(await channel.dispatch("workPanel.openView", { viewId: "members", expectedSessionId: "room" }), { ok: true });
+  assert.deepEqual(opened, [[PLUGIN, "members", "room"]]);
+  context = { sessionId: "other" };
+  await assert.rejects(channel.dispatch("workPanel.openView", { viewId: "members", expectedSessionId: "room" }), rejectsWith("PLUGIN_DRAFT_STALE"));
+  routes.userGesture = () => false;
+  await assert.rejects(channel.dispatch("workPanel.openView", { viewId: "members", expectedSessionId: "other" }), rejectsWith("PLUGIN_DRAFT_REMOTE"));
+  await assert.rejects(channel.dispatch("session.readContext", { secret: true }), rejectsWith("PLUGIN_ACTION_INVALID_PAYLOAD"));
+  await assert.rejects(channel.dispatch("workPanel.openView", { viewId: "other/members", expectedSessionId: "other" }), rejectsWith("PLUGIN_ACTION_INVALID_PAYLOAD"));
+  context = null;
+  assert.equal(await channel.dispatch("session.readContext", {}), null);
+  channel.close();
+  await assert.rejects(channel.dispatch("session.readContext", {}), rejectsWith("PLUGIN_UNLOADED"));
+  assert.equal(opened.length, 1);
+});

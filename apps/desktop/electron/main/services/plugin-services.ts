@@ -62,7 +62,11 @@ export type PluginServicesDependencies = {
   logger: Logger;
   getMainWindow: () => BrowserWindow | null;
   getHost: () => HostProcess | null;
-  sendToRenderer: (channel: string, payload: unknown) => void;
+  sendToRenderer: (
+    channel: string,
+    payload: unknown,
+    options?: { pluginDelivery?: boolean },
+  ) => void;
   safeOpenExternal: (rawUrl: unknown) => Promise<void>;
   stripWinLongPrefix: (path: string) => string;
   clipboardHistory: ClipboardHistory;
@@ -366,6 +370,16 @@ export function createPluginServices({
     session: {
       createManaged: (pluginId, input) => callPluginSessionHost("plugin.session.createManaged", pluginId, input),
       appendManaged: (pluginId, input) => callPluginSessionHost("plugin.session.appendManaged", pluginId, input),
+      managedOwner: async (sessionId) => {
+        const host = getHost();
+        if (!host) throw new Error("host unavailable");
+        const result = await host.call<{ pluginId: string | null }>("session.managedOwner", { sessionId });
+        return result.pluginId;
+      },
+      // Presentation envelopes are display-only; they never reach plugin
+      // execution-event subscribers.
+      emitManagedEvent: (envelope) =>
+        sendToRenderer(IPC.event.agentMessage, envelope, { pluginDelivery: false }),
       list: (pluginId, input) => callPluginSessionHost("plugin.session.list", pluginId, input),
       get: (pluginId, input) => callPluginSessionHost("plugin.session.get", pluginId, input),
       listMessages: (pluginId, input) =>
@@ -566,6 +580,7 @@ export function createPluginServices({
    * guarantee for a plugin that is loading, crashed or unloaded right now.
    */
   const announceTurnEnded = (payload: TurnEndedPayload): void => {
+    plugins.deliverTurnEnded(payload);
     try {
       plugins.broadcastEvent("session:turnEnded", [payload]);
     } catch (error) {

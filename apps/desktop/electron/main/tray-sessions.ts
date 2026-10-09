@@ -30,12 +30,13 @@ const REFRESH_AFTER_INVOKE = new Set<string>([
  * tray never offers one as a recent conversation — or as a running session it
  * could switch to (issue #1291). Ownership is reported by the host as
  * `scheduledRun` on each summary; this is the main-process twin of the
- * renderer's `isAutomationSession`.
+ * renderer's ownership filter. Managed plugin transcripts likewise use their
+ * owner's navigation, including while that plugin is disabled.
  */
 export function trayVisibleSessions(
   sessions: readonly SessionSummary[],
 ): SessionSummary[] {
-  return sessions.filter((session) => session.scheduledRun !== true);
+  return sessions.filter((session) => session.scheduledRun !== true && !session.managedByPlugin);
 }
 
 export function createTraySessions({
