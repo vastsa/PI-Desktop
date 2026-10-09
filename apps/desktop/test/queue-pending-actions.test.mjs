@@ -327,3 +327,69 @@ test("managed admission stays accepted when transcript refresh fails", async (t)
     await server.close();
   }
 });
+
+test("managed admission refresh never pulls the user back from another page", async (t) => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  const previousWindow = globalThis.window;
+  try {
+    const { createQueueSlice } = await server.ssrLoadModule("/src/stores/slices/queue-slice.ts");
+    globalThis.window = { piDesktop: { invoke: async (channel) => {
+      if (channel === IPC.invoke.agentPrompt) return { ok: true, data: { turnId: "turn-1", managed: true } };
+      if (channel === IPC.invoke.sessionDeriveTitle) return { ok: true, data: { updated: true } };
+      throw new Error(`Unexpected IPC: ${channel}`);
+    } } };
+    for (const [pageDuringRefresh, expectedSelections] of [["chat", 1], ["plugin:example/rooms", 0]]) {
+      const selected = [];
+      let state = {
+        page: "chat",
+        activeSessionId: "session-a",
+        sessions: [{ id: "session-a", title: "Managed room", source: "desktop" }],
+        messages: [],
+        pendingPlans: {},
+        runningSessions: {},
+        latestTurnResults: {},
+        sessionOutcomes: {},
+        showToast: assert.fail,
+        rememberModel() {},
+        refreshSessions: async () => { state = { ...state, page: pageDuringRefresh }; },
+        selectSession: async (id) => { selected.push(id); },
+      };
+      const slice = createQueueSlice({
+        get: () => state,
+        set: (update) => {
+          const next = typeof update === "function" ? update(state) : update;
+          state = { ...state, ...next };
+        },
+        runtime: {
+          submittedComposerDrafts: new Map(),
+          sessionTranscriptCache: new Map(),
+          insertOptimisticUserMessage() {},
+          retractOptimisticUserMessage() {},
+        },
+        promptAttachmentsFromDraft: () => [],
+        withoutRecordKey: (record, key) => {
+          const next = { ...record };
+          delete next[key];
+          return next;
+        },
+        viewingSessionIdForPrompt: () => "session-a",
+        messageErrorFromUnknown: (error) => ({ code: "FAILED", message: String(error) }),
+        assistantErrorMessage: () => ({ role: "assistant", content: "failed" }),
+        materializeDraftSession: async () => null,
+      });
+      assert.equal(await slice.sendPrompt("Room broadcast", undefined, "session-a"), true);
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(selected.length, expectedSelections, pageDuringRefresh);
+      assert.equal(state.page, pageDuringRefresh);
+    }
+  } finally {
+    globalThis.window = previousWindow;
+    await server.close();
+  }
+});
