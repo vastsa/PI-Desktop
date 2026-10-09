@@ -387,7 +387,20 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
         const result = await host.call<{ pluginId: string | null }>("session.managedOwner", { sessionId });
         return result.pluginId;
       },
+      projectPath: async (sessionId) => {
+        const host = getHost();
+        if (!host) return undefined;
+        // Only the session's project path is needed, so the read window is left
+        // to the host default. Requesting a zero-length window trips the
+        // host-core guard ("positive messageLimit") and would fail every
+        // managed send before it reached the plugin.
+        const result = await host.call<{ session?: { projectPath?: string | null } }>("session.get", {
+          id: sessionId,
+        });
+        return result.session?.projectPath ?? undefined;
+      },
       submit: (pluginId, input) => plugins.submitManagedSession(pluginId, input),
+      dataDir,
     }),
     getHost,
     getSidecar,

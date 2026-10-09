@@ -185,7 +185,7 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-async function ensureAttachmentBlobFromFile(
+export async function ensureAttachmentBlobFromFile(
   dataRoot: string,
   source: string,
 ): Promise<string> {
@@ -306,6 +306,85 @@ export async function preparePromptAttachments(
       ...(bytes
         ? { inlineData: bytes.toString("base64") }
         : {}),
+    });
+  }
+  return prepared;
+}
+
+/**
+ * A managed (plugin-owned) prompt attachment, ready to cross the plugin
+ * boundary as a descriptor. The bytes never travel here: every attachment —
+ * image or plain file — is stored content-addressed under
+ * `<dataRoot>/attachments/<sha256>` and only the ref is handed on, so the
+ * owning plugin can ship the bytes to another machine and any machine holding
+ * the blob can render it.
+ */
+export type PreparedManagedAttachment = {
+  ref: string;
+  name: string;
+  kind: "image" | "file";
+  mimeType?: string;
+  size?: number;
+  /**
+   * The `@path` text this attachment occupies inside the message content when
+   * the user's draft placed it between words. The transcript renders the
+   * attachment at that position instead of trailing the body.
+   */
+  inlinePath?: string;
+};
+
+/**
+ * Resolve and store the attachments of one managed-session prompt.
+ *
+ * Unlike `preparePromptAttachments` there is no vision decision and no inline
+ * base64: a managed transcript never runs an agent on this machine, so the
+ * only job is to make each attachment durable and content-addressed. Plain
+ * files take the same content-addressed path as images, which is what makes a
+ * ref portable to another computer.
+ */
+export async function prepareManagedPromptAttachments(
+  dataRoot: string,
+  sessionId: string,
+  projectPath: string | undefined,
+  attachments: readonly AgentPromptAttachment[],
+  promptContent: string,
+): Promise<PreparedManagedAttachment[]> {
+  const prepared: PreparedManagedAttachment[] = [];
+  const inlineSpans = locateInlinePromptPaths(
+    promptContent,
+    attachments.map((attachment) => attachment.path),
+  );
+  for (const [index, attachment] of attachments.entries()) {
+    const source = resolvePromptPath(dataRoot, sessionId, projectPath, attachment.path);
+    if (!source) {
+      throw Object.assign(new Error(`Attachment path is outside the session roots: ${attachment.path}`), {
+        errorCode: ErrorCodes.PATH_OUTSIDE_WORKSPACE,
+      });
+    }
+    const name = attachment.name.trim() || source.absolute.split(/[\\/]/).at(-1) || "attachment";
+    const mimeType = promptMimeType(source.absolute, attachment.mimeType, name);
+    const kind: "image" | "file" = isImagePromptAttachment(attachment, source.absolute)
+      ? "image"
+      : "file";
+    // A blob the renderer already staged under `attachments/<sha>` is already
+    // content-addressed; anything else is hashed and copied in.
+    const ref =
+      source.root === "attachment" && attachment.path.trim().startsWith("attachments/")
+        ? attachment.path.trim()
+        : await ensureAttachmentBlobFromFile(dataRoot, source.absolute);
+    const size = Number.isFinite(attachment.size)
+      ? attachment.size
+      : statSync(source.absolute).size;
+    const inlinePath = inlineSpans[index]
+      ? formatPromptPathText(attachment.path)
+      : undefined;
+    prepared.push({
+      ref,
+      name,
+      kind,
+      ...(mimeType !== "application/octet-stream" ? { mimeType } : {}),
+      size,
+      ...(inlinePath ? { inlinePath } : {}),
     });
   }
   return prepared;

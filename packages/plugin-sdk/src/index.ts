@@ -220,6 +220,8 @@ import type { PluginSecretsApi } from "./secrets.js";
 
 export type { PluginManagedSessionCreateInput, PluginManagedMessageInput, PluginManagedSessionSubmitInput } from "./managed-sessions";
 import type { PluginManagedSessionCreateInput, PluginManagedMessageInput, PluginManagedSessionSubmitInput } from "./managed-sessions";
+export type { PluginManagedAttachment } from "./managed-sessions";
+import type { PluginManagedAttachment } from "./managed-sessions";
 
 export type PluginSessionSourceContrib = {
   id: string;
@@ -241,7 +243,12 @@ export type PluginComposerTransformInput = {
 };
 
 export type PluginSessionMessage =
-  | { role: "user"; content: string; createdAt: string }
+  | {
+      role: "user";
+      content: string;
+      createdAt: string;
+      attachments?: PluginManagedAttachment[];
+    }
   | {
       role: "assistant";
       content: string;
@@ -1296,6 +1303,48 @@ export type PluginHostApi = {
     /** Requires session.manage.own; existing ordinary/imported sessions cannot be claimed. */
     createManaged: (input: PluginManagedSessionCreateInput) => Promise<{ sessionId: string; created: boolean }>;
     appendManaged: (input: PluginManagedMessageInput) => Promise<{ messageId: string; appended: boolean }>;
+    /**
+     * Bind the model/thinking level the native composer composes with. This is
+     * display state only — a managed session never runs an agent — and it can
+     * never change the session's mode or permission mode, which is why it is a
+     * plain call rather than the confirmed `session/configure`.
+     */
+    setManagedModel: (input: {
+      sessionId: string;
+      providerId?: string;
+      modelId?: string;
+      thinkingLevel?: string;
+    }) => Promise<{ updated: boolean }>;
+    /** Read one chunk of a stored managed-message attachment blob. */
+    readManagedAttachment: (input: {
+      sessionId: string;
+      ref: string;
+      offset?: number;
+      length?: number;
+    }) => Promise<{
+      ref: string;
+      size: number;
+      offset: number;
+      eof: boolean;
+      contentBase64: string;
+    }>;
+    /** Stage an attachment blob another computer sent; commit hashes it into place. */
+    beginManagedAttachment: (input: {
+      sessionId: string;
+      name: string;
+      mimeType?: string;
+      size: number;
+    }) => Promise<{ uploadId: string }>;
+    writeManagedAttachment: (input: {
+      sessionId: string;
+      uploadId: string;
+      offset: number;
+      dataBase64: string;
+    }) => Promise<{ received: number }>;
+    commitManagedAttachment: (input: {
+      sessionId: string;
+      uploadId: string;
+    }) => Promise<{ ref: string; size: number }>;
     /** Ephemeral native presentation only; appendManaged remains the durable record.
      * Allowed types: message_start/update/end and tool_start/update/end. */
     emitManagedEvent: (input: { sessionId: string; author?: string; envelope: {
