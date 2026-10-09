@@ -33,6 +33,27 @@
   width: 100%;
 }
 
+/*
+ * A main page is a route surface's only child, so it takes the surface's box
+ * exactly: block-level (an `inline-flex` mount sizes to its content, which is
+ * zero for any page that establishes its own container) and stretched to the
+ * route's height so the page's own scroller, not the surface, owns overflow.
+ */
+.pi-plugin-slot[data-pi-slot="mainPage"] {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* A navigation section is a sidebar column, like the host's own groups. */
+.pi-plugin-slot[data-pi-slot="navigationSection"] {
+  display: block;
+  flex: none;
+  width: 100%;
+  min-width: 0;
+}
+
 /* ---- self-dialog tool classes ---------------------------------------- */
 
 .p-overlay {
