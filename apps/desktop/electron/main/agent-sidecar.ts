@@ -72,6 +72,10 @@ export class AgentSidecar extends RuntimeAgentSidecar {
         // Never bypass TLS verification.
         args: [
           "--max-old-space-size=2048",
+          // Lets the sidecar run a full GC while idle so pages promoted
+          // during large turns are handed back to the OS instead of pinning
+          // hundreds of MB of RSS forever (issue #1496).
+          "--expose-gc",
           ...(process.platform === "darwin" ? [] : ["--use-system-ca"]),
           resolveSidecarEntry(),
         ],

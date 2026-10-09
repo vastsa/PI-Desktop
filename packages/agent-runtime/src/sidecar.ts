@@ -666,4 +666,26 @@ if (bootProxy) {
 // The default TLS context is configured before any provider request can be
 // issued, so the merged CA set covers every transport this sidecar builds.
 applyAdditiveDefaultCaCertificates();
+
+// Idle heap trim: V8 keeps old-space pages resident after large turns, so an
+// otherwise idle sidecar pins its peak RSS long after the last prompt
+// (issue #1496). When launched with --expose-gc (the desktop does), run a
+// full GC whenever no runtime has a turn in flight; without the flag this is
+// a no-op. Active turns are never paused on purpose.
+const idleGc = (globalThis as { gc?: () => void }).gc;
+if (typeof idleGc === "function") {
+  const IDLE_GC_INTERVAL_MS = 5 * 60 * 1000;
+  const idleGcTimer = setInterval(() => {
+    for (const runtime of runtimes.values()) {
+      if (runtime.getStatus().isRunning) return;
+    }
+    try {
+      idleGc();
+    } catch {
+      // A failed trim must never take the sidecar down.
+    }
+  }, IDLE_GC_INTERVAL_MS);
+  idleGcTimer.unref?.();
+}
+
 process.stderr.write("[agent-sidecar] ready (host-proxy mode)\n");
