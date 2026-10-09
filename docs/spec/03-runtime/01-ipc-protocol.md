@@ -1699,20 +1699,31 @@ type McpOAuthLoginEvent = {
 
 ## 12c. Subagent API (D202)
 
-User-owned subagents are global-only Markdown documents under
+User-owned subagents are globally stored Markdown documents under
 `~/.agents/subagents/<id>.md`. There is no project-level subagent directory.
 Enablement is stored in `<data>/agent-capabilities/subagents.json` and is never
-written into the Markdown file.
+written into the Markdown file. Project visibility is stored separately in
+`<data>/agent-capabilities/subagent-scopes.json`, keyed by document id. Missing
+entries default to global; malformed scope state fails the query rather than
+exposing project-only documents globally. Older versions do not enforce scopes.
 
 - `agents.list` → `{ subagents: UserSubagentRecord[] }`
-- `agents.active` → enabled global documents
+- `agents.active(projectPath?)` → enabled documents whose scope matches the project
 - `agents.create(subagent)` — duplicate names fail with `SUBAGENT_INVALID`
 - `agents.update(id, subagent)`
 - `agents.read(id)` → `{ subagent, body }`
 - `agents.remove(id)`
 - `agents.setEnabled(id, enabled)`
+- `agents.setScope(id, scope)` → updated record
 - `agents.disabledBuiltins` → `{ disabled: string[] }`
 - `agents.setBuiltinEnabled(id, enabled)` → `{ id, enabled }`
+
+Create/update accept `scope: { mode: "global" | "projects", projects: string[] }`.
+Create defaults to global; update preserves an omitted scope. Project mode
+matches selected paths and descendants; no project or an empty selection matches
+no documents. Global mode can retain project selections for later reuse. Rename
+preserves scope and enablement; deletion removes scope metadata. Changes apply
+when the next prompt loads the catalog, not to delegates already running.
 
 The `thinkingLevel` field accepted by `agents.create` and `agents.update` may
 be a canonical thinking level, `omit`, or the empty string. The empty string
@@ -1740,9 +1751,9 @@ name is normalized and rejects an empty one with `SUBAGENT_INVALID`; a handle no
 current builtin uses is stored inertly rather than refused, because host-core
 does not ship the builtin list.
 
-Electron's `subagent/list` IPC channel exposes the same global-only list to
+Electron's `subagent/list` IPC channel exposes the complete user-document list to
 Settings > Agent > Subagents. `subagent/catalog` returns the effective Task
-catalog — enabled user documents merged with the five shipped builtins, minus the
+catalog — project-matching enabled user documents merged with the five shipped builtins, minus the
 builtins the user switched off — together with `builtins`: every shipped
 definition that still wins its handle, each carrying `enabled`, so the page can
 render a switched-off default as a row with its own switch. The runtime catalog

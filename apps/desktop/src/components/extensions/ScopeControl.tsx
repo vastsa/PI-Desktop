@@ -43,12 +43,15 @@ export type ScopeControlProps = {
   /** The project open in this window, offered first by the This project choice. */
   currentProjectPath?: string | null;
   /** Everything the picker can offer, newest-first as the sidebar orders them. */
-  projects: readonly ProjectRecord[];
-  onSetEnabled: (enabled: boolean) => void | Promise<void>;
+  projects: readonly Pick<ProjectRecord, "path" | "name">[];
+  /** Omit when enablement is managed separately; show only scope choices. */
+  onSetEnabled?: (enabled: boolean) => void | Promise<void>;
   onSetScope: (scope: ActivationScope) => void | Promise<void>;
   disabled?: boolean;
   /** Renders one current-state trigger with a menu, for dense rows. */
   compact?: boolean;
+  /** Show project choices within a scrolling editor instead of a floating menu. */
+  inlineProjects?: boolean;
 };
 
 const STATE_ORDER: ActivationState[] = ["off", "projects", "global"];
@@ -87,20 +90,22 @@ export function ScopeControl({
   onSetScope,
   disabled,
   compact,
+  inlineProjects = false,
 }: ScopeControlProps) {
   const { t } = useTranslation();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
   const compactWrapRef = useRef<HTMLDivElement | null>(null);
-  const state = activationState(target);
   const scope = resolveScope(target.scope);
+  const state = onSetEnabled ? activationState(target) : scope.mode;
+  const choices: ActivationState[] = onSetEnabled ? STATE_ORDER : ["global", "projects"];
 
   const select = (next: ActivationState) => {
     if (disabled) return;
     setCompactOpen(false);
     if (next === state && next !== "projects") return;
     if (next === "off") {
-      void onSetEnabled(false);
+      void onSetEnabled?.(false);
       setPickerOpen(false);
       return;
     }
@@ -108,21 +113,21 @@ export function ScopeControl({
       // Keep the project list: a user who widens a scope and narrows it again
       // should get their selection back, not an empty list.
       void onSetScope({ mode: "global", projects: scope.projects });
-      if (!target.enabled) void onSetEnabled(true);
+      if (!target.enabled) void onSetEnabled?.(true);
       setPickerOpen(false);
       return;
     }
     // "This project" with nothing selected yet seeds itself from the window, so
     // the common case — scope this to what I have open — needs no second step.
-    if (scope.projects.length === 0 && currentProjectPath) {
+    if (onSetEnabled && scope.projects.length === 0 && currentProjectPath) {
       void onSetScope(withProject(scope, currentProjectPath));
-      if (!target.enabled) void onSetEnabled(true);
+      if (!target.enabled) void onSetEnabled?.(true);
       setPickerOpen(true);
       return;
     }
     if (state !== "projects") {
       void onSetScope({ mode: "projects", projects: scope.projects });
-      if (!target.enabled) void onSetEnabled(true);
+      if (!target.enabled) void onSetEnabled?.(true);
     }
     setPickerOpen((open) => !open);
   };
@@ -168,7 +173,7 @@ export function ScopeControl({
               </TooltipButton>
             )}
           >
-          {STATE_ORDER.map((option) => (
+          {choices.map((option) => (
             <TooltipButton
               key={option}
               type="button"
@@ -214,7 +219,7 @@ export function ScopeControl({
             role="radiogroup"
             aria-label={t("extensions.scope.ariaLabel", { name: label })}
           >
-            {STATE_ORDER.map((option) => (
+            {choices.map((option) => (
               <TooltipButton
                 key={option}
                 type="button"
@@ -233,6 +238,7 @@ export function ScopeControl({
           </div>
           {state === "projects" ? (
             <ScopeProjectsSummary
+              inline={inlineProjects}
               scope={scope}
               projects={projects}
               currentProjectPath={currentProjectPath}
@@ -255,6 +261,7 @@ export function ScopeControl({
  */
 function ScopeProjectsSummary({
   compact = false,
+  inline = false,
   anchorRef,
   scope,
   projects,
@@ -265,9 +272,10 @@ function ScopeProjectsSummary({
   label,
 }: {
   compact?: boolean;
+  inline?: boolean;
   anchorRef?: RefObject<HTMLElement | null>;
   scope: ActivationScope;
-  projects: readonly ProjectRecord[];
+  projects: readonly Pick<ProjectRecord, "path" | "name">[];
   currentProjectPath?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -300,9 +308,12 @@ function ScopeProjectsSummary({
         current: key === normalizeProjectPath(currentProjectPath ?? "").toLocaleLowerCase(),
       });
     };
-    if (currentProjectPath) push(currentProjectPath, projectLabel(currentProjectPath));
-    for (const entry of scope.projects) push(entry, projectLabel(entry));
+    if (currentProjectPath) {
+      const current = projects.find((project) => normalizeProjectPath(project.path).toLocaleLowerCase() === normalizeProjectPath(currentProjectPath).toLocaleLowerCase());
+      push(currentProjectPath, current?.name ?? projectLabel(currentProjectPath));
+    }
     for (const project of projects) push(project.path, project.name);
+    for (const entry of scope.projects) push(entry, projectLabel(entry));
     const needle = query.trim().toLocaleLowerCase();
     if (!needle) return out;
     return out.filter(
@@ -322,48 +333,11 @@ function ScopeProjectsSummary({
 
   const count = scope.projects.length;
 
-  return (
-    <AnchoredMenu
-      className={cx("scope-projects", compact && "is-compact")}
-      open={open}
-      onClose={() => onOpenChange(false)}
-      anchorRef={anchorRef}
-      menuClassName="scope-popover"
-      label={t("extensions.scope.pickerTitle", { name: label })}
-      role="dialog"
-      align="end"
-      initialFocus="input"
-      trigger={(ref) =>
-        compact ? null : (
-          <>
-            <button
-              ref={ref}
-              type="button"
-              className={cx("scope-chip", count === 0 && "is-empty", open && "is-open")}
-              aria-haspopup="dialog"
-              aria-expanded={open}
-              onClick={() => onOpenChange(!open)}
-            >
-              <IconFolder size={12} />
-              {count === 0
-                ? t("extensions.scope.pickProjects")
-                : count === 1
-                  ? projectLabel(scope.projects[0])
-                  : t("extensions.scope.projectCount", { count })}
-            </button>
-            {count === 0 ? (
-              <span className="scope-warn" role="status">
-                {t("extensions.scope.noProjectsWarning")}
-              </span>
-            ) : null}
-          </>
-        )
-      }
-    >
+  const pickerContent = (
       <>
         <div className="scope-popover-head">
             <div className="scope-popover-title">{t("extensions.scope.pickerTitle", { name: label })}</div>
-            <TooltipButton
+            {!inline ? <TooltipButton
               type="button"
               className="scope-popover-close"
               tooltip={t("common.close")}
@@ -371,13 +345,13 @@ function ScopeProjectsSummary({
               onClick={() => onOpenChange(false)}
             >
               <IconX size={12} />
-            </TooltipButton>
+            </TooltipButton> : null}
         </div>
         <div className="scope-popover-search">
             <IconSearch size={12} />
             <input
               value={query}
-              autoFocus
+              autoFocus={!inline}
               spellCheck={false}
               placeholder={t("extensions.scope.searchProjects")}
               aria-label={t("extensions.scope.searchProjects")}
@@ -418,6 +392,55 @@ function ScopeProjectsSummary({
         </div>
         <p className="scope-popover-foot">{t("extensions.scope.subdirectoryNote")}</p>
       </>
+  );
+
+  if (inline) {
+    return (
+      <div className="scope-inline-projects" aria-label={t("extensions.scope.pickerTitle", { name: label })}>
+        {pickerContent}
+      </div>
+    );
+  }
+
+  return (
+    <AnchoredMenu
+      className={cx("scope-projects", compact && "is-compact")}
+      open={open}
+      onClose={() => onOpenChange(false)}
+      anchorRef={anchorRef}
+      menuClassName="scope-popover"
+      label={t("extensions.scope.pickerTitle", { name: label })}
+      role="dialog"
+      align="end"
+      initialFocus="input"
+      trigger={(ref) =>
+        compact ? null : (
+          <>
+            <button
+              ref={ref}
+              type="button"
+              className={cx("scope-chip", count === 0 && "is-empty", open && "is-open")}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              onClick={() => onOpenChange(!open)}
+            >
+              <IconFolder size={12} />
+              {count === 0
+                ? t("extensions.scope.pickProjects")
+                : count === 1
+                  ? projectLabel(scope.projects[0])
+                  : t("extensions.scope.projectCount", { count })}
+            </button>
+            {count === 0 ? (
+              <span className="scope-warn" role="status">
+                {t("extensions.scope.noProjectsWarning")}
+              </span>
+            ) : null}
+          </>
+        )
+      }
+    >
+      {pickerContent}
     </AnchoredMenu>
   );
 }
