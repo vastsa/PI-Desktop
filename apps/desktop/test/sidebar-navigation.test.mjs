@@ -150,15 +150,27 @@ test("sidebar project and session lists stay coordinated with the global type sc
   );
 });
 
-test("pinned project rows replace the folder glyph with a filled star", () => {
+test("a project row leads with one fixed-width folder box and no pin badge", () => {
+  // The folder reports disclosure, so there is no chevron. The wrapper — not
+  // the folder — is the flex item, so the box is 13px and the title keeps one
+  // left edge. Pinning is not marked on the row at all: a pinned project lives
+  // in its own group above the list, so a badge here would only repeat it.
   assert.match(
     sidebarSource,
-    /entry\.meta\.pinned \? \([\s\S]*?<IconStar\s+size=\{13\}\s+fill="currentColor"[\s\S]*?className="sidebar-project-pin"[\s\S]*?\) : \([\s\S]*?<IconFolder size=\{13\} aria-hidden \/>/,
+    /<span className="sidebar-project-glyph" aria-hidden>[\s\S]*?collapsedProject \? \([\s\S]*?<IconFolder size=\{13\} aria-hidden \/>[\s\S]*?\) : \([\s\S]*?<IconFolderOpen size=\{13\} aria-hidden \/>[\s\S]*?<\/span>/,
   );
+  assert.doesNotMatch(sidebarSource, /sidebar-disclosure-icon/);
+  assert.doesNotMatch(sidebarSource, /className="sidebar-project-pin"/);
+  assert.doesNotMatch(sidebarSource, /sidebar-project-folder/);
+
   assert.match(
     globalStyles,
-    /\.sidebar-project-pin\s*\{[^}]*flex:\s*0 0 auto;[^}]*color:\s*var\(--ds-accent\);/s,
+    /\.sidebar-project-glyph\s*\{[^}]*position:\s*relative;[^}]*width:\s*13px;[^}]*flex:\s*0 0 13px;/s,
   );
+  // The badge and its old rule are both gone; the star/pin glyph is not
+  // smuggled back in beside the folder.
+  assert.doesNotMatch(globalStyles, /\.sidebar-project-pin/);
+  assert.doesNotMatch(globalStyles, /\.sidebar-project-folder/);
 });
 
 test("sidebar section toolbars open create actions from context menus", () => {
@@ -228,10 +240,10 @@ test("sidebar action icons stay quiet until their toolbar or row is hovered", ()
     globalStyles,
     /\.sidebar-list-toolbar:hover \.sidebar-toolbar-button,[\s\S]*?\.sidebar-list-toolbar:focus-within \.sidebar-toolbar-button,[\s\S]*?opacity:\s*1;/,
   );
-  assert.match(globalStyles, /\.thread-item:hover \.thread-item-more,/);
+  assert.match(globalStyles, /\.thread-item:hover \.thread-item-action,/);
   assert.match(
     globalStyles,
-    /\.sidebar-session-group-header:hover \.thread-item-more,[\s\S]*?\.sidebar-session-group-header:focus-within \.thread-item-more,/,
+    /\.sidebar-session-group-header:hover \.thread-item-action,[\s\S]*?\.sidebar-session-group-header:focus-within \.thread-item-action,/,
   );
   assert.match(
     globalStyles,
@@ -263,6 +275,39 @@ test("sidebar row menus omit project reassignment and switching actions", () => 
   assert.match(
     sidebarSource,
     /if \(!entry\.active && !\(await selectProject\(entry\.path\)\)\) return;/,
+  );
+});
+
+test("session rows line their title up with the project name in every state", () => {
+  const sessionMain = sidebarSource.match(
+    /className="thread-item-main"[\s\S]*?<\/button>/,
+  )?.[0] ?? "";
+
+  // A reserved but unpainted slot: a plain row keeps its bare leading edge,
+  // while the row stays on the same x as a project name either way.
+  assert.match(sessionMain, /className="thread-item-slot"/);
+  assert.match(sessionMain, /!status && pinned \? <IconPin size=\{13\} fill="none" className="thread-item-pin"/);
+  assert.doesNotMatch(sessionMain, /thread-item-glyph/);
+  // A text badge has no fixed width for the slot, so it follows the title.
+  assert.match(
+    sessionMain,
+    /<span className="thread-item-title">[\s\S]*?<span className="thread-item-source"/,
+  );
+  assert.match(
+    globalStyles,
+    /\.thread-item-slot\s*\{[^}]*width:\s*13px;[^}]*flex:\s*0 0 13px;/s,
+  );
+  // The title inset matches the project title's, so 2px + 6px puts the slot on
+  // the folder's x and 8px + 13px + 5px puts the title on the project name's x.
+  assert.match(
+    globalStyles,
+    /\.thread-item-main\s*\{[^}]*padding:\s*5px 6px;/s,
+  );
+  // The permission / completed / failed glyphs borrow that same box, so they
+  // read as the project folder's own leading affordance.
+  assert.match(
+    globalStyles,
+    /\.thread-item-status\s*\{[^}]*width:\s*13px;[^}]*left:\s*8px;/s,
   );
 });
 
@@ -315,22 +360,73 @@ test("hidden row actions stay out of the row's click path", () => {
   // Resting state: the invisible control is not a pointer target at all.
   assert.match(
     globalStyles,
-    /\.thread-item-more\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*\}/s,
+    /\.thread-item-action\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*\}/s,
   );
   assert.match(
     globalStyles,
-    /\.thread-item:focus-within \.thread-item-more,\s*\n\.thread-item-more:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
+    /\.thread-item:focus-within \.thread-item-action,\s*\n\.thread-item-action:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
   );
   // Without hover there is no reveal, so a no-hover pointer gets the controls
   // visible and tappable instead of an invisible gutter.
   assert.match(
     globalStyles,
-    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
+    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-action,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
   );
   // The row itself stays clickable where the hidden control used to swallow
   // the click, and spelled-out controls never double-fire the row.
   assert.match(sidebarSource, /if \(target\?\.closest\("button, \[data-action\]"\)\) return;/);
   assert.match(sidebarSource, /className=\{`thread-item[\s\S]*?onClick=\{\(event\) => \{/);
+});
+
+test("session rows reveal inline pin and archive actions ahead of the overflow menu", () => {
+  const rowActions =
+    sidebarSource.match(/<div className="sidebar-row-actions">[\s\S]*?<\/div>/)?.[0] ?? "";
+
+  // The cluster reads overflow, pin, archive from the left, and the overflow
+  // trigger keeps the `session-menu` anchor the row context menu is anchored to.
+  assert.match(
+    rowActions,
+    /data-action="session-menu"[\s\S]*?data-action="toggle-session-pin"[\s\S]*?data-action="toggle-session-archive"/,
+  );
+  // One shared class reveals all three, so a fourth control needs no new rule.
+  assert.equal(rowActions.match(/thread-item-action/g)?.length, 3);
+  // Each trigger runs the same action the row menu item runs, and stops the
+  // click before it reaches the row that opens the session.
+  assert.match(rowActions, /toggleSessionPin\(session\)/);
+  assert.match(rowActions, /void archiveSession\(session\)/);
+  assert.equal(rowActions.match(/event\.stopPropagation\(\)/g)?.length, 3);
+  // The pin trigger fills with the row state, so the two states read apart
+  // from the row alone.
+  //
+  // The state is the angle, not the fill. The icon set has no pinned glyph of
+  // its own, and filling the outline turned a state marker into what looked
+  // like a different, heavier icon — at this size the solid head no longer
+  // read as a pin. The outline stays unfilled and the row state rotates it.
+  assert.match(
+    rowActions,
+    /<IconPin size=\{14\} fill="none" className=\{cx\("session-pin-action", pinned && "is-pinned"\)\} \/>/,
+  );
+  assert.doesNotMatch(sidebarSource, /fill=\{pinned \? "currentColor" : "none"\}/);
+  // Both pins take the angle, so the glyph reads the same wherever it appears.
+  // The slot does not clip, so the rotated pin filling its 13px box is safe.
+  assert.match(
+    globalStyles,
+    /\.thread-item-pin,\s*\.session-pin-action\.is-pinned\s*\{[^}]*transform:\s*rotate\(45deg\);/s,
+  );
+  // The archive trigger swaps its glyph so the state is readable without
+  // opening a menu, and both labels follow the row state.
+  assert.match(
+    rowActions,
+    /\{archived \? <IconArchiveRestore size=\{14\} \/> : <IconArchive size=\{14\} \/>\}/,
+  );
+  assert.match(
+    sidebarSource,
+    /const pinAction = pinned[\s\S]*?nav\.unpinTask[\s\S]*?nav\.pinTask/,
+  );
+  assert.match(
+    sidebarSource,
+    /const archiveAction = archived[\s\S]*?nav\.restoreTask[\s\S]*?nav\.archiveTask/,
+  );
 });
 
 test("a blurred window releases latched row hover and actions", () => {
@@ -344,7 +440,7 @@ test("a blurred window releases latched row hover and actions", () => {
   );
   assert.match(
     globalStyles,
-    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover \.thread-item-more:not\(\[aria-expanded="true"\]\),[\s\S]*?opacity:\s*0;\s*\n\s*pointer-events:\s*none;/,
+    /\.sidebar\[data-window-blur="true"\] \.thread-item:hover \.thread-item-action:not\(\[aria-expanded="true"\]\),[\s\S]*?opacity:\s*0;\s*\n\s*pointer-events:\s*none;/,
   );
 });
 
@@ -365,4 +461,84 @@ test("sidebar rows share one hover surface and workspace context never paints se
   assert.match(globalStyles, /:focus-visible\s*\{[^}]*outline:\s*1\.5px solid/);
   assert.match(globalStyles, /\.project-group\.is-drop-target > \.sidebar-session-group-header\s*\{[^}]*outline:[^}]*background:/);
   assert.match(globalStyles, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.thread-item,\s*\.sidebar-session-group-header\s*\{\s*transition-duration:\s*0\.01ms !important;/);
+});
+
+test("pinned projects render as their own group above the list", () => {
+  // Pinning moves a project out of the main list, so the two are drawn from
+  // disjoint slices of one sorted list rather than filtered at render time —
+  // that way each half keeps the order the chosen sort gave it.
+  assert.match(
+    sidebarSource,
+    /const pinnedProjectEntries = useMemo\(\s*\(\) => projectEntries\.filter\(\(entry\) => entry\.meta\.pinned\)/,
+  );
+  assert.match(
+    sidebarSource,
+    /const listedProjectEntries = useMemo\(\s*\(\) => projectEntries\.filter\(\(entry\) => !entry\.meta\.pinned\)/,
+  );
+
+  // Both halves carry the zone a cross-bucket drag resolves against. It has to
+  // sit on the containers: the half being entered can be empty, and a row-level
+  // marker would leave nothing to hit.
+  assert.match(
+    sidebarSource,
+    /className=\{`sidebar-pinned-projects[^`]*`\}\s*\n\s*data-sidebar-project-pin-zone="pinned"/,
+  );
+  assert.match(
+    sidebarSource,
+    /className=\{`sidebar-listed-projects[^`]*`\}\s*\n\s*data-sidebar-project-pin-zone="rest"/,
+  );
+  assert.match(sidebarSource, /pinnedProjectEntries\.map\(renderProjectGroup\)/);
+  // Beside the projects section, not inside it. Nested, it read as "projects,
+  // which contain a pinned subgroup" and the two labels stacked.
+  assert.match(
+    sidebarSource,
+    /data-sidebar-project-pin-zone="pinned"[\s\S]*?<\/section>\s*\) : null\}\s*<div\s*\n\s*className="sidebar-list-toolbar"\s*\n\s*data-sidebar-section="projects"/,
+  );
+  // It is outside the projects scroller, so it carries its own bound rather
+  // than letting pinned projects push the projects off the bottom.
+  assert.match(sidebarSource, /className="sidebar-pinned-projects-body"/);
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects-body\s*\{[^}]*padding-top:\s*2px;[^}]*max-height:[^}]*overflow-y:\s*auto;/s,
+  );
+  // Its last group gives up the 7px of air an expanded group normally owns,
+  // so the section below is the same distance away whether the group is open
+  // or shut.
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects-body > :last-child \.sidebar-session-group-list[\s\S]*?padding-bottom:\s*0;/,
+  );
+  // Both halves re-declare the 1px gap the flex container used to give them.
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects,\s*\.sidebar-listed-projects\s*\{[^}]*flex-direction:\s*column;[^}]*gap:\s*1px;/s,
+  );
+  assert.match(sidebarSource, /listedProjectEntries\.map\(renderProjectGroup\)/);
+  assert.match(sidebarSource, /t\("nav\.pinnedProjects"\)/);
+
+  // A row no longer carries a pin badge: being in the group is the marker.
+  assert.doesNotMatch(sidebarSource, /className="sidebar-project-pin"/);
+});
+
+test("dragging a project across the list boundary pins or unpins it", () => {
+  // Reorder already refuses to cross a pin boundary, so the same boundary is
+  // where a pin or unpin is offered instead — decided on release, from the
+  // zone the pointer is over rather than from a row, so an empty half still
+  // accepts a drop.
+  assert.match(sidebarSource, /projectPinZoneFromPoint\(/);
+  assert.match(sidebarSource, /zone !== projectPinZoneOf\(source\.meta\)/);
+  assert.match(
+    sidebarSource,
+    /toggleProjectPinnedRef\.current\(source\.path, current\.pinZone === "pinned"\)/,
+  );
+  // The action is read through a ref: the pointer listeners are registered once
+  // and live for the whole drag, so a captured store action would go stale.
+  assert.match(sidebarSource, /const toggleProjectPinnedRef = useRef\(toggleProjectPinned\)/);
+  // The highlight is transient state and has to be dropped on every way a drag
+  // can end, or a released row leaves a zone lit.
+  assert.match(sidebarSource, /setPinnedDropZone\(null\)/);
+  assert.match(
+    globalStyles,
+    /\.sidebar-pinned-projects\.is-pin-drop-target,\s*\.sidebar-listed-projects\.is-pin-drop-target\s*\{/s,
+  );
 });

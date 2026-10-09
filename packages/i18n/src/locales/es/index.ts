@@ -128,6 +128,7 @@ export const es = {
   },
   "nav": {
     "pinnedSessions": "Fijadas",
+    "pinnedProjects": "Fijadas",
     "home": "Inicio",
     "newTask": "Nueva tarea",
     "newProject": "Nuevo proyecto",

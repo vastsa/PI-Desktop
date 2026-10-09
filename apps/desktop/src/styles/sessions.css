@@ -307,26 +307,18 @@
 
 .thread-item-status {
   display: inline-flex;
-  width: 12px;
+  /* Same box as .thread-item-slot so a transient status lands on the project
+     folder's x instead of hanging further left than the row's own glyph. */
+  width: 13px;
   height: 12px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   color: var(--ds-text-muted);
   position: absolute;
-  left: 4px;
+  left: 8px;
   top: 50%;
   transform: translateY(-50%);
-}
-
-.thread-item-status.running::before {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-full);
-  background: var(--ds-warning);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-warning) 15%, transparent);
-  content: "";
-  animation: sidebar-status-breathe 1.6s ease-in-out 2;
 }
 
 .thread-item-status.permission::before {
@@ -337,14 +329,6 @@
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ds-purple) 15%, transparent);
   content: "";
   animation: sidebar-status-pulse-purple 1.2s ease-in-out 2;
-}
-
-.thread-item-status.selected::before {
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--ds-accent);
-  border-radius: var(--radius-full);
-  content: "";
 }
 
 .thread-item-status.completed {
@@ -361,6 +345,73 @@
 
 .thread-item-status.failed svg {
   stroke-width: 2.25;
+}
+
+/* A running row says so by sheening its own title. The dot that used to sit
+   at the leading edge is gone, so the run now reads inside the row rather
+   than beside it, and the streak travels across the glyph outlines
+   themselves rather than across a box behind them.
+
+   The title keeps whatever colour the row already gives it — a dim streak
+   travels over it, it does not change colour itself. An earlier pass made
+   the gradient a dim base with one bright band, which darkened the whole
+   title just to light a slice of it. The base stops below are `currentColor`
+   so the streak rides the row's real colour through its hover and selected
+   states instead of a colour pinned at rest. */
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .thread-item.running .thread-item-title {
+    /* A sweep is a physical light passing over the glyphs, so its thickness
+       and its speed are both lengths, never a share of the row. Sized as
+       percentages they become two different effects in one list: the same stop
+       is a fat, slow bar on a three-word session and a thin, fast one on a
+       thirty-word session.
+
+       `--sheen-width` and `--sheen-band` are both written by
+       `useRunningTitleSheen`, which is also what runs the animation — the band
+       has to travel `width + band` pixels to clear both edges, and that
+       duration cannot be expressed here. The values below are the resting
+       state and the no-script fallback; the hook overwrites them before
+       paint. Nothing here animates on its own, so a row that never gets
+       measured simply shows its title at full strength.
+
+       The peak is a single stop, not a plateau. Two dim stops at
+       `50% ± band/2` would hold the full dip across the band's whole width,
+       which reads as a block sitting on the row rather than as light passing
+       over it; one stop keeps the profile triangular, so only the glyphs
+       under the exact centre take the deepest shading.
+
+       The dip is mixed from `currentColor` rather than a `--ds-text-muted`.
+       That token resolves incompatibly across themes — translucent white in
+       dark, an opaque `#5d5d5d` in light — so a band built from it dims dark
+       text and then lands on the same grey as the light text it is meant to
+       contrast with, and the sweep disappears there entirely. Deriving from
+       `currentColor` makes the band a fixed fraction of whatever the row is
+       actually painted in: darker than the text on a dark surface, lighter on
+       a light one, with no per-theme rule, and it follows hover and selection
+       for free. */
+    --sheen-band: 64px;
+    /* Overwritten before paint by the hook; this only covers the first frame. */
+    --sheen-width: 160px;
+    background-image: linear-gradient(
+      100deg,
+      currentColor 0,
+      currentColor calc(50% - var(--sheen-band) / 2),
+      color-mix(in oklab, currentColor 45%, transparent) 50%,
+      currentColor calc(50% + var(--sheen-band) / 2),
+      currentColor 100%
+    );
+    background-repeat: no-repeat;
+    background-size: calc(2 * var(--sheen-width) + var(--sheen-band)) 100%;
+    /* Parked a full band-width left of the text, so a pass begins with the
+       band still off-screen instead of already washing the first glyphs. */
+    background-position: calc(-1 * (var(--sheen-width) + var(--sheen-band))) 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    /* The fill is emptied, not the `color` property: the base stops resolve
+       `currentColor` against `color`, so clearing it would clear the title. */
+    -webkit-text-fill-color: transparent;
+  }
 }
 
 @keyframes sidebar-status-breathe {
@@ -388,12 +439,35 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thread-item-status.running::before {
-    animation: none;
-  }
   .thread-item-status.permission::before {
     animation: none;
   }
+  /* The hook declines to start the animation under reduced motion, so all
+     that is left to settle here is the resting stop. Parking the band at its
+     end position — a full band-width clear of the text — leaves the title
+     painted at its own colour, which is the honest "not moving" state; a
+     frozen band mid-row would instead sit on the glyphs permanently. */
+  .thread-item.running .thread-item-title {
+    background-position: 0 0;
+  }
+}
+
+/* A pinned session is angled, never filled. The icon set has no glyph of its
+   own for the state — only the pin and the pin-off — so the angle carries it.
+   Filling the outline made the button read as a different, heavier icon
+   rather than the same pin in a state, and at that size the solid head lost
+   the pin's shape altogether.
+
+   Both places that draw a pin take the angle, so the glyph reads the same way
+   everywhere it appears.
+
+   The pin is tall and narrow, so turning it grows its bounding box to about
+   the full 24-unit grid: at 13px that is ~13.2px across the diagonal against
+   a 13px slot. The slot does not clip and the title is a further 5px away, so
+   nothing is cut off and nothing collides — the glyph simply fills its box. */
+.thread-item-pin,
+.session-pin-action.is-pinned {
+  transform: rotate(45deg);
 }
 
 .thread-item-pin {
@@ -401,9 +475,17 @@
   color: var(--ds-accent);
 }
 
-.sidebar-project-pin {
-  flex: 0 0 auto;
-  color: var(--ds-accent);
+/* The project row's leading glyph: one 13px box holding the folder. The
+   wrapper, not the folder, is the flex item, so the box is 13px whatever the
+   row carries and the title keeps a single left edge. Pinning is marked by the
+   row living in its own group above the list, not by a badge here. */
+.sidebar-project-glyph {
+  position: relative;
+  display: inline-flex;
+  width: 13px;
+  flex: 0 0 13px;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-row-actions,
@@ -414,7 +496,7 @@
   flex: 0 0 auto;
 }
 
-.thread-item-more {
+.thread-item-action {
   display: inline-flex;
   width: 24px;
   height: 24px;
@@ -431,17 +513,17 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.thread-item:hover .thread-item-more,
-.sidebar-session-group-header:hover .thread-item-more,
-.sidebar-session-group-header:focus-within .thread-item-more,
-.thread-item.active .thread-item-more:hover,
-.thread-item-more[aria-expanded="true"] {
+.thread-item:hover .thread-item-action,
+.sidebar-session-group-header:hover .thread-item-action,
+.sidebar-session-group-header:focus-within .thread-item-action,
+.thread-item.active .thread-item-action:hover,
+.thread-item-action[aria-expanded="true"] {
   opacity: 1;
   pointer-events: auto;
 }
 
-.thread-item:focus-within .thread-item-more,
-.thread-item-more:focus-visible {
+.thread-item:focus-within .thread-item-action,
+.thread-item-action:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
@@ -455,17 +537,17 @@
 /* Without hover there is nothing to reveal the row controls with, so a no-hover
  * pointer gets them visible and tappable outright. */
 @media (hover: none) {
-  .sidebar-row-actions .thread-item-more,
-  .sidebar-menu-wrap .thread-item-more,
+  .sidebar-row-actions .thread-item-action,
+  .sidebar-menu-wrap .thread-item-action,
   .sidebar-session-group-add {
     opacity: 1;
     pointer-events: auto;
   }
 }
 
-.thread-item-more:hover,
-.thread-item-more:focus-visible,
-.thread-item-more[aria-expanded="true"] {
+.thread-item-action:hover,
+.thread-item-action:focus-visible,
+.thread-item-action[aria-expanded="true"] {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
@@ -1019,21 +1101,12 @@
   min-width: 0;
 }
 
-.sidebar-disclosure-icon {
-  flex: 0 0 auto;
-  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.sidebar-disclosure-icon.collapsed {
-  transform: rotate(-90deg);
-}
-
 .sidebar-session-group-header:hover .sidebar-session-group-add,
 .sidebar-session-group-header:focus-within .sidebar-session-group-add,
 .sidebar-session-group-header:hover .sidebar-menu-wrap,
 .sidebar-session-group-header:focus-within .sidebar-menu-wrap,
-.sidebar-session-group-header:hover .sidebar-menu-wrap .thread-item-more,
-.sidebar-session-group-header:focus-within .sidebar-menu-wrap .thread-item-more {
+.sidebar-session-group-header:hover .sidebar-menu-wrap .thread-item-action,
+.sidebar-session-group-header:focus-within .sidebar-menu-wrap .thread-item-action {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1046,8 +1119,8 @@
 
 /* A blurred window keeps :hover latched on the row or header under the cursor,
  * so the hover reveals collapse back to their resting, pointer-inert state. */
-.sidebar[data-window-blur="true"] .thread-item:hover .thread-item-more:not([aria-expanded="true"]),
-.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .thread-item-more:not([aria-expanded="true"]),
+.sidebar[data-window-blur="true"] .thread-item:hover .thread-item-action:not([aria-expanded="true"]),
+.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .thread-item-action:not([aria-expanded="true"]),
 .sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .sidebar-session-group-add {
   opacity: 0;
   pointer-events: none;

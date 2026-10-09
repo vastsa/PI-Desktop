@@ -19,7 +19,9 @@
   align-items: center;
   gap: 2px;
   overflow: hidden;
-  padding: 0 2px 0 0;
+  /* Mirrors .sidebar-session-group-header so session rows and project rows
+     share the same 2px + 6px inset on both edges. */
+  padding: 0 2px;
 }
 
 .thread-item-main {
@@ -28,9 +30,24 @@
   flex: 1;
   align-items: center;
   gap: 5px;
-  padding: 5px 6px 5px 20px;
+  /* Same inset as the project title, so the slot below starts on the project
+     folder's x (2px row inset + 6px) and the title then lands on the project
+     name's x (8px + 13px slot + 5px gap = 26px). */
+  padding: 5px 6px;
   text-align: left;
   color: inherit;
+}
+
+/* One fixed-width glyph slot per session row. The width never changes, so a
+   pinned row, a plain row and a row borrowed by a status all start their
+   title at the same x instead of shuffling sideways. */
+.thread-item-slot {
+  display: inline-flex;
+  width: 13px;
+  flex: 0 0 13px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-muted);
 }
 
 .thread-item-title {
@@ -39,6 +56,19 @@
   line-height: var(--leading-row);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Source badge rides after the title. It is metadata about the row, not a
+   leading affordance, and a text badge has no fixed width to sit in the icon
+   slot — moving it here keeps every title on one x. */
+.thread-item-source {
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  background: var(--ds-bg-tertiary);
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
 }
 
 .thread-item:hover,
@@ -197,15 +227,14 @@
   overflow: hidden;
 }
 
-/* Nested session rows read as children through the indent alone; the tree
-   rail is gone (D297). */
+/* Nested session rows run the full sidebar width like every other row — the
+   row, its group header and the standalone lists all share one left and one
+   right edge. */
 .sidebar-session-group-body.project {
   /* A one-row grid: the fold is a real fraction of the measured content, and
      `opacity` stays 1 — the rows are clipped, never faded. */
   display: grid;
   grid-template-rows: 1fr;
-  margin-left: 13px;
-  padding-left: 9px;
   transition: grid-template-rows var(--motion-duration-normal) var(--motion-ease-out);
 }
 
@@ -232,13 +261,14 @@
   padding-bottom: 7px;
 }
 
-.sidebar-session-group-body.temporary {
-  margin-left: 13px;
-  padding-left: 9px;
-}
-
+/* 26px is where a session title starts, not where its row does: the row
+   carries 2px of inset, then 6px, then the 13px leading slot and its 5px
+   gap. The label heads the titles, so it lines up with their text. It used to
+   sit at 20px, which lined up only because the row and its text shared one
+   inset before the slot was split out. `load-more` is the same kind of
+   label over the same list and moves with it. */
 .sidebar-time-group-header {
-  padding: 4px 6px 4px 20px;
+  padding: 4px 6px 4px 26px;
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   font-weight: var(--font-weight-medium);
@@ -253,7 +283,8 @@
   display: flex;
   width: 100%;
   align-items: center;
-  padding: 4px 6px 4px 20px;
+  /* Matches .sidebar-time-group-header — see the note there. */
+  padding: 4px 6px 4px 26px;
   border-radius: var(--radius-sm);
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
@@ -275,7 +306,7 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   /* 2px below the section label, matching every label-to-content pair. */
-  padding: 2px 2px 0;
+  padding: 2px 0 0;
 }
 
 .sidebar-standalone-sessions {
@@ -295,6 +326,67 @@
   flex: 0 0 auto;
 }
 
+/* The pinned project group and the list below it are the two halves a project
+   row can be dragged between, so each is a drop zone in its own right. The
+   highlight has to be readable as "everything here will be pinned" rather than
+   as another row-level drop line, which is why it outlines the whole half and
+   tints it instead of drawing an insertion rule between two rows.
+
+   Both halves re-declare the 1px column gap their children used to inherit
+   from `.sidebar-session-groups`: a wrapper breaks the flex gap, and without
+   this the groups would run together inside the half while staying 1px apart
+   across the boundary. */
+.sidebar-pinned-projects,
+.sidebar-listed-projects {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.sidebar-pinned-projects {
+  flex: 0 0 auto;
+}
+
+/* The pinned group sits outside the projects scroller so it reads as a
+   top-level section rather than a subgroup of projects — which means it needs
+   its own bound, or a handful of pinned projects would push the projects
+   themselves off the bottom of the sidebar. */
+.sidebar-pinned-projects-body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 1px;
+  /* Same 2px the projects scroller carries between its own toolbar and its
+     first group. Without it the two sections put their label at the same
+     height but their first row 2px apart. */
+  padding-top: 2px;
+  max-height: min(320px, 40vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+/* An expanded group carries 7px of air below its last row, which is what keeps
+   a following group from crowding it. At the foot of this group that air lands
+   against the projects section instead, and the section's own label padding
+   then stacks on top of it — so an expanded pinned project ended up separated
+   from "项目" by twice the distance a collapsed one gets. The last group hands
+   its air over to the section boundary, which is what already separates them. */
+.sidebar-pinned-projects-body > :last-child .sidebar-session-group-list,
+.sidebar-pinned-projects-body > :last-child .sidebar-session-group-list:last-child {
+  padding-bottom: 0;
+}
+
+.sidebar-pinned-projects.is-pin-drop-target,
+.sidebar-listed-projects.is-pin-drop-target {
+  background: color-mix(in oklab, var(--ds-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--ds-accent);
+}
+
 .sidebar-session-group-body.pinned {
   /* Eight compact 28px rows plus their seven 1px gaps, and the 2px label
      inset. */
@@ -303,7 +395,7 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   /* 2px below the section label, matching every label-to-content pair. */
-  padding: 2px 2px 0;
+  padding: 2px 0 0;
 }
 
 .sidebar-pinned-sessions .thread-item-title {
