@@ -1190,3 +1190,41 @@ describe("native settlement and reclaim boundaries", () => {
     expect((await service.list())[0].readOnlyReason).toBe("busy");
   });
 });
+
+describe("hasActiveTurn", () => {
+  function bareService(): NativePiSessionService {
+    return new NativePiSessionService({ agentDir: "/unused-agent-dir", sessionRoot: "/unused-session-root" });
+  }
+
+  it("is false when the service holds no runtimes and nothing is opening", () => {
+    expect(bareService().hasActiveTurn()).toBe(false);
+  });
+
+  it("is false when every held runtime is idle", () => {
+    const service = bareService();
+    (service as any).runtimes.set("session-idle", { isRunning: false });
+    (service as any).runtimes.set("session-other-idle", { isRunning: false });
+    expect(service.hasActiveTurn()).toBe(false);
+  });
+
+  it("is true while any runtime has a turn in flight", () => {
+    const service = bareService();
+    (service as any).runtimes.set("session-idle", { isRunning: false });
+    (service as any).runtimes.set("session-busy", { isRunning: true });
+    expect(service.hasActiveTurn()).toBe(true);
+  });
+
+  it("is true while a session is still opening", () => {
+    const service = bareService();
+    (service as any).opening.add("session-opening");
+    expect(service.hasActiveTurn()).toBe(true);
+  });
+
+  it("returns to false once the opening session finishes", () => {
+    const service = bareService();
+    (service as any).opening.add("session-opening");
+    (service as any).opening.delete("session-opening");
+    (service as any).runtimes.set("session-opening", { isRunning: false });
+    expect(service.hasActiveTurn()).toBe(false);
+  });
+});

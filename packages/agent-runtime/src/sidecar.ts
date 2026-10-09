@@ -27,6 +27,7 @@ import {
   normalizeThinkingLevel,
 } from "./sidecar-config.js";
 import { matchesExpectedTurnId } from "./turn-target.js";
+import { startIdleHeapTrim } from "./idle-gc.js";
 import { applyNodeNetworkProxy } from "./node-proxy.js";
 import { applyAdditiveDefaultCaCertificates } from "./system-ca.js";
 import { NATIVE_PI_SESSION_PREFIX } from "./native-pi-session-id.js";
@@ -667,25 +668,27 @@ if (bootProxy) {
 // issued, so the merged CA set covers every transport this sidecar builds.
 applyAdditiveDefaultCaCertificates();
 
-// Idle heap trim: V8 keeps old-space pages resident after large turns, so an
-// otherwise idle sidecar pins its peak RSS long after the last prompt
-// (issue #1496). When launched with --expose-gc (the desktop does), run a
-// full GC whenever no runtime has a turn in flight; without the flag this is
-// a no-op. Active turns are never paused on purpose.
+// Idle heap trim: run a full GC on an interval while no session family has a
+// turn in flight, so pages promoted during large turns are handed back to
+// the OS instead of pinning the sidecar's peak RSS while idle (issue #1496).
+// Launched with --expose-gc (the desktop does); without the flag this is a
+// no-op, so the headless pi-host bundle on plain Node is unaffected.
 const idleGc = (globalThis as { gc?: () => void }).gc;
 if (typeof idleGc === "function") {
-  const IDLE_GC_INTERVAL_MS = 5 * 60 * 1000;
-  const idleGcTimer = setInterval(() => {
-    for (const runtime of runtimes.values()) {
-      if (runtime.getStatus().isRunning) return;
-    }
-    try {
-      idleGc();
-    } catch {
-      // A failed trim must never take the sidecar down.
-    }
-  }, IDLE_GC_INTERVAL_MS);
-  idleGcTimer.unref?.();
+  startIdleHeapTrim({
+    gc: idleGc,
+    intervalMs: 5 * 60 * 1000,
+    busy: [
+      () => {
+        for (const runtime of runtimes.values()) {
+          if (runtime.getStatus().isRunning) return true;
+        }
+        return false;
+      },
+      // Native Pi sessions live in their own service, outside `runtimes`.
+      () => nativePiServiceFactory?.().hasActiveTurn() ?? false,
+    ],
+  });
 }
 
 process.stderr.write("[agent-sidecar] ready (host-proxy mode)\n");

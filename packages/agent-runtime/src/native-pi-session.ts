@@ -985,6 +985,14 @@ export class NativePiSessionService {
     } as SessionDetail;
   }
 
+  /** True while any native Pi session has a turn in flight or is opening. */
+  hasActiveTurn(): boolean {
+    for (const runtime of this.runtimes.values()) {
+      if (runtime.isRunning) return true;
+    }
+    return this.opening.size > 0;
+  }
+
   async prompt(id: string, content: string, notify: NativePiRuntimeNotifier, userMessageId?: string): Promise<{ accepted: true; turnId: string }> {
     let runtime = this.runtimes.get(id);
     if (runtime?.isRunning || this.opening.has(id)) {
