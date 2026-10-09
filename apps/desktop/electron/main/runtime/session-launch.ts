@@ -264,6 +264,8 @@ export function createSessionLaunchRuntime({
     } = {},
   ) {
     if (!runtimeState.host) throw new Error("host unavailable");
+    const managedOwner = await runtimeState.host.call<{ pluginId: string | null }>("session.managedOwner", { sessionId });
+    if (managedOwner.pluginId) throw Object.assign(new Error("This session is managed by a plugin"), { errorCode: "PLUGIN_SESSION_MANAGED" });
     await modelsDevCatalog.ensureLoaded();
     const commandShell = (await resolveEffectiveCommandShell()).effective!;
     const providers = await runtimeState.host!.call<{ providers: RuntimeProvider[] }>(

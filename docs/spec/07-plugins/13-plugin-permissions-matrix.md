@@ -211,3 +211,13 @@ visible workspace for a panel call (ADR 0266).
    interrupted past 50 removals in a rolling minute
 8. A plugin declaring only the legacy `fs.*.workspace` names loses write and
    delete reach, and the Plugins page says so
+
+
+### Managed transcript and private-secret grants
+
+| Permission | Risk | APIs | Grant | Scope |
+| --- | --- | --- | --- | --- |
+| `session.manage.own` | high | `session.createManaged`, `session.appendManaged`, `onSessionSubmit` | Explicit install/development review | Only new managed transcripts owned by the calling plugin; never arbitrary sessions or permission changes |
+| `secrets.store` | high | `secrets.get`, `secrets.set`, `secrets.delete` | Explicit install/development review | Encrypted storage in the calling plugin namespace; no provider or foreign-plugin references |
+
+Neither grant is automatic for existing plugins. Revocation/disable refuses new API calls and native sends. Transcript ownership and encrypted values survive disable and uninstall for recovery; deleting them requires the owning plugin's explicit API or a separate host data-management operation.

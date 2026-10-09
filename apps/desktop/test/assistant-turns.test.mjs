@@ -530,3 +530,17 @@ test("reuses unchanged activity parts when only the tail thinking token changes"
   assert.notEqual(sharedThink, firstThink);
   assert.equal(sharedThink.items[0].message, nextThinking);
 });
+
+
+test("keeps finalized plugin replies separate with their own authors", () => {
+  const messages = [
+    message("user", "user", "Ask everyone"),
+    message("plugin:room:one", "assistant", "First reply", { agentName: "Computer one" }),
+    message("plugin:room:two", "assistant", "Second reply", { agentName: "Computer two" }),
+  ];
+  const { entries } = buildTranscriptEntries(messages);
+  assert.equal(entries.length, 3);
+  assert.deepEqual(entries.slice(1).map(entry => entry.kind), ["message", "message"]);
+  assert.equal(entries[1].message.agentName, "Computer one");
+  assert.equal(entries[2].message.agentName, "Computer two");
+});
