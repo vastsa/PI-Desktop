@@ -98,6 +98,7 @@ test("the plugins page shows the file scope behind a file permission", () => {
   // so the row has to carry it or the user is approving a blank cheque.
   assert.match(pageSrc, /"fs\.write": "high"/);
   assert.match(pageSrc, /"fs\.read": "medium"/);
+  assert.match(pageSrc, /"background\.service": "medium"/);
   assert.match(pageSrc, /function FsScopeChips\(/);
   assert.match(pageSrc, /t\("plugins\.fsAsksEachTime"\)/);
   assert.match(pageSrc, /t\("plugins\.legacyFsDowngraded"\)/);
@@ -261,4 +262,36 @@ test("verified trust is not something a catalog entry can grant itself", () => {
   assert.match(pageSrc, /function showsVerifiedBadge\(/);
   assert.match(pageSrc, /\{showsVerifiedBadge\(item\) \?/);
   assert.match(pageSrc, /\{showsVerifiedBadge\(detail\) \?/);
+});
+
+test("PERMISSION_RISK mirrors every permission tier in the permissions matrix (#1480)", () => {
+  const matrixPath = join(repoRoot, "docs/spec/07-plugins/13-plugin-permissions-matrix.md");
+  const matrixContent = readFileSync(matrixPath, "utf8");
+  const matrixEntries = [...matrixContent.matchAll(/^\| `([A-Za-z0-9.]+)` \| (low|medium|high) \|/gm)].map((m) => ({
+    permission: m[1],
+    risk: m[2],
+  }));
+
+  assert.ok(matrixEntries.length > 0, "permissions matrix must contain permission rows");
+
+  const matrixMap = Object.fromEntries(matrixEntries.map((e) => [e.permission, e.risk]));
+  const modelEntries = [...pageSrc.matchAll(/"([a-zA-Z0-9.]+)":\s*"(low|medium|high)"/g)].map((m) => ({
+    permission: m[1],
+    risk: m[2],
+  }));
+  const modelMap = Object.fromEntries(modelEntries.map((e) => [e.permission, e.risk]));
+
+  for (const [permission, expectedRisk] of Object.entries(matrixMap)) {
+    assert.equal(
+      modelMap[permission],
+      expectedRisk,
+      `PERMISSION_RISK["${permission}"] should be "${expectedRisk}" as defined in permissions matrix`,
+    );
+  }
+
+  assert.deepEqual(
+    Object.keys(modelMap).sort(),
+    Object.keys(matrixMap).sort(),
+    "PERMISSION_RISK must define exactly the set of permissions from the permissions matrix",
+  );
 });

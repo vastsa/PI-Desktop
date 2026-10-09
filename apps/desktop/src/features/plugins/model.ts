@@ -49,11 +49,15 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "agent.extension": "high",
   // Its code runs in the app's own document, so the grant is the boundary.
   "renderer.extension": "high",
+  "provider.register": "high",
   // The isolated plugin callback can read its own encrypted OAuth credentials.
   "provider.oauth": "high",
   "desktop.control": "high",
+  "project.create": "high",
   "session.read": "high",
   "session.autoTitle": "high",
+  "session.import": "high",
+  "session.delete.own": "high",
   "browser.cdp": "high",
   // Reading is a tier below writing because what makes a read dangerous is
   // where the data can go, and outbound requests are declared separately.
@@ -65,7 +69,10 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "shell.openExternal": "medium",
   "mcp.server.local": "high",
   "mcp.server.remote": "high",
-  "background.service": "high",
+  "background.service": "medium",
+  "session.read.own": "medium",
+  "session.update.own": "medium",
+  "composer.transform": "medium",
   // Per-turn counters and session titles only, per the usage.read matrix row.
   "usage.read": "medium",
   // Two capabilities that reach outside PI-Desktop's own window or read its
@@ -78,9 +85,12 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "bus.publish": "medium",
   "bus.subscribe": "medium",
   "ui.panel": "low",
-  "ui.microphone": "medium",
+  "ui.view": "low",
   "ui.theme": "low",
-  notify: "low",
+  "ui.settings": "low",
+  "ui.window.appearance": "low",
+  "ui.microphone": "medium",
+  "notify": "low",
 };
 
 /** Display order for capability badges: what it adds before what it runs. */
