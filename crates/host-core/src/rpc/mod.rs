@@ -2896,14 +2896,21 @@ async fn handle_request(
         // Plugin sessions are a separate host-owned domain. Electron main is
         // the only caller that can supply pluginId; the plugin process never
         // receives a generic host RPC handle or SQLite access.
-        "plugin.session.createManaged" | "plugin.session.appendManaged" => {
+        "plugin.session.createManaged"
+        | "plugin.session.appendManaged"
+        | "plugin.session.setManagedModel" => {
             let plugin_id = params.get("pluginId").and_then(Value::as_str)
                 .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
             let st = state.lock().await;
-            if method == "plugin.session.createManaged" {
-                plugin_sessions::managed::create(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
-            } else {
-                plugin_sessions::managed::append(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+            match method {
+                "plugin.session.createManaged" => {
+                    plugin_sessions::managed::create(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+                }
+                "plugin.session.appendManaged" => {
+                    plugin_sessions::managed::append(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+                }
+                _ => plugin_sessions::managed::set_model(&st.db, plugin_id, &params)
+                    .map_err(plugin_session_rpc_err),
             }
         }
         "plugins.secrets.get" | "plugins.secrets.set" | "plugins.secrets.delete" => {

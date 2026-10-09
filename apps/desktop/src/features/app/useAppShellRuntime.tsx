@@ -676,7 +676,11 @@ export function useAppShellRuntime() {
             await useAppStore.getState().clearProject();
           }
           const current = useAppStore.getState();
-          if (event.reason === "plugin.session.appendManaged" && event.sessionId === current.activeSessionId && current.activeSessionId && current.page === "chat") {
+          // A managed append changes the transcript; a model rebind changes the
+          // composer's model chip. Both need the active session re-read.
+          if ((event.reason === "plugin.session.appendManaged" ||
+               event.reason === "plugin.session.setManagedModel") &&
+              event.sessionId === current.activeSessionId && current.activeSessionId && current.page === "chat") {
             await current.selectSession(current.activeSessionId);
           }
           if (event.selectSessionId) {

@@ -47,6 +47,7 @@ import {
 } from "../plugin-mcp";
 import { McpOAuthManager } from "../mcp-oauth";
 import { PluginPanelHost } from "../plugin-panel-host";
+import { createManagedAttachmentStore } from "../plugin-managed-attachments";
 import { PluginViewHost } from "../plugin-view-host";
 import { BrowserPane } from "../browser-view";
 import { BrowserHost, BROWSER_PLUGIN_ID } from "../browser-host";
@@ -127,6 +128,26 @@ export function createPluginServices({
       });
     },
   );
+  /**
+   * Blob storage for managed (plugin-owned) transcripts. A plugin may only
+   * read a blob for a transcript it owns, so the ref alone is never enough.
+   */
+  const managedAttachments = createManagedAttachmentStore(dataDir);
+  const assertManagedAttachmentOwner = async (
+    pluginId: string,
+    input: Record<string, unknown>,
+  ): Promise<void> => {
+    const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+    if (!sessionId) {
+      throw Object.assign(new Error("sessionId required"), { code: "INVALID_PARAMS" });
+    }
+    const host = getHost();
+    if (!host) throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
+    const result = await host.call<{ pluginId: string | null }>("session.managedOwner", { sessionId });
+    if (result.pluginId !== pluginId) {
+      throw Object.assign(new Error("Session is not managed by this plugin"), { code: "PERMISSION_DENIED" });
+    }
+  };
   const callPluginSessionHost = async (
     method: string,
     pluginId: string,
@@ -147,11 +168,16 @@ export function createPluginServices({
         (result as { updated?: unknown })?.updated === true) ||
       (method === "plugin.session.setAutoTitle" &&
         (result as { updated?: unknown })?.updated === true) ||
+      (method === "plugin.session.setManagedModel" &&
+        (result as { updated?: unknown })?.updated === true) ||
       (method === "plugin.session.delete" &&
         (result as { deleted?: unknown })?.deleted === true);
     if (changed) {
       sendToRenderer(IPC.event.sessionsChanged, { reason: method, pluginId,
-        ...(method === "plugin.session.appendManaged" ? { sessionId: input.sessionId } : {}),
+        ...(method === "plugin.session.appendManaged" ||
+        method === "plugin.session.setManagedModel"
+          ? { sessionId: input.sessionId }
+          : {}),
       });
     }
     return result;
@@ -370,6 +396,29 @@ export function createPluginServices({
     session: {
       createManaged: (pluginId, input) => callPluginSessionHost("plugin.session.createManaged", pluginId, input),
       appendManaged: (pluginId, input) => callPluginSessionHost("plugin.session.appendManaged", pluginId, input),
+      setManagedModel: (pluginId, input) =>
+        callPluginSessionHost("plugin.session.setManagedModel", pluginId, input),
+      // Blob bytes never cross the plugin boundary in bulk: an upload is staged
+      // through the local store, which owns the bounds and the owner check.
+      readManagedAttachment: async (pluginId, input) => {
+        await assertManagedAttachmentOwner(pluginId, input);
+        return managedAttachments.read(input);
+      },
+      beginManagedAttachment: async (pluginId, input) => {
+        await assertManagedAttachmentOwner(pluginId, input);
+        return managedAttachments.begin(pluginId, input);
+      },
+      writeManagedAttachment: (pluginId, input) => managedAttachments.write(pluginId, input),
+      commitManagedAttachment: async (pluginId, input) => {
+        const committed = await managedAttachments.commit(pluginId, input);
+        // A newly stored blob makes a previously placeholder-only message
+        // renderable, so tell the renderer the transcript changed.
+        sendToRenderer(IPC.event.sessionsChanged, {
+          reason: "plugin.session.commitManagedAttachment",
+          pluginId,
+        });
+        return committed;
+      },
       managedOwner: async (sessionId) => {
         const host = getHost();
         if (!host) throw new Error("host unavailable");
@@ -683,6 +732,9 @@ export function createPluginServices({
     },
     onPluginUnload: (pluginId) => {
       if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
+      // A half-written upload belongs to a plugin that is gone; dropping it
+      // keeps the staging area from accumulating abandoned bytes.
+      managedAttachments.discardPlugin(pluginId);
     },
   });
   const speech = createSpeechService({

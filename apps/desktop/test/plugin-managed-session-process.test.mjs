@@ -71,6 +71,32 @@ test('a delayed managed owner lookup still rejects a foreign owner', async t => 
 });
 
 
+// The model binding and the four attachment blob calls are what a room needs to
+// show the member's model in the composer and to move image bytes between
+// machines. Each must cross the isolated process with the trusted plugin
+// identity; per-session ownership is enforced by the host service (Rust), not
+// here.
+test('managed model binding and attachment blob calls cross the process with the plugin identity', async t => {
+ const blob = [];
+ const { id } = await setup(t, `module.exports={onLoad:async()=>{
+  await pi.session.setManagedModel({sessionId:'room',providerId:'p',modelId:'m',thinkingLevel:'high'});
+  await pi.session.beginManagedAttachment({sessionId:'room',name:'shot.png',size:3});
+  await pi.session.writeManagedAttachment({sessionId:'room',uploadId:'u',offset:0,dataBase64:'AAAA'});
+  await pi.session.commitManagedAttachment({sessionId:'room',uploadId:'u'});
+  await pi.session.readManagedAttachment({sessionId:'room',ref:'attachments/${'a'.repeat(64)}',offset:0,length:16});
+ }};`, ['session.manage.own'], {
+  setManagedModel: async (pluginId, input) => { blob.push({ op: "setManagedModel", pluginId, input }); return { updated: true }; },
+  readManagedAttachment: async (pluginId, input) => { blob.push({ op: "readManagedAttachment", pluginId, input }); return { ref: input.ref, size: 3, offset: 0, eof: true, contentBase64: "AAAA" }; },
+  beginManagedAttachment: async (pluginId, input) => { blob.push({ op: "beginManagedAttachment", pluginId, input }); return { uploadId: "u" }; },
+  writeManagedAttachment: async (pluginId, input) => { blob.push({ op: "writeManagedAttachment", pluginId, input }); return { received: 3 }; },
+  commitManagedAttachment: async (pluginId, input) => { blob.push({ op: "commitManagedAttachment", pluginId, input }); return { ref: `attachments/${'a'.repeat(64)}`, size: 3 }; },
+ });
+ assert.deepEqual(blob.map(c => c.op), ['setManagedModel', 'beginManagedAttachment', 'writeManagedAttachment', 'commitManagedAttachment', 'readManagedAttachment']);
+ assert.ok(blob.every(c => c.pluginId === id));
+ assert.equal(blob[0].input.thinkingLevel, 'high');
+ assert.equal(blob[4].input.ref, `attachments/${'a'.repeat(64)}`);
+});
+
 test('managed cleanup appends existing history but cannot create a new session', async t => {
  const {runtime,calls,id}=await setup(t, `module.exports={onUnload:async()=>{
  await pi.session.appendManaged({sessionId:'room',externalId:'cleanup',message:{role:'assistant',content:'final',createdAt:'2026-10-08T00:00:00Z'}});

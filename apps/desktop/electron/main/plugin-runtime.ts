@@ -483,6 +483,12 @@ export type PluginHostServices = {
   session?: {
     createManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     appendManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    /** Bind a managed transcript's compose-time model; never touches permissions. */
+    setManagedModel: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    readManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    beginManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    writeManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    commitManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     managedOwner: (sessionId: string) => Promise<string | null>;
     emitManagedEvent: (envelope: ReturnType<typeof managedPresentationEvent>) => void;
     list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
@@ -597,6 +603,11 @@ const HOST_API_ALLOWLIST = new Set([
   "secrets.delete",
   "session.createManaged",
   "session.appendManaged",
+  "session.setManagedModel",
+  "session.readManagedAttachment",
+  "session.beginManagedAttachment",
+  "session.writeManagedAttachment",
+  "session.commitManagedAttachment",
   "session.emitManagedEvent",
   "session.import",
   "session.importBatch",
@@ -930,6 +941,62 @@ function pluginSessionJsonBytes(value: unknown): number {
   }
 }
 
+/** Content-addressed blob refs a managed message may name. */
+const MANAGED_ATTACHMENT_REF = /^attachments\/[0-9a-f]{64}$/i;
+/** Attachments one managed message may carry; the descriptors are tiny. */
+const MANAGED_ATTACHMENT_MAX = 32;
+const MANAGED_ATTACHMENT_NAME_MAX = 255;
+const MANAGED_ATTACHMENT_MIME_MAX = 128;
+
+/**
+ * Validate attachment descriptors crossing the plugin boundary. Only the ref
+ * shape is trusted; the bytes live under `<dataDir>/attachments` and are read
+ * or written through the owner-checked store, never by path.
+ */
+function normalizeManagedAttachments(value: unknown): Array<Record<string, unknown>> {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw apiError("INVALID_PARAMS", "attachments must be an array");
+  if (value.length > MANAGED_ATTACHMENT_MAX) {
+    throw apiError("LIMIT_EXCEEDED", `attachments exceed ${MANAGED_ATTACHMENT_MAX}`);
+  }
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw apiError("INVALID_PARAMS", "attachment must be an object");
+    }
+    const item = entry as Record<string, unknown>;
+    if (typeof item.ref !== "string" || !MANAGED_ATTACHMENT_REF.test(item.ref)) {
+      throw apiError("INVALID_PARAMS", "attachment ref must be attachments/<sha256>");
+    }
+    const name = typeof item.name === "string" ? item.name : "";
+    if (!name || [...name].length > MANAGED_ATTACHMENT_NAME_MAX) {
+      throw apiError("LIMIT_EXCEEDED", "attachment name is invalid");
+    }
+    if (item.kind !== "image" && item.kind !== "file") {
+      throw apiError("INVALID_PARAMS", "attachment kind must be image or file");
+    }
+    if (item.mimeType !== undefined &&
+        (typeof item.mimeType !== "string" || [...item.mimeType].length > MANAGED_ATTACHMENT_MIME_MAX)) {
+      throw apiError("LIMIT_EXCEEDED", "attachment mimeType is invalid");
+    }
+    if (item.size !== undefined &&
+        (typeof item.size !== "number" || !Number.isFinite(item.size) || item.size < 0)) {
+      throw apiError("INVALID_PARAMS", "attachment size is invalid");
+    }
+    if (item.inlinePath !== undefined &&
+        (typeof item.inlinePath !== "string" || [...item.inlinePath].length > 1024)) {
+      throw apiError("LIMIT_EXCEEDED", "attachment inlinePath is invalid");
+    }
+    return {
+      ref: item.ref,
+      name,
+      kind: item.kind,
+      ...(item.mimeType !== undefined ? { mimeType: item.mimeType } : {}),
+      ...(item.size !== undefined ? { size: item.size } : {}),
+      ...(item.inlinePath !== undefined ? { inlinePath: item.inlinePath } : {}),
+    };
+  });
+}
+
 function validatePluginSessionPayload(input: unknown, kind: "import" | "batch" | "other"): void {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw apiError("INVALID_PARAMS", "session input must be an object");
@@ -993,6 +1060,12 @@ function validatePluginSessionPayload(input: unknown, kind: "import" | "batch" |
         throw apiError("INVALID_PARAMS", "message timestamps must be monotonic RFC3339 values");
       }
       previous = messageMs;
+      if (row.attachments !== undefined) {
+        if (row.role !== "user") {
+          throw apiError("INVALID_PARAMS", "attachments are only valid for user messages");
+        }
+        normalizeManagedAttachments(row.attachments);
+      }
       if (row.role === "tool") {
         if (!row.toolName || !row.toolCallId || !["success", "error"].includes(String(row.toolStatus))) {
           throw apiError("INVALID_PARAMS", "tool message fields are invalid");
@@ -1750,14 +1823,30 @@ export class PluginRuntime {
   }
 
   /** Called only after host-core resolves the durable owning plugin. */
-  async submitManagedSession(pluginId: string, input: { sessionId: string; messageId: string; content: string }): Promise<void> {
+  async submitManagedSession(
+    pluginId: string,
+    input: {
+      sessionId: string;
+      messageId: string;
+      content: string;
+      attachments?: unknown;
+    },
+  ): Promise<void> {
     const loaded = this.loaded.get(pluginId);
     if (!loaded || loaded.disposing || !loaded.child) throw apiError("PLUGIN_UNLOADED", "Session owner plugin is unavailable");
     this.assertPermission(loaded, "session.manage.own");
-    if (!input.messageId || input.messageId.length > 256 || !input.content.trim() || input.content.length > 100_000) {
+    if (!input.messageId || input.messageId.length > 256 || input.content.length > 100_000) {
       throw apiError("INVALID_ARGUMENT", "managed session input is invalid");
     }
-    const result = await this.sendToChild(loaded, { t: "call", method: "session.submit", payload: input }, PLUGIN_COMPOSER_TRANSFORM_TIMEOUT_MS);
+    const attachments = normalizeManagedAttachments(input.attachments);
+    if (!input.content.trim() && !attachments.length) {
+      throw apiError("INVALID_ARGUMENT", "managed session input is invalid");
+    }
+    const result = await this.sendToChild(
+      loaded,
+      { t: "call", method: "session.submit", payload: { ...input, attachments } },
+      PLUGIN_COMPOSER_TRANSFORM_TIMEOUT_MS,
+    );
     if (this.loaded.get(pluginId) !== loaded || loaded.disposing) throw apiError("PLUGIN_UNLOADED", "Session owner plugin was unloaded");
     if ((result as { accepted?: unknown })?.accepted !== true) throw apiError("PLUGIN_INVALID_RESULT", "Session send was not acknowledged");
   }
@@ -3108,6 +3197,61 @@ export class PluginRuntime {
         if (owner !== pluginId) throw apiError("PERMISSION_DENIED", "Session is not managed by this plugin");
         session.emitManagedEvent(event);
         return { delivered: true };
+      }
+      case "session.setManagedModel": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.setManagedModel) {
+          throw apiError("UNSUPPORTED", "host api not available: session.setManagedModel");
+        }
+        return this.services.session.setManagedModel(pluginId, input);
+      }
+      case "session.readManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.readManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.readManagedAttachment");
+        }
+        return this.services.session.readManagedAttachment(pluginId, input);
+      }
+      case "session.beginManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.beginManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.beginManagedAttachment");
+        }
+        return this.services.session.beginManagedAttachment(pluginId, input);
+      }
+      case "session.writeManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.writeManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.writeManagedAttachment");
+        }
+        return this.services.session.writeManagedAttachment(pluginId, input);
+      }
+      case "session.commitManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.commitManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.commitManagedAttachment");
+        }
+        return this.services.session.commitManagedAttachment(pluginId, input);
       }
       case "session.createManaged":
       case "session.appendManaged": {
