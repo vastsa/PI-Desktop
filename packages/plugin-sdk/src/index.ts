@@ -214,6 +214,13 @@ export type PluginLocalizedString = {
   "zh-CN": string;
 };
 
+export { assertPluginSecretKey, assertPluginSecretValue, PLUGIN_SECRETS_PERMISSION } from "./secrets.js";
+export type { PluginSecretsApi } from "./secrets.js";
+import type { PluginSecretsApi } from "./secrets.js";
+
+export type { PluginManagedSessionCreateInput, PluginManagedMessageInput, PluginManagedSessionSubmitInput } from "./managed-sessions";
+import type { PluginManagedSessionCreateInput, PluginManagedMessageInput, PluginManagedSessionSubmitInput } from "./managed-sessions";
+
 export type PluginSessionSourceContrib = {
   id: string;
   label?: string | PluginLocalizedString;
@@ -1256,7 +1263,11 @@ export type PluginHostApi = {
   models: {
     list: () => Promise<PluginModelInfo[]>;
   };
+  secrets: PluginSecretsApi;
   session: {
+    /** Requires session.manage.own; existing ordinary/imported sessions cannot be claimed. */
+    createManaged: (input: PluginManagedSessionCreateInput) => Promise<{ sessionId: string; created: boolean }>;
+    appendManaged: (input: PluginManagedMessageInput) => Promise<{ messageId: string; appended: boolean }>;
     getLlmContext: () => Promise<PluginLlmContext>;
     getAutoTitleContext: (input: { sessionId: string }) => Promise<PluginAutoTitleContext | null>;
     setAutoTitle: (input: {
@@ -1389,6 +1400,8 @@ export type PluginModule = {
    * be JSON. Throw an `Error` with a `code` to hand that code to the caller.
    */
   onRendererCall?: (method: string, args: unknown) => Promise<unknown> | unknown;
+  /** Handle an explicit native send to a session created by this plugin. Never replayed by the host. */
+  onSessionSubmit?: (input: PluginManagedSessionSubmitInput) => Promise<{ accepted: true }> | { accepted: true };
   /** Handle one explicitly invoked Composer text action. */
   onComposerTransform?: (
     input: PluginComposerTransformInput,
@@ -1428,6 +1441,8 @@ export const PLUGIN_PERMISSIONS = [
   "models.list",
   "project.create",
   "session.read",
+  "secrets.store",
+  "session.manage.own",
   "session.import",
   "session.read.own",
   "session.update.own",

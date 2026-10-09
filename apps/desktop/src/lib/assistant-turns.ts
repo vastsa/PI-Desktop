@@ -247,7 +247,8 @@ export function buildTranscriptEntries(
   };
 
   const appendMessage = (message: UiMessage) => {
-    if (message.role === "user" || message.role === "system") {
+    if (message.role === "user" || message.role === "system" ||
+        (message.role === "assistant" && message.id.startsWith("plugin:"))) {
       turn = undefined;
       entries.push({ kind: "message", message });
       return;

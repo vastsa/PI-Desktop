@@ -138,6 +138,9 @@ pub struct SessionSummary {
     /// deleting the task frees its sessions back into the ordinary lists.
     #[serde(default)]
     pub scheduled_run: bool,
+    /// Durable plugin ownership, independent of the plugin lifecycle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_by_plugin: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1287,7 +1290,9 @@ fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
 const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
             s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
-            EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run
+            EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run,
+            (SELECT oi.plugin_id FROM session_import_origins oi
+             WHERE oi.session_id = s.id AND json_extract(oi.origin_json, '$.managed') = 1) AS managed_by_plugin
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
@@ -1307,6 +1312,7 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         // Read by name: search and listing build their own column lists, so the
         // alias keeps this mapper independent of any one query's column order.
         scheduled_run: row.get("scheduled_run")?,
+        managed_by_plugin: row.get("managed_by_plugin")?,
     })
 }
 
@@ -1448,6 +1454,7 @@ pub fn create_session_with_options(
         created_at: ms_to_ts(now),
         // The run row that owns this transcript is written after creation.
         scheduled_run: false,
+        managed_by_plugin: None,
     })
 }
 
@@ -1833,6 +1840,7 @@ pub fn fork_session_through(
         created_at,
         // A fork is the user's own conversation, not the automation's transcript.
         scheduled_run: false,
+        managed_by_plugin: None,
     };
     let messages = records.into_iter().map(record_to_ui).collect();
     Ok(ForkSessionResult::Created(Box::new(SessionDetail {
@@ -5041,6 +5049,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            managed_by_plugin: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
         };
@@ -5093,6 +5102,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            managed_by_plugin: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };
@@ -6034,6 +6044,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            managed_by_plugin: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };

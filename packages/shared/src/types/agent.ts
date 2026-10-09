@@ -83,6 +83,8 @@ export type AgentSteerRequest = Pick<
 };
 
 export type AgentPromptResponse = {
+  /** Accepted by the owning plugin, without starting an agent turn. */
+  managed?: true;
   accepted: boolean;
   turnId: string;
 };

@@ -94,3 +94,6 @@ keep the runtime auth resolver authoritative.
 Deferred: it changes provider identity, manifest reconciliation, default-model
 selection, and uninstall cleanup. The initial contract keeps the manifest row
 stable and stores one account credential beneath it.
+
+
+The later ADR `plugin-managed-native-transcripts` adds a separate, permission-gated plugin-private encrypted store. It does not expand OAuth callbacks to read host/provider secret references.

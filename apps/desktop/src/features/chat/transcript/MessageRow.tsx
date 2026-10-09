@@ -84,7 +84,7 @@ export const MessageRow = memo(function MessageRow({
   const deleteMessage = useAppStore((s) => s.deleteMessage);
   const isUser = message.role === "user";
   const isSessionMessage = Boolean(message.sessionMessage);
-  const editableUserMessage = isUser && !isSessionMessage;
+  const editableUserMessage = isUser && !isSessionMessage && !message.id.startsWith("plugin:");
   const workspaceRoot = useAppStore((s) => s.workspace?.path);
   const openFileRef = useOpenChatFileRef();
   // userAction belongs to user cards; other rows keep a plugin-free bar.
@@ -245,12 +245,13 @@ export const MessageRow = memo(function MessageRow({
       className={`message-row ${isSessionMessage ? "session-message" : isUser ? "user" : message.role}`}
       data-minimap-id={message.id}
       data-message-id={message.id}
-      data-row-role={isSessionMessage ? undefined : "user"}
+      data-row-role={isSessionMessage ? undefined : message.role}
       onContextMenu={onContextMenu}
       role="article"
       aria-label={isSessionMessage ? t("sessionCollaboration.agentMessage") : isUser ? t("chat.userMessage") : t("chat.assistantMessage")}
     >
       <div className="message-col">
+        {message.id.startsWith("plugin:") && message.agentName ? <span className="muted">{message.agentName}</span> : null}
         {message.sessionMessage ? <SessionMessageOrigin origin={message.sessionMessage} /> : null}
         {isUser || displayed ? (
           <div className="message-bubble">

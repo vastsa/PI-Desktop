@@ -394,7 +394,9 @@ export function Composer({
     thinkingLevel,
     controlsBlocked,
   });
-  const modelReady = nativeSession
+  const modelReady = activeSessionSummary?.managedByPlugin
+    ? true
+    : nativeSession
     ? activeSessionSummary.capabilities?.canPrompt === true
     : !!provider &&
       provider.enabled &&

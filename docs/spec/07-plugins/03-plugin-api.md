@@ -1380,3 +1380,12 @@ one at runtime.
 
 All high-risk entry points assert declared+granted permissions and emit audit log lines.
 Plugin panels no longer receive the full `pi` object; they use `window.pluginBridge.invoke`.
+
+
+## Plugin-managed native transcripts
+
+`session.manage.own` grants `pi.session.createManaged({ source, externalId, title, projectId? })` and `pi.session.appendManaged({ sessionId, externalId, author?, message })`. Sources must be declared in `contributes.sessionSources`. Project binding additionally requires `project.create`. Creation returns `{ sessionId, created }`; append returns `{ messageId, appended }`. Managed creation is idempotent but cannot claim ordinary/imported sessions or resurrect trashed sessions. Appends are finalized imported-message shapes with exact identity retries; conflicting content is rejected. Author is a display label only. The host derives message ids and owns storage.
+
+Native text submissions invoke the owner's `onSessionSubmit({ sessionId, messageId, content })` in its isolated process. The handler acknowledges `{ accepted: true }` only after durable plugin admission. Main never executes these transcripts locally, replays submissions, or falls back when the owner is disabled, uninstalled, crashed or lacks its grant. Attachments and voice inputs are refused. Native drafts remain recoverable on rejection. A timeout can follow an accepted plugin operation, so stable identities and durable deduplication are required in the plugin.
+
+`secrets.store` grants `pi.secrets.get(key)`, `set(key, value)` and `delete(key)` in encrypted host storage scoped to the installed plugin id. Keys are 1–128 ASCII alphanumeric/dot/underscore/hyphen characters, starting with an alphanumeric; values are at most 64 KiB in UTF-8. Missing keys return null; deletion is idempotent. No provider id, plugin id or secret reference is accepted from callers. Values are excluded from logs. Existing plugins need no migration. These capabilities require a host release containing ADR `plugin-managed-native-transcripts`; stock 0.17.0 is incompatible.

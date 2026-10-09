@@ -5,6 +5,8 @@
 //! and imported sessions do not acquire project/provider bindings unless an
 //! explicit host-created project id is supplied.
 
+pub mod managed;
+
 use anyhow::{anyhow, Result};
 use chrono::DateTime;
 use rusqlite::{params, OptionalExtension};

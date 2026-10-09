@@ -7,6 +7,7 @@ import type { HostProcess } from "../host-process";
 import { ROUTE_LOCAL, type BackendRouter } from "../remote/backend-router";
 import { registerAgentExtensionIpc } from "../agent-extensions-ipc";
 import { readNpmPath, writeNpmPath } from "../npm-preferences";
+import { createManagedSessionRouter } from "../plugin-managed-sessions";
 import { registerAgentIpc } from "./agent-ipc";
 import { registerAppIpc } from "./app-ipc";
 import { registerDiagnosticsIpc } from "./diagnostics-ipc";
@@ -379,6 +380,15 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
   registerAgentIpc({
     registrar,
+    managedSessions: createManagedSessionRouter({
+      owner: async (sessionId) => {
+        const host = getHost();
+        if (!host) throw new Error("host unavailable");
+        const result = await host.call<{ pluginId: string | null }>("session.managedOwner", { sessionId });
+        return result.pluginId;
+      },
+      submit: (pluginId, input) => plugins.submitManagedSession(pluginId, input),
+    }),
     getHost,
     getSidecar,
     getAgentHostBridge,

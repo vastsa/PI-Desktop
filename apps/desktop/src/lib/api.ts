@@ -1633,6 +1633,7 @@ export const api = {
       reason?: string;
       pluginId?: string;
       projectPath?: string | null;
+      sessionId?: string;
       selectSessionId?: string;
     }) => void,
   ) => {
@@ -1643,6 +1644,7 @@ export const api = {
           reason?: string;
           pluginId?: string;
           projectPath?: string | null;
+          sessionId?: string;
           selectSessionId?: string;
         },
       ),

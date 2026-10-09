@@ -1,3 +1,4 @@
+import { createPluginSecretsApi, type PluginSecretsHostCall } from "./plugin-secrets";
 import {
   readFileSync,
   existsSync,
@@ -477,7 +478,10 @@ export type PluginHostServices = {
     stripToolName?: string;
     signal?: AbortSignal;
   }) => Promise<PluginCompleteResult>;
+  secretsHostCall?: PluginSecretsHostCall;
   session?: {
+    createManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    appendManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     get: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     listMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
@@ -583,6 +587,11 @@ const HOST_API_ALLOWLIST = new Set([
   "session.list",
   "session.get",
   "session.listMessages",
+  "secrets.get",
+  "secrets.set",
+  "secrets.delete",
+  "session.createManaged",
+  "session.appendManaged",
   "session.import",
   "session.importBatch",
   "session.rename",
@@ -1728,6 +1737,19 @@ export class PluginRuntime {
       });
       throw error;
     }
+  }
+
+  /** Called only after host-core resolves the durable owning plugin. */
+  async submitManagedSession(pluginId: string, input: { sessionId: string; messageId: string; content: string }): Promise<void> {
+    const loaded = this.loaded.get(pluginId);
+    if (!loaded || loaded.disposing || !loaded.child) throw apiError("PLUGIN_UNLOADED", "Session owner plugin is unavailable");
+    this.assertPermission(loaded, "session.manage.own");
+    if (!input.messageId || input.messageId.length > 256 || !input.content.trim() || input.content.length > 100_000) {
+      throw apiError("INVALID_ARGUMENT", "managed session input is invalid");
+    }
+    const result = await this.sendToChild(loaded, { t: "call", method: "session.submit", payload: input }, PLUGIN_COMPOSER_TRANSFORM_TIMEOUT_MS);
+    if (this.loaded.get(pluginId) !== loaded || loaded.disposing) throw apiError("PLUGIN_UNLOADED", "Session owner plugin was unloaded");
+    if ((result as { accepted?: unknown })?.accepted !== true) throw apiError("PLUGIN_INVALID_RESULT", "Session send was not acknowledged");
   }
 
   getLoaded(pluginId: string): LoadedPlugin | undefined {
@@ -3029,6 +3051,19 @@ export class PluginRuntime {
           ts: Date.now(),
         });
         return result;
+      }
+      case "session.createManaged":
+      case "session.appendManaged": {
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (api === "session.createManaged") {
+          const source = this.sessionSource(loaded, input.source);
+          input.sourceLabel = source.label;
+          if (input.projectId !== undefined && input.projectId !== null) this.assertPermission(loaded, "project.create");
+        }
+        const operation = api === "session.createManaged" ? this.services.session?.createManaged : this.services.session?.appendManaged;
+        if (!operation) throw apiError("UNSUPPORTED", `host api not available: ${api}`);
+        return operation(pluginId, input);
       }
       case "session.import": {
         this.assertPermission(loaded, "session.import");
@@ -5061,6 +5096,17 @@ export class PluginRuntime {
     };
 
     return {
+      secrets: createPluginSecretsApi({
+        pluginId: loaded.manifest.id,
+        assertPermission: () => {
+          if (this.loaded.get(loaded.manifest.id) !== loaded || loaded.disposing) throw apiError("PERMISSION_DENIED", "Plugin is no longer active");
+          this.assertPermission(loaded, "secrets.store");
+        },
+        callHost: (method, params) => {
+          if (!this.services.secretsHostCall) throw apiError("UNSUPPORTED", "Plugin secret storage is unavailable");
+          return this.services.secretsHostCall(method, params);
+        },
+      }),
       app: {
         getVersion: async () => this.services.getAppVersion?.() ?? "0.2.1",
         getLocale: async () => this.services.getLocale?.() ?? "en",

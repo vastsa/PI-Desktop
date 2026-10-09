@@ -133,6 +133,8 @@ export function createPluginServices({
     }
     const result = await getHost()!.call(method, { ...input, pluginId });
     const changed =
+      (method === "plugin.session.createManaged" && (result as { created?: unknown })?.created === true) ||
+      method === "plugin.session.appendManaged" ||
       (method === "plugin.session.import" &&
         (result as { imported?: unknown })?.imported === true) ||
       (method === "plugin.session.importBatch" &&
@@ -144,7 +146,9 @@ export function createPluginServices({
       (method === "plugin.session.delete" &&
         (result as { deleted?: unknown })?.deleted === true);
     if (changed) {
-      sendToRenderer(IPC.event.sessionsChanged, { reason: method, pluginId });
+      sendToRenderer(IPC.event.sessionsChanged, { reason: method, pluginId,
+        ...(method === "plugin.session.appendManaged" ? { sessionId: input.sessionId } : {}),
+      });
     }
     return result;
   };
@@ -354,7 +358,14 @@ export function createPluginServices({
       }>("session.get", { id: sessionId });
       return pluginSessionContextFromSession(sessionId, detail?.session, stripToolName);
     },
+    secretsHostCall: async (method, params) => {
+      const host = getHost();
+      if (!host) throw new Error("host unavailable");
+      return host.call(method, params);
+    },
     session: {
+      createManaged: (pluginId, input) => callPluginSessionHost("plugin.session.createManaged", pluginId, input),
+      appendManaged: (pluginId, input) => callPluginSessionHost("plugin.session.appendManaged", pluginId, input),
       list: (pluginId, input) => callPluginSessionHost("plugin.session.list", pluginId, input),
       get: (pluginId, input) => callPluginSessionHost("plugin.session.get", pluginId, input),
       listMessages: (pluginId, input) =>

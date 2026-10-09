@@ -314,7 +314,14 @@ function buildApi() {
     models: {
       list: () => call("models.list"),
     },
+    secrets: {
+      get: (key) => call("secrets.get", [key]),
+      set: (key, value) => call("secrets.set", [key, value]),
+      delete: (key) => call("secrets.delete", [key]),
+    },
     session: {
+      createManaged: (input) => call("session.createManaged", [input ?? {}]),
+      appendManaged: (input) => call("session.appendManaged", [input ?? {}]),
       getLlmContext: () => call("session.getLlmContext"),
       getAutoTitleContext: (input) => call("session.getAutoTitleContext", [input ?? {}]),
       setAutoTitle: (input) => call("session.setAutoTitle", [input ?? {}]),
@@ -641,6 +648,21 @@ async function handleParentCall(method, payload, invocationId, callId) {
         throw error;
       }
       return JSON.parse(text);
+    }
+    case "session.submit": {
+      const handler = pluginModule?.onSessionSubmit;
+      if (typeof handler !== "function") {
+        const error = new Error("plugin does not implement onSessionSubmit");
+        error.code = "PLUGIN_SESSION_NO_HANDLER";
+        throw error;
+      }
+      const result = await handler(payload);
+      if (result?.accepted !== true) {
+        const error = new Error("onSessionSubmit must acknowledge accepted: true");
+        error.code = "PLUGIN_INVALID_RESULT";
+        throw error;
+      }
+      return { accepted: true };
     }
     case "composer.transform": {
       const handler = pluginModule?.onComposerTransform;

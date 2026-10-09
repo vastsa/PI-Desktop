@@ -17263,3 +17263,15 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Steps:** Save a 500K user context limit for a model whose catalog publishes 1M. Open the Composer model list, then send a short message and inspect context usage. Repeat with a catalog-owned limit and with discovery unavailable.
 - **Expected:** The user-configured row and context inspector show 500K; a catalog-owned row follows the published limit; a configured model without discovery retains its saved context label. Model selection remains unchanged.
 - **Status:** Automated unit regression in `apps/desktop/test/composer-models.test.mjs` covers user overrides, catalog inheritance, and missing discovery; the full save → picker → message → context-inspector path remains a manual validation scenario.
+
+
+### E2E-PLUGIN-managed-native-transcript
+
+- Title: Native managed transcript submission and disabled-owner fencing.
+- Preconditions: Isolated Desktop data/profile, development fixture plugin with `session.manage.own`, declared source and `secrets.store`; no production model or credentials.
+- Steps: Create a managed transcript, open it natively, submit text, append a remote reply, reload the renderer, retry an exact external message id, disable the plugin, attempt another native send, restart and retry while disabled, re-enable the owner.
+- Expected: The plugin receives the explicit send once; its accepted message and remote reply appear in the native transcript; exact append retry creates no duplicate; conflicting retry and foreign-owner append fail; disabled sends retain drafts and create no local agent turn; ownership survives restart; only the re-enabled owner can resume.
+- Specs: `07-plugins/03-plugin-api.md`; ADR `plugin-managed-native-transcripts`.
+- Acceptance: Native transcript updates plus durable owner and message-count assertions; encrypted credential file does not contain the fixture plaintext.
+- Milestone: Plugin SDK.
+- Status: Isolated macOS Desktop fixture passed native submit/append/authors, exact retry, disabled draft retention, operation fences, restart and re-enable without model calls. Rust tests cover conflicting retry and foreign ownership. Physical multi-machine and Windows runs remain pending.

@@ -63,6 +63,11 @@ function importSelectionKey(value: unknown): string | null {
   return `${source}:${externalId}`;
 }
 
+async function rejectManagedMutation(host: HostProcess, sessionId: string): Promise<void> {
+  const owner = await host.call<{ pluginId: string | null }>("session.managedOwner", { sessionId });
+  if (owner.pluginId) throw Object.assign(new Error("This transcript is managed by a plugin"), { errorCode: "PLUGIN_SESSION_MANAGED" });
+}
+
 function rejectNativeMutation(sessionId: unknown, action: string): void {
   if (typeof sessionId === "string" && sessionId.startsWith("native-pi:")) {
     throw Object.assign(new Error(`Native Pi session ${action} is not supported`), {
@@ -439,6 +444,7 @@ export function registerSessionIpc({
       const sessionId = String(input?.sessionId || "");
       if (!sessionId) throw new Error("sessionId required");
       rejectNativeMutation(sessionId, "transcript replacement");
+      await rejectManagedMutation(host, sessionId);
       // Drop the live pi-agent so the next prompt reseeds from the truncated
       // transcript instead of replaying the discarded branch in memory.
       if (sidecar) {
@@ -464,6 +470,7 @@ export function registerSessionIpc({
     }) => {
       if (!host) throw new Error("host unavailable");
       rejectNativeMutation(input?.sessionId, "revision save");
+      await rejectManagedMutation(host, input.sessionId);
       return host.call("session.saveRevision", {
         sessionId: String(input?.sessionId || ""),
         rootUserId: String(input?.rootUserId || ""),
@@ -494,6 +501,7 @@ export function registerSessionIpc({
       if (!host) throw new Error("host unavailable");
       const sessionId = String(input?.sessionId || "");
       rejectNativeMutation(sessionId, "revision activation");
+      await rejectManagedMutation(host, sessionId);
       if (sidecar) {
         sidecar.clearProjectInstructionRoot(sessionId);
         sidecar.clearVendorAuthBindings(sessionId);

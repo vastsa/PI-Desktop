@@ -475,13 +475,29 @@ export function createQueueSlice({
             runtime.submittedComposerDrafts.delete(startedIn);
             return false;
           }
-          await api.prompt({
+          const receipt = await api.prompt({
             sessionId,
             content,
             messageId: optimisticMessage.id,
             viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
             attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
           });
+          if (receipt.managed) {
+            runtime.submittedComposerDrafts.delete(startedIn);
+            runtime.retractOptimisticUserMessage(startedIn, optimisticMessage);
+            set((state) => ({
+              isRunning: state.activeSessionId === startedIn ? false : state.isRunning,
+              runningSessions: { ...state.runningSessions, [startedIn]: false },
+            }));
+            onAccepted?.(startedIn);
+            try {
+              await get().refreshSessions();
+              if (get().activeSessionId === startedIn) await get().selectSession(startedIn);
+            } catch {
+              // Admission succeeded; a display refresh failure must not restore the draft.
+            }
+            return true;
+          }
           const submitted = runtime.submittedComposerDrafts.get(startedIn);
           if (submitted?.abortResolution && (await submitted.abortResolution)) {
             return false;

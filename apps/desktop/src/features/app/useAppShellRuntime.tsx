@@ -676,6 +676,10 @@ export function useAppShellRuntime() {
           } else if (event.projectPath === null && !event.selectSessionId) {
             await useAppStore.getState().clearProject();
           }
+          const current = useAppStore.getState();
+          if (event.reason === "plugin.session.appendManaged" && event.sessionId === current.activeSessionId && current.activeSessionId && current.page === "chat") {
+            await current.selectSession(current.activeSessionId);
+          }
           if (event.selectSessionId) {
             await useAppStore.getState().selectSession(event.selectSessionId);
           }
