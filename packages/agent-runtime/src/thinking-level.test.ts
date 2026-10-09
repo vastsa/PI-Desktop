@@ -6,7 +6,7 @@ import { agentThinkingLevel, clampThinkingLevel, omitThinkingModel, requestThink
 describe("simple request thinking normalization", () => {
   const providers = builtinProviders();
 
-  for (const providerId of ["openai", "azure-openai-responses", "openai-codex"]) {
+  for (const providerId of ["openai", "azure", "openai-codex"]) {
     it(`normalizes unsupported off using the published ${providerId} model`, () => {
       const model = providers.find((provider) => provider.id === providerId)
         ?.getModels().find((entry) => entry.id === "gpt-6.1-sol");

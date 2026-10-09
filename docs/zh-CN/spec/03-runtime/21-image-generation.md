@@ -58,7 +58,7 @@
 
 `node scripts/e2e-image-chat.mjs` 在隔离桌面中使用本地模型/图片 HTTP 夹具，覆盖相邻默认设置、Composer 提交、批量结果、引用生成文件编辑、收起详情和配置跳转。真实接口验证通过 `scripts/test-image-generation-live.mjs` 显式启用，仅限一次生成和一次编辑，不属于默认测试命令。
 
-## Pi 1.0.1 operation boundary
+## Pi 1.1.0 operation boundary
 
 Image generation and edits execute through account-scoped Pi `Models.generateImages`.
 Use native OpenRouter images or a registered compatible OpenAI-images adapter,

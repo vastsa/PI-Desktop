@@ -136,7 +136,7 @@ type RecentModelRef = {
 
 ## 6. Refresh behavior
 
-The pinned pi-ai 1.0.1 catalog is the startup baseline. Startup reads no remote
+The pinned pi-ai 1.1.0 catalog is the startup baseline. Startup reads no remote
 catalog and uses no ambient credentials. `providers.refreshModelCatalog` invokes
 Pi's public refresh API; settings metadata lookups themselves are local.
 

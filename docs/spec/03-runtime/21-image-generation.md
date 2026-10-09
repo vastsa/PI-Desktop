@@ -128,7 +128,7 @@ previews, editing a generated file, collapsed results, and setup navigation.
 Live verification is opt-in via `scripts/test-image-generation-live.mjs`, limited
 to one generation plus one edit and never a default test command.
 
-## Pi 1.0.1 operation boundary
+## Pi 1.1.0 operation boundary
 
 Image generation and edits execute through account-scoped Pi `Models.generateImages`.
 Use native OpenRouter images or a registered compatible OpenAI-images adapter,

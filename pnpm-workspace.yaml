@@ -13,17 +13,17 @@ allowBuilds:
   # binary; its from-source install script was never approved and is not needed.
   koffi: false
 # pnpm records exact-version exclusions for the current, explicitly requested
-# Pi 1.0.1 release while it is inside the minimum release age window. Keep these
+# Pi 1.1.0 release while it is inside the minimum release age window. Keep these
 # entries exact; do not widen them to package names or ranges.
 minimumReleaseAgeExclude:
-  - '@earendil-works/chord@1.0.1'
-  - '@earendil-works/pi-agent-core@1.0.1'
-  - '@earendil-works/pi-ai@1.0.1'
-  - '@earendil-works/pi-codemode@1.0.1'
-  - '@earendil-works/pi-coding-agent@1.0.1'
-  - '@earendil-works/pi-mcp@1.0.1'
-  - '@earendil-works/pi-telemetry@1.0.1'
-  - '@earendil-works/pi-tui@1.0.1'
+  - '@earendil-works/chord@1.1.0'
+  - '@earendil-works/pi-agent-core@1.1.0'
+  - '@earendil-works/pi-ai@1.1.0'
+  - '@earendil-works/pi-codemode@1.1.0'
+  - '@earendil-works/pi-coding-agent@1.1.0'
+  - '@earendil-works/pi-mcp@1.1.0'
+  - '@earendil-works/pi-telemetry@1.1.0'
+  - '@earendil-works/pi-tui@1.1.0'
 # Advisory fixes for transitives whose parents still resolve the vulnerable
 # version. Drop each one once its parent ships a release that resolves the
 # patched version on its own.
@@ -53,9 +53,9 @@ overrides:
 # every range to its floor — silently downgrading dependencies instead of
 # refreshing them. Pin the intent: `pnpm update` means "newest within range".
 patchedDependencies:
-  '@earendil-works/pi-agent-core@1.0.1': patches/@earendil-works__pi-agent-core@1.0.1.patch
-  '@earendil-works/pi-ai@1.0.1': patches/@earendil-works__pi-ai@1.0.1.patch
-  '@earendil-works/pi-coding-agent@1.0.1': patches/@earendil-works__pi-coding-agent@1.0.1.patch
+  '@earendil-works/pi-agent-core@1.1.0': patches/@earendil-works__pi-agent-core@1.1.0.patch
+  '@earendil-works/pi-ai@1.1.0': patches/@earendil-works__pi-ai@1.1.0.patch
+  '@earendil-works/pi-coding-agent@1.1.0': patches/@earendil-works__pi-coding-agent@1.1.0.patch
 resolutionMode: highest
 # shamefully-hoist also lives in .npmrc, but pnpm 12 applies it only from
 # here; without it public hoisting is empty and examples/ plugins cannot

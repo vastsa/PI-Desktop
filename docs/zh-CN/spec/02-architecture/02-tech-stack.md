@@ -15,9 +15,9 @@
 | 主机后端 | **Rust** | 稳定的 Rust 工具链 | tools/plugins/permissions/persistence 适配器 |
 | Rust 异步 | 东京 | 稳定 | 主机服务 |
 | 主机 RPC | stdio JSON-RPC (NDJSON) | 冷冻（D001） | Electron 主 ↔ Rust 主机 |
-| Agent 引擎 | `@earendil-works/pi-agent-core` | 1.0.1 | Agent 循环及稳定的 agent/event/tool 类型 |
-| 模型 API | `@earendil-works/pi-ai` | 1.0.1 | 提供商 |
-| Model catalog | pi-ai Providers/Models | pinned 1.0.1 + explicit provider refresh | account-scoped metadata and typed operations |
+| Agent 引擎 | `@earendil-works/pi-agent-core` | 1.1.0 | Agent 循环及稳定的 agent/event/tool 类型 |
+| 模型 API | `@earendil-works/pi-ai` | 1.1.0 | 提供商 |
+| Model catalog | pi-ai Providers/Models | pinned 1.1.0 + explicit provider refresh | account-scoped metadata and typed operations |
 
 > pi-ai 提供已发布的模型元数据、原生思考能力、传输和认证。
 > Host 持有 Desktop 账户行、凭据和显式绑定覆盖。

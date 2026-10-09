@@ -107,6 +107,9 @@ function launchError(message: string, errorCode: string): Error {
   return Object.assign(new Error(message), { errorCode });
 }
 
+function toPortablePath(value: string): string {
+  return value.replace(/\\/g, "/");
+}
 function isHostUnavailable(error: unknown): boolean {
   return (error as { errorCode?: string } | null)?.errorCode === ErrorCodes.HOST_UNAVAILABLE;
 }
@@ -377,8 +380,8 @@ export function createHeadlessLaunchResolver(options: HeadlessLaunchResolverOpti
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
         commandShell,
-        scratchDir: join(dataDir, "scratch", sessionId),
-        attachmentsDir: join(dataDir, "attachments"),
+        scratchDir: toPortablePath(join(dataDir, "scratch", sessionId)),
+        attachmentsDir: toPortablePath(join(dataDir, "attachments")),
         projectPath,
         projectInstructions,
         projectMemory,

@@ -9,10 +9,10 @@ boundaries must keep that split clear as upstream packages evolve.
 ## 2. Current ownership
 
 The sidecar pins `@earendil-works/pi-agent-core`, `pi-ai`, and
-`pi-coding-agent` together at exactly `1.0.1`; Desktop's `pi-ai` and `pi-mcp`
+`pi-coding-agent` together at exactly `1.1.0`; Desktop's `pi-ai` and `pi-mcp`
 development dependencies use the same release. Target-release package patches
 remain narrow compatibility deltas and are listed with their audited behavior
-in `docs/project/pi-101-adoption.md`.
+in `docs/project/pi-110-adoption.md`.
 
 - `@earendil-works/pi-agent-core` supplies the agent loop and its stable agent,
   event, and tool types. Agent Runtime owns desktop-specific compaction,
@@ -31,7 +31,7 @@ in `docs/project/pi-101-adoption.md`.
   host-core checkpoint-compaction path, and durable session store do not use
   the package's AgentSession.
 
-The extension shim is a versioned compatibility subset, not the full 1.0.1
+The extension shim is a versioned compatibility subset, not the full 1.1.0
 coding-agent API. Its legacy `VERSION` marker remains sourced from
 `TRUSTED_EXTENSION_KERNEL_VERSION` and intentionally identifies the modeled
 0.87.1 extension surface.

@@ -476,7 +476,7 @@ same vendor key.
 
 ### Anthropic token endpoint rate limits
 
-The pinned pi-ai 1.0.1 patch gives Anthropic authorization-code exchange and
+The pinned pi-ai 1.1.0 patch gives Anthropic authorization-code exchange and
 refresh a shared, bounded token-request policy: retry only an explicit HTTP
 429, at most three total requests. Wait at least 1 s then 2 s, or longer when
 `Retry-After` gives delta seconds or an HTTP date. A server delay beyond the

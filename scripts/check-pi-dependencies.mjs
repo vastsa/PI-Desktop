@@ -25,7 +25,7 @@ function parseArgs(argv) {
 }
 
 const root = parseArgs(process.argv.slice(2));
-const targetVersion = "1.0.1";
+const targetVersion = "1.1.0";
 
 function readJson(path) {
   return JSON.parse(readFileSync(join(root, path), "utf8"));
@@ -81,17 +81,17 @@ const actualReleaseAgeExclusions = [...releaseAgeExclusions.matchAll(/^[ \t]+-[ 
   .map((match) => match[1])
   .sort();
 const expectedReleaseAgeExclusions = [
-  "@earendil-works/chord@1.0.1",
-  "@earendil-works/pi-agent-core@1.0.1",
-  "@earendil-works/pi-ai@1.0.1",
-  "@earendil-works/pi-codemode@1.0.1",
-  "@earendil-works/pi-coding-agent@1.0.1",
-  "@earendil-works/pi-mcp@1.0.1",
-  "@earendil-works/pi-telemetry@1.0.1",
-  "@earendil-works/pi-tui@1.0.1",
+  "@earendil-works/chord@1.1.0",
+  "@earendil-works/pi-agent-core@1.1.0",
+  "@earendil-works/pi-ai@1.1.0",
+  "@earendil-works/pi-codemode@1.1.0",
+  "@earendil-works/pi-coding-agent@1.1.0",
+  "@earendil-works/pi-mcp@1.1.0",
+  "@earendil-works/pi-telemetry@1.1.0",
+  "@earendil-works/pi-tui@1.1.0",
 ].sort();
 if (JSON.stringify(actualReleaseAgeExclusions) !== JSON.stringify(expectedReleaseAgeExclusions)) {
-  throw new Error("Pi minimumReleaseAgeExclude entries must match only the exact 1.0.1 release packages");
+  throw new Error("Pi minimumReleaseAgeExclude entries must match only the exact 1.1.0 release packages");
 }
 
 process.stdout.write(`Pi direct pins and installed package instances are aligned at ${targetVersion}.\n`);

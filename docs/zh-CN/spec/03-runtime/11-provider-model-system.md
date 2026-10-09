@@ -180,7 +180,7 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
 
 ### 6.2 Catalog responsibilities
 
-1. pi-ai 1.0.1 Providers/Models own published metadata, transport, thinking
+1. pi-ai 1.1.0 Providers/Models own published metadata, transport, thinking
    support and native operation types. Electron's historically named
    `ModelsDevCatalog` is an account-aware adapter over this public API.
 2. Startup is cache-only and disables ambient environment/file credentials.
@@ -387,7 +387,7 @@ Codex CLI 版本（`CODEX_MODELS_CLIENT_VERSION`），账户模型缺失时调�
 
 ### Anthropic token 端点限流
 
-固定版本 pi-ai 1.0.1 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
+固定版本 pi-ai 1.1.0 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
 有限策略：只重试明确的 HTTP 429，最多总共三次请求。先等待至少 1 秒、再
 等待至少 2 秒；若 `Retry-After` 给出更长的秒数或 HTTP 日期，则遵守该时间。
 服务器要求的等待超出剩余预算时结束本次尝试，不缩短等待后提前重试。
