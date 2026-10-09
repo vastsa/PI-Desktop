@@ -136,6 +136,14 @@ export function InstalledPluginsPanel({
                             <PluginRowDetails
                               plugin={plugin}
                               services={servicesByPlugin.get(plugin.id)}
+                              onOpenPanel={
+                                plugin.ui?.panel
+                                  ? () =>
+                                      void run(() =>
+                                        api.openPluginPanel(plugin.id),
+                                      )
+                                  : undefined
+                              }
                             />
                           </div>
                           <div className="plugins-row-controls">
@@ -183,7 +191,7 @@ export function InstalledPluginsPanel({
                               {plugin.ui?.panel ? (
                                 <TooltipButton
                                   type="button"
-                                  className="plugins-icon-btn"
+                                  className="plugins-panel-btn"
                                   tooltip={t("plugins.openPanel")}
                                   ariaLabel={t("plugins.openPanel")}
                                   onClick={() =>
@@ -191,6 +199,7 @@ export function InstalledPluginsPanel({
                                   }
                                 >
                                   <IconPanel size={15} />
+                                  <span>{t("plugins.openPanel")}</span>
                                 </TooltipButton>
                               ) : null}
                               {plugin.enabled && plugin.settings?.length ? (

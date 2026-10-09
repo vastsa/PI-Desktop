@@ -486,7 +486,9 @@ test("service status reaches the renderer over its own channel", () => {
 });
 
 test("the plugins page keeps capability and service chips in row details", () => {
-  assert.match(pluginsPageSrc, /<CapabilityChips capabilities=\{plugin\.capabilities\} \/>/);
+  // The panel opener rides along so the `panel` chip can open the window it
+  // names; the chips themselves stay the row's own readout (#998).
+  assert.match(pluginsPageSrc, /<CapabilityChips capabilities=\{plugin\.capabilities\}[^>]*\/>/);
   assert.match(pluginsPageSrc, /<ServiceChips statuses=\{services\} \/>/);
   assert.match(pluginsPageSrc, /<details className="plugins-row-details">/);
   assert.match(

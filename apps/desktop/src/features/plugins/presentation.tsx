@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { TooltipButton, cx } from "../../components/ui";
-import { IconChevronDown, IconSearch, IconX } from "../../components/icons";
+import { IconChevronDown, IconPanel, IconSearch, IconX } from "../../components/icons";
 import type {
   PluginAgentExtensionStatus,
   PluginCapability,
@@ -93,18 +93,46 @@ export function FsScopeChips({ policy }: { policy: PluginFsPolicy | undefined })
   );
 }
 
-/** What the plugin contributes, in a fixed order so rows stay comparable. */
-export function CapabilityChips({ capabilities }: { capabilities: readonly PluginCapability[] | undefined }) {
+/**
+ * What the plugin contributes, in a fixed order so rows stay comparable. A
+ * `panel` capability is the only contribution with a window behind it, so when
+ * the row can open one the chip becomes the control that does it; otherwise
+ * the capability is a name the user cannot act on.
+ */
+export function CapabilityChips({
+  capabilities,
+  onOpenPanel,
+}: {
+  capabilities: readonly PluginCapability[] | undefined;
+  onOpenPanel?: () => void;
+}) {
   const { t } = useTranslation();
   const ordered = CAPABILITY_ORDER.filter((cap) => capabilities?.includes(cap));
   if (ordered.length === 0) return null;
   return (
     <span className="plugins-cap-chips">
-      {ordered.map((cap) => (
-        <span key={cap} className="plugins-cap-chip">
-          {t(`plugins.capabilities.${cap}`, { defaultValue: cap })}
-        </span>
-      ))}
+      {ordered.map((cap) => {
+        const label = t(`plugins.capabilities.${cap}`, { defaultValue: cap });
+        if (cap === "panel" && onOpenPanel) {
+          return (
+            <button
+              key={cap}
+              type="button"
+              className="plugins-cap-chip is-action"
+              title={t("plugins.openPanel")}
+              onClick={onOpenPanel}
+            >
+              <IconPanel size={11} aria-hidden="true" />
+              {label}
+            </button>
+          );
+        }
+        return (
+          <span key={cap} className="plugins-cap-chip">
+            {label}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -200,9 +228,12 @@ export function AgentExtensionDetails({ status }: { status: PluginAgentExtension
 export function PluginRowDetails({
   plugin,
   services,
+  onOpenPanel,
 }: {
   plugin: PluginSummary;
   services: readonly PluginServiceStatus[] | undefined;
+  /** Set when the plugin declares a panel, so the readout can open it. */
+  onOpenPanel?: () => void;
 }) {
   const { t } = useTranslation();
   const hasCapabilities = (plugin.capabilities?.length ?? 0) > 0;
@@ -231,7 +262,7 @@ export function PluginRowDetails({
             <span className="plugins-row-detail-label">
               {t("plugins.capabilitiesTitle")}
             </span>
-            <CapabilityChips capabilities={plugin.capabilities} />
+            <CapabilityChips capabilities={plugin.capabilities} onOpenPanel={onOpenPanel} />
           </div>
         ) : null}
         {hasServices ? (
