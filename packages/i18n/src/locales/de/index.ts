@@ -2140,8 +2140,8 @@ sklm: {
     "installCopyFailed": "Installationsdetails konnten nicht kopiert werden",
     "contributeGuide": "So tragen Sie bei",
     "capabilities": {
-      "panel": "Panel",
-      "views": "Arbeitsfensteransichten",
+      "panel": "Eigenständiges Panel-Fenster",
+      "views": "Seitliche Panel-Ansicht",
       "commands": "Befehle",
       "tools": "Agententools",
       "agentExtension": "Agent-Erweiterung",

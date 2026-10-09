@@ -2147,8 +2147,8 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     installCopyFailed: "Kurulum ayrıntıları kopyalanamadı",
     contributeGuide: "Nasıl katkıda bulunulur",
     capabilities: {
-      panel: "Panel",
-      views: "Çalışma paneli görünümleri",
+      panel: "Bağımsız panel penceresi",
+      views: "Yan panel görünümü",
       commands: "Komutlar",
       tools: "Ajan araçları",
       agentExtension: "Ajan uzantısı",

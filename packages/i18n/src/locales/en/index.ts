@@ -2164,8 +2164,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     installCopyFailed: "Couldn't copy the install details",
     contributeGuide: "How to contribute",
     capabilities: {
-      panel: "Panel",
-      views: "Work panel views",
+      panel: "Standalone panel window",
+      views: "Side panel view",
       commands: "Commands",
       tools: "Agent tools",
       agentExtension: "Agent extension",

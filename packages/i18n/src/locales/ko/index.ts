@@ -2157,8 +2157,8 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     installCopyFailed: "설치 세부 정보를 복사하지 못했습니다",
     contributeGuide: "기여 방법",
     capabilities: {
-      panel: "패널",
-      views: "작업 패널 화면",
+      panel: "독립 패널 창",
+      views: "사이드 패널 화면",
       commands: "명령",
       tools: "에이전트 도구",
       agentExtension: "에이전트 확장",

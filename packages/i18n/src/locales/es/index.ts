@@ -2140,8 +2140,8 @@ sklm: {
     "installCopyFailed": "No se pudieron copiar los detalles",
     "contributeGuide": "Cómo contribuir",
     "capabilities": {
-      "panel": "Panel",
-      "views": "Vistas del panel de trabajo",
+      "panel": "Ventana de panel independiente",
+      "views": "Vista lateral del panel",
       "commands": "Comandos",
       "tools": "Herramientas del agente",
       "agentExtension": "Extensión del agente",

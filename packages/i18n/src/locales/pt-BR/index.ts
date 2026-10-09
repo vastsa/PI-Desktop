@@ -2099,8 +2099,8 @@ export const ptBR = {
     installCopyFailed: "Não foi possível copiar os detalhes da instalação",
     contributeGuide: "Como contribuir",
     capabilities: {
-      panel: "Painel",
-      views: "Visualizações do painel de trabalho",
+      panel: "Janela de painel independente",
+      views: "Visualização lateral do painel",
       commands: "Comandos",
       tools: "Ferramentas do agente",
       agentExtension: "Extensão do agente",

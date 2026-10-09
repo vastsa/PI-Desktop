@@ -2128,8 +2128,8 @@ sklm: {
     installCopyFailed: "复制安装详情失败",
     contributeGuide: "贡献指南",
     capabilities: {
-      panel: "面板",
-      views: "工作面板视图",
+      panel: "独立面板窗口",
+      views: "侧边面板视图",
       commands: "命令",
       tools: "智能体工具",
       agentExtension: "Agent 扩展",
