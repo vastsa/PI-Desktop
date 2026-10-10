@@ -160,6 +160,30 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - native select triggers and their opened option lists use the active theme's
     readable foreground/background pairing on macOS, Windows, and Linux; the
     shared native-select contract applies to every app surface
+  - **Translucent sidebar** (macOS only): on unless
+    `AppSettings.macosSidebarVibrancy` is false. On uses Electron
+    `vibrancy: "sidebar"` with a transparent backing. Off creates an opaque
+    window and does not reapply vibrancy when the theme changes; the opaque
+    background still follows System appearance and plugin-theme restoration.
+    Changing the switch asks first, then restarts the app, because the
+    backing is fixed at creation. Turning it on warns that GPU use may
+    increase. If confirm cannot save, a visible localized alert stays on
+    the dialog so the change can be retried; the dialog does not dismiss
+    and the app does not restart. The confirm dialog contains keyboard
+    focus on open and while busy, and restores the previous focus on close.
+    In `pnpm dev`, the launcher restarts both the renderer server and Electron,
+    retaining the explicit data directory and launch arguments. The main window
+    renders after restart; packaged builds retain native application relaunch.
+    Confirmation persists the setting without a follow-up catalog refresh;
+    shutdown-related refresh errors must not turn an accepted save into a
+    save-failure alert. Restart preparation happens before committing the live
+    restart state; a failed handoff remains observable and retryable.
+    Reading persisted settings during startup or activation must not trigger
+    a live-change restart; activation waits for application boot.
+    Settings search (global search and the settings rail) matches the row
+    title and description on macOS only. Description matches navigate to the
+    switch's title anchor, without duplicate results for overlapping keywords;
+    Windows and Linux omit those keywords.
 - **Power** card: two independent opt-in switches. Keep computer awake uses
   `prevent-app-suspension` to block idle system sleep for the lifetime of the
   running desktop app, including between scheduled runs; the display may turn

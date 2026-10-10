@@ -74,6 +74,8 @@ export type WindowLifecycleState = {
   tray: Tray | null;
   closeBehavior: CloseBehavior;
   developerMode: boolean;
+  /** macOS sidebar glass. False skips vibrancy and the transparent backing. */
+  macosSidebarVibrancy: boolean;
   pluginLauncherWindow: BrowserWindow | null;
   host: HostProcess | null;
 };
@@ -191,14 +193,22 @@ export async function createWindow({
     // the renderer reserves for the buttons (styles/tokens.css) is derived
     // from the same numbers that place them.
     ...(process.platform === "darwin"
-      ? {
-          titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
-          vibrancy: "sidebar" as const,
-          visualEffectState: "followWindow" as const,
-          transparent: true,
-          backgroundColor: "#00000000",
-        }
+      ? windowState.macosSidebarVibrancy
+        ? {
+            titleBarStyle: "hiddenInset" as const,
+            trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
+            vibrancy: "sidebar" as const,
+            visualEffectState: "followWindow" as const,
+            transparent: true,
+            backgroundColor: "#00000000",
+          }
+        : {
+            titleBarStyle: "hiddenInset" as const,
+            trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
+            backgroundColor: builtinWindowBackground(
+              nativeTheme.shouldUseDarkColors ? "dark" : "light",
+            ),
+          }
       : {
           frame: false,
           ...(process.platform === "win32" ? { thickFrame: false } : {}),

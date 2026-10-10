@@ -14,12 +14,20 @@ export function registerApplicationActivation({
   isApplicationBooted,
   hasVisibleWindow,
 }: ApplicationActivationDependencies): void {
-  app.on("activate", restoreMainWindow);
+  const restoreWhenBooted = () => {
+    if (isQuitting() || !isApplicationBooted()) return;
+    restoreMainWindow();
+  };
+
+  // First-window construction reads persisted settings during boot. `activate`
+  // and `second-instance` can fire before that; creating a window then would
+  // treat the startup setting as a live user change and restart.
+  app.on("activate", restoreWhenBooted);
 
   // Launching PI-Desktop again is a request to see the app that is already
   // running, not to start another process. Electron hands that launch to the
   // lock holder, so the visible result matches the tray's Show action.
-  app.on("second-instance", restoreMainWindow);
+  app.on("second-instance", restoreWhenBooted);
 
   // macOS can activate the app without emitting `activate` (Cmd+Tab, App
   // Exposé, and Spotlight). Restore only when no window is visible, so opening

@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "Activa o desactiva la barra lateral translúcida en Apariencia en macOS, sin ventanas vacías ni procesos huérfanos al reiniciar en desarrollo. Los fallos al guardar o solicitar el reinicio permiten reintentar; los guardados correctos ya no se presentan como fallos, y buscar la descripción lleva al interruptor. Windows y Linux omiten este ajuste.",
       "Configura el clasificador Jev de TypeSafe desde Añadir servicio y verifica la clave API antes de guardarla.",
       "Añade desde Añadir servicio proveedores de plugins con clave API, descripciones localizadas y detección de modelos tras configurarlos.",
       "Las acciones autorizadas de plugins pueden transformar el borrador del Composer y deshacer el cambio; la mejora de prompts ahora es un plugin opcional.",

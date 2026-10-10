@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "macOS'ta Görünüm ayarlarından yarı saydam kenar çubuğunu açıp kapatın; geliştirme sürümü yeniden başlatıldığında boş pencere veya sahipsiz süreç kalmaz. Kaydetme ya da yeniden başlatma isteği başarısız olursa yeniden deneyebilirsiniz; başarılı kayıtlar hata olarak gösterilmez ve açıklama araması anahtara götürür. Windows ve Linux'ta bu ayar gösterilmez.",
       "TypeSafe Jev sınıflandırıcısını Hizmet Ekle'den kurun ve kaydetmeden önce API anahtarını doğrulayın.",
       "Yerelleştirilmiş açıklamalar ve anahtar kurulumundan sonra model keşfiyle eklenti kaynaklı API anahtarlı hizmetleri ekleyin.",
       "İzin verilen eklenti işlemleri Composer taslağını dönüştürebilir ve geri alınabilir; istem iyileştirme artık isteğe bağlı bir eklentide sunulur.",

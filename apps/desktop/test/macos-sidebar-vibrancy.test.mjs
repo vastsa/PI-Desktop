@@ -1,13 +1,83 @@
-import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
+import { readMainModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { register, registerHooks } from "node:module";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const mainSource = await readMainSource();
+const electron = `data:text/javascript,${encodeURIComponent(`
+  import { EventEmitter } from "node:events";
+  export const nativeTheme = {
+    themeSource: "system",
+    osDark: false,
+    get shouldUseDarkColors() {
+      return this.themeSource === "dark" || (this.themeSource === "system" && this.osDark);
+    },
+  };
+  export const app = Object.assign(new EventEmitter(), {
+    isPackaged: false,
+    getAppPath: () => "/tmp/pi-desktop-test",
+    getLocale: () => "en",
+    dock: { setIcon() {} },
+    relaunch() {},
+    quit() {},
+  });
+  export const net = {};
+  export const session = { defaultSession: { setProxy: async () => {} } };
+  export class BrowserWindow extends EventEmitter {
+    static getAllWindows() { return []; }
+    static fromWebContents() { return null; }
+  }
+  export const Menu = {
+    setApplicationMenu() {},
+    buildFromTemplate: (template) => template,
+  };
+  export const nativeImage = {
+    createFromPath: () => ({ isEmpty: () => true }),
+    createFromBuffer: () => ({ isEmpty: () => true }),
+    createFromDataURL: () => ({ isEmpty: () => true }),
+  };
+  export const powerSaveBlocker = {
+    start: () => 1,
+    stop() {},
+    isStarted: () => false,
+  };
+  export class Tray extends EventEmitter {}
+  export const screen = {
+    getPrimaryDisplay: () => ({
+      id: 1,
+      workArea: { x: 0, y: 0, width: 1440, height: 900 },
+      bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    }),
+    getDisplayMatching: () => ({
+      id: 1,
+      workArea: { x: 0, y: 0, width: 1440, height: 900 },
+      bounds: { x: 0, y: 0, width: 1440, height: 900 },
+    }),
+    getAllDisplays: () => [],
+  };
+`)}`;
+registerHooks({
+  resolve(specifier, context, next) {
+    return specifier === "electron" ? { url: electron, shortCircuit: true } : next(specifier, context);
+  },
+});
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+
+const { createApplicationLifecycle } = await import("../electron/main/bootstrap/app-lifecycle.ts");
+const { registerApplicationActivation } = await import("../electron/main/bootstrap/app-activation.ts");
+const { registerSettingsIpc } = await import("../electron/main/ipc/settings-ipc.ts");
+const { app, nativeTheme } = await import("electron");
+const { builtinWindowBackground, IPC } = await import("@pi-desktop/shared");
+
+
 const windowSource = await readMainModule("bootstrap/window.ts");
 const lifecycleSource = await readMainModule("bootstrap/app-lifecycle.ts");
 const stylesSource = await loadStyles();
+const hostPlatform = process.platform;
 
 const createWindowSource = windowSource.slice(windowSource.indexOf("export async function createWindow("));
 const mainWindowBlock =
@@ -27,6 +97,140 @@ function functionSource(source, name) {
   const next = source.indexOf("\n  function ", start + 1);
   return source.slice(start, next === -1 ? undefined : next);
 }
+
+function createLifecycle(t, { vibrancy = false, themes = [], platform = "darwin", applicationBooted = true } = {}) {
+  Object.defineProperty(process, "platform", { configurable: true, value: platform });
+  nativeTheme.themeSource = "system";
+  nativeTheme.osDark = false;
+  t.after(() => {
+    Object.defineProperty(process, "platform", { configurable: true, value: hostPlatform });
+    nativeTheme.themeSource = "system";
+    nativeTheme.osDark = false;
+  });
+  const colors = [];
+  const vibrancyCalls = [];
+  let destroyed = false;
+  let shown = 0;
+  const window = {
+    isDestroyed: () => destroyed,
+    destroy() {
+      destroyed = true;
+    },
+    show() {
+      shown++;
+    },
+    focus() {},
+    isMinimized() {
+      return false;
+    },
+    restore() {},
+    setBackgroundColor(color) {
+      colors.push(color);
+    },
+    setVibrancy(kind) {
+      vibrancyCalls.push(kind);
+    },
+  };
+  const appearanceState = {
+    updaterLocale: "en",
+    pluginPanelTheme: "light",
+    appThemePreference: "system",
+    broadcastAppearanceSignature: "",
+  };
+  const state = {
+    mainWindow: window,
+    macosSidebarVibrancy: vibrancy,
+    quitting: false,
+    quitConfirmed: false,
+    tray: null,
+  };
+  const appState = {
+    windowCreationPromise: null,
+    applicationBooted,
+    pendingApplicationMenuCommands: [],
+    appliedMenuSettings: null,
+  };
+  const lifecycle = createApplicationLifecycle({
+    state,
+    appState,
+    appearanceState,
+    dataDir: "/tmp/pi-desktop-test",
+    isDevelopmentBuild: false,
+    windowsAllowedToClose: new WeakSet(),
+    windowMinWidth: 800,
+    windowMinHeight: 560,
+    windowBoundsSettleMs: 0,
+    workPanelNativeResizeSettleMs: 0,
+    applyWorkPanelReservation: () => ({ width: 0, xOffset: 0 }),
+    markWorkPanelChatResizeActive() {},
+    workPanelMinimumWindowWidth: () => 800,
+    observedWorkPanelBaseBounds: () => null,
+    classifyDisplayTransition: () => "none",
+    sendToRenderer() {},
+    safeOpenExternal: async () => {},
+    showPluginLauncher: async () => {},
+    askCloseBehavior: async () => null,
+    applyCloseBehavior() {},
+    browserHost: {},
+    pluginViews: {},
+    plugins: {
+      getThemes: () => themes,
+      broadcastEvent() {},
+    },
+    logger: { app() {} },
+    refreshReleaseNotes() {},
+    applyPluginLauncherShortcut() {},
+    applyToggleWindowShortcut() {},
+    broadcastPluginPanelEvent() {},
+    getHost: () => null,
+    getRunningSessionIds: () => [],
+  });
+  return { appearanceState, appState, colors, lifecycle, shown: () => shown, state, vibrancyCalls, window };
+}
+
+function createSettingsIpc(t, options) {
+  const created = createLifecycle(t, options);
+  let stored = { macosSidebarVibrancy: options?.vibrancy === true };
+  const handlers = new Map();
+  registerSettingsIpc({
+    registrar: {
+      ipcMain: {},
+      handle(channel, fn) {
+        handlers.set(channel, fn);
+      },
+      handleWithEvent() {},
+      assertMainWindowSender() {},
+    },
+    getHost: () => ({
+      call(method, payload) {
+        if (method === "settings.get") return stored;
+        stored = { ...stored, ...payload };
+        return stored;
+      },
+    }),
+    getSidecar: () => null,
+    dataDir: "/tmp/pi-desktop-test",
+    normalizeSettings: (settings) => settings,
+    validateSettingsWrite: (settings) => settings,
+    testNetworkProxy: async () => ({ ok: true }),
+    applyNetworkProxyFromAppSettings: async () => ({}),
+    currentNetworkProxy: () => ({ mode: "system" }),
+    applyApplicationMenuSettings: created.lifecycle.applyApplicationMenuSettings,
+    applyDeveloperMode() {},
+    applyPreventScreenSleep() {},
+    applyKeepAwakeWhileRunning() {},
+    applyUpdatePreference() {},
+    resolveEffectiveCommandShell: async () => ({}),
+  });
+  return {
+    ...created,
+    stored: () => stored,
+    setSettings(settings) {
+      return handlers.get(IPC.invoke.settingsSet)(settings);
+    },
+  };
+}
+
 
 test("macOS main window enables native sidebar vibrancy only in its platform branch", () => {
   assert.match(macOptions, /titleBarStyle:\s*"hiddenInset"/);
@@ -62,43 +266,48 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
   );
 });
 
-test("native theme source maps preferences and only resets vibrancy on change", () => {
-  const applyNative = functionSource(lifecycleSource, "applyNativeThemeSource");
-  const applyMenu = functionSource(lifecycleSource, "applyApplicationMenuSettings");
-  const send = functionSource(mainSource, "sendToRenderer");
+test("native theme source maps preferences including plugin bases", (t) => {
+  const themes = [{ id: "plugin:demo", base: "dark" }];
+  const { lifecycle } = createLifecycle(t, { themes });
+  lifecycle.applyNativeThemeSource({ theme: "light" });
+  assert.equal(nativeTheme.themeSource, "light");
+  lifecycle.applyNativeThemeSource({ theme: "dark" });
+  assert.equal(nativeTheme.themeSource, "dark");
+  lifecycle.applyNativeThemeSource({ theme: "plugin:demo" });
+  assert.equal(nativeTheme.themeSource, "dark");
+  themes.splice(0);
+  lifecycle.applyNativeThemeSource({ theme: "plugin:demo" });
+  assert.equal(nativeTheme.themeSource, "system");
+  lifecycle.applyAppThemePreference("light");
+  assert.equal(nativeTheme.themeSource, "light");
+});
 
-  assert.match(applyNative, /let next: "system" \| "light" \| "dark" = "system"/);
-  assert.match(
-    applyNative,
-    /if \(isThemeColorScheme\(preference\)\) \{\s*next = preference;/,
-  );
-  assert.match(applyNative, /preference\.startsWith\("plugin:"\)/);
-  assert.match(
-    applyNative,
-    /pluginTheme\?\.base === "light" \|\| pluginTheme\?\.base === "dark"/,
-  );
-  assert.match(applyNative, /next = pluginTheme\.base/);
-  assert.doesNotMatch(
-    applyNative,
-    /next = pluginTheme\?\.base \?\?/,
-    "a missing plugin theme must keep the system default, not a guessed base",
-  );
-  assert.match(applyNative, /if \(nativeTheme\.themeSource === next\) return;/);
-  assert.match(
-    applyNative,
-    /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && state\.mainWindow && !state\.mainWindow\.isDestroyed\(\)\) \{\s*state\.mainWindow\.setVibrancy\("sidebar"\);/,
-  );
+test("unchanged native appearance does not overwrite a contributed opaque plate", (t) => {
+  const themes = [{ id: "plugin:demo", base: "dark" }];
+  const { lifecycle, colors, window } = createLifecycle(t, { themes });
+  lifecycle.applyNativeThemeSource({ theme: "plugin:demo" });
+  window.setBackgroundColor("#243040");
+  lifecycle.applyNativeThemeSource({ theme: "plugin:demo" });
+  assert.equal(nativeTheme.themeSource, "dark");
+  assert.equal(colors.at(-1), "#243040");
+});
 
-  // The theme mapping lives in `applyAppThemePreference` so the narrow plugin
-  // `setTheme` path can never re-derive locale, keybindings, or dev-mode menu
-  // state (ADR 0260). The full-settings path delegates to the same function.
-  const applyTheme = functionSource(lifecycleSource, "applyAppThemePreference");
-  assert.match(applyTheme, /applyNativeThemeSource\(\{\s*theme: preference \}\)/);
-  assert.match(applyMenu, /applyAppThemePreference\(settings\?\.theme\)/);
-  assert.match(
-    send,
-    /if \(channel === IPC\.event\.pluginChanged\) \{\s*applicationLifecycle\?\.applyNativeThemeSource\(\{\s*theme: applicationAppearanceState\.appThemePreference,/,
-  );
+test("sidebar vibrancy is only reapplied when the theme source changes", (t) => {
+  const { lifecycle, colors, vibrancyCalls } = createLifecycle(t, { vibrancy: true });
+  lifecycle.applyNativeThemeSource({ theme: "dark" });
+  assert.equal(nativeTheme.themeSource, "dark");
+  assert.deepEqual(vibrancyCalls, ["sidebar"]);
+  lifecycle.applyNativeThemeSource({ theme: "dark" });
+  assert.deepEqual(vibrancyCalls, ["sidebar"]);
+  assert.deepEqual(colors, []);
+});
+
+test("a destroyed opaque window is left untouched", (t) => {
+  const { lifecycle, colors, window } = createLifecycle(t, { vibrancy: false });
+  window.destroy();
+  lifecycle.applyNativeThemeSource({ theme: "dark" });
+  assert.equal(nativeTheme.themeSource, "dark");
+  assert.deepEqual(colors, []);
 });
 
 test("the macOS startup splash shares the sidebar glass tint and sheen", () => {
@@ -188,3 +397,200 @@ test("the sidebar glass tint stays thin enough to reveal the vibrancy material",
     );
   }
 });
+
+test("macOS can turn sidebar vibrancy off without changing the default", () => {
+  assert.match(macOptions, /windowState\.macosSidebarVibrancy/);
+  assert.match(macOptions, /vibrancy:\s*"sidebar"/);
+  assert.match(macOptions, /transparent:\s*true/);
+  const falseArm = macOptions.slice(macOptions.indexOf(": {"));
+  assert.match(falseArm, /backgroundColor:\s*builtinWindowBackground\(/);
+  assert.doesNotMatch(falseArm, /vibrancy:\s*"sidebar"/);
+  assert.doesNotMatch(falseArm, /transparent:\s*true/);
+});
+
+test("a branded development host hands vibrancy restart to its dev owner before quitting", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-vibrancy-restart-"));
+  const request = join(root, "restart.json");
+  const previousRequest = process.env.PI_DESKTOP_DEV_RESTART_FILE;
+  const previousDev = process.env.PI_DESKTOP_DEV;
+  const previousPackaged = app.isPackaged;
+  // The branded macOS development binary reports isPackaged=true.
+  process.env.PI_DESKTOP_DEV = "1";
+  app.isPackaged = true;
+  process.env.PI_DESKTOP_DEV_RESTART_FILE = request;
+  t.after(async () => {
+    if (previousRequest === undefined) delete process.env.PI_DESKTOP_DEV_RESTART_FILE;
+    else process.env.PI_DESKTOP_DEV_RESTART_FILE = previousRequest;
+    if (previousDev === undefined) delete process.env.PI_DESKTOP_DEV;
+    else process.env.PI_DESKTOP_DEV = previousDev;
+    app.isPackaged = previousPackaged;
+    await rm(root, { recursive: true, force: true });
+  });
+  const { lifecycle, state, window, vibrancyCalls } = createLifecycle(t, { vibrancy: true });
+  let quitRan = false;
+  let requestAtQuit;
+  t.mock.method(app, "relaunch", () => assert.fail("dev must not orphan a native relaunch"));
+  t.mock.method(app, "quit", () => {
+    quitRan = true;
+    requestAtQuit = readFile(request, "utf8");
+  });
+  lifecycle.applyApplicationMenuSettings({ macosSidebarVibrancy: false });
+  assert.equal(state.macosSidebarVibrancy, false);
+  assert.equal(state.quitConfirmed, true);
+  assert.equal(quitRan, false);
+  assert.equal(existsSync(request), true);
+  assert.deepEqual(JSON.parse(await readFile(request, "utf8")), process.argv.slice(1));
+  assert.equal(state.mainWindow, window);
+  assert.equal(window.isDestroyed(), false);
+  assert.deepEqual(vibrancyCalls, []);
+  await new Promise(setImmediate);
+  assert.equal(quitRan, true);
+  assert.deepEqual(JSON.parse(await requestAtQuit), process.argv.slice(1));
+});
+
+test("startup and unchanged vibrancy settings do not request a restart", async (t) => {
+  const { lifecycle, state } = createLifecycle(t, { vibrancy: true });
+  t.mock.method(app, "relaunch", () => assert.fail("no restart before a live change"));
+  t.mock.method(app, "quit", () => assert.fail("settings initialization must not quit"));
+  lifecycle.applyApplicationMenuSettings({ macosSidebarVibrancy: true });
+  await new Promise(setImmediate);
+  assert.equal(state.quitConfirmed, false);
+  state.mainWindow = null;
+  lifecycle.applyApplicationMenuSettings({ macosSidebarVibrancy: false });
+  await new Promise(setImmediate);
+  assert.equal(state.macosSidebarVibrancy, false);
+  assert.equal(state.quitConfirmed, false);
+});
+
+test("a failed restart-file write keeps live vibrancy retryable through settings IPC", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-vibrancy-restart-fail-"));
+  const blocked = join(root, "missing", "restart.json");
+  const request = join(root, "restart.json");
+  const previousRequest = process.env.PI_DESKTOP_DEV_RESTART_FILE;
+  const previousDev = process.env.PI_DESKTOP_DEV;
+  const previousPackaged = app.isPackaged;
+  process.env.PI_DESKTOP_DEV = "1";
+  app.isPackaged = true;
+  process.env.PI_DESKTOP_DEV_RESTART_FILE = blocked;
+  t.after(async () => {
+    if (previousRequest === undefined) delete process.env.PI_DESKTOP_DEV_RESTART_FILE;
+    else process.env.PI_DESKTOP_DEV_RESTART_FILE = previousRequest;
+    if (previousDev === undefined) delete process.env.PI_DESKTOP_DEV;
+    else process.env.PI_DESKTOP_DEV = previousDev;
+    app.isPackaged = previousPackaged;
+    await rm(root, { recursive: true, force: true });
+  });
+  const { setSettings, stored, state, window } = createSettingsIpc(t, { vibrancy: true });
+  let quitRan = false;
+  t.mock.method(app, "relaunch", () => assert.fail("dev must not orphan a native relaunch"));
+  t.mock.method(app, "quit", () => {
+    quitRan = true;
+  });
+  await assert.rejects(() => setSettings({ macosSidebarVibrancy: false }), { code: "ENOENT" });
+  assert.equal(stored().macosSidebarVibrancy, false);
+  assert.equal(state.macosSidebarVibrancy, true);
+  assert.equal(state.quitConfirmed, false);
+  assert.equal(quitRan, false);
+  assert.equal(state.mainWindow, window);
+  assert.equal(window.isDestroyed(), false);
+
+  process.env.PI_DESKTOP_DEV_RESTART_FILE = request;
+  const result = await setSettings({ macosSidebarVibrancy: false });
+  assert.equal(result.macosSidebarVibrancy, false);
+  assert.equal(state.macosSidebarVibrancy, false);
+  assert.equal(state.quitConfirmed, true);
+  assert.equal(quitRan, false);
+  assert.deepEqual(JSON.parse(await readFile(request, "utf8")), process.argv.slice(1));
+  await new Promise(setImmediate);
+  assert.equal(quitRan, true);
+  assert.equal(window.isDestroyed(), false);
+});
+
+test("a packaged native host requests relaunch before quitting and does not rebuild the window", async (t) => {
+  const previousRequest = process.env.PI_DESKTOP_DEV_RESTART_FILE;
+  const previousDev = process.env.PI_DESKTOP_DEV;
+  const previousPackaged = app.isPackaged;
+  delete process.env.PI_DESKTOP_DEV;
+  delete process.env.PI_DESKTOP_DEV_RESTART_FILE;
+  app.isPackaged = true;
+  t.after(() => {
+    if (previousRequest === undefined) delete process.env.PI_DESKTOP_DEV_RESTART_FILE;
+    else process.env.PI_DESKTOP_DEV_RESTART_FILE = previousRequest;
+    if (previousDev === undefined) delete process.env.PI_DESKTOP_DEV;
+    else process.env.PI_DESKTOP_DEV = previousDev;
+    app.isPackaged = previousPackaged;
+  });
+  const { lifecycle, state, window } = createLifecycle(t, { vibrancy: true });
+  let relaunchCalls = 0;
+  let quitRan = false;
+  t.mock.method(app, "relaunch", () => {
+    relaunchCalls++;
+  });
+  t.mock.method(app, "quit", () => {
+    quitRan = true;
+  });
+  lifecycle.applyApplicationMenuSettings({ macosSidebarVibrancy: false });
+  assert.equal(relaunchCalls, 1);
+  assert.equal(quitRan, false);
+  assert.equal(state.macosSidebarVibrancy, false);
+  assert.equal(state.quitConfirmed, true);
+  assert.equal(state.mainWindow, window);
+  assert.equal(window.isDestroyed(), false);
+  await new Promise(setImmediate);
+  assert.equal(quitRan, true);
+  assert.equal(relaunchCalls, 1);
+  assert.equal(window.isDestroyed(), false);
+});
+
+test("Windows and Linux vibrancy setting changes do not restart", async (t) => {
+  t.mock.method(app, "relaunch", () => assert.fail("non-mac hosts must not relaunch"));
+  t.mock.method(app, "quit", () => assert.fail("non-mac hosts must not quit"));
+  for (const platform of ["win32", "linux"]) {
+    const { lifecycle, state } = createLifecycle(t, { vibrancy: true, platform });
+    lifecycle.applyApplicationMenuSettings({ macosSidebarVibrancy: false });
+    await new Promise(setImmediate);
+    assert.equal(state.macosSidebarVibrancy, false, platform);
+    assert.equal(state.quitConfirmed, false, platform);
+  }
+});
+
+
+test("early activation and second-instance wait for boot before restoring a window", async (t) => {
+  const { lifecycle, appState, state, window, shown } = createLifecycle(t, {
+    vibrancy: true,
+    applicationBooted: false,
+  });
+  t.after(() => app.removeAllListeners());
+  let restores = 0;
+  registerApplicationActivation({
+    restoreMainWindow: () => {
+      restores++;
+      lifecycle.restoreMainWindow();
+    },
+    isQuitting: () => state.quitting,
+    isApplicationBooted: () => appState.applicationBooted,
+    hasVisibleWindow: lifecycle.hasVisibleWindow,
+  });
+  state.mainWindow = null;
+  app.emit("activate");
+  app.emit("second-instance");
+  await new Promise(setImmediate);
+  assert.equal(restores, 0);
+  assert.equal(state.mainWindow, null);
+  assert.equal(shown(), 0);
+  assert.equal(state.macosSidebarVibrancy, true);
+
+  appState.applicationBooted = true;
+  state.mainWindow = window;
+  app.emit("activate");
+  await new Promise(setImmediate);
+  assert.equal(restores, 1);
+  assert.equal(shown(), 1);
+  assert.equal(state.mainWindow, window);
+  app.emit("second-instance");
+  await new Promise(setImmediate);
+  assert.equal(restores, 2);
+  assert.equal(shown(), 2);
+  assert.equal(window.isDestroyed(), false);
+});
+

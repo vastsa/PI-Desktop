@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
@@ -15,6 +15,7 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runDevelopmentProcess } from "./dev-electron-restart.mjs";
 
 const APP_NAME = "PI-Desktop";
 const DEV_BUNDLE_ID = "net.aiuo.pi-desktop.dev";
@@ -149,8 +150,28 @@ export function prepareMacDevelopmentBundle({
     throw error;
   }
 }
+function withoutElectronLaunchOptions(args) {
+  const result = [];
+  const valueOptions = new Set(["--entry", "--remoteDebuggingPort"]);
+  const optionalValueOptions = new Set(["--inspect", "--inspectBrk"]);
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--") break;
+    const name = arg.split("=", 1)[0];
+    if (valueOptions.has(name) || optionalValueOptions.has(name)) {
+      if (!arg.includes("=") &&
+          (valueOptions.has(name) || /^\d+$/.test(args[index + 1] ?? ""))) {
+        index++;
+      }
+      continue;
+    }
+    if (name !== "--noSandbox") result.push(arg);
+  }
+  return result;
+}
 
-function run() {
+
+async function run() {
   const env = { ...process.env, PI_DESKTOP_DEV: "1" };
   // Electron 43+ downloads its platform binary when its package is resolved.
   // electron-vite requires the resulting path.txt marker on every platform.
@@ -172,26 +193,25 @@ function run() {
     "bin",
     "electron-vite.js",
   );
-  const child = spawn(
+  const exitCode = await runDevelopmentProcess(
     process.execPath,
     [electronViteCli, "dev", ...process.argv.slice(2)],
     {
       cwd: DESKTOP_ROOT,
       env,
-      stdio: "inherit",
+      restartArgs: [
+        electronViteCli,
+        "dev",
+        ...withoutElectronLaunchOptions(process.argv.slice(2)),
+      ],
     },
   );
-  for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.once(signal, () => child.kill(signal));
-  }
-  child.on("exit", (code, signal) => {
-    if (signal) process.kill(process.pid, signal);
-    else process.exitCode = code ?? 1;
-  });
-  child.on("error", (error) => {
+  process.exitCode = exitCode;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  run().catch((error) => {
     console.error(error);
     process.exitCode = 1;
   });
 }
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) run();

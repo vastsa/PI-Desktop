@@ -64,6 +64,7 @@ export type RegisterIpcDependencies = {
   liveVoiceWidget?: LiveVoiceWidget;
   restartForStorage: () => void;
   mcpOAuth?: McpOAuthManager;
+  isMacosSidebarVibrancyEnabled: () => boolean;
   [name: string]: any;
 };
 
@@ -314,6 +315,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
   registerWindowIpc({
     setTraySessionPreferences: traySessions.setPreferences,
+    isMacosSidebarVibrancyEnabled: dependencies.isMacosSidebarVibrancyEnabled,
     registrar,
     getMainWindow,
     getWorkPanelReservationWidth,

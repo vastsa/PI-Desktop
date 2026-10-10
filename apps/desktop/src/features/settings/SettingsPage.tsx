@@ -8,10 +8,12 @@ import type {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
+import { MacosSidebarVibrancyDialog } from "./MacosSidebarVibrancyDialog";
 import {
   isSettingsDestinationHidden,
   SETTINGS_NAV_GROUP_LABELS,
   visibleSettingsNav,
+  settingsNavKeywordKeys,
   type SettingsNavGroupId,
 } from "../../lib/settings-search";
 import { pluginViewIcon } from "../../lib/plugin-view-icons";
@@ -103,6 +105,7 @@ export function SettingsPage() {
 
   const [query, setQuery] = useState("");
   const [recoveringSettings, setRecoveringSettings] = useState(!settings);
+  const [vibrancyConfirm, setVibrancyConfirm] = useState<boolean | null>(null);
   const [settingsRecoveryFailed, setSettingsRecoveryFailed] = useState(false);
   const [extensions, setExtensions] = useState<PluginScenicThemesDestinationMeta[]>([]);
   const [activeExtension, setActiveExtension] = useState<PluginScenicThemesDestinationMeta | null>(null);
@@ -212,13 +215,30 @@ export function SettingsPage() {
     };
   }, [settingsAnchor, tab, t, setSettingsAnchor]);
 
-  const saveSettings = async (patch: Partial<AppSettings>) => {
+  const persistSettings = async (patch: Partial<AppSettings>) => {
     if (!settings) return;
     const nextSettings = { ...settings, ...patch };
     await api.setSettings(nextSettings);
     useAppStore.setState({ settings: nextSettings });
+  };
+
+  const saveSettings = async (patch: Partial<AppSettings>) => {
+    if (!settings) return;
+    await persistSettings(patch);
     await refreshProviders();
   };
+
+  const toggleMacosSidebarVibrancy = () => {
+    if (!settings) return;
+    setVibrancyConfirm(settings.macosSidebarVibrancy === false);
+  };
+
+  const confirmMacosSidebarVibrancy = async () => {
+    if (vibrancyConfirm === null) return;
+    // The accepted write starts a restart; catalog IPC may already be unavailable.
+    await persistSettings({ macosSidebarVibrancy: vibrancyConfirm });
+  };
+
 
   const selectPluginTheme = async (theme: string) => {
     await saveSettings({ theme: theme as AppSettings["theme"] });
@@ -251,9 +271,9 @@ export function SettingsPage() {
       icon: iconFor[entry.id],
       group: entry.group,
       experimentalBadgeKey: entry.experimentalBadgeKey,
-      keywordKeys: entry.keywordKeys,
+      keywordKeys: settingsNavKeywordKeys(entry, platform),
     }));
-  }, [navEntries]);
+  }, [navEntries, platform]);
 
   // Search matches the tab label and the titles of the rows inside it, so
   // typing e.g. "theme" or "主题" surfaces Basics even though the tab is
@@ -410,6 +430,18 @@ export function SettingsPage() {
             <div className="settings-stack">
               <SettingsCard title={t("settings.appearance")}>
                 <ThemeRow settings={settings} saveSettings={saveSettings} />
+                {platform === "darwin" && (
+                  <SettingsRow
+                    title={t("settings.macosSidebarVibrancy")}
+                    description={t("settings.macosSidebarVibrancyDesc")}
+                  >
+                    <SettingsToggle
+                      checked={settings.macosSidebarVibrancy !== false}
+                      label={t("settings.macosSidebarVibrancy")}
+                      onChange={toggleMacosSidebarVibrancy}
+                    />
+                  </SettingsRow>
+                )}
                 <LanguageRow settings={settings} saveSettings={saveSettings} />
                 <FontFamilyRow settings={settings} saveSettings={saveSettings} />
                 <FontSizeRow settings={settings} saveSettings={saveSettings} />
@@ -617,6 +649,13 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+      {vibrancyConfirm === null ? null : (
+        <MacosSidebarVibrancyDialog
+          enabling={vibrancyConfirm}
+          onCancel={() => setVibrancyConfirm(null)}
+          onConfirm={confirmMacosSidebarVibrancy}
+        />
+      )}
     </div>
   );
 }

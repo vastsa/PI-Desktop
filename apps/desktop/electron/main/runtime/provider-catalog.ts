@@ -188,6 +188,7 @@ export function createProviderCatalogRuntime({
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
       keepAwakeWhileRunning?: unknown;
+      macosSidebarVibrancy?: unknown;
       jevEnabled?: unknown;
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
@@ -214,6 +215,14 @@ export function createProviderCatalogRuntime({
       typeof value.keepAwakeWhileRunning !== "boolean"
     ) {
       throw Object.assign(new Error("keepAwakeWhileRunning is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "macosSidebarVibrancy") &&
+      typeof value.macosSidebarVibrancy !== "boolean"
+    ) {
+      throw Object.assign(new Error("macosSidebarVibrancy is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }

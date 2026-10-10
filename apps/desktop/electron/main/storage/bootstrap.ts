@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import type { StorageProgress } from "@pi-desktop/shared";
 import { resolveHostBinary } from "../host-process";
+import { relaunchApplication } from "../application-restart";
 import { clearCaches, migrateFiles, removeBackups } from "./files";
 import { readStoragePreferences, STORAGE_PREFERENCE_FILE, writeStoragePreferences, type StoragePreferences } from "./preferences";
 
@@ -102,7 +103,7 @@ export async function prepareStorage(defaultData: string, overridden: boolean): 
     await dialog.showMessageBox(window, { type: "error", title: copy.failedTitle,
       message: copy.failedHint, detail: message, buttons: [copy.continueOriginal] });
   }
-  app.relaunch();
+  relaunchApplication();
   app.exit(0);
   // app.exit terminates the process; do not initialize writers even if a test double returns.
   return new Promise<StorageBootstrap>(() => {});
