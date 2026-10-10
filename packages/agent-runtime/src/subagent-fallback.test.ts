@@ -221,6 +221,29 @@ describe("subagent model fallback over real transport", () => {
     expect(changes).toEqual(["high"]);
     expect(f.requests[1].reasoning_effort).toBe("high");
   });
+  it("uses each fallback's own requested thinking and clamps to its capability", async () => {
+    const f = await fixture();
+    const base = f.provider("secondary");
+    const next: RuntimeProviderConfig = { ...base, supportsReasoning: true, supportedThinkingLevels: ["off", "high"],
+      modelConfig: { ...genericModelConfig("secondary", base.baseUrl!), reasoning: true, supportedThinkingLevels: ["off", "high"] as const } };
+    const result = await f.run({ inheritedThinkingLevel: "off", fallbackModels: [
+      { key: "secondary/secondary", provider: next, thinkingLevel: "max" },
+    ] });
+    expect(result.thinkingLevel).toBe("high");
+    expect(f.requests[1].reasoning_effort).toBe("high");
+  });
+
+  it("inherits definition thinking ahead of the parent when the fallback has none", async () => {
+    const f = await fixture();
+    const base = f.provider("secondary");
+    const next: RuntimeProviderConfig = { ...base, supportsReasoning: true, supportedThinkingLevels: ["off", "high"],
+      modelConfig: { ...genericModelConfig("secondary", base.baseUrl!), reasoning: true, supportedThinkingLevels: ["off", "high"] as const } };
+    const result = await f.run({ definition: { name: "worker", description: "Fixture", tools: ["Edit"], prompt: "Finish.", source: "user", thinkingLevel: "high" },
+      inheritedThinkingLevel: "off", fallbackModels: [{ key: "secondary/secondary", provider: next }] });
+    expect(result.thinkingLevel).toBe("high");
+    expect(f.requests[1].reasoning_effort).toBe("high");
+  });
+
   it("does not retry a host tool failure through another model", async () => {
     const f = await fixture({ editFirst: true });
     await f.run({ resolveToolOutcome: () => ({ isError: true, terminate: true }) });
