@@ -19,7 +19,10 @@ It clips the view tree with a smooth path, but its cutout still captures clicks.
 The existing native region therefore remains necessary for click-through and
 must be broad enough not to cut off antialiased pixels.
 
-## Proposed decision
+## Decision
+
+Propose the following implementation for the Windows main window, subject to
+the qualification gate below:
 
 For the Windows main window only:
 
@@ -64,7 +67,7 @@ checks show that transparent click-through and smooth rendering cannot coexist,
 do not accept the implementation; revise the approach and record the measured
 failure first.
 
-## Consequences if accepted
+## Consequences
 
 - The theme background is painted inside the same rounded native view that
   clips the renderer and its child views, removing a separate opaque corner
