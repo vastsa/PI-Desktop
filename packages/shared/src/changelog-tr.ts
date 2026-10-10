@@ -22,6 +22,7 @@ export const trEntries: ChangelogEntry[] = [
     "version": "0.17.0",
     "date": "2026-10-07",
     "highlights": [
+      "macOS'ta Görünüm ayarlarından yarı saydam kenar çubuğunu açıp kapatın; geliştirme sürümü yeniden başlatıldığında boş pencere veya sahipsiz süreç kalmaz. Kaydetme ya da yeniden başlatma isteği başarısız olursa yeniden deneyebilirsiniz; başarılı kayıtlar hata olarak gösterilmez ve açıklama araması anahtara götürür. Windows ve Linux'ta bu ayar gösterilmez.",
       "Yazarken görsel eklerini yerinde tutun, gönderdiğiniz görselleri de sohbet içinde önizleyin.",
       "Konuşma referanslarını okunabilir etiketler olarak görün ve bağlantılı oturumu doğrudan açın.",
       "Her istemin kullanabileceği MCP sunucularını ve araçlarını seçin.",

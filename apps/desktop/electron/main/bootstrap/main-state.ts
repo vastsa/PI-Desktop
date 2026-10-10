@@ -79,6 +79,8 @@ export class MainProcessState {
   closePromptOpen = false;
   quitConfirmed = false;
   developerMode = false;
+  /** macOS sidebar glass. Absent settings stay on. */
+  macosSidebarVibrancy = true;
 
   updaterLocale = "en";
   pluginPanelTheme: PluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -248,6 +250,12 @@ export class MainProcessState {
       },
       set developerMode(value) {
         self.developerMode = value;
+      },
+      get macosSidebarVibrancy() {
+        return self.macosSidebarVibrancy;
+      },
+      set macosSidebarVibrancy(value) {
+        self.macosSidebarVibrancy = value;
       },
       get pluginLauncherWindow() {
         return self.pluginLauncherWindow;

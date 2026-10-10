@@ -22,6 +22,7 @@ export const esEntries: ChangelogEntry[] = [
     "version": "0.17.0",
     "date": "2026-10-07",
     "highlights": [
+      "Activa o desactiva la barra lateral translúcida en Apariencia en macOS, sin ventanas vacías ni procesos huérfanos al reiniciar en desarrollo. Los fallos al guardar o solicitar el reinicio permiten reintentar; los guardados correctos ya no se presentan como fallos, y buscar la descripción lleva al interruptor. Windows y Linux omiten este ajuste.",
       "Adjunta imágenes en línea mientras escribes y previsualiza las imágenes enviadas dentro de la conversación.",
       "Las referencias a conversaciones se muestran como etiquetas legibles y abren directamente la sesión enlazada.",
       "Elige qué servidores MCP y herramientas puede usar cada mensaje.",

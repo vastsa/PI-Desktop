@@ -41,8 +41,12 @@ export type SettingsNavEntry = {
   titleKey: string;
   /** Visual-only rail grouping; search remains a flat destination index. */
   group: SettingsNavGroupId;
-  /** i18n keys of the rows inside the tab; search matches their translations. */
+  /** i18n keys of the rows inside each tab; search matches their translations. */
   keywordKeys: string[];
+  /** Row keys that only exist on the listed operating systems. */
+  platformKeywordKeys?: Partial<Record<NodeJS.Platform, string[]>>;
+  /** Keywords from descriptions navigate to the corresponding row title. */
+  keywordAnchorKeys?: Record<string, string>;
   /**
    * Destination only exists while `AppSettings.developerMode` is on; the
    * rail, the page, and settings search drop it together.
@@ -90,6 +94,15 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.preventScreenSleep",
       "settings.preventScreenSleepDesc",
     ],
+    platformKeywordKeys: {
+      darwin: [
+        "settings.macosSidebarVibrancy",
+        "settings.macosSidebarVibrancyDesc",
+      ],
+    },
+    keywordAnchorKeys: {
+      "settings.macosSidebarVibrancyDesc": "settings.macosSidebarVibrancy",
+    },
   },
   {
     id: "ai",
@@ -354,7 +367,7 @@ export function isSettingsDestinationHidden(
 export type SettingsSearchHit = {
   tab: SettingsTabId;
   tabLabelKey: string;
-  /** Matched row key; null when the tab label itself matched. */
+  /** Row-title anchor; null when the tab label itself matched. */
   rowKey: string | null;
 };
 
@@ -364,7 +377,23 @@ export type SettingsSearchOptions = {
   developerMode?: boolean;
   /** Packaged builds omit experimental surfaces, even with developer mode on. */
   includeDevelopmentOnly?: boolean;
+  /** Platform-specific rows stay out of results where they cannot render. */
+  platform?: NodeJS.Platform;
 };
+
+/**
+ * Keyword keys the settings rail and search use on this operating system.
+ * Platform-only rows stay out of the shared `keywordKeys` list.
+ */
+export function settingsNavKeywordKeys(
+  entry: Pick<SettingsNavEntry, "keywordKeys" | "platformKeywordKeys">,
+  platform: NodeJS.Platform,
+): string[] {
+  const extra = entry.platformKeywordKeys?.[platform];
+  return extra && extra.length > 0
+    ? [...entry.keywordKeys, ...extra]
+    : entry.keywordKeys;
+}
 
 export function searchSettings(
   query: string,
@@ -373,6 +402,7 @@ export function searchSettings(
     limit = 8,
     developerMode = false,
     includeDevelopmentOnly = true,
+    platform = "darwin",
   }: SettingsSearchOptions = {},
 ): SettingsSearchHit[] {
   const q = query.trim().toLowerCase();
@@ -382,9 +412,12 @@ export function searchSettings(
     if (t(entry.labelKey).toLowerCase().includes(q)) {
       hits.push({ tab: entry.id, tabLabelKey: entry.labelKey, rowKey: null });
     }
-    for (const key of entry.keywordKeys) {
+    for (const key of settingsNavKeywordKeys(entry, platform)) {
       if (t(key).toLowerCase().includes(q)) {
-        hits.push({ tab: entry.id, tabLabelKey: entry.labelKey, rowKey: key });
+        const rowKey = entry.keywordAnchorKeys?.[key] ?? key;
+        if (!hits.some((hit) => hit.tab === entry.id && hit.rowKey === rowKey)) {
+          hits.push({ tab: entry.id, tabLabelKey: entry.labelKey, rowKey });
+        }
       }
     }
   }

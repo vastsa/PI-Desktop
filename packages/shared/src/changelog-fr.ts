@@ -22,6 +22,7 @@ export const frEntries: ChangelogEntry[] = [
     "version": "0.17.0",
     "date": "2026-10-07",
     "highlights": [
+      "Activez ou désactivez la barre latérale translucide dans Apparence sur macOS, sans fenêtre vide ni processus orphelin après un redémarrage en développement. Les échecs d’enregistrement ou de demande de redémarrage permettent de réessayer ; un enregistrement réussi n’est plus signalé comme un échec, et la recherche par description mène au commutateur. Windows et Linux masquent ce réglage.",
       "Ajoutez des images en ligne pendant la rédaction, puis prévisualisez-les dans la conversation une fois envoyées.",
       "Les références aux conversations s'affichent sous forme de pastilles lisibles et ouvrent directement la session liée.",
       "Choisissez les serveurs MCP et les outils que chaque message peut utiliser.",

@@ -1,82 +1,172 @@
-import { readAppSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { register, registerHooks } from "node:module";
 import test from "node:test";
 
-const protocolSource = await readFile(
-  new URL("../../../packages/shared/src/protocol.ts", import.meta.url),
-  "utf8",
-);
-const mainSource = await readMainSource();
-const apiSource = await readFile(
-  new URL("../src/lib/api.ts", import.meta.url),
-  "utf8",
-);
-const appSource = await readAppSource();
+const electron = `data:text/javascript,${encodeURIComponent(`
+  import { EventEmitter } from "node:events";
+  export class BrowserWindow extends EventEmitter {
+    static fromWebContents() { return null; }
+  }
+`)}`;
+registerHooks({
+  resolve(specifier, context, next) {
+    return specifier === "electron" ? { url: electron, shortCircuit: true } : next(specifier, context);
+  },
+});
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
-test("theme changes synchronize the native non-macOS window background", () => {
-  assert.match(
-    protocolSource,
-    /windowSetBackgroundColor:\s*"pi-desktop\/window\/setBackgroundColor"/,
-  );
-  assert.match(
-    apiSource,
-    /setWindowBackgroundColor:\s*\(theme:\s*"light" \| "dark",\s*color\?:\s*string,\s*cornerRadius\?:\s*number\)[\s\S]*?IPC\.invoke\.windowSetBackgroundColor/,
-  );
-  assert.match(
-    mainSource,
-    /handleWithEvent\(IPC\.invoke\.windowSetBackgroundColor,[\s\S]*?registrar\.assertMainWindowSender\(event\)[\s\S]*?!isWindowBackgroundColor\(requested\)[\s\S]*?applyMainWindowBackground\(mainWindow, process\.platform, color\)/,
-  );
-  assert.match(mainSource, /mainWindowBackgroundOptions\(process\.platform, initialWindowBackground\)/);
-  assert.match(mainSource, /applyMainWindowBackground\(window, process\.platform, initialWindowBackground\)/);
-  // A malformed colour is refused; an omitted one falls back to the host
-  // palette, which is what restores the default after a theme switch.
-  assert.match(mainSource, /isWindowBackgroundColor\(requested\)\s*\n?\s*\? requested/);
-  // That fallback is the shared built-in theme table, not a literal per call
-  // site, so window-ipc, window creation, and the panel host cannot drift.
-  assert.match(mainSource, /: builtinWindowBackground\(theme\)/);
-  assert.match(
-    mainSource,
-    // A floating widget paints its own silhouette, so the host leaves that
-    // window fully transparent instead of pouring a theme colour behind it.
-    /backgroundColor: widget \? "#00000000" : builtinWindowBackground\(request\.theme\)/,
-  );
-  assert.match(
-    mainSource,
-    /builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
-  );
-  assert.match(
-    mainSource,
-    /process\.platform === "darwin"\) return \{ applied: false, theme \};/,
-  );
-  assert.match(
-    appSource,
-    /document\.documentElement\.dataset\.theme = resolvedTheme;/,
-  );
-  assert.ok(
-    appSource.includes(
-      "pluginTheme?.windowCornerRadius",
-    ),
-  );
+const { MAX_WINDOW_CORNER_RADIUS } = await import("@pi-desktop/plugin-sdk");
+const { builtinWindowBackground, ErrorCodes, IPC } = await import("@pi-desktop/shared");
+const { registerWindowIpc } = await import("../electron/main/ipc/window-ipc.ts");
+
+const hostPlatform = process.platform;
+
+function definePlatform(platform) {
+  Object.defineProperty(process, "platform", { configurable: true, value: platform });
+}
+
+function backgroundHarness({
+  t,
+  platform = "darwin",
+  vibrancy = false,
+  destroyed = false,
+  senderId = 1,
+  mainId = 1,
+} = {}) {
+  definePlatform(platform);
+  t.after(() => definePlatform(hostPlatform));
+  const colors = [];
+  const window = {
+    isDestroyed: () => destroyed,
+    setBackgroundColor(color) {
+      colors.push(color);
+    },
+  };
+  const handlers = new Map();
+  registerWindowIpc({
+    registrar: {
+      ipcMain: {},
+      handle() {},
+      handleWithEvent(channel, handler) {
+        handlers.set(channel, handler);
+      },
+      assertMainWindowSender(event) {
+        if (event.sender.id !== mainId) {
+          throw Object.assign(new Error("renderer is not the main window"), {
+            errorCode: "PERMISSION_DENIED",
+          });
+        }
+      },
+    },
+    getMainWindow: () => window,
+    getWorkPanelReservationWidth: () => 0,
+    setWorkPanelReservationWidth() {},
+    setWorkPanelReservation() {},
+    getWorkPanelChatWidthSetter: () => null,
+    applyCloseBehavior() {},
+    getCloseBehavior: () => "quit",
+    markMenuRendererReady: () => false,
+    executeNativeMenuAction() {},
+    setTraySessionPreferences: async () => {},
+    isMacosSidebarVibrancyEnabled: () => vibrancy,
+  });
+  return {
+    colors,
+    invoke(input, event = { sender: { id: senderId } }) {
+      return handlers.get(IPC.invoke.windowSetBackgroundColor)(event, input);
+    },
+  };
+}
+
+
+test("opaque macOS paints the built-in light and dark plates", async (t) => {
+  const { invoke, colors } = backgroundHarness({ t, vibrancy: false });
+  assert.deepEqual(await invoke({ theme: "light" }), {
+    applied: true,
+    theme: "light",
+    color: builtinWindowBackground("light"),
+    cornerRadius: null,
+  });
+  assert.deepEqual(await invoke({ theme: "dark" }), {
+    applied: true,
+    theme: "dark",
+    color: builtinWindowBackground("dark"),
+    cornerRadius: null,
+  });
+  assert.deepEqual(colors, [
+    builtinWindowBackground("light"),
+    builtinWindowBackground("dark"),
+  ]);
 });
 
-test("the built-in window palette is declared once", async () => {
-  const builtinTheme = await readFile(
-    new URL("../../../packages/shared/src/theme.ts", import.meta.url),
-    "utf8",
+test("a contributed colour is applied then restored from the built-in table", async (t) => {
+  const { invoke, colors } = backgroundHarness({ t, vibrancy: false });
+  assert.deepEqual(await invoke({ theme: "dark", color: "#112233" }), {
+    applied: true,
+    theme: "dark",
+    color: "#112233",
+    cornerRadius: null,
+  });
+  assert.deepEqual(await invoke({ theme: "dark" }), {
+    applied: true,
+    theme: "dark",
+    color: builtinWindowBackground("dark"),
+    cornerRadius: null,
+  });
+  assert.deepEqual(colors, ["#112233", builtinWindowBackground("dark")]);
+});
+
+test("macOS vibrancy leaves the native plate untouched", async (t) => {
+  const { invoke, colors } = backgroundHarness({ t, vibrancy: true });
+  assert.deepEqual(await invoke({ theme: "dark", color: "#112233" }), {
+    applied: false,
+    theme: "dark",
+  });
+  assert.deepEqual(colors, []);
+});
+
+test("linux still paints when the macOS vibrancy callback would skip", async (t) => {
+  const { invoke, colors } = backgroundHarness({ t, platform: "linux", vibrancy: true });
+  assert.deepEqual(await invoke({ theme: "light" }), {
+    applied: true,
+    theme: "light",
+    color: builtinWindowBackground("light"),
+    cornerRadius: null,
+  });
+  assert.deepEqual(colors, [builtinWindowBackground("light")]);
+});
+
+test("invalid colour, theme, and radius are refused", async (t) => {
+  const { invoke, colors } = backgroundHarness({ t, vibrancy: false });
+  await assert.rejects(() => invoke({ theme: "system" }), {
+    errorCode: ErrorCodes.INVALID_ARGUMENT,
+  });
+  await assert.rejects(() => invoke({ theme: "dark", color: "red" }), {
+    errorCode: ErrorCodes.INVALID_ARGUMENT,
+  });
+  await assert.rejects(() => invoke({ theme: "dark", color: "#fff" }), {
+    errorCode: ErrorCodes.INVALID_ARGUMENT,
+  });
+  await assert.rejects(() => invoke({ theme: "dark", cornerRadius: -1 }), {
+    errorCode: ErrorCodes.INVALID_ARGUMENT,
+  });
+  await assert.rejects(
+    () => invoke({ theme: "dark", cornerRadius: MAX_WINDOW_CORNER_RADIUS + 1 }),
+    { errorCode: ErrorCodes.INVALID_ARGUMENT },
   );
-  assert.match(builtinTheme, /windowBackground: "#ffffff"/);
-  assert.match(builtinTheme, /windowBackground: "#181818"/);
-  for (const relative of [
-    "../electron/main/bootstrap/window.ts",
-    "../electron/main/plugin-panel-host.ts",
-    "../electron/main/ipc/window-ipc.ts",
-    "../electron/preload/plugin-panel.ts",
-  ]) {
-    const source = await readFile(new URL(relative, import.meta.url), "utf8");
-    assert.match(source, /builtinWindowBackground/);
-    // The dark plate is the distinctive half of the pair; the panel preload
-    // still names #ffffff as page ink, which the theme table does not own.
-    assert.doesNotMatch(source, /#181818/);
-  }
+  await assert.rejects(() => invoke({ theme: "dark", cornerRadius: 1.5 }), {
+    errorCode: ErrorCodes.INVALID_ARGUMENT,
+  });
+  assert.deepEqual(colors, []);
+});
+
+test("a forbidden sender cannot paint the window", async (t) => {
+  const { invoke, colors } = backgroundHarness({ t, vibrancy: false, senderId: 2, mainId: 1 });
+  await assert.rejects(() => invoke({ theme: "dark" }), { errorCode: "PERMISSION_DENIED" });
+  assert.deepEqual(colors, []);
+});
+
+test("a destroyed window cannot paint", async (t) => {
+  const { invoke } = backgroundHarness({ t, vibrancy: false, destroyed: true });
+  await assert.rejects(() => invoke({ theme: "dark" }), { message: "main window unavailable" });
 });

@@ -144,9 +144,20 @@
 | Linux | 无框 46px 标题栏；左侧边栏操作，在 minimize/maximize/close 之前的会话窗格右上角打开工作面板折叠 | 窗户里面没有 |
 
 - macOS 启用 Electron 原生 `vibrancy: "sidebar"` source-list 材质，配合
-  `visualEffectState: "followWindow"` 和透明窗口底（D348）。`nativeTheme.themeSource`
-  跟随应用主题偏好（`system` / `light` / `dark` / 插件 base），让毛玻璃底板与
-  渲染器一致。仅在该来源变化时重设 vibrancy；缺失的插件主题回落 `system`。
+  `visualEffectState: "followWindow"` 和透明窗口底（D348），除非设置 → 外观 →
+  侧栏毛玻璃关闭（`AppSettings.macosSidebarVibrancy === false`；缺省仍开启）。
+  关闭时窗口不带 vibrancy、透明和透明底色，主题变化也不再调用 `setVibrancy`；
+  但不透明窗口背景仍跟随系统外观和插件主题恢复。
+  切换会先确认：打开时说明可能增加 GPU 占用且需要重启应用，关闭时也说明需要重启应用。确认后才重启应用，因为窗口底色在创建时定死。
+  保存失败时对话框留下可见的本地化警告，不关闭、不重启，并可再次确认重试。
+  确认对话框在打开时和保存进行中都把键盘焦点关在对话框内，关闭后把焦点还给原先的控件。
+  设置搜索仅在 macOS 上包含该行标题和说明。
+  Description matches navigate to the switch's title anchor. An accepted save
+  does not refresh the catalog during shutdown or become a false save failure.
+  Failed restart preparation leaves the live setting retryable. Startup and
+  pre-boot activation do not treat persisted settings as a live toggle.
+  `nativeTheme.themeSource` 跟随应用主题偏好（`system` / `light` / `dark` /
+  插件 base），让毛玻璃底板与渲染器一致。仅在该来源变化时重设 vibrancy；缺失的插件主题回落 `system`。
   主侧栏与设置导航共享 `.sidebar-surface` 材质，已渲染的 `.sidebar-rail` 同样半透明。
   设置外壳透明，但其右侧内容和顶部条保持不透明；渲染器叠加
   一层薄主题 tint（`--ds-sidebar-glass-tint`，深色 40% / 浅色 55%）和上下

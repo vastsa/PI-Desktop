@@ -22,6 +22,7 @@ export const ptBREntries: ChangelogEntry[] = [
     "version": "0.17.0",
     "date": "2026-10-07",
     "highlights": [
+      "Ative ou desative a barra lateral translúcida em Aparência no macOS, sem janelas vazias nem processos órfãos após reiniciar em desenvolvimento. Falhas ao salvar ou solicitar o reinício permitem tentar novamente; salvamentos bem-sucedidos não aparecem como falhas, e a busca pela descrição leva ao interruptor. Windows e Linux omitem essa configuração.",
       "Anexe imagens em linha enquanto escreve e visualize as imagens enviadas dentro da conversa.",
       "As referências de conversa aparecem como chips legíveis e abrem diretamente a sessão vinculada.",
       "Escolha quais servidores MCP e ferramentas cada prompt pode usar.",

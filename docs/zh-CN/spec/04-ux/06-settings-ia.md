@@ -83,6 +83,17 @@
   - 本机选择触发器及其打开的选项列表使用活动主题的
     macOS、Windows 和 Linux 上的可读 foreground/background 配对；的
     共享的本机选择契约适用于每个应用程序表面
+  - **侧栏毛玻璃**（仅 macOS）：`AppSettings.macosSidebarVibrancy` 为 false 时关闭，缺省开启。开启时使用 Electron `vibrancy: "sidebar"` 和透明窗口底。关闭时创建实心窗口，主题变化不再重设 vibrancy，但不透明窗口背景仍跟随系统外观和插件主题恢复。切换会先确认：打开时说明可能增加 GPU 占用且需要重启应用，关闭时也说明需要重启应用。确认后才重启应用，因为窗口底色在创建时定死。保存失败时对话框留下可见的本地化警告，不关闭、不重启，并可再次确认重试。确认对话框在打开时和保存进行中都把键盘焦点关在对话框内，关闭后把焦点还给原先的控件。设置搜索（全局搜索和设置导航）仅在 macOS 上匹配该行标题和说明；Windows/Linux 省略这些关键词。
+    In `pnpm dev`, the launcher restarts both the renderer server and Electron,
+    retaining the explicit data directory and launch arguments. The main window
+    renders after restart; packaged builds retain native application relaunch.
+    Confirmation persists the setting without a follow-up catalog refresh;
+    shutdown-related refresh errors must not turn an accepted save into a
+    save-failure alert. Restart preparation happens before committing the live
+    restart state; a failed handoff remains observable and retryable.
+    Startup and pre-boot activation do not treat persisted settings as a live
+    toggle. Description search navigates to the switch's title anchor without
+    duplicate results for overlapping keywords.
 - **电源**卡：两个独立且默认关闭的开关。「保持电脑唤醒」使用
   `prevent-app-suspension`，桌面应用运行期间阻止系统因空闲休眠，包括定时任务
   等待下一次触发时；屏幕仍可关闭。「阻止屏幕休眠」使用

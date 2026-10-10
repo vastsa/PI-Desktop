@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   APP_MENU_COMMANDS,
   APP_NAME,
+  builtinWindowBackground,
   IPC,
   isThemeColorScheme,
   traySessionTitle,
@@ -18,6 +19,7 @@ import {
 } from "@pi-desktop/shared";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { installApplicationMenu } from "../application-menu";
+import { relaunchApplication } from "../application-restart";
 import { isWindowFullScreen, setWindowFullScreen } from "../window-fullscreen";
 import { createTraySessions } from "../tray-sessions";
 import { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
@@ -513,6 +515,30 @@ export function createApplicationLifecycle({
     systemBlocker.dispose();
   }
 
+  function applyMacosSidebarVibrancy(enabled: boolean) {
+    const changed = state.macosSidebarVibrancy !== enabled;
+    if (!changed || process.platform !== "darwin") {
+      state.macosSidebarVibrancy = enabled;
+      return;
+    }
+    const window = state.mainWindow;
+    // Startup applies this before a window exists. A live window means the
+    // user just changed the setting. `transparent` is fixed at construction,
+    // so restart after the settings reply instead of rebuilding this window.
+    if (!window || window.isDestroyed()) {
+      state.macosSidebarVibrancy = enabled;
+      return;
+    }
+    // Request the relaunch before committing live state so a failed handoff
+    // still leaves this value retryable and surfaces through settings IPC.
+    relaunchApplication();
+    state.macosSidebarVibrancy = enabled;
+    state.quitConfirmed = true;
+    setImmediate(() => {
+      app.quit();
+    });
+  }
+
   /**
    * Drive Chromium and macOS native chrome (menus, vibrancy) from the same
    * theme preference the renderer paints. `system` keeps following the OS;
@@ -532,10 +558,18 @@ export function createApplicationLifecycle({
         next = pluginTheme.base;
       }
     }
+    // Renderer background IPC owns System changes and contributed colours.
+    // Repainting an unchanged source here would erase an active plugin plate.
     if (nativeTheme.themeSource === next) return;
     nativeTheme.themeSource = next;
     if (process.platform === "darwin" && state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.setVibrancy("sidebar");
+      if (state.macosSidebarVibrancy) {
+        state.mainWindow.setVibrancy("sidebar");
+      } else {
+        state.mainWindow.setBackgroundColor(
+          builtinWindowBackground(nativeTheme.shouldUseDarkColors ? "dark" : "light"),
+        );
+      }
     }
   }
 
@@ -575,7 +609,11 @@ export function createApplicationLifecycle({
     theme?: unknown;
     keybindings?: unknown;
     developerMode?: unknown;
+    macosSidebarVibrancy?: unknown;
   } | null) {
+    if (typeof settings?.macosSidebarVibrancy === "boolean") {
+      applyMacosSidebarVibrancy(settings.macosSidebarVibrancy);
+    }
     const locale =
       typeof settings?.language === "string" &&
       settings.language &&

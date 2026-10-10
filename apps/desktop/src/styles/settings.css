@@ -3956,3 +3956,71 @@
 .sklm-page-jump::placeholder {
   color: var(--ds-text-muted);
 }
+
+.settings-confirm-overlay {
+  z-index: 65;
+}
+
+.settings-confirm-dialog {
+  width: min(100%, 420px);
+}
+
+.settings-confirm-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-confirm-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-heading);
+}
+
+.settings-confirm-dialog-title svg {
+  flex-shrink: 0;
+  color: var(--ds-text-muted);
+}
+
+.settings-confirm-dialog-description {
+  margin: 5px 0 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.settings-confirm-dialog-error {
+  margin: 12px 0 0;
+  color: var(--ds-error);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.settings-confirm-dialog-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--ds-text-muted);
+}
+
+.settings-confirm-dialog-close:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.settings-confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}

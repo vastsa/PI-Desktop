@@ -6538,6 +6538,60 @@ eleven-tool-round desktop paths are verified by
 - **里程碑**：M5
 - **状态**：部分自动化（渲染器 style/source 合约）
 
+### US-UI-74 macOS native sidebar vibrancy
+- Open the desktop app on macOS in both light and dark appearances with the
+  sidebar expanded, then exercise the existing collapse/expand path.
+- Expect the main window to use native `sidebar` vibrancy with a thin
+  theme tint behind `.sidebar` and any rendered `.sidebar-rail`: the material
+  follows the app theme (`nativeTheme.themeSource`), so a dark shell stays on a
+  dark plate and a light shell stays on a light plate. Desktop content stays
+  perceptible through the material and the surface carries a top-to-bottom
+  sheen rather than a flat fill. The dock carries no seam or hairline — the
+  glass meets the opaque main pane flush, so no hard divider separates the two
+  panes. Switching language or other non-theme settings does not rebuild the
+  glass. Disabling or uninstalling a selected plugin theme returns native
+  chrome to `system`.
+- Expect `.main-pane`, `.main-titlebar`, and `.conversation-topbar` to remain
+  solid theme surfaces without whole-window transparency or a strong artificial
+  blur/card treatment. Sidebar collapse/expand, resize, traffic-light placement,
+  and drag/no-drag hit regions remain unchanged.
+- On macOS, Settings → General → Appearance shows Translucent sidebar. Toggle
+  it: the confirm dialog contains keyboard focus on open and while save is in
+  progress, and restores the previous focus on close. Confirming restarts the
+  app. If save fails, a visible localized alert stays on the dialog, the dialog
+  does not dismiss, the app does not restart, and confirming again retries.
+- Repeat the confirmed disable path in `pnpm dev`: the launcher restarts Vite
+  and Electron together. The new main window renders the app rather than a
+  blank page, Settings still reports the disabled switch, and the explicit
+  profile and Chromium arguments survive. Ordinary Quit must not restart.
+- After a successful settings write, make catalog refresh unavailable:
+  confirmation must not report a save failure. Reject restart preparation:
+  the dialog remains open with a visible error, no quit is scheduled, and the
+  unchanged live state allows another confirmation to retry.
+- Deliver activation and second-instance events before boot completes:
+  neither creates a premature window nor turns persisted settings into a live
+  restart. Normal activation still restores the window after boot.
+- Exercise ordinary, failed, signaled, and explicit-restart development exits:
+  owned descendants must stop, and a pending restart must not hide a failed or
+  signaled exit. On macOS, empty-group cleanup `EPERM` may complete; an `EPERM`
+  with live descendants remains observable.
+- After turning it off, the opaque window background follows System appearance
+  changes and plugin-theme restoration; theme changes do not call `setVibrancy`.
+- English and Chinese global search and settings-rail search return the
+  Translucent sidebar title and description on macOS, and omit both on Windows
+  and Linux.
+  Description-only matches navigate to the switch's title and highlight its
+  row. Overlapping title/description matches do not duplicate results.
+- **Specs linked**: `04-ux/08-component-spec.md` §1.7, §3.4;
+  `04-ux/06-settings-ia.md`; decisions-log D304 / D348
+- **Milestone**: M6
+- **Status**: Partially automated (`macos-sidebar-vibrancy.test.mjs` native
+  lifecycle, `window-background-theme.test.mjs` background IPC,
+  `settings-search-platform.test.mjs` search, `settings-vibrancy-user-path.test.mjs`
+  confirmation and navigation, `development-restart.test.mjs` process ownership);
+  real macOS dev enable/disable restarts verified with isolated profiles.
+  Material appearance and GPU qualification remain Draft.
+
 #### E2E-123：asktool 收集多个答案并返回跳过的占位符
 
 - **先决条件**：Agent、Plan 或 Goal 模式；已配置的提供商；一个

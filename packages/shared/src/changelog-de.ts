@@ -22,6 +22,7 @@ export const deEntries: ChangelogEntry[] = [
     "version": "0.17.0",
     "date": "2026-10-07",
     "highlights": [
+      "Schalten Sie die transparente Seitenleiste unter macOS in den Darstellungseinstellungen um, mit Entwicklungsneustarts ohne leeres Fenster oder verwaiste Prozesse. Fehlgeschlagene Speicher- oder Neustartversuche bleiben wiederholbar; erfolgreiche Speicherungen werden nicht als Fehler gemeldet, und die Beschreibungssuche führt zum Schalter. Windows und Linux blenden diese Einstellung aus.",
       "Fügen Sie Bilder beim Schreiben inline ein und sehen Sie gesendete Bilder direkt im Gespräch in einer Vorschau an.",
       "Gesprächsverweise erscheinen als lesbare Chips und öffnen direkt die verknüpfte Sitzung.",
       "Wählen Sie aus, welche MCP-Server und Tools eine Eingabe verwenden darf.",
