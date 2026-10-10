@@ -1123,13 +1123,17 @@ header-height background behind the excluded lane without covering its controls.
   disables the frameless `WS_THICKFRAME` rim while Electron 43.6's frameless
   hit test continues to own edge and corner resizing; no border is painted on
   the left, right, or bottom. The Windows main window uses the global
-  `--radius-md` token (12 DIP) as its default rounded hit/draw shape: pixels
-  outside its corners have no fill or mouse target. A selected
+  `--radius-md` token (12 DIP) as its default visible corner radius. The
+  proposed ADR 0325 implementation draws that curve on the shared native
+  content view and keeps the native shape for outside-corner click-through.
+  This rendering change remains pending Windows native qualification; the
+  accepted D637 implementation uses the native shape for both drawing and hit
+  testing. A selected
   plugin theme with `ui.window.appearance` may set `cornerRadius` to an integer
   from 0 through 24 DIP; removing that theme restores the 12 DIP global
-  default. The shape becomes
-  rectangular while maximized or fullscreen and follows every resize. Native
-  window background colors remain theme-owned inside the shape. Electron's borderless
+  default. Corners become rectangular while maximized or fullscreen and follow
+  every resize. Native window background colors remain theme-owned inside the
+  clipped surface. Electron's borderless
   fullscreen fallback fills the display without reporting `isFullScreen()`;
   Main tracks its state so toggling back restores the previous bounds and
   fullscreen geometry is never persisted. Frameless titlebar drag

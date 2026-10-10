@@ -108,7 +108,11 @@ async function checkControls(label) {
   assert.ok(ok, label);
 }
 
-async function checkWindowsRoundedCorners(label, rounded = true, radius = defaultWindowCornerRadius) {
+async function checkWindowsRoundedCorners(
+  label,
+  rounded = true,
+  radius = rounded ? defaultWindowCornerRadius : 0,
+) {
   if (process.platform !== "win32") return;
   let corners;
   let probeError;
@@ -126,7 +130,8 @@ async function checkWindowsRoundedCorners(label, rounded = true, radius = defaul
         probeError = undefined;
         return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
           corners.bottomLeftCutout === rounded && corners.bottomRightCutout === rounded &&
-          corners.innerCornerOwned === true;
+          corners.innerCornerOwned === true && corners.gridMismatches === 0 &&
+          corners.insideSamples > 0 && (!rounded || corners.outsideSamples > 0);
       } catch (error) {
         probeError = String(error);
         return false;
@@ -135,14 +140,17 @@ async function checkWindowsRoundedCorners(label, rounded = true, radius = defaul
   } catch (error) {
     throw new Error(`${label}: ${JSON.stringify(corners)}; ${probeError ?? String(error)}`);
   }
-  assert.deepEqual(corners, {
-    topLeftCutout: rounded,
-    topRightCutout: rounded,
-    bottomLeftCutout: rounded,
-    bottomRightCutout: rounded,
-    innerCornerOwned: true,
-    thickFrameStyle: false,
-  }, label);
+  assert.deepEqual([
+    corners.topLeftCutout,
+    corners.topRightCutout,
+    corners.bottomLeftCutout,
+    corners.bottomRightCutout,
+  ], [rounded, rounded, rounded, rounded], label);
+  assert.equal(corners.innerCornerOwned, true, label);
+  assert.equal(corners.thickFrameStyle, false, label);
+  assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
+  assert.ok(corners.insideSamples > 0, `${label}: inside hit samples`);
+  if (rounded) assert.ok(corners.outsideSamples > 0, `${label}: outside click-through samples`);
   console.log(`PASS ${label}: ${JSON.stringify(corners)}`);
 }
 
@@ -325,6 +333,10 @@ try {
     await checkWindowsRoundedCorners("invalid radius leaves the current shape", false);
     assert.equal((await setRadius(defaultWindowCornerRadius)).ok, true);
     await checkWindowsRoundedCorners("theme switch restores the global radius token");
+    assert.equal((await setRadius(24)).ok, true);
+    await checkWindowsRoundedCorners("authorized theme can request 24 DIP corners", true, 24);
+    assert.equal((await setRadius(defaultWindowCornerRadius)).ok, true);
+    await checkWindowsRoundedCorners("returning to the default radius restores 12 DIP corners");
     const loaded = await evaluate(`window.piDesktop.invoke(
       'pi-desktop/plugin/loadDevConfirm',
       { path: ${JSON.stringify(radiusPluginPath)}, grantedPermissions: ['ui.theme', 'ui.window.appearance'] }

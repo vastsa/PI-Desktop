@@ -12159,12 +12159,12 @@ This test plan spec is accepted when:
      return. Release the pointer outside the original window bounds, then
      maximize and enter fullscreen; native hit regions must not block
      window controls or content in those states.
-  6. On Windows, inspect the default 12 DIP corner cutouts, matching the global
-     `--radius-md` token, before and after
-     resizing. Apply an authorized theme with `cornerRadius: 0`, then return to
-     a built-in theme. Reject an out-of-range radius without changing the shape.
+  6. On Windows, inspect the default 12 DIP rounded corners, matching the
+     global `--radius-md` token, before and after resizing. Apply authorized
+     theme radii of 0 and 24 DIP, then return to a built-in theme. Reject an
+     out-of-range radius without changing the surface.
   7. On Windows, minimize and restore the window, then confirm all four native
-     corner cutouts still match the selected radius.
+     corners still match the selected radius.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 800×560 (capped to the display
   work area), and the recovery watchdog does not
@@ -12174,19 +12174,25 @@ This test plan spec is accepted when:
   Electron's frameless native hit regions without the thick-frame rim; no left, bottom,
   or right native rim is visible. No temporary
   work-panel reservation width is persisted or restored.
-  The four normal-window corners have no painted or interactive pixels outside
-  the active radius; the default is the global 12 DIP `--radius-md` radius, an
-  authorized theme may choose 0..24
-  DIP, and maximized/fullscreen windows are rectangular.
+  The four normal-window corners follow the active radius; the default is the
+  global 12 DIP `--radius-md` radius, an authorized theme may choose 0..24 DIP,
+  and maximized/fullscreen windows are rectangular. In the proposed ADR 0325
+  implementation, composited pixels blend only between the corner content and
+  the known desktop background, the common content view clips browser/plugin
+  children, and points beyond the antialiased pixel fringe pass hit testing
+  through.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
-  ADR 0029 / ADR 0151 / ADR 0317
+  ADR 0029 / ADR 0151 / ADR 0317 / ADR 0325
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
-- **Status**: `test:e2e:window-controls` covers corner cutouts before and after
-  minimize/restore, theme radius changes, fullscreen, maximize, and controls
-  in an isolated profile.
+- **Status**: `test:e2e:window-controls` covers corner hit regions before and
+  after minimize/restore, theme radius changes, fullscreen, maximize, and
+  controls in an isolated profile. The isolated `test:e2e:window-surface`
+  candidate samples controlled light/dark desktop backgrounds and the shared
+  parent clip at radii 0, 12, and 24 DIP. Both Windows suites still require a
+  dedicated Windows desktop; source tests do not qualify native compositing.
   `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
   drags and the 800×560 minimum; run it on a dedicated interactive desktop,
   since another app can take foreground or pointer input during the gesture.

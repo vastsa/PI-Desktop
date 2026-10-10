@@ -43,6 +43,15 @@ alongside its background colours. The selected theme supplies it through the
 existing window-appearance IPC; removing the theme restores 12 DIP. Main validates
 the value and the calling renderer before changing the native shape.
 
+### Proposed rendering amendment
+
+ADR 0325 proposes moving visible Windows corner painting to the shared native
+`contentView.setBorderRadius()` clip while retaining `setShape()` for the
+native hit region. The proposal keeps this ADR's resize and minimum-size
+contracts. It remains an implementation candidate until the Windows pixel,
+click-through, DPI, and resize checks in E2E-167 pass; the accepted baseline
+above is not qualified by source-level or mocked tests alone.
+
 ## Alternatives
 
 - Keep the thick frame: leaves the visible rim.
@@ -68,7 +77,8 @@ the value and the calling renderer before changing the native shape.
   window geometry and lifecycle; this decision does not add a shadow setting.
 - `setShape` is an experimental Electron API and its pixel-row curve is not
   anti-aliased by Windows. Native corner hit testing is qualified on the target
-  Electron version rather than assumed from CSS.
+  Electron version rather than assumed from CSS. ADR 0325 proposes a separate
+  smooth draw clip, pending the Windows qualification described above.
 - The Plugin SDK gains one optional, permission-gated appearance property. Old
   manifests remain valid. No host RPC, database schema, or persisted format
   changes.

@@ -57,6 +57,7 @@
     "test:e2e:layout": "node scripts/e2e-three-column-layout.mjs",
     "test:e2e:window-controls": "node scripts/e2e-window-controls.mjs",
     "test:e2e:window-resize-native": "node scripts/e2e-window-controls.mjs --native-edge-drag",
+    "test:e2e:window-surface": "node scripts/e2e-window-surface.mjs",
     "test:e2e:work-panel-reorder": "node scripts/e2e-work-panel-reorder.mjs",
     "test:e2e:supervision": "node scripts/e2e-supervision.mjs",
     "test:e2e:subagents": "node scripts/e2e-subagents.mjs",

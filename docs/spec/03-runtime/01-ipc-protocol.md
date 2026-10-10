@@ -1978,8 +1978,13 @@ the window-control state and fullscreen event use the tracked value.
 `window/setBackgroundColor` remains Electron-local and main-renderer-only. Its
 optional `cornerRadius` is an integer from 0 to 24 DIP; omission restores the
 Windows main-window default of 12 DIP, matching the global `--radius-md` token.
-Main applies the native shape on theme selection and resize, and clears the
-corner cutouts during maximize/fullscreen.
+Main applies the selected radius on theme selection and resize, and makes the
+surface rectangular during maximize/fullscreen. In the proposed ADR 0325
+implementation, Windows keeps the outer native window transparent and applies
+the theme color to the shared rounded content view; Linux keeps the native
+window background, and macOS keeps its existing vibrancy behavior. This
+internal rendering change does not alter the IPC request or response and
+remains pending Windows native qualification.
 Malformed values fail with `INVALID_ARGUMENT` before changing the background.
 Plugin panel chrome uses a separate Electron-local
 `pi-plugin-panel-window-control` channel with the same four semantic actions,

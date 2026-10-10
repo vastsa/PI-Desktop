@@ -25,8 +25,10 @@ test("theme changes synchronize the native non-macOS window background", () => {
   );
   assert.match(
     mainSource,
-    /handleWithEvent\(IPC\.invoke\.windowSetBackgroundColor,[\s\S]*?registrar\.assertMainWindowSender\(event\)[\s\S]*?!isWindowBackgroundColor\(requested\)[\s\S]*?mainWindow\.setBackgroundColor\(color\)/,
+    /handleWithEvent\(IPC\.invoke\.windowSetBackgroundColor,[\s\S]*?registrar\.assertMainWindowSender\(event\)[\s\S]*?!isWindowBackgroundColor\(requested\)[\s\S]*?applyMainWindowBackground\(mainWindow, process\.platform, color\)/,
   );
+  assert.match(mainSource, /mainWindowBackgroundOptions\(process\.platform, initialWindowBackground\)/);
+  assert.match(mainSource, /applyMainWindowBackground\(window, process\.platform, initialWindowBackground\)/);
   // A malformed colour is refused; an omitted one falls back to the host
   // palette, which is what restores the default after a theme switch.
   assert.match(mainSource, /isWindowBackgroundColor\(requested\)\s*\n?\s*\? requested/);

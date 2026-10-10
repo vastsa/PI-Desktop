@@ -22,6 +22,7 @@ import {
   DEFAULT_WINDOW_CORNER_RADIUS,
   setWindowCornerRadius,
 } from "../window-shape";
+import { applyMainWindowBackground } from "../window-background";
 import type { IpcRegistrar } from "./types";
 
 export type WindowIpcDependencies = {
@@ -141,7 +142,7 @@ export function registerWindowIpc({
           typeof requestedRadius === "number" ? requestedRadius : DEFAULT_WINDOW_CORNER_RADIUS,
         )
       : null;
-    mainWindow.setBackgroundColor(color);
+    applyMainWindowBackground(mainWindow, process.platform, color);
     return { applied: true, theme, color, cornerRadius };
   });
 

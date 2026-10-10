@@ -34,7 +34,8 @@ import {
 import { readWindowState, writeWindowState } from "../window-preferences";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 import { isWindowFullScreen } from "../window-fullscreen";
-import { installWindowShape } from "../window-shape";
+import { DEFAULT_WINDOW_CORNER_RADIUS, installWindowShape } from "../window-shape";
+import { applyMainWindowBackground, mainWindowBackgroundOptions } from "../window-background";
 import { recoverRendererAfterGone } from "../renderer-recovery";
 
 function windowsIconPath(): string | undefined {
@@ -163,6 +164,9 @@ export async function createWindow({
       { width: windowMinWidth, height: windowMinHeight },
       restoreWorkArea,
     );
+  const initialWindowBackground = builtinWindowBackground(
+    nativeTheme.shouldUseDarkColors ? "dark" : "light",
+  );
   windowState.mainWindow = new BrowserWindow({
     ...(restoredBounds ?? { width: 1200, height: 800 }),
     minWidth: initialMinWidth,
@@ -187,12 +191,10 @@ export async function createWindow({
           transparent: true,
           backgroundColor: "#00000000",
         }
-      : {
+        : {
           frame: false,
           ...(process.platform === "win32" ? { thickFrame: false } : {}),
-          backgroundColor: builtinWindowBackground(
-            nativeTheme.shouldUseDarkColors ? "dark" : "light",
-          ),
+          ...mainWindowBackgroundOptions(process.platform, initialWindowBackground),
         }),
     ...(process.platform === "win32"
       ? {
@@ -211,7 +213,10 @@ export async function createWindow({
     },
   });
   const window = windowState.mainWindow;
-  if (process.platform === "win32") installWindowShape(window);
+  if (process.platform === "win32") {
+    installWindowShape(window, DEFAULT_WINDOW_CORNER_RADIUS, screen);
+  }
+  applyMainWindowBackground(window, process.platform, initialWindowBackground);
   suppressLinuxFramelessSystemMenu(window);
   const initialBounds = window.getBounds();
   windowState.workPanelBaseBounds = restoredBounds
