@@ -19,7 +19,8 @@ const session = (id, scheduledRun) => ({
 });
 
 test("the tray never offers a scheduled run's transcript", () => {
-  const listed = [session("plain"), session("automation", true), session("legacy")];
+  const listed = [session("plain"), session("automation", true),
+    { ...session("managed"), managedByPlugin: "fixture.owner" }, session("legacy")];
 
   assert.deepEqual(
     trayVisibleSessions(listed).map((item) => item.id),

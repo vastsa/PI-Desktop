@@ -28,11 +28,10 @@ export function useSessionSearch(open: boolean, query: string) {
   }, [controller, normalized, open]);
   return {
     ...state,
-    // Scheduled run transcripts are reached from the Scheduled page, so search
-    // never offers them as a conversation to switch to (issue #1291).
+    // Owned transcripts are reached from their dedicated navigation.
     hits:
       state.query === normalized
-        ? state.hits.filter((hit) => !isAutomationSession(hit.session))
+        ? state.hits.filter((hit) => !isAutomationSession(hit.session) && !hit.session.managedByPlugin)
         : [],
     nextOffset: state.query === normalized ? state.nextOffset : null,
     error: state.query === normalized ? state.error : undefined,

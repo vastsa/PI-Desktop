@@ -20,6 +20,8 @@ import {
 import { composerDraftBridge } from "../../features/chat/composer/plugins/draft-bridge";
 import { api } from "../../lib/api";
 import { PluginRendererError } from "../renderer-error";
+import { runShellAction, type ShellRoutes } from "./shell-actions";
+import { rendererSessionRoutes, runSessionAction, type SessionRoutes } from "./session-actions";
 import { isUserGesture, runComposerAction, type ComposerRoutes } from "./composer-actions";
 
 /** Where the implemented words go. The defaults are the live app's. */
@@ -30,11 +32,14 @@ export type DispatchRoutes = {
   composer: ComposerRoutes;
   /** Whether the code runs inside a user's input event now. */
   userGesture(): boolean;
+  session?: SessionRoutes;
+  shell?: ShellRoutes;
 };
 
 const appRoutes: DispatchRoutes = {
   pluginCall: (pluginId, method, args) => api.pluginRendererCall(pluginId, method, args),
   composer: composerDraftBridge,
+  session: rendererSessionRoutes,
   userGesture: () => isUserGesture(),
 };
 
@@ -125,12 +130,16 @@ export function createDispatchChannel(
       }
       return untilClosed(routes.pluginCall(pluginId, method, jsonArgs(payload.args)));
     }
+    if (action === "shell.openPage") return runShellAction(pluginId, payload, userGesture, routes.shell);
+    if (action === "session.readContext" || action === "workPanel.openView") {
+      return runSessionAction(pluginId, action, payload, routes.session ?? rendererSessionRoutes, userGesture);
+    }
     return untilClosed(
       new Promise((resolve) => {
         resolve(
           runComposerAction(
             pluginId,
-            action as Exclude<PluginRendererActionName, "plugin.call">,
+            action as Exclude<PluginRendererActionName, "plugin.call" | "session.readContext" | "workPanel.openView" | "shell.openPage">,
             payload,
             routes.composer,
             userGesture,

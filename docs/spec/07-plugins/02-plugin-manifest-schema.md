@@ -406,6 +406,8 @@ type PluginPermission =
  | "desktop.control"
  | "ui.microphone"
  | "project.create"
+ | "session.manage.own"
+ | "secrets.store"
  | "session.import"
  | "session.read.own"
  | "session.update.own"

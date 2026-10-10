@@ -1,3 +1,4 @@
+import type { createManagedSessionRouter } from "../plugin-managed-sessions";
 import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
@@ -16,6 +17,7 @@ import type { IpcRegistrar } from "./types";
 
 export type AgentIpcDependencies = {
   registrar: IpcRegistrar;
+  managedSessions?: ReturnType<typeof createManagedSessionRouter>;
   getHost: () => HostProcess | null;
   getSidecar: () => AgentSidecar | null;
   getAgentHostBridge: () => AgentHostBridge | null;
@@ -77,6 +79,7 @@ function parseVoiceOrigin(value: unknown): VoiceOrigin | undefined {
 /** Register prompt, agent lifecycle, queue, approval and plan channels. */
 export function registerAgentIpc({
   registrar,
+  managedSessions,
   getHost,
   getSidecar,
   getAgentHostBridge,
@@ -115,6 +118,7 @@ export function registerAgentIpc({
     });
   };
   handle(IPC.invoke.agentSteer, async (req: AgentSteerRequest) => {
+    await managedSessions?.rejectAgentOperation(req.sessionId);
     if (!host || !sidecar) throw new Error("backend unavailable");
     if (
       !req?.sessionId || typeof req.content !== "string" || !req.expectedTurnId ||
@@ -178,6 +182,8 @@ export function registerAgentIpc({
   });
 
   handle(IPC.invoke.agentPrompt, async (req: AgentPromptRequest) => {
+    const managed = await managedSessions?.prompt(req);
+    if (managed) return managed;
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
     if (req.sessionId.startsWith("native-pi:")) {
@@ -706,6 +712,7 @@ export function registerAgentIpc({
   // The Host-owned turn queue (D375 / D386). The renderer mirrors it; the
   // headless module admits, orders, and drains it.
   handle(IPC.invoke.agentQueuePush, async (req: AgentQueuePushRequest) => {
+    await managedSessions?.rejectAgentOperation(req.sessionId);
     rejectNativeAgentOperation(req.sessionId);
     if (!agentHostBridge) throw new Error("agent host unavailable");
     return agentHostBridge.queue.push(req);

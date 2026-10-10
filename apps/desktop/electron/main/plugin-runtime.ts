@@ -1,3 +1,4 @@
+import { createPluginSecretsApi, type PluginSecretsHostCall } from "./plugin-secrets";
 import {
   readFileSync,
   existsSync,
@@ -107,6 +108,7 @@ import {
 } from "./plugin-renderer-extension";
 import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
 import { parseAllowedExternalUrl } from "./safe-open-external";
+import { managedPresentationEvent } from "./plugin-managed-events";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
 import type { McpControlController, McpControlInvokeInput } from "./mcp-control";
 import {
@@ -477,7 +479,18 @@ export type PluginHostServices = {
     stripToolName?: string;
     signal?: AbortSignal;
   }) => Promise<PluginCompleteResult>;
+  secretsHostCall?: PluginSecretsHostCall;
   session?: {
+    createManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    appendManaged: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    /** Bind a managed transcript's compose-time model; never touches permissions. */
+    setManagedModel: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    readManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    beginManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    writeManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    commitManagedAttachment: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    managedOwner: (sessionId: string) => Promise<string | null>;
+    emitManagedEvent: (envelope: ReturnType<typeof managedPresentationEvent>) => void;
     list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     get: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     listMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
@@ -527,6 +540,8 @@ const HOST_API_ALLOWLIST = new Set([
   "ui.getNotificationPermission",
   "ui.requestNotificationPermission",
   "ui.showNativeNotification",
+  "desktop.subscribeAgentEvents",
+  "desktop.unsubscribeAgentEvents",
   "desktop.listOperations",
   "desktop.invoke",
   "workspace.get",
@@ -583,6 +598,17 @@ const HOST_API_ALLOWLIST = new Set([
   "session.list",
   "session.get",
   "session.listMessages",
+  "secrets.get",
+  "secrets.set",
+  "secrets.delete",
+  "session.createManaged",
+  "session.appendManaged",
+  "session.setManagedModel",
+  "session.readManagedAttachment",
+  "session.beginManagedAttachment",
+  "session.writeManagedAttachment",
+  "session.commitManagedAttachment",
+  "session.emitManagedEvent",
   "session.import",
   "session.importBatch",
   "session.rename",
@@ -600,6 +626,8 @@ const HOST_API_ALLOWLIST = new Set([
 const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
 /** Lifecycle hooks time out per spec 05 §3. */
 const PLUGIN_HOOK_TIMEOUT_MS = 5_000;
+/** Explicit unload permits bounded durable execution cleanup before disconnect. */
+const PLUGIN_UNLOAD_HOOK_TIMEOUT_MS = 12_000;
 /**
  * The unload hook gets a shorter budget on quit than it does on an explicit
  * unload: the user has asked the app to close, and no plugin's cleanup is worth
@@ -780,10 +808,12 @@ type LoadedPlugin = {
   deletes: number[];
   /** Memory-only grants created by a real panel drop gesture. */
   dropGrants: Map<string, { fullPath: string; requestPath: string }>;
+  agentSubscriptions: Map<string, string>;
   child?: PluginProcessHandle;
   pending: Map<string, PendingCall>;
   nextCallId: number;
   disposing: boolean;
+  cleanupActive?: boolean;
 };
 
 type PluginApiError = Error & { code?: string };
@@ -911,6 +941,62 @@ function pluginSessionJsonBytes(value: unknown): number {
   }
 }
 
+/** Content-addressed blob refs a managed message may name. */
+const MANAGED_ATTACHMENT_REF = /^attachments\/[0-9a-f]{64}$/i;
+/** Attachments one managed message may carry; the descriptors are tiny. */
+const MANAGED_ATTACHMENT_MAX = 32;
+const MANAGED_ATTACHMENT_NAME_MAX = 255;
+const MANAGED_ATTACHMENT_MIME_MAX = 128;
+
+/**
+ * Validate attachment descriptors crossing the plugin boundary. Only the ref
+ * shape is trusted; the bytes live under `<dataDir>/attachments` and are read
+ * or written through the owner-checked store, never by path.
+ */
+function normalizeManagedAttachments(value: unknown): Array<Record<string, unknown>> {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw apiError("INVALID_PARAMS", "attachments must be an array");
+  if (value.length > MANAGED_ATTACHMENT_MAX) {
+    throw apiError("LIMIT_EXCEEDED", `attachments exceed ${MANAGED_ATTACHMENT_MAX}`);
+  }
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw apiError("INVALID_PARAMS", "attachment must be an object");
+    }
+    const item = entry as Record<string, unknown>;
+    if (typeof item.ref !== "string" || !MANAGED_ATTACHMENT_REF.test(item.ref)) {
+      throw apiError("INVALID_PARAMS", "attachment ref must be attachments/<sha256>");
+    }
+    const name = typeof item.name === "string" ? item.name : "";
+    if (!name || [...name].length > MANAGED_ATTACHMENT_NAME_MAX) {
+      throw apiError("LIMIT_EXCEEDED", "attachment name is invalid");
+    }
+    if (item.kind !== "image" && item.kind !== "file") {
+      throw apiError("INVALID_PARAMS", "attachment kind must be image or file");
+    }
+    if (item.mimeType !== undefined &&
+        (typeof item.mimeType !== "string" || [...item.mimeType].length > MANAGED_ATTACHMENT_MIME_MAX)) {
+      throw apiError("LIMIT_EXCEEDED", "attachment mimeType is invalid");
+    }
+    if (item.size !== undefined &&
+        (typeof item.size !== "number" || !Number.isFinite(item.size) || item.size < 0)) {
+      throw apiError("INVALID_PARAMS", "attachment size is invalid");
+    }
+    if (item.inlinePath !== undefined &&
+        (typeof item.inlinePath !== "string" || [...item.inlinePath].length > 1024)) {
+      throw apiError("LIMIT_EXCEEDED", "attachment inlinePath is invalid");
+    }
+    return {
+      ref: item.ref,
+      name,
+      kind: item.kind,
+      ...(item.mimeType !== undefined ? { mimeType: item.mimeType } : {}),
+      ...(item.size !== undefined ? { size: item.size } : {}),
+      ...(item.inlinePath !== undefined ? { inlinePath: item.inlinePath } : {}),
+    };
+  });
+}
+
 function validatePluginSessionPayload(input: unknown, kind: "import" | "batch" | "other"): void {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw apiError("INVALID_PARAMS", "session input must be an object");
@@ -974,6 +1060,12 @@ function validatePluginSessionPayload(input: unknown, kind: "import" | "batch" |
         throw apiError("INVALID_PARAMS", "message timestamps must be monotonic RFC3339 values");
       }
       previous = messageMs;
+      if (row.attachments !== undefined) {
+        if (row.role !== "user") {
+          throw apiError("INVALID_PARAMS", "attachments are only valid for user messages");
+        }
+        normalizeManagedAttachments(row.attachments);
+      }
       if (row.role === "tool") {
         if (!row.toolName || !row.toolCallId || !["success", "error"].includes(String(row.toolStatus))) {
           throw apiError("INVALID_PARAMS", "tool message fields are invalid");
@@ -1730,6 +1822,35 @@ export class PluginRuntime {
     }
   }
 
+  /** Called only after host-core resolves the durable owning plugin. */
+  async submitManagedSession(
+    pluginId: string,
+    input: {
+      sessionId: string;
+      messageId: string;
+      content: string;
+      attachments?: unknown;
+    },
+  ): Promise<void> {
+    const loaded = this.loaded.get(pluginId);
+    if (!loaded || loaded.disposing || !loaded.child) throw apiError("PLUGIN_UNLOADED", "Session owner plugin is unavailable");
+    this.assertPermission(loaded, "session.manage.own");
+    if (!input.messageId || input.messageId.length > 256 || input.content.length > 100_000) {
+      throw apiError("INVALID_ARGUMENT", "managed session input is invalid");
+    }
+    const attachments = normalizeManagedAttachments(input.attachments);
+    if (!input.content.trim() && !attachments.length) {
+      throw apiError("INVALID_ARGUMENT", "managed session input is invalid");
+    }
+    const result = await this.sendToChild(
+      loaded,
+      { t: "call", method: "session.submit", payload: { ...input, attachments } },
+      PLUGIN_COMPOSER_TRANSFORM_TIMEOUT_MS,
+    );
+    if (this.loaded.get(pluginId) !== loaded || loaded.disposing) throw apiError("PLUGIN_UNLOADED", "Session owner plugin was unloaded");
+    if ((result as { accepted?: unknown })?.accepted !== true) throw apiError("PLUGIN_INVALID_RESULT", "Session send was not acknowledged");
+  }
+
   getLoaded(pluginId: string): LoadedPlugin | undefined {
     return this.loaded.get(pluginId);
   }
@@ -1955,6 +2076,30 @@ export class PluginRuntime {
    * receive the same names through `pluginBridge.on`; this is the process
    * half (spec 07 §5).
    */
+  /** Session-scoped process-only execution events; never broadcast to panels. */
+  deliverAgentEvent(payload: { sessionId: string }): void {
+    this.deliverSubscribedEvent("desktop:agentEvent", payload);
+  }
+
+  deliverTurnEnded(payload: { sessionId: string; turnId: string; reason: "completed" | "aborted" | "error"; persisted?: boolean }): void {
+    this.deliverSubscribedEvent("desktop:turnEnded", { ...payload, persisted: payload.persisted === true, reason: payload.persisted === true ? payload.reason : "unknown" });
+  }
+
+  private deliverSubscribedEvent(event: string, payload: { sessionId: string; reason?: string; persisted?: boolean }): void {
+    for (const loaded of this.loaded.values()) {
+      if ((loaded.disposing && !loaded.cleanupActive) || !loaded.permissions.has("desktop.control")) continue;
+      for (const [subscriptionId, sessionId] of loaded.agentSubscriptions) {
+        if (payload.sessionId !== sessionId) continue;
+        try {
+          loaded.child?.postMessage({ t: "event", event, args: [{ subscriptionId, ...payload }] });
+        } catch {
+          this.services.audit?.({ pluginId: loaded.manifest.id, api: "desktop.agentEvents.delivery",
+            ok: false, errorCode: "PLUGIN_UNREACHABLE", ts: Date.now() });
+        }
+      }
+    }
+  }
+
   broadcastEvent(event: string, args: unknown[] = []): void {
     for (const loaded of this.loaded.values()) {
       try {
@@ -2072,6 +2217,7 @@ export class PluginRuntime {
       legacyFs: access.legacy,
       deletes: [],
       dropGrants: new Map(),
+      agentSubscriptions: new Map(),
       child,
       pending: new Map(),
       nextCallId: 1,
@@ -2152,15 +2298,19 @@ export class PluginRuntime {
     }
     if (loaded?.child) {
       loaded.disposing = true;
+      loaded.cleanupActive = true;
       try {
         await this.sendToChild(
           loaded,
           { t: "call", method: "lifecycle.unload", payload: {} },
-          PLUGIN_HOOK_TIMEOUT_MS,
+          PLUGIN_UNLOAD_HOOK_TIMEOUT_MS,
         );
       } catch {
         // A stuck or already-dead child must never block teardown.
+      } finally {
+        loaded.cleanupActive = false;
       }
+      loaded.agentSubscriptions.clear();
       this.rejectPending(loaded, apiError("PLUGIN_UNLOADED", `plugin unloaded: ${pluginId}`));
       try {
         loaded.child.kill();
@@ -2252,6 +2402,8 @@ export class PluginRuntime {
     ]);
     // Whatever survived the budget is killed outright; the app is going away.
     for (const loaded of loadedPlugins) {
+      loaded.cleanupActive = false;
+      loaded.agentSubscriptions.clear();
       try {
         loaded.child?.kill();
       } catch {
@@ -2267,6 +2419,7 @@ export class PluginRuntime {
     const pluginId = loaded.manifest.id;
     await this.stopServices(loaded);
     if (!loaded.child) return;
+    loaded.cleanupActive = true;
     try {
       await this.sendToChild(
         loaded,
@@ -2275,7 +2428,10 @@ export class PluginRuntime {
       );
     } catch {
       // A stuck or already-dead child must never block quit.
+    } finally {
+      loaded.cleanupActive = false;
     }
+    loaded.agentSubscriptions.clear();
     this.rejectPending(loaded, apiError("PLUGIN_UNLOADED", `plugin unloaded: ${pluginId}`));
     this.clearContributions(pluginId);
   }
@@ -3030,6 +3186,90 @@ export class PluginRuntime {
         });
         return result;
       }
+      case "session.emitManagedEvent": {
+        this.assertPermission(loaded, "session.manage.own");
+        const event = managedPresentationEvent(args[0]);
+        const session = this.services.session;
+        if (!session?.managedOwner || !session.emitManagedEvent) throw apiError("UNSUPPORTED", "Managed presentation is unavailable");
+        const owner = await session.managedOwner(event.sessionId);
+        this.assertPermission(loaded, "session.manage.own");
+        if (loaded.disposing || this.loaded.get(pluginId) !== loaded) throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        if (owner !== pluginId) throw apiError("PERMISSION_DENIED", "Session is not managed by this plugin");
+        session.emitManagedEvent(event);
+        return { delivered: true };
+      }
+      case "session.setManagedModel": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.setManagedModel) {
+          throw apiError("UNSUPPORTED", "host api not available: session.setManagedModel");
+        }
+        return this.services.session.setManagedModel(pluginId, input);
+      }
+      case "session.readManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.readManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.readManagedAttachment");
+        }
+        return this.services.session.readManagedAttachment(pluginId, input);
+      }
+      case "session.beginManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.beginManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.beginManagedAttachment");
+        }
+        return this.services.session.beginManagedAttachment(pluginId, input);
+      }
+      case "session.writeManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.writeManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.writeManagedAttachment");
+        }
+        return this.services.session.writeManagedAttachment(pluginId, input);
+      }
+      case "session.commitManagedAttachment": {
+        if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.commitManagedAttachment) {
+          throw apiError("UNSUPPORTED", "host api not available: session.commitManagedAttachment");
+        }
+        return this.services.session.commitManagedAttachment(pluginId, input);
+      }
+      case "session.createManaged":
+      case "session.appendManaged": {
+        if (this.loaded.get(pluginId) !== loaded ||
+            (loaded.disposing && (api === "session.createManaged" || !loaded.cleanupActive))) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+        }
+        this.assertPermission(loaded, "session.manage.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (api === "session.createManaged") {
+          const source = this.sessionSource(loaded, input.source);
+          input.sourceLabel = source.label;
+          if (input.projectId !== undefined && input.projectId !== null) this.assertPermission(loaded, "project.create");
+        }
+        const operation = api === "session.createManaged" ? this.services.session?.createManaged : this.services.session?.appendManaged;
+        if (!operation) throw apiError("UNSUPPORTED", `host api not available: ${api}`);
+        return operation(pluginId, input);
+      }
       case "session.import": {
         this.assertPermission(loaded, "session.import");
         const input = normalizePluginSessionInput(args[0] ?? {}, "import");
@@ -3183,6 +3423,7 @@ export class PluginRuntime {
   }
 
   private handleChildExit(loaded: LoadedPlugin, code: number): void {
+    loaded.agentSubscriptions.clear();
     this.toolInvocations.cancelOwner(loaded, "Plugin host process exited");
     if (loaded.disposing) return;
     if (this.loaded.get(loaded.manifest.id) !== loaded) return;
@@ -5061,6 +5302,17 @@ export class PluginRuntime {
     };
 
     return {
+      secrets: createPluginSecretsApi({
+        pluginId: loaded.manifest.id,
+        assertPermission: () => {
+          if (this.loaded.get(loaded.manifest.id) !== loaded || (loaded.disposing && !loaded.cleanupActive)) throw apiError("PERMISSION_DENIED", "Plugin is no longer active");
+          this.assertPermission(loaded, "secrets.store");
+        },
+        callHost: (method, params) => {
+          if (!this.services.secretsHostCall) throw apiError("UNSUPPORTED", "Plugin secret storage is unavailable");
+          return this.services.secretsHostCall(method, params);
+        },
+      }),
       app: {
         getVersion: async () => this.services.getAppVersion?.() ?? "0.2.1",
         getLocale: async () => this.services.getLocale?.() ?? "en",
@@ -5311,6 +5563,35 @@ export class PluginRuntime {
         },
       },
       desktop: {
+        subscribeAgentEvents: async (input: unknown) => {
+          this.assertPermission(loaded, "desktop.control");
+          if (loaded.disposing || this.loaded.get(pluginId) !== loaded) {
+            throw apiError("PLUGIN_UNLOADED", "Plugin is not available");
+          }
+          const sessionId = input && typeof input === "object" && !Array.isArray(input)
+            ? (input as { sessionId?: unknown }).sessionId : undefined;
+          if (typeof sessionId !== "string" || !sessionId.trim() || sessionId.length > 128) {
+            throw apiError("INVALID_PARAMS", "A bounded sessionId is required");
+          }
+          for (const [subscriptionId, existing] of loaded.agentSubscriptions) {
+            if (existing === sessionId.trim()) return { subscriptionId };
+          }
+          if (loaded.agentSubscriptions.size >= 64) {
+            throw apiError("BUSY", "Agent event subscription limit reached");
+          }
+          const subscriptionId = randomUUID();
+          loaded.agentSubscriptions.set(subscriptionId, sessionId.trim());
+          return { subscriptionId };
+        },
+        unsubscribeAgentEvents: async (input: unknown) => {
+          this.assertPermission(loaded, "desktop.control");
+          const subscriptionId = input && typeof input === "object" && !Array.isArray(input)
+            ? (input as { subscriptionId?: unknown }).subscriptionId : undefined;
+          if (typeof subscriptionId !== "string" || !subscriptionId) {
+            throw apiError("INVALID_PARAMS", "subscriptionId is required");
+          }
+          loaded.agentSubscriptions.delete(subscriptionId);
+        },
         listOperations: async () => {
           this.assertPermission(loaded, "desktop.control");
           const controller = this.services.desktopControl;
@@ -5334,6 +5615,9 @@ export class PluginRuntime {
           }
           const input = rawInput as Record<string, unknown>;
           const operation = typeof input.operation === "string" ? input.operation : "";
+          if (loaded.disposing && !["agent/abort", "session/get", "session/delete"].includes(operation)) {
+            throw apiError("PLUGIN_UNLOADED", "Only execution cleanup is available while unloading");
+          }
           const args = input.args === undefined ? [] : input.args;
           if (!Array.isArray(args)) {
             throw apiError("INVALID_PARAMS", "desktop.invoke args must be an array");

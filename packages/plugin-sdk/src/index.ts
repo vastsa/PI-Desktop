@@ -214,6 +214,15 @@ export type PluginLocalizedString = {
   "zh-CN": string;
 };
 
+export { assertPluginSecretKey, assertPluginSecretValue, PLUGIN_SECRETS_PERMISSION } from "./secrets.js";
+export type { PluginSecretsApi } from "./secrets.js";
+import type { PluginSecretsApi } from "./secrets.js";
+
+export type { PluginManagedSessionCreateInput, PluginManagedMessageInput, PluginManagedSessionSubmitInput } from "./managed-sessions";
+import type { PluginManagedSessionCreateInput, PluginManagedMessageInput, PluginManagedSessionSubmitInput } from "./managed-sessions";
+export type { PluginManagedAttachment } from "./managed-sessions";
+import type { PluginManagedAttachment } from "./managed-sessions";
+
 export type PluginSessionSourceContrib = {
   id: string;
   label?: string | PluginLocalizedString;
@@ -234,7 +243,12 @@ export type PluginComposerTransformInput = {
 };
 
 export type PluginSessionMessage =
-  | { role: "user"; content: string; createdAt: string }
+  | {
+      role: "user";
+      content: string;
+      createdAt: string;
+      attachments?: PluginManagedAttachment[];
+    }
   | {
       role: "assistant";
       content: string;
@@ -955,6 +969,29 @@ export type PluginFsRange = {
   totalSize: number;
 };
 
+/** Process event payload from desktop:agentEvent. Event data follows the host's
+ * AgentEvent union, including append-only deltas and tool/subagent identity. */
+export type PluginDesktopAgentEvent = {
+  subscriptionId: string;
+  sessionId: string;
+  turnId?: string;
+  ts: number;
+  event: { type: string; [key: string]: unknown };
+  parentToolCallId?: string;
+  nestedParentToolCallId?: string;
+  agentName?: string;
+};
+
+/** Process event payload from desktop:turnEnded. unknown means the durable
+ * terminal write was not acknowledged and must never be treated as success. */
+export type PluginDesktopTurnEnded = {
+  subscriptionId: string;
+  sessionId: string;
+  turnId: string;
+  reason: "completed" | "aborted" | "error" | "unknown";
+  persisted: boolean;
+};
+
 export type PluginDesktopOperation = {
   id: string;
   description: string;
@@ -1171,6 +1208,11 @@ export type PluginHostApi = {
   };
   /** Reviewed host operations shared with the local MCP control plane. */
   desktop: {
+    /** Requires desktop.control. Subscribe before prompting; no replay is provided.
+     * Events arrive as desktop:agentEvent and desktop:turnEnded with subscriptionId.
+     * A transport loss is unknown, never evidence of completion. */
+    subscribeAgentEvents: (input: { sessionId: string }) => Promise<{ subscriptionId: string }>;
+    unsubscribeAgentEvents: (input: { subscriptionId: string }) => Promise<void>;
     listOperations: () => Promise<PluginDesktopOperation[]>;
     invoke: (input: PluginDesktopInvokeInput) => Promise<unknown>;
   };
@@ -1256,7 +1298,59 @@ export type PluginHostApi = {
   models: {
     list: () => Promise<PluginModelInfo[]>;
   };
+  secrets: PluginSecretsApi;
   session: {
+    /** Requires session.manage.own; existing ordinary/imported sessions cannot be claimed. */
+    createManaged: (input: PluginManagedSessionCreateInput) => Promise<{ sessionId: string; created: boolean }>;
+    appendManaged: (input: PluginManagedMessageInput) => Promise<{ messageId: string; appended: boolean }>;
+    /**
+     * Bind the model/thinking level the native composer composes with. This is
+     * display state only — a managed session never runs an agent — and it can
+     * never change the session's mode or permission mode, which is why it is a
+     * plain call rather than the confirmed `session/configure`.
+     */
+    setManagedModel: (input: {
+      sessionId: string;
+      providerId?: string;
+      modelId?: string;
+      thinkingLevel?: string;
+    }) => Promise<{ updated: boolean }>;
+    /** Read one chunk of a stored managed-message attachment blob. */
+    readManagedAttachment: (input: {
+      sessionId: string;
+      ref: string;
+      offset?: number;
+      length?: number;
+    }) => Promise<{
+      ref: string;
+      size: number;
+      offset: number;
+      eof: boolean;
+      contentBase64: string;
+    }>;
+    /** Stage an attachment blob another computer sent; commit hashes it into place. */
+    beginManagedAttachment: (input: {
+      sessionId: string;
+      name: string;
+      mimeType?: string;
+      size: number;
+    }) => Promise<{ uploadId: string }>;
+    writeManagedAttachment: (input: {
+      sessionId: string;
+      uploadId: string;
+      offset: number;
+      dataBase64: string;
+    }) => Promise<{ received: number }>;
+    commitManagedAttachment: (input: {
+      sessionId: string;
+      uploadId: string;
+    }) => Promise<{ ref: string; size: number }>;
+    /** Ephemeral native presentation only; appendManaged remains the durable record.
+     * Allowed types: message_start/update/end and tool_start/update/end. */
+    emitManagedEvent: (input: { sessionId: string; author?: string; envelope: {
+      turnId: string; ts: number; event: { type: string; [key: string]: unknown };
+      parentToolCallId?: string; nestedParentToolCallId?: string;
+    } }) => Promise<{ delivered: true }>;
     getLlmContext: () => Promise<PluginLlmContext>;
     getAutoTitleContext: (input: { sessionId: string }) => Promise<PluginAutoTitleContext | null>;
     setAutoTitle: (input: {
@@ -1389,6 +1483,8 @@ export type PluginModule = {
    * be JSON. Throw an `Error` with a `code` to hand that code to the caller.
    */
   onRendererCall?: (method: string, args: unknown) => Promise<unknown> | unknown;
+  /** Handle an explicit native send to a session created by this plugin. Never replayed by the host. */
+  onSessionSubmit?: (input: PluginManagedSessionSubmitInput) => Promise<{ accepted: true }> | { accepted: true };
   /** Handle one explicitly invoked Composer text action. */
   onComposerTransform?: (
     input: PluginComposerTransformInput,
@@ -1428,6 +1524,8 @@ export const PLUGIN_PERMISSIONS = [
   "models.list",
   "project.create",
   "session.read",
+  "secrets.store",
+  "session.manage.own",
   "session.import",
   "session.read.own",
   "session.update.own",

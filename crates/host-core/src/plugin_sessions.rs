@@ -5,6 +5,8 @@
 //! and imported sessions do not acquire project/provider bindings unless an
 //! explicit host-created project id is supplied.
 
+pub mod managed;
+
 use anyhow::{anyhow, Result};
 use chrono::DateTime;
 use rusqlite::{params, OptionalExtension};
@@ -14,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::db::{ms_to_ts, now_ms, Database};
-use crate::sessions::{self, UiMessage};
+use crate::sessions::{self, MessageAttachment, UiMessage};
 use crate::transcripts::{self, MessageRecord};
 
 pub const MAX_IMPORT_MESSAGES: usize = 2_000;
@@ -33,6 +35,12 @@ pub const DEFAULT_MESSAGE_LIMIT: usize = 100;
 pub const MAX_MESSAGE_LIMIT: usize = 500;
 pub const DEFAULT_CONTENT_LIMIT: usize = 64_000;
 pub const MAX_CONTENT_LIMIT: usize = 512_000;
+/// Attachments one plugin message may carry. The descriptors are tiny; the
+/// bytes live content-addressed under `<dataDir>/attachments` and never cross
+/// this boundary.
+pub const MAX_ATTACHMENTS: usize = 32;
+pub const MAX_ATTACHMENT_NAME_CHARS: usize = 255;
+pub const MAX_ATTACHMENT_MIME_CHARS: usize = 128;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +50,8 @@ struct PluginMessageInput {
     created_at: String,
     model_id: Option<String>,
     provider_id: Option<String>,
+    #[serde(default)]
+    attachments: Option<Vec<MessageAttachment>>,
     tool_name: Option<String>,
     tool_call_id: Option<String>,
     tool_status: Option<String>,
@@ -55,12 +65,54 @@ struct PreparedImport {
     title: String,
     external_id: String,
     project_id: Option<i64>,
+    provider_id: Option<String>,
+    model_id: Option<String>,
+    thinking_level: Option<String>,
     created_at: String,
     created_ms: i64,
     updated_ms: i64,
     records: Vec<MessageRecord>,
     texts: Vec<Option<String>>,
     origin_json: String,
+}
+
+/// Content-addressed paste/upload blobs. A plugin may only name a blob it (or a
+/// peer) actually staged, never an arbitrary path.
+fn is_attachment_ref(value: &str) -> bool {
+    let normalized = value.trim().replace('\\', "/");
+    let Some(hash) = normalized.strip_prefix("attachments/") else {
+        return false;
+    };
+    hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn validate_attachments(value: &[MessageAttachment]) -> Result<()> {
+    if value.len() > MAX_ATTACHMENTS {
+        return Err(limit(format!(
+            "message carries more than {MAX_ATTACHMENTS} attachments"
+        )));
+    }
+    for attachment in value {
+        if !matches!(attachment.kind.as_str(), "image" | "file") {
+            return Err(invalid("attachment.kind must be image or file"));
+        }
+        if !is_attachment_ref(&attachment.reference) {
+            return Err(invalid("attachment.ref must be attachments/<sha256>"));
+        }
+        let name = attachment.name.trim();
+        if name.is_empty() || chars(name) > MAX_ATTACHMENT_NAME_CHARS {
+            return Err(invalid("attachment.name is empty or too long"));
+        }
+        if let Some(mime_type) = &attachment.mime_type {
+            if chars(mime_type) > MAX_ATTACHMENT_MIME_CHARS {
+                return Err(invalid("attachment.mimeType is too long"));
+            }
+        }
+        if attachment.size.is_some_and(|size| size < 0) {
+            return Err(invalid("attachment.size must not be negative"));
+        }
+    }
+    Ok(())
 }
 
 fn invalid(message: impl Into<String>) -> anyhow::Error {
@@ -179,6 +231,19 @@ fn parse_message(
 
     let model_id = optional_text(input.model_id.clone(), "message.modelId", 256)?;
     let provider_id = optional_text(input.provider_id.clone(), "message.providerId", 256)?;
+    // Attachments are a user-message fact: a room message names the blobs it
+    // carried, and the transcript renders them by ref. Assistant and tool
+    // messages keep the field empty, exactly like an ordinary session.
+    let attachments = match input.attachments.as_deref() {
+        None | Some([]) => None,
+        Some(items) => {
+            if role != "user" {
+                return Err(invalid("attachments are only valid for user messages"));
+            }
+            validate_attachments(items)?;
+            Some(items.to_vec())
+        }
+    };
     let (tool_name, tool_call_id, tool_status, tool_args, tool_result) = if role == "tool" {
         let tool_name = required_text(
             input.tool_name.as_deref().unwrap_or_default(),
@@ -233,7 +298,7 @@ fn parse_message(
         content: input.content.clone(),
         command: None,
         skill_mentions: None,
-        attachments: None,
+        attachments,
         voice_origin: None,
         steering: None,
         created_at,
@@ -366,10 +431,27 @@ fn prepare_import(
         "providerId",
         256,
     )?;
+    // A managed session may open with the model its owner already chose, so the
+    // native composer shows that choice instead of the app default. The binding
+    // is display/compose state only: a managed session never runs an agent.
+    let thinking_level = optional_text(
+        object
+            .get("thinkingLevel")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        "thinkingLevel",
+        32,
+    )?;
+    if let Some(level) = &thinking_level {
+        if !sessions::is_valid_thinking_level(level) {
+            return Err(invalid("thinkingLevel is not a supported level"));
+        }
+    }
     let origin_json = serde_json::to_string(&json!({
         "projectPath": project_path,
         "modelId": model_id,
         "providerId": provider_id,
+        "thinkingLevel": thinking_level,
     }))?;
     if let Some(label) = source_label {
         if chars(label) > MAX_SOURCE_LABEL_CHARS {
@@ -383,6 +465,9 @@ fn prepare_import(
         title,
         external_id,
         project_id,
+        provider_id,
+        model_id,
+        thinking_level,
         created_at,
         created_ms,
         updated_ms,
@@ -451,18 +536,25 @@ fn write_and_index(
         &prepared.records,
     )?;
     let indexed = (|| -> Result<()> {
+        // The owner's chosen model/thinking level ride on the row so the native
+        // composer shows them; absent values keep the historical NULL/'off'.
+        // `mode` and `permission_mode` stay host-owned and are never plugin-set.
+        let thinking_level = prepared.thinking_level.as_deref().unwrap_or("off");
         let tx = db.conn().unchecked_transaction()?;
         tx.execute(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode,
                 thinking_level, permission_mode, source, last_seq,
                 created_at, updated_at
-            ) VALUES (?1, ?2, ?3, NULL, NULL, 'agent', 'off', 'inherit',
-                       ?4, ?5, ?6, ?7)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, 'agent', ?6, 'inherit',
+                       ?7, ?8, ?9, ?10)",
             params![
                 prepared.session_id,
                 prepared.title,
                 prepared.project_id,
+                prepared.provider_id,
+                prepared.model_id,
+                thinking_level,
                 source,
                 prepared.records.len() as i64,
                 prepared.created_ms,
@@ -700,12 +792,15 @@ pub fn import_batch(db: &Database, plugin_id: &str, params: &Value) -> Result<Va
                     id, title, project_id, provider_id, model_id, mode,
                     thinking_level, permission_mode, source, last_seq,
                     created_at, updated_at
-                ) VALUES (?1, ?2, ?3, NULL, NULL, 'agent', 'off', 'inherit',
-                           ?4, ?5, ?6, ?7)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, 'agent', ?6, 'inherit',
+                           ?7, ?8, ?9, ?10)",
                 params![
                     item.session_id,
                     item.title,
                     item.project_id,
+                    item.provider_id,
+                    item.model_id,
+                    item.thinking_level.as_deref().unwrap_or("off"),
                     source,
                     item.records.len() as i64,
                     item.created_ms,

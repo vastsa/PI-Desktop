@@ -262,6 +262,8 @@ function buildApi() {
       get: () => call("workspace.get"),
     },
     desktop: {
+      subscribeAgentEvents: (input) => call("desktop.subscribeAgentEvents", [input]),
+      unsubscribeAgentEvents: (input) => call("desktop.unsubscribeAgentEvents", [input]),
       listOperations: () => call("desktop.listOperations"),
       invoke: (input) => call("desktop.invoke", [input ?? {}]),
     },
@@ -314,7 +316,20 @@ function buildApi() {
     models: {
       list: () => call("models.list"),
     },
+    secrets: {
+      get: (key) => call("secrets.get", [key]),
+      set: (key, value) => call("secrets.set", [key, value]),
+      delete: (key) => call("secrets.delete", [key]),
+    },
     session: {
+      emitManagedEvent: (input) => call("session.emitManagedEvent", [input ?? {}]),
+      createManaged: (input) => call("session.createManaged", [input ?? {}]),
+      appendManaged: (input) => call("session.appendManaged", [input ?? {}]),
+      setManagedModel: (input) => call("session.setManagedModel", [input ?? {}]),
+      readManagedAttachment: (input) => call("session.readManagedAttachment", [input ?? {}]),
+      beginManagedAttachment: (input) => call("session.beginManagedAttachment", [input ?? {}]),
+      writeManagedAttachment: (input) => call("session.writeManagedAttachment", [input ?? {}]),
+      commitManagedAttachment: (input) => call("session.commitManagedAttachment", [input ?? {}]),
       getLlmContext: () => call("session.getLlmContext"),
       getAutoTitleContext: (input) => call("session.getAutoTitleContext", [input ?? {}]),
       setAutoTitle: (input) => call("session.setAutoTitle", [input ?? {}]),
@@ -641,6 +656,21 @@ async function handleParentCall(method, payload, invocationId, callId) {
         throw error;
       }
       return JSON.parse(text);
+    }
+    case "session.submit": {
+      const handler = pluginModule?.onSessionSubmit;
+      if (typeof handler !== "function") {
+        const error = new Error("plugin does not implement onSessionSubmit");
+        error.code = "PLUGIN_SESSION_NO_HANDLER";
+        throw error;
+      }
+      const result = await handler(payload);
+      if (result?.accepted !== true) {
+        const error = new Error("onSessionSubmit must acknowledge accepted: true");
+        error.code = "PLUGIN_INVALID_RESULT";
+        throw error;
+      }
+      return { accepted: true };
     }
     case "composer.transform": {
       const handler = pluginModule?.onComposerTransform;

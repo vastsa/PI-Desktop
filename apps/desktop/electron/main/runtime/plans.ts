@@ -212,7 +212,7 @@ function finishTurn(
             // checkpoint instead of waiting for a final row that never comes.
             ...(recoverInflight ? { recoverInflight: true } : {}),
           });
-          settledTurnId = turnId;
+          if (result.ok) settledTurnId = turnId;
           if (result.notification) {
             sendToRenderer(IPC.event.notificationChanged, {
               notification: result.notification,
@@ -269,7 +269,7 @@ function finishTurn(
     // The turn can no longer start a plugin tool, and its finalization record
     // still holds the queue, so the announcement observes a settled turn. Every
     // delivery failure is isolated inside the announcement itself.
-    announceTurnEnded({ sessionId: id, turnId, reason });
+    announceTurnEnded({ sessionId: id, turnId, reason, persisted: settledTurnId === turnId });
   };
 
   let record: Promise<void> | undefined;

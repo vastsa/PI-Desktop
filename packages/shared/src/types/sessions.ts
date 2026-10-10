@@ -31,6 +31,8 @@ export type SessionSummary = {
   capabilities?: SessionCapabilities;
   /** Stable machine-readable reason why a native session cannot be continued. */
   readOnlyReason?: string;
+  /** Durable plugin owner; sends route to that plugin even while it is disabled. */
+  managedByPlugin?: string;
   title: string;
   /** Number of messages in the current canonical transcript. */
   messageCount: number;

@@ -2896,6 +2896,39 @@ async fn handle_request(
         // Plugin sessions are a separate host-owned domain. Electron main is
         // the only caller that can supply pluginId; the plugin process never
         // receives a generic host RPC handle or SQLite access.
+        "plugin.session.createManaged"
+        | "plugin.session.appendManaged"
+        | "plugin.session.setManagedModel" => {
+            let plugin_id = params.get("pluginId").and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            match method {
+                "plugin.session.createManaged" => {
+                    plugin_sessions::managed::create(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+                }
+                "plugin.session.appendManaged" => {
+                    plugin_sessions::managed::append(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+                }
+                _ => plugin_sessions::managed::set_model(&st.db, plugin_id, &params)
+                    .map_err(plugin_session_rpc_err),
+            }
+        }
+        "plugins.secrets.get" | "plugins.secrets.set" | "plugins.secrets.delete" => {
+            let st = state.lock().await;
+            crate::secrets::handle_plugin_secrets_rpc(&st.secrets, method, &params).map_err(|error| {
+                match error {
+                    crate::secrets::PluginSecretRpcError::InvalidParams => rpc_err(1002, "invalid plugin secret storage parameters", "INVALID_PARAMS"),
+                    crate::secrets::PluginSecretRpcError::Storage => rpc_err(1000, "plugin secret storage operation failed", "INTERNAL"),
+                }
+            })
+        }
+        "session.managedOwner" => {
+            let session_id = params.get("sessionId").and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let owner = plugin_sessions::managed::owner(&st.db, session_id).map_err(plugin_session_rpc_err)?;
+            Ok(json!({"pluginId": owner}))
+        }
         "plugin.session.import" => {
             let plugin_id = params
                 .get("pluginId")
