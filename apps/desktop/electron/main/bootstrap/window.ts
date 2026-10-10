@@ -191,7 +191,7 @@ export async function createWindow({
           transparent: true,
           backgroundColor: "#00000000",
         }
-        : {
+      : {
           frame: false,
           ...(process.platform === "win32" ? { thickFrame: false } : {}),
           ...mainWindowBackgroundOptions(process.platform, initialWindowBackground),
