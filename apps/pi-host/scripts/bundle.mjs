@@ -4,7 +4,7 @@
  *
  *   dist-bundle/pi-host-<version>-<platform>-<arch>/
  *     pi-host.js                 the CLI, esbuild-bundled with every workspace package
- *     agent-runtime/sidecar.js   the same sidecar bundle the desktop ships
+ *     agent-runtime/            the complete sidecar bundle (entry, chunks, manifest)
  *     bin/pi-desktop-host-core   the platform host-core binary
  *     node_modules/node-pty      optional; terminals are disabled without it
  *     package.json               { type: module, version }
@@ -17,6 +17,8 @@ import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, chmodSync } from 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { copyAgentRuntimeBundle } from "./runtime-bundle.mjs";
+import { ensureDarwinSpawnHelperExecutable } from "./spawn-helper-permissions.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = resolve(here, "..");
@@ -31,10 +33,10 @@ const platform = String(args.platform ?? process.platform);
 const arch = String(args.arch ?? process.arch);
 const exe = platform === "win32" ? ".exe" : "";
 const hostCore = resolve(String(args["host-core"] ?? join(root, `target/release/pi-desktop-host-core${exe}`)));
-const sidecar = join(root, "packages/agent-runtime/dist-bundle/sidecar.js");
+const runtimeBundle = join(root, "packages/agent-runtime/dist-bundle");
 const out = resolve(String(args.out ?? join(app, "dist-bundle", `pi-host-${version}-${platform}-${arch}`)));
 
-for (const [label, path] of [["host-core binary", hostCore], ["sidecar bundle", sidecar]]) {
+for (const [label, path] of [["host-core binary", hostCore], ["sidecar bundle", join(runtimeBundle, "sidecar.js")]]) {
   if (!existsSync(path)) {
     console.error(`${label} missing: ${path}`);
     process.exit(1);
@@ -43,7 +45,7 @@ for (const [label, path] of [["host-core binary", hostCore], ["sidecar bundle", 
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "bin"), { recursive: true });
-mkdirSync(join(out, "agent-runtime"), { recursive: true });
+await copyAgentRuntimeBundle(runtimeBundle, join(out, "agent-runtime"));
 
 execFileSync(
   require.resolve("esbuild/bin/esbuild"),
@@ -61,14 +63,19 @@ execFileSync(
   ],
   { stdio: "inherit", cwd: app },
 );
-cpSync(sidecar, join(out, "agent-runtime/sidecar.js"));
-writeFileSync(join(out, "agent-runtime/package.json"), '{ "type": "module" }\n');
 cpSync(hostCore, join(out, `bin/pi-desktop-host-core${exe}`));
 chmodSync(join(out, `bin/pi-desktop-host-core${exe}`), 0o755);
+let ptyPackageDir;
 try {
-  const pty = dirname(require.resolve("node-pty/package.json"));
-  cpSync(pty, join(out, "node_modules/node-pty"), { recursive: true, dereference: true });
-} catch {
+  ptyPackageDir = dirname(require.resolve("node-pty/package.json"));
+} catch (error) {
+  if (error.code !== "MODULE_NOT_FOUND") throw error;
+}
+if (ptyPackageDir) {
+  const bundledPty = join(out, "node_modules/node-pty");
+  cpSync(ptyPackageDir, bundledPty, { recursive: true, dereference: true });
+  ensureDarwinSpawnHelperExecutable(bundledPty, platform, arch);
+} else {
   console.warn("node-pty not installed; the bundle ships without terminals");
 }
 writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "pi-host", version, type: "module", bin: { "pi-host": "./pi-host.js" } }, null, 2)}\n`);

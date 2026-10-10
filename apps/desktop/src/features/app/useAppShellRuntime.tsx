@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { installRendererApi } from "../../capture/renderer-api";
 import { StartupSplash } from "../../components/StartupSplash";
 import { api } from "../../lib/api";
+import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
 import { playNotificationChime } from "../../lib/notification-sound";
 import {
   clampSidebarWidth,
@@ -670,6 +671,7 @@ export function useAppShellRuntime() {
         })
         .catch(() => undefined);
     });
+    const offRemoteInteractions = subscribeRemoteInteractions();
     const offSessionsChanged = api.onSessionsChanged((event) => {
       const store = useAppStore.getState();
       const revealImportedProjects =
@@ -831,6 +833,7 @@ export function useAppShellRuntime() {
       offHostStatus();
       offNotificationChanged();
       offSessionsChanged();
+      offRemoteInteractions();
       offNotificationActivated();
       window.removeEventListener("keydown", onKey);
     };

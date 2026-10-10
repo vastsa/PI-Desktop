@@ -8,6 +8,7 @@ import type {
   QueuedTurnSummary,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { isRemoteSession, sessionAllows } from "../../lib/remote-session-safety";
 import {
   enqueueQueuedPrompt,
   isPendingQueuedPrompt,
@@ -143,6 +144,7 @@ export function createQueueSlice({
     enqueuePrompt: async (content, draft, requestedSessionId) => {
       const sessionId = requestedSessionId ?? get().activeSessionId;
       if (!sessionId) return false;
+      if (isRemoteSession(get().sessions.find((session) => session.id === sessionId)) || sessionId.startsWith("remote:")) return false;
       const queuedDraft: ComposerDraftSnapshot = draft
         ? {
             text: draft.text,
@@ -337,6 +339,7 @@ export function createQueueSlice({
     steerPrompt: async (content, draft) => {
       const state = get();
       const sessionId = state.activeSessionId;
+      if (!sessionAllows(state.sessions.find((session) => session.id === sessionId), "canSteer")) return false;
       const expectedTurnId = sessionId ? state.agentStatuses[sessionId]?.currentTurnId : undefined;
       if (
         !sessionId || !expectedTurnId || !state.runningSessions[sessionId] ||
@@ -371,6 +374,10 @@ export function createQueueSlice({
 
     sendPrompt: async (content, draft, requestedSessionId, onAccepted) => {
       let sessionId = requestedSessionId ?? get().activeSessionId;
+      const target = get().sessions.find((session) => session.id === sessionId) ?? (sessionId ? { id: sessionId } : undefined);
+      if (!sessionAllows(target, "canPrompt")) return false;
+      if (draft?.fileReferences.length && !sessionAllows(target, "canAttach")) return false;
+      if (isRemoteSession(target) && sessionId && get().runningSessions[sessionId]) return false;
       const submissionKey = sessionId ? `session:${sessionId}` : "draft";
       if (pendingSubmissions.has(submissionKey)) return false;
       pendingSubmissions.add(submissionKey);
@@ -448,6 +455,7 @@ export function createQueueSlice({
         if (
           isDefaultSessionTitle(current?.title) &&
           current?.source !== "pi-native"
+          && !isRemoteSession(current)
         ) {
           const nextTitle = promptFallbackSessionTitle(content, untitledTaskTitle());
           if (!isDefaultSessionTitle(nextTitle)) {
@@ -479,7 +487,7 @@ export function createQueueSlice({
             sessionId,
             content,
             messageId: optimisticMessage.id,
-            viewingSessionId: viewingSessionIdForPrompt(get(), sessionId),
+            viewingSessionId: isRemoteSession(current) ? null : viewingSessionIdForPrompt(get(), sessionId),
             attachments: draft ? promptAttachmentsFromDraft(draft.fileReferences) : [],
           });
           const submitted = runtime.submittedComposerDrafts.get(startedIn);

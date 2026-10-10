@@ -6,9 +6,8 @@
  * The frozen architecture keeps this out of the per-domain IPC handlers and out
  * of the God-modules: `register.ts` consults `route()` from inside its `handle`
  * wrapper, and everything remote lives under `electron/main/remote/*`. A
- * session becomes remote only once a {@link RemoteBackend} is registered for its
- * id; until then — and for every local or `native-pi:` session — the router
- * returns {@link ROUTE_LOCAL} and the existing local handler runs.
+ * Remote-prefixed ids always remain remote, including while offline. Only
+ * local and `native-pi:` ids may return ROUTE_LOCAL.
  *
  * Renderer-visible session ids for remote sessions are namespaced
  * `remote:<hostKey>:<hostSessionId>`, mirroring the proven `native-pi:` prefix
@@ -33,11 +32,7 @@ const APPROVAL_ID_DELIMITER = "#racp-approval:";
 
 /** A registered remote host's session, addressed by its renderer-visible id. */
 export interface RemoteBackend {
-  /**
-   * Whether this backend can serve `channel`. A channel the remote profile does
-   * not cover (e.g. a desktop-only setting) falls back to the local handler so
-   * the renderer keeps working while the session's transcript stays remote.
-   */
+  /** Whether this backend can serve the channel; unsupported calls fail closed. */
   handles(channel: string): boolean;
   /** Serve the call remotely, returning the value the renderer expects. */
   invoke(channel: string, args: readonly unknown[]): Promise<unknown>;
@@ -139,6 +134,7 @@ export function sessionIdForCall(args: readonly unknown[]): string | null {
     if (typeof requestId === "string") {
       const parsed = parseRemoteApprovalRequestId(requestId);
       if (parsed) return parsed.remoteSessionId;
+      if (isRemoteSessionId(requestId)) return requestId;
     }
   }
   return null;
@@ -168,8 +164,18 @@ export function createBackendRouter(options: BackendRouterOptions = {}): Backend
     },
     resolveBackend,
     async route(channel, args) {
-      const backend = resolveBackend(channel, args);
-      if (!backend) return ROUTE_LOCAL;
+      const sessionId = sessionIdForCall(args);
+      if (!sessionId) return ROUTE_LOCAL;
+      if (!parseRemoteSessionId(sessionId)) {
+        throw Object.assign(new Error("malformed remote session id"), { errorCode: "INVALID_ARGUMENT" });
+      }
+      const backend = sessionBackends.get(sessionId);
+      if (!backend) {
+        throw Object.assign(new Error("remote session is disconnected"), { errorCode: "AGENT_UNAVAILABLE" });
+      }
+      if (!backend.handles(channel)) {
+        throw Object.assign(new Error("operation is unavailable for remote sessions"), { errorCode: "CAPABILITY_UNAVAILABLE" });
+      }
       try {
         return { remote: true, value: await backend.invoke(channel, args) };
       } catch (error) {

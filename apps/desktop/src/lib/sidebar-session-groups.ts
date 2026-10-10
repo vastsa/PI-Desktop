@@ -1,4 +1,5 @@
 import type { SessionSummary } from "@pi-desktop/shared";
+import { isRemoteSession } from "./remote-session-safety.ts";
 import type { ProjectMeta, SessionMeta } from "./sidebar-preferences";
 
 export function normalizeProjectPath(projectPath?: string | null): string | null {
@@ -16,20 +17,22 @@ export function normalizeProjectPath(projectPath?: string | null): string | null
 }
 
 export function sessionMatchesProject(
-  session: Pick<SessionSummary, "projectPath">,
+  session: Pick<SessionSummary, "projectPath"> & Partial<Pick<SessionSummary, "source" | "id">>,
   projectPath?: string | null,
 ): boolean {
+  if (session.source === "remote" || session.id?.startsWith("remote:")) return false;
   return normalizeProjectPath(session.projectPath) === normalizeProjectPath(projectPath);
 }
 
 /** Return normalized project paths belonging to sessions added by a refresh. */
 export function projectPathsForNewSessions(
   previousSessions: readonly Pick<SessionSummary, "id">[],
-  nextSessions: readonly Pick<SessionSummary, "id" | "projectPath">[],
+  nextSessions: readonly (Pick<SessionSummary, "id" | "projectPath"> & Partial<Pick<SessionSummary, "source">>)[],
 ): string[] {
   const previousIds = new Set(previousSessions.map((session) => session.id));
   const paths = new Set<string>();
   for (const session of nextSessions) {
+    if (isRemoteSession(session)) continue;
     if (previousIds.has(session.id)) continue;
     const path = normalizeProjectPath(session.projectPath);
     if (path) paths.add(path);

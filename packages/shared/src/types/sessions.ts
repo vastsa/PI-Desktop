@@ -21,12 +21,25 @@ export type SessionCapabilities = {
   canPrompt: boolean;
   canStop: boolean;
   canRefresh: boolean;
+  /** Absent preserves the existing local behavior. */
+  canConfigureModel?: boolean;
+  canAttach?: boolean;
+  canSteer?: boolean;
+  canEditMessages?: boolean;
+  canUseLocalTools?: boolean;
+  canUseTerminal?: boolean;
+  canReadWorkspace?: boolean;
 };
 
 export type SessionSummary = {
   id: string;
   /** Transcript authority. Omitted by older hosts and normalized to `desktop`. */
   source?: SessionSource;
+  /** Display-only remote identity; never a local project path. */
+  remoteHostKey?: string;
+  remoteHostLabel?: string;
+  remoteProjectId?: string;
+  remoteWorkspaceLabel?: string;
   /** Native sessions expose only safe actions in the first continuation slice. */
   capabilities?: SessionCapabilities;
   /** Stable machine-readable reason why a native session cannot be continued. */

@@ -42,15 +42,16 @@ async function tmpDir() {
 function fakeAdapter(options = {}) {
   const listeners = new Set();
   const requests = [];
+  let state = "disconnected";
   return {
     requests,
-    state: "disconnected",
+    state: () => state,
     async connect() {
       if (options.connectRejects) throw options.connectRejects;
-      this.state = "connected";
+      state = "connected";
     },
     async close() {
-      this.state = "disconnected";
+      state = "disconnected";
       listeners.clear();
     },
     push(envelope) {
@@ -61,6 +62,11 @@ function fakeAdapter(options = {}) {
         requests.push({ method, params });
         if (method === "session/list") {
           return { sessions: options.sessions ?? [] };
+        }
+        if (method === "events/subscribe") return { subscriptionId: `sub-${params.sessionId ?? "host"}`, starting: { epoch: "e1", sequence: 1 }, replayComplete: true };
+        if (method === "session/attach") {
+          const session = options.sessions.find((row) => row.id === params.sessionId);
+          return { session, snapshot: { session, items: [], activeItems: [], pendingApprovals: [], pendingInputs: [], queuedTurns: [], hasMoreHistory: false, cursor: { epoch: "e1", sequence: 0 }, revision: 1, generatedAt: session.updatedAt } };
         }
         return { ok: true };
       },
@@ -153,7 +159,7 @@ test("open connects each paired host and registers a backend per listed session"
 
   await boot.closeAll();
   for (const adapter of adaptersByHost.values()) {
-    assert.equal(adapter.state, "disconnected");
+    assert.equal(adapter.state(), "disconnected");
   }
   await cleanup();
 });
@@ -204,4 +210,146 @@ test("closeAll is idempotent and safe to call before open", async () => {
   await boot.closeAll();
   await boot.closeAll();
   await cleanup();
+});
+
+test("closeAll cancels an opening adapter before awaiting open and owns cleanup once", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const connecting = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const adapter = fakeAdapter({ sessions: [makeSession("late")] });
+  let closes = 0;
+  let disposals = 0;
+  adapter.connect = () => { started.resolve(); return connecting.promise; };
+  adapter.close = async () => { closes++; connecting.reject(new Error("connect canceled")); };
+  const router = createBackendRouter();
+  const boot = createRemoteHostsBoot({
+    dataDir: dir, encryption: reversibleEncryption(), router, emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" }, buildAdapter: () => adapter,
+    tunnels: { close: async () => undefined, dispose: async () => { disposals++; } },
+  });
+  await boot.registry.upsert({ hostKey: "pending", label: "Pending", url: "wss://pending", deviceToken: "t" });
+  const opening = boot.open().then(value => ({ value }), error => ({ error }));
+  await started.promise;
+  const closing = boot.closeAll();
+  const again = boot.closeAll();
+  const canceledAtShutdown = closes;
+  // Release the fixture even on the old code, so the regression fails rather than hangs.
+  connecting.resolve();
+  const result = await opening;
+  await Promise.all([closing, again]);
+  await cleanup();
+  assert.equal(canceledAtShutdown, 1, "shutdown must close a connecting adapter immediately");
+  assert.ok(result.error, "an interrupted open must reject rather than report success");
+  assert.equal(closes, 1, "open failure and closeAll share the same cleanup");
+  assert.equal(disposals, 1, "concurrent closeAll calls share shutdown");
+  assert.equal(router.resolveBackend(IPC.invoke.sessionGet, [{ id: makeRemoteSessionId("pending", "late") }]), null);
+});
+
+test("closeAll disposes a pending SSH forward before draining host operations", async () => {
+  const { createSshTunnelManager } = await import("../electron/main/remote/ssh-tunnel.ts");
+  const { dir, cleanup } = await tmpDir();
+  const forwarding = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  let disposed = 0;
+  let forwardCloses = 0;
+  let adapters = 0;
+  const tunnels = createSshTunnelManager({
+    reservePort: async () => 1234,
+    buildTransport: () => ({ forward: () => { started.resolve(); return forwarding.promise; }, dispose: () => { disposed++; } }),
+  });
+  const boot = createRemoteHostsBoot({
+    dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(), emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" }, tunnels,
+    buildAdapter: () => { adapters++; return fakeAdapter(); },
+  });
+  const opening = boot.addHost({ hostKey: "pending-ssh", label: "SSH", url: "ws://127.0.0.1:1234/v1/racp/ws", deviceToken: "t",
+    metadata: { transport: "ssh", ssh: { host: "remote.example", remotePort: 1234, version: "0.15.0" } },
+  }).then(value => ({ value }), error => ({ error }));
+  await started.promise;
+  const closing = boot.closeAll();
+  const disposedAtShutdown = disposed;
+  forwarding.resolve({ localPort: 1234, close: async () => { forwardCloses++; } });
+  const result = await opening;
+  await closing;
+  await cleanup();
+  assert.equal(disposedAtShutdown, 1, "pending SSH creation must be canceled before waiting on openHost");
+  assert.ok(result.error);
+  assert.equal(adapters, 0, "a late tunnel must not create an adapter after shutdown");
+  assert.equal(forwardCloses, 1);
+  assert.equal(disposed, 1);
+});
+
+test("closeAll closes the adapter without waiting for subscription cleanup to finish", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const listing = Promise.withResolvers();
+  const listed = Promise.withResolvers();
+  const unsubscribing = Promise.withResolvers();
+  const adapter = fakeAdapter();
+  const request = adapter.client.request;
+  adapter.client.request = (method, params) => {
+    if (method === "session/list") { listed.resolve(); return listing.promise; }
+    if (method === "events/unsubscribe") return unsubscribing.promise;
+    return request(method, params);
+  };
+  let closes = 0;
+  adapter.close = async () => { closes++; listing.reject(new Error("connection closed")); unsubscribing.resolve({ ok: true }); };
+  const router = createBackendRouter();
+  const boot = createRemoteHostsBoot({ dataDir: dir, encryption: reversibleEncryption(), router, emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" }, buildAdapter: () => adapter });
+  const opening = boot.addHost({ hostKey: "h", label: "Host", url: "wss://host", deviceToken: "t" }).catch(error => error);
+  await listed.promise;
+  const closing = boot.closeAll();
+  const canceledAtShutdown = closes;
+  listing.resolve({ sessions: [] });
+  unsubscribing.resolve({ ok: true });
+  await opening;
+  await closing;
+  await cleanup();
+  assert.equal(canceledAtShutdown, 1);
+  assert.equal(closes, 1);
+  assert.equal(router.resolveBackend(IPC.invoke.sessionGet, [{ id: makeRemoteSessionId("h", "late") }]), null);
+});
+
+test("bootstrapHost closes its unadopted outcome when shutdown rejects its queued action", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const connecting = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const completed = Promise.withResolvers();
+  const adapter = fakeAdapter();
+  adapter.connect = () => { started.resolve(); return connecting.promise; };
+  adapter.close = async () => { connecting.reject(new Error("connection closed")); };
+  let forwardCloses = 0;
+  let adoptions = 0;
+  const version = "0.15.0";
+  const forward = { localPort: 1234, close: async () => { forwardCloses++; } };
+  const boot = createRemoteHostsBoot({
+    dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(), emit: () => undefined,
+    clientInfo: { name: "test", version }, buildAdapter: () => adapter,
+    log: (_level, message) => { if (message === "ssh bootstrap completed") completed.resolve(); },
+    tunnels: { close: async () => undefined, dispose: async () => undefined, adopt: async () => { adoptions++; } },
+    sshBootstrap: {
+      buildTransport: () => ({
+        exec: async () => ({ code: 0, stdout: "Linux\nx86_64\n", stderr: "" }),
+        execWithInput: async () => ({ code: 0, stderr: "", stdout: `PI_HOST_READY ${JSON.stringify({ hostId: "host", host: "127.0.0.1", port: 1234, version })}\nPI_HOST_PAIRING_TOKEN ${JSON.stringify({ token: "fixture-token", expiresAt: 1893456000000 })}` }),
+        forward: async () => forward, dispose: () => undefined,
+      }),
+      fetchChecksum: async () => `${"a".repeat(64)}  pi-host-${version}-linux-x64.tar.gz`,
+      reservePort: async () => 1234, exchangePairing: async () => "fixture-device-token",
+    },
+  });
+  const previous = boot.addHost({ hostKey: "ssh-remote.example-box", label: "Box", url: "wss://host", deviceToken: "t" }).catch(error => error);
+  await started.promise;
+  const pairing = boot.bootstrapHost({ host: "remote.example", label: "Box" }).then(value => ({ value }), error => ({ error }));
+  await completed.promise;
+  // Let the completed bootstrap hand its outcome to the per-host serial queue.
+  await Promise.resolve();
+  const closing = boot.closeAll();
+  connecting.resolve();
+  await previous;
+  const result = await pairing;
+  await closing;
+  await cleanup();
+  assert.ok(result.error);
+  assert.equal(adoptions, 0);
+  assert.equal(forwardCloses, 1, "a queued action rejected before entry still owns its bootstrap outcome");
 });

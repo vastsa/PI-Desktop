@@ -85,6 +85,8 @@ export class RacpClient {
   private initializeResult: RacpInitializeResult | null = null;
   private readonly cursors = new Map<string, RacpCursor>();
   private hostCursor: RacpCursor | null = null;
+  private generation = 0;
+  private connecting: Promise<RacpInitializeResult> | null = null;
 
   constructor(private readonly options: RacpClientOptions) {}
 
@@ -105,23 +107,31 @@ export class RacpClient {
     return this.hostCursor ?? undefined;
   }
 
-  async connect(): Promise<RacpInitializeResult> {
+  connect(): Promise<RacpInitializeResult> {
+    if (this.stateValue === "connected" && this.initializeResult) return Promise.resolve(this.initializeResult);
+    if (this.connecting) return this.connecting;
+    const generation = ++this.generation;
     this.closedByUser = false;
     this.setState("connecting");
-    try {
-      const result = await this.open();
+    const operation = this.open(generation).then(result => {
+      this.assertCurrent(generation);
       this.reconnectAttempt = 0;
       this.setState("connected");
       return result;
-    } catch (error) {
+    }).catch(error => {
       const typed = toRacpError(error, "REMOTE_CONNECTION_FAILED");
-      this.setState("error", typed);
+      if (generation === this.generation && !this.closedByUser) this.setState("error", typed);
       throw typed;
-    }
+    }).finally(() => { if (this.connecting === operation) this.connecting = null; });
+    this.connecting = operation;
+    return operation;
   }
 
   async close(): Promise<void> {
     this.closedByUser = true;
+    this.generation++;
+    this.connecting = null;
+    this.reconnecting = null;
     const transport = this.transport;
     this.transport = null;
     this.rejectPending(new RacpError("HOST_DISCONNECTED", "client closed"));
@@ -157,8 +167,16 @@ export class RacpClient {
     });
   }
 
-  private async open(): Promise<RacpInitializeResult> {
+  private assertCurrent(generation: number): void {
+    if (this.closedByUser || generation !== this.generation) throw new RacpError("HOST_DISCONNECTED", "connection attempt canceled");
+  }
+
+  private async open(generation: number): Promise<RacpInitializeResult> {
     const transport = await this.options.transport();
+    if (this.closedByUser || generation !== this.generation) {
+      transport.close(1000, "connection attempt canceled");
+      throw new RacpError("HOST_DISCONNECTED", "connection attempt canceled");
+    }
     this.transport = transport;
     transport.onMessage((frame) => this.handleFrame(transport, frame));
     transport.onError((error) => this.options.log?.("warn", "racp transport error", { error: String(error) }));
@@ -169,10 +187,18 @@ export class RacpClient {
       bindings: ["RACP-WS"],
       capabilities: { eventReplay: true, approvals: true, inputRequests: true, turnQueue: true, hostEvents: true, history: true, terminal: true },
     };
-    const result = await this.send<RacpInitializeResult>(transport, "connection/initialize", params);
-    transport.send(encodeFrame({ jsonrpc: "2.0", method: RACP_INITIALIZED_NOTIFICATION, params: {} }));
-    this.initializeResult = result;
-    return result;
+    try {
+      const result = await this.send<RacpInitializeResult>(transport, "connection/initialize", params);
+      this.assertCurrent(generation);
+      if (transport !== this.transport) throw new RacpError("HOST_DISCONNECTED", "transport closed during initialization");
+      transport.send(encodeFrame({ jsonrpc: "2.0", method: RACP_INITIALIZED_NOTIFICATION, params: {} }));
+      this.initializeResult = result;
+      return result;
+    } catch (error) {
+      if (this.transport === transport) this.transport = null;
+      transport.close(1000, "initialization failed");
+      throw error;
+    }
   }
 
   private handleFrame(transport: ClientTransport, frame: string): void {
@@ -238,20 +264,23 @@ export class RacpClient {
       return;
     }
     const policy = this.options.reconnect;
-    if (!policy?.enabled) {
+    if (!policy?.enabled || this.stateValue === "connecting") {
       this.setState("disconnected", new RacpError("HOST_DISCONNECTED", `connection closed (${info.code} ${info.reason})`, { retriable: true }));
       return;
     }
     this.setState("reconnecting");
-    this.reconnecting ??= this.reconnectLoop().finally(() => {
-      this.reconnecting = null;
-    });
+    if (!this.reconnecting) {
+      const operation = this.reconnectLoop(this.generation).finally(() => {
+        if (this.reconnecting === operation) this.reconnecting = null;
+      });
+      this.reconnecting = operation;
+    }
   }
 
-  private async reconnectLoop(): Promise<void> {
+  private async reconnectLoop(generation: number): Promise<void> {
     const policy = this.options.reconnect!;
     const sleep = this.options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-    while (!this.closedByUser) {
+    while (!this.closedByUser && generation === this.generation) {
       this.reconnectAttempt += 1;
       if (policy.maxAttempts !== undefined && this.reconnectAttempt > policy.maxAttempts) {
         this.setState("error", new RacpError("HOST_DISCONNECTED", "reconnect attempts exhausted", { retriable: true }));
@@ -259,16 +288,24 @@ export class RacpClient {
       }
       const delay = Math.min((policy.baseDelayMs ?? 500) * 2 ** (this.reconnectAttempt - 1), policy.maxDelayMs ?? 15_000);
       await sleep(delay);
-      if (this.closedByUser) return;
+      if (this.closedByUser || generation !== this.generation) return;
       try {
-        await this.open();
-        this.reconnectAttempt = 0;
+        await this.open(generation);
+        this.assertCurrent(generation);
         this.setState("connected");
         await this.options.onReconnected?.(this);
+        this.assertCurrent(generation);
+        if (!this.transport) throw new RacpError("HOST_DISCONNECTED", "transport closed during recovery");
+        this.reconnectAttempt = 0;
         return;
       } catch (error) {
+        if (this.closedByUser || generation !== this.generation) return;
         this.options.log?.("warn", "racp reconnect failed", { attempt: this.reconnectAttempt, error: String(error) });
+        const transport = this.transport;
         this.transport = null;
+        this.rejectPending(new RacpError("HOST_DISCONNECTED", "reconnect failed", { retriable: true }));
+        transport?.close(1000, "reconnect failed");
+        this.setState("reconnecting");
       }
     }
   }

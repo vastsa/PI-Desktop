@@ -131,3 +131,30 @@ test("request before connect rejects with HOST_DISCONNECTED", async () => {
     (error) => error.code === "HOST_DISCONNECTED",
   );
 });
+
+test("close while transport creation is pending cannot resurrect the adapter", async () => {
+  const h = await harness();
+  const wait = Promise.withResolvers();
+  const adapter = createRacpRemoteHostClient({ transport: () => wait.promise, clientInfo: { name: "test", version: "1" }, requestTimeoutMs: 200 });
+  const opening = adapter.connect();
+  await adapter.close();
+  const transport = await ownerTransport(h)();
+  wait.resolve(transport);
+  await assert.rejects(opening);
+  assert.equal(adapter.state(), "disconnected");
+  await assert.rejects(adapter.client.request("session/list"));
+});
+
+test("adapter exposes detachable reconnect, state, and subscription-closed listeners", async () => {
+  const h = await harness();
+  const adapter = createRacpRemoteHostClient({ transport: ownerTransport(h), clientInfo: { name: "test", version: "1" } });
+  assert.equal(typeof adapter.client.subscribeReconnect, "function");
+  assert.equal(typeof adapter.client.subscribeState, "function");
+  assert.equal(typeof adapter.client.subscribeSubscriptionClosed, "function");
+  const states = [];
+  const detach = adapter.client.subscribeState(s => states.push(s));
+  await adapter.connect();
+  detach();
+  await adapter.close();
+  assert.deepEqual(states, ["connecting", "connected"]);
+});

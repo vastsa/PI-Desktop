@@ -93,6 +93,7 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
       }));
   const reservePort = options.reservePort ?? reserveLocalPort;
   const entries = new Map<string, TunnelEntry>();
+  const pending = new Map<string, { cancel: () => void; promise: Promise<SshTunnel> }>();
 
   const closeEntry = async (entry: TunnelEntry): Promise<void> => {
     try {
@@ -116,6 +117,9 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
 
   /** Drop one entry and reap its process; shared by `close` and `adopt`. */
   const closeForKey = async (hostKey: string): Promise<void> => {
+    const attempt = pending.get(hostKey);
+    pending.delete(hostKey);
+    attempt?.cancel();
     const entry = entries.get(hostKey);
     if (!entry) return;
     entries.delete(hostKey);
@@ -126,28 +130,44 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
     async open(hostKey, ssh, sshSecret) {
       const existing = entries.get(hostKey);
       if (existing) return existing.tunnel;
-
+      const running = pending.get(hostKey);
+      if (running) return running.promise;
       const transport = buildTransport(ssh, sshSecret);
-      // A dead ssh client must not take the app with it; `forward` reports the
-      // failure through its own rejection.
-      let forward: SshForward;
-      try {
-        forward = await transport.forward({
-          localPort: await reservePort(),
-          remoteHost: "127.0.0.1",
-          remotePort: ssh.remotePort,
-        });
-      } catch (error) {
+      let canceled = false;
+      let disposed = false;
+      const dispose = () => {
+        if (disposed) return;
+        disposed = true;
         transport.dispose();
-        throw error;
-      }
-      log("info", "ssh forward open", { hostKey, localPort: forward.localPort, remotePort: ssh.remotePort });
-      return remember(hostKey, ssh, transport, forward);
+      };
+      const assertActive = () => {
+        if (canceled) throw Object.assign(new Error("SSH forward was closed"), { errorCode: "HOST_DISCONNECTED" });
+      };
+      const promise = (async () => {
+        let forward: SshForward | undefined;
+        try {
+          const localPort = await reservePort();
+          assertActive();
+          forward = await transport.forward({ localPort, remoteHost: "127.0.0.1", remotePort: ssh.remotePort });
+          assertActive();
+          log("info", "ssh forward open", { hostKey, localPort: forward.localPort, remotePort: ssh.remotePort });
+          return remember(hostKey, ssh, transport, forward);
+        } catch (error) {
+          try {
+            if (forward) await forward.close();
+          } finally {
+            dispose();
+          }
+          throw error;
+        }
+      })();
+      pending.set(hostKey, { promise, cancel: () => { canceled = true; dispose(); } });
+      try { return await promise; }
+      finally { if (pending.get(hostKey)?.promise === promise) pending.delete(hostKey); }
     },
 
     async adopt(hostKey, ssh, forward) {
-      const existing = entries.get(hostKey);
-      if (existing) await closeForKey(hostKey);
+      await closeForKey(hostKey);
       // The adopted forward already owns a live ssh process; the entry keeps a
       // transport only so `close` can reap anything else it started.
       const transport: SshTransport = {
@@ -164,9 +184,8 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
     },
 
     async dispose() {
-      const all = [...entries.values()];
-      entries.clear();
-      await Promise.allSettled(all.map((entry) => closeEntry(entry)));
+      const keys = new Set([...entries.keys(), ...pending.keys()]);
+      await Promise.allSettled([...keys].map(closeForKey));
     },
   };
 }

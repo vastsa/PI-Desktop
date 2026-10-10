@@ -1,3 +1,5 @@
+import { isRemoteSession } from "../../lib/remote-session-safety";
+import { RemoteWorkspace } from "../remote/RemoteWorkspace";
 import {
   useCallback,
   useEffect,
@@ -154,7 +156,19 @@ function ToolIcon({ item, size = 15 }: { item: WorkPanelTool; size?: number }) {
   );
 }
 
-export function WorkPanel({
+export function WorkPanel(props: Parameters<typeof LocalWorkPanel>[0]) {
+  const session = useAppStore((state) => state.sessions.find((item) => item.id === state.activeSessionId));
+  const sessionId = useAppStore((state) => state.activeSessionId);
+  const width = useAppStore((state) => state.workPanelWidth);
+  if (session && isRemoteSession(session)) {
+    return <RemoteWorkspace key={session.id} session={session} width={Math.min(width, Math.max(280, (props.containerWidth || 900) - 320))}
+      exiting={props.exiting} onExitAnimationEnd={props.onExitAnimationEnd} />;
+  }
+  if (sessionId?.startsWith("remote:")) return null;
+  return <LocalWorkPanel {...props} />;
+}
+
+function LocalWorkPanel({
   panelBlocked = false,
   exiting = false,
   onExitAnimationEnd,

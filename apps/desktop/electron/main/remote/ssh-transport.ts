@@ -62,7 +62,7 @@ export interface SshTransport {
   execWithInput(
     command: string,
     input: string,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; maxOutputBytes?: number },
   ): Promise<SshExecResult>;
   /** Forward a loopback port on this machine to a loopback port on the remote. */
   forward(options: {
@@ -239,6 +239,7 @@ function runCommand(
   options: {
     input?: string;
     timeoutMs: number;
+    maxOutputBytes?: number;
     /** Full environment for the child; defaults to the app's own. */
     env?: NodeJS.ProcessEnv;
     /** Called with the spawned child so a transport can track and reap it. */
@@ -265,6 +266,19 @@ function runCommand(
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let outputBytes = 0;
+    const acceptChunk = (chunk: Buffer): boolean => {
+      if (settled) return false;
+      outputBytes += chunk.length;
+      if (options.maxOutputBytes !== undefined && outputBytes > options.maxOutputBytes) {
+        settled = true;
+        clearTimeout(timer);
+        child.kill("SIGKILL");
+        rejectRun(fail("ssh output exceeded its limit", ErrorCodes.HOST_BOOTSTRAP_FAILED));
+        return false;
+      }
+      return true;
+    };
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -277,10 +291,10 @@ function runCommand(
     }, options.timeoutMs);
 
     child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
+      if (acceptChunk(chunk)) stdout += chunk.toString("utf8");
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
+      if (acceptChunk(chunk)) stderr += chunk.toString("utf8");
     });
     child.once("error", (error: Error) => {
       if (settled) return;
@@ -358,16 +372,18 @@ export function createSystemSshTransport(
     command: string,
     input: string | undefined,
     timeoutMs: number,
+    maxOutputBytes?: number,
   ): Promise<SshExecResult> => {
-    // `sh -s` reads the script from stdin, so the script never has to survive
-    // an argv round trip and never lands in a remote file we must clean up.
-    const args = input === undefined ? [...base, command] : [...base, "sh -s"];
+    // The caller selects the program; bootstrap explicitly requests `sh -s`.
+    // Data sent on stdin must never be interpreted as a shell script implicitly.
+    const args = [...base, command];
     const env = await acquireEnv();
     let result: SshExecResult;
     try {
       result = await runCommand(binary, args, {
         input,
         timeoutMs,
+        maxOutputBytes,
         env,
         onSpawn: (child) => {
           children.add(child);
@@ -404,7 +420,7 @@ export function createSystemSshTransport(
     exec: (command, execOptions) =>
       execOnce(command, undefined, execOptions?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS),
     execWithInput: (command, input, execOptions) =>
-      execOnce(command, input, execOptions?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS),
+      execOnce(command, input, execOptions?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS, execOptions?.maxOutputBytes),
     async forward({ localPort, remoteHost, remotePort, timeoutMs }) {
       const env = await acquireEnv();
       const args = [

@@ -1,0 +1,36 @@
+.remote-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.remote-actions strong { overflow-wrap: anywhere; }
+.remote-hint {
+  margin: 4px 12px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+.remote-transcript, .remote-workspace-content {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px;
+}
+.remote-message { margin: 0 0 18px; }
+.remote-message-user {
+  background: var(--ds-tile);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.remote-conversation pre, .remote-workspace pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  user-select: text;
+}
+.remote-composer { padding: 12px 16px; }
+.remote-composer textarea { width: 100%; resize: vertical; max-height: 180px; }
+.remote-workspace { display: flex; flex-direction: column; min-width: 0; }
+.remote-host-workbench { padding: 12px; }
+.settings-remote-host-card-actions { flex-wrap: wrap; }

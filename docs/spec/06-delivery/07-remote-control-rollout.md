@@ -36,6 +36,37 @@ The scheduled order is R0, R1, R2, R3. Milestones marked unscheduled keep
 their specifications so the contract does not drift, and they are scheduled
 only by a later product decision.
 
+### Experimental desktop MVP (narrow acceptance slice)
+
+The desktop exposes Remote Hosts in all builds with an Experimental badge. This
+slice implements SSH install/pair/reconnect, explicit eligible-provider copy,
+remote project registration, Agent/Ask session creation/opening, text chat,
+tool/input responses, bounded transcript history, and read-only text/files/diffs.
+Remote identity remains visible offline and never activates a local workspace.
+Unsupported remote operations fail closed; reconnect does not replay prompts.
+
+Terminal UI, reverse MCP/plugin relay, attachments, local model/think controls,
+message edits, Plan/Goal creation UI, and cross-host handoff are deferred. This
+slice does **not** satisfy every R2 exit criterion; the broader milestone remains
+open. It supersedes the developer-only entry restriction below, not the full R2
+acceptance gate.
+
+Verification is layered and recorded separately:
+
+1. Shared contracts, socket/CLI, Desktop routing/state and recovery regressions.
+2. `scripts/e2e-remote-mvp.mjs`: packaged Host + actual Rust/Agent runtime + Desktop
+   main routing, with a loopback model fixture. Import/reimport, pairing, session
+   creation, approval across reconnect, one execution, history, files/diff and
+   removal. This is not an `sshd` or full Desktop acceptance test.
+3. `scripts/e2e-remote-mvp-ui.mjs`: real React/Chromium component clicks with a
+   mocked IPC boundary and isolated profile; no user Desktop or real providers.
+4. Full Linux SSH/Desktop bootstrap, checksum/version rejection, restart and
+   password-only SSH remain E2E-231 prerequisites and require a real target.
+
+Published SSH bootstrap requires the matching release to contain the new Host
+bundle; a successful local bundle does not publish those release assets.
+See `apps/pi-host/README.md` for candidate build and local acceptance commands.
+
 ## 2. Milestones
 
 ### R0 — Contract and test fixtures
@@ -143,10 +174,9 @@ Deliverables:
   `terminal/close`, `terminal.output`, and a bounded replay ring, running on
   the remote machine; and
 - the Settings → Remote Hosts destination: a compact host inventory and one
-  Add form with SSH and Pair tabs, no instructional copy, marked Experimental
-  on the settings rail and page title because the topology may still fail, and
-  shown — with its settings-search hits — only while developer mode is on
-  (`04-ux/06-settings-ia.md` §1, §3).
+  Add form with SSH and Pair tabs, marked Experimental on the rail and page
+  title. The narrow MVP also exposes inline sessions and explicit model-copy
+  consent; the destination and search hits are available in packaged builds.
 
 Design decisions (D375, recorded 2026-09-10):
 
@@ -165,7 +195,8 @@ Design decisions (D375, recorded 2026-09-10):
 5. The SSH-paired desktop device holds `owner` and is exempt from the remote
    permission ceiling unless the Host policy `applyCeilingToPairedDevices`
    is enabled.
-6. R2 ships as one milestone; it is not split into sub-milestones.
+6. Full R2 remains one acceptance milestone; the experimental MVP above is a
+   narrower usable slice, not a claim that terminal and relay have shipped.
 
 Exit criteria:
 

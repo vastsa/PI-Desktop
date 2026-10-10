@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { isRemoteSession, sessionAllows } from "../../lib/remote-session-safety";
 import type {
   UiMessage,
 } from "@pi-desktop/shared";
@@ -52,6 +53,11 @@ export function createTranscriptSlice({
   | "rollbackWorkspaceChange"
   | "abort"
 > {
+  const canEdit = () => {
+    const state = get();
+    return sessionAllows(state.sessions.find((session) => session.id === state.activeSessionId)
+      ?? { id: state.activeSessionId ?? "" }, "canEditMessages");
+  };
   return {
     compactContext: async () => {
       const state = get();
@@ -87,6 +93,7 @@ export function createTranscriptSlice({
     },
 
     retryAssistantMessage: async (messageId) => {
+      if (!canEdit()) return;
       const prepared = await prepareTranscriptAction({ get, set }, runtime, messageId);
       const state = get();
       if (!prepared || state.activeSessionId !== prepared.activeSessionId || state.isRunning) return;
@@ -111,6 +118,7 @@ export function createTranscriptSlice({
     },
 
     prepareUserMessageEdit: async (messageId, signal) => {
+      if (!canEdit()) return null;
       const prepared = await prepareTranscriptAction({ get, set }, runtime, messageId, signal);
       const state = get();
       if (!prepared || state.activeSessionId !== prepared.activeSessionId || state.isRunning) return null;
@@ -119,6 +127,7 @@ export function createTranscriptSlice({
     },
 
     editUserMessage: async (messageId, content, attachments) => {
+      if (!canEdit()) return false;
       const prepared = await prepareTranscriptAction({ get, set }, runtime, messageId);
       const state = get();
       if (!prepared || state.activeSessionId !== prepared.activeSessionId || state.isRunning) return false;
@@ -225,6 +234,7 @@ export function createTranscriptSlice({
     },
 
     retryLastPrompt: async () => {
+      if (!canEdit()) return;
       const state = get();
       if (state.isRunning) return;
       const sessionId = state.activeSessionId;
@@ -291,6 +301,7 @@ export function createTranscriptSlice({
     clearError: () => set({ error: null, errorCode: null, errorRetriable: null }),
 
     activateMessageRevision: async (rootUserId, revisionIndex) => {
+      if (!canEdit()) return;
       let state = get();
       if (state.isRunning) return;
       const sessionId = state.activeSessionId;
@@ -347,6 +358,7 @@ export function createTranscriptSlice({
     },
 
     deleteMessage: async (messageId) => {
+      if (!canEdit()) return;
       const sessionId = get().activeSessionId;
       if (!sessionId || get().isRunning) return;
       const fullMessages = await runtime.loadFullSessionMessages(sessionId);
@@ -399,6 +411,7 @@ export function createTranscriptSlice({
     },
 
     rollbackWorkspaceChange: async (messageId, snapshotId) => {
+      if (!canEdit()) return null;
       const state = get();
       const sessionId = state.activeSessionId;
       if (!sessionId || state.isRunning) return null;
@@ -442,7 +455,9 @@ export function createTranscriptSlice({
       const stateBeforeAbort = get();
       const sessionId = stateBeforeAbort.activeSessionId;
       if (!sessionId) return;
-      if (stateBeforeAbort.sessions.find((session) => session.id === sessionId)?.source === "pi-native") {
+      const target = stateBeforeAbort.sessions.find((session) => session.id === sessionId);
+      if (!sessionAllows(target, "canStop")) return;
+      if (target?.source === "pi-native" || isRemoteSession(target)) {
         await api.abort(sessionId);
         runtime.submittedComposerDrafts.delete(sessionId);
         // Bypass in-flight pre-abort detail reads; request settled source state.

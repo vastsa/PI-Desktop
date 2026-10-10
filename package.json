@@ -87,6 +87,8 @@
     "test:e2e:collaboration": "node scripts/e2e-session-collaboration.mjs",
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
     "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
+    "test:e2e:remote-mvp": "node scripts/e2e-remote-mvp.mjs",
+    "test:e2e:remote-mvp-ui": "node scripts/e2e-remote-mvp-ui.mjs",
     "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
     "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs",
     "test:e2e:live-voice-interaction": "node scripts/test-live-voice-interaction.mjs"

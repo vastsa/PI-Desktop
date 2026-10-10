@@ -55,7 +55,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   8. **Subagents / 子智能体** — Lucide `Bot` (built-in and personal parallel agents)
   9. **Projects / 项目** — Lucide `Archive` (durable project index)
   10. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync; development builds only)
-  11. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
+  11. **Remote Hosts / 远程主机** — Lucide `Globe` (experimental SSH hosts, sessions, and explicit model copy)
   12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
@@ -64,7 +64,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
   (Projects), and `System` / `系统` (Cloud sync, Remote Hosts, Info; Cloud sync
-  is development-build-only, Remote Hosts is developer-only). Headings are
+  is development-build-only, Remote Hosts is available in all builds). Headings are
   muted, non-interactive labels and use whitespace for separation; no divider
   lines are rendered. These are visual landmarks only, not a second navigation
   level.
@@ -82,12 +82,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   carries an Experimental badge, and nothing about the sync behavior itself
   changes. Removing the destination's `developmentOnly` flag reopens it for
   packaged builds.
-- **Remote Hosts / 远程主机** is a developer-only, Experimental destination: its
-  rail row, its page, and its settings-search hits exist only while
-  `AppSettings.developerMode` is `true`. With developer mode off the row is
-  absent rather than disabled, settings search returns no hit for it, and a
-  rail position left on it falls back to General. The row and the page title
-  carry the Experimental badge (`settings.remoteHosts.experimental`)
+- **Remote Hosts / 远程主机** is an Experimental destination in all builds,
+  independent of developer mode. The rail, page and search hits remain available.
+  The row and title carry `settings.remoteHosts.experimental`. After pairing,
+  each host offers reconnect and an inline project/session workbench. SSH hosts
+  offer eligible-provider copy with empty selection and explicit credential-copy
+  consent. Remote chat uses Host defaults and never activates local workspaces.
+  The narrow MVP supports text, tool/input responses and read-only files/diffs;
+  terminal, attachments, local model controls and local plugin/MCP actions are absent.
 - Loaded plugin Settings entries may appear only in a final **Extensions** group
   after all core groups. The host owns their ordering, search result, titlebar
   and fallback to General. The rail icon is the destination's host token
@@ -831,7 +833,7 @@ system while preserving their different data ownership:
   - the developer mode switch unlocks the Open console button, F12 on every
     platform, Ctrl+Shift+I on Windows/Linux, the macOS View-menu developer
     tools item, Copy conversation ID / Open session path on the conversation
-    overflow menu, and the Remote Hosts destination on the rail
+    overflow menu. Remote Hosts remains available independently.
   - disabling developer mode closes an open console and disables or removes
     every entry point; Settings search indexes the card, switch, and console
     action
@@ -860,12 +862,11 @@ system while preserving their different data ownership:
 - Project archive is indexed by Settings search and is not duplicated as a home
   sidebar destination or standalone global-search page
 - Back to app returns to chat shell from the rail's pinned footer action
-- Developer-only destinations join and leave the rail, the page, and settings
-  search as one unit: while developer mode is off the rail omits the row,
-  settings search returns no hit for it, and an open Remote Hosts page returns
-  to General. Cloud sync is development-build-only for now: packaged builds
-  omit its rail row, page, and settings-search hits and fall back to General,
-  while developer mode never gates it.
+- Developer-only destinations, where declared, join and leave the rail, page,
+  and search as one unit. Remote Hosts is Experimental but not developer-only,
+  so toggling developer mode does not hide it or navigate away. Cloud sync is
+  development-build-only: packaged builds omit its rail row, page and search
+  hits and fall back to General; developer mode never gates it.
 
 ## 4. Acceptance
 
@@ -874,7 +875,7 @@ system while preserving their different data ownership:
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
    Subagents / 子智能体, Projects / 项目, Cloud sync / 云同步 (development
-   builds only), Remote Hosts / 远程主机 (developer mode only), and Info / 信息
+   builds only), Remote Hosts / 远程主机 (Experimental, all builds), and Info / 信息
    in that order. A packaged build leaves Cloud sync out; Voice
    appears between AI and Shortcuts only in development builds with developer
    mode on. The rows are grouped under Preferences / 偏好,

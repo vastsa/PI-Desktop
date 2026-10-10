@@ -1,4 +1,5 @@
 import { IconClock } from "./icons";
+import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import {
   useCallback,
   useEffect,
@@ -1419,6 +1420,7 @@ export function Sidebar({
   };
 
   const forkSession = async (session: SessionSummary) => {
+    if (!sessionAllows(session, "canEditMessages")) return;
     closeMenus(false);
     try {
       await forkSessionAction(session.id);
@@ -1453,6 +1455,7 @@ export function Sidebar({
   };
 
   const openSessionPath = async (session: SessionSummary) => {
+    if (isRemoteSession(session)) return;
     closeMenus(false);
     try {
       await api.openSessionScratchPath(session.id);
@@ -1528,6 +1531,7 @@ export function Sidebar({
 
   const moveSessionToProject = useCallback(
     async (sessionId: string, projectPath: string, projectName: string) => {
+      if (sessionId.startsWith("remote:")) return;
       // A running turn owns the current project's instructions, tools, and
       // working directory; the host rejects the move as well.
       if (runningSessions[sessionId]) {
@@ -1715,9 +1719,9 @@ export function Sidebar({
         key={session.id}
         className={`thread-item ${active ? "active" : ""} ${archived ? "archived" : ""} ${draggingSessionId === session.id ? "is-dragging" : ""} ${selectedIds.has(session.id) ? "selected" : ""}`}
         data-sidebar-session-row={session.id}
-        draggable={!running}
+        draggable={!running && !isRemoteSession(session)}
         onDragStart={(event) => {
-          if (running) {
+          if (running || isRemoteSession(session)) {
             event.preventDefault();
             return;
           }
@@ -1783,6 +1787,7 @@ export function Sidebar({
           {session.source === "pi-native" ? (
             <span className="thread-item-source" title="Native Pi session">Pi</span>
           ) : null}
+          {isRemoteSession(session) && <span className="thread-item-source" title={session.remoteHostLabel}>{t("remote:remote")}</span>}
           <span className="thread-item-title">{taskTitle(session.title)}</span>
           {options?.global ? (
             <span className="thread-item-project">
@@ -2179,7 +2184,7 @@ export function Sidebar({
                 ? t("nav.restoreTask", { defaultValue: "Restore" })
                 : t("nav.archiveTask", { defaultValue: "Archive" })}
             </button>
-            {session.source !== "pi-native" ? (
+            {session.source !== "pi-native" && sessionAllows(session, "canEditMessages") ? (
               <button
                 type="button"
                 role="menuitem"
@@ -2200,7 +2205,7 @@ export function Sidebar({
               <IconCopy size={14} />
               {t("nav.copySessionLink")}
             </button>
-            {settings?.developerMode === true ? (
+            {settings?.developerMode === true && !isRemoteSession(session) ? (
               <>
                 <button
                   type="button"

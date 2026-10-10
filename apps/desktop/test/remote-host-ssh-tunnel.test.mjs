@@ -211,3 +211,51 @@ test("a refused forward propagates and leaves nothing half-registered", async ()
   assert.equal(transports[1].forwards.length, 1);
   assert.equal(tunnel.url, racpUrlForLocalPort(tunnel.localPort));
 });
+
+test("concurrent opens share a single in-flight forward", async () => {
+  const { manager, transports } = harness();
+  const [first, second] = await Promise.all([manager.open("k", SSH), manager.open("k", SSH)]);
+  assert.equal(first, second);
+  assert.equal(transports.length, 1);
+  await manager.dispose();
+});
+
+test("close during forward creation disposes the late forward instead of caching it", async () => {
+  const gate = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const forward = fakeForward(1234);
+  let disposed = 0;
+  const manager = createSshTunnelManager({
+    reservePort: async () => 1234,
+    buildTransport: () => ({
+      forward: async () => { started.resolve(); await gate.promise; return forward; },
+      dispose: () => { disposed++; },
+    }),
+  });
+  const opening = manager.open("k", SSH);
+  await started.promise;
+  await manager.close("k");
+  gate.resolve();
+  await assert.rejects(opening, { errorCode: "HOST_DISCONNECTED" });
+  assert.equal(forward.closes, 1);
+  assert.equal(disposed, 1);
+  await manager.dispose();
+});
+
+test("a failed open disposes its transport even when forward cleanup rejects", async () => {
+  let disposed = 0;
+  let closes = 0;
+  const closeError = new Error("forward close failed");
+  const manager = createSshTunnelManager({
+    reservePort: async () => 1234,
+    buildTransport: () => ({
+      forward: async () => ({ localPort: 1234, close: async () => { closes++; throw closeError; } }),
+      dispose: () => { disposed++; },
+    }),
+    log: () => { throw new Error("open notification failed"); },
+  });
+  await assert.rejects(manager.open("k", SSH), error => error === closeError);
+  await manager.dispose();
+  assert.equal(closes, 1);
+  assert.equal(disposed, 1, "cleanup failure must not skip disposal of the SSH process");
+});

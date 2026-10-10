@@ -18,7 +18,7 @@ import {
   type RacpClientState,
 } from "@pi-desktop/racp";
 import { ErrorCodes, type RacpEventEnvelope } from "@pi-desktop/shared";
-import type { RemoteHostClient } from "./remote-host-connection.js";
+import type { RemoteHostClient, RemoteSubscriptionClosed } from "./remote-host-connection.js";
 
 export type PairingExchangeOptions = {
   /** Loopback RACP endpoint, either pasted by the user or forwarded by us. */
@@ -74,6 +74,8 @@ export type RacpRemoteHostClientOptions = {
     maxDelayMs?: number;
     maxAttempts?: number;
   };
+  onReconnected?: () => Promise<void>;
+  onStateChange?: (state: RacpClientState) => void;
   /** Optional structured log; defaults to a no-op. */
   log?: (level: "info" | "warn", message: string, data?: Record<string, unknown>) => void;
 };
@@ -99,10 +101,47 @@ export function createRacpRemoteHostClient(
   options: RacpRemoteHostClientOptions,
 ): RacpRemoteHostClient {
   const listeners = new Set<(envelope: RacpEventEnvelope) => void>();
+  const reconnectListeners = new Set<() => Promise<void>>();
+  const stateListeners = new Set<(state: RacpClientState) => void>();
+  const closedListeners = new Set<(notice: RemoteSubscriptionClosed) => void>();
+  let closed = false;
+  let generation = 0;
+  let visibleState: RacpClientState = "disconnected";
+  const notify = <T>(subscribers: Set<(value: T) => void>, value: T) => {
+    for (const listener of subscribers) {
+      try { listener(value); }
+      catch (error) { options.log?.("warn", "remote lifecycle listener threw", { error: String(error) }); }
+    }
+  };
+  const publishState = (state: RacpClientState) => {
+    visibleState = state;
+    notify(stateListeners, state);
+    try { options.onStateChange?.(state); }
+    catch (error) { options.log?.("warn", "remote state listener threw", { error: String(error) }); }
+  };
   const racp = new RacpClient({
     transport: options.transport,
     client: options.clientInfo,
+    onStateChange: state => {
+      if (closed && state !== "disconnected") return;
+      // The socket is initialized before onReconnected runs. Do not advertise
+      // readiness until subscription/snapshot recovery has also completed.
+      if (state === "connected" && visibleState === "reconnecting") return;
+      publishState(state);
+    },
+    onSubscriptionClosed: notice => { if (!closed) notify(closedListeners, notice); },
+    onReconnected: async () => {
+      if (closed) return;
+      const token = generation;
+      const results = await Promise.allSettled([...reconnectListeners].map(listener => Promise.resolve().then(listener)));
+      if (closed || token !== generation) return;
+      const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+      if (errors.length) throw new AggregateError(errors, "remote subscription recovery failed");
+      await options.onReconnected?.();
+      if (!closed && token === generation && racp.state === "connected") publishState("connected");
+    },
     onEvent: (envelope) => {
+      if (closed) return;
       for (const listener of listeners) {
         try {
           listener(envelope);
@@ -117,6 +156,10 @@ export function createRacpRemoteHostClient(
   });
   const client: RemoteHostClient = {
     request: (method, params) => racp.request(method, params),
+    state: () => visibleState,
+    subscribeReconnect(listener) { reconnectListeners.add(listener); return () => { reconnectListeners.delete(listener); }; },
+    subscribeState(listener) { stateListeners.add(listener); return () => { stateListeners.delete(listener); }; },
+    subscribeSubscriptionClosed(listener) { closedListeners.add(listener); return () => { closedListeners.delete(listener); }; },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -126,12 +169,17 @@ export function createRacpRemoteHostClient(
   };
   return {
     client,
-    state: () => racp.state,
+    state: () => visibleState,
     async connect() {
+      closed = false;
       await racp.connect();
     },
     async close() {
+      closed = true;
+      generation++;
+      listeners.clear(); reconnectListeners.clear(); closedListeners.clear();
       await racp.close();
+      stateListeners.clear();
     },
   };
 }

@@ -7,8 +7,7 @@
  *
  * Ownership stays inside the frozen architecture: this runs in Electron Main and
  * speaks RACP-WS to the remote `pi-host`; the renderer is unaware of the
- * transport (spec §3.4). Channels the remote profile does not cover return
- * `false` from {@link RemoteBackend.handles} and fall back to the local handler.
+ * transport (spec §3.4). Unsupported remote channels fail closed in the router.
  */
 import { ErrorCodes, IPC } from "@pi-desktop/shared";
 import type {
@@ -39,6 +38,7 @@ import {
   sessionIdForCall,
 } from "./backend-router.js";
 import { racpSessionToSummary, snapshotToSessionDetail } from "./remote-transcript.js";
+import { createRemoteHistory, type RemoteHistoryReadOptions } from "./remote-history.js";
 
 /** The subset of `RacpClient` this backend needs; kept minimal for testing. */
 export type RemoteRacpClient = {
@@ -49,6 +49,8 @@ export type RemoteBackendOptions = {
   /** The host's routing key; the outward id of a forked session reuses it. */
   hostKey: string;
   client: RemoteRacpClient;
+  hostLabel?: string;
+  onSnapshot?: (snapshot: RacpSessionSnapshot) => void;
   /** Injectable id source for RACP request contexts; defaults to a UUID. */
   newRequestId?: () => string;
 };
@@ -82,11 +84,15 @@ const HANDLED_CHANNELS: ReadonlySet<string> = new Set([
   IPC.invoke.askToolResolve,
   IPC.invoke.plansResolve,
   IPC.invoke.plansPending,
+  IPC.invoke.fsList,
+  IPC.invoke.fsRead,
+  IPC.invoke.workspaceDiff,
 ]);
 
 export function createRemoteBackend(options: RemoteBackendOptions): RemoteBackend {
   const { hostKey, client } = options;
   const newRequestId = options.newRequestId ?? (() => globalThis.crypto.randomUUID());
+  const history = createRemoteHistory(options);
   const context = (idempotencyKey?: string): RacpRequestContext => ({
     requestId: newRequestId(),
     ...(idempotencyKey ? { idempotencyKey } : {}),
@@ -239,22 +245,29 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
         throw capabilityUnavailable("steering is not available on a remote host");
       case IPC.invoke.sessionGet: {
         const remoteSessionId = remoteIdFor(args);
-        const attach = await client.request<AttachResultLike>("session/attach", {
-          sessionId: parseRemoteSessionId(remoteSessionId)!.hostSessionId,
-          includeSnapshot: true,
-        });
-        if (!attach.snapshot) {
-          throw Object.assign(new Error("remote host returned no snapshot"), {
-            errorCode: ErrorCodes.INTERNAL,
-          });
+        const input = typeof args[0] === "object" ? args[0] as RemoteHistoryReadOptions : {};
+        return { session: await history.read(remoteSessionId, hostIdFor(args), input) };
+      }
+      case IPC.invoke.fsList:
+      case IPC.invoke.fsRead:
+      case IPC.invoke.workspaceDiff: {
+        const input = args[0] as { path?: unknown };
+        const path = input.path ?? "";
+        if (typeof path !== "string" || path.length > 4096 || path.includes("\0")) {
+          throw Object.assign(new Error("invalid remote path"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
         }
-        return { session: snapshotToSessionDetail(remoteSessionId, attach.snapshot) };
+        const method = channel === IPC.invoke.fsList ? "workspace/list"
+          : channel === IPC.invoke.fsRead ? "workspace/read" : "workspace/diff";
+        return client.request(method, { sessionId: hostIdFor(args), ...(method !== "workspace/diff" ? { path } : {}) });
       }
       case IPC.invoke.sessionConfigure: {
         const remoteSessionId = remoteIdFor(args);
         const config = (args[1] ?? {}) as Partial<
           Pick<SessionSummary, "mode" | "providerId" | "modelId" | "thinkingLevel" | "permissionMode">
         >;
+        if (config.providerId !== undefined || config.modelId !== undefined || config.thinkingLevel !== undefined) {
+          throw capabilityUnavailable("remote sessions use the Host model configuration");
+        }
         const { session } = await client.request<{ session: RacpSession }>("session/configure", {
           sessionId: parseRemoteSessionId(remoteSessionId)!.hostSessionId,
           ...(config.mode ? { mode: config.mode } : {}),
@@ -263,7 +276,7 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
           ...(config.thinkingLevel ? { thinkingLevel: config.thinkingLevel } : {}),
           ...(config.permissionMode ? { permissionMode: config.permissionMode } : {}),
         });
-        return { session: racpSessionToSummary(remoteSessionId, session, 0) };
+        return { session: racpSessionToSummary(remoteSessionId, session, 0, options.hostLabel) };
       }
       case IPC.invoke.sessionFork: {
         const req = args[0] as { sessionId: string; title?: string; throughMessageId?: string };
@@ -280,8 +293,8 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
           includeSnapshot: true,
         });
         const detail: SessionDetail = attach.snapshot
-          ? snapshotToSessionDetail(forkedRemoteId, attach.snapshot)
-          : { ...racpSessionToSummary(forkedRemoteId, session, 0), messages: [] };
+          ? snapshotToSessionDetail(forkedRemoteId, attach.snapshot, options.hostLabel)
+          : { ...racpSessionToSummary(forkedRemoteId, session, 0, options.hostLabel), messages: [] };
         return { session: detail };
       }
       case IPC.invoke.sessionRename: {
@@ -321,7 +334,7 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
         const resolution = args[0] as AskToolResolution;
         // `answers` is `Array<string[] | null>` in both the local and RACP shapes.
         await client.request("input/respond", {
-          inputId: resolution.requestId,
+          inputId: parseRemoteApprovalRequestId(resolution.requestId)?.hostApprovalId ?? resolution.requestId,
           answers: resolution.answers,
           context: context(),
         });

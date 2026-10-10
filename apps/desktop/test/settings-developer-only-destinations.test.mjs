@@ -45,7 +45,7 @@ const settingsPrimitives = readFileSync(
 );
 
 const identity = (key) => key;
-const developerOnlyIds = ["remoteHosts"];
+const developerOnlyIds = SETTINGS_NAV.filter(entry => entry.developerOnly === true).map(entry => entry.id);
 
 test("Live Voice is reachable in every build without developer mode", () => {
   for (const developerMode of [false, true]) {
@@ -110,6 +110,16 @@ test("Cloud sync is a development-build-only destination", () => {
   assert.equal(sync?.experimentalBadgeKey, undefined);
 });
 
+test("Remote Hosts is experimental and reachable in every build without developer mode", () => {
+  for (const developerMode of [false, true]) {
+    for (const includeDevelopmentOnly of [false, true]) {
+      assert.ok(visibleSettingsNav(developerMode, includeDevelopmentOnly).some(entry => entry.id === "remoteHosts"));
+      assert.equal(isSettingsDestinationHidden("remoteHosts", developerMode, includeDevelopmentOnly), false);
+    }
+  }
+  assert.equal(SETTINGS_NAV.find(entry => entry.id === "remoteHosts").experimentalBadgeKey, "settings.remoteHosts.experimental");
+});
+
 test("developer mode retains the developer-only destinations in development", () => {
   const off = visibleSettingsNav(false).map((entry) => entry.id);
   const on = visibleSettingsNav(true).map((entry) => entry.id);
@@ -161,26 +171,12 @@ test("settings search mirrors developer and packaged visibility", () => {
     );
   }
 
-  for (const options of [
-    { developerMode: false },
-    { developerMode: false, includeDevelopmentOnly: false },
-  ]) {
-    assert.ok(
-      searchSettings("remotehosts", identity, options)
-        .every((hit) => hit.tab !== "remoteHosts"),
-    );
+  for (const developerMode of [false, true]) {
+    for (const includeDevelopmentOnly of [false, true]) {
+      assert.ok(searchSettings("remotehosts", identity, { developerMode, includeDevelopmentOnly })
+        .some(hit => hit.tab === "remoteHosts"));
+    }
   }
-  assert.ok(
-    searchSettings("remotehosts", identity, { developerMode: true })
-      .some((hit) => hit.tab === "remoteHosts"),
-  );
-  assert.deepEqual(
-    searchSettings("remotehosts", identity, {
-      developerMode: true,
-      includeDevelopmentOnly: false,
-    }),
-    [],
-  );
   assert.equal(searchSettings("settings", identity, { limit: 2 }).length, 2);
 });
 

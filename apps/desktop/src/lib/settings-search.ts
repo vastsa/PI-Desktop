@@ -288,8 +288,6 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     labelKey: "settings.nav.remoteHosts",
     titleKey: "settings.remoteHosts.title",
     group: "system",
-    developerOnly: true,
-    developmentOnly: true,
     experimentalBadgeKey: "settings.remoteHosts.experimental",
     keywordKeys: [
       "settings.remoteHosts.title",
