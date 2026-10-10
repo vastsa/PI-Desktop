@@ -580,6 +580,36 @@ export function useAppShellRuntime() {
     const offTodosChanged = api.onTodosChanged((snapshot) =>
       useAppStore.getState().applyTodosChanged(snapshot),
     );
+    const offScheduledChanged = api.onScheduledChanged((change) =>
+      useAppStore.getState().applyScheduledRunChanged(change),
+    );
+    // A reload misses runs that started before it, so the live ones are seeded
+    // from the task list plus one newest run per task (issue #1441).
+    void (async () => {
+      try {
+        const [{ tasks }, { runs }] = await Promise.all([
+          api.listScheduled(),
+          api.listScheduledRuns({ latestPerTask: true }),
+        ]);
+        const byId = new Map(tasks.map((task) => [task.id, task]));
+        for (const run of runs) {
+          // A run with no conversation of its own could never be attributed to
+          // a project row, so it is not seeded at all.
+          if (run.status !== "running" || !run.sessionId) continue;
+          const task = byId.get(run.taskId);
+          useAppStore.getState().applyScheduledRunChanged({
+            runId: run.id,
+            sessionId: run.sessionId,
+            taskId: run.taskId,
+            ...(task?.title ? { taskTitle: task.title } : {}),
+            ...(task?.workspacePath ? { projectPath: task.workspacePath } : {}),
+            status: "running",
+          });
+        }
+      } catch {
+        // Additive surface: a failed seed simply leaves the row without runs.
+      }
+    })();
     // Host-pushed toasts (plugin runtime etc.) are informational.
     const offToast = api.onToast((message) => showToast(message));
     const offNotificationSound = api.onNotificationSound(playNotificationChime);
@@ -823,6 +853,7 @@ export function useAppShellRuntime() {
       offQueueChanged();
       offPlansChanged();
       offTodosChanged();
+      offScheduledChanged();
       offToast();
       offNotificationSound();
       offInsecureEndpoint();

@@ -194,3 +194,69 @@ test("failure of one task does not suppress another due task", async () => {
   assert.deepEqual(executed, ["a", "b"]);
   assert.deepEqual(errors, ["failed"]);
 });
+
+test("an admitted run is announced with the task it belongs to", async () => {
+  const changes = [];
+  const host = {
+    async call() {
+      return {
+        sessionId: "session",
+        runId: "run",
+        prompt: "Inspect project",
+        task: { id: "task", title: "Nightly scan", workspacePath: "/work/app" },
+      };
+    },
+  };
+  await executeScheduledTask({
+    host,
+    id: "task",
+    automatic: true,
+    runs: new Map(),
+    isCurrent: () => true,
+    prompt: async (sessionId, content) => {
+      // The project row can already count the run while its turn is starting.
+      assert.deepEqual(changes, [
+        {
+          runId: "run",
+          sessionId: "session",
+          taskId: "task",
+          taskTitle: "Nightly scan",
+          projectPath: "/work/app",
+          status: "running",
+        },
+      ]);
+      assert.equal(sessionId, "session");
+      assert.equal(content, "Inspect project");
+    },
+    onChanged: (change) => changes.push(change),
+  });
+  assert.equal(changes.length, 1, "admission is announced exactly once");
+});
+
+test("a run that never dispatched settles the announcement it made", async () => {
+  const changes = [];
+  const host = {
+    async call() {
+      return { sessionId: "session", runId: "run", prompt: "Inspect" };
+    },
+  };
+  await assert.rejects(
+    executeScheduledTask({
+      host,
+      id: "task",
+      automatic: false,
+      runs: new Map(),
+      isCurrent: () => true,
+      prompt: async () => {
+        throw new Error("provider unavailable");
+      },
+      onChanged: (change) => changes.push(change),
+    }),
+    /provider unavailable/,
+  );
+  assert.deepEqual(
+    changes.map((change) => [change.runId, change.status]),
+    [["run", "running"], ["run", "error"]],
+    "an announced run never stays running once its dispatch failed",
+  );
+});

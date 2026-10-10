@@ -1,4 +1,4 @@
-import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
+import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type PlanExecution, type PlanExecutionFinishStatus, type ScheduledRunChange, type UiMessage } from "@pi-desktop/shared";
 import { executionFromResponse, executionListFromResponse, planExecutionFromUnknown } from "@pi-desktop/host-runtime";
 import type { RuntimeState } from "./context";
 import type {
@@ -237,14 +237,27 @@ function finishTurn(
       }
 
       if (runId && runtimeState.host) {
-        await runtimeState.host
+        const settled = await runtimeState.host
           .call("scheduled.finishRun", { runId, status: reason, errorCode })
-          .catch((e) =>
+          .then(() => true)
+          .catch((e) => {
             logger.app("persistence", "warn", "finishRun failed", {
               sessionId: id,
               data: String(e),
-            }),
-          );
+            });
+            return false;
+          });
+        if (settled) {
+          // The run's conversation is not in the session list, so its project
+          // row learns the result here (issue #1441).
+          sendToRenderer(IPC.event.scheduledChanged, {
+            change: {
+              runId,
+              sessionId: id,
+              status: reason === "completed" ? "completed" : "error",
+            } satisfies ScheduledRunChange,
+          });
+        }
       }
     } finally {
       // Do not release local ownership until the durable endTurn request above

@@ -5748,6 +5748,10 @@ eleven-tool-round desktop paths are verified by
 | 品质（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
 | F — 持久化（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
 | 品质（存储的模型绑定数组） | E2E-PROVIDER-stored-binding-array-reads-entry-by-entry |
+| C — 对话与流式（项目状态） | E2E-PROJECT-status-on-a-collapsed-row |
+| D — 工作区（项目状态） | E2E-PROJECT-status-on-a-collapsed-row |
+| 品质（项目状态） | E2E-PROJECT-status-on-a-collapsed-row |
+| M6+（项目状态） | E2E-PROJECT-status-on-a-collapsed-row |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -9488,6 +9492,17 @@ preload, API normalization, store events, ToolRow, and Markdown renderer.
 No provider credentials or paid model calls are required. The fixture ends at
 work-panel file-request routing; artifact bytes are verified from the real
 host-created files. The full app's file-preview viewer is covered separately.
+
+## 折叠项目行上的项目状态（#1441）
+
+### E2E-PROJECT-status-on-a-collapsed-row
+
+- **前提：** 一个项目有三段会话和一个绑定到该项目的已启用定时任务；另一个项目有它自己的会话；一个 stub 模型端点，使回合可以按需挂起与放行；该项目的会话组已折叠。
+- **步骤：** 1）启动该项目的两段会话并派发定时任务，然后折叠该项目。2）让其中一个回合挂起，另一个回合先结束。3）等全部结束，打开其中一段会话并读掉它的结果。4）用一段停在权限提示或 Ask／Plan 决策上的会话，以及一个失败的回合，重复上述步骤。5）悬停该项目的标题，再用键盘聚焦一次，读出行上的提示。6）在一次运行仍在进行时重载渲染层。
+- **预期：** 折叠项目的行头只有一个很小的标记、没有文字：只要该项目的会话或定时任务运行还有在跑的，它就是会话行自己的运行圆点，定时任务运行计入其中、由提示里的句子拆分口径；另一个项目的运行绝不在这里计数。等待读者回答的会话把圆点变紫，并由提示最先点名。当一个回合结束而另一个仍在运行时，圆点保持不变；当没有任何工作在跑时，标记变成一个安静的未读结果计数，并随着逐个打开会话而减少，与会话行自己的结果徽章一致。标记本身不新增可点目标：行显示它、在悬停或键盘聚焦时解释它，点击它的行为与行头其余部分一致。重载后，在重载之前就已开始的运行仍会被报告。
+- **关联规格：** `04-ux/08-component-spec.md` §3.4、§3.9a、§20A.4；E2E-SCHEDULED-desktop-automation-lifecycle。
+- **验收：** C（对话与流式）、D（工作区）、Quality。**里程碑：** M6+。
+- **状态：** 部分自动化 —— `apps/desktop/test/sidebar-project-status.test.mjs` 覆盖聚合逻辑（会话数与定时任务数分开、其他项目的运行不计入、当 store 与广播同时报告同一次运行时只计一次、需要读者优先、全部结束、以及忽略分隔符的项目匹配）；`sidebar-project-status-contract.test.mjs` 固定侧栏、store slice、API 桥、协议事件与主进程公告之间的接线，`scheduled-runner.test.mjs` 覆盖运行自身的准入公告与派发失败公告。渲染层流程在真实桌面应用上以一次性配置和 stub 模型服务验证；不使用真实凭据或付费调用。
 
 #### E2E-PLUGIN-fetch-redirect-policy
 

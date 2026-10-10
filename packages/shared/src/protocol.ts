@@ -421,6 +421,7 @@ export const IPC = {
     notificationSound: "pi-desktop/notification/event/sound",
     plansChanged: "pi-desktop/plans/event/changed",
     todosChanged: "pi-desktop/todos/event/changed",
+    scheduledChanged: "pi-desktop/scheduled/event/changed",
     providersOauth: "pi-desktop/providers/oauth/event",
     mcpOauth: "pi-desktop/mcp/oauth/event",
     updatesState: "pi-desktop/updates/event/state",

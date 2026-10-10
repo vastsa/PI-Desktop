@@ -22,6 +22,7 @@ import type {
   PluginTheme,
   PluginViewMeta,
   ProjectWorkspace,
+  ScheduledRunChange,
   ProviderPublic,
   ReviewRollbackResult,
   SessionSummary,
@@ -180,6 +181,10 @@ export type AppState = {
   /** Host-authoritative Todo snapshots keyed by session. */
   sessionTodos: Record<string, SessionTodoSnapshot>;
   applyTodosChanged: (snapshot: SessionTodoSnapshot) => void;
+  /** Live scheduled runs, keyed by run id, so a project row can report them
+   *  even though their transcripts stay out of the session list (issue #1441). */
+  scheduledRuns: Record<string, ScheduledRunChange & { updatedAt: number }>;
+  applyScheduledRunChanged: (change: ScheduledRunChange) => void;
   toasts: ToastItem[];
   notifications: AppNotification[];
   unreadNotificationCount: number;

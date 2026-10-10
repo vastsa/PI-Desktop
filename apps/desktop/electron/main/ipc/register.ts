@@ -330,6 +330,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getHost,
     scheduledRunsBySession,
     isQuitting: dependencies.isQuitting,
+    onRunChanged: (change) => sendToRenderer(IPC.event.scheduledChanged, { change }),
     invoke: async (channel, args) => {
       const handler = ipcHandlers.get(channel);
       if (!handler) throw new Error("scheduled prompt handler unavailable");

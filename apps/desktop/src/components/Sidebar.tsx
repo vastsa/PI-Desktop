@@ -33,6 +33,7 @@ import {
   sessionPinned,
 } from "../lib/sidebar-session-groups";
 import { listableSessions } from "../lib/session-origin";
+import { projectRunningStatus } from "../lib/sidebar-project-status";
 import {
   composerDropItems,
   hasComposerFileDrag,
@@ -240,6 +241,22 @@ export function Sidebar({
   const runningSessions = useAppStore((s) => s.runningSessions);
   const sessionOutcomes = useAppStore((s) => s.sessionOutcomes);
   const pendingPermissions = useAppStore((s) => s.pendingPermissions);
+  const pendingAsks = useAppStore((s) => s.pendingAsks);
+  const pendingPlans = useAppStore((s) => s.pendingPlans);
+  const scheduledRuns = useAppStore((s) => s.scheduledRuns);
+
+  /** Sessions that cannot continue until the reader answers (issue #1441). */
+  const attentionSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [sessionId, queue] of Object.entries(pendingPermissions)) {
+      if (queue.length > 0) ids.add(sessionId);
+    }
+    for (const [sessionId, queue] of Object.entries(pendingAsks)) {
+      if (queue.length > 0) ids.add(sessionId);
+    }
+    for (const sessionId of Object.keys(pendingPlans)) ids.add(sessionId);
+    return ids;
+  }, [pendingPermissions, pendingAsks, pendingPlans]);
   const setPage = useAppStore((s) => s.setPage);
   const navBack = useAppStore((s) => s.navBack);
   const canNavBack = useAppStore((s) => s.canNavBack);
@@ -1818,6 +1835,44 @@ export function Sidebar({
 
   const renderProjectGroup = (entry: ProjectEntry) => {
     const collapsedProject = entry.meta.collapsed ?? projectCollapsed[entry.key] ?? false;
+
+    // A collapsed project still reports what it is doing (issue #1441). The
+    // aggregate reads state this row already subscribes to: its own listed
+    // sessions, the unfiltered session list (scheduled runs stay in the store),
+    // the running map, unread outcomes, and the pending interactive prompts.
+    const status = projectRunningStatus({
+      sessions: entry.sessions,
+      allSessions: sessions,
+      projectPath: entry.path,
+      runningSessions,
+      outcomes: sessionOutcomes,
+      attentionSessionIds,
+      scheduledRuns: Object.values(scheduledRuns),
+    });
+    const statusParts: string[] = [];
+    if (status.needsAttention > 0) {
+      statusParts.push(t("nav.projectStatusAttention", { count: status.needsAttention }));
+    }
+    if (status.running > 0) {
+      statusParts.push(t("nav.projectStatusRunning", { count: status.running }));
+    }
+    if (status.scheduledRunning > 0) {
+      statusParts.push(t("nav.projectStatusScheduled", { count: status.scheduledRunning }));
+    }
+    if (status.failed > 0) {
+      statusParts.push(t("nav.projectStatusFailed", { count: status.failed }));
+    }
+    if (status.finished > 0 && !status.settled) {
+      statusParts.push(t("nav.projectStatusFinished", { count: status.finished }));
+    }
+    if (status.settled) {
+      statusParts.push(t("nav.projectStatusSettled", { count: status.finished + status.failed }));
+    }
+    // One trailing mark, never a second label (issue #1441): the session rows'
+    // own dot while work is in flight, and a count only once a result is
+    // waiting to be read. Everything else lives in the row's hover sentence.
+    const statusSummary = statusParts.join(" · ");
+    const unreadResults = status.finished + status.failed;
     const projectId = projectDomId(entry.key);
     const isMenuOpen = projectMenu === entry.key;
 
@@ -1918,9 +1973,9 @@ export function Sidebar({
             type="button"
             id={projectId}
             className="sidebar-session-group-title project-toggle"
-            tooltip={entry.path}
+            tooltip={statusSummary ? `${entry.path}\n${statusSummary}` : entry.path}
             tooltipDelayMs={500}
-            tooltipClassName="ui-tooltip-path"
+            tooltipClassName="ui-tooltip-path ui-tooltip-path-status"
             ariaLabel={entry.name}
             aria-describedby={`${projectId}-path-description`}
             aria-expanded={!collapsedProject}
@@ -1958,11 +2013,25 @@ export function Sidebar({
             )}
             <span>{entry.name}</span>
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
+            {status.total > 0 ? (
+              <span
+                className={`project-status-dot ${status.needsAttention > 0 ? "attention" : ""}`}
+                aria-hidden="true"
+              />
+            ) : unreadResults > 0 ? (
+              <span
+                className={`project-status-badge ${status.failed > 0 ? "failed" : ""}`}
+                aria-hidden="true"
+              >
+                {unreadResults}
+              </span>
+            ) : null}
           </TooltipButton>
           <span id={`${projectId}-path-description`} className="sr-only">
             {entry.path}
             {". "}
             {t("project.reorder", { name: entry.name, defaultValue: "Reorder {{name}}" })}
+            {statusSummary ? `. ${t("nav.projectStatusLabel", { summary: statusSummary })}` : ""}
           </span>
           <div className="sidebar-menu-wrap">
             <TooltipButton

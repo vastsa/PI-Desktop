@@ -1,4 +1,5 @@
 import { IPC } from "@pi-desktop/shared";
+import type { ScheduledRunChange } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";
 import { executeScheduledTask } from "../runtime/scheduled-runner";
@@ -9,6 +10,9 @@ export type ScheduledIpcDependencies = {
   scheduledRunsBySession: Map<string, string>;
   invoke: (channel: string, args: readonly unknown[]) => Promise<unknown>;
   isQuitting: () => boolean;
+  /** Announces a run the moment the host accepts it, so a project row can
+   *  report it while the automation transcript stays out of the session list. */
+  onRunChanged?: (change: ScheduledRunChange) => void;
 };
 
 export function registerScheduledIpc({
@@ -17,6 +21,7 @@ export function registerScheduledIpc({
   scheduledRunsBySession,
   invoke,
   isQuitting,
+  onRunChanged,
 }: ScheduledIpcDependencies): void {
   // The Scheduled workspace renders one task's own history and one newest run
   // per task for the column, so the caller may scope or summarize the read. The
@@ -46,6 +51,7 @@ export function registerScheduledIpc({
     return executeScheduledTask({
       host, id, automatic, runs: scheduledRunsBySession,
       isCurrent: () => !isQuitting() && getHost() === host,
+      ...(onRunChanged ? { onChanged: onRunChanged } : {}),
       prompt: (sessionId, content) => invoke(IPC.invoke.agentPrompt, [{ sessionId, content }]),
     });
   });
@@ -80,6 +86,17 @@ export function registerScheduledIpc({
       runId: string;
     }>("scheduled.run", { id });
     scheduledRunsBySession.set(result.sessionId, result.runId);
+    // A manual run does not pass through the dispatcher, so it announces itself
+    // here; settlement still comes from the turn's own finalization (#1441).
+    const task = (result.task ?? {}) as { title?: string; workspacePath?: string };
+    onRunChanged?.({
+      runId: result.runId,
+      sessionId: result.sessionId,
+      taskId: id,
+      ...(task.title ? { taskTitle: task.title } : {}),
+      ...(task.workspacePath ? { projectPath: task.workspacePath } : {}),
+      status: "running",
+    });
     return result;
   });
 }

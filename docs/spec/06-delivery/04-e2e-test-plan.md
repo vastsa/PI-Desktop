@@ -9750,6 +9750,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Quality (loop context ownership) | E2E-RUNTIME-loop-context-ownership |
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
 | Quality (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
+| C — Conversation & stream (project status) | E2E-PROJECT-status-on-a-collapsed-row |
+| D — Workspace (project status) | E2E-PROJECT-status-on-a-collapsed-row |
+| Quality (project status) | E2E-PROJECT-status-on-a-collapsed-row |
+| M6+ (project status) | E2E-PROJECT-status-on-a-collapsed-row |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -17262,6 +17266,48 @@ host-created files. The full app's file-preview viewer is covered separately.
   Playwright can be supplied through `PI_TEST_PLAYWRIGHT`). Only the model server
   is simulated in the Electron flow. The fixture profile and screenshots stay
   under `.artifacts/` for inspection; no user profile or paid model is used.
+
+## Project status on a collapsed project row (#1441)
+
+### E2E-PROJECT-status-on-a-collapsed-row
+
+- **Preconditions**: one project with three conversations and one enabled
+  scheduled task bound to that project; a second project with its own
+  conversation; a stub model endpoint so a turn can be held open and released
+  on demand; the project's session group collapsed.
+- **Steps**: 1) Start two conversations of the project and dispatch the
+  scheduled task, then collapse the project. 2) Hold one turn while the other
+  finishes. 3) Let everything finish, then open one conversation and read its
+  result. 4) Repeat with a session that stops on a permission prompt or an
+  Ask/Plan decision, and with a failed turn. 5) Read the row's hint by hovering the
+  project's title and again by focusing it from the keyboard. 6) Reload the
+  renderer while a run is still in flight.
+- **Expected**: The collapsed project's header carries one small mark and no text.
+  While any of that project's conversations or scheduled runs is in flight it is
+  the session rows' own running dot, with the scheduled run counted in it and
+  split out by the hint. The second project's run never counts here. A session
+  that waits for the reader turns the dot purple and the hint names it first.
+  When one turn finishes while another still runs, the dot stays; once nothing
+  runs, the mark becomes one quiet count of the unread results, and that count
+  drops as each conversation is opened, exactly like the row's own outcome
+  badge. The mark adds no target of its own: the row shows it, explains it on
+  hover or keyboard focus, and clicking it behaves like the rest of the header. After a reload a run that started
+  before it is still reported.
+- **Specs linked**: `04-ux/08-component-spec.md` §3.4, §3.9a, §20A.4;
+  E2E-SCHEDULED-desktop-automation-lifecycle.
+- **Acceptance criterion**: C (conversation and stream), D (workspace), Quality
+- **Milestone**: M6+
+- **Status**: Partially automated — `apps/desktop/test/sidebar-project-status.test.mjs`
+  covers the aggregate (separate conversation and scheduled counts, another
+  project's run never counted, a run counted once when both the store and the
+  broadcast report it, the waiting-for-the-reader precedence, settled versus
+  running-with-results, and separator-insensitive project matching), and
+  `sidebar-project-status-contract.test.mjs` pins the wiring across the sidebar,
+  the store slice, the API bridge, the protocol event, and the main-process
+  announcements while `scheduled-runner.test.mjs` covers a run's own admission
+  and dispatch-failure announcements. The renderer
+  flow was exercised in the real desktop app against a throwaway profile and a
+  stub model server; no provider credential or paid call is used.
 
 ### E2E-COMPOSER-configured-context-window
 
