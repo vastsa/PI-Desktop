@@ -360,10 +360,24 @@ Node sidecar maps provider SDK errors into:
 
 - `PROVIDER_UNAUTHORIZED`
 - `PROVIDER_RATE_LIMITED`
+- `CONTEXT_TOO_LARGE`
 - `MODEL_NOT_CONFIGURED` (provider rejects the selected model with 404)
 - `PROVIDER_ERROR`
 - `NETWORK_ERROR`
 - `STREAM_FAILED`
+
+A provider message is `CONTEXT_TOO_LARGE` when pi-ai's `isContextOverflow`
+recognizes it from the message text — the same check that starts provider
+overflow recovery — or when it carries the context-length wording the
+classifier already matched (HTTP 413 always). The terminal code therefore
+agrees with the recovery decision for every overflow wording pi-ai knows, for
+example DashScope/Qwen `Range of input length should be`, z.ai `Prompt
+exceeds max length`, xAI `maximum prompt length is`, Groq, llama.cpp, and
+Bedrock `Input is too long for requested model`. `CONTEXT_TOO_LARGE` is never
+replayed by either retry budget, and a delegate reports it as
+`SUBAGENT_CONTEXT_OVERFLOW`. Rate-limit wording, including Bedrock's
+`Throttling error: Too many tokens, please wait before trying again.`, is
+classified first and stays `PROVIDER_RATE_LIMITED`.
 
 An exact `terminated` provider message and equivalent premature stream-close
 messages map to `STREAM_FAILED`. A request-setup or post-response

@@ -16,6 +16,10 @@ import { TooltipButton, cx } from "./ui";
 /** Default number of most-recent sessions shown per project group before the rest fold. */
 const MAX_VISIBLE_SESSIONS = 10;
 import { portalToBody } from "../lib/portal-visibility";
+import {
+  clampSidebarFloatingMenuTop,
+  SIDEBAR_MENU_VIEWPORT_PADDING,
+} from "../lib/sidebar-floating-menu";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { SessionHoverCard } from "../features/sessions/SessionHoverCard";
@@ -101,8 +105,6 @@ type ProjectEntry = {
   /** Best-effort git branch from the project workspace, if known. */
   branch?: string;
 };
-
-const VIEWPORT_PADDING = 8;
 
 /** Private MIME so a sidebar session drag is never mistaken for an OS file drop. */
 const SESSION_DRAG_MIME = "application/x-pi-desktop-session";
@@ -497,11 +499,8 @@ export function Sidebar({
   const placeMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setMenuPosition({
-      top: Math.max(
-        VIEWPORT_PADDING,
-        Math.min(rect.bottom + 4, window.innerHeight - 220),
-      ),
-      left: Math.max(VIEWPORT_PADDING, rect.right + 4),
+      top: clampSidebarFloatingMenuTop(rect.bottom + 4, window.innerHeight),
+      left: Math.max(SIDEBAR_MENU_VIEWPORT_PADDING, rect.right + 4),
     });
   }, []);
 
@@ -509,11 +508,8 @@ export function Sidebar({
   // of the trigger or pointer; they never flip to the left at the viewport edge.
   const placeMenuAtPoint = useCallback((x: number, y: number) => {
     setMenuPosition({
-      top: Math.max(
-        VIEWPORT_PADDING,
-        Math.min(y + 4, window.innerHeight - 220),
-      ),
-      left: Math.max(VIEWPORT_PADDING, x + 4),
+      top: clampSidebarFloatingMenuTop(y + 4, window.innerHeight),
+      left: Math.max(SIDEBAR_MENU_VIEWPORT_PADDING, x + 4),
     });
   }, []);
 

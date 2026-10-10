@@ -191,6 +191,60 @@ pub fn curl_proxy_args() -> Vec<String> {
     }
 }
 
+/// Keep Windows Schannel downloads working when a revocation distribution
+/// point is offline, while retaining normal certificate verification. Older
+/// curl versions used best-effort revocation checks by default; newer ones
+/// expose this flag explicitly.
+#[cfg(windows)]
+pub(crate) fn curl_tls_args() -> Vec<String> {
+    let (version, help) = curl_version_and_help();
+    curl_tls_args_for(&version, &help)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn curl_tls_args() -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(any(windows, test))]
+fn curl_tls_args_for(version: &[u8], help: &[u8]) -> Vec<String> {
+    let version = String::from_utf8_lossy(version).to_ascii_lowercase();
+    let option = b"--ssl-revoke-best-effort";
+    let supported = help.windows(option.len()).any(|window| window == option);
+    if version.contains("schannel") && supported {
+        vec![String::from_utf8_lossy(option).into_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+#[cfg(windows)]
+fn curl_version_and_help() -> (Vec<u8>, Vec<u8>) {
+    use std::process::Command;
+    use std::sync::OnceLock;
+
+    static CURL_TLS_ARGS: OnceLock<(Vec<u8>, Vec<u8>)> = OnceLock::new();
+    CURL_TLS_ARGS
+        .get_or_init(|| {
+            let version = Command::new("curl")
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| output.stdout)
+                .unwrap_or_default();
+            let help = Command::new("curl")
+                .args(["--help", "all"])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| output.stdout)
+                .unwrap_or_default();
+            (version, help)
+        })
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +327,16 @@ mod tests {
                 format!("socks5h://system-auto:{token}@127.0.0.1:43210")
             ]
         );
+    }
+
+    #[test]
+    fn curl_tls_args_only_use_supported_schannel_best_effort_revocation() {
+        let option = b"--ssl-revoke-best-effort";
+        assert_eq!(
+            curl_tls_args_for(b"curl 8.13.0 Schannel", option),
+            vec!["--ssl-revoke-best-effort"]
+        );
+        assert!(curl_tls_args_for(b"curl 8.13.0 OpenSSL", option).is_empty());
+        assert!(curl_tls_args_for(b"curl 7.55.1 Schannel", b"--ssl-no-revoke").is_empty());
     }
 }

@@ -589,8 +589,11 @@ fallback cannot be prepared, persisted, or kept below the safe budget, the user
 row and an assistant error remain durable and no provider request starts.
 Provider-reported context overflow is the last recovery layer: omit the failed
 assistant from model context, compact once, and retry once. A second overflow
-remains terminal. Bedrock's `prompt is too long: N tokens > M maximum` form
-maps to this path.
+remains terminal and is reported as `CONTEXT_TOO_LARGE`: the error classifier
+recognizes every overflow wording pi-ai's `isContextOverflow` recognizes, so a
+provider such as DashScope/Qwen or z.ai is not recovered as an overflow and then
+reported as a generic `PROVIDER_ERROR`. Bedrock's
+`prompt is too long: N tokens > M maximum` form maps to this path.
 
 Automatic protection is always enabled and is not user-configurable. The
 runtime still accepts a construction-time override that disables it, used by

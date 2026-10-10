@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { catalogs, en, flattenCatalog, ko, zhCN, zhTW } from "../src/index.ts";
+import { catalogs, en, flattenCatalog, ko, tr, zhCN, zhTW } from "../src/index.ts";
 
 const english = flattenCatalog(en);
 const chinese = flattenCatalog(zhCN);
 const traditional = flattenCatalog(zhTW);
 const korean = flattenCatalog(ko);
+const turkish = flattenCatalog(tr);
 
 test("shell status and crash copy stay user-facing", () => {
   assert.equal(english["app.tagline"], "Local AI coding partner");
@@ -65,6 +66,36 @@ test("common setup and marketplace copy avoid developer jargon", () => {
   assert.equal(korean["settings.language"], "언어");
   assert.equal(korean["nav.projects"], "프로젝트");
   assert.equal(korean["nav.temporarySessions"], "임시 대화");
+});
+
+test("Turkish cloud sync recovery copy stays localized", () => {
+  const keys = [
+    "settings.configSync.errorTitle",
+    "settings.configSync.errorDetails",
+    "settings.configSync.backupPasswordOptional",
+    "settings.configSync.passwordTooShort",
+    "settings.configSync.previewPending",
+    "settings.configSync.previewConflicts",
+    "settings.configSync.errors.auth",
+    "settings.configSync.errors.permission",
+    "settings.configSync.errors.notFound",
+    "settings.configSync.errors.conflict",
+    "settings.configSync.errors.quota",
+    "settings.configSync.errors.rateLimit",
+    "settings.configSync.errors.server",
+    "settings.configSync.errors.network",
+    "settings.configSync.errors.redirect",
+    "settings.configSync.errors.unsupported",
+    "settings.configSync.errors.locked",
+    "settings.configSync.errors.invalid",
+    "settings.configSync.errors.password",
+    "settings.configSync.errors.limit",
+    "settings.configSync.errors.unknown",
+  ];
+
+  for (const key of keys) {
+    assert.notEqual(turkish[key], english[key], `${key} must not fall back to English`);
+  }
 });
 
 test("Plan mode and Auto permission copy stay explicit in both locales", () => {

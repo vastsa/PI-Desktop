@@ -61,3 +61,27 @@ test("shape follows resize and becomes rectangular in maximized or fullscreen st
   assert.equal(window.listenerCount("resize"), 0);
   assert.equal(setWindowCornerRadius(window, 8), null);
 });
+
+test("native shape is re-applied after the window is shown or restored", () => {
+  const window = new EventEmitter();
+  let bounds = { x: 20, y: 30, width: 100, height: 80 };
+  let setShapeCalls = 0;
+  window.getBounds = () => bounds;
+  window.isDestroyed = () => false;
+  window.isMaximized = () => false;
+  window.isFullScreen = () => false;
+  window.setShape = () => { setShapeCalls += 1; };
+
+  installWindowShape(window);
+  assert.equal(setShapeCalls, 1);
+
+  window.emit("show");
+  assert.equal(setShapeCalls, 2);
+  window.emit("restore");
+  assert.equal(setShapeCalls, 3);
+
+  window.emit("closed");
+  window.emit("show");
+  window.emit("restore");
+  assert.equal(setShapeCalls, 3);
+});

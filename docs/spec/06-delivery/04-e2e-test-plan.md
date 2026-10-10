@@ -378,10 +378,13 @@
 
 - **Preconditions:** Image configuration UI fixture; English and Chinese.
 - **Steps:** Mark image models and save the provider; choose a different image
-  default from its summary; then unmark the sole image model and save.
+  default from its summary; pick a candidate the stored list no longer offers;
+  then unmark the sole image model and save.
 - **Expected:** Provider edits confirm the provider update, including after
   clearing the image selection. Explicit default selection keeps its specific
-  image-selection confirmation. Persisted bindings retain their existing behavior.
+  image-selection confirmation. A pick the page can no longer accept reports
+  that the image model could not be saved instead of keeping the previous
+  default silently. Persisted bindings retain their existing behavior.
 - **Specs:** 03-runtime/21-image-generation. **Acceptance:** B.
 - **Milestone:** Maintenance. **Status:** Automated by
 ### E2E-IMAGES-remove-configured-model
@@ -2820,13 +2823,18 @@ identify the platform validation still needed.
 
 #### E2E-021: Delete session works
 
-- **Preconditions**: Session exists.
-- **Steps**: 1) Delete a session. 2) Observe session list.
-- **Expected**: Session removed from list; data gone.
-- **Specs linked**: `03-runtime/04-data-storage.md`
+- **Preconditions**: A session exists near the bottom of the expanded Sidebar.
+- **Steps**: 1) Open its overflow menu. 2) Verify the menu and Delete action stay
+  inside the window. 3) Repeat in a short window and scroll the menu to its last
+  action. 4) Delete the session and observe the session list.
+- **Expected**: The menu stays within the viewport, the last action is reachable,
+  and the deleted session disappears from the list with its data removed.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `04-ux/09-interaction-patterns.md`
 - **Acceptance**: F (delete session)
 - **Milestone**: M2
-- **Status**: Draft
+- **Status**: Unit-covered (`sidebar-floating-menu.test.mjs`,
+  `sidebar-navigation.test.mjs`); rendered viewport scenario Draft
 
 #### E2E-021a: Rename session title persists without changing activity
 
@@ -3232,20 +3240,28 @@ identify the platform validation still needed.
 - **Acceptance**: G (remote marketplace source)
 - **Status**: Documented / host-core unit covered
 
-#### E2E-024Z: Windows localized curl diagnostics stay readable
+#### E2E-024Z: Windows curl handles offline revocation checks and localized errors
 
-- **Preconditions**: Windows x64 host. The official catalog request is forced
-  to fail with a localized, non-UTF-8 curl/Schannel diagnostic (a deterministic
-  fake curl in the test PATH may emit GBK stderr and exit 35).
-- **Steps**: 1) Open Extensions → Marketplace. 2) Refresh the marketplace.
-  3) Inspect the error toast.
-- **Expected**: The failed request remains a `PLUGIN_NETWORK` failure and
-  retains the readable localized diagnostic without Unicode replacement
-  characters; the marketplace remains on the official source.
+- **Preconditions**: Windows x64 host with curl built against Schannel. For the
+  offline-revocation case, use a proxy route that can reach the HTTPS fixture
+  while its certificate revocation distribution point is unavailable. For the
+  diagnostic case, force the catalog request to fail with localized, non-UTF-8
+  curl output (a deterministic fake curl may emit GBK stderr and exit 35).
+- **Steps**: 1) Open Extensions → Marketplace. 2) Refresh the catalog and
+  install a package through the system proxy while the revocation distribution
+  point is offline. 3) Confirm the installed curl advertises
+  `--ssl-revoke-best-effort` and inspect the verified package. 4) Force a
+  localized curl/Schannel failure, refresh again, and inspect the error toast.
+- **Expected**: When the installed Schannel curl supports the option, catalog
+  and package requests tolerate an unavailable revocation distribution point
+  without disabling certificate verification; package size and SHA-256 checks
+  still gate installation. A real network/TLS failure remains
+  `PLUGIN_NETWORK`, with localized diagnostics readable and no Unicode
+  replacement characters.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md`,
-  `03-runtime/07-process-model.md`
+  `03-runtime/07-process-model.md`, ADR 0177
 - **Acceptance**: G (remote marketplace source)
-- **Status**: Documented / host-core unit covered; Windows rendered validation pending
+- **Status**: Documented; host-core unit covered; Windows proxy/TLS validation pending
 
 #### E2E-024B: Marketplace install with permission review
 
@@ -12147,6 +12163,8 @@ This test plan spec is accepted when:
      `--radius-md` token, before and after
      resizing. Apply an authorized theme with `cornerRadius: 0`, then return to
      a built-in theme. Reject an out-of-range radius without changing the shape.
+  7. On Windows, minimize and restore the window, then confirm all four native
+     corner cutouts still match the selected radius.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 800×560 (capped to the display
   work area), and the recovery watchdog does not
@@ -12166,8 +12184,9 @@ This test plan spec is accepted when:
   ADR 0029 / ADR 0151 / ADR 0317
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
-- **Status**: `test:e2e:window-controls` covers corner cutouts, theme radius
-  changes, fullscreen, maximize, and controls in an isolated profile.
+- **Status**: `test:e2e:window-controls` covers corner cutouts before and after
+  minimize/restore, theme radius changes, fullscreen, maximize, and controls
+  in an isolated profile.
   `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
   drags and the 800×560 minimum; run it on a dedicated interactive desktop,
   since another app can take foreground or pointer input during the gesture.

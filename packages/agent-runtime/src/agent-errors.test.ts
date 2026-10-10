@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
 import {
   classifyAgentError,
   describeNetworkFailure,
 } from "./agent-errors.js";
+import { classifyProviderError } from "./provider-retry.js";
 
 describe("classifyAgentError", () => {
   it.each(["context-validation", "context-estimation", "request-preparation"])(
@@ -277,6 +279,43 @@ describe("classifyAgentError", () => {
     ).toMatchObject({ code: "CONTEXT_TOO_LARGE", retriable: false });
     expect(classifyAgentError("prompt is too long: 210000 tokens"))
       .toMatchObject({ code: "CONTEXT_TOO_LARGE" });
+  });
+
+  // Each message is what pi-ai 1.1.0 reports for that provider's overflow:
+  // OpenAI-compatible bodies arrive as "<status>: <body>", Bedrock as its
+  // exception prefix. pi-ai's `isContextOverflow` already sends every one of
+  // them to overflow recovery, so the terminal code has to agree.
+  it.each([
+    ["DashScope/Qwen", '400: {"code":"invalid_parameter_error","type":"invalid_request_error","message":"Range of input length should be [1, 98304]"}'],
+    ["z.ai", '400: {"code":"1261","message":"Prompt exceeds max length"}'],
+    ["xAI", "400: {\"message\":\"This model's maximum prompt length is 131072 but the request contains 537812 tokens.\"}"],
+    ["Groq", '400: {"message":"Please reduce the length of the messages or completion.","type":"invalid_request_error"}'],
+    ["llama.cpp", '400: {"code":400,"message":"the request exceeds the available context size, try increasing it","type":"exceed_context_size_error"}'],
+    ["Bedrock", "Validation error: Input is too long for requested model."],
+  ])("classifies the %s overflow pi-ai recovers from as CONTEXT_TOO_LARGE", (_provider, errorMessage) => {
+    const message = { role: "assistant", stopReason: "error", errorMessage };
+    expect(isContextOverflow(message as AssistantMessage)).toBe(true);
+    expect(classifyAgentError(message)).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+    });
+    expect(classifyProviderError(message)).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+    });
+  });
+
+  it("classifies Bedrock's token throttle as rate limiting, not an overflow", () => {
+    const message = {
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: "Throttling error: Too many tokens, please wait before trying again.",
+    };
+    expect(isContextOverflow(message as AssistantMessage)).toBe(false);
+    expect(classifyAgentError(message)).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
   });
 
   it("keeps context checkpoint failures distinct from provider failures", () => {

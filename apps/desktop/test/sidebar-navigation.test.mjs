@@ -185,10 +185,12 @@ test("sidebar floating menus open to the anchor's right", () => {
 
   assert.match(triggerPlacement, /left:\s*Math\.max\(/);
   assert.match(triggerPlacement, /rect\.right \+ 4/);
+  assert.match(triggerPlacement, /top:\s*clampSidebarFloatingMenuTop\(rect\.bottom \+ 4, window\.innerHeight\)/);
   assert.doesNotMatch(triggerPlacement, /window\.innerWidth/);
   assert.doesNotMatch(triggerPlacement, /right:\s*Math\.max/);
   assert.match(pointPlacement, /left:\s*Math\.max\(/);
   assert.match(pointPlacement, /x \+ 4/);
+  assert.match(pointPlacement, /top:\s*clampSidebarFloatingMenuTop\(y \+ 4, window\.innerHeight\)/);
   assert.doesNotMatch(pointPlacement, /window\.innerWidth/);
   assert.match(sidebarSource, /placeMenuAtPoint\(event\.clientX, event\.clientY\)/);
   assert.match(sidebarSource, /left: menuPosition\.left/);
@@ -204,6 +206,8 @@ test("portaled sort menu does not stretch to the viewport edge", () => {
 
   assert.match(basePopoverRule, /position:\s*fixed;/);
   assert.doesNotMatch(basePopoverRule, /position:\s*absolute;/);
+  assert.match(basePopoverRule, /max-height:\s*min\(360px,\s*calc\(100vh - 16px\)\);/);
+  assert.match(basePopoverRule, /overflow-y:\s*auto;/);
   assert.match(floatingPopoverRule, /top:\s*auto;/);
   assert.match(floatingPopoverRule, /right:\s*auto;/);
   assert.match(globalStyles, /\.sidebar-floating-menu\s*\{[^}]*width:\s*max-content;/s);

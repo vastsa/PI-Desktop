@@ -52,7 +52,10 @@ System mode sends host-core `curl` through Electron's authenticated loopback
 SOCKS relay, which resolves each destination using the active OS proxy/PAC
 configuration. Direct mode forces the marketplace request direct; Custom uses
 the configured proxy and bypass list. The relay credential is runtime-only and
-is not inherited by workspace shell commands.
+is not inherited by workspace shell commands. On Windows, host-core uses
+Schannel's best-effort revocation mode when the installed `curl` supports it,
+so an unavailable revocation distribution point does not block the HTTPS
+request; certificate verification and package size/hash checks remain enabled.
 
 The official catalog is the generated `catalog.json` the center publishes, and
 an install asks the platform where the package is instead of joining a relative

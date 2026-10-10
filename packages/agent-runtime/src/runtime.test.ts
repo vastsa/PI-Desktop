@@ -4712,6 +4712,66 @@ describe("DesktopAgentRuntime assistant thinking events", () => {
     await runtime.dispose();
   });
 
+  it.each([
+    ["DashScope/Qwen", '400: {"code":"invalid_parameter_error","message":"Range of input length should be [1, 98304]"}'],
+    ["z.ai", '400: {"code":"1261","message":"Prompt exceeds max length"}'],
+    ["Bedrock", "Validation error: Input is too long for requested model."],
+  ])("reports a second %s overflow with the code its recovery used", async (_provider, errorMessage) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const agent = (runtime as any).agent;
+    const handleAgentEvent = (runtime as any).handleAgentEvent.bind(runtime);
+    const user = { role: "user", content: "hello", timestamp: 1 };
+    const overflowMessage = (timestamp: number) => ({
+      ...assistantMessage({ content: [], stopReason: "error" }),
+      errorMessage,
+      timestamp,
+    });
+
+    agent.prompt = vi.fn(async () => {
+      const failed = overflowMessage(2);
+      agent.state.messages = [user, failed];
+      await handleAgentEvent({ type: "message_start", message: failed });
+      await handleAgentEvent({ type: "message_end", message: failed });
+      await handleAgentEvent({ type: "turn_end" });
+      await handleAgentEvent({ type: "agent_end", messages: [] });
+    });
+    agent.waitForIdle = vi.fn(async () => undefined);
+    const runCompaction = vi.fn(async () => true);
+    (runtime as any).runCompaction = runCompaction;
+    agent.continue = vi.fn(async () => {
+      const failed = overflowMessage(3);
+      await handleAgentEvent({ type: "agent_start" });
+      await handleAgentEvent({ type: "turn_start" });
+      await handleAgentEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      await handleAgentEvent({ type: "message_end", message: failed });
+      await handleAgentEvent({ type: "turn_end" });
+      await handleAgentEvent({ type: "agent_end", messages: [] });
+    });
+
+    await runtime.prompt("hello", "user-1");
+
+    // The first failure was recovered as an overflow...
+    expect(runCompaction).toHaveBeenCalledTimes(1);
+    expect(agent.continue).toHaveBeenCalledTimes(1);
+    // ...so the terminal one is reported as one, not as a provider error.
+    const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        error: expect.objectContaining({
+          code: "CONTEXT_TOO_LARGE",
+          retriable: false,
+        }),
+      }),
+    );
+
+    await runtime.dispose();
+  });
+
   it("does not recover provider overflow when automatic compaction is disabled", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({

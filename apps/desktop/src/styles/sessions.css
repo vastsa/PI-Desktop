@@ -479,6 +479,8 @@
   bottom: auto;
   z-index: 60;
   min-width: 172px;
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
   padding: 5px;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md-plus);

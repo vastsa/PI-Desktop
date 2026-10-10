@@ -353,10 +353,22 @@ Node sidecar 将提供商 SDK 错误映射到：
 
 - `PROVIDER_UNAUTHORIZED`
 - `PROVIDER_RATE_LIMITED`
+- `CONTEXT_TOO_LARGE`
 - `MODEL_NOT_CONFIGURED`（提供商拒绝选择的模型并返回 404）
 - `PROVIDER_ERROR`
 - `NETWORK_ERROR`
 - `STREAM_FAILED`
+
+当 pi-ai 的 `isContextOverflow` 仅凭消息文本识别出上下文溢出（即启动提供商
+溢出恢复的同一检查），或消息带有分类器原本就匹配的上下文长度措辞（HTTP 413
+始终如此）时，提供商消息归类为 `CONTEXT_TOO_LARGE`。因此对 pi-ai 已知的每种
+溢出措辞，终止错误码都与恢复决策一致，例如 DashScope/Qwen 的
+`Range of input length should be`、z.ai 的 `Prompt exceeds max length`、xAI 的
+`maximum prompt length is`、Groq、llama.cpp，以及 Bedrock 的
+`Input is too long for requested model`。`CONTEXT_TOO_LARGE` 不会进入任何重试
+预算，子代理会将其报告为 `SUBAGENT_CONTEXT_OVERFLOW`。限流措辞（包括 Bedrock 的
+`Throttling error: Too many tokens, please wait before trying again.`）优先判定，
+仍为 `PROVIDER_RATE_LIMITED`。
 
 精确的 `terminated` 提供商消息和等效的过早流关闭
 消息映射到 `STREAM_FAILED`。请求设置阶段或响应后的

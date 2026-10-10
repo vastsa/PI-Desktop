@@ -271,7 +271,8 @@ may be retained while exactly one workspace supplies the visible shell context.
   permanent delete, and the folder on disk is never touched. A project whose
   turn is still live still opens the confirmation dialog that names those
   sessions and stops them first; an idle project is removed on that second
-  click.
+  click. Sidebar overflow menus stay inside the window; a tall menu scrolls
+  within the available viewport so its last action remains reachable.
 - **Create branch** snapshots an idle conversation's complete active
   transcript into an independent session in the same project/Temporary scope.
   The command is disabled while the source runs. Success selects the child and

@@ -27,26 +27,32 @@ export function roundedWindowShape(width: number, height: number, radius: number
 export function installWindowShape(window: BrowserWindow, initialRadius = DEFAULT_WINDOW_CORNER_RADIUS) {
   let radius = initialRadius;
   let lastShape = "";
-  const apply = () => {
+  const apply = (force = false) => {
     if (window.isDestroyed()) return;
     const { width, height } = window.getBounds();
     const rectangular = window.isMaximized() || isWindowFullScreen(window);
     const shapeKey = `${width}:${height}:${rectangular ? 0 : radius}`;
-    if (shapeKey === lastShape) return;
+    if (!force && shapeKey === lastShape) return;
     window.setShape(rectangular ? [] : roundedWindowShape(width, height, radius));
     lastShape = shapeKey;
   };
+  // Windows can reset the native window region during visibility transitions.
+  const reapply = () => apply(true);
   window.on("resize", apply);
   window.on("maximize", apply);
   window.on("unmaximize", apply);
   window.on("enter-full-screen", apply);
   window.on("leave-full-screen", apply);
+  window.on("show", reapply);
+  window.on("restore", reapply);
   const dispose = () => {
     window.removeListener("resize", apply);
     window.removeListener("maximize", apply);
     window.removeListener("unmaximize", apply);
     window.removeListener("enter-full-screen", apply);
     window.removeListener("leave-full-screen", apply);
+    window.removeListener("show", reapply);
+    window.removeListener("restore", reapply);
     window.removeListener("closed", dispose);
     controllers.delete(window);
   };
