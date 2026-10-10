@@ -5,6 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "Activez ou désactivez la barre latérale translucide dans Apparence sur macOS, sans fenêtre vide ni processus orphelin après un redémarrage en développement. Les échecs d’enregistrement ou de demande de redémarrage permettent de réessayer ; un enregistrement réussi n’est plus signalé comme un échec, et la recherche par description mène au commutateur. Windows et Linux masquent ce réglage.",
       "Configurez le classificateur Jev de TypeSafe depuis Ajouter un service et vérifiez la clé API avant de l'enregistrer.",
       "Ajoutez depuis Ajouter un service des fournisseurs de plugins avec clé API, descriptions localisées et découverte des modèles après configuration.",
       "Les actions de plugins autorisées peuvent transformer le brouillon du Composer avec une annulation ; l'amélioration des prompts est désormais un plugin facultatif.",
@@ -22,7 +23,6 @@ export const frEntries: ChangelogEntry[] = [
     "version": "0.17.0",
     "date": "2026-10-07",
     "highlights": [
-      "Activez ou désactivez la barre latérale translucide dans Apparence sur macOS, sans fenêtre vide ni processus orphelin après un redémarrage en développement. Les échecs d’enregistrement ou de demande de redémarrage permettent de réessayer ; un enregistrement réussi n’est plus signalé comme un échec, et la recherche par description mène au commutateur. Windows et Linux masquent ce réglage.",
       "Ajoutez des images en ligne pendant la rédaction, puis prévisualisez-les dans la conversation une fois envoyées.",
       "Les références aux conversations s'affichent sous forme de pastilles lisibles et ouvrent directement la session liée.",
       "Choisissez les serveurs MCP et les outils que chaque message peut utiliser.",

@@ -25,6 +25,20 @@ function definePlatform(platform) {
   Object.defineProperty(process, "platform", { configurable: true, value: platform });
 }
 
+function paintedColor(color) {
+  const rgba = /^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/.exec(color);
+  if (rgba) return rgba.slice(1).map(Number);
+  // Electron's eight-digit hexadecimal form is AARRGGBB, not RRGGBBAA.
+  assert.match(color, /^#[\da-f]{6}(?:[\da-f]{2})?$/i);
+  const rgbStart = color.length === 9 ? 3 : 1;
+  return [
+    Number.parseInt(color.slice(rgbStart, rgbStart + 2), 16),
+    Number.parseInt(color.slice(rgbStart + 2, rgbStart + 4), 16),
+    Number.parseInt(color.slice(rgbStart + 4, rgbStart + 6), 16),
+    color.length === 9 ? Number.parseInt(color.slice(1, 3), 16) / 255 : 1,
+  ];
+}
+
 function backgroundHarness({
   t,
   platform = "darwin",
@@ -39,7 +53,7 @@ function backgroundHarness({
   const window = {
     isDestroyed: () => destroyed,
     setBackgroundColor(color) {
-      colors.push(color);
+      colors.push(paintedColor(color));
     },
   };
   const handlers = new Map();
@@ -93,10 +107,7 @@ test("opaque macOS paints the built-in light and dark plates", async (t) => {
     color: builtinWindowBackground("dark"),
     cornerRadius: null,
   });
-  assert.deepEqual(colors, [
-    builtinWindowBackground("light"),
-    builtinWindowBackground("dark"),
-  ]);
+  assert.deepEqual(colors, [[255, 255, 255, 1], [24, 24, 24, 1]]);
 });
 
 test("a contributed colour is applied then restored from the built-in table", async (t) => {
@@ -113,7 +124,13 @@ test("a contributed colour is applied then restored from the built-in table", as
     color: builtinWindowBackground("dark"),
     cornerRadius: null,
   });
-  assert.deepEqual(colors, ["#112233", builtinWindowBackground("dark")]);
+  assert.deepEqual(colors, [[17, 34, 51, 1], [24, 24, 24, 1]]);
+});
+
+test("opaque macOS preserves a plugin background's RGB channels and alpha", async (t) => {
+  const { invoke, colors } = backgroundHarness({ t, vibrancy: false });
+  await invoke({ theme: "dark", color: "#11223380" });
+  assert.deepEqual(colors, [[17, 34, 51, 128 / 255]]);
 });
 
 test("macOS vibrancy leaves the native plate untouched", async (t) => {
@@ -133,7 +150,7 @@ test("linux still paints when the macOS vibrancy callback would skip", async (t)
     color: builtinWindowBackground("light"),
     cornerRadius: null,
   });
-  assert.deepEqual(colors, [builtinWindowBackground("light")]);
+  assert.deepEqual(colors, [[255, 255, 255, 1]]);
 });
 
 test("invalid colour, theme, and radius are refused", async (t) => {

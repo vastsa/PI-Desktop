@@ -22,7 +22,7 @@ import {
   DEFAULT_WINDOW_CORNER_RADIUS,
   setWindowCornerRadius,
 } from "../window-shape";
-import { applyMainWindowBackground } from "../window-background";
+import { applyMainWindowBackground, toElectronBackgroundColor } from "../window-background";
 import type { IpcRegistrar } from "./types";
 
 export type WindowIpcDependencies = {
@@ -148,7 +148,13 @@ export function registerWindowIpc({
           typeof requestedRadius === "number" ? requestedRadius : DEFAULT_WINDOW_CORNER_RADIUS,
         )
       : null;
-    applyMainWindowBackground(mainWindow, process.platform, color);
+    if (process.platform === "darwin") {
+      // The shared painter leaves the native glass plate alone. This branch
+      // runs only when sidebar vibrancy is disabled and the window is opaque.
+      mainWindow.setBackgroundColor(toElectronBackgroundColor(color));
+    } else {
+      applyMainWindowBackground(mainWindow, process.platform, color);
+    }
     return { applied: true, theme, color, cornerRadius };
   });
 

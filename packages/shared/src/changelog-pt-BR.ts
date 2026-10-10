@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     "version": "0.18.0",
     "date": "2026-10-09",
     "highlights": [
+      "Ative ou desative a barra lateral translúcida em Aparência no macOS, sem janelas vazias nem processos órfãos após reiniciar em desenvolvimento. Falhas ao salvar ou solicitar o reinício permitem tentar novamente; salvamentos bem-sucedidos não aparecem como falhas, e a busca pela descrição leva ao interruptor. Windows e Linux omitem essa configuração.",
       "Configure o classificador Jev da TypeSafe em Adicionar serviço e valide a chave de API antes de salvá-la.",
       "Adicione em Adicionar serviço provedores de plugins com chave de API, descrições localizadas e descoberta de modelos após a configuração.",
       "Ações autorizadas de plugins podem transformar o rascunho do Composer com opção de desfazer; o aprimoramento de prompts agora é um plugin opcional.",
@@ -22,7 +23,6 @@ export const ptBREntries: ChangelogEntry[] = [
     "version": "0.17.0",
     "date": "2026-10-07",
     "highlights": [
-      "Ative ou desative a barra lateral translúcida em Aparência no macOS, sem janelas vazias nem processos órfãos após reiniciar em desenvolvimento. Falhas ao salvar ou solicitar o reinício permitem tentar novamente; salvamentos bem-sucedidos não aparecem como falhas, e a busca pela descrição leva ao interruptor. Windows e Linux omitem essa configuração.",
       "Anexe imagens em linha enquanto escreve e visualize as imagens enviadas dentro da conversa.",
       "As referências de conversa aparecem como chips legíveis e abrem diretamente a sessão vinculada.",
       "Escolha quais servidores MCP e ferramentas cada prompt pode usar.",

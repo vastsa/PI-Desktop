@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.18.0",
     date: "2026-10-09",
     highlights: [
+      "On macOS, turn the translucent sidebar on or off from Appearance, including development restarts without a blank window or orphaned processes. Failed saves or restart requests remain retryable, successful saves no longer become false failures, and description search locates the switch. Windows and Linux omit this setting.",
       "Set up TypeSafe's Jev classifier from Add Service and verify its API key before saving.",
       "Add plugin-owned API-key services from Add Service, with localized descriptions and model discovery after setup.",
       "Authorized plugin actions can transform a Composer draft with undo; prompt enhancement now runs as an optional plugin.",
@@ -22,7 +23,6 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.17.0",
     date: "2026-10-07",
     highlights: [
-      "On macOS, turn the translucent sidebar on or off from Appearance, including development restarts without a blank window or orphaned processes. Failed saves or restart requests remain retryable, successful saves no longer become false failures, and description search locates the switch. Windows and Linux omit this setting.",
       "Attach images inline as you compose, then preview sent images in their place in the conversation.",
       "See conversation references as readable chips and open the linked session directly.",
       "Choose the MCP servers and tools each prompt can use.",
