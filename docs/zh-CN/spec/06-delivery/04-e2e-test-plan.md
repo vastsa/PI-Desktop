@@ -7036,7 +7036,8 @@ eleven-tool-round desktop paths are verified by
   4. 在 Windows 上检查默认 12 DIP 圆角在调整大小前后保持一致；选择获授权
      的 `cornerRadius: 0` 主题，再切回内置主题，确认恢复为全局 `--radius-md`；
      输入超过 24 DIP 的半径应被拒绝。
-  5. 等待调整大小稳定后关闭并重新启动应用。
+  5. 在 Windows 上最小化并恢复窗口，然后确认四个原生圆角仍与所选半径一致。
+  6. 等待调整大小稳定后关闭并重新启动应用。
 - **预期**：无边框外壳仍提供原生边缘和角落命中区域；Windows 默认圆角使用
   全局 12 DIP `--radius-md`，最大化/全屏时为矩形。最小尺寸保持
   800×560（按显示器工作区裁剪），恢复看门狗不会与慢速调整大小流竞争。最后稳定的基础边界会
@@ -7046,7 +7047,7 @@ eleven-tool-round desktop paths are verified by
   `04-ux/09-interaction-patterns.md`、ADR 0029 / ADR 0122 / ADR 0317 / D637
 - **验收**：A（应用外壳）、F（坚持）、质量
 - **里程碑**：M6+
-- **状态**：`test:e2e:window-controls` 覆盖圆角裁切、主题半径变化、全屏、最大化和窗口控件；
+- **状态**：`test:e2e:window-controls` 覆盖最小化/恢复前后的圆角裁切、主题半径变化、全屏、最大化和窗口控件；
   Windows 原生拖动需在专用交互式桌面上运行 `test:e2e:window-resize-native`。
 
 #### E2E-168：展开侧边栏宽度跟随锚定的调整手势

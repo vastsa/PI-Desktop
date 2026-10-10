@@ -12163,6 +12163,8 @@ This test plan spec is accepted when:
      `--radius-md` token, before and after
      resizing. Apply an authorized theme with `cornerRadius: 0`, then return to
      a built-in theme. Reject an out-of-range radius without changing the shape.
+  7. On Windows, minimize and restore the window, then confirm all four native
+     corner cutouts still match the selected radius.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 800×560 (capped to the display
   work area), and the recovery watchdog does not
@@ -12182,8 +12184,9 @@ This test plan spec is accepted when:
   ADR 0029 / ADR 0151 / ADR 0317
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
-- **Status**: `test:e2e:window-controls` covers corner cutouts, theme radius
-  changes, fullscreen, maximize, and controls in an isolated profile.
+- **Status**: `test:e2e:window-controls` covers corner cutouts before and after
+  minimize/restore, theme radius changes, fullscreen, maximize, and controls
+  in an isolated profile.
   `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
   drags and the 800×560 minimum; run it on a dedicated interactive desktop,
   since another app can take foreground or pointer input during the gesture.

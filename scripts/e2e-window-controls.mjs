@@ -360,6 +360,7 @@ try {
     await waitFor(() => evaluate(`document.visibilityState === 'visible'`), "native window shown");
     await settle();
     await checkControls("restored after native minimize");
+    await checkWindowsRoundedCorners("corners remain transparent after native minimize and restore");
     // Configure only the disposable profile so close-to-tray can be observed
     // without leaving a blocking native confirmation dialog on the test runner.
     await evaluate(`window.piDesktop.invoke('pi-desktop/window/closeBehavior/set', {behavior:'tray'})`);
