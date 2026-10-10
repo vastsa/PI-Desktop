@@ -128,6 +128,11 @@ async function checkWindowsRoundedCorners(
         ]);
         corners = JSON.parse(stdout.trim());
         probeError = undefined;
+        if (corners.windowsBuild >= 22000) {
+          return corners.cornerMode === "dwm-native" &&
+            corners.innerCornerOwned === true && corners.thickFrameStyle === false &&
+            corners.nativeHitSampleCount > 0;
+        }
         return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
           corners.bottomLeftCutout === rounded && corners.bottomRightCutout === rounded &&
           corners.innerCornerOwned === true && corners.gridMismatches === 0 &&
@@ -140,17 +145,26 @@ async function checkWindowsRoundedCorners(
   } catch (error) {
     throw new Error(`${label}: ${JSON.stringify(corners)}; ${probeError ?? String(error)}`);
   }
-  assert.deepEqual([
-    corners.topLeftCutout,
-    corners.topRightCutout,
-    corners.bottomLeftCutout,
-    corners.bottomRightCutout,
-  ], [rounded, rounded, rounded, rounded], label);
+  if (corners.windowsBuild < 22000) {
+    assert.deepEqual([
+      corners.topLeftCutout,
+      corners.topRightCutout,
+      corners.bottomLeftCutout,
+      corners.bottomRightCutout,
+    ], [rounded, rounded, rounded, rounded], label);
+  }
   assert.equal(corners.innerCornerOwned, true, label);
   assert.equal(corners.thickFrameStyle, false, label);
-  assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
+  if (corners.windowsBuild < 22000) {
+    assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
+  }
   assert.ok(corners.insideSamples > 0, `${label}: inside hit samples`);
-  if (rounded) assert.ok(corners.outsideSamples > 0, `${label}: outside click-through samples`);
+  if (rounded && corners.windowsBuild < 22000) {
+    assert.ok(corners.outsideSamples > 0, `${label}: outside click-through samples`);
+  }
+  if (corners.windowsBuild >= 22000) {
+    console.log(`INFO ${label}: native DWM corner hit behavior recorded: ${JSON.stringify(corners.nativeCornerHitBehavior)}`);
+  }
   console.log(`PASS ${label}: ${JSON.stringify(corners)}`);
 }
 
@@ -196,7 +210,7 @@ async function checkNativeWindowResizes(edges) {
     }
     console.log(`PASS native ${edge} drag: ${stdout.trim()}`);
   }
-  await checkWindowsRoundedCorners("resized window corners remain transparent");
+  await checkWindowsRoundedCorners("resized window corner behavior remains correct");
 }
 
 try {
@@ -258,7 +272,7 @@ try {
   await waitFor(() => evaluate(`document.querySelector('.app-work-panel-toggle')?.disabled === false`), "active session");
   await settle();
   await checkControls("panel closed");
-  await checkWindowsRoundedCorners("normal window corners are transparent");
+    await checkWindowsRoundedCorners("normal window corner behavior");
   await checkNativeWindowResizes(["left-min", "bottom-min"]);
   await click(".app-work-panel-toggle");
   await waitFor(() => evaluate(`!!document.querySelector('.work-panel')`), "panel opened");
@@ -334,9 +348,9 @@ try {
     assert.equal((await setRadius(defaultWindowCornerRadius)).ok, true);
     await checkWindowsRoundedCorners("theme switch restores the global radius token");
     assert.equal((await setRadius(24)).ok, true);
-    await checkWindowsRoundedCorners("authorized theme can request 24 DIP corners", true, 24);
+    await checkWindowsRoundedCorners("authorized theme can request a 24 DIP rounded preference", true, 24);
     assert.equal((await setRadius(defaultWindowCornerRadius)).ok, true);
-    await checkWindowsRoundedCorners("returning to the default radius restores 12 DIP corners");
+    await checkWindowsRoundedCorners("returning to the default radius restores the 12 DIP request");
     const loaded = await evaluate(`window.piDesktop.invoke(
       'pi-desktop/plugin/loadDevConfirm',
       { path: ${JSON.stringify(radiusPluginPath)}, grantedPermissions: ['ui.theme', 'ui.window.appearance'] }
@@ -372,7 +386,7 @@ try {
     await waitFor(() => evaluate(`document.visibilityState === 'visible'`), "native window shown");
     await settle();
     await checkControls("restored after native minimize");
-    await checkWindowsRoundedCorners("corners remain transparent after native minimize and restore");
+    await checkWindowsRoundedCorners("corner behavior after native minimize and restore");
     // Configure only the disposable profile so close-to-tray can be observed
     // without leaving a blocking native confirmation dialog on the test runner.
     await evaluate(`window.piDesktop.invoke('pi-desktop/window/closeBehavior/set', {behavior:'tray'})`);

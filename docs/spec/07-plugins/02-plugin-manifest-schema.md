@@ -193,7 +193,7 @@ providers?: PluginProviderContrib[]; // Host-owned provider rows; needs `provide
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
  scenicThemes?: PluginScenicThemesContrib;
- windowAppearance?: PluginWindowAppearanceContrib; // native window background and Windows corner radius; needs `ui.window.appearance`
+ windowAppearance?: PluginWindowAppearanceContrib; // native window background and Windows corner request; needs `ui.window.appearance`
  composerTransforms?: PluginComposerTransformContrib[]; // explicit Composer text actions; needs `composer.transform`
  mcpServers?: PluginMcpServerContrib[];
   services?: PluginServiceContrib[];
@@ -294,7 +294,11 @@ type PluginWindowAppearanceContrib = {
 declared themes is selected. It does not change macOS/Linux native corners.
 Removing the theme or its `ui.window.appearance` grant restores the Windows
 main-window default of 12 DIP (`--radius-md`). Invalid or fractional values
-reject the manifest.
+reject the manifest. On Windows build 22000 and later, 0 requests square
+corners and every positive value requests the same native DWM rounded
+preference; Windows chooses the exact radius. Earlier Windows builds retain the
+requested DIP radius. On Windows 11, an 8-digit background is composited over
+the resolved built-in theme color so the top-level window remains opaque.
 
 type PluginSkillContrib = {
  id?: string; // defaults to the file name without its extension

@@ -1983,8 +1983,8 @@ not touch the tray icon: D216 (ADR 0078) creates one at startup on every
 platform, and minimize-to-tray needs it whichever close behavior is stored.
 
 Maximize/unmaximize changes also emit
-`window/event/maximized`. Unknown actions fail. These Electron-only channels
-do not cross into host-core and do not change the host RPC protocol version.
+`window/event/maximized`. Unknown actions fail. These window-control channels
+remain Electron-only and do not change the host RPC protocol version.
 The preload exposes no arbitrary BrowserWindow bounds or resize channel.
 Windows retains Electron's native frameless edge/corner hit testing with
 `thickFrame: false`; the renderer does not submit window geometry.
@@ -1994,13 +1994,17 @@ the window-control state and fullscreen event use the tracked value.
 `window/setBackgroundColor` remains Electron-local and main-renderer-only. Its
 optional `cornerRadius` is an integer from 0 to 24 DIP; omission restores the
 Windows main-window default of 12 DIP, matching the global `--radius-md` token.
-Main applies the selected radius on theme selection and resize, and makes the
-surface rectangular during maximize/fullscreen. In the proposed ADR 0325
-implementation, Windows keeps the outer native window transparent and applies
-the theme color to the shared rounded content view; Linux keeps the native
-window background, and macOS keeps its existing vibrancy behavior. This
-internal rendering change does not alter the IPC request or response and
-remains pending Windows native qualification.
+On Windows build 22000 and later, Main maps radius 0 to the native square
+preference and every positive radius to the DWM system-rounded preference;
+maximized/fullscreen states request square corners. Windows chooses the actual
+positive radius. The top-level surface stays opaque, and an alpha background is
+flattened over the built-in background for the resolved theme. Earlier Windows
+builds retain the existing `contentView` clip and native shape behavior. Linux
+keeps the native window background, and macOS keeps its existing vibrancy
+behavior. The internal Main-to-Host Core DWM call checks that the HWND belongs
+to the Electron process; it is not exposed through preload, renderer IPC, or the
+plugin API. This does not alter the `window/setBackgroundColor` request or
+response and remains pending Windows native qualification.
 Malformed values fail with `INVALID_ARGUMENT` before changing the background.
 Plugin panel chrome uses a separate Electron-local
 `pi-plugin-panel-window-control` channel with the same four semantic actions,

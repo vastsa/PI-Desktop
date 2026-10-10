@@ -38,6 +38,20 @@ test("constructor background options keep only the Windows outer surface transpa
   assert.deepEqual(mainWindowBackgroundOptions("darwin", "#ffffff"), {});
 });
 
+test("Windows 11 uses an opaque top-level background", () => {
+  assert.deepEqual(mainWindowBackgroundOptions("win32", "#12345680", true, "#ffffff"), {
+    transparent: false,
+    backgroundColor: "#8899aa",
+  });
+
+  const windows11 = makeWindow();
+  assert.equal(
+    applyMainWindowBackground(windows11, "win32", "#00000080", true, "#ffffff"),
+    true,
+  );
+  assert.deepEqual(windows11.calls, [["window", "#7f7f7f"]]);
+});
+
 test("background updates target the rounded content view on Windows and native window on Linux", () => {
   const windows = makeWindow();
   assert.equal(applyMainWindowBackground(windows, "win32", "#12345680"), true);

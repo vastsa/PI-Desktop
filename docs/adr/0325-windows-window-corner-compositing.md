@@ -1,4 +1,4 @@
-# ADR 0325: Smooth Windows main-window corner compositing
+# ADR 0325: Use native DWM corners for the Windows 11 main window
 
 - Status: Proposed; implementation candidate awaits Windows native qualification
 - Date: 2026-10-10
@@ -7,74 +7,83 @@
 
 ## Context
 
-The Windows main window currently uses an opaque `BrowserWindow` background
-and a row-based `setShape()` region. The native region controls drawing and
-pointer hit testing together, so its integer rectangles produce a hard edge.
-The opaque window background can also remain visible behind rounded content
-and expose a second color at the lower corners. Renderer CSS alone cannot clip
-native `WebContentsView` children such as the browser and plugin panel.
+The Windows main window currently uses a transparent outer window,
+`contentView.setBorderRadius()` for the visible clip, and `setShape()` for the
+native hit region. This keeps child views inside one clip, but depends on
+Electron transparency and a window region. Windows 11's DWM corner API may
+ignore its rounding hint for windows that use per-pixel alpha or a window
+region, so that path cannot guarantee the system-rendered curve.
 
-Electron 43.6.0 exposes `View.setBorderRadius()` on the shared `contentView`.
-It clips the view tree with a smooth path, but its cutout still captures clicks.
-The existing native region therefore remains necessary for click-through and
-must be broad enough not to cut off antialiased pixels.
+The Windows 11 API provides `DWMWA_WINDOW_CORNER_PREFERENCE`. Its `ROUND`
+preference is a system hint, not a promise of a specific radius or that every
+window style will be rounded. Windows 11 deliberately keeps maximized and
+snapped windows square. See Microsoft's guidance on
+[rounded corners](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/ui/apply-rounded-corners)
+and the [`DWM_WINDOW_CORNER_PREFERENCE` values](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_window_corner_preference).
 
 ## Decision
 
-Propose the following implementation for the Windows main window, subject to
-the qualification gate below:
-
 For the Windows main window only:
 
-1. Create the `BrowserWindow` with a transparent outer surface.
-2. Apply the built-in or validated plugin theme background to the shared
-   `contentView`, then apply the selected radius with
-   `contentView.setBorderRadius()`. Child `WebContentsView` content remains
-   inside that common clip.
-3. Keep `BrowserWindow.setShape()` as the native hit region. Generate it from
-   the actual content-view dimensions and refresh it after resize, monitor/DPI,
-   maximize, fullscreen, show, and restore transitions. The hit region includes
-   antialias edge coverage without becoming the visible curve.
-4. Preserve the 12 DIP default, integer 0–24 DIP authorized theme range,
-   existing IPC validation and response, and square corners while maximized or
-   fullscreen. A return to a normal window restores the selected radius.
-5. Convert plugin `#RRGGBB` / `#RRGGBBAA` values to explicit `rgba(...)` before
-   passing them to Electron. Keep Linux's native window background behavior
-   and macOS vibrancy/background behavior unchanged.
-
-No renderer CSS radius, resize IPC, database change, plugin API change, shadow
-setting, outer margin, or companion window is introduced.
+1. On Windows build 22000 and later, create an opaque, frameless window and
+   request the native DWM corner preference through the existing Electron Main
+   to Host Core process boundary. Do not call `setShape()` or
+   `contentView.setBorderRadius()` on this path.
+2. Host Core accepts only the HWND whose owning PID matches the Electron PID
+   injected by Electron Main when it starts Host Core. No plugin, renderer, or
+   standalone-window API is added.
+3. Map radius `0` and maximized/fullscreen states to `DWMWCP_DONOTROUND`. Map
+   every positive authorized radius to `DWMWCP_ROUND`. Windows 11 owns the
+   visible system radius; values 1 through 24 DIP do not select distinct exact
+   radii. The public plugin range and default remain unchanged.
+4. Keep the existing transparent content clip and native shape path on Windows
+   builds before 22000. Keep macOS, Linux, plugin standalone windows, and
+   floating components unchanged.
+5. On the Windows 11 path, keep the top-level surface opaque. A contributed
+   `#rrggbbaa` background is flattened over the resolved built-in theme
+   background before it is applied, so alpha does not create per-pixel window
+   transparency.
+6. Keep the existing `window/setBackgroundColor` request and response,
+   validation, theme fallback, geometry persistence, and native frameless edge
+   resize behavior. No renderer corner state, resize emulation, database field,
+   plugin permission, setting, or public API is added.
 
 ## Qualification gate
 
-This decision remains proposed until a dedicated Windows desktop proves all
-of the following with Electron 43.6.0:
+This decision remains proposed until a dedicated Windows desktop running
+Electron 43.6.0 proves all of the following:
 
-- Composited screenshots show a smooth curve at all four corners and only
-  expected blending between content and the known desktop background.
-- Transparent corners and pixels outside the rounded silhouette pass hit
-  testing through to the background window.
-- Browser/plugin child views stay clipped by the common parent.
-- Native edge and corner resizing, the work-area-capped 800×560 minimum,
-  window-state restoration, and settled bounds persistence still work.
-- The result holds at 100%, 125%, 150%, 175%, and 200% scaling. Different-DPI
-  monitor movement is also checked when a suitable desktop is available.
+- Windows 11 displays a DWM-rounded opaque main window with radius 0 square and
+  positive radii rounded; tests do not assume 12 and 24 DIP produce different
+  system radii.
+- Theme changes update the opaque native background, including alpha
+  flattening and fallback after a theme is disabled or removed.
+- Browser and plugin child views remain within the top-level visible outline.
+- Maximize, fullscreen, restore, minimize, show, and DPI changes restore the
+  correct system preference.
+- Native edge/corner resizing, the work-area-capped 800×560 minimum, settled
+  bounds persistence, and the existing window placement behavior remain intact.
+- The native corner hit behavior is recorded on Windows 11; this path no longer
+  promises `setShape()` click-through outside the rounded silhouette.
+- Windows builds before 22000 retain the existing rounded shape and native
+  resize behavior. macOS and Linux regressions are also checked.
 
-`test:e2e:window-controls` samples native hit ownership. The isolated
-`test:e2e:window-surface` fixture samples the composed screen pixels over
-controlled light and dark backgrounds at radii 0, 12, and 24 DIP. If those
-checks show that transparent click-through and smooth rendering cannot coexist,
-do not accept the implementation; revise the approach and record the measured
-failure first.
+The `DWM_WINDOW_CORNER_PREFERENCE` API is explicitly best-effort. If the
+Windows 11 build used for qualification does not render the requested rounded
+window with this Electron style, do not call the candidate complete; record the
+observed behavior and revise the approach.
 
 ## Consequences
 
-- The theme background is painted inside the same rounded native view that
-  clips the renderer and its child views, removing a separate opaque corner
-  plate.
-- `setShape()` remains part of native interaction, but no longer defines the
-  visible curve.
-- Windows transparency and resize behavior require the native qualification
-  above. This candidate is not release-qualified until that evidence exists.
-- macOS/Linux windows, plugin standalone windows, floating widgets, persisted
-  geometry, and the public window IPC remain unchanged.
+- Windows 11 uses the system's antialiased corner rendering and native corner
+  hit behavior. It no longer uses transparent pixels or an integer `setShape()`
+  region for the visible silhouette.
+- Positive theme radii keep their range and meaning as “rounded,” but Windows
+  11 chooses the radius. Windows builds before 22000 retain the prior exact DIP
+  clip behavior.
+- DWM may decline to round a window based on its style or environment, and
+  Windows may keep snapped or virtualized windows square. Windows native
+  qualification is required before release claims.
+- The Windows 11 background stays opaque; alpha colors are composited against
+  the built-in palette. Other platforms keep their existing background and
+  vibrancy behavior.

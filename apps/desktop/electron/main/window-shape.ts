@@ -8,6 +8,10 @@ const controllers = new WeakMap<BrowserWindow, { setRadius: (radius: number) => 
 
 type WindowShapeScreen = Pick<Screen, "getDisplayMatching" | "on" | "removeListener">;
 
+export function normalizeWindowCornerRadius(radius: number): number {
+  return Math.max(0, Math.min(MAX_WINDOW_CORNER_RADIUS, Math.round(radius)));
+}
+
 /**
  * Build a native hit region that contains the antialiased edge painted by the
  * content view. The content view owns the visible curve; this region only
@@ -42,7 +46,7 @@ export function installWindowShape(
   initialRadius = DEFAULT_WINDOW_CORNER_RADIUS,
   windowScreen?: WindowShapeScreen,
 ) {
-  let radius = Math.max(0, Math.min(MAX_WINDOW_CORNER_RADIUS, Math.round(initialRadius)));
+  let radius = normalizeWindowCornerRadius(initialRadius);
   let lastShape = "";
   const apply = (force = false) => {
     if (window.isDestroyed()) return;
@@ -95,7 +99,7 @@ export function installWindowShape(
 
   const controller = {
     setRadius(next: number) {
-      radius = Math.max(0, Math.min(MAX_WINDOW_CORNER_RADIUS, Math.round(next)));
+      radius = normalizeWindowCornerRadius(next);
       apply();
       return radius;
     },

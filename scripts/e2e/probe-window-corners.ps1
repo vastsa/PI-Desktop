@@ -34,6 +34,8 @@ if (-not [CornerProbe]::GetWindowRect($appWindow, [ref]$rect)) { throw 'Cannot r
 $dpi = [CornerProbe]::GetDpiForWindow($appWindow)
 if ($dpi -eq 0) { throw 'Cannot read E2E window DPI' }
 $scaleFactor = $dpi / 96.0
+$windowsBuild = [Environment]::OSVersion.Version.Build
+$nativeDwm = $windowsBuild -ge 22000
 $radiusPixels = $cornerRadius * $scaleFactor
 
 function Test-AppAt([int]$pointX, [int]$pointY) {
@@ -47,6 +49,8 @@ function Test-CornerGrid([string]$corner) {
   $mismatches = 0
   $insideSamples = 0
   $outsideSamples = 0
+  $observedWindowSamples = 0
+  $observedOutsideSamples = 0
   $extent = [int][Math]::Ceiling($radiusPixels + 3)
   # The conservative integer-DIP hit region includes the rasterized AA edge;
   # scale the ignored fringe to physical pixels for high-DPI displays.
@@ -79,6 +83,7 @@ function Test-CornerGrid([string]$corner) {
         $screenY = $rect.Bottom - 1 - $localY
       }
       $actualInside = Test-AppAt $screenX $screenY
+      if ($actualInside) { $observedWindowSamples += 1 } else { $observedOutsideSamples += 1 }
       if ($expectedInside) { $insideSamples += 1 } else { $outsideSamples += 1 }
       if ($actualInside -ne $expectedInside) { $mismatches += 1 }
     }
@@ -87,6 +92,8 @@ function Test-CornerGrid([string]$corner) {
     mismatches = $mismatches
     insideSamples = $insideSamples
     outsideSamples = $outsideSamples
+    observedWindowSamples = $observedWindowSamples
+    observedOutsideSamples = $observedOutsideSamples
   }
 }
 
@@ -115,6 +122,8 @@ foreach ($corner in @('topLeft', 'topRight', 'bottomLeft', 'bottomRight')) {
   bottomRightCutout = $bottomRightCutout
   innerCornerOwned = $innerCornerOwned
   thickFrameStyle = ([CornerProbe]::GetWindowLong($appWindow, -16) -band 0x00040000) -ne 0
+  windowsBuild = $windowsBuild
+  cornerMode = if ($nativeDwm) { 'dwm-native' } else { 'legacy-shape' }
   dpi = $dpi
   scaleFactor = $scaleFactor
   radiusDip = $cornerRadius
@@ -122,5 +131,8 @@ foreach ($corner in @('topLeft', 'topRight', 'bottomLeft', 'bottomRight')) {
   gridMismatches = $gridMismatches
   insideSamples = $insideSamples
   outsideSamples = $outsideSamples
+  nativeHitSampleCount = ($grid.Values | ForEach-Object { $_.observedWindowSamples } | Measure-Object -Sum).Sum
+  nativeOutsideSampleCount = ($grid.Values | ForEach-Object { $_.observedOutsideSamples } | Measure-Object -Sum).Sum
+  nativeCornerHitBehavior = $grid
   corners = $grid
 } | ConvertTo-Json -Compress -Depth 5

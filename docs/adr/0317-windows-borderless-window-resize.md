@@ -31,26 +31,26 @@ Electron's `thickFrame: false` fullscreen path changes display bounds without
 setting the value returned by `isFullScreen()`. Main tracks this fallback so
 fullscreen toggles, renderer events, and persisted normal bounds remain correct.
 
-Apply the global `--radius-md` shape (12 DIP) to the Windows main window.
-The previous 4 DIP cutout was too small to read as a rounded corner and did not
-match the shared design scale. Electron's
-`setShape` removes both drawing and pointer hit testing outside its rectangles,
-so the corner cutouts have no opaque fill while the existing native background
-colour remains theme-owned inside the window. Main reapplies the shape on
-resize, and makes it rectangular while maximized or fullscreen. A plugin with
+On Windows builds before 22000, keep the existing 12 DIP `--radius-md`
+`contentView` clip and native `setShape()` hit region. A plugin with
 `ui.window.appearance` may declare an integer `cornerRadius` from 0 to 24 DIP
-alongside its background colours. The selected theme supplies it through the
-existing window-appearance IPC; removing the theme restores 12 DIP. Main validates
-the value and the calling renderer before changing the native shape.
+alongside its background colours; the selected theme supplies it through the
+existing window-appearance IPC, and removing the theme restores 12 DIP. Main
+validates the value and the calling renderer before changing the shape.
+
+On Windows build 22000 and later, ADR 0325 replaces both the visible `setShape()`
+curve and the shared content-view clip with the system DWM corner preference.
+Zero remains square and any positive radius requests a system-rounded window;
+DWM does not promise distinct 12 or 24 DIP radii. This path requires an opaque
+top-level window and leaves native corner hit behavior to Windows.
 
 ### Proposed rendering amendment
 
-ADR 0325 proposes moving visible Windows corner painting to the shared native
-`contentView.setBorderRadius()` clip while retaining `setShape()` for the
-native hit region. The proposal keeps this ADR's resize and minimum-size
-contracts. It remains an implementation candidate until the Windows pixel,
-click-through, DPI, and resize checks in E2E-167 pass; the accepted baseline
-above is not qualified by source-level or mocked tests alone.
+ADR 0325 proposes the DWM path for Windows 11 and later while keeping the
+existing shape path for older Windows builds. It keeps this ADR's native
+resize and minimum-size contracts. The candidate remains unqualified until
+Windows pixel, corner-hit, DPI, and resize checks in E2E-167 pass; source-level
+or mocked checks alone do not qualify it.
 
 ## Alternatives
 
@@ -75,10 +75,10 @@ above is not qualified by source-level or mocked tests alone.
   this thick-frame-free window retains its current bounds. An external CSS
   shadow would need transparent window margin or a companion surface, changing
   window geometry and lifecycle; this decision does not add a shadow setting.
-- `setShape` is an experimental Electron API and its pixel-row curve is not
-  anti-aliased by Windows. Native corner hit testing is qualified on the target
-  Electron version rather than assumed from CSS. ADR 0325 proposes a separate
-  smooth draw clip, pending the Windows qualification described above.
+- Windows builds before 22000 retain the non-antialiased pixel-row `setShape()`
+  curve and its native hit region. Windows 11 and later use DWM's best-effort
+  system curve and native hit behavior; that API does not promise click-through
+  in clipped corner pixels. Both paths need the platform checks in E2E-167.
 - The Plugin SDK gains one optional, permission-gated appearance property. Old
   manifests remain valid. No host RPC, database schema, or persisted format
   changes.

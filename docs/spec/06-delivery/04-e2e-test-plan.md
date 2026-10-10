@@ -12247,15 +12247,21 @@ This test plan spec is accepted when:
      maximum, then verify the target follows the live budget (`client width - 360px - expanded sidebar`) instead of a fixed cap.
   4. Close and relaunch the app after the resize settles.
   5. On Windows, start an edge gesture, press Escape, and verify original bounds
-     return. Release the pointer outside the original window bounds, then
-     maximize and enter fullscreen; native hit regions must not block
-     window controls or content in those states.
-  6. On Windows, inspect the default 12 DIP rounded corners, matching the
-     global `--radius-md` token, before and after resizing. Apply authorized
-     theme radii of 0 and 24 DIP, then return to a built-in theme. Reject an
-     out-of-range radius without changing the surface.
-  7. On Windows, minimize and restore the window, then confirm all four native
-     corners still match the selected radius.
+     return. Maximize and enter fullscreen; corners must be square in both
+     states. Restore the window and confirm the selected corner preference
+     returns. Record native corner hit behavior rather than assuming that DWM
+     corners pass clicks through.
+  6. On Windows, inspect the default 12 DIP corner request before and after
+     resizing. Apply authorized theme radii of 0 and 24 DIP, then return to a
+     built-in theme. Radius 0 must be square. On Windows 11, positive values
+     request the same system-rounded preference and are not asserted as exact
+     DIP radii; on earlier Windows builds, the existing clip retains its exact
+     DIP behavior. Reject an out-of-range radius without changing the surface.
+  7. On Windows, minimize and restore the window, then confirm the selected
+     corner preference is applied again. Open browser and plugin child views and
+     confirm their pixels stay within the top-level silhouette. On Windows 11,
+     also verify alpha theme colors are flattened over the built-in theme
+     background on an opaque top-level window.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 800×560 (capped to the display
   work area), and the recovery watchdog does not
@@ -12265,25 +12271,30 @@ This test plan spec is accepted when:
   Electron's frameless native hit regions without the thick-frame rim; no left, bottom,
   or right native rim is visible. No temporary
   work-panel reservation width is persisted or restored.
-  The four normal-window corners follow the active radius; the default is the
-  global 12 DIP `--radius-md` radius, an authorized theme may choose 0..24 DIP,
-  and maximized/fullscreen windows are rectangular. In the proposed ADR 0325
-  implementation, composited pixels blend only between the corner content and
-  the known desktop background, the common content view clips browser/plugin
-  children, and points beyond the antialiased pixel fringe pass hit testing
-  through.
+  Windows 11 uses DWM's native rounded preference for positive radii and a
+  square preference for radius 0, maximize, and fullscreen. The default request
+  remains 12 DIP and authorized themes retain the integer 0..24 DIP range, but
+  DWM selects the actual positive radius and the test does not require 12 and
+  24 to look different. Its top-level surface is opaque, including when a
+  contributed alpha color is flattened over the built-in theme background.
+  Earlier Windows builds retain the existing content clip and integer shape
+  hit region. Browser/plugin child views stay within the top-level outline;
+  Windows 11 corner click behavior is recorded as native system behavior and
+  is not treated as `setShape()` click-through.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   ADR 0029 / ADR 0151 / ADR 0317 / ADR 0325
 - **Acceptance**: A (app shell), F (persistence), Quality
 - **Milestone**: M6+
-- **Status**: `test:e2e:window-controls` covers corner hit regions before and
+- **Status**: `test:e2e:window-controls` covers corner preferences before and
   after minimize/restore, theme radius changes, fullscreen, maximize, and
   controls in an isolated profile. The isolated `test:e2e:window-surface`
-  candidate samples controlled light/dark desktop backgrounds and the shared
-  parent clip at radii 0, 12, and 24 DIP. Both Windows suites still require a
-  dedicated Windows desktop; source tests do not qualify native compositing.
+  candidate samples controlled light/dark desktop backgrounds and child-view
+  bounds. Windows 11 additionally verifies the opaque DWM path and system
+  preference; earlier Windows builds verify the legacy clip and shape path.
+  Both Windows suites still require a dedicated Windows desktop; source tests
+  do not qualify native compositing.
   `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
   drags and the 800×560 minimum; run it on a dedicated interactive desktop,
   since another app can take foreground or pointer input during the gesture.

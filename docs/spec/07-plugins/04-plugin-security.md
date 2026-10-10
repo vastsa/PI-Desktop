@@ -119,7 +119,12 @@ before it is ever sent to the UI:
   the selected one; leaving the theme restores the host background, because the
   appearance is derived from the live catalog rather than remembered. macOS
   keeps `vibrancy` and its native corner behavior; Linux retains native corner
-  behavior; Windows defaults to the global 12 DIP `--radius-md` token
+  behavior. Windows defaults to a 12 DIP corner request. On Windows 11 (build
+  22000+), radius 0 requests square corners and positive values use the same
+  system-rounded preference, while the OS chooses the actual radius; alpha
+  backgrounds are composited over the resolved built-in theme color to keep the
+  top-level window opaque. Earlier Windows builds retain the requested DIP
+  radius
 - The CSS is read from disk at load time and delivered whole over IPC; the
   renderer injects it into a single dedicated `<style>` element appended after
   the app's own stylesheets, so it can override tokens but never inject markup.

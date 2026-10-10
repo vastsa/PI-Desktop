@@ -20,8 +20,8 @@ import {
 } from "../work-panel-window";
 import {
   DEFAULT_WINDOW_CORNER_RADIUS,
-  setWindowCornerRadius,
 } from "../window-shape";
+import { applyWindowCornerRadius, usesWindows11NativeCorners } from "../window-native-corners";
 import { applyMainWindowBackground, toElectronBackgroundColor } from "../window-background";
 import type { IpcRegistrar } from "./types";
 
@@ -142,19 +142,29 @@ export function registerWindowIpc({
     const color = isWindowBackgroundColor(requested)
       ? requested
       : builtinWindowBackground(theme);
-    const cornerRadius = process.platform === "win32"
-      ? setWindowCornerRadius(
-          mainWindow,
-          typeof requestedRadius === "number" ? requestedRadius : DEFAULT_WINDOW_CORNER_RADIUS,
-        )
-      : null;
+    const windows11NativeCorners = process.platform === "win32" && usesWindows11NativeCorners(
+      process.platform,
+      process.getSystemVersion(),
+    );
     if (process.platform === "darwin") {
       // The shared painter leaves the native glass plate alone. This branch
       // runs only when sidebar vibrancy is disabled and the window is opaque.
       mainWindow.setBackgroundColor(toElectronBackgroundColor(color));
     } else {
-      applyMainWindowBackground(mainWindow, process.platform, color);
+      applyMainWindowBackground(
+        mainWindow,
+        process.platform,
+        color,
+        windows11NativeCorners,
+        builtinWindowBackground(theme),
+      );
     }
+    const cornerRadius = process.platform === "win32"
+      ? await applyWindowCornerRadius(
+          mainWindow,
+          typeof requestedRadius === "number" ? requestedRadius : DEFAULT_WINDOW_CORNER_RADIUS,
+        )
+      : null;
     return { applied: true, theme, color, cornerRadius };
   });
 

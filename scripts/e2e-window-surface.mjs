@@ -78,7 +78,10 @@ async function runSurfaceCase(radius, backdropColor, backdropName) {
   const env = { ...process.env,
     PI_DESKTOP_ELECTRON_PACKAGE: join(appDir, "node_modules", "electron"),
     PI_DESKTOP_WINDOW_SHAPE: join(appDir, "electron", "main", "window-shape.ts"),
+    PI_DESKTOP_WINDOW_NATIVE_CORNERS: join(appDir, "electron", "main", "window-native-corners.ts"),
     PI_DESKTOP_WINDOW_BACKGROUND: join(appDir, "electron", "main", "window-background.ts"),
+    PI_DESKTOP_E2E_HOST_HELPER: join(root, "scripts", "e2e", "host.mjs"),
+    PI_DESKTOP_SURFACE_PROFILE: profile,
     PI_DESKTOP_SURFACE_RADIUS: String(radius),
     PI_DESKTOP_SURFACE_BACKDROP: backdropColor,
   };
@@ -101,15 +104,19 @@ async function runSurfaceCase(radius, backdropColor, backdropName) {
       screenshotPath,
     ], { timeout: 30_000, maxBuffer: 2_000_000 });
     const result = JSON.parse(stdout.trim());
+    assert.equal(result.cornerMode, fixture.cornerMode, "fixture and screen probe agree on the Windows corner path");
     assert.equal(result.totalMismatches, 0, `${backdropName}, radius ${radius}: ${JSON.stringify(result.mismatches)}`);
     assert.ok(result.insideSamples > 0, `${backdropName}, radius ${radius}: interior samples`);
+    if (result.cornerMode === "dwm-native") {
+      assert.equal(result.nativeBackgroundSample, true, `${backdropName}, radius ${radius}: opaque alpha-composited window background`);
+    }
     if (radius > 0) {
       assert.ok(result.outsideSamples > 0, `${backdropName}, radius ${radius}: exterior samples`);
       for (const [corner, values] of Object.entries(result.cornerResults)) {
         assert.ok(values.edgeBlendPixels > 0, `${backdropName}, radius ${radius}: ${corner} has an antialiased edge`);
       }
     }
-    console.log(`PASS surface ${backdropName}, ${radius} DIP: dpi=${result.dpi}, ` +
+    console.log(`PASS surface ${backdropName}, ${radius} DIP request (${result.cornerMode}): dpi=${result.dpi}, ` +
       `scale=${result.scaleFactor}, physical=${result.physicalBounds.width}x${result.physicalBounds.height}, ` +
       `edge blends=${result.edgeBlendPixels}, screenshot=${screenshotPath}`);
   } finally {

@@ -41,6 +41,9 @@ if (-not [SurfaceProbe]::GetWindowRect($window, [ref]$rect)) { throw 'Cannot rea
 $dpi = [SurfaceProbe]::GetDpiForWindow($window)
 if ($dpi -eq 0) { throw 'Cannot read surface fixture DPI' }
 $scaleFactor = $dpi / 96.0
+$windowsBuild = [Environment]::OSVersion.Version.Build
+$nativeDwm = $windowsBuild -ge 22000
+$cornerMode = if ($nativeDwm) { 'dwm-native' } else { 'legacy-shape' }
 $radiusPixels = $cornerRadius * $scaleFactor
 $windowWidth = $rect.Right - $rect.Left
 $windowHeight = $rect.Bottom - $rect.Top
@@ -74,14 +77,25 @@ $backdrop = Convert-HexColor $backdropColor
 $lightContent = Convert-HexColor '#f6f6f6'
 $darkContent = Convert-HexColor '#181818'
 $childContent = Convert-HexColor '#d61f69'
+$windowBackground = if ($nativeDwm) {
+  Convert-HexColor '#7f7f7f'
+} else {
+  Convert-HexColor '#fafafa'
+}
 $childInset = [int][Math]::Round(48 * $scaleFactor)
-$extent = [int][Math]::Ceiling($radiusPixels + 3)
+$backgroundHalfWidth = [int][Math]::Ceiling(24 * $scaleFactor)
+$extent = if ($nativeDwm) {
+  [int][Math]::Ceiling(24 * $scaleFactor + 3)
+} else {
+  [int][Math]::Ceiling($radiusPixels + 3)
+}
 $boundaryTolerance = [Math]::Max(1.25, $scaleFactor * 0.75)
 $colorTolerance = 3
 $results = @{}
 $mismatches = [System.Collections.Generic.List[object]]::new()
 $totalMismatches = 0
 $edgeBlendPixels = 0
+$nativeBackgroundSample = $null
 $insideSamples = 0
 $outsideSamples = 0
 $bitmap = [System.Drawing.Bitmap]::new($windowWidth, $windowHeight)
@@ -89,6 +103,10 @@ $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 try {
   $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
   $bitmap.Save($screenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+  if ($nativeDwm) {
+    $backgroundPixel = $bitmap.GetPixel([int][Math]::Floor($windowWidth / 2), [int][Math]::Floor($windowHeight / 2))
+    $nativeBackgroundSample = Test-ColorNear $backgroundPixel ([System.Drawing.Color]::FromArgb(127, 127, 127)) $colorTolerance
+  }
 
   foreach ($corner in @('topLeft', 'topRight', 'bottomLeft', 'bottomRight')) {
     $cornerMismatches = 0
@@ -102,39 +120,62 @@ try {
 
         $pixelX = $localX + 0.5
         $pixelY = $localY + 0.5
-        if ($cornerRadius -eq 0 -or $pixelX -ge $radiusPixels -or $pixelY -ge $radiusPixels) {
+        $actual = $bitmap.GetPixel($fromLeft, $fromTop)
+        if ($fromLeft -ge ($windowWidth - $childInset) -and $fromTop -ge ($windowHeight - $childInset)) {
+          $foreground = $childContent
+        } elseif ([Math]::Abs(($fromLeft + 0.5) - ($windowWidth / 2)) -lt $backgroundHalfWidth) {
+          $foreground = $windowBackground
+        } elseif ($fromLeft -lt ($windowWidth / 2)) {
+          $foreground = $lightContent
+        } else {
+          $foreground = $darkContent
+        }
+
+        if ($nativeDwm) {
+          $nearForeground = Test-ColorNear $actual $foreground $colorTolerance
+          $nearBackdrop = Test-ColorNear $actual $backdrop $colorTolerance
+          $isBlend = (Test-ColorBlend $actual $foreground $backdrop $colorTolerance) -and
+            -not $nearForeground -and -not $nearBackdrop
+          if ($nearForeground) {
+            $insideSamples += 1
+            $valid = $true
+          } elseif ($cornerRadius -gt 0 -and $nearBackdrop) {
+            $outsideSamples += 1
+            $valid = $true
+          } elseif ($cornerRadius -gt 0 -and $isBlend) {
+            $cornerBlends += 1
+            $edgeBlendPixels += 1
+            $valid = $true
+          } else {
+            $valid = $false
+          }
+          $insideCurve = $nearForeground
+        } elseif ($cornerRadius -eq 0 -or $pixelX -ge $radiusPixels -or $pixelY -ge $radiusPixels) {
           $insideCurve = $true
           $boundaryDistance = [double]::PositiveInfinity
+          $insideSamples += 1
+          $valid = Test-ColorNear $actual $foreground $colorTolerance
         } else {
           $dx = $radiusPixels - $pixelX
           $dy = $radiusPixels - $pixelY
           $distance = [Math]::Sqrt($dx * $dx + $dy * $dy)
           $insideCurve = $distance -lt $radiusPixels
           $boundaryDistance = [Math]::Abs($distance - $radiusPixels)
-        }
-
-        $actual = $bitmap.GetPixel($fromLeft, $fromTop)
-        if (-not $insideCurve) {
-          $outsideSamples += 1
-          $valid = Test-ColorNear $actual $backdrop $colorTolerance
-        } else {
-          $insideSamples += 1
-          if ($fromLeft -ge ($windowWidth - $childInset) -and $fromTop -ge ($windowHeight - $childInset)) {
-            $foreground = $childContent
-          } elseif ($fromLeft -lt ($windowWidth / 2)) {
-            $foreground = $lightContent
+          if (-not $insideCurve) {
+            $outsideSamples += 1
+            $valid = Test-ColorNear $actual $backdrop $colorTolerance
           } else {
-            $foreground = $darkContent
-          }
-          if ($boundaryDistance -le $boundaryTolerance) {
-            $valid = Test-ColorBlend $actual $foreground $backdrop $colorTolerance
-            if ($valid -and -not (Test-ColorNear $actual $foreground $colorTolerance) -and
-              -not (Test-ColorNear $actual $backdrop $colorTolerance)) {
-              $cornerBlends += 1
-              $edgeBlendPixels += 1
+            $insideSamples += 1
+            if ($boundaryDistance -le $boundaryTolerance) {
+              $valid = Test-ColorBlend $actual $foreground $backdrop $colorTolerance
+              if ($valid -and -not (Test-ColorNear $actual $foreground $colorTolerance) -and
+                -not (Test-ColorNear $actual $backdrop $colorTolerance)) {
+                $cornerBlends += 1
+                $edgeBlendPixels += 1
+              }
+            } else {
+              $valid = Test-ColorNear $actual $foreground $colorTolerance
             }
-          } else {
-            $valid = Test-ColorNear $actual $foreground $colorTolerance
           }
         }
 
@@ -163,6 +204,9 @@ try {
 @{
   dpi = $dpi
   scaleFactor = $scaleFactor
+  windowsBuild = $windowsBuild
+  cornerMode = $cornerMode
+  nativeBackgroundSample = $nativeBackgroundSample
   radiusDip = $cornerRadius
   physicalBounds = @{ width = $windowWidth; height = $windowHeight }
   backdropColor = $backdropColor

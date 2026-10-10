@@ -121,7 +121,10 @@ export class HostProcess extends RuntimeHostProcess {
       // Only Electron knows whether this build runs from `resources/` or a
       // source checkout, so it resolves the bundled-plugin directory and
       // host-core simply reconciles its registry against it (ADR 0105).
-      env: builtinPlugins ? { PI_DESKTOP_BUILTIN_PLUGINS_DIR: builtinPlugins } : {},
+      env: {
+        PI_DESKTOP_ELECTRON_PID: String(process.pid),
+        ...(builtinPlugins ? { PI_DESKTOP_BUILTIN_PLUGINS_DIR: builtinPlugins } : {}),
+      },
       onStderr: onStderr ?? fallbackStderrLogger,
       diagnoseFailure: diagnoseHostFailure,
     });

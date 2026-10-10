@@ -248,11 +248,11 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
   );
 
   // The platform helper receives the built-in fallback selected from the
-  // native theme. Windows paints it inside the rounded content surface;
-  // Linux keeps its native window background behavior.
+  // native theme. Windows 11 keeps its DWM surface opaque; earlier Windows
+  // builds and Linux retain their existing background behavior.
   assert.match(
     mainWindowBlock,
-    /\.\.\.mainWindowBackgroundOptions\(process\.platform, initialWindowBackground\)/,
+    /\.\.\.mainWindowBackgroundOptions\(\s*process\.platform,\s*initialWindowBackground,\s*windows11NativeCorners,/,
   );
   assert.match(
     windowSource,
