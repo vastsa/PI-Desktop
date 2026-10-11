@@ -149,21 +149,30 @@ export function createPluginServices({
     }
   };
   /**
-   * The refs one managed transcript carries, as recorded by the plugin's own
-   * `appendManaged` before it ever asked for the bytes. Rust resolves the
-   * ownership; Main only asks.
+   * Record that the host itself moved these bytes for this managed transcript.
+   *
+   * This is the only source of read authorization. The transcript is
+   * plugin-writable — `appendManaged` validates a ref's shape, not its origin —
+   * so "the ref appears in that transcript" cannot be the gate: a plugin could
+   * append another session's `attachments/<sha256>` and then read those bytes.
+   * A row written here can only come from a path that actually moved the bytes.
    */
-  const managedRefs = async (sessionId: string, pluginId: string): Promise<string[]> => {
+  const grantManagedRef = async (
+    pluginId: string,
+    sessionId: string,
+    ref: string,
+    origin: "host" | "plugin",
+  ): Promise<void> => {
     const host = getHost();
     if (!host) throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
-    const result = await host.call<{ refs?: unknown }>("session.managedRefs", { sessionId, pluginId });
-    return Array.isArray(result.refs) ? (result.refs as string[]) : [];
+    await host.call("session.managedGrantRef", { sessionId, ref, origin, pluginId });
   };
   /**
    * A read is only as narrow as the ref it names. The blob store is shared by
    * every session on this machine, so ownership of one managed session is not
-   * enough: the ref must appear in *that* transcript. A ref that belongs to an
-   * ordinary session, or to a managed session owned by another plugin, is
+   * enough: the host must have recorded provenance for that exact ref on that
+   * transcript. A ref belonging to an ordinary session, to another plugin's
+   * managed session, or appended by this plugin into its own transcript is
    * refused here and never reaches the store.
    */
   const assertManagedAttachmentRef = async (
@@ -172,10 +181,14 @@ export function createPluginServices({
   ): Promise<void> => {
     const ref = typeof input.ref === "string" ? input.ref.trim() : "";
     const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
-    const carried = await managedRefs(sessionId, pluginId);
-    // The ownership gate has already run, so `managedRefs` answered from this
-    // session's own transcript; anything it does not list belongs elsewhere.
-    if (!carried.includes(ref)) {
+    const host = getHost();
+    if (!host) throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
+    const result = await host.call<{ granted?: unknown }>("session.managedAuthorizeRef", {
+      sessionId,
+      ref,
+      pluginId,
+    });
+    if (result.granted !== true) {
       throw Object.assign(new Error("Attachment does not belong to this session"), { code: "PERMISSION_DENIED" });
     }
   };
@@ -442,7 +455,15 @@ export function createPluginServices({
       },
       writeManagedAttachment: (pluginId, input) => managedAttachments.write(pluginId, input),
       commitManagedAttachment: async (pluginId, input) => {
+        // The ownership check runs before the bytes are hashed into place, so a
+        // foreign sessionId cannot leave a committed blob behind a thrown error.
+        await assertManagedAttachmentOwner(pluginId, input);
         const committed = await managedAttachments.commit(pluginId, input);
+        // The plugin moved these bytes itself, so the host records the ref as
+        // readable on this transcript. Without this row a later
+        // `readManagedAttachment` for the ref would be refused.
+        const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+        await grantManagedRef(pluginId, sessionId, committed.ref, "plugin");
         // A newly stored blob makes a previously placeholder-only message
         // renderable, so tell the renderer the transcript changed.
         sendToRenderer(IPC.event.sessionsChanged, {
@@ -790,5 +811,10 @@ export function createPluginServices({
     pluginViews,
     browserHost,
     speech,
+    // The managed-session router stages native Composer attachments before the
+    // send reaches the plugin, so it records their provenance through the same
+    // gate the plugin's own `commitManagedAttachment` uses.
+    grantManagedAttachment: (pluginId: string, sessionId: string, ref: string) =>
+      grantManagedRef(pluginId, sessionId, ref, "host"),
   };
 }

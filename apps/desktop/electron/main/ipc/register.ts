@@ -94,6 +94,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     togglePluginLauncher,
     safeOpenExternal,
     updater,
+    pluginServices,
     dataDir,
     activeTurns,
     isTurnDispatchable,
@@ -400,6 +401,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
         return result.session?.projectPath ?? undefined;
       },
       submit: (pluginId, input) => plugins.submitManagedSession(pluginId, input),
+      grantAttachment: (pluginId, sessionId, ref) =>
+        pluginServices.grantManagedAttachment(pluginId, sessionId, ref),
       dataDir,
     }),
     getHost,

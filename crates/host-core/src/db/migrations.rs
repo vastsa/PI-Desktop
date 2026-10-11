@@ -984,3 +984,30 @@ pub(crate) fn migrate_v21_to_v22(conn: &Connection, path: &Path) -> Result<()> {
     })?;
     Ok(())
 }
+
+/// Adds the managed-attachment provenance table.
+///
+/// A pre-existing managed transcript carries attachment descriptors in its
+/// JSONL but no provenance rows, so it starts unreadable: the host cannot tell
+/// a blob it staged from a foreign ref the plugin wrote into its own
+/// transcript. That is the intended direction — the plugin re-reads bytes
+/// through its own upload path — and it is what closes the cross-session read
+/// this table exists to prevent.
+pub(crate) fn migrate_v23_to_v24_tx(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    tx.execute_batch(crate::db::MANAGED_ATTACHMENTS_DDL)?;
+    tx.pragma_update(None, "user_version", 24i64)?;
+    Ok(())
+}
+
+pub(crate) fn migrate_v23_to_v24(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 23)?;
+    let tx = conn.unchecked_transaction()?;
+    migrate_v23_to_v24_tx(&tx)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v23 to v24 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}

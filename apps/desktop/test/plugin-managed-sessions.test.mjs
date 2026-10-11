@@ -18,7 +18,7 @@ const { createManagedSessionRouter } = await import(`data:text/javascript;base64
 
 test('native text submit reaches only the durable owner and returns a plugin receipt', async () => {
   const received = [];
-  const router = createManagedSessionRouter({ owner: async id => id === 'room' ? 'plugin.one' : null, submit: async (...args) => received.push(args), dataDir: '/tmp', projectPath: async () => undefined });
+  const router = createManagedSessionRouter({ owner: async id => id === 'room' ? 'plugin.one' : null, submit: async (...args) => received.push(args), dataDir: '/tmp', projectPath: async () => undefined, grantAttachment: async () => {} });
   assert.equal(await router.prompt({ sessionId: 'normal', content: 'ordinary' }), null);
   assert.deepEqual(await router.prompt({ sessionId: 'room', content: 'hello', messageId: 'stable-id' }), { accepted: true, managed: true, turnId: 'stable-id' });
   assert.deepEqual(received, [['plugin.one', { sessionId: 'room', content: 'hello', messageId: 'stable-id', attachments: [] }]]);
@@ -27,9 +27,9 @@ test('native text submit reaches only the durable owner and returns a plugin rec
 });
 
 test('unavailable owner and host read failures never fall back to ordinary prompting', async () => {
-  const router = createManagedSessionRouter({ owner: async () => 'plugin.one', submit: async () => { throw new Error('disabled'); }, dataDir: '/tmp', projectPath: async () => undefined });
+  const router = createManagedSessionRouter({ owner: async () => 'plugin.one', submit: async () => { throw new Error('disabled'); }, dataDir: '/tmp', projectPath: async () => undefined, grantAttachment: async () => {} });
   await assert.rejects(router.prompt({ sessionId: 'room', content: 'hello' }), /disabled/);
-  const failedRead = createManagedSessionRouter({ owner: async () => { throw new Error('host unavailable'); }, submit: async () => assert.fail(), dataDir: '/tmp', projectPath: async () => undefined });
+  const failedRead = createManagedSessionRouter({ owner: async () => { throw new Error('host unavailable'); }, submit: async () => assert.fail(), dataDir: '/tmp', projectPath: async () => undefined, grantAttachment: async () => {} });
   await assert.rejects(failedRead.prompt({ sessionId: 'room', content: 'hello' }), /host unavailable/);
 });
 
@@ -37,7 +37,7 @@ test('pending submissions serialize; failure releases the fence; attachments are
   let finish;
   let call = 0;
   const received = [];
-  const router = createManagedSessionRouter({ owner: async () => 'plugin.one', submit: async (_plugin, input) => { call++; received.push(input); await new Promise(resolve => { finish = resolve; }); }, dataDir: '/tmp', projectPath: async () => undefined });
+  const router = createManagedSessionRouter({ owner: async () => 'plugin.one', submit: async (_plugin, input) => { call++; received.push(input); await new Promise(resolve => { finish = resolve; }); }, dataDir: '/tmp', projectPath: async () => undefined, grantAttachment: async () => {} });
   const first = router.prompt({ sessionId: 'room', content: 'one' });
   await new Promise(resolve => setImmediate(resolve));
   await assert.rejects(router.prompt({ sessionId: 'room', content: 'two' }), { errorCode: 'BUSY' });
@@ -65,6 +65,7 @@ test('a prompt in flight during project-path resolution already holds the fence'
     submit: async (_plugin, input) => { call++; received.push(input); },
     dataDir: '/tmp',
     projectPath: async () => { await new Promise(resolve => { releasePath = resolve; }); return undefined; },
+    grantAttachment: async () => {},
   });
   const first = router.prompt({ sessionId: 'room', content: 'one' });
   await new Promise(resolve => setImmediate(resolve));
@@ -101,6 +102,7 @@ test('a failing project-path read fails the submission instead of executing loca
     projectPath: async () => {
       throw Object.assign(new Error('session read window must use non-negative messageBefore and positive messageLimit'), { code: 'INVALID_PARAMS' });
     },
+    grantAttachment: async () => {},
   });
   await assert.rejects(router.prompt({ sessionId: 'room', content: 'hello' }), /positive messageLimit/);
 });
@@ -112,7 +114,8 @@ test('voice origin is refused and an attachment becomes a content-addressed desc
   const dataDir = mkdtempSync(join(tmpdir(), 'managed-att-'));
   writeFileSync(join(dataDir, 'scratch-note.txt'), 'hello');
   const received = [];
-  const router = createManagedSessionRouter({ owner: async () => 'plugin.one', submit: async (_plugin, input) => received.push(input), dataDir, projectPath: async () => undefined });
+  const granted = [];
+  const router = createManagedSessionRouter({ owner: async () => 'plugin.one', submit: async (_plugin, input) => received.push(input), dataDir, projectPath: async () => undefined, grantAttachment: async (...args) => granted.push(args) });
   await assert.rejects(router.prompt({ sessionId: 'room', content: 'spoken', voiceOrigin: 'dictation' }), { errorCode: 'UNSUPPORTED' });
   await router.prompt({
     sessionId: 'room',
@@ -121,4 +124,6 @@ test('voice origin is refused and an attachment becomes a content-addressed desc
     attachments: [{ path: 'attachments/' + 'a'.repeat(64), name: 'photo.png', size: 3 }],
   });
   assert.deepEqual(received[0].attachments, [{ ref: 'attachments/' + '0'.repeat(64), name: 'photo.png', kind: 'image' }]);
+  // The host staged that blob, so it records provenance before the plugin runs.
+  assert.deepEqual(granted, [['plugin.one', 'room', 'attachments/' + '0'.repeat(64)]]);
 });

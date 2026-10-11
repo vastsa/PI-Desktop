@@ -99,21 +99,43 @@ test('managed model binding and attachment blob calls cross the process with the
  assert.equal(blob[4].input.ref, `attachments/${'a'.repeat(64)}`);
 });
 
-// The blob store is shared with ordinary sessions, so "this plugin owns the
-// session" is not a bound on which bytes a read may name. The service must ask
-// the host which refs that transcript carries and refuse anything else; the
-// host-core `session.managedRefs` test covers the answer, and
+// The blob store is shared with ordinary sessions, and the transcript is
+// plugin-writable (`appendManaged` validates a ref's shape, not its origin), so
+// neither "this plugin owns the session" nor "the ref is in that transcript"
+// bounds which bytes a read may name. The service must ask the host whether it
+// recorded provenance for that exact ref, and both byte-moving paths must
+// record it. host-core's managed.rs tests cover the provenance answer itself;
 // plugin-managed-attachments.test.mjs covers the store.
-test('a managed blob read is gated on the ref belonging to that transcript', async () => {
+test('a managed blob read is gated on host-recorded provenance, not transcript membership', async () => {
  const { readFile } = await import('node:fs/promises');
  const services = await readFile(new URL('../electron/main/services/plugin-services.ts', import.meta.url), 'utf8');
  assert.match(services, /readManagedAttachment: async \(pluginId, input\) => \{\s*await assertManagedAttachmentOwner\(pluginId, input\);\s*await assertManagedAttachmentRef\(pluginId, input\);/);
- assert.match(services, /if \(!carried\.includes\(ref\)\)/);
- assert.match(services, /host\.call<\{ refs\?: unknown \}>\("session\.managedRefs", \{ sessionId, pluginId \}\)/);
+ // The gate asks for provenance and refuses anything the host did not record.
+ assert.match(services, /host\.call<\{ granted\?: unknown \}>\("session\.managedAuthorizeRef", \{\s*sessionId,\s*ref,\s*pluginId,\s*\}\)/);
+ assert.match(services, /if \(result\.granted !== true\)/);
+ // Membership in the transcript is never the gate.
+ assert.doesNotMatch(services, /carried\.includes/);
+ assert.doesNotMatch(services, /session\.managedRefs/);
  // The store is never asked before both gates ran.
  assert.match(services, /await assertManagedAttachmentRef\(pluginId, input\);\s*return managedAttachments\.read\(input\);/);
+ // A plugin upload records the committed ref as plugin-provenance.
+ assert.match(services, /grantManagedRef\(pluginId, sessionId, committed\.ref, "plugin"\)/);
  const rpc = await readFile(new URL('../../../crates/host-core/src/rpc/mod.rs', import.meta.url), 'utf8');
- assert.match(rpc, /"session\.managedRefs" => \{/);
+ assert.match(rpc, /"session\.managedGrantRef" => \{/);
+ assert.match(rpc, /"session\.managedAuthorizeRef" => \{/);
+ assert.doesNotMatch(rpc, /"session\.managedRefs" => \{/);
+});
+
+// The host stages a native Composer send's attachments before the plugin ever
+// sees the message, so the router must record their provenance — otherwise the
+// plugin could not read back the very bytes the user attached.
+test('a native Composer send records host provenance for each staged attachment', async () => {
+ const { readFile } = await import('node:fs/promises');
+ const router = await readFile(new URL('../electron/main/plugin-managed-sessions.ts', import.meta.url), 'utf8');
+ assert.match(router, /grantAttachment: \(pluginId: string, sessionId: string, ref: string\) => Promise<void>/);
+ assert.match(router, /await dependencies\.grantAttachment\(pluginId, request\.sessionId, attachment\.ref\)/);
+ const register = await readFile(new URL('../electron/main/ipc/register.ts', import.meta.url), 'utf8');
+ assert.match(register, /grantAttachment: \(pluginId, sessionId, ref\) =>\s*pluginServices\.grantManagedAttachment\(pluginId, sessionId, ref\)/);
 });
 
 test('managed cleanup appends existing history but cannot create a new session', async t => {

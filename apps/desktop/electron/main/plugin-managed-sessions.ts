@@ -22,6 +22,13 @@ export type ManagedSessionDependencies = {
       attachments: PreparedManagedAttachment[];
     },
   ) => Promise<void>;
+  /**
+   * Record host provenance for a blob this send staged, so the owning plugin
+   * may read it back. A managed transcript is plugin-writable, so the read gate
+   * cannot be "the ref is in the transcript" — only a path that actually moved
+   * the bytes may authorize one.
+   */
+  grantAttachment: (pluginId: string, sessionId: string, ref: string) => Promise<void>;
   /** Root of the host data directory; attachments are stored under it. */
   dataDir: string;
 };
@@ -59,6 +66,12 @@ export function createManagedSessionRouter(dependencies: ManagedSessionDependenc
           request.attachments ?? [],
           request.content,
         );
+        // The host moved these bytes into the content-addressed store, so the
+        // owning plugin may read them back. Record that before the send, so a
+        // plugin that reads the blob while handling the submit already sees it.
+        for (const attachment of attachments) {
+          await dependencies.grantAttachment(pluginId, request.sessionId, attachment.ref);
+        }
         const messageId = request.messageId ?? randomUUID();
         await dependencies.submit(pluginId, {
           sessionId: request.sessionId,

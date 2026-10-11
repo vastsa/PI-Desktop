@@ -2920,15 +2920,25 @@ async fn handle_request(
                     .map_err(plugin_session_rpc_err),
             }
         }
-        // Electron main is the only caller: it gates a managed blob read on the
-        // ref actually appearing in that transcript before returning any bytes.
-        "session.managedRefs" => {
+        // Electron main is the only caller. It records the provenance of bytes
+        // the host itself staged, and gates a managed blob read on that record
+        // rather than on transcript membership — which the plugin can write.
+        "session.managedGrantRef" => {
             let plugin_id = params
                 .get("pluginId")
                 .and_then(Value::as_str)
                 .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
             let st = state.lock().await;
-            plugin_sessions::managed::session_refs(&st.db, plugin_id, &params)
+            plugin_sessions::managed::grant_ref(&st.db, plugin_id, &params)
+                .map_err(plugin_session_rpc_err)
+        }
+        "session.managedAuthorizeRef" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            plugin_sessions::managed::authorize_ref(&st.db, plugin_id, &params)
                 .map_err(plugin_session_rpc_err)
         }
         "plugins.secrets.get" | "plugins.secrets.set" | "plugins.secrets.delete" => {

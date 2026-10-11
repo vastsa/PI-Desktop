@@ -62,14 +62,17 @@ pub fn owner(db: &Database, session_id: &str) -> Result<Option<String>> {
     Ok((origin.get("managed").and_then(Value::as_bool) == Some(true)).then_some(plugin_id))
 }
 
-/// Every attachment ref this managed session's own transcript carries.
+/// Record that the host itself moved these bytes for this managed transcript.
 ///
 /// The bytes live in a machine-global, content-addressed store shared with
-/// ordinary sessions, so a ref proves nothing by itself: a plugin that learned
-/// or guessed another session's hash could read it through a managed session it
-/// does own. Electron main asks this before it hands out bytes, which makes
-/// "the ref appears in this transcript" the read gate.
-pub fn session_refs(db: &Database, plugin_id: &str, params: &Value) -> Result<Value> {
+/// ordinary sessions, and the transcript is plugin-writable: `appendManaged`
+/// only validates a ref's *shape*, so a plugin can write another session's
+/// `attachments/<sha256>` into its own transcript and then ask for those bytes.
+/// Membership in the transcript therefore proves nothing, and this row — written
+/// only by the two paths that actually move bytes — is what the read gate reads.
+/// Electron main supplies `origin = "host"` when it stages a native Composer
+/// send and `origin = "plugin"` when the owning plugin commits its own upload.
+pub fn grant_ref(db: &Database, plugin_id: &str, params: &Value) -> Result<Value> {
     validate_payload(params)?;
     let session_id = required_text(
         params
@@ -84,23 +87,75 @@ pub fn session_refs(db: &Database, plugin_id: &str, params: &Value) -> Result<Va
     {
         return Err(not_found("managed session not found"));
     }
-    let mut refs = HashSet::new();
-    for record in transcripts::read_transcript(db.data_dir(), &session_id)? {
-        let Some(blocks) = record.blocks.as_array() else {
-            continue;
-        };
-        for block in blocks {
-            if block.get("type").and_then(Value::as_str) != Some("attachment") {
-                continue;
-            }
-            if let Some(reference) = block.get("ref").and_then(Value::as_str) {
-                refs.insert(reference.to_string());
-            }
-        }
+    let reference = required_text(
+        params
+            .get("ref")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "ref",
+        128,
+    )?;
+    if !is_attachment_ref(&reference) {
+        return Err(invalid("ref must be attachments/<sha256>"));
     }
-    let mut refs: Vec<String> = refs.into_iter().collect();
-    refs.sort();
-    Ok(json!({ "refs": refs }))
+    let origin = params
+        .get("origin")
+        .and_then(Value::as_str)
+        .unwrap_or("plugin");
+    if !matches!(origin, "host" | "plugin") {
+        return Err(invalid("origin must be host or plugin"));
+    }
+    // A ref the host staged keeps its stronger provenance: a later plugin commit
+    // of the same content-addressed bytes must not downgrade it.
+    db.conn().execute(
+        "INSERT INTO session_managed_attachments (session_id, ref, origin, created_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(session_id, ref) DO UPDATE SET
+           origin = CASE WHEN session_managed_attachments.origin = 'host'
+                         THEN 'host' ELSE excluded.origin END",
+        params![session_id, reference, origin, now_ms()],
+    )?;
+    Ok(json!({ "granted": true }))
+}
+
+/// Whether the host recorded provenance for this ref on this transcript.
+///
+/// Electron main asks this before it hands out any bytes. A ref with no row —
+/// including one a plugin wrote into its own transcript but never staged — is
+/// refused, so owning one managed session never exposes another session's blobs.
+pub fn authorize_ref(db: &Database, plugin_id: &str, params: &Value) -> Result<Value> {
+    validate_payload(params)?;
+    let session_id = required_text(
+        params
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "sessionId",
+        128,
+    )?;
+    if owner(db, &session_id)?.as_deref() != Some(plugin_id)
+        || own_session_row(db, plugin_id, &session_id)?.is_none()
+    {
+        return Err(not_found("managed session not found"));
+    }
+    let reference = required_text(
+        params
+            .get("ref")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "ref",
+        128,
+    )?;
+    if !is_attachment_ref(&reference) {
+        return Err(invalid("ref must be attachments/<sha256>"));
+    }
+    let granted: bool = db.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM session_managed_attachments
+                       WHERE session_id = ?1 AND ref = ?2)",
+        params![session_id, reference],
+        |row| row.get(0),
+    )?;
+    Ok(json!({ "granted": granted }))
 }
 
 /// Bind the model/thinking level a managed transcript composes with.
@@ -415,8 +470,12 @@ mod tests {
         assert!(append(&db, "plugin.one", &assistant).is_err());
     }
 
+    /// A read is authorized by host-recorded provenance, never by transcript
+    /// membership: `appendManaged` accepts any shape-valid ref, so a plugin that
+    /// learned another session's hash could write it into its own transcript.
+    /// The regression the gate must hold is that doing so grants nothing.
     #[test]
-    fn attachment_reads_are_scoped_to_the_transcript_that_carries_the_ref() {
+    fn a_foreign_ref_written_into_own_transcript_grants_no_read() {
         let temp = tempfile::tempdir().unwrap();
         let db = Database::open(&temp.path().join("test.sqlite")).unwrap();
         let mine = create(
@@ -439,29 +498,127 @@ mod tests {
             .to_string();
         let carried = "a".repeat(64);
         let foreign = "b".repeat(64);
-        let message = |external: &str, hash: &str| json!({"sessionId":mine,"externalId":external,"message":{"role":"user","content":"see this","createdAt":"2026-10-08T00:00:00Z","attachments":[{"kind":"image","name":"shot.png","ref":format!("attachments/{hash}")}]}});
-        append(&db, "plugin.one", &message("m-one", &carried)).unwrap();
-        // The other plugin's own transcript carries a different ref; neither
-        // transcript may be read through the other.
-        append(
+
+        // The host staged `carried` for plugin.one's own transcript; plugin.two
+        // staged `foreign` for its own. Each is readable only where it was moved.
+        grant_ref(
             &db,
-            "plugin.two",
-            &json!({"sessionId":theirs,"externalId":"t-one","message":{"role":"user","content":"mine","createdAt":"2026-10-08T00:00:00Z","attachments":[{"kind":"image","name":"other.png","ref":format!("attachments/{foreign}")}]}}),
+            "plugin.one",
+            &json!({"sessionId":mine,"ref":format!("attachments/{carried}"),"origin":"host"}),
         )
         .unwrap();
-        let refs = session_refs(&db, "plugin.one", &json!({"sessionId":mine})).unwrap();
-        assert_eq!(refs["refs"], json!([format!("attachments/{carried}")]));
-        // A ref staged for this session but not yet appended is not readable.
-        assert!(!refs["refs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|r| r == &json!(format!("attachments/{foreign}"))));
-        // The other plugin cannot enumerate this transcript at all.
-        assert!(session_refs(&db, "plugin.two", &json!({"sessionId":mine})).is_err());
+        grant_ref(
+            &db,
+            "plugin.two",
+            &json!({"sessionId":theirs,"ref":format!("attachments/{foreign}"),"origin":"plugin"}),
+        )
+        .unwrap();
+
+        // The attack: plugin.one appends plugin.two's ref to its *own* transcript.
+        // The append is shape-valid and succeeds, so membership is no gate at all.
+        append(
+            &db,
+            "plugin.one",
+            &json!({"sessionId":mine,"externalId":"m-foreign","message":{"role":"user","content":"see this","createdAt":"2026-10-08T00:00:00Z","attachments":[{"kind":"image","name":"other.png","ref":format!("attachments/{foreign}")}]}}),
+        )
+        .unwrap();
+
+        // Reading it is still refused: no host provenance row exists for the
+        // foreign ref on this transcript, so no bytes may be returned.
         assert_eq!(
-            session_refs(&db, "plugin.two", &json!({"sessionId":theirs})).unwrap()["refs"],
-            json!([format!("attachments/{foreign}")])
+            authorize_ref(
+                &db,
+                "plugin.one",
+                &json!({"sessionId":mine,"ref":format!("attachments/{foreign}")})
+            )
+            .unwrap()["granted"],
+            false
+        );
+        // The ref the host actually moved for this session stays readable.
+        assert_eq!(
+            authorize_ref(
+                &db,
+                "plugin.one",
+                &json!({"sessionId":mine,"ref":format!("attachments/{carried}")})
+            )
+            .unwrap()["granted"],
+            true
+        );
+        // Another plugin cannot authorize anything against this transcript, even
+        // for the ref its own session legitimately carries.
+        assert!(authorize_ref(
+            &db,
+            "plugin.two",
+            &json!({"sessionId":mine,"ref":format!("attachments/{foreign}")})
+        )
+        .is_err());
+        assert!(grant_ref(
+            &db,
+            "plugin.two",
+            &json!({"sessionId":mine,"ref":format!("attachments/{foreign}")})
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn grant_ref_is_owner_checked_bounded_and_never_downgrades_host_provenance() {
+        let temp = tempfile::tempdir().unwrap();
+        let db = Database::open(&temp.path().join("test.sqlite")).unwrap();
+        let id = create(
+            &db,
+            "plugin.one",
+            &json!({"source":"room","externalId":"one","title":"Room"}),
+        )
+        .unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let hash = "c".repeat(64);
+        let reference = format!("attachments/{hash}");
+        // A ref the host staged survives a later plugin commit of the same bytes.
+        grant_ref(
+            &db,
+            "plugin.one",
+            &json!({"sessionId":id,"ref":reference,"origin":"host"}),
+        )
+        .unwrap();
+        grant_ref(
+            &db,
+            "plugin.one",
+            &json!({"sessionId":id,"ref":reference,"origin":"plugin"}),
+        )
+        .unwrap();
+        let origin: String = db
+            .conn()
+            .query_row(
+                "SELECT origin FROM session_managed_attachments WHERE session_id = ?1 AND ref = ?2",
+                params![id, reference],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(origin, "host");
+        // A path is never a ref, and an unknown origin is refused.
+        assert!(grant_ref(
+            &db,
+            "plugin.one",
+            &json!({"sessionId":id,"ref":"/etc/passwd","origin":"host"})
+        )
+        .is_err());
+        assert!(grant_ref(
+            &db,
+            "plugin.one",
+            &json!({"sessionId":id,"ref":reference,"origin":"guess"})
+        )
+        .is_err());
+        // An ungranted ref on an owned session is simply not authorized.
+        assert_eq!(
+            authorize_ref(
+                &db,
+                "plugin.one",
+                &json!({"sessionId":id,"ref":format!("attachments/{}", "d".repeat(64))})
+            )
+            .unwrap()["granted"],
+            false
         );
     }
 
