@@ -9,6 +9,11 @@ import {
   MAX_LARGE_PASTE_THRESHOLD,
   MIN_LARGE_PASTE_THRESHOLD,
   normalizeLargePasteThreshold,
+  resolveSessionReferenceBudgetPercent,
+  resolveSessionReferenceMaxTurns,
+  resolveSessionReferenceSettings,
+  SESSION_REFERENCE_BUDGET_PERCENTS,
+  SESSION_REFERENCE_MAX_TURNS_CHOICES,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { resolveContextUsageDisplay } from "../../lib/context-usage";
@@ -276,6 +281,65 @@ export function ContextUsageDisplayRow({
         label={t("settings.contextUsageDisplay")}
       />
     </SettingsRow>
+  );
+}
+
+/**
+ * Session references (Settings › AI): what an `@` session mention attaches.
+ * The host owns both preferences and hands them to composer triggers
+ * (`PluginTriggerQuery.sessionReferences`); absent values read as 25 % / 10.
+ */
+export function SessionReferencesCard({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const current = resolveSessionReferenceSettings(settings);
+  return (
+    <SettingsCard
+      title={t("settings.sessionReferences")}
+      description={t("settings.sessionReferencesDesc")}
+    >
+      <SettingsRow
+        title={t("settings.sessionReferenceBudget")}
+        description={t("settings.sessionReferenceBudgetDesc")}
+      >
+        <SegmentedControl
+          value={String(current.budgetPercent)}
+          onChange={(value) =>
+            void saveSettings({
+              sessionReferenceBudgetPercent: resolveSessionReferenceBudgetPercent(Number(value)),
+            })
+          }
+          options={SESSION_REFERENCE_BUDGET_PERCENTS.map((percent) => ({
+            value: String(percent),
+            label: `${percent}%`,
+          }))}
+          label={t("settings.sessionReferenceBudget")}
+        />
+      </SettingsRow>
+      <SettingsRow
+        title={t("settings.sessionReferenceMaxTurns")}
+        description={t("settings.sessionReferenceMaxTurnsDesc")}
+      >
+        <SegmentedControl
+          value={String(current.maxTurns)}
+          onChange={(value) =>
+            void saveSettings({
+              sessionReferenceMaxTurns: resolveSessionReferenceMaxTurns(Number(value)),
+            })
+          }
+          options={SESSION_REFERENCE_MAX_TURNS_CHOICES.map((turns) => ({
+            value: String(turns),
+            label: String(turns),
+          }))}
+          label={t("settings.sessionReferenceMaxTurns")}
+        />
+      </SettingsRow>
+    </SettingsCard>
   );
 }
 

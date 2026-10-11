@@ -94,3 +94,55 @@ test("only a prefixed tag is looked up, and only past 4000px is a block too tall
   assert.equal(BLOCK_RENDERER_MAX_HEIGHT_PX, 4000);
   assert.deepEqual([3_999, 4_000, 4_001].map(blockRendererOverflow), [false, false, true]);
 });
+
+/*
+ * User messages are plain text, not Markdown: only a fence tagged in the
+ * `<pluginId>:lang` shape whose language a plugin claimed leaves the text,
+ * drawn by that plugin; anything else renders exactly as before.
+ */
+test("user text: only closed `<pluginId>:lang` fences are split out, line breaks included", async (t) => {
+  const { splitPluginFences } = await blocks(t);
+  assert.deepEqual(splitPluginFences("plain"), [{ kind: "text", text: "plain", start: 0 }]);
+  assert.deepEqual(splitPluginFences(""), [{ kind: "text", text: "", start: 0 }]);
+  for (const text of ["```json\n{}\n```", "```Demo.Lab:Chart\nopen", "x ```demo.lab:chart\na\n```", "```demo.lab:chart\na\n````"]) {
+    assert.deepEqual(splitPluginFences(text), [{ kind: "text", text, start: 0 }], text);
+  }
+  const text = `Before\n${FENCE}\nAfter`;
+  assert.deepEqual(splitPluginFences(text), [
+    { kind: "text", text: "Before", start: 0 },
+    { kind: "fence", raw: `\n${FENCE}\n`, language: "Demo.Lab:Chart", source: "a,b\n1,2", start: 6 },
+    { kind: "text", text: "After", start: 6 + FENCE.length + 2 },
+  ]);
+  const long = "````demo.lab:chart\n```\ninner\n```\n````";
+  assert.deepEqual(splitPluginFences(long).map((run) => run.kind === "fence" ? run.source : run.text),
+    ["```\ninner\n```"], "a longer fence holds shorter ones");
+});
+
+test("user text: a claimed fence becomes the plugin's block; unclaimed, it stays text", async (t) => {
+  const ssr = await blocks(t);
+  const { UserMessageText } = await ssr.load("/src/features/chat/transcript/UserMessageText.tsx");
+  const { LinkifiedText } = await ssr.load("/src/features/chat/transcript/shared.tsx");
+  const text = `Before\n${FENCE}\nAfter`;
+  const user = () => ssr.render(createElement(UserMessageText, { text, sourceOffset: 4 }));
+  const asText = ssr.render(createElement(LinkifiedText, { text, sourceOffset: 4 }));
+  const unclaimed = user();
+  const textOf = (markup) => markup.replace(/<[^>]+>/g, "");
+  assert.equal(textOf(unclaimed), textOf(asText), "without a renderer the fence is the same text as before");
+  assert.deepEqual([...unclaimed.matchAll(/data-source-start="(\d+)" data-source-end="(\d+)"/g)].map((m) => [+m[1], +m[2]]),
+    [[4, 10], [10, 4 + 6 + FENCE.length + 2], [4 + 6 + FENCE.length + 2, 4 + text.length]],
+    "its runs cover the message without gaps");
+  assert.match(unclaimed, /```Demo\.Lab:Chart/);
+
+  const dispose = ssr.claim();
+  const html = user();
+  const end = 4 + 6 + FENCE.length + 2;
+  assert.equal(html,
+    `<span data-source-start="4" data-source-end="10">Before</span>` +
+    `<div class="pi-plugin-block-renderer" style="max-height:4000px" data-source-start="10" data-source-end="${end}">` +
+    `<div class="pi-plugin-slot" data-pi-plugin="demo.lab" data-pi-slot="blockRenderer">` +
+    html.match(/<output data-probe="block">[^<]*<\/output>/)[0] + "</div></div>" +
+    `<span data-source-start="${end}" data-source-end="${end + 5}">After</span>`);
+  assert.deepEqual(probed(html, "block"), [{ language: "Demo.Lab:Chart", source: "a,b\n1,2" }]);
+  dispose();
+  assert.equal(user(), unclaimed, "the text is back once the renderer leaves");
+});

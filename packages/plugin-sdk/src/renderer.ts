@@ -324,7 +324,7 @@ export type PluginSlotErrorCode =
   | "PLUGIN_SLOT_INVALID_COMPONENT"
   /** A keyed slot's `toolName` / `language` / `trigger` is malformed. */
   | "PLUGIN_SLOT_INVALID_KEY"
-  /** `positions` is malformed, or given to a slot without sides. */
+  /** `positions` is malformed or given to a slot without sides, or a trigger's `placement` is malformed. */
   | "PLUGIN_SLOT_INVALID_POSITION"
   /** The key is already registered; the first registration keeps it. */
   | "PLUGIN_SLOT_DUPLICATE"
@@ -481,6 +481,16 @@ function composerTriggerRefusal(candidate: Record<string, unknown>): PluginSlotR
   }
   if (candidate.positions !== undefined) {
     return refusal("PLUGIN_SLOT_INVALID_POSITION", "composerTrigger takes no positions");
+  }
+  if (
+    candidate.placement !== undefined &&
+    candidate.placement !== "first" &&
+    candidate.placement !== "last"
+  ) {
+    return refusal(
+      "PLUGIN_SLOT_INVALID_POSITION",
+      `composerTrigger placement must be "first" or "last" (got ${describe(candidate.placement)})`,
+    );
   }
   if (!composerTriggerKey(candidate.trigger)) {
     return refusal(

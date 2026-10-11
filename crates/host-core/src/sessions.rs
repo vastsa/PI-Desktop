@@ -2034,6 +2034,21 @@ pub fn auto_title_context(db: &Database, id: &str) -> Result<Option<AutoTitleCon
             |row| row.get(0),
         )
         .optional()?;
+    // Name the session after what the user typed, not after material a
+    // plugin attached; a prompt that is only references names those chats.
+    let (own_words, referenced_titles) = title_prompt_text(&user_prompt);
+    let user_prompt = if own_words.trim().is_empty() {
+        if referenced_titles.is_empty() {
+            return Ok(None);
+        }
+        referenced_titles
+            .iter()
+            .map(|title| format!("[Referenced chat \"{title}\"]"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        own_words.trim().to_string()
+    };
     let user_prompt = truncate_title_context(&user_prompt, 1_000);
     let assistant_reply = assistant_reply
         .map(|reply| truncate_title_context(&reply, 500))
@@ -2047,6 +2062,90 @@ pub fn auto_title_context(db: &Database, id: &str) -> Result<Option<AutoTitleCon
             .zip(model_id)
             .map(|(provider, model)| format!("{provider}/{model}")),
     }))
+}
+
+/// The backtick run opening a fence whose info string has the
+/// `<pluginId>:lang` shape a `blockRenderer` claims (`json`, `ts`, … do not).
+fn plugin_fence_ticks(line: &str) -> Option<&str> {
+    let ticks = line.len() - line.trim_start_matches('`').len();
+    if ticks < 3 {
+        return None;
+    }
+    let info = line[ticks..].trim_end_matches([' ', '\t']);
+    let colon = info.find(':')?;
+    let valid = colon > 0 && !info.chars().any(|c| c.is_whitespace() || c == '`');
+    valid.then(|| &line[..ticks])
+}
+
+fn referenced_chat_patterns() -> &'static (regex::Regex, regex::Regex, regex::Regex) {
+    static PATTERNS: OnceLock<(regex::Regex, regex::Regex, regex::Regex)> = OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        (
+            regex::Regex::new(r"(?s)<referenced-chat\b[^>]*>.*?</referenced-chat>").unwrap(),
+            regex::Regex::new(r#"<referenced-chat\b[^>]*?\stitle="([^"]*)""#).unwrap(),
+            regex::Regex::new(
+                r"(?m)^(?:# Referenced chats:|## Current request:|The following is historical Q&A from other conversations\b.*?)[ \t]*\r?$",
+            )
+            .unwrap(),
+        )
+    })
+}
+
+/// The words a user typed in a prompt, for naming its session, and the titles
+/// of the chats it references. Closed fences tagged `<pluginId>:lang` (a
+/// plugin's attached material) and referenced chat blocks (bare, or in a #447
+/// envelope with its headings) are left out. Mirrors `promptTitleText` in the
+/// desktop renderer; the stored message is never changed.
+pub(crate) fn title_prompt_text(text: &str) -> (String, Vec<String>) {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut kept: Vec<&str> = Vec::with_capacity(lines.len());
+    let mut attached: Vec<String> = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let line = lines[index].trim_end_matches('\r');
+        if let Some(ticks) = plugin_fence_ticks(line) {
+            let close = (index + 1..lines.len())
+                .find(|&j| lines[j].trim_end_matches([' ', '\t', '\r']) == ticks);
+            if let Some(close) = close {
+                attached.push(lines[index + 1..close].join("\n"));
+                kept.push("");
+                index = close + 1;
+                continue;
+            }
+        }
+        kept.push(lines[index]);
+        index += 1;
+    }
+    let (block, title, envelope) = referenced_chat_patterns();
+    let joined = kept.join("\n");
+    attached.extend(
+        block
+            .find_iter(&joined)
+            .map(|found| found.as_str().to_string()),
+    );
+    let mut own = block.replace_all(&joined, "\n").into_owned();
+    if !attached.is_empty() {
+        own = envelope.replace_all(&own, "").into_owned();
+    }
+    let titles = attached
+        .iter()
+        .flat_map(|block| {
+            title
+                .captures_iter(block)
+                .map(|found| {
+                    found[1]
+                        .replace("&quot;", "\"")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .replace("&amp;", "&")
+                        .trim()
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|title| !title.is_empty())
+        .collect();
+    (own, titles)
 }
 
 fn truncate_title_context(value: &str, limit: usize) -> String {
@@ -4973,6 +5072,88 @@ mod tests {
         assert_eq!(context.user_prompt, "p".repeat(1_000));
         assert_eq!(context.assistant_reply, Some("r".repeat(500)));
         assert_eq!(context.model_key.as_deref(), Some("provider/model"));
+    }
+
+    #[test]
+    fn title_prompt_text_keeps_only_the_users_words() {
+        let block = |title: &str| {
+            format!("<referenced-chat id=\"a\" title=\"{title}\" turns=\"1\">\nQ: x\nA: ```js\ny\n```\n</referenced-chat>")
+        };
+        let sent = format!(
+            "\n````pi.session-mentions:chat\n{}\n````\n summarize the referenced chat",
+            block("Release &amp; plan")
+        );
+        let (own, titles) = title_prompt_text(&sent);
+        assert_eq!(own.trim(), "summarize the referenced chat");
+        assert_eq!(titles, vec!["Release & plan".to_string()]);
+        // Any `<pluginId>:lang` fence is attached material; ordinary fences stay.
+        assert_eq!(
+            title_prompt_text("```demo.lab:card\n{}\n```\nShip it")
+                .0
+                .trim(),
+            "Ship it"
+        );
+        assert_eq!(
+            title_prompt_text("```js\nfoo()\n```").0,
+            "```js\nfoo()\n```"
+        );
+        assert_eq!(title_prompt_text("```a:b\nunclosed").0, "```a:b\nunclosed");
+        // A bare block, and the #447 envelope with its headings.
+        let envelope = format!(
+            "# Referenced chats:\nThe following is historical Q&A from other conversations, injected as reference material only.\n\n{}\n\n## Current request:\nFix the login",
+            block("Beta")
+        );
+        assert_eq!(title_prompt_text(&envelope).0.trim(), "Fix the login");
+        assert_eq!(
+            title_prompt_text("## Current request:\nhi").0,
+            "## Current request:\nhi"
+        );
+    }
+
+    #[test]
+    fn auto_title_context_names_the_session_after_the_typed_words() {
+        let db = test_db();
+        let fence = |title: &str| {
+            format!("\n```pi.session-mentions:chat\n<referenced-chat id=\"a\" title=\"{title}\">\nQ: {}\n</referenced-chat>\n```\n", "z".repeat(2_000))
+        };
+        let typed = create_session(&db, None, None, None, None, None).unwrap();
+        let prompt = format!("{}What changed since then?", fence("Alpha"));
+        append_message(
+            &db,
+            &typed.id,
+            &user_msg("u1", &prompt, "2026-01-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        let context = auto_title_context(&db, &typed.id).unwrap().unwrap();
+        assert_eq!(context.user_prompt, "What changed since then?");
+
+        let only = create_session(&db, None, None, None, None, None).unwrap();
+        let prompt = format!("{}{}", fence("Alpha"), fence("Beta"));
+        append_message(
+            &db,
+            &only.id,
+            &user_msg("u1", &prompt, "2026-01-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        let context = auto_title_context(&db, &only.id).unwrap().unwrap();
+        assert_eq!(
+            context.user_prompt,
+            "[Referenced chat \"Alpha\"]\n[Referenced chat \"Beta\"]"
+        );
+
+        let untitled = create_session(&db, None, None, None, None, None).unwrap();
+        let prompt =
+            "```pi.session-mentions:chat\n<referenced-chat id=\"a\">\n</referenced-chat>\n```";
+        append_message(
+            &db,
+            &untitled.id,
+            &user_msg("u1", prompt, "2026-01-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        assert!(auto_title_context(&db, &untitled.id).unwrap().is_none());
     }
 
     #[test]

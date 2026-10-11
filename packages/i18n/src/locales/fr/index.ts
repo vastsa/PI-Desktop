@@ -563,6 +563,7 @@ export const fr = {
     "webSearchMore_other": "+{{count}} autres sources",
     "thinkingShow": "Afficher la réflexion",
     "thinkingHide": "Masquer la réflexion",
+    "referencedSessionTitle": "Référence : {{title}}",
     "untitledTask": "Nouvelle tâche"
   },
   "session": {
@@ -1303,6 +1304,12 @@ sklm: {
     "contextUsageDisplay": "Affichage de l'usage du contexte",
     "contextUsageDisplayRemaining": "Restant",
     "contextUsageDisplayUsed": "Utilisé",
+    "sessionReferences": "Références de session",
+    "sessionReferencesDesc": "Ce qu'une mention @ d'une session joint à votre message. Une référence ne dépasse jamais 32 Ko.",
+    "sessionReferenceBudget": "Budget de référence",
+    "sessionReferenceBudgetDesc": "Part du contexte restant de cette conversation qu'une référence peut utiliser, après une réserve pour la réponse.",
+    "sessionReferenceMaxTurns": "Tours maximum par référence",
+    "sessionReferenceMaxTurnsDesc": "Tours complets de questions-réponses par référence : le premier tour de la session, puis les plus récents.",
     "linkContextMenuOpenExternal": "Ouvrir dans le navigateur par défaut",
     "linkContextMenuOpenWorkpanel": "Ouvrir dans le panneau de travail",
     "linkContextMenuCopy": "Copier l'adresse du lien",

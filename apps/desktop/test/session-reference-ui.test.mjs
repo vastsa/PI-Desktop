@@ -17,6 +17,7 @@ import { catalogs } from "@pi-desktop/i18n";
 import { formatSessionLink, isRenderableAttachment } from "@pi-desktop/shared";
 import { splitChatText } from "../src/lib/chat-links.ts";
 import { getExtraMessageAttachments } from "../src/features/chat/transcript/extra-attachments.ts";
+import * as remoteSessionSafety from "../src/lib/remote-session-safety.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
@@ -116,6 +117,9 @@ const { MessageRow } = load(new URL("../src/features/chat/transcript/MessageRow.
       React.createElement("button", { ...props, "aria-label": ariaLabel ?? tooltip }),
   },
   "../../../stores/app-store": { useAppStore },
+  // Pure capability rules: the real module, so a local row keeps its actions.
+  "../../../lib/remote-session-safety": remoteSessionSafety,
+  "../../../plugins/renderer-slots/use-slots": { useSlotSessionId: () => "" },
   "../../../plugins/renderer-slots/slot-message": { slotMessage: () => undefined },
   "./menu-items": { userMessageMenuItems: () => [] },
   "./ActionBarSlots": { ActionSlotSide: () => null },
@@ -126,6 +130,8 @@ const { MessageRow } = load(new URL("../src/features/chat/transcript/MessageRow.
     useChatTextActions: () => ({ copyText: () => {}, selectText: () => {} }),
   },
   "./shared": shared,
+  // Plugin-claimed fences aside (none here), a user text run is the shared text.
+  "./UserMessageText": { UserMessageText: shared.LinkifiedText },
 });
 
 const referenced = {

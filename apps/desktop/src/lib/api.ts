@@ -147,6 +147,8 @@ import {
   normalizeNetworkProxy,
   normalizeNetworkPolicy,
   resolveFontScale,
+  resolveSessionReferenceBudgetPercent,
+  resolveSessionReferenceMaxTurns,
   normalizeChatContentMaxWidth,
   validateNetworkPolicy,
   validateNetworkProxy,
@@ -474,6 +476,24 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     typeof value.smoothStreaming !== "boolean"
   ) {
     throw Object.assign(new Error("smoothStreaming is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "sessionReferenceBudgetPercent") &&
+    resolveSessionReferenceBudgetPercent(value.sessionReferenceBudgetPercent) !==
+      value.sessionReferenceBudgetPercent
+  ) {
+    throw Object.assign(new Error("sessionReferenceBudgetPercent is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "sessionReferenceMaxTurns") &&
+    resolveSessionReferenceMaxTurns(value.sessionReferenceMaxTurns) !==
+      value.sessionReferenceMaxTurns
+  ) {
+    throw Object.assign(new Error("sessionReferenceMaxTurns is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }

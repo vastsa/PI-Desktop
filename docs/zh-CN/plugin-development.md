@@ -733,11 +733,15 @@ export function onLoad(pi) {
 ```
 
 - `composerControl` —— 输入区工具栏上的控件；`positions: ["left"]` 或 `["right"]` 选择一侧，省略即两侧
-- `composerTrigger` —— 输入区某个触发符背后的条目列表：`{ slot: "composerTrigger", trigger: "#", items }`，列表由宿主绘制
+- `composerTrigger` —— 输入区某个触发符背后的条目列表：`{ slot: "composerTrigger", trigger: "#", items }`，列表由宿主绘制。`items` 收到 `{ trigger, query }`，宿主知道时还带上草稿所属会话的 `sessionId` 和 `context: { usedTokens, contextWindow }`（即输入框上下文圆环显示的数值）。另有 `sessionReferences: { budgetPercent, maxTurns }`：用户在 设置 › AI › 会话引用 里的选择（引用预算占剩余上下文的 10/25/50/100%，默认 25；每个引用的最大轮数 3/5/10/20，默认 10），宿主已补好默认值；以及 `locale`：应用界面语言（如 `"en"`、`"zh-CN"`），即宿主自己的条目所用的语言。均为只读；早于这些字段的宿主不会传，插件应回落到自己的默认值（语言回落到 `pi.app.getLocale()`）。插件分组默认排在宿主自己的条目（`/` 指令、`@` 文件）之后；`placement: "first"` 让它排在前面，首条默认高亮、回车即选中。方向键在两组之间连续移动
 - `userAction` / `assistantAction` —— 消息操作栏上的条目
 - `entryExtra` —— 助手回复下方的区块
 - `toolCard` —— 自有 Agent 工具调用的卡片；用 `toolName` 指定工具
-- `blockRenderer` —— 形如 `<你的插件id>:<lang>` 的代码块渲染器；`language` 指定标签
+- `blockRenderer` —— 形如 `<你的插件id>:<lang>` 的代码块渲染器；`language` 指定标签。
+  它作用于助手回复（Markdown），也作用于用户消息（其余部分按纯文本显示）：用户消息里只有独占行、
+  已闭合且标签被你声明的代码块会交给你绘制（连同前后换行），其他代码块仍显示为文本。消息原文不变，
+  复制和编辑得到的仍是完整代码块。会话的自动标题会跳过首条消息里这类代码块（任何 `<插件id>:lang` 标签），
+  只用用户自己输入的文字
 
 自绘弹窗不是插槽：`pi.ui.openLayer()` 交给你一个可以渲染的层，组件在其中绘制。样式通过
 `pi.ui.injectStyle` 注入；`react` / `react-dom` 会通过窗口的 import map 解析到应用自带的副本，

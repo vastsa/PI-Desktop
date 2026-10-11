@@ -44,6 +44,8 @@ pub(crate) const PORTABLE_APPLICATION_FIELDS: &[&str] = &[
     "keybindings",
     "linkOpenTarget",
     "contextUsageDisplay",
+    "sessionReferenceBudgetPercent",
+    "sessionReferenceMaxTurns",
     "chatContentMaxWidth",
     "promptEnhancementCustomTemplate",
     "promptEnhancementUserTemplate",
@@ -628,6 +630,9 @@ mod tests {
     fn adapter_registry_covers_every_portable_domain() {
         assert_eq!(DOMAIN_ADAPTERS.len(), ALL_DOMAINS.len());
         assert!(!PORTABLE_APPLICATION_FIELDS.contains(&"defaultPermissionMode"));
+        // Session references (Settings › AI) travel with the other AI preferences.
+        assert!(PORTABLE_APPLICATION_FIELDS.contains(&"sessionReferenceBudgetPercent"));
+        assert!(PORTABLE_APPLICATION_FIELDS.contains(&"sessionReferenceMaxTurns"));
         for domain in ALL_DOMAINS {
             let adapter = adapter_for(domain).expect("portable domain adapter");
             assert_eq!(adapter.schema_version, 1);

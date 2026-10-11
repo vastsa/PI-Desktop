@@ -1,8 +1,9 @@
 /**
  * The composer's completion list: the host's own `/` commands and `@` files
- * (`useComposerAutocomplete`) followed by the group of the plugin owning the
- * typed symbol (`composerTrigger`, `docs/plugin-plan/ui/composer/`), and
- * what accepting a row does to the draft.
+ * (`useComposerAutocomplete`) and the group of the plugin owning the typed
+ * symbol (`composerTrigger`, `docs/plugin-plan/ui/composer/`) — after the
+ * host's rows, or before them for a `placement: "first"` trigger — and what
+ * accepting a row does to the draft.
  *
  * A plugin trigger only answers the user's typing: it is off while an IME
  * composes (the list freezes like the host's), while the input is blocked,
@@ -19,6 +20,7 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useComposerAutocomplete,
   type AutocompleteItem,
@@ -31,6 +33,8 @@ import { placePluginMark } from "../plugins/plugin-marks";
 import {
   askPluginTrigger,
   detectPluginTrigger,
+  orderTriggerGroups,
+  pluginTriggerScope,
   type PluginTriggerMatch,
   type PluginTriggerRow,
 } from "../plugins/plugin-triggers";
@@ -68,6 +72,7 @@ export function useComposerCompletions({
   composing,
   enabled,
   referenceSessionId,
+  triggerContext,
   fileReferencesRef,
   applyEditorDraft,
   handleInput,
@@ -78,6 +83,8 @@ export function useComposerCompletions({
   composing: boolean;
   enabled: boolean;
   referenceSessionId: string;
+  /** The session's context use as the composer's ring shows it, told to triggers. */
+  triggerContext?: { usedTokens: number; contextWindow: number } | null;
   fileReferencesRef: RefObject<ComposerFileReference[]>;
   applyEditorDraft: (text: string, references: ComposerFileReference[], caret: number) => void;
   handleInput: (source: string, caret: number) => string;
@@ -95,6 +102,19 @@ export function useComposerCompletions({
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
   const frozenRef = useRef<PluginTriggerMatch | null>(null);
+  // Session references (Settings › AI), told to triggers with the scope.
+  const referenceBudgetPercent = useAppStore((state) => state.settings?.sessionReferenceBudgetPercent);
+  const referenceMaxTurns = useAppStore((state) => state.settings?.sessionReferenceMaxTurns);
+  const referenceSettings = {
+    sessionReferenceBudgetPercent: referenceBudgetPercent,
+    sessionReferenceMaxTurns: referenceMaxTurns,
+  };
+  // The UI language the host's own rows are drawn in, told to triggers too.
+  const { i18n } = useTranslation();
+  const uiLocale = i18n?.resolvedLanguage ?? i18n?.language;
+  // Read when a trigger is asked, so a context or settings change alone asks nothing.
+  const scopeRef = useRef(pluginTriggerScope(referenceSessionId, triggerContext, referenceSettings, uiLocale));
+  scopeRef.current = pluginTriggerScope(referenceSessionId, triggerContext, referenceSettings, uiLocale);
 
   const liveMatch = useMemo(
     () =>
@@ -120,7 +140,7 @@ export function useComposerCompletions({
   useEffect(() => {
     if (!entry || !match || !requestKey || dismissed) return;
     let current = true;
-    void askPluginTrigger(entry.items, match, entry.pluginId).then((rows) => {
+    void askPluginTrigger(entry.items, match, entry.pluginId, undefined, scopeRef.current).then((rows) => {
       if (current) setAnswer({ key: requestKey, rows });
     });
     return () => {
@@ -142,13 +162,17 @@ export function useComposerCompletions({
   }, [entry, dismissed, answer, requestKey, plugins]);
 
   const hostItems = host.open ? host.items : NO_ITEMS;
+  const placement = entry?.placement ?? "last";
   const items = useMemo<CompletionItem[]>(
-    () => [...hostItems, ...pluginItems],
-    [hostItems, pluginItems],
+    () => orderTriggerGroups<CompletionItem, CompletionItem>(hostItems, pluginItems, placement),
+    [hostItems, pluginItems, placement],
   );
 
-  // A new query restarts keyboard navigation at the top hit.
-  const itemsKey = `${host.mode}:${host.query}|${requestKey}`;
+  // A new query restarts keyboard navigation at the top hit. A leading group
+  // answers after the host's rows are drawn, so its arrival restarts it too:
+  // its first row, not the file that briefly sat on top, is the default.
+  const leads = placement === "first" && pluginItems.length > 0;
+  const itemsKey = `${host.mode}:${host.query}|${requestKey}|${leads}`;
   useEffect(() => {
     setHighlight(0);
   }, [itemsKey]);
@@ -173,9 +197,11 @@ export function useComposerCompletions({
   };
 
   const acceptCompletion = (index: number) => {
-    if (index >= hostItems.length) {
-      const item = pluginItems[index - hostItems.length];
-      if (!item || !match) return;
+    const picked = items[index];
+    if (!picked) return;
+    if (picked.kind === "plugin") {
+      const item = picked;
+      if (!match) return;
       invalidateComposerTransforms();
       const text = value.slice(0, match.tokenStart) + value.slice(match.tokenEnd);
       const placed = placePluginMark(
@@ -192,7 +218,7 @@ export function useComposerCompletions({
       );
       return;
     }
-    const result = host.accept(index);
+    const result = host.accept(hostItems.indexOf(picked));
     if (!result) return;
     invalidateComposerTransforms();
     // File accept strips the @ token (empty insert) and used to store a

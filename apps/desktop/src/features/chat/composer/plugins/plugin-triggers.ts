@@ -11,7 +11,12 @@ import {
   PLUGIN_TRIGGER_TIMEOUT_MS,
   composerTriggerKey,
   type PluginComposerTrigger,
+  type PluginTriggerContext,
+  type PluginTriggerPlacement,
+  type PluginTriggerQuery,
+  type PluginTriggerSessionReferences,
 } from "@pi-desktop/plugin-sdk";
+import { resolveSessionReferenceSettings } from "@pi-desktop/shared";
 
 export type PluginTriggerMatch = {
   readonly trigger: PluginComposerTrigger;
@@ -52,6 +57,64 @@ export function detectPluginTrigger(
   const query = value.slice(start + 1, cursor);
   if (RESERVED_CHARS.test(query)) return null;
   return { trigger, query, tokenStart: start, tokenEnd: cursor };
+}
+
+/**
+ * One completion list from the host's rows and the owning plugin's group:
+ * the group before the host's rows when it registered `placement: "first"`,
+ * after them otherwise. Highlight and arrow keys follow this order.
+ */
+export function orderTriggerGroups<Host, Plugin>(
+  host: readonly Host[],
+  plugin: readonly Plugin[],
+  placement: PluginTriggerPlacement,
+): Array<Host | Plugin> {
+  return placement === "first" ? [...plugin, ...host] : [...host, ...plugin];
+}
+
+/** What a trigger is told about the draft besides its query. */
+export type PluginTriggerScope = {
+  readonly sessionId?: string;
+  readonly context?: PluginTriggerContext;
+  readonly sessionReferences?: PluginTriggerSessionReferences;
+  readonly locale?: string;
+};
+
+/**
+ * The draft's scope as a trigger sees it: the session id when there is one,
+ * its context use when the composer's ring has a positive window to show,
+ * and the user's Session references preferences (Settings › AI), defaults
+ * filled in, whenever the caller passes the settings, and the app's UI
+ * language, so a trigger's rows read like the host's.
+ */
+export function pluginTriggerScope(
+  sessionId: string | null | undefined,
+  context: { usedTokens: number; contextWindow: number } | null | undefined,
+  settings?: { sessionReferenceBudgetPercent?: unknown; sessionReferenceMaxTurns?: unknown } | null,
+  locale?: string | null,
+): PluginTriggerScope {
+  const scope: {
+    sessionId?: string;
+    context?: PluginTriggerContext;
+    sessionReferences?: PluginTriggerSessionReferences;
+    locale?: string;
+  } = {};
+  if (sessionId) scope.sessionId = sessionId;
+  if (typeof locale === "string" && locale.trim()) scope.locale = locale.trim();
+  if (settings !== undefined) scope.sessionReferences = resolveSessionReferenceSettings(settings);
+  if (
+    context &&
+    Number.isFinite(context.usedTokens) &&
+    context.usedTokens >= 0 &&
+    Number.isFinite(context.contextWindow) &&
+    context.contextWindow > 0
+  ) {
+    scope.context = {
+      usedTokens: Math.round(context.usedTokens),
+      contextWindow: Math.round(context.contextWindow),
+    };
+  }
+  return scope;
 }
 
 function utf8Bytes(text: string): number {
@@ -96,14 +159,16 @@ export function sanitizeTriggerItems(answer: unknown): PluginTriggerRow[] | null
 /**
  * Ask a trigger for its items. Resolves with the kept rows, or `null` when
  * the provider throws, rejects, answers with no array or not within
- * `timeoutMs`; never rejects. A failure is logged, since the group it
+ * `timeoutMs`; never rejects. `scope` rides along on the query (see
+ * `pluginTriggerScope`). A failure is logged, since the group it
  * collapses is the only trace the user sees.
  */
 export function askPluginTrigger(
-  provider: (query: { trigger: PluginComposerTrigger; query: string }) => unknown,
+  provider: (query: PluginTriggerQuery) => unknown,
   match: Pick<PluginTriggerMatch, "trigger" | "query">,
   label: string,
   timeoutMs = PLUGIN_TRIGGER_TIMEOUT_MS,
+  scope: PluginTriggerScope = {},
 ): Promise<PluginTriggerRow[] | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -119,7 +184,8 @@ export function askPluginTrigger(
       timeoutMs,
     );
     try {
-      Promise.resolve(provider({ trigger: match.trigger, query: match.query })).then(
+      const query: PluginTriggerQuery = { trigger: match.trigger, query: match.query, ...scope };
+      Promise.resolve(provider(query)).then(
         (answer) => {
           try {
             const rows = sanitizeTriggerItems(answer);

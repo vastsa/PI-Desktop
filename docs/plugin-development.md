@@ -874,13 +874,31 @@ export function onLoad(pi) {
   or `["right"]` selects a side, omitted means both
 - `composerTrigger` — the item list behind one of the composer's trigger
   symbols: `{ slot: "composerTrigger", trigger: "#", items }`, and the host draws
-  the list
+  the list. `items` gets `{ trigger, query }` plus, when the host knows them,
+  the draft's `sessionId` and `context: { usedTokens, contextWindow }` (what
+  the composer's context ring shows). It also gets
+  `sessionReferences: { budgetPercent, maxTurns }`, the user's Settings › AI ›
+  Session references choices (budget 10/25/50/100 % of the remaining context,
+  25 by default; 3/5/10/20 turns per reference, 10 by default), already
+  defaulted by the host, and `locale`, the app's UI language (e.g. `"en"`,
+  `"zh-CN"`), the one the host's own rows are drawn in. Read-only; hosts that
+  predate them leave them out, so fall back to your own defaults (and to
+  `pi.app.getLocale()`). Your group follows the host's own rows
+  for the symbol (its `/` commands, its `@` files); `placement: "first"` puts
+  it before them instead, so its first item is highlighted and Enter picks
+  it. Arrow keys run across both groups either way
 - `userAction` / `assistantAction` — items on a message's action bar
 - `entryExtra` — a block below an assistant reply
 - `toolCard` — the card for calls of one of your own Agent tools; `toolName`
   names it
 - `blockRenderer` — a fenced block tagged `<your-plugin-id>:<lang>`; `language`
-  names the tag
+  names the tag. It applies in answers (Markdown) and in user messages, which
+  are otherwise plain text: there only a closed fence on its own lines whose
+  tag you claimed is drawn by you, the line breaks around it included; every
+  other fence stays text. The message text is unchanged, so copy and edit
+  still give the full fence. A session's automatic title skips such fences
+  (any `<pluginId>:lang` fence) in its first prompt and uses the words the
+  user typed
 
 A dialog you draw yourself is not a slot: `pi.ui.openLayer()` hands you a layer
 to render into, and the component draws inside it. Styles go through

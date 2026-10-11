@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { splitInlineContent } from "@pi-desktop/shared";
 import ts from "typescript";
 import { getExtraMessageAttachments } from "../src/features/chat/transcript/extra-attachments.ts";
+import * as remoteSessionSafety from "../src/lib/remote-session-safety.ts";
 
 const t = (key, values) => values?.name ? `${key}: ${values.name}` : key;
 const store = {
@@ -14,6 +15,7 @@ const store = {
   activateMessageRevision: async () => {},
   deleteMessage: async () => {},
   selectSession: async () => {},
+  sessions: [],
   showToast: () => {},
 };
 const useAppStore = (selector) => selector(store);
@@ -47,6 +49,7 @@ function loadComponent(name, extras = {}) {
     "../../../components/icons": new Proxy({}, { get: () => Icon }),
     "../../../components/ui": { TooltipButton },
     "./shared": shared,
+    "./UserMessageText": { UserMessageText: shared.LinkifiedText },
     "./menu-items": { userMessageMenuItems: () => [] },
     "./TranscriptMenu": {
       useTranscriptMenu: () => () => {},
@@ -54,6 +57,9 @@ function loadComponent(name, extras = {}) {
     },
     "./ActionBarSlots": { ActionSlotSide: () => null },
     "../../../plugins/renderer-slots/slot-message": { slotMessage: () => undefined },
+    // Pure capability rules: the real module, so a local row keeps its actions.
+    "../../../lib/remote-session-safety": remoteSessionSafety,
+    "../../../plugins/renderer-slots/use-slots": { useSlotSessionId: () => "" },
     // The row renders the user's own order through the shared placement helper.
     "@pi-desktop/shared": { splitInlineContent },
     ...extras,

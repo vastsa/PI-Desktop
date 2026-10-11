@@ -254,6 +254,7 @@ test("a composer trigger is keyed by its symbol, full-width folded, first claim 
   assert.equal(hash?.pluginId, PLUGIN);
   assert.equal(hash?.trigger, "#");
   assert.equal(hash?.items, items);
+  assert.equal(hash?.placement, "last", "after the host's rows unless asked otherwise");
   assert.equal("component" in hash, false, "a trigger registers no component");
   assert.deepEqual(registry.getSnapshot().entries, [], "triggers never reach component outlets");
 
@@ -267,7 +268,8 @@ test("a composer trigger is keyed by its symbol, full-width folded, first claim 
   }
   assert.equal(notified, 1, "a refused claim publishes nothing");
 
-  registry.register(OTHER, { slot: "composerTrigger", trigger: "@", items }, []);
+  registry.register(OTHER, { slot: "composerTrigger", trigger: "@", placement: "first", items }, []);
+  assert.equal(registry.triggerFor("@")?.placement, "first");
   registry.register(PLUGIN, { slot: "composerTrigger", trigger: "/", items }, []);
   assert.deepEqual(
     registry.getSnapshot().triggers.map((entry) => [entry.trigger, entry.pluginId]),

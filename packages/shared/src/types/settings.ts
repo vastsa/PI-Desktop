@@ -2,6 +2,10 @@
 import type { CommandShellId } from "../command-shells.js";
 import type { KeybindingOverrides } from "../keyboard-shortcuts.js";
 import type { NetworkProxySettings } from "../network-proxy.js";
+import type {
+  SessionReferenceBudgetPercent,
+  SessionReferenceMaxTurns,
+} from "../session-references.js";
 import type { NetworkPolicySettings } from "../network-policy.js";
 import type { ContextCompactionSettings } from "./sessions.js";
 import type { Mode } from "./common.js";
@@ -137,6 +141,19 @@ export type AppSettings = {
    * does not change meaning with this preference.
    */
   contextUsageDisplay?: ContextUsageDisplay;
+  /**
+   * Session references (Settings › AI): the share of the current chat's
+   * remaining context one `@` session reference may use, 10 / 25 / 50 / 100.
+   * Absent or unrecognised means 25 (`resolveSessionReferenceSettings`).
+   * One reference never exceeds the 32 KB composer mark limit either way.
+   */
+  sessionReferenceBudgetPercent?: SessionReferenceBudgetPercent;
+  /**
+   * Session references (Settings › AI): complete Q&A turns one reference may
+   * hold, 3 / 5 / 10 / 20, the referenced session's first turn included.
+   * Absent or unrecognised means 10.
+   */
+  sessionReferenceMaxTurns?: SessionReferenceMaxTurns;
   /**
    * Preferred centered chat band width in CSS px (D439). Absent means 760.
    * The live band is `min(available pane, this value)` so a squeezed sidebar

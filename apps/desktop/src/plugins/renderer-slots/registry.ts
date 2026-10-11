@@ -26,6 +26,7 @@ import {
   type PluginDisposer,
   type PluginSlotPosition,
   type PluginSlotRegistration,
+  type PluginTriggerPlacement,
 } from "@pi-desktop/plugin-sdk";
 import { PluginRendererError } from "../renderer-error";
 
@@ -55,6 +56,8 @@ export type TriggerEntry = {
   readonly id: string;
   readonly pluginId: string;
   readonly trigger: PluginComposerTrigger;
+  /** Before or after the host's rows for the symbol; `"last"` when not given. */
+  readonly placement: PluginTriggerPlacement;
   readonly items: PluginComposerTriggerRegistration["items"];
 };
 
@@ -179,6 +182,7 @@ export class SlotRegistry {
       id: `slot-${++this.lastId}`,
       pluginId,
       trigger,
+      placement: registration.placement === "first" ? "first" : "last",
       items: registration.items,
     };
     this.commit({ triggers: [...this.state.triggers, entry] });

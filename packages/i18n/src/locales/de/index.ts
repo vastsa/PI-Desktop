@@ -563,6 +563,7 @@ export const de = {
     "webSearchMore_other": "+{{count}} weitere Quellen",
     "thinkingShow": "Denken anzeigen",
     "thinkingHide": "Denken ausblenden",
+    "referencedSessionTitle": "Verweis: {{title}}",
     "untitledTask": "Neue Aufgabe"
   },
   "session": {
@@ -1303,6 +1304,12 @@ sklm: {
     "contextUsageDisplay": "Kontextnutzung-Anzeige",
     "contextUsageDisplayRemaining": "Verbleibend",
     "contextUsageDisplayUsed": "Verwendet",
+    "sessionReferences": "Sitzungsverweise",
+    "sessionReferencesDesc": "Was eine @-Erwähnung einer Sitzung an deine Nachricht anhängt. Ein Verweis ist nie größer als 32 KB.",
+    "sessionReferenceBudget": "Verweisbudget",
+    "sessionReferenceBudgetDesc": "Anteil des verbleibenden Kontexts dieses Chats, den ein Verweis nach einer Antwortreserve nutzen darf.",
+    "sessionReferenceMaxTurns": "Maximale Runden pro Verweis",
+    "sessionReferenceMaxTurnsDesc": "Vollständige Frage-Antwort-Runden pro Verweis: die erste Runde der Sitzung, dann die neuesten.",
     "linkContextMenuOpenExternal": "Im Standard-Browser öffnen",
     "linkContextMenuOpenWorkpanel": "Im Arbeitsbereich öffnen",
     "linkContextMenuCopy": "Link-Adresse kopieren",

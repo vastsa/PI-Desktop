@@ -562,6 +562,7 @@ export const ptBR = {
     webSearchMore_other: "+{{count}} fontes adicionais",
     thinkingShow: "Mostrar raciocínio",
     thinkingHide: "Ocultar raciocínio",
+    referencedSessionTitle: "Referência: {{title}}",
     untitledTask: "Tarefa sem título"
   },
   session: {
@@ -1276,6 +1277,12 @@ export const ptBR = {
     contextUsageDisplay: "Indicador de uso do contexto",
     contextUsageDisplayRemaining: "Restante",
     contextUsageDisplayUsed: "Usado",
+    sessionReferences: "Referências de sessão",
+    sessionReferencesDesc: "O que uma menção @ de sessão anexa à sua mensagem. Uma referência nunca passa de 32 KB.",
+    sessionReferenceBudget: "Orçamento de referência",
+    sessionReferenceBudgetDesc: "Parte do contexto restante desta conversa que uma referência pode usar, após reservar espaço para a resposta.",
+    sessionReferenceMaxTurns: "Máximo de turnos por referência",
+    sessionReferenceMaxTurnsDesc: "Turnos completos de pergunta e resposta por referência: o primeiro turno da sessão e depois os mais recentes.",
     linkContextMenuOpenExternal: "Abrir no navegador padrão",
     linkContextMenuOpenWorkpanel: "Abrir no painel de trabalho",
     linkContextMenuCopy: "Copiar endereço do link",

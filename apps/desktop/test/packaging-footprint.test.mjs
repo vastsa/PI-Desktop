@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const packageJson = JSON.parse(
@@ -215,6 +218,32 @@ test("packaging keeps only shipped locales and excludes non-runtime artifacts", 
     },
   ]);
   assert.doesNotMatch(JSON.stringify(packageJson.build), /node-pty/);
+});
+
+test("the bundled Session Mentions plugin ships only its runtime files", () => {
+  // resources/plugins is copied as is, so its tests and docs sources live in
+  // apps/desktop/test and nothing generated or test-only lands in the package.
+  const dir = fileURLToPath(new URL("../resources/plugins/pi.session-mentions/", import.meta.url));
+  const shipped = readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(dir, join(entry.parentPath, entry.name)).replaceAll("\\", "/"))
+    .sort();
+  assert.deepEqual(shipped, [
+    "README.md",
+    "card.js",
+    "lib/prompt.js",
+    "lib/qa.js",
+    "lib/reader.js",
+    "lib/references.js",
+    "lib/snapshot.js",
+    "main.js",
+    "manifest.json",
+    "package.json",
+    "renderer.js",
+    "service.js",
+  ]);
+  const bytes = shipped.reduce((sum, file) => sum + statSync(join(dir, file)).size, 0);
+  assert.ok(bytes < 64 * 1024, `pi.session-mentions ships ${bytes} bytes; keep it under 64 KiB`);
 });
 
 test("macOS targets follow the native architecture selected by the runner", () => {

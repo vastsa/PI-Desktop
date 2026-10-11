@@ -2383,3 +2383,38 @@ fn plugin_ui_meta_parses_the_floating_widget_placement() {
     assert!(panel.always_on_top.is_none());
     assert!(panel.resizable.is_none());
 }
+
+/// The plugins this repository ships must all register as bundled, enabled
+/// plugins holding their manifest permissions: a manifest the host cannot
+/// parse is skipped silently at startup, so it has to fail here instead.
+#[test]
+fn the_shipped_bundled_plugins_register_enabled() {
+    let shipped =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/resources/plugins");
+    let data = tempdir().unwrap();
+    let mut mgr = PluginManager::new(data.path(), MarketChannel::Official, None);
+    mgr.sync_builtin(Some(&shipped)).unwrap();
+    for id in ["pi.browser", "pi.file-manager", "pi.session-mentions"] {
+        let listed = mgr
+            .get(id)
+            .unwrap_or_else(|| panic!("{id} must be registered"));
+        assert_eq!(listed.source, "builtin");
+        assert!(listed.bundled, "{id} is bundled");
+        assert!(listed.enabled, "{id} is on by default");
+    }
+    let mentions = mgr.get("pi.session-mentions").unwrap();
+    // Bundled plugins hold their manifest permissions without a consent step.
+    assert_eq!(
+        mentions.permissions,
+        vec![
+            "renderer.extension".to_string(),
+            "desktop.control".to_string()
+        ]
+    );
+    assert_eq!(mentions.status, "ready");
+    // An existing profile picks it up on its next launch, and the user may
+    // turn it off for good.
+    mgr.set_enabled("pi.session-mentions", false).unwrap();
+    mgr.sync_builtin(Some(&shipped)).unwrap();
+    assert!(!mgr.get("pi.session-mentions").unwrap().enabled);
+}

@@ -59,10 +59,50 @@ export const PLUGIN_ATTACHMENT_MAX_BYTES = 16 * 1024 * 1024;
 /** Attachments one plugin may hold in one draft. */
 export const PLUGIN_ATTACHMENTS_MAX = 20;
 
-/** What a trigger is asked for: the text typed after its symbol. */
+/** Where a trigger's group sits relative to the host's rows for its symbol. */
+export type PluginTriggerPlacement = "first" | "last";
+
+/**
+ * The context use of the session a draft belongs to, as the composer's
+ * context ring shows it: what the newest answered turn occupied, and the
+ * model's window. A read-only estimate, not a reservation.
+ */
+export type PluginTriggerContext = {
+  readonly usedTokens: number;
+  readonly contextWindow: number;
+};
+
+/**
+ * The user's Session references preferences (Settings › AI), for a trigger
+ * that references other sessions: the share of the remaining context one
+ * reference may use (`budgetPercent`: 10, 25, 50 or 100) and the complete
+ * Q&A turns it may hold, the referenced session's first turn included
+ * (`maxTurns`: 3, 5, 10 or 20). A reference is still bound by
+ * `PLUGIN_MARK_SEND_MAX_BYTES`. Read-only; the host fills in the defaults
+ * (25, 10) when the user has not chosen.
+ */
+export type PluginTriggerSessionReferences = {
+  readonly budgetPercent: number;
+  readonly maxTurns: number;
+};
+
+/**
+ * What a trigger is asked for: the text typed after its symbol, and, when the
+ * host knows them, the session the draft belongs to and that session's
+ * context use. Both are absent for a draft without a session yet, and
+ * `context` also before the session's first answered turn.
+ * `sessionReferences` carries the user's Session references preferences,
+ * and `locale` the app's UI language (e.g. "en", "zh-CN"), the one the host's
+ * own rows are drawn in, so a trigger's rows can match them; hosts that
+ * predate either leave it out.
+ */
 export type PluginTriggerQuery = {
   readonly trigger: PluginComposerTrigger;
   readonly query: string;
+  readonly sessionId?: string;
+  readonly context?: PluginTriggerContext;
+  readonly sessionReferences?: PluginTriggerSessionReferences;
+  readonly locale?: string;
 };
 
 /**
@@ -82,10 +122,16 @@ export type PluginTriggerItem = {
  * the start of a line or after whitespace, never during IME composition and
  * never for text a program wrote. A throw, a rejection or no answer within
  * `PLUGIN_TRIGGER_TIMEOUT_MS` collapses only this plugin's group.
+ *
+ * `placement` puts the group before (`"first"`) or after (`"last"`, the
+ * default) the host's own rows for the symbol (its `/` commands, its `@`
+ * files). The list's first row is the default highlight, so a `"first"`
+ * group's top item is what Enter picks; arrow keys run across both groups.
  */
 export type PluginComposerTriggerRegistration = {
   readonly slot: "composerTrigger";
   readonly trigger: string;
+  readonly placement?: PluginTriggerPlacement;
   readonly items: (
     query: PluginTriggerQuery,
   ) => readonly PluginTriggerItem[] | Promise<readonly PluginTriggerItem[]>;

@@ -143,6 +143,12 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /infiniteProviderRetry: settings\.infiniteProviderRetry !== true/);
   assert.match(aiSource, /LargePasteThresholdRow/);
   assert.match(aiSource, /ContextUsageDisplayRow/);
+  // Session references: a host-owned group on Settings › AI.
+  assert.match(aiSource, /<SessionReferencesCard settings=\{settings\} saveSettings=\{saveSettings\} \/>/);
+  assert.match(settingsPageSource, /sessionReferenceBudgetPercent: resolveSessionReferenceBudgetPercent\(Number\(value\)\)/);
+  assert.match(settingsPageSource, /sessionReferenceMaxTurns: resolveSessionReferenceMaxTurns\(Number\(value\)\)/);
+  assert.match(settingsPageSource, /SESSION_REFERENCE_BUDGET_PERCENTS\.map/);
+  assert.match(settingsPageSource, /SESSION_REFERENCE_MAX_TURNS_CHOICES\.map/);
   assert.doesNotMatch(aiSource, /PromptEnhancementCard|promptEnhancement/);
   assert.doesNotMatch(aiSource, /EnhancementModelCard/);
   assert.match(
@@ -155,6 +161,9 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
     "settings.contextUsageDisplayUsed",
     "settings.infiniteProviderRetry",
     "settings.infiniteProviderRetryDesc",
+    "settings.sessionReferences",
+    "settings.sessionReferenceBudget",
+    "settings.sessionReferenceMaxTurns",
   ]) {
     assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
     assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
@@ -163,6 +172,8 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   }
   assert.match(sharedTypesSource, /contextUsageDisplay\?: ContextUsageDisplay/);
   assert.match(sharedTypesSource, /infiniteProviderRetry\?: boolean/);
+  assert.match(sharedTypesSource, /sessionReferenceBudgetPercent\?: SessionReferenceBudgetPercent/);
+  assert.match(sharedTypesSource, /sessionReferenceMaxTurns\?: SessionReferenceMaxTurns/);
   assert.match(sharedTypesSource, /ContextUsageDisplay = "remaining" \| "used"/);
   assert.match(sharedTypesSource, /chatContentMaxWidth\?: number/);
   assert.match(settingsPageSource, /largePasteThreshold/);

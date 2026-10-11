@@ -14,6 +14,7 @@ import {
   IconSparkles,
 } from "./icons";
 import { AnchoredMenu } from "./settings/AnchoredMenu";
+import { completionGroupHeadings } from "../features/chat/composer/completion-groups";
 
 /**
  * Composer autocomplete panel (D123–D125, spec 08 §11.8): full composer
@@ -153,24 +154,17 @@ export function ComposerAutocomplete({
   };
 
   const rows: React.ReactNode[] = [];
-  let lastGroup: string | null = null;
+  const headings = completionGroupHeadings(ac.items);
   ac.items.forEach((item, index) => {
-    if (item.kind === "command") {
-      const group = item.command.kind;
-      if (group !== lastGroup) {
-        lastGroup = group;
-        rows.push(
-          <div key={`g:${group}`} className="composer-model-group-label">
-            {t(GROUP_KEYS[group])}
-          </div>,
-        );
-      }
-    } else if (item.kind === "plugin" && lastGroup !== `plugin:${item.pluginId}`) {
-      // A plugin's rows sit under its own name, after the host's.
-      lastGroup = `plugin:${item.pluginId}`;
+    const heading = headings.get(index);
+    if (heading) {
       rows.push(
-        <div key={`g:${lastGroup}`} className="composer-model-group-label">
-          {item.pluginName}
+        <div key={`g:${index}`} className="composer-model-group-label">
+          {heading.kind === "command"
+            ? t(GROUP_KEYS[heading.group])
+            : heading.kind === "plugin"
+              ? heading.name
+              : t("chat.fileMenu")}
         </div>,
       );
     }

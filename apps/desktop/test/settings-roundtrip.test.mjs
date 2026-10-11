@@ -34,3 +34,22 @@ test("invalid retry writes stay rejected at both boundaries", () => {
     assert.throws(() => main.validateSettingsWrite(settings), /infiniteProviderRetry is invalid/);
   }
 });
+
+test("Session references preferences persist through both boundaries; other values are refused", () => {
+  const stored = { theme: "light", sessionReferenceBudgetPercent: 50, sessionReferenceMaxTurns: 3 };
+  const persisted = main.validateSettingsWrite(structuredClone(renderer.validateSettingsWrite({ ...stored })));
+  assert.equal(persisted.sessionReferenceBudgetPercent, 50);
+  assert.equal(persisted.sessionReferenceMaxTurns, 3);
+  assert.equal(main.normalizeSettings(persisted).sessionReferenceMaxTurns, 3);
+  // Absent stays absent: readers fall back to 25 % and 10 turns.
+  const plain = renderer.validateSettingsWrite({ theme: "light" });
+  assert.equal("sessionReferenceBudgetPercent" in plain, false);
+  for (const value of [0, 30, "25", null, 25.5]) {
+    assert.throws(() => renderer.validateSettingsWrite({ sessionReferenceBudgetPercent: value }),
+      /sessionReferenceBudgetPercent is invalid/);
+  }
+  for (const value of [0, 4, "10", null, 21]) {
+    assert.throws(() => renderer.validateSettingsWrite({ sessionReferenceMaxTurns: value }),
+      /sessionReferenceMaxTurns is invalid/);
+  }
+});

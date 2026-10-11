@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "pi.session-mentions",
+  "name": "Session Mentions",
+  "version": "1.0.0",
+  "description": "Type @ in the composer to reference another local session: its first and most recent complete Q&A.",
+  "i18n": {
+    "en": {
+      "name": "Session Mentions",
+      "description": "Type @ in the composer to reference another local session: its first and most recent complete Q&A."
+    },
+    "zh-CN": {
+      "name": "会话引用",
+      "description": "在输入框输入 @，引用其他本地会话：首轮和最近的完整问答。"
+    }
+  },
+  "author": "PI-Desktop",
+  "main": "main.js",
+  "renderer": "renderer.js",
+  "rendererActions": [
+    "plugin.call"
+  ],
+  "rendererCallMethods": [
+    "sessions.items",
+    "sessions.snapshots"
+  ],
+  "permissions": [
+    "renderer.extension",
+    "desktop.control"
+  ],
+  "engines": {
+    "piDesktop": ">=0.16.0"
+  },
+  "activationEvents": [
+    "onStartup"
+  ]
+}

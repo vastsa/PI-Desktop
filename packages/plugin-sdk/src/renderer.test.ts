@@ -135,6 +135,17 @@ describe("composerTrigger registrations", () => {
     );
   });
 
+  it("places its group first or last, nowhere else", () => {
+    for (const placement of [undefined, "first", "last"]) {
+      expect(codeOf({ slot: "composerTrigger", trigger: "@", placement, items })).toBeNull();
+    }
+    for (const placement of ["top", "", 0, null, ["first"]]) {
+      expect(codeOf({ slot: "composerTrigger", trigger: "@", placement, items })).toBe(
+        "PLUGIN_SLOT_INVALID_POSITION",
+      );
+    }
+  });
+
   it("keys on one of the fixed symbols, full-width forms included", () => {
     for (const trigger of ["@", "#", "/", "\uFF20", "\uFF03", "\uFF0F"]) {
       expect(codeOf({ slot: "composerTrigger", trigger, items })).toBeNull();

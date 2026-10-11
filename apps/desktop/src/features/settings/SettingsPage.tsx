@@ -52,6 +52,7 @@ import {
   CommandShellRow,
   ContextUsageDisplayRow,
   LargePasteThresholdRow,
+  SessionReferencesCard,
   LinkOpenTargetRow,
   SettingsCard,
   SettingsRow,
@@ -532,6 +533,8 @@ export function SettingsPage() {
                   saveSettings={saveSettings}
                 />
               </SettingsCard>
+
+              <SessionReferencesCard settings={settings} saveSettings={saveSettings} />
 
             </div>
           )}

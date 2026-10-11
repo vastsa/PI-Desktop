@@ -563,6 +563,7 @@ export const es = {
     "webSearchMore_other": "+{{count}} fuentes más",
     "thinkingShow": "Mostrar pensamiento",
     "thinkingHide": "Ocultar pensamiento",
+    "referencedSessionTitle": "Referencia: {{title}}",
     "untitledTask": "Nueva tarea"
   },
   "session": {
@@ -1303,6 +1304,12 @@ sklm: {
     "contextUsageDisplay": "Lectura del uso del contexto",
     "contextUsageDisplayRemaining": "Restante",
     "contextUsageDisplayUsed": "Usado",
+    "sessionReferences": "Referencias a sesiones",
+    "sessionReferencesDesc": "Lo que una mención @ de una sesión adjunta a tu mensaje. Una referencia nunca supera los 32 KB.",
+    "sessionReferenceBudget": "Presupuesto de referencia",
+    "sessionReferenceBudgetDesc": "Parte del contexto restante de este chat que puede usar una referencia, tras reservar espacio para la respuesta.",
+    "sessionReferenceMaxTurns": "Turnos máximos por referencia",
+    "sessionReferenceMaxTurnsDesc": "Turnos completos de pregunta y respuesta por referencia: el primero de la sesión y luego los más recientes.",
     "linkContextMenuOpenExternal": "Abrir en el navegador predeterminado",
     "linkContextMenuOpenWorkpanel": "Abrir en el panel de trabajo",
     "linkContextMenuCopy": "Copiar dirección del enlace",
