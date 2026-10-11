@@ -39,6 +39,19 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 | Script | Alias | Purpose |
 |---|---|---|
 | `dev-electron.mjs` | `pnpm dev`, through `predev` | Launch Electron against the dev server. On macOS it builds and reuses the fingerprinted branded host bundle under `.cache/electron-dev/` |
+| `dev-electron-restart.mjs` | used by `dev-electron.mjs` | Supervise explicit app restart requests; relaunch the renderer server and Electron together, preserve profile/arguments, and stop the owned process tree on termination |
+
+Development restarts use a private `PI_DESKTOP_DEV_RESTART_FILE` handoff after
+normal app shutdown, not native `app.relaunch()` against a stopped Vite server.
+The branded macOS dev binary reports `app.isPackaged === true`; development
+identity therefore also uses the launcher's `PI_DESKTOP_DEV=1` flag. Restart
+arguments are passed through electron-vite's `--` tail so its CLI cannot
+overwrite them. Ordinary exits and failed launches do not automatically retry.
+The supervisor reaps its owned process group after every child exit, including
+successful restarts and failures. A pending restart cannot override a nonzero
+or signaled exit. On macOS, cleanup `EPERM` is accepted only when a successful
+process-table query proves the group has no live members; permission errors
+with live descendants remain failures.
 
 ## End-to-end
 

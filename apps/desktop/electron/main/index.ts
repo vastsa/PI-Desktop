@@ -48,6 +48,7 @@ import {
 import { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import { withGitBranch } from "./workspace-git";
 import { hasSingleInstanceLock, isDevelopmentBuild } from "./installation";
+import { relaunchApplication } from "./application-restart";
 import { getStorageBootstrap } from "./storage/bootstrap";
 import { createPlanUiProbe } from "./plan-ui-probe";
 import { registerIpcHandlers } from "./ipc/register";
@@ -843,11 +844,12 @@ function registerIpc() {
   return registerIpcHandlers({
     restartForStorage: () => {
       shutdownState.quitConfirmed = true;
-      app.relaunch({ args: [...process.argv.slice(1).filter((arg) => arg !== "--pi-managed-storage"), "--pi-managed-storage"] });
+      relaunchApplication([...process.argv.slice(1).filter((arg) => arg !== "--pi-managed-storage"), "--pi-managed-storage"]);
       app.quit();
     },
     traySessions: applicationLifecycle!.traySessions,
     taskbarUnreadBadge: applicationLifecycle!.taskbarUnreadBadge,
+    isMacosSidebarVibrancyEnabled: () => mainState.macosSidebarVibrancy,
     ipcMain,
     getMainWindow,
     getHost,

@@ -61,6 +61,11 @@ export type AppSettings = {
   jevEnabled?: boolean;
   /** Prevent idle system sleep while this desktop app runs; off when absent. */
   keepAwakeWhileRunning?: boolean;
+  /**
+   * macOS sidebar vibrancy. Absent and true keep the translucent sidebar.
+   * False creates an opaque window and skips the glass material.
+   */
+  macosSidebarVibrancy?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */
   defaultCommandShell?: CommandShellId;
   /** @deprecated Retained for one-time migration into pi.prompt-enhancement. */

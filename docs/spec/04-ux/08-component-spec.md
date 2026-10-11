@@ -148,7 +148,22 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 - macOS enables the native Electron `vibrancy: "sidebar"` source-list material
   with `visualEffectState: "followWindow"` and a transparent window backing
-  (D348). `nativeTheme.themeSource` follows the app theme preference (`system` /
+  (D348), unless Settings → Appearance → Translucent sidebar is off
+  (`AppSettings.macosSidebarVibrancy === false`; absent stays on). Off creates
+  the window without vibrancy, transparency, or the clear backing, and theme
+  changes do not call `setVibrancy`. While off, the opaque window background
+  still follows System appearance and plugin-theme restoration. Changing the
+  switch asks first, then restarts the app, because the backing is fixed at
+  creation. Turning it on warns that GPU use may increase. A failed confirm
+  shows a visible localized alert, keeps the dialog open for retry, and does
+  not dismiss or restart. Keyboard focus stays inside the dialog on open and
+  while busy, and returns to the previous control on close. Settings search
+  includes the row title and description on macOS only.
+  Description matches navigate to the switch's title anchor. An accepted save
+  does not refresh the catalog during shutdown or become a false save failure.
+  Failed restart preparation leaves the live setting retryable. Startup and
+  pre-boot activation do not treat persisted settings as a live toggle.
+  `nativeTheme.themeSource` follows the app theme preference (`system` /
   `light` / `dark` / plugin base) so the material's light or dark plate matches
   the renderer. Vibrancy is re-applied only when that source changes; a missing
   plugin theme falls back to `system`. Main and settings navigation share the

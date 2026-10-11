@@ -86,7 +86,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   // Settings search mirrors the rail: developer-only destinations stay out of
   // the result list while developer mode is off.
   const developerMode = useAppStore((s) => s.settings?.developerMode === true);
-
+  const platform = window.piDesktop?.platform ?? "darwin";
   const query = useSessionSearchState((state) => state.query);
   const setQuery = useSessionSearchState((state) => state.setQuery);
   const search = useSessionSearch(open, query);
@@ -213,8 +213,9 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       searchSettings(query, t, {
         developerMode,
         includeDevelopmentOnly: import.meta.env.DEV,
+        platform,
       }),
-    [query, t, developerMode],
+    [query, t, developerMode, platform],
   );
 
   const sessionOptionCount = rows.reduce(
