@@ -15,6 +15,7 @@ import type {
   AgentEventEnvelope,
   PlanningStateEvent,
   PlanProposal,
+  ScheduledRunChange,
   SessionTodoSnapshot,
   UiMessage,
 } from "@pi-desktop/shared";
@@ -108,7 +109,7 @@ export function createEventsSlice({
   withCompactionMark,
 }: EventsSliceDependencies): Pick<
   AppState,
-  "handlePlansChanged" | "handleAgentEvent" | "applyTodosChanged"
+  "handlePlansChanged" | "handleAgentEvent" | "applyTodosChanged" | "applyScheduledRunChanged"
 > {
   let flushingStreamUpdates = false;
   const streamUpdates = createFrameBatcher<AgentEventEnvelope>((envelopes) => {
@@ -154,6 +155,25 @@ export function createEventsSlice({
         const current = state.sessionTodos[snapshot.sessionId];
         if (current && current.revision >= snapshot.revision) return state;
         return { sessionTodos: { ...state.sessionTodos, [snapshot.sessionId]: snapshot } };
+      });
+    },
+    applyScheduledRunChanged: (change: ScheduledRunChange) => {
+      if (!change?.runId || !change?.sessionId) return;
+      set((state) => {
+        // One tracked run per conversation (issue #1441): a run's transcript
+        // belongs to one session, and a task cannot overlap its own run, so a
+        // newer run replaces the previous one instead of growing the map for
+        // the whole life of the window.
+        const scheduledRuns: Record<string, ScheduledRunChange & { updatedAt: number }> = {};
+        for (const [runId, run] of Object.entries(state.scheduledRuns)) {
+          if (run.sessionId !== change.sessionId) scheduledRuns[runId] = run;
+        }
+        scheduledRuns[change.runId] = {
+          ...state.scheduledRuns[change.runId],
+          ...change,
+          updatedAt: Date.now(),
+        };
+        return { scheduledRuns };
       });
     },
     handlePlansChanged: (event) => {

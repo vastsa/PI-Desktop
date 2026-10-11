@@ -77,6 +77,7 @@ import type {
   ProjectMemory,
   ProjectMemoryEntry,
   ProjectWorkspace,
+  ScheduledRunChange,
   ScheduledTask,
   ProviderCreateInput,
   ProviderPublic,
@@ -1573,6 +1574,14 @@ export const api = {
     return window.piDesktop.on(IPC.event.todosChanged, (payload) =>
       listener(payload as SessionTodoSnapshot),
     );
+  },
+  /** A scheduled run arriving or settling, for the project rows (issue #1441). */
+  onScheduledChanged: (listener: (change: ScheduledRunChange) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.scheduledChanged, (payload) => {
+      const change = (payload as { change?: ScheduledRunChange } | null)?.change;
+      if (change) listener(change);
+    });
   },
   onOauthLogin: (listener: (event: OAuthLoginEvent) => void) => {
     if (!window.piDesktop?.on) return () => undefined;

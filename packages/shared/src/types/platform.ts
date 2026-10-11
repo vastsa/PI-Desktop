@@ -119,6 +119,21 @@ export type ScheduledTaskRun = {
   errorCode: string | null; startedAt: string; endedAt: string | null;
 };
 
+/**
+ * A scheduled run arriving or settling, broadcast to the renderer so a project
+ * row can report it while the automation transcript stays out of the session
+ * list (issue #1441). The identity fields ride with the start; settlement only
+ * needs the ids.
+ */
+export type ScheduledRunChange = {
+  runId: string;
+  sessionId: string;
+  status: "running" | "completed" | "error";
+  taskId?: string;
+  taskTitle?: string;
+  projectPath?: string;
+};
+
 /** How a scheduled run relates to the task's conversations. */
 export type ScheduledSessionMode = "perRun" | "reuse";
 

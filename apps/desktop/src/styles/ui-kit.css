@@ -29,6 +29,16 @@
   white-space: normal;
 }
 
+/* A project row's hint keeps the path on one line and what the project is
+   doing on the next (issue #1441), so a narrow sidebar reads two short facts
+   instead of one long wrapped sentence. */
+.ui-tooltip-path-status {
+  max-width: min(340px, calc(100vw - 16px));
+  text-align: left;
+  white-space: pre-line;
+  line-height: var(--leading-body);
+}
+
 /* A help tooltip carries a sentence, not a label, so it wraps instead of
    running off its anchor. */
 .ui-tooltip-help {
