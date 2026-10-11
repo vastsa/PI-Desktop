@@ -47,16 +47,19 @@ export function createManagedSessionRouter(dependencies: ManagedSessionDependenc
       if (pending.has(request.sessionId)) {
         throw Object.assign(new Error("A managed session submission is already pending"), { errorCode: "BUSY" });
       }
-      const attachments = await prepareManagedPromptAttachments(
-        dependencies.dataDir,
-        request.sessionId,
-        await dependencies.projectPath(request.sessionId),
-        request.attachments ?? [],
-        request.content,
-      );
-      const messageId = request.messageId ?? randomUUID();
+      // Claim the session before the first await below. Attachment preparation
+      // and project-path resolution both await, so a fence acquired afterwards
+      // would let two concurrent prompts interleave and both reach submit().
       pending.add(request.sessionId);
       try {
+        const attachments = await prepareManagedPromptAttachments(
+          dependencies.dataDir,
+          request.sessionId,
+          await dependencies.projectPath(request.sessionId),
+          request.attachments ?? [],
+          request.content,
+        );
+        const messageId = request.messageId ?? randomUUID();
         await dependencies.submit(pluginId, {
           sessionId: request.sessionId,
           messageId,

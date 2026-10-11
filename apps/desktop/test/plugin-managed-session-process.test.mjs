@@ -74,8 +74,10 @@ test('a delayed managed owner lookup still rejects a foreign owner', async t => 
 // The model binding and the four attachment blob calls are what a room needs to
 // show the member's model in the composer and to move image bytes between
 // machines. Each must cross the isolated process with the trusted plugin
-// identity; per-session ownership is enforced by the host service (Rust), not
-// here.
+// identity. The service behind these stubs enforces both session ownership and
+// that the ref belongs to that session's transcript
+// (services/plugin-services.ts); the store itself is covered directly in
+// plugin-managed-attachments.test.mjs.
 test('managed model binding and attachment blob calls cross the process with the plugin identity', async t => {
  const blob = [];
  const { id } = await setup(t, `module.exports={onLoad:async()=>{
@@ -95,6 +97,23 @@ test('managed model binding and attachment blob calls cross the process with the
  assert.ok(blob.every(c => c.pluginId === id));
  assert.equal(blob[0].input.thinkingLevel, 'high');
  assert.equal(blob[4].input.ref, `attachments/${'a'.repeat(64)}`);
+});
+
+// The blob store is shared with ordinary sessions, so "this plugin owns the
+// session" is not a bound on which bytes a read may name. The service must ask
+// the host which refs that transcript carries and refuse anything else; the
+// host-core `session.managedRefs` test covers the answer, and
+// plugin-managed-attachments.test.mjs covers the store.
+test('a managed blob read is gated on the ref belonging to that transcript', async () => {
+ const { readFile } = await import('node:fs/promises');
+ const services = await readFile(new URL('../electron/main/services/plugin-services.ts', import.meta.url), 'utf8');
+ assert.match(services, /readManagedAttachment: async \(pluginId, input\) => \{\s*await assertManagedAttachmentOwner\(pluginId, input\);\s*await assertManagedAttachmentRef\(pluginId, input\);/);
+ assert.match(services, /if \(!carried\.includes\(ref\)\)/);
+ assert.match(services, /host\.call<\{ refs\?: unknown \}>\("session\.managedRefs", \{ sessionId, pluginId \}\)/);
+ // The store is never asked before both gates ran.
+ assert.match(services, /await assertManagedAttachmentRef\(pluginId, input\);\s*return managedAttachments\.read\(input\);/);
+ const rpc = await readFile(new URL('../../../crates/host-core/src/rpc/mod.rs', import.meta.url), 'utf8');
+ assert.match(rpc, /"session\.managedRefs" => \{/);
 });
 
 test('managed cleanup appends existing history but cannot create a new session', async t => {

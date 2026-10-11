@@ -148,6 +148,37 @@ export function createPluginServices({
       throw Object.assign(new Error("Session is not managed by this plugin"), { code: "PERMISSION_DENIED" });
     }
   };
+  /**
+   * The refs one managed transcript carries, as recorded by the plugin's own
+   * `appendManaged` before it ever asked for the bytes. Rust resolves the
+   * ownership; Main only asks.
+   */
+  const managedRefs = async (sessionId: string, pluginId: string): Promise<string[]> => {
+    const host = getHost();
+    if (!host) throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });
+    const result = await host.call<{ refs?: unknown }>("session.managedRefs", { sessionId, pluginId });
+    return Array.isArray(result.refs) ? (result.refs as string[]) : [];
+  };
+  /**
+   * A read is only as narrow as the ref it names. The blob store is shared by
+   * every session on this machine, so ownership of one managed session is not
+   * enough: the ref must appear in *that* transcript. A ref that belongs to an
+   * ordinary session, or to a managed session owned by another plugin, is
+   * refused here and never reaches the store.
+   */
+  const assertManagedAttachmentRef = async (
+    pluginId: string,
+    input: Record<string, unknown>,
+  ): Promise<void> => {
+    const ref = typeof input.ref === "string" ? input.ref.trim() : "";
+    const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+    const carried = await managedRefs(sessionId, pluginId);
+    // The ownership gate has already run, so `managedRefs` answered from this
+    // session's own transcript; anything it does not list belongs elsewhere.
+    if (!carried.includes(ref)) {
+      throw Object.assign(new Error("Attachment does not belong to this session"), { code: "PERMISSION_DENIED" });
+    }
+  };
   const callPluginSessionHost = async (
     method: string,
     pluginId: string,
@@ -402,6 +433,7 @@ export function createPluginServices({
       // through the local store, which owns the bounds and the owner check.
       readManagedAttachment: async (pluginId, input) => {
         await assertManagedAttachmentOwner(pluginId, input);
+        await assertManagedAttachmentRef(pluginId, input);
         return managedAttachments.read(input);
       },
       beginManagedAttachment: async (pluginId, input) => {

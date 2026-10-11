@@ -62,6 +62,47 @@ pub fn owner(db: &Database, session_id: &str) -> Result<Option<String>> {
     Ok((origin.get("managed").and_then(Value::as_bool) == Some(true)).then_some(plugin_id))
 }
 
+/// Every attachment ref this managed session's own transcript carries.
+///
+/// The bytes live in a machine-global, content-addressed store shared with
+/// ordinary sessions, so a ref proves nothing by itself: a plugin that learned
+/// or guessed another session's hash could read it through a managed session it
+/// does own. Electron main asks this before it hands out bytes, which makes
+/// "the ref appears in this transcript" the read gate.
+pub fn session_refs(db: &Database, plugin_id: &str, params: &Value) -> Result<Value> {
+    validate_payload(params)?;
+    let session_id = required_text(
+        params
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        "sessionId",
+        128,
+    )?;
+    if owner(db, &session_id)?.as_deref() != Some(plugin_id)
+        || own_session_row(db, plugin_id, &session_id)?.is_none()
+    {
+        return Err(not_found("managed session not found"));
+    }
+    let mut refs = HashSet::new();
+    for record in transcripts::read_transcript(db.data_dir(), &session_id)? {
+        let Some(blocks) = record.blocks.as_array() else {
+            continue;
+        };
+        for block in blocks {
+            if block.get("type").and_then(Value::as_str) != Some("attachment") {
+                continue;
+            }
+            if let Some(reference) = block.get("ref").and_then(Value::as_str) {
+                refs.insert(reference.to_string());
+            }
+        }
+    }
+    let mut refs: Vec<String> = refs.into_iter().collect();
+    refs.sort();
+    Ok(json!({ "refs": refs }))
+}
+
 /// Bind the model/thinking level a managed transcript composes with.
 ///
 /// A managed session never runs an agent, so this is display/compose state: it
@@ -357,7 +398,10 @@ mod tests {
             "size": 1234
         });
         let message = json!({"sessionId":id,"externalId":"m-one","message":{"role":"user","content":"see this","createdAt":"2026-10-08T00:00:00Z","attachments":[attachment]}});
-        assert_eq!(append(&db, "plugin.one", &message).unwrap()["appended"], true);
+        assert_eq!(
+            append(&db, "plugin.one", &message).unwrap()["appended"],
+            true
+        );
         let stored = sessions::get_session(&db, id).unwrap().unwrap();
         let carried = stored.messages[0].attachments.clone().unwrap();
         assert_eq!(carried.len(), 1);
@@ -369,6 +413,56 @@ mod tests {
         assert!(append(&db, "plugin.one", &bad_ref).is_err());
         let assistant = json!({"sessionId":id,"externalId":"m-three","message":{"role":"assistant","content":"x","createdAt":"2026-10-08T00:02:00Z","attachments":[attachment]}});
         assert!(append(&db, "plugin.one", &assistant).is_err());
+    }
+
+    #[test]
+    fn attachment_reads_are_scoped_to_the_transcript_that_carries_the_ref() {
+        let temp = tempfile::tempdir().unwrap();
+        let db = Database::open(&temp.path().join("test.sqlite")).unwrap();
+        let mine = create(
+            &db,
+            "plugin.one",
+            &json!({"source":"room","externalId":"one","title":"Room"}),
+        )
+        .unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let theirs = create(
+            &db,
+            "plugin.two",
+            &json!({"source":"room","externalId":"two","title":"Other"}),
+        )
+        .unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let carried = "a".repeat(64);
+        let foreign = "b".repeat(64);
+        let message = |external: &str, hash: &str| json!({"sessionId":mine,"externalId":external,"message":{"role":"user","content":"see this","createdAt":"2026-10-08T00:00:00Z","attachments":[{"kind":"image","name":"shot.png","ref":format!("attachments/{hash}")}]}});
+        append(&db, "plugin.one", &message("m-one", &carried)).unwrap();
+        // The other plugin's own transcript carries a different ref; neither
+        // transcript may be read through the other.
+        append(
+            &db,
+            "plugin.two",
+            &json!({"sessionId":theirs,"externalId":"t-one","message":{"role":"user","content":"mine","createdAt":"2026-10-08T00:00:00Z","attachments":[{"kind":"image","name":"other.png","ref":format!("attachments/{foreign}")}]}}),
+        )
+        .unwrap();
+        let refs = session_refs(&db, "plugin.one", &json!({"sessionId":mine})).unwrap();
+        assert_eq!(refs["refs"], json!([format!("attachments/{carried}")]));
+        // A ref staged for this session but not yet appended is not readable.
+        assert!(!refs["refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r == &json!(format!("attachments/{foreign}"))));
+        // The other plugin cannot enumerate this transcript at all.
+        assert!(session_refs(&db, "plugin.two", &json!({"sessionId":mine})).is_err());
+        assert_eq!(
+            session_refs(&db, "plugin.two", &json!({"sessionId":theirs})).unwrap()["refs"],
+            json!([format!("attachments/{foreign}")])
+        );
     }
 
     #[test]

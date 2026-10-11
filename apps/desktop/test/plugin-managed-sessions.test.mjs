@@ -51,6 +51,30 @@ test('pending submissions serialize; failure releases the fence; attachments are
   assert.equal(call, 2);
 });
 
+// The fence must be claimed before the first await. `projectPath` awaits a real
+// host read on every managed send, so a revision that added to `pending` only
+// after attachment preparation let a second prompt slip in while the first was
+// still resolving its path — both reached submit() and the transcript got two
+// turns for one user action.
+test('a prompt in flight during project-path resolution already holds the fence', async () => {
+  let releasePath;
+  let call = 0;
+  const received = [];
+  const router = createManagedSessionRouter({
+    owner: async () => 'plugin.one',
+    submit: async (_plugin, input) => { call++; received.push(input); },
+    dataDir: '/tmp',
+    projectPath: async () => { await new Promise(resolve => { releasePath = resolve; }); return undefined; },
+  });
+  const first = router.prompt({ sessionId: 'room', content: 'one' });
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(router.prompt({ sessionId: 'room', content: 'two' }), { errorCode: 'BUSY' });
+  releasePath();
+  assert.equal((await first).managed, true);
+  assert.equal(call, 1);
+  assert.deepEqual(received.map(input => input.content), ['one']);
+});
+
 // The project-path dependency issues a real host `session.get` on every managed
 // send, before the submission reaches the plugin. An earlier revision asked for
 // `messageLimit: 0`, which host-core refuses
