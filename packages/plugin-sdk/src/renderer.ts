@@ -55,6 +55,8 @@ export const PLUGIN_RENDERER_SLOTS = [
   "blockRenderer",
   "composerControl",
   "composerTrigger",
+  "navigationSection",
+  "mainPage",
 ] as const;
 
 export type PluginRendererSlot = (typeof PLUGIN_RENDERER_SLOTS)[number];
@@ -169,6 +171,18 @@ export type PluginComposerControlSlotRegistration = {
   readonly positions?: readonly PluginSlotPosition[];
 };
 
+/** An additive main navigation category, disposed with this renderer load. */
+export type PluginNavigationSectionRegistration = {
+  readonly slot: "navigationSection";
+  readonly component: PluginSlotComponent<Record<string, never>>;
+};
+/** An owned main-content page; opening requires shell.openPage in a user gesture. */
+export type PluginMainPageRegistration = {
+  readonly slot: "mainPage";
+  readonly pageId: string;
+  readonly component: PluginSlotComponent<Record<string, never>>;
+};
+
 /** What `pi.slots.register` accepts, discriminated by `slot`. */
 export type PluginSlotRegistration =
   | PluginActionSlotRegistration
@@ -176,7 +190,9 @@ export type PluginSlotRegistration =
   | PluginToolCardSlotRegistration
   | PluginBlockRendererSlotRegistration
   | PluginComposerControlSlotRegistration
-  | PluginComposerTriggerRegistration;
+  | PluginComposerTriggerRegistration
+  | PluginNavigationSectionRegistration
+  | PluginMainPageRegistration;
 
 /**
  * Outbound actions the host implements. A plugin may dispatch only the words
@@ -186,6 +202,9 @@ export type PluginSlotRegistration =
  */
 export const PLUGIN_RENDERER_ACTIONS = [
   "plugin.call",
+  "shell.openPage",
+  "session.readContext",
+  "workPanel.openView",
   "composer.insertText",
   "composer.readDraft",
   "composer.replaceDraft",
@@ -219,6 +238,19 @@ export type PluginInsertTextPayload = {
 /** Payload and result of every action word. */
 export type PluginRendererActionMap = {
   "plugin.call": { payload: PluginCallPayload; result: unknown };
+  /** Open this load's own registered main page, inside a user gesture. */
+  "shell.openPage": { payload: { pageId: string }; result: { ok: true } };
+  /** Read-only active chat identity; no transcript or credentials. */
+  "session.readContext": {
+    payload: Record<string, never>;
+    result: { sessionId: string; managedByPlugin?: string } | null;
+  };
+  /** Open this plugin's declared view in the existing session work panel.
+   * Requires a user gesture and the same active session; reuses the singleton tab. */
+  "workPanel.openView": {
+    payload: { viewId: string; expectedSessionId: string };
+    result: { ok: true };
+  };
   "composer.insertText": { payload: PluginInsertTextPayload; result: PluginDraftWriteResult };
   "composer.readDraft": { payload: PluginReadDraftPayload; result: PluginDraftSnapshot };
   "composer.replaceDraft": { payload: PluginReplaceDraftPayload; result: PluginDraftWriteResult };
@@ -429,6 +461,9 @@ export function slotRegistrationRefusal(
   if (slot === "composerTrigger") return composerTriggerRefusal(candidate);
   if (typeof candidate.component !== "function") {
     return refusal("PLUGIN_SLOT_INVALID_COMPONENT", `${slot} component must be a function`);
+  }
+  if (slot === "mainPage" && (typeof candidate.pageId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(candidate.pageId))) {
+    return refusal("PLUGIN_SLOT_INVALID_KEY", "mainPage requires a bounded pageId");
   }
   const positions = candidate.positions;
   if (positions !== undefined) {

@@ -20,6 +20,8 @@ export type TurnEndedPayload = {
   sessionId: string;
   turnId: string;
   reason: TurnEndReason;
+  /** Whether host-core acknowledged the durable terminal write. */
+  persisted?: boolean;
 };
 
 export type SessionCoordinationDependencies = {

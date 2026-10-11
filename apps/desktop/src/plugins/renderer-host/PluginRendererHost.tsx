@@ -11,7 +11,12 @@ import { sessionAwaitsDecision, useHostSafetySurfaceMounted } from "../../lib/ho
 import { useAppStore } from "../../stores/app-store";
 import { pluginLayers } from "../renderer-layers/layer-stack";
 import { installRendererImportMap } from "./import-map";
+import { bindRendererSessionRoutes } from "./session-actions";
+import { PluginRendererError } from "../renderer-error";
+import { pluginWorkPanelTab } from "../../lib/work-panel-tabs";
 import { rendererLoadSpecs, rendererModules } from "./loader";
+import { bindRendererShellRoutes } from "./shell-actions";
+import { slotRegistry } from "../renderer-slots/registry";
 import "../renderer-slots/slot-shell.css";
 
 export function PluginRendererHost(): null {
@@ -26,6 +31,42 @@ export function PluginRendererHost(): null {
     installRendererImportMap();
     rendererModules.sync(rendererLoadSpecs(plugins, projectPath));
   }, [plugins, projectPath]);
+
+  useLayoutEffect(() => bindRendererSessionRoutes({
+    readContext: () => {
+      const state = useAppStore.getState();
+      if (!state.activeSessionId || state.page !== "chat") return null;
+      const session = state.sessions.find(item => item.id === state.activeSessionId);
+      return { sessionId: state.activeSessionId, ...(session?.managedByPlugin
+        ? { managedByPlugin: session.managedByPlugin } : {}) };
+    },
+    openView: (pluginId, viewId, sessionId) => {
+      const state = useAppStore.getState();
+      if (state.activeSessionId !== sessionId || state.page !== "chat") {
+        throw new PluginRendererError("PLUGIN_DRAFT_STALE", "The active session changed");
+      }
+      if (!state.pluginViews.some(view => view.pluginId === pluginId && view.viewId === viewId)) {
+        throw new PluginRendererError("PLUGIN_ACTION_UNDECLARED", "The plugin view is not available");
+      }
+      state.openWorkPanelTabForSession(sessionId, pluginWorkPanelTab(pluginId, viewId));
+    },
+  }), []);
+
+  useLayoutEffect(() => bindRendererShellRoutes({
+    openPage: page => useAppStore.getState().setPage(page),
+  }), []);
+
+  useEffect(() => {
+    const reconcile = () => {
+      const state = useAppStore.getState();
+      if (state.page.startsWith("plugin:") && !slotRegistry.entryForKey("mainPage", state.page.slice(7))) {
+        state.setPage("chat", { record: false });
+      }
+    };
+    const unSlots = slotRegistry.subscribe(reconcile);
+    const unState = useAppStore.subscribe(reconcile);
+    return () => { unSlots(); unState(); };
+  }, []);
 
   useEffect(() => () => rendererModules.sync([]), []);
 

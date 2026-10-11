@@ -456,7 +456,14 @@ function setCurrentWorkspacePath(path: string | null): void {
 }
 
 /** Pull the user's MCP server records from host-core into the local runtime. */
-function sendToRenderer(channel: string, payload: unknown) {
+function sendToRenderer(
+  channel: string,
+  payload: unknown,
+  options: { pluginDelivery?: boolean } = {},
+) {
+  if (channel === IPC.event.agentMessage && options.pluginDelivery !== false) {
+    plugins.deliverAgentEvent(payload as AgentEventEnvelope);
+  }
   applicationLifecycle?.traySessions.observeEvent(channel, payload);
   applicationLifecycle?.taskbarUnreadBadge.observeEvent(channel, payload);
   if (channel === IPC.event.pluginChanged) {

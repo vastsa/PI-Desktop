@@ -282,8 +282,7 @@ export function useAppShellRuntime() {
   }, []);
 
   useEffect(() => {
-    const pageHidesWorkPanel =
-      page === "settings" || page === "plugins" || page === "scheduled";
+    const pageHidesWorkPanel = page !== "chat";
     const shouldPresent =
       ready && !pageHidesWorkPanel && workPanelOpen;
     const request = ++workPanelReservationRequest.current;
@@ -686,6 +685,14 @@ export function useAppShellRuntime() {
             await useAppStore.getState().openProjectPath(event.projectPath);
           } else if (event.projectPath === null && !event.selectSessionId) {
             await useAppStore.getState().clearProject();
+          }
+          const current = useAppStore.getState();
+          // A managed append changes the transcript; a model rebind changes the
+          // composer's model chip. Both need the active session re-read.
+          if ((event.reason === "plugin.session.appendManaged" ||
+               event.reason === "plugin.session.setManagedModel") &&
+              event.sessionId === current.activeSessionId && current.activeSessionId && current.page === "chat") {
+            await current.selectSession(current.activeSessionId);
           }
           if (event.selectSessionId) {
             await useAppStore.getState().selectSession(event.selectSessionId);

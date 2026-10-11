@@ -161,7 +161,7 @@ function attachmentInput(payload: Record<string, unknown>): AttachmentInput {
  */
 export function runComposerAction(
   pluginId: string,
-  action: Exclude<PluginRendererActionName, "plugin.call">,
+  action: Exclude<PluginRendererActionName, "plugin.call" | "session.readContext" | "workPanel.openView" | "shell.openPage">,
   payload: Record<string, unknown>,
   routes: ComposerRoutes,
   userGesture: boolean,

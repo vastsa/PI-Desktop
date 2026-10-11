@@ -93,6 +93,9 @@ function keyOf(
       toolName: registration.toolName,
     };
   }
+  if (registration.slot === "mainPage") {
+    return { key: `${pluginId}/${registration.pageId}` };
+  }
   if (registration.slot === "blockRenderer") {
     return { key: blockRendererLanguageKey(registration.language) };
   }

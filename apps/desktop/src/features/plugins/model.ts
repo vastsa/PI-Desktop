@@ -58,6 +58,10 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "session.autoTitle": "high",
   "session.import": "high",
   "session.delete.own": "high",
+  // Maintains a live transcript the user reads as native, so a bad write is as
+  // visible as an agent turn; secrets.store is encrypted host storage.
+  "session.manage.own": "high",
+  "secrets.store": "high",
   "browser.cdp": "high",
   // Reading is a tier below writing because what makes a read dangerous is
   // where the data can go, and outbound requests are declared separately.
