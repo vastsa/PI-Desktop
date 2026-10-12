@@ -52,7 +52,7 @@ const labelB = "Shared Workspace/model (account-b)";
 window.fallbackProbe = async () => {
   await settle();
   check(rows()[0].textContent.includes(labelA) && rows()[1].textContent.includes(labelB), "distinct provider identity missing");
-  check(rows()[0].querySelector("button").disabled, "first row move-up must stay disabled");
+  check(action("Move " + labelA + " up")?.disabled, "first row move-up must stay disabled");
   check(rows()[2].textContent.includes("deleted/model (unavailable)"), "unknown pin status missing");
   flushSync(() => useAppStore.setState({ providers: providers.map((p, index) => ({ ...p, enabled: index === 2 })) }));
   await settle();
@@ -65,6 +65,8 @@ window.fallbackProbe = async () => {
   await settle();
   check(JSON.stringify(draft.fallbackModels) === JSON.stringify(["account-a/model", "deleted/model"]), "remove rewrote remaining pins");
   const add = action(i18n.t("extensions.subagents.fallbackAdd"));
+  // Per-fallback thinking menus make rows taller; a person scrolls the trigger into view before clicking.
+  add.scrollIntoView({ block: "nearest" });
   flushSync(() => add.click());
   await settle();
   const menu = [...document.querySelectorAll('[role="listbox"]')]

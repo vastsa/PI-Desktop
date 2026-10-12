@@ -47,6 +47,7 @@
 - [live-work-session.md](03-runtime/live-work-session.md)
 - [21-image-generation.md](03-runtime/21-image-generation.md)
 - [22-config-sync.md](03-runtime/22-config-sync.md)
+- [23-subagent-fallback-thinking.md](03-runtime/23-subagent-fallback-thinking.md)
 - [svg-attachment-input.md](03-runtime/svg-attachment-input.md)
 
 ## 4. UX
