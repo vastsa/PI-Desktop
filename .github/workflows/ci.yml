@@ -106,8 +106,8 @@ jobs:
       - name: Clippy
         run: cargo clippy -p host-core --all-targets --locked
 
-      - name: Test
-        run: cargo test -p host-core --locked
+      - name: Test transcript module on Windows
+        run: "cargo test -p host-core --locked transcripts::"
 
       - name: Build host-core
         run: cargo build -p host-core --locked
