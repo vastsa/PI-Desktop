@@ -132,8 +132,9 @@ to an absolute path before it reaches host-core as a child-process variable.
  ├── pi.sqlite.v9.bak     # exact readable backup before v9→v15 destructive work
  ├── pi.sqlite.v10.bak    # exact readable backup before v10→v15 destructive work
  ├── sessions/            # transcript file store (D119) — host-core only
- │    ├── <sessionId>.jsonl           # live transcript (header + messages)
- │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
+│    ├── <sessionId>.jsonl           # live transcript (header + messages)
+│    ├── <sessionId>.jsonl.layout    # disposable, versioned byte-offset cache
+│    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
  │    └── <sessionId>.inflight.json   # streaming reply checkpoint (D299), transient
  ├── secrets/             # encrypted secret blobs + .machine-key (unchanged)
  ├── config-sync/         # encrypted sync base/pending bundles — host-core only
@@ -1415,16 +1416,36 @@ relationship or index. The renderer's unified reading view is shared by ordinary
 history and search; it never becomes canonical mutation or model input.
 
 A bounded window is served through a per-session **transcript layout**: the byte
-offset of every message and compaction line, plus the file length those offsets
-were recorded against. Serving a window then seeks to its first selected line
-instead of parsing the history in front of it, so the cost of opening a session
-is proportional to the window rather than to the conversation. Consequences:
+offset of every message and compaction line, plus the file identity and complete
+prefix length those offsets describe. Serving a window seeks to its first
+selected line instead of parsing the history in front of it, so the common
+cached read is proportional to the requested page. Consequences:
 
-- The layout is derived data, cached in memory and rebuilt by scanning the file.
-  `file_len` is its validity token: the transcript is append-only between atomic
-  rewrites, so a longer file is scanned from the previous end and a shorter or
-  replaced file is rescanned in full. Every rewrite and delete path also drops
-  the cached entry, because a rewrite can land on an identical length.
+- The layout is derived data, cached in memory and, when reliable file identity
+  is available, in the sibling `<sessionId>.jsonl.layout` file. Unix uses the
+  device and inode; Windows uses the volume serial number and file ID. If the
+  filesystem cannot provide a reliable identity, the host skips the disk cache
+  and scans the transcript normally.
+- The disk cache has an explicit format version and validates its identity,
+  checksum, counts, globally increasing in-range offsets, and the complete-line
+  prefix before reuse. Missing, old, unknown, corrupt, or mismatched caches are
+  ignored and rebuilt from the JSONL source. Cache read/write failures are
+  diagnostic only and do not make the session unreadable.
+- A matching identity and complete prefix permits append-only incremental
+  scanning. A transcript rewrite invalidates both in-memory and disk layouts
+  only after its atomic replacement succeeds; delete also removes both. Cache
+  invalidation stays in transcript rewrite/delete ownership, not the generic
+  atomic-swap helper used by unrelated files.
+- A point read that finds an invalid indexed line boundary drops both cache
+  layers, scans the complete transcript without consulting the disk cache, and
+  retries once with message counts, page ranges, and message location recomputed
+  from the rebuilt layout. A real JSON, UTF-8, or I/O error from that complete
+  scan remains an error; the transcript is never rewritten or repaired by
+  replacing bytes or skipping messages.
+- New cache files use a nonnumeric version header that older parsers safely
+  reject and rebuild. Downgrading to an older app preserves the transcript and
+  database, though that app's own cache defect may recur. No database or
+  transcript migration is involved.
 - A torn trailing line (crash mid-append) is excluded from both the offsets and
   `file_len`, so a later refresh picks it up once the writer completes it.
 - Line classification reads the `type` discriminator with a single depth-aware

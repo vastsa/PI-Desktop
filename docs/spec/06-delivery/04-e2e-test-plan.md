@@ -1848,7 +1848,11 @@ identify the platform validation still needed.
   visible transcript frame and renderer responsiveness. 2) Scroll to the top
   of the transcript. 3) Repeat the open/close cycle after the session has been
   cached. 4) Inspect the host request/response or test fixture for the session
-  read window.
+  read window. 5) In an isolated Host profile, create a transcript above the
+  layout-cache threshold, append more rows, settle a middle Task result with a
+  longer value, then restart with a legacy layout file beside the transcript.
+  6) Read the newest page, page to the beginning, locate a nested message and
+  its owning Task, then read the complete history.
 - **Expected**: Opening paints the newest bounded page without transferring
   the complete 50 MB value to the renderer. The large value is visibly marked
   as truncated for display while the transcript and model-facing read remain
@@ -1858,13 +1862,17 @@ identify the platform validation still needed.
   historical row before the latest messages become usable. Edit, delete,
   revision, and Stop operations rehydrate the full transcript before any
   rewrite, so older messages are never lost because only a window was visible.
+  The isolated Host journey returns every message once and in order after the
+  middle rewrite, legacy-cache rejection and restart; the Task result is
+  terminal, nested-message navigation resolves its owning Task, and paging
+  reaches the beginning without a UTF-8 error or omitted row.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/04-data-storage.md`, `03-runtime/06-host-rpc-protocol.md`,
   ADR 0120
 - **Acceptance**: C (session open and scroll), F (persistence), Quality
 - **Milestone**: M5
-- **Status**: Source-level regression covered; full large-fixture Electron
-  journey Draft
+- **Status**: Source-level and isolated Host RPC cache regressions covered;
+  full large-fixture Electron journey Draft
 
 #### E2E-011a: New session while another session is still streaming
 

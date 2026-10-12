@@ -31,6 +31,11 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod layout;
+#[cfg(test)]
+use layout::refresh_layout;
+pub use layout::TranscriptLayout;
+
 /// Bumped when the line format changes shape incompatibly.
 pub const TRANSCRIPT_SCHEMA: i64 = 1;
 
@@ -171,217 +176,6 @@ pub struct TranscriptRead {
     pub compactions: Vec<CompactionRecord>,
 }
 
-/// Where a transcript's line layout is cached between processes.
-///
-/// A layout is derived data, and so is this: everything below validates a cache
-/// against the file it claims to describe, and any mismatch -- missing, a
-/// different file, a shorter file, a count that does not add up -- falls back to
-/// the scan that always happened before it existed.
-fn layout_cache_path(data_dir: &Path, session_id: &str) -> Result<PathBuf> {
-    Ok(transcript_path(data_dir, session_id)?.with_extension("jsonl.layout"))
-}
-
-/// Transcripts below this are cheaper to scan than to cache, and no fixture grows
-/// a cache file.
-const LAYOUT_CACHE_MIN_LEN: u64 = 2 * 1024 * 1024;
-
-/// Store again once the cached layout lags the file by this much, so a writer
-/// that runs for hours does not leave the next process a large tail to scan.
-const LAYOUT_CACHE_MAX_LAG: u64 = 4 * 1024 * 1024;
-
-/// An identity that an append keeps and a rewrite through a temporary file
-/// changes. Platforms without one never load a cache, which only means they scan
-/// exactly as they did before.
-#[cfg(unix)]
-fn file_identity(meta: &fs::Metadata) -> u64 {
-    use std::os::unix::fs::MetadataExt;
-    meta.ino().wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ ((meta.dev() as u64) << 17)
-}
-
-#[cfg(not(unix))]
-fn file_identity(_meta: &fs::Metadata) -> u64 {
-    0
-}
-
-/// The layout a previous process cached beside this transcript, or `None` when it
-/// cannot be shown to describe the file as it is now.
-fn load_layout_cache(data_dir: &Path, session_id: &str) -> Result<Option<TranscriptLayout>> {
-    let path = transcript_path(data_dir, session_id)?;
-    let meta = match fs::metadata(&path) {
-        Ok(meta) => meta,
-        Err(_) => return Ok(None),
-    };
-    if meta.len() < LAYOUT_CACHE_MIN_LEN {
-        return Ok(None);
-    }
-    let identity = file_identity(&meta);
-    // Zero means this platform cannot distinguish append from replacement.
-    // Matching two zeroes would resurrect offsets from a rewritten transcript.
-    if identity == 0 {
-        return Ok(None);
-    }
-    let raw = match fs::read_to_string(layout_cache_path(data_dir, session_id)?) {
-        Ok(raw) => raw,
-        Err(_) => return Ok(None),
-    };
-    let mut tokens = raw.split_ascii_whitespace();
-    let (Some(cached_identity), Some(file_len)) = (tokens.next(), tokens.next()) else {
-        return Ok(None);
-    };
-    if cached_identity.parse::<u64>().ok() != Some(identity) {
-        return Ok(None);
-    }
-    let Some(file_len) = file_len.parse::<u64>().ok() else {
-        return Ok(None);
-    };
-    if file_len < LAYOUT_CACHE_MIN_LEN || file_len > meta.len() {
-        return Ok(None);
-    }
-    let (Some(messages), Some(compactions)) = (tokens.next(), tokens.next()) else {
-        return Ok(None);
-    };
-    let (Some(messages), Some(compactions)) = (
-        messages.parse::<usize>().ok(),
-        compactions.parse::<usize>().ok(),
-    ) else {
-        return Ok(None);
-    };
-    let mut layout = TranscriptLayout {
-        message_offsets: Vec::with_capacity(messages),
-        compaction_offsets: Vec::with_capacity(compactions),
-        file_len,
-    };
-    for _ in 0..messages + compactions {
-        let Some(offset) = tokens.next().and_then(|token| token.parse::<u64>().ok()) else {
-            return Ok(None);
-        };
-        if layout.message_offsets.len() < messages {
-            layout.message_offsets.push(offset);
-        } else {
-            layout.compaction_offsets.push(offset);
-        }
-    }
-    // The offsets have to be the ones a scan would have produced: ascending,
-    // inside the file the cache describes, and pointing at lines the scan would
-    // have classified the same way.
-    if layout
-        .message_offsets
-        .windows(2)
-        .any(|pair| pair[0] >= pair[1])
-        || layout
-            .compaction_offsets
-            .windows(2)
-            .any(|pair| pair[0] >= pair[1])
-        || !offsets_look_like_a_scan(&path, &layout)?
-    {
-        return Ok(None);
-    }
-    Ok(Some(layout))
-}
-
-/// Read the first cached offset of each kind out of the transcript and check that
-/// it carries the kind of line the cache says it does. Two reads, and they are
-/// what keeps offsets that survived a rewrite from being trusted.
-fn offsets_look_like_a_scan(path: &Path, layout: &TranscriptLayout) -> Result<bool> {
-    let head = layout
-        .message_offsets
-        .first()
-        .map(|offset| (*offset, "message"))
-        .into_iter()
-        .chain(
-            layout
-                .compaction_offsets
-                .first()
-                .map(|offset| (*offset, "compaction")),
-        );
-    for (offset, kind) in head {
-        if offset >= layout.file_len {
-            return Ok(false);
-        }
-        let mut file = File::open(path)?;
-        file.seek(SeekFrom::Start(offset))?;
-        let mut buf = vec![0u8; 4096];
-        let read = std::io::Read::read(&mut file, &mut buf)?;
-        let text = String::from_utf8_lossy(&buf[..read]);
-        if sniff_line_kind(text.lines().next().unwrap_or("").trim()) != Some(kind) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-/// Cache the layout beside its transcript, through a temporary file that is
-/// swapped in, so a reader never sees half of one. Failing to cache costs the
-/// next process a scan and nothing else, so this never fails a read.
-fn store_layout_cache(data_dir: &Path, session_id: &str, layout: &TranscriptLayout) -> Result<()> {
-    if layout.file_len < LAYOUT_CACHE_MIN_LEN {
-        return Ok(());
-    }
-    let path = transcript_path(data_dir, session_id)?;
-    let Ok(meta) = fs::metadata(&path) else {
-        return Ok(());
-    };
-    let identity = file_identity(&meta);
-    if identity == 0 {
-        return Ok(());
-    }
-    if meta.len() != layout.file_len {
-        return Ok(());
-    }
-    let cache = layout_cache_path(data_dir, session_id)?;
-    let tmp = cache.with_extension("layout.tmp");
-    {
-        let mut writer = BufWriter::new(File::create(&tmp)?);
-        writeln!(writer, "{} {}", identity, layout.file_len)?;
-        writeln!(
-            writer,
-            "{} {}",
-            layout.message_offsets.len(),
-            layout.compaction_offsets.len()
-        )?;
-        for offsets in [&layout.message_offsets, &layout.compaction_offsets] {
-            for (index, offset) in offsets.iter().enumerate() {
-                if index % 8 == 7 {
-                    writeln!(writer, "{offset}")?;
-                } else {
-                    write!(writer, "{offset} ")?;
-                }
-            }
-            if !offsets.is_empty() && offsets.len() % 8 != 0 {
-                writeln!(writer)?;
-            }
-        }
-        writer.flush()?;
-    }
-    swap_into_place(&tmp, &cache)
-}
-
-/// Physical layout of one transcript file: the byte offset of every message and
-/// compaction line, plus the file length it was built from.
-///
-/// A window read seeks straight to its first selected line instead of parsing
-/// every earlier line, so opening a long session costs the window rather than
-/// the whole history. `file_len` is the validity token: the transcript is
-/// append-only between atomic rewrites, so a longer file is scanned
-/// incrementally while a shorter or replaced file invalidates the layout.
-#[derive(Debug, Default, Clone)]
-pub struct TranscriptLayout {
-    /// Byte offset of each message line, in file order.
-    pub message_offsets: Vec<u64>,
-    /// Byte offset of each compaction line, in file order.
-    pub compaction_offsets: Vec<u64>,
-    /// Byte length of the file prefix this layout describes.
-    pub file_len: u64,
-}
-
-impl TranscriptLayout {
-    /// Physical message-line count. Every window offset in this module is
-    /// expressed in this coordinate space, not in deduplicated positions.
-    pub fn message_count(&self) -> usize {
-        self.message_offsets.len()
-    }
-}
-
 /// Resolve a stable ID without materializing historical message bodies. The
 /// reverse scan agrees with last-write-wins transcript deduplication.
 pub fn find_message_position(
@@ -397,10 +191,10 @@ pub fn find_message_position(
     let mut reader = BufReader::new(File::open(transcript_path(data_dir, session_id)?)?);
     let mut line = String::new();
     for (position, offset) in layout.message_offsets.iter().enumerate().rev() {
-        reader.seek(SeekFrom::Start(*offset))?;
-        line.clear();
-        reader.read_line(&mut line)?;
-        if serde_json::from_str::<Identity>(&line).is_ok_and(|identity| identity.id == message_id) {
+        read_layout_line(&mut reader, *offset, "message", &mut line)?;
+        let identity: Identity =
+            serde_json::from_str(&line).context("decode indexed transcript message identity")?;
+        if identity.id == message_id {
             return Ok(Some(position));
         }
     }
@@ -415,16 +209,6 @@ pub fn read_tool_call(
     layout: &TranscriptLayout,
     call_id: &str,
 ) -> Result<Option<MessageRecord>> {
-    #[derive(Deserialize)]
-    struct CallIdentity {
-        #[serde(rename = "callId")]
-        call_id: Option<String>,
-    }
-    #[derive(Deserialize)]
-    struct ToolIdentity {
-        role: String,
-        blocks: Vec<CallIdentity>,
-    }
     let mut reader = BufReader::new(File::open(transcript_path(data_dir, session_id)?)?);
     let mut line = String::new();
     // A provider tool-call id is an opaque token, so it appears verbatim in the
@@ -433,23 +217,48 @@ pub fn read_tool_call(
     // that JSON would escape keeps the unfiltered path.
     let verbatim = is_json_verbatim(call_id);
     for offset in layout.message_offsets.iter().rev() {
-        reader.seek(SeekFrom::Start(*offset))?;
-        line.clear();
-        reader.read_line(&mut line)?;
+        read_layout_line(&mut reader, *offset, "message", &mut line)?;
         if verbatim && !line.contains(call_id) {
             continue;
         }
-        if serde_json::from_str::<ToolIdentity>(&line).is_ok_and(|identity| {
-            identity.role == "tool"
-                && identity
-                    .blocks
-                    .iter()
-                    .any(|block| block.call_id.as_deref() == Some(call_id))
-        }) {
+        let identity: Value =
+            serde_json::from_str(&line).context("decode indexed transcript tool-call identity")?;
+        let matches_call = identity.get("role").and_then(Value::as_str) == Some("tool")
+            && identity
+                .get("blocks")
+                .and_then(Value::as_array)
+                .is_some_and(|blocks| {
+                    blocks
+                        .iter()
+                        .any(|block| block.get("callId").and_then(Value::as_str) == Some(call_id))
+                });
+        if matches_call {
             return Ok(Some(serde_json::from_str(&line)?));
         }
     }
     Ok(None)
+}
+
+fn read_layout_line(
+    reader: &mut BufReader<File>,
+    offset: u64,
+    expected_kind: &str,
+    line: &mut String,
+) -> Result<()> {
+    reader.seek(SeekFrom::Start(offset))?;
+    line.clear();
+    match reader.read_line(line) {
+        Ok(0) => return Err(layout::invalid_boundary()),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
+            return Err(layout::invalid_boundary())
+        }
+        Err(error) => return Err(error.into()),
+    }
+    if !line.ends_with('\n') || sniff_line_kind(line.trim_end()) != Some(expected_kind) {
+        return Err(layout::invalid_boundary());
+    }
+    Ok(())
 }
 
 /// Whether a JSON string for this value is the value itself.
@@ -597,110 +406,7 @@ fn scan_json_string(bytes: &[u8], start: usize) -> Option<(&[u8], usize)> {
     None
 }
 
-/// Extend `base` with any lines appended after `base.file_len`.
-///
-/// A transcript only grows between atomic rewrites, so the common case after a
-/// new message is a short tail scan. A file that shrank or was replaced by a
-/// rewrite of a different length is rescanned from the start, because offsets
-/// recorded against the previous contents cannot be trusted.
-pub fn refresh_layout(
-    data_dir: &Path,
-    session_id: &str,
-    base: TranscriptLayout,
-) -> Result<TranscriptLayout> {
-    let path = transcript_path(data_dir, session_id)?;
-    let len = match fs::metadata(&path) {
-        Ok(meta) => meta.len(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(TranscriptLayout::default())
-        }
-        Err(e) => return Err(e).with_context(|| format!("stat {}", path.display())),
-    };
-    if len == base.file_len {
-        return Ok(base);
-    }
-    // A cold process reads the offsets the previous one cached beside the file
-    // instead of scanning the transcript again -- 531 ms for a 406 MB transcript,
-    // taken inside the state lock that serialises the RPC surface. A cache that
-    // cannot be shown to describe this file is dropped, and the scan below is what
-    // always happened before this existed.
-    let base = if base.file_len == 0 {
-        load_layout_cache(data_dir, session_id)?
-            .filter(|cached| cached.file_len <= len)
-            .unwrap_or_default()
-    } else {
-        base
-    };
-    if len == base.file_len {
-        return Ok(base);
-    }
-    if len < base.file_len {
-        return scan_layout(&path, TranscriptLayout::default());
-    }
-    let base_len = base.file_len;
-    let layout = scan_layout(&path, base)?;
-    if base_len == 0 || layout.file_len.saturating_sub(base_len) >= LAYOUT_CACHE_MAX_LAG {
-        let _ = store_layout_cache(data_dir, session_id, &layout);
-    }
-    Ok(layout)
-}
-
-/// Scan from `layout.file_len` to the end of the file, appending offsets.
-fn scan_layout(path: &Path, mut layout: TranscriptLayout) -> Result<TranscriptLayout> {
-    let mut file = match File::open(path) {
-        Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(TranscriptLayout::default())
-        }
-        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
-    };
-    let mut offset = layout.file_len;
-    if offset > 0 {
-        file.seek(SeekFrom::Start(offset))
-            .with_context(|| format!("seek {}", path.display()))?;
-    }
-    let mut reader = BufReader::new(file);
-    let mut line = String::new();
-    loop {
-        line.clear();
-        let read = reader.read_line(&mut line)?;
-        if read == 0 {
-            break;
-        }
-        // A torn trailing line (crash mid-append) has no newline yet. Keeping it
-        // out of both the offsets and `file_len` lets a later refresh pick it up
-        // once the writer completes it.
-        if !line.ends_with('\n') {
-            break;
-        }
-        match sniff_line_kind(line.trim_end()) {
-            Some("message") => layout.message_offsets.push(offset),
-            Some("compaction") => layout.compaction_offsets.push(offset),
-            _ => {}
-        }
-        offset += read as u64;
-        // A skipped multi-megabyte line must not leave its capacity attached to
-        // every following read.
-        if line.capacity() > 1024 * 1024 {
-            line = String::new();
-        }
-    }
-    layout.file_len = offset;
-    Ok(layout)
-}
-
-/// Serialize one JSONL line with its `type` discriminator first.
-///
-/// Position matters for reads: a line has to be classifiable — and, for a
-/// message, its id readable — before a reader walks a multi-megabyte tool
-/// result, so the discriminator is written first and the id immediately after
-/// it. That makes both a fixed-cost prefix check.
-///
-/// This is a single serialization pass plus one splice. The shape it replaced
-/// built a `serde_json::Value` tree, deep-cloned it (a `Value` cannot be
-/// re-wrapped without an owned map) and serialized the clone, then formatted
-/// the whole payload a second time — four passes over every byte written to a
-/// transcript, and an allocation per JSON node.
+/// Serialize one JSONL line with its type discriminator first.
 fn tagged(tag: &str, body: &impl Serialize) -> Result<String> {
     let body = serde_json::to_string(body)?;
     let fields = body
@@ -708,7 +414,6 @@ fn tagged(tag: &str, body: &impl Serialize) -> Result<String> {
         .and_then(|rest| rest.strip_suffix('}'))
         .ok_or_else(|| anyhow!("line body must be an object"))?;
     let head = format!("{{\"type\":{}", Value::String(tag.into()));
-    // `{}` has no fields to append after the discriminator.
     if fields.is_empty() {
         return Ok(format!("{head}}}"));
     }
@@ -719,9 +424,9 @@ fn tagged(tag: &str, body: &impl Serialize) -> Result<String> {
 /// could traverse out of the sessions base gets no file at all.
 fn safe_session_id(session_id: &str) -> bool {
     !session_id.is_empty()
-        && session_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && session_id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '-' || character == '_'
+        })
 }
 
 pub fn base_dir(data_dir: &Path) -> PathBuf {
@@ -1186,28 +891,20 @@ pub fn read_transcript_window_with_layout(
     let mut reader = BufReader::new(file);
     let mut line = String::new();
     for (offset, is_message) in wanted {
-        reader
-            .seek(SeekFrom::Start(offset))
-            .with_context(|| format!("seek {}", path.display()))?;
-        line.clear();
-        if reader.read_line(&mut line)? == 0 {
-            continue;
-        }
+        let kind = if is_message { "message" } else { "compaction" };
+        read_layout_line(&mut reader, offset, kind, &mut line)
+            .with_context(|| format!("read indexed transcript line in {}", path.display()))?;
         let trimmed = line.trim();
         if is_message {
-            match serde_json::from_str::<MessageRecord>(trimmed) {
-                Ok(record) => out.messages.push(record),
-                Err(error) => {
-                    tracing::warn!(path = %path.display(), %error, "skipping invalid message line");
-                }
-            }
+            out.messages.push(
+                serde_json::from_str::<MessageRecord>(trimmed)
+                    .context("decode indexed transcript message")?,
+            );
         } else {
-            match serde_json::from_str::<CompactionRecord>(trimmed) {
-                Ok(record) => out.compactions.push(record),
-                Err(error) => {
-                    tracing::warn!(path = %path.display(), %error, "skipping invalid compaction line");
-                }
-            }
+            out.compactions.push(
+                serde_json::from_str::<CompactionRecord>(trimmed)
+                    .context("decode indexed transcript compaction")?,
+            );
         }
         if line.capacity() > 1024 * 1024 {
             line = String::new();
@@ -1338,7 +1035,9 @@ pub fn write_transcript_with_compactions(
         writer.flush()?;
         writer.get_ref().sync_data()?;
     }
-    swap_into_place(&tmp, &path)
+    swap_into_place(&tmp, &path)?;
+    layout::invalidate(data_dir, session_id);
+    Ok(())
 }
 
 /// Swap a fully written temp file over its target, atomically.
@@ -1396,11 +1095,6 @@ pub fn update_message(data_dir: &Path, session_id: &str, record: &MessageRecord)
             return Ok(true);
         }
     }
-    // The rewrite below moves line contents, so the cached line offsets are stale
-    // from here on. The append above only grew the file, which the incremental
-    // layout refresh handles by itself — and dropping that invalidation is what
-    // keeps the next read of a long session from scanning all of it again.
-    crate::sessions::invalidate_transcript_layout(session_id);
     let raw = match fs::read_to_string(&path) {
         Ok(raw) => raw,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
@@ -1443,6 +1137,7 @@ pub fn update_message(data_dir: &Path, session_id: &str, record: &MessageRecord)
         writer.get_ref().sync_data()?;
     }
     swap_into_place(&tmp, &path)?;
+    layout::invalidate(data_dir, session_id);
     Ok(true)
 }
 
@@ -1715,6 +1410,7 @@ pub fn read_revision(
 /// (idempotent, best-effort). Called only from session deletion — transcript
 /// files are user data and have no age/orphan sweep.
 pub fn remove_session_files(data_dir: &Path, session_id: &str) {
+    layout::invalidate(data_dir, session_id);
     let Ok(transcript) = transcript_path(data_dir, session_id) else {
         return;
     };
@@ -1741,10 +1437,6 @@ pub fn remove_session_files(data_dir: &Path, session_id: &str) {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "transcripts_layout_tests.rs"]
-mod layout_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2547,13 +2239,15 @@ mod tests {
         let mut message_offsets = Vec::new();
         let mut at = 0usize;
         for line in raw.split_inclusive(|byte| *byte == b'\n') {
-            message_offsets.push(at as u64);
+            if line.starts_with(br#"{"type":"message""#) {
+                message_offsets.push(at as u64);
+            }
             at += line.len();
         }
         TranscriptLayout {
             message_offsets,
-            compaction_offsets: Vec::new(),
             file_len: raw.len() as u64,
+            ..TranscriptLayout::default()
         }
     }
 
@@ -2607,6 +2301,34 @@ mod tests {
         assert!(read_tool_call(dir.path(), "s1", &layout, "absent")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn indexed_message_lookup_does_not_hide_malformed_json() {
+        let dir = tempdir().unwrap();
+        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m1", "x")).unwrap();
+        let path = transcript_path(dir.path(), "s1").unwrap();
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(b"{\"type\":\"message\",\"id\":\"bad\",\"blocks\":[],\"invalid\":}\n")
+            .unwrap();
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+
+        assert!(find_message_position(dir.path(), "s1", &layout, "absent").is_err());
+    }
+
+    #[test]
+    fn tool_call_lookup_does_not_hide_malformed_json() {
+        let dir = tempdir().unwrap();
+        append_message(dir.path(), "s1", "2026-07-26T00:00:00Z", &record("m1", "x")).unwrap();
+        let path = transcript_path(dir.path(), "s1").unwrap();
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(
+            b"{\"type\":\"message\",\"id\":\"bad\",\"role\":\"tool\",\"blocks\":[{\"callId\":\"call-bad\"}],\"invalid\":}\n",
+        )
+        .unwrap();
+        let layout = refresh_layout(dir.path(), "s1", TranscriptLayout::default()).unwrap();
+
+        assert!(read_tool_call(dir.path(), "s1", &layout, "call-bad").is_err());
     }
 
     /// Concurrent appends from several sessions must not cost a line, fuse two

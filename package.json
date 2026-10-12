@@ -28,6 +28,7 @@
     "test:e2e:keep-awake": "node scripts/e2e-keep-awake.mjs",
     "test:e2e:live-voice": "node scripts/e2e-live-voice.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",
+    "test:e2e:transcript-cache": "node scripts/e2e-transcript-cache.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-history": "node scripts/e2e-plan-history.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
