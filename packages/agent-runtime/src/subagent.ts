@@ -22,10 +22,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { toolExecutionMode } from "./tool-execution-policy.js";
+import { initialSystemTranscript, replaceSystemPrompt } from "./system-transcript.js";
 import {
   Agent,
   type AfterToolCallContext,
   type AfterToolCallResult,
+  type BeforeToolCallContext,
+  type BeforeToolCallResult,
   type AgentEvent,
   type AgentLoopTurnUpdate,
   type AgentMessage,
@@ -159,6 +163,8 @@ export type SubagentRunOptions = {
   /** Host-backed tools, built by the session runtime so a delegate's calls
    * take the exact same path as the parent's. */
   tools: AgentTool[];
+  /** Ordered preparation owned by this delegate, never the parent's prompt state. */
+  beforeToolCall?: (context: BeforeToolCallContext) => Promise<BeforeToolCallResult | undefined>;
   onEvent: (envelope: AgentEventEnvelope) => void;
   /**
    * Result of the parent's own `afterToolCall` bookkeeping for one call, so a
@@ -288,16 +294,23 @@ export class SubagentRun {
       prepareNextTurnWithContext: (context, signal) =>
         this.prepareNextTurn(context, signal),
       afterToolCall: async (context) => this.afterToolCall(context),
+      beforeToolCall: opts.beforeToolCall,
       initialState: {
         systemPrompt: opts.systemPrompt,
         model: binding.model,
-        tools: opts.tools,
+        // Preserve the parent's provenance decision; a same-name extension must
+        // not inherit the builtin allowlist. Also reject unproven parallel hints.
+        tools: opts.tools.map((tool) => ({ ...tool, executionMode: tool.executionMode === "parallel" ? toolExecutionMode(tool.name) : "sequential" })),
         thinkingLevel: binding.agentThinkingLevel,
-        messages: opts.initialMessages ? [...opts.initialMessages] : [],
+        messages: initialSystemTranscript(opts.systemPrompt, opts.tools, opts.initialMessages ? [...opts.initialMessages] : []),
       },
-      toolExecution: "sequential",
+      toolExecution: "parallel",
     });
     this.agent.subscribe((event) => this.handleEvent(event));
+  }
+
+  setSystemPrompt(prompt: string): void {
+    this.agent.state.messages = replaceSystemPrompt(this.agent.state.messages, prompt);
   }
 
   async run(): Promise<SubagentRunResult> {

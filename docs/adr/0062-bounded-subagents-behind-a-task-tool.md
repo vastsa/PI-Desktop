@@ -85,6 +85,10 @@ must never silently spend the expensive one.
 
 ### 4. Delegation is one Agent-mode tool, and parallel by construction
 
+Proposed amendment: [parallel read batches](parallel-read-batches.md) extends the
+parallel allowlist to Read/Glob/Grep and isolates delegate path-instruction
+preparation. The original only-Task batch policy below is historical.
+
 The `Task` tool takes `agent`, `task` and an optional short `description`. The
 catalog of available delegates rides in the tool description rather than the
 system prompt, because the two change together.

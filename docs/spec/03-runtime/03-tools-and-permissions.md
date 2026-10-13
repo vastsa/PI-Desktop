@@ -5,6 +5,34 @@
 
 ## 0. Frozen policy summary
 
+### Parallel read batches
+
+Read, Glob, Grep and Task are the only parallel batch tools. Both parent and
+delegate loops use pi's parallel strategy; any sequential tool (including
+Write, Edit, Bash and unknown tools) makes its entire assistant batch sequential.
+Task may therefore overlap read/search calls in the same message. This is a
+per-agent batch rule, not application-wide exclusion or a Shell safety lock.
+Only the selected builtin executor receives this allowlist and native path
+preparation. Same-name dynamic tools remain sequential. Delegates retain their
+startup catalog's policy and provenance across later parent catalog rebuilds.
+
+The pinned pi-agent-core 1.1.0 prepares all parallel calls in source order before
+launching their execution bodies. Path instruction resolution and prompt updates
+occur during that preparation, after existing parent mode/extension checks.
+Execution consumes the same normalized arguments. Direct internal invocations
+retain preflight. Child preflight updates the child's system transcript only;
+it never replaces parent instructions. Sibling instruction chains replace one
+another according to preparation order, regardless of completion order.
+
+Permissions, Host capacities, mutation recovery, Hashline validation and tool
+result IDs remain authoritative. Completion events may arrive out of order;
+model tool results remain in source order. No directory snapshot or Read/write
+exclusion is promised by this first step. Stop skips unstarted calls; already
+started file RPCs drain through their existing Host lifecycle. Host file
+cancellation and resource coordination are separate follow-up work.
+
+See [the ADR](../../adr/parallel-read-batches.md).
+
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |

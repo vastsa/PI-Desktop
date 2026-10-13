@@ -8,6 +8,28 @@
 
 ## 1. Goals
 
+### E2E-TOOLS-parallel-read-batches: ordered preparation and parallel reads
+
+- Isolate data/project paths; never run against production profiles.
+- A local provider fixture emits two Read calls. Gate real tool-execution
+  entrypoints until both enter, release them in reverse order, then inspect the
+  follow-up model request: results must retain source toolCallId order and final
+  sibling rules must follow preparation order. Repeat with a delegated reader
+  and verify parent instructions and permission scope are isolated.
+- Add Bash or Edit to the batch: all tools must execute sequentially. Stop
+  before execution must skip unstarted calls; running file calls must drain.
+- Automated coverage: runtime.test.ts uses the production Runtime and pi loop
+  with deterministic Host response barriers, including mixed Bash/Write/Edit
+  batches and Stop. subagent.test.ts checks conservative policy inheritance.
+- Run `node scripts/e2e-parallel-read-batches.mjs` after building agent-runtime,
+  shared and host-core. Set `PI_DESKTOP_HOST_BIN` when reusing a shared target.
+  It uses a local HTTP provider, real parent/delegate loops and a real Host in
+  temporary directories. A gated response proves overlapping Read dispatch;
+  actual Read/Glob/Grep results, source-order model results and parent prompt
+  isolation are checked. This does not measure blocking filesystem-body overlap,
+  production throughput or Electron UI behavior. UI-only project-edit E2E is
+  not evidence for agent Edit scheduling.
+
 ### E2E-STORAGE-custom-location-and-maintenance
 
 - **Preconditions:** Dedicated request worktree, current remote-main base, shared

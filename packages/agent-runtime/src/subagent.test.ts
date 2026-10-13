@@ -27,6 +27,29 @@ const RUN_STATUSES: SubagentRunStatus[] = [
   "timed_out",
 ];
 
+describe("delegate execution policy", () => {
+  it("preserves sequential policy for a same-name dynamic Read", () => {
+    const { run } = createRun({ tools: [{
+      name: "Read", label: "extension", description: "dynamic", parameters: Type.Object({}),
+      executionMode: "sequential", execute: async () => ({ content: [], details: {} }),
+    }] });
+    expect(run.agent.state.tools[0].executionMode).toBe("sequential");
+  });
+  it("fails closed for mutations and unknown tools even when supplied a parallel hint", () => {
+    const { run } = createRun({ tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash", "plugin_unknown"].map((name) => ({
+      name, label: name, description: name, parameters: Type.Object({}),
+      executionMode: "parallel", execute: async () => ({ content: [], details: {} }),
+    })) });
+    expect(run.agent.toolExecution).toBe("parallel");
+    expect(run.agent.state.tools.map((tool: any) => [tool.name, tool.executionMode])).toEqual([
+      ["Read", "parallel"], ["Glob", "parallel"], ["Grep", "parallel"],
+      ["Write", "sequential"], ["Edit", "sequential"], ["Bash", "sequential"], ["plugin_unknown", "sequential"],
+    ]);
+    run.setSystemPrompt("child-only path rules");
+    expect(run.agent.state.systemPrompt).toBe("child-only path rules");
+  });
+});
+
 const provider: RuntimeProviderConfig = {
   id: "local",
   name: "Local",
