@@ -40,7 +40,9 @@ reading the local database.
 - Session deletion cascades checklist rows; forks start with an empty checklist.
 - Plan, Goal, delegated, plugin, and MCP execution paths cannot write the
   checklist through this contract.
-- Context-compaction injection is deliberately deferred to a follow-up change.
+- Model-context recovery is specified in
+  [bounded-collaboration-context](bounded-collaboration-context.md); it reuses
+  this Host snapshot and the chronological system journal.
 - Remote Todo parity requires an additive RACP contract in a later change.
 
 ## Verification

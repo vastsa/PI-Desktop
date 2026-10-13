@@ -7334,9 +7334,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
     );
 
     const pending = (runtime as any).prepareNextTurn(nextTurn);
-    await Promise.resolve();
-
-    expect(runtime.getStatus().isRunning).toBe(true);
+    await vi.waitFor(() => expect(runtime.getStatus().isRunning).toBe(true));
 
     release(summaryResult());
     await pending;
@@ -7800,7 +7798,9 @@ describe("DesktopAgentRuntime subagents", () => {
 
   it("discards an on-demand grant returned after its prompt ended (#841)", async () => {
     let resolveGrant: (value: RuntimeProviderConfig) => void = () => {};
-    const host = { call: vi.fn().mockImplementation(() => new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; })) };
+    const host = { call: vi.fn().mockImplementation((method: string) => method === "todos.get"
+      ? Promise.resolve(undefined)
+      : new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; })) };
     const runtime = createRuntime({ subagents: [explorer], host });
     const agent = (runtime as unknown as { agent: Agent }).agent;
     vi.spyOn(agent, "prompt").mockResolvedValue();

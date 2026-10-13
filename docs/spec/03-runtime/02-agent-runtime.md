@@ -938,7 +938,16 @@ core set rather than the on-demand catalog of §7.1:
   reports when they finish, even if the parent already stopped calling tools.
   Only `TaskStop` or user Stop aborts a delegate.
 - `TaskList()` — reports every delegation of the session with status and a
-  running heartbeat.
+  running heartbeat. Optional `delegationId` reads that current-session chain's
+  recorded visible assistant output and text tool results, including resumed
+  runs and restored history. `query` performs a literal case-insensitive search;
+  `after` is the last returned `messageId`; `limit` is 1–20 (default 5). A page
+  contains at most 10,000 text characters and 2,000 per entry; matches beyond the
+  opening excerpt return surrounding text. `nextAfter` signals another page.
+  Unknown ids and foreign/expired cursors are tool errors. Thinking, attachments,
+  images, system rows and arbitrary tool arguments are omitted. Running traces
+  are partial. No-argument status listing is unchanged. Trace options require
+  `delegationId`; excerpts enter parent context only as this tool's result.
 - `TaskStop(delegationIds?)` — stops running delegations (defaults to all);
   waits for each abort to settle, then persists `status: "stopped"` with
   `completedAt` on `details.stopped[]`. Stopped delegations read as `stopped`.
@@ -1368,6 +1377,27 @@ order. An old history without records receives the current declaration at its
 continuation boundary; Desktop does not invent historical instructions. Explicit
 compaction saves the effective system state once before summary and retained
 tail; it does not replay old tool deltas or preserve removed tools.
+
+### 7.0.1 Saved session checklist
+
+Before a user prompt, approved-plan execution, and each in-run model turn,
+Desktop reads the current Host-owned `todos.get({sessionId})` snapshot. A
+nonempty checklist contributes an independent `session_todos` system section,
+ordered after `context`, with revision and ordered item statuses/priorities.
+Each item is shortened to 160 Unicode characters and the list is capped at the
+Host's 50-item limit. Checklist data grants no permission and does not override
+the user's request or operating mode. Plan/Goal may read it but cannot write it.
+
+Changed snapshots append section deltas through the existing system journal
+before dispatch; unchanged snapshots are not repeated. Restart and compaction
+retain the section, then refresh from the Host before budget checks. Clearing
+the list replaces it with an empty-state revision; a failed read replaces an
+existing section with an unavailable notice, and a mismatched snapshot revokes
+the section. Historical checklist text must not be treated as current.
+Read failure does not block otherwise valid work. Stop during recovery prevents
+provider dispatch. Temporary recovery and extension prompts keep this section
+separate, so they do not duplicate checklist text. No new storage or RPC is added;
+remote Todo support still requires its own RACP contract.
 
 Mid-conversation instructions, tool additions and full tool changes are separate
 capabilities. Desktop accepts catalog opt-ins only for the same published model,

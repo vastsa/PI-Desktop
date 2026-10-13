@@ -8,6 +8,26 @@
 
 ## 1. Goals
 
+### E2E-COLLABORATION-context
+
+- **Preconditions:** Current `origin/main` in the request candidate, built shared
+  and Agent Runtime, a compatible Host binary, temporary HOME/data/workspace, and
+  loopback SSE fixtures. No production provider or installed Desktop profile.
+- **Steps:** Discover TodoWrite through the model, persist a checklist, launch a
+  delegate that reads a fixture file, and wait for its bounded final report.
+  Restart Host/runtime, search the earlier chain through TaskList, compact and
+  reconstruct runtime, continue, then clear Todo and continue again.
+- **Expected:** Current Todo enters model system state before requests and
+  survives restart/compaction. Clearing revokes it. Child evidence stays out of
+  parent requests until explicitly requested; the bounded searched excerpt then
+  reaches the parent. The current session's persisted chain is reused.
+- **Coverage:** `pnpm test:e2e:collaboration-context` runs real Runtime → pi → HTTP
+  and Host Todo/transcript persistence. The harness mirrors transcript event
+  persistence; it does not validate Electron UI or a production model. Set
+  `PI_DESKTOP_HOST_BIN` to a compatible binary if not built locally. Runtime tests
+  additionally cover failures, Stop, recovery-prompt deduplication, foreign ids,
+  invalid cursors/limits, default TaskList behavior and omitted private fields.
+
 ### E2E-STORAGE-custom-location-and-maintenance
 
 - **Preconditions:** Dedicated request worktree, current remote-main base, shared

@@ -140,7 +140,7 @@ function readToolLineCount(row: UiMessage): number {
   return text.split("\n").length;
 }
 
-function toolResultText(row: UiMessage): string | undefined {
+export function toolResultText(row: UiMessage): string | undefined {
   const raw = row.toolResult;
   if (typeof raw === "string") return raw;
   if (!isRecord(raw)) return undefined;

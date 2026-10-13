@@ -34,18 +34,29 @@ function currentSystemMessage(messages: readonly AgentMessage[]): SystemMessage 
 
 /** Desktop-owned sections retain their order ahead of extension sections. */
 export const CONTEXT_BUDGET_SECTION = "context_budget";
+export const SESSION_TODOS_SECTION = "session_todos";
 
 function desktopSectionNames(sections: Record<string, unknown>): string[] {
   return ["runtime", TOOL_ACTIVATION_SECTION, "skills", ...Object.keys(sections)
     .filter((name) => name.startsWith(SKILL_SECTION_PREFIX))
-    .sort((a, b) => a.localeCompare(b)), "context"];
+    .sort((a, b) => a.localeCompare(b)), "context", SESSION_TODOS_SECTION];
 }
 
-export function systemPromptContent(messages: readonly AgentMessage[]): string {
+/** Update one owned section without replacing a transient or extension prompt. */
+export function syncSystemSection(
+  messages: AgentMessage[], name: string, text: string | null,
+): AgentMessage[] {
+  if ((getCurrentSystemMessage(messages)?.sections?.[name] ?? null) === text) return messages;
+  return [...messages, {
+    role: "system", content: "", sections: { [name]: text }, timestamp: nextSystemTimestamp(messages),
+  }];
+}
+
+export function systemPromptContent(messages: readonly AgentMessage[], omittedSections: readonly string[] = []): string {
   const current = getCurrentSystemMessage(messages);
   const sections = current?.sections;
   if (sections && desktopSectionNames(sections).some((name) => name in sections)) {
-    return desktopSectionNames(sections).map((name) => sections[name]).filter(Boolean).join("\n\n");
+    return desktopSectionNames(sections).filter((name) => !omittedSections.includes(name)).map((name) => sections[name]).filter(Boolean).join("\n\n");
   }
   return contentText(current?.content ?? "");
 }
@@ -71,7 +82,10 @@ export function initialSystemTranscript(
   sections: Record<string, string> = { runtime: prompt },
 ): AgentMessage[] {
   if (messages.some((message) => message.role === "system")) {
-    return syncSystemSections(messages, sections);
+    // The asynchronous Host read will refresh or revoke this section before
+    // admission. Avoid a revoke/re-add pair when a restart finds the same list.
+    const todos = getCurrentSystemMessage(messages)?.sections?.[SESSION_TODOS_SECTION];
+    return syncSystemSections(messages, { ...sections, ...(todos ? { [SESSION_TODOS_SECTION]: todos } : {}) });
   }
   if (!prompt && tools.length === 0) return messages;
   // Old sessions have no recorded baseline. Declare the current state at the
@@ -85,7 +99,11 @@ export function initialSystemTranscript(
 export function replaceSystemPrompt(messages: AgentMessage[], prompt: string): AgentMessage[] {
   if (prompt === getCurrentSystemPrompt(messages) || prompt === systemPromptContent(messages)) return messages;
   const activation = getCurrentSystemMessage(messages)?.sections?.[TOOL_ACTIVATION_SECTION];
-  return syncSystemSections(messages, { runtime: prompt, ...(activation ? { [TOOL_ACTIVATION_SECTION]: activation } : {}) });
+  const todos = getCurrentSystemMessage(messages)?.sections?.[SESSION_TODOS_SECTION];
+  return syncSystemSections(messages, { runtime: prompt,
+    ...(activation ? { [TOOL_ACTIVATION_SECTION]: activation } : {}),
+    ...(todos ? { [SESSION_TODOS_SECTION]: todos } : {}),
+  });
 }
 
 export function rebuildSystemTranscript(
