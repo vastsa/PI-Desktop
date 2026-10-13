@@ -62,6 +62,12 @@ test("remote hosts puts Add actions before the inventory and opens dialog forms"
   assert.match(cssRule(".settings-remote-host-name"), /font-size:\s*var\(--text-md-plus\)/);
 });
 
+test("remote-host dialog form leaves space for focused input rings", () => {
+  const formRule = cssRule(".settings-remote-host-add-dialog .settings-remote-host-form");
+  assert.match(formRule, /overflow-x:\s*hidden/);
+  assert.match(formRule, /padding:\s*2px(?:\s+2px){0,3}\s*;/);
+});
+
 test("remote host cards open project creation instead of a session workbench", () => {
   assert.match(page, /openProject\(\{ remoteHostKey: host\.hostKey \}\)/);
   assert.match(page, /remoteT\("newProject"\)/);
