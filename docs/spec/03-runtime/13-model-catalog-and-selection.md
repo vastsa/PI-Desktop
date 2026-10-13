@@ -290,9 +290,18 @@ weight owner's published record when that owner names the model. This record
 outranks shared reseller matches without changing the configured wire ID.
 Lookup accepts dotted/dashed version notation, one whitelisted deployment
 label, and the owner's published canonical generation ID; semantic variants
-and unpublished generations remain distinct. If owner aliases disagree on
-capabilities or limits, no owner record is borrowed. When the owner publishes
-no matching record, the existing shared catalog matching rules still apply.
+and unpublished generations remain distinct. The owner's own sibling keys
+(regional, token-plan and coding-plan) are consulted as added evidence when the
+public key states nothing, so a generation the vendor ships only on one of its
+keys still resolves; a sibling key never vetoes an answer the public key
+already gave. When the relay names a generation the owner publishes under
+another ID, models.dev's own canonical declaration translates the name, but
+only when at least two distinct publishers corroborate the same owner-prefixed
+target and the ordinary lookup resolved nothing — the capacity still comes from
+the owner's record for the translated ID, never from the declarers. If owner
+aliases disagree on capabilities or limits, no owner record is borrowed. When
+the owner publishes no matching record, the existing shared catalog matching
+rules still apply.
 
 `source: "cache"` reads Host caches and configured bindings without network.
 `source: "refresh"` probes the selected endpoint/account and decorates returned

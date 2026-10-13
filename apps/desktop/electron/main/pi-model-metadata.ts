@@ -23,7 +23,24 @@ export const RELAY_FAMILY_PUBLISHERS: Record<string, string> = {
   // Open-weight families whose owner publishes the IDs a relay actually serves.
   mimo: "xiaomi", glm: "zai", deepseek: "deepseek",
   kimi: "moonshotai", minimax: "minimax",
+  qwen: "alibaba", hy: "tencent",
 };
+
+/**
+ * The publisher that owns the weights behind a served leaf, when the family
+ * names one. A generation number rides on the family token (`qwen3`,
+ * `hy4-preview`), so the token's letters name the owner; only trailing digits
+ * are stripped, and a token registered as-is always wins first, so `o1` stays
+ * OpenAI rather than collapsing to an unregistered `o`.
+ */
+export function relayFamilyPublisher(leafId: string): string | undefined {
+  const token = leafId.split(/[-.]/)[0] ?? "";
+  for (const candidate of [token, token.replace(/\d+$/, "")]) {
+    const publisher = RELAY_FAMILY_PUBLISHERS[candidate];
+    if (publisher) return publisher;
+  }
+  return undefined;
+}
 const leaf = (id: string) => id.toLowerCase().split("/").at(-1);
 // Only deployment-added environment/context labels are safe to remove as a
 // fallback. Model variants such as `thinking`, `preview`, and dated releases

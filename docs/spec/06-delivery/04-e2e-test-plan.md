@@ -1070,8 +1070,11 @@ identify the platform validation still needed.
   the endpoint takes precedence over the catalog for that field; omitted fields
   independently use catalog metadata. For an unanchored relay, a published
   owner record outranks reseller matches; dotted/dashed version aliases and one
-  whitelisted deployment label keep the served ID intact, and conflicting
-  owner records do not supply guessed limits.
+  whitelisted deployment label keep the served ID intact, the owner's sibling
+  keys add evidence when the public key states nothing, and a corroborated
+  canonical declaration translates a name the owner publishes under another ID
+  without rewriting the served ID. Conflicting owner records do not supply
+  guessed limits.
 - **Specs linked**: `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (multi-model provider configuration)
 - **Milestone**: M2

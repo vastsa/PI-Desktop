@@ -9,7 +9,7 @@ import {
   type Provider,
 } from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
-import { PI_VENDOR_ALIASES, settingsOperationMetadata } from "./pi-model-metadata.ts";
+import { PI_VENDOR_ALIASES, relayFamilyPublisher, settingsOperationMetadata } from "./pi-model-metadata.ts";
 import {
   MODEL_VENDOR_PREFIXES,
   NAMED_ENDPOINT_PRESETS,
@@ -17,7 +17,6 @@ import {
   stripReleaseSuffix,
   stripVariantSuffix,
 } from "@pi-desktop/shared";
-import { RELAY_FAMILY_PUBLISHERS } from "./pi-model-metadata.ts";
 import type {
   ModelCost,
   ModelCostTier,
@@ -656,6 +655,45 @@ function providerKeyCandidates(value: string | undefined): string[] {
 }
 
 /**
+ * The vendor's sibling catalog keys: one weight owner ships a public key plus
+ * its regional, token-plan and coding-plan keys, and all of them are the
+ * vendor's own records rather than reseller copies. Kept separate from
+ * `PROVIDER_ALIASES` because that map feeds provider identification for every
+ * row, while these only extend the relay owner fallback's second tier.
+ */
+const RELAY_OWNER_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  alibaba: [
+    "alibaba",
+    "alibaba-cn",
+    "alibaba-token-plan",
+    "alibaba-token-plan-cn",
+    "alibaba-coding-plan",
+    "alibaba-coding-plan-cn",
+  ],
+  tencent: ["tencent", "tencent-tokenhub", "tencent-token-plan", "tencent-coding-plan"],
+  moonshotai: ["moonshotai", "moonshotai-cn", "kimi-code-plan-cn", "kimi-code-plan-global"],
+};
+
+/**
+ * The owner key sets a relay lookup consults, in order. The first tier is
+ * exactly the keys this app already maps to the publisher, so an id that
+ * resolves today resolves identically. The second tier adds the vendor's
+ * sibling keys and is consulted only when the first tier states nothing at all
+ * — never when it reports a conflict, because a vendor contradicting itself
+ * about its own id is already a final answer.
+ */
+function relayOwnerKeyTiers(publisher: string): Set<string>[] {
+  const normalize = (keys: readonly string[]) =>
+    new Set(keys.map((key) => normalizedProviderKey(key)).filter(Boolean));
+  const primary = normalize(providerKeyCandidates(publisher));
+  const widened = normalize([
+    ...primary,
+    ...(RELAY_OWNER_ALIASES[normalizedProviderKey(publisher)] ?? []),
+  ]);
+  return widened.size > primary.size ? [primary, widened] : [primary];
+}
+
+/**
  * Publishers this app ships a provider for: the models.dev keys behind the
  * first-class presets and the known endpoints, which mirror the providers pi-ai
  * supports.
@@ -1022,6 +1060,28 @@ function modelWithSharedCapabilities(
 }
 
 /**
+ * Resolve the owner's records for one id. No record states nothing
+ * (`undefined`, so the caller keeps looking); one record, or several that agree
+ * on shape and capacity, answer; a split owner statement is `null` — the owner
+ * itself contradicts, so the id must not be guessed from catalog order.
+ */
+function settleOwnerRecords(
+  candidates: readonly ModelsDevModel[],
+): ModelsDevModel | null | undefined {
+  if (candidates.length === 0) return undefined;
+  const active = candidates.filter((model) => model.status?.toLowerCase() !== "deprecated");
+  const pool = active.length > 0 ? active : candidates;
+  if (pool.length === 1) return pool[0];
+  const first = pool[0];
+  const agreed = pool.every(
+    (model) =>
+      capabilitySignature(model) === capabilitySignature(first) &&
+      JSON.stringify(model.limit) === JSON.stringify(first.limit),
+  );
+  return agreed ? pool[0] : null;
+}
+
+/**
  * Middle value of the numbers the publishers state. Even counts take the lower
  * of the two middles, so a borrow never rounds a window up on its own.
  */
@@ -1186,6 +1246,14 @@ function dropDeploymentMarker(value: string): string {
 /** The last `/`-segment of a normalized id; the whole id when it has none. */
 function leafOf(normalized: string): string {
   return normalized.slice(normalized.lastIndexOf("/") + 1);
+}
+
+/**
+ * The normalized leaf of an id, used as a map/set key. `leafOf` expects an
+ * already-normalized id; this accepts a raw one.
+ */
+function leafKey(id: string): string {
+  return normalizedModelId(leafOf(normalizedModelId(id)));
 }
 
 /**
@@ -1617,8 +1685,12 @@ export class ModelsDevCatalog {
        shared-record matching continues to apply. */
     const relayOwnerKey = preferredProvider
       ? undefined
-      : RELAY_FAMILY_PUBLISHERS[leafOf(requested).split(/[-.]/)[0] ?? ""];
-    const ownerRecord = relayOwnerKey ? this.unanchoredOwnerRecord(requested) : undefined;
+      : relayFamilyPublisher(leafOf(requested));
+    /* Canonical translation is the weakest step: it maps one published name
+       onto another, so it only runs when the ordinary lookup found nothing. */
+    const ownerRecord = relayOwnerKey
+      ? this.unanchoredOwnerRecord(requested, !result && !deploymentFallback)
+      : undefined;
     const borrowed = ownerRecord === null
       ? undefined
       : ownerRecord ?? result ?? deploymentFallback ??
@@ -1754,46 +1826,81 @@ export class ModelsDevCatalog {
    * - When the relay names the owner's canonical generation id (the
    *   catalog's internal name, e.g. `deepseek-v4.1-flash`), the owner's
    *   own live record for that canonical id answers.
+   * - When the relay names a generation the owner publishes under another
+   *   ID, models.dev's own canonical declaration translates the name, but
+   *   only when at least two distinct publishers corroborate the same
+   *   owner-prefixed target. The capacity still comes from the owner's own
+   *   record for the translated ID, never from the declarers.
    */
-  private unanchoredOwnerRecord(requested: string): ModelsDevModel | null | undefined {
-    const ownerKey = RELAY_FAMILY_PUBLISHERS[leafOf(requested).split(/[-.]/)[0] ?? ""];
+  private unanchoredOwnerRecord(
+    requested: string,
+    allowTranslation: boolean,
+  ): ModelsDevModel | null | undefined {
+    const ownerKey = relayFamilyPublisher(leafOf(requested));
     if (!ownerKey) return undefined;
-    const ownerKeys = new Set(providerKeyCandidates(ownerKey));
+    const [primary, widened] = relayOwnerKeyTiers(ownerKey);
+    // The tier the app already used decides on its own, conflict included: a
+    // vendor contradicting itself about its own id is a final answer.
+    const settled = this.ownerRecordForKeys(primary, requested, allowTranslation);
+    if (settled !== undefined || !widened) return settled;
+    // The widened tier is added evidence only. It may supply the record the
+    // primary tier could not, but a conflict between the vendor's sibling keys
+    // must not suppress an answer this app already produced.
+    return this.ownerRecordForKeys(widened, requested, allowTranslation) ?? undefined;
+  }
+
+  /**
+   * The owner's own record for `requested`, looked up under exactly `ownerKeys`:
+   * first the served id and its notation aliases as whole published ids, then
+   * the owner's canonical declaration for that name, then — only when nothing
+   * else in the lookup resolved the id — a corroborated canonical translation.
+   */
+  private ownerRecordForKeys(
+    ownerKeys: ReadonlySet<string>,
+    requested: string,
+    allowTranslation: boolean,
+  ): ModelsDevModel | null | undefined {
     const ownerHits = (id: string): ModelsDevModel[] =>
       (this.lookupIndex?.candidates(id) ?? [])
-        .filter(({ model, provider }) =>
-          normalizedModelId(model.modelId) === id &&
-          ownerKeys.has(normalizedProviderKey(provider.providerKey)),
+        .filter(
+          ({ model, provider }) =>
+            normalizedModelId(model.modelId) === id &&
+            ownerKeys.has(normalizedProviderKey(provider.providerKey)),
         )
         .map((entry) => entry.model);
-    const pick = (hits: ModelsDevModel[]): ModelsDevModel | null | undefined => {
-      if (hits.length === 0) return undefined;
-      if (hits.length === 1) return hits[0];
-      if (hits.length > 1) {
-        const signature = capabilitySignature(hits[0]);
-        const limit = JSON.stringify(hits[0].limit);
-        if (
-          hits.every(
-            (model) =>
-              capabilitySignature(model) === signature &&
-              JSON.stringify(model.limit) === limit,
-          )
-        ) {
-          return hits[0];
-        }
-      }
-      return null;
-    };
     // Notation aliases and one whitelisted deployment label, each checked as
     // a whole published id; the wire id is never rewritten.
     const candidates = relayNotationCandidates(requested);
     for (const candidate of candidates) {
-      const hit = pick(ownerHits(candidate));
+      const hit = settleOwnerRecords(ownerHits(candidate));
       if (hit !== undefined) return hit;
     }
     // The relay named the owner's canonical generation id; the owner's own
     // live record for it answers.
-    return this.canonicalOwnerRecord(ownerKeys, candidates);
+    const canonical = this.ownerCanonicalRecords(ownerKeys, candidates);
+    if (canonical !== undefined) return canonical;
+    // The relay named a generation the owner publishes under a different id;
+    // a corroborated canonical declaration translates it. This is the weakest
+    // step, so it never displaces an id that already resolved: mapping one
+    // published name onto another must not outrank a record for the served id.
+    if (!allowTranslation) return undefined;
+    return this.ownerAliasedRecords(ownerKeys, candidates);
+  }
+
+  /** The owner's records this predicate accepts, keyed by publisher and id. */
+  private ownerRecordsMatching(
+    ownerKeys: ReadonlySet<string>,
+    accept: (model: ModelsDevModel) => boolean,
+  ): ModelsDevModel[] {
+    const records = new Map<string, ModelsDevModel>();
+    for (const provider of this.providers.values()) {
+      if (!ownerKeys.has(normalizedProviderKey(provider.providerKey))) continue;
+      for (const model of provider.models) {
+        if (!accept(model)) continue;
+        records.set(`${provider.providerKey}\u0000${model.modelId}`, model);
+      }
+    }
+    return [...records.values()];
   }
 
   /**
@@ -1803,31 +1910,65 @@ export class ModelsDevCatalog {
    * nothing is claimed. Reseller copies never enter this set: only the
    * weight owner's records may answer a canonical name.
    */
-  private canonicalOwnerRecord(ownerKeys: Set<string>, targets: string[]): ModelsDevModel | null | undefined {
+  private ownerCanonicalRecords(
+    ownerKeys: ReadonlySet<string>,
+    targets: readonly string[],
+  ): ModelsDevModel | null | undefined {
     if (targets.length === 0) return undefined;
-    const wanted = new Set(targets.map((id) => normalizedModelId(leafOf(id))));
-    const records = new Map<string, ModelsDevModel>();
+    const wanted = new Set(targets.map((id) => leafKey(id)));
+    return settleOwnerRecords(
+      this.ownerRecordsMatching(ownerKeys, (model) => {
+        const canonical = model.canonicalModelId;
+        return canonical ? wanted.has(leafKey(canonical)) : false;
+      }),
+    );
+  }
+
+  /** The owner's own records whose published leaf is one of `leaves`. */
+  private ownerRecordsForLeaves(
+    ownerKeys: ReadonlySet<string>,
+    leaves: readonly string[],
+  ): ModelsDevModel[] {
+    const wanted = new Set(leaves.map((id) => leafKey(id)));
+    return this.ownerRecordsMatching(ownerKeys, (model) => wanted.has(leafKey(model.modelId)));
+  }
+
+  /**
+   * Translate a relay-only generation name to the ID the owner publishes, using
+   * models.dev's own canonical declaration as the translation.
+   *
+   * Only a corroborated translation counts: at least two distinct publishers
+   * must state the same owner-prefixed canonical id for the served name, so one
+   * reseller's private alias is never evidence. A name the declaration maps
+   * back to itself states nothing new. An ambiguous or uncorroborated
+   * translation returns `undefined` — the caller keeps its previous answer, so
+   * this step can only add resolutions, never remove one. The capacity comes
+   * from the owner's own record for the translated ID, never from a declarer.
+   */
+  private ownerAliasedRecords(
+    ownerKeys: ReadonlySet<string>,
+    servedLeaves: readonly string[],
+  ): ModelsDevModel | null | undefined {
+    const served = new Set(servedLeaves.map((id) => leafKey(id)));
+    if (served.size === 0) return undefined;
+    const declarers = new Map<string, Set<string>>();
     for (const provider of this.providers.values()) {
-      if (!ownerKeys.has(normalizedProviderKey(provider.providerKey))) continue;
       for (const model of provider.models) {
         const canonical = model.canonicalModelId;
         if (!canonical) continue;
-        if (!wanted.has(normalizedModelId(leafOf(canonical)))) continue;
-        records.set(`${provider.providerKey}\u0000${model.modelId}`, model);
+        if (!served.has(leafKey(model.modelId))) continue;
+        const target = leafKey(canonical);
+        if (served.has(target)) continue;
+        const prefix = normalizedModelId(canonical).split("/")[0] ?? "";
+        if (!prefix || !ownerKeys.has(normalizedProviderKey(prefix))) continue;
+        const seen = declarers.get(target) ?? new Set<string>();
+        seen.add(normalizedProviderKey(provider.providerKey));
+        declarers.set(target, seen);
       }
     }
-    const candidates = [...records.values()];
-    if (candidates.length === 0) return undefined;
-    const active = candidates.filter((model) => model.status?.toLowerCase() !== "deprecated");
-    const pool = active.length > 0 ? active : candidates;
-    if (pool.length === 1) return pool[0];
-    const first = pool[0];
-    const agreed = pool.every(
-      (model) =>
-        capabilitySignature(model) === capabilitySignature(first) &&
-        JSON.stringify(model.limit) === JSON.stringify(first.limit),
-    );
-    return agreed ? pool[0] : null;
+    const corroborated = [...declarers.entries()].filter(([, keys]) => keys.size >= 2);
+    if (corroborated.length !== 1) return undefined;
+    return settleOwnerRecords(this.ownerRecordsForLeaves(ownerKeys, [corroborated[0][0]]));
   }
 
   /**
