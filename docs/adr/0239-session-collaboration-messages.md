@@ -29,7 +29,9 @@ Autonomous session creation is bounded separately from bidirectional messaging.
 
 The Agent Host's existing admission and turn queue remain the execution owner.
 The ledger retains deliveries across dequeue and process failure. A busy target
-queues a message; an idle target starts it. Restored work follows the existing
+queues a message; an idle target starts it. The optional
+[current-turn receipt channel](session-collaboration-current-turn.md) extends
+this behavior for fresh ordinary messages and completion notices, not tasks. Restored work follows the existing
 startup fence and is never replayed merely because the application restarted.
 Permission checks remain host-owned; session messaging cannot raise a target's
 effective permission above the initiating operation's authorized ceiling.

@@ -120,7 +120,7 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
       const host = requireHost();
       try {
         checkCurrent(host, signal);
-        const current = (await host.call<{ message?: SessionCollaborationMessage }>(
+        let current = (await host.call<{ message?: SessionCollaborationMessage }>(
           "session.collaboration.message", { messageId: message.id },
         )).message;
         checkCurrent(host, signal);
@@ -128,10 +128,26 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
         if (current.status !== "queued") return delivery(current);
         const bridge = deps.getBridge();
         if (!bridge || !deps.getSidecar()) fail("HOST_UNAVAILABLE", "The Agent runtime is unavailable");
-        if (bridge.queue.list(current.targetSessionId).some((entry) => entry.sessionMessageId === current.id)) {
+        if (bridge.queue.list(current.targetSessionId).some((entry) => entry.sessionMessageId === message.id)) {
           return delivery(current);
         }
         if (!deps.isPluginLoaded(current.pluginId)) fail("ABORTED", "The sending plugin is no longer enabled");
+        if (current.currentTurn?.state === "offered") {
+          const turnId = current.currentTurn.turnId;
+          const gate = deps.getActiveTurn(current.targetSessionId) === turnId
+            ? await deps.getSidecar()!.call<{ accepting: boolean }>("agent.collaborationContext", {
+              sessionId: current.targetSessionId, expectedTurnId: turnId,
+            }) : { accepting: false };
+          checkCurrent(host, signal);
+          if (gate.accepting) return delivery(current);
+          // A CAS release arbitrates against concurrent runtime acceptance. A
+          // lost receive acknowledgement cannot become a second queued prompt.
+          current = (await host.call<{ message: SessionCollaborationMessage }>(
+            "session.collaboration.release", { messageId: current.id, turnId },
+          )).message;
+          checkCurrent(host, signal);
+          if (current.status !== "queued" || current.currentTurn?.state !== "fallback") return delivery(current);
+        }
         // beginTurn rechecks the persisted authorization ceiling at execution,
         // including when a queued turn resumes after settings have changed.
         await bridge.agentHost.startTurn(DESKTOP_PRINCIPAL, {
@@ -151,7 +167,9 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
       } catch (error) {
         // A full callback inbox is deferred until a later queue/turn change.
         // It must not turn a successfully completed original task into failure.
-        if (deps.getHost() === host && !(message.kind === "completion" && errorCode(error) === "AGENT_BUSY")) {
+        const knownRejection = ["ABORTED", "PERMISSION_DENIED", "MODEL_NOT_CONFIGURED", "INVALID_ARGUMENT"].includes(errorCode(error) ?? "");
+        const deferred = errorCode(error) === "AGENT_BUSY" && (message.kind === "completion" || !!message.currentTurn);
+        if (deps.getHost() === host && !deferred && (!message.currentTurn || knownRejection)) {
           // The host persists free text, so the code is embedded to keep the
           // stored failure machine-readable and bounded.
           const persisted = `${errorCode(error) ?? "FAILED"}: ${errorMessage(error)}`;
@@ -236,6 +254,28 @@ export function createSessionCollaborationService(deps: SessionCollaborationDepe
   }
 
   return {
+    /** Runtime-only entry: fence the exact turn and order all preceding tool
+     * results before the durable incoming transcript input. */
+    async receive(params: Record<string, unknown>): Promise<unknown> {
+      const sessionId = text(params, "sessionId")!;
+      const turnId = text(params, "turnId")!;
+      const requestId = text(params, "requestId")!;
+      const host = requireHost();
+      if (deps.getActiveTurn(sessionId) !== turnId) return { messages: [] };
+      const sidecar = deps.getSidecar();
+      if (!sidecar) fail("HOST_UNAVAILABLE", "The Agent runtime is unavailable");
+      if (!await deps.flushTranscript()) fail("HOST_UNAVAILABLE", "Transcript persistence is pending");
+      checkCurrent(host);
+      const gate = await sidecar.call<{ accepting: boolean }>("agent.collaborationContext", {
+        sessionId, expectedTurnId: turnId,
+      });
+      checkCurrent(host);
+      if (!gate.accepting || deps.getActiveTurn(sessionId) !== turnId) return { messages: [] };
+      const received = await host.call("session.collaboration.receive", { sessionId, turnId, requestId });
+      checkCurrent(host);
+      deps.onChanged();
+      return received;
+    },
     async invoke(input: McpControlInvokeInput): Promise<unknown> {
       if (input.source !== "plugin" || !input.pluginContext?.pluginId) {
         fail("PERMISSION_DENIED", "Session collaboration requires a trusted plugin context");

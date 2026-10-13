@@ -54,6 +54,7 @@ const HOST_PROXY_ALLOWED = new Set([
   "tools.list",
   "session.get",
   "session.appendMessage",
+  "session.collaboration.receive",
   "session.appendCompaction",
   "session.replaceMessages",
   "workspace.get",
@@ -205,6 +206,7 @@ export class AgentSidecar {
     this.unsubscribeHostExit?.();
     this.unsubscribeHostExit = null;
     this.host = null;
+    this.sessionMessageReceiver = undefined;
     for (const [, p] of this.pending) {
       if (p.timer) clearTimeout(p.timer);
       p.reject(error);
@@ -307,6 +309,13 @@ export class AgentSidecar {
   /** Register a tool the sidecar can call that the embedding host handles locally. */
   setLocalTool(name: string, handler: LocalToolHandler): void {
     this.localTools.set(name, handler);
+  }
+
+  private sessionMessageReceiver?: (params: Record<string, unknown>) => Promise<unknown>;
+
+  /** The embedding must fence Stop and flush the transcript before acceptance. */
+  setSessionMessageReceiver(receiver: (params: Record<string, unknown>) => Promise<unknown>): void {
+    this.sessionMessageReceiver = receiver;
   }
 
   setProjectInstructionResolver(resolver: ProjectInstructionResolver): void {
@@ -467,6 +476,12 @@ export class AgentSidecar {
           );
         }
         const params = (msg.params?.params ?? {}) as Record<string, unknown>;
+        if (method === "session.collaboration.receive") {
+          if (!this.sessionMessageReceiver) throw new Error("current-turn session delivery is unavailable");
+          const result = await this.sessionMessageReceiver(params);
+          this.writeToChild(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n");
+          return;
+        }
         const requestedToolName = String(params.toolName ?? "");
         const planLocalTool =
           requestedToolName === "Skill" ||

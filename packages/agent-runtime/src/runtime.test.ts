@@ -7044,6 +7044,53 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("classifies over-budget current-turn collaboration input as terminal context overflow", async () => {
+    const incoming = {
+      id: "session-message:budget-result", role: "user", content: "Worker result",
+      createdAt: "2026-09-23T00:00:00Z",
+      sessionMessage: {
+        messageId: "budget-result", sourceSessionId: "worker", sourceTitle: "Worker",
+        targetSessionId: "session-1", kind: "message",
+      },
+    };
+    const host = { call: vi.fn().mockResolvedValue({ messages: [incoming] }) };
+    const runtime = createRuntime({ host, turnId: "budget-turn" });
+    const view = runtime as unknown as {
+      acceptingSteering: boolean;
+      agentActivity: ReturnType<DesktopAgentRuntime["getStatus"]>["activity"];
+      extensionRunner: {
+        hasHandlers: (event: string) => boolean;
+        emit: () => Promise<{ messages: AgentMessage[] }>;
+      } | undefined;
+      prepareNextTurn: (turn: typeof nextTurn) => Promise<unknown>;
+    };
+    runtime.setSessionMessagesInCurrentTurn(true);
+    view.acceptingSteering = true;
+    view.agentActivity = { phase: "waiting-model", since: 1 };
+    // Model an external context hook; receive, framing, and token estimates stay real.
+    view.extensionRunner = {
+      hasHandlers: (event) => event === "context",
+      emit: async () => ({ messages: [{ role: "user", content: "expanded context ".repeat(200_000), timestamp: 1 }] }),
+    };
+    let failure: unknown;
+    try {
+      try {
+        await view.prepareNextTurn(nextTurn);
+      } catch (error) {
+        failure = error;
+      }
+      expect(host.call).toHaveBeenCalledWith("session.collaboration.receive", expect.objectContaining({
+        sessionId: "session-1", turnId: "budget-turn",
+      }));
+      expect(failure).toMatchObject({ message: expect.stringContaining("current-turn session input") });
+      expect(classifyAgentError(failure)).toMatchObject({ code: "CONTEXT_TOO_LARGE", retriable: false });
+    } finally {
+      view.extensionRunner = undefined;
+      view.agentActivity = undefined;
+      await runtime.dispose();
+    }
+  });
+
   it("withdraws the compaction tool when automatic protection is disabled", async () => {
     const runtime = createRuntime();
     const before = (runtime as any).agent.state.tools.map(

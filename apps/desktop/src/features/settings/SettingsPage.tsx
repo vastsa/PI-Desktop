@@ -36,6 +36,7 @@ import { Badge, Button, cx, SegmentedControl, SettingsToggle } from "../../compo
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
+import { SessionMessageDeliveryRow } from "../../components/settings/SessionMessageDeliveryRow";
 import { ThinkingDisplayModeRow } from "../../components/settings/ThinkingDisplayModeRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
@@ -527,6 +528,7 @@ export function SettingsPage() {
                     onChange={() => void saveSettings({ smoothStreaming: !(settings.smoothStreaming !== false) })}
                   />
                 </SettingsRow>
+                <SessionMessageDeliveryRow settings={settings} saveSettings={saveSettings} />
                 <LargePasteThresholdRow
                   settings={settings}
                   saveSettings={saveSettings}

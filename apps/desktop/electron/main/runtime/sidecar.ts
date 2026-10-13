@@ -36,6 +36,7 @@ export type SidecarRuntimeDependencies = {
   sendToRenderer: (channel: string, payload: unknown) => void;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
   activeTurns: Map<string, string>;
+  receiveSessionMessages: (params: Record<string, unknown>) => Promise<unknown>;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
   inflightCheckpointer: InflightCheckpointer;
@@ -75,6 +76,7 @@ export function createSidecarRuntime({
   sendToRenderer,
   persistAgentEvent,
   activeTurns,
+  receiveSessionMessages,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   inflightCheckpointer,
@@ -185,6 +187,7 @@ export function createSidecarRuntime({
     }
   };
   const wireSidecar = (s: AgentSidecar) => {
+  s.setSessionMessageReceiver(receiveSessionMessages);
 
   s.onNotification((method, params) => {
     if (method === "native.agent.event") {

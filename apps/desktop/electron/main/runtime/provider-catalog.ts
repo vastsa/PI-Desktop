@@ -169,6 +169,7 @@ export function createProviderCatalogRuntime({
     ) as T & { defaultCommandShell?: unknown };
     return {
       ...(value as T),
+      sessionMessagesInCurrentTurn: (value as T & { sessionMessagesInCurrentTurn?: unknown }).sessionMessagesInCurrentTurn === true,
       infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
         .infiniteProviderRetry === true,
       keepAwakeWhileRunning: (value as T & { keepAwakeWhileRunning?: unknown })
@@ -187,6 +188,7 @@ export function createProviderCatalogRuntime({
     const value = settings as T & {
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
+      sessionMessagesInCurrentTurn?: unknown;
       keepAwakeWhileRunning?: unknown;
       jevEnabled?: unknown;
       updatePreference?: unknown;
@@ -200,6 +202,10 @@ export function createProviderCatalogRuntime({
       throw Object.assign(new Error("defaultCommandShell is invalid"), {
         errorCode: ErrorCodes.COMMAND_SHELL_INVALID,
       });
+    }
+    if (Object.prototype.hasOwnProperty.call(value, "sessionMessagesInCurrentTurn") &&
+      typeof value.sessionMessagesInCurrentTurn !== "boolean") {
+      throw Object.assign(new Error("sessionMessagesInCurrentTurn is invalid"), { errorCode: ErrorCodes.INVALID_PARAMS });
     }
     if (
       Object.prototype.hasOwnProperty.call(value, "infiniteProviderRetry") &&

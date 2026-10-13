@@ -7,6 +7,13 @@ use crate::db::{ms_to_ts, now_ms, Database};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CurrentTurnDelivery {
+    pub turn_id: String,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: String,
     pub plugin_id: String,
@@ -29,16 +36,33 @@ pub struct Message {
     pub created_at: String,
     pub updated_at: String,
     pub permission_ceiling: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_turn: Option<CurrentTurnDelivery>,
     #[serde(skip)]
     pub remaining_hops: i64,
 }
 
 pub(super) const SELECT: &str = "SELECT id,plugin_id,source_session_id,source_title,
  target_session_id,target_title,kind,content,status,notify_on_completion,turn_id,
- reply_to_message_id,result,error,created_at,updated_at,remaining_hops,permission_ceiling
+ reply_to_message_id,result,error,created_at,updated_at,remaining_hops,permission_ceiling,
+ (SELECT c.turn_id FROM session_collaboration_current_turn c WHERE c.message_id=session_collaboration_messages.id),
+ (SELECT c.state FROM session_collaboration_current_turn c WHERE c.message_id=session_collaboration_messages.id)
  FROM session_collaboration_messages";
 
 pub(super) fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
+    let current_turn = match row.get::<_, Option<String>>(18)? {
+        Some(turn_id) => Some(CurrentTurnDelivery {
+            turn_id,
+            state: row.get(19)?,
+        }),
+        None => None,
+    };
+    let turn_id = row.get::<_, Option<String>>(10)?.or_else(|| {
+        current_turn
+            .as_ref()
+            .filter(|receipt| receipt.state == "accepted")
+            .map(|receipt| receipt.turn_id.clone())
+    });
     Ok(Message {
         id: row.get(0)?,
         plugin_id: row.get(1)?,
@@ -50,7 +74,7 @@ pub(super) fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         content: row.get(7)?,
         status: row.get(8)?,
         notify_on_completion: row.get(9)?,
-        turn_id: row.get(10)?,
+        turn_id,
         reply_to_message_id: row.get(11)?,
         result: row.get(12)?,
         error: row.get(13)?,
@@ -58,6 +82,7 @@ pub(super) fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         updated_at: ms_to_ts(row.get(15)?),
         remaining_hops: row.get(16)?,
         permission_ceiling: row.get(17)?,
+        current_turn,
     })
 }
 
@@ -148,7 +173,9 @@ pub(super) fn latest_incoming(
         .conn()
         .prepare_cached(&format!(
             "{SELECT}
-        WHERE target_session_id=?1 AND (?2 IS NULL OR turn_id=?2)
+        WHERE target_session_id=?1 AND (?2 IS NULL OR turn_id=?2 OR EXISTS(
+          SELECT 1 FROM session_collaboration_current_turn c WHERE c.message_id=session_collaboration_messages.id
+          AND c.turn_id=?2 AND c.state='accepted'))
         ORDER BY created_at DESC,rowid DESC LIMIT 1"
         ))?
         .query_row(params![id, turn], row)
@@ -158,7 +185,9 @@ pub(super) fn latest_incoming(
 pub fn pending_callbacks(db: &Database, session_id: Option<&str>) -> Result<Vec<Message>> {
     let mut statement = db.conn().prepare_cached(&format!(
         "{SELECT}
-        WHERE kind='completion' AND status='queued' AND (?1 IS NULL OR target_session_id=?1)
+        WHERE (kind='completion' OR EXISTS(SELECT 1 FROM session_collaboration_current_turn c
+          WHERE c.message_id=session_collaboration_messages.id))
+        AND status='queued' AND (?1 IS NULL OR target_session_id=?1)
         ORDER BY created_at LIMIT 64"
     ))?;
     let values = statement
@@ -199,9 +228,13 @@ pub(super) fn remaining_hops(db: &Database, source: &str, turn: Option<&str>) ->
         }
     }
     let remaining: Option<i64> = db.conn().query_row(
-        "SELECT m.remaining_hops FROM session_collaboration_messages m JOIN turns t ON m.turn_id=t.id
-         WHERE t.session_id=?1 AND t.status='running' AND (?2 IS NULL OR t.id=?2) LIMIT 1",
-        params![source, turn], |row| row.get(0)).optional()?;
+        "SELECT MIN(m.remaining_hops) FROM session_collaboration_messages m
+         LEFT JOIN session_collaboration_current_turn c ON c.message_id=m.id AND c.state='accepted'
+         JOIN turns t ON t.id=COALESCE(m.turn_id,c.turn_id)
+         WHERE t.session_id=?1 AND t.status='running' AND (?2 IS NULL OR t.id=?2)",
+        params![source, turn],
+        |row| row.get(0),
+    )?;
     let budget = remaining.unwrap_or(9) - 1;
     if budget < 1 {
         return Err(anyhow!(

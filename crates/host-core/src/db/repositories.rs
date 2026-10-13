@@ -146,6 +146,7 @@ impl Database {
                 tx.execute_batch(SCHEMA_LATEST)?;
                 tx.execute_batch(PLAN_APPROVALS_SCHEMA)?;
                 tx.execute_batch(crate::session_collaboration::SCHEMA)?;
+                tx.execute_batch(crate::session_collaboration::CURRENT_TURN_SCHEMA)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
@@ -203,6 +204,9 @@ impl Database {
             22 => {
                 migrate_v22_to_v23(&conn, path)?;
             }
+            23 => {
+                super::current_turn_migration::migrate(&conn, path)?;
+            }
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
                 drop(conn);
@@ -249,6 +253,10 @@ impl Database {
         }
         if migrated_version == 22 {
             migrate_v22_to_v23(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 23 {
+            super::current_turn_migration::migrate(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;
