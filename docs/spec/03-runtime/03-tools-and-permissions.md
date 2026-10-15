@@ -454,6 +454,12 @@ or executable path hash is accepted as shell identity.
 - No bash bundled in the installer: Git for Windows is the Windows prerequisite (the app requires git anyway)
 - Resolution failure returns stable `SHELL_NOT_FOUND` with install guidance
 - Windows PowerShell and cmd use their native non-interactive invocation.
+- PowerShell output passes through PowerShell's own formatter, so objects
+  (tables, lists, hashtables, `Measure-Object` results) reach the agent as a
+  console shows them, not as type names. Stderr lines from native commands are
+  forwarded to stderr and do not fail the call by themselves: the call reports
+  the native exit code. Any other PowerShell error fails the call with exit
+  code 1.
 - PowerShell 7 resolves `pwsh.exe` from `%ProgramFiles%\PowerShell\7` (or
   `ProgramW6432` when the host process is 32-bit), then PATH, which covers
   machine-scope, Store, user-scope, and portable installs. The PATH probe

@@ -4999,6 +4999,103 @@ mod tests {
         .await;
         assert_eq!(native.content["exitCode"], 7);
     }
+
+    #[cfg(windows)]
+    async fn run_windows_powershell(workspace: &Path, command: &str) -> ToolsExecuteResult {
+        let options = BashExecutionOptions {
+            session_id: "powershell-output-session".into(),
+            tool_call_id: "powershell-output-call".into(),
+            command_shell_id: shell::WINDOWS_POWERSHELL_ID.into(),
+            timeout_ms: Some(30_000),
+            cancellation: None,
+            output_tx: None,
+            extra_env: Vec::new(),
+        };
+        execute_tool_with_options(
+            Some(workspace),
+            None,
+            "Bash",
+            &serde_json::json!({ "command": command }),
+            Some(30_000),
+            Some(options),
+        )
+        .await
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_formats_pipeline_objects_like_the_console() {
+        // Cmdlets return objects. The agent must read them the way a console
+        // shows them, not as the bare type names that string conversion gives.
+        let workspace = tempfile::tempdir().unwrap();
+        let output = run_windows_powershell(
+            workspace.path(),
+            "[pscustomobject]@{ PiName = 'alpha'; PiSize = 42 } | Format-Table; \
+             @{ piKey = 'piValue' }; 1, 2, 3 | Measure-Object -Sum",
+        )
+        .await;
+        assert!(output.ok, "PowerShell output failed: {:?}", output.content);
+        let stdout = output.content["stdout"].as_str().unwrap_or_default();
+        let has_line = |predicate: &dyn Fn(&str) -> bool| stdout.lines().any(predicate);
+        assert!(
+            has_line(&|line| line.contains("alpha") && line.contains("42")),
+            "Format-Table row missing: {stdout:?}"
+        );
+        assert!(
+            has_line(&|line| line.contains("piKey") && line.contains("piValue")),
+            "hashtable entry missing: {stdout:?}"
+        );
+        assert!(
+            has_line(&|line| line.starts_with("Sum") && line.trim_end().ends_with(": 6")),
+            "Measure-Object sum missing: {stdout:?}"
+        );
+        for type_name in [
+            "Microsoft.PowerShell.Commands.Internal.Format",
+            "System.Collections.Hashtable",
+            "GenericMeasureInfo",
+        ] {
+            assert!(
+                !stdout.contains(type_name),
+                "{type_name} replaced real output: {stdout:?}"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_native_stderr_keeps_the_native_exit_code() {
+        // Git, cargo, npm and most build tools write progress to stderr. That
+        // text stays on stderr, but only the command's own exit code decides
+        // whether it failed.
+        let workspace = tempfile::tempdir().unwrap();
+        let progress = run_windows_powershell(
+            workspace.path(),
+            "cmd /c \"(echo first progress line 1>&2) & (echo second progress line 1>&2)\"",
+        )
+        .await;
+        assert!(
+            progress.ok,
+            "successful command failed: {:?}",
+            progress.content
+        );
+        assert_eq!(progress.content["exitCode"], 0);
+        let stderr = progress.content["stderr"].as_str().unwrap_or_default();
+        assert!(
+            stderr.contains("first progress line") && stderr.contains("second progress line"),
+            "stderr was {stderr:?}"
+        );
+
+        let failure = run_windows_powershell(
+            workspace.path(),
+            "cmd /c \"echo native failure 1>&2 & exit 3\"",
+        )
+        .await;
+        assert_eq!(failure.content["exitCode"], 3, "{:?}", failure.content);
+        assert!(failure.content["stderr"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("native failure"));
+    }
     #[tokio::test]
     async fn edit_move_to_self_preserves_source_bytes() {
         let dir = tempfile::tempdir().unwrap();

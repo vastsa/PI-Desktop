@@ -211,9 +211,16 @@ pub fn build_invocation_for_platform(
         ShellPlatform::Windows => match shell_id {
             // PowerShell 7 keeps the PowerShell 5.1 invocation contract, so the
             // same non-interactive script drives both generations.
+            //
+            // `2>&1` turns each stderr line of a native command into an
+            // ErrorRecord whose id starts with `NativeCommandError`. Those lines
+            // go to stderr, but only the native exit code decides failure; any
+            // other ErrorRecord is a PowerShell error and fails the call.
+            // Remaining output passes through `Out-String -Stream`, so objects
+            // keep their console formatting instead of becoming type names.
             WINDOWS_POWERSHELL_ID | PWSH_ID => {
                 let script = format!(
-                    "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $OutputEncoding; $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'; $global:LASTEXITCODE = 0; $script:piPowerShellError = $false; & {{ {command} }} 2>&1 | ForEach-Object {{ if ($_ -is [System.Management.Automation.ErrorRecord]) {{ $script:piPowerShellError = $true; [Console]::Error.WriteLine($_.Exception.Message) }} else {{ [Console]::Out.WriteLine([string]$_) }} }}; $piNativeExitCode = $LASTEXITCODE; if ($script:piPowerShellError) {{ exit 1 }}; exit $piNativeExitCode"
+                    "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $OutputEncoding; $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'; $global:LASTEXITCODE = 0; $script:piPowerShellError = $false; & {{ {command} }} 2>&1 | ForEach-Object {{ if ($_ -is [System.Management.Automation.ErrorRecord]) {{ if ($_.FullyQualifiedErrorId -notlike 'NativeCommandError*') {{ $script:piPowerShellError = $true }}; [Console]::Error.WriteLine($_.Exception.Message) }} else {{ $_ }} }} | Out-String -Stream | ForEach-Object {{ [Console]::Out.WriteLine($_) }}; $piNativeExitCode = $LASTEXITCODE; if ($script:piPowerShellError) {{ exit 1 }}; exit $piNativeExitCode"
                 );
                 vec![
                     "-NoLogo".into(),
@@ -851,6 +858,11 @@ mod tests {
         assert!(script.contains("UTF8Encoding"));
         assert!(script.contains("$LASTEXITCODE"));
         assert!(script.contains("Write-Output 'hello'"));
+        // Windows behavior is proven by the PowerShell tests in tools::tests;
+        // these guard the script where those tests do not run.
+        assert!(script.contains("Out-String -Stream"));
+        assert!(script.contains("NativeCommandError"));
+        assert!(!script.contains("[string]$_"));
 
         let cmd = build_invocation_for_platform(
             ShellPlatform::Windows,
