@@ -99,6 +99,11 @@ export type SessionIpcDependencies = {
   sessionCapabilityContext: () => Promise<{ providers: any; defaults: any }>;
   enrichSession: (session: any, providers: any, defaults: any) => any;
   acquireSessionOperation: (sessionId: string) => Promise<() => void>;
+  beginTranscriptRewrite: (sessionId: string) => {
+    commit: () => void;
+    rollback: () => void;
+  };
+  forgetTranscriptRewriteHistory: (sessionId: string) => void;
   stripWinLongPrefix: (path: string) => string;
 };
 
@@ -115,6 +120,8 @@ export function registerSessionIpc({
   sessionCapabilityContext,
   enrichSession,
   acquireSessionOperation,
+  beginTranscriptRewrite,
+  forgetTranscriptRewriteHistory,
   stripWinLongPrefix,
 }: SessionIpcDependencies): void {
   let host: HostProcess | null = null;
@@ -134,9 +141,12 @@ export function registerSessionIpc({
    * (#1612, #1613): refuse while a turn is running (consistent with fork and
    * move), serialize overlapping operations per session, and drain the
    * persistence outbox so writes queued before the rewrite land in the old
-   * transcript rather than replaying into the new one. The sidecar runtime
-   * is dropped after the drain so the next prompt reseeds from the rewritten
-   * transcript instead of replaying the discarded branch in memory.
+   * transcript rather than replaying into the new one. The persistence fence
+   * also holds callbacks delivered after that drain: successful rewrites
+   * invalidate pre-rewrite turns, while failed rewrites replay their events.
+   * The sidecar runtime is dropped after the drain so the next prompt reseeds
+   * from the rewritten transcript instead of replaying the discarded branch
+   * in memory.
    */
   const runTranscriptRewrite = async <T>(
     sessionId: string,
@@ -146,6 +156,7 @@ export function registerSessionIpc({
   ): Promise<T> => {
     rejectNativeMutation(sessionId, purpose);
     const releaseSessionOperation = await acquireSessionOperation(sessionId);
+    let rewriteFence: ReturnType<typeof beginTranscriptRewrite> | undefined;
     try {
       if (activeTurns.has(sessionId)) {
         throw Object.assign(
@@ -153,6 +164,7 @@ export function registerSessionIpc({
           { errorCode: ErrorCodes.AGENT_BUSY },
         );
       }
+      rewriteFence = beginTranscriptRewrite(sessionId);
       await persistenceOutbox.prepareSessionReplacement(sessionId, () => currentHost);
       if (sidecar) {
         sidecar.clearProjectInstructionRoot(sessionId);
@@ -161,7 +173,12 @@ export function registerSessionIpc({
           .call("agent.disposeSession", { sessionId })
           .catch(() => undefined);
       }
-      return await run();
+      const result = await run();
+      rewriteFence.commit();
+      return result;
+    } catch (error) {
+      rewriteFence?.rollback();
+      throw error;
     } finally {
       releaseSessionOperation();
     }
@@ -376,6 +393,7 @@ export function registerSessionIpc({
     if (!host) throw new Error("host unavailable");
     const res = await host.call("session.delete", { id });
     await persistenceOutbox.dropSession(id);
+    forgetTranscriptRewriteHistory(id);
     // Drop the session's pi-agent so a later session with the same id (or a
     // stale runtime) can't answer with this session's context.
     if (sidecar) {

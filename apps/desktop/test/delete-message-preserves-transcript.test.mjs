@@ -41,6 +41,11 @@ test("sessionReplaceMessages and sessionActivateRevision share one rewrite bound
     /const\s+runTranscriptRewrite\s*=\s*async[\s\S]*?acquireSessionOperation\(sessionId\)[\s\S]*?activeTurns\.has\(sessionId\)[\s\S]*?AGENT_BUSY[\s\S]*?await\s+persistenceOutbox\.prepareSessionReplacement\(sessionId,[\s\S]*?finally\s*\{[\s\S]*?releaseSessionOperation\(\);/,
     "the rewrite gate must serialize per session, refuse running turns, and drain the outbox",
   );
+  assert.match(
+    sessionIpcSource,
+    /beginTranscriptRewrite\(sessionId\)[\s\S]*?await\s+persistenceOutbox\.prepareSessionReplacement[\s\S]*?const\s+result\s*=\s*await\s+run\(\);[\s\S]*?rewriteFence\.commit\(\);[\s\S]*?catch\s*\(error\)\s*\{\s*rewriteFence\?\.rollback\(\);/,
+    "the rewrite gate must fence late appends before draining and settle the fence according to the host rewrite result",
+  );
 
   // Both rewrite entrances route through the gate — activation had no drain
   // before #1612, and overlapping replaces could interleave (#1613).

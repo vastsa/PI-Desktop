@@ -106,6 +106,9 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     sessionCapabilityContext,
     enrichSession,
     acquireSessionOperation,
+    beginTranscriptRewrite,
+    forgetTranscriptRewriteHistory,
+    recordTurnStart,
     stripWinLongPrefix,
     normalizeSettings,
     validateSettingsWrite,
@@ -265,6 +268,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     sessionCapabilityContext,
     enrichSession,
     acquireSessionOperation,
+    beginTranscriptRewrite,
+    forgetTranscriptRewriteHistory,
     stripWinLongPrefix,
   });
   registerSettingsIpc({
@@ -402,6 +407,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     persistenceOutbox,
     dataDir,
     activeTurns,
+    recordTurnStart,
     isTurnDispatchable,
     activeTurnUsages,
     approvedExecutionIdsBySession,

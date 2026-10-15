@@ -29,6 +29,11 @@ const { app } = await import("electron");
 const { createEventPersistence } = await import("../electron/main/runtime/event-persistence.ts");
 const { PersistenceOutbox } = await import("../electron/main/persistence-outbox.ts");
 const { registerShutdownHandlers } = await import("../electron/main/bootstrap/shutdown.ts");
+const transcriptRewrite = {
+  beginTranscriptRewrite: () => ({ commit() {}, rollback: () => [] }),
+  deferTranscriptEvent: () => false,
+  isStaleTranscriptEvent: () => false,
+};
 
 for (const outcome of ["complete", "error", "unresponsive"]) {
 test(`quit settles a regenerated branch when the host is ${outcome}`, async (t) => {
@@ -72,6 +77,7 @@ test(`quit settles a regenerated branch when the host is ${outcome}`, async (t) 
     pendingExecutionFinishes: new Map(), planSubmissionTurnIds: new Set(),
     planSubmissionTurnKey: (s, turn) => `${s}:${turn}`,
     inflightCheckpointer: checkpoint, persistenceOutbox: outbox,
+    transcriptRewrite,
     addActiveTurnUsage() {}, logger,
     finishTurn: async () => { activeTurns.clear(); },
     isStaleTerminalEvent: () => false,

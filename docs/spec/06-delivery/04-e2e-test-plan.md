@@ -403,6 +403,23 @@
   session IPC contract tests, and real-model desktop acceptance. A local model
   fixture or mocked component result is not real-model acceptance evidence.
 
+### E2E-CHAT-transcript-rewrite-late-events
+
+- **Preconditions:** Isolated session with at least one completed turn and a
+  persistence callback from that turn held until transcript replacement or
+  revision activation begins.
+- **Steps:** Start either transcript replacement or revision activation. Deliver
+  the held old-turn event after the persistence outbox has drained but before
+  the Host rewrite completes. Complete the rewrite, then start a new turn and
+  persist one event. Repeat with the Host rewrite returning an error.
+- **Expected:** A successful rewrite does not append the old-turn event to the
+  rewritten transcript, while the new turn persists normally. A failed rewrite
+  replays the buffered event into the unchanged transcript. Both rewrite
+  entrances use the same fence and outbox drain.
+- **Coverage:** `session-turn-ended.test.mjs` exercises the event persistence
+  fence and rollback with deterministic event delivery; session IPC contract
+  tests assert the fence/drain/rewrite ordering. No live provider is required.
+
 ### E2E-WORKTREE-isolated-session-lifecycle
 
 - **Preconditions:** Isolated desktop profile and data directory, git 2.29+, a

@@ -55,6 +55,7 @@ function fixture() {
       return Promise.resolve();
     },
     isStaleTerminalEvent: coordination.isStaleTerminalEvent,
+    transcriptRewrite: coordination,
     finishApprovedExecution: async () => undefined,
     emitAgentEvent: (envelope) => emitted.push(envelope),
   });
@@ -133,6 +134,56 @@ test("non-terminal rows of a late turn are still archived as history", async () 
   assert.equal(f.enqueued.length, 1, "and still enqueued for persistence");
   assert.equal(f.enqueued[0].turnId, OLD_TURN, "archived under its own turn");
   assert.deepEqual(f.finished, [], "while the live turn is untouched");
+});
+
+test("a transcript rewrite drops late appends from the rewritten turn but keeps a later turn", async () => {
+  const f = fixture();
+  f.coordination.recordTurnStart(SESSION, LIVE_TURN);
+  f.coordination.recordTurnStart(SESSION, OLD_TURN);
+  f.activeTurns.delete(SESSION);
+
+  const rewrite = f.persistence.beginTranscriptRewrite(SESSION);
+  const oldToolEnd = f.envelope(
+    { type: "tool_end", toolCallId: "old-call", result: "old result", isError: false },
+    OLD_TURN,
+  );
+  f.persistence.persistAgentEvent(oldToolEnd);
+  assert.equal(f.enqueued.length, 0, "events arriving during the rewrite stay behind its fence");
+
+  rewrite.commit();
+  f.persistence.persistAgentEvent(oldToolEnd);
+  await Promise.resolve();
+  assert.equal(f.enqueued.length, 0, "neither buffered nor later old-turn events can append");
+
+  const newTurn = "turn-c";
+  f.coordination.recordTurnStart(SESSION, newTurn);
+  f.activeTurns.set(SESSION, newTurn);
+  const newToolEnd = f.envelope(
+    { type: "tool_end", toolCallId: "new-call", result: "new result", isError: false },
+    newTurn,
+  );
+  f.persistence.persistAgentEvent(newToolEnd);
+  await Promise.resolve();
+  assert.deepEqual(f.enqueued.map((entry) => entry.turnId), [newTurn]);
+});
+
+test("a failed transcript rewrite replays events that arrived while fenced", async () => {
+  const f = fixture();
+  f.coordination.recordTurnStart(SESSION, OLD_TURN);
+  f.activeTurns.delete(SESSION);
+
+  const rewrite = f.persistence.beginTranscriptRewrite(SESSION);
+  f.persistence.persistAgentEvent(
+    f.envelope(
+      { type: "tool_end", toolCallId: "old-call", result: "old result", isError: false },
+      OLD_TURN,
+    ),
+  );
+  assert.equal(f.enqueued.length, 0);
+
+  rewrite.rollback();
+  await Promise.resolve();
+  assert.deepEqual(f.enqueued.map((entry) => entry.turnId), [OLD_TURN]);
 });
 
 test("isStaleTerminalEvent only classifies terminal events", () => {
