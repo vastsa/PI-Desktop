@@ -22,13 +22,28 @@ test("deleteMessage merges live in-memory messages before slicing out the delete
   );
 });
 
-test("sessionReplaceMessages IPC drops stale pending outbox appends for the session", async () => {
+test("sessionReplaceMessages and sessionActivateRevision share one rewrite boundary with drain and guards", async () => {
   const sessionIpcSource = await readMainSource("ipc/session-ipc.ts");
 
+  // The shared gate: refuse while a turn runs, serialize overlapping
+  // operations, then drain the outbox before the callers' rewrite runs (#1612, #1613).
   assert.match(
     sessionIpcSource,
-    /IPC\.invoke\.sessionReplaceMessages[\s\S]*?await\s+persistenceOutbox\.prepareSessionReplacement\(sessionId,\s*\(\)\s*=>\s*host\);[\s\S]*?return\s+host\.call\("session\.replaceMessages"/,
-    "sessionReplaceMessages must drain in-flight appends before dropping the queue and replacing the transcript",
+    /const\s+runTranscriptRewrite\s*=\s*async[\s\S]*?acquireSessionOperation\(sessionId\)[\s\S]*?activeTurns\.has\(sessionId\)[\s\S]*?AGENT_BUSY[\s\S]*?await\s+persistenceOutbox\.prepareSessionReplacement\(sessionId,[\s\S]*?finally\s*\{[\s\S]*?releaseSessionOperation\(\);/,
+    "the rewrite gate must serialize per session, refuse running turns, and drain the outbox",
+  );
+
+  // Both rewrite entrances route through the gate — activation had no drain
+  // before #1612, and overlapping replaces could interleave (#1613).
+  assert.match(
+    sessionIpcSource,
+    /IPC\.invoke\.sessionReplaceMessages[\s\S]*?runTranscriptRewrite\(\s*sessionId,\s*"transcript replacement"[\s\S]*?session\.replaceMessages/,
+    "sessionReplaceMessages must go through the shared rewrite gate",
+  );
+  assert.match(
+    sessionIpcSource,
+    /IPC\.invoke\.sessionActivateRevision[\s\S]*?runTranscriptRewrite\(\s*sessionId,\s*"revision activation"[\s\S]*?session\.activateRevision/,
+    "sessionActivateRevision must go through the shared rewrite gate (it rewrites the same transcript rows)",
   );
 });
 
