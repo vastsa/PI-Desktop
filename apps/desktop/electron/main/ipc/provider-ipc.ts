@@ -252,25 +252,24 @@ export function registerProviderIpc({
     const timer = setTimeout(() => controller.abort(), 8000);
     try {
       /*
-        The same request builder discovery uses, so "the list loaded" and "the
-        connection test passed" can never describe two different endpoints: one
-        URL rule, one auth rule, one wire style, for a real at-least-once check.
+        The same request builder and the same resolved endpoint discovery
+        uses, so "the list loaded" and "the connection test passed" can never
+        describe two different endpoints: one URL rule, one auth rule, one
+        wire style, for a real at-least-once check. The URL is probed after
+        effective-base-URL resolution (#1687) — a saved operation suffix like
+        `/messages` must not send the test to `<endpoint>/messages/models`
+        while the list on the same page loads from `<endpoint>/models`.
       */
-      const probe = await probeProviderEndpoint({
+      const profile = inferEndpointProfile({
         baseUrl,
+        apiStyle: normalizeApiStyle(detail.provider?.apiStyle),
+        explicitApiStyle: true,
+      });
+      const probe = await probeProviderEndpoint({
+        baseUrl: profile?.effectiveBaseUrl ?? baseUrl,
         apiKey: secret.value,
         apiStyle: detail.provider?.apiStyle,
-        /*
-          Resolved the same way the model list is resolved, so a service that
-          publishes its model list in another style than it generates in (a
-          subscription plan on Anthropic Messages) is tested with the
-          credentials that actually answer.
-        */
-        discoveryStyle: inferEndpointProfile({
-          baseUrl,
-          apiStyle: normalizeApiStyle(detail.provider?.apiStyle),
-          explicitApiStyle: true,
-        })?.discoveryStyle,
+        discoveryStyle: profile?.discoveryStyle,
         headers: detail.provider?.headers,
         signal: controller.signal,
       });
