@@ -92,9 +92,12 @@ are rejected. The stable installation lock prevents competing managed launches.
 Filesystem maintenance uses Electron's `original-fs`: archives such as `app.asar`
 inside session scratch or downloaded applications remain physical files, not
 virtual directories. Their bytes and adjacent `.asar.unpacked` directories migrate
-unchanged. Windows link types are read from the link's own filesystem attributes
-in one batch, not by following its target; dangling directory/file links remain
-links, and internal targets are relocated without requiring them to exist.
+unchanged. Windows links are classified in one batch by their reparse-point
+kind, preserving junctions as junctions and symbolic links as symbolic links.
+For a symbolic link whose target exists, the target's kind determines whether
+it is recreated as a directory or file link; for dangling or unavailable
+targets, the link's own directory attribute determines that type. Internal
+targets are relocated without requiring them to exist.
 Windows absolute link targets are lexically normalized before creation and
 verification, so trailing separators from junctions do not cause false failures. Copy
 failures include the source and destination paths in the existing local error

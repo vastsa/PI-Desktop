@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, stat, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -14,6 +15,31 @@ const { build } = createRequire(new URL("../../../packages/agent-runtime/package
 const bundle = join(scratch, "storage.mjs");
 await build({ entryPoints: [join(root, "apps/desktop/electron/main/storage/files.ts")], outfile: bundle, bundle: true, platform: "node", format: "esm", alias: { "original-fs": "node:fs" } });
 const storage = await import(pathToFileURL(bundle).href);
+
+import { register } from "node:module";
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url).href);
+const { storageLinkTypes } = await import("../electron/main/storage/link-types.ts");
+
+function windowsLinkType(path) {
+  return new Promise((resolve, reject) => {
+    execFile(join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe"),
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+        `(Get-Item -LiteralPath @'
+${path}
+'@ -Force).LinkType`],
+      { windowsHide: true }, (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
+  });
+}
+
+async function createSymlinkOrSkip(t, target, link, type) {
+  try {
+    await symlink(target, link, type);
+    return true;
+  } catch (error) {
+    if (error.code === "EPERM") { t.skip(`requires the Windows symlink privilege (${type})`); return false; }
+    throw error;
+  }
+}
 
 async function fixture() {
   const directory = await mkdtemp(join(scratch, "case-"));
@@ -122,4 +148,51 @@ test("a destination that is a file is rejected without changing it", async () =>
   await writeFile(target, "user document");
   await assert.rejects(storage.validateTarget(target, source, source.browser), /directory/);
   assert.equal(await readFile(target, "utf8"), "user document");
+});
+
+
+test("a junction entry is classified as junction and rebuilt as a junction", async (t) => {
+  if (process.platform !== "win32") return t.skip("Windows link classification");
+  const { source, target } = await fixture();
+  const outside = join(await realpath(await mkdtemp(join(scratch, "outside-"))), "kept");
+  await mkdir(outside, { recursive: true });
+  await mkdir(source.data, { recursive: true });
+  if (!(await createSymlinkOrSkip(t, outside, join(source.data, "linked"), "junction"))) return;
+  {
+    assert.equal((await storageLinkTypes([join(source.data, "linked")]))[0], "junction");
+    const selected = await storage.validateTarget(target, source, source.browser);
+    const next = await storage.migrateFiles({ source, target: selected, anchor: source.browser, id: randomUUID(), progress: () => {}, relocate: async () => {} });
+    assert.equal(await windowsLinkType(join(next.data, "linked")), "Junction");
+  }
+});
+
+test("a directory symlink survives migration as a symlink, including a UNC target", async (t) => {
+  if (process.platform !== "win32") return t.skip("Windows link classification");
+  const { source, target } = await fixture();
+  // The #1686 wedge: a dir symlink to a UNC path cannot be rebuilt as a
+  // junction, which used to abort the migration and every retry.
+  const uncTarget = "\\\\localhost\\c$\\" + basename(scratch);
+  await mkdir(source.data, { recursive: true });
+  if (!(await createSymlinkOrSkip(t, uncTarget, join(source.data, "netlinked"), "dir"))) return;
+  {
+    assert.equal((await storageLinkTypes([join(source.data, "netlinked")]))[0], "dir");
+    const selected = await storage.validateTarget(target, source, source.browser);
+    const next = await storage.migrateFiles({ source, target: selected, anchor: source.browser, id: randomUUID(), progress: () => {}, relocate: async () => {} });
+    assert.equal(await windowsLinkType(join(next.data, "netlinked")), "SymbolicLink", "the dir symlink must not become a junction");
+  }
+});
+
+test("a file symlink pointing at a directory is rebuilt as a directory symlink", async (t) => {
+  if (process.platform !== "win32") return t.skip("Windows link classification");
+  const { source, target } = await fixture();
+  const outside = join(await realpath(await mkdtemp(join(scratch, "outside-"))), "dir-target");
+  await mkdir(outside, { recursive: true });
+  await mkdir(source.data, { recursive: true });
+  if (!(await createSymlinkOrSkip(t, outside, join(source.data, "filelink"), "file"))) return;
+  {
+    assert.equal((await storageLinkTypes([join(source.data, "filelink")]))[0], "dir", "the target's kind decides dir vs file");
+    const selected = await storage.validateTarget(target, source, source.browser);
+    const next = await storage.migrateFiles({ source, target: selected, anchor: source.browser, id: randomUUID(), progress: () => {}, relocate: async () => {} });
+    assert.equal(await windowsLinkType(join(next.data, "filelink")), "SymbolicLink");
+  }
 });
