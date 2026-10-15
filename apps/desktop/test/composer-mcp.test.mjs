@@ -75,6 +75,7 @@ function promptFixture(commandService, projectPath = "/repo", remoteWorkspace) {
     logger: { app() {} }, vendorOAuth: {}, agentExtensions: {}, cancelSessionTools() {},
     persistenceOutbox: {}, dataDir: "/unused-for-no-attachments",
     activeTurns: new Map(), activeTurnUsages: new Map(), approvedExecutionIdsBySession: new Map(), claimedExecutionSessions: new Map(),
+    recordTurnStart() {},
     resolveAgentRuntimeLaunch: async () => ({
       projectPath, providerId: "provider", modelId: "model",
       sidecarParams: { sessionId: "target", provider: { modelConfig: { input: ["text"] } } },
