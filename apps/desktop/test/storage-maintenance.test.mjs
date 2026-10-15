@@ -377,6 +377,24 @@ test("bootstrap refuses missing custom storage without silently creating an empt
   assert.deepEqual(await readFile(file), before);
 });
 
+test("a deleted default storage location bootstraps fresh instead of wedging the boot", { timeout: 60_000 }, async (t) => {
+  if (process.platform !== "win32") return t.skip("the wedge is a Windows path-comparison drift");
+  const value = await fixture(t); resetHarness(value.anchor);
+  // The pointer names the default data root through forward slashes — the
+  // string comparison cannot tell it from the default — and the directory
+  // was deleted out from under the app (#1682).
+  const drifted = value.roots.data.replaceAll("\\", "/");
+  storage.writeStoragePreferences(join(value.anchor, storage.STORAGE_PREFERENCE_FILE), {
+    version: 1, roots: { data: drifted, browser: value.roots.browser }, backups: [],
+  });
+  await rm(drifted, { recursive: true, force: true });
+  await storage.prepareStorage(value.roots.data, false);
+  assert.equal(await exists(drifted), true, "the default root is recreated at boot");
+  assert.equal(harness.errors.length, 0);
+  // Normal boot continues: Chromium session data lands in the anchor root.
+  assert.deepEqual(harness.paths[0], ["sessionData", value.roots.browser]);
+});
+
 test("failed migration keeps the original pointer and lets the user retry the same destination", { timeout: 60_000 }, async (t) => {
   const value = await fixture(t); resetHarness(value.anchor);
   await put(join(value.roots.data, "sessions/current"), "conversation");

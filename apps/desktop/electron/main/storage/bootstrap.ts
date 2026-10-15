@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog } from "electron";
 import { mkdirSync, existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
@@ -30,7 +30,19 @@ export async function prepareStorage(defaultData: string, overridden: boolean): 
       : readStoragePreferences(file, defaults);
     if (!overridden && preferences.roots.data !== defaults.data
       && (!existsSync(preferences.roots.data) || !existsSync(preferences.roots.browser))) {
-      throw new Error("The selected storage directory is unavailable. Reconnect its drive before starting PI-Desktop.");
+      // A missing root at the default location bootstraps fresh instead of
+      // wedging the boot (#1682): there is no drive to reconnect and nothing
+      // to recover. The error stays reserved for a custom root the user must
+      // bring back.
+      const sameRoot = (a: string, b: string) =>
+        process.platform === "win32"
+          ? a.replaceAll("/", "\\").toLowerCase() === b.replaceAll("/", "\\").toLowerCase()
+          : a === b;
+      if (sameRoot(resolve(preferences.roots.data), resolve(defaults.data))) {
+        mkdirSync(preferences.roots.data, { recursive: true });
+      } else {
+        throw new Error("The selected storage directory is unavailable. Reconnect its drive before starting PI-Desktop.");
+      }
     }
   } catch (error) {
     await app.whenReady();
