@@ -361,10 +361,21 @@ export function createTranscriptSlice({
       if (!canEdit()) return;
       const sessionId = get().activeSessionId;
       if (!sessionId || get().isRunning) return;
-      const liveMessages = get().messages;
       const fullMessages = await runtime.loadFullSessionMessages(sessionId);
-      if (!fullMessages || get().activeSessionId !== sessionId) return;
-      const merged = mergeLiveSessionMessages(fullMessages, liveMessages);
+      // Re-read the store after the reload: writes that landed during the
+      // await (an aborted turn's final message_end, a late tool_end) exist
+      // only here, so merging the pre-await snapshot would erase them
+      // (#1614) — the same post-await read abort() below relies on. A turn
+      // that started during the reload also bails: no rewrite under a live
+      // stream.
+      if (
+        !fullMessages ||
+        get().activeSessionId !== sessionId ||
+        get().isRunning
+      ) {
+        return;
+      }
+      const merged = mergeLiveSessionMessages(fullMessages, get().messages);
       set((current) =>
         current.activeSessionId === sessionId
           ? {

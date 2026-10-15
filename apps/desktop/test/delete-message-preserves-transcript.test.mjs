@@ -6,19 +6,28 @@ import { readStoreModule, readMainSource } from "./helpers/source-contracts.mjs"
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { mergeLiveSessionMessages } = await import("../src/lib/session-transcript.ts");
 
-test("deleteMessage merges live in-memory messages before slicing out the deleted turn", async () => {
+test("deleteMessage merges the store read after the transcript reload, not a pre-await snapshot", async () => {
   const sliceSource = await readStoreModule("slices/transcript-slice.ts");
 
-  // Contract: deleteMessage must capture current live messages and merge with fullMessages
-  assert.match(
+  // Contract (#1614): the merge must read get().messages AFTER the
+  // loadFullSessionMessages await, so outputs that arrive during the reload
+  // survive; a pre-await capture would erase them from view and persistence.
+  assert.doesNotMatch(
     sliceSource,
     /deleteMessage:\s*async\s*\(messageId\)\s*=>\s*\{[\s\S]*?const\s+liveMessages\s*=\s*get\(\)\.messages;/,
-    "deleteMessage must read get().messages as liveMessages before overwriting",
+    "deleteMessage must not capture a pre-await live snapshot",
   );
   assert.match(
     sliceSource,
-    /mergeLiveSessionMessages\(fullMessages,\s*liveMessages\)/,
-    "deleteMessage must merge fullMessages with liveMessages using mergeLiveSessionMessages",
+    /deleteMessage:\s*async\s*\(messageId\)\s*=>\s*\{[\s\S]*?await\s+runtime\.loadFullSessionMessages\(sessionId\);[\s\S]*?mergeLiveSessionMessages\(fullMessages,\s*get\(\)\.messages\)/,
+    "deleteMessage must merge fullMessages with the post-await store messages",
+  );
+  // A turn that started during the reload also bails: no rewrite under a
+  // live stream.
+  assert.match(
+    sliceSource,
+    /deleteMessage:\s*async\s*\(messageId\)\s*=>\s*\{[\s\S]*?get\(\)\.activeSessionId\s*!==\s*sessionId\s*\|\|\s*get\(\)\.isRunning/,
+    "deleteMessage must re-check the session and isRunning after the await",
   );
 });
 
@@ -74,4 +83,30 @@ test("mergeLiveSessionMessages preserves live AI outputs when backend disk is mi
   assert.equal(next[1].role, "assistant");
   assert.equal(next[2].role, "user");
   assert.equal(next[3].role, "assistant");
+});
+
+test("outputs that arrive during the full-transcript reload survive the delete merge", () => {
+  // Durable transcript (host has the pre-tail state); the store already saw
+  // the aborted turn's final output, which lands during the reload await.
+  const durableAtLoadEnd = [
+    { id: "u1", role: "user", content: "task", status: "complete" },
+    { id: "u2", role: "user", content: "second task", status: "complete" },
+    { id: "a2", role: "assistant", content: "second answer", status: "complete" },
+  ];
+  const storeAfterAwait = [
+    ...durableAtLoadEnd,
+    { id: "t2", role: "tool", content: "late tool_end for the aborted turn", status: "complete" },
+  ];
+
+  // The pre-await snapshot (#1614 bug shape) missed the late tool row:
+  const staleMerged = mergeLiveSessionMessages(durableAtLoadEnd, durableAtLoadEnd.slice(0, 2));
+  assert.ok(
+    !staleMerged.some((m) => m.id === "t2"),
+    "reproduces the bug shape: the stale snapshot drops the arriving output",
+  );
+
+  // The fix reads the store after the await, so the late output survives the
+  // merge that feeds both the view and the persistence payload.
+  const merged = mergeLiveSessionMessages(durableAtLoadEnd, storeAfterAwait);
+  assert.ok(merged.some((m) => m.id === "t2"), "late-arriving output survives the merge");
 });
