@@ -127,6 +127,46 @@ export function registerSessionIpc({
     });
   };
 
+  /**
+   * The one gate for the two transcript-rewrite entrances — replacement and
+   * revision activation rewrite the same host-side transcript rows, so both
+   * go through this boundary instead of each entrance remembering its own
+   * (#1612, #1613): refuse while a turn is running (consistent with fork and
+   * move), serialize overlapping operations per session, and drain the
+   * persistence outbox so writes queued before the rewrite land in the old
+   * transcript rather than replaying into the new one. The sidecar runtime
+   * is dropped after the drain so the next prompt reseeds from the rewritten
+   * transcript instead of replaying the discarded branch in memory.
+   */
+  const runTranscriptRewrite = async <T>(
+    sessionId: string,
+    purpose: string,
+    currentHost: HostProcess,
+    run: () => Promise<T>,
+  ): Promise<T> => {
+    rejectNativeMutation(sessionId, purpose);
+    const releaseSessionOperation = await acquireSessionOperation(sessionId);
+    try {
+      if (activeTurns.has(sessionId)) {
+        throw Object.assign(
+          new Error("Cannot rewrite the transcript of a running session"),
+          { errorCode: ErrorCodes.AGENT_BUSY },
+        );
+      }
+      await persistenceOutbox.prepareSessionReplacement(sessionId, () => currentHost);
+      if (sidecar) {
+        sidecar.clearProjectInstructionRoot(sessionId);
+        sidecar.clearVendorAuthBindings(sessionId);
+        await sidecar
+          .call("agent.disposeSession", { sessionId })
+          .catch(() => undefined);
+      }
+      return await run();
+    } finally {
+      releaseSessionOperation();
+    }
+  };
+
   handle(IPC.invoke.sessionSearch, async (input) => {
     if (!host) throw new Error("host unavailable");
     return searchSessionsAcrossSources(host, sidecar, input);
@@ -440,21 +480,17 @@ export function registerSessionIpc({
       if (!host) throw new Error("host unavailable");
       const sessionId = String(input?.sessionId || "");
       if (!sessionId) throw new Error("sessionId required");
-      rejectNativeMutation(sessionId, "transcript replacement");
-      await persistenceOutbox.prepareSessionReplacement(sessionId, () => host);
-      // Drop the live pi-agent so the next prompt reseeds from the truncated
-      // transcript instead of replaying the discarded branch in memory.
-      if (sidecar) {
-        sidecar.clearProjectInstructionRoot(sessionId);
-        sidecar.clearVendorAuthBindings(sessionId);
-        await sidecar
-          .call("agent.disposeSession", { sessionId })
-          .catch(() => undefined);
-      }
-      return host.call("session.replaceMessages", {
+      const currentHost = host;
+      return runTranscriptRewrite(
         sessionId,
-        messages: input.messages ?? [],
-      });
+        "transcript replacement",
+        currentHost,
+        () =>
+          currentHost.call("session.replaceMessages", {
+            sessionId,
+            messages: input.messages ?? [],
+          }),
+      );
     },
   );
   handle(
@@ -496,20 +532,20 @@ export function registerSessionIpc({
     }) => {
       if (!host) throw new Error("host unavailable");
       const sessionId = String(input?.sessionId || "");
-      rejectNativeMutation(sessionId, "revision activation");
-      if (sidecar) {
-        sidecar.clearProjectInstructionRoot(sessionId);
-        sidecar.clearVendorAuthBindings(sessionId);
-        await sidecar
-          .call("agent.disposeSession", { sessionId })
-          .catch(() => undefined);
-      }
-      return host.call("session.activateRevision", {
+      if (!sessionId) throw new Error("sessionId required");
+      const currentHost = host;
+      return runTranscriptRewrite(
         sessionId,
-        rootUserId: String(input?.rootUserId || ""),
-        revisionIndex: Number(input?.revisionIndex || 0),
-        prefix: input?.prefix ?? [],
-      });
+        "revision activation",
+        currentHost,
+        () =>
+          currentHost.call("session.activateRevision", {
+            sessionId,
+            rootUserId: String(input?.rootUserId || ""),
+            revisionIndex: Number(input?.revisionIndex || 0),
+            prefix: input?.prefix ?? [],
+          }),
+      );
     },
   );
   handle(IPC.invoke.sessionGetScratchPath, async (input: { sessionId: string }) => {
