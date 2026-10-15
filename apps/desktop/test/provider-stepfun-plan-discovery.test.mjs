@@ -125,6 +125,27 @@ test("the connection test of that row uses the same credentials as its model lis
   );
 });
 
+test("the connection test probes the effective endpoint when a row has an operation suffix", async (t) => {
+  const row = {
+    ...stepfunPlanRow,
+    baseUrl: "https://api.stepfun.com/step_plan/v1/messages",
+  };
+  const { calls, handlers } = await handlersFor(t, row);
+
+  const result = await handlers.get(IPC.invoke.providersTest)(row.id);
+
+  assert.deepEqual(calls.map((call) => call.url), [
+    "https://api.stepfun.com/step_plan/v1/models",
+  ]);
+  assert.equal(calls[0].headers.Authorization, "Bearer sk-secret");
+  assert.equal(calls[0].headers["x-api-key"], undefined);
+  assert.deepEqual(
+    { ok: result.ok, network: result.network },
+    { ok: true, network: "ok" },
+    "a valid key must not be rejected because the operation suffix was appended",
+  );
+});
+
 test("the connection test probes the resolved effective endpoint, matching model discovery", async () => {
   const { readMainSource } = await import("./helpers/source-contracts.mjs");
   const source = await readMainSource("ipc/provider-ipc.ts");
