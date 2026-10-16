@@ -12748,12 +12748,21 @@ This test plan spec is accepted when:
   `node scripts/e2e-window-surface.mjs --windows10-policy` to exercise the
   Windows 10 policy on a newer Windows host; this is policy/geometry regression
   evidence only, not Windows 10 compositor qualification.
+  Native probes run without a console window and wait for foreground focus
+  before sampling. Fullscreen coverage uses physical monitor bounds and an
+  on-screen taskbar-edge sample, including when taskbar auto-hide moves its
+  window off-screen; ordinary work-area coverage must not pass as fullscreen.
+  DWM surface checks verify the native corner preference and each corner's
+  interior/exterior pixels. Only the measured system border and its one-pixel
+  antialias fringe are excluded from application color assertions.
   Both Windows suites still require a dedicated Windows desktop; source tests
   do not qualify native compositing. Windows 10/11 fullscreen, taskbar, and
   physical dual-monitor journeys require recorded native evidence for the
   tested candidate; this catalog does not claim they have passed.
   `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
-  drags and the 800×560 minimum; run it on a dedicated interactive desktop,
+  drags and the 800×560 DIP window minimum, measured with DWM visible bounds
+  and per-monitor DPI awareness to exclude invisible resize margins. Run it
+  on a dedicated interactive desktop,
   since another app can take foreground or pointer input during the gesture.
   Relaunch persistence remains for native qualification; macOS/Linux native
   edge behavior is unchanged.

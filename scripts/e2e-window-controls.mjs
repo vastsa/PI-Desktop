@@ -113,7 +113,7 @@ async function nativeWindowMonitorId() {
     "-NoLogo", "-NoProfile", "-File",
     fileURLToPath(new URL("./e2e/probe-fullscreen-taskbar.ps1", import.meta.url)),
     String(child.pid),
-  ]);
+  ], { windowsHide: true });
   const { monitorId } = JSON.parse(stdout.trim());
   assert.equal(typeof monitorId, "string", "native monitor identity is available");
   return monitorId;
@@ -136,7 +136,7 @@ async function checkWindowsRoundedCorners(
           "-NoLogo", "-NoProfile", "-File",
           fileURLToPath(new URL("./e2e/probe-window-corners.ps1", import.meta.url)),
           String(child.pid), String(radius),
-        ]);
+        ], { windowsHide: true });
         corners = JSON.parse(stdout.trim());
         probeError = undefined;
         if (corners.windowsBuild >= 22000) {
@@ -191,8 +191,9 @@ async function checkNativeWindowResizes(edges) {
       "-NoLogo", "-NoProfile", "-File",
       fileURLToPath(new URL("./e2e/drag-window-edge.ps1", import.meta.url)),
       String(child.pid), edge,
-    ]);
+    ], { windowsHide: true });
     const bounds = JSON.parse(stdout.trim());
+    await settle();
     assert.equal(bounds.restored, true, `restore after ${edge} drag: ${stdout}`);
     if (edge === "right") {
       assert.ok(Math.abs(bounds.afterWidth - bounds.beforeWidth) >= 20, `right edge: ${stdout}`);
@@ -214,9 +215,9 @@ async function checkNativeWindowResizes(edges) {
       assert.ok(Math.abs(bounds.afterX + bounds.afterWidth - bounds.beforeX - bounds.beforeWidth) <= 2, `corner right anchor: ${stdout}`);
       assert.equal(bounds.afterY, bounds.beforeY);
     } else if (edge === "left-min") {
-      assert.ok(bounds.afterWidth >= 800 && bounds.afterWidth <= 810, `minimum width: ${stdout}`);
+      assert.ok(bounds.afterVisibleWidth >= 800 && bounds.afterVisibleWidth <= 802, `minimum visible width: ${stdout}`);
     } else {
-      assert.ok(bounds.afterHeight >= 560 && bounds.afterHeight <= 570, `minimum height: ${stdout}`);
+      assert.ok(bounds.afterVisibleHeight >= 560 && bounds.afterVisibleHeight <= 562, `minimum visible height: ${stdout}`);
     }
     console.log(`PASS native ${edge} drag: ${stdout.trim()}`);
   }
@@ -332,7 +333,7 @@ try {
       "-NoLogo", "-NoProfile", "-File",
       fileURLToPath(new URL("./e2e/probe-fullscreen-taskbar.ps1", import.meta.url)),
       String(child.pid),
-    ]);
+    ], { windowsHide: true });
     assert.equal(JSON.parse(stdout.trim()).appCoversTaskbar, true, `fullscreen covers the taskbar: ${stdout.trim()}`);
     console.log("PASS fullscreen covers the taskbar");
   }

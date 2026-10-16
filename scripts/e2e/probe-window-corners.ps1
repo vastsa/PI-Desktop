@@ -21,6 +21,7 @@ public static class CornerProbe {
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr window, uint flags);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
 }
@@ -30,9 +31,15 @@ public static class CornerProbe {
 $appWindow = [System.Diagnostics.Process]::GetProcessById($targetProcessId).MainWindowHandle
 if ($appWindow -eq [IntPtr]::Zero) { throw 'E2E main window is unavailable' }
 [void][CornerProbe]::SetForegroundWindow($appWindow)
-Start-Sleep -Milliseconds 60
-if ([CornerProbe]::GetForegroundWindow() -ne $appWindow) {
-  throw 'E2E main window is not foreground'
+$focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+while ([CornerProbe]::GetForegroundWindow() -ne $appWindow) {
+  if ([DateTime]::UtcNow -gt $focusDeadline) {
+    $foreground = [CornerProbe]::GetForegroundWindow()
+    $foregroundProcessId = [uint32]0
+    [void][CornerProbe]::GetWindowThreadProcessId($foreground, [ref]$foregroundProcessId)
+    throw "E2E main window is not foreground (target=$appWindow, foreground=$foreground, foregroundPid=$foregroundProcessId)"
+  }
+  Start-Sleep -Milliseconds 25
 }
 $rect = [CornerRect]::new()
 if (-not [CornerProbe]::GetWindowRect($appWindow, [ref]$rect)) { throw 'Cannot read E2E window bounds' }

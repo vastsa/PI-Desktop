@@ -110,6 +110,10 @@ async function runSurfaceCase(radius, backdropColor, backdropName) {
     assert.ok(result.insideSamples > 0, `${backdropName}, radius ${radius}: interior samples`);
     if (result.cornerMode === "dwm-native") {
       assert.equal(result.nativeBackgroundSample, true, `${backdropName}, radius ${radius}: opaque alpha-composited window background`);
+      assert.equal(result.nativeCornerPreference, radius > 0 ? 2 : 1, "DWM receives the requested rounded/square preference");
+      for (const [corner, values] of Object.entries(result.cornerResults)) {
+        assert.ok(values.insideSamples > 0, `${backdropName}, radius ${radius}: ${corner} preserves app content`);
+      }
     }
     if (result.cornerMode === "native-rectangular") {
       assert.equal(result.nativeRegionAbsent, true, "no content-sized region clips the native frame");
@@ -119,7 +123,7 @@ async function runSurfaceCase(radius, backdropColor, backdropName) {
     if (radius > 0 && result.cornerMode === "dwm-native") {
       assert.ok(result.outsideSamples > 0, `${backdropName}, radius ${radius}: exterior samples`);
       for (const [corner, values] of Object.entries(result.cornerResults)) {
-        assert.ok(values.edgeBlendPixels > 0, `${backdropName}, radius ${radius}: ${corner} has an antialiased edge`);
+        assert.ok(values.outsideSamples > 0, `${backdropName}, radius ${radius}: ${corner} exposes the backdrop outside the native curve`);
       }
     }
     console.log(`PASS surface ${backdropName}, ${radius} DIP request (${result.cornerMode}): dpi=${result.dpi}, ` +
