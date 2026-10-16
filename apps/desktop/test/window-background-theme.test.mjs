@@ -14,7 +14,7 @@ const apiSource = await readFile(
 );
 const appSource = await readAppSource();
 
-test("theme changes synchronize the native non-macOS window background", () => {
+test("theme changes synchronize the native window background on every platform", () => {
   assert.match(
     protocolSource,
     /windowSetBackgroundColor:\s*"pi-desktop\/window\/setBackgroundColor"/,
@@ -45,7 +45,9 @@ test("theme changes synchronize the native non-macOS window background", () => {
     mainSource,
     /builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
   );
-  assert.match(
+  // macOS paints an opaque surface (ADR 0332), so a theme change repaints it
+  // there too instead of returning early.
+  assert.doesNotMatch(
     mainSource,
     /process\.platform === "darwin"\) return \{ applied: false, theme \};/,
   );
