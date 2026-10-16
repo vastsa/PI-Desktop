@@ -219,7 +219,7 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
   assert.match(shutdownModuleSource, /shutdownPromise: Promise<void> \| null/);
   assert.match(shutdownSource, /if \(state\.shutdownComplete\) return/);
   assert.match(shutdownSource, /event\.preventDefault\(\)/);
-  assert.match(shutdownSource, /if \(state\.shutdownPromise\) return/);
+  assert.match(shutdownSource, /if \(state\.shutdownPromise \|\| quitConfirmationPending\) return/);
   assert.ok(
     shutdownSource.indexOf('logger.app("lifecycle", "info", "app shutdown")') <
       shutdownSource.indexOf("await liveCallService?.endForLifecycle"),
@@ -227,7 +227,7 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
   );
   assert.ok(
     shutdownSource.indexOf("event.preventDefault()") <
-      shutdownSource.indexOf("if (state.shutdownPromise) return"),
+      shutdownSource.indexOf("if (state.shutdownPromise || quitConfirmationPending) return"),
     "the first quit must be prevented before the idempotence guard returns",
   );
   // Panel windows and docked views are the only pages that call the host and the
