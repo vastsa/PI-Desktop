@@ -14,13 +14,24 @@ const createdAt = "2026-09-01T00:00:00.000Z";
 function assert(value: unknown, label: string): asserts value {
   if (!value) throw new Error(`Long history: ${label}`);
 }
-const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+// A hidden CI window can starve rAF; race it with a timer so every bounded wait
+// advances and a real stall reports its predicate instead of hanging until the
+// harness phase cap.
+const frame = () => new Promise<void>((resolve) => {
+  let settled = false;
+  const finish = () => { if (!settled) { settled = true; resolve(); } };
+  requestAnimationFrame(finish);
+  window.setTimeout(finish, 50);
+});
 async function until(predicate: () => boolean, label: string, diagnostic?: () => unknown) {
-  for (let attempt = 0; attempt < 180; attempt++) {
+  const deadline = performance.now() + 60_000;
+  for (;;) {
     if (predicate()) return;
+    if (performance.now() >= deadline) {
+      throw new Error(`Long history did not settle: ${label}${diagnostic ? ` ${JSON.stringify(diagnostic())}` : ""}`);
+    }
     await frame();
   }
-  throw new Error(`Long history did not settle: ${label}${diagnostic ? ` ${JSON.stringify(diagnostic())}` : ""}`);
 }
 
 type FixtureSession = { summary: SessionSummary; messages: UiMessage[]; reads: { count: number }; tail: string };
@@ -28,8 +39,10 @@ const row = (id: string, role: UiMessage["role"], content: string, extra: Partia
   id, role, content, createdAt, status: "complete", ...extra,
 });
 const tool = (id: string): UiMessage => row(id, "tool", "Synthetic result", {
-  toolName: "Bash", toolCallId: id, toolStatus: "success",
-  toolArgs: { command: `printf ${id}` }, toolResult: { details: { stdout: "Synthetic result", exitCode: 0 } },
+  // A non-run tool so the fixture forms ordinary activity groups. A Bash row is
+  // standalone and would not join a group.
+  toolName: "Read", toolCallId: id, toolStatus: "success",
+  toolArgs: { path: `${id}.ts` }, toolResult: { details: { content: "Synthetic result" } },
 });
 function session(id: string, messages: UiMessage[]): FixtureSession {
   const reads = { count: 0 };
@@ -186,7 +199,7 @@ export async function transcriptLongHistoryProbe() {
       runningSessions: Object.fromEntries(sessions.map((item) => [item.summary.id, true])),
       isRunning: true, page: "chat", selectingSessionId: undefined,
       settings: { defaultMode: "agent", theme: "dark", enterToSend: true, onboardingDismissed: true,
-        ...initial.settings, smoothStreaming: false, thinkingDisplayMode: "detailed" },
+        ...initial.settings, smoothStreaming: false, showThinking: true },
     });
     // Seed canonical loaded snapshots through the real store subscription/cache
     // writer, rather than bypassing it with a projection builder or custom store.
@@ -303,6 +316,12 @@ export async function transcriptLongHistoryProbe() {
       assert(sample.oldBodyReads === 0, `${item.summary.id}: reread ${sample.oldBodyReads} old bodies`);
       assert(sample.unchangedGroupRenders === 0, `${item.summary.id}: unchanged groups rerendered`);
       if (item.summary.id === "long-activity-group") {
+        // The streamed answer is the actual turn tail, so the preceding process
+        // chunk starts collapsed. Open each ancestor through its disclosure
+        // before testing the nested live tool update.
+        const processHeader = element<HTMLButtonElement>(".turn-process > .tool-activity-header");
+        if (processHeader.getAttribute("aria-expanded") !== "true") flushSync(() => processHeader.click());
+        await settled();
         const groupHeader = element<HTMLButtonElement>(".process-activity-group > .tool-activity-header");
         if (groupHeader.getAttribute("aria-expanded") !== "true") flushSync(() => groupHeader.click());
         await settled();
@@ -326,9 +345,9 @@ export async function transcriptLongHistoryProbe() {
         const liveToolId = `${item.summary.id}-tool-128`;
         const liveTool = element<HTMLButtonElement>(`[data-message-id="${liveToolId}"] .tool-row-header`);
         if (liveTool.getAttribute("aria-expanded") !== "true") flushSync(() => liveTool.click());
-        send(item.summary.id, { type: "tool_update", toolCallId: liveToolId, partialResult: { details: { output: "warm tool output" } } });
-        await until(() => host.querySelector(`[data-message-id="${liveToolId}"]`)?.textContent?.includes("warm tool output") === true,
-          "warm tool_update output", () => ({
+        send(item.summary.id, { type: "tool_update", toolCallId: liveToolId, partialResult: { details: { content: "warm Read content" } } });
+        await until(() => host.querySelector(`[data-message-id="${liveToolId}"]`)?.textContent?.includes("warm Read content") === true,
+          "warm Read tool_update content", () => ({
             message: useAppStore.getState().messages.find((message) => message.id === liveToolId),
             groupExpanded: groupHeader.getAttribute("aria-expanded"),
             toolExpanded: liveTool.getAttribute("aria-expanded"),
@@ -336,9 +355,9 @@ export async function transcriptLongHistoryProbe() {
           }));
         await settled();
         item.reads.count = 0; globalThis.__activityGroupRenders = [];
-        send(item.summary.id, { type: "tool_update", toolCallId: liveToolId, partialResult: { details: { output: "fresh non-tail tool output" } } });
-        await until(() => host.querySelector(`[data-message-id="${liveToolId}"]`)?.textContent?.includes("fresh non-tail tool output") === true,
-          "fresh tool_update output");
+        send(item.summary.id, { type: "tool_update", toolCallId: liveToolId, partialResult: { details: { content: "fresh non-tail Read content" } } });
+        await until(() => host.querySelector(`[data-message-id="${liveToolId}"]`)?.textContent?.includes("fresh non-tail Read content") === true,
+          "fresh non-tail Read tool_update content");
         await settled();
         assert(item.reads.count === 0, `tool_update reread ${item.reads.count} completed bodies`);
         assert(globalThis.__activityGroupRenders.length === 1, "tool_update must render exactly its changed group");

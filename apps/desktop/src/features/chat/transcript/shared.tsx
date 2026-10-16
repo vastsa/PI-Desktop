@@ -21,7 +21,8 @@ import { useChatFileMenu } from "../../../hooks/use-chat-file-menu";
 import { ContextMenu } from "../../../components/ContextMenu";
 import { ImageHoverCard, type ImageHoverAnchor } from "../../../components/ImageHoverCard";
 import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
-import { isThinkingActive, resolveThinkingDisplayMode } from "../../../lib/turn-process";
+import { isThinkingActive } from "../../../lib/turn-process";
+import { resolveShowThinking } from "../../../lib/thinking-visibility";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { disclosureKey, useAutomaticDisclosure } from "./disclosure";
 export { useAutomaticDisclosure } from "./disclosure";
@@ -691,10 +692,11 @@ export const ThinkingRow = memo(function ThinkingRow({
     onUserInteraction?.();
     collapseDisclosure();
   }, [collapseDisclosure, onUserInteraction]);
-  const compact = useAppStore(
-    (state) => resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode) === "compact",
-  );
-  if (compact) {
+  // `Show thinking` off keeps the live indicator but suppresses completed
+  // reasoning rows and excerpts. The stored text is never removed, so turning
+  // the preference back on restores the row.
+  const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
+  if (!showThinking) {
     return isThinkingActive(message, streaming) ? (
       <div className="tool-row thinking thinking-compact" role="status">
         <span className="tool-row-icon" aria-hidden>

@@ -266,7 +266,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   control column.
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
   command shell selection, Link open destination, context usage display
-  (remaining or used), thinking display mode, Enter-to-send control, the
+  (remaining or used), the Show thinking toggle, Enter-to-send control, the
   infinite provider retry switch, and the large text paste threshold. The
   retry switch is off by default and explains that network/transient provider
   failures keep retrying until success; Stop still cancels the turn and the
@@ -289,17 +289,17 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   settings are edited on the Plugins page; the one-time migration of legacy
   prompt-enhancement preferences is specified in
   `04-ux/12-prompt-enhancement.md`.
-- **Thinking display mode** uses a menu select with Detailed (default) and
-  Compact. Both modes use one whole-process disclosure. Detailed starts the
-  process open, keeps reasoning visible, opens the active multi-item activity
-  group, and closes an untouched group when it completes; Compact starts the
-  process and groups closed, keeps tool/search payloads closed, shows only an
-  active thinking indicator, and hides finished reasoning. Singleton activity
-  uses its item disclosure directly in either mode. The global preference
-  persists as `thinkingDisplayMode` in host-owned settings; missing values use
-  Detailed. It affects presentation only, not model reasoning configuration,
-  and explicit disclosure choices are retained for the mounted session pane.
-  Settings search indexes the row and both mode names.
+- **Show thinking** is a toggle that persists as the optional `showThinking`
+  boolean in host-owned settings. Off keeps the live thinking indicator visible
+  and hides completed reasoning rows and excerpts; stored reasoning is retained
+  and reappears when the toggle is turned back on. It affects presentation only,
+  not model reasoning configuration, and it does not control turn-process or
+  activity-group folding: active processes start open and untouched completed
+  processes fold by default regardless of the toggle. The legacy
+  `thinkingDisplayMode` field (`detailed` / `compact`) is retained only for
+  persisted-settings compatibility and is no longer exposed; an absent or
+  unknown value shows reasoning and an explicit `compact` hides it. Settings
+  search indexes the row.
 - The **Command shell** row in Defaults uses the host-discovered catalog of native
   PowerShell 5.1, PowerShell 7, cmd, Git Bash, and Bash with IDs
   `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, and

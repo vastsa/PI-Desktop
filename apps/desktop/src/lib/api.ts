@@ -447,6 +447,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       errorCode: "INVALID_PARAMS",
     });
   }
+  if (
+    Object.prototype.hasOwnProperty.call(settings, "showThinking") &&
+    typeof settings.showThinking !== "boolean"
+  ) {
+    throw Object.assign(new Error("showThinking is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
   const value = settings as AppSettings & {
     defaultCommandShell?: unknown;
     largePasteThreshold?: unknown;

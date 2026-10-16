@@ -33,15 +33,15 @@ function message(
 /** A tool row whose opened body is far taller than its own header. */
 function toolRowMessage(id: string): UiMessage {
   return message(id, "tool", "done", {
-    toolName: "Bash",
+    // A non-run tool so the row stays inside the process disclosure; a Bash row
+    // is standalone and would not own the process's live tail.
+    toolName: "Read",
     toolCallId: `call-${id}`,
     toolStatus: "success",
-    toolArgs: { command: "printf 'step'" },
+    toolArgs: { path: "src/example.ts" },
     toolResult: {
       details: {
-        stdout: Array.from({ length: 80 }, (_value, index) => `step ${index}`).join(
-          "\n",
-        ),
+        stdout: Array.from({ length: 80 }, (_value, index) => `step ${index}`).join("\n"),
         exitCode: 0,
       },
     },
@@ -270,7 +270,6 @@ globalThis.transcriptDisclosureProbe = async () => {
       message("process-user", "user", "Inspect"),
       message("progress", "assistant", Array.from({ length: 50 }, (_, i) => `Progress paragraph ${i}.`).join("\n\n")),
       toolRowMessage("process-tool"),
-      message("final", "assistant", "Finished."),
     ];
     const processContainer = document.createElement("div");
     processContainer.style.height = "600px";

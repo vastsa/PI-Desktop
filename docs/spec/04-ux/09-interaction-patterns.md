@@ -911,35 +911,42 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 - Tool activity starts as a lightweight collapsed item row. Failed and denied
   calls keep their issue in the row header and do not auto-expand their payload.
-- Both modes give each loaded assistant turn one whole-process disclosure. It
-  contains thinking, tools, hosted searches and intermediate progress text; the
-  trailing answer, assistant errors and stopped trailing text remain outside it.
+- One unified presentation gives each loaded assistant turn chronological
+  collapsible process segments. They contain thinking, tools, hosted searches and
+  intermediate progress text; the trailing answer, assistant errors and stopped
+  trailing text remain outside them.
 - A contiguous activity segment receives a group disclosure only when it has at
-  least two mode-visible items. Progress text ends the segment, a singleton uses
-  its item disclosure directly, and compact-hidden thinking does not create a
-  redundant group. Existing Task topology remains separate.
-- Detailed starts active and completed whole processes open. Its active ordinary
-  group starts open and closes when it completes only if untouched; completed
-  groups otherwise start closed. Compact starts the process and groups closed,
-  except an untouched active process with any recorded failed/denied tool remains
-  open through recovery and closes on completion.
-- No item payload opens itself in either mode: a tool, hosted-search or plan call
-  stays a header row until the user opens it, including the literal final item of
-  the last activity group. Group and whole-process defaults are unchanged, so a
-  final thinking item never causes a backward scan. Compact keeps every item
-  payload closed and hides reasoning text/excerpts while retaining its active
-  thinking indicator.
-- Activating a process, group or item header toggles only that level. Closing a
-  parent preserves child state, reopening restores it, and sibling groups remain
+  least two visible items under the current thinking preference. Progress text or a
+  Bash row ends the segment, a singleton uses its item disclosure directly, and
+  hidden thinking does not create a redundant group. Existing Task topology remains
+  separate. Bash and run aliases are excluded from every process disclosure —
+  neither a turn-level process disclosure nor a group — and stay standalone rows
+  that remain visible even when every group is collapsed; adjacent Bash rows each
+  remain standalone.
+- The active ordinary group starts open and closes when it completes only if
+  untouched; completed groups otherwise start closed, and an untouched active group
+  with any recorded failed/denied tool remains open through recovery. These group
+  defaults do not depend on the thinking preference. Bash rows stay visible
+  regardless of any group's collapsed state.
+- No item payload opens itself: a tool, hosted-search or plan call stays a header
+  row until the user opens it, including the literal final item of the last
+  activity group. Group defaults are unchanged, so a final thinking item never
+  causes a backward scan. When `Show thinking` is off, every item payload stays
+  closed and completed reasoning text/excerpts are hidden while the live thinking
+  indicator remains visible; stored reasoning is retained and reappears when the
+  preference is turned back on.
+- Activating a group or item header toggles only that level. Closing a parent
+  preserves child state, reopening restores it, and sibling groups remain
   independent. Opening a parent is never an expand-all action.
-- A manual item action claims its group and process as user-owned without toggling
-  them. Streaming and completion cannot reopen a manual close or close around
-  content the user opened, focused or selected. Choices survive mode changes,
-  singleton-to-group growth and remounts while the retained session pane lives.
-- Search/navigation opens the process and activity group that own the named
+- A manual item action claims its containing group as user-owned without toggling
+  it. Streaming and completion cannot reopen a manual close or close around
+  content the user opened, focused or selected. Choices survive preference
+  changes, singleton-to-group growth and remounts while the retained session pane
+  lives.
+- Search/navigation opens the process segment and activity group that own the named
   message, once per reveal request. Item-level targeting is not part of this
-  change. Compact reasoning requires an explicit switch to Detailed. Closing
-  search does not collapse the revealed path.
+  change. Reasoning hidden by the preference stays hidden until the user turns
+  `Show thinking` on. Closing search does not collapse the revealed path.
 - Pending permission, question, plan/goal approval and other action cards remain
   reachable outside hidden process content.
 - Each disclosure uses its own button, `aria-expanded` and `aria-controls`; closed
@@ -1450,10 +1457,11 @@ Project drag/drop follows these patterns:
   a multi-line draft: the bottom reserve is padding on the transcript content, so
   the content is observed on its border box and the newest turn moves up with
   the composer instead of sliding behind it (D287).
-- A manual disclosure — whole process, activity group, tool/search/thinking item,
+- A manual disclosure — process segment, activity group, tool/search/thinking item,
   delegate brief, or error detail — holds the reading position of the scroller
   that owns it (issue #324). Only the initiating level claims the anchor; marking
-  ancestors user-owned does not claim their scroll positions. The title is handed
+  the containing group user-owned does not claim its scroll position. The title is
+  handed
   to the scroller before the state changes, follow mode is left, and the scroller
   restores the title's viewport offset for every frame of the height change. A
   nested scroller (the delegate run dock, D302) holds its own position and passes

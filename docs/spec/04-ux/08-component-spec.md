@@ -859,47 +859,54 @@ reading surface of the workstation.
 
 ### Turn process and thinking display
 
-Both Detailed and Compact project each loaded assistant turn into one whole-process
-disclosure containing reasoning, tools, hosted searches and intermediate assistant
-text in transcript order. The trailing answer streams outside that disclosure;
-later activity can reclassify provisional answer text into the process without
-changing the stored message. Assistant errors and stopped trailing partial answers
-also stay outside it. User/system messages and compaction boundaries are unchanged.
+One unified turn-process presentation projects each loaded assistant turn into
+chronological collapsible process segments plus its trailing answer. Reasoning,
+tools, hosted searches and intermediate assistant text keep their transcript order
+across those segments. The trailing answer streams outside the process; later
+activity can reclassify provisional answer text into the process without changing
+the stored message. Assistant errors and stopped trailing partial answers also
+stay outside it. User/system messages and compaction boundaries are unchanged.
 
 Within the process, an ordinary activity group represents one contiguous
-tool/search/thinking segment between progress paragraphs. It renders a group header
-only when the current mode has two or more visible items. A singleton uses its item
-disclosure directly, compact-hidden thinking never creates an empty wrapper, and
-the existing Task topology remains the container for delegated work.
+tool/search/thinking segment between progress paragraphs or Bash rows. It renders a
+group header only when at least two items are visible under the current thinking
+preference. A singleton uses its item disclosure directly, hidden thinking never
+creates an empty wrapper, and the existing Task topology remains the container for
+delegated work. Bash and run aliases are excluded from every process disclosure —
+neither a turn-level process disclosure nor an ordinary activity group — and render
+as standalone rows that stay visible even when every group is collapsed. Adjacent
+Bash rows each remain standalone, and a Bash row's detail stays closed until the
+user opens it.
 
-Detailed opens whole-process disclosures while a turn is active. When a turn
-settles, an untouched process defaults closed; an explicit user choice remains
-authoritative. The ordinary group owning the active execution segment starts
-open, then closes on completion only if untouched; other completed groups start
-closed. Compact starts the process and ordinary groups closed. Its untouched
-active process remains open when any failed or denied tool has been recorded,
-through later successful recovery, and closes on completion if still untouched.
-Group headers summarize count, running state and issue count without treating a
-failed child as a failed turn.
+The ordinary group owning the active execution segment starts open while a turn is
+active, then closes on completion only if untouched; other completed groups start
+closed. An untouched active group remains open when any failed or denied tool has
+been recorded, through later successful recovery, and closes on completion if still
+untouched. These group defaults are unified and do not depend on the thinking
+preference. Group headers summarize count, running state and issue count without
+treating a failed child as a failed turn.
 
-No item payload opens itself in either mode: a tool, hosted-search or plan call
-stays a header row until the user opens its disclosure. The activity group and
-the whole process keep their automatic open defaults, so a live turn still shows
-its work. Compact keeps all tool/search payloads closed and suppresses reasoning
-text and excerpts; only its active thinking indicator remains.
+No item payload opens itself: a tool, hosted-search or plan call stays a header row
+until the user opens its disclosure, including a Bash row, whose detail stays closed
+until the user opens it. The activity groups keep their automatic open defaults, so
+a live turn still shows its work. When the `Show thinking` preference is off, the
+live thinking indicator stays visible while completed reasoning rows and excerpts
+are suppressed and empty thinking-only containers are omitted; the stored reasoning
+is retained and reappears when the preference is turned back on.
 
-Whole process, group and item are independent controls. Closing an ancestor keeps
-descendant choices and reopening restores them; opening a parent never expands all
-children. User interaction with a child claims its ancestors without toggling them,
-so completion cannot close around opened, focused or selected content. Choices use
+Group and item are independent controls. Closing an ancestor keeps descendant
+choices and reopening restores them; opening a parent never expands all children.
+User interaction with a child claims its containing group without toggling it, so
+completion cannot close around opened, focused or selected content. Choices use
 stable turn/group/item identities and remain while the retained session pane lives,
-including mode changes and row remounts; pane eviction, deletion or renderer restart
-reapplies defaults rather than persisting disclosure state to messages or settings.
+including preference changes and row remounts; pane eviction, deletion or renderer
+restart reapplies defaults rather than persisting disclosure state to messages or
+settings.
 
-Search/navigation reveals the process and the activity group that own the named
-message, and applies each reveal request once. Item-level targeting is not part
-of this change. Compact reasoning stays hidden until
-the user selects Detailed. Permission, question, plan/goal approval and other
+Search/navigation reveals the process segment and the activity group that own the
+named message, and applies each reveal request once. Item-level targeting is not
+part of this change. Reasoning hidden by the preference stays hidden until the user
+turns `Show thinking` on. Permission, question, plan/goal approval and other
 pending action cards remain reachable outside a hidden process. See
 [ADR turn-process-and-thinking-display](../../adr/turn-process-and-thinking-display.md).
 
@@ -2246,14 +2253,18 @@ Lightweight inline disclosure row showing a semantic tool action, its primary
 argument hint, status, and a readable rendering of the result. It follows D071
 and is intentionally not an elevated card.
 
-One contiguous tool/search/thinking segment between progress paragraphs becomes an
-ordinary processing group only when it has two or more visible items. A singleton
-uses its item disclosure directly, and Task topology keeps its existing container.
-While the turn is active, the ordinary group owning the execution segment opens in
-Detailed and remains closed in Compact; when it settles, an untouched Detailed
-group closes. No item payload opens itself in either mode: a tool, hosted-search
-or plan row stays a header row until the user opens it, whichever item of the
-group it is. Compact keeps every tool/search payload closed.
+One contiguous tool/search/thinking segment between progress paragraphs or Bash
+rows becomes an ordinary processing group only when it has two or more visible
+items under the current thinking preference. A singleton uses its item disclosure
+directly, and Task topology keeps its existing container. Bash and run aliases are
+excluded from every process disclosure — neither a turn-level process disclosure
+nor an ordinary group — and render as standalone rows that stay visible even when
+every group is collapsed; adjacent Bash rows each remain standalone. While the
+turn is active, the ordinary group owning the execution segment opens; when it
+settles, an untouched group closes. These group defaults do not depend on the
+thinking preference. No item payload opens itself: a tool, hosted-search or plan
+row stays a header row until the user opens it, whichever item of the group it is,
+including a Bash row whose detail stays closed until opened.
 
 The group header shows `Processing · 12s` while active or `Processed for 12s`
 after completion, plus bounded item and issue counts. Expanding it reveals the
@@ -2261,7 +2272,7 @@ ordered activity rows and their independent result disclosures. A failed child
 remains an error on its own ToolCallRow but does not make the group or whole turn
 terminally failed; terminal agent errors remain owned by the assistant error or
 TurnOutcomeCard surface. A user action on a group, item, or collapse rail claims
-that level and its ancestors without toggling them, so streaming and completion
+that level and its containing group without toggling them, so streaming and completion
 never reverse the chosen state or close around focused/selected content.
 Elapsed labels use compact automatically carried units: seconds below one
 minute, minutes plus seconds below one hour, and hours plus minutes (and
@@ -2282,12 +2293,16 @@ seconds when non-zero) from one hour onward. Zero-value units are omitted, so
 - The leading Lucide icon reflects the action type: file, folder, search,
   edit, terminal, web, or generic tool.
 - A multi-item group header owns elapsed time plus item and issue counts and stays
-  in the transcript after completion. In Detailed the active group starts open and
-  closes on completion only if untouched; completed groups otherwise start closed.
-  Compact groups start closed. A singleton has no group header.
-- Tool/search payloads stay collapsed in both modes until the user opens them; no
-  row auto-opens, so a final thinking item never selects an earlier tool. Live
-  thinking follows its own disclosure policy and never opens sibling payloads.
+  in the transcript after completion. The active group starts open and closes on
+  completion only if untouched; completed groups otherwise start closed. These
+  defaults do not depend on the thinking preference. A singleton has no group
+  header.
+- Tool/search payloads stay collapsed until the user opens them; no row
+  auto-opens, so a final thinking item never selects an earlier tool. Live
+  thinking follows its own indicator/disclosure policy and never opens sibling
+  payloads.
+- Bash and run rows render standalone outside every process disclosure and stay
+  visible even when every group is collapsed; adjacent Bash rows remain separate.
 - The processing group spans the full available assistant column, so expanded
   result details keep a usable width even when the header or payload is short.
 - The visible label is a natural-language action (`Read`, `Ran`, `Searched`),
@@ -2360,16 +2375,16 @@ twice.
 
 | State | Header treatment | Expanded content |
 |---|---|---|
-| Running | Progressive action with readable text and a pulsing marker; a `run` row also shows its spinner and pulses the status dot beside `Working…` | Detailed opens the active multi-item group; no item payload opens itself. Compact payloads stay closed; live thinking follows its own indicator/disclosure policy |
+| Running | Progressive action with readable text and a pulsing marker; a `run` row also shows its spinner and pulses the status dot beside `Working…` | The active multi-item group opens; no item payload opens itself; live thinking follows its own indicator/disclosure policy |
 | Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown; an untouched active group closes on completion, while manual group and item choices are retained |
 | Error | Past-tense action + compact danger status; details remain collapsed by default and open only on user request. A `run` row is in this state whenever its command exited nonzero, whatever the call reported (D227) | Error note first, then arguments |
 | Denied | Muted `Denied` status; payload remains closed until requested | Permission result when available |
 
 ### 9.6 Interactions
 
-- Click the row: expand/collapse only that result payload. Compact payloads start
-  closed. No payload opens itself in either mode, so the row the user opens is the
-  only expanded one; failed and denied rows behave the same.
+- Click the row: expand/collapse only that result payload. Payloads start
+  closed. No payload opens itself, so the row the user opens is the only expanded
+  one; failed and denied rows behave the same.
 - A file path that a row or its result names is a link, not decoration: clicking
   the summary path of a `Read`, `Write`, `Edit`, or `fetch` row, or a path in a
   result's file list or match groups, completes the reference through the same
@@ -2381,14 +2396,14 @@ twice.
   disclosure, and a reference that matches nothing reports itself without
   opening a panel. A tool surface picks no destination of its own.
 - Click the processing header: expand/collapse only that ordered activity list.
-  Detailed opens the active group and closes it on settlement only if untouched;
-  completed groups otherwise start closed. Compact groups start closed. Opening a
-  group does not expand every item, and sibling groups remain independent.
+  The active group opens and closes on settlement only if untouched; completed
+  groups otherwise start closed. Opening a group does not expand every item, and
+  sibling groups remain independent.
 - Click or keyboard-activate the left rule beside expanded thinking, tool details,
   delegated work, or processing steps: collapse that owning disclosure without
   changing adjacent expansion state. Item interaction also claims its containing
-  group and whole process as user-owned without toggling them; automatic stream or
-  completion transitions never reverse those states.
+  group as user-owned without toggling it; automatic stream or completion
+  transitions never reverse those states.
 - A failed child row remains error-hued and reports its failure in the row header,
   but its payload is not auto-expanded. The containing group settles as
   `Processed for {elapsed}` with an issue count even when a later tool recovered.

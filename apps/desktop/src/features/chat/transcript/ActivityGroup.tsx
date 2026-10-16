@@ -54,7 +54,7 @@ import {
 } from "./shared";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { useAppStore } from "../../../stores/app-store";
-import { resolveThinkingDisplayMode } from "../../../lib/turn-process";
+import { resolveShowThinking } from "../../../lib/thinking-visibility";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -216,9 +216,8 @@ export const ActivityGroup = memo(function ActivityGroup({
   turnDelegationStatuses,
   turnDelegationTimings,
 }: ActivityGroupProps) {
-  const compact = useAppStore(
-    (state) => resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode) === "compact",
-  );
+  const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
+  const hideThinking = !showThinking;
   const { t } = useTranslation();
   const detailsId = useId();
   const rawDelegateItems = useMemo(() => items.filter(isDelegationActivityItem), [items]);
@@ -253,10 +252,10 @@ export const ActivityGroup = memo(function ActivityGroup({
   const searchTarget = useContext(TranscriptSearchContext);
   const revealRequest = useMemo(() => searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
     ? searchTarget.requestId : undefined, [items, searchTarget]);
-  const visibleItems = useMemo(() => cachedVisibleActivityItems(items, compact, isActive), [items, compact, isActive]);
+  const visibleItems = useMemo(() => cachedVisibleActivityItems(items, hideThinking, isActive), [items, hideThinking, isActive]);
   const first = items[0];
   const disclosure = useAutomaticDisclosure(
-    hasSubagentTopology ? live : visibleItems.length <= 1 || (!compact && live),
+    hasSubagentTopology ? live : visibleItems.length <= 1 || live,
     revealRequest,
     disclosureKey("activity", first?.message.id ?? "", first?.kind ?? "", first?.kind === "hostedSearch" ? first.round.id : ""),
   );
@@ -313,9 +312,9 @@ export const ActivityGroup = memo(function ActivityGroup({
     ? runActivityLabel(runtimeActivity, t as Translate)
     : "";
   const currentDetail = useMemo(() =>
-    live && !runtimeStatus && lastItem && !(compact && lastItem.kind === "thinking")
+    live && !runtimeStatus && lastItem && !(hideThinking && lastItem.kind === "thinking")
       ? activityItemDetail(lastItem) : "",
-  [live, runtimeStatus, lastItem, compact]);
+  [live, runtimeStatus, lastItem, hideThinking]);
   const tail = live && !open ? currentDetail : "";
 
   useEffect(() => {

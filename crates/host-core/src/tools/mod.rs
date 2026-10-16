@@ -5087,6 +5087,8 @@ mod tests {
             cancellation: None,
             output_tx: None,
             extra_env: Vec::new(),
+            run_in_background: false,
+            app_state: None,
         };
         execute_tool_with_options(
             Some(workspace),

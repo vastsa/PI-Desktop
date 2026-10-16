@@ -1419,6 +1419,8 @@ sklm: {
     "thinkingDisplayModeDesc": "Der Modus Detailliert zeigt den Fortschritt in einem ausklappbaren Prozess mit verschachtelten Tool-Gruppen und dem Denkprozess. Der Modus Kompakt startet mit eingeklapptem Prozess und blendet den Denkprozess aus.",
     "thinkingDisplayDetailed": "Detailliert",
     "thinkingDisplayCompact": "Kompakt",
+    "showThinking": "Denkprozess anzeigen",
+    "showThinkingDesc": "Zeigt den Denkprozess des Modells. Wenn aus, bleibt die Live-Denk-Anzeige sichtbar und abgeschlossene Denkzeilen und Auszüge werden ausgeblendet.",
     "contextUsageDisplay": "Kontextnutzung-Anzeige",
     "contextUsageDisplayRemaining": "Verbleibend",
     "contextUsageDisplayUsed": "Verwendet",

@@ -5,7 +5,7 @@ import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
 import type { AppSettings, UiMessage } from "@pi-desktop/shared";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
-import { ThinkingDisplayModeRow } from "../../apps/desktop/src/components/settings/ThinkingDisplayModeRow";
+import { ShowThinkingRow } from "../../apps/desktop/src/components/settings/ShowThinkingRow";
 import { buildTranscriptEntries } from "../../apps/desktop/src/lib/assistant-turns";
 import { TranscriptSearchContext } from "../../apps/desktop/src/lib/transcript-search-context";
 import type { TranscriptSearchTarget } from "../../apps/desktop/src/lib/transcript-reading";
@@ -28,7 +28,25 @@ const message = (
   ...extra,
 });
 
-/** Real mounted React components: disclosure ownership, preferences and search. */
+const tool = (
+  id: string,
+  toolName: string,
+  extra: Partial<UiMessage> = {},
+): UiMessage =>
+  message(id, "tool", "", {
+    toolName,
+    toolCallId: `call-${id}`,
+    toolStatus: "success",
+    ...extra,
+  });
+
+const run = (id: string, command: string): UiMessage =>
+  tool(id, "Bash", {
+    toolArgs: { command },
+    toolResult: { details: { stdout: "ok", exitCode: 0 } },
+  });
+
+/** Real mounted React components: disclosure ownership, preference and search. */
 export async function turnProcessProbe() {
   const i18n = createInstance();
   await i18n.init({
@@ -39,13 +57,15 @@ export async function turnProcessProbe() {
   const container = document.createElement("div");
   document.body.append(container);
   const initialSettings = useAppStore.getState().settings;
-  const settings: AppSettings = {
+  const baseSettings: AppSettings = {
     defaultMode: "agent",
     theme: "light",
     enterToSend: true,
     onboardingDismissed: true,
   };
-  flushSync(() => useAppStore.setState({ settings }));
+  const setSettings = (patch: Partial<AppSettings> = {}) =>
+    flushSync(() => useAppStore.setState({ settings: { ...baseSettings, ...patch } }));
+  setSettings();
   const errors: unknown[] = [];
   const root = createRoot(container, {
     onUncaughtError: (error) => errors.push(error),
@@ -76,30 +96,38 @@ export async function turnProcessProbe() {
     );
     assert(!errors.length, `React error: ${errors.map(String).join("; ")}`);
   };
-  const header = () =>
-    container.querySelector<HTMLButtonElement>(".turn-process > button");
-  const process = () => container.querySelector<HTMLElement>(".turn-process-body");
+  const processHeaders = () =>
+    [...container.querySelectorAll<HTMLButtonElement>(".turn-process > button")];
+  const firstProcess = () => container.querySelector<HTMLElement>(".turn-process-body");
   const visible = (element: Element | null) =>
     Boolean(element?.getBoundingClientRect().height);
   const click = (element: HTMLElement | null) => {
     assert(element, "missing click target");
     flushSync(() => element.click());
   };
+  const row = (id: string) =>
+    container.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
+  const allCollapsed = () =>
+    [...container.querySelectorAll<HTMLElement>("[aria-expanded]")].every(
+      (element) => element.getAttribute("aria-expanded") === "false",
+    );
+
   const intro = message("intro", "assistant", "Inspecting the files", {
     thinking: "reasoning detail",
     status: "complete",
   });
-  const read = message("read", "tool", "read output", {
-    toolName: "Read",
-    toolCallId: "read-call",
-    toolStatus: "success",
+  const read = tool("read", "Read", {
+    toolResult: "read output",
     toolArgs: { path: "src/example.ts" },
   });
-  const progress = message("progress", "assistant", "Found the problem");
-  const edit = message("edit", "tool", "edit output", {
-    toolName: "Edit",
-    toolCallId: "edit-call",
-    toolStatus: "success",
+  const grep = tool("grep", "Grep", {
+    toolResult: "grep output",
+    toolArgs: { query: "todo" },
+  });
+  const bash1 = run("bash1", "pnpm test");
+  const bash2 = run("bash2", "pnpm build");
+  const edit = tool("edit", "Edit", {
+    toolResult: "edit output",
     toolArgs: { path: "src/example.ts" },
   });
   const answer = message("answer", "assistant", "The fix is ready.", {
@@ -107,289 +135,226 @@ export async function turnProcessProbe() {
     createdAt: "2026-09-17T00:00:03.000Z",
     responseDurationMs: 1000,
   });
-  const messages = [intro, read, progress, edit, answer];
+  const mixed = [intro, read, grep, bash1, bash2, edit, answer];
+
   try {
-    render(messages);
+    // Bash has no process ancestor and stays visible with every disclosure
+    // collapsed, even across adjacent calls.
+    render(mixed);
+    const bash1Row = row("bash1");
+    const bash2Row = row("bash2");
+    check(Boolean(bash1Row) && Boolean(bash2Row), "both adjacent Bash rows render");
     check(
-      container.querySelectorAll(".turn-process").length === 1,
-      "detailed wraps one process per turn",
+      bash1Row?.closest(".turn-process") === null &&
+        bash2Row?.closest(".turn-process") === null,
+      "no Bash row is inside any turn-process disclosure",
     );
     check(
-      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
-      "detailed completed process starts collapsed",
+      bash1Row?.closest(".turn-run-row") !== null &&
+        bash1Row?.closest(".turn-run-row") !== bash2Row?.closest(".turn-run-row"),
+      "adjacent Bash rows each render standalone",
     );
     check(
-      visible(container.querySelector('[data-message-id="answer"]')),
-      "final answer stays visible",
+      bash1Row?.closest(".process-activity-group") === null &&
+        bash1Row?.closest(".tool-activity-group") === null,
+      "Bash rows are not folded into an activity group",
+    );
+    check(allCollapsed(), "the completed process starts fully collapsed");
+    check(
+      visible(bash1Row) && visible(bash2Row),
+      "Bash rows stay visible with every disclosure collapsed",
     );
     check(
-      !visible(container.querySelector('[data-message-id="progress"]')),
-      "completed progress stays hidden until expanded",
-    );
-    render(messages, true, null, "active-process");
-    check(
-      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
-      "active detailed process starts open",
-    );
-    render(messages, false, null, "active-process");
-    check(
-      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
-      "untouched detailed process collapses on completion",
-    );
-    render(messages);
-    click(header());
-    check(
-      visible(container.querySelector('[data-message-id="progress"]')),
-      "user can expand completed progress",
+      !visible(row("read")) && !visible(row("grep")),
+      "non-run work stays inside its collapsed process",
     );
     check(
-      container.querySelector('[data-message-id="edit"]')?.classList.contains("open") === true,
-      "detailed opens the last tool",
+      bash1Row?.classList.contains("open") !== true,
+      "a Bash row keeps its detail closed until opened",
     );
+    click(bash1Row?.querySelector<HTMLElement>(".tool-row-header") ?? null);
     check(
-      container.querySelector('[data-message-id="read"]')?.classList.contains("open") !== true,
-      "detailed keeps earlier tools collapsed",
-    );
-    check(
-      container.querySelectorAll(".tool-row").length === 3,
-      "detailed shows thinking and both tools in place",
-    );
-    render(
-      [intro, { ...read, toolStatus: "error", isError: true }, answer],
-      false,
-      null,
-      "failed-last-tool",
-    );
-    check(
-      container.querySelector('[data-message-id="read"]')?.classList.contains("open") !== true,
-      "detailed keeps a last failed tool collapsed",
+      bash1Row?.classList.contains("open") === true,
+      "a Bash row opens its own detail on request",
     );
 
-    const streaming = message("stream", "assistant", "Live text", {
+    // A turn of only Bash calls has no process disclosure at all.
+    render([run("only1", "echo 1"), run("only2", "echo 2")], false, null, "only-bash");
+    check(
+      container.querySelectorAll(".turn-process").length === 0,
+      "a Bash-only turn renders no process disclosure",
+    );
+    check(
+      visible(row("only1")) && visible(row("only2")),
+      "both Bash-only rows stay visible",
+    );
+
+    // Active process content opens while the turn runs and closes when it stops.
+    const activeTurn = [intro, read, grep];
+    render(activeTurn, true, null, "active");
+    check(
+      firstProcess() !== null &&
+        processHeaders()[0]?.getAttribute("aria-expanded") === "true" &&
+        visible(firstProcess()),
+      "the active process chunk starts open",
+    );
+    render(activeTurn, false, null, "active");
+    check(
+      processHeaders()[0]?.getAttribute("aria-expanded") === "false" &&
+        !visible(firstProcess()),
+      "an untouched process chunk collapses on completion",
+    );
+
+    // A streaming thinking chunk superseded by a later Bash row must not keep a
+    // false Thinking header: the real tail is the Bash row.
+    const supersededThought = message("thought-before-bash", "assistant", "", {
+      thinking: "Reasoning before a command",
       status: "streaming",
     });
-    render([streaming], true, null, "stream");
+    const bashLive = run("bash-live", "pnpm test");
+    const thinkingLabel = i18n.t("chat.thinkingFor", { time: "" });
+    render([supersededThought, bashLive], true, null, "thinking-to-bash");
     check(
-      !header() && visible(container.querySelector('[data-message-id="stream"]')),
-      "streamed answer is never delayed behind disclosure",
-    );
-    render([streaming, read], true, null, "stream");
-    check(
-      header()?.getAttribute("aria-expanded") === "true" &&
-        visible(container.querySelector('[data-message-id="stream"]')),
-      "detailed keeps streamed text visible after later tools",
-    );
-    render([intro, read, { ...answer, status: "aborted" }], false, null, "aborted");
-    check(
-      visible(container.querySelector('[data-message-id="answer"]')),
-      "stopped partial answer remains visible",
-    );
-    render(
-      [
-        intro,
-        read,
-        message("failure", "assistant", "", {
-          error: { code: "INTERNAL", message: "Connection failed", retryable: true },
-        }),
-      ],
-      false,
-      null,
-      "error",
+      row("bash-live")?.closest(".turn-process") === null &&
+        visible(row("bash-live")),
+      "a Bash row that supersedes thinking stays standalone and visible",
     );
     check(
-      visible(container.querySelector('[data-message-id="failure"]')),
-      "failure remains visible",
+      !processHeaders().some((header) =>
+        header
+          .querySelector(".tool-activity-label")
+          ?.textContent?.startsWith(thinkingLabel),
+      ),
+      "a superseded thinking chunk does not keep a Thinking header",
     );
+    setSettings({ showThinking: false });
+    render([supersededThought, bashLive], true, null, "thinking-to-bash-hidden");
+    check(
+      container.querySelectorAll(".turn-process").length === 0 &&
+        visible(row("bash-live")),
+      "hidden superseded thinking leaves no empty process and keeps the Bash row",
+    );
+    setSettings();
 
-    flushSync(() =>
-      useAppStore.setState({
-        settings: { ...settings, thinkingDisplayMode: "compact" },
-      }),
-    );
-    render(messages, false, null, "compact-group");
+    // A separate streamed answer supersedes the thinking chunk the same way.
+    const supersededThought2 = message("thought-before-answer", "assistant", "", {
+      thinking: "Reasoning before an answer",
+      status: "streaming",
+    });
+    const separateAnswer = message("stream-answer", "assistant", "Answer text", {
+      status: "streaming",
+    });
+    render([supersededThought2, separateAnswer], true, null, "thinking-to-answer");
     check(
-      container.querySelectorAll(".turn-process").length === 1,
-      "one process per turn",
-    );
-    check(
-      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
-      "compact completed process starts collapsed",
-    );
-    check(
-      container.querySelector('[data-message-id="edit"]')?.classList.contains("open") !== true,
-      "compact keeps tool payloads collapsed",
+      Boolean(row("stream-answer")) &&
+        row("stream-answer")?.closest(".turn-process") === null,
+      "a separate streamed answer stays outside the process",
     );
     check(
-      header()?.textContent?.includes("2 tools"),
-      "process counts tools and progress once",
+      !processHeaders().some((header) =>
+        header
+          .querySelector(".tool-activity-label")
+          ?.textContent?.startsWith(thinkingLabel),
+      ),
+      "a separate streamed answer clears the Thinking header",
     );
-    click(header());
+    setSettings({ showThinking: false });
+    render([supersededThought2, separateAnswer], true, null, "thinking-to-answer-hidden");
     check(
-      visible(container.querySelector('[data-message-id="progress"]')),
-      "expanding reveals intermediate progress",
+      container.querySelectorAll(".turn-process").length === 0 &&
+        !container.querySelector(".thinking") &&
+        Boolean(row("stream-answer")),
+      "hidden thinking superseded by a separate answer leaves no empty process",
     );
-    check(
-      process()?.querySelectorAll(".tool-row").length === 2,
-      "compact expanding retains both tools without thinking",
-    );
-    render(messages, true, null, "compact-group");
-    render(messages, false, null, "compact-group");
-    check(
-      header()?.getAttribute("aria-expanded") === "true",
-      "manual disclosure survives active-to-complete transition",
-    );
+    setSettings();
 
-    render([intro, read], true, null, "live");
-    check(
-      header()?.getAttribute("aria-expanded") === "false",
-      "compact live process stays collapsed without a tool failure",
-    );
-    render(
-      messages,
-      false,
-      { sessionId: "s", messageId: "progress", query: "problem", requestId: 1 },
-      "search",
-    );
-    check(
-      visible(container.querySelector('[data-message-id="progress"]')),
-      "search reveals folded progress",
-    );
-
+    // Show thinking off: the live indicator stays, completed reasoning leaves
+    // nothing behind, and stored reasoning is never deleted.
     const liveThought = message("live-thought", "assistant", "", {
       thinking: "Reasoning before the answer",
       status: "streaming",
     });
-    const processLabel = () =>
-      container.querySelector(".tool-activity-label")?.textContent;
-    render([liveThought], true, null, "thinking-transition");
+    setSettings({ showThinking: false });
+    render([liveThought], true, null, "thought-off-live");
+    const liveHeader = processHeaders()[0];
     check(
-      processLabel()?.startsWith(i18n.t("chat.thinkingFor", { time: "" })),
-      "active reasoning uses the thinking label",
-    );
-    render(
-      [{ ...liveThought, content: "Answer has started" }],
-      true,
-      null,
-      "thinking-transition",
+      liveHeader?.querySelector(".tool-activity-label")?.textContent?.startsWith(
+        i18n.t("chat.thinkingFor", { time: "" }),
+      ),
+      "show thinking off keeps the live thinking indicator in the header",
     );
     check(
-      !header() &&
-        visible(container.querySelector('[data-message-id="live-thought"]')),
-      "answer streaming ends the thinking label even when reasoning is retained",
+      Boolean(container.querySelector(".thinking-compact")),
+      "show thinking off shows the live thinking row",
     );
-    render(
-      [
-        liveThought,
-        message("separate-answer", "assistant", "Answer text", {
-          status: "streaming",
-        }),
-      ],
-      true,
-      null,
-      "thinking-transition",
+    click(liveHeader);
+    check(
+      allCollapsed() &&
+        liveHeader?.querySelector(".tool-activity-label")?.textContent?.startsWith(
+          i18n.t("chat.thinkingFor", { time: "" }),
+        ),
+      "the live thinking indicator stays visible with the process closed",
+    );
+    render([{ ...liveThought, status: "complete" }], false, null, "thought-off-done");
+    check(
+      !container.querySelector(".turn-process") && !container.querySelector(".thinking"),
+      "completed hidden thinking leaves no empty container",
     );
     check(
-      processLabel()?.startsWith(i18n.t("chat.processingFor", { time: "" })),
-      "a later answer takes precedence over an earlier streaming thought",
+      liveThought.thinking === "Reasoning before the answer",
+      "hiding thinking never deletes stored reasoning",
+    );
+    setSettings({ showThinking: true });
+    render([{ ...liveThought, status: "complete" }], false, null, "thought-on-done");
+    check(
+      Boolean(container.querySelector(".tool-row.thinking")),
+      "turning show thinking back on restores the completed reasoning row",
+    );
+    check(
+      container.textContent?.includes("Reasoning before the answer"),
+      "the restored row shows the retained reasoning text",
     );
 
-    render([streaming, read], true, null, "stream-compact");
-    check(
-      process()?.querySelector('[data-message-id="stream"]'),
-      "later tool moves provisional text into process",
-    );
-
+    // Search reveal opens the process chunk that owns the named message.
+    setSettings();
     render(
-      [intro, { ...read, toolStatus: "error", isError: true }, answer],
-      true,
-      null,
-      "tool-error",
+      mixed,
+      false,
+      { sessionId: "s", messageId: "read", query: "read", requestId: 1 },
+      "search",
     );
     check(
-      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
-      "an active tool failure opens an unclaimed process",
+      processHeaders()[0]?.getAttribute("aria-expanded") === "true" &&
+        visible(firstProcess()),
+      "search reveals the process chunk that owns the target",
     );
 
+    // The Settings row is a boolean Show thinking toggle.
     let saved: Partial<AppSettings> | undefined;
+    const settings: AppSettings = { ...baseSettings, showThinking: false };
     flushSync(() =>
       root.render(
         <I18nextProvider i18n={i18n}>
-          <ThinkingDisplayModeRow
+          <ShowThinkingRow
             settings={settings}
             saveSettings={async (patch) => {
               saved = patch;
-              useAppStore.setState({ settings: { ...settings, ...patch } });
             }}
           />
         </I18nextProvider>,
       ),
     );
-    click(container.querySelector<HTMLElement>('[role="radio"][aria-checked="false"]'));
+    const toggle = container.querySelector<HTMLElement>('[role="switch"]');
     check(
-      saved?.thinkingDisplayMode === "compact",
-      "settings control saves compact mode",
+      toggle?.getAttribute("aria-checked") === "false",
+      "the Show thinking row reflects the stored preference",
+    );
+    click(toggle);
+    check(
+      saved?.showThinking === true,
+      "the Show thinking row saves the boolean preference",
     );
 
-    render(
-      [intro, { ...read, toolStatus: "error", isError: true }, answer],
-      true,
-      null,
-      "compact-error",
-    );
-    check(
-      header()?.getAttribute("aria-expanded") === "true" && visible(process()),
-      "compact mode reveals an active tool failure",
-    );
-
-    const thought = message("thought", "assistant", "", {
-      thinking: "hidden thinking words",
-      status: "streaming",
-    });
-    render([thought], true, null, "compact");
-    check(
-      Boolean(header()) && !container.textContent?.includes("hidden thinking words"),
-      "compact live thinking has status without reasoning text",
-    );
-    click(header());
-    check(
-      visible(container.querySelector(".thinking-compact")),
-      "compact live thinking remains indicator-only when expanded",
-    );
-    render([{ ...thought, status: "complete" }], false, null, "compact");
-    check(
-      !header() && !container.querySelector(".thinking"),
-      "completed compact thinking leaves no empty process or thought block",
-    );
-    render([{ ...thought, content: "Started answer" }], true, null, "compact");
-    check(
-      !container.querySelector(".thinking") &&
-        visible(container.querySelector('[data-message-id="thought"]')),
-      "compact thinking ends as soon as answer text starts",
-    );
-    render(messages, false, null, "compact-tools");
-    check(
-      header()?.getAttribute("aria-expanded") === "false" && !visible(process()),
-      "compact completed process starts collapsed",
-    );
-    click(header());
-    check(
-      !container.querySelector(".thinking") &&
-        process()?.querySelectorAll(".tool-row").length === 2,
-      "compact keeps tools and progress accessible",
-    );
-    flushSync(() =>
-      useAppStore.setState({
-        settings: { ...settings, thinkingDisplayMode: "detailed" },
-      }),
-    );
-    check(
-      Boolean(container.querySelector(".thinking")),
-      "mode changes update mounted history",
-    );
-    check(
-      messages[0].thinking === "reasoning detail",
-      "presentation never deletes reasoning data",
-    );
     return { ok: true, checks: notes };
   } finally {
     flushSync(() => root.unmount());

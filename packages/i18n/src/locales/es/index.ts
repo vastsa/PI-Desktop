@@ -1419,6 +1419,8 @@ sklm: {
     "thinkingDisplayModeDesc": "Detallado muestra el progreso en un proceso expandible con grupos de herramientas anidados y razonamiento. Compacto inicia el proceso contraído y oculta el razonamiento.",
     "thinkingDisplayDetailed": "Detallado",
     "thinkingDisplayCompact": "Compacto",
+    "showThinking": "Mostrar razonamiento",
+    "showThinkingDesc": "Muestra el razonamiento del modelo. Desactivado, el indicador de razonamiento en vivo sigue visible y las filas y extractos de razonamiento completados quedan ocultos.",
     "contextUsageDisplay": "Lectura del uso del contexto",
     "contextUsageDisplayRemaining": "Restante",
     "contextUsageDisplayUsed": "Usado",

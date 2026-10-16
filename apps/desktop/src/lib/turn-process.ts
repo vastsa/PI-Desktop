@@ -1,12 +1,10 @@
-import type { AppSettings, UiMessage } from "@pi-desktop/shared";
-import type { AssistantTurnEntry, AssistantTurnPart } from "./assistant-turns";
-import { activityItemHasIssue } from "./activity-summary";
-
-type ThinkingDisplayMode = NonNullable<AppSettings["thinkingDisplayMode"]>;
-
-export function resolveThinkingDisplayMode(value: unknown): ThinkingDisplayMode {
-  return value === "compact" ? "compact" : "detailed";
-}
+import type { UiMessage } from "@pi-desktop/shared";
+import type {
+  AssistantActivityItem,
+  AssistantTurnEntry,
+  AssistantTurnPart,
+} from "./assistant-turns";
+import { isStandaloneRunActivity } from "./assistant-turns";
 
 export function isThinkingActive(message: UiMessage, active: boolean): boolean {
   return active && message.status === "streaming" && !message.content.trim();
@@ -41,26 +39,60 @@ export function processContainsMessage(
   });
 }
 
-export function hasFailedProcessTool(parts: readonly AssistantTurnPart[]): boolean {
-  return parts.some(
-    (part) =>
-      part.kind === "activity" &&
-      part.items.some(activityItemHasIssue),
-  );
-}
+/** A `Bash`/run call rendered as its own row outside any process disclosure. */
+export type TurnProcessRunSegment = {
+  kind: "run";
+  key: string;
+  item: Extract<AssistantActivityItem, { kind: "tool" }>;
+};
 
-/** Both presentation modes expose the same process hierarchy. */
-export function shouldGroupTurnProcess(mode: ThinkingDisplayMode): boolean {
-  return mode === "detailed" || mode === "compact";
-}
+/** One chronological chunk of non-run process content between run calls. */
+export type TurnProcessBodySegment = {
+  kind: "process";
+  key: string;
+  parts: AssistantTurnPart[];
+};
 
-/** Active processes open in Detailed; settled processes default closed. */
-export function shouldAutoOpenTurnProcess(
-  mode: ThinkingDisplayMode,
-  isActive: boolean,
-  hasToolFailure: boolean,
-): boolean {
-  return isActive && (mode === "detailed" || hasToolFailure);
+export type TurnProcessSegment = TurnProcessRunSegment | TurnProcessBodySegment;
+
+/**
+ * Split one turn's process into the order it renders (ADR
+ * turn-process-and-thinking-display).
+ *
+ * `Bash` and run aliases are pulled out of the process flow entirely: each is
+ * its own `run` segment rendered as a standalone row with no process or group
+ * ancestor, and adjacent calls stay separate. The remaining tools, thinking,
+ * hosted searches and progress text keep their original order and are grouped
+ * into `process` chunks between the run calls. Segment parts are the same part
+ * objects as the input, so downstream reveal and active-tail identity still
+ * hold.
+ */
+export function segmentTurnProcess(
+  parts: readonly AssistantTurnPart[],
+): TurnProcessSegment[] {
+  const segments: TurnProcessSegment[] = [];
+  let pending: AssistantTurnPart[] = [];
+  const flushProcess = () => {
+    if (pending.length === 0) return;
+    const first = pending[0];
+    const key =
+      first.kind === "activity" ? first.items[0].message.id : first.message.id;
+    segments.push({ kind: "process", key, parts: pending });
+    pending = [];
+  };
+  for (const part of parts) {
+    if (part.kind === "activity" && part.items.length === 1) {
+      const item = part.items[0];
+      if (isStandaloneRunActivity(item)) {
+        flushProcess();
+        segments.push({ kind: "run", key: item.message.id, item });
+        continue;
+      }
+    }
+    pending.push(part);
+  }
+  flushProcess();
+  return segments;
 }
 
 /**
@@ -85,9 +117,18 @@ export function projectTurnProcess(entry: AssistantTurnEntry) {
   return { process, responses };
 }
 
+/**
+ * Steps a process body renders under the thinking preference.
+ *
+ * `hideThinking` is `!showThinking`: completed reasoning rows and excerpts are
+ * hidden, while the live reasoning indicator still counts as a visible step so
+ * a thinking-only process keeps its indicator. The helper counts exactly the
+ * parts it is given; Bash and run aliases are segmented out before rendering
+ * and never reach a process chunk, so they are never counted here.
+ */
 export function visibleProcessSteps(
   parts: readonly AssistantTurnPart[],
-  mode: ThinkingDisplayMode,
+  hideThinking: boolean,
   active: boolean,
 ): number {
   let count = 0;
@@ -99,7 +140,7 @@ export function visibleProcessSteps(
     for (const item of part.items) {
       if (
         item.kind !== "thinking" ||
-        mode === "detailed" ||
+        !hideThinking ||
         isThinkingActive(item.message, active)
       ) {
         count += 1;

@@ -309,15 +309,18 @@ globalThis.transcriptRenderProbe = async () => {
   };
   try {
     const groups = 100;
+    // The render-count regression needs ordinary activity groups. A Bash row is
+    // standalone and bypasses ActivityGroup, so this fixture uses Read rows; the
+    // standalone Bash row is exercised separately below.
     let messages = [message("user", "user", "Inspect the workspace")];
     for (let index = 0; index < groups; index++) {
       messages.push(
         message(`tool-${index}`, "tool", "done", {
-          toolName: "Bash",
+          toolName: "Read",
           toolCallId: `call-${index}`,
           toolStatus: "success",
-          toolArgs: { command: `printf step-${index}` },
-          toolResult: { details: { stdout: "done", exitCode: 0 } },
+          toolArgs: { path: `file-${index}.ts` },
+          toolResult: `contents of file-${index}.ts`,
         }),
       );
       messages.push(
@@ -351,7 +354,7 @@ globalThis.transcriptRenderProbe = async () => {
     messages = [...messages];
     messages[1] = {
       ...messages[1],
-      toolArgs: { command: "printf changed-command" },
+      toolArgs: { path: "changed-file.ts" },
     };
     render(messages);
     assert(
@@ -359,8 +362,40 @@ globalThis.transcriptRenderProbe = async () => {
       "changed tool group did not render exactly once",
     );
     assert(
-      container.textContent?.includes("changed-command"),
+      container.textContent?.includes("changed-file.ts"),
       "changed tool row not visible",
+    );
+
+    // A standalone Bash row is not an activity group: it updates through its own
+    // rendered command, outside every process disclosure.
+    const bashMessages = (command: string): UiMessage[] => [
+      message("bash-user", "user", "Run"),
+      message("bash-row", "tool", "", {
+        toolName: "Bash",
+        toolCallId: "bash-call",
+        toolStatus: "success",
+        toolArgs: { command },
+        toolResult: { details: { stdout: "ok", exitCode: 0 } },
+      }),
+    ];
+    render(bashMessages("printf before"));
+    const bashRow = container.querySelector<HTMLElement>('[data-message-id="bash-row"]');
+    assert(bashRow, "the standalone Bash row did not render");
+    assert(
+      bashRow.closest(".turn-process") === null,
+      "the Bash row must render outside every process disclosure",
+    );
+    assert(container.textContent?.includes("printf before"), "the Bash command did not render");
+    globalThis.__activityGroupRenders = [];
+    render(bashMessages("printf after"));
+    assert(
+      container.textContent?.includes("printf after") &&
+        !container.textContent?.includes("printf before"),
+      "the Bash row did not update its rendered command",
+    );
+    assert(
+      globalThis.__activityGroupRenders.length === 0,
+      "a standalone Bash row must not render an activity group",
     );
 
     // Keep Task's own message stable: a later lifecycle result must still
@@ -466,8 +501,9 @@ globalThis.transcriptRenderProbe = async () => {
 
     const statusLifecycle = await transcriptStatusProbe();
     const markdownLinks = await markdownLinkInteractionProbe(i18n);
+    const turnProcess = await turnProcessProbe();
     return {
-      ok: statusLifecycle.ok && markdownLinks.ok,
+      ok: statusLifecycle.ok && markdownLinks.ok && turnProcess.ok,
       statusLifecycle,
       markdownLinks,
       groups,
@@ -476,7 +512,7 @@ globalThis.transcriptRenderProbe = async () => {
       changedToolRenders: 1,
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
-      turnProcess: await turnProcessProbe(),
+      turnProcess,
       messageEditing: await transcriptEditProbe(),
       textUpdateDurationMs,
     };

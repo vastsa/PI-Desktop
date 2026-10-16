@@ -1419,6 +1419,8 @@ sklm: {
     "thinkingDisplayModeDesc": "Le mode détaillé affiche la progression dans un processus dépliable avec des groupes d'outils imbriqués et le raisonnement. Le mode compact démarre avec le processus replié et masque le raisonnement.",
     "thinkingDisplayDetailed": "Détaillé",
     "thinkingDisplayCompact": "Compact",
+    "showThinking": "Afficher le raisonnement",
+    "showThinkingDesc": "Affiche le raisonnement du modèle. Désactivé, l'indicateur de raisonnement en direct reste visible et les lignes et extraits de raisonnement terminés sont masqués.",
     "contextUsageDisplay": "Affichage de l'usage du contexte",
     "contextUsageDisplayRemaining": "Restant",
     "contextUsageDisplayUsed": "Utilisé",

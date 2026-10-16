@@ -1433,6 +1433,8 @@ sklm: {
     thinkingDisplayModeDesc: "Detailed shows progress in an expandable process with nested tool groups and reasoning. Compact starts the process collapsed and hides reasoning.",
     thinkingDisplayDetailed: "Detailed",
     thinkingDisplayCompact: "Compact",
+    showThinking: "Show thinking",
+    showThinkingDesc: "Show the model's reasoning. Off keeps the live thinking indicator visible and hides completed reasoning rows and excerpts.",
     contextUsageDisplay: "Context usage readout",
     contextUsageDisplayRemaining: "Remaining",
     contextUsageDisplayUsed: "Used",

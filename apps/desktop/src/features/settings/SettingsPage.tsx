@@ -36,7 +36,7 @@ import { Badge, Button, cx, SegmentedControl, SettingsToggle } from "../../compo
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
 import { FontFamilyRow } from "../../components/settings/FontFamilyRow";
-import { ThinkingDisplayModeRow } from "../../components/settings/ThinkingDisplayModeRow";
+import { ShowThinkingRow } from "../../components/settings/ShowThinkingRow";
 import { FontSizeRow } from "../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../components/settings/LanguageRow";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
@@ -492,7 +492,7 @@ export function SettingsPage() {
                 </SettingsRow>
                 <CommandShellRow settings={settings} saveSettings={saveSettings} />
                 <LinkOpenTargetRow settings={settings} saveSettings={saveSettings} />
-                <ThinkingDisplayModeRow settings={settings} saveSettings={saveSettings} />
+                <ShowThinkingRow settings={settings} saveSettings={saveSettings} />
                 <ContextUsageDisplayRow
                   settings={settings}
                   saveSettings={saveSettings}

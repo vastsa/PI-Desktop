@@ -1413,6 +1413,8 @@ sklm: {
     thinkingDisplayModeDesc: "詳細模式在可展開的處理過程中顯示進度、巢狀工具群組和思考內容。精簡模式預設摺疊處理過程並隱藏思考內容。",
     thinkingDisplayDetailed: "詳細",
     thinkingDisplayCompact: "精簡",
+    showThinking: "顯示思考",
+    showThinkingDesc: "顯示模型的推理內容。關閉後仍顯示即時思考指示器，並隱藏已完成的推理列和摘要。",
     contextUsageDisplay: "上下文用量讀數",
     contextUsageDisplayRemaining: "剩餘",
     contextUsageDisplayUsed: "已用",

@@ -1392,6 +1392,8 @@ export const ptBR = {
     thinkingDisplayModeDesc: "Controla como o processo de raciocínio do modelo é exibido na conversa.",
     thinkingDisplayDetailed: "Detalhado",
     thinkingDisplayCompact: "Compacto",
+    showThinking: "Mostrar raciocínio",
+    showThinkingDesc: "Mostra o raciocínio do modelo. Quando desativado, o indicador de raciocínio ao vivo continua visível e as linhas e trechos de raciocínio concluídos ficam ocultos.",
     contextUsageDisplay: "Indicador de uso do contexto",
     contextUsageDisplayRemaining: "Restante",
     contextUsageDisplayUsed: "Usado",

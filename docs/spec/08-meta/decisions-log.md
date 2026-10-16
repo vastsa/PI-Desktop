@@ -52,6 +52,7 @@ This log freezes previously open questions into concrete decisions.
 | D656 | Quarantine appends the host keeps refusing instead of stalling the outbox | **Amend ADR 0041 / D318 / D444 / D597: an append whose `session.appendMessage` or `session.recordUsage` call fails with an error the outbox cannot classify as a duplicate message id, a `PERMISSION_DENIED:` poison row, or a foreign-key orphan is retried on a bounded backoff (5s, doubling to a 60s cap) instead of ending the flush. The fifth consecutive failure on that head moves it into an application-owned dead-letter file, `session-message-outbox.dead-letter.json`, with its payload, session id, quarantine timestamp, and host error; only the newest 256 quarantined appends are kept, and the oldest is discarded with a warn. The flush then continues with the next entry, so one refused append can no longer hold the FIFO head, fill the 1024-entry cap, or fail every session's writes. Quarantined appends are never replayed automatically, and `session.delete` drops that session's quarantined appends too. No protocol version, storage schema, or queued-outbox format change.** | A `stream did not contain valid UTF-8` append stayed at the FIFO head for 14.8 hours while `session.persistence.outbox.is.full` fired 5990 times, so every session's appends failed until restart. Only three error classes had a drain, and every other error was treated as transient forever (#1560). |
 | D657 | Let the embedded Browser open local files outside the workspace | **Amend ADR 0170: an explicit absolute path or `file:` URL may load any existing regular local file, and a local-file page may navigate to other existing local files. Relative inputs remain workspace-rooted; HTTP(S) pages retain only the prior in-workspace file-link allowance. Missing files, directories, and remote file authorities remain blocked. `BrowserPreview` and the sidecar keep their workspace-rooted resolver. The public `pi.browser.navigate` API follows this policy under the high-risk `browser.cdp` permission. See ADR 0328, E2E-059, `04-ux/08-component-spec.md`, and `05-security/01-security.md`.** | Users need to inspect local HTML outside a project, while workspace-scoped agent file tools and remote-page navigation must retain their existing boundary (#1627). |
 | D659 | Reopen archived projects in the sidebar | **Amend D093 / D455: successful explicit project activation clears the normalized path's renderer-local archived flag and persists it, so Open from Project archive, reopening the same folder through Add project, and opening a project session reveal the project in the home sidebar. Selecting a row for inspection and ordinary session refreshes do not alter archive state. No host/project/session storage or protocol change. See ADR 0294, E2E-264, and issue #1653.** | Reopening a project changed the active workspace but left its path-keyed archived presentation flag set, hiding it from the sidebar after the user explicitly reopened it. |
+| D661 | Segmented turn process and independent thinking preference | **Supersede the `Detailed` / `Compact` display-mode behavior and the single whole-process disclosure recorded by D633 / D651 and the `turn-process-and-thinking-display` ADR: a turn renders as chronological collapsible process segments, Bash and run aliases stay outside every folded container (the turn-level process disclosure and any ordinary activity group) and remain visible even when every group is collapsed, and process/group folding defaults are independent of the thinking preference. The preference is the optional boolean `AppSettings.showThinking`; absent or non-boolean values fall back to the legacy `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows), which is retained only for persisted-settings compatibility. `showThinking` joins the portable application fields so it synchronizes like the legacy field; no other host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | One flat container left long tool/search runs hard to scan and forced reasoning visibility and process folding into the same two-valued switch; an independent boolean plus always-visible Bash rows keeps shell-heavy turns readable without hiding the answer. |
 
 ## B. Secondary implementation defaults
 
@@ -7717,3 +7718,32 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - Covered by `apps/desktop/test/composer-file-reference-display.test.mjs` and
   the file-mode fixture of `scripts/e2e-composer-autocomplete.mjs`. See
   `04-ux/08-component-spec.md` and `04-ux/09-interaction-patterns.md`.
+
+## 2026-10-16 — Segmented turn process and independent thinking preference (D661)
+
+- D661 supersedes the `Detailed` / `Compact` display-mode behavior and the single
+  whole-process disclosure recorded by D633 / D651 and the
+  `turn-process-and-thinking-display` ADR. A turn now renders as chronological
+  collapsible process segments; the trailing answer, assistant errors, stopped
+  trailing text, and pending action surfaces stay outside them.
+- Bash and run aliases render as standalone rows outside every folded container —
+  neither the turn-level process disclosure nor an ordinary activity group — and
+  stay visible even when every group is collapsed. Adjacent Bash rows remain
+  separate, and a Bash row's detail stays closed until the user opens it.
+- Group folding defaults are unified and independent of the thinking preference:
+  the active group opens and closes on completion only if untouched, other
+  completed groups start closed, and an untouched active group with a recorded
+  failed or denied tool stays open through later recovery.
+- The preference is the optional boolean `AppSettings.showThinking`. When false,
+  the live thinking indicator stays visible while completed thinking rows and
+  excerpts are hidden and empty thinking-only containers are omitted; the stored
+  reasoning is retained. Absent or non-boolean values fall back to the legacy
+  `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows),
+  which is retained only for persisted-settings compatibility and is no longer
+  exposed in the UI.
+- `showThinking` joins the portable application fields so it synchronizes like the
+  legacy field; no other host protocol, persistence schema, permission, or plugin
+  contract change. Covered by `apps/desktop/test/thinking-visibility.test.mjs` and
+  the i18n catalog tests. See the amended ADR, `04-ux/06-settings-ia.md`,
+  `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and
+  E2E-CHAT-turn-process-and-thinking-display.

@@ -1429,6 +1429,8 @@ sklm: {
     thinkingDisplayModeDesc: "상세 모드는 중첩된 도구 그룹과 사고 과정을 포함한 진행 상황을 펼칠 수 있는 처리 과정에 표시합니다. 간결 모드는 처리 과정을 접힌 상태로 시작하고 사고 과정을 숨깁니다.",
     thinkingDisplayDetailed: "상세",
     thinkingDisplayCompact: "간결",
+    showThinking: "사고 과정 표시",
+    showThinkingDesc: "모델의 사고 과정을 표시합니다. 끄면 실시간 사고 표시기는 계속 보이고 완료된 사고 행과 발췌는 숨겨집니다.",
     contextUsageDisplay: "컨텍스트 사용량 표시",
     contextUsageDisplayRemaining: "남음",
     contextUsageDisplayUsed: "사용됨",

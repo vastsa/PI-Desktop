@@ -9,6 +9,10 @@ fn theme(state: &AppState) -> Result<Value> {
     Ok(state.db.get_setting("app")?.unwrap_or_else(|| json!({}))["theme"].clone())
 }
 
+fn app_settings(state: &AppState) -> Result<Value> {
+    Ok(state.db.get_setting("app")?.unwrap_or_else(|| json!({})))
+}
+
 async fn approve_all(
     state: &Arc<Mutex<AppState>>,
     tx: &mpsc::UnboundedSender<String>,
@@ -101,6 +105,75 @@ async fn backup_does_not_apply_remote_settings_and_restore_is_local_only() -> Re
         .unwrap()
         .recovery_points
         .is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn application_show_thinking_roundtrips_and_keeps_local_only_settings() -> Result<()> {
+    if run_in_isolated_process(
+        "config_sync::engine::s3_tests::application_show_thinking_roundtrips_and_keeps_local_only_settings",
+    )? {
+        return Ok(());
+    }
+    let fixture = fixture(false).await;
+    let directory_a = tempfile::tempdir()?;
+    let directory_b = tempfile::tempdir()?;
+    let device_a = configure_test_device(directory_a.path(), &fixture.endpoint).await?;
+    let device_b = configure_test_device(directory_b.path(), &fixture.endpoint).await?;
+    // The source device carries the explicit reasoning-display boolean (a
+    // false value must stay false), the legacy display mode, and a device-local
+    // permission mode that must never travel through a revision.
+    device_a.lock().await.db.set_setting(
+        "app",
+        &json!({
+            "theme": "light",
+            "showThinking": false,
+            "thinkingDisplayMode": "detailed",
+            "defaultPermissionMode": "accept-edits",
+        }),
+    )?;
+    let (tx, _rx) = mpsc::unbounded_channel();
+    sync_now(device_a.clone(), tx.clone()).await?;
+    let received = sync_now(device_b.clone(), tx.clone()).await?;
+    assert!(pending_approvals(&received).is_empty());
+    {
+        let state = device_b.lock().await;
+        let settings = app_settings(&state)?;
+        assert_eq!(settings["theme"], "light");
+        // A false boolean survives capture and apply instead of reading as absent.
+        assert_eq!(settings["showThinking"], false);
+        // The legacy field is still exported so older readers keep working.
+        assert_eq!(settings["thinkingDisplayMode"], "detailed");
+        // Local-only settings do not travel: the source value never appears.
+        assert!(settings.get("defaultPermissionMode").is_none());
+    }
+    // The receiving device now adopts its own local-only value.
+    device_b.lock().await.db.set_setting(
+        "app",
+        &json!({
+            "theme": "light",
+            "showThinking": false,
+            "thinkingDisplayMode": "detailed",
+            "defaultPermissionMode": "ask",
+        }),
+    )?;
+    // A later portable edit still syncs while the device-local value is untouched.
+    device_a.lock().await.db.set_setting(
+        "app",
+        &json!({
+            "theme": "light",
+            "showThinking": true,
+            "thinkingDisplayMode": "detailed",
+            "defaultPermissionMode": "accept-edits",
+        }),
+    )?;
+    sync_now(device_a.clone(), tx.clone()).await?;
+    sync_now(device_b.clone(), tx).await?;
+    let state = device_b.lock().await;
+    let settings = app_settings(&state)?;
+    assert_eq!(settings["showThinking"], true);
+    assert_eq!(settings["thinkingDisplayMode"], "detailed");
+    assert_eq!(settings["defaultPermissionMode"], "ask");
     Ok(())
 }
 

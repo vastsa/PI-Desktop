@@ -162,6 +162,9 @@ jobs:
       - name: Run browser capture/resize E2E
         run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node scripts/e2e-browser-capture-resize.mjs'
 
+      - name: Run transcript rendering and disclosure E2E
+        run: xvfb-run --auto-servernum sh -c 'node scripts/e2e-transcript-render.mjs && node scripts/e2e-transcript-disclosure-anchor.mjs'
+
       - name: Build host-core
         run: cargo build -p host-core --locked
 
