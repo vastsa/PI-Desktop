@@ -55,7 +55,7 @@ test("TodoDock renders bounded session progress and cancelled state", async () =
     assert.match(html, /class="[^"]*todo-dock-toggle[^"]*"[^>]*aria-label="Expand checklist"/);
     assert.match(html, /aria-expanded="false"/);
     assert.match(html, /aria-controls="[^"]+"/);
-    assert.match(html, /class="todo-dock-header-current"[^>]*>second<\/span>/);
+    assert.match(html, /class="todo-dock-header-current todo-dock-shimmer"[^>]*>second<\/span>/);
     assert.match(html, /class="todo-dock-content" aria-hidden="true"/);
     assert.match(html, /class="todo-dock-content" aria-hidden="true"><div class="todo-dock-clip">/);
     assert.match(html, /extra-0/);
@@ -66,6 +66,15 @@ test("TodoDock renders bounded session progress and cancelled state", async () =
     assert.match(html, /class="todo-dock-list" role="list" tabindex="-1"/);
     assert.match(html, /lucide-chevron-up/);
     assert.match(html, /lucide-check/);
+    // The sweep rides the text of the working step only, and only once: while
+    // collapsed it is the header's current-item line, because the list stays
+    // mounted behind the disclosure and would otherwise sweep the same text.
+    assert.equal((html.match(/todo-dock-shimmer/g) ?? []).length, 1, "one shimmer at a time");
+    assert.match(html, /class="todo-dock-header-current todo-dock-shimmer" title="second"/);
+    assert.match(html, /class="todo-dock-row-content" title="second"/);
+    // The marker is a glyph, not a bordered box: the completed row keeps the
+    // check icon and the working row keeps the bullet, with no extra chrome.
+    assert.match(html, /todo-dock-row-in_progress" role="listitem"><span class="todo-dock-row-symbol" role="img" aria-label="In progress"[^>]*>•<\/span>/);
 
     Object.assign(useAppStore.getInitialState(), {
       sessionTodos: {
@@ -95,10 +104,22 @@ test("TodoDock uses a quiet disclosure animation and state surfaces", async () =
   assert.match(css, /\.todo-dock-content\s*\{[\s\S]*?grid-template-rows:\s*0fr;[\s\S]*?opacity:\s*0;/);
   assert.match(css, /\.todo-dock\.is-expanded \.todo-dock-content\s*\{[\s\S]*?grid-template-rows:\s*1fr;/);
   assert.match(css, /\.todo-dock-row\s*\{[\s\S]*?min-height:\s*24px;[\s\S]*?font-size:/);
-  assert.match(css, /\.todo-dock-row-symbol\s*\{[\s\S]*?border:\s*1px solid var\(--ds-border-default\)/);
+  // The status marker is a glyph, not a bordered square: the plain list must
+  // not regain per-row chrome.
+  assert.match(css, /\.todo-dock-row-symbol\s*\{[^}]*display:\s*inline-flex;/);
+  assert.doesNotMatch(css, /\.todo-dock-row-symbol\s*\{[^}]*border:/);
+  assert.doesNotMatch(css, /\.todo-dock-row-symbol\s*\{[^}]*border-radius:/);
   assert.match(css, /\.todo-dock-row-completed\s*\{[\s\S]*?color:\s*var\(--ds-text-muted\);/);
   assert.match(css, /\.todo-dock-row-in_progress\s*\{[\s\S]*?font-weight:/);
   assert.doesNotMatch(css, /\.todo-dock-row(?:-completed|-in_progress)?\s*\{[^}]*background:/);
+  // The shimmer is the only motion and it rides the text itself.
+  assert.match(css, /\.todo-dock-shimmer\s*\{[\s\S]*?background-clip:\s*text;/);
+  assert.match(css, /\.todo-dock-shimmer\s*\{[\s\S]*?background-size:\s*200% 100%;/);
+  assert.match(css, /@keyframes todo-dock-shimmer-sweep\s*\{[\s\S]*?background-position:\s*100% 0;/);
+  assert.match(
+    css,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.todo-dock-shimmer\s*\{[\s\S]*?animation:\s*none;[\s\S]*?background-image:\s*none;/,
+  );
   // The expanded list is the scrollport (#1319): bounded height, internal
   // scroll, no chaining into the transcript, and reachable from the keyboard.
   assert.match(

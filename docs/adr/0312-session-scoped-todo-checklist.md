@@ -29,10 +29,12 @@ keeps snapshots keyed by session id while rejecting stale revisions.
 The Composer TodoDock is a non-focusing, session-aware presentation surface.
 It shows bounded progress and the complete ordered list: the expanded dock
 scrolls inside its own box instead of truncating, so a long checklist stays
-readable without growing the Composer stack. Remote RACP sessions remain
-local-only for this vertical slice because RACP v1 has no Todo snapshot
-operation; the renderer skips local recovery for those session ids rather than
-reading the local database.
+readable without growing the Composer stack. The list is plain text with a
+glyph status mark per row, and the step that is currently running carries a
+light sweep painted into its own text as the surface's only motion. Remote
+RACP sessions remain local-only for this vertical slice because RACP v1 has no
+Todo snapshot operation; the renderer skips local recovery for those session
+ids rather than reading the local database.
 
 ## Consequences
 

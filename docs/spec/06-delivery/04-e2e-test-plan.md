@@ -10062,8 +10062,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   advances revision, including clear, and emits one committed `todos.changed`
   snapshot. Invalid or unauthorized writes do not mutate or emit. TodoDock
   renders plain text, separates collapsed progress from the current item,
-  uses compact square status marks in a flat expanded list, does not take focus,
-  strikes through completed task text, resets expansion on session changes,
+  uses glyph status marks in a flat expanded list, does not take focus,
+  strikes through completed task text, sweeps a light band across the working
+  step's text only (the header line while collapsed, its row while expanded),
+  resets expansion on session changes,
   lists every ordered row with the dock's
   own list as the scrollport, and keeps a collapsed dock to its header height,
   rejects stale events, and skips local recovery for `remote:` sessions because
