@@ -27,6 +27,7 @@ function createRecoveryWindow(platform, { tiny = false, visible = true, minimize
   const timers = new Map();
   const calls = [];
   const window = Object.assign(new EventEmitter(), {
+    isMaximized: () => false,
     isMinimized: () => minimized,
     isVisible: () => visible,
     getBounds: () => ({ ...bounds }),
@@ -51,6 +52,7 @@ function createRecoveryWindow(platform, { tiny = false, visible = true, minimize
     windowState: {},
     windowMinWidth: 800,
     windowMinHeight: 560,
+    windowBoundsSettleMs: 300,
     isLiveWindow: () => true,
     screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) },
     clampMinimumSizeToWorkArea,

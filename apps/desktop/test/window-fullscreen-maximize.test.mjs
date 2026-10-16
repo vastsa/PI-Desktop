@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
+
 const { isWindowFullScreen, setWindowFullScreen } = await import(
   "../electron/main/window-fullscreen.ts"
 );
