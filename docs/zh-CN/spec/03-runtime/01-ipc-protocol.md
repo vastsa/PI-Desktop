@@ -1526,6 +1526,14 @@ window/closeBehavior/set({ behavior: "tray" | "quit" })
 在每个平台上启动时都会创建一个，而无论存的是哪种关闭行为，最小化到托盘都
 需要它。
 
+关闭行为与退出确认通过新增的、仅限主窗口的 Electron IPC 在应用内呈现。主进程
+在 renderer 确认 `pi-desktop/window/lifecycleDialog/ready` 后发送
+`pi-desktop/window/event/lifecycleDialogRequest`（`{ requestId, kind }`）；renderer
+通过 `pi-desktop/window/lifecycleDialog/respond` 返回 `{ requestId, choice }`。主进程
+回退时会通过 `pi-desktop/window/event/lifecycleDialogDismiss` 发送 request ID，令 renderer
+移除残留遮罩。主进程校验发送方和待处理的 request ID。renderer 缺失或无响应时，超时后
+回退到原生弹窗；原生弹窗也失败时允许关机继续，不会卡住。托盘退出会先恢复隐藏的主窗口再显示应用内
+确认框。此改动不影响 host RPC 或存储协议。
 Maximize/unmaximize 变化也会发出
 `window/event/maximized`。未知的操作失败。这些仅限电子的通道
 不要跨入 host-core，也不要更改主机 RPC 协议版本。

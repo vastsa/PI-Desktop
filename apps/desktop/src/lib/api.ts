@@ -133,6 +133,9 @@ import type {
   UpdateState,
   WindowControlAction,
   CloseBehavior,
+  LifecycleDialogChoice,
+  LifecycleDialogKind,
+  LifecycleDialogRequest,
   ConfigSyncApprovalInput,
   ConfigSyncChangePasswordInput,
   ConfigSyncHistoryEntry,
@@ -1584,6 +1587,31 @@ export const api = {
     invoke<{ behavior: CloseBehavior }>(IPC.invoke.closeBehaviorSet, {
       behavior,
     }),
+  markLifecycleDialogRendererReady: () =>
+    invoke<{ ready: boolean }>(IPC.invoke.lifecycleDialogReady),
+  respondLifecycleDialog: (requestId: string, choice: LifecycleDialogChoice) =>
+    invoke<{ accepted: boolean }>(IPC.invoke.lifecycleDialogRespond, { requestId, choice }),
+  onLifecycleDialogRequest: (listener: (request: LifecycleDialogRequest) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.lifecycleDialogRequest, (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      const value = payload as Record<string, unknown>;
+      if (
+        typeof value.requestId !== "string" ||
+        !value.requestId ||
+        (value.kind !== "quit-confirmation" && value.kind !== "close-behavior")
+      ) return;
+      listener({ requestId: value.requestId, kind: value.kind as LifecycleDialogKind });
+    });
+  },
+  onLifecycleDialogDismiss: (listener: (requestId: string) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.lifecycleDialogDismiss, (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      const requestId = (payload as Record<string, unknown>).requestId;
+      if (typeof requestId === "string" && requestId) listener(requestId);
+    });
+  },
   getTokenUsageHistory: (query?: { startDate?: number; endDate?: number; bucket?: "day" | "week" | "month" }) =>
     invoke<import("@pi-desktop/shared").TokenUsageHistoryResult>(
       IPC.invoke.statsGetTokenUsageHistory,

@@ -2050,6 +2050,16 @@ macOS, where there is no close behavior to configure. Setting a behavior does
 not touch the tray icon: D216 (ADR 0078) creates one at startup on every
 platform, and minimize-to-tray needs it whichever close behavior is stored.
 
+Lifecycle close/quit prompts use additive main-window-only Electron IPC. Main sends
+`pi-desktop/window/event/lifecycleDialogRequest` with `{ requestId, kind }` after the
+renderer acknowledges `pi-desktop/window/lifecycleDialog/ready`; the renderer returns
+`{ requestId, choice }` through `pi-desktop/window/lifecycleDialog/respond`. If Main
+falls back, it sends `pi-desktop/window/event/lifecycleDialogDismiss` with the
+request ID so the renderer removes any stale overlay. Main validates the sender and
+pending request ID. A missing/unresponsive renderer falls back to the native dialog
+after a bounded timeout; if that fallback also fails, shutdown proceeds rather than
+remaining blocked. Tray Quit restores a hidden main
+window before showing its in-app confirmation. This does not change host RPC or storage.
 Maximize/unmaximize changes also emit
 `window/event/maximized`. Unknown actions fail. These window-control channels
 remain Electron-only and do not change the host RPC protocol version.

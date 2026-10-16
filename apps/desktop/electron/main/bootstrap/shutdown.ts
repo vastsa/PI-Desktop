@@ -77,6 +77,7 @@ export function registerShutdownHandlers({
   liveCallService,
   disposeSystemProxyRelay,
 }: ShutdownDependencies): void {
+  let quitConfirmationPending = false;
   app.on("window-all-closed", () => {
     // The D216 tray is resident on every platform, so its presence says nothing
     // about whether the app should survive a closed window — the user's close
@@ -95,7 +96,7 @@ export function registerShutdownHandlers({
     if (!hasSingleInstanceLock) return;
     if (state.shutdownComplete) return;
     event.preventDefault();
-    if (state.shutdownPromise) return;
+    if (state.shutdownPromise || quitConfirmationPending) return;
 
     // Show a confirmation dialog on the first explicit quit (Cmd+Q, tray quit,
     // application-menu Quit). The data-saving shutdown runs after confirmation.
@@ -113,14 +114,25 @@ export function registerShutdownHandlers({
     const isUpdateRestart = updater.isInstallingUpdate();
     if (!state.quitConfirmed && !isAutomatedMode && !isUpdateRestart) {
       state.quitConfirmed = true;
-      void confirmQuitDialog().then((confirmed) => {
-        if (confirmed) {
+      quitConfirmationPending = true;
+      void confirmQuitDialog().then(
+        (confirmed) => {
+          quitConfirmationPending = false;
+          if (confirmed) {
+            app.quit();
+          } else {
+            // User cancelled: allow future quit requests to prompt again.
+            state.quitConfirmed = false;
+          }
+        },
+        (error: unknown) => {
+          quitConfirmationPending = false;
+          logger.app("lifecycle", "warn", "quit confirmation failed; allowing shutdown", {
+            data: String(error),
+          });
           app.quit();
-        } else {
-          // User cancelled: allow future quit requests to prompt again.
-          state.quitConfirmed = false;
-        }
-      });
+        },
+      );
       return;
     }
 

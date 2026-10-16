@@ -554,10 +554,13 @@ closeBehaviorRuntime = createCloseBehaviorRuntime({
   dataDir,
   getLocale: () => mainState.updaterLocale,
   createTray,
+  logger,
 });
 const {
   applyCloseBehavior,
   confirmQuitDialog,
+  markLifecycleDialogRendererReady,
+  respondLifecycleDialog,
 } = closeBehaviorRuntime;
 
 const createdLauncher = createLauncher({
@@ -911,6 +914,8 @@ function registerIpc() {
     applyCloseBehavior,
     getCloseBehavior: () => mainState.closeBehavior,
     markMenuRendererReady,
+    markLifecycleDialogRendererReady,
+    respondLifecycleDialog,
     executeNativeMenuAction,
     scheduledRunsBySession,
     isQuitting: () => mainState.quitting,
