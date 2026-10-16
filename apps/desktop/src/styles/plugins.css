@@ -1986,3 +1986,42 @@
     transition: none;
   }
 }
+
+/* The panel is the one row action with a window behind it, so both entries
+   that open it read as controls: the chip acts, and the icon carries a label
+   instead of hiding behind a tooltip. */
+.plugins-cap-chip.is-action {
+  gap: 3px;
+  cursor: pointer;
+  color: var(--ds-text-secondary);
+  background: var(--plugins-tile);
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.plugins-cap-chip.is-action:hover {
+  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  color: var(--ds-text-primary);
+}
+
+.plugins-panel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-2xs);
+  font-size: var(--text-3xs);
+  color: var(--ds-text-secondary);
+  background: var(--plugins-tile);
+  flex: 0 0 auto;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.plugins-panel-btn:hover {
+  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  color: var(--ds-text-primary);
+}

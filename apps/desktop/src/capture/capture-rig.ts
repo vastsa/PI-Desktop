@@ -590,6 +590,7 @@ export function installCaptureRig(): CaptureRig {
           errorMessage: "Manifest declares net.fetch but the grant is missing.",
           permissions: ["net.fetch", "ui.panel"],
           capabilities: ["panel", "tools", "mcp"],
+          ui: { panel: "panel.html" },
           author: "Pi Labs",
           description: "Builds a preview deployment for the current branch.",
         },
@@ -606,6 +607,7 @@ export function installCaptureRig(): CaptureRig {
             write: { root: "workspace", scope: ["docs/**", "*.md"] },
           },
           capabilities: ["panel", "commands", "skills", "services", "bus"],
+          ui: { panel: "panel.html" },
           author: "Pi Labs",
           description: "Summarizes repository activity into a review panel.",
           updateAvailable: {
