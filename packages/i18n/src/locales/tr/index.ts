@@ -471,6 +471,8 @@ export const tr = {
     usageThroughput: "{{count}} token/sn",
     usageThroughputEstimated: "≈ {{count}} token/sn",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/sn",
+    usageLiveThroughputEstimated: "≈ {{count}} tok/sn",
     usageSessionTime: "Toplam oturum süresi",
     usageNetworkRequest: "Ağ isteği süresi",
     usageNetworkRequestHelp: "Model isteğinin gönderilmesiyle ilk yanıt olayı arasındaki süre; ağ ve sağlayıcı beklemesini içerir. Ayrı zaman bilgisi olmayan eski mesajlar dahil edilmez.",

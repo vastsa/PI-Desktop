@@ -464,6 +464,8 @@ export const zhCN = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "约 {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "约 {{count}} tok/s",
     usageSessionTime: "会话总耗时",
     usageNetworkRequest: "网络请求耗时",
     usageNetworkRequestHelp: "从发出模型请求到收到首个响应事件的耗时，包含网络传输和服务端首响应等待；旧消息没有单独计时数据时不会计入。",

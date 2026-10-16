@@ -471,6 +471,8 @@ export const ko = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "≈ {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "≈ {{count}} tok/s",
     usageSessionTime: "총 세션 시간",
     usageNetworkRequest: "네트워크 요청 시간",
     usageNetworkRequestHelp: "모델 요청을 보낸 시점부터 첫 응답 이벤트까지의 시간이며, 네트워크 및 제공자 대기 시간을 포함합니다. 별도 시간 정보가 없는 이전 메시지는 포함하지 않습니다.",

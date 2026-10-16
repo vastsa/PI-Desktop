@@ -464,6 +464,8 @@ export const zhTW = {
     usageThroughput: "{{count}} tokens/s",
     usageThroughputEstimated: "約 {{count}} tokens/s",
     usageThroughputUnavailable: "—",
+    usageLiveThroughput: "{{count}} tok/s",
+    usageLiveThroughputEstimated: "約 {{count}} tok/s",
     usageSessionTime: "工作階段總耗時",
     usageNetworkRequest: "網路請求耗時",
     usageNetworkRequestHelp: "從送出模型請求到收到第一個回應事件的時間，包含網路傳輸與服務端首次回應等待；舊訊息沒有獨立計時資料時不會列入。",

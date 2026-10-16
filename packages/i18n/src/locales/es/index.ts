@@ -459,6 +459,8 @@ export const es = {
     "usageThroughput": "{{count}} tokens/s",
     "usageThroughputEstimated": "≈ {{count}} tokens/s",
     "usageThroughputUnavailable": "—",
+    "usageLiveThroughput": "{{count}} tok/s",
+    "usageLiveThroughputEstimated": "≈ {{count}} tok/s",
     "usageSessionTime": "Tiempo total de sesión",
     "usageNetworkRequest": "Solicitud de red",
     "usageNetworkRequestHelp": "Tiempo desde que se envía la solicitud al modelo hasta el primer evento de respuesta; incluye la espera de red y del proveedor. No incluye mensajes antiguos sin tiempos separados.",
