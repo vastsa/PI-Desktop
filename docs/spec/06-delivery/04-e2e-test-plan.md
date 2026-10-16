@@ -17993,3 +17993,20 @@ host-created files. The full app's file-preview viewer is covered separately.
   `apps/desktop/test/app-store-sidebar.test.mjs` and
   `apps/desktop/test/project-create-dialog.test.mjs`; full UI scenario remains
   Draft and is run only when explicitly requested in a capable environment.
+
+### E2E-PLUGIN-streaming-fence-lifecycle
+
+- Preconditions: isolated Electron window, no user profile or provider;
+  opt-in and legacy renderer registrations use the production host modules.
+- Steps: render a partial namespaced fence, interact locally, grow the source,
+  close it, then finish streaming without changing source. Check original
+  session/message/fence identity and stable component state. Unregister the
+  plugin and trigger asynchronous overflow. Repeat with a legacy renderer.
+- Expected: opt-in blocks update before closure and retain local state; final
+  lifecycle props update; source anchors and identity are stable. Legacy
+  blocks wait for closure and retain their original two props. Unload and
+  overflow show the original source. No model request occurs.
+- Coverage: `apps/desktop/test/plugin-block-renderer-slot.test.mjs` covers
+  Markdown routing, identity and registration validation;
+  `node scripts/e2e-streaming-plugin-fences.mjs` covers the mounted lifecycle.
+  Full installed-GenUI/real Desktop acceptance remains separate.

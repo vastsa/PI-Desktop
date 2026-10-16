@@ -880,7 +880,8 @@ export function onLoad(pi) {
 - `toolCard` — the card for calls of one of your own Agent tools; `toolName`
   names it
 - `blockRenderer` — a fenced block tagged `<your-plugin-id>:<lang>`; `language`
-  names the tag
+  names the tag. Set `streaming: true` to opt in to incremental source updates
+  before the fence closes. Default registrations retain their props-once behavior.
 
 A dialog you draw yourself is not a slot: `pi.ui.openLayer()` hands you a layer
 to render into, and the component draws inside it. Styles go through
@@ -1099,3 +1100,19 @@ for roadmap details.
 - [Developer experience](spec/07-plugins/10-plugin-devex.md)
 - [Permissions](spec/07-plugins/13-plugin-permissions-matrix.md)
 - [Hello reference plugin](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/hello)
+
+### Streaming block renderers
+
+Register `{ slot: "blockRenderer", language: "<plugin-id>:<lang>",
+streaming: true, component }` to receive growing `source`, `closed`,
+`streaming`, `sessionId`, `messageId`, and `fenceId`. The fence ID is its
+message-relative source offset; session and message IDs come from the host,
+not the model-authored spec. A closed fence can still belong to a streaming
+reply. The final `streaming: false` update arrives even when source is unchanged.
+
+Keep incomplete-source parsing and local state in the component. Treat all
+source as untrusted. Use original-message identity for explicitly requested
+model actions through existing permission-checked dispatch APIs. The host does
+not execute actions or retry them automatically. Errors, unload, and content
+over 4000px fall back to the original source. Legacy renderers receive only
+`language` and `source` once after the fence closes.
