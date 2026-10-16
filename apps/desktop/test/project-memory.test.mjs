@@ -20,7 +20,9 @@ const [dialog, page, api, protocol, main, runtime, sidecar, db, groups, rpc] = a
 
 test("project memory has a host-backed editor and project menu entry", () => {
   assert.match(dialog, /api\.getProjectMemory\(project\.path\)/);
-  assert.match(dialog, /api\.getProjectGroupMemory\(project\.groupId\)/);
+  assert.match(dialog, /api\.getProjectGroupMemory\(groupId\)/);
+  assert.match(dialog, /api\.listProjectGroups\(\)/);
+  assert.match(dialog, /api\.saveProjectGroupMemory\(targetGroupId, normalized\)/);
   assert.match(dialog, /project\.legacy/);
   assert.match(dialog, /api\.saveProjectMemory\(project\.path, normalized\)/);
   assert.match(dialog, /useBlockingOverlay\(\)/);

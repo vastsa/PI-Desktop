@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useBlockingOverlay } from "../lib/blocking-overlay";
 import type { ProjectMemory, ProjectMemoryEntry } from "@pi-desktop/shared";
 import { api } from "../lib/api";
+import { normalizeProjectPath } from "../lib/sidebar-preferences";
 import { OverlayBackdrop, Button, Input, Textarea, TooltipButton } from "./ui";
 import { IconClose, IconPlus, IconSparkles, IconTrash } from "./icons";
 
@@ -49,23 +50,45 @@ export function ProjectMemoryDialog({
   useBlockingOverlay();
   const { t } = useTranslation();
   const [memory, setMemory] = useState<ProjectMemory | null>(null);
+  const [targetGroupId, setTargetGroupId] = useState<string | null>(null);
   const [entries, setEntries] = useState<ProjectMemoryEntry[]>([]);
   const [savedEntries, setSavedEntries] = useState<ProjectMemoryEntry[]>([]);
   const [saving, setSaving] = useState(false);
+  const projectNotFound = useEffectEvent(() => new Error(t("project.notFound")));
+  const reportLoadError = useEffectEvent(onError);
 
   useEffect(() => {
     let cancelled = false;
-    const load = project.groupId && !project.legacy
-      ? api.getProjectGroupMemory(project.groupId)
-      : api.getProjectMemory(project.path);
-    void load.then((result) => {
+    setMemory(null);
+    setEntries([]);
+    setSavedEntries([]);
+    const load = async () => {
+      let groupId = project.groupId && !project.legacy ? project.groupId : null;
+      // Sidebar entries carry paths; resolve their host-owned group before
+      // reading or writing so this editor matches the Project archive editor.
+      if (!project.groupId && !project.legacy) {
+        const { groups } = await api.listProjectGroups();
+        if (cancelled) return;
+        const path = normalizeProjectPath(project.path);
+        const group = groups.find((candidate) =>
+          normalizeProjectPath(candidate.primaryPath) === path ||
+          candidate.roots.some((root) => normalizeProjectPath(root.path) === path),
+        );
+        if (!group) throw projectNotFound();
+        groupId = group.legacy ? null : group.id;
+      }
+      const result = groupId
+        ? await api.getProjectGroupMemory(groupId)
+        : await api.getProjectMemory(project.path);
       if (cancelled) return;
       const loadedEntries = entriesFromMemory(result.memory);
+      setTargetGroupId(groupId);
       setMemory(result.memory);
       setEntries(loadedEntries);
       setSavedEntries(loadedEntries);
-    }).catch((error) => {
-      if (!cancelled) onError(error);
+    };
+    void load().catch((error) => {
+      if (!cancelled) reportLoadError(error);
     });
     return () => {
       cancelled = true;
@@ -90,8 +113,8 @@ export function ProjectMemoryDialog({
     const normalized = normalizeEntries(entries);
     setSaving(true);
     try {
-      const result = project.groupId && !project.legacy
-        ? await api.saveProjectGroupMemory(project.groupId, normalized)
+      const result = targetGroupId
+        ? await api.saveProjectGroupMemory(targetGroupId, normalized)
         : await api.saveProjectMemory(project.path, normalized);
       const saved = entriesFromMemory(result.memory);
       setMemory(result.memory);

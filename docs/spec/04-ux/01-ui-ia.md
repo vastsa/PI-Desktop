@@ -226,8 +226,12 @@ destination, chat as the home surface, tools and permissions inline.
   the group.
 - **Project actions**: open folder reveals the primary project directory; Edit
   project changes the host-owned logical group name and adjusts eligible
-  non-primary roots (keeping renderer metadata in sync); pin/unpin changes
-  presentation priority; archive/restore hides or restores the group in the
+  non-primary roots (keeping renderer metadata in sync); Project memory opens
+  the same memory-card editor as Settings → Project archive directly from the
+  overflow or right-click menu, without changing the active project, page, or
+  conversation. The editor resolves the clicked path to its host-owned group
+  and uses group-shared memory, retaining path-scoped memory for legacy projects;
+  pin/unpin changes presentation priority; archive/restore hides or restores the group in the
   default view; close removes the retained primary tab without deleting or
   archiving group roots, sessions, or memory. Expanded Project archive details
   list every group root.

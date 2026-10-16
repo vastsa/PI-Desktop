@@ -74,6 +74,7 @@ import {
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
 import { ProjectEditDialog } from "./ProjectEditDialog";
+import { ProjectMemoryDialog } from "./ProjectMemoryDialog";
 import {
   WorktreeBadge,
   WorktreeDeleteLossNote,
@@ -105,6 +106,7 @@ import {
   IconSidebar,
   IconSettings,
   IconStar,
+  IconSparkles,
   IconTrash,
   IconX,
 } from "./icons";
@@ -294,6 +296,7 @@ export function Sidebar({
   const [sessionMenu, setSessionMenu] = useState<string | null>(null);
   const [renameFor, setRenameFor] = useState<SessionSummary | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<ProjectEntry | null>(null);
+  const [memoryFor, setMemoryFor] = useState<ProjectEntry | null>(null);
   const [deleteProjectFor, setDeleteProjectFor] = useState<ProjectEntry | null>(null);
   // Which row menu item is armed for its second, confirming click.
   const { armed: armedDelete, setArmed: setArmedDelete } = useArmedDelete();
@@ -2325,6 +2328,18 @@ export function Sidebar({
               <IconPencil size={14} />
               {t("project.edit", { defaultValue: "Edit project" })}
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-action="project-memory"
+              onClick={() => {
+                closeMenus(false);
+                setMemoryFor(entry);
+              }}
+            >
+              <IconSparkles size={14} />
+              {t("project.editMemory")}
+            </button>
             <WorktreeProjectMenuItems
               projectPath={entry.path}
               projectName={entry.name}
@@ -2671,6 +2686,15 @@ export function Sidebar({
               renameProject(group.primaryPath, group.name);
             }
           }}
+          onError={reportError}
+        />
+      ) : null}
+      {memoryFor ? (
+        <ProjectMemoryDialog
+          key={memoryFor.key}
+          project={memoryFor}
+          onClose={() => setMemoryFor(null)}
+          onSaved={() => showToast(t("project.memorySaved"), { variant: "success" })}
           onError={reportError}
         />
       ) : null}

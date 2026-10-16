@@ -2257,8 +2257,10 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running with two retained projects and a configured
   provider.
-- **Steps**: 1) Open the first project row menu and choose Project memory. 2)
-  Add a memory card, enter a title and project-specific note, then save. 3)
+- **Steps**: 1) Keep a chat in project B active. From the home sidebar, open
+  project A's overflow menu (repeat with its right-click menu) and choose
+  Project memory without opening Settings. 2) Add a memory card, enter a title
+  and project-specific note, then save. 3)
   Reopen the editor, edit the note, add a second card, remove the first card,
   and save. 4) Start or continue a chat in the first project and verify the
   next runtime receives the saved entries as derived context. 5) Switch to the
@@ -2269,9 +2271,14 @@ identify the platform validation still needed.
   user-context block; the second project's runtime does not. An existing
   legacy plain-text memory opens as one untitled card. Empty memory is valid,
   removing all cards clears the projection, saving replaces the prior value,
-  and content above 32 KiB is rejected without a partial save. The create
-  dialog's memory hint is concise and does not imply that memory is shared
-  across projects.
+  and content above 32 KiB is rejected without a partial save. Identity lookup
+  and load/save failures remain visible without switching to another project's
+  data. Cancel discards unsaved edits. Opening, saving, and closing from the
+  sidebar leave the page, active workspace, and visible chat unchanged. The
+  editor uses group-shared memory for logical projects and path-scoped memory
+  for legacy projects, matching Settings → Project archive. Menu labels and
+  feedback are localized in English and Simplified Chinese. The create
+  dialog's memory hint is concise and does not imply cross-project sharing.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` (§9),
   `03-runtime/04-data-storage.md` (§4.1),
   `03-runtime/06-host-rpc-protocol.md` (Projects),
@@ -2279,7 +2286,10 @@ identify the platform validation still needed.
   `04-ux/08-component-spec.md` (Sidebar interactions)
 - **Acceptance**: C (chat/stream), D (project UI), F (persistence), Localization
 - **Milestone**: M5
-- **Status**: Unit/source covered; full provider/UI journey Draft
+- **Status**: Unit/source covered; sidebar-to-editor user path automated in
+  `apps/desktop/test/project-memory-sidebar-user-path.test.mjs` with real
+  Sidebar/store/editor wiring in an isolated Electron renderer and a fixture
+  only at the IPC boundary. Full provider/persistence journey remains Draft.
 
 #### E2E-011f: Send while running queues per-session prompts and supports Send now
 

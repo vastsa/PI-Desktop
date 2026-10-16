@@ -835,12 +835,14 @@ system while preserving their different data ownership:
   and branch facts and the sessions count, and ends with the chats themselves.
   The overflow menu groups create/edit actions above pin, archive/restore, and
   the destructive Close action, and closes on Escape or any outside press
-- The inspector menu includes Project memory. Its editor is a compact
-  viewport-level dialog with a list of editable memory cards. Each card
+- The inspector menu and the home sidebar project menu both include Project
+  memory and open the same compact viewport-level editor. Each memory card
   supports an optional title, multiline content, and removal; the dialog also
   supports adding entries, shows an empty state, and keeps Cancel/Save
-  actions. Saved entries are scoped to that project's path and are available
-  in later chats for the project.
+  actions. Saved entries are shared by the logical project group, with
+  path-scoped memory retained for legacy projects, and are available in later
+  chats. Opening from the sidebar does not navigate to Settings or switch the
+  active workspace or conversation.
 - Project search also matches session titles. Matching a session keeps its
   owning project in the index; opening that project lists the matching sessions
   ordered by latest activity, shows a count and relative update time, and reveals
