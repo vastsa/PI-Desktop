@@ -66,10 +66,13 @@
   只按已加载插件自己登记的清单解析，只读、带 `nosniff`，并在插件卸载时一并撤销。
   `pi.themes.upsert` 也可在运行时登记同类路径。未登记的引用仍会被拒绝，
   原始路径不会到达渲染器
-- `contributes.windowAppearance`（`#rrggbb` / `#rrggbbaa`）需要
-  `ui.window.appearance`，且只在该插件的某个主题被选中时生效；离开该主题即恢复
-  宿主背景，因为颜色由实时主题目录推导而非记忆。macOS 保持 `vibrancy`，
-  永不下发颜色
+- `contributes.windowAppearance`（`#rrggbb` / `#rrggbbaa` 背景与 0 至 24 DIP 的
+  整数 `cornerRadius`）需要 `ui.window.appearance`，且只在该插件的某个主题
+  被选中时生效；离开该主题即恢复宿主背景，因为外观由实时主题目录推导而非记忆。
+  macOS 保持 `vibrancy` 和原生圆角，Linux 原生圆角不变。Windows 默认圆角请求
+  为 12 DIP；仅 build 22000 及以后使用 DWM，0 请求直角，正值使用同一系统圆角
+  偏好，实际半径由系统决定。旧版 Windows 保留请求的 DIP 半径。所有受支持的
+  Windows 版本均将 alpha 背景色与解析后的内置主题背景合成，主窗口保持不透明
 - CSS 在加载时从磁盘读取并通过 IPC 整体交付；的
   渲染器将其注入到附加在后面的单个专用 `<style>` 元素中
   应用程序自己的样式表，因此它可以覆盖令牌但从不注入标记。

@@ -83,8 +83,10 @@
   Right native-control exclusion is unchanged. Header-height paint fills the
   left lane without an opaque overlay hiding tabs or panel actions.
 - 工作面板调整大小：左边缘拖动手柄（§5.4）
-- 窗口大小调整：本机边缘仅在打开作品时更改 MainChat 宽度
-  面板保持其承诺的宽度；响应式布局如下
+- 窗口大小调整：各平台原生边缘和角落调整应用窗口，工作面板保留已提交宽度。
+  Windows 保留 Electron 原生命中检测；所有受支持的 Windows 版本均以
+  `transparent: false`、`thickFrame: true` 创建不透明主窗口，以保留原生全屏和
+  最大化还原行为，原生边缘、阴影和动画可能恢复。响应式布局如下
   [07-ui-design-system.md](/zh-CN/spec/04-ux/07-ui-design-system) §10.1
 
 ### 1.5 辅助功能
@@ -161,15 +163,19 @@
   另外还公开了本机开发人员工具的角色。所有平台都暴露
   F12 和 Windows/Linux 也公开 Ctrl+Shift+I；命令和设置
   当该模式被禁用时，打开控制台操作不可用。
-- 窗口按钮具有本地化的工具提示和可访问的名称。最大化
-  字形反映初始本机状态加上后来的 maximize/unmaximize
-  事件。每个 Windows/Linux 按钮都是一个显式的非拖动指针目标，因此
+- 窗口按钮具有本地化的工具提示和可访问名称。中间按钮在
+  `maximized || fullScreen` 时显示还原字形、工具提示和可访问名称，涵盖初始
+  状态和后续事件。全屏时点击退出全屏并返回此前状态，否则切换最大化。
+  所有受支持的 Windows 版本均以原生 `isFullScreen()` 为权威；切换全屏不插入
+  取消最大化或重新最大化步骤，状态及圆角更新等待原生标志稳定。
+  每个 Windows/Linux 按钮都是一个显式的非拖动指针目标，因此
   周围的标题栏拖动区域不能消耗最小化、最大化、
   恢复或关闭点击。
-- 最小化是每个平台上的常驻 shell 操作：渲染器按钮
-  将主窗口隐藏到 PI-Desktop 托盘中，而 macOS 本机流量
-  灯光和窗口菜单角色转换为相同的隐藏到托盘状态。
-  托盘激活可恢复并聚焦窗口；退出仍然是明确的。
+- 最小化沿用平台原生窗口模型：Windows/Linux 渲染器和原生菜单动作执行原生
+  最小化并保留任务栏条目，macOS 交通灯与窗口菜单角色仍为托盘常驻行为。
+  点击已聚焦的 Windows 任务栏按钮执行原生最小化，再次点击恢复并聚焦同一窗口；
+  点击被遮挡窗口的任务栏按钮将其带到前台。托盘激活恢复并聚焦托盘隐藏的窗口；
+  退出仍然是明确的。
 - Windows/Linux 不会在标题栏中呈现 File/Edit/View/Window/Help，并且
   不要为应用程序菜单栏保留左侧空间。 F10 和
   Shift+F10 仍然可用于聚焦内容。

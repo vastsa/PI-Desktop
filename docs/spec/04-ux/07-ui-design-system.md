@@ -1119,26 +1119,33 @@ header-height background behind the excluded lane without covering its controls.
 - Panel open and collapse change only the in-flow flex allocation. No positive
   native reservation is requested, and the panel's preferred width remains a
   renderer-local setting.
-- All platforms retain native edge/corner resizing. On Windows the main window
-  disables the frameless `WS_THICKFRAME` rim while Electron 43.6's frameless
-  hit test continues to own edge and corner resizing; no border is painted on
-  the left, right, or bottom. The Windows main window uses the global
+- All platforms retain native edge/corner resizing. On all supported Windows
+  versions, the main window is opaque (`transparent: false`) and retains
+  `thickFrame: true` (`WS_THICKFRAME`) for native fullscreen and maximized
+  restore. Electron 43.6's frameless hit test owns edge and corner resizing;
+  native rim, shadow, and animations may return.
+  The Windows main window uses the global
   `--radius-md` token (12 DIP) as its default corner request. Windows 11 and
   later use the DWM system-rounded preference for any positive radius and a
   square preference for radius 0; DWM chooses the actual radius and may decline
   to round based on window style or environment. Windows builds before 22000
-  retain the existing `contentView` clip and native shape. The Windows 11 path
-  uses an opaque top-level surface, so contributed alpha colors are composited
-  over the resolved built-in theme background. A selected
+  retain the existing `contentView` radius and native `setShape()` region on
+  the opaque thick-frame window. On all supported Windows versions, contributed
+  alpha colors are flattened over the resolved built-in theme background; they
+  do not create window transparency. A selected
   plugin theme with `ui.window.appearance` may set `cornerRadius` to an integer
   from 0 through 24 DIP; removing that theme restores the 12 DIP global
   default. Corners become rectangular while maximized or fullscreen; positive
   values on Windows 11 do not guarantee an exact DIP radius. Native window
-  background colors remain theme-owned. Electron's borderless
-  fullscreen fallback fills the display without reporting `isFullScreen()`;
-  Main tracks its state so toggling back restores the previous bounds and
-  fullscreen geometry is never persisted. Frameless titlebar drag
-  regions remain separate from window-edge resizing. A
+  background colors remain theme-owned. Native `isFullScreen()` is authoritative
+  on all supported Windows versions. Electron/Chromium retains the prior native
+  state, with no intermediate unmaximize or maximize when toggling fullscreen
+  on any Windows main window. Fullscreen geometry is never persisted as normal
+  bounds. State publication and corner updates wait until Electron's native
+  flags settle. On fullscreen exit, Main publishes native state before clamping
+  normal restore bounds to the display `workArea`; native maximized bounds
+  remain untouched.
+  Frameless titlebar drag regions remain separate from window-edge resizing. A
   300ms stable-bounds settle window prevents recovery logic from competing with
   a slow pointer gesture, and normal base bounds persist 600ms after the last
   native resize/move event. Electron enforces an 800×560 minimum, capped to the
@@ -1456,7 +1463,7 @@ adjacent form inputs; dense surfaces may override that metric locally.
 - Floating composer plate: Codex elevated-primary (`#212121f5` / `color-mix(gray-800 96%, transparent)`) with standard elevation-prominent (`0 0 0 .5px` stroke + `0 3px 7.5px #0000000a` + `0 0 20px #0000000d`); no heavier night-only lift
 - Light workspace chips capsule: elevated gray `#f4f4f4` (not pure white-on-white)
 - Combined workspace chips: elevated translucent plate over main, not flat main gray
-- Stage Manager (macOS only): host re-asserts min bounds while collapsed (permanent watchdog). The watchdog does not run on Windows/Linux, so no platform re-layers its own window unprompted (D447)
+- Stage Manager (macOS only): host re-asserts min bounds while collapsed (permanent watchdog). Recovery may temporarily pin the window on macOS; once normal bounds are restored, the first watchdog check after the latest recovery's four-second deadline clears that pin. Another recovery renews the deadline. Windows/Linux bounds recovery must not enable always-on-top, and the watchdog does not run there (D447).
 
 ## Destination pages
 

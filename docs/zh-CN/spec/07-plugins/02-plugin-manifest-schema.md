@@ -235,6 +235,7 @@ type PluginThemeContrib = {
 
 type PluginWindowAppearanceContrib = {
  backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
+ cornerRadius?: number; // integer 0..24 DIP, Windows main window only; default 12
 };
 
 type PluginSkillContrib = {
@@ -299,6 +300,13 @@ type PluginProviderModelContrib = {
  defaultThinkingLevel?: string;
 };
 ```
+`cornerRadius` 仅在贡献插件的主题被选中且保有 `ui.window.appearance` 授权时生效；
+移除主题或授权恢复 Windows 主窗口的全局 `--radius-md` 默认值 12 DIP，非法或小数值
+拒绝清单。macOS/Linux 原生圆角不变。仅 Windows build 22000 及以后使用 DWM：
+0 请求直角，正值请求同一系统圆角偏好，实际半径由 Windows 决定；旧版 Windows
+保留请求的 DIP 半径。所有受支持的 Windows 版本均将 8 位背景色与解析后的内置主题
+背景合成，主窗口保持不透明。
+
 `thinkingLevels` 可选。宿主会裁剪条目、丢弃未知规范档位、去重，并保留剩余的声明顺序。
 缺失或不可用的列表会变成空绑定。只有当 `defaultThinkingLevel` 命中该模型列表中的归一化档位
 时才会保留；否则会被丢弃，普通绑定归一化会选择第一个可用档位。

@@ -1,22 +1,14 @@
-/**
- * Fullscreen / maximize state interlock on Windows (issue #1655).
- *
- * Behavioral: the borderless fullscreen helper keeps the tracked flag in sync
- * with Electron's own, and the native-menu actions never leave both the
- * maximize and fullscreen flags set at once. Entering fullscreen from a
- * maximized window unmaximizes first; maximizing a fullscreen window leaves
- * fullscreen first.
- */
+/** Exercise the production menu action against native BrowserWindow state. */
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
-import { register } from "node:module";
+import { register, stripTypeScriptTypes } from "node:module";
+import vm from "node:vm";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
-
 const { isWindowFullScreen, setWindowFullScreen } = await import(
   "../electron/main/window-fullscreen.ts"
 );
@@ -24,178 +16,139 @@ const { maximizedBoundsExceedWorkArea, maximizedBoundsForWorkArea } = await impo
   "../electron/main/work-panel-window.ts"
 );
 const { readMainSource } = await import("./helpers/source-contracts.mjs");
-
 const lifecycleSource = await readMainSource();
+const menuActionSource = lifecycleSource.slice(
+  lifecycleSource.indexOf("  function executeNativeMenuAction("),
+  lifecycleSource.indexOf("  function dispatchNativeMenuAction("),
+);
 
-function makeWindow() {
+function nativeMenuAction(window, systemVersion, { platform = "win32", mainWindow = window } = {}) {
+  const deferred = [];
+  const execute = vm.runInNewContext(stripTypeScriptTypes(`${menuActionSource}\nexecuteNativeMenuAction;`), {
+    state: { mainWindow },
+    process: { platform, getSystemVersion: () => systemVersion },
+    isWindowFullScreen,
+    setWindowFullScreen,
+    setImmediate: (callback) => deferred.push(callback),
+  });
+  execute.flushDeferred = () => {
+    for (const callback of deferred.splice(0)) callback();
+  };
+  return execute;
+}
+
+function makeWindow(nativeRestoreState = true) {
   const window = new EventEmitter();
   const calls = [];
   let maximized = false;
   let fullScreen = false;
-  window.getBounds = () => ({ x: 0, y: 0, width: 1200, height: 800 });
-  window.isDestroyed = () => false;
-  window.isMinimized = () => false;
-  window.isFocused = () => true;
-  window.isVisible = () => true;
-  window.isMaximized = () => maximized;
-  // On the Win32 borderless path Electron's own flag stays false, which is the
-  // whole reason the tracked flag exists.
-  window.isFullScreen = () => fullScreen;
-  window.setFullScreen = (value) => {
-    fullScreen = value;
-    window.emit(value ? "enter-full-screen" : "leave-full-screen");
-  };
-  window.unmaximize = () => {
-    calls.push("unmaximize");
-    maximized = false;
-  };
-  window.maximize = () => {
-    calls.push("maximize");
-    maximized = true;
-  };
+  let restoreMaximized = false;
+  Object.assign(window, {
+    isDestroyed: () => false,
+    isMaximized: () => maximized,
+    isFullScreen: () => fullScreen,
+    setFullScreen(value) {
+      // Electron emits before publishing its native fullscreen state.
+      window.emit(value ? "enter-full-screen" : "leave-full-screen");
+      if (nativeRestoreState) {
+        if (value) {
+          restoreMaximized = maximized;
+          maximized = false;
+        } else maximized = restoreMaximized;
+      }
+      fullScreen = value;
+    },
+    unmaximize() { calls.push("unmaximize"); maximized = false; },
+    maximize() { calls.push("maximize"); maximized = true; },
+  });
   return {
     window,
     calls,
-    setMaximized(value) {
-      maximized = value;
-    },
+    setMaximized(value) { maximized = value; },
+    setNativeFullScreen(value) { fullScreen = value; },
   };
 }
 
-test("the tracked flag follows setWindowFullScreen for the borderless fallback", () => {
-  const fixture = makeWindow();
-  // Electron's own flag stays false on the Win32 borderless path, so the
-  // tracked flag alone decides the toggle state.
-  assert.equal(isWindowFullScreen(fixture.window), false);
-
-  setWindowFullScreen(fixture.window, true, true);
-  assert.equal(isWindowFullScreen(fixture.window), true);
-
-  setWindowFullScreen(fixture.window, false, true);
-  assert.equal(isWindowFullScreen(fixture.window), false);
-});
-test("the tracked flag is not written when the borderless fallback does not apply", () => {
-  const fixture = makeWindow();
-  // Without the Win32 borderless path only Electron's real flag is consulted,
-  // so the tracked set stays empty and the helper mirrors `setFullScreen`.
-  assert.equal(fixture.window.isFullScreen(), false);
-  setWindowFullScreen(fixture.window, true, false);
-  assert.equal(fixture.window.isFullScreen(), true);
-  assert.equal(isWindowFullScreen(fixture.window), true);
-  setWindowFullScreen(fixture.window, false, false);
-  assert.equal(isWindowFullScreen(fixture.window), false);
-});
-
-test("entering fullscreen from a maximized window unmaximizes first", () => {
-  const fixture = makeWindow();
-  fixture.setMaximized(true);
-
-  const wasMaximized = fixture.window.isMaximized();
-  if (!isWindowFullScreen(fixture.window) && wasMaximized) {
-    fixture.window.unmaximize();
+for (const systemVersion of ["10.0.19045", "10.0.22000", "10.0.26200"]) {
+  for (const initialMaximized of [false, true]) {
+    test(`Windows main fullscreen preserves native state without a small-window transition: ${systemVersion}/${initialMaximized}`, () => {
+      const fixture = makeWindow();
+      const execute = nativeMenuAction(fixture.window, systemVersion);
+      fixture.setMaximized(initialMaximized);
+      execute("toggleFullScreen");
+      assert.equal(isWindowFullScreen(fixture.window), true);
+      assert.equal(fixture.window.isMaximized(), false);
+      assert.deepEqual(fixture.calls, [], "enter fullscreen without unmaximizing first");
+      execute("toggleFullScreen");
+      execute.flushDeferred();
+      assert.equal(isWindowFullScreen(fixture.window), false);
+      assert.equal(fixture.window.isMaximized(), initialMaximized);
+      assert.deepEqual(fixture.calls, [], "native fullscreen restores the original maximize state");
+    });
   }
-  setWindowFullScreen(fixture.window, true, true);
+  test(`Windows native exit leaves no stale application fullscreen flag: ${systemVersion}`, () => {
+    const fixture = makeWindow();
+    const execute = nativeMenuAction(fixture.window, systemVersion);
+    execute("toggleFullScreen");
+    fixture.setNativeFullScreen(false);
+    fixture.window.emit("leave-full-screen");
+    execute.flushDeferred();
+    assert.equal(isWindowFullScreen(fixture.window), false);
+    execute("toggleFullScreen");
+    assert.equal(isWindowFullScreen(fixture.window), true);
+    assert.deepEqual(fixture.calls, []);
+  });
+}
 
-  assert.deepEqual(fixture.calls, ["unmaximize"]);
-  assert.equal(isWindowFullScreen(fixture.window), true);
-  // The window must never be maximized and fullscreen at the same time.
-  assert.equal(fixture.window.isMaximized(), false);
+test("all Windows main windows use an opaque surface for native fullscreen", async () => {
+  const { mainWindowBackgroundOptions } = await import("../electron/main/window-background.ts");
+  assert.deepEqual(mainWindowBackgroundOptions("win32", "#ffffff"), {
+    transparent: false,
+    backgroundColor: "#ffffff",
+  });
 });
 
-test("maximizing a fullscreen window leaves fullscreen first", () => {
+test("maximizing from fullscreen leaves fullscreen before maximizing", () => {
   const fixture = makeWindow();
-  setWindowFullScreen(fixture.window, true, true);
-  assert.equal(isWindowFullScreen(fixture.window), true);
-
-  if (fixture.window.isMaximized()) {
-    fixture.window.unmaximize();
-  } else {
-    if (isWindowFullScreen(fixture.window)) {
-      setWindowFullScreen(fixture.window, false, true);
-    }
-    fixture.window.maximize();
-  }
-
+  const execute = nativeMenuAction(fixture.window, "10.0.19045");
+  execute("toggleFullScreen");
+  execute("toggleMaximize");
+  assert.equal(isWindowFullScreen(fixture.window), false);
+  assert.equal(fixture.window.isMaximized(), true);
   assert.deepEqual(fixture.calls, ["maximize"]);
-  assert.equal(isWindowFullScreen(fixture.window), false);
-  assert.equal(fixture.window.isMaximized(), true);
 });
 
-test("the fullscreen toggle unmaximizes before it toggles", () => {
-  const block = lifecycleSource.slice(
-    lifecycleSource.indexOf('case "toggleFullScreen"'),
-    lifecycleSource.indexOf('case "minimize"'),
-  );
-  assert.match(block, /if \(!isWindowFullScreen\(target\)\) \{/);
-  assert.match(block, /const wasMaximized = target\.isMaximized\(\)/);
-  assert.match(block, /if \(wasMaximized\) target\.unmaximize\(\)/);
-  assert.match(block, /setWindowFullScreen\(/);
-});
+for (const options of [{ platform: "linux" }, { platform: "darwin" }, { mainWindow: null }]) {
+  test(`non-main or non-Windows windows preserve their explicit restore: ${JSON.stringify(options)}`, () => {
+    const fixture = makeWindow(false);
+    const execute = nativeMenuAction(fixture.window, "10.0.26200", options);
+    fixture.setMaximized(true);
+    execute("toggleFullScreen", fixture.window);
+    assert.deepEqual(fixture.calls, ["unmaximize"]);
+    execute("toggleFullScreen", fixture.window);
+    execute.flushDeferred();
+    assert.equal(fixture.window.isMaximized(), true);
+    assert.deepEqual(fixture.calls, ["unmaximize", "maximize"]);
+  });
+}
 
-test("leaving fullscreen returns a previously maximized window to maximized", () => {
-  const fixture = makeWindow();
-  fixture.setMaximized(true);
+for (const afterLeave of ["normal", "destroyed", "reentered-fullscreen"]) {
+  test(`explicit restore waits for state publication and ignores stale results: ${afterLeave}`, () => {
+    const fixture = makeWindow(false);
+    const execute = nativeMenuAction(fixture.window, "", { platform: "linux" });
+    fixture.setMaximized(true);
+    execute("toggleFullScreen");
+    execute("toggleFullScreen");
+    assert.equal(fixture.window.isMaximized(), false);
+    if (afterLeave === "destroyed") fixture.window.isDestroyed = () => true;
+    if (afterLeave === "reentered-fullscreen") fixture.setNativeFullScreen(true);
+    execute.flushDeferred();
+    assert.equal(fixture.window.isMaximized(), afterLeave === "normal");
+  });
+}
 
-  // Enter fullscreen from maximized, mirroring `executeNativeMenuAction`.
-  if (!isWindowFullScreen(fixture.window)) {
-    const wasMaximized = fixture.window.isMaximized();
-    if (wasMaximized) fixture.window.unmaximize();
-    if (wasMaximized) {
-      fixture.window.once("leave-full-screen", () => {
-        if (fixture.window.isDestroyed() || isWindowFullScreen(fixture.window)) return;
-        fixture.window.maximize();
-      });
-    }
-    setWindowFullScreen(fixture.window, true, true);
-  }
-  assert.equal(isWindowFullScreen(fixture.window), true);
-  assert.equal(fixture.window.isMaximized(), false);
-
-  // Leaving fullscreen must restore the pre-fullscreen maximized state.
-  setWindowFullScreen(fixture.window, false, true);
-  assert.equal(isWindowFullScreen(fixture.window), false);
-  assert.equal(fixture.window.isMaximized(), true);
-});
-
-test("leaving fullscreen keeps a normal window at its normal size", () => {
-  const fixture = makeWindow();
-  assert.equal(fixture.window.isMaximized(), false);
-
-  setWindowFullScreen(fixture.window, true, true);
-  setWindowFullScreen(fixture.window, false, true);
-
-  assert.equal(isWindowFullScreen(fixture.window), false);
-  assert.equal(fixture.window.isMaximized(), false);
-  assert.deepEqual(fixture.calls, []);
-});
-
-test("the fullscreen toggle restores maximized on leave", () => {
-  const block = lifecycleSource.slice(
-    lifecycleSource.indexOf('case "toggleFullScreen"'),
-    lifecycleSource.indexOf('case "minimize"'),
-  );
-  assert.match(block, /target\.once\("leave-full-screen"/);
-  assert.match(block, /target\.maximize\(\)/);
-});
-
-test("the maximize toggle leaves fullscreen first", () => {
-  const block = lifecycleSource.slice(
-    lifecycleSource.indexOf('case "toggleMaximize"'),
-    lifecycleSource.indexOf('case "close"'),
-  );
-  assert.match(block, /if \(target\.isMaximized\(\)\)/);
-  assert.match(block, /isWindowFullScreen\(target\)/);
-  assert.match(block, /setWindowFullScreen\(/);
-  assert.match(block, /target\.maximize\(\)/);
-});
-
-test("the display-topology reconcile uses the tracked fullscreen flag", () => {
-  // The borderless Win32 path leaves Electron's own flag false while the
-  // window really is fullscreen, so only the tracked flag is reliable there.
-  assert.match(
-    lifecycleSource,
-    /if \(isLiveWindow\(\) && !isWindowFullScreen\(window\)\) \{/,
-  );
+test("display topology changes respect native fullscreen state", () => {
+  assert.match(lifecycleSource, /if \(isLiveWindow\(\) && !isWindowFullScreen\(window\)\) \{/);
 });
 
 test("a maximized rect that only overshoots the work area is left alone", () => {

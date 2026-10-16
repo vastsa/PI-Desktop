@@ -16,19 +16,28 @@ export function WindowControls() {
   const { t } = useTranslation();
   const platform = window.piDesktop?.platform ?? "darwin";
   const [maximized, setMaximized] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
+  const expanded = maximized || fullScreen;
 
   useEffect(() => {
     if (platform === "darwin") return;
     let mounted = true;
     void api.windowControl("getState").then((state) => {
-      if (mounted) setMaximized(state.maximized);
+      if (mounted) {
+        setMaximized(state.maximized);
+        setFullScreen(state.fullScreen);
+      }
     }).catch(() => undefined);
-    const unsubscribe = api.onWindowMaximized((e) =>
+    const unsubscribeMaximized = api.onWindowMaximized((e) =>
       setMaximized(e.maximized),
+    );
+    const unsubscribeFullScreen = api.onWindowFullScreen((e) =>
+      setFullScreen(e.fullScreen),
     );
     return () => {
       mounted = false;
-      unsubscribe();
+      unsubscribeMaximized();
+      unsubscribeFullScreen();
     };
   }, [platform]);
 
@@ -51,22 +60,26 @@ export function WindowControls() {
         type="button"
         className="window-control-btn"
         tooltip={
-          maximized
+          expanded
             ? t("window.restore", "Restore")
             : t("window.maximize", "Maximize")
         }
         ariaLabel={
-          maximized
+          expanded
             ? t("window.restore", "Restore")
             : t("window.maximize", "Maximize")
         }
-        onClick={() =>
+        onClick={() => {
+          if (fullScreen) {
+            void api.nativeMenuAction("toggleFullScreen");
+            return;
+          }
           void api.windowControl("toggleMaximize").then((r) =>
             setMaximized(r.maximized),
-          )
-        }
+          );
+        }}
       >
-        {maximized ? (
+        {expanded ? (
           <IconCopy size={11} strokeWidth={1.4} aria-hidden />
         ) : (
           <IconSquare size={10} strokeWidth={1.4} aria-hidden />

@@ -48,8 +48,9 @@ export function installWindowShape(
 ) {
   let radius = normalizeWindowCornerRadius(initialRadius);
   let lastShape = "";
+  let disposed = false;
   const apply = (force = false) => {
-    if (window.isDestroyed()) return;
+    if (disposed || window.isDestroyed()) return;
     const { width, height } = window.contentView.getBounds();
     const rectangular = window.isMaximized() || isWindowFullScreen(window);
     const scaleFactor = windowScreen?.getDisplayMatching(window.getBounds()).scaleFactor ?? 1;
@@ -68,12 +69,16 @@ export function installWindowShape(
   // transitions. Re-apply after those changes while retaining the chosen DIP
   // radius across maximized/fullscreen states.
   const reapply = () => apply(true);
+  const reapplyAfterFullScreen = () => {
+    // Electron publishes the native fullscreen flag after the window event.
+    setImmediate(() => apply(true));
+  };
   window.on("resize", apply);
   window.on("move", apply);
   window.on("maximize", apply);
   window.on("unmaximize", apply);
-  window.on("enter-full-screen", apply);
-  window.on("leave-full-screen", apply);
+  window.on("enter-full-screen", reapplyAfterFullScreen);
+  window.on("leave-full-screen", reapplyAfterFullScreen);
   window.on("show", reapply);
   window.on("restore", reapply);
   windowScreen?.on("display-metrics-changed", reapply);
@@ -81,12 +86,13 @@ export function installWindowShape(
   windowScreen?.on("display-removed", reapply);
 
   const dispose = () => {
+    disposed = true;
     window.removeListener("resize", apply);
     window.removeListener("move", apply);
     window.removeListener("maximize", apply);
     window.removeListener("unmaximize", apply);
-    window.removeListener("enter-full-screen", apply);
-    window.removeListener("leave-full-screen", apply);
+    window.removeListener("enter-full-screen", reapplyAfterFullScreen);
+    window.removeListener("leave-full-screen", reapplyAfterFullScreen);
     window.removeListener("show", reapply);
     window.removeListener("restore", reapply);
     window.removeListener("closed", dispose);

@@ -13,6 +13,7 @@ public static class WindowProbe {
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr window, uint flags);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
 }
 '@
 
@@ -22,9 +23,10 @@ if ($appWindow -eq [IntPtr]::Zero -or $taskbar -eq [IntPtr]::Zero) {
   throw 'Cannot locate the E2E window or taskbar'
 }
 [void][WindowProbe]::SetForegroundWindow($appWindow)
-Start-Sleep -Milliseconds 100
-if ([WindowProbe]::GetForegroundWindow() -ne $appWindow) {
-  throw 'E2E fullscreen window is not foreground'
+$focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+while ([WindowProbe]::GetForegroundWindow() -ne $appWindow) {
+  if ([DateTime]::UtcNow -gt $focusDeadline) { throw 'E2E window did not become foreground' }
+  Start-Sleep -Milliseconds 25
 }
 $taskbarRect = [ProbeRect]::new()
 if (-not [WindowProbe]::GetWindowRect($taskbar, [ref]$taskbarRect)) {
@@ -39,6 +41,7 @@ $probe.X = [int](($taskbarRect.Left + $taskbarRect.Right) / 2)
 $probe.Y = [int](($taskbarRect.Top + $taskbarRect.Bottom) / 2)
 $hit = [WindowProbe]::GetAncestor([WindowProbe]::WindowFromPoint($probe), 2)
 @{
+  monitorId = [WindowProbe]::MonitorFromWindow($appWindow, 2).ToInt64().ToString()
   appCoversTaskbar = $hit -eq $appWindow
   appBounds = @($appRect.Left, $appRect.Top, $appRect.Right, $appRect.Bottom)
   taskbarBounds = @($taskbarRect.Left, $taskbarRect.Top, $taskbarRect.Right, $taskbarRect.Bottom)

@@ -2019,8 +2019,13 @@ type WindowControlAction =
   | "getState" | "minimize" | "toggleMaximize" | "close";
 
 window/control({ action: WindowControlAction })
-  -> { maximized: boolean }
+  -> { maximized: boolean; fullScreen: boolean }
 ```
+
+All replies use the same maximized/fullscreen state shape. In fullscreen, the
+middle window button calls `nativeMenuAction("toggleFullScreen")` to return to
+the previous window state; otherwise it calls `window/control` with
+`toggleMaximize`.
 
 On Windows/Linux, `minimize` performs the native OS minimize transition so
 the window remains represented in the taskbar and can be restored there. A
@@ -2054,20 +2059,25 @@ Maximize/unmaximize changes also emit
 `window/event/maximized`. Unknown actions fail. These window-control channels
 remain Electron-only and do not change the host RPC protocol version.
 The preload exposes no arbitrary BrowserWindow bounds or resize channel.
-Windows retains Electron's native frameless edge/corner hit testing with
-`thickFrame: false`; the renderer does not submit window geometry.
-The Windows borderless fullscreen fallback is tracked in Main because Electron
-reports `isFullScreen() === false` while it uses display bounds for that mode;
-the window-control state and fullscreen event use the tracked value.
+Windows retains Electron's native frameless edge/corner hit testing; the
+renderer does not submit window geometry. On all supported Windows versions,
+the main window uses `transparent: false` and `thickFrame: true`.
+Electron/Chromium owns native fullscreen and maximized restore, and
+`isFullScreen()` is authoritative for window-control state and fullscreen
+events. Fullscreen toggles never introduce an intermediate unmaximize/maximize.
+State publication and corner updates wait until Electron's native flags settle.
+On fullscreen exit, Main publishes native state before clamping only normal
+restore bounds to the display `workArea`; native maximized bounds are preserved.
 `window/setBackgroundColor` remains Electron-local and main-renderer-only. Its
 optional `cornerRadius` is an integer from 0 to 24 DIP; omission restores the
 Windows main-window default of 12 DIP, matching the global `--radius-md` token.
 On Windows build 22000 and later, Main maps radius 0 to the native square
 preference and every positive radius to the DWM system-rounded preference;
 maximized/fullscreen states request square corners. Windows chooses the actual
-positive radius. The top-level surface stays opaque, and an alpha background is
-flattened over the built-in background for the resolved theme. Earlier Windows
-builds retain the existing `contentView` clip and native shape behavior. Linux
+positive radius. Earlier Windows builds retain the existing `contentView` radius
+and native `setShape()` region on the opaque thick-frame window. On all supported
+Windows versions, alpha backgrounds are flattened over the built-in background
+for the resolved theme; they do not create window transparency. Linux
 keeps the native window background, and macOS keeps its existing vibrancy
 behavior. The internal Main-to-Host Core DWM call checks that the HWND belongs
 to the Electron process; it is not exposed through preload, renderer IPC, or the

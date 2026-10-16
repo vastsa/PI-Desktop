@@ -15,6 +15,7 @@ function makeWindow() {
   let bounds = { x: 20, y: 30, width: 100, height: 80 };
   let contentBounds = { x: 0, y: 0, width: 100, height: 80 };
   let maximized = false;
+  let fullScreen = false;
   let borderRadius = null;
   let lastShape = null;
   const contentView = {
@@ -25,8 +26,11 @@ function makeWindow() {
   window.getBounds = () => bounds;
   window.isDestroyed = () => false;
   window.isMaximized = () => maximized;
-  window.isFullScreen = () => false;
-  window.setFullScreen = (value) => window.emit(value ? "enter-full-screen" : "leave-full-screen");
+  window.isFullScreen = () => fullScreen;
+  window.setFullScreen = (value) => {
+    window.emit(value ? "enter-full-screen" : "leave-full-screen");
+    fullScreen = value;
+  };
   window.setShape = (rects) => { lastShape = rects; };
   return {
     window,
@@ -81,7 +85,7 @@ test("native hit region uses the actual content-view size", () => {
   assert.deepEqual(fixture.lastShape.at(-1), { x: 0, y: 12, width: 96, height: 52 });
 });
 
-test("visible radius and native hit region follow size, DPI, and window state", () => {
+test("visible radius and native hit region follow size, DPI, and window state", async () => {
   const fixture = makeWindow();
   const screen = makeScreen();
   let setShapeCalls = 0;
@@ -115,10 +119,12 @@ test("visible radius and native hit region follow size, DPI, and window state", 
   assert.equal(fixture.borderRadius, 12);
   assert.equal(fixture.lastShape[0].width, 106);
 
-  setWindowFullScreen(fixture.window, true, true);
+  setWindowFullScreen(fixture.window, true);
+  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(fixture.lastShape, []);
   assert.equal(fixture.borderRadius, 0);
-  setWindowFullScreen(fixture.window, false, true);
+  setWindowFullScreen(fixture.window, false);
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(fixture.borderRadius, 12);
 
   assert.equal(shape.setRadius(100), 24);
@@ -165,3 +171,38 @@ test("native region and rounded clip are re-applied after show or restore", () =
   assert.equal(setShapeCalls, 3);
   assert.equal(setBorderRadiusCalls, 3);
 });
+
+
+test("legacy Windows corners follow native fullscreen state published after the event", async () => {
+  const fixture = makeWindow();
+  let nativeFullscreen = false;
+  fixture.window.isFullScreen = () => nativeFullscreen;
+  fixture.window.setFullScreen = (value) => {
+    fixture.window.emit(value ? "enter-full-screen" : "leave-full-screen");
+    nativeFullscreen = value;
+  };
+  installWindowShape(fixture.window);
+  setWindowFullScreen(fixture.window, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fixture.borderRadius, 0);
+  assert.deepEqual(fixture.lastShape, []);
+  setWindowFullScreen(fixture.window, false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fixture.borderRadius, 12);
+  fixture.window.emit("closed");
+});
+
+for (const afterEvent of ["closed", "destroyed"]) {
+  test(`deferred legacy corner update ignores ${afterEvent} windows`, async () => {
+    const fixture = makeWindow();
+    let fullscreen = false;
+    fixture.window.isFullScreen = () => fullscreen;
+    installWindowShape(fixture.window);
+    fixture.window.emit("enter-full-screen");
+    fullscreen = true;
+    if (afterEvent === "closed") fixture.window.emit("closed");
+    else fixture.window.isDestroyed = () => true;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fixture.borderRadius, 12);
+  });
+}

@@ -970,10 +970,21 @@ Linux 保留淡入淡出和滑动退出。
   collapsed lane uses two controls, 4px spacing and an 8px gap.
   Right native-control exclusion is unchanged. Header-height background
   paint fills the excluded lane without covering panel controls.
-- 外层外壳在每个平台上都保留原生边缘/角落调整大小。Windows 主窗口默认
-  使用全局 `--radius-md`（12 DIP）原生圆角，与界面的中型半径令牌一致；
-  获得 `ui.window.appearance` 授权的插件主题可选择 0 至 24 DIP，退出主题后
-  恢复为 12 DIP。最大化和全屏时窗口保持矩形。无边框标题栏的
+- 外层外壳在每个平台上都保留原生边缘/角落调整大小。所有受支持的 Windows
+  版本均使用不透明主窗口（`transparent: false`）并保留 `thickFrame: true`
+  （`WS_THICKFRAME`），由 Electron/Chromium 拥有原生全屏和最大化还原行为；
+  Electron 43.6 原生命中检测仍拥有边缘和角落缩放，原生边缘、阴影和动画可能恢复。
+  原生 `isFullScreen()` 是所有 Windows 主窗口的权威全屏状态；切换全屏不插入
+  取消最大化或重新最大化步骤，Electron 保留此前原生状态。全屏几何不作为普通
+  边界持久化。状态发布和圆角更新等待 Electron 原生标志稳定；退出全屏先发布
+  原生状态，再将普通还原边界裁剪到显示器 `workArea`，原生最大化边界保持不变。
+  主窗口默认圆角请求使用全局 `--radius-md`（12 DIP）；仅 Windows build 22000
+  及以后使用 DWM，0 请求直角，正值请求系统圆角，实际半径由 Windows 决定，
+  不保证精确 DIP 值，且系统可因窗口样式或环境拒绝圆角。旧版 Windows 在不透明
+  厚边框窗口上保留 `contentView` 半径和原生 `setShape()` 区域。所有受支持的
+  Windows 版本均将 alpha 主题色与解析后的内置主题背景合成，不产生窗口透明度。
+  获得 `ui.window.appearance` 授权的插件主题可选择 0 至 24 DIP 的整数，退出主题后
+  恢复为 12 DIP。最大化和全屏时窗口保持矩形。原生背景色仍由主题拥有。无边框标题栏的
   拖动区域不会替代操作系统的调整大小所有权。300ms 的稳定边界等待窗口
   可避免恢复逻辑与慢速指针手势竞争，原生调整大小/移动事件停止 600ms 后
   才保存正常基础边界。Electron 强制 800×560 最小尺寸，并按当前显示器
@@ -1261,7 +1272,7 @@ must remain outside optional disclosures.
 - 浮动输入框板：Codex 升高主线 (`#212121f5` / `color-mix(gray-800 96%, transparent)`) 和标准升高突出线 (`0 0 0 .5px` 笔画 + `0 3px 7.5px #0000000a` + `0 0 20px #0000000d`)；没有更重的夜间专用电梯
 - 轻型工作空间芯片胶囊：升高的灰色 `#f4f4f4`（不是纯白底白字）
 - 组合工作区芯片：在主板上升高半透明板，而不是平坦的主灰色
-- 舞台管理器（仅 macOS）：主机在折叠时重新声明最小边界（永久看门狗）。该看门狗不在 Windows/Linux 上运行，因此没有任何平台会自行重新调整自己窗口的层级（D447）
+- 舞台管理器（仅 macOS）：主机在折叠时重新声明最小边界（永久看门狗）。恢复时可在 macOS 上临时置顶，窗口恢复正常尺寸且最近一次恢复的四秒期限到期后，由下一次看门狗检查解除；再次恢复会续期。Windows/Linux 的边界恢复不得启用始终置顶，且不运行该看门狗（D447）。
 
 ## 目标页面
 

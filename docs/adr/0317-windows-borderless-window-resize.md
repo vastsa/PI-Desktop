@@ -18,7 +18,9 @@ remain intact.
 
 ## Decision
 
-Disable the Windows thick frame on the main window only. Retain Electron's
+On all supported Windows versions, create an opaque main window
+(`transparent: false`) and retain `thickFrame: true` for native fullscreen and
+maximized restore. Retain Electron's
 native frameless edge/corner hit testing and the current minimum-size contract;
 the renderer adds no resize handles or geometry IPC. Qualify this against the
 pinned Electron version with real native edge/corner drags and minimum-size
@@ -27,12 +29,17 @@ observed implementation.
 
 macOS and Linux keep native edge resizing. Work-panel width remains a separate
 renderer-owned interaction; the window resize changes only application bounds.
-Electron's `thickFrame: false` fullscreen path changes display bounds without
-setting the value returned by `isFullScreen()`. Main tracks this fallback so
-fullscreen toggles, renderer events, and persisted normal bounds remain correct.
+Electron's native `isFullScreen()` state is authoritative on every Windows
+main window. Fullscreen toggles go directly through Electron/Chromium, with no
+intermediate unmaximize or maximize. State publication and corner updates wait
+until Electron's native flags settle. On fullscreen exit, Main publishes the
+native state before clamping normal restore bounds to the display `workArea`;
+native maximized bounds remain untouched. Fullscreen geometry is never persisted
+as normal bounds.
 
 On Windows builds before 22000, keep the existing 12 DIP `--radius-md`
-`contentView` clip and native `setShape()` hit region. A plugin with
+`contentView` clip and native `setShape()` hit region on the opaque thick-frame
+window. A plugin with
 `ui.window.appearance` may declare an integer `cornerRadius` from 0 to 24 DIP
 alongside its background colours; the selected theme supplies it through the
 existing window-appearance IPC, and removing the theme restores 12 DIP. Main
@@ -41,8 +48,10 @@ validates the value and the calling renderer before changing the shape.
 On Windows build 22000 and later, ADR 0325 replaces both the visible `setShape()`
 curve and the shared content-view clip with the system DWM corner preference.
 Zero remains square and any positive radius requests a system-rounded window;
-DWM does not promise distinct 12 or 24 DIP radii. This path requires an opaque
-top-level window and leaves native corner hit behavior to Windows.
+DWM does not promise distinct 12 or 24 DIP radii. This path leaves native corner
+hit behavior to Windows. On all supported Windows versions, alpha theme
+backgrounds are flattened over the resolved built-in background; they do not
+make the main window transparent.
 
 ### Proposed rendering amendment
 
@@ -54,7 +63,8 @@ or mocked checks alone do not qualify it.
 
 ## Alternatives
 
-- Keep the thick frame: leaves the visible rim.
+- Keep the thick frame: may leave the visible rim; accepted on all supported
+  Windows versions to preserve native fullscreen and maximized restore.
 - Make the window transparent: changes the opaque background and theme
   contract without removing the need to qualify native resizing.
 - Use only renderer CSS rounding: leaves the opaque native background visible
@@ -65,14 +75,14 @@ or mocked checks alone do not qualify it.
 
 ## Consequences
 
-- The Windows main window has no painted left, bottom, or right native rim.
+- All supported Windows versions prioritize native fullscreen and maximized
+  restore over rim removal; native rim, shadow, and animations may return.
 - Native edge resizing and minimum size remain owned by Electron on every
   platform; there is no parallel renderer/Main resize path.
-- Windows native shadow, minimize/maximize animation, and snap behavior may
-  differ with `WS_THICKFRAME` removed. They require native qualification before
-  landing; the application must not claim parity without that check.
-- The native shadow cannot be made theme-configurable through Electron while
-  this thick-frame-free window retains its current bounds. An external CSS
+- Windows native shadow, minimize/maximize animation, and snap behavior require
+  native qualification with the retained `WS_THICKFRAME` before landing; the
+  application must not claim parity without that check.
+- The native shadow remains OS-owned and is not theme-configurable here. An external CSS
   shadow would need transparent window margin or a companion surface, changing
   window geometry and lifecycle; this decision does not add a shadow setting.
 - Windows builds before 22000 retain the non-antialiased pixel-row `setShape()`

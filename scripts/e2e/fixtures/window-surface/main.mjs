@@ -84,13 +84,12 @@ app.whenReady().then(async () => {
     minHeight: Math.min(560, workArea.height),
     title,
     frame: false,
-    thickFrame: false,
+    thickFrame: true,
     resizable: true,
     show: false,
     ...mainWindowBackgroundOptions(
       process.platform,
       fixtureBackground,
-      windows11NativeCorners,
       "#ffffff",
     ),
   });
@@ -116,7 +115,6 @@ app.whenReady().then(async () => {
     mainWindow,
     process.platform,
     fixtureBackground,
-    windows11NativeCorners,
     "#ffffff",
   );
 

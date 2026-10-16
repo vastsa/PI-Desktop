@@ -108,6 +108,17 @@ async function checkControls(label) {
   assert.ok(ok, label);
 }
 
+async function nativeWindowMonitorId() {
+  const { stdout } = await execFileAsync("pwsh.exe", [
+    "-NoLogo", "-NoProfile", "-File",
+    fileURLToPath(new URL("./e2e/probe-fullscreen-taskbar.ps1", import.meta.url)),
+    String(child.pid),
+  ]);
+  const { monitorId } = JSON.parse(stdout.trim());
+  assert.equal(typeof monitorId, "string", "native monitor identity is available");
+  return monitorId;
+}
+
 async function checkWindowsRoundedCorners(
   label,
   rounded = true,
@@ -130,7 +141,7 @@ async function checkWindowsRoundedCorners(
         probeError = undefined;
         if (corners.windowsBuild >= 22000) {
           return corners.cornerMode === "dwm-native" &&
-            corners.innerCornerOwned === true && corners.thickFrameStyle === false &&
+            corners.innerCornerOwned === true && corners.thickFrameStyle === true &&
             corners.nativeHitSampleCount > 0;
         }
         return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
@@ -154,7 +165,7 @@ async function checkWindowsRoundedCorners(
     ], [rounded, rounded, rounded, rounded], label);
   }
   assert.equal(corners.innerCornerOwned, true, label);
-  assert.equal(corners.thickFrameStyle, false, label);
+  assert.equal(corners.thickFrameStyle, true, label);
   if (corners.windowsBuild < 22000) {
     assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
   }
@@ -230,17 +241,30 @@ try {
   }));
   await writeFile(join(radiusPluginPath, "main.js"), "// E2E theme fixture.\n");
   await writeFile(join(radiusPluginPath, "theme.css"), ":root[data-theme=\"dark\"] { --ds-bg-primary: #181818; }\n");
-  const host = new Host(binary, join(temp, "data"));
+  // Both Host Core's global capabilities and Electron discovery are disposable.
+  const home = join(temp, "home");
+  const appData = join(home, "AppData", "Roaming");
+  const localAppData = join(home, "AppData", "Local");
+  const configHome = join(home, ".config");
+  const agentsDir = join(home, ".agents");
+  await Promise.all([home, appData, localAppData, configHome, agentsDir]
+    .map(path => mkdir(path, { recursive: true })));
+  const isolatedEnv = { HOME: home, USERPROFILE: home,
+    APPDATA: appData, LOCALAPPDATA: localAppData, XDG_CONFIG_HOME: configHome,
+    XDG_DATA_HOME: join(home, ".local", "share"), PI_DESKTOP_AGENTS_DIR: agentsDir };
+  const host = new Host(binary, join(temp, "data"), { env: isolatedEnv });
   let sessionId;
   try {
     await host.start();
+    const { servers } = await host.call("mcp.list", { level: "global" });
+    assert.equal(servers.length, 0, "isolated host must not load global MCP servers");
     await host.call("workspace.set", { path: temp });
     const { session } = await host.call("session.create", { title: "Window controls regression" });
     sessionId = session.id;
   } finally {
     await host.stop();
   }
-  const env = { ...process.env, PI_DESKTOP_DATA_DIR: join(temp, "data"),
+  const env = { ...process.env, ...isolatedEnv, PI_DESKTOP_DATA_DIR: join(temp, "data"),
     PI_DESKTOP_HOST_BIN: binary, PI_DESKTOP_START_MAXIMIZED: "0",
     PI_DESKTOP_MCP_CONTROL: "0", ELECTRON_RENDERER_URL: "" };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -320,6 +344,28 @@ try {
     await click(".window-control-btn:nth-child(2)");
     await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && s.data.maximized)`), "native window maximized");
     await checkControls("native window maximized with panel open");
+    if (process.platform === "win32") {
+      const monitorId = await nativeWindowMonitorId();
+      const restoreLabel = await evaluate(`document.querySelector('.window-control-btn:nth-child(2)').getAttribute('aria-label')`);
+      for (const exitAction of ["menu", "restore-button"]) {
+        // This is the same production native-menu action used by F11.
+        await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
+        await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'})
+          .then(s => s.ok && s.data.fullScreen && !s.data.maximized)`), "fullscreen from maximized");
+        await checkControls(`fullscreen from maximized, exit via ${exitAction}`);
+        assert.equal(await nativeWindowMonitorId(), monitorId, "fullscreen remains on the original monitor");
+        assert.equal(await evaluate(`document.querySelector('.window-control-btn:nth-child(2)').getAttribute('aria-label')`), restoreLabel);
+        if (exitAction === "menu") {
+          await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
+        } else {
+          await click(".window-control-btn:nth-child(2)");
+        }
+        await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'})
+          .then(s => s.ok && !s.data.fullScreen && s.data.maximized)`), "fullscreen restores native maximized state");
+        await checkControls(`restored maximized via ${exitAction}`);
+        assert.equal(await nativeWindowMonitorId(), monitorId, "restored window remains on the original monitor");
+      }
+    }
     await click(".window-control-btn:nth-child(2)");
     await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.maximized)`), "native window restored");
   }

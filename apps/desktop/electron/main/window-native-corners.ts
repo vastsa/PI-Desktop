@@ -89,6 +89,13 @@ export async function installWindows11CornerController(
   const reapply = () => {
     void enqueue().catch(reportFailure);
   };
+  const reapplyAfterFullScreen = () => {
+    // Electron publishes the native fullscreen flag after its window event.
+    setImmediate(() => {
+      if (disposed || window.isDestroyed()) return;
+      reapply();
+    });
+  };
   const controller: NativeCornerController = {
     async setRadius(nextRadius) {
       radius = normalizeWindowCornerRadius(nextRadius);
@@ -119,8 +126,8 @@ export async function installWindows11CornerController(
 
   window.on("maximize", reapply);
   window.on("unmaximize", reapply);
-  window.on("enter-full-screen", reapply);
-  window.on("leave-full-screen", reapply);
+  window.on("enter-full-screen", reapplyAfterFullScreen);
+  window.on("leave-full-screen", reapplyAfterFullScreen);
   window.on("show", reapply);
   window.on("restore", reapply);
   windowScreen.on("display-metrics-changed", reapply);
@@ -131,8 +138,8 @@ export async function installWindows11CornerController(
     disposed = true;
     window.removeListener("maximize", reapply);
     window.removeListener("unmaximize", reapply);
-    window.removeListener("enter-full-screen", reapply);
-    window.removeListener("leave-full-screen", reapply);
+    window.removeListener("enter-full-screen", reapplyAfterFullScreen);
+    window.removeListener("leave-full-screen", reapplyAfterFullScreen);
     window.removeListener("show", reapply);
     window.removeListener("restore", reapply);
     window.removeListener("closed", dispose);

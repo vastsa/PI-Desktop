@@ -87,11 +87,13 @@ test("DWM preference follows theme radius, window state, and display updates", a
 
   fixture.setFullScreen(true);
   fixture.window.emit("enter-full-screen");
+  await new Promise(setImmediate);
   await controller.flush();
   assert.equal(host.calls.at(-1).params.preference, "square");
 
   fixture.setFullScreen(false);
   fixture.window.emit("leave-full-screen");
+  await new Promise(setImmediate);
   await controller.flush();
   assert.equal(host.calls.at(-1).params.preference, "round");
 
@@ -111,6 +113,41 @@ test("DWM preference follows theme radius, window state, and display updates", a
   assert.equal(screen.listenerCount("display-metrics-changed"), 0);
   assert.equal(await applyWindowCornerRadius(fixture.window, 8), null);
 });
+
+for (const entering of [true, false]) {
+  test(`fullscreen corner updates wait for the published native state: entering=${entering}`, async () => {
+    const fixture = makeWindow();
+    fixture.setFullScreen(!entering);
+    const host = makeHost();
+    const controller = await installWindows11CornerController(fixture.window, 12, () => host, makeScreen(), logger);
+    fixture.window.emit(entering ? "enter-full-screen" : "leave-full-screen");
+    fixture.setFullScreen(entering);
+    await new Promise(setImmediate);
+    await controller.flush();
+    assert.equal(host.calls.at(-1).params.preference, entering ? "square" : "round");
+    fixture.close();
+  });
+}
+
+for (const closed of [true, false]) {
+  test(`deferred fullscreen corner updates skip unavailable windows: closed=${closed}`, async () => {
+    const fixture = makeWindow();
+    const host = makeHost();
+    const controller = await installWindows11CornerController(fixture.window, 12, () => host, makeScreen(), logger);
+    const initialCallCount = host.calls.length;
+    fixture.window.emit("enter-full-screen");
+    fixture.setFullScreen(true);
+    if (closed) fixture.close();
+    else fixture.window.isDestroyed = () => true;
+    await new Promise(setImmediate);
+    await controller.flush();
+    assert.equal(host.calls.length, initialCallCount);
+    if (closed) {
+      assert.equal(fixture.window.listenerCount("enter-full-screen"), 0);
+      assert.equal(fixture.window.listenerCount("leave-full-screen"), 0);
+    }
+  });
+}
 
 test("overlapping theme requests leave DWM with the newest preference", async () => {
   let beginSlowCall;
