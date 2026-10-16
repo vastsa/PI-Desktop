@@ -21,7 +21,8 @@ schemas too. These tools remain core declarations and are explicitly labelled
 unavailable in the contract mode. Unknown tools, missing subagent definitions,
 on-demand tools and non-plan-safe plugin tools do not gain new declarations.
 
-Keep the current mode allowlist authoritative for execution. Block prohibited
+Keep the current mode classification authoritative for execution (a contract
+mode's deny list per ADR 0330). Block prohibited
 calls before extension call hooks or tool handlers run. Additionally wrap the
 registered handler with a fresh mode check, so an object retained before a
 mode switch cannot execute using stale authority. pi's existing error path

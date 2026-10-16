@@ -113,11 +113,11 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 
 ## 3A。 Plan 操作状态规则
 
-每个 `agentTools` 贡献都会在 Plan 中被拒绝，无论此矩阵的值如何
-风险或违约政策。 `agent.tool.register` 授权注册
-Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
-直接 Plan 调用并记录拒绝。仅插件工具符合资格
-在同一个 Agent 被批准进入 Agent 模式后。
+没有非空 `planSafeActions` 列表的 `agentTools` 贡献会在 Plan 中被拒绝，无论此矩阵的风险
+或默认策略如何。 `agent.tool.register` 授权的是 Agent 侧的注册，而不是 Plan 中的可见性。
+主机对直接的 Plan 调用返回 `PLUGIN_DISABLED_IN_PLAN` 并记录该拒绝。声明了该列表的贡献
+在 Plan 中被放行，插件运行时拒绝列表外的任何 `action`（ADR 0211）。所有贡献在同一个
+Agent 被批准进入 Agent 模式后重新可用。
 
 ## 4. 权限显示副本
 

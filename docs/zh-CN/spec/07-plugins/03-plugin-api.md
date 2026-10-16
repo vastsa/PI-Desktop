@@ -285,12 +285,12 @@ pi.agent.registerTool(tool: {
 pi.agent.unregisterTool(name: string): Promise<void>
 ```
 
-注册的插件代理工具是仅代理的贡献。在 Plan 期间
-主机将它们从模型工具列表中过滤出来并拒绝直接执行
-`PLUGIN_DISABLED_IN_PLAN`，包括当明显风险为 `low` 时，用户
-具有 `allow-session` 授予，或者会话权限模式为 `auto`。一个
-成功的计划批准使相同的注册工具再次符合资格
-所选的 Agent 权限策略。
+注册的插件代理工具默认是仅代理的贡献，除非该工具声明了非空的
+`planSafeActions` 列表（ADR 0211）。在 Plan 期间，主机过滤掉所有没有该列表的贡献，
+并以 `PLUGIN_DISABLED_IN_PLAN` 拒绝直接执行，包括当 manifest 风险为 `low`、用户
+具有 `allow-session` 授权，或者会话权限模式为 `auto` 时。声明了该列表的工具在 Plan 中
+被放行，插件运行时仍会拒绝列表外的任何 `action`。一次成功的计划批准使所有已注册工具
+再次符合所选 Agent 权限策略。
 
 ```ts
 type ToolExecContext = {

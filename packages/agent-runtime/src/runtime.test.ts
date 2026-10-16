@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -175,6 +175,7 @@ function createRuntime(
     customSystemPrompt: import("./custom-system-prompt.js").CustomSystemPrompt;
     projectInstructions: import("./project-instructions.js").ProjectInstructions;
     projectMemory: string;
+    trustedExtensions: ConstructorParameters<typeof DesktopAgentRuntime>[0]["trustedExtensions"];
     pluginTools: PluginToolDef[];
     subagents: SubagentDefinition[];
     subagentProviders: Record<string, RuntimeProviderConfig>;
@@ -205,6 +206,7 @@ function createRuntime(
     workspaceRoot: overrides.workspaceRoot,
     scratchDir: overrides.scratchDir,
     customSystemPrompt: overrides.customSystemPrompt,
+    trustedExtensions: overrides.trustedExtensions,
     pluginTools: overrides.pluginTools,
     subagents: overrides.subagents,
     subagentProviders: overrides.subagentProviders,
@@ -222,6 +224,53 @@ function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
   if (!tool) throw new Error(`Runtime tool not found: ${name}`);
   return tool;
 }
+
+describe("contract-mode tool catalog", () => {
+  it("withholds loaded extension tools and rejects retained references in contract modes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-contract-extension-"));
+    const entry = join(root, "extension.ts");
+    const marker = join(root, "written.txt");
+    await writeFile(entry, `import { writeFileSync } from "node:fs";
+      export default function (pi) { pi.registerTool({
+        name: "mcp_fx_write", label: "Write probe", description: "Extension probe",
+        parameters: { type: "object", properties: {} },
+        execute: async () => { writeFileSync(${JSON.stringify(marker)}, "written");
+          return { content: [{ type: "text", text: "ok" }], details: {} }; }
+      }); }`);
+    const runtime = createRuntime({ projectPath: root, host: { call: vi.fn().mockResolvedValue({}) },
+      trustedExtensions: [{ id: entry, entry, label: "Probe", root, source: "plugin" }],
+    });
+    const catalog = () => (runtime as unknown as { toolCatalog: Map<string, AgentTool> }).toolCatalog;
+    try {
+      await runtime.loadTrustedExtensions();
+      const retained = catalog().get("mcp_fx_write");
+      expect(retained).toBeDefined();
+      for (const mode of ["plan", "goal"] as const) {
+        runtime.setMode(mode);
+        expect(catalog().has("mcp_fx_write")).toBe(false);
+        expect(catalog().has("Read")).toBe(true);
+        await expect(retained!.execute("blocked", {})).rejects.toThrow(`not allowed in ${mode} mode`);
+      }
+      await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+      runtime.setMode("agent");
+      await retained!.execute("allowed", {});
+      expect(await readFile(marker, "utf8")).toBe("written");
+    } finally {
+      await runtime.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["plan", "goal"] as const)("rejects a retained Jev tool before input handling in %s mode", async (mode) => {
+    const runtime = createRuntime({ jevApiKey: "fixture" });
+    try {
+      const retained = (runtime as unknown as { toolCatalog: Map<string, AgentTool> }).toolCatalog.get("JevClassify")!;
+      runtime.setMode(mode);
+      // Invalid input prevents a regressed guard from contacting the paid service.
+      await expect(retained.execute("blocked", {})).rejects.toThrow(`not allowed in ${mode} mode`);
+    } finally { await runtime.dispose(); }
+  });
+});
 
 /** Minimal pi-ai assistant message; overrides carry the shape under test. */
 function assistantMessage(overrides: {

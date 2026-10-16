@@ -4,8 +4,37 @@ import type { Mode } from "@pi-desktop/shared";
 /** Known editing/delegation names stay declared across contract-mode changes. */
 const RETAINED_MODE_TOOLS = new Set(["Write", "Edit", "Task", "TaskWait", "TaskList", "TaskStop"]);
 
+/**
+ * Builtins a contract mode refuses: the ones that write files or session state,
+ * the delegation family that spawns and controls work, and `JevClassify`, whose
+ * Agent-only paid call must not run from a reference retained across a mode
+ * switch. Every other name reaches the host permission path, which decides
+ * (ADR 0330). `crates/host-core/src/permissions.rs` mirrors this list, and
+ * `mode-tool-access.test.ts` asserts the two stay identical.
+ */
+export const CONTRACT_MODE_STATE_CHANGING: ReadonlySet<string> = new Set([
+  "Write",
+  "Edit",
+  "TodoWrite",
+  "GenerateImages",
+  "PluginScaffold",
+  "PluginPack",
+  "ScheduledTaskCreate",
+  "ScheduledTaskUpdate",
+  "ScheduledTaskDelete",
+  "Task",
+  "TaskWait",
+  "TaskList",
+  "TaskStop",
+  "JevClassify",
+]);
+
 export function retainModeToolDeclaration(name: string): boolean {
   return RETAINED_MODE_TOOLS.has(name);
+}
+
+export function contractModeWithholdsTool(name: string): boolean {
+  return CONTRACT_MODE_STATE_CHANGING.has(name);
 }
 
 export function modeToolDenial(name: string, mode: Mode): string {

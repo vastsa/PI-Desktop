@@ -769,8 +769,8 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    调用 `EnterPlanMode` / `EnterGoalMode`；主机 persists/validates
    匹配合约模式和渲染器项目 `planning`。
 2. Agent 使用选定的合约工具集进行调查。 Read/Glob/Grep 和
-   允许使用 BrowserPreview； Bash 遵循可见权限模式。一个
-   Contract-mode Bash 命令可能会在 Auto 下发生变化，因此模式芯片仍然可见。
+   允许使用 BrowserPreview； Bash 无论可见权限模式如何都弹出权限卡。批准后的
+   契约模式 Bash 命令可能改变状态，因此模式芯片仍然可见。
    该回合处于实时 `planning` 时，Composer 模式芯片脉冲，紧凑的规划行占用与 Working 相同的预留底部位置，直到回合结束或等待用户操作。具体运行时阶段优先，工具和回答不会隐藏运行提示。
 3. Agent 在其工具批次中单独调用 `SubmitPlan` 或 `SubmitGoal`。
    Host-core 将准确的 Markdown 字节保留在新的不可变中

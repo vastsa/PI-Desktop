@@ -234,10 +234,9 @@ transcript-file line first, index transaction second.
    `EnterPlanMode`/`EnterGoalMode` converge on the same planning state, and
    approval resumes
    that Agent in Agent mode
-10. Contract-mode policy permits Bash only through the selected permission mode
-   and
-   denies Write/Edit/plugins regardless of `auto` or session grants, in Goal
-   exactly as in Plan
+10. Contract-mode policy asks for Bash in every permission mode and denies the
+   state-changing builtins and plugins regardless of `auto` or session grants,
+   in Goal exactly as in Plan
 11. SubmitPlan/SubmitGoal writes an exact unique `.pi/<kind>/*.md` artifact with
     hash/size,
     keeps title/question structured, and only approve/reject can resolve its

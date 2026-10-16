@@ -156,10 +156,11 @@
      一次溢出重试。该模型可以通过请求一个新窗口
      `new_context`；每次压缩都会添加一行记录和一个警告。
      没有面向用户的设置**
-44. Plan 工具和策略：**Read / Glob / Grep / BrowserPreview / Bash plus
-    `EnterPlanMode` 和 `SubmitPlan`； Write/Edit/plugin 和
-    未知工具被拒绝。 Bash 遵循 `ask`、`accept-edits` 或 `auto`，因此
-    Plan 是计划意图，而不是严格的只读安全配置文件。**
+44. Plan 工具和策略（ADR 0330 修订）：**Read / Glob / Grep / BrowserPreview /
+    asktool / Bash / SubmitPlan、可发现的用户 MCP 工具，以及声明
+    `planSafeActions` 的插件。会改变文件、会话状态或派生工作的内置工具被硬拒绝；
+    其余内置工具走普通权限路径。Bash 和用户 MCP 工具需要确认或精确工具名的会话授权，
+    包括 `auto` 在内；这是授权，不是文件系统隔离。**
 45. Plan 检查点：**`SubmitPlan(title, markdown, question)` 导致 host-core
     将确切的 Markdown 字节保留在新的唯一文件中
     `<workspaceRoot>/.pi/plan/*.md` 工件，而 title/question 仍然存在

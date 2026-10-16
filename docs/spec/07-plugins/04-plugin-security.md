@@ -316,11 +316,14 @@ are admitted.
 
 Plan is an additional host policy boundary for agent tools:
 
-- no plugin tool is visible or executable in Plan;
+- a plugin tool without a non-empty `planSafeActions` list is neither visible nor
+  executable in Plan;
 - the deny precedes manifest risk, declared/granted permissions, session
   grants, and the `auto` permission mode;
 - a direct forged `tools.execute` call returns `PLUGIN_DISABLED_IN_PLAN` and is
   audited; it is not forwarded to the plugin runtime;
+- a tool that does declare the list is admitted, and the plugin runtime rejects
+  any `action` outside it before the plugin sees the call (ADR 0211);
 - plugin commands and panels may remain usable as explicit user UI actions,
   but they cannot become model-callable Plan tools or silently mutate Plan
   state.

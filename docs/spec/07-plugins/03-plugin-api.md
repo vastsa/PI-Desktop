@@ -348,12 +348,14 @@ pi.agent.registerTool(tool: {
 pi.agent.unregisterTool(name: string): Promise<void>
 ```
 
-Registered plugin agent tools are Agent-only contributions. During Plan the
-host filters them out of the model tool list and rejects direct execution with
-`PLUGIN_DISABLED_IN_PLAN`, including when the manifest risk is `low`, the user
-has an `allow-session` grant, or the session permission mode is `auto`. A
-successful plan approval makes the same registered tools eligible again under
-the selected Agent permission policy.
+Registered plugin agent tools are Agent-only contributions unless the tool
+declares a non-empty `planSafeActions` list (ADR 0211). During Plan the host
+filters out every contribution without that list and rejects direct execution
+with `PLUGIN_DISABLED_IN_PLAN`, including when the manifest risk is `low`, the
+user has an `allow-session` grant, or the session permission mode is `auto`. A
+tool that does declare the list is admitted in Plan and the plugin runtime still
+rejects any `action` outside it. A successful plan approval makes every
+registered tool eligible again under the selected Agent permission policy.
 
 ```ts
 type ToolExecContext = {

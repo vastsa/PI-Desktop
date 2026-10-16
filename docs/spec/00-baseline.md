@@ -194,10 +194,13 @@
      checkpoints, and one overflow retry. The model can request a new window through
      `new_context`; every compaction adds a transcript row and one warning.
      No user-facing settings**
-44. Plan tools and policy: **Read / Glob / Grep / BrowserPreview / Bash plus
-    `EnterPlanMode` and `SubmitPlan`; Write/Edit/plugin and
-    unknown tools are denied. Bash follows `ask`, `accept-edits`, or `auto`, so
-    Plan is planning intent, not a strict read-only security profile.**
+44. Plan tools and policy (ADR 0330 amendment): **Read / Glob / Grep /
+    BrowserPreview / asktool / Bash / SubmitPlan, discoverable user MCP tools,
+    and plugins with `planSafeActions`. Builtins that change files, session
+    state, or spawned work are hard-denied; every other builtin follows the
+    ordinary permission path. Bash and user MCP tools require approval or an
+    exact-tool session grant, including under `auto`; this is authorization,
+    not filesystem isolation.**
 45. Plan checkpoint: **`SubmitPlan(title, markdown, question)` causes host-core
     to preserve the exact Markdown bytes in a new unique
     `<workspaceRoot>/.pi/plan/*.md` artifact, while title/question remain

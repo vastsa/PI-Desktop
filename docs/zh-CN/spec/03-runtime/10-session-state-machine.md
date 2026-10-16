@@ -29,9 +29,8 @@ Agent / running
   -- complete | fail | abort --> Agent / inactive
 ```
 
-两种合约模式都保留了权限模式选择器。他们的 `Bash` 政策是
-`ask` 或
-`accept-edits` = 确认，`auto` = 不确认，所以是合约模式
+两种合约模式都保留了权限模式选择器，但它在 Bash 上不再有区别：
+`ask`、`accept-edits` 与 `auto` 都弹出权限卡，所以合约模式
 表达协商意图，但不是严格的只读安全配置文件。
 Write/Edit 和
 在每个 Plan 或 Goal 权限模式下，插件工具仍被主机策略拒绝。
@@ -203,10 +202,9 @@ accept_prompt
    `queued`/reject/expiry/interruption 收敛于相同的规划状态，并且
 批准恢复
    Agent 模式下的 Agent
-9. 合约模式策略仅通过选择的权限模式允许Bash
-   和
-   在 Goal 中拒绝 Write/Edit/plugins，无论 `auto` 或会话授权如何
-   与 Plan 完全相同
+9. 合约模式策略在每种权限模式下都为 Bash 弹出权限卡，
+   不论 `auto` 或会话授权如何都拒绝 Write/Edit/plugins 与改变状态的内置工具，
+   在 Goal 中与 Plan 完全相同
 10. SubmitPlan/SubmitGoal 使用以下命令写入精确唯一的 `.pi/<kind>/*.md` 工件
     hash/size，
     保持 title/question 结构化，并且只有 approve/reject 可以解析其

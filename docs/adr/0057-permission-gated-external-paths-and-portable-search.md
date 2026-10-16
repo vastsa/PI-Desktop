@@ -42,7 +42,7 @@ new workspace root, and implicit Bash cwd or recursive walks do not gain this
 exception. Successful external results report `root: "external"` where a root
 field exists and keep absolute canonical paths visible to the model.
 
-Plan's existing hard deny for Write/Edit/plugin/unknown tools remains above this
+Plan's existing hard deny for Write/Edit/plugin/state-changing builtins remains above this
 path rule.
 
 ### 2. Native search is the portable default

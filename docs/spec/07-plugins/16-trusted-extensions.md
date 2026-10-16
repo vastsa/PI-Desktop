@@ -412,7 +412,7 @@ the UI broker's own prompt timeout does not extend that budget.
    tool is rejected with a diagnostic; the earlier registration wins.
 2. Extension tools are non-core: they follow the same mode gating and
    ToolSearch deferral as plugin tools. They are available in Agent mode and
-   follow the existing per-mode allowlist elsewhere.
+   withheld in the contract modes, which never reach the host permission path.
 3. Execution happens in the sidecar with the `ExtensionAPI` `execute` signature.
    No host permission prompt is raised; the trust decision was made at
    enablement. `onUpdate` streams map to tool execution update events.

@@ -129,7 +129,14 @@ test("the hard boundary is enforced by the host, with a model-side escape hatch"
     runtime,
     /messages: \[\s*\.\.\.context\.messages,\s*\{\s*role: "system",\s*content: "",\s*sections: \{ \[CONTEXT_BUDGET_SECTION\]: reminder \}/,
   );
-  assert.match(hostPermissions, /"new_context"/);
+  // ADR 0330: the contract modes keep a deny list instead of a read-only
+  // allowlist, so `new_context` is admitted by falling through it. Denying it
+  // there would take compaction away from Plan and Goal.
+  const contractDenyList = hostPermissions.match(
+    /CONTRACT_MODE_STATE_CHANGING[^=]*=\s*\[([\s\S]*?)\];/,
+  );
+  assert.ok(contractDenyList, "host-core contract-mode deny list not found");
+  assert.doesNotMatch(contractDenyList[1], /"new_context"/);
 });
 
 test("a delegate gets the session's turn-boundary budget protection (ADR 0299)", () => {

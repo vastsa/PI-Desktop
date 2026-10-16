@@ -116,11 +116,13 @@ plugin, so it carries three bounds the other modes do not:
 
 ## 3A. Plan operating-state rule
 
-Every `agentTools` contribution is denied in Plan, regardless of this matrix's
-risk or default policy. `agent.tool.register` authorizes registration for
-Agent, not visibility in Plan. The host returns `PLUGIN_DISABLED_IN_PLAN` for a
-direct Plan call and records the denial. Plugin tools become eligible only
-after the same Agent is approved into Agent mode.
+An `agentTools` contribution without a non-empty `planSafeActions` list is denied
+in Plan, regardless of this matrix's risk or default policy. `agent.tool.register`
+authorizes registration for Agent, not visibility in Plan. The host returns
+`PLUGIN_DISABLED_IN_PLAN` for a direct Plan call and records the denial. A
+contribution that does declare the list is admitted in Plan, and the plugin
+runtime rejects any `action` outside it (ADR 0211). Every contribution becomes
+eligible again after the same Agent is approved into Agent mode.
 
 ## 4. Permission display copy
 

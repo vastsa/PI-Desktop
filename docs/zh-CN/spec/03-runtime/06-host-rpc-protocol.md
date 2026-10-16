@@ -667,16 +667,15 @@ type ToolsExecuteParams = {
 
 在通用权限评估之前，host-core 应用模式策略：
 
-- Plan 和 Goal 允许 `Read`、`Glob`、`Grep`、`BrowserPreview`、`Bash` 和
-  适用于实时的种类提交工具（`SubmitPlan` / `SubmitGoal`）
-  规划状态。
-- Plan 和 Goal 拒绝 `Write`、`Edit`、每个插件工具以及以下未知工具
-  所有权限模式和授予。主机读取会话的**持久**模式
+- Plan 和 Goal 默认放行内置工具，除非下一条拒绝它。因此 `Read`、`Glob`、`Grep`、
+  `BrowserPreview` 走普通权限路径，而该类别的提交工具（`SubmitPlan` / `SubmitGoal`）
+  在实时规划状态下被允许。
+- Plan 和 Goal 在所有权限模式和授权下拒绝 `Write`、`Edit`、其余会改变状态的内置工具，
+  以及未声明 `planSafeActions` 的插件工具。主机读取会话的**持久**模式
   对于此检查，因此在 `tools.execute` 中声明 `agent` 的 sidecar 无法扩大
   它和 `*_IN_PLAN` 错误代码是两种类型共享的。
-- Plan 和 Goal `Bash` 遵循已解析的权限模式：`ask` 和
-  `accept-edits`
-  发出 `permissions.request`； `auto` 无需确认即可执行，并且可能
+- Plan 和 Goal `Bash` 在每种已解析的权限模式下都弹出权限卡：`ask`、
+  `accept-edits` 与 `auto` 都发出 `permissions.request`，批准后的命令可能
   变异。主机重新解析有效 shell ID/dialect 并要求
   精确之前的 `expectedCommandShellId` 和 `expectedCommandShellDialect`
   权限评估并在生成前再次评估；它流式传输 stdout/stderr
@@ -1045,8 +1044,8 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 9. 分叉消息会排除后面的所有源行并拒绝
    未创建子项的未知消息
 10. 伪造的 `requestedMode` 无法授权工具进入持久模式；
-    Plan 和 Goal 拒绝 Write/Edit/plugin/unknown 工具并申请权限
-    根据 `requestedMode`/Write/Edit/plugin/unknown/Plan 提示 Bash
+    Plan 和 Goal 拒绝会改变状态的内置工具与未声明 `planSafeActions` 的插件工具，
+    并在每种权限模式下为 Bash 弹出权限卡
 11. SubmitPlan 和 SubmitGoal 将精确的 Markdown 字节写入唯一的
     `.pi/plan/*.md` 或 `.pi/goal/*.md` 文件
     hash/size 和结构化 title/question 字段；仅匹配
