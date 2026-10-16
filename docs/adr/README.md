@@ -375,6 +375,7 @@ Each ADR includes:
 | 0327 | [Automatic remote Host version realignment](0327-remote-host-version-realignment.md) | Accepted for experimental implementation (amends ADR 0326 item 6; Linux SSH qualification pending) |
 | 0328 | [Open arbitrary local files in the embedded Browser](0328-browser-arbitrary-local-files.md) | Accepted (D657; amends ADR 0170; issue #1627) |
 | 0329 | [Isolate parallel sessions of one project in git worktrees](0329-session-worktree-isolation.md) | Accepted (Windows E2E pending) |
+| 0330 | [macOS paints an opaque native window surface](0330-macos-opaque-window-surface.md) | Accepted (D660; supersedes the macOS vibrancy window backing from D348; issue #1064) |
 | plugin-fetch-redirect-policy | [Host-enforced plugin fetch redirect policy](plugin-fetch-redirect-policy.md) | Accepted (implementation candidate for #1475) |
 
 | local-agent-remote-workspace-tools | [Local Agent and model requests for remote workspaces](local-agent-remote-workspace-tools.md) | Accepted for implementation |

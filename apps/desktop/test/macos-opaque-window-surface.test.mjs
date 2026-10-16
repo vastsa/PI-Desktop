@@ -7,19 +7,21 @@ import { loadStyles } from "./helpers/styles.mjs";
 const mainSource = await readMainSource();
 const windowSource = await readMainModule("bootstrap/window.ts");
 const lifecycleSource = await readMainModule("bootstrap/app-lifecycle.ts");
+const windowIpcSource = await readMainModule("ipc/window-ipc.ts");
 const stylesSource = await loadStyles();
 
-const createWindowSource = windowSource.slice(windowSource.indexOf("export async function createWindow("));
+function styleBlock(selector) {
+  return stylesSource.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? "";
+}
+
+const createWindowSource =
+  windowSource.slice(windowSource.indexOf("export async function createWindow("));
 const mainWindowBlock =
   createWindowSource.match(/mainWindow = new BrowserWindow\(\{[\s\S]*?\n  \}\);/)?.[0] ?? "";
 const macOptions =
   mainWindowBlock.match(
     /\.\.\.\(process\.platform === "darwin"[\s\S]*?\n      : \{[\s\S]*?\n        \}\),/,
   )?.[0] ?? "";
-
-function styleBlock(selector) {
-  return stylesSource.match(new RegExp(`${selector}\\s*\\{[^}]*\\}`))?.[0] ?? "";
-}
 
 function functionSource(source, name) {
   const start = source.indexOf(`function ${name}(`);
@@ -28,19 +30,22 @@ function functionSource(source, name) {
   return source.slice(start, next === -1 ? undefined : next);
 }
 
-test("macOS main window enables native sidebar vibrancy only in its platform branch", () => {
+test("macOS main window paints an opaque native surface", () => {
   assert.match(macOptions, /titleBarStyle:\s*"hiddenInset"/);
   // The position itself lives in @pi-desktop/shared so the renderer's reserve
   // for it (styles/tokens.css) is derived from the same numbers.
   assert.match(macOptions, /trafficLightPosition:\s*MAC_TRAFFIC_LIGHT_POSITION/);
-  assert.match(macOptions, /vibrancy:\s*"sidebar"/);
-  assert.match(macOptions, /visualEffectState:\s*"followWindow"/);
-  assert.match(macOptions, /transparent:\s*true/);
-  assert.match(macOptions, /backgroundColor:\s*"#00000000"/);
+  // A transparent window over the macOS vibrancy material made WindowServer
+  // recomposite the whole window every frame it stayed dirty: an idle foreground
+  // app held ~40% GPU (issue #1064). macOS now uses the opaque helper surface.
+  assert.doesNotMatch(macOptions, /vibrancy:/);
+  assert.doesNotMatch(macOptions, /visualEffectState:/);
+  assert.doesNotMatch(macOptions, /transparent:\s*true/);
+  assert.match(macOptions, /\.\.\.mainWindowBackgroundOptions\(/);
   assert.doesNotMatch(
     mainWindowBlock,
-    /vibrancy:\s*"under-window"/,
-    "non-mac branch must not set under-window vibrancy",
+    /vibrancy:\s*"(?:sidebar|under-window)"/,
+    "no platform branch may re-introduce a vibrancy material",
   );
 
   // The platform helper receives the built-in fallback selected from the
@@ -55,14 +60,9 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
     /const initialWindowBackground = builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
   );
   assert.match(mainWindowBlock, /frame: false/);
-  assert.doesNotMatch(
-    mainWindowBlock.replace(macOptions, ""),
-    /vibrancy:\s*"sidebar"/,
-    "sidebar vibrancy stays in the darwin branch",
-  );
 });
 
-test("native theme source maps preferences and only resets vibrancy on change", () => {
+test("native theme source follows the app preference without touching window material", () => {
   const applyNative = functionSource(lifecycleSource, "applyNativeThemeSource");
   const applyMenu = functionSource(lifecycleSource, "applyApplicationMenuSettings");
   const send = functionSource(mainSource, "sendToRenderer");
@@ -84,10 +84,10 @@ test("native theme source maps preferences and only resets vibrancy on change", 
     "a missing plugin theme must keep the system default, not a guessed base",
   );
   assert.match(applyNative, /if \(nativeTheme\.themeSource === next\) return;/);
-  assert.match(
-    applyNative,
-    /nativeTheme\.themeSource = next;\s*if \(process\.platform === "darwin" && state\.mainWindow && !state\.mainWindow\.isDestroyed\(\)\) \{\s*state\.mainWindow\.setVibrancy\("sidebar"\);/,
-  );
+  assert.match(applyNative, /nativeTheme\.themeSource = next;/);
+  // Setting the source must not re-apply a vibrancy material: the window has no
+  // material to reset, and the opaque surface is updated by the background path.
+  assert.doesNotMatch(applyNative, /setVibrancy/);
 
   // The theme mapping lives in `applyAppThemePreference` so the narrow plugin
   // `setTheme` path can never re-derive locale, keybindings, or dev-mode menu
@@ -99,6 +99,17 @@ test("native theme source maps preferences and only resets vibrancy on change", 
     send,
     /if \(channel === IPC\.event\.pluginChanged\) \{\s*applicationLifecycle\?\.applyNativeThemeSource\(\{\s*theme: applicationAppearanceState\.appThemePreference,/,
   );
+});
+
+test("a theme change repaints the macOS native surface instead of skipping it", () => {
+  // The native background path used to return early on darwin because vibrancy
+  // owned the surface. With an opaque window the colour has to be applied.
+  assert.doesNotMatch(
+    windowIpcSource,
+    /if \(process\.platform === "darwin"\) return \{ applied: false, theme \};/,
+    "darwin must no longer skip the native window background",
+  );
+  assert.match(windowIpcSource, /applyMainWindowBackground\(/);
 });
 
 test("the macOS startup splash shares the sidebar glass tint and sheen", () => {
@@ -159,7 +170,7 @@ test("only macOS sidebar and splash surfaces receive the translucent glass treat
   }
 });
 
-test("the sidebar glass tint stays thin enough to reveal the vibrancy material", () => {
+test("the sidebar glass tint stays thin over the opaque native surface", () => {
   // Slice at the @theme block so later partials cannot fake a token, and match
   // the light selector at a line start — the file header comment quotes it.
   const tokenSource = stylesSource.slice(0, stylesSource.indexOf("@theme {"));
@@ -184,7 +195,7 @@ test("the sidebar glass tint stays thin enough to reveal the vibrancy material",
     assert.ok(tint, `${theme}: tint must derive from --ds-bg-sidebar`);
     assert.ok(
       Number(tint[1]) <= 60,
-      `${theme}: tint ${tint[1]}% is too opaque for the material to show through`,
+      `${theme}: tint ${tint[1]}% is too opaque for the surface to read as glass`,
     );
   }
 });

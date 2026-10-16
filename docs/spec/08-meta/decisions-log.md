@@ -7684,3 +7684,26 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   E2E-PROVIDER-custom-endpoint-session-identity. See issue #1634,
   `03-runtime/02-agent-runtime.md` §6.3, and
   `03-runtime/11-provider-model-system.md`.
+
+## 2026-10-16 — macOS paints an opaque native window surface (D660)
+
+- D660 supersedes the macOS `vibrancy: "sidebar"` + `transparent: true` window
+  backing from D348. A vibrancy material behind a transparent surface is
+  recomposited by WindowServer every frame the window stays dirty, which held an
+  idle focused window near 40% GPU on Apple Silicon (issue #1064). macOS now
+  paints the opaque background the other platforms already use, keeping the
+  `hiddenInset` titlebar, the inset traffic-light position, and the renderer's
+  sidebar tint and sheen.
+- The `window.setBackgroundColor` IPC no longer returns early on darwin, so a
+  granted `windowAppearance.backgroundColor` plugin theme is applied on macOS
+  like every other platform (ADR 0248): a theme change repaints the native
+  surface instead of being skipped. Native corner behavior is unchanged.
+- The bounded-animation contract that bounded idle indicators under #1064 stays
+  in force; only its stated rationale changes, because a dirty window is
+  recomposited on every platform. See ADR 0330, ADR 0248, ADR 0260,
+  `04-ux/08-component-spec.md`, `04-ux/07-ui-design-system.md`, and
+  `07-plugins/13-plugin-permissions-matrix.md`.
+- Covered by `apps/desktop/test/macos-opaque-window-surface.test.mjs`,
+  `apps/desktop/test/window-background.test.mjs`,
+  `apps/desktop/test/window-background-theme.test.mjs`, and
+  `apps/desktop/test/idle-status-animations.test.mjs`.
