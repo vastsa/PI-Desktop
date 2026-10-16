@@ -41,8 +41,11 @@ For the Windows main window only:
    visible system radius; values 1 through 24 DIP do not select distinct exact
    radii. The public plugin range and default remain unchanged. State-driven
    corner updates wait until Electron's native flags settle.
-4. Keep the existing `contentView` radius and native `setShape()` region on
-   Windows builds before 22000, now on an opaque thick-frame main window.
+4. Amended 2026-10-16: on Windows builds before 22000, use the native rectangular
+   window without `contentView` rounding or `setShape()`. A client-sized region
+   at the HWND origin exposes the left non-client rim and truncates content;
+   translating that region would remove native resize targets instead. Theme
+   radius requests retain validation and acknowledgement but do not round Windows 10.
    Keep macOS, Linux, plugin standalone windows, and floating components unchanged.
 5. On all supported Windows versions, keep the main-window surface opaque. A contributed
    `#rrggbbaa` background is flattened over the resolved built-in theme
@@ -76,8 +79,9 @@ Electron 43.6.0 proves all of the following:
   bounds persistence, and the existing window placement behavior remain intact.
 - The native corner hit behavior is recorded on Windows 11; this path no longer
   promises `setShape()` click-through outside the rounded silhouette.
-- Windows builds before 22000 retain the existing rounded shape and native
-  resize behavior on an opaque thick-frame main window. macOS and Linux
+- Windows builds before 22000 have square corners, no custom HWND region,
+  complete client edges, and native resize behavior on an opaque thick-frame
+  main window. macOS and Linux
   regressions are also checked.
 
 The `DWM_WINDOW_CORNER_PREFERENCE` API is explicitly best-effort. If the
@@ -93,9 +97,9 @@ observed behavior and revise the approach.
 - Windows 11 uses the system's antialiased corner rendering and native corner
   hit behavior. It no longer uses transparent pixels or an integer `setShape()`
   region for the visible silhouette.
-- Positive theme radii keep their range and meaning as “rounded,” but Windows
-  11 chooses the radius. Windows builds before 22000 retain the prior exact DIP
-  clip behavior.
+- On Windows 11, positive theme radii request rounding and the system chooses
+  the radius. Windows builds before 22000 retain the native rectangle
+  for every radius request, avoiding clipped content and resize targets.
 - DWM may decline to round a window based on its style or environment, and
   Windows may keep snapped or virtualized windows square. Windows native
   qualification is required before release claims.

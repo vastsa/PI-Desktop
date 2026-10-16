@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { assertDesktopBuild, repositoryRoot, resolveElectronBinary } from "./e2e/boot.mjs";
+import { repositoryRoot, resolveElectronBinary } from "./e2e/boot.mjs";
 
 if (process.platform !== "win32") {
   console.log("SKIP window surface probe: requires a dedicated interactive Windows desktop");
@@ -16,9 +16,9 @@ if (process.platform !== "win32") {
 }
 
 const root = repositoryRoot();
-const { appDir } = assertDesktopBuild(root);
-const { electronBinary } = resolveElectronBinary(root);
+const { appDir, electronBinary } = resolveElectronBinary(root);
 const fixtureDir = join(root, "scripts", "e2e", "fixtures", "window-surface");
+const windows10Policy = process.argv.includes("--windows10-policy");
 const execFileAsync = promisify(execFile);
 const temp = await mkdtemp(join(tmpdir(), "pi-window-surface-"));
 const userArtifactDir = process.env.PI_DESKTOP_WINDOW_SURFACE_ARTIFACT_DIR;
@@ -76,19 +76,19 @@ async function stopFixture(child) {
 async function runSurfaceCase(radius, backdropColor, backdropName) {
   const profile = join(temp, `profile-${radius}-${backdropName}`);
   const env = { ...process.env,
-    PI_DESKTOP_ELECTRON_PACKAGE: join(appDir, "node_modules", "electron"),
-    PI_DESKTOP_WINDOW_SHAPE: join(appDir, "electron", "main", "window-shape.ts"),
     PI_DESKTOP_WINDOW_NATIVE_CORNERS: join(appDir, "electron", "main", "window-native-corners.ts"),
     PI_DESKTOP_WINDOW_BACKGROUND: join(appDir, "electron", "main", "window-background.ts"),
     PI_DESKTOP_E2E_HOST_HELPER: join(root, "scripts", "e2e", "host.mjs"),
     PI_DESKTOP_SURFACE_PROFILE: profile,
     PI_DESKTOP_SURFACE_RADIUS: String(radius),
     PI_DESKTOP_SURFACE_BACKDROP: backdropColor,
+    PI_DESKTOP_SURFACE_WINDOWS10_POLICY: windows10Policy ? "1" : "0",
   };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(electronBinary, [fixtureDir, `--user-data-dir=${profile}`], {
     cwd: root,
     env,
+    windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
   try {
@@ -98,11 +98,12 @@ async function runSurfaceCase(radius, backdropColor, backdropName) {
       "-NoLogo", "-NoProfile", "-File",
       join(root, "scripts", "e2e", "probe-window-surface.ps1"),
       String(child.pid),
-      fixture.title,
+      fixture.nativeHandle,
       String(radius),
       backdropColor,
       screenshotPath,
-    ], { timeout: 30_000, maxBuffer: 2_000_000 });
+      ...(fixture.cornerMode === "native-rectangular" ? ["-nativeRectangle"] : []),
+    ], { timeout: 30_000, maxBuffer: 2_000_000, windowsHide: true });
     const result = JSON.parse(stdout.trim());
     assert.equal(result.cornerMode, fixture.cornerMode, "fixture and screen probe agree on the Windows corner path");
     assert.equal(result.totalMismatches, 0, `${backdropName}, radius ${radius}: ${JSON.stringify(result.mismatches)}`);
@@ -110,7 +111,12 @@ async function runSurfaceCase(radius, backdropColor, backdropName) {
     if (result.cornerMode === "dwm-native") {
       assert.equal(result.nativeBackgroundSample, true, `${backdropName}, radius ${radius}: opaque alpha-composited window background`);
     }
-    if (radius > 0) {
+    if (result.cornerMode === "native-rectangular") {
+      assert.equal(result.nativeRegionAbsent, true, "no content-sized region clips the native frame");
+      assert.equal(result.thickFrameStyle, true, "native resize/fullscreen frame is preserved");
+      assert.equal(result.edgeSamples, 4, "all four client edges remain visible");
+    }
+    if (radius > 0 && result.cornerMode === "dwm-native") {
       assert.ok(result.outsideSamples > 0, `${backdropName}, radius ${radius}: exterior samples`);
       for (const [corner, values] of Object.entries(result.cornerResults)) {
         assert.ok(values.edgeBlendPixels > 0, `${backdropName}, radius ${radius}: ${corner} has an antialiased edge`);
@@ -118,7 +124,7 @@ async function runSurfaceCase(radius, backdropColor, backdropName) {
     }
     console.log(`PASS surface ${backdropName}, ${radius} DIP request (${result.cornerMode}): dpi=${result.dpi}, ` +
       `scale=${result.scaleFactor}, physical=${result.physicalBounds.width}x${result.physicalBounds.height}, ` +
-      `edge blends=${result.edgeBlendPixels}, screenshot=${screenshotPath}`);
+      `system=${fixture.systemVersion}, edge blends=${result.edgeBlendPixels}, screenshot=${screenshotPath}`);
   } finally {
     await stopFixture(child);
   }

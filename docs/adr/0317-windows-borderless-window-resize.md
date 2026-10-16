@@ -37,13 +37,16 @@ native state before clamping normal restore bounds to the display `workArea`;
 native maximized bounds remain untouched. Fullscreen geometry is never persisted
 as normal bounds.
 
-On Windows builds before 22000, keep the existing 12 DIP `--radius-md`
-`contentView` clip and native `setShape()` hit region on the opaque thick-frame
-window. A plugin with
+Amended 2026-10-16: Windows builds before 22000 use the native rectangular
+window without a `contentView` clip or `setShape()` region. The old region
+started at the outer HWND origin using client dimensions, exposing the left
+non-client rim and truncating the right/bottom content. Moving it to the client
+origin would instead cut off native side/bottom resize targets. A plugin with
 `ui.window.appearance` may declare an integer `cornerRadius` from 0 to 24 DIP
 alongside its background colours; the selected theme supplies it through the
-existing window-appearance IPC, and removing the theme restores 12 DIP. Main
-validates the value and the calling renderer before changing the shape.
+existing window-appearance IPC, and removing the theme restores the 12 DIP
+request. Windows 10 acknowledges that request but keeps native square corners.
+Main validates the value and the calling renderer before accepting the request.
 
 On Windows build 22000 and later, ADR 0325 replaces both the visible `setShape()`
 curve and the shared content-view clip with the system DWM corner preference.
@@ -56,7 +59,7 @@ make the main window transparent.
 ### Proposed rendering amendment
 
 ADR 0325 proposes the DWM path for Windows 11 and later while keeping the
-existing shape path for older Windows builds. It keeps this ADR's native
+native rectangle for older Windows builds. It keeps this ADR's native
 resize and minimum-size contracts. The candidate remains unqualified until
 Windows pixel, corner-hit, DPI, and resize checks in E2E-167 pass; source-level
 or mocked checks alone do not qualify it.
@@ -85,8 +88,8 @@ or mocked checks alone do not qualify it.
 - The native shadow remains OS-owned and is not theme-configurable here. An external CSS
   shadow would need transparent window margin or a companion surface, changing
   window geometry and lifecycle; this decision does not add a shadow setting.
-- Windows builds before 22000 retain the non-antialiased pixel-row `setShape()`
-  curve and its native hit region. Windows 11 and later use DWM's best-effort
+- Windows builds before 22000 use system square corners without application
+  clipping. Windows 11 and later use DWM's best-effort
   system curve and native hit behavior; that API does not promise click-through
   in clipped corner pixels. Both paths need the platform checks in E2E-167.
 - The Plugin SDK gains one optional, permission-gated appearance property. Old

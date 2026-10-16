@@ -11,6 +11,11 @@ public struct CornerPoint { public int X; public int Y; }
 public struct CornerRect { public int Left; public int Top; public int Right; public int Bottom; }
 public static class CornerProbe {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out CornerRect rect);
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out CornerRect rect);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr window, ref CornerPoint point);
+  [DllImport("user32.dll")] public static extern int GetWindowRgn(IntPtr window, IntPtr region);
+  [DllImport("gdi32.dll")] public static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
+  [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr region);
   [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr window, int index);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(CornerPoint point);
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr window, uint flags);
@@ -36,6 +41,19 @@ if ($dpi -eq 0) { throw 'Cannot read E2E window DPI' }
 $scaleFactor = $dpi / 96.0
 $windowsBuild = [Environment]::OSVersion.Version.Build
 $nativeDwm = $windowsBuild -ge 22000
+$nativeRegionAbsent = $null
+if (-not $nativeDwm) {
+  $region = [CornerProbe]::CreateRectRgn(0, 0, 0, 0)
+  try { $nativeRegionAbsent = [CornerProbe]::GetWindowRgn($appWindow, $region) -eq 0 }
+  finally { [void][CornerProbe]::DeleteObject($region) }
+  $client = [CornerRect]::new()
+  $origin = [CornerPoint]::new()
+  if (-not [CornerProbe]::GetClientRect($appWindow, [ref]$client) -or
+      -not [CornerProbe]::ClientToScreen($appWindow, [ref]$origin)) { throw 'Cannot read client bounds' }
+  $rect.Left = $origin.X; $rect.Top = $origin.Y
+  $rect.Right = $origin.X + $client.Right; $rect.Bottom = $origin.Y + $client.Bottom
+  $cornerRadius = 0
+}
 $radiusPixels = $cornerRadius * $scaleFactor
 
 function Test-AppAt([int]$pointX, [int]$pointY) {
@@ -123,7 +141,8 @@ foreach ($corner in @('topLeft', 'topRight', 'bottomLeft', 'bottomRight')) {
   innerCornerOwned = $innerCornerOwned
   thickFrameStyle = ([CornerProbe]::GetWindowLong($appWindow, -16) -band 0x00040000) -ne 0
   windowsBuild = $windowsBuild
-  cornerMode = if ($nativeDwm) { 'dwm-native' } else { 'legacy-shape' }
+  cornerMode = if ($nativeDwm) { 'dwm-native' } else { 'native-rectangular' }
+  nativeRegionAbsent = $nativeRegionAbsent
   dpi = $dpi
   scaleFactor = $scaleFactor
   radiusDip = $cornerRadius

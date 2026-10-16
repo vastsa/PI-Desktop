@@ -36,11 +36,7 @@ import {
 import { readWindowState, writeWindowState } from "../window-preferences";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 import { isWindowFullScreen } from "../window-fullscreen";
-import { DEFAULT_WINDOW_CORNER_RADIUS, installWindowShape } from "../window-shape";
-import {
-  installWindows11CornerController,
-  usesWindows11NativeCorners,
-} from "../window-native-corners";
+import { installWindowsCornerController } from "../window-native-corners";
 import { applyMainWindowBackground, mainWindowBackgroundOptions } from "../window-background";
 import { recoverRendererAfterGone } from "../renderer-recovery";
 
@@ -173,10 +169,6 @@ export async function createWindow({
   const initialWindowBackground = builtinWindowBackground(
     nativeTheme.shouldUseDarkColors ? "dark" : "light",
   );
-  const windows11NativeCorners = usesWindows11NativeCorners(
-    process.platform,
-    process.getSystemVersion(),
-  );
   windowState.mainWindow = new BrowserWindow({
     ...(restoredBounds ?? { width: 1200, height: 800 }),
     minWidth: initialMinWidth,
@@ -228,17 +220,13 @@ export async function createWindow({
   });
   const window = windowState.mainWindow;
   if (process.platform === "win32") {
-    if (windows11NativeCorners) {
-      await installWindows11CornerController(
-        window,
-        DEFAULT_WINDOW_CORNER_RADIUS,
-        () => windowState.host,
-        screen,
-        logger,
-      );
-    } else {
-      installWindowShape(window, DEFAULT_WINDOW_CORNER_RADIUS, screen);
-    }
+    await installWindowsCornerController(
+      window,
+      process.getSystemVersion(),
+      () => windowState.host,
+      screen,
+      logger,
+    );
   }
   applyMainWindowBackground(
     window,

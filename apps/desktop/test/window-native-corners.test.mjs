@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   applyWindowCornerRadius,
+  DEFAULT_WINDOW_CORNER_RADIUS,
   installWindows11CornerController,
+  normalizeWindowCornerRadius,
   usesWindows11NativeCorners,
 } from "../electron/main/window-native-corners.ts";
 
@@ -44,6 +47,14 @@ function makeScreen() {
 }
 
 const logger = { app() {} };
+
+test("default radius matches the global token and requests retain the SDK range", () => {
+  const tokens = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+  const match = tokens.match(/^\s*--radius-md:\s*(\d+(?:\.\d+)?)px;/m);
+  assert.ok(match);
+  assert.equal(DEFAULT_WINDOW_CORNER_RADIUS, Number(match[1]));
+  assert.deepEqual([-1, 0, 4.4, 12, 24, 100].map(normalizeWindowCornerRadius), [0, 0, 4, 12, 24, 24]);
+});
 
 test("Windows 11 detection uses the native build threshold", () => {
   assert.equal(usesWindows11NativeCorners("win32", "10.0.21999"), false);

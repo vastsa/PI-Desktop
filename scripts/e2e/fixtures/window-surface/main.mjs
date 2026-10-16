@@ -2,12 +2,9 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
-const electron = require(process.env.PI_DESKTOP_ELECTRON_PACKAGE);
+const electron = require("electron");
 const { app, BrowserWindow, WebContentsView, screen } = electron;
-const { installWindowShape } = await import(
-  pathToFileURL(process.env.PI_DESKTOP_WINDOW_SHAPE).href
-);
-const { installWindows11CornerController, usesWindows11NativeCorners } = await import(
+const { installWindowsCornerController, usesWindows11NativeCorners } = await import(
   pathToFileURL(process.env.PI_DESKTOP_WINDOW_NATIVE_CORNERS).href
 );
 const { applyMainWindowBackground, mainWindowBackgroundOptions } = await import(
@@ -52,9 +49,13 @@ app.whenReady().then(async () => {
   }
 
   const display = screen.getPrimaryDisplay();
+  // Exercise the Windows 10 policy on newer CI hosts without claiming that
+  // their compositor is a substitute for Windows 10 native qualification.
+  const systemVersion = process.env.PI_DESKTOP_SURFACE_WINDOWS10_POLICY === "1"
+    ? "10.0.19045" : process.getSystemVersion();
   const windows11NativeCorners = usesWindows11NativeCorners(
     process.platform,
-    process.getSystemVersion(),
+    systemVersion,
   );
   const fixtureBackground = windows11NativeCorners ? "#00000080" : "#fafafa";
   const { workArea } = display;
@@ -101,16 +102,15 @@ app.whenReady().then(async () => {
     process.env.PI_DESKTOP_ELECTRON_PID = String(process.pid);
     host = new Host(resolveHostBinary(), process.env.PI_DESKTOP_SURFACE_PROFILE);
     await host.start();
-    await installWindows11CornerController(
-      mainWindow,
-      radius,
-      () => host,
-      screen,
-      { app: (...args) => console.error(...args) },
-    );
-  } else {
-    installWindowShape(mainWindow, radius, screen);
   }
+  await installWindowsCornerController(
+    mainWindow,
+    systemVersion,
+    () => host,
+    screen,
+    { app: (...args) => console.error(...args) },
+    radius,
+  );
   applyMainWindowBackground(
     mainWindow,
     process.platform,
@@ -124,7 +124,8 @@ app.whenReady().then(async () => {
   mainWindow.contentView.addChildView(childView);
   // Let the child view extend beyond the parent bounds at the lower-right so
   // the pixel probe verifies the common content-view clip on native children.
-  childView.setBounds({ x: width - 48, y: height - 48, width: 96, height: 96 });
+  const content = mainWindow.contentView.getBounds();
+  childView.setBounds({ x: content.width - 48, y: content.height - 48, width: 96, height: 96 });
 
   await Promise.all([
     mainWindow.loadURL(mainPage()),
@@ -132,17 +133,22 @@ app.whenReady().then(async () => {
   ]);
   mainWindow.show();
   mainWindow.focus();
+  await mainWindow.webContents.executeJavaScript(
+    "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+  );
 
   process.stdout.write(`${JSON.stringify({
     type: "ready",
     processId: process.pid,
+    nativeHandle: mainWindow.getNativeWindowHandle().readBigUInt64LE().toString(),
     title,
     width,
     height,
     radius,
     backdropColor,
     scaleFactor: display.scaleFactor,
-    cornerMode: windows11NativeCorners ? "dwm-native" : "legacy-shape",
+    cornerMode: windows11NativeCorners ? "dwm-native" : "native-rectangular",
+    systemVersion: process.getSystemVersion(),
   })}\n`);
 });
 

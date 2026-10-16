@@ -1129,8 +1129,11 @@ header-height background behind the excluded lane without covering its controls.
   later use the DWM system-rounded preference for any positive radius and a
   square preference for radius 0; DWM chooses the actual radius and may decline
   to round based on window style or environment. Windows builds before 22000
-  retain the existing `contentView` radius and native `setShape()` region on
-  the opaque thick-frame window. On all supported Windows versions, contributed
+  use system square corners without `contentView` clipping or `setShape()`;
+  theme radius requests remain accepted but do not round the window. This
+  preserves native resize targets and prevents the left rim/right content
+  truncation caused by applying client dimensions at the outer HWND origin.
+  On all supported Windows versions, contributed
   alpha colors are flattened over the resolved built-in theme background; they
   do not create window transparency. A selected
   plugin theme with `ui.window.appearance` may set `cornerRadius` to an integer

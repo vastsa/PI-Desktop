@@ -2074,9 +2074,10 @@ Windows main-window default of 12 DIP, matching the global `--radius-md` token.
 On Windows build 22000 and later, Main maps radius 0 to the native square
 preference and every positive radius to the DWM system-rounded preference;
 maximized/fullscreen states request square corners. Windows chooses the actual
-positive radius. Earlier Windows builds retain the existing `contentView` radius
-and native `setShape()` region on the opaque thick-frame window. On all supported
-Windows versions, alpha backgrounds are flattened over the built-in background
+positive radius. Earlier Windows builds use system square corners without a
+`contentView` clip or native `setShape()` region. Their radius request remains
+validated and echoed in the response but does not change the native rectangle.
+On all supported Windows versions, alpha backgrounds are flattened over the built-in background
 for the resolved theme; they do not create window transparency. Linux
 keeps the native window background, and macOS keeps its existing vibrancy
 behavior. The internal Main-to-Host Core DWM call checks that the HWND belongs

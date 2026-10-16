@@ -1,9 +1,10 @@
 param(
   [Parameter(Mandatory = $true)][int]$targetProcessId,
-  [Parameter(Mandatory = $true)][string]$windowTitle,
+  [Parameter(Mandatory = $true)][long]$nativeHandle,
   [Parameter(Mandatory = $true)][int]$cornerRadius,
   [Parameter(Mandatory = $true)][string]$backdropColor,
-  [Parameter(Mandatory = $true)][string]$screenshotPath
+  [Parameter(Mandatory = $true)][string]$screenshotPath,
+  [switch]$nativeRectangle
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,10 +13,16 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public struct SurfaceRect { public int Left; public int Top; public int Right; public int Bottom; }
+public struct SurfacePoint { public int X; public int Y; }
 public static class SurfaceProbe {
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string className, string windowName);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out SurfaceRect rect);
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out SurfaceRect rect);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr window, ref SurfacePoint point);
+  [DllImport("user32.dll")] public static extern int GetWindowRgn(IntPtr window, IntPtr region);
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr window, int index);
+  [DllImport("gdi32.dll")] public static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
+  [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr region);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
@@ -25,8 +32,8 @@ public static class SurfaceProbe {
 '@
 
 [void][SurfaceProbe]::SetThreadDpiAwarenessContext([IntPtr](-4))
-$window = [SurfaceProbe]::FindWindow($null, $windowTitle)
-if ($window -eq [IntPtr]::Zero) { throw "Cannot find surface fixture window: $windowTitle" }
+$window = [IntPtr]$nativeHandle
+if ($window -eq [IntPtr]::Zero) { throw 'Surface fixture handle is unavailable' }
 $ownerProcessId = [uint32]0
 [void][SurfaceProbe]::GetWindowThreadProcessId($window, [ref]$ownerProcessId)
 if ($ownerProcessId -ne $targetProcessId) { throw 'Surface fixture window belongs to another process' }
@@ -42,9 +49,11 @@ $dpi = [SurfaceProbe]::GetDpiForWindow($window)
 if ($dpi -eq 0) { throw 'Cannot read surface fixture DPI' }
 $scaleFactor = $dpi / 96.0
 $windowsBuild = [Environment]::OSVersion.Version.Build
-$nativeDwm = $windowsBuild -ge 22000
-$cornerMode = if ($nativeDwm) { 'dwm-native' } else { 'legacy-shape' }
-$radiusPixels = $cornerRadius * $scaleFactor
+$nativeDwm = $windowsBuild -ge 22000 -and -not $nativeRectangle
+$cornerMode = if ($nativeDwm) { 'dwm-native' } else { 'native-rectangular' }
+$nativeRegionAbsent = $null
+$edgeSamples = 0
+$thickFrameStyle = ([SurfaceProbe]::GetWindowLong($window, -16) -band 0x00040000) -ne 0
 $windowWidth = $rect.Right - $rect.Left
 $windowHeight = $rect.Bottom - $rect.Top
 
@@ -84,12 +93,7 @@ $windowBackground = if ($nativeDwm) {
 }
 $childInset = [int][Math]::Round(48 * $scaleFactor)
 $backgroundHalfWidth = [int][Math]::Ceiling(24 * $scaleFactor)
-$extent = if ($nativeDwm) {
-  [int][Math]::Ceiling(24 * $scaleFactor + 3)
-} else {
-  [int][Math]::Ceiling($radiusPixels + 3)
-}
-$boundaryTolerance = [Math]::Max(1.25, $scaleFactor * 0.75)
+$extent = [int][Math]::Ceiling(24 * $scaleFactor + 3)
 $colorTolerance = 3
 $results = @{}
 $mismatches = [System.Collections.Generic.List[object]]::new()
@@ -103,12 +107,41 @@ $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 try {
   $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
   $bitmap.Save($screenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+  if (-not $nativeDwm) {
+    $region = [SurfaceProbe]::CreateRectRgn(0, 0, 0, 0)
+    try { $nativeRegionAbsent = [SurfaceProbe]::GetWindowRgn($window, $region) -eq 0 }
+    finally { [void][SurfaceProbe]::DeleteObject($region) }
+    $client = [SurfaceRect]::new()
+    $origin = [SurfacePoint]::new()
+    if (-not [SurfaceProbe]::GetClientRect($window, [ref]$client) -or
+        -not [SurfaceProbe]::ClientToScreen($window, [ref]$origin)) { throw 'Cannot read client bounds' }
+    # Sample just inside each client edge, beyond any OS corner radius. A
+    # content-sized HWND region used to truncate the right and bottom samples.
+    $clientX = $origin.X - $rect.Left
+    $clientY = $origin.Y - $rect.Top
+    $samples = @(
+      @{ name = 'left'; x = 2; y = [int]($client.Bottom / 2); color = $lightContent },
+      @{ name = 'right'; x = $client.Right - 3; y = [int]($client.Bottom / 2); color = $darkContent },
+      @{ name = 'top'; x = [int]($client.Right / 4); y = 2; color = $lightContent },
+      @{ name = 'bottom'; x = [int]($client.Right / 4); y = $client.Bottom - 3; color = $lightContent }
+    )
+    foreach ($sample in $samples) {
+      $actual = $bitmap.GetPixel($clientX + $sample.x, $clientY + $sample.y)
+      $edgeSamples += 1
+      if (Test-ColorNear $actual $sample.color $colorTolerance) { $insideSamples += 1 }
+      else {
+        $totalMismatches += 1
+        $mismatches.Add(@{ edge = $sample.name; actual = $actual.Name })
+      }
+    }
+  }
   if ($nativeDwm) {
     $backgroundPixel = $bitmap.GetPixel([int][Math]::Floor($windowWidth / 2), [int][Math]::Floor($windowHeight / 2))
     $nativeBackgroundSample = Test-ColorNear $backgroundPixel ([System.Drawing.Color]::FromArgb(127, 127, 127)) $colorTolerance
   }
 
-  foreach ($corner in @('topLeft', 'topRight', 'bottomLeft', 'bottomRight')) {
+  $corners = if ($nativeDwm) { @('topLeft', 'topRight', 'bottomLeft', 'bottomRight') } else { @() }
+  foreach ($corner in $corners) {
     $cornerMismatches = 0
     $cornerBlends = 0
     for ($localY = 0; $localY -le $extent; $localY += 1) {
@@ -150,33 +183,6 @@ try {
             $valid = $false
           }
           $insideCurve = $nearForeground
-        } elseif ($cornerRadius -eq 0 -or $pixelX -ge $radiusPixels -or $pixelY -ge $radiusPixels) {
-          $insideCurve = $true
-          $boundaryDistance = [double]::PositiveInfinity
-          $insideSamples += 1
-          $valid = Test-ColorNear $actual $foreground $colorTolerance
-        } else {
-          $dx = $radiusPixels - $pixelX
-          $dy = $radiusPixels - $pixelY
-          $distance = [Math]::Sqrt($dx * $dx + $dy * $dy)
-          $insideCurve = $distance -lt $radiusPixels
-          $boundaryDistance = [Math]::Abs($distance - $radiusPixels)
-          if (-not $insideCurve) {
-            $outsideSamples += 1
-            $valid = Test-ColorNear $actual $backdrop $colorTolerance
-          } else {
-            $insideSamples += 1
-            if ($boundaryDistance -le $boundaryTolerance) {
-              $valid = Test-ColorBlend $actual $foreground $backdrop $colorTolerance
-              if ($valid -and -not (Test-ColorNear $actual $foreground $colorTolerance) -and
-                -not (Test-ColorNear $actual $backdrop $colorTolerance)) {
-                $cornerBlends += 1
-                $edgeBlendPixels += 1
-              }
-            } else {
-              $valid = Test-ColorNear $actual $foreground $colorTolerance
-            }
-          }
         }
 
         if (-not $valid) {
@@ -207,6 +213,9 @@ try {
   windowsBuild = $windowsBuild
   cornerMode = $cornerMode
   nativeBackgroundSample = $nativeBackgroundSample
+  nativeRegionAbsent = $nativeRegionAbsent
+  thickFrameStyle = $thickFrameStyle
+  edgeSamples = $edgeSamples
   radiusDip = $cornerRadius
   physicalBounds = @{ width = $windowWidth; height = $windowHeight }
   backdropColor = $backdropColor

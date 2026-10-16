@@ -12691,8 +12691,10 @@ This test plan spec is accepted when:
      resizing. Apply authorized theme radii of 0 and 24 DIP, then return to a
      built-in theme. Radius 0 must be square. On Windows 11, positive values
      request the same system-rounded preference and are not asserted as exact
-     DIP radii; on earlier Windows builds, the existing clip retains its exact
-     DIP behavior. Reject an out-of-range radius without changing the surface.
+     DIP radii; earlier Windows builds stay rectangular for every request and
+     have no application window region. Confirm all client edges remain visible
+     without an asymmetric bright strip. Reject an out-of-range radius without
+     changing the surface.
   7. On Windows, minimize and restore the window, then confirm the selected
      corner preference is applied again. Open browser and plugin child views and
      confirm their pixels stay within the top-level silhouette. On all supported
@@ -12719,8 +12721,11 @@ This test plan spec is accepted when:
   DWM selects the actual positive radius and the test does not require 12 and
   24 to look different. On all supported Windows versions, contributed alpha
   colors are flattened over the built-in theme background without window
-  transparency. Earlier Windows builds retain the existing `contentView` radius
-  and integer `setShape()` region on the opaque thick-frame window.
+  transparency. Earlier Windows builds use native square corners without a
+  `contentView` clip or `setShape()` region; theme radius requests are still
+  validated and acknowledged. Client pixels and native resize targets must
+  remain intact on the left, right, and bottom edges at 100%, 125%, 150%, 175%,
+  and 200% scale, after theme changes, resize, minimize/restore, and fullscreen.
   Fullscreen uses authoritative native state with no intermediate
   unmaximize/maximize or transient normal bounds during the maximized round
   trip. Exit preserves native maximized bounds; normal bounds are clamped to
@@ -12738,7 +12743,11 @@ This test plan spec is accepted when:
   controls in an isolated profile. The isolated `test:e2e:window-surface`
   candidate samples controlled light/dark desktop backgrounds and child-view
   bounds. Windows 11 additionally verifies the opaque DWM path and system
-  preference; earlier Windows builds verify the legacy clip and shape path.
+  preference; earlier Windows builds verify the native rectangle, absence of
+  a custom HWND region, and all four client edges. Use
+  `node scripts/e2e-window-surface.mjs --windows10-policy` to exercise the
+  Windows 10 policy on a newer Windows host; this is policy/geometry regression
+  evidence only, not Windows 10 compositor qualification.
   Both Windows suites still require a dedicated Windows desktop; source tests
   do not qualify native compositing. Windows 10/11 fullscreen, taskbar, and
   physical dual-monitor journeys require recorded native evidence for the

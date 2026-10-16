@@ -19,9 +19,9 @@ import {
   type WorkPanelReservationState,
 } from "../work-panel-window";
 import {
+  applyWindowCornerRadius,
   DEFAULT_WINDOW_CORNER_RADIUS,
-} from "../window-shape";
-import { applyWindowCornerRadius } from "../window-native-corners";
+} from "../window-native-corners";
 import { applyMainWindowBackground } from "../window-background";
 import { isWindowFullScreen } from "../window-fullscreen";
 import type { IpcRegistrar } from "./types";

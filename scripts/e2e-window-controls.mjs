@@ -144,10 +144,11 @@ async function checkWindowsRoundedCorners(
             corners.innerCornerOwned === true && corners.thickFrameStyle === true &&
             corners.nativeHitSampleCount > 0;
         }
-        return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
-          corners.bottomLeftCutout === rounded && corners.bottomRightCutout === rounded &&
+        return corners.cornerMode === "native-rectangular" && corners.nativeRegionAbsent === true &&
+          !corners.topLeftCutout && !corners.topRightCutout &&
+          !corners.bottomLeftCutout && !corners.bottomRightCutout &&
           corners.innerCornerOwned === true && corners.gridMismatches === 0 &&
-          corners.insideSamples > 0 && (!rounded || corners.outsideSamples > 0);
+          corners.insideSamples > 0;
       } catch (error) {
         probeError = String(error);
         return false;
@@ -162,7 +163,8 @@ async function checkWindowsRoundedCorners(
       corners.topRightCutout,
       corners.bottomLeftCutout,
       corners.bottomRightCutout,
-    ], [rounded, rounded, rounded, rounded], label);
+    ], [false, false, false, false], label);
+    assert.equal(corners.nativeRegionAbsent, true, `${label}: no custom HWND region`);
   }
   assert.equal(corners.innerCornerOwned, true, label);
   assert.equal(corners.thickFrameStyle, true, label);
@@ -170,9 +172,6 @@ async function checkWindowsRoundedCorners(
     assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
   }
   assert.ok(corners.insideSamples > 0, `${label}: inside hit samples`);
-  if (rounded && corners.windowsBuild < 22000) {
-    assert.ok(corners.outsideSamples > 0, `${label}: outside click-through samples`);
-  }
   if (corners.windowsBuild >= 22000) {
     console.log(`INFO ${label}: native DWM corner hit behavior recorded: ${JSON.stringify(corners.nativeCornerHitBehavior)}`);
   }

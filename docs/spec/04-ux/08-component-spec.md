@@ -85,8 +85,11 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   application window; Windows keeps Electron's frameless hit test. All supported
   Windows versions use an opaque main window (`transparent: false`) with
   `thickFrame: true` for native fullscreen and maximized restore, so native rim,
-  shadow, and animations may return;
-  they never resize or reserve the work panel. Responsive layout follows
+  shadow, and animations may return.
+  Windows 10 uses native square corners without an application clip or window
+  region, preventing the asymmetric exposed frame and clipped content. Windows
+  11 retains its DWM corner policy. Native window edges never resize or reserve
+  the work panel. Responsive layout follows
   [07-ui-design-system.md](07-ui-design-system.md) §10.1
 
 ### 1.5 Accessibility
