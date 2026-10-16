@@ -889,6 +889,21 @@ assertions, or add retries that hide a deterministic failure. When a scenario
 is not automated on the required platform, keep its status documented and
 identify the platform validation still needed.
 
+## Local queued-animation regression
+
+- Start with settings that omit `infiniteProviderRetry`; save each
+  `queuedPromptAnimation` option through the renderer bridge and verify host
+  persistence after reload.
+- For `bubbles`, `glow`, and `wave`, the promoted row clips
+  decoration to its rounded bounds; `off` preserves the original static row.
+- With reduced motion enabled, decorative animation is disabled.
+- In the light theme, the waterline uses dark strokes; in the dark theme,
+  it uses light strokes. Both theme and animation attributes live on the root.
+- Run `node scripts/e2e-queued-prompt-animation.mjs` to verify the production
+  renderer with isolated fixture data and capture review evidence. Record the
+  task candidate and main revision with the artifacts. This renderer check
+  does not exercise Rust Host persistence or packaged auto-update delivery.
+
 ## 7. MVP Scenario Catalog
 
 ### Runtime Resource Governance
