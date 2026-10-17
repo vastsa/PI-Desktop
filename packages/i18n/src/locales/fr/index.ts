@@ -2336,8 +2336,8 @@ sklm: {
       listAria: "Avis",
     },
     "capabilities": {
-      "panel": "Panneau",
-      "views": "Vues du panneau de travail",
+      "panel": "Fenêtre de panneau autonome",
+      "views": "Vue latérale du panneau",
       "commands": "Commandes",
       "tools": "Outils d'agent",
       "agentExtension": "Extension de l'agent",

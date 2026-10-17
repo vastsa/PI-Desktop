@@ -2302,8 +2302,8 @@ export const ptBR = {
       listAria: "Avaliações",
     },
     capabilities: {
-      panel: "Painel",
-      views: "Visualizações do painel de trabalho",
+      panel: "Janela de painel independente",
+      views: "Visualização lateral do painel",
       commands: "Comandos",
       tools: "Ferramentas do agente",
       agentExtension: "Extensão do agente",
