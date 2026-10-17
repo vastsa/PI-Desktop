@@ -87,8 +87,7 @@ pub struct UserSubagentInput {
     pub thinking_level: Option<String>,
     pub max_tokens: Option<u32>,
     pub enabled: Option<bool>,
-    /// Kept for protocol compatibility; subagents are global-only now.
-    #[allow(dead_code)]
+    /// Activation scope (#1431); absent means the historical global visibility.
     pub scope: Option<ActivationScope>,
 }
 
@@ -99,6 +98,15 @@ pub struct UserSubagentRegistry {
 
 fn normalize_name(value: &str) -> String {
     slugify(value, MAX_NAME_CHARS)
+}
+
+/// Whether an enabled user subagent enters a session's delegation catalog
+/// (#1431). Scope filtering mirrors the plugins/skills/MCP activation rule:
+/// `Global` follows the session everywhere, `Projects` applies only inside the
+/// named projects. Records scanned today all carry the default `Global` scope,
+/// so this predicate is behavior-preserving until scope assignment lands.
+fn visible_in(record: &UserSubagentRecord, project_path: Option<&str>) -> bool {
+    record.enabled && record.scope.matches(project_path)
 }
 
 fn clip(value: &str, max_chars: usize) -> String {
@@ -200,6 +208,22 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
         return None;
     }
     let enabled = state.enabled(SUBAGENT_KIND, CapabilityLevel::Global, &name, None);
+    // `projects: [/abs/a, /abs/b]` scopes the subagent to those projects
+    // (#1431); its absence keeps the historical global visibility.
+    let scope = match front.get("projects") {
+        Some(raw) if !raw.trim().is_empty() => ActivationScope {
+            mode: crate::activation::ActivationMode::Projects,
+            projects: raw
+                .trim_matches(['[', ']'])
+                .split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(str::to_string)
+                .collect(),
+        }
+        .normalized(),
+        _ => ActivationScope::default(),
+    };
     let updated_at = file_timestamp(path);
     let max_tokens = front
         .get("maxtokens")
@@ -212,7 +236,7 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
         level: Some("global".into()),
         description,
         enabled,
-        scope: ActivationScope::default(),
+        scope,
         tools,
         model: front
             .get("model")
@@ -247,6 +271,14 @@ fn render_document(record: &UserSubagentRecord, body: &str) -> String {
         output.push_str(&format!(
             "fallbackModels: [{}]\n",
             record.fallback_models.join(", ")
+        ));
+    }
+    if record.scope.mode == crate::activation::ActivationMode::Projects
+        && !record.scope.projects.is_empty()
+    {
+        output.push_str(&format!(
+            "projects: [{}]\n",
+            record.scope.projects.join(", ")
         ));
     }
     if let Some(level) = &record.thinking_level {
@@ -296,11 +328,11 @@ impl UserSubagentRegistry {
         self.scan()
     }
 
-    pub fn active_for(&mut self, _project_path: Option<&str>) -> Result<Vec<UserSubagentRecord>> {
+    pub fn active_for(&mut self, project_path: Option<&str>) -> Result<Vec<UserSubagentRecord>> {
         Ok(self
             .scan()?
             .into_iter()
-            .filter(|record| record.enabled)
+            .filter(|record| visible_in(record, project_path))
             .collect())
     }
 
@@ -347,7 +379,10 @@ impl UserSubagentRegistry {
             level: Some("global".into()),
             description,
             enabled: input.enabled.unwrap_or(true),
-            scope: ActivationScope::default(),
+            scope: input
+                .scope
+                .map(|scope| scope.normalized())
+                .unwrap_or_default(),
             tools,
             model: normalize_model(input.model.as_deref())?,
             fallback_models: model_fallbacks::normalize(
@@ -442,6 +477,10 @@ impl UserSubagentRegistry {
             None => current.max_tokens,
         };
         next.enabled = input.enabled.unwrap_or(current.enabled);
+        next.scope = match input.scope {
+            Some(scope) => scope.normalized(),
+            None => current.scope,
+        };
         next.path = current.path.clone();
         if next.id != current.id {
             next.path = capability_dir(CapabilityLevel::Global, None, "subagents")?
@@ -509,7 +548,14 @@ impl UserSubagentRegistry {
         id: &str,
         scope: ActivationScope,
     ) -> Result<Option<UserSubagentRecord>> {
-        let _ = scope;
+        // The document is the scope's home (#1431): rewrite it through
+        // render_document so hand-edited files and RPC writes converge on one
+        // spelling, and the next scan sees the same scope every reader does.
+        let Some((mut record, body)) = self.read(id)? else {
+            return Ok(None);
+        };
+        record.scope = scope.normalized();
+        fs::write(&record.path, render_document(&record, &body))?;
         self.find(id)
     }
 
@@ -565,6 +611,46 @@ mod tests {
             normalize_tools(Some(&vec!["read".into(), "Nope".into(), "Bash".into()])),
             vec!["Read", "Bash"]
         );
+    }
+
+    fn scope_record(scope: ActivationScope, enabled: bool) -> UserSubagentRecord {
+        UserSubagentRecord {
+            id: "x".into(),
+            name: "x".into(),
+            level: Some("global".into()),
+            description: "fixture".into(),
+            enabled,
+            scope,
+            tools: vec!["inherit".into()],
+            model: None,
+            fallback_models: vec![],
+            thinking_level: None,
+            max_tokens: None,
+            path: "/tmp/x.md".into(),
+            size_bytes: 0,
+            created_at: "0".into(),
+            updated_at: "0".into(),
+        }
+    }
+
+    #[test]
+    fn visibility_honors_activation_scope() {
+        let global = scope_record(ActivationScope::default(), true);
+        let scoped = scope_record(
+            ActivationScope {
+                mode: crate::activation::ActivationMode::Projects,
+                projects: vec!["/w/a".into()],
+            },
+            true,
+        );
+        let disabled = scope_record(ActivationScope::default(), false);
+        assert!(visible_in(&global, Some("/w/b")));
+        assert!(visible_in(&global, None));
+        assert!(visible_in(&scoped, Some("/w/a")));
+        assert!(!visible_in(&scoped, Some("/w/b")));
+        // A project-scoped subagent stays inactive in a session with no project.
+        assert!(!visible_in(&scoped, None));
+        assert!(!visible_in(&disabled, Some("/w/a")));
     }
 
     #[test]
@@ -629,6 +715,150 @@ mod tests {
         assert!(old.fallback_models.is_none());
         let clear: UserSubagentInput = serde_json::from_str(r#"{"fallbackModels":[]}"#).unwrap();
         assert_eq!(clear.fallback_models, Some(vec![]));
+    }
+
+    #[test]
+    fn projects_scope_survives_record_document_round_trips() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("worker.md");
+        fs::write(
+            &path,
+            "---\nname: worker\ndescription: Fixture.\nprojects: [/w/a, /w/b/]\n---\n\nDo the job.\n",
+        )
+        .unwrap();
+        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
+        let record = parse_record(&path, &state).expect("scoped document must load");
+        assert_eq!(
+            record.scope.mode,
+            crate::activation::ActivationMode::Projects
+        );
+        assert!(record.scope.matches(Some("/w/a")));
+        assert!(!record.scope.matches(Some("/w/c")));
+
+        // An absent key keeps the historical global visibility.
+        let global_path = dir.path().join("global.md");
+        fs::write(
+            &global_path,
+            "---\nname: global\ndescription: Fixture.\n---\n\nDo the job.\n",
+        )
+        .unwrap();
+        let global = parse_record(&global_path, &state).unwrap();
+        assert!(global.scope.matches(Some("/w/c")));
+        assert!(global.scope.matches(None));
+
+        // Render round-trips the list and drops it when the scope clears.
+        let rendered = render_document(&record, "Do the job.");
+        assert!(rendered.contains("projects: [/w/a, /w/b]\n"), "{rendered}");
+        let cleared = UserSubagentRecord {
+            scope: ActivationScope::default(),
+            ..record
+        };
+        let rendered = render_document(&cleared, "Do the job.");
+        assert!(!rendered.contains("projects:"), "{rendered}");
+    }
+
+    #[test]
+    fn set_scope_rewrites_the_document_and_drives_visibility() {
+        let dir = tempdir().unwrap();
+        let subagents = dir.path().join("subagents");
+        fs::create_dir(&subagents).unwrap();
+        fs::write(
+            subagents.join("worker.md"),
+            "---\nname: worker\ndescription: Fixture.\n---\n\nDo the job.\n",
+        )
+        .unwrap();
+        crate::agent_capabilities::test_support::with_global_agents(dir.path(), || {
+            let mut registry = UserSubagentRegistry::new(dir.path());
+            let scoped = registry
+                .set_scope(
+                    "worker",
+                    ActivationScope {
+                        mode: crate::activation::ActivationMode::Projects,
+                        projects: vec!["/w/a".into()],
+                    },
+                )
+                .unwrap()
+                .expect("worker exists");
+            assert_eq!(
+                scoped.scope.mode,
+                crate::activation::ActivationMode::Projects
+            );
+            // The document itself now carries the scope.
+            let raw = fs::read_to_string(subagents.join("worker.md")).unwrap();
+            assert!(raw.contains("projects: [/w/a]\n"), "{raw}");
+            assert!(registry
+                .active_for(Some("/w/a"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "worker"));
+            assert!(!registry
+                .active_for(Some("/w/b"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "worker"));
+            // Clearing the scope restores global visibility and drops the key.
+            registry
+                .set_scope("worker", ActivationScope::default())
+                .unwrap()
+                .unwrap();
+            assert!(registry
+                .active_for(Some("/w/b"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "worker"));
+            let raw = fs::read_to_string(subagents.join("worker.md")).unwrap();
+            assert!(!raw.contains("projects:"), "{raw}");
+            assert!(registry
+                .set_scope("missing", ActivationScope::default())
+                .unwrap()
+                .is_none());
+        });
+    }
+
+    #[test]
+    fn create_and_update_honor_input_scope() {
+        let dir = tempdir().unwrap();
+        crate::agent_capabilities::test_support::with_global_agents(dir.path(), || {
+            let mut registry = UserSubagentRegistry::new(dir.path());
+            let created = registry
+                .create(UserSubagentInput {
+                    name: Some("scoped".into()),
+                    description: Some("Fixture.".into()),
+                    scope: Some(ActivationScope {
+                        mode: crate::activation::ActivationMode::Projects,
+                        projects: vec!["/w/a".into()],
+                    }),
+                    ..Default::default()
+                })
+                .unwrap();
+            assert_eq!(
+                created.scope.mode,
+                crate::activation::ActivationMode::Projects
+            );
+            let doc = dir.path().join("subagents").join("scoped.md");
+            let raw = fs::read_to_string(&doc).unwrap();
+            assert!(raw.contains("projects: [/w/a]\n"), "{raw}");
+            assert!(!registry
+                .active_for(Some("/w/b"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "scoped"));
+
+            // A later update clears the scope and drops the key.
+            let updated = registry
+                .update(
+                    "scoped",
+                    UserSubagentInput {
+                        scope: Some(ActivationScope::default()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+                .unwrap();
+            assert!(updated.scope.matches(Some("/w/b")));
+            let raw = fs::read_to_string(&doc).unwrap();
+            assert!(!raw.contains("projects:"), "{raw}");
+        });
     }
 
     #[test]
