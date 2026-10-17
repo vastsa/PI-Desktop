@@ -97,9 +97,12 @@ describe("estimateSummaryPromptTokens", () => {
   it("counts the previous summary as part of the history request", () => {
     const base = input([user("ask")]);
     const carried = input([user("ask")], { previousSummary: "s".repeat(4_000) });
-    expect(estimateSummaryPromptTokens(carried) - estimateSummaryPromptTokens(base)).toBe(
-      1_000,
+    const delta =
+      estimateSummaryPromptTokens(carried) - estimateSummaryPromptTokens(base);
+    expect(delta).toBeGreaterThanOrEqual(
+      Math.floor(4_000 / 3.5),
     );
+    expect(delta).toBeLessThanOrEqual(Math.ceil(4_000 / 3.5));
   });
 
   it("uses the larger of the two requests on a split turn", () => {

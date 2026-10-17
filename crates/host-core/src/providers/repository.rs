@@ -346,12 +346,19 @@ pub fn update_provider(
     // OAuth credential, so reusing it here would stamp an api_key ref onto a
     // provider that only ever signed in with a vendor account.
     let api_key_ref = secret_ref_for_provider(&input.id);
-    let mut secret_ref = secrets.has(&api_key_ref).then(|| api_key_ref.clone());
+    let effective_auth_kind = input
+        .auth_kind
+        .as_deref()
+        .unwrap_or(current.auth_kind.as_str());
+    let clear_api_key = effective_auth_kind == "none";
+    let mut secret_ref = (!clear_api_key && secrets.has(&api_key_ref)).then(|| api_key_ref.clone());
 
-    if let Some(secret) = input.secret_value.as_ref().filter(|s| !s.is_empty()) {
-        let backend = secrets.set(&api_key_ref, secret)?;
-        upsert_secret_meta(db, &api_key_ref, &input.id, &backend)?;
-        secret_ref = Some(api_key_ref);
+    if !clear_api_key {
+        if let Some(secret) = input.secret_value.as_ref().filter(|s| !s.is_empty()) {
+            let backend = secrets.set(&api_key_ref, secret)?;
+            upsert_secret_meta(db, &api_key_ref, &input.id, &backend)?;
+            secret_ref = Some(api_key_ref.clone());
+        }
     }
     // `Some(None)` clears an explicit levels override; plain `None` leaves it.
     let levels_update = if input.supported_thinking_levels.is_some() {
@@ -388,6 +395,13 @@ pub fn update_provider(
         None => config_json,
     };
 
+    if clear_api_key {
+        secrets.delete(&api_key_ref)?;
+        db.conn()
+            .prepare_cached("DELETE FROM secrets_meta WHERE secret_ref = ?1")?
+            .execute(params![api_key_ref])?;
+    }
+
     db.conn()
         .prepare_cached(
             "UPDATE providers SET
@@ -400,7 +414,7 @@ pub fn update_provider(
                 default_model_id = COALESCE(?7, default_model_id),
                 api_style = COALESCE(?8, api_style),
                 enabled = COALESCE(?9, enabled),
-                secret_ref = COALESCE(?10, secret_ref),
+                secret_ref = CASE WHEN ?14 THEN NULL ELSE COALESCE(?10, secret_ref) END,
                 config_json = COALESCE(?11, config_json),
                 updated_at = ?12
              WHERE id = ?13",
@@ -423,7 +437,8 @@ pub fn update_provider(
             secret_ref,
             config_json,
             now_ms(),
-            input.id
+            input.id,
+            clear_api_key
         ])?;
     // A save that drops bindings also forgets their cached rows. The cache is
     // the service's answer, and a model the user removed is no longer part of

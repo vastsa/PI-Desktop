@@ -2,6 +2,7 @@ mod activation;
 mod agent_capabilities;
 mod artifacts;
 mod audit;
+mod background_tasks;
 mod config_sync;
 mod data_relocation;
 mod db;
@@ -23,6 +24,7 @@ mod scratch;
 mod secrets;
 mod session_collaboration;
 mod session_search;
+mod session_worktrees;
 mod sessions;
 mod state;
 mod todos;
@@ -97,5 +99,11 @@ async fn main() -> anyhow::Result<()> {
             review::sweep(&data_dir, &live);
         }
     }
+    // Drop half-created worktrees, mark vanished ones, repair links after a
+    // moved data directory, and remove orphans (ADR 0329).
+    tokio::spawn(session_worktrees::lifecycle::reconcile(
+        state.clone(),
+        session_worktrees::git::GitRunner::default(),
+    ));
     rpc::serve(state).await
 }

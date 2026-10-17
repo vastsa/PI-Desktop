@@ -35,6 +35,7 @@ function launchRuntime() {
         if (method === "providers.list") return { providers: [provider] };
         if (method === "providers.getSecret") return {};
         if (method === "agents.active") return { subagents: [] };
+        if (method === "skills.disabledBuiltins") return { disabled: [] };
         if (method === "skills.active") return { skills: [] };
         if (method === "mcp.active") return { servers: [] };
         if (method === "project.memory.get") return {};

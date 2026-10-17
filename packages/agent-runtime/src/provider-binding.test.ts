@@ -201,6 +201,93 @@ describe("Anthropic runtime endpoint", () => {
     expect(request?.headers.get("Authorization")).toBeNull();
   });
 
+  it("sends no API-key or Authorization header for a no-auth provider", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "local-no-auth",
+      name: "Local gateway",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKey: "stale-fixture-key",
+      authKind: "none",
+    };
+    const model = buildProviderModel(provider);
+    let request: Request | undefined;
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      request = new Request(input, init);
+      return new Response(
+        JSON.stringify({ error: { message: "fixture response" } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    });
+    const requestFetch = providerRequestFetch(model.api, fetch, provider.authKind);
+    expect(requestFetch).toBeDefined();
+    if (!requestFetch) throw new Error("OpenAI-compatible requests must accept custom fetch");
+
+    const result = await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "hello", timestamp: 1 }],
+          tools: [],
+        },
+        { fetch: requestFetch, maxRetries: 0 },
+      )
+      .result();
+
+    expect(result.stopReason).toBe("error");
+    expect(request).toBeDefined();
+    if (!request) throw new Error("Expected the no-auth request to reach fetch");
+    expect(request.url).not.toContain("pi-desktop-no-auth");
+    expect(request.headers.get("x-api-key")).toBeNull();
+    expect(request.headers.get("Authorization")).toBeNull();
+  });
+
+  it("does not send an API-key value for a no-auth Google protocol provider", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "local-google-no-auth",
+      name: "Local Google gateway",
+      baseUrl: "http://127.0.0.1:9000/v1beta",
+      modelId: "gemini-local",
+      apiKey: "stale-fixture-key",
+      authKind: "none",
+      apiStyle: "google_generative_ai",
+    };
+    const model = buildProviderModel(provider);
+    let request: Request | undefined;
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      request = new Request(input, init);
+      return new Response("{}", {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const result = await createProviderModels(provider, model)
+        .streamSimple(
+          model,
+          {
+            systemPrompt: "system",
+            messages: [{ role: "user", content: "hello", timestamp: 1 }],
+            tools: [],
+          },
+          { maxRetries: 0 },
+        )
+        .result();
+      expect(result.stopReason).toBe("error");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(request).toBeDefined();
+    if (!request) throw new Error("Expected the no-auth Google request to reach fetch");
+    expect(request.url).not.toContain("pi-desktop-no-auth");
+    expect(request.headers.get("x-goog-api-key")).toBe("");
+    expect(request.headers.get("Authorization")).toBeNull();
+  });
+
   it("does not send the mid-conversation tool-change beta for a models.dev Claude gateway", async () => {
     const provider: RuntimeProviderConfig = {
       ...keyedProvider,
@@ -691,6 +778,7 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
     expect(model.provider).toBe("siliconflow-cn");
     expect(model.compat).toMatchObject({
       requiresReasoningContentOnAssistantMessages: true,
+      supportsReasoningEffort: false,
       requiresNonEmptyReasoningReplay: true,
       supportsDeveloperRole: false,
     });
@@ -1478,5 +1566,129 @@ describe("DeepSeek-family relay reasoning replay (#296)", () => {
     expect(assistants[1].reasoning_content).toBe(
       DEEPSEEK_REASONING_REPLAY_PLACEHOLDER,
     );
+    expect(requests[0].reasoning_effort).toBeUndefined();
+  });
+});
+
+describe("session affinity for the adapters' anonymous endpoints (#1634)", () => {
+  const ownEndpoint = (
+    overrides: Partial<RuntimeProviderConfig> = {},
+  ): RuntimeProviderConfig => ({
+    id: "gateway-row",
+    name: "Own gateway",
+    vendorKey: "custom",
+    baseUrl: "https://gateway.example.com/v1",
+    modelId: "gateway-model-1",
+    apiKey: "sk-test",
+    authKind: "api_key_and_base_url",
+    apiStyle: "chat_completions",
+    supportsReasoning: false,
+    supportedThinkingLevels: ["off"],
+    ...overrides,
+  });
+  const compatOf = (
+    provider: RuntimeProviderConfig,
+  ): Record<string, unknown> | undefined =>
+    buildProviderModel(provider).compat as Record<string, unknown> | undefined;
+
+  it("gives the built model the adapter's non-OpenRouter session shape", () => {
+    expect(compatOf(ownEndpoint())).toMatchObject({
+      sendSessionAffinityHeaders: true,
+      sessionAffinityFormat: "openai",
+    });
+    expect(
+      compatOf(
+        ownEndpoint({
+          apiStyle: "anthropic_messages",
+          baseUrl: "https://relay.example.com",
+        }),
+      ),
+    ).toMatchObject({
+      sendSessionAffinityHeaders: true,
+      sessionAffinityFormat: "openai",
+    });
+  });
+
+  it("leaves a published vendor host and the OpenCode path on their own shape", () => {
+    expect(
+      compatOf(
+        ownEndpoint({
+          vendorKey: "deepseek",
+          baseUrl: "https://api.deepseek.com",
+          apiStyle: "chat_completions",
+        }),
+      )?.sendSessionAffinityHeaders,
+    ).toBeUndefined();
+    expect(
+      compatOf(
+        ownEndpoint({
+          vendorKey: "openai",
+          baseUrl: "https://api.openai.com/v1",
+          apiStyle: "chat_completions",
+        }),
+      )?.sendSessionAffinityHeaders,
+    ).toBeUndefined();
+    expect(
+      compatOf(
+        ownEndpoint({
+          vendorKey: "opencode-go",
+          baseUrl: "https://opencode.ai/zen/go/v1",
+          apiStyle: "opencode_go",
+        }),
+      )?.sendSessionAffinityHeaders,
+    ).toBeUndefined();
+  });
+
+  it("spreads the default under a catalog entry that already answers", () => {
+    const provider = ownEndpoint();
+    const model = buildProviderModel({
+      ...provider,
+      modelConfig: {
+        source: "generic",
+        name: "Gateway model 1",
+        baseUrl: provider.baseUrl!,
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128_000,
+        maxTokens: 8_192,
+        compat: {
+          sendSessionAffinityHeaders: false,
+          sessionAffinityFormat: "openrouter",
+        },
+      },
+    });
+    expect(model.compat).toMatchObject({
+      sendSessionAffinityHeaders: false,
+      sessionAffinityFormat: "openrouter",
+    });
+  });
+
+  it("reaches the wire as the three headers §6.3 names", async () => {
+    const provider = ownEndpoint();
+    const model = buildProviderModel(provider);
+    let headers: Headers | undefined;
+    const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      headers = new Headers(init?.headers);
+      return new Response("data: [DONE]\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    };
+
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "hello", timestamp: 1 }],
+        } as never,
+        { sessionId: "session-9", fetch },
+      )
+      .result();
+
+    expect(headers?.get("session_id")).toBe("session-9");
+    expect(headers?.get("x-client-request-id")).toBe("session-9");
+    expect(headers?.get("x-session-affinity")).toBe("session-9");
   });
 });

@@ -8,18 +8,20 @@ import {
   IconReview,
   IconSearch,
   IconSettings,
+  IconShield,
   IconTrash,
 } from "../../components/icons";
 import { ScopeControl } from "../../components/extensions/ScopeControl";
 import { AnchoredMenu } from "../../components/settings/AnchoredMenu";
 import type { ActivationScope } from "@pi-desktop/shared";
-import { GROUP_LABEL_KEYS, TEMPLATE_IDS } from "./model";
-import { PluginRowDetails } from "./presentation";
+import { GROUP_LABEL_KEYS, TEMPLATE_IDS, showsVerifiedBadge } from "./model";
+import { PluginRowDetails, RatingChip } from "./presentation";
 import type { PluginsPageModel } from "./usePluginsPage";
 import { api } from "../../lib/api";
 
 export function InstalledPluginsPanel({
   t,
+  locale,
   plugins,
   setTab,
   loadDev,
@@ -38,6 +40,7 @@ export function InstalledPluginsPanel({
   reloadPlugin,
   setSettingsPlugin,
   servicesByPlugin,
+  reviewSummaries,
 }: PluginsPageModel) {
   return (
           <div
@@ -95,8 +98,14 @@ export function InstalledPluginsPanel({
                       const broken = group.id === "attention";
                       const menuOpen = rowMenu === plugin.id;
                       const update = plugin.updateAvailable;
+                      /**
+                       * The card's one call to action: an available update, or
+                       * opening the plugin's own panel. A disabled plugin has
+                       * neither, so it never carries a primary button.
+                       */
+                      const canOpenPanel = plugin.enabled && !!plugin.ui?.panel;
                       return (
-                        <div
+                        <article
                           key={plugin.id}
                           role="listitem"
                           className={cx(
@@ -106,16 +115,25 @@ export function InstalledPluginsPanel({
                             menuOpen && "menu-open",
                           )}
                         >
-                          <span className="plugins-glyph" aria-hidden>
-                            {broken ? (
-                              <IconCircleAlert size={15} />
-                            ) : (
-                              <IconPlug size={15} />
-                            )}
-                          </span>
-                          <div className="plugins-row-copy">
+                          <div className="plugins-row-head">
+                            <span className="plugins-glyph" aria-hidden>
+                              {broken ? (
+                                <IconCircleAlert size={15} />
+                              ) : (
+                                <IconPlug size={15} />
+                              )}
+                            </span>
                             <div className="plugins-row-title">
                               <span className="plugins-row-name">{plugin.name}</span>
+                              {showsVerifiedBadge(plugin.marketplace) ? (
+                                <span
+                                  className="plugins-verified"
+                                  title={t("plugins.verified")}
+                                  aria-label={t("plugins.verified")}
+                                >
+                                  <IconShield size={12} />
+                                </span>
+                              ) : null}
                               {plugin.source === "dev" ? (
                                 <span className="plugins-tag">{t("plugins.tagLocal")}</span>
                               ) : null}
@@ -123,12 +141,18 @@ export function InstalledPluginsPanel({
                                 <span className="plugins-tag">{t("plugins.tagBundled")}</span>
                               ) : null}
                             </div>
+                          </div>
+                          <div className="plugins-row-copy">
                             <div className="plugins-row-meta">
                               <span className="plugins-row-id">{plugin.id}</span>
                               <span className="plugins-dot" aria-hidden>
                                 ·
                               </span>
                               <span>v{plugin.version}</span>
+                              <RatingChip
+                                summary={reviewSummaries[plugin.id]}
+                                locale={locale}
+                              />
                             </div>
                             {plugin.errorMessage ? (
                               <p className="plugins-row-error">{plugin.errorMessage}</p>
@@ -139,26 +163,6 @@ export function InstalledPluginsPanel({
                             />
                           </div>
                           <div className="plugins-row-controls">
-                            {update ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled={busyId === plugin.id}
-                                onClick={() =>
-                                  queueInstall({
-                                    id: plugin.id,
-                                    name: plugin.name,
-                                    version: update.version,
-                                    permissions: plugin.permissions ?? [],
-                                    newPermissions: update.permissionDiff ?? [],
-                                  })
-                                }
-                              >
-                                {busyId === plugin.id
-                                  ? t("plugins.updating")
-                                  : t("plugins.updateNow")}
-                              </Button>
-                            ) : null}
                             <ScopeControl
                               target={plugin}
                               label={plugin.name}
@@ -179,122 +183,138 @@ export function InstalledPluginsPanel({
                                 })
                               }
                             />
-                            <div className="plugins-row-actions">
-                              {plugin.ui?.panel ? (
+                            {plugin.enabled && update ? (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                disabled={busyId === plugin.id}
+                                onClick={() =>
+                                  queueInstall({
+                                    id: plugin.id,
+                                    name: plugin.name,
+                                    version: update.version,
+                                    permissions: plugin.permissions ?? [],
+                                    newPermissions: update.permissionDiff ?? [],
+                                  })
+                                }
+                              >
+                                {busyId === plugin.id
+                                  ? t("plugins.updating")
+                                  : t("plugins.updateTo", { version: update.version })}
+                              </Button>
+                            ) : canOpenPanel ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  void run(() => api.openPluginPanel(plugin.id))
+                                }
+                              >
+                                <IconPanel size={14} />
+                                {t("plugins.openPanel")}
+                              </Button>
+                            ) : null}
+                            {plugin.enabled && plugin.settings?.length ? (
+                              <TooltipButton
+                                type="button"
+                                className="plugins-icon-btn"
+                                tooltip={t("plugins.openSettings")}
+                                ariaLabel={t("plugins.openSettings")}
+                                onClick={() => setSettingsPlugin(plugin)}
+                              >
+                                <IconSettings size={15} />
+                              </TooltipButton>
+                            ) : null}
+                            <AnchoredMenu
+                              className="plugins-menu-wrap"
+                              open={menuOpen}
+                              onClose={() => setRowMenu(null)}
+                              menuClassName="plugins-menu is-end"
+                              label={t("plugins.rowActions", { name: plugin.name })}
+                              role="menu"
+                              align="end"
+                              trigger={(ref) => (
                                 <TooltipButton
+                                  ref={ref}
                                   type="button"
                                   className="plugins-icon-btn"
-                                  tooltip={t("plugins.openPanel")}
-                                  ariaLabel={t("plugins.openPanel")}
+                                  tooltip={t("plugins.rowActions", { name: plugin.name })}
+                                  ariaLabel={t("plugins.rowActions", { name: plugin.name })}
+                                  aria-haspopup="menu"
+                                  aria-expanded={menuOpen}
                                   onClick={() =>
-                                    void run(() => api.openPluginPanel(plugin.id))
+                                    setRowMenu((cur) =>
+                                      cur === plugin.id ? null : plugin.id,
+                                    )
                                   }
                                 >
-                                  <IconPanel size={15} />
+                                  <IconMore size={15} />
                                 </TooltipButton>
-                              ) : null}
-                              {plugin.enabled && plugin.settings?.length ? (
-                                <TooltipButton
-                                  type="button"
-                                  className="plugins-icon-btn"
-                                  tooltip={t("plugins.openSettings")}
-                                  ariaLabel={t("plugins.openSettings")}
-                                  onClick={() => setSettingsPlugin(plugin)}
-                                >
-                                  <IconSettings size={15} />
-                                </TooltipButton>
-                              ) : null}
-                              <AnchoredMenu
-                                className="plugins-menu-wrap"
-                                open={menuOpen}
-                                onClose={() => setRowMenu(null)}
-                                menuClassName="plugins-menu is-end"
-                                label={t("plugins.rowActions", { name: plugin.name })}
-                                role="menu"
-                                align="end"
-                                trigger={(ref) => (
-                                  <TooltipButton
-                                    ref={ref}
-                                    type="button"
-                                    className="plugins-icon-btn"
-                                    tooltip={t("plugins.rowActions", { name: plugin.name })}
-                                    ariaLabel={t("plugins.rowActions", { name: plugin.name })}
-                                    aria-haspopup="menu"
-                                    aria-expanded={menuOpen}
-                                    onClick={() =>
-                                      setRowMenu((cur) =>
-                                        cur === plugin.id ? null : plugin.id,
-                                      )
-                                    }
-                                  >
-                                    <IconMore size={15} />
-                                  </TooltipButton>
-                                )}
-                              >
-                                    {plugin.source === "dev" ? (
-                                      <button
-                                        type="button"
-                                        role="menuitem"
-                                        disabled={
-                                          busyId === plugin.id ||
-                                          reloadingId === plugin.id
-                                        }
-                                        onClick={() => {
-                                          setRowMenu(null);
-                                          void reloadPlugin(plugin.id);
-                                        }}
-                                      >
-                                        <IconReview size={14} />
-                                        {t("plugins.reload")}
-                                      </button>
-                                    ) : null}
+                              )}
+                            >
+                                  {plugin.source === "dev" ? (
                                     <button
                                       type="button"
                                       role="menuitem"
+                                      disabled={
+                                        busyId === plugin.id ||
+                                        reloadingId === plugin.id
+                                      }
                                       onClick={() => {
                                         setRowMenu(null);
-                                        void run(async () => {
-                                          await api.setPluginAutoUpdate(
-                                            plugin.id,
-                                            !plugin.autoUpdate,
-                                          );
-                                          await refreshPlugins();
-                                        });
+                                        void reloadPlugin(plugin.id);
                                       }}
                                     >
-                                      <IconCloudDown size={14} />
-                                      {plugin.autoUpdate
-                                        ? t("plugins.disableAutoUpdate")
-                                        : t("plugins.enableAutoUpdate")}
+                                      <IconReview size={14} />
+                                      {t("plugins.reload")}
                                     </button>
-                                    {/* A bundled plugin belongs to the
-                                        application: the host refuses the
-                                        removal, so the action is not offered
-                                        (ADR 0104, ADR 0241). */}
-                                    {plugin.bundled ? null : (
-                                      <>
-                                        <div className="plugins-menu-sep" />
-                                        <button
-                                          type="button"
-                                          role="menuitem"
-                                          className="danger"
-                                          onClick={() => {
-                                            setRowMenu(null);
-                                            void run(async () => {
-                                              await api.uninstallPlugin(plugin.id);
-                                              await refreshPlugins();
-                                            });
-                                          }}
-                                        >
-                                          <IconTrash size={14} />
-                                          {t("plugins.uninstall")}
-                                        </button>
-                                      </>
-                                    )}
-                              </AnchoredMenu>
-                            </div>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setRowMenu(null);
+                                      void run(async () => {
+                                        await api.setPluginAutoUpdate(
+                                          plugin.id,
+                                          !plugin.autoUpdate,
+                                        );
+                                        await refreshPlugins();
+                                      });
+                                    }}
+                                  >
+                                    <IconCloudDown size={14} />
+                                    {plugin.autoUpdate
+                                      ? t("plugins.disableAutoUpdate")
+                                      : t("plugins.enableAutoUpdate")}
+                                  </button>
+                                  {/* A bundled plugin belongs to the
+                                      application: the host refuses the
+                                      removal, so the action is not offered
+                                      (ADR 0104, ADR 0241). */}
+                                  {plugin.bundled ? null : (
+                                    <>
+                                      <div className="plugins-menu-sep" />
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="danger"
+                                        onClick={() => {
+                                          setRowMenu(null);
+                                          void run(async () => {
+                                            await api.uninstallPlugin(plugin.id);
+                                            await refreshPlugins();
+                                          });
+                                        }}
+                                      >
+                                        <IconTrash size={14} />
+                                        {t("plugins.uninstall")}
+                                      </button>
+                                    </>
+                                  )}
+                            </AnchoredMenu>
                           </div>
-                        </div>
+                        </article>
                       );
                     })}
                   </div>

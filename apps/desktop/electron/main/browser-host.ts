@@ -1,4 +1,4 @@
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, WebContents } from "electron";
 import type { BrowserState } from "@pi-desktop/shared";
 import type { BrowserPane } from "./browser-view";
 import { BrowserCdp } from "./browser-cdp";
@@ -7,6 +7,8 @@ import { join } from "node:path";
 
 export const BROWSER_PLUGIN_ID = "pi.browser";
 export const BROWSER_VIEW_ID = "browser";
+const BROWSER_REVEAL_TIMEOUT_MS = 5_000;
+const BROWSER_CDP_TIMEOUT_MS = 30_000;
 
 export type BrowserRect = {
   x: number;
@@ -58,9 +60,10 @@ export type BrowserHostDeps = {
   createPane: (onState: (state: BrowserState) => void, onOpenUrl: (url: string) => void) => BrowserPane;
   onOpenUrl?: (url: string, sessionId?: string) => void;
   isPluginLoaded: (pluginId: string) => boolean;
-  getFileRoot: (sessionId?: string) => Promise<string | null>;
+  getFileRoots: (sessionId?: string) => Promise<readonly string[]>;
   getScratchDir?: (sessionId?: string) => string | null;
   onState: (state: BrowserState) => void;
+  onRevealView?: (sessionId: string, tabId?: string) => void;
 };
 
 type ChromeSurface = {
@@ -68,6 +71,13 @@ type ChromeSurface = {
   viewId: string;
   visible: boolean;
   bounds: BrowserRect;
+};
+
+type BrowserRevealWaiter = {
+  sessionId: string;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
 };
 
 type BrowserPage = {
@@ -82,6 +92,49 @@ type BrowserPage = {
   navigating: boolean;
 };
 
+/**
+ * Bound any CDP round trip on the guest. A page that opens a native dialog
+ * or runs a busy loop never answers `debugger.sendCommand`, and neither the
+ * CDP layer nor the RPC timeout table bounds it (#1611) — without this the
+ * agent's browser tool call hangs forever. On timeout the whole debugger
+ * session is detached as recovery, which also drops previously created
+ * snapshot uids; the tool result explains the timeout so the agent can
+ * re-snapshot.
+ */
+function withCdpDeadline<T>(
+  page: BrowserPage,
+  wc: WebContents,
+  run: () => Promise<T>,
+  label: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      const error = Object.assign(
+        new Error(`browser ${label} timed out after ${BROWSER_CDP_TIMEOUT_MS}ms`),
+        { code: "TIMEOUT" },
+      );
+      reject(error);
+      try {
+        page.cdp.detach(wc);
+      } catch {
+        // Preserve the timeout result if the guest is already shutting down.
+      }
+    }, BROWSER_CDP_TIMEOUT_MS);
+  });
+  return Promise.race([Promise.resolve().then(run), timedOut])
+    .finally(() => { if (timeout) clearTimeout(timeout); });
+}
+
+function captureScreenshotWithDeadline<T>(
+  page: BrowserPage,
+  capture: (wc: WebContents) => Promise<T>,
+): Promise<T> {
+  return page.pane.captureScreenshot((wc) =>
+    withCdpDeadline(page, wc, () => capture(wc), "screenshot"),
+  );
+}
+
 /** Host-owned pages, keyed by conversation and resource tab. */
 export class BrowserHost {
   private readonly deps: BrowserHostDeps;
@@ -90,6 +143,7 @@ export class BrowserHost {
   private readonly selectedTabs = new Map<string, string | null>();
   private readonly pendingSessions = new Map<string, string>();
   private readonly pendingTabs = new Set<string>();
+  private readonly revealWaiters = new Set<BrowserRevealWaiter>();
   private active: BrowserPage | null = null;
   private window: BrowserWindow | null = null;
   private chrome: ChromeSurface | null = null;
@@ -108,6 +162,52 @@ export class BrowserHost {
   setChromeSurface(surface: ChromeSurface | null): void {
     this.chrome = surface;
     this.applyGuest();
+    this.resolveVisibleRevealWaiters();
+  }
+
+  async reveal(sessionId?: string): Promise<void> {
+    const id = sessionId?.trim();
+    if (!id) throw this.unavailableError("Browser reveal requires an active session.");
+    if (!this.deps.isPluginLoaded(BROWSER_PLUGIN_ID)) {
+      throw this.unavailableError("The Browser plugin is unavailable.");
+    }
+    if (this.isBrowserVisibleForSession(id)) return;
+    const revealView = this.deps.onRevealView;
+    if (!revealView) throw this.unavailableError("Browser view cannot be opened by this host.");
+
+    let waiter: BrowserRevealWaiter | undefined;
+    const visible = new Promise<void>((resolve, reject) => {
+      const entry: BrowserRevealWaiter = {
+        sessionId: id,
+        resolve,
+        reject: (error) => reject(error),
+        timeout: setTimeout(() => {
+          this.rejectRevealWaiter(
+            entry,
+            this.unavailableError(
+              "Browser view did not become visible for the calling session. Switch to that session and retry.",
+            ),
+          );
+        }, BROWSER_REVEAL_TIMEOUT_MS),
+      };
+      waiter = entry;
+      this.revealWaiters.add(entry);
+    });
+
+    try {
+      const tabId = this.active?.sessionId === id
+        ? this.active.tabId ?? undefined
+        : this.selectedTabs.get(id) ?? undefined;
+      revealView(id, tabId);
+    } catch (error) {
+      if (waiter) {
+        this.rejectRevealWaiter(
+          waiter,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
+    return visible;
   }
 
   getContext(): { sessionId?: string; tabId?: string } {
@@ -119,6 +219,32 @@ export class BrowserHost {
       ...(page.sessionId ? { sessionId: page.sessionId } : {}),
       ...(page.tabId ? { tabId: page.tabId } : {}),
     };
+  }
+
+  private isBrowserVisibleForSession(sessionId: string): boolean {
+    return this.chrome?.visible === true &&
+      this.chrome.pluginId === BROWSER_PLUGIN_ID &&
+      this.chrome.viewId === BROWSER_VIEW_ID &&
+      this.active?.sessionId === sessionId;
+  }
+
+  private resolveVisibleRevealWaiters(): void {
+    for (const waiter of [...this.revealWaiters]) {
+      if (!this.isBrowserVisibleForSession(waiter.sessionId)) continue;
+      this.revealWaiters.delete(waiter);
+      clearTimeout(waiter.timeout);
+      waiter.resolve();
+    }
+  }
+
+  private rejectRevealWaiter(waiter: BrowserRevealWaiter, error: Error): void {
+    if (!this.revealWaiters.delete(waiter)) return;
+    clearTimeout(waiter.timeout);
+    waiter.reject(error);
+  }
+
+  private unavailableError(message: string): Error & { code: string } {
+    return Object.assign(new Error(message), { code: "UNAVAILABLE" });
   }
 
   private assertBrowserViewVisible(): void {
@@ -267,9 +393,9 @@ export class BrowserHost {
         throw error;
       }
     };
-    let root: string | null;
+    let roots: readonly string[];
     try {
-      root = await this.deps.getFileRoot(page.sessionId || undefined);
+      roots = await this.getFileRoots(page.sessionId || undefined);
     } catch (error) {
       if (!current()) return null;
       assertVisible();
@@ -284,7 +410,7 @@ export class BrowserHost {
     assertVisible();
     let state: BrowserState | null;
     try {
-      state = await page.pane.navigateAndWait(target, root);
+      state = await page.pane.navigateAndWait(target, roots[0] ?? null);
     } catch (error) {
       if (!current()) return null;
       page.navigating = false;
@@ -343,12 +469,14 @@ export class BrowserHost {
   }
 
   async snapshot(): Promise<{ tree: string; url: string; title: string }> {
-    return this.currentPage().cdp.snapshot(this.requireWebContents());
+    const page = this.currentPage();
+    const wc = this.requireWebContents();
+    return withCdpDeadline(page, wc, () => page.cdp.snapshot(wc), "snapshot");
   }
 
   async screenshot(input: { fullPage?: boolean } = {}, sessionId?: string): Promise<{ mimeType: string; data: string; path?: string }> {
     const page = this.currentPage();
-    const shot = await page.pane.captureScreenshot((wc) => page.cdp.screenshot(wc, input));
+    const shot = await captureScreenshotWithDeadline(page, (wc) => page.cdp.screenshot(wc, input));
     const scratch = this.deps.getScratchDir?.(sessionId ?? page.sessionId);
     if (!scratch) return shot;
     try {
@@ -359,9 +487,21 @@ export class BrowserHost {
     } catch { return shot; }
   }
 
-  async click(uid: string): Promise<void> { await this.currentPage().cdp.click(this.requireWebContents(), uid); }
-  async fill(uid: string, text: string): Promise<void> { await this.currentPage().cdp.fill(this.requireWebContents(), uid, text); }
-  async evaluate(expression: string): Promise<unknown> { return this.currentPage().cdp.evaluate(this.requireWebContents(), expression); }
+  async click(uid: string): Promise<void> {
+    const page = this.currentPage();
+    const wc = this.requireWebContents();
+    return withCdpDeadline(page, wc, () => page.cdp.click(wc, uid), "click");
+  }
+  async fill(uid: string, text: string): Promise<void> {
+    const page = this.currentPage();
+    const wc = this.requireWebContents();
+    return withCdpDeadline(page, wc, () => page.cdp.fill(wc, uid, text), "fill");
+  }
+  async evaluate(expression: string): Promise<unknown> {
+    const page = this.currentPage();
+    const wc = this.requireWebContents();
+    return withCdpDeadline(page, wc, () => page.cdp.evaluate(wc, expression), "evaluate");
+  }
   console(limit?: number): { messages: ReturnType<BrowserCdp["console"]> } {
     this.assertBrowserViewVisible();
     if (!this.active?.started) return { messages: [] };
@@ -371,14 +511,19 @@ export class BrowserHost {
   }
   async cdpCommand(method: string, params?: unknown): Promise<unknown> {
     const page = this.currentPage();
+    const wc = this.requireWebContents();
     if (method === "Page.captureScreenshot") {
-      return page.pane.captureScreenshot((wc) => page.cdp.send(wc, method, params));
+      return captureScreenshotWithDeadline(page, (view) => page.cdp.send(view, method, params));
     }
-    return page.cdp.send(this.requireWebContents(), method, params);
+    return withCdpDeadline(page, wc, () => page.cdp.send(wc, method, params), `cdp ${method}`);
   }
 
   /** The renderer-created resource tab is the preview's only navigation owner. */
-  async previewWorkspaceFile(_sessionId: string, _path: string, _root: string): Promise<{ ok: true } | { ok: false; content: string }> {
+  getFileRoots(sessionId?: string): Promise<readonly string[]> {
+    return this.deps.getFileRoots(sessionId);
+  }
+
+  async previewFile(): Promise<{ ok: true } | { ok: false; content: string }> {
     if (!this.deps.isPluginLoaded(BROWSER_PLUGIN_ID)) return {
       ok: false, content: "BrowserPreview: the Browser plugin is disabled. Enable pi.browser in Plugins to preview HTML.",
     };
@@ -415,6 +560,12 @@ export class BrowserHost {
   dispose(): void { this.disposeGuest(); }
 
   disposeGuest(): void {
+    for (const waiter of [...this.revealWaiters]) {
+      this.rejectRevealWaiter(
+        waiter,
+        this.unavailableError("Browser view was closed before it became visible."),
+      );
+    }
     for (const page of this.pages.values()) {
       page.navigationVersion += 1;
       page.cdp.detach(page.pane.getWebContents() ?? undefined);

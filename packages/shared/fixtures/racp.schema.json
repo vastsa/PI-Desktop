@@ -2044,6 +2044,12 @@
           "terminal": {
             "type": "boolean"
           },
+          "workspaceTools": {
+            "type": "boolean"
+          },
+          "workspaceFiles": {
+            "type": "boolean"
+          },
           "notifications": {
             "type": "boolean"
           },

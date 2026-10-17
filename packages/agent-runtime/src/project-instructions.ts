@@ -8,8 +8,12 @@ const INSTRUCTION_FILE_NAMES = [
   "CLAUDE.md",
   join(".claude", "CLAUDE.md"),
 ];
-const MAX_INSTRUCTION_BYTES = 32 * 1024;
+// The global file and the project chain have independent budgets so an
+// oversized global file can never starve project instructions.
+const MAX_GLOBAL_INSTRUCTION_BYTES = 32 * 1024;
+const MAX_PROJECT_INSTRUCTION_BYTES = 32 * 1024;
 const GLOBAL_INSTRUCTION_PATH = join(homedir(), ".pi", "agent", "AGENTS.md");
+const GLOBAL_INSTRUCTION_SOURCE = "~/.pi/agent/AGENTS.md";
 
 export type ProjectInstruction = {
   source: string;
@@ -32,8 +36,28 @@ function normalizeStablePath(path: string): string {
   return path.replace(/\\/g, "/");
 }
 
-function limitUtf8(content: string, maxBytes: number): string {
-  if (Buffer.byteLength(content, "utf8") <= maxBytes) return content;
+type LimitedInstruction = {
+  entry: ProjectInstruction;
+  /** UTF-8 bytes of file content kept, excluding any truncation notice. */
+  bytes: number;
+  truncated: boolean;
+};
+
+/**
+ * Keep at most `maxBytes` of UTF-8 content without splitting a character.
+ * A cut is never silent: the kept text is followed by a notice naming the
+ * source and the kept/total byte counts, so the model can tell the file is
+ * incomplete.
+ */
+function limitInstruction(
+  source: string,
+  content: string,
+  maxBytes: number,
+): LimitedInstruction {
+  const totalBytes = Buffer.byteLength(content, "utf8");
+  if (totalBytes <= maxBytes) {
+    return { entry: { source, content }, bytes: totalBytes, truncated: false };
+  }
   let bytes = 0;
   let end = 0;
   for (const char of content) {
@@ -42,7 +66,13 @@ function limitUtf8(content: string, maxBytes: number): string {
     bytes += charBytes;
     end += char.length;
   }
-  return content.slice(0, end);
+  const notice = `[PI-Desktop truncated ${source}: loaded the first ${bytes} of ${totalBytes} bytes; the rest of this file is not in context.]`;
+  const kept = content.slice(0, end).trimEnd();
+  return {
+    entry: { source, content: kept ? `${kept}\n\n${notice}` : notice },
+    bytes,
+    truncated: true,
+  };
 }
 
 async function readInstruction(
@@ -50,7 +80,7 @@ async function readInstruction(
   canonicalWorkspaceRoot: string,
   directory: string,
   remaining: number,
-): Promise<ProjectInstruction | undefined> {
+): Promise<LimitedInstruction | undefined> {
   for (const name of INSTRUCTION_FILE_NAMES) {
     try {
       const file = join(directory, name);
@@ -58,10 +88,11 @@ async function readInstruction(
       if (!isWithinRoot(canonicalWorkspaceRoot, canonicalFile)) continue;
       const content = (await readFile(file, "utf8")).trim();
       if (!content) continue;
-      return {
-        source: normalizeStablePath(relative(workspaceRoot, file) || name),
-        content: limitUtf8(content, remaining),
-      };
+      return limitInstruction(
+        normalizeStablePath(relative(workspaceRoot, file) || name),
+        content,
+        remaining,
+      );
     } catch {
       // Try the next recognized name or the next directory.
     }
@@ -78,7 +109,7 @@ async function readInstruction(
 export async function loadProjectInstructions(
   workspaceRoot: string | null | undefined,
   workspacePath?: string,
-  maxBytes = MAX_INSTRUCTION_BYTES,
+  maxBytes = MAX_PROJECT_INSTRUCTION_BYTES,
 ): Promise<ProjectInstructions | undefined> {
   if (!workspaceRoot?.trim()) return undefined;
 
@@ -102,37 +133,38 @@ export async function loadProjectInstructions(
   let remaining = Math.max(0, maxBytes);
   for (const directory of directories) {
     if (remaining <= 0) break;
-    const entry = await readInstruction(root, canonicalRoot, directory, remaining);
-    if (!entry) continue;
-    entries.push(entry);
-    remaining -= Buffer.byteLength(entry.content, "utf8");
+    const loaded = await readInstruction(root, canonicalRoot, directory, remaining);
+    if (!loaded) continue;
+    entries.push(loaded.entry);
+    // A truncated file has used up the budget; closer files are not loaded.
+    if (loaded.truncated) break;
+    remaining -= loaded.bytes;
   }
   return entries.length > 0 ? { entries } : undefined;
 }
 
-/** Build the complete chain: global defaults precede project instructions. */
+/**
+ * Build the complete chain: global defaults precede project instructions.
+ * The global file and the project chain are capped independently.
+ */
 export async function loadInstructionChain(
   workspaceRoot: string | null | undefined,
   workspacePath?: string,
   globalPath = GLOBAL_INSTRUCTION_PATH,
 ): Promise<ProjectInstructions | undefined> {
   const entries: ProjectInstruction[] = [];
-  let remaining = MAX_INSTRUCTION_BYTES;
   try {
     const content = (await readFile(globalPath, "utf8")).trim();
     if (content) {
-      const limited = limitUtf8(content, remaining);
-      entries.push({ source: "~/.pi/agent/AGENTS.md", content: limited });
-      remaining -= Buffer.byteLength(limited, "utf8");
+      entries.push(
+        limitInstruction(GLOBAL_INSTRUCTION_SOURCE, content, MAX_GLOBAL_INSTRUCTION_BYTES)
+          .entry,
+      );
     }
   } catch {
     // A missing global file is an expected first-run state.
   }
-  const project = await loadProjectInstructions(
-    workspaceRoot,
-    workspacePath,
-    remaining,
-  );
+  const project = await loadProjectInstructions(workspaceRoot, workspacePath);
   return entries.length || project?.entries.length
     ? { entries: [...entries, ...(project?.entries ?? [])] }
     : undefined;

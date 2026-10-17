@@ -1,4 +1,3 @@
-import { providerDisplayName } from "../../../lib/provider-display";
 import { formatTokenCount, type ModelInfo, type ProviderPublic } from "@pi-desktop/shared";
 import type { TFunction } from "i18next";
 import type { RefObject } from "react";
@@ -9,6 +8,7 @@ import {
   composerModelDisplayName,
   sameComposerModelId,
 } from "../../../lib/composer-models";
+import { providerDisplayName } from "../../../lib/provider-display";
 
 export type ComposerModelGroup = {
   provider: ProviderPublic;
@@ -73,7 +73,9 @@ export function ComposerModelList({
                         >
                           <span className="composer-model-option-main">
                             <span className="composer-model-label">{composerModelDisplayName(provider, model.modelId)}</span>
-                            <span className="composer-model-option-meta">{providerDisplayName(provider)}</span>
+                            <span className="composer-model-option-meta" title={providerDisplayName(provider)}>
+                              {providerDisplayName(provider)}
+                            </span>
                           </span>
                           {active ? <IconCheck size={14} aria-hidden="true" /> : null}
                         </button>
@@ -137,7 +139,7 @@ export function ComposerModelList({
                               >
                                 {alias || optionDisplayName}
                               </span>
-                              <span className="composer-model-option-meta">
+                              <span className="composer-model-option-meta" title={optionTitle}>
                                 {composerModelBadges(model, group.provider).map((badge) => {
                                   const badgeLabel = t(
                                     badge === "reasoning"

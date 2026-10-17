@@ -180,6 +180,18 @@ export type AskToolOption =
       description?: string;
     };
 
+/** Maximum length of one asktool prompt, counted in Unicode code points. */
+export const MAX_ASK_TOOL_QUESTION_CHARS = 300;
+
+export function isAskToolQuestionWithinLimit(question: string): boolean {
+  let characterCount = 0;
+  for (const _character of question) {
+    if (characterCount >= MAX_ASK_TOOL_QUESTION_CHARS) return false;
+    characterCount += 1;
+  }
+  return true;
+}
+
 /** Normalize a model-provided asktool option and discard malformed/empty values. */
 export function normalizeAskToolOption(value: unknown): AskToolOption | undefined {
   if (typeof value === "string") {
@@ -322,4 +334,14 @@ export type AgentEventEnvelope = {
   nestedParentToolCallId?: string;
   /** Definition name of the emitting subagent. */
   agentName?: string;
+};
+
+/** Explicit user cancellation; omitted IDs select this session's running delegates. */
+export type AgentStopSubagentsRequest = {
+  sessionId: string;
+  delegationIds?: string[];
+};
+
+export type AgentStopSubagentsResponse = {
+  pending: string[];
 };

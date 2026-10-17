@@ -28,6 +28,8 @@ function fakeClient({ sessions = [], requestFailures = {} } = {}) {
       calls.push({ method, params });
       if (requestFailures[method]) throw requestFailures[method];
       if (method === "session/list") return { sessions };
+      if (method === "events/subscribe") return { subscriptionId: `sub-${params.sessionId ?? "host"}`, starting: { epoch: "epoch-1", sequence: 1 }, replayComplete: true };
+      if (method === "session/attach") return { snapshot: { session: makeSession(params.sessionId), pendingApprovals: [], pendingInputs: [], cursor: { epoch: "epoch-1", sequence: 0 }, revision: 1, generatedAt: "2026-09-18T10:00:00.000Z" } };
       return { ok: true };
     },
     subscribe: (fn) => {
@@ -93,7 +95,7 @@ test("open subscribes host scope, lists sessions, and registers a backend per se
   await conn.open();
   const methods = client.calls.map((entry) => entry.method);
   // Host-scope subscribe fires BEFORE list; the create-race window is closed.
-  assert.deepEqual(methods.slice(0, 3), ["events/subscribe", "session/list", "events/subscribe"]);
+  assert.deepEqual(methods.slice(0, 2), ["events/subscribe", "session/list"]);
   assert.deepEqual(client.calls[0].params, { scope: "host" });
   const perSessionSubscribeParams = client.calls
     .filter((entry) => entry.method === "events/subscribe" && entry.params.scope === "session")
@@ -134,9 +136,10 @@ test("a session.created event registers a fresh backend and refreshes the sideba
     "s-new must have a registered backend after session.created",
   );
   const sidebarNotice = events.find(
-    (event) => event.channel === IPC.event.sessionsChanged && event.payload.selectSessionId === newRemoteId,
+    (event) => event.channel === IPC.event.sessionsChanged && event.payload.reason === "remote.session.created",
   );
   assert.ok(sidebarNotice, "session.created must emit a sessionsChanged notice for the sidebar");
+  assert.equal(sidebarNotice.payload.selectSessionId, undefined);
 });
 
 test("a session.archived event unregisters the backend and lets the id fall through", async () => {
@@ -153,6 +156,38 @@ test("a session.archived event unregisters the backend and lets the id fall thro
     }),
   );
   assert.equal(router.resolveBackend(IPC.invoke.sessionGet, [{ id: remoteId }]), null);
+});
+
+test("a confirmed remote session delete drops the row and refreshes the sidebar", async () => {
+  const { conn, router, client, events } = setup({
+    sessions: [makeSession("s1"), makeSession("s2")],
+  });
+  await conn.open();
+  const remoteId = makeRemoteSessionId(HOST_KEY, "s1");
+  assert.ok(router.resolveBackend(IPC.invoke.sessionGet, [{ id: remoteId }]));
+  const outcome = await router.route(IPC.invoke.sessionDelete, [remoteId]);
+  assert.deepEqual(outcome, { remote: true, value: { ok: true } });
+  assert.ok(
+    client.calls.some(
+      (entry) => entry.method === "session/delete" && entry.params.sessionId === "s1",
+    ),
+    "the host must receive the delete",
+  );
+  // The deleted session stops being routable, and its event stream is released.
+  assert.equal(router.resolveBackend(IPC.invoke.sessionGet, [{ id: remoteId }]), null);
+  const notice = events.find(
+    (event) =>
+      event.channel === IPC.event.sessionsChanged &&
+      event.payload.reason === "remote.session.deleted",
+  );
+  assert.ok(notice, "a confirmed delete must refresh the renderer's session list");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    client.calls.some(
+      (entry) => entry.method === "events/unsubscribe" && entry.params.subscriptionId === "sub-s1",
+    ),
+    "the deleted session's subscription must be released",
+  );
 });
 
 test("close detaches the listener and unregisters every session", async () => {
@@ -174,15 +209,15 @@ test("close is idempotent and safe to call before open", async () => {
   await conn.close();
 });
 
-test("session/list failure leaves the connection registered for nothing but does not throw", async () => {
+test("session/list failure rejects open and detaches its listeners", async () => {
   const { conn, router, client } = setup({
     sessions: [makeSession("s1")],
     requestFailures: { "session/list": new Error("no route to host") },
   });
-  await conn.open();
+  await assert.rejects(conn.open(), /no route to host/);
   assert.equal(
     router.resolveBackend(IPC.invoke.sessionGet, [{ id: makeRemoteSessionId(HOST_KEY, "s1") }]),
     null,
   );
-  assert.equal(client.hasListener(), true);
+  assert.equal(client.hasListener(), false);
 });

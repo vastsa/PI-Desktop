@@ -99,7 +99,7 @@ Renderer uses provider methods that accept optional `secretValue` on create/upda
 8. Portable configuration sync exports provider API keys or MCP
    environment/header values only after explicit credential opt-in. Values
    remain inside host-owned encrypted staging and are restored through the
-   receiving device's local secret store. WebDAV credentials, machine
+   receiving device's local secret store. S3 connection credentials, machine
    encryption keys, OAuth sessions, and cookies are never portable.
 
 ## 7. Redaction policy

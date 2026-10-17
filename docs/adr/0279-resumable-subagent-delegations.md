@@ -70,7 +70,12 @@ A new module (`packages/agent-runtime/src/delegation-history.ts`) owns:
 - synthesizing the original `task` as the first user message from the first
   `Task` tool row's persisted arguments,
 - converting to `AgentMessage[]` with the delegate's own provider/model binding
-  (a pinned delegation model is not the session model),
+  (a pinned delegation model is not the session model). Assistant transport
+  identity is `model.provider` / `model.id` — the same values live requests
+  use — not the account row id. When `vendorKey` is set, `model.provider`
+  differs from `provider.id`; tagging restored history with the account id
+  makes pi-ai treat same-model reasoning as foreign and empty
+  `reasoning_content` on resume,
 - a read-file / line-count budget gate.
 
 `SubagentRun` gains `initialMessages?: AgentMessage[]`; when present it seeds

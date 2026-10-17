@@ -4,9 +4,10 @@
  * Two reported failures live here. A custom row pointed at
  * `https://open.bigmodel.cn/api/v1` (Zhipu's OpenAI Responses endpoint) listed
  * its models but showed a generic 128k / 8k text-only row for every one of them,
- * because the catalog only accepted that host's own published path. And a row on
- * a relay the catalog cannot place got nothing at all for models the catalog
- * describes, because one publisher's record must never answer for another.
+ * because the catalog only accepted that host's own published path. A row on a
+ * relay the catalog cannot place used to get nothing at all; it now still reads
+ * the weight owner's published record for ids the owner states, so a relay-only
+ * `deepseek-v4-flash` keeps DeepSeek's window instead of the generic seed.
  *
  * This drives the real handlers with the bundled snapshot, so it pins the whole
  * chain: discovery, endpoint resolution, catalog anchoring, and the hand-typed
@@ -130,9 +131,8 @@ test("a relay's list reads the shipped publisher's record for a known id", async
   const byId = new Map(result.models.map((model) => [model.modelId, model]));
   const known = byId.get("claude-sonnet-4-5");
   assert.equal(known.catalogSource, "models.dev", "several publishers state this id");
-  // Anthropic's published window, not a median dragged down by resellers that
-  // state a smaller deployment of the same id.
-  assert.equal(known.contextWindow, 1_000_000);
+  // Anthropic's current published window, not larger reseller deployment values.
+  assert.equal(known.contextWindow, 200_000);
   assert.equal(known.maxTokens, 64_000);
   assert.ok(known.capabilities.includes("tools"));
   // An id no publisher states still lands on the generic seed.
@@ -140,6 +140,22 @@ test("a relay's list reads the shipped publisher's record for a known id", async
   assert.equal(unknown.catalogSource, undefined);
   assert.equal(unknown.contextWindow, 128_000);
   assert.deepEqual(unknown.capabilities, ["text"]);
+});
+
+test("a model-list capacity report takes precedence over catalog limits", async (t) => {
+  const row = rowOf({
+    id: "row-reported-capacity",
+    name: "Relay",
+    baseUrl: "https://relay.example/v1",
+  });
+  const { result } = await handlersFor(t, row, {
+    data: [{ id: "claude-sonnet-4-5", context_length: 321_000, max_tokens: 12_345 }],
+  });
+
+  const [model] = result.models;
+  assert.equal(model.contextWindow, 321_000, "the endpoint reports its actual context window");
+  assert.equal(model.maxTokens, 12_345, "the endpoint reports its actual output limit");
+  assert.equal(model.catalogSource, "models.dev", "catalog metadata still identifies the model");
 });
 
 test("a hand-typed id on the same relay answers with the same record", async (t) => {
@@ -185,15 +201,20 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
 
   const byId = new Map(result.models.map((model) => [model.modelId, model]));
 
-  // No official publisher states this leaf, so a reseller must not decide it.
-  assert.equal(byId.get("deepseek-v4-flash").catalogSource, undefined);
-  // Reseller copies disagree; an unanchored relay stays on the generic shape.
+  // The weight owner (DeepSeek) publishes this id, so an unanchored relay reads
+  // the owner's record instead of dropping to the generic seed.
+  const deepseek = byId.get("deepseek-v4-flash");
+  assert.equal(deepseek.catalogSource, "models.dev");
+  assert.equal(deepseek.contextWindow, 1_000_000);
+  assert.equal(deepseek.maxTokens, 393_216);
+  // Xiaomi publishes the base id, so both the plain and the `-1m` alias read
+  // the owner's record without rewriting the served wire ID.
   for (const id of ["mimo-v2.5-pro", "mimo-v2.5-pro-1m"]) {
     const mimo = byId.get(id);
     assert.equal(mimo.modelId, id); // lookup never rewrites the served wire ID
-    assert.equal(mimo.catalogSource, undefined);
-    assert.equal(mimo.contextWindow, 128_000);
-    assert.equal(mimo.maxTokens, 8_192);
+    assert.equal(mimo.catalogSource, "models.dev");
+    assert.equal(mimo.contextWindow, 1_048_576);
+    assert.equal(mimo.maxTokens, 131_072);
   }
 
   // Matching Xiaomi reseller records agree on the published speech limits.
@@ -203,16 +224,16 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
   assert.ok(tts.capabilities.includes("audio"));
   assert.equal(tts.contextWindow, 8_192);
 
-  // This relay is unanchored and Google / Vertex records conflict, so a `-1m`
-  // alias cannot choose one official endpoint's metadata.
+  // Google and Vertex now publish matching metadata, so the `-1m` alias can
+  // safely use their shared record without changing the served model id.
   const gemini = byId.get("gemini-2.5-pro-1m");
-  assert.equal(gemini.catalogSource, undefined);
-  assert.equal(gemini.contextWindow, 128_000);
+  assert.equal(gemini.catalogSource, "models.dev");
+  assert.equal(gemini.contextWindow, 1_048_576);
 
   // Official Anthropic disambiguation still enriches exact leaves.
   const claude = byId.get("claude-sonnet-4-5");
   assert.equal(claude.catalogSource, "models.dev");
-  assert.equal(claude.contextWindow, 1_000_000);
+  assert.equal(claude.contextWindow, 200_000);
 });
 test("a relay enriches a uniquely published dated leaf without reseller majority voting", async (t) => {
   /*

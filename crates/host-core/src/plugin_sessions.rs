@@ -443,7 +443,6 @@ fn write_and_index(
     source_label: Option<&str>,
     prepared: &PreparedImport,
 ) -> Result<()> {
-    sessions::invalidate_transcript_layout(&prepared.session_id);
     transcripts::write_transcript(
         db.data_dir(),
         &prepared.session_id,
@@ -677,7 +676,6 @@ pub fn import_batch(db: &Database, plugin_id: &str, params: &Value) -> Result<Va
 
     let mut written: Vec<String> = Vec::with_capacity(prepared.len());
     for item in &prepared {
-        sessions::invalidate_transcript_layout(&item.session_id);
         if let Err(error) = transcripts::write_transcript(
             db.data_dir(),
             &item.session_id,
@@ -1209,7 +1207,6 @@ pub fn delete(db: &Database, plugin_id: &str, params_value: &Value) -> Result<Va
         if changed == 0 {
             return Err(not_found("session not found"));
         }
-        sessions::invalidate_transcript_layout(&session_id);
         transcripts::remove_session_files(db.data_dir(), &session_id);
     } else {
         db.conn().execute(

@@ -18,7 +18,7 @@ import {
   type RacpClientState,
 } from "@pi-desktop/racp";
 import { ErrorCodes, type RacpEventEnvelope } from "@pi-desktop/shared";
-import type { RemoteHostClient } from "./remote-host-connection.js";
+import type { RemoteHostClient, RemoteSubscriptionClosed } from "./remote-host-connection.js";
 
 export type PairingExchangeOptions = {
   /** Loopback RACP endpoint, either pasted by the user or forwarded by us. */
@@ -28,6 +28,9 @@ export type PairingExchangeOptions = {
   /** Device label the host records against the minted device. */
   label: string;
   clientInfo: { name: string; version: string };
+  /** New SSH workspace installs require both additive workspace services. */
+  requireWorkspace?: boolean;
+  expectedHostId?: string;
   log?: (level: "info" | "warn", message: string, data?: Record<string, unknown>) => void;
 };
 
@@ -43,6 +46,8 @@ export async function exchangePairingToken(options: PairingExchangeOptions): Pro
   const pairing = createRacpRemoteHostClient({
     transport: wsClientTransport({ url: options.url, token: options.pairingToken }),
     clientInfo: options.clientInfo,
+    requireWorkspace: options.requireWorkspace,
+    expectedHostId: options.expectedHostId,
     log: options.log,
   });
   try {
@@ -65,6 +70,9 @@ export type RacpRemoteHostClientOptions = {
   transport: ClientTransportFactory;
   /** Identity sent in `connection/initialize`; the host records it as the device label. */
   clientInfo: { name: string; version: string };
+  /** Leave false for legacy remote-Agent histories and manual pairing. */
+  requireWorkspace?: boolean;
+  expectedHostId?: string;
   /** Deadline for a single request; the RACP default of 15s is used when omitted. */
   requestTimeoutMs?: number;
   /** Reconnect policy; the RACP client stays disconnected when omitted. */
@@ -74,6 +82,8 @@ export type RacpRemoteHostClientOptions = {
     maxDelayMs?: number;
     maxAttempts?: number;
   };
+  onReconnected?: () => Promise<void>;
+  onStateChange?: (state: RacpClientState) => void;
   /** Optional structured log; defaults to a no-op. */
   log?: (level: "info" | "warn", message: string, data?: Record<string, unknown>) => void;
 };
@@ -86,7 +96,21 @@ export type RacpRemoteHostClient = {
   /** Open the transport and initialize the RACP session. */
   connect(): Promise<void>;
   /** Close the transport; safe to call before {@link connect} and after failure. */
+  /**
+   * Workspace capabilities the live handshake advertised, or `undefined`
+   * before `connection/initialize` completes. Callers use the distinction to
+   * tell "not known yet" from "this Host does not offer them", which is the
+   * same-version mismatch the desktop must realign (ADR 0327).
+   */
+  workspaceCapabilities?(): RemoteWorkspaceCapabilities | undefined;
+  /** Close the transport; safe to call before {@link connect} and after failure. */
   close(): Promise<void>;
+};
+
+/** The two additive services a remote workspace install must advertise. */
+export type RemoteWorkspaceCapabilities = {
+  workspaceTools: boolean;
+  workspaceFiles: boolean;
 };
 
 /**
@@ -99,10 +123,75 @@ export function createRacpRemoteHostClient(
   options: RacpRemoteHostClientOptions,
 ): RacpRemoteHostClient {
   const listeners = new Set<(envelope: RacpEventEnvelope) => void>();
+  const reconnectListeners = new Set<() => Promise<void>>();
+  const stateListeners = new Set<(state: RacpClientState) => void>();
+  const closedListeners = new Set<(notice: RemoteSubscriptionClosed) => void>();
+  let closed = false;
+  let generation = 0;
+  let visibleState: RacpClientState = "disconnected";
+  const notify = <T>(subscribers: Set<(value: T) => void>, value: T) => {
+    for (const listener of subscribers) {
+      try { listener(value); }
+      catch (error) { options.log?.("warn", "remote lifecycle listener threw", { error: String(error) }); }
+    }
+  };
+  const publishState = (state: RacpClientState) => {
+    visibleState = state;
+    notify(stateListeners, state);
+    try { options.onStateChange?.(state); }
+    catch (error) { options.log?.("warn", "remote state listener threw", { error: String(error) }); }
+  };
+  const workspaceCapabilities = (): RemoteWorkspaceCapabilities | undefined => {
+    const capabilities = racp.initialized?.capabilities;
+    if (!capabilities) return undefined;
+    return {
+      workspaceTools: capabilities.workspaceTools === true,
+      workspaceFiles: capabilities.workspaceFiles === true,
+    };
+  };
+  const requireWorkspace = (capability?: keyof RemoteWorkspaceCapabilities) => {
+    const capabilities = workspaceCapabilities();
+    const supported = capability ? capabilities?.[capability] === true
+      : capabilities?.workspaceTools === true && capabilities?.workspaceFiles === true;
+    if (!supported) {
+      throw Object.assign(new Error("Upgrade pi-host to a matching Desktop release with workspace tools and files support"), {
+        errorCode: ErrorCodes.HOST_VERSION_MISMATCH,
+        retriable: false,
+      });
+    }
+  };
+  const validateIdentity = () => {
+    if (options.expectedHostId !== undefined && racp.initialized?.server.hostId !== options.expectedHostId) {
+      throw Object.assign(new Error("Remote Host identity changed; pair the intended Host again"), {
+        errorCode: "HOST_AUTH_FAILED", retriable: false,
+      });
+    }
+  };
   const racp = new RacpClient({
     transport: options.transport,
     client: options.clientInfo,
+    onStateChange: state => {
+      if (closed && state !== "disconnected") return;
+      // The socket is initialized before onReconnected runs. Do not advertise
+      // readiness until subscription/snapshot recovery has also completed.
+      if (state === "connected" && (visibleState === "reconnecting" || options.requireWorkspace || options.expectedHostId)) return;
+      publishState(state);
+    },
+    onSubscriptionClosed: notice => { if (!closed) notify(closedListeners, notice); },
+    onReconnected: async () => {
+      if (closed) return;
+      validateIdentity();
+      if (options.requireWorkspace) requireWorkspace();
+      const token = generation;
+      const results = await Promise.allSettled([...reconnectListeners].map(listener => Promise.resolve().then(listener)));
+      if (closed || token !== generation) return;
+      const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+      if (errors.length) throw new AggregateError(errors, "remote subscription recovery failed");
+      await options.onReconnected?.();
+      if (!closed && token === generation && racp.state === "connected") publishState("connected");
+    },
     onEvent: (envelope) => {
+      if (closed) return;
       for (const listener of listeners) {
         try {
           listener(envelope);
@@ -116,7 +205,20 @@ export function createRacpRemoteHostClient(
     ...(options.log ? { log: options.log } : {}),
   });
   const client: RemoteHostClient = {
-    request: (method, params) => racp.request(method, params),
+    async request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
+      // Offline errors remain offline errors; capabilities belong to the live handshake.
+      if (racp.state === "connected") {
+        if (method === "workspace/files") requireWorkspace("workspaceFiles");
+        else if (["workspace/toolExecute", "workspace/toolAbort", "workspace/toolShell"].includes(method)) {
+          requireWorkspace("workspaceTools");
+        }
+      }
+      return racp.request<T>(method, params, timeoutMs);
+    },
+    state: () => visibleState,
+    subscribeReconnect(listener) { reconnectListeners.add(listener); return () => { reconnectListeners.delete(listener); }; },
+    subscribeState(listener) { stateListeners.add(listener); return () => { stateListeners.delete(listener); }; },
+    subscribeSubscriptionClosed(listener) { closedListeners.add(listener); return () => { closedListeners.delete(listener); }; },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -126,12 +228,23 @@ export function createRacpRemoteHostClient(
   };
   return {
     client,
-    state: () => racp.state,
+    state: () => visibleState,
+    workspaceCapabilities,
     async connect() {
+      closed = false;
       await racp.connect();
+      if (options.requireWorkspace || options.expectedHostId) {
+        try { validateIdentity(); if (options.requireWorkspace) requireWorkspace(); }
+        catch (error) { await racp.close(); throw error; }
+        if (!closed && racp.state === "connected") publishState("connected");
+      }
     },
     async close() {
+      closed = true;
+      generation++;
+      listeners.clear(); reconnectListeners.clear(); closedListeners.clear();
       await racp.close();
+      stateListeners.clear();
     },
   };
 }

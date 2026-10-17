@@ -24,7 +24,10 @@
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { estimateTokens } from "./pi-runtime-estimates.js";
+import {
+  ESTIMATED_TEXT_CHARS_PER_TOKEN,
+  estimateTokens,
+} from "./pi-runtime-estimates.js";
 import { isRecord, truncateMessageText } from "./agent-messages.js";
 
 /**
@@ -62,7 +65,10 @@ export function truncateMessageToTail(
 ): AgentMessage {
   return truncateMessageText(
     message,
-    Math.max(64, Math.floor(Math.max(1, maxTokens)) * 4),
+    Math.max(
+      64,
+      Math.floor(Math.max(1, maxTokens) * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    ),
     CHECKPOINT_TRUNCATION_MARKER,
   );
 }

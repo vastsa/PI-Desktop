@@ -8,10 +8,9 @@ import { TranscriptSearchContext } from "../../../lib/transcript-search-context"
 import {
   isTurnThinking,
   processContainsMessage,
-  resolveThinkingDisplayMode,
-  shouldAutoOpenTurnProcess,
   turnProcessTiming,
 } from "../../../lib/turn-process";
+import { resolveShowThinking } from "../../../lib/thinking-visibility";
 import { useAppStore } from "../../../stores/app-store";
 import {
   IconChevronRight,
@@ -37,7 +36,7 @@ export function TurnProcess({
   children: ReactNode;
 }) {
   const { t } = useTranslation();
-  const mode = useAppStore((state) => resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode));
+  const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
   const search = useContext(TranscriptSearchContext);
   const revealRequest = useMemo(() => search && processContainsMessage(processParts, search.messageId)
     ? search.requestId : undefined, [processParts, search]);
@@ -45,9 +44,13 @@ export function TurnProcess({
     processParts.flatMap((part) => part.kind === "activity" ? part.items : []), delegationStatuses,
   ), [processParts, delegationStatuses]);
   const thinkingNow = useMemo(() => isTurnThinking(turnParts, isActive), [turnParts, isActive]);
-  const visibleSteps = useMemo(() => cachedVisibleProcessSteps(processParts, mode === "compact", isActive), [processParts, mode, isActive]);
+  const visibleSteps = useMemo(() => cachedVisibleProcessSteps(processParts, !showThinking, isActive), [processParts, showThinking, isActive]);
+  // Active processes start open and untouched completed ones close by default;
+  // an explicit user choice stays authoritative. This does not depend on the
+  // thinking preference, and a recorded failure keeps an untouched active
+  // process open through recovery because it stays active until the turn ends.
   const disclosure = useAutomaticDisclosure(
-    shouldAutoOpenTurnProcess(mode, isActive, summary.issues > 0),
+    isActive,
     revealRequest,
     disclosureKey("turn", turnId),
   );

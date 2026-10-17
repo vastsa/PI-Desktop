@@ -23,7 +23,7 @@ import {
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
-import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
+import { OverlayBackdrop, Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
@@ -130,6 +130,7 @@ export function ProviderSetupDialog({
   const [name, setName] = useState(() => initialDraft?.name ?? initialName(provider));
   const [baseUrl, setBaseUrl] = useState(() => initialDraft?.baseUrl ?? initialBaseUrl(provider));
   const [apiKey, setApiKey] = useState("");
+  const [noApiKeyRequired, setNoApiKeyRequired] = useState(() => provider?.authKind === "none");
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() =>
     initialDraft?.apiStyle ?? normalizeApiStyle(provider?.apiStyle),
   );
@@ -388,7 +389,10 @@ export function ProviderSetupDialog({
           models: persisted,
           apiStyle: resolvedApiStyle,
           headers,
-          ...(apiKey ? { secretValue: apiKey } : {}),
+          ...(custom && noApiKeyRequired !== (provider.authKind === "none")
+            ? { authKind: noApiKeyRequired ? "none" : "api_key_and_base_url" }
+            : {}),
+          ...(custom && noApiKeyRequired ? {} : apiKey ? { secretValue: apiKey } : {}),
         });
         await onSaved(result.provider ?? provider, persisted, imageModelIdsToSave);
       } else {
@@ -398,10 +402,10 @@ export function ProviderSetupDialog({
           type: "openai_compatible",
           protocol: "openai_compatible",
           baseUrl: providerBaseUrl,
-          authKind: "api_key_and_base_url",
+          authKind: custom && noApiKeyRequired ? "none" : "api_key_and_base_url",
           defaultModelId: persisted[0]?.id,
           models: persisted,
-          secretValue: apiKey || undefined,
+          ...(custom && noApiKeyRequired ? {} : { secretValue: apiKey || undefined }),
           apiStyle: resolvedApiStyle,
           headers,
         });
@@ -507,6 +511,11 @@ export function ProviderSetupDialog({
             nameRef={nameRef}
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
+            noApiKeyRequired={noApiKeyRequired}
+            onNoApiKeyRequiredChange={(required) => {
+              setNoApiKeyRequired(required);
+              if (required) setApiKey("");
+            }}
             name={name}
             onNameChange={setName}
             baseUrl={baseUrl}
@@ -585,7 +594,7 @@ export function ProviderSetupDialog({
   );
 
   return portalOverlay(
-    <div
+    <OverlayBackdrop
       className="overlay provider-setup-overlay"
       role="presentation"
       onClick={() => {
@@ -620,7 +629,7 @@ export function ProviderSetupDialog({
       </div>
 
       {advancedOpen && (named || custom) ? (
-        <div
+        <OverlayBackdrop
           className="overlay provider-advanced-overlay"
           role="presentation"
           onClick={(event) => {
@@ -657,8 +666,8 @@ export function ProviderSetupDialog({
               </div>
             </div>
           </div>
-        </div>
+        </OverlayBackdrop>
       ) : null}
-    </div>
+    </OverlayBackdrop>
   );
 }

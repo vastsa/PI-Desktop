@@ -1,3 +1,4 @@
+import { isRemoteSession } from "../lib/remote-session-safety";
 import {
   KEYBOARD_SHORTCUTS,
   keybindingDisplayParts,
@@ -109,7 +110,9 @@ export function ConversationTopbar({
   const fullTaskTitle = isDefaultSessionTitle(activeSession?.title)
     ? t("chat.untitledTask")
     : activeSession?.title || t("chat.untitledTask");
-  const project = projectName(workspace?.path, workspace?.name);
+  const project = isRemoteSession(activeSession)
+    ? activeSession?.remoteWorkspaceLabel
+    : projectName(workspace?.path, workspace?.name);
 
   return (
     <div
@@ -155,6 +158,7 @@ export function ConversationTopbar({
           title={project ? `${project} · ${fullTaskTitle}` : fullTaskTitle}
         >
           <span className="ct-title">{fullTaskTitle}</span>
+          {isRemoteSession(activeSession) && <span className="thread-item-source">{t("remote:remote")} · {activeSession?.remoteHostLabel}</span>}
         </div>
       </div>
 

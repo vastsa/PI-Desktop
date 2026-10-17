@@ -16,6 +16,7 @@ import {
   RacpEventEnvelopeSchema,
   RacpInitializeResultSchema,
   RacpSessionSnapshotSchema,
+  WorkspaceFilesRequestSchema,
   allowedDecisionsAreCoherent,
   effectiveRemotePermissionMode,
   eventEnvelopeSequencingIsValid,
@@ -362,5 +363,15 @@ describe("versions and errors", () => {
       applyCeilingToPairedDevices: false,
       approvalLifetimeMs: 1800000,
     });
+  });
+});
+
+describe("SSH repository instruction file contract", () => {
+  it("accepts the additive operation and preserves existing file operations", () => {
+    for (const operation of ["instructions", "list", "read", "index", "resolve", "image", "diff"]) {
+      expect(Value.Check(WorkspaceFilesRequestSchema, { path: "/repo", operation })).toBe(true);
+    }
+    expect(Value.Check(WorkspaceFilesRequestSchema, { path: "/repo", operation: "instructions", globalHome: true })).toBe(false);
+    expect(Value.Check(WorkspaceFilesRequestSchema, { path: "/repo", operation: "unknown" })).toBe(false);
   });
 });

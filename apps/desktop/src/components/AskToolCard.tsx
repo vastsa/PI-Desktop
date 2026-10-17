@@ -173,7 +173,7 @@ export function AskToolCard({ request, queued = 0 }: { request: PendingAsk; queu
         <span className="asktool-question-number">
           {t("askTool.questionNumber", { number: index + 1 })}
         </span>
-        <span className="asktool-question-body">
+        <span key={index} className="asktool-question-body" tabIndex={0}>
           <AskToolRichText source={current.question} />
         </span>
       </h3>

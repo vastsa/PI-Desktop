@@ -1114,12 +1114,26 @@ Linux 保留淡入淡出和滑动退出。
 
 | 属性 | 值 |
 |---|---|
-| CSS 类 | `.ui-checkbox` |
-| 结构 | `<label> → <input type="checkbox"> + <span>{label}</span>` |
-| 属性 | 扩展 `InputHTMLAttributes`（排除 `type`），并提供 `label: ReactNode` |
+| CSS classes | `.ui-checkbox` (label), `.ds-checkbox` (native input) |
+| Anatomy | `<label> → <input type="checkbox"> + <span>{label}</span>` |
+| Props | Extends `InputHTMLAttributes` (minus `type` and `ref`) + `label: ReactNode`, `indeterminate?: boolean` |
+| Paint | 18px rounded square, 8px label gap, token-based checked fill and checkmark; mixed state uses a dash |
+| Interaction | Native label activation and Space toggling, visible keyboard focus, whole-label disabled treatment; native paint in forced-colors mode |
 
 独立的带标签复选框必须使用 `Checkbox`；不得手写
 `<label><input type="checkbox"/>…</label>`。
+
+### 11.11a SettingsDisclosure
+
+Implementation: `components/settings/SettingsDisclosure.tsx`.
+
+Use native `<details>` / `<summary>` for low-frequency settings, with one
+localized title and a decorative chevron. It accepts native details attributes,
+children and `className`; `open` can seed or update the native state. Collapsed
+content stays mounted to retain drafts but is not keyboard-reachable. The
+shared summary has a minimum 44px row, token-based hover/focus treatment and
+reduced-motion-compatible chevron feedback. Errors, progress and approvals
+must remain outside optional disclosures.
 
 ### 11.11b CheckboxGroup
 

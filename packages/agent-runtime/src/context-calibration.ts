@@ -8,11 +8,11 @@
  * whose shape is:
  *
  *   last assistant usage (real, when the transcript still carries one)
- *     + ceil(chars / 4)  over every message after it
+ *     + pi-ai text-token estimates over every message after it
  *
  * Two systematic errors follow from that shape:
  *
- *   1. `chars / 4` is an English-prose constant. Applied to CJK text it
+ *   1. The text-token estimate is an English-prose constant. Applied to CJK text it
  *      under-counts by roughly a factor of two to four, and CJK is the bulk of
  *      what some sessions send. ASCII fixtures never show it.
  *   2. A projection with no assistant usage left — right after a compaction, or

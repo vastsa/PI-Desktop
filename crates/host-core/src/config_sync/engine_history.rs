@@ -1,182 +1,34 @@
 use super::*;
 
-pub(super) async fn history_chain(
-    transport: &WebDavTransport,
-    config: &StoredConfig,
-    key: &VaultKey,
-    head_revision_id: &str,
-) -> Result<Vec<RevisionManifest>> {
-    let mut pending = vec![head_revision_id.to_string()];
-    let mut seen = BTreeSet::new();
-    let mut result = Vec::new();
-    while let Some(revision_id) = pending.pop() {
-        if !seen.insert(revision_id.clone()) {
-            continue;
-        }
-        if seen.len() > MAX_HISTORY_SCAN {
-            bail!("CONFIG_SYNC_LIMIT_EXCEEDED: remote history is too large");
-        }
-        let manifest = read_remote_manifest(transport, config, key, &revision_id).await?;
-        for parent in manifest.parents.iter().rev() {
-            pending.push(parent.clone());
-        }
-        result.push(manifest);
-    }
-    Ok(result)
-}
-
-fn older_than_grace(manifest: &RevisionManifest) -> bool {
-    let Ok(created_at) = chrono::DateTime::parse_from_rfc3339(&manifest.created_at) else {
-        return false;
-    };
-    Utc::now()
-        .signed_duration_since(created_at.with_timezone(&Utc))
-        .num_seconds()
-        >= HISTORY_GRACE_SECONDS
-}
-
-pub(super) async fn cleanup_history(
-    state: &Arc<Mutex<AppState>>,
-    transport: &WebDavTransport,
-    config: &StoredConfig,
-    key: &VaultKey,
-) -> Result<()> {
-    if config.remote_mode == RemoteMode::AppendOnly {
-        // There is no cross-device acknowledgement protocol for an
-        // unconditional WebDAV backend. Retaining every immutable revision
-        // keeps a late device head recoverable instead of deleting a branch
-        // that another device has not observed yet.
-        return Ok(());
-    }
-    let Some((head, _)) = read_remote_head(transport, config, key).await? else {
-        return Ok(());
-    };
-    let history = history_chain(transport, config, key, &head.revision_id).await?;
-    if history.len() <= MAX_RETAINED_REVISIONS {
-        return Ok(());
-    }
-    let (base_id, protected_ids, protected_resources) = {
-        let st = state.lock().await;
-        let base_id = load_base(&st, key)?.map(|value| value.revision_id);
-        let pending = load_pending(&st, key)?;
-        let mut protected = BTreeSet::new();
-        let mut resources = BTreeSet::new();
-        if let Some(pending) = pending {
-            protected.insert(pending.manifest.revision_id);
-            protected.insert(pending.remote_revision_id);
-            resources.extend(pending.manifest.resource_ids);
-        }
-        for filename in &config.recovery_points {
-            let path = recovery_path(&st, filename)?;
-            if let Some(point) = load_encrypted::<RecoveryPoint>(&st, key, "local-recovery", &path)?
-            {
-                if let Some(base) = point.base {
-                    protected.insert(base.revision_id);
-                    resources.extend(base.resource_ids);
-                }
-            }
-        }
-        (base_id, protected, resources)
-    };
-    let mut keep = BTreeSet::new();
-    for manifest in history.iter().take(MAX_RETAINED_REVISIONS) {
-        keep.insert(manifest.revision_id.clone());
-    }
-    keep.insert(head.revision_id.clone());
-    if let Some(base_id) = base_id {
-        keep.insert(base_id);
-    }
-    keep.extend(protected_ids);
-
-    let mut deletable = Vec::new();
-    for manifest in history {
-        if !keep.contains(&manifest.revision_id) && older_than_grace(&manifest) {
-            deletable.push(manifest);
-        }
-    }
-    if deletable.is_empty() {
-        return Ok(());
-    }
-    let mut retained_resources: BTreeSet<String> =
-        history_chain(transport, config, key, &head.revision_id)
-            .await?
-            .into_iter()
-            .filter(|manifest| keep.contains(&manifest.revision_id))
-            .flat_map(|manifest| manifest.resource_ids)
-            .collect();
-    retained_resources.extend(protected_resources);
-    let mut candidate_resources = BTreeSet::new();
-    for manifest in &deletable {
-        candidate_resources.extend(manifest.resource_ids.iter().cloned());
-        transport
-            .delete(&revision_path(config, &manifest.revision_id)?)
-            .await?;
-    }
-    for resource_id in candidate_resources.difference(&retained_resources) {
-        transport.delete(&object_path(config, resource_id)?).await?;
-    }
-    Ok(())
-}
-
+/// History is a bounded, authenticated index, not a recursive parent walk.
+/// Immutable objects are retained: deleting shared resources without a durable
+/// cross-device acknowledgement protocol can race an offline or publishing peer.
 pub(super) async fn list_history(state: Arc<Mutex<AppState>>) -> Result<Value> {
-    let (config, key, transport_password) = {
+    let (config, key, transport) = {
         let st = state.lock().await;
         let config = load_config(&st)?
-            .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: sync is not configured"))?;
+            .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: S3 backup is not configured"))?;
         let key = local_vault_key(&st, &config)?
             .ok_or_else(|| anyhow!("CONFIG_SYNC_LOCKED: backup vault is locked"))?;
-        let password = webdav_password(&st, &config)?;
-        (config, key, password)
+        let transport = configured_transport(&st, &config)?;
+        (config, key, transport)
     };
-    let transport = transport_with_password(&config, transport_password)?;
-    if config.remote_mode == RemoteMode::AppendOnly {
-        let Some(remote) =
-            read_append_only_remote(&transport, &config, &key, &NoSyncProgress).await?
-        else {
-            return Ok(json!([]));
-        };
-        let current = remote.tip_ids.iter().cloned().collect::<BTreeSet<_>>();
-        let mut by_id = BTreeMap::new();
-        for tip_id in &remote.tip_ids {
-            for manifest in history_chain(&transport, &config, &key, tip_id).await? {
-                by_id
-                    .entry(manifest.revision_id.clone())
-                    .or_insert(manifest);
-            }
-        }
-        let mut history = by_id.into_values().collect::<Vec<_>>();
-        history.sort_by(|left, right| right.created_at.cmp(&left.created_at));
-        return Ok(serde_json::to_value(
-            history
-                .into_iter()
-                .map(|manifest| PublicHistoryEntry {
-                    current: current.contains(&manifest.revision_id),
-                    revision_id: manifest.revision_id,
-                    created_at: manifest.created_at,
-                    parent_revision_ids: manifest.parents,
-                    entity_count: manifest.entities.len(),
-                    resource_count: manifest.resource_ids.len(),
-                })
-                .collect::<Vec<_>>(),
-        )?);
-    }
     let Some((head, _)) = read_remote_head(&transport, &config, &key).await? else {
         return Ok(json!([]));
     };
-    let history = history_chain(&transport, &config, &key, &head.revision_id).await?;
-    Ok(serde_json::to_value(
-        history
-            .into_iter()
-            .map(|manifest| PublicHistoryEntry {
-                current: manifest.revision_id == head.revision_id,
-                revision_id: manifest.revision_id,
-                created_at: manifest.created_at,
-                parent_revision_ids: manifest.parents,
-                entity_count: manifest.entities.len(),
-                resource_count: manifest.resource_ids.len(),
-            })
-            .collect::<Vec<_>>(),
-    )?)
+    let mut entries = Vec::new();
+    for revision_id in &head.history {
+        let manifest = read_remote_manifest(&transport, &config, &key, revision_id).await?;
+        entries.push(PublicHistoryEntry {
+            current: revision_id == &head.revision_id,
+            revision_id: manifest.revision_id,
+            created_at: manifest.created_at,
+            parent_revision_ids: manifest.parents,
+            entity_count: manifest.entities.len(),
+            resource_count: manifest.resource_ids.len(),
+        });
+    }
+    Ok(serde_json::to_value(entries)?)
 }
 
 fn add_restore_approvals(
@@ -199,16 +51,17 @@ fn add_restore_approvals(
         }
         let changed = local_map
             .get(&entity_key(entity))
-            .is_none_or(|current| current.digest != entity.digest);
+            .is_none_or(|current| !merge::same_version(current, entity));
         if changed && !existing.contains(&entity_key(entity)) {
             pending.approvals.push(PendingApproval {
                 approval_id: Uuid::new_v4().to_string(),
                 entity: entity.clone(),
                 reason: if entity.mapping_required {
-                    "mapping".into()
+                    "mapping"
                 } else {
-                    "securityChange".into()
-                },
+                    "securityChange"
+                }
+                .into(),
                 approved: false,
             });
         }
@@ -216,10 +69,7 @@ fn add_restore_approvals(
 }
 
 pub(super) async fn change_password(state: Arc<Mutex<AppState>>, params: Value) -> Result<Value> {
-    let sync_lock = {
-        let st = state.lock().await;
-        st.config_sync_lock.clone()
-    };
+    let sync_lock = state.lock().await.config_sync_lock.clone();
     let _sync_guard = sync_lock.lock().await;
     let current_password = params
         .get("currentPassword")
@@ -232,54 +82,43 @@ pub(super) async fn change_password(state: Arc<Mutex<AppState>>, params: Value) 
     if new_password.len() < 8 {
         bail!("CONFIG_SYNC_INVALID: new backup password must be at least 8 characters");
     }
-    let (mut config, key, transport_password) = {
+    let (mut config, key, transport) = {
         let st = state.lock().await;
         let config = load_config(&st)?
-            .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: sync is not configured"))?;
+            .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: S3 backup is not configured"))?;
         let key = unlock_vault(&config.vault_header, current_password)?;
-        let password = webdav_password(&st, &config)?;
-        (config, key, password)
+        let transport = configured_transport(&st, &config)?;
+        (config, key, transport)
     };
-    let transport = transport_with_password(&config, transport_password)?;
-    let Some((remote_header_bytes, remote_etag)) = transport.get("header").await? else {
+    let Some((bytes, etag)) = transport.get("header").await? else {
         bail!("CONFIG_SYNC_REMOTE: remote vault header is missing");
     };
-    let remote_header: VaultHeader =
-        serde_json::from_slice(&remote_header_bytes).context("decode remote vault header")?;
-    if remote_header.vault_id != config.vault_id {
-        bail!("CONFIG_SYNC_CONFLICT: selected WebDAV directory belongs to another vault");
+    let remote: VaultHeader =
+        serde_json::from_slice(&bytes).context("decode remote vault header")?;
+    if remote.vault_id != config.vault_id {
+        bail!("CONFIG_SYNC_CONFLICT: selected S3 prefix belongs to another vault");
     }
-    let remote_key = unlock_vault(&remote_header, current_password)?;
+    let remote_key = unlock_vault(&remote, current_password)?;
     if remote_key.as_bytes() != key.as_bytes() {
         bail!("CONFIG_SYNC_CONFLICT: local and remote vault keys do not match");
     }
-    let next_header = rewrap_vault(&remote_header, &key, new_password)?;
-    let published = if config.remote_mode == RemoteMode::AppendOnly {
-        transport
-            .put_unconditional("header", serde_json::to_vec(&next_header)?)
-            .await?;
-        true
-    } else {
-        let remote_etag = remote_etag.ok_or_else(|| {
-            anyhow!("CONFIG_SYNC_UNSUPPORTED: remote vault header does not expose a strong ETag")
-        })?;
-        transport
-            .put_if_match("header", &remote_etag, serde_json::to_vec(&next_header)?)
-            .await?
-    };
-    if !published {
+    let next_header = rewrap_vault(&remote, &key, new_password)?;
+    let etag =
+        etag.ok_or_else(|| anyhow!("CONFIG_SYNC_UNSUPPORTED: vault header needs a strong ETag"))?;
+    if !transport
+        .put_if_match("header", &etag, serde_json::to_vec(&next_header)?)
+        .await?
+    {
         bail!("CONFIG_SYNC_CONFLICT: remote vault header changed while changing password");
     }
-    let Some((stored_header, _)) = transport.get("header").await? else {
+    let Some((stored, _)) = transport.get("header").await? else {
         bail!("CONFIG_SYNC_REMOTE: remote vault header disappeared after password change");
     };
-    let stored_header: VaultHeader = serde_json::from_slice(&stored_header)?;
-    if stored_header.vault_id != config.vault_id {
+    let stored: VaultHeader = serde_json::from_slice(&stored)?;
+    if stored.vault_id != config.vault_id
+        || unlock_vault(&stored, new_password)?.as_bytes() != key.as_bytes()
+    {
         bail!("CONFIG_SYNC_CONFLICT: remote vault changed while changing password");
-    }
-    let stored_key = unlock_vault(&stored_header, new_password)?;
-    if stored_key.as_bytes() != key.as_bytes() {
-        bail!("CONFIG_SYNC_CONFLICT: remote vault key changed while changing password");
     }
     config.vault_header = next_header;
     let mut st = state.lock().await;
@@ -292,29 +131,30 @@ pub(super) async fn restore(
     params: Value,
     tx: mpsc::UnboundedSender<String>,
 ) -> Result<Value> {
-    if !params
-        .get("acknowledgePropagation")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        bail!("CONFIG_SYNC_INVALID: restore propagation warning must be acknowledged");
-    }
     let revision_id = params
         .get("revisionId")
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: revisionId is required"))?;
     validate_remote_id(revision_id, "revision")?;
-    let sync_lock = {
-        let st = state.lock().await;
-        st.config_sync_lock.clone()
-    };
+    let sync_lock = state.lock().await.config_sync_lock.clone();
     let _sync_guard = sync_lock.lock().await;
-    let (mut config, key, base, local, transport_password) = {
+    let (mut config, key, base, local, transport) = {
         let mut st = state.lock().await;
         let config = load_config(&st)?
-            .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: sync is not configured"))?;
+            .ok_or_else(|| anyhow!("CONFIG_SYNC_INVALID: S3 backup is not configured"))?;
+        if config.mode == SyncMode::Sync
+            && !params
+                .get("acknowledgePropagation")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        {
+            bail!("CONFIG_SYNC_INVALID: restore propagation warning must be acknowledged");
+        }
         let key = local_vault_key(&st, &config)?
             .ok_or_else(|| anyhow!("CONFIG_SYNC_LOCKED: backup vault is locked"))?;
+        if load_pending(&st, &key)?.is_some() {
+            bail!("CONFIG_SYNC_CONFLICT: resolve pending changes before restoring");
+        }
         let base = load_base(&st, &key)?;
         let local = domains::capture(
             &mut st,
@@ -324,63 +164,43 @@ pub(super) async fn restore(
             &config.plugin_intents,
             &identity_overrides(&config),
         )?;
-        let password = webdav_password(&st, &config)?;
-        (config, key, base, local, password)
+        let transport = configured_transport(&st, &config)?;
+        (config, key, base, local, transport)
     };
-    let transport = transport_with_password(&config, transport_password)?;
-    let (parent_ids, current_etag) = if config.remote_mode == RemoteMode::AppendOnly {
-        let Some(remote) =
-            read_append_only_remote(&transport, &config, &key, &NoSyncProgress).await?
-        else {
-            bail!("CONFIG_SYNC_REMOTE: cannot restore from an empty vault");
-        };
-        if remote.tip_ids.is_empty() {
-            bail!("CONFIG_SYNC_REMOTE: cannot restore from an empty vault");
-        }
-        (remote.tip_ids, None)
-    } else {
-        let Some((current_head, current_etag)) =
-            read_remote_head(&transport, &config, &key).await?
-        else {
-            bail!("CONFIG_SYNC_REMOTE: cannot restore from an empty vault");
-        };
-        (vec![current_head.revision_id], Some(current_etag))
+    let Some((current_head, etag)) = read_remote_head(&transport, &config, &key).await? else {
+        bail!("CONFIG_SYNC_REMOTE: cannot restore from an empty vault");
     };
-    let (target, target_resources) =
+    let (target, resources) =
         read_remote_revision(&transport, &config, &key, revision_id, &NoSyncProgress).await?;
-    let candidate_id = Uuid::new_v4().to_string();
+    {
+        let st = state.lock().await;
+        create_recovery_point(&st, &mut config, &key, base.clone(), local.clone())?;
+        save_config(&st, &config)?;
+    }
+    let candidate_id = if config.mode == SyncMode::Sync {
+        Uuid::new_v4().to_string()
+    } else {
+        target.revision_id.clone()
+    };
     let candidate = LocalSnapshot {
         manifest: RevisionManifest {
             format: REVISION_FORMAT.into(),
             version: 1,
             revision_id: candidate_id.clone(),
-            parents: parent_ids,
+            parents: vec![current_head.revision_id.clone()],
             created_at: Utc::now().to_rfc3339(),
             entities: target.entities.clone(),
-            resource_ids: target_resources.keys().cloned().collect(),
+            resource_ids: resources.keys().cloned().collect(),
         },
-        resources: target_resources,
+        resources,
     };
-    upload_snapshot(&transport, &config, &key, &candidate, &NoSyncProgress).await?;
-    if config.remote_mode == RemoteMode::AppendOnly {
-        publish_append_only_head(&transport, &config, &key, &config.device_id, &candidate_id)
-            .await?;
-    } else if !publish_head(
-        &transport,
-        &config,
-        &key,
-        &RemoteHead {
-            format: FORMAT.into(),
-            version: 1,
-            revision_id: candidate_id.clone(),
-        },
-        current_etag.as_deref(),
-    )
-    .await?
-    {
-        bail!("CONFIG_SYNC_CONFLICT: remote head changed while restoring");
+    if config.mode == SyncMode::Sync {
+        upload_snapshot(&transport, &config, &key, &candidate, &NoSyncProgress).await?;
+        let head = next_head(&candidate_id, Some(&current_head));
+        if !publish_head(&transport, &config, &key, &head, Some(&etag)).await? {
+            bail!("CONFIG_SYNC_CONFLICT: remote head changed while restoring");
+        }
     }
-
     let merged = merge::MergeResult {
         entities: candidate.manifest.entities.clone(),
         conflicts: Vec::new(),
@@ -394,19 +214,16 @@ pub(super) async fn restore(
         &candidate_id,
         candidate.resources.clone(),
     );
-    pending.manifest = candidate.manifest.clone();
+    pending.manifest = candidate.manifest;
     pending.local_before = Some(local.manifest.clone());
     add_restore_approvals(&config, &local.manifest, &target, &mut pending);
     let should_apply = pending.approvals.is_empty();
+    pending.journal_state = if should_apply { "applying" } else { "staged" }.into();
     {
         let st = state.lock().await;
-        create_recovery_point(&st, &mut config, &key, base.clone(), local.clone())?;
-        let mut journal = pending.clone();
-        journal.journal_state = if should_apply { "applying" } else { "staged" }.into();
-        store_pending(&st, &key, &journal)?;
+        store_pending(&st, &key, &pending)?;
         if !should_apply {
-            config.last_success_at = Some(Utc::now().to_rfc3339());
-            config.last_revision_id = Some(candidate_id.clone());
+            config.last_revision_id = Some(candidate_id);
             clear_error(&mut config);
             save_config(&st, &config)?;
         }
@@ -421,11 +238,6 @@ pub(super) async fn restore(
             &pending,
         )
         .await?;
-    }
-    if config.remote_mode == RemoteMode::Strict {
-        if let Err(error) = cleanup_history(&state, &transport, &config, &key).await {
-            tracing::warn!(error = %error, "config sync history cleanup failed after restore");
-        }
     }
     let mut st = state.lock().await;
     send_state_notification(&tx, &mut st);

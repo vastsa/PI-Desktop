@@ -62,6 +62,10 @@ function bareToolName(toolName?: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+export function isAskToolName(toolName?: string): boolean {
+  return toolName?.toLowerCase() === "asktool";
+}
+
 /** The tool that STARTS a subagent (ADR 0062). The lifecycle tools of ADR 0089
  * (TaskWait/TaskList/TaskStop) drive an existing delegation and are not
  * delegation activity items themselves. */
@@ -178,6 +182,15 @@ export function getToolSummary(toolName: string | undefined, args: unknown) {
   const action = getToolAction(toolName);
   if (args && typeof args === "object") {
     const record = args as Record<string, unknown>;
+    if (isAskToolName(toolName) && Array.isArray(record.questions)) {
+      const first = record.questions[0];
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const question = (first as Record<string, unknown>).question;
+        if (typeof question === "string" && question.trim()) {
+          return compact(question);
+        }
+      }
+    }
     const key = getToolSummaryKey(toolName, args);
     if (key) return compact(summaryText(record[key]));
     const fallback = formatToolValue(record);

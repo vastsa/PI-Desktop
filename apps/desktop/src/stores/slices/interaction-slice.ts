@@ -211,7 +211,8 @@ export function createInteractionSlice({
         (variant === "error" ? TOAST_ERROR_DURATION_MS : TOAST_DURATION_MS);
       set((state) => {
         const kept = state.toasts.filter(
-          (item) => item.message !== message || item.variant !== variant,
+          (item) => item.message !== message || item.variant !== variant ||
+            item.sessionId !== options?.sessionId,
         );
         const next = [
           ...kept,
@@ -221,6 +222,7 @@ export function createInteractionSlice({
             variant,
             duration,
             sound: options?.sound !== false,
+            sessionId: options?.sessionId,
           },
         ];
         return { toasts: next.slice(-TOAST_STACK_LIMIT) };

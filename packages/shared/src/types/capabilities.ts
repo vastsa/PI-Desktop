@@ -149,6 +149,14 @@ export type UserSkillRecord = {
   updatedAt: string;
 };
 
+/** A skill bundled with PI-Desktop and enabled globally by default. */
+export type BuiltinSkillRecord = {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+};
+
 export type UserSkillInput = {
   id?: string;
   name: string;

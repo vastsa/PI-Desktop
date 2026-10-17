@@ -39,6 +39,7 @@ export const BROWSER_CDP_ALLOWLIST = new Set([
 const MAX_EVALUATE_CHARS = 64 * 1024;
 const MAX_CONSOLE_MESSAGES = 100;
 const SCREENSHOT_MAX_WIDTH = 1280;
+const SCREENSHOT_MAX_HEIGHT = 2048;
 
 export type BrowserConsoleMessage = {
   type: string;
@@ -236,7 +237,11 @@ export class BrowserCdp {
       const size = metrics.cssContentSize ?? metrics.contentSize ?? { width: 0, height: 0 };
       const width = Math.max(1, Number(size.width) || 1);
       const height = Math.max(1, Number(size.height) || 1);
-      const scale = width > SCREENSHOT_MAX_WIDTH ? SCREENSHOT_MAX_WIDTH / width : 1;
+      const scale = Math.min(
+        1,
+        SCREENSHOT_MAX_WIDTH / width,
+        SCREENSHOT_MAX_HEIGHT / height,
+      );
       clip = { x: 0, y: 0, width, height, scale };
     }
     const result = (await wc.debugger.sendCommand("Page.captureScreenshot", {

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "demo.fetch-redirect",
+  "name": "Fetch Redirect Probe",
+  "version": "0.1.0",
+  "description": "Local-only probe for host-enforced fetch redirect policies.",
+  "main": "main.js",
+  "permissions": [
+    "net.fetch",
+    "ui.panel"
+  ],
+  "net": {
+    "domains": [
+      "127.0.0.1"
+    ]
+  },
+  "ui": {
+    "panel": "panel.html",
+    "title": {
+      "en": "Fetch Redirect Probe",
+      "zh-CN": "重定向测试"
+    },
+    "width": 520,
+    "height": 440
+  },
+  "activationEvents": [
+    "onStartup"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "redirect.open",
+        "title": "Fetch Redirect: Open Probe"
+      }
+    ]
+  }
+}

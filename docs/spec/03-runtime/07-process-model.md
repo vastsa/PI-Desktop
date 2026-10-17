@@ -183,6 +183,12 @@ renderer-facing status):
   missing sessions row is restored from the live transcript (or created as a
   stub) before those appends apply; deleting a session drops its outbox
   entries (D318).
+- Before replacing or activating a session transcript, Electron main fences
+  persistence callbacks for that session and drains appends already queued for
+  the old transcript. If the rewrite succeeds, events from turns that existed
+  before the fence are discarded, including callbacks delivered while the
+  rewrite was running. If the rewrite fails, callbacks buffered by the fence
+  are replayed against the unchanged transcript.
 - Host-core's stdin/stdout control path uses one dedicated OS thread per
   direction rather than Tokio's dynamic blocking pool. Transient pipe resource
   errors are retried; control-thread creation failures are surfaced as a boot

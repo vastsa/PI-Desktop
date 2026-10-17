@@ -299,69 +299,6 @@ fn capture_subagents(
     Ok((result, resources))
 }
 
-pub(crate) fn capture_projects(
-    st: &mut AppState,
-    identities: &ProjectIdentityOverrides,
-) -> Result<Vec<PortableEntity>> {
-    let mut result = Vec::new();
-    for project in st.db.list_projects()? {
-        let (project_id, group_id, _) = project_scope(st, &project.path, identities)?;
-        if group_id.is_some() {
-            // Non-legacy project groups are represented by their group entity;
-            // exporting each root as another project would duplicate the
-            // logical configuration and weaken primary-root invariants.
-            continue;
-        }
-        let payload = json!({
-            "logicalId": project_id,
-            "name": project.name,
-            "pinned": project.pinned,
-        });
-        let label = payload["name"].as_str().unwrap_or("Project").to_string();
-        result.push(entity(
-            DOMAIN_PROJECTS,
-            format!("project:{project_id}"),
-            label,
-            payload,
-            true,
-            false,
-            true,
-            Vec::new(),
-        ));
-    }
-    for group in st.db.list_project_groups()? {
-        if group.legacy {
-            continue;
-        }
-        let (_, group_id, _) = project_scope(st, &group.primary_path, identities)?;
-        let logical_id = match group_id {
-            Some(logical_id) => logical_id,
-            None => project_group_logical_id(st, &group)?,
-        };
-        let payload = json!({
-            "logicalId": logical_id,
-            "name": group.name.clone(),
-            "pinned": group.pinned,
-            "roots": group
-                .roots
-                .iter()
-                .map(|root| json!({ "name": root.name, "position": root.position }))
-                .collect::<Vec<_>>(),
-        });
-        result.push(entity(
-            DOMAIN_PROJECTS,
-            format!("project-group:{}", group.id),
-            group.name,
-            payload,
-            true,
-            false,
-            true,
-            Vec::new(),
-        ));
-    }
-    Ok(result)
-}
-
 pub(crate) fn capture_memory(
     st: &mut AppState,
     identities: &ProjectIdentityOverrides,
@@ -775,12 +712,6 @@ pub(crate) fn capture(
             .manifest
             .entities
             .extend(capture_instructions(st, identities)?);
-    }
-    if selection.is_selected(DOMAIN_PROJECTS) {
-        snapshot
-            .manifest
-            .entities
-            .extend(capture_projects(st, identities)?);
     }
     if selection.is_selected(DOMAIN_PLUGINS) {
         snapshot

@@ -97,6 +97,36 @@ test("Windows Markdown file links survive parsing and sanitization without chang
   assertMarkdownLinkClick(encodedSlashMarkup, "D:/person/dir name/报告.js");
 });
 
+test("positioned HTML references preserve source navigation through Markdown sanitization", () => {
+  for (const source of [
+    "Source: animation.html:12:3",
+    "`animation.html:12:3`",
+    "[Source](animation.html:12:3)",
+    "[Source](<D:/person/animation.html:12:3>)",
+  ]) {
+    const markup = renderSanitizedMarkdown(source);
+    const href = markup.match(/<a href="([^"]+)"/)?.[1];
+    assert.ok(href, source);
+    const calls = [];
+    handleMarkdownFileLinkClick({ preventDefault() {} }, href, "D:/person", undefined,
+      (...args) => calls.push(args));
+    assert.deepEqual(calls, [[source.includes("D:/person") ? "D:/person/animation.html" : "animation.html",
+      undefined, undefined, { line: 12, column: 3 }]], source);
+  }
+});
+
+test("file URL links survive sanitization only as references for main-process resolution", () => {
+  for (const [url, path] of [
+    ["file:///C:/scratch/animation.html", "C:/scratch/animation.html"],
+    ["file:///tmp/my%20animation.html", "/tmp/my animation.html"],
+    ["file:///C:/scratch/%E9%B9%88%E9%B9%95.html", "C:/scratch/鹈鹕.html"],
+  ]) {
+    const markup = renderSanitizedMarkdown("[Open animation](<" + url + ">)");
+    assertMarkdownLinkClick(markup, path);
+    assert.doesNotMatch(markup, /href="file:/i);
+  }
+});
+
 test("Markdown link normalization leaves web, relative, automatic, and unsafe links alone", () => {
   const httpMarkup = renderSanitizedMarkdown("[web](https://example.com/a%20b)");
   assert.match(httpMarkup, /href="https:\/\/example\.com\/a%20b"/);
@@ -111,7 +141,8 @@ test("Markdown link normalization leaves web, relative, automatic, and unsafe li
   for (const destination of [
     "javascript:alert%281%29",
     "data:text/html,unsafe",
-    "file:///C:/secret.txt",
+    "file://other-host/secret.txt",
+    "file:///tmp/page.html?redirect=1",
     "ms-msdt:/diagnostics",
     "custom:payload",
   ]) {

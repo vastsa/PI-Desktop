@@ -7,9 +7,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { splitInlineContent } from "@pi-desktop/shared";
 import ts from "typescript";
 import { getExtraMessageAttachments } from "../src/features/chat/transcript/extra-attachments.ts";
+import { isRemoteSession, safeSessionSummary, sessionAllows } from "../src/lib/remote-session-safety.ts";
 
 const t = (key, values) => values?.name ? `${key}: ${values.name}` : key;
 const store = {
+  sessions: [],
   editUserMessage: async () => true,
   activateMessageRevision: async () => {},
   deleteMessage: async () => {},
@@ -41,6 +43,8 @@ function loadComponent(name, extras = {}) {
     "react/jsx-runtime": jsxRuntime,
     "react-i18next": { useTranslation: () => ({ t }) },
     "../../../stores/app-store": { useAppStore },
+    "../../../lib/remote-session-safety": { isRemoteSession, safeSessionSummary, sessionAllows },
+    "../../../plugins/renderer-slots/use-slots": { useSlotSessionId: () => "local-session" },
     "../../../hooks/use-preview-target": { useOpenChatFileRef: () => () => {} },
     "../../../lib/chat-links": { splitChatText: () => [] },
     "../../../components/Markdown": { Markdown: ({ source: text }) => text },

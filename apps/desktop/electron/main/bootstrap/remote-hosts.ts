@@ -1,481 +1,574 @@
-/**
- * Boot every paired remote host. Reads the persisted registry, builds a
- * `RemoteHostConnection` per record, opens them, and returns a disposer that
- * `bootstrap/shutdown.ts` calls on quit. An empty registry (the default
- * install with no user pairing) is a full no-op: nothing runs, the router
- * has no remote backends, and every renderer call keeps hitting the local
- * handler byte-for-byte.
- *
- * The transport factory is injected. Production wires it to
- * `wsClientTransport` from `@pi-desktop/racp` (loopback for local dev, the
- * forwarded loopback port for an SSH-bootstrapped host); tests wire the
- * in-memory `MemoryLink` so this boot layer exercises the real `RacpClient`
- * state machine without a socket.
- *
- * Two shapes of paired host live here. A `direct` host stores the URL the user
- * pasted, including a forward they opened themselves. An `ssh` host stores a
- * descriptor instead, and this layer owns a live `ssh -N -L` forward for it
- * (`remote/ssh-tunnel.ts`) — the URL is derived from that forward on every
- * launch, so a restart re-establishes the tunnel before connecting.
- */
-import type {
-  RemoteHostBootstrapRequest,
-  RemoteHostBootstrapResult,
-  RemoteHostSshMetadata,
-  RemoteHostSummary,
-  RemoteHostTransport,
+/** Paired Host lifecycle. Persistence stays in the encrypted registry; session
+ * projection and transport recovery live in their own domain modules. */
+import {
+  IPC,
+  type RacpEventEnvelope, type RacpItemSummary, type RacpProjectSummary, type RacpSession,
+  type RemoteHostBootstrapRequest, type RemoteHostBootstrapResult,
+  type RemoteHostCreateSessionRequest, type RemoteHostSummary, type RemoteHostBrowseProjectsResult,
+  type RemoteHostConnectionStatus, type RemoteHostSyncProvidersRequest, type RemoteHostSyncProvidersResult, type SessionSummary,
+  type CommandShellOption, isCommandShellOption,
+  type WorkspaceFilesRequest,
 } from "@pi-desktop/shared";
-import { assertSshArgument } from "../remote/ssh-transport.js";
 import { wsClientTransport } from "@pi-desktop/racp";
-import type { RacpEventEnvelope, RacpItemSummary, RacpSession } from "@pi-desktop/shared";
+import type { HostRpcPort } from "@pi-desktop/agent-host";
 import type { BackendRouter } from "../remote/backend-router.js";
 import { makeRemoteSessionId, parseRemoteSessionId } from "../remote/backend-router.js";
 import { createRacpRemoteHostClient, exchangePairingToken, type RacpRemoteHostClient } from "../remote/racp-remote-host-client.js";
-import {
-  createSshBootstrap,
-  type SshBootstrapDeps,
-} from "../remote/ssh-bootstrap.js";
+import { createRemoteHostRealigner, type RemoteHostRealignResult } from "../remote/remote-host-realign.js";
+import { createSshBootstrap, type SshBootstrapDeps } from "../remote/ssh-bootstrap.js";
 import { createSshTunnelManager, type SshTunnelManager } from "../remote/ssh-tunnel.js";
-import {
-  createRemoteHostConnection,
-  type RemoteHostConnection,
-} from "../remote/remote-host-connection.js";
-import {
-  createRemoteHostRegistry,
-  type EncryptionPort,
-  type RemoteHostRecord,
-  type RemoteHostRegistry,
-} from "../remote/remote-host-registry.js";
+import { createRemoteHostConnection, type RemoteHostConnection } from "../remote/remote-host-connection.js";
+import { createRemoteHostRegistry, type EncryptionPort, type RemoteHostRecord, type RemoteHostRegistry } from "../remote/remote-host-registry.js";
+import { sshMetadataOf, sshHostRecord, transportOf } from "../remote/remote-host-metadata.js";
+import { createRemoteSessionCatalog } from "../remote/remote-session-catalog.js";
+import { syncRemoteProviders } from "../remote/remote-provider-transfer.js";
+import { workspaceExecutionError } from "../remote/remote-workspace-outcome.js";
+export { sshMetadataOf, sshHostRecord, transportOf } from "../remote/remote-host-metadata.js";
+export type { RemoteHostSummary };
 
 export type RemoteHostAdapterFactory = (record: RemoteHostRecord) => RacpRemoteHostClient;
-
+export type RemoteWorkspaceToolInput = {
+  hostKey: string; path: string; sessionId: string; turnId: string;
+  toolCallId: string; toolName: string; args: unknown; timeoutMs?: number;
+  expectedCommandShellId?: string; expectedCommandShellDialect?: string;
+};
 export type BootRemoteHostsOptions = {
   dataDir: string;
   encryption: EncryptionPort;
   router: BackendRouter;
   emit: (channel: string, payload: unknown) => void;
-  /** `connection/initialize` identity forwarded to every paired host. */
   clientInfo: { name: string; version: string };
-  /** Optional override; the default uses the real `wsClientTransport`. */
+  getLocalHost?: () => HostRpcPort | null;
   buildAdapter?: RemoteHostAdapterFactory;
   log?: (level: "info" | "warn" | "error", message: string, data?: unknown) => void;
-  /** Durable SSH forwards; created on demand when the first SSH host is used. */
   tunnels?: SshTunnelManager;
-  /** Overrides for the SSH bootstrap's injected edges (tests only). */
   sshBootstrap?: Partial<SshBootstrapDeps>;
 };
-
-export type { RemoteHostSummary };
-
 export type RemoteLiveSessionSummary = Pick<RacpSession, "id" | "title" | "mode" | "permissionMode" | "status" | "activeTurnId" | "workspaceLabel"> & {
-  source: "remote";
-  hostKey: string;
-  hostLabel: string;
+  source: "remote"; hostKey: string; hostLabel: string;
 };
-
 export interface RemoteHostsBoot {
-  /** Read registry, connect every host, register their sessions. Returns
-   * the number of hosts that finished `open()` without throwing. */
   open(): Promise<number>;
-  /** Live session metadata from connected paired Hosts; no transcript is read. */
   listSessions(): Promise<RemoteLiveSessionSummary[]>;
-  /** Bounded history from one exact remote session; used only after explicit consent. */
   readHistory(sessionId: string, limit: number): Promise<RacpItemSummary[]>;
-  /** Observe existing RACP session events without opening another transport. */
   subscribeSession(sessionId: string, listener: (envelope: RacpEventEnvelope) => void): (() => void) | null;
-  /** Close every open connection. Idempotent; safe to call before `open`. */
   closeAll(): Promise<void>;
-  /** Every paired host with its live connection state; safe from the renderer. */
   list(): Promise<RemoteHostSummary[]>;
-  /** Persist a paired record, then open one live connection for it. */
   addHost(record: RemoteHostRecord): Promise<RemoteHostSummary>;
-  /**
-   * Install and pair a `pi-host` over SSH and bring it online (spec §5.2).
-   * The forward the bootstrap opened is adopted rather than reopened, so
-   * pairing pays for exactly one tunnel.
-   */
   bootstrapHost(request: RemoteHostBootstrapRequest): Promise<RemoteHostBootstrapResult>;
-  /** Close and unregister the host, then remove it from the registry. */
+  reconnectHost(hostKey: string): Promise<RemoteHostSummary>;
+  ensureReady(hostKey: string): Promise<RemoteHostSummary>;
   removeHost(hostKey: string): Promise<void>;
-  /** The underlying registry, exposed for pairing flows that write directly. */
+  sessionSummaries(): SessionSummary[];
+  sessions(hostKey: string): Promise<SessionSummary[]>;
+  projects(hostKey: string): Promise<RacpProjectSummary[]>;
+  browseProjects(hostKey: string, path?: string): Promise<RemoteHostBrowseProjectsResult>;
+  registerProject(hostKey: string, path: string): Promise<RacpProjectSummary & { path?: string }>;
+  createSession(request: RemoteHostCreateSessionRequest): Promise<SessionSummary>;
+  syncProviders(request: RemoteHostSyncProvidersRequest): Promise<RemoteHostSyncProvidersResult>;
+  executeWorkspaceTool(request: RemoteWorkspaceToolInput): Promise<unknown>;
+  abortWorkspaceTool(request: { hostKey: string; sessionId: string; toolCallId: string }): Promise<void>;
+  workspaceCommandShell(hostKey: string): Promise<CommandShellOption>;
+  workspaceFiles(hostKey: string, input: WorkspaceFilesRequest): Promise<unknown>;
   readonly registry: RemoteHostRegistry;
 }
-
-/**
- * Single-slot registry so `bootstrap/shutdown.ts` can wait on the same boot
- * `startup.ts` created without expanding `index.ts` past its 1500-LOC ceiling.
- * The shutdown handler reads this on `before-quit` — never earlier — so the
- * ordering is: register the ref during startup, close during shutdown.
- */
 let activeRemoteHostsBoot: RemoteHostsBoot | null = null;
-
-export function setActiveRemoteHostsBoot(boot: RemoteHostsBoot | null): void {
-  activeRemoteHostsBoot = boot;
-}
-
-export function getActiveRemoteHostsBoot(): RemoteHostsBoot | null {
-  return activeRemoteHostsBoot;
-}
-
-/** Record metadata keys; `metadata` is the registry's forward-compatible slot. */
-const TRANSPORT_KEY = "transport";
-const SSH_KEY = "ssh";
-
-/**
- * Read the SSH descriptor out of a record, or `null` for a `direct` host. The
- * shape is re-checked on read because `remote-hosts.json` is user-editable and
- * a malformed descriptor must degrade to "not an SSH host", never to a spawn
- * with garbage arguments.
- */
-/**
- * A descriptor field that is safe to place in the `ssh` argv, or `null`. It
- * reuses the transport's own rule so the renderer path and the on-disk path
- * cannot drift apart.
- */
-function safeSshField(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  try {
-    return assertSshArgument(value, "ssh field");
-  } catch {
-    return null;
-  }
-}
-
-/** `ssh -p` value, or `null` when absent or out of range. */
-function safeSshPort(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 65_535) {
-    return value;
-  }
-  return null;
-}
-
-export function sshMetadataOf(record: RemoteHostRecord): RemoteHostSshMetadata | null {
-  const metadata = record.metadata;
-  if (!metadata || metadata[TRANSPORT_KEY] !== "ssh") return null;
-  const ssh = metadata[SSH_KEY];
-  if (typeof ssh !== "object" || ssh === null) return null;
-  const candidate = ssh as Partial<RemoteHostSshMetadata>;
-  // `remote-hosts.json` is user-editable and every one of these values reaches
-  // the `ssh` command line, where a leading `-` is read as an option
-  // (`-oProxyCommand=…`) rather than as a destination. A record that fails the
-  // check is not an SSH host at all — never a spawn with junk argv.
-  const host = safeSshField(candidate.host);
-  if (host === null) return null;
-  const user = candidate.user === undefined ? null : safeSshField(candidate.user);
-  if (user === null && candidate.user !== undefined) return null;
-  const identityFile =
-    candidate.identityFile === undefined ? null : safeSshField(candidate.identityFile);
-  if (identityFile === null && candidate.identityFile !== undefined) return null;
-  const port = candidate.port === undefined ? null : safeSshPort(candidate.port);
-  if (port === null && candidate.port !== undefined) return null;
-  if (
-    typeof candidate.remotePort !== "number" ||
-    !Number.isInteger(candidate.remotePort) ||
-    candidate.remotePort <= 0 ||
-    candidate.remotePort > 65_535
-  ) {
-    return null;
-  }
-  return {
-    host,
-    ...(port !== null ? { port } : {}),
-    ...(user !== null ? { user } : {}),
-    ...(identityFile !== null ? { identityFile } : {}),
-    // Anything that is not the literal `"password"` reads back as a key
-    // descriptor, so records written before this field existed are unchanged —
-    // on disk and in memory alike.
-    ...(candidate.auth === "password" ? { auth: "password" as const } : {}),
-    remotePort: candidate.remotePort,
-    version: typeof candidate.version === "string" ? candidate.version : "",
-  };
-}
-
-/** The registry record for a bootstrapped host. */
-export function sshHostRecord(input: {
-  hostKey: string;
-  label: string;
-  url: string;
-  deviceToken: string;
-  ssh: RemoteHostSshMetadata;
-  /** Login password for a host that uses one; the registry encrypts it. */
-  sshSecret?: string;
-}): RemoteHostRecord {
-  return {
-    hostKey: input.hostKey,
-    label: input.label,
-    url: input.url,
-    deviceToken: input.deviceToken,
-    ...(input.sshSecret ? { sshSecret: input.sshSecret } : {}),
-    metadata: { [TRANSPORT_KEY]: "ssh", [SSH_KEY]: input.ssh },
-  };
-}
-
-export function transportOf(record: RemoteHostRecord): RemoteHostTransport {
-  return sshMetadataOf(record) ? "ssh" : "direct";
-}
+export function setActiveRemoteHostsBoot(boot: RemoteHostsBoot | null): void { activeRemoteHostsBoot = boot; }
+export function getActiveRemoteHostsBoot(): RemoteHostsBoot | null { return activeRemoteHostsBoot; }
 
 type OpenHost = {
-  hostKey: string;
-  label: string;
-  adapter: RacpRemoteHostClient;
-  connection: RemoteHostConnection;
-  /** The URL this host is live on, which for an SSH host is the forward's. */
-  url: string;
+  hostKey: string; label: string; url: string;
+  adapter: RacpRemoteHostClient; connection: RemoteHostConnection;
 };
+function unavailable(): Error {
+  return Object.assign(new Error("remote host is unavailable"), { errorCode: "AGENT_UNAVAILABLE" });
+}
 
-export function createRemoteHostsBoot(
-  options: BootRemoteHostsOptions,
-): RemoteHostsBoot {
+function requiresUserAction(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const fields = error as { errorCode?: string; code?: string };
+  return ["HOST_AUTH_FAILED", "REMOTE_AUTH_FAILED", "HOST_VERSION_MISMATCH", "CAPABILITY_UNAVAILABLE"]
+    .includes(fields.errorCode ?? fields.code ?? "");
+}
+
+/** The one failure that a version realignment can fix (ADR 0327). */
+function isHostVersionMismatch(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const fields = error as { errorCode?: string; code?: string };
+  return (fields.errorCode ?? fields.code ?? "") === "HOST_VERSION_MISMATCH";
+}
+
+/**
+ * A paired Host can run the right release and still predate the additive
+ * workspace services a remote project needs — the bundle is reused by release
+ * receipt, not by the capabilities it happens to contain. The handshake is the
+ * only place that is observable, so it is checked once per connect rather than
+ * on every `workspace/*` call. Adapters that report no capabilities (tests,
+ * legacy callers) are left alone.
+ */
+function assertWorkspaceCapabilities(adapter: RacpRemoteHostClient): void {
+  const capabilities = adapter.workspaceCapabilities?.();
+  if (!capabilities || (capabilities.workspaceTools && capabilities.workspaceFiles)) return;
+  throw Object.assign(
+    new Error("the remote Host predates the workspace tools and files this Desktop release requires"),
+    { errorCode: "HOST_VERSION_MISMATCH", retriable: false },
+  );
+}
+
+export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHostsBoot {
   const log = options.log ?? (() => undefined);
-  const buildAdapter: RemoteHostAdapterFactory =
-    options.buildAdapter ??
-    ((record) =>
-      createRacpRemoteHostClient({
-        transport: wsClientTransport({ url: record.url, token: record.deviceToken }),
-        clientInfo: options.clientInfo,
-        log: (level, message, data) => log(level, message, data),
-      }));
-
-  const registry = createRemoteHostRegistry({
-    dataDir: options.dataDir,
-    encryption: options.encryption,
-    log: (level, message, data) => log(level, message, data),
+  const registry = createRemoteHostRegistry({ dataDir: options.dataDir, encryption: options.encryption, log });
+  const tunnels = options.tunnels ?? createSshTunnelManager({ log });
+  const opened = new Map<string, OpenHost>();
+  const actionRequired = new Set<string>();
+  const openingHosts = new Set<OpenHost>();
+  const hostClosings = new WeakMap<OpenHost, Promise<void>>();
+  const operations = new Map<string, Promise<unknown>>();
+  const readiness = new Map<string, Promise<RemoteHostSummary>>();
+  const bootstraps = new Map<AbortController, Promise<unknown>>();
+  let closed = false;
+  let opening: Promise<number> | undefined;
+  let closing: Promise<void> | undefined;
+  const assertOpen = () => { if (closed) throw unavailable(); };
+  const connectedHost = (key: string) => {
+    const host = opened.get(key);
+    return host?.adapter.state() === "connected" ? host : undefined;
+  };
+  const catalog = createRemoteSessionCatalog({
+    getHost: (key) => {
+      const host = connectedHost(key);
+      return host ? { hostKey: key, label: host.label, client: host.adapter.client, connection: host.connection } : undefined;
+    },
   });
-
-  const tunnels =
-    options.tunnels ??
-    createSshTunnelManager({ log: (level, message, data) => log(level, message, data) });
-
+  const changed = () => options.emit(IPC.event.sessionsChanged, { reason: "remote.host.changed" });
+  const refresh = async (key: string) => {
+    try { await catalog.sessions(key); }
+    catch (error) { log("warn", `remote host ${key} session refresh failed`, { error: String(error) }); }
+    if (!closed) changed();
+  };
+  function serial<T>(key: string, action: () => Promise<T>): Promise<T> {
+    const previous = operations.get(key);
+    const task = (async () => {
+      if (previous) await previous.catch(() => undefined);
+      assertOpen();
+      return action();
+    })();
+    operations.set(key, task);
+    void task.finally(() => { if (operations.get(key) === task) operations.delete(key); }).catch(() => undefined);
+    return task;
+  }
+  const buildAdapter = options.buildAdapter ?? ((record: RemoteHostRecord) => {
+    let first = true;
+    const ssh = sshMetadataOf(record);
+    return createRacpRemoteHostClient({
+      transport: async () => {
+        assertOpen();
+        let url = record.url;
+        if (!first && ssh) {
+          // A broken forward is not reusable, even when the ssh process has
+          // not emitted exit yet. Reopen it before reconnecting the WebSocket.
+          await tunnels.close(record.hostKey);
+          assertOpen();
+          url = (await tunnels.open(record.hostKey, ssh, record.sshSecret)).url;
+          assertOpen();
+          const live = opened.get(record.hostKey);
+          if (live) live.url = url;
+        }
+        first = false;
+        return wsClientTransport({ url, token: record.deviceToken })();
+      },
+      expectedHostId: ssh?.hostId,
+      onStateChange: () => { if (!closed) changed(); },
+      clientInfo: options.clientInfo,
+      reconnect: { enabled: true, baseDelayMs: 500, maxDelayMs: 15_000, maxAttempts: 10 },
+      log,
+    });
+  });
   const bootstrap = createSshBootstrap({
     version: options.clientInfo.version,
-    exchangePairing: ({ url, pairingToken, label }) =>
-      exchangePairingToken({
-        url,
-        pairingToken,
-        label,
-        clientInfo: options.clientInfo,
-        log: (level, message, data) => log(level, message, data),
-      }),
-    log: (level, message, data) => log(level, message, data),
-    ...options.sshBootstrap,
+    exchangePairing: ({ url, pairingToken, label, expectedHostId }) => exchangePairingToken({ url, pairingToken, label, expectedHostId, clientInfo: options.clientInfo, requireWorkspace: true, log }),
+    log, ...options.sshBootstrap,
   });
 
-  const opened: OpenHost[] = [];
+  /**
+   * Re-provision one paired Host onto this desktop's release, in place. It
+   * reuses the verified bootstrap the pairing path uses, so the artifact must
+   * still match the published SHA-256 and pass the installed manifest check;
+   * only the trigger differs (ADR 0327).
+   */
+  const realigner = createRemoteHostRealigner({
+    version: options.clientInfo.version,
+    bootstrap: (request, execOptions) => bootstrap.bootstrap(request, execOptions),
+    upsert: (record) => registry.upsert(record),
+    log,
+  });
 
-  /** Bring one record online: build adapter, connect, register the router
-   * backends. Failure is thrown so the caller can decide (boot logs & skips;
-   * a live pair-then-add refuses to persist a token that cannot be used). */
-  const openHost = async (record: RemoteHostRecord): Promise<OpenHost> => {
+  function closeHost(host: OpenHost): Promise<void> {
+    const existing = hostClosings.get(host);
+    if (existing) return existing;
+    // Closing the adapter cancels connect/RPC waits, including subscription
+    // cleanup. Start both owners before awaiting either one.
+    const task = Promise.all([
+      host.connection.close().catch((error: unknown) => log("warn", "remote connection close failed", { error: String(error) })),
+      host.adapter.close().catch((error: unknown) => log("warn", "remote adapter close failed", { error: String(error) })),
+      tunnels.close(host.hostKey),
+    ]).then(() => undefined);
+    hostClosings.set(host, task);
+    return task;
+  }
+  async function closeLive(key: string): Promise<void> {
+    const host = opened.get(key);
+    opened.delete(key);
+    if (host) await closeHost(host);
+  }
+  async function openHostOnce(record: RemoteHostRecord): Promise<OpenHost> {
+    assertOpen();
     const ssh = sshMetadataOf(record);
-    // An SSH host is only reachable while its forward is up; opening one here
-    // — rather than trusting the stored URL — is what makes a restart work.
-    const url = ssh
-      ? (await tunnels.open(record.hostKey, ssh, record.sshSecret)).url
+    if (record.metadata?.transport === "ssh" && !ssh) {
+      throw Object.assign(new Error("invalid SSH host metadata"), { errorCode: "INVALID_ARGUMENT" });
+    }
+    // Readiness compares the running Host against the release this desktop
+    // expects, not the version recorded at pairing time: a stale descriptor
+    // must not mask a Host that is behind, which is the case realignment
+    // repairs.
+    const expected = ssh ? { ...ssh, version: options.clientInfo.version } : undefined;
+    const url = expected
+      ? (await tunnels.open(record.hostKey, expected, record.sshSecret)).url
       : record.url;
+    if (closed) { await tunnels.close(record.hostKey); throw unavailable(); }
+    const adapter = buildAdapter({ ...record, url });
+    const connection = createRemoteHostConnection({
+      hostKey: record.hostKey, hostLabel: record.label, client: adapter.client, router: options.router,
+      emit: (channel, payload) => {
+        if (closed) return;
+        if (channel === IPC.event.sessionsChanged) void refresh(record.hostKey);
+        else options.emit(channel, payload);
+      },
+      log,
+    });
+    const live = { hostKey: record.hostKey, label: record.label, adapter, connection, url };
+    openingHosts.add(live);
     try {
-      const adapter = buildAdapter({ ...record, url });
+      assertOpen();
+      actionRequired.delete(record.hostKey);
+      opened.set(record.hostKey, live);
       await adapter.connect();
-      const connection = createRemoteHostConnection({
-        hostKey: record.hostKey,
-        client: adapter.client,
-        router: options.router,
-        emit: options.emit,
-        log: (level, message, data) => log(level, message, data),
-      });
-      try {
-        await connection.open();
-      } catch (error) {
-        // A connection that failed to open leaves the adapter live; close it
-        // before re-throwing so the ws socket does not leak.
-        await adapter.close().catch(() => undefined);
-        throw error;
-      }
-      return { hostKey: record.hostKey, label: record.label, adapter, connection, url };
+      assertOpen();
+      assertWorkspaceCapabilities(adapter);
+      await connection.open();
+      assertOpen();
+      opened.set(record.hostKey, live);
+      await refresh(record.hostKey);
+      assertOpen();
+      return live;
     } catch (error) {
-      // The host is not online, so nothing needs this forward; drop it rather
-      // than leave an idle ssh process behind.
-      if (ssh) await tunnels.close(record.hostKey).catch(() => undefined);
+      if (requiresUserAction(error)) actionRequired.add(record.hostKey);
+      if (opened.get(record.hostKey) === live) opened.delete(record.hostKey);
+      await closeHost(live);
+      throw error;
+    } finally {
+      openingHosts.delete(live);
+    }
+  }
+
+  /**
+   * Re-provision a paired Host onto this desktop's release and re-pair it in
+   * place. `force` is the user's explicit reconnect, which must not be silently
+   * throttled. Returns the refreshed record, or `null` when the attempt was not
+   * allowed or did not succeed.
+   */
+  async function realignHost(record: RemoteHostRecord, force: boolean): Promise<RemoteHostRecord | null> {
+    const decision = realigner.decide(record, { force });
+    if (decision !== "attempt") {
+      log("info", "remote host realignment not attempted", {
+        hostKey: record.hostKey, decision, version: options.clientInfo.version,
+      });
+      return null;
+    }
+    log("info", "remote host realignment started", {
+      hostKey: record.hostKey, version: options.clientInfo.version,
+    });
+    assertOpen();
+    await closeLive(record.hostKey);
+    await tunnels.close(record.hostKey);
+    assertOpen();
+    const controller = new AbortController();
+    const task = realigner.realign(record, { force, signal: controller.signal });
+    bootstraps.set(controller, task);
+    let result: RemoteHostRealignResult | null;
+    try { result = await task; }
+    finally { bootstraps.delete(controller); }
+    if (!result) return null;
+    try {
+      assertOpen();
+      await tunnels.adopt(record.hostKey, result.outcome.ssh, result.outcome.forward);
+    } catch (error) {
+      // `adopt` never took ownership, so this call still owns the forward.
+      await result.outcome.forward.close().catch(() => undefined);
       throw error;
     }
-  };
+    return result.record;
+  }
 
-  const closeHost = async (host: OpenHost): Promise<void> => {
+  /**
+   * Open one host, and when it is refused for its version, bring it up to this
+   * release and open it again. A second failure is surfaced unchanged: a
+   * realignment that cannot help must never hide the reason the user sees.
+   */
+  async function openHost(record: RemoteHostRecord, forceRealign = false): Promise<OpenHost> {
     try {
-      await host.connection.close();
+      return await openHostOnce(record);
     } catch (error) {
-      log("warn", `remote host ${host.hostKey} connection close threw`, {
-        error: String(error),
-      });
+      if (closed || !isHostVersionMismatch(error)) throw error;
+      const realigned = await realignHost(record, forceRealign);
+      if (!realigned) throw error;
+      return await openHostOnce(realigned);
     }
-    try {
-      await host.adapter.close();
-    } catch (error) {
-      log("warn", `remote host ${host.hostKey} adapter close threw`, {
-        error: String(error),
-      });
-    }
-    await tunnels.close(host.hostKey).catch((error: unknown) => {
-      log("warn", `remote host ${host.hostKey} forward close threw`, {
-        error: String(error),
-      });
-    });
-  };
-
-  /** Drop a live connection for one host key, if there is one. */
-  const closeLive = async (hostKey: string): Promise<void> => {
-    const index = opened.findIndex((host) => host.hostKey === hostKey);
-    if (index < 0) return;
-    const [host] = opened.splice(index, 1);
-    if (host) await closeHost(host);
-  };
-
-  const summaryOf = (record: RemoteHostRecord): RemoteHostSummary => {
-    const live = opened.find((host) => host.hostKey === record.hostKey);
-    return {
-      hostKey: record.hostKey,
-      label: record.label,
-      url: live?.url ?? record.url,
-      connected: live !== undefined,
-      transport: transportOf(record),
-    };
-  };
-
-  const addHost = async (record: RemoteHostRecord): Promise<RemoteHostSummary> => {
-    // Persist before opening so a crash between the two leaves a record the
-    // next boot can retry; a failed open is surfaced but the row stays.
+  }
+  function summaryOf(record: RemoteHostRecord): RemoteHostSummary {
+    const state = opened.get(record.hostKey)?.adapter.state();
+    const status: RemoteHostConnectionStatus = state === "connected" || state === "connecting" || state === "reconnecting"
+      ? state
+      : state === "error" || actionRequired.has(record.hostKey) ? "action-required" : "disconnected";
+    return { hostKey: record.hostKey, label: record.label, url: opened.get(record.hostKey)?.url ?? record.url,
+      connected: status === "connected", status, transport: transportOf(record) };
+  }
+  async function addRecord(record: RemoteHostRecord): Promise<RemoteHostSummary> {
+    assertOpen();
     await registry.upsert(record);
-    // Replace any prior live connection under the same hostKey (a re-pair
-    // rotates the device token but the routing key stays stable).
     await closeLive(record.hostKey);
-    try {
-      const host = await openHost(record);
-      opened.push(host);
-      return { ...summaryOf(record), connected: true };
-    } catch (error) {
-      log("warn", `remote host ${record.hostKey} paired but failed to open`, {
-        error: String(error),
-      });
-      return { ...summaryOf(record), connected: false };
+    try { await openHost(record); }
+    catch (error) {
+      if (closed) throw error;
+      log("warn", `remote host ${record.hostKey} paired but failed to open`, { error: String(error) });
     }
+    return summaryOf(record);
+  }
+
+  const ensureReady = (key: string): Promise<RemoteHostSummary> => {
+    const pending = readiness.get(key);
+    if (pending) return pending;
+    const task = serial(key, async () => {
+      const record = (await registry.list()).find((item) => item.hostKey === key);
+      assertOpen();
+      if (!record) throw unavailable();
+      if (!connectedHost(key)) {
+        await closeLive(key);
+        assertOpen();
+        await openHost(record);
+      }
+      return summaryOf(record);
+    });
+    readiness.set(key, task);
+    void task.finally(() => { if (readiness.get(key) === task) readiness.delete(key); }).catch(() => undefined);
+    return task;
   };
 
   return {
     registry,
-    async open() {
-      let records: RemoteHostRecord[];
-      try {
-        records = await registry.list();
-      } catch (error) {
-        log("error", "remote host registry read failed; skipping remote boot", {
-          error: String(error),
-        });
-        return 0;
-      }
-      if (records.length === 0) return 0;
-
-      let successes = 0;
-      // Sequential connects: an early host's failure is logged and skipped
-      // rather than aborting the rest. Parallelism buys nothing when each
-      // host serves its own set of sessions.
-      for (const record of records) {
-        try {
-          const host = await openHost(record);
-          opened.push(host);
-          successes += 1;
-        } catch (error) {
-          log("warn", `remote host ${record.hostKey} failed to open; leaving it disconnected`, {
-            error: String(error),
-          });
+    ensureReady,
+    open() {
+      if (opening) return opening;
+      opening = (async () => {
+        assertOpen();
+        const records = await registry.list();
+        assertOpen();
+        let successes = 0;
+        for (const record of records) {
+          if (closed) break;
+          try {
+            await serial(record.hostKey, async () => {
+              if (!opened.has(record.hostKey)) await openHost(record);
+            });
+            successes++;
+          } catch (error) {
+            if (closed) throw error;
+            log("warn", `remote host ${record.hostKey} failed to open; leaving it disconnected`, { error: String(error) });
+          }
         }
+        return successes;
+      })();
+      return opening;
+    },
+    closeAll() {
+      if (closing) return closing;
+      closed = true;
+      for (const controller of bootstraps.keys()) controller.abort();
+      const hosts = new Set([...opened.values(), ...openingHosts]);
+      opened.clear();
+      closing = (async () => {
+        const cleanup = [...hosts].map(closeHost);
+        // Forward creation is itself an operation we must cancel, not await
+        // before disposal. The same fence prevents all late registrations.
+        const disposal = tunnels.dispose();
+        await Promise.allSettled([...cleanup, disposal, ...operations.values(), ...bootstraps.values()]);
+        await disposal;
+      })();
+      return closing;
+    },
+    async list() { return (await registry.list()).map(summaryOf); },
+    sessionSummaries: () => catalog.summaries(),
+    sessions: catalog.sessions,
+    projects: catalog.projects,
+    async browseProjects(hostKey, path) {
+      await ensureReady(hostKey);
+      return catalog.browseProjects(hostKey, path);
+    },
+    registerProject: catalog.registerProject,
+    async workspaceFiles(hostKey, input) {
+      await ensureReady(hostKey);
+      const host = connectedHost(hostKey);
+      if (!host) throw unavailable();
+      const result = await host.adapter.client.request("workspace/files", input);
+      if (connectedHost(hostKey) !== host) throw unavailable();
+      return result;
+    },
+    async workspaceCommandShell(hostKey) {
+      await ensureReady(hostKey);
+      const host = connectedHost(hostKey);
+      if (!host) throw unavailable();
+      const { shell } = await host.adapter.client.request<{ shell: unknown }>("workspace/toolShell", {});
+      if (connectedHost(hostKey) !== host) throw unavailable();
+      if (!isCommandShellOption(shell) || !shell.available) {
+        throw Object.assign(new Error("remote command shell unavailable"), { errorCode: "COMMAND_SHELL_INVALID" });
       }
-      return successes;
+      return shell;
     },
-    async closeAll() {
-      // Snapshot and clear first so a re-entrant close finds nothing to do.
-      const hosts = opened.splice(0, opened.length);
-      await Promise.allSettled(hosts.map((host) => closeHost(host)));
-      // A tunnel can outlive its connection when the connect failed; sweep it.
-      await tunnels.dispose();
+    async executeWorkspaceTool(input) {
+      const host = connectedHost(input.hostKey);
+      if (!host) throw unavailable();
+      const { hostKey: _hostKey, ...request } = input;
+      if (!request.path.startsWith("/") || request.path.includes("\0")
+        || !["Read", "Glob", "Grep", "Write", "Edit", "Bash"].includes(request.toolName)) {
+        throw Object.assign(new Error("invalid remote workspace tool"), { errorCode: "INVALID_ARGUMENT" });
+      }
+      const timeoutMs = input.timeoutMs ?? 60_000;
+      if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 21_600_000) {
+        throw Object.assign(new Error("invalid remote tool timeout"), { errorCode: "INVALID_ARGUMENT" });
+      }
+      try {
+        const result = await host.adapter.client.request("workspace/toolExecute", request, timeoutMs + 15_000);
+        if (connectedHost(input.hostKey) !== host) throw unavailable();
+        if (!result || typeof result !== "object" || !("ok" in result)
+          || typeof result.ok !== "boolean" || !("content" in result)) {
+          throw Object.assign(new Error("remote host returned an invalid tool result"), { errorCode: "INVALID_ARGUMENT" });
+        }
+        return result;
+      } catch (error) {
+        // A timeout/disconnection never replays a side effect. Cancel on the
+        // original connection only; a replacement connection owns no such call.
+        if (connectedHost(input.hostKey) === host) {
+          try { await host.adapter.client.request("workspace/toolAbort", {
+            sessionId: input.sessionId, toolCallId: input.toolCallId,
+          }); } catch (abortError) { log("warn", "remote tool abort failed", { error: String(abortError) }); }
+        }
+        throw workspaceExecutionError(input.toolName, error);
+      }
     },
-    async list() {
-      const records = await registry.list();
-      return records.map(summaryOf);
+    async abortWorkspaceTool(input) {
+      const host = connectedHost(input.hostKey);
+      if (!host) throw unavailable();
+      await host.adapter.client.request("workspace/toolAbort", {
+        sessionId: input.sessionId, toolCallId: input.toolCallId,
+      });
     },
+    async createSession(input) {
+      const session = await catalog.createSession(input);
+      changed();
+      return session;
+    },
+    syncProviders(input) {
+      return serial(input.hostKey, async () => {
+        if (!connectedHost(input.hostKey)) throw unavailable();
+        const record = (await registry.list()).find((item) => item.hostKey === input.hostKey);
+        if (!record) throw unavailable();
+        const host = options.getLocalHost?.();
+        if (!host) throw unavailable();
+        return syncRemoteProviders(input, record, host);
+      });
+    },
+    addHost: (record) => serial(record.hostKey, () => addRecord(record)),
+    reconnectHost: (key) => serial(key, async () => {
+      const record = (await registry.list()).find((item) => item.hostKey === key);
+      if (!record) throw unavailable();
+      await closeLive(key);
+      await tunnels.close(key);
+      // An explicit reconnect is the user asking again, so it may realign a
+      // Host the automatic throttling has already given up on for this release.
+      await openHost(record, true);
+      return summaryOf(record);
+    }),
+    async bootstrapHost(request) {
+      assertOpen();
+      const controller = new AbortController();
+      const task = bootstrap.bootstrap(request, { signal: controller.signal });
+      bootstraps.set(controller, task);
+      const outcome = await task.finally(() => { bootstraps.delete(controller); });
+      let adopted = false;
+      try {
+        return await serial(outcome.hostKey, async () => {
+          await closeLive(outcome.hostKey);
+          assertOpen();
+          await tunnels.adopt(outcome.hostKey, outcome.ssh, outcome.forward);
+          adopted = true;
+          try {
+            assertOpen();
+            const host = await addRecord(sshHostRecord(outcome));
+            return { host, ssh: outcome.ssh, steps: outcome.steps };
+          } catch (error) {
+            await tunnels.close(outcome.hostKey);
+            throw error;
+          }
+        });
+      } finally {
+        // serial can reject before invoking the action; until adopt succeeds
+        // this call, not the tunnel manager, still owns the bootstrap forward.
+        if (!adopted) await outcome.forward.close();
+      }
+    },
+    removeHost: (key) => serial(key, async () => {
+      await closeLive(key);
+      await tunnels.close(key);
+      await registry.remove(key);
+      actionRequired.delete(key);
+      catalog.forget(key);
+      changed();
+    }),
     async listSessions() {
-      const listed = await Promise.all(opened.map(async (host) => {
+      const results = await Promise.all([...opened.values()].map(async (host) => {
+        if (!connectedHost(host.hostKey)) return [];
         try {
-          const result = await host.adapter.client.request<{ sessions?: RacpSession[] }>("session/list");
-          return (result.sessions ?? []).flatMap((session): RemoteLiveSessionSummary[] =>
-            typeof session.id === "string" && session.id.trim()
-              ? [{
-                  id: makeRemoteSessionId(host.hostKey, session.id),
-                  title: typeof session.title === "string" ? session.title : "",
-                  mode: session.mode,
-                  permissionMode: session.permissionMode,
-                  status: session.status,
-                  ...(typeof session.activeTurnId === "string" ? { activeTurnId: session.activeTurnId } : {}),
-                  ...(typeof session.workspaceLabel === "string" ? { workspaceLabel: session.workspaceLabel } : {}),
-                  source: "remote",
-                  hostKey: host.hostKey,
-                  hostLabel: host.label,
-                }]
-              : [],
-          );
+          const result = await host.adapter.client.request<{ sessions: RacpSession[] }>("session/list");
+          if (connectedHost(host.hostKey) !== host) return [];
+          return result.sessions.map((session): RemoteLiveSessionSummary => ({
+            id: makeRemoteSessionId(host.hostKey, session.id), title: session.title,
+            mode: session.mode, permissionMode: session.permissionMode, status: session.status,
+            ...(session.activeTurnId ? { activeTurnId: session.activeTurnId } : {}),
+            ...(session.workspaceLabel ? { workspaceLabel: session.workspaceLabel } : {}),
+            source: "remote", hostKey: host.hostKey, hostLabel: host.label,
+          }));
         } catch (error) {
           log("warn", `remote host ${host.hostKey} session list failed`, { error: String(error) });
           return [];
         }
       }));
-      return listed.flat();
+      return results.flat();
     },
     async readHistory(sessionId, limit) {
       const parsed = parseRemoteSessionId(sessionId);
-      const host = parsed ? opened.find((item) => item.hostKey === parsed.hostKey) : undefined;
+      const host = parsed ? connectedHost(parsed.hostKey) : undefined;
       if (!parsed || !host) throw Object.assign(new Error("Remote session is unavailable"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 24) throw Object.assign(new Error("Remote history limit is invalid"), { errorCode: "INVALID_ARGUMENT" });
-      const result = await host.adapter.client.request<{ items?: RacpItemSummary[] }>("session/history", {
-        sessionId: parsed.hostSessionId,
-        limit,
-      });
+      const result = await host.adapter.client.request<{ items?: RacpItemSummary[] }>("session/history", { sessionId: parsed.hostSessionId, limit });
       return result.items ?? [];
     },
     subscribeSession(sessionId, listener) {
       const parsed = parseRemoteSessionId(sessionId);
-      if (!parsed) return null;
-      const host = opened.find((item) => item.hostKey === parsed.hostKey);
-      if (!host) return null;
+      const host = parsed ? connectedHost(parsed.hostKey) : undefined;
+      if (!parsed || !host) return null;
       return host.adapter.client.subscribe((envelope) => {
         if (envelope.scope === "session" && envelope.sessionId === parsed.hostSessionId) listener(envelope);
       });
-    },
-    addHost,
-    async bootstrapHost(request) {
-      const outcome = await bootstrap.bootstrap(request);
-      // A re-pair under the same key must release the previous live
-      // connection — and with it the previous forward — before the new
-      // forward is adopted. Otherwise adopting would evict the very forward
-      // the bootstrap just opened for us.
-      await closeLive(outcome.hostKey);
-      // Adopt before persisting: the forward is already live and the device
-      // token only works over it.
-      await tunnels.adopt(outcome.hostKey, outcome.ssh, outcome.forward);
-      const host = await addHost(
-        sshHostRecord({
-          hostKey: outcome.hostKey,
-          label: outcome.label,
-          url: outcome.url,
-          deviceToken: outcome.deviceToken,
-          ssh: outcome.ssh,
-          ...(outcome.sshSecret ? { sshSecret: outcome.sshSecret } : {}),
-        }),
-      );
-      return { host, ssh: outcome.ssh, steps: outcome.steps };
-    },
-    async removeHost(hostKey) {
-      await closeLive(hostKey);
-      // A paired host that never came online still owns a tunnel slot.
-      await tunnels.close(hostKey);
-      await registry.remove(hostKey);
     },
   };
 }

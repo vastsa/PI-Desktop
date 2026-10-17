@@ -146,6 +146,8 @@ On app startup:
 2. Read the enabled state
 3. Load only enabled plugins
 4. Skip a single failed plugin without affecting other plugins or the main app
+5. Emit `pluginChanged` (`reason: "restore"`) once the pass is done, so the
+   renderer re-reads a plugin list it may have fetched before the restore
 
 ## 6. Developer mode
 

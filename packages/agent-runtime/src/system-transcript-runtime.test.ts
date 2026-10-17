@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Agent } from "@earendil-works/pi-agent-core";
-import { createAssistantMessageEventStream, getCurrentTools, getCurrentSystemPrompt, type AssistantMessage, type Message } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, getCurrentTools, getCurrentSystemPrompt, normalizeContext, type AssistantMessage, type Message } from "@earendil-works/pi-ai";
+import { streamSimple as streamAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
 import type { UiMessage } from "@pi-desktop/shared";
 import { DesktopAgentRuntime, type RuntimeProviderConfig } from "./runtime.js";
 
@@ -100,6 +101,49 @@ describe("system state through the Desktop user path", () => {
         expect(getCurrentTools(restored.requests[0]).some((tool) => tool.name === "BrowserPreview")).toBe(true);
         expect(restored.rows.filter((row) => row.modelSystem)).toHaveLength(2);
       } finally { await restored.runtime.dispose(); }
+    } finally { await f.runtime.dispose(); }
+  });
+
+  it("keeps a restored tool call on its assistant when system state changed during the call", async () => {
+    // An update made while a tool runs is recorded after the assistant row and before the tool row.
+    const createdAt = new Date().toISOString();
+    const update = { role: "system", content: "", sections: { context: "Updated while the tool ran" }, timestamp: 2 };
+    const f = fixture([
+      { id: "user-1", role: "user", content: "Read the notes", createdAt, status: "complete" },
+      { id: "assistant-1", role: "assistant", content: "Checking.", createdAt, status: "complete" },
+      { id: "call-1", role: "tool", content: "", createdAt, status: "complete", toolCallId: "call-1", toolName: "Read",
+        toolArgs: { path: "notes.md" }, toolStatus: "success", toolResult: { content: [{ type: "text", text: "notes" }] } },
+      { id: "update-1", role: "system", content: "", createdAt, modelSystem: {
+        version: 1, messageJson: JSON.stringify(update), beforeMessageId: "call-1", afterMessageId: "assistant-1",
+      } },
+      { id: "assistant-2", role: "assistant", content: "Read it.", createdAt, status: "complete" },
+    ]);
+    try {
+      await f.prompt("user-2");
+      let body: { messages: { role: string; content: unknown }[] } | undefined;
+      await streamAnthropic({
+        id: "claude-fixture", name: "Claude fixture", api: "anthropic-messages", provider: "anthropic",
+        baseUrl: "http://localhost", reasoning: false, input: ["text"], contextWindow: 100_000, maxTokens: 1000,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, compat: { supportsMidConvoSystemMessages: true },
+      }, normalizeContext({ messages: f.requests[0] }), {
+        apiKey: "test", maxRetries: 0, fetch: async (_input, init) => {
+          body = JSON.parse(String(init?.body));
+          return new Response(
+            'event: message_start\ndata: {"type":"message_start","message":{"id":"m","model":"claude-fixture","usage":{"input_tokens":1,"output_tokens":0}}}\n\nevent: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n',
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      }).result();
+      const wire = body!.messages;
+      expect(wire.find((message) => message.role === "assistant")?.content).toEqual([
+        expect.objectContaining({ type: "text", text: "Checking." }),
+        expect.objectContaining({ type: "tool_use", id: "call-1" }),
+      ]);
+      // Anthropic rejects a later system message unless a user turn precedes it.
+      const preceding = wire.flatMap((message, index) => message.role === "system" ? [wire[index - 1]?.role] : []);
+      expect(JSON.stringify(wire)).toContain("Updated while the tool ran");
+      expect(preceding.length).toBeGreaterThan(0);
+      expect(preceding.filter((role) => role !== "user")).toEqual([]);
     } finally { await f.runtime.dispose(); }
   });
 

@@ -8,6 +8,11 @@ import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createEventPersistence } = await import("../electron/main/runtime/event-persistence.ts");
 const { PersistenceOutbox } = await import("../electron/main/persistence-outbox.ts");
+const transcriptRewrite = {
+  beginTranscriptRewrite: () => ({ commit() {}, rollback: () => [] }),
+  deferTranscriptEvent: () => false,
+  isStaleTranscriptEvent: () => false,
+};
 
 test("a settled Task snapshot survives outbox recovery with its original turn and metadata", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pi-subagent-settlement-"));
@@ -31,6 +36,7 @@ test("a settled Task snapshot survives outbox recovery with its original turn an
       pendingExecutionFinishes: new Map(),
       planSubmissionTurnIds: new Set(),
       persistenceOutbox,
+      transcriptRewrite,
       logger: { app: silent },
     });
     const message = {
@@ -86,6 +92,7 @@ for (const delegate of [false, true]) {
         pendingExecutionFinishes: new Map(),
         planSubmissionTurnIds: new Set(),
         persistenceOutbox,
+        transcriptRewrite,
         logger: { app: silent },
       });
       const lineage = {
@@ -157,7 +164,8 @@ test("independent usage aggregates survive an unavailable Host and outbox restar
       activeToolCalls: new Map(), activeToolCallKey: (s, t) => `${s}:${t}`,
       approvedExecutionIdsBySession: new Map(), approvedExecutionTurns: new Map(),
       pendingExecutionFinishes: new Map(), planSubmissionTurnIds: new Set(),
-      persistenceOutbox: outbox, logger: { app: () => undefined }, addActiveTurnUsage: () => undefined,
+      persistenceOutbox: outbox, transcriptRewrite,
+      logger: { app: () => undefined }, addActiveTurnUsage: () => undefined,
     });
     for (const id of ["image-a", "image-b", "image-a"]) {
       const operation = { operationId: id, inputTokens: 10, outputTokens: 2, totalTokens: 12 };

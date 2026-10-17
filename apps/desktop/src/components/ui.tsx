@@ -18,6 +18,8 @@ import {
 
 import { IconEye, IconEyeOff, IconHelp } from "./icons";
 
+export { OverlayBackdrop } from "./OverlayBackdrop";
+
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
@@ -754,6 +756,7 @@ export function Checkbox({
         ref={(node) => {
           if (node) node.indeterminate = indeterminate;
         }}
+        className="ds-checkbox"
         {...props}
       />
       <span>{label}</span>

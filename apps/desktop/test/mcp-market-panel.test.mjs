@@ -28,6 +28,15 @@ test("install sheet shows the exact command and collects required values", () =>
   assert.match(panel, /type="password"/);
 });
 
+test("failed and partial MCP catalog searches can be retried", () => {
+  assert.match(panel, /const \[catalogRetry, setCatalogRetry\] = useState\(0\)/);
+  assert.match(panel, /\[search, sources, catalogRetry\]/);
+  assert.match(panel, /const retryCatalog = \(\) => \{/);
+  assert.match(panel, /settings\.mcpMarket\.retry/);
+  assert.match(panel, /settings\.mcpMarket\.remotePartial/);
+  assert.match(panel, /remote\.status === "ready" && remote\.failed\.length/);
+});
+
 test("installed state comes from matching server ids", () => {
   assert.match(panel, /installedIds\.includes\(entry\.id\)/);
   assert.match(page, /installedIds=\{\[\.\.\.globalServers, \.\.\.projectServers\]/);
@@ -45,6 +54,17 @@ test("market strings exist in en and zh-CN", () => {
     assert.match(locale, /browse: "/);
     assert.match(locale, /installSuccess: "/);
     assert.match(locale, /"category\.devtools": "/);
+    assert.match(locale, /remotePartial: "/);
+    assert.match(locale, /retry: "/);
+  }
+});
+
+test("every shipped locale carries the MCP market recovery strings", async () => {
+  const ids = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr", "pt-BR"];
+  for (const id of ids) {
+    const locale = await read(`../../../packages/i18n/src/locales/${id}/index.ts`);
+    assert.match(locale, /remotePartial: "/, `${id} remotePartial`);
+    assert.match(locale, /retry: "/, `${id} retry`);
   }
 });
 

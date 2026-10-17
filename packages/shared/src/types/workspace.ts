@@ -19,7 +19,10 @@ export type NotificationListResult = {
   unreadCount: number;
 };
 
+export type RemoteWorkspace = { hostKey: string; path: string };
+
 export type ProjectWorkspace = {
+  remote?: RemoteWorkspace;
   path: string;
   name: string;
   /** Best-effort git branch from .git/HEAD when available. */
@@ -42,6 +45,7 @@ export type ProjectGroupRoot = {
 };
 
 export type ProjectGroupRecord = {
+  remote?: RemoteWorkspace;
   id: string;
   name: string;
   primaryPath: string;
@@ -57,6 +61,7 @@ export type ProjectGroupRecord = {
 };
 
 export type ProjectGroupContext = {
+  remote?: RemoteWorkspace;
   groupId: string;
   roots: ProjectGroupRoot[];
   instructions: string;

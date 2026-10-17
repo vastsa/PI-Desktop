@@ -4,6 +4,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { flattenCatalog } from "@pi-desktop/i18n/locale-info";
 import { en } from "@pi-desktop/i18n/locales/en";
+import { remoteEn, remoteZh } from "./locales/remote";
 import { MAC_TRAFFIC_LIGHT_EDGE_DIP } from "@pi-desktop/shared";
 import App from "./App";
 import { ErrorBoundary, RoutePending } from "./features/app/chrome";
@@ -74,10 +75,13 @@ async function startRenderer(): Promise<void> {
     fallbackLng: "en",
     resources: {
       en: {
+        remote: remoteEn,
         translation: flattenCatalog(
           en as unknown as Record<string, unknown>,
         ),
       },
+      "zh-CN": { remote: remoteZh },
+      "zh-TW": { remote: remoteZh },
     },
     interpolation: { escapeValue: false },
   });

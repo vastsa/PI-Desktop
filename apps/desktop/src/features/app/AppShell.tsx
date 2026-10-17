@@ -7,6 +7,7 @@ import {
   IconPanel,
   IconPanelOpen,
 } from "../../components/icons";
+import { LifecycleConfirmationDialog } from "../../components/LifecycleConfirmationDialog";
 import { ProjectCreateDialog } from "../../components/ProjectCreateDialog";
 import { SearchDialog } from "../../components/SearchDialog";
 import { Sidebar } from "../../components/Sidebar";
@@ -376,6 +377,7 @@ export function AppShell() {
         <WindowControls />
       ) : null}
       <ProjectCreateDialog />
+      <LifecycleConfirmationDialog />
       {splash}
       {startupRecovery}
     </div>

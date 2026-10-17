@@ -43,8 +43,11 @@ must not leave the page.
 5. **Search still matches session titles.** A session-title hit keeps the
    owning project in the index, selects it, and lists the matching chats in
    the inspector.
-6. **Presentation only.** No IPC, storage, host protocol, or activation
-   semantics change beyond the click-vs-activate split on this destination.
+6. **Presentation and renderer-local archive state.** No IPC, host-owned
+   storage, or host protocol changes. Explicitly activating an archived
+   project (Open, double-click, Enter, or opening one of its sessions) clears
+   its archived presentation state so it reappears in the home sidebar.
+   Selecting a row to inspect it does not restore the project.
 
 ## Consequences
 

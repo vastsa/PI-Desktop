@@ -281,11 +281,12 @@
   color: var(--ds-text-faint);
 }
 
-/* The idle action, with the help icon that says what a scan will cover. */
-.import-idle-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.import-idle-description {
+  max-width: 680px;
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 /* A scan that found nothing keeps its action in the toolbar above. */
@@ -478,6 +479,8 @@
   bottom: auto;
   z-index: 60;
   min-width: 172px;
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
   padding: 5px;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md-plus);
@@ -495,6 +498,29 @@
   max-width: calc(100vw - 16px);
 }
 
+.sidebar-submenu {
+  position: fixed;
+  z-index: 61;
+  width: max-content;
+  min-width: 184px;
+  max-width: calc(100vw - 16px);
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
+  box-shadow: var(--ds-shadow-dialog);
+}
+
+.sidebar-row-menu .sidebar-menu-submenu-trigger[aria-expanded="true"] {
+  background: var(--ds-bg-hover);
+}
+
+.sidebar-menu-submenu-trigger .sidebar-menu-label {
+  flex: 1 1 auto;
+}
+
+.sidebar-menu-submenu-chevron {
+  margin-inline-start: auto;
+  color: var(--ds-text-muted);
+}
 .sidebar-row-menu button,
 .sidebar-popover button {
   display: flex;
@@ -510,7 +536,10 @@
 }
 
 .sidebar-row-menu button:hover,
+.sidebar-row-menu button:focus-visible,
+.sidebar-row-menu button[aria-expanded="true"],
 .sidebar-popover button:hover,
+.sidebar-popover button:focus-visible,
 .sidebar-popover button.selected {
   background: var(--ds-bg-hover);
 }
@@ -718,11 +747,37 @@
   right: auto;
 }
 
-.sidebar-popover-title {
-  padding: 4px 8px 6px;
+/* A group caption inside the panel: quiet, and never a pointer target. */
+.sidebar-menu-section {
+  margin: 0;
+  padding: 6px 8px 4px;
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
   font-weight: var(--font-weight-medium);
+}
+
+.sidebar-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--ds-border-subtle);
+}
+
+.sidebar-menu-hint {
+  margin: 0;
+  padding: 2px 8px 6px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+}
+
+/* A note hangs under its own rule, so it reads as part of the row above. */
+.sidebar-menu-note {
+  max-width: 260px;
+  margin: -2px 0 4px;
+  padding: 0 8px 0 30px;
+  color: var(--ds-error);
+  font-size: var(--text-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .sidebar-popover button {
@@ -749,10 +804,6 @@
 /* A filled square is the box; the check and the accent tint are the state. */
 .sidebar-checkbox.checked {
   background: color-mix(in oklab, var(--ds-accent) 22%, transparent);
-}
-
-.sidebar-popover-divider {
-  height: 6px;
 }
 
 /* Compact hover card for session rows. Related-session references stay

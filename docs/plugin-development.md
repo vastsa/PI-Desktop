@@ -528,6 +528,25 @@ host never retries a request your plugin makes, so backoff after a rate limit is
 your own policy rather than a hidden host behaviour. A call that comes back
 `>= 400` is still audited, as `ok: false` with the delay the response advertised.
 
+### Fetch redirect policy (unreleased)
+
+Check host support before relying on a policy; old hosts can ignore unknown
+request fields. Never fall back to a raw network request.
+
+```js
+if (typeof pi.net.getCapabilities !== "function") throw new Error("Upgrade PI-Desktop");
+const capabilities = await pi.net.getCapabilities();
+if (!capabilities.fetchRedirectModes.includes("error")) throw new Error("Unsupported host");
+const response = await pi.net.fetch({ url: endpoint, redirect: "error" });
+```
+
+`error` rejects every 3xx with `REDIRECT_DISALLOWED` before accessing Location.
+`manual` returns the original status, headers and body. Omitted/`follow` retains
+the existing bounded, per-hop egress-checked behavior. Invalid modes are rejected
+before I/O. No mode expands network permissions. See the
+[complete contract](spec/07-plugins/03-plugin-api.md#net) and the
+local-only test plugin at `examples/plugins/fetch-redirect/README.md` in the repository.
+
 ### 6.7 Theme
 
 Declare a CSS file and `ui.theme`:
@@ -865,7 +884,8 @@ export function onLoad(pi) {
 
 A dialog you draw yourself is not a slot: `pi.ui.openLayer()` hands you a layer
 to render into, and the component draws inside it. Styles go through
-`pi.ui.injectStyle`, and `react` / `react-dom` resolve to the app's copies
+`pi.ui.injectStyle`, and `react`, `react/jsx-dev-runtime`,
+`react/jsx-runtime`, `react-dom` and `react-dom/client` resolve to the app's copies
 through the window's import map, so no bundled React is needed.
 
 `rendererActions` whitelists what a component may dispatch — `plugin.call`,

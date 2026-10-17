@@ -40,8 +40,8 @@ function render(locale) {
 }
 
 for (const [locale, expected] of [
-  ["en", "Only existing files inside this project's workspace can be opened."],
-  ["zh-CN", "只能打开此项目工作区内已存在的文件。"],
+  ["en", "Only existing local files can be opened."],
+  ["zh-CN", "只能打开已存在的本地文件。"],
 ]) {
   for (const url of ["file:///tmp/demo.html", "/tmp/demo.html"]) {
     test(`address bar explains ${url} in ${locale}`, async () => {

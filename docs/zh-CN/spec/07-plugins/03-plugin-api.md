@@ -419,7 +419,9 @@ pi.session.setAutoTitle(input: {
 }): Promise<{ updated: boolean }>
 ```
 
-只有活动会话且标题来源仍为 `default` 时才返回上下文。宿主不会返回附件、工具调用、后续回合
+只有活动会话且标题来源仍为 `default` 时才返回上下文。该来源既覆盖新会话的占位标题，也覆盖
+核心自己写入的确定性首条提示兜底标题，因此插件应预期 `expectedTitle` 是当前已派生的文本，
+而不是本地化占位标题。宿主不会返回附件、工具调用、后续回合
 或其他转录内容。标题长度为 1–80 个 Unicode 码点，并通过精确的 `expectedTitle` 比较并设置；
 手动重命名或另一项更新发生后返回 `{ updated: false }`。两个方法都需要高风险权限
 `session.autoTitle`，因为持有 `agent.complete` 的插件可能将首轮文本发送给模型。
@@ -660,6 +662,10 @@ pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 仅在 Browser 视图可见时可用。视图隐藏时调用会以 `UNAVAILABLE` 失败；应通过 `BrowserPreview`
 请求宿主显示 Browser 视图后再继续。
 
+截图（包括原始 `Page.captureScreenshot` CDP 调用）有 30 秒的宿主端期限。超时会以 `TIMEOUT` 失败，
+宿主会分离卡住的 CDP 会话并释放该页面的截图队列，使后续截图可以重新连接并继续。其他 CDP 方法
+沿用现有超时行为。
+
 `getHistory` 返回由主机明确记录的条目，按最新优先排列，文本和图片按捕获时间混排。
 通过 `writeText` 写入的内容，以及 Composer 用户主动粘贴事件提供的内容会被记录；主机
 不会在后台轮询或重新读取系统剪贴板。连续相同内容会合并并刷新时间戳。历史只保留在
@@ -669,6 +675,8 @@ pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 `navigate` 在当前主框架导航提交（含重定向）时返回，不等待慢图片或子框架。
 `browser:state` 立即报告加载状态，导航失败时可带 `loadError`。
 可选的 `sessionId`、`tabId` 标识宿主管理的工作面板目标；插件不能通过导航参数指定这些身份。
+拥有高风险 `browser.cdp` 权限后，`navigate` 可以通过绝对路径或 `file:` URL 打开任意已存在的本地文件。
+相对路径仍以工作区为根。本地文件页面可导航到其他已存在的本地文件；网页仍只能通过文件链接访问工作区内文件。
 
 ### 服务（需要 `background.service`）
 ```ts
@@ -717,8 +725,35 @@ pi.net.fetch(input: {
  headers?: Record<string, string>
  body?: string
  timeoutMs?: number
+ redirect?: "follow" | "error" | "manual"
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
+
+`redirect` is optional: omitted or `follow` preserves the existing policy (up to
+five followed 3xx responses with Location, relative to the current URL, each
+checked against the granted egress policy). Existing method/header/body handling
+is unchanged; this is not a promise of browser Fetch redirect rewriting.
+`manual` returns the first response's status, headers (including Location) and
+body without visiting its target. `error` rejects **any 300–399 response** with
+`REDIRECT_DISALLOWED`, even without Location; it never visits the target. Other
+statuses, including 429, remain normal responses. In follow mode a 3xx without
+Location is returned unchanged; a loop exceeds the five-hop cap with
+`UNAVAILABLE`. One timeout covers the whole chain and response body (`TIMEOUT`).
+Invalid redirect values fail with `INVALID_ARGUMENT` before network I/O.
+
+The host owns redirect handling for both the default and injected single-hop
+transport. Every followed hop still passes the existing permission/egress
+checks; these modes grant no additional network access. Policy refusals are
+audited without response bodies or headers.
+
+Before using the option on a potentially older host, query
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: string[] }>` and require
+the desired mode. This read-only query needs no network permission and performs
+no network I/O. A missing method, rejected query, or absent mode means
+unsupported: do not send the request. Older hosts may silently ignore unknown
+fetch options, so passing `redirect` alone is **not** capability detection.
+This API is unreleased; released 0.17.0 and older do not advertise it.
+No same-origin-only mode is introduced by this change.
 
 `fetch` 原样返回上游响应 —— `status`、`headers`、`bodyText` —— 所以 `429`
 是插件能读到的数据（`Retry-After` 也在里面），而不是被主机藏起来的错误。宿主

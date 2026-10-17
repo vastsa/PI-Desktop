@@ -101,14 +101,30 @@ function encodeWindowsPathForHref(path: string): string {
     : path;
 }
 
-function normalizeMarkdownWindowsPath(url: string): string {
+function normalizeMarkdownFilePath(url: string): string {
+  // Convert file URLs to references before sanitization, never native links.
+  // Main still verifies the resulting path against its allowed roots.
+  if (/^file:/i.test(url)) {
+    try {
+      const file = new URL(url);
+      if (file.hostname && file.hostname !== "localhost") return url;
+      if (file.search || file.hash) return url;
+      const pathname = decodeURIComponent(file.pathname);
+      const path = /^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname;
+      const filePath = parseFileRefPosition(path) ? stripLineRef(path) : path;
+      if (!isAbsoluteFilePath(filePath) || !isLikelyFilePath(filePath)) return url;
+      return encodeURIComponent(path);
+    } catch {
+      return url;
+    }
+  }
   // Keep a drive letter from being interpreted as a URI scheme by the
   // renderer and sanitizer; the anchor decodes this back before file lookup.
   const decoded = safeDecodeUri(url);
+  if (parseFileRef(decoded) && parseFileRefPosition(decoded)) return encodeURIComponent(decoded);
   if (!/^[A-Za-z]:[\\/]/.test(decoded)) return url;
-  const path = parseFileRef(decoded);
-  if (path !== decoded) return url;
-  return encodeWindowsPathForHref(path);
+  if (!parseFileRef(decoded)) return url;
+  return encodeWindowsPathForHref(decoded);
 }
 
 /**
@@ -227,6 +243,12 @@ export type ChatPreviewTarget =
   | { kind: "url"; url: string }
   | { kind: "session"; sessionId: string };
 
+function fileTargetHref(target: Extract<ChatPreviewTarget, { kind: "file" }>): string {
+  const position = target.line === undefined ? ""
+    : ":" + target.line + (target.column === undefined ? "" : ":" + target.column);
+  return position ? encodeURIComponent(target.path + position) : encodeWindowsPathForHref(target.path);
+}
+
 /** Resolve one raw chat token into a previewable target, or null. */
 export function resolvePreviewTarget(
   text: string,
@@ -263,14 +285,19 @@ export function handleMarkdownFileLinkClick(
   href: string,
   root: string | null | undefined,
   baseDir: string | undefined,
-  openFileRef: (path: string, baseDir?: string) => void,
+  openFileRef: (path: string, baseDir?: string, mimeType?: string,
+    position?: { line?: number; column?: number }) => void,
 ): boolean {
   const decoded = safeDecodeUri(href);
   const target = resolvePreviewTarget(decoded, root, baseDir);
   const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
   if (!ref) return false;
   event.preventDefault();
-  openFileRef(ref, baseDir);
+  if (target?.kind === "file" && target.line !== undefined) {
+    openFileRef(ref, baseDir, undefined, { line: target.line, column: target.column });
+  } else {
+    openFileRef(ref, baseDir);
+  }
   return true;
 }
 
@@ -416,7 +443,7 @@ const SKIP_MDAST = new Set([
 
 function normalizeMarkdownLinkDestination(node: MdastNode): void {
   if ((node.type === "link" || node.type === "definition") && typeof node.url === "string") {
-    node.url = normalizeMarkdownWindowsPath(node.url);
+    node.url = normalizeMarkdownFilePath(node.url);
   }
 }
 
@@ -489,7 +516,7 @@ export function linkifyMdastTree(
               ? target.url
               : target.kind === "session"
                 ? formatSessionLink(target.sessionId)
-                : encodeWindowsPathForHref(target.path);
+                : fileTargetHref(target);
           next.push({
             type: "link",
             url,
@@ -514,7 +541,7 @@ export function linkifyMdastTree(
               ? segment.target.url
               : segment.target.kind === "session"
                 ? formatSessionLink(segment.target.sessionId)
-                : encodeWindowsPathForHref(segment.target.path);
+                : fileTargetHref(segment.target);
           next.push({
             type: "link",
             url,

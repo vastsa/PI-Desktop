@@ -157,7 +157,11 @@ export function FilesTab() {
   const workspace = useAppStore((s) => s.workspace);
   const fileRequest = useAppStore((s) => s.workPanelFileRequest);
   const showToast = useAppStore((s) => s.showToast);
+  const sessionId = useAppStore((state) => state.activeSessionId);
+  const remote = workspace?.remote;
   const root = workspace?.path ?? null;
+  const scopeRef = useRef({ root, sessionId });
+  scopeRef.current = { root, sessionId };
 
   const [dirs, setDirs] = useState<Record<string, DirState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -167,6 +171,7 @@ export function FilesTab() {
   const [file, setFile] = useState<FsReadResult | null>(null);
   const [fileError, setFileError] = useState(false);
   const viewerBodyRef = useRef<HTMLDivElement>(null);
+  const fileGeneration = useRef(0);
 
   // Workspace switches reset all browsing state. Guarded so it only fires on
   // an actual root change: an unconditional [root] effect also runs on the
@@ -189,13 +194,15 @@ export function FilesTab() {
     async (rel: string) => {
       if (!root) return;
       try {
-        const res = await api.fsList(rel);
+        const res = await api.fsList(rel, sessionId);
+        if (scopeRef.current.root !== root || scopeRef.current.sessionId !== sessionId) return;
         setDirs((prev) => ({ ...prev, [rel]: { entries: res.entries } }));
       } catch {
+        if (scopeRef.current.root !== root || scopeRef.current.sessionId !== sessionId) return;
         setDirs((prev) => ({ ...prev, [rel]: { entries: [], error: true } }));
       }
     },
-    [root],
+    [root, sessionId],
   );
 
   useEffect(() => {
@@ -220,18 +227,22 @@ export function FilesTab() {
 
   const openFile = useCallback(
     async (rel: string, mimeType?: string, position?: { line?: number; column?: number }) => {
+      const request = ++fileGeneration.current;
       setSelected(rel);
       setSelectedMimeType(mimeType);
       setSelectedLine(position?.line);
       setFile(null);
       setFileError(false);
       try {
-        setFile(await api.fsRead(rel, mimeType));
+        const result = await api.fsRead(rel, mimeType, sessionId);
+        if (request !== fileGeneration.current || scopeRef.current.root !== root || scopeRef.current.sessionId !== sessionId) return;
+        setFile(result);
       } catch {
+        if (request !== fileGeneration.current || scopeRef.current.root !== root || scopeRef.current.sessionId !== sessionId) return;
         setFileError(true);
       }
     },
-    [],
+    [root, sessionId],
   );
 
   useEffect(() => {
@@ -246,13 +257,13 @@ export function FilesTab() {
   }, [file, selectedLine]);
 
   const openMp4 = useCallback(async () => {
-    if (!selected) return;
+    if (!selected || remote) return;
     try {
-      await api.fsOpen(selected, selectedMimeType);
+      await api.fsOpen(selected, selectedMimeType, sessionId);
     } catch {
       showToast(t("panel.files.openFailed"), { variant: "error" });
     }
-  }, [selected, selectedMimeType, showToast, t]);
+  }, [selected, selectedMimeType, sessionId, showToast, t]);
 
   // Chat-initiated previews: open the file and expand its ancestor folders
   // so "back" lands on a tree that reveals it. Attachment blobs and absolute
@@ -368,15 +379,15 @@ export function FilesTab() {
             {selected}
           </span>
           {file && <span className="file-viewer-size">{formatSize(file.size)}</span>}
-          <TooltipButton
+          {!remote ? <TooltipButton
             type="button"
             className="icon-btn icon-btn-square"
             tooltip={t("panel.files.reveal")}
             ariaLabel={t("panel.files.reveal")}
-            onClick={() => void api.fsReveal(selected)}
+            onClick={() => void api.fsReveal(selected, sessionId)}
           >
             <IconExternal size={14} />
-          </TooltipButton>
+          </TooltipButton> : null}
         </div>
         <div className="file-viewer-body" ref={viewerBodyRef}>
           {fileError ? (
@@ -405,7 +416,7 @@ export function FilesTab() {
                   : t("panel.files.binary")
               }
             >
-              {isMp4(selected, selectedMimeType) && (
+              {!remote && isMp4(selected, selectedMimeType) && (
                 <Button type="button" onClick={() => void openMp4()}>
                   {t("chat.openFile")}
                 </Button>

@@ -55,9 +55,15 @@ work-panel tab already carries was honoured by main for `pi.browser` only.
    host viewer's existing scroll support. A file in the session scratch or
    attachment store opens in the
    host `file:` tab, because it lives outside that view's project root — see
-   point 4. A workspace `.html` / `.htm` file still opens in the side browser
+   point 4. An unpositioned `.html` / `.htm` file in any folder of the
+   session's project group or its own scratch directory opens in the side browser
    (ADR 0163), for an agent reply and a user chip alike: it is a page to run,
-   not a file to read. A direct user click on a project file actively ensures
+   not a file to read. Main resolves browser roots from the owning session,
+   never a different visible project's root. The resolved absolute path is
+   carried through navigation, and realpath containment still applies.
+   Positioned HTML references retain the source viewer. A disabled browser
+   reports an error instead of silently dropping a click or enabling itself.
+   A direct user click on a project file actively ensures
    the bundled file view is running: an off plugin is enabled, and an enabled
    plugin with no contributed view is reloaded before the tab opens. This click
    is explicit intent to use the bundled view. The host does not restore a

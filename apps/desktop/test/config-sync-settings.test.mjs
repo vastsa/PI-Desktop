@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 import {
-  CONFIG_SYNC_RPC_TIMEOUT_MS,
   DEFAULT_RPC_TIMEOUT_MS,
   rpcTimeoutMs,
 } from "@pi-desktop/shared";
@@ -14,6 +13,7 @@ const read = (relativePath) =>
 const settingsPage = await read("../src/features/settings/SettingsPage.tsx");
 const settingsIndex = await read("../src/lib/settings-search.ts");
 const syncPage = await read("../src/components/settings/ConfigSyncPage.tsx");
+const connectionFields = await read("../src/components/settings/ConfigSyncConnectionFields.tsx");
 const syncPreferences = await read(
   "../src/features/settings/config-sync-preferences.ts",
 );
@@ -30,26 +30,22 @@ const syncError = await read(
   "../src/components/settings/ConfigSyncError.tsx",
 );
 
-test("cloud sync rendering follows the settings visibility gate", () => {
+test("cloud sync is Experimental and available in packaged Settings", () => {
   assert.match(settingsPage, /tab === "sync" && !tabHidden && <ConfigSyncPage \/>/);
   assert.match(settingsIndex, /id: "sync"/);
-  // The cloud backup ships hidden from packaged builds: the destination stays
-  // a development-build surface until it opens.
-  assert.match(settingsIndex, /id: "sync"[\s\S]{0,400}developmentOnly: true/);
-  assert.doesNotMatch(settingsIndex, /experimentalBadgeKey: "settings\.configSync\.experimental"/);
+  assert.doesNotMatch(settingsIndex, /id: "sync"[\s\S]{0,400}developmentOnly: true/);
+  assert.match(settingsIndex, /experimentalBadgeKey: "settings\.configSync\.experimental"/);
   assert.match(settingsIndex, /settings\.configSync\.connectionTitle/);
+  assert.match(settingsIndex, /"settings\.configSync\.experimental"/);
 });
 
 test("cloud sync keeps credentials and vault operations on the host boundary", () => {
   assert.match(syncPage, /api\.configSyncConfigure\(/);
   assert.match(syncPage, /applyState\(await api\.configSyncSyncNow\(\)\)/);
-  // The plaintext opt-in is the network mode now, not a WebDAV switch: the page
-  // carries no per-endpoint HTTP acknowledgement of its own.
-  assert.doesNotMatch(syncPage, /allowInsecureHttp/);
-  assert.match(syncPage, /settings\.configSync\.remoteMode/);
-  assert.match(syncPage, /settings\.configSync\.appendOnlyWarning/);
-  assert.match(syncPage, /settings\.configSync\.appendOnlyConfirm/);
-  assert.match(syncPage, /remoteMode/);
+  // HTTP policy remains Host-owned; unsafe conditional-write fallback is gone.
+  assert.doesNotMatch(syncPage + connectionFields, /allowInsecureHttp|appendOnly|remoteMode/);
+  assert.match(connectionFields, /settings\.configSync\.modeBackup/);
+  assert.match(connectionFields, /settings\.configSync\.modeSync/);
   assert.match(syncPage, /api\.configSyncUnlock\(/);
   assert.match(syncPage, /api\.configSyncMapProject\(/);
   assert.match(syncPage, /api\.configSyncListHistory\(/);
@@ -68,7 +64,7 @@ test("cloud sync keeps a non-sensitive draft and paints cached state first", () 
   assert.match(syncPage, /getCachedConfigSyncState\(\)/);
   assert.match(syncPage, /getCachedConfigSyncHistory\(\)/);
   assert.match(syncPage, /writeConfigSyncDraft\(/);
-  assert.match(syncPage, /appPasswordSavedHint/);
+  assert.match(connectionFields, /secretSavedHint/);
   assert.doesNotMatch(syncPage, /if \(loading\) \{[\s\S]{0,180}return \(/);
   assert.match(syncPreferences, /passwords are never copied into renderer persistence/);
   assert.match(syncPreferences, /CONFIG_SYNC_DRAFT_STORAGE_KEY/);
@@ -108,7 +104,7 @@ test("the sync page follows progress while it runs a sync of its own", () => {
   // Enabling a vault runs the same full sync as "sync now", so both gate it.
   assert.match(
     syncPage,
-    /\(busy === "sync" \|\| busy === "configure"\) && progress/,
+    /\(syncing \|\| busy === "sync" \|\| busy === "configure"\) && progress/,
   );
   // The request's own answer ends the run, so the last report is cleared when
   // it settles instead of outliving the sync it described.
@@ -151,7 +147,6 @@ test("the sync card reports each phase with a readable fraction", () => {
     "merge",
     "upload",
     "apply",
-    "cleanup",
   ]) {
     assert.match(
       progressModel,
@@ -179,15 +174,9 @@ test("the sync card exposes the fraction to assistive technology", () => {
   assert.match(styles, /\.settings-config-sync-progress-figures \{/);
 });
 
-test("a manual sync outlasts the flat default transport deadline", () => {
-  // The host cannot cancel a run that is already under way, so a deadline that
-  // fires while it is still working would only report a failure that is not
-  // one; the report events carry liveness instead.
-  assert.match(rpcTimeouts, /CONFIG_SYNC_RPC_TIMEOUT_MS = 1_800_000/);
-  assert.match(rpcTimeouts, /method === "configSync\.syncNow"/);
-  assert.equal(rpcTimeoutMs("configSync.syncNow", {}), CONFIG_SYNC_RPC_TIMEOUT_MS);
-  assert.ok(CONFIG_SYNC_RPC_TIMEOUT_MS > DEFAULT_RPC_TIMEOUT_MS);
-  // Every other config-sync call keeps the shared default.
+test("a manual sync has no total-request RPC timeout", () => {
+  assert.ok(rpcTimeouts.includes('if (method === "configSync.syncNow") return undefined;'));
+  assert.equal(rpcTimeoutMs("configSync.syncNow", {}), undefined);
   assert.equal(rpcTimeoutMs("configSync.getState", {}), DEFAULT_RPC_TIMEOUT_MS);
 });
 

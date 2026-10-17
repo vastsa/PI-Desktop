@@ -26,6 +26,10 @@ pub const MAX_SKILL_PACKAGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_NAME_CHARS: usize = 120;
 const MAX_DESCRIPTION_CHARS: usize = 400;
 const SKILL_KIND: &str = "skills";
+/// Built-in skills have no scanned document, so their activation lives in a
+/// separate state file from user skills. The user-skill scan prunes missing
+/// documents and must not erase a built-in preference.
+const BUILTIN_SKILL_KIND: &str = "skill-builtins";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -109,6 +113,7 @@ impl ImportShape {
 
 pub struct UserSkillRegistry {
     state: CapabilityState,
+    builtins: CapabilityState,
 }
 
 /// Place a single skill file at `target`, either as a copy or a symlink.
@@ -196,6 +201,25 @@ fn clip(value: &str, max_chars: usize) -> String {
 
 fn valid_id(id: &str) -> bool {
     valid_capability_id(id, 64)
+}
+
+fn normalize_builtin_skill_id(id: &str) -> Result<String> {
+    let id = id.trim();
+    let valid_segment = |segment: &str| {
+        !segment.is_empty()
+            && segment.len() <= 64
+            && segment.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && segment
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    };
+    let Some((namespace, name)) = id.split_once('/') else {
+        bail!("SKILL_INVALID: invalid builtin skill id");
+    };
+    if id.len() > 129 || !valid_segment(namespace) || !valid_segment(name) {
+        bail!("SKILL_INVALID: invalid builtin skill id");
+    }
+    Ok(id.to_string())
 }
 
 fn render_document(name: &str, description: Option<&str>, body: &str) -> String {
@@ -738,7 +762,28 @@ impl UserSkillRegistry {
     pub fn new(data_dir: &Path) -> Self {
         Self {
             state: CapabilityState::new(data_dir, SKILL_KIND),
+            builtins: CapabilityState::new(data_dir, BUILTIN_SKILL_KIND),
         }
+    }
+
+    /// Built-in skill ids switched off by the user. They are global and default
+    /// to enabled; ids remain stored if a later release temporarily omits one.
+    pub fn disabled_builtins(&self) -> Vec<String> {
+        self.builtins
+            .disabled_ids(BUILTIN_SKILL_KIND, CapabilityLevel::Global)
+    }
+
+    /// Set one built-in skill's global activation state.
+    pub fn set_builtin_enabled(&mut self, id: &str, enabled: bool) -> Result<String> {
+        let id = normalize_builtin_skill_id(id)?;
+        self.builtins.set_enabled(
+            BUILTIN_SKILL_KIND,
+            CapabilityLevel::Global,
+            &id,
+            None,
+            enabled,
+        )?;
+        Ok(id)
     }
 
     fn scan_level(
@@ -1216,10 +1261,8 @@ impl UserSkillRegistry {
         Ok(result)
     }
 
-    /// Apply approved, bounded package resources inside the Host-owned skill
-    /// directory. Existing files with different bytes are treated as an
-    /// external edit instead of being overwritten blindly; omitted files are
-    /// retained for the same reason.
+    /// Seed fixtures without overwriting existing resource contents.
+    #[cfg(test)]
     pub fn write_package_files(
         &mut self,
         id: &str,
@@ -1227,66 +1270,24 @@ impl UserSkillRegistry {
         project_path: Option<&str>,
         files: &[(String, Vec<u8>)],
     ) -> Result<()> {
-        if files.len() > MAX_SKILL_PACKAGE_FILES {
-            bail!("SKILL_LIMIT_EXCEEDED: skill package contains too many files");
-        }
-        let total = files.iter().try_fold(0usize, |total, (_, bytes)| {
-            total
-                .checked_add(bytes.len())
-                .ok_or_else(|| anyhow::anyhow!("SKILL_LIMIT_EXCEEDED: skill package is too large"))
-        })?;
-        if total > MAX_SKILL_PACKAGE_BYTES {
-            bail!("SKILL_LIMIT_EXCEEDED: skill package is too large");
-        }
-        if files.is_empty() {
-            return Ok(());
-        }
-        let Some(record) = self.find(id, Some(level), project_path)? else {
-            bail!("SKILL_INVALID: skill package target was not found");
-        };
-        let Some(root) = package_root(&record, level, project_path)? else {
-            bail!("SKILL_INVALID: package resources require a directory-shaped skill");
-        };
-        let root_metadata = fs::symlink_metadata(&root)?;
-        if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-            bail!("SKILL_INVALID: skill package root is unsafe");
-        }
-        let mut seen = HashSet::new();
-        for (relative, bytes) in files {
-            let target = package_destination(&root, relative)?;
-            if !seen.insert(relative.clone()) {
-                bail!("SKILL_INVALID: skill package contains duplicate paths");
-            }
-            if bytes.len() > MAX_SKILL_RESOURCE_BYTES {
-                bail!("SKILL_LIMIT_EXCEEDED: skill package resource is too large");
-            }
-            ensure_no_symlink_path(&root, &target)?;
-            if target.exists() {
-                let metadata = fs::symlink_metadata(&target)?;
-                if metadata.file_type().is_symlink() || !metadata.is_file() {
-                    bail!("SKILL_INVALID: skill package destination is unsafe");
-                }
-                if fs::read(&target)? == *bytes {
-                    continue;
-                }
+        let existing = self.package_files(id, level, project_path)?;
+        let mut desired = existing
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for (path, bytes) in files {
+            if desired.get(path).is_some_and(|old| old != bytes) {
                 bail!("CONFIG_SYNC_CONFLICT: skill package resource was edited locally");
             }
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)?;
-                ensure_no_symlink_path(&root, parent)?;
-            }
-            let temporary = target.with_file_name(format!(
-                ".{}.{}.tmp",
-                target
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("resource"),
-                Uuid::new_v4()
-            ));
-            fs::write(&temporary, bytes)?;
-            fs::rename(&temporary, &target)?;
+            desired.insert(path.clone(), bytes.clone());
         }
-        Ok(())
+        self.replace_package_files(
+            id,
+            level,
+            project_path,
+            &existing,
+            &desired.into_iter().collect::<Vec<_>>(),
+        )
     }
 
     pub fn remove(
@@ -1361,6 +1362,7 @@ fn scope_for(level: CapabilityLevel, project_path: Option<&str>) -> ActivationSc
     }
 }
 
+mod package_sync;
 /// Package bounds are asserted in their own module: `tests.rs` is close to the
 /// rust file-size limit, and these tests share one fixture.
 #[cfg(test)]

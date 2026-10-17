@@ -1,3 +1,4 @@
+import { OverlayBackdrop } from "./ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
@@ -319,7 +320,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   };
 
   return (
-    <div className="search-overlay" onClick={onClose}>
+    <OverlayBackdrop className="search-overlay" onClick={onClose}>
       <div
         className="search-dialog"
         role="dialog"
@@ -527,6 +528,6 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           ) : null}
         </div>
       </div>
-    </div>
+    </OverlayBackdrop>
   );
 }

@@ -111,6 +111,19 @@ pub fn dialect_for_id(id: &str) -> Option<&'static str> {
     }
 }
 
+/// Format a scratch directory for the shell that will read `PI_SCRATCH_DIR`.
+///
+/// Mirrors `formatScratchDirForShell` in `agent-runtime`: POSIX shells
+/// (including Git Bash on Windows) can only consume forward-slash paths, so
+/// the env value must match the forward-slash path the prompt advertises.
+pub fn format_scratch_dir_for_shell(dialect: Option<&str>, path: &Path) -> PathBuf {
+    if dialect == Some("posix") {
+        PathBuf::from(path.to_string_lossy().replace('\\', "/"))
+    } else {
+        path.to_path_buf()
+    }
+}
+
 /// Build a public catalog using a caller-supplied availability probe. This
 /// pure seam keeps catalog/default/fallback tests independent of the host OS.
 pub fn catalog_for_platform(
@@ -198,9 +211,16 @@ pub fn build_invocation_for_platform(
         ShellPlatform::Windows => match shell_id {
             // PowerShell 7 keeps the PowerShell 5.1 invocation contract, so the
             // same non-interactive script drives both generations.
+            //
+            // `2>&1` turns each stderr line of a native command into an
+            // ErrorRecord whose id starts with `NativeCommandError`. Those lines
+            // go to stderr, but only the native exit code decides failure; any
+            // other ErrorRecord is a PowerShell error and fails the call.
+            // Remaining output passes through `Out-String -Stream`, so objects
+            // keep their console formatting instead of becoming type names.
             WINDOWS_POWERSHELL_ID | PWSH_ID => {
                 let script = format!(
-                    "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $OutputEncoding; $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'; $global:LASTEXITCODE = 0; $script:piPowerShellError = $false; & {{ {command} }} 2>&1 | ForEach-Object {{ if ($_ -is [System.Management.Automation.ErrorRecord]) {{ $script:piPowerShellError = $true; [Console]::Error.WriteLine($_.Exception.Message) }} else {{ [Console]::Out.WriteLine([string]$_) }} }}; $piNativeExitCode = $LASTEXITCODE; if ($script:piPowerShellError) {{ exit 1 }}; exit $piNativeExitCode"
+                    "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $OutputEncoding; $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'; $global:LASTEXITCODE = 0; $script:piPowerShellError = $false; & {{ {command} }} 2>&1 | ForEach-Object {{ if ($_ -is [System.Management.Automation.ErrorRecord]) {{ if ($_.FullyQualifiedErrorId -notlike 'NativeCommandError*') {{ $script:piPowerShellError = $true }}; [Console]::Error.WriteLine($_.Exception.Message) }} else {{ $_ }} }} | Out-String -Stream | ForEach-Object {{ [Console]::Out.WriteLine($_) }}; $piNativeExitCode = $LASTEXITCODE; if ($script:piPowerShellError) {{ exit 1 }}; exit $piNativeExitCode"
                 );
                 vec![
                     "-NoLogo".into(),
@@ -696,6 +716,24 @@ mod tests {
     }
 
     #[test]
+    fn scratch_dir_uses_posix_separators_only_for_posix_shells() {
+        let scratch = PathBuf::from(r"C:\Users\Lan\AppData\Local\PI Desktop\scratch");
+
+        assert_eq!(
+            format_scratch_dir_for_shell(Some("posix"), &scratch).to_string_lossy(),
+            "C:/Users/Lan/AppData/Local/PI Desktop/scratch"
+        );
+        assert_eq!(
+            format_scratch_dir_for_shell(Some("powershell"), &scratch).to_string_lossy(),
+            scratch.to_string_lossy()
+        );
+        assert_eq!(
+            format_scratch_dir_for_shell(Some("cmd"), &scratch).to_string_lossy(),
+            scratch.to_string_lossy()
+        );
+    }
+
+    #[test]
     fn user_login_path_probes_a_real_path() {
         // On any machine with a login shell the probe yields a non-empty
         // PATH of absolute directories; when no shell can be probed the
@@ -820,6 +858,11 @@ mod tests {
         assert!(script.contains("UTF8Encoding"));
         assert!(script.contains("$LASTEXITCODE"));
         assert!(script.contains("Write-Output 'hello'"));
+        // Windows behavior is proven by the PowerShell tests in tools::tests;
+        // these guard the script where those tests do not run.
+        assert!(script.contains("Out-String -Stream"));
+        assert!(script.contains("NativeCommandError"));
+        assert!(!script.contains("[string]$_"));
 
         let cmd = build_invocation_for_platform(
             ShellPlatform::Windows,

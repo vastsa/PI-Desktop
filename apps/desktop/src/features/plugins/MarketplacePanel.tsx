@@ -1,6 +1,6 @@
 import { Button, cx } from "../../components/ui";
 import { IconCheck, IconSearch, IconShield } from "../../components/icons";
-import { PermissionChips } from "./presentation";
+import { PermissionChips, RatingChip } from "./presentation";
 import {
   formatDate,
   monogram,
@@ -25,6 +25,7 @@ export function MarketplacePanel({
   openDetail,
   busyId,
   queueInstall,
+  reviewSummaries,
 }: PluginsPageModel) {
   return (
           <div
@@ -150,6 +151,10 @@ export function MarketplacePanel({
                                   </span>
                                 </>
                               ) : null}
+                              <RatingChip
+                                summary={reviewSummaries[item.id]}
+                                locale={locale}
+                              />
                             </span>
                           </span>
                         </span>

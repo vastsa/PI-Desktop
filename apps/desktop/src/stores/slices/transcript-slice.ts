@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { isRemoteSession, sessionAllows } from "../../lib/remote-session-safety";
 import type {
   UiMessage,
 } from "@pi-desktop/shared";
@@ -52,6 +53,11 @@ export function createTranscriptSlice({
   | "rollbackWorkspaceChange"
   | "abort"
 > {
+  const canEdit = () => {
+    const state = get();
+    return sessionAllows(state.sessions.find((session) => session.id === state.activeSessionId)
+      ?? { id: state.activeSessionId ?? "" }, "canEditMessages");
+  };
   return {
     compactContext: async () => {
       const state = get();
@@ -87,6 +93,7 @@ export function createTranscriptSlice({
     },
 
     retryAssistantMessage: async (messageId) => {
+      if (!canEdit()) return;
       const prepared = await prepareTranscriptAction({ get, set }, runtime, messageId);
       const state = get();
       if (!prepared || state.activeSessionId !== prepared.activeSessionId || state.isRunning) return;
@@ -111,6 +118,7 @@ export function createTranscriptSlice({
     },
 
     prepareUserMessageEdit: async (messageId, signal) => {
+      if (!canEdit()) return null;
       const prepared = await prepareTranscriptAction({ get, set }, runtime, messageId, signal);
       const state = get();
       if (!prepared || state.activeSessionId !== prepared.activeSessionId || state.isRunning) return null;
@@ -119,6 +127,7 @@ export function createTranscriptSlice({
     },
 
     editUserMessage: async (messageId, content, attachments) => {
+      if (!canEdit()) return false;
       const prepared = await prepareTranscriptAction({ get, set }, runtime, messageId);
       const state = get();
       if (!prepared || state.activeSessionId !== prepared.activeSessionId || state.isRunning) return false;
@@ -225,6 +234,7 @@ export function createTranscriptSlice({
     },
 
     retryLastPrompt: async () => {
+      if (!canEdit()) return;
       const state = get();
       if (state.isRunning) return;
       const sessionId = state.activeSessionId;
@@ -291,6 +301,7 @@ export function createTranscriptSlice({
     clearError: () => set({ error: null, errorCode: null, errorRetriable: null }),
 
     activateMessageRevision: async (rootUserId, revisionIndex) => {
+      if (!canEdit()) return;
       let state = get();
       if (state.isRunning) return;
       const sessionId = state.activeSessionId;
@@ -347,14 +358,28 @@ export function createTranscriptSlice({
     },
 
     deleteMessage: async (messageId) => {
+      if (!canEdit()) return;
       const sessionId = get().activeSessionId;
       if (!sessionId || get().isRunning) return;
       const fullMessages = await runtime.loadFullSessionMessages(sessionId);
-      if (!fullMessages || get().activeSessionId !== sessionId) return;
+      // Re-read the store after the reload: writes that landed during the
+      // await (an aborted turn's final message_end, a late tool_end) exist
+      // only here, so merging the pre-await snapshot would erase them
+      // (#1614) — the same post-await read abort() below relies on. A turn
+      // that started during the reload also bails: no rewrite under a live
+      // stream.
+      if (
+        !fullMessages ||
+        get().activeSessionId !== sessionId ||
+        get().isRunning
+      ) {
+        return;
+      }
+      const merged = mergeLiveSessionMessages(fullMessages, get().messages);
       set((current) =>
         current.activeSessionId === sessionId
           ? {
-              messages: fullMessages,
+              messages: merged,
               sessionHistory: {
                 ...current.sessionHistory,
                 [sessionId]: { messageStart: 0, hasMoreBefore: false },
@@ -399,6 +424,7 @@ export function createTranscriptSlice({
     },
 
     rollbackWorkspaceChange: async (messageId, snapshotId) => {
+      if (!canEdit()) return null;
       const state = get();
       const sessionId = state.activeSessionId;
       if (!sessionId || state.isRunning) return null;
@@ -442,7 +468,9 @@ export function createTranscriptSlice({
       const stateBeforeAbort = get();
       const sessionId = stateBeforeAbort.activeSessionId;
       if (!sessionId) return;
-      if (stateBeforeAbort.sessions.find((session) => session.id === sessionId)?.source === "pi-native") {
+      const target = stateBeforeAbort.sessions.find((session) => session.id === sessionId);
+      if (!sessionAllows(target, "canStop")) return;
+      if (target?.source === "pi-native" || isRemoteSession(target)) {
         await api.abort(sessionId);
         runtime.submittedComposerDrafts.delete(sessionId);
         // Bypass in-flight pre-abort detail reads; request settled source state.

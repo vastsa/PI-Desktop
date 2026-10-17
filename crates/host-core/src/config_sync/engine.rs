@@ -2,7 +2,7 @@ use super::domains::{self, CategorySelection, LocalSnapshot, PortableEntity, Rev
 use super::merge::{self, MergeConflict};
 use super::{
     create_vault, decrypt_object, encrypt_object, rewrap_vault, unlock_vault, vault_key_b64,
-    vault_key_from_b64, VaultHeader, VaultKey, WebDavConfig, WebDavTransport,
+    vault_key_from_b64, S3Config, S3Transport, VaultHeader, VaultKey,
 };
 use crate::agent_capabilities::CapabilityLevel;
 use crate::mcp_servers::McpServerInput;
@@ -23,6 +23,16 @@ use std::sync::{
 use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
+#[path = "baseline.rs"]
+mod baseline;
+#[path = "conflicts.rs"]
+mod conflicts;
+#[path = "connection.rs"]
+mod connection;
+use connection::{
+    config_from_input, configured_transport, connection_credentials, credential_ref,
+    transport_with_credentials, S3Connection,
+};
 #[path = "apply.rs"]
 mod apply;
 #[path = "coordinator.rs"]
@@ -36,6 +46,9 @@ mod progress;
 #[path = "engine_remote.rs"]
 mod remote;
 #[cfg(test)]
+#[path = "engine_s3_tests.rs"]
+mod s3_tests;
+#[cfg(test)]
 pub(crate) use apply::validate_application_references;
 pub(crate) use apply::{apply_bundle, recover_import_journal};
 pub(crate) use coordinator::{sync_if_enabled, sync_now};
@@ -43,32 +56,28 @@ pub(crate) use handlers::{
     approve, change_password, configure, disconnect, get_state, list_history, map_project, pause,
     reject, restore, test, unlock,
 };
-use history::cleanup_history;
 use progress::{NoSyncProgress, ProgressNotifier, SyncPhase, SyncProgress, SyncProgressObserver};
+use remote::next_head;
 use remote::{
-    ensure_remote_collections, merge_append_only_tips, object_path, publish_append_only_head,
-    publish_head, read_append_only_remote, read_remote_head, read_remote_manifest,
-    read_remote_revision, revision_path, upload_snapshot, validate_remote_id,
+    publish_head, read_remote_head, read_remote_manifest, read_remote_revision, upload_snapshot,
+    validate_remote_id,
 };
 
-const CONFIG_NS: &str = "configSync";
+const CONFIG_NS: &str = "configSyncS3";
 const CONFIG_KEY: &str = "config";
-const WEBDAV_SECRET_REF: &str = "secret:config-sync:webdav-password";
-const FORMAT: &str = "pi-desktop-config-sync";
+const FORMAT: &str = "pi-desktop-config-sync-s3";
 const REVISION_FORMAT: &str = "pi-desktop-config-revision";
 const MAX_ENTITIES: usize = 4096;
 const MAX_RESOURCES: usize = 4096;
 const MAX_RETRIES: usize = 3;
-const MAX_HISTORY_SCAN: usize = 256;
 const MAX_RETAINED_REVISIONS: usize = 30;
-const HISTORY_GRACE_SECONDS: i64 = 60 * 60;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum RemoteMode {
+pub(crate) enum SyncMode {
     #[default]
-    Strict,
-    AppendOnly,
+    Sync,
+    Backup,
 }
 
 fn new_device_id() -> String {
@@ -77,20 +86,15 @@ fn new_device_id() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StoredConfig {
+pub(crate) struct StoredConfig {
     pub format: String,
     pub version: u32,
-    pub endpoint: String,
-    pub username: String,
-    pub directory: String,
+    #[serde(flatten)]
+    pub connection: S3Connection,
+    pub mode: SyncMode,
+    pub state_id: String,
     pub device_label: String,
-    #[serde(default)]
-    pub remote_mode: RemoteMode,
-    #[serde(default = "new_device_id")]
     pub device_id: String,
-    /// Endpoint-specific compatibility for servers that report missing GETs as 502.
-    #[serde(default)]
-    pub missing_object_status: Option<u16>,
     pub categories: BTreeMap<String, bool>,
     pub include_secrets: bool,
     pub include_memory: bool,
@@ -123,6 +127,8 @@ pub struct StoredConfig {
     pub project_group_mappings: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub dismissed: BTreeMap<String, String>,
+    #[serde(default)]
+    pub resolved_conflicts: Vec<conflicts::ConflictResolution>,
     /// Approved plugin installation intent without plugin bytes or grants.
     #[serde(default)]
     pub plugin_intents: BTreeMap<String, Value>,
@@ -136,6 +142,7 @@ pub struct RemoteHead {
     pub format: String,
     pub version: u32,
     pub revision_id: String,
+    pub history: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,13 +231,17 @@ struct PublicState {
     #[serde(skip_serializing_if = "Option::is_none")]
     endpoint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    username: Option<String>,
+    region: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    directory: Option<String>,
+    bucket: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prefix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    access_key_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_label: Option<String>,
-    allow_insecure_http: bool,
-    remote_mode: RemoteMode,
+    mode: SyncMode,
+    path_style: bool,
     categories: BTreeMap<String, bool>,
     include_secrets: bool,
     include_memory: bool,
@@ -255,7 +266,15 @@ fn default_categories() -> BTreeMap<String, bool> {
 
 fn selection(config: &StoredConfig) -> CategorySelection {
     let mut values = default_categories();
-    values.extend(config.categories.clone());
+    values.extend(
+        config
+            .categories
+            .iter()
+            .filter(|(domain, _)| {
+                domains::ALL_DOMAINS.contains(&domain.as_str()) || domain.as_str() == "credentials"
+            })
+            .map(|(domain, selected)| (domain.clone(), *selected)),
+    );
     values.insert("credentials".to_string(), config.include_secrets);
     values.insert(domains::DOMAIN_MEMORY.to_string(), config.include_memory);
     CategorySelection(values)
@@ -268,12 +287,20 @@ fn identity_overrides(config: &StoredConfig) -> domains::ProjectIdentityOverride
     )
 }
 
-fn config_dir(st: &AppState) -> PathBuf {
-    st.data_dir.join("config-sync")
+fn config_dir(st: &AppState) -> Result<PathBuf> {
+    let config =
+        load_config(st)?.ok_or_else(|| anyhow!("CONFIG_SYNC_LOCKED: S3 sync is not configured"))?;
+    Uuid::parse_str(&config.state_id)
+        .map_err(|_| anyhow!("CONFIG_SYNC_INVALID: invalid local S3 state identity"))?;
+    Ok(st
+        .data_dir
+        .join("config-sync")
+        .join("s3")
+        .join(config.state_id))
 }
 
-fn local_path(st: &AppState, name: &str) -> PathBuf {
-    config_dir(st).join(name)
+fn local_path(st: &AppState, name: &str) -> Result<PathBuf> {
+    Ok(config_dir(st)?.join(name))
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -332,11 +359,14 @@ fn load_config(st: &AppState) -> Result<Option<StoredConfig>> {
     let Some(value) = st.db.kv_get(CONFIG_NS, CONFIG_KEY)? else {
         return Ok(None);
     };
-    let config: StoredConfig =
+    let mut config: StoredConfig =
         serde_json::from_value(value).context("decode config sync settings")?;
     if config.format != FORMAT || config.version != 1 {
         bail!("CONFIG_SYNC_UNSUPPORTED: unsupported local sync settings");
     }
+    config.categories.retain(|domain, _| {
+        domains::ALL_DOMAINS.contains(&domain.as_str()) || domain == "credentials"
+    });
     Ok(Some(config))
 }
 
@@ -354,33 +384,6 @@ fn local_vault_key(st: &AppState, config: &StoredConfig) -> Result<Option<VaultK
         return Ok(None);
     };
     Ok(Some(vault_key_from_b64(&encoded)?))
-}
-
-fn webdav_password(st: &AppState, config: &StoredConfig) -> Result<String> {
-    if config.username.is_empty() {
-        return Ok(String::new());
-    }
-    st.secrets
-        .get(WEBDAV_SECRET_REF)?
-        .ok_or_else(|| anyhow!("CONFIG_SYNC_LOCKED: WebDAV app password is not available"))
-}
-
-/// Build the WebDAV transport from a stored configuration.
-///
-/// The plaintext hop is no longer the per-endpoint acknowledgement the sync
-/// settings used to carry: `networkPolicy.mode` decides. `relaxed` keeps an
-/// `http` endpoint reachable when it is a loopback, `.local` or private LAN
-/// host, `strict` refuses plaintext outright, and a public `http` host is
-/// refused in both modes.
-fn transport_with_password(config: &StoredConfig, password: String) -> Result<WebDavTransport> {
-    WebDavTransport::new(&WebDavConfig {
-        endpoint: config.endpoint.clone(),
-        username: config.username.clone(),
-        password,
-        directory: config.directory.clone(),
-        allow_insecure_http: crate::network_policy::relaxed(),
-        missing_object_status: config.missing_object_status,
-    })
 }
 
 fn entity_key(entity: &PortableEntity) -> (String, String) {
@@ -494,12 +497,12 @@ fn build_pending(
         let remote_changed = remote_entity.is_some_and(|remote| {
             base_map
                 .get(&key)
-                .is_none_or(|base| base.digest != remote.digest)
+                .is_none_or(|base| !merge::same_version(base, remote))
         });
         let new_device = base.is_none() && remote_entity.is_some();
         let local_same = local_map
             .get(&key)
-            .is_some_and(|local| local.digest == entity.digest);
+            .is_some_and(|local| merge::same_version(local, entity));
         let conflict = entity.entity_id.ends_with(":local")
             || entity.entity_id.ends_with(":remote")
             || conflict_ids.contains(&key);
@@ -650,11 +653,13 @@ pub fn public_state(st: &mut AppState) -> Result<Value> {
             locked: false,
             status: "notConfigured".into(),
             endpoint: None,
-            username: None,
-            directory: None,
+            region: None,
+            bucket: None,
+            prefix: None,
+            access_key_id: None,
             device_label: None,
-            allow_insecure_http: crate::network_policy::relaxed(),
-            remote_mode: RemoteMode::Strict,
+            mode: SyncMode::Sync,
+            path_style: true,
             categories: default_categories(),
             include_secrets: false,
             include_memory: false,
@@ -744,12 +749,14 @@ pub fn public_state(st: &mut AppState) -> Result<Value> {
             syncing,
             local_changes_pending,
         ),
-        endpoint: Some(config_ref.endpoint.clone()),
-        username: Some(config_ref.username.clone()),
-        directory: Some(config_ref.directory.clone()),
+        endpoint: Some(config_ref.connection.endpoint.clone()),
+        region: Some(config_ref.connection.region.clone()),
+        bucket: Some(config_ref.connection.bucket.clone()),
+        prefix: Some(config_ref.connection.prefix.clone()),
+        access_key_id: Some(config_ref.connection.access_key_id.clone()),
         device_label: Some(config_ref.device_label.clone()),
-        allow_insecure_http: crate::network_policy::relaxed(),
-        remote_mode: config_ref.remote_mode,
+        mode: config_ref.mode,
+        path_style: config_ref.connection.path_style,
         categories: config_ref.categories.clone(),
         include_secrets: config_ref.include_secrets,
         include_memory: config_ref.include_memory,
@@ -762,147 +769,6 @@ pub fn public_state(st: &mut AppState) -> Result<Value> {
         mappings: public_mappings(config_ref),
         preview,
     })?)
-}
-
-fn parse_category_selection(
-    value: Option<&Value>,
-    existing: Option<&BTreeMap<String, bool>>,
-    include_memory: bool,
-) -> BTreeMap<String, bool> {
-    let mut selected = existing.cloned().unwrap_or_else(default_categories);
-    if let Some(object) = value.and_then(Value::as_object) {
-        for (key, value) in object {
-            if domains::ALL_DOMAINS.contains(&key.as_str()) && value.is_boolean() {
-                selected.insert(key.clone(), value.as_bool().unwrap_or(true));
-            }
-        }
-    }
-    selected.insert("credentials".into(), false);
-    selected.insert(domains::DOMAIN_MEMORY.into(), include_memory);
-    selected
-}
-
-fn config_from_input(
-    existing: Option<&StoredConfig>,
-    input: &Value,
-    header: VaultHeader,
-) -> Result<StoredConfig> {
-    let endpoint = input
-        .get("endpoint")
-        .and_then(Value::as_str)
-        .or_else(|| existing.map(|value| value.endpoint.as_str()))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let username = input
-        .get("username")
-        .and_then(Value::as_str)
-        .or_else(|| existing.map(|value| value.username.as_str()))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let directory = input
-        .get("directory")
-        .and_then(Value::as_str)
-        .or_else(|| existing.map(|value| value.directory.as_str()))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let device_label = input
-        .get("deviceLabel")
-        .and_then(Value::as_str)
-        .or_else(|| existing.map(|value| value.device_label.as_str()))
-        .unwrap_or("This device")
-        .trim()
-        .to_string();
-    if endpoint.is_empty() || device_label.is_empty() {
-        bail!("CONFIG_SYNC_INVALID: endpoint and device label are required");
-    }
-    let include_memory = input
-        .get("includeMemory")
-        .and_then(Value::as_bool)
-        .or_else(|| existing.map(|value| value.include_memory))
-        .unwrap_or(false);
-    let include_secrets = input
-        .get("includeSecrets")
-        .and_then(Value::as_bool)
-        .or_else(|| existing.map(|value| value.include_secrets))
-        .unwrap_or(false);
-    let remote_mode = input
-        .get("remoteMode")
-        .and_then(Value::as_str)
-        .map(parse_remote_mode)
-        .transpose()?
-        .or_else(|| existing.map(|value| value.remote_mode))
-        .unwrap_or_default();
-    let mut categories = parse_category_selection(
-        input.get("categories"),
-        existing.map(|value| &value.categories),
-        include_memory,
-    );
-    categories.insert("credentials".into(), include_secrets);
-    Ok(StoredConfig {
-        format: FORMAT.into(),
-        version: 1,
-        endpoint,
-        username,
-        directory,
-        device_label,
-        // `allowInsecureHttp` used to live here as a per-endpoint
-        // acknowledgement. The plaintext decision now belongs to
-        // `networkPolicy.mode`, so the key a stored configuration may still
-        // carry is ignored rather than rewritten.
-        remote_mode,
-        device_id: existing
-            .map(|value| value.device_id.clone())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(new_device_id),
-        missing_object_status: existing.and_then(|value| value.missing_object_status),
-        categories,
-        include_secrets,
-        include_memory,
-        automatic_sync: input
-            .get("automaticSync")
-            .and_then(Value::as_bool)
-            .or_else(|| existing.map(|value| value.automatic_sync))
-            .unwrap_or(true),
-        enabled: true,
-        paused: existing.is_some_and(|value| value.paused),
-        vault_id: header.vault_id.clone(),
-        vault_header: header,
-        last_run_at: existing.and_then(|value| value.last_run_at.clone()),
-        last_success_at: existing.and_then(|value| value.last_success_at.clone()),
-        last_revision_id: existing.and_then(|value| value.last_revision_id.clone()),
-        last_error: None,
-        last_error_code: None,
-        last_local_digest: existing.and_then(|value| value.last_local_digest.clone()),
-        local_change_seen_at: existing.and_then(|value| value.local_change_seen_at.clone()),
-        retry_count: existing.map(|value| value.retry_count).unwrap_or(0),
-        next_retry_at: existing.and_then(|value| value.next_retry_at.clone()),
-        project_mappings: existing
-            .map(|value| value.project_mappings.clone())
-            .unwrap_or_default(),
-        project_group_mappings: existing
-            .map(|value| value.project_group_mappings.clone())
-            .unwrap_or_default(),
-        dismissed: existing
-            .map(|value| value.dismissed.clone())
-            .unwrap_or_default(),
-        plugin_intents: existing
-            .map(|value| value.plugin_intents.clone())
-            .unwrap_or_default(),
-        recovery_points: existing
-            .map(|value| value.recovery_points.clone())
-            .unwrap_or_default(),
-    })
-}
-
-fn parse_remote_mode(value: &str) -> Result<RemoteMode> {
-    match value {
-        "strict" => Ok(RemoteMode::Strict),
-        "appendOnly" => Ok(RemoteMode::AppendOnly),
-        _ => bail!("CONFIG_SYNC_INVALID: unsupported WebDAV sync mode"),
-    }
 }
 
 fn mark_error(config: &mut StoredConfig, error: &anyhow::Error) {
@@ -947,11 +813,25 @@ fn retry_deadline(config: &StoredConfig) -> Option<chrono::DateTime<Utc>> {
 }
 
 fn load_base(st: &AppState, key: &VaultKey) -> Result<Option<RevisionManifest>> {
-    load_encrypted(st, key, "local-base", &local_path(st, "base.bin"))
+    Ok(baseline::load(st, key)?.map(|baseline| baseline.shared))
 }
 
 fn load_pending(st: &AppState, key: &VaultKey) -> Result<Option<PendingBundle>> {
-    load_encrypted(st, key, "local-pending", &local_path(st, "pending.bin"))
+    let pending: Option<PendingBundle> =
+        load_encrypted(st, key, "local-pending", &local_path(st, "pending.bin")?)?;
+    Ok(pending.map(|mut bundle| {
+        domains::retain_supported_entities(&mut bundle.manifest);
+        if let Some(local) = &mut bundle.local_before {
+            domains::retain_supported_entities(local);
+        }
+        bundle
+            .approvals
+            .retain(|item| domains::adapter_for(&item.entity.domain).is_some());
+        bundle
+            .conflicts
+            .retain(|item| domains::adapter_for(&item.domain).is_some());
+        bundle
+    }))
 }
 
 fn store_pending(st: &AppState, key: &VaultKey, pending: &PendingBundle) -> Result<()> {
@@ -959,21 +839,17 @@ fn store_pending(st: &AppState, key: &VaultKey, pending: &PendingBundle) -> Resu
         st,
         key,
         "local-pending",
-        &local_path(st, "pending.bin"),
+        &local_path(st, "pending.bin")?,
         pending,
     )
 }
 
 fn clear_pending(st: &AppState) -> Result<()> {
-    let path = local_path(st, "pending.bin");
+    let path = local_path(st, "pending.bin")?;
     if path.exists() {
         fs::remove_file(path)?;
     }
     Ok(())
-}
-
-fn store_base(st: &AppState, key: &VaultKey, manifest: &RevisionManifest) -> Result<()> {
-    persist_encrypted(st, key, "local-base", &local_path(st, "base.bin"), manifest)
 }
 
 fn recovery_path(st: &AppState, filename: &str) -> Result<PathBuf> {
@@ -985,7 +861,7 @@ fn recovery_path(st: &AppState, filename: &str) -> Result<PathBuf> {
     {
         bail!("CONFIG_SYNC_INVALID: local recovery filename is unsafe");
     }
-    Ok(local_path(st, filename))
+    local_path(st, filename)
 }
 
 fn create_recovery_point(
@@ -1035,7 +911,7 @@ fn send_state_notification(tx: &mpsc::UnboundedSender<String>, st: &mut AppState
 mod tests {
     use super::*;
     use crate::config_sync::domains::{
-        DOMAIN_APPLICATION, DOMAIN_MCP, DOMAIN_PROJECTS, DOMAIN_PROVIDERS, DOMAIN_SKILLS,
+        DOMAIN_APPLICATION, DOMAIN_MCP, DOMAIN_PROVIDERS, DOMAIN_SKILLS,
     };
     use crate::mcp_servers::McpServerInput;
     use crate::user_skills::UserSkillInput;
@@ -1115,7 +991,7 @@ mod tests {
             .starts_with("CONFIG_SYNC_DEPENDENCY: defaultProviderId"));
     }
 
-    fn pending_approvals(value: &Value) -> Vec<(String, String, String)> {
+    pub(super) fn pending_approvals(value: &Value) -> Vec<(String, String, String)> {
         value
             .get("pendingApprovals")
             .and_then(Value::as_array)
@@ -1140,37 +1016,38 @@ mod tests {
             .collect()
     }
 
-    async fn configure_test_device(
+    pub(super) async fn configure_test_device(
         data_dir: &Path,
         endpoint: &str,
     ) -> Result<Arc<Mutex<AppState>>> {
-        configure_test_device_mode(data_dir, endpoint, "strict").await
+        configure_test_device_mode(data_dir, endpoint, "sync").await
     }
 
-    async fn configure_test_device_mode(
+    pub(super) async fn configure_test_device_mode(
         data_dir: &Path,
         endpoint: &str,
-        remote_mode: &str,
+        mode: &str,
     ) -> Result<Arc<Mutex<AppState>>> {
         let state = Arc::new(Mutex::new(AppState::open(data_dir)?));
         configure(
             state.clone(),
             json!({
                 "endpoint": endpoint,
-                "username": "",
-                "appPassword": "",
-                "directory": "config-sync-test",
+                "region": "us-east-1",
+                "bucket": "fixture-bucket",
+                "accessKeyId": "fixture-access",
+                "secretAccessKey": "fixture-secret",
+                "prefix": "config-sync-test",
                 "deviceLabel": "test-device",
                 "backupPassword": "portable-backup-password",
-                "allowInsecureHttp": true,
-                "remoteMode": remote_mode,
+                "pathStyle": true,
+                "mode": mode,
                 "categories": {
                     "application": true,
                     "providers": true,
                     "credentials": true,
                     "mcp": true,
                     "skills": true,
-                    "projects": true,
                 },
                 "includeSecrets": true,
                 "automaticSync": false,
@@ -1180,7 +1057,7 @@ mod tests {
         Ok(state)
     }
 
-    fn run_in_isolated_process(test_name: &str) -> Result<bool> {
+    pub(super) fn run_in_isolated_process(test_name: &str) -> Result<bool> {
         const ISOLATED_PROCESS: &str = "PI_DESKTOP_CONFIG_SYNC_TEST_CHILD";
         if std::env::var(ISOLATED_PROCESS).as_deref() == Ok(test_name) {
             return Ok(false);
@@ -1192,6 +1069,8 @@ mod tests {
             .args(["--exact", test_name, "--nocapture"])
             .env(ISOLATED_PROCESS, test_name)
             .env(crate::agent_capabilities::AGENTS_DIR_ENV, agents_dir.path())
+            .env("HOME", agents_dir.path())
+            .env("USERPROFILE", agents_dir.path())
             .output()?;
         anyhow::ensure!(
             output.status.success(),
@@ -1203,54 +1082,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_only_mode_syncs_with_a_server_that_ignores_preconditions() -> Result<()> {
+    async fn unsupported_conditional_writes_are_rejected() -> Result<()> {
         if run_in_isolated_process(
-            "config_sync::engine::tests::append_only_mode_syncs_with_a_server_that_ignores_preconditions",
+            "config_sync::engine::tests::unsupported_conditional_writes_are_rejected",
         )? {
             return Ok(());
         }
         let fixture = crate::config_sync::transport::tests::fixture_ignoring_preconditions().await;
-        let device_a_dir = tempfile::tempdir()?;
-        let device_b_dir = tempfile::tempdir()?;
-        let device_a =
-            configure_test_device_mode(device_a_dir.path(), &fixture.endpoint, "appendOnly")
-                .await?;
-        let device_b =
-            configure_test_device_mode(device_b_dir.path(), &fixture.endpoint, "appendOnly")
-                .await?;
-        let (tx, _rx) = mpsc::unbounded_channel();
-
-        let (a_state, b_state) = tokio::join!(
-            sync_now(device_a.clone(), tx.clone()),
-            sync_now(device_b.clone(), tx.clone())
-        );
-        assert!(
-            a_state.is_ok(),
-            "device A compatibility sync failed: {a_state:?}"
-        );
-        assert!(
-            b_state.is_ok(),
-            "device B compatibility sync failed: {b_state:?}"
-        );
-
-        let state = device_a.lock().await;
-        let config = load_config(&state)?.expect("configured device");
-        let key = local_vault_key(&state, &config)?.expect("unlocked device");
-        let transport = transport_with_password(&config, String::new())?;
-        let remote = read_append_only_remote(&transport, &config, &key, &NoSyncProgress)
-            .await?
-            .expect("compatibility revisions");
-        assert!(!remote.tip_ids.is_empty());
-        assert!(remote.tip_ids.len() <= 2);
-        assert!(
-            transport
-                .list_children(&remote::compatibility_heads_path(&config))
-                .await?
-                .len()
-                >= 2
-        );
-
-        fixture.task.abort();
+        let device_dir = tempfile::tempdir()?;
+        let result = configure_test_device(device_dir.path(), &fixture.endpoint).await;
+        assert!(result
+            .err()
+            .expect("unsupported server")
+            .to_string()
+            .starts_with("CONFIG_SYNC_UNSUPPORTED:"));
         Ok(())
     }
 
@@ -1319,13 +1164,19 @@ mod tests {
         let device_a = configure_test_device(device_a_dir.path(), &fixture.endpoint).await?;
         let device_b = configure_test_device(device_b_dir.path(), &fixture.endpoint).await?;
         let device_a_state = get_state(device_a.clone()).await?;
-        assert_eq!(device_a_state.get("allowInsecureHttp"), Some(&json!(true)));
+        assert_eq!(device_a_state.get("pathStyle"), Some(&json!(true)));
+        assert_eq!(device_a_state.get("mode"), Some(&json!("sync")));
         let project_a = device_a_dir.path().join("project");
         let project_b = device_b_dir.path().join("project");
         std::fs::create_dir_all(&project_a)?;
         std::fs::create_dir_all(&project_b)?;
         let project_a = project_a.canonicalize()?;
         let project_b = project_b.canonicalize()?;
+        device_b
+            .lock()
+            .await
+            .db
+            .ensure_project(&project_b.to_string_lossy(), false)?;
 
         let provider_id = {
             let mut state = device_a.lock().await;
@@ -1411,7 +1262,7 @@ mod tests {
             );
             assert!(captured.contains(DOMAIN_MCP), "captured: {captured:?}");
             assert!(captured.contains(DOMAIN_SKILLS), "captured: {captured:?}");
-            assert!(captured.contains(DOMAIN_PROJECTS), "captured: {captured:?}");
+            assert!(!captured.contains("projects"), "captured: {captured:?}");
         }
 
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -1465,7 +1316,7 @@ mod tests {
             let state = device_b.lock().await;
             let config = load_config(&state)?.expect("configured device");
             let key = local_vault_key(&state, &config)?.expect("unlocked device");
-            let transport = transport_with_password(&config, String::new())?;
+            let transport = configured_transport(&state, &config)?;
             let (head, _) = read_remote_head(&transport, &config, &key)
                 .await?
                 .expect("remote head");
@@ -1527,7 +1378,7 @@ mod tests {
         assert!(domains.contains(DOMAIN_PROVIDERS), "domains: {domains:?}");
         assert!(domains.contains(DOMAIN_MCP), "domains: {domains:?}");
         assert!(domains.contains(DOMAIN_SKILLS), "domains: {domains:?}");
-        assert!(domains.contains(DOMAIN_PROJECTS), "domains: {domains:?}");
+        assert!(!domains.contains("projects"), "domains: {domains:?}");
         let mapping_key = received
             .get("pendingApprovals")
             .and_then(Value::as_array)
@@ -1616,7 +1467,7 @@ mod tests {
             let state = device_b.lock().await;
             let config = load_config(&state)?.expect("configured device");
             let key = local_vault_key(&state, &config)?.expect("unlocked device");
-            let transport = transport_with_password(&config, String::new())?;
+            let transport = configured_transport(&state, &config)?;
             let (head, _) = read_remote_head(&transport, &config, &key)
                 .await?
                 .expect("remote head after device B edit");

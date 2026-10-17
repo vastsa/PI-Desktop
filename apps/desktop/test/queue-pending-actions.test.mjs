@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { IPC } from "@pi-desktop/shared";
 
-test("sending the first prompt keeps the default session title for the title plugin", async (t) => {
+test("sending the first prompt derives a replaceable title instead of renaming", async (t) => {
   const server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),
     configFile: false,
@@ -18,10 +18,12 @@ test("sending the first prompt keeps the default session title for the title plu
   try {
     const { createQueueSlice } = await server.ssrLoadModule("/src/stores/slices/queue-slice.ts");
     const invoked = [];
-    globalThis.window = { piDesktop: { invoke: async (channel, payload) => {
-      invoked.push([channel, payload]);
-      if (channel !== IPC.invoke.agentPrompt) throw new Error(`Unexpected IPC: ${channel}`);
-      return { ok: true, data: { turnId: "turn-1" } };
+    let refreshed = 0;
+    globalThis.window = { piDesktop: { invoke: async (channel, ...args) => {
+      invoked.push([channel, ...args]);
+      if (channel === IPC.invoke.agentPrompt) return { ok: true, data: { turnId: "turn-1" } };
+      if (channel === IPC.invoke.sessionDeriveTitle) return { ok: true, data: { updated: true } };
+      throw new Error(`Unexpected IPC: ${channel}`);
     } } };
     let state = {
       activeSessionId: "session-a",
@@ -33,6 +35,9 @@ test("sending the first prompt keeps the default session title for the title plu
       sessionOutcomes: {},
       showToast: assert.fail,
       rememberModel() {},
+      refreshSessions: async () => {
+        refreshed += 1;
+      },
     };
     const runtime = {
       submittedComposerDrafts: new Map(),
@@ -60,8 +65,65 @@ test("sending the first prompt keeps the default session title for the title plu
     });
 
     assert.equal(await slice.sendPrompt("Summarize the first turn", undefined, "session-a"), true);
+    // The host, not the renderer, owns the title: the sidebar keeps the
+    // placeholder until the derived title comes back, and the rename path stays
+    // unused so an installed title plugin can still replace the derived text.
     assert.equal(state.sessions[0].title, "New task");
-    assert.deepEqual(invoked.map(([channel]) => channel), [IPC.invoke.agentPrompt]);
+    assert.deepEqual(
+      invoked.filter(([channel]) => channel === IPC.invoke.sessionDeriveTitle),
+      [[IPC.invoke.sessionDeriveTitle, "session-a", "Summarize the first turn"]],
+    );
+    assert.equal(invoked.some(([channel]) => channel === IPC.invoke.sessionRename), false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(refreshed, 1);
+  } finally {
+    globalThis.window = previousWindow;
+    await server.close();
+  }
+});
+
+test("Send now promotes queued input without stopping the running session", async () => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)), configFile: false,
+    server: { middlewareMode: true, hmr: false, ws: false }, appType: "custom",
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  const previousWindow = globalThis.window;
+  try {
+    const { createQueueSlice } = await server.ssrLoadModule("/src/stores/slices/queue-slice.ts");
+    const invoked = [];
+    let entries = [];
+    globalThis.window = { piDesktop: { invoke: async (channel, payload) => {
+      invoked.push([channel, payload]);
+      if (channel === IPC.invoke.agentQueuePush) {
+        const entry = { ...payload, id: "queued-correction", position: 1, createdAt: "2026-10-13T00:00:00Z" };
+        entries = [entry];
+        return { ok: true, data: entry };
+      }
+      if (channel === IPC.invoke.agentQueuePrioritize) return { ok: true, data: { ok: true } };
+      if (channel === IPC.invoke.agentStop) return { ok: true, data: { requested: true } };
+      if (channel === IPC.invoke.agentQueueList) return { ok: true, data: { entries } };
+      throw new Error(`Unexpected IPC: ${channel}`);
+    } } };
+    let state = {
+      activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }],
+      pendingPlans: {}, runningSessions: { "session-a": true }, queuedPrompts: {}, showToast: assert.fail,
+    };
+    const slice = createQueueSlice({
+      get: () => state,
+      set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
+      promptAttachmentsFromDraft: () => [],
+    });
+    Object.assign(state, slice);
+    assert.equal(await slice.sendPrompt("Correct the plan now."), true);
+    assert.equal(state.queuedPrompts["session-a"].length, 1);
+    assert.equal(invoked.some(([channel]) => channel === IPC.invoke.agentQueuePrioritize), false);
+    await slice.sendQueuedNow("queued-correction");
+    assert.equal(invoked.filter(([channel]) => channel === IPC.invoke.agentQueuePrioritize).length, 1);
+    assert.equal(invoked.some(([channel]) => channel === IPC.invoke.agentStop), false);
+    assert.equal(state.runningSessions["session-a"], true);
+    slice.applyQueueChanged({ sessionId: "session-a", entries: [] });
+    assert.deepEqual(state.queuedPrompts["session-a"] ?? [], []);
   } finally {
     globalThis.window = previousWindow;
     await server.close();
@@ -102,7 +164,7 @@ test("pending queue actions stay locked until admission succeeds", async (t) => 
           }
           throw new Error(`Unexpected IPC: ${channel}`);
         } } };
-        let state = { activeSessionId: "session-a", queuedPrompts: {}, showToast: assert.fail };
+        let state = { activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }], queuedPrompts: {}, showToast: assert.fail };
         const slice = createQueueSlice({
           get: () => state,
           set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
@@ -159,7 +221,7 @@ test("pending queue actions stay locked until admission succeeds", async (t) => 
         if (channel === IPC.invoke.agentQueueList) return { ok: true, data: { entries } };
         throw new Error(`Unexpected IPC: ${channel}`);
       } } };
-      let state = { activeSessionId: "session-a", queuedPrompts: {}, showToast: (message) => errors.push(message) };
+      let state = { activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }], queuedPrompts: {}, showToast: (message) => errors.push(message) };
       const slice = createQueueSlice({
         get: () => state,
         set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
@@ -218,7 +280,7 @@ test("editing a restored queue preserves attachments when resubmitted", async (t
           }
           throw new Error(`Unexpected IPC: ${channel}`);
         } } };
-        let state = { activeSessionId: "session-a", queuedPrompts: {}, showToast: assert.fail };
+        let state = { activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }], queuedPrompts: {}, showToast: assert.fail };
         const slice = createQueueSlice({
           get: () => state,
           set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },

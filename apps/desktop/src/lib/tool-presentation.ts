@@ -3,6 +3,7 @@ import {
   delegationLifecycleKind,
   getToolAction,
   getToolSummaryKey,
+  isAskToolName,
   type ToolAction,
 } from "./tool-display";
 import { reviewChangeFromMessage } from "./workspace-review";
@@ -75,6 +76,10 @@ type BlockBase = {
 };
 
 export type ToolBlock =
+  | (BlockBase & {
+      kind: "asktool";
+      questions: { question: string; answers: string[] | null }[];
+    })
   | (BlockBase & {
       kind: "code";
       text: string;
@@ -433,6 +438,41 @@ function safeJson(value: unknown): string {
   }
 }
 
+function askToolResultBlock(
+  message: ToolPresentationMessage,
+): ToolBlock | null {
+  const details = asRecord(toolResultPayload(message));
+  const rawQuestions = details?.questions;
+  const rawAnswers = details?.answers;
+  if (
+    !Array.isArray(rawQuestions) ||
+    rawQuestions.length === 0 ||
+    !Array.isArray(rawAnswers) ||
+    rawQuestions.length !== rawAnswers.length
+  ) {
+    return null;
+  }
+
+  const questions: Array<{ question: string; answers: string[] | null }> = [];
+  for (let index = 0; index < rawQuestions.length; index += 1) {
+    const question = stringAt(asRecord(rawQuestions[index]), "question");
+    const answer = rawAnswers[index];
+    if (
+      question === null ||
+      !(answer === null ||
+        (Array.isArray(answer) && answer.every((value) => typeof value === "string")))
+    ) {
+      return null;
+    }
+    questions.push({
+      question,
+      answers: answer === null || answer.length === 0 ? null : [...answer],
+    });
+  }
+
+  return { kind: "asktool", role: "details", questions };
+}
+
 /**
  * What actually happened to a command, read from what the shell returned rather
  * than from the status of the call that carried it: a command that exits
@@ -695,6 +735,11 @@ export function buildToolPresentation(
   message: ToolPresentationMessage,
   options: ToolPresentationOptions = {},
 ): ToolBlock[] {
+  if (isAskToolName(message.toolName)) {
+    const askToolBlock = askToolResultBlock(message);
+    if (askToolBlock) return [askToolBlock];
+  }
+
   const action = getToolAction(message.toolName);
   const args = asRecord(message.toolArgs);
   const payload = toolResultPayload(message);

@@ -29,15 +29,16 @@ export function useSlotEntries(
   slot: PluginComponentSlot,
   side?: PluginSlotPosition,
 ): SlotEntry[] {
+  const sessionId = useSlotSessionId();
   const snapshot = useSyncExternalStore(
     slotRegistry.subscribe,
     slotRegistry.getSnapshot,
     slotRegistry.getSnapshot,
   );
   return useMemo(
-    () => (side ? slotRegistry.entriesForSide(slot, side) : slotRegistry.entriesFor(slot)),
+    () => sessionId.startsWith("remote:") ? [] : (side ? slotRegistry.entriesForSide(slot, side) : slotRegistry.entriesFor(slot)),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot.version is the change signal
-    [snapshot.version, slot, side],
+    [snapshot.version, slot, side, sessionId],
   );
 }
 
@@ -45,15 +46,16 @@ export function useSlotEntryForKey(
   slot: PluginComponentSlot,
   key: string | undefined,
 ): SlotEntry | undefined {
+  const sessionId = useSlotSessionId();
   const snapshot = useSyncExternalStore(
     slotRegistry.subscribe,
     slotRegistry.getSnapshot,
     slotRegistry.getSnapshot,
   );
   return useMemo(
-    () => (key ? slotRegistry.entryForKey(slot, key) : undefined),
+    () => (!sessionId.startsWith("remote:") && key ? slotRegistry.entryForKey(slot, key) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot.version is the change signal
-    [snapshot.version, slot, key],
+    [snapshot.version, slot, key, sessionId],
   );
 }
 

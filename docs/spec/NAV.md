@@ -77,6 +77,7 @@
 - [04-e2e-test-plan.md](06-delivery/04-e2e-test-plan.md)
 - [05-change-checklist.md](06-delivery/05-change-checklist.md)
 - [06-release-runbook.md](06-delivery/06-release-runbook.md)
+- [plugin-reviews-test-plan.md](06-delivery/plugin-reviews-test-plan.md)
 - [07-remote-control-rollout.md](06-delivery/07-remote-control-rollout.md)
 
 ## 7. Plugins

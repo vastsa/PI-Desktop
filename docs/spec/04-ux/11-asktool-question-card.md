@@ -29,6 +29,9 @@ The card has no countdown or expiration copy. On narrow screens options remain
 full-width and actions may share the row; question text and custom input may
 wrap naturally without clipping.
 
+Question text is limited to 300 Unicode characters before a card is opened.
+Overlong questions return a tool validation error and do not create a card.
+
 ## Rich-text content
 
 Question text and selectable option text may use CommonMark/GFM formatting,
@@ -80,8 +83,15 @@ option list becomes the scroll container instead of allowing the composer dock
 to grow beyond the viewport. The list uses a dynamic viewport cap of
 `min(320px, 36dvh)` (with a `vh` fallback), keeps a stable scrollbar gutter,
 contains scroll chaining, and preserves keyboard scroll padding. The question
-header, question text, custom-answer input, and Skip / Next / Submit actions
-remain visible while the user scrolls through the options. This behavior also
+header, custom-answer input, and Skip / Next / Submit actions remain visible
+while the user scrolls through the options. A long question prompt scrolls
+inside the question body instead of growing the dock: the body uses
+`min(208px, 24dvh)` with a `24vh` fallback, wraps unbroken tokens, hides
+horizontal overflow, and contains scroll chaining. The body is keyboard
+focusable with a visible focus ring. Next, Skip, and the step indicators open
+each question at the top of that scroller. Decline, Skip, and Next/Submit stay
+in the card header, outside that scroller, so they remain reachable. Short
+prompts do not reserve a scrollbar gutter. This behavior also
 applies on narrow screens; the card does not rely on page-level scrolling.
 
 ## Request transitions

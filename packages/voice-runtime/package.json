@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/voice-runtime",
-  "version": "0.17.0",
+  "version": "0.21.0-beta.3",
   "private": true,
   "type": "module",
   "exports": {
@@ -27,7 +27,7 @@
     "@huggingface/hub": "2.15.0"
   },
   "devDependencies": {
-    "vitest": "^3.2.1",
+    "vitest": "^4.1.11",
     "typescript": "~5.9.3"
   }
 }

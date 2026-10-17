@@ -1,7 +1,12 @@
 # ADR 0300: Host-owned encrypted portable configuration sync
 
-- Status: Accepted for implementation
+- Status: Partially superseded by [S3-only configuration backup and sync](s3-only-configuration-backup-sync.md)
 - Date: 2026-09-22
+
+The ownership and encryption rationale below remains historical context. The
+WebDAV transport, append-only fallback, and endpoint-specific missing-status
+decisions no longer describe current behavior. See the S3 decision and current
+configuration-sync spec for the implemented contract.
 
 ## Context
 

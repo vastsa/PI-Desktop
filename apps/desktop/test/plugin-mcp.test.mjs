@@ -489,6 +489,53 @@ test("aborting one HTTP MCP call cancels its request", async (t) => {
   assert.equal(await canceled, callId);
 });
 
+test("a timed-out MCP call tells the server to stop the request", async (t) => {
+  // The MCP lifecycle spec asks the sender to issue notifications/cancelled
+  // when it gives up on a request; otherwise the server keeps running a tool
+  // whose result nobody will read, and a model retry runs it a second time.
+  let cancellationReceived;
+  const canceled = new Promise((resolve) => { cancellationReceived = resolve; });
+  let callId;
+  const fetchImpl = async (_url, options) => {
+    const message = JSON.parse(options.body);
+    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+    if (message.method === "notifications/cancelled") {
+      cancellationReceived(message.params);
+      return new Response(null, { status: 202 });
+    }
+    if (message.method === "tools/call") {
+      callId = message.id;
+      return new Promise((_, reject) => {
+        options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    }
+    const result = message.method === "initialize"
+      ? { protocolVersion: message.params.protocolVersion, capabilities: {} }
+      : { tools: [{ name: "slow" }] };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-timeout-")),
+    server: { id: "remote", transport: "http", url: "https://mcp.example.com/mcp" },
+    values: {},
+    callTimeoutMs: 50,
+    fetchImpl,
+  });
+  t.after(() => client.close());
+  await client.connect();
+
+  await assert.rejects(client.callTool("slow", {}), { code: "TIMEOUT" });
+  const params = await Promise.race([
+    canceled,
+    new Promise((resolve) => setTimeout(() => resolve("no cancellation"), 500)),
+  ]);
+  assert.notEqual(params, "no cancellation");
+  assert.equal(params.requestId, callId);
+});
+
 test("aborting a tool waiting for a shared handshake does not send tools/call", async (t) => {
   let finishInitialize;
   let initializeStarted;

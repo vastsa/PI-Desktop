@@ -362,7 +362,10 @@ test("delete remains on user turns and is removed from assistant toolbar", async
   assert.match(storeSource, /replaceSessionMessages\(sessionId,\s*next\)/);
   assert.match(transcriptSource, /deleteMessage\(message\.id\)/);
   assert.match(transcriptSource, /chat\.deleteMessage/);
-  assert.match(transcriptSource, /const editableUserMessage = isUser && !isSessionMessage;/);
+  assert.match(
+    transcriptSource,
+    /const editableUserMessage = isUser && !isSessionMessage && canEditMessages;/,
+  );
   assert.match(transcriptSource, /\{editableUserMessage \? \(/);
   assert.match(stylesSource, /\.copy-btn\.danger:hover/);
 });
@@ -472,6 +475,13 @@ test("assistant context inspector keeps a compact summary and retry action wired
   assert.match(inspectorSource, /context-inspector-summary-row/);
   assert.match(inspectorSource, /chat\.usageToolsSummary/);
   assert.match(inspectorSource, /context-inspector-kpis/);
+  assert.match(inspectorSource, /useSessionTiming/);
+  assert.match(inspectorSource, /chat\.usageSessionTime/);
+  assert.match(inspectorSource, /chat\.usageNetworkRequest/);
+  assert.match(inspectorSource, /chat\.usageModelResponse/);
+  assert.match(inspectorSource, /chat\.usageToolCalls/);
+  assert.match(inspectorSource, /networkRequestPercent/);
+  assert.match(inspectorSource, /toolCallPercent/);
   assert.match(inspectorSource, /context-inspector-window-percent/);
   assert.match(inspectorSource, /chat\.usageContextLeft/);
   assert.match(inspectorSource, /chat\.usageThroughput/);

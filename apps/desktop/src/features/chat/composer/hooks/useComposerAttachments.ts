@@ -36,6 +36,7 @@ import type { ComposerDraftController } from "./useComposerDraft";
 
 type UseComposerAttachmentsOptions = {
   inputBlocked: boolean;
+  attachmentsAllowed?: boolean;
   activeSessionId: string | null | undefined;
   draftKey: string;
   largePasteThreshold: number;
@@ -75,6 +76,7 @@ export type ComposerAttachmentsController = {
  */
 export function useComposerAttachments({
   inputBlocked,
+  attachmentsAllowed = true,
   activeSessionId,
   draftKey,
   largePasteThreshold,
@@ -85,7 +87,7 @@ export function useComposerAttachments({
   const pickerInFlight = useRef(false);
   const [dropTargetActive, setDropTargetActive] = useState(false);
   const [droppedDirectories, setDroppedDirectories] = useState<ComposerDropItem[]>([]);
-  const isInputBlocked = inputBlocked || pasting;
+  const isInputBlocked = inputBlocked || pasting || !attachmentsAllowed;
 
   const snapshotReferences = (sourceSessionId: string) =>
     draft.snapshotReferences(sourceSessionId);
@@ -210,6 +212,18 @@ export function useComposerAttachments({
   };
 
   const pasteClipboardFiles = async (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!attachmentsAllowed) {
+      event.preventDefault();
+      if (inputBlocked) return;
+      const text = event.clipboardData.getData("text/plain");
+      if (!text) return;
+      if (!insertClipboardText(event.currentTarget, text)) {
+        const current = draft.ref.current ? readEditorValue(draft.ref.current) : draft.valueRef.current;
+        const { start, end } = editorSelectionRange(event.currentTarget);
+        draft.applyEditorDraft(current.slice(0, start) + text + current.slice(end), [], start + text.length);
+      }
+      return;
+    }
     if (isInputBlocked) return;
     const text = event.clipboardData.getData("text/plain");
     const pastedFiles = clipboardFiles(event.clipboardData);

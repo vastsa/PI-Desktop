@@ -20,6 +20,10 @@ Each ADR includes:
 
 | ID | Title | Status |
 |---|---|---|
+| device-local-project-lists-in-config-sync | [Device-local project lists in configuration sync](device-local-project-lists-in-config-sync.md) | Accepted |
+| s3-only-configuration-backup-sync | [S3-only encrypted configuration backup and synchronization](s3-only-configuration-backup-sync.md) | Accepted; supersedes WebDAV decisions in 0300 / 0301 |
+| remote-provider-import | [Explicit provider import into a running remote Host](remote-provider-import.md) | Accepted for the experimental SSH MVP |
+| remote-project-home-workflow | [Remote projects in the shared Chat home workflow](remote-project-home-workflow.md) | Accepted |
 | composer-mcp-invocations | [Composer MCP Invocations](composer-mcp-invocations.md) | Accepted |
 | chronological-system-transcript | [Preserve chronological model system state](chronological-system-transcript.md) | Accepted |
 | mcp-tool-approval-risk | [User MCP tools keep the normal approval path](mcp-tool-approval-risk.md) | Accepted |
@@ -336,8 +340,8 @@ Each ADR includes:
 | 0297 | [Provider-hosted web search as an adapter capability](0297-provider-hosted-web-search-adapter-capability.md) | Accepted |
 | 0298 | [The app ships no fonts](0298-remove-bundled-fonts.md) | Accepted (D598; amends ADR 0083 / D232) |
 | 0299 | [Subagent context budget and delegate compaction](0299-subagent-context-budget.md) | Accepted for implementation (amends ADR 0064; extends ADR 0062 / ADR 0279) |
-| 0300 | [Host-owned encrypted portable configuration sync](0300-host-owned-encrypted-portable-configuration-sync.md) | Accepted for implementation |
-| 0301 | [Explicit append-only WebDAV compatibility mode](0301-explicit-append-only-webdav-compatibility-mode.md) | Accepted for implementation |
+| 0300 | [Host-owned encrypted portable configuration sync](0300-host-owned-encrypted-portable-configuration-sync.md) | Partially superseded by S3-only configuration backup/sync |
+| 0301 | [Explicit append-only WebDAV compatibility mode](0301-explicit-append-only-webdav-compatibility-mode.md) | Superseded by S3-only configuration backup/sync |
 | 0302 | [A failed compaction keeps the recent window, and an oversized summary is chunked](0302-compaction-fallback-recent-window-and-chunked-summary.md) | Accepted for implementation (issue #827; amends ADR 0049 / ADR 0282) |
 | 0303 | [A skill package carries resources far above the document cap](0303-skill-package-resource-limits.md) | Accepted for implementation (amends ADR 0300) |
 | 0304 | [Trust the network endpoints the user enters themselves](0304-user-supplied-endpoint-trust.md) | Accepted for implementation (amends ADR 0243 / 0245 / 0247; follows ADR 0142 / 0257 / 0300) |
@@ -364,5 +368,14 @@ Each ADR includes:
 | 0320 | [Host-owned OAuth lifecycle for plugin providers](0320-plugin-oauth-provider-callbacks.md) | Accepted for implementation (D647; amends ADR 0259) |
 | 0321 | [Pin an acceptable address for mixed direct DNS answers](0321-skill-market-direct-dns-pinning.md) | Accepted (D648; amends ADR 0272) |
 | 0322 | [Plugin providers appear in Add Service](0322-plugin-providers-in-add-service.md) | Accepted for implementation (D650; amends ADR 0259) |
-| 0323 | [Make Session Title Generation a Standalone Plugin](0323-plugin-owned-session-titles.md) | Accepted (D652; supersedes ADR 0186) |
+| 0323 | [Make Session Title Generation a Standalone Plugin](0323-plugin-owned-session-titles.md) | Accepted (D652, amended by D654; supersedes ADR 0186) |
 | 0324 | [Make Composer Prompt Enhancement an Optional Plugin](0324-plugin-owned-composer-prompt-enhancement.md) | Accepted (D653; supersedes ADR 0121) |
+| 0325 | [Smooth Windows main-window corner compositing](0325-windows-window-corner-compositing.md) | Proposed (implementation candidate; Windows E2E pending) |
+| 0326 | [Verified SSH Host installation and daily startup](0326-verified-ssh-host-installation.md) | Accepted for experimental implementation (amends ADR 0292; Linux SSH qualification and publication pending) |
+| 0327 | [Automatic remote Host version realignment](0327-remote-host-version-realignment.md) | Accepted for experimental implementation (amends ADR 0326 item 6; Linux SSH qualification pending) |
+| 0328 | [Open arbitrary local files in the embedded Browser](0328-browser-arbitrary-local-files.md) | Accepted (D657; amends ADR 0170; issue #1627) |
+| 0329 | [Isolate parallel sessions of one project in git worktrees](0329-session-worktree-isolation.md) | Accepted (Windows E2E pending) |
+| 0330 | [Open scoped HTML files in the work-panel Browser from plugins](0330-open-html-files-in-work-panel-browser-from-plugins.md) | Accepted |
+| plugin-fetch-redirect-policy | [Host-enforced plugin fetch redirect policy](plugin-fetch-redirect-policy.md) | Accepted (implementation candidate for #1475) |
+
+| local-agent-remote-workspace-tools | [Local Agent and model requests for remote workspaces](local-agent-remote-workspace-tools.md) | Accepted for implementation |

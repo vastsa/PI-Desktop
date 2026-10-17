@@ -1,0 +1,41 @@
+/* Isolated sessions in git worktrees (ADR 0329). */
+
+.thread-item-worktree {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-inline-end: 4px;
+}
+
+.worktree-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.worktree-dialog-body p {
+  margin: 0;
+}
+
+.worktree-file-list {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: auto;
+  list-style: none;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--ds-bg-inset);
+  font-size: var(--text-sm);
+}
+
+.worktree-setup-log {
+  max-height: 320px;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: auto;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--ds-bg-inset);
+  font-size: var(--text-sm);
+}

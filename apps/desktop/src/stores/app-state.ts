@@ -1,4 +1,5 @@
 import type { RecentModel } from "../lib/recent-models";
+import type { RemoteProjectTarget } from "../lib/remote-project-session";
 import type {
   AgentEventEnvelope,
   BrowserState,
@@ -31,6 +32,7 @@ import type {
 } from "@pi-desktop/shared";
 import type { SettingsTabId } from "../lib/settings-search";
 import type { TranscriptSearchTarget, TranscriptView } from "../lib/transcript-reading";
+import type { TranscriptReadingPosition } from "../lib/transcript-reading-position";
 import type {
   ProjectMeta,
   ProjectSort,
@@ -62,6 +64,8 @@ export type ToastItem = {
   duration: number;
   /** Notification chime is enabled by default. */
   sound: boolean;
+  /** Optional conversation opened when the user activates the toast. */
+  sessionId?: string;
 };
 
 export type ToastOptions = {
@@ -70,6 +74,8 @@ export type ToastOptions = {
   duration?: number;
   /** Suppress the default soft chime when another notification surface already played it. */
   sound?: boolean;
+  /** Make the toast message an explicit conversation-navigation action. */
+  sessionId?: string;
 };
 
 export type AgentTurnResult = {
@@ -121,6 +127,7 @@ export type AppState = {
   openProjects: ProjectWorkspace[];
   openProjectPaths: string[];
   createProjectDialogOpen: boolean;
+  createProjectDialogRemoteHostKey?: string;
   activeProjectPath?: string;
   projectMeta: Record<string, ProjectMeta>;
   /** Kept as a flat map for lightweight consumers (Sidebar). */
@@ -200,13 +207,19 @@ export type AppState = {
   refreshSessions: (options?: RefreshSessionsOptions) => Promise<void>;
   prefetchSession: (id: string) => Promise<void>;
   navigateTranscript: (target: Omit<TranscriptSearchTarget, "requestId">) => Promise<void>;
+  restoreTranscriptReading: (sessionId: string, position: TranscriptReadingPosition, signal: AbortSignal) => Promise<boolean>;
   loadTranscriptPage: (sessionId: string, direction: "before" | "after") => Promise<void>;
   returnToLatestTranscript: (sessionId: string) => void;
   selectSession: (
     id: string,
     opts?: { record?: boolean } & NavigationOptions,
   ) => Promise<void>;
-  newSession: (options?: { projectPath?: string | null }) => Promise<void>;
+  newSession: (options?: {
+    projectPath?: string | null;
+    remoteProject?: RemoteProjectTarget;
+    /** Create an isolated session in its own git worktree (ADR 0329). */
+    isolated?: boolean;
+  }) => Promise<void>;
   forkSession: (id: string) => Promise<void>;
   forkAssistantMessage: (messageId: string) => Promise<void>;
   configureActiveSession: (config: {
@@ -260,8 +273,13 @@ export type AppState = {
     snapshotId: string,
   ) => Promise<ReviewRollbackResult | null>;
   abort: () => Promise<void>;
-  openProject: () => Promise<void>;
+  openProject: (options?: { remoteHostKey?: string }) => Promise<void>;
   closeProjectDialog: () => void;
+  createProjectFromRemote: (input: {
+    name: string;
+    hostKey: string;
+    path: string;
+  }) => Promise<void>;
   createProjectFromFolders: (input: {
     name: string;
     folders: string[];

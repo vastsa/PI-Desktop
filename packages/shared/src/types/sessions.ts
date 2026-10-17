@@ -1,9 +1,11 @@
 /** Shared public types grouped by the owning application domain. */
+import type { RemoteWorkspace } from "./workspace.js";
 import type { Mode } from "./common.js";
 import type { SessionThinkingLevel, ThinkingLevel } from "./models.js";
 import type { PermissionMode } from "./permissions.js";
 import type { UiMessage } from "./messages.js";
 import type { PlanHistoryEntry, PlanningState } from "./plans.js";
+import type { SessionWorktreeSummary } from "./worktree.js";
 
 /**
  * Which authority owns a session's transcript.
@@ -21,12 +23,26 @@ export type SessionCapabilities = {
   canPrompt: boolean;
   canStop: boolean;
   canRefresh: boolean;
+  /** Absent preserves the existing local behavior. */
+  canConfigureModel?: boolean;
+  canAttach?: boolean;
+  canSteer?: boolean;
+  canEditMessages?: boolean;
+  canUseLocalTools?: boolean;
+  canUseTerminal?: boolean;
+  canReadWorkspace?: boolean;
 };
 
 export type SessionSummary = {
+  remoteWorkspace?: RemoteWorkspace;
   id: string;
   /** Transcript authority. Omitted by older hosts and normalized to `desktop`. */
   source?: SessionSource;
+  /** Display-only remote identity; never a local project path. */
+  remoteHostKey?: string;
+  remoteHostLabel?: string;
+  remoteProjectId?: string;
+  remoteWorkspaceLabel?: string;
   /** Native sessions expose only safe actions in the first continuation slice. */
   capabilities?: SessionCapabilities;
   /** Stable machine-readable reason why a native session cannot be continued. */
@@ -53,6 +69,11 @@ export type SessionSummary = {
    * Older hosts omit it, so `undefined` means an ordinary conversation.
    */
   scheduledRun?: boolean;
+  /**
+   * Present only for an isolated session (ADR 0329): its tools run in its own
+   * git worktree. Older hosts and ordinary sessions omit it.
+   */
+  worktree?: SessionWorktreeSummary;
   updatedAt: string;
   createdAt: string;
 };

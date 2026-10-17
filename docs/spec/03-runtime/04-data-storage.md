@@ -47,6 +47,17 @@ their path-scoped memory and filesystem instructions remain readable.
    hash, and size; the existing approval row also carries execution fields.
    Startup interruption is the process-epoch fence and no work is replayed.
 
+### Delegation settlement snapshots
+
+A completed `Task` tool call may still describe a running delegate. A later
+terminal snapshot with the same session, message/call ID and delegation ID
+replaces only that tool result and its display text. Existing metadata, message
+order and index identity are preserved, including namespaced IDs after a
+cross-session tool-call collision. A stale running replay, another delegation's
+result or a later terminal replay cannot overwrite the settled snapshot. Other
+duplicate appends retain their existing idempotent behavior. No schema migration
+or transcript format change is required.
+
 ## 2. File layout
 
 ### User-selected storage location (issue #1213)
@@ -78,6 +89,26 @@ both source and copied files. An interrupted copy may be retried only with its
 matching ownership marker; nonempty/unrelated destinations and overlapping roots
 are rejected. The stable installation lock prevents competing managed launches.
 
+Filesystem maintenance uses Electron's `original-fs`: archives such as `app.asar`
+inside session scratch or downloaded applications remain physical files, not
+virtual directories. Their bytes and adjacent `.asar.unpacked` directories migrate
+unchanged. Windows links are classified in one batch by their reparse-point
+kind, preserving junctions as junctions and symbolic links as symbolic links.
+For a symbolic link whose target exists, the target's kind determines whether
+it is recreated as a directory or file link; for dangling or unavailable
+targets, the link's own directory attribute determines that type. Internal
+targets are relocated without requiring them to exist.
+Windows absolute link targets are lexically normalized before creation and
+verification, so trailing separators from junctions do not cause false failures. Copy
+failures include the source and destination paths in the existing local error
+detail. They never skip an entry or publish the destination as the active profile.
+
+Confirming a directory selected in Settings creates it when it does not exist,
+including missing parent directories. Overlap checks run before creating anything.
+A first-install data root may be absent together with its parents; validation
+resolves the nearest existing ancestor without creating an unused old profile.
+This does not recreate an unavailable custom storage volume during startup.
+
 Rust's offline `--relocate-data <old-root> <copied-root>` mode owns structured
 path relocation in the copied SQLite index, transcripts/revisions/checkpoints,
 outbox, installed plugin registry and agent capability metadata. It does not boot
@@ -87,15 +118,38 @@ narrative text, commands, source code, secrets, and arbitrary plugin-private for
 are preserved. Credentials and their machine key migrate as bytes with their
 permissions. SQLite ownership stays exclusively in Rust.
 
+Relocated project database paths and project-memory/instruction keys retain the
+repository's normalized project-path spelling. In particular, Windows migration
+must not turn slash-normalized lookup keys into mixed-separator keys that make
+existing project memory appear empty after reopening the Host.
+
 Only after validation/relocation succeeds is the flushed bootstrap pointer
 atomically replaced. Errors keep the old profile active and visible in settings;
 retrying the same destination uses the failed job's ownership identity. A crash
 before publication leaves pending work to recopy from the source. An unavailable
 selected volume refuses startup rather than creating a blank profile elsewhere.
+If the managed installation's default data root is missing, startup pauses before
+loading app services and offers two recovery choices: create a fresh default data
+root or select an existing PI-Desktop storage root. The selected location must
+contain `data/pi.sqlite` or be the data directory containing `pi.sqlite`; its
+pointer is written only after validation. A sibling `browser/` directory is used
+when present, otherwise the installation's current browser root is retained.
+Dismissal exits without changing the pointer or creating a profile. Missing custom
+roots and pending cache/backup maintenance continue to refuse startup. A queued
+migration may resume with an absent default data root only when its browser root
+still exists, preserving first-install migration. An explicit `PI_DESKTOP_DATA_DIR`
+remains outside this recovery flow.
 Original directories remain explicit backups. Deleting these requires a separate
 settings confirmation after checking new-location functionality, including plugins
 that may own absolute references the host cannot safely rewrite. Backup cleanup
 preflights every root and protects active storage and bootstrap/lock files.
+The stable anchor retains Chromium's Windows `lockfile` alongside `Singleton*`
+and `storage-location.json`; these installation files are also excluded from
+browser-profile copies. Cleanup never releases the live single-instance lock.
+The exclusion applies only to the browser root, not same-named nested user files
+or files inside the host data root.
+Retry after a partially completed cleanup tolerates already-absent old roots,
+then clears the backup list only after the remaining cleanup succeeds.
 
 Cache cleanup is a separate confirmed cold-restart operation. Its filesystem
 allowlist is `cache/`, `plugins/cache/download/`, `plugins/cache/backup/`,
@@ -121,8 +175,9 @@ to an absolute path before it reaches host-core as a child-process variable.
  ├── pi.sqlite.v9.bak     # exact readable backup before v9→v15 destructive work
  ├── pi.sqlite.v10.bak    # exact readable backup before v10→v15 destructive work
  ├── sessions/            # transcript file store (D119) — host-core only
- │    ├── <sessionId>.jsonl           # live transcript (header + messages)
- │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
+│    ├── <sessionId>.jsonl           # live transcript (header + messages)
+│    ├── <sessionId>.jsonl.layout    # disposable, versioned byte-offset cache
+│    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
  │    └── <sessionId>.inflight.json   # streaming reply checkpoint (D299), transient
  ├── secrets/             # encrypted secret blobs + .machine-key (unchanged)
  ├── config-sync/         # encrypted sync base/pending bundles — host-core only
@@ -152,12 +207,15 @@ by path/hash.
 
 ### 1.3 Portable configuration sync
 
-Host-core stores sync configuration in the `configSync` key-value namespace.
-The vault key reference and WebDAV password use the existing encrypted secret
-store. `config-sync/base.bin` and `config-sync/pending.bin` are authenticated
-encrypted bundles replaced with temp-file rename; they are not renderer- or
-sidecar-readable files. Sync revisions and resources remain remote immutable
-objects and do not change the SQLite schema or transcript retention.
+Host Core stores S3 configuration at `configSyncS3/config` in the key-value
+store. Credentials and the vault key use existing encrypted secret storage.
+`config-sync/s3/<state-id>/base.bin` stores shared and observed baselines;
+`pending.bin` and local recovery points are also authenticated encrypted
+bundles replaced through temp-file rename. Connection or mode changes create
+a fresh state ID. The legacy `configSync` namespace, old credentials and old
+files are preserved, not migrated or deleted. Remote immutable objects remain
+indefinitely; only the mode-specific history index is capped at 30 revisions.
+This does not change the SQLite schema or transcript retention.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 
@@ -346,15 +404,19 @@ CREATE TABLE kv (
 
 | ns | contents |
 |---|---|
-| `app` | the settings blob (`settings.get/set`), `currentProjectId`. Optional `networkProxy` (`mode`/`url`/`bypass`) is a JSON field in that blob; no schema version bump (D340) |
+| `app` | the settings blob (`settings.get/set`), `currentProjectId`. Optional `networkProxy` (`mode`/`url`/`bypass`) is a JSON field in that blob: `url`/`bypass` survive a switch to System or Direct and are applied only in Custom mode (issue #1541); no schema version bump (D340) |
 | `ui` | non-critical UI state the renderer asks the host to keep |
 | `cache` | model-refresh stamps, recent model refs (spec 13 §3) |
 | `plugin:<id>` | per-plugin settings; uninstall = `DELETE WHERE ns = ?` |
 | `projectMemory` | durable user-authored context keyed by canonical project path; structured values contain `format: "entries-v1"`, visual `entries`, derived `content`, and `updatedAt` |
 
-The app settings JSON optionally stores `thinkingDisplayMode` (`detailed` or
-`compact`). Missing values retain detailed presentation. This additive display
-preference neither rewrites stored reasoning nor changes the database schema.
+The app settings JSON optionally stores `showThinking` (boolean) for transcript
+reasoning visibility. It is a portable application preference and synchronizes
+across devices like the legacy field. Missing values fall back to the legacy
+`thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows),
+which is retained only for persisted-settings compatibility and as that
+fallback. These additive display preferences neither rewrite stored reasoning
+nor change the database schema.
 
 The settings blob may still contain legacy prompt-enhancement keys from an
 earlier release. They are retained for rollback and downgrade compatibility,
@@ -576,9 +638,13 @@ CREATE INDEX idx_session_import_origins_plugin
 - `title_source` records `legacy`, `default`, `manual`, or `generated`. Schema
   v23 classifies pre-existing known placeholder titles as `default` and all
   other titles as `manual`; new session creation and manual rename write the
-  corresponding source. The standalone title plugin can read first-turn text
-  only for `default` sessions and can write only with an exact-title
-  compare-and-set, so a manual rename wins a race.
+  corresponding source. `default` means "not chosen by the user and still
+  replaceable": it covers a new session's placeholder and the deterministic
+  first-prompt fallback, which host-core writes only while the stored title is
+  still a recognized placeholder. A placeholder is recognized in every shipped
+  locale, because the renderer writes its localized `chat.untitledTask` label
+  when it creates a session. The standalone title plugin can read
+  exact-title compare-and-set, so a manual rename wins a race.
 - Import binds every non-empty normalized `projectPath` to `project_id`;
   path-less imports remain `NULL`. Re-importing a deterministic session id
   creates neither another session nor another project row.
@@ -1397,16 +1463,38 @@ relationship or index. The renderer's unified reading view is shared by ordinary
 history and search; it never becomes canonical mutation or model input.
 
 A bounded window is served through a per-session **transcript layout**: the byte
-offset of every message and compaction line, plus the file length those offsets
-were recorded against. Serving a window then seeks to its first selected line
-instead of parsing the history in front of it, so the cost of opening a session
-is proportional to the window rather than to the conversation. Consequences:
+offset of every message and compaction line, plus the file identity and complete
+prefix length those offsets describe. Serving a window seeks to its first
+selected line instead of parsing the history in front of it, so the common
+cached read is proportional to the requested page. Consequences:
 
-- The layout is derived data, cached in memory and rebuilt by scanning the file.
-  `file_len` is its validity token: the transcript is append-only between atomic
-  rewrites, so a longer file is scanned from the previous end and a shorter or
-  replaced file is rescanned in full. Every rewrite and delete path also drops
-  the cached entry, because a rewrite can land on an identical length.
+- The layout is derived data, cached in memory and, when reliable file identity
+  is available, in the sibling `<sessionId>.jsonl.layout` file. Unix uses the
+  device and inode; Windows uses the volume serial number and file ID. If the
+  filesystem cannot provide a reliable identity, the host skips the disk cache
+  and scans the transcript normally.
+- The disk cache has an explicit format version and validates its identity,
+  checksum, counts, globally increasing in-range offsets, and the complete-line
+  prefix before reuse. Missing, old, unknown, corrupt, or mismatched caches are
+  ignored and rebuilt from the JSONL source. Cache read/write failures are
+  diagnostic only and do not make the session unreadable.
+- A matching identity and complete prefix permits append-only incremental
+  scanning. A transcript rewrite invalidates both in-memory and disk layouts
+  only after its atomic replacement succeeds; delete also removes both. Cache
+  invalidation stays in transcript rewrite/delete ownership, not the generic
+  atomic-swap helper used by unrelated files.
+- A point read that finds an invalid indexed line boundary drops both cache
+  layers, scans the complete transcript without consulting the disk cache, and
+  retries once with message counts, page ranges, and message location recomputed
+  from the rebuilt layout. Reads tolerate invalid UTF-8 within a complete line:
+  parseable records use U+FFFD for the damaged bytes, while records that remain
+  invalid JSON or do not match the record schema are skipped with a diagnostic.
+  Physical message-line positions stay consistent across bounded reads. The
+  transcript bytes are never rewritten; actual file I/O errors remain errors.
+- New cache files use a nonnumeric version header that older parsers safely
+  reject and rebuild. Downgrading to an older app preserves the transcript and
+  database, though that app's own cache defect may recur. No database or
+  transcript migration is involved.
 - A torn trailing line (crash mid-append) is excluded from both the offsets and
   `file_len`, so a later refresh picks it up once the writer completes it.
 - Line classification reads the `type` discriminator with a single depth-aware
@@ -1697,7 +1785,16 @@ no-op against that remapped row. The outbox treats
 `UNIQUE constraint failed: messages.id` as an ack and keeps draining (D444).
 A permanently rejected append whose host error carries a `PERMISSION_DENIED:`
 prefix is likewise dropped so the FIFO can continue; `PLUGIN_PERMISSION_DENIED`
-and other host failures still pause (D597). When the 1024-entry cap remains
+and other host failures still pause while their retry budget lasts (D597). A
+failure the outbox cannot classify is retried within the same host generation
+on a bounded backoff (5s doubling to 60s) and quarantined after five
+consecutive failures into `session-message-outbox.dead-letter.json` (newest 256
+appends, oldest discarded first), carrying its payload, session id, timestamp,
+and host error, so one unclassifiable head cannot starve every session's writes
+(D656). A restarted host is a new generation and retries the head at once.
+Quarantined appends are never replayed automatically, and `session.delete`
+drops that session's quarantined appends too.
+When the 1024-entry cap remains
 full after a flush attempt, enqueue logs the rejected key/session and rejects;
 it does not report that entry as queued. Generic foreign-key errors are not
 treated as acknowledgements. Steering into a claimed collaboration delivery

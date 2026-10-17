@@ -35,7 +35,9 @@ import {
   type SessionMeta,
 } from "../../lib/sidebar-preferences";
 import { api } from "../../lib/api";
+import { isRemoteSession, safeSessionSummary, sessionAllows } from "../../lib/remote-session-safety";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { openRemoteProjectSession, remoteProjectForSession } from "../../lib/remote-project-session";
 import {
   applyOptimisticSessionConfiguration,
 } from "../../lib/session-thinking";
@@ -170,7 +172,14 @@ export function createSessionSlice({
 
   const refreshSessionList = createRefreshCoordinator(async () => {
     const result = await api.listSessions();
-    set({ sessions: decorateSessions(result.sessions, get().sessionMeta) });
+    set((state) => {
+      const next = result.sessions.map(safeSessionSummary);
+      const active = state.sessions.find((session) => session.id === state.activeSessionId);
+      // A disconnected host may temporarily disappear from inventory; keep the
+      // active identity fail-closed until an authoritative detail/list replaces it.
+      if (active && isRemoteSession(active) && !next.some((session) => session.id === active.id)) next.push(safeSessionSummary(active));
+      return { sessions: decorateSessions(next, state.sessionMeta) };
+    });
     return result;
   });
 
@@ -421,7 +430,9 @@ export function createSessionSlice({
         });
       };
 
-      const alignWorkspace = async (projectPath?: string | null) => {
+      const alignWorkspace = async (session?: SessionSummary | null) => {
+        if (isRemoteSession(session)) return runtime.navigationIntentIsCurrent(intent);
+        const projectPath = session?.projectPath;
         if (projectPath) {
           if (
             !sessionMatchesProject(
@@ -469,7 +480,7 @@ export function createSessionSlice({
         if (summary) {
           if (
             !(await runtime.queueWorkspaceAlignment(() =>
-              alignWorkspace(summary.projectPath),
+              alignWorkspace(summary),
             ))
           ) {
             return;
@@ -479,7 +490,7 @@ export function createSessionSlice({
           if (!runtime.navigationIntentIsCurrent(intent)) return;
           if (
             !(await runtime.queueWorkspaceAlignment(() =>
-              alignWorkspace(detail?.session?.projectPath),
+              alignWorkspace(detail?.session),
             ))
           ) {
             return;
@@ -551,6 +562,12 @@ export function createSessionSlice({
             : detail.session.messages ?? []
           : liveMessages ?? [];
         if (detail.session) {
+          if (isRemoteSession(detail.session)) {
+          const { messages: _messages, ...summary } = detail.session;
+          set((state) => ({ sessions: decorateSessions([
+            safeSessionSummary(summary), ...state.sessions.filter((session) => session.id !== id),
+          ], state.sessionMeta) }));
+          }
           runtime.cacheSessionTranscript(id, selectedMessages, historyWindow);
         }
         commitSelection(selectedMessages, false, historyWindow);
@@ -568,6 +585,7 @@ export function createSessionSlice({
         const selected = get().sessions.find((session) => session.id === id);
         if (
           selected &&
+          sessionAllows(selected, "canConfigureModel") &&
           sessionNeedsModelPin(selected) &&
           get().pendingPlans[id]?.status !== "pending"
         ) {
@@ -616,11 +634,21 @@ export function createSessionSlice({
     },
 
     newSession: async (options) => {
+      const activeSession = get().sessions.find((session) => session.id === get().activeSessionId);
+      const remoteProject = options?.remoteProject ?? (
+        options && "projectPath" in options ? undefined
+          : remoteProjectForSession(activeSession)
+      );
+      if (remoteProject) return openRemoteProjectSession({ get, set, runtime }, remoteProject);
+      if (!(options && "projectPath" in options) && isRemoteSession(activeSession ?? (
+        get().activeSessionId?.startsWith("remote:") ? { id: get().activeSessionId! } : undefined
+      ))) throw new Error(i18n.t("remote:REMOTE_PROJECT_REQUIRED"));
       const requestedProjectPath =
         options && "projectPath" in options
           ? options.projectPath ?? null
           : get().workspace?.path ?? null;
-      const scopeKey = runtime.newSessionScopeKey(requestedProjectPath);
+      const isolated = options?.isolated === true;
+      const scopeKey = `${runtime.newSessionScopeKey(requestedProjectPath)}${isolated ? "\u0000isolated" : ""}`;
       const pending = runtime.pendingNewSessionRequests.get(scopeKey);
       if (pending) {
         await pending;
@@ -655,6 +683,7 @@ export function createSessionSlice({
         if (
           latest &&
           sessionIsReusableEmpty(latest, {
+            isolated,
             running: get().runningSessions[latest.id] === true,
             liveMessageCount: runtime.liveMessageCountForSession(latest.id, get()),
             submitted: runtime.submittedComposerDrafts.has(latest.id),
@@ -669,6 +698,7 @@ export function createSessionSlice({
           intent,
           projectPath: requestedProjectPath,
           draftConfiguration: null,
+          ...(isolated ? { isolated: true } : {}),
         });
       })();
       runtime.pendingNewSessionRequests.set(scopeKey, request);
@@ -687,6 +717,7 @@ export function createSessionSlice({
       if (!id || state.runningSessions[id]) return;
       const source = state.sessions.find((session) => session.id === id);
       if (!source) throw new Error(i18n.t("errors.sessionNotFound"));
+      if (!sessionAllows(source, "canEditMessages")) return;
 
       if (source.projectPath) {
         if (
@@ -726,6 +757,7 @@ export function createSessionSlice({
       const message = state.messages.find((candidate) => candidate.id === messageId);
       const source = state.sessions.find((session) => session.id === sessionId);
       if (!message || message.role !== "assistant" || !source) return;
+      if (!sessionAllows(source, "canEditMessages")) return;
 
       try {
         const sourceTitle = source.title.trim() || i18n.t("chat.untitledTask");
@@ -762,6 +794,7 @@ export function createSessionSlice({
         }));
         return;
       }
+      if (!sessionAllows(get().sessions.find((session) => session.id === sessionId), "canConfigureModel")) return;
       if (get().pendingPlans[sessionId]?.status === "pending") return;
       if (
         get().runningSessions[sessionId] ||

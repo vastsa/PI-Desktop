@@ -136,6 +136,18 @@ test("real refresh retries inside the provider lock and preserves request header
   });
 });
 
+test("token requests identify the client instead of inheriting a browser User-Agent", async () => {
+  // Electron's main-process fetch is net.fetch, which defaults to Chromium's
+  // "Mozilla/5.0 ..." User-Agent; the token endpoint answers that with a
+  // permanent 429 (issue #1337). Login and refresh must both send pi's own UA.
+  await fixture([{}], async ({ requests, signIn, oauth, seed }) => {
+    assert.equal((await signIn()).kind, "done");
+    await oauth.resolveAuth(seed());
+    assert.deepEqual(requests.map(req => req.body.grant_type), ["authorization_code", "refresh_token"]);
+    for (const req of requests) assert.match(req.headers["user-agent"], /^pi \(/);
+  });
+});
+
 test("429 exhaustion is three attempts with safe recovery text and no stored partial login", async () => {
   await fixture([limited()], async ({ requests, host, signIn }) => {
     const result = await signIn();

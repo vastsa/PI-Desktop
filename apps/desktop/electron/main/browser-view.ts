@@ -1,4 +1,4 @@
-import { shell, WebContentsView, type BrowserWindow, type WebContents } from "electron";
+import { shell, View, WebContentsView, type BrowserWindow, type WebContents } from "electron";
 import { realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,15 +8,15 @@ import { isAllowedHttpUrl, parseAllowedExternalUrl } from "./safe-open-external"
 /**
  * Work panel embedded preview browser (D100, ADR 0019).
  *
- * A single WebContentsView owned by the main process, attached to the main
- * window and positioned from renderer-measured bounds. The renderer is the
+ * A single WebContentsView owned by the main process, clipped by a native
+ * presentation View positioned from renderer-measured bounds. The renderer is the
  * visibility authority: it hides the view whenever the browser tab is not
  * the active panel surface or a blocking overlay opens (the view always
  * composites above renderer content).
  *
- * Besides http(s) URLs, the pane renders HTML files inside the workspace
- * (agent-generated pages) with live reload: the loaded file's directory is
- * watched so edits to the page or its sibling assets refresh the preview.
+ * Besides http(s) URLs, the pane renders existing local HTML files with live
+ * reload: the loaded file's directory is watched so edits to the page or its
+ * sibling assets refresh the preview.
  */
 
 const PARTITION = "persist:work-browser";
@@ -54,12 +54,29 @@ function isWithinRoot(path: string, root: string): boolean {
   }
 }
 
+function resolveExistingFile(candidate: string): string | null {
+  try {
+    const real = realpathSync(resolve(candidate));
+    return statSync(real).isFile() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
+function fileUrlToLocalPath(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "file:" || (url.hostname && url.hostname !== "localhost")) return null;
+    return fileURLToPath(url);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Resolve user input to a previewable file inside the workspace: a file://
- * URL, an absolute path, or a workspace-relative path (./demo/index.html,
- * index.html). Returns null unless the target exists as a file within the
- * root. A missing relative file (for example, "localhost:3000/a.html")
- * returns null so the caller can try HTTP URL normalization.
+ * Resolve a BrowserPreview input to a previewable file inside the workspace.
+ * It accepts a file:// URL, absolute path, or workspace-relative path. This
+ * stays workspace-scoped for the Agent BrowserPreview tool and sidecar.
  */
 export function resolveLocalFile(raw: string, root: string | null): string | null {
   const trimmed = raw.trim();
@@ -77,21 +94,30 @@ export function resolveLocalFile(raw: string, root: string | null): string | nul
     candidate = resolve(root, trimmed);
   }
   if (!candidate) return null;
-  const resolved = resolve(candidate);
-  if (!isWithinRoot(resolved, root)) return null;
-  try {
-    const real = realpathSync(resolved);
-    const realRoot = realpathSync(resolve(root));
-    if (real !== realRoot && !real.startsWith(realRoot + sep)) return null;
-    if (!statSync(real).isFile()) return null;
-    return real;
-  } catch {
-    return null;
+  if (!isWithinRoot(candidate, root)) return null;
+  const real = resolveExistingFile(candidate);
+  return real && isWithinRoot(real, root) ? real : null;
+}
+
+/**
+ * Resolve a file requested by the embedded browser. Explicit file URLs and
+ * absolute paths may target any existing local file; relative inputs remain
+ * rooted in the current workspace. BrowserPreview uses resolveLocalFile.
+ */
+function resolveBrowserLocalFile(raw: string, root: string | null): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (/^file:/i.test(trimmed)) {
+    const candidate = fileUrlToLocalPath(trimmed);
+    return candidate ? resolveExistingFile(candidate) : null;
   }
+  if (isAbsolute(trimmed)) return resolveExistingFile(trimmed);
+  return resolveLocalFile(trimmed, root);
 }
 
 export class BrowserPane {
   private view: WebContentsView | null = null;
+  private surface: View | null = null;
   private window: BrowserWindow | null = null;
   private visible = false;
   private bounds = { x: 0, y: 0, width: 0, height: 0 };
@@ -201,8 +227,9 @@ export class BrowserPane {
     timeoutMs = 15_000,
   ): Promise<BrowserState | null> {
     if (fileRoot) this.fileRoot = fileRoot;
-    const localPath = resolveLocalFile(raw, this.fileRoot);
-    const localInput = /^file:/i.test(raw.trim()) || isAbsolute(raw.trim());
+    const localPath = resolveBrowserLocalFile(raw, this.fileRoot);
+    const trimmed = raw.trim();
+    const localInput = /^file:/i.test(trimmed) || isAbsolute(trimmed) || /^\.{1,2}\//.test(trimmed);
     const target = localPath
       ? pathToFileURL(localPath).toString()
       : localInput ? null : normalizeUrl(raw);
@@ -309,23 +336,26 @@ export class BrowserPane {
   }
 
   private applyBounds(): void {
-    // Chromium restores capture-time viewport metrics on completion. Keep
-    // native bounds unchanged meanwhile, then apply the latest requested size.
-    if (this.view && this.visible && !this.capturing && !this.view.webContents.isDestroyed()) {
-      this.view.setBounds(this.bounds);
+    // Move and clip the presentation surface immediately, even while Chromium
+    // pins its capture-time viewport. A pending screenshot must not leave the
+    // guest over the conversation when the window or work panel moves.
+    this.surface?.setBounds(this.bounds);
+    if (this.view && this.visible && !this.capturing && this.getWebContents()) {
+      this.view.setBounds({ x: 0, y: 0, width: this.bounds.width, height: this.bounds.height });
     }
   }
 
   setVisible(visible: boolean): void {
     this.visible = visible;
     if (!this.view) return;
+    this.surface?.setVisible(visible);
     this.view.setVisible?.(visible);
     if (visible) this.attach();
     else this.detach();
   }
 
   openExternal(): void {
-    const url = this.view?.webContents.getURL();
+    const url = this.getWebContents()?.getURL();
     if (!url) return;
     const allowed = parseAllowedExternalUrl(url);
     if (allowed) {
@@ -346,30 +376,33 @@ export class BrowserPane {
     this.clearLiveReload();
     this.detach();
     if (this.view) {
-      this.view.webContents.close();
+      const wc = this.getWebContents();
+      this.surface?.removeChildView(this.view);
       this.view = null;
+      this.surface = null;
+      wc?.close();
     }
   }
 
   private attach(): void {
-    if (!this.window || this.window.isDestroyed() || !this.view) return;
+    if (!this.window || this.window.isDestroyed() || !this.surface) return;
     const children = this.window.contentView.children;
     // The guest hole sits on top of plugin chrome. Re-adding a plugin view
     // after this pane is attached would cover the guest unless we keep it last.
-    if (children.includes(this.view) && children[children.length - 1] !== this.view) {
-      this.window.contentView.removeChildView(this.view);
+    if (children.includes(this.surface) && children[children.length - 1] !== this.surface) {
+      this.window.contentView.removeChildView(this.surface);
     }
-    if (!this.window.contentView.children.includes(this.view)) {
-      this.window.contentView.addChildView(this.view);
+    if (!this.window.contentView.children.includes(this.surface)) {
+      this.window.contentView.addChildView(this.surface);
     }
     this.applyBounds();
   }
 
   private detach(): void {
-    if (!this.window || this.window.isDestroyed() || !this.view) return;
+    if (!this.window || this.window.isDestroyed() || !this.surface) return;
     const children = this.window.contentView.children;
-    if (children.includes(this.view)) {
-      this.window.contentView.removeChildView(this.view);
+    if (children.includes(this.surface)) {
+      this.window.contentView.removeChildView(this.surface);
     }
   }
 
@@ -408,16 +441,18 @@ export class BrowserPane {
   }
 
   private isAllowedFileUrl(url: string): boolean {
-    if (!this.fileRoot) return false;
-    try {
-      return isWithinRoot(resolve(fileURLToPath(url)), this.fileRoot);
-    } catch {
-      return false;
-    }
+    const localPath = resolveBrowserLocalFile(url, this.fileRoot);
+    if (!localPath) return false;
+    if (this.fileRoot && isWithinRoot(localPath, this.fileRoot)) return true;
+    // Preserve workspace-file links from web pages, but only let a local
+    // document navigate to files outside that workspace.
+    return this.view?.webContents.getURL().startsWith("file:") === true;
   }
 
   private ensureView(): WebContentsView {
-    if (this.view && !this.view.webContents.isDestroyed()) return this.view;
+    if (this.view && this.getWebContents()) return this.view;
+    this.detach();
+    if (this.view) this.surface?.removeChildView(this.view);
     const view = new WebContentsView({
       webPreferences: {
         sandbox: true,
@@ -427,6 +462,11 @@ export class BrowserPane {
         partition: PARTITION,
       },
     });
+    const surface = new View();
+    surface.addChildView(view);
+    surface.setVisible(this.visible);
+    surface.setBounds(this.bounds);
+    this.surface = surface;
     const wc = view.webContents;
     wc.setWindowOpenHandler(({ url }) => {
       const allowed = parseAllowedExternalUrl(url);
@@ -444,8 +484,8 @@ export class BrowserPane {
         this.nativeNavigationPending = this.hasCurrentStateEventScope();
         return;
       }
-      // Relative links inside a previewed page may point at sibling files;
-      // anything escaping the workspace root stays blocked.
+      // Keep web pages inside the existing workspace-file allowance. A local
+      // file page may follow links to any other existing local file.
       if (/^file:/i.test(url) && this.isAllowedFileUrl(url)) {
         this.nativeNavigationPending = this.hasCurrentStateEventScope();
         return;

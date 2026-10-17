@@ -23,6 +23,8 @@ export type TranscriptView = {
   hasMoreAfter: boolean;
   parentMessage?: UiMessage;
   focus: TranscriptSearchTarget | null;
+  /** A bookmarked historical range, without search navigation/highlighting. */
+  restored?: boolean;
   loading: "target" | "before" | "after" | null;
 };
 
@@ -107,7 +109,7 @@ export function transcriptViewMessages(live: UiMessage[], view?: TranscriptView)
   if (!view) return live;
   // Search deliberately holds its historical snapshot. Do not index or merge
   // the live transcript when it cannot contribute anything to this view.
-  if (view.focus) return withNavigationParent(view.messages, view.parentMessage);
+  if (view.focus || view.restored) return withNavigationParent(view.messages, view.parentMessage);
 
   const normalized = dedupeSessionMessages(live);
   const source = getSessionMessageSnapshot(normalized);

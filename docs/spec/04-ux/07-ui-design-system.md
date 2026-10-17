@@ -1123,13 +1123,18 @@ header-height background behind the excluded lane without covering its controls.
   disables the frameless `WS_THICKFRAME` rim while Electron 43.6's frameless
   hit test continues to own edge and corner resizing; no border is painted on
   the left, right, or bottom. The Windows main window uses the global
-  `--radius-md` token (12 DIP) as its default rounded hit/draw shape: pixels
-  outside its corners have no fill or mouse target. A selected
+  `--radius-md` token (12 DIP) as its default corner request. Windows 11 and
+  later use the DWM system-rounded preference for any positive radius and a
+  square preference for radius 0; DWM chooses the actual radius and may decline
+  to round based on window style or environment. Windows builds before 22000
+  retain the existing `contentView` clip and native shape. The Windows 11 path
+  uses an opaque top-level surface, so contributed alpha colors are composited
+  over the resolved built-in theme background. A selected
   plugin theme with `ui.window.appearance` may set `cornerRadius` to an integer
   from 0 through 24 DIP; removing that theme restores the 12 DIP global
-  default. The shape becomes
-  rectangular while maximized or fullscreen and follows every resize. Native
-  window background colors remain theme-owned inside the shape. Electron's borderless
+  default. Corners become rectangular while maximized or fullscreen; positive
+  values on Windows 11 do not guarantee an exact DIP radius. Native window
+  background colors remain theme-owned. Electron's borderless
   fullscreen fallback fills the display without reporting `isFullScreen()`;
   Main tracks its state so toggling back restores the previous bounds and
   fullscreen geometry is never persisted. Frameless titlebar drag
@@ -1193,6 +1198,15 @@ padding that under the global `border-box` would leave a 12px content box for a
 | Background | bg-secondary (dark); bg-white (light) + shadow-lg |
 | Backdrop | rgba(0,0,0,0.5) with `z-dialog` |
 | Close | Escape key + X button top-right |
+
+**Shared dismissal primitive:** `OverlayBackdrop`, exported from
+`components/ui.tsx`, renders the existing backdrop `div` and accepts its normal
+HTML attributes and close callback. It forwards a backdrop click only after a
+primary pointer press and release both target that backdrop; capture-phase
+origin tracking protects text selection across content boundaries and nested
+layers. It does not prevent selection or capture the pointer. Callers retain
+busy/saving guards and their existing Escape/close controls. Presses cancelled
+by pointer cancellation or window blur cannot dismiss the surface.
 
 ### 11.5 Tabs
 
@@ -1284,12 +1298,26 @@ Implementation: `components/ui.tsx → Checkbox`.
 
 | Property | Value |
 |---|---|
-| CSS class | `.ui-checkbox` |
+| CSS classes | `.ui-checkbox` (label), `.ds-checkbox` (native input) |
 | Anatomy | `<label> → <input type="checkbox"> + <span>{label}</span>` |
-| Props | Extends `InputHTMLAttributes` (minus `type`) + `label: ReactNode` |
+| Props | Extends `InputHTMLAttributes` (minus `type` and `ref`) + `label: ReactNode`, `indeterminate?: boolean` |
+| Paint | 18px rounded square, 8px label gap, token-based checked fill and checkmark; mixed state uses a dash |
+| Interaction | Native label activation and Space toggling, visible keyboard focus, whole-label disabled treatment; native paint in forced-colors mode |
 
 Every standalone labeled checkbox **must** use `Checkbox`. Inline
 `<label><input type="checkbox"/>…</label>` is prohibited.
+
+### 11.11a SettingsDisclosure
+
+Implementation: `components/settings/SettingsDisclosure.tsx`.
+
+Use native `<details>` / `<summary>` for low-frequency settings, with one
+localized title and a decorative chevron. It accepts native details attributes,
+children and `className`; `open` can seed or update the native state. Collapsed
+content stays mounted to retain drafts but is not keyboard-reachable. The
+shared summary has a minimum 44px row, token-based hover/focus treatment and
+reduced-motion-compatible chevron feedback. Errors, progress and approvals
+must remain outside optional disclosures.
 
 ### 11.11b CheckboxGroup
 

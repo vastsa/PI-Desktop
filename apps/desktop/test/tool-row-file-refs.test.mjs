@@ -4,6 +4,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
+import { isRemoteSession, safeSessionSummary, sessionAllows } from "../src/lib/remote-session-safety.ts";
 
 /*
  * The opener a tool row's summary and a tool result's file/match list call.
@@ -48,6 +49,7 @@ const state = {
   workspace: { path: "C:/project" },
   activeSessionId: "session-1",
   pluginViews: [],
+  sessions: [],
   openFileInWorkPanel: (...args) => calls.files.push(args),
   openUrlInWorkPanel: (...args) => calls.urls.push(args),
   openWorkPanelTab: (tab) => calls.tabs.push(tab),
@@ -114,15 +116,19 @@ const { useOpenPreviewTarget } = loadModule("../src/hooks/use-preview-target.ts"
   }),
   "../lib/open-http-url": { openHttpUrl: (...args) => calls.urls.push(args) },
   "../lib/work-panel-tabs": workPanelTabs,
+  "./use-chat-session-capability": { useChatSessionCapability: () => true },
+  "../lib/remote-session-safety": { isRemoteSession, safeSessionSummary, sessionAllows },
+  "../plugins/renderer-slots/use-slots": { useSlotSessionId: () => "" },
 });
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-function reset({ pluginView = false } = {}) {
+function reset({ pluginView = false, browserPluginView = false } = {}) {
   Object.values(calls).forEach((list) => list.splice(0, list.length));
-  state.pluginViews = pluginView
-    ? [{ pluginId: "pi.file-manager", viewId: "manager" }]
-    : [];
+  state.pluginViews = [
+    ...(pluginView ? [{ pluginId: "pi.file-manager", viewId: "manager" }] : []),
+    ...(browserPluginView ? [{ pluginId: "pi.browser", viewId: "browser" }] : []),
+  ];
   nextMatch = null;
   nextReason = null;
   resolveFails = false;
@@ -317,11 +323,20 @@ test("a file from a sibling project folder opens in the view by absolute path", 
 });
 
 test("a primary-folder HTML page stays with the side browser", async () => {
-  reset({ pluginView: true });
+  reset({ pluginView: true, browserPluginView: true });
   nextMatch = projectMatch({ relativePath: "docs/page.html", absolutePath: "C:/project/docs/page.html" });
   await click({ kind: "file", path: "docs/page.html" });
   assert.deepEqual(calls.tabs, [], "a page to run is not a file to read");
-  assert.deepEqual(calls.urls, [["docs/page.html"]]);
+  assert.deepEqual(calls.urls, [["C:/project/docs/page.html"]]);
+});
+
+test("an HTML reference reports a disabled Browser view without enabling it", async () => {
+  reset({ pluginView: true });
+  nextMatch = projectMatch({ relativePath: "docs/page.html", absolutePath: "C:/project/docs/page.html" });
+  await click({ kind: "file", path: "docs/page.html" });
+  assert.deepEqual(calls.urls, []);
+  assert.deepEqual(calls.enabled, []);
+  assert.deepEqual(calls.toasts[0], ["panel.pluginView.failed:", { variant: "error" }]);
 });
 
 test("a reference nothing answers reports itself and opens nothing", async () => {

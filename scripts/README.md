@@ -23,10 +23,11 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 | Script | Alias | Purpose |
 |---|---|---|
 | `notarize-and-staple-macos-release-dmg.sh` | `scripts/notarize-and-staple-macos-release-dmg.sh [release-dir]` | Submit the single DMG a native macOS job produced to Apple's notary service (`xcrun notarytool submit --wait`), require `status: Accepted`, then attach and validate the ticket (`xcrun stapler staple` / `validate`); run by the Release workflow when `sign_macos` is set. electron-builder only notarizes the `.app`, so the DMG needs this separate submission |
+| `macos-stapler-retry-shim.sh` | injected by `macos-signing-watchdog.mjs` when `PI_STAPLER_MAX_ATTEMPTS` is set | Retry only `xcrun stapler staple` up to the configured bound; all other `xcrun` commands pass through unchanged |
 | `verify-macos-release.sh` | `scripts/verify-macos-release.sh [release-dir]` | Fail unless the one `PI-Desktop.app` and DMG under the release directory are Developer ID-signed, notarized, and stapled; run by the Release workflow after stapling |
 | `macos-signing-diagnostics.sh` | `scripts/macos-signing-diagnostics.sh [--require-identity]` | Print the non-secret signing baseline before packaging (system, `codesign`, keychain identities/list/default, Xcode notary tools, Apple timestamp reachability). Informational by default, because the Developer ID identity is imported from `CSC_LINK` during packaging; `--require-identity` makes a missing Developer ID fatal |
 | `macos-bundle-inventory.mjs` | `node scripts/macos-bundle-inventory.mjs <app-or-release-dir>` | Count what the signing phase has to touch: entries, Mach-O binaries, `.dylib`/`.node`/frameworks/nested bundles, per-directory cost, and the largest binaries (`signing-candidates`). Informational; run after every macOS package build |
-| `macos-signing-watchdog.mjs` | `node scripts/macos-signing-watchdog.mjs [options] -- <command>` | Run a long silent phase (`electron-builder` signing, `notarytool submit --wait`) with a heartbeat, phase tracking, stall diagnostics (last file, `ps` state, codesign log tail), per-file codesign timings, and a hard timeout that fails instead of hanging; it forwards the child output and exit code unchanged and redacts `CSC_KEY_PASSWORD`/`APPLE_APP_SPECIFIC_PASSWORD`/`CSC_LINK` values plus `--password` arguments |
+| `macos-signing-watchdog.mjs` | `node scripts/macos-signing-watchdog.mjs [options] -- <command>` | Run a long silent phase (`electron-builder` signing, `notarytool submit --wait`) with a heartbeat, phase tracking, stall diagnostics (last file, `ps` state, codesign log tail), per-file codesign timings, optional bounded app stapler retries, and a hard timeout that fails instead of hanging; it forwards the child output and exit code unchanged and redacts `CSC_KEY_PASSWORD`/`APPLE_APP_SPECIFIC_PASSWORD`/`CSC_LINK` values plus `--password` arguments |
 | `macos-codesign-shim.sh` | used by `macos-signing-watchdog.mjs` | PATH shim that timestamps every `codesign` invocation and then executes the real `codesign`; inert unless `PI_CODESIGN_LOG` is set |
 | `export-linux-asar.mjs` | `node scripts/export-linux-asar.mjs` | Copy the Linux `linux-unpacked/resources/app.asar` into the versioned release asset used for system-Electron repackaging |
 | `build-desktop-release.mjs` | called by the desktop `dist` / `dist:win` scripts | Build the native runner target without publishing; Windows runs separate NSIS and ZIP passes and stamps their updater distribution metadata |
@@ -54,16 +55,42 @@ The scenarios are specified in
 | `e2e-tool-admission.mjs` | `node scripts/e2e-tool-admission.mjs` | Isolated real-host tool admission: queued Bash burst leaves capacity for another session's Read/Write and recovers all counters |
 | `e2e-smoke.mjs` | `pnpm test:e2e` | Protocol-level E2E against host-core, plus an optional live model |
 | `e2e-plan.mjs` | `pnpm test:e2e:plan` | Plan state, checkpoint artifact, and approval transitions |
+| `e2e-transcript-cache.mjs` | `pnpm test:e2e:transcript-cache` | Isolated Host RPC regression for large transcript cache creation, append plus middle Task rewrite, legacy cache recovery, paging, message navigation, invalid UTF-8 recovery, and process restart |
 | `e2e-plan-ui.mjs` | `pnpm test:e2e:plan-ui` | Plan approval through the rendered UI |
 | `e2e-electron-boot.mjs` | `pnpm test:e2e:boot` | Electron boot probe |
 | `e2e-provider-recovery.mjs` | `node scripts/e2e-provider-recovery.mjs` | Isolated desktop with a localhost fault-injection provider: socket failures, interrupted streams, Responses recovery, exhausted retries, Continue, and recovery across eleven real Read calls. Requires a built desktop/runtime and host binary (`PI_DESKTOP_HOST_BIN` when outside the checkout); retains screenshots and JSON under `.artifacts/issue-699/` |
 | `e2e-settings-scroll.mjs` | `pnpm test:e2e:settings-scroll` | Production Settings component navigation, search anchoring, focus-on-mount, and scroll behavior |
 | `e2e-transcript-render.mjs` | `pnpm test:e2e:transcript` | Production transcript render boundaries, runtime status geometry, and deterministic smooth-text cadence |
 | `e2e-renderer-responsiveness.mjs` | `pnpm test:e2e:renderer-responsiveness` | Native Electron click, typing, session switching, disclosure, and scroll while an isolated child process streams large transcript deltas |
-| `e2e-config-sync-multidevice.mjs` | `pnpm test:e2e:config-sync` | Two isolated host-core devices against an ephemeral local WebDAV fixture; covers encrypted sync, new-device approval, cross-device edits, conditional requests, and ciphertext-only remote storage |
+| `e2e-config-sync-multidevice.mjs` | `pnpm test:e2e:config-sync` | Four isolated host-core processes against a SigV4-validating local S3 fixture; covers credential opt-out, approvals, concurrent edits/conflict resolution, mapped skill resources, deletion, sync/backup restore, restart, password rewrap, encrypted storage and cleanup |
 | `e2e-supervision.mjs` | `pnpm test:e2e:supervision` | Process supervision and restart behavior |
 | `e2e-subagents.mjs` | `pnpm test:e2e:subagents` | Subagent registry over RPC, then through the real loader (D202) |
+| `e2e-send-now-subagents.mjs` | `pnpm test:e2e:send-now-subagents` | Production Composer queue and Main IPC with real Rust Host/agent sidecar and a local SSE fixture; Send now wakes TaskWait, preserves two live delegates and reports, and retains ordinary FIFO input. Uses temporary HOME/data and accepts `PI_DESKTOP_HOST_BIN` for a reused Host binary. |
 | `e2e-agent-live.mjs` | `node scripts/e2e-agent-live.mjs` | Live streaming chat through agent-runtime + host-core. Requires `PI_DESKTOP_TEST_API_KEY`, `PI_DESKTOP_TEST_BASE_URL`, and `PI_DESKTOP_TEST_MODEL` (no defaults), so it has no `pnpm` alias |
+
+### Configuration-sync live S3 opt-in
+
+Build the task's Host binary and shared package first, reusing the existing
+development toolchain. Set `PI_DESKTOP_HOST_BIN` if the binary is outside the
+worktree. The default command uses only local S3 and temporary Host profiles.
+With explicit authorization, run:
+
+```bash
+node scripts/e2e-config-sync-multidevice.mjs --live-s3 --env-file /authorized/path/.env
+```
+
+Live administration needs an existing Python 3 + boto3 environment. The file
+must provide `S3_HOST`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`,
+`S3_SECRET_KEY`, `S3_DOMAIN_MODE` (`false` = path-style), and optionally
+`S3_SESSION_TOKEN`. Credentials stay in memory/stdin, never arguments or logs.
+The harness creates its own UUID prefix under `pi-desktop-tests/`, checks
+initial emptiness, then runs the same actual Host journey. It needs scoped
+list/get/put/delete and bucket-versioning read permission; versioned buckets
+also need version listing/deletion. It stops every Host before deleting only
+the exact test-prefix inventory, including versions/delete markers, and checks
+final emptiness. Failed preflight never grants cleanup ownership. No production
+Desktop profile, model call or executable capability is used. Output records
+the candidate/base and Host binary hash; uncommitted task changes are explicit.
 
 ## Continuous integration
 

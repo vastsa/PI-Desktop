@@ -232,3 +232,35 @@ describe("Desktop extension lifecycle", () => {
     }
   });
 });
+
+it("retains local extension loading but rejects implicit workspace exec for a remote root", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-remote-extension-"));
+  const key = `__remoteExtension_${Math.random().toString(36).slice(2)}`;
+  const entry = join(root, "extension.ts");
+  writeFileSync(entry, `export default function (pi) {
+    pi.registerCommand("probe", { handler: async (_args, ctx) => {
+      let errorCode;
+      try { await pi.exec(process.execPath, ["-e", "process.stdout.write('wrong-machine')"]); }
+      catch (error) { errorCode = error.errorCode; }
+      const local = await pi.exec(process.execPath, ["-e", "process.stdout.write('local-model-helper')"], { cwd: ${JSON.stringify(root)} });
+      globalThis[${JSON.stringify(key)}] = { cwd: ctx.cwd, errorCode, helper: local.stdout };
+    } });
+  }`);
+  const runtime = new DesktopAgentRuntime({
+    host: { call: async () => ({}), onNotification: () => () => {} } as never,
+    sessionId: "remote-extension", remoteWorkspace: { hostKey: "ssh", path: "/remote/workspace" },
+    mode: "agent", thinkingLevel: "off",
+    provider: { id: "local-model", name: "Local", apiKey: "", authKind: "none", baseUrl: "http://127.0.0.1:1/v1", modelId: "fixture", supportsReasoning: false, supportedThinkingLevels: ["off"] },
+    commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
+    trustedExtensions: [{ id: entry, entry, label: "Local model helper", root, source: "plugin" }],
+    onEvent: () => {},
+  });
+  try {
+    await runtime.loadTrustedExtensions();
+    expect(runtime.getTrustedExtensionReports()).toMatchObject([{ state: "loaded" }]);
+    expect(await runtime.runTrustedExtensionCommand("probe", "")).toEqual({ handled: true });
+    expect((globalThis as Record<string, unknown>)[key]).toEqual({ cwd: "/remote/workspace", errorCode: "CAPABILITY_UNAVAILABLE", helper: "local-model-helper" });
+  } finally {
+    await runtime.dispose(); delete (globalThis as Record<string, unknown>)[key]; rmSync(root, { recursive: true, force: true });
+  }
+});

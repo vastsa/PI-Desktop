@@ -29,11 +29,10 @@ export async function onLoad() {
     description: [
       "Drive PI-Desktop's work-panel browser via CDP.",
       'Call ToolSearch for "browser" or "cdp" to load this tool.',
-      "Before any browser operation, ensure the Browser view is open and visible in the work panel.",
+      "Browser operations automatically reveal the work-panel view for this session and wait until it is ready.",
       "Keep the panel visible while working.",
-      "For a workspace HTML file, call BrowserPreview first; it opens and reveals a Browser tab.",
-      "For other URLs, open or activate Browser from the work-panel launcher before navigating.",
-      "If you cannot make the view visible, ask the user to open it and wait before continuing.",
+      "For a workspace HTML file, call BrowserPreview first; it opens and reveals a live-reloading Browser tab.",
+      "Do not ask the user to open Browser manually. If this session is in the background, ask them to switch to it and retry.",
       "Then snapshot the accessibility tree, click/fill by uid, take screenshots, evaluate JavaScript,",
       "read console output, or send an allowlisted raw CDP method.",
     ].join(" "),
@@ -45,7 +44,7 @@ export async function onLoad() {
         action: {
           type: "string",
           enum: ACTIONS,
-          description: "Run only after confirming the Browser view is open and visible in the work panel.",
+          description: "The Browser view opens automatically for the calling session before this action runs.",
         },
         url: { type: "string", description: "http(s) URL for action=navigate." },
         path: {
@@ -79,6 +78,13 @@ export async function onLoad() {
     },
     execute: async (args) => {
       const action = String(args?.action ?? "").trim();
+      if (!ACTIONS.includes(action)) {
+        return {
+          ok: false,
+          error: `unknown action "${action}"; use ${ACTIONS.join(", ")}`,
+        };
+      }
+      await pi.browser.reveal();
       switch (action) {
         case "navigate": {
           const state = await pi.browser.navigate({

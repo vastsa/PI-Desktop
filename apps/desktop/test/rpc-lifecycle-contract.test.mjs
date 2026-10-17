@@ -157,9 +157,16 @@ test("host disposal closes stdin, observes exit, and force-kills only after grac
 test("Bash execution remains bounded while permission transport has no deadline", () => {
   assert.match(runtimeSource, /DEFAULT_COMMAND_TIMEOUT_MS/);
   assert.match(runtimeSource, /defaults to a 60-second timeout/);
-  assert.match(runtimeSource, /timeoutMs,\n\s+}/);
+  // Bash may carry additive options after its timeout. Runtime tests exercise
+  // the default and override values at the tools.execute boundary.
+  assert.match(runtimeSource, /\btimeoutMs,/);
   assert.doesNotMatch(rpcTimeoutSource, /DEFAULT_BASH_RPC_TIMEOUT_MS/);
-  assert.match(rpcTimeoutSource, /if \(method === "tools\.execute"\) return undefined/);
+  // A tool relay carries its own budget; the transport must not cut it with the
+  // flat default. The same holds for the remote workspace counterpart.
+  assert.match(
+    rpcTimeoutSource,
+    /if \(method === "tools\.execute" \|\| method === "tools\.workspaceExecute"\) return undefined/,
+  );
 });
 
 test("turn ownership and execution queue wake only after durable turn settlement", () => {
@@ -212,7 +219,7 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
   assert.match(shutdownModuleSource, /shutdownPromise: Promise<void> \| null/);
   assert.match(shutdownSource, /if \(state\.shutdownComplete\) return/);
   assert.match(shutdownSource, /event\.preventDefault\(\)/);
-  assert.match(shutdownSource, /if \(state\.shutdownPromise\) return/);
+  assert.match(shutdownSource, /if \(state\.shutdownPromise \|\| quitConfirmationPending\) return/);
   assert.ok(
     shutdownSource.indexOf('logger.app("lifecycle", "info", "app shutdown")') <
       shutdownSource.indexOf("await liveCallService?.endForLifecycle"),
@@ -220,7 +227,7 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
   );
   assert.ok(
     shutdownSource.indexOf("event.preventDefault()") <
-      shutdownSource.indexOf("if (state.shutdownPromise) return"),
+      shutdownSource.indexOf("if (state.shutdownPromise || quitConfirmationPending) return"),
     "the first quit must be prevented before the idempotence guard returns",
   );
   // Panel windows and docked views are the only pages that call the host and the

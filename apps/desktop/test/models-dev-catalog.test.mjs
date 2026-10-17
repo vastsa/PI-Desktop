@@ -742,7 +742,9 @@ test("resellers still answer for an id no shipped publisher states", async (t) =
 
 test("route prefixes and official deployment markers resolve without rewriting served IDs", async (t) => {
   // Exact last-segment match allows `test/mimo-v2.5` → `mimo-v2.5`.
-  // Markers like `-thinking` / `-test` are part of the leaf and do not strip.
+  // Model variants like `-thinking` / `-asr` are parts of the leaf and never
+  // strip; a whitelisted deployment label (`-test`, `-1m`) still reduces to
+  // the owner's published base ID.
   const catalog = await loadFixtureCatalog(t, {
     gateway: { api: "https://gateway.example/v1", models: {} },
     google: { models: {
@@ -773,7 +775,7 @@ test("route prefixes and official deployment markers resolve without rewriting s
   assert.ok(info.capabilities.includes("vision"));
 
   assert.equal(relay("mimo-v2.5-thinking"), undefined);
-  assert.equal(relay("test/mimo-v2.5-pro-test"), undefined);
+  assert.equal(relay("test/mimo-v2.5-pro-test")?.modelId, "mimo-v2.5-pro");
   assert.equal(relay("mimo-v2.5-asr"), undefined);
   assert.equal(relay("gemini-2.5-pro-1m")?.modelId, "gemini-2.5-pro");
 });
@@ -805,9 +807,12 @@ test("a shipped publisher answers first for a row anchored to a reseller", async
   assert.equal(match.limit.output, 500_000);
 });
 
-test("ambiguous same-leaf spellings with conflicting modalities stay unmatched", async (t) => {
+test("an unanchored relay reads its family owner's record over a conflicting reseller spelling", async (t) => {
   // `mimo-v2.5` and `XiaomiMiMo/MiMo-V2.5` share a case-insensitive leaf but
-  // disagree on modalities, and neither publisher is an official/source family.
+  // disagree on modalities, so the shared-capabilities enrichment misses. The
+  // weight owner's exact record still answers an unidentified relay — the way
+  // the pre-catalog relay lookup did: a reseller's narrower copy never decides
+  // the window or modalities.
   const catalog = await loadFixtureCatalog(t, {
     gateway: { api: "https://gateway.example/v1", models: {} },
     xiaomi: { models: { "mimo-v2.5": {
@@ -821,11 +826,59 @@ test("ambiguous same-leaf spellings with conflicting modalities stay unmatched",
       limit: { context: 1_048_576, output: 131_072 },
     } } },
   });
-  assert.equal(catalog.findModel({
+  const match = catalog.findModel({
     vendorKey: "custom",
     baseUrl: "https://relay.example/v1",
     modelId: "mimo-v2.5",
-  }), undefined);
+  });
+  assert.equal(match?.providerKey, "xiaomi", "the owner's record wins the unanchored relay");
+  assert.deepEqual(match?.modalities.input, ["text", "image", "audio"]);
+  assert.equal(match?.limit.context, 1_048_576);
+});
+
+test("an unanchored relay prefers its owner's limits over matching reseller copies", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    xiaomi: { models: { "mimo-v2.5": {
+      id: "mimo-v2.5", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      limit: { context: 1_048_576, output: 131_072 },
+    } } },
+    reseller: { models: { "mimo-v2.5": {
+      id: "mimo-v2.5", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      limit: { context: 262_144, output: 16_384 },
+    } } },
+  });
+
+  const match = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://relay.example/v1",
+    modelId: "mimo-v2.5",
+  });
+  assert.equal(match?.providerKey, "xiaomi");
+  assert.equal(match?.limit.context, 1_048_576);
+  assert.equal(match?.limit.output, 131_072);
+});
+
+test("an unanchored relay stays generic when owner aliases disagree on capacity", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    minimax: { models: { "MiniMax-M2.7": {
+      id: "MiniMax-M2.7", tool_call: true,
+      limit: { context: 204_800, output: 131_072 },
+    } } },
+    "minimax-cn": { models: { "MiniMax-M2.7": {
+      id: "MiniMax-M2.7", tool_call: true,
+      limit: { context: 128_000, output: 65_536 },
+    } } },
+  });
+
+  assert.equal(catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://relay.example/v1",
+    modelId: "MiniMax-M2.7",
+  }), undefined, "conflicting owner limits must not be chosen by catalog order");
 });
 
 test("unique leaf enrichment coexists with exact-id borrowing and unknown misses", async (t) => {
@@ -1841,4 +1894,230 @@ test("a host two publishers share leaves conflicting leaves unmatched", async (t
   });
   assert.equal(alpha?.providerKey, "alpha");
   assert.equal(alpha?.limit.context, 1_000_000);
+});
+
+test("a relay's dotted version name reads the owner's dashed published record", async (t) => {
+  // `claude-sonnet-4.5` is Claude's `claude-sonnet-4-5`: a notation difference,
+  // not a distinct model, so the owner's own published record answers.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    anthropic: { models: { "claude-sonnet-4-5": {
+      id: "claude-sonnet-4-5", tool_call: true, limit: { context: 200_000, output: 64_000 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "claude-sonnet-4.5",
+  });
+  assert.ok(match, "a dotted version alias must reach the owner's published record");
+  assert.equal(match.providerKey, "anthropic");
+  assert.equal(match.modelId, "claude-sonnet-4-5", "the wire id is never rewritten");
+  assert.equal(match.limit.context, 200_000);
+  assert.equal(match.limit.output, 64_000);
+});
+
+test("a relay's canonical generation name reads the owner's live record", async (t) => {
+  // The relay serves `deepseek-v4.1-flash` — models.dev's canonical id for
+  // DeepSeek's current flash model, which DeepSeek publishes only under version
+  // aliases. The live (non-deprecated) alias is what answers.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    deepseek: { models: {
+      "deepseek-flash": {
+        id: "deepseek-flash", tool_call: true,
+        canonical_model_id: "deepseek/deepseek-v4.1-flash",
+        limit: { context: 1_000_000, output: 393_216 },
+      },
+      "deepseek-v4-flash": {
+        id: "deepseek-v4-flash", tool_call: true, status: "deprecated",
+        canonical_model_id: "deepseek/deepseek-v4.1-flash",
+        limit: { context: 1_000_000, output: 393_216 },
+      },
+    } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "deepseek-v4.1-flash",
+  });
+  assert.ok(match, "the owner's canonical id must not drop to the generic seed");
+  assert.equal(match.providerKey, "deepseek");
+  assert.equal(match.modelId, "deepseek-flash", "the live alias answers, not the deprecated one");
+  assert.equal(match.limit.context, 1_000_000);
+});
+
+test("a generation name the catalog never publishes stays unmatched", async (t) => {
+  // `gemini-3-flash` is a distinct (non-preview) model the catalog does not
+  // publish; a preview record must not answer for it.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: { "gemini-3-flash-preview": {
+      id: "gemini-3-flash-preview", tool_call: true, limit: { context: 1_000_000 },
+    } } },
+  });
+  assert.equal(catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  }), undefined);
+});
+
+test("a vendor's sibling keys answer for a family the primary key never states", async (t) => {
+  // `qwen3.8-flash` lives only on Alibaba's token-plan key, while the relay
+  // serves it under the family name. The primary key states nothing, so the
+  // vendor's own sibling key supplies the record rather than a reseller copy.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    alibaba: { models: { "qwen3.7-flash": {
+      id: "qwen3.7-flash", tool_call: true, limit: { context: 1_000_000, output: 131_072 },
+    } } },
+    "alibaba-token-plan": { models: { "qwen3.8-flash": {
+      id: "qwen3.8-flash", tool_call: true, limit: { context: 1_000_000, output: 131_072 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "qwen3.8-flash",
+  });
+  assert.equal(match?.providerKey, "alibaba-token-plan");
+  assert.equal(match?.limit.context, 1_000_000);
+  assert.equal(match?.limit.output, 131_072);
+});
+
+test("a sibling key that contradicts the primary key cannot suppress its answer", async (t) => {
+  // Alibaba's public key and token-plan key disagree about the same id. The
+  // token-plan key is only in the new widened tier, so it cannot veto the
+  // primary tier's answer.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    alibaba: { models: { "qwen3.8-flash": {
+      id: "qwen3.8-flash", tool_call: true, limit: { context: 512_000, output: 64_000 },
+    } } },
+    "alibaba-token-plan": { models: { "qwen3.8-flash": {
+      id: "qwen3.8-flash", tool_call: true, limit: { context: 1_000_000, output: 131_072 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "qwen3.8-flash",
+  });
+  assert.equal(match?.providerKey, "alibaba");
+  assert.equal(match?.limit.context, 512_000);
+  assert.equal(match?.limit.output, 64_000);
+});
+
+test("a corroborated canonical declaration translates a relay-only generation name", async (t) => {
+  // The relay serves `gemini-3-flash`, which its owner never publishes; two
+  // independent publishers carry it only under a vendor-prefixed id and both
+  // declare it canonical for `gemini-3-flash-preview`. Their own capability
+  // flags disagree — as resellers' do in the live catalog — so no shared
+  // reseller record answers and the owner path decides. The declaration only
+  // translates the name; the capacity stays Google's own.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: { "gemini-3-flash-preview": {
+      id: "gemini-3-flash-preview", tool_call: true,
+      limit: { context: 1_048_576, output: 65_536 },
+    } } },
+    neon: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000, output: 1 },
+    } } },
+    pioneer: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000, output: 2 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  });
+  assert.equal(match?.providerKey, "google", "the owner's own record answers");
+  assert.equal(match?.modelId, "gemini-3-flash-preview");
+  assert.equal(match?.limit.context, 1_048_576, "capacity comes from the owner, not the declarers");
+  assert.equal(match?.limit.output, 65_536);
+});
+
+test("one reseller's private alias is not evidence for a canonical translation", async (t) => {
+  // A single publisher's own naming choice must not rewrite the id: the served
+  // name keeps the record that reseller publishes for it, and the owner's
+  // preview record is never projected onto it.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: { "gemini-3-flash-preview": {
+      id: "gemini-3-flash-preview", tool_call: true, limit: { context: 1_048_576 },
+    } } },
+    "some-reseller": { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  });
+  assert.equal(match?.providerKey, "some-reseller", "the served id keeps its own publisher");
+  assert.equal(match?.limit.context, 1_000_000, "an uncorroborated alias never borrows the owner's capacity");
+});
+
+test("an ambiguous canonical translation stays unmatched", async (t) => {
+  // Two corroborated targets say the name maps two ways. The resellers disagree
+  // on capability flags, so no shared record answers either; nothing is claimed.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: {
+      "gemini-3-flash-preview": {
+        id: "gemini-3-flash-preview", tool_call: true, limit: { context: 1_048_576 },
+      },
+      "gemini-3-flash-lite": {
+        id: "gemini-3-flash-lite", tool_call: true, limit: { context: 1_000_000 },
+      },
+    } },
+    neon: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+    pioneer: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+    opencode: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      canonical_model_id: "google/gemini-3-flash-lite",
+      limit: { context: 1_000_000 },
+    } } },
+    vercel: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-lite",
+      limit: { context: 1_000_000 },
+    } } },
+  });
+  assert.equal(catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  }), undefined);
+});
+
+test("a canonical translation never displaces an id that already resolves", async (t) => {
+  // The relay's id is published outright by a reseller, so the ordinary lookup
+  // answers. A corroborated declaration pointing elsewhere must not override
+  // that: translation only fills a gap, it never rewrites a served name.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: { "gemini-3-flash-preview": {
+      id: "gemini-3-flash-preview", tool_call: true, limit: { context: 1_048_576 },
+    } } },
+    neon: { models: { "gemini-3-flash": {
+      id: "gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+    pioneer: { models: { "gemini-3-flash": {
+      id: "gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  });
+  assert.equal(match?.modelId, "gemini-3-flash", "the served id keeps its own record");
 });

@@ -174,10 +174,21 @@ destination, chat as the home surface, tools and permissions inline.
 - Empty state: a restrained hero title ("What can I help you build?" — an open
   project turns its name into a dotted-underline
   switcher that lists the sidebar's open projects, can search them, can
-  clone a git repository from a syntactically public remote (ADR 0247 / D416), and can open another local folder), an optional first-run
+  clone a git repository from a syntactically public remote (ADR 0247 / D416), and can open another local folder or a remote project on a connected host), an optional first-run
   checklist, and a bottom-reserved composer. Task entry starts directly in the composer; no
   redundant supporting paragraph, developer starter cards, or contextual
   quick-action row is rendered (D204/D206).
+- Create project uses one dialog with local folder, Git, and remote host sources.
+  The project name is editable for every source and remains locally managed.
+  Remote selection chooses a connected host and an absolute directory, without
+  a Host project catalog; Settings → Remote Hosts opens the same dialog with the
+  clicked host preselected. Browse opens a separate directory dialog with path
+  entry, parent navigation, directory rows and explicit confirmation. Cancel
+  returns to the project form and restores focus; stale host responses cannot
+  replace the current selection. The same sidebar, switcher, archive and chat
+  workflow manage created projects. Model choices and requests use local settings;
+  remote machines execute admitted workspace tools only. Actual remote paths
+  are display/execution data, never local filesystem activation paths.
 - With transcript: message stream + tool disclosure rows (D071), a contextual
   message-scoped review card immediately after each successful workspace
   Write/Edit row, docked composer, and a session-scoped permission card inline.
@@ -213,6 +224,24 @@ destination, chat as the home surface, tools and permissions inline.
   dense tree rather than detached cards. Hovering or focusing the project title
   reveals the full project path. Pressing the title and moving 8px reorders
   the group.
+- **Running activity**: a project group whose sessions have live work marks
+  that fact on its *header*, because a collapsed group folds its body to a
+  zero-height `inert` region and would otherwise hide every row-level status
+  dot exactly when the answer is most useful. Two independent affordances
+  share one amber `--ds-warning` vocabulary (a pending permission keeps the
+  purple `--ds-purple` used by the conversation row):
+  - a **count badge** after the project name, showing running and
+    permission-waiting counts as separate capsules so the two figures are
+    never read as one number;
+  - an **activity rail**: a 2px track down the group's left edge with a
+    travelling pulse, spanning the opened conversation list and shrinking to
+    the header while the group is collapsed, plus a matching count.
+  Remote host groups carry the same pair. Settings → General → Sidebar owns
+  one master switch (`AppSettings.sidebarRunningIndicators`) gating two
+  sub-switches (`sidebarRunningBadge`, `sidebarRunningRail`); absent values
+  mean on, so existing installs keep the affordances without a migration.
+  Motion is decoration only: `prefers-reduced-motion` keeps both static
+  shapes legible with the animation removed.
 - **Project actions**: open folder reveals the primary project directory; Edit
   project changes the host-owned logical group name and adjusts eligible
   non-primary roots (keeping renderer metadata in sync); pin/unpin changes
@@ -224,6 +253,28 @@ destination, chat as the home surface, tools and permissions inline.
   delete remain separate actions. Rename edits the task label only; archive
   never removes the transcript. Open folder is a project action, not a
   conversation action.
+- **Isolated sessions** (ADR 0329): the project menu offers **New isolated
+  session**. Opening the menu probes the project: the item stays disabled
+  until the answer arrives, and for an unsuitable project (not git, no
+  commits, detached `HEAD`, missing or old git) it stays disabled with the
+  reason shown under it. Creating probes again; a dirty project gets an info
+  toast that uncommitted changes are not included. The menu also
+  holds **Worktree setup command…**. An isolated row shows an `Isolated` badge
+  (or `Conflict`, `Folder missing`, `Setup failed`) and adds **Merge into
+  project…** (preview of commits and files, then merge; conflicting files are
+  listed and stay in the session; the `Conflict` badge clears as soon as the
+  session resolves or abandons the conflict, and the next merge concludes it),
+  **Sync from project** (labelled with the number of new project commits
+  when the menu opens, disabled when there are none or while the session is
+  conflicted, which also hides the `↓N` marker; it merges the project's
+  branch into the session so the session continues on current code, and a
+  conflict stays in the session like a merge conflict; a row that lacks project
+  commits shows a `↓N` marker next to its badge, read in the background when
+  isolated sessions change, after a merge or sync, and on window focus at most
+  every 15 seconds, so rendering the list never waits for git), **Show worktree folder**, and **Setup log**.
+  Its delete confirmation states that unmerged work will be lost. Isolated
+  sessions are never reused as the empty draft and cannot move to another
+  project; forks are ordinary sessions.
 - **Temporary-task attachments**: selecting a saved attachment opens its file
   preview even without an open project. Back returns to the no-project browsing
   state. Branches preserve referenced pasted/imported inputs as child-owned
@@ -232,10 +283,12 @@ destination, chat as the home surface, tools and permissions inline.
   first, and Name. Pinned rows precede unpinned rows. Project groups switch
   to `manual` by dragging a title or using ArrowUp/ArrowDown on that
   title. Session `manual` remains a compatibility value.
-- **Conversation list**: each group shows the ten most-recent sessions in the
-  active sort order by default; the remainder folds behind a **Load N more…**
-  row that expands the full time-grouped list on click. Pinned rows precede
-  unpinned rows and are never pushed behind the fold; the expansion state is
+- **Conversation list**: each project group shows the ten most-recent sessions
+  in the active sort order by default; the remainder folds behind a **Load N
+  more…** row. The list has no time-group headings. Rows show the title and a
+  localized last-reply age through seven calendar days, then a concrete date;
+  hovering or focusing a row replaces the date with its session actions. Pinned
+  rows precede unpinned rows and are never pushed behind the fold; expansion is
   not persisted.
 - **Standalone sessions**: path-less sessions remain in the separate Sessions
   section and never inherit the last active project's workspace.
@@ -319,13 +372,17 @@ schedule. Renaming an Hourly task does not restart its interval.
 ### 3.4 Extensions
 
 The Extensions destination is a focused plugin surface with a compact header and
-only two tabs: **Installed** and **Marketplace**. Installed groups plugin rows
+only two tabs: **Installed** and **Marketplace**. Installed groups plugin cards
 by state — Needs attention / Updates available / Active / Turned off — as soft
-tiles stacked under a group label (D296). Marketplace remains the browse/install
-card grid and always uses the official catalog. The page draws no dividers:
-header, toolbar, rows, cards and the detail sheet's sections are set apart by
-tone and spacing, and hairlines are reserved for floating layers (menus, sheet,
-dialogs). MCP, Skills, and Subagents are not tabs or sections of Extensions.
+tiles in an auto-filling card grid under a group label (D296). Marketplace
+remains the browse/install card grid and always uses the official catalog.
+Public ratings and reviews are read-only here: cards carry a rating chip, the
+detail sheet carries a ratings summary, and a review drawer opens over the
+sheet; writing a review is a link out to the plugin centre's own page. The page
+draws no dividers: header, toolbar, cards and the detail sheet's sections are
+set apart by tone and spacing, and hairlines are reserved for floating layers
+(menus, sheet, dialogs). MCP, Skills, and Subagents are not tabs or sections of
+Extensions.
 
 ### 3.5 Settings (full-page takeover)
 ### 3.5 Settings (full-page takeover)

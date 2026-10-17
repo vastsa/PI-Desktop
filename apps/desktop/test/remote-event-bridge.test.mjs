@@ -68,7 +68,7 @@ test("host-scope session.created fires lifecycle and refreshes sessions with the
   assert.equal(events.length, 1);
   assert.equal(events[0].channel, IPC.event.sessionsChanged);
   assert.equal(events[0].payload.reason, "remote.session.created");
-  assert.equal(events[0].payload.selectSessionId, REMOTE_SESSION_ID);
+  assert.equal(events[0].payload.selectSessionId, undefined);
 });
 
 test("host-scope session.archived tells the router to release the id without selecting it", () => {
@@ -261,4 +261,59 @@ test("an unknown kind stays quiet — the bridge never throws on unfamiliar even
   bridge.handle(makeEnvelope({ kind: "made.up.kind", payload: {} }));
   assert.equal(events.length, 0);
   assert.equal(warnings.length, 0);
+});
+
+function snapshot(overrides = {}) {
+  return {
+    session: { id: HOST_SESSION_ID, planningState: "inactive", updatedAt: "2026-09-18T10:00:00.000Z" },
+    pendingApprovals: [{ id: "a1", sessionId: HOST_SESSION_ID, turnId: "t1", kind: "tool", summary: "read", revision: 1 }],
+    pendingInputs: [{ id: "q1", sessionId: HOST_SESSION_ID, turnId: "t1", questions: [{ question: "which?", options: ["a"], multiSelect: false }] }],
+    cursor: { epoch: "epoch-1", sequence: 3 }, revision: 1, generatedAt: "2026-09-18T10:00:00.000Z",
+    items: [], activeItems: [], queuedTurns: [], hasMoreHistory: false, ...overrides,
+  };
+}
+
+test("snapshot restores pending prompts once using the live event mapping", () => {
+  const { bridge, events } = collect();
+  bridge.restoreSnapshot(snapshot());
+  bridge.restoreSnapshot(snapshot());
+  assert.deepEqual(events.filter(e => e.channel === IPC.event.agentMessage).map(e => e.payload.event.type), ["tool_permission_request", "asktool_request"]);
+  assert.equal(events[0].payload.event.request.requestId, makeRemoteApprovalRequestId(REMOTE_SESSION_ID, "a1"));
+  assert.equal(events[1].payload.event.request.requestId, "q1");
+  bridge.handle(makeEnvelope({ kind: "approval.resolved", sequence: 4, payload: { approvalId: "a1" } }));
+  bridge.handle(makeEnvelope({ kind: "input.resolved", sequence: 5, payload: { inputId: "q1" } }));
+  bridge.restoreSnapshot(snapshot());
+  bridge.restoreSnapshot(snapshot({ cursor: { epoch: "epoch-1", sequence: 5 }, pendingApprovals: [], pendingInputs: [] }));
+  assert.equal(events.filter(e => e.channel === IPC.event.agentMessage).length, 2);
+});
+
+test("snapshot restores a pending plan through planning_state", () => {
+  const { bridge, events } = collect();
+  bridge.restoreSnapshot(snapshot({ pendingInputs: [], pendingApprovals: [{ id: "p1", kind: "plan", title: "Plan", summary: "Do it", revision: 2, sessionId: HOST_SESSION_ID, turnId: "t1" }] }));
+  assert.equal(events[0].payload.event.type, "planning_state");
+  assert.equal(events[0].payload.event.state, "awaiting_approval");
+  assert.equal(events[0].payload.event.proposalId, "p1");
+});
+
+test("peer-resolved interactions explicitly clear the corresponding renderer card", () => {
+  const { bridge, events } = collect();
+  bridge.handle(makeEnvelope({ kind: "approval.resolved", sequence: 4, payload: { approvalId: "a1" } }));
+  bridge.handle(makeEnvelope({ kind: "input.resolved", sequence: 5, payload: { inputId: "q1" } }));
+  assert.deepEqual(events.filter(e => e.channel === "pi-desktop/remote/event/interactions").map(e => e.payload), [
+    { kind: "resolved", sessionId: REMOTE_SESSION_ID, requestKind: "permission", requestId: makeRemoteApprovalRequestId(REMOTE_SESSION_ID, "a1") },
+    { kind: "resolved", sessionId: REMOTE_SESSION_ID, requestKind: "ask", requestId: "q1" },
+  ]);
+});
+
+test("recovery snapshot replaces pending cards, including after renderer reload at the same cursor", () => {
+  const { bridge, events } = collect();
+  bridge.restoreSnapshot(snapshot());
+  bridge.restoreSnapshot(snapshot());
+  bridge.restoreSnapshot(snapshot({ cursor: { epoch: "epoch-1", sequence: 5 }, pendingApprovals: [], pendingInputs: [] }));
+  const states = events.filter(e => e.channel === "pi-desktop/remote/event/interactions").map(e => e.payload);
+  assert.equal(states.length, 3);
+  assert.equal(states[0].permissions[0].sessionId, REMOTE_SESSION_ID);
+  assert.equal(states[0].asks[0].requestId, "q1");
+  assert.deepEqual(states[1], states[0]);
+  assert.deepEqual(states[2], { kind: "snapshot", sessionId: REMOTE_SESSION_ID, permissions: [], asks: [] });
 });

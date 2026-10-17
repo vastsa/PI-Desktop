@@ -16,6 +16,7 @@ import {
 } from "../../lib/session-transcript";
 import { getSessionMessageSnapshot, getSessionToolMessagePositions } from "../../lib/session-transcript-updates";
 import { sessionReadLooksEmpty } from "../../lib/session-transcript-read";
+import { isAutomationSession } from "../../lib/session-origin";
 import { sessionIsArchived, type SessionMeta } from "../../lib/sidebar-preferences";
 import {
   normalizeProjectPath,
@@ -405,7 +406,11 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       normalizeProjectPath(projectPath) ?? "<temporary>",
     latestSessionInScope: (sessions, projectPath, sessionMeta) =>
       sessions
-        .filter((session) => sessionMatchesProject(session, projectPath))
+        .filter(
+          (session) =>
+            !isAutomationSession(session) &&
+            sessionMatchesProject(session, projectPath),
+        )
         .sort((a, b) => {
           const aUpdated = Date.parse(a.updatedAt);
           const bUpdated = Date.parse(b.updatedAt);

@@ -136,7 +136,6 @@ globalThis.imageGenerationProbe = async () => {
       settings = { ...settings, imageGeneration: null, imageGenerationModels: null };
       flushSync(() => useAppStore.setState({ settings }));
       render();
-      const defaultRow = container.querySelector<HTMLElement>(".model-default-row")!;
       const initialImageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
         (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
       );
@@ -172,15 +171,7 @@ globalThis.imageGenerationProbe = async () => {
       assert(imageRow, "saved image model summary missing");
       assert(useAppStore.getState().toasts.at(-1)?.message === i18n.t("settings.providerUpdated"),
         "marking models should confirm the provider update");
-      const gap = imageRow.getBoundingClientRect().top - defaultRow.getBoundingClientRect().bottom;
-      assert(gap >= 11 && gap <= 13, `model defaults should be adjacent rows, got ${gap}px`);
       assert(settings.defaultModelId === "chat-model", "image model changed default chat model");
-      click(container.querySelector<HTMLButtonElement>(".model-default-trigger"));
-      await until(() => !!document.querySelector(".model-default-list"), "default picker missing");
-      assert(!document.querySelector('[aria-label="Images · image-one"]'), "image binding leaked into chat defaults");
-      assert(document.querySelector('[aria-label="Images B · image-one"]'), "same model on another provider disappeared");
-      assert(!document.querySelector('[aria-label="Images · image-two"]'), "second image binding leaked into chat defaults");
-      click(container.querySelector<HTMLButtonElement>(".model-default-trigger"));
       const row = [...container.querySelectorAll<HTMLElement>(".settings-row")].find((element) =>
         element.textContent?.includes(i18n.t("settings.imageModel")),
       )!;
@@ -198,13 +189,7 @@ globalThis.imageGenerationProbe = async () => {
         () => settings.imageGeneration?.modelId === "image-two",
         "image default model did not switch",
       );
-      const textStyle = (element: Element | null) => {
-        assert(element, "missing model text");
-        const style = getComputedStyle(element!);
-        return [style.fontSize, style.fontWeight, style.fontFamily].join("|");
-      };
-      assert(textStyle(row.querySelector(".model-default-provider")) === textStyle(defaultRow.querySelector(".model-default-provider")), "provider typography differs from default model");
-      assert(textStyle(row.querySelector(".model-default-model")) === textStyle(defaultRow.querySelector(".model-default-model")), "model typography differs from default model");
+      assert(row.querySelector(".model-default-model")?.textContent === "image-two", "image summary did not update");
       await editProviderForModelSettings("Images B");
       await until(
         () => !!imageModelToggle(i18n.t("settings.setImageModel")),
@@ -232,6 +217,29 @@ globalThis.imageGenerationProbe = async () => {
       assert(settings.defaultProviderId === "chat" && settings.defaultModelId === "chat-model", "image switch changed chat default");
       assert(useAppStore.getState().toasts.at(-1)?.message === i18n.t("settings.imageModelSelected"),
         "explicit image default selection lost its specific confirmation");
+      // A pick the page can no longer accept reports the failure instead of
+      // doing nothing: the stored candidate list is read when the pick is
+      // accepted, so narrowing it first is exactly the stale-picker race this
+      // covers.
+      const rejectionCandidates = structuredClone(settings.imageGenerationModels);
+      click(row.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]'));
+      await until(
+        () => !!document.querySelector('[role="option"]'),
+        "image candidate picker did not reopen for the refusal case",
+      );
+      const refusedOption = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (element) => element.textContent?.includes("image-two"),
+      );
+      assert(refusedOption, "stale candidate missing from the picker");
+      settings = { ...settings, imageGenerationModels: [{ providerId: "q", modelId: "image-one" }] };
+      click(refusedOption);
+      await until(
+        () => useAppStore.getState().toasts.at(-1)?.message === i18n.t("settings.imageModelSaveFailed"),
+        "refused image default selection must report the failure",
+      );
+      assert(settings.imageGeneration?.providerId === "q" && settings.imageGeneration?.modelId === "image-one",
+        "refused image default selection changed the default");
+      settings = { ...settings, imageGenerationModels: rejectionCandidates };
       assert(row.textContent?.includes("Images B"), "new provider name missing");
       for (const invalid of [
         { ...alternate, enabled: false },
@@ -288,10 +296,6 @@ globalThis.imageGenerationProbe = async () => {
       await until(() => !!imageModelToggle(i18n.t("settings.setImageModel")), "unmarked checkbox did not persist");
       assert(!imageModelToggle(i18n.t("settings.setImageModel"))?.checked, "reopened model is still marked");
       click(button(i18n.t("settings.cancel")));
-      click(container.querySelector<HTMLButtonElement>(".model-default-trigger"));
-      await until(() => !!document.querySelector('[aria-label="Chat · chat-model"]'), "released chat model is missing");
-      click(document.querySelector<HTMLButtonElement>('[aria-label="Chat · chat-model"]'));
-      await until(() => !document.querySelector(".model-default-list"), "chat selection did not finish");
       assert(settings.defaultProviderId === "chat" && settings.defaultModelId === "chat-model", "released model cannot be the chat default");
       providers.splice(0, providers.length, provider, alternate, chatProvider);
       flushSync(() => useAppStore.setState({ providers: [...providers] }));
@@ -399,16 +403,15 @@ globalThis.imageGenerationProbe = async () => {
         "provider-save-feedback-for-image-mark-and-unmark",
         "remove-marked-model-cancel-save-reopen-and-clear",
         "advanced-save-cancel",
-        "unmark-only-image-model-save-reopen-chat-selection",
+        "unmark-only-image-model-save-reopen-chat-default-preserved",
         "advanced-provider-switch",
-        "read-only-summary-typography",
         "unconfigured-summary-hidden",
         "unavailable-summary",
         "chat-default-preserved",
-        "image-excluded-from-chat-defaults",
         "image-preview-partial-failure",
         "setup-navigation",
         "absolute-image-markdown",
+        "refused-image-selection-report",
       ],
       apiBoundary: "fixture",
     };

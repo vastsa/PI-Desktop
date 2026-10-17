@@ -113,8 +113,15 @@ const runtimeSource = readFileSync(
 );
 const mainSource = readMainSourceSync();
 
+test("browser.reveal is admitted by the plugin host API allowlist", () => {
+  const allowlist = runtimeSource.match(/const HOST_API_ALLOWLIST = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+  assert.match(allowlist, /"browser\.reveal"/);
+  assert.match(runtimeSource, /this\.services\.browser\.reveal\(this\.browserSessionId\(pluginId\)\)/);
+});
+
 test("in-flight tool.execute session survives the child host-api round trip", () => {
   assert.match(runtimeSource, /private readonly toolInvocations = new PluginToolInvocations/);
+  assert.match(runtimeSource, /reveal: async \(\) => \{[\s\S]*browserSessionId\(pluginId\)/);
   assert.match(runtimeSource, /toolInvocations\.begin\(target/);
   assert.match(runtimeSource, /invocationId: invocation\.id/);
   assert.match(runtimeSource, /this\.browserSessionId\(pluginId\)/);

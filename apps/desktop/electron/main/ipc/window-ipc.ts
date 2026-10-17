@@ -10,6 +10,7 @@ import {
   parseTraySessionPreferences,
   type NativeMenuAction,
   type WindowControlAction,
+  type LifecycleDialogChoice,
   type TraySessionPreferences,
 } from "@pi-desktop/shared";
 import {
@@ -20,8 +21,9 @@ import {
 } from "../work-panel-window";
 import {
   DEFAULT_WINDOW_CORNER_RADIUS,
-  setWindowCornerRadius,
 } from "../window-shape";
+import { applyWindowCornerRadius, usesWindows11NativeCorners } from "../window-native-corners";
+import { applyMainWindowBackground } from "../window-background";
 import type { IpcRegistrar } from "./types";
 
 export type WindowIpcDependencies = {
@@ -33,6 +35,8 @@ export type WindowIpcDependencies = {
   getWorkPanelChatWidthSetter: () => ((width: number) => number) | null;
   applyCloseBehavior: (behavior: "tray" | "quit") => void;
   getCloseBehavior: () => "ask" | "tray" | "quit";
+  markLifecycleDialogRendererReady: (window: BrowserWindow) => boolean;
+  respondLifecycleDialog: (senderWindowId: number, requestId: unknown, choice: LifecycleDialogChoice) => boolean;
   markMenuRendererReady: (window: BrowserWindow) => boolean;
   executeNativeMenuAction: (action: NativeMenuAction) => unknown;
   setTraySessionPreferences: (preferences: TraySessionPreferences) => Promise<void>;
@@ -49,6 +53,8 @@ export function registerWindowIpc({
   applyCloseBehavior,
   getCloseBehavior,
   markMenuRendererReady,
+  markLifecycleDialogRendererReady,
+  respondLifecycleDialog,
   executeNativeMenuAction,
   setTraySessionPreferences,
 }: WindowIpcDependencies): void {
@@ -135,13 +141,23 @@ export function registerWindowIpc({
     const color = isWindowBackgroundColor(requested)
       ? requested
       : builtinWindowBackground(theme);
+    const windows11NativeCorners = usesWindows11NativeCorners(
+      process.platform,
+      process.getSystemVersion(),
+    );
+    applyMainWindowBackground(
+      mainWindow,
+      process.platform,
+      color,
+      windows11NativeCorners,
+      builtinWindowBackground(theme),
+    );
     const cornerRadius = process.platform === "win32"
-      ? setWindowCornerRadius(
+      ? await applyWindowCornerRadius(
           mainWindow,
           typeof requestedRadius === "number" ? requestedRadius : DEFAULT_WINDOW_CORNER_RADIUS,
         )
       : null;
-    mainWindow.setBackgroundColor(color);
     return { applied: true, theme, color, cornerRadius };
   });
 
@@ -160,13 +176,13 @@ export function registerWindowIpc({
       case "minimize":
         mainWindow.minimize();
         break;
+      // `toggleMaximize` and the rest run through the shared native-menu
+      // action so the maximize/fullscreen interlock (issue #1655) has one
+      // implementation: calling `mainWindow.maximize()` directly would skip
+      // the fullscreen-first rule and leave both flags set.
       case "toggleMaximize":
-        if (mainWindow.isMaximized()) mainWindow.unmaximize();
-        else mainWindow.maximize();
-        break;
       case "close":
-        mainWindow.close();
-        break;
+        return executeNativeMenuAction(input.action as NativeMenuAction);
     }
     return {
       maximized: !mainWindow.isDestroyed() && mainWindow.isMaximized(),
@@ -194,6 +210,37 @@ export function registerWindowIpc({
     return { behavior };
   });
 
+  handleWithEvent(IPC.invoke.lifecycleDialogReady, async (event) => {
+    registrar.assertMainWindowSender(event);
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || !markLifecycleDialogRendererReady(window)) {
+      throw Object.assign(new Error("lifecycle dialog renderer is not ready"), {
+        errorCode: ErrorCodes.INTERNAL,
+      });
+    }
+    return { ready: true };
+  });
+
+  handleWithEvent(IPC.invoke.lifecycleDialogRespond, async (event, input: unknown = {}) => {
+    registrar.assertMainWindowSender(event);
+    const value = input && typeof input === "object"
+      ? input as Record<string, unknown>
+      : null;
+    if (
+      !value ||
+      typeof value.requestId !== "string" ||
+      !value.requestId ||
+      value.requestId.length > 64 ||
+      (value.choice !== "cancel" && value.choice !== "confirm" && value.choice !== "tray" && value.choice !== "quit")
+    ) {
+      throw Object.assign(new Error("invalid lifecycle dialog response"), {
+        errorCode: ErrorCodes.INVALID_ARGUMENT,
+      });
+    }
+    return {
+      accepted: respondLifecycleDialog(event.sender.id, value.requestId, value.choice as LifecycleDialogChoice),
+    };
+  });
   handleWithEvent(IPC.invoke.menuRendererReady, async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const mainWindow = getMainWindow();

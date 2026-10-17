@@ -19,6 +19,8 @@
  *   - every child line is forwarded live with a `[sign] ` prefix (redacted),
  *   - `codesign` is wrapped by scripts/macos-codesign-shim.sh so each call is
  *     timed through $PI_CODESIGN_LOG (see --codesign-log),
+ *   - when PI_STAPLER_MAX_ATTEMPTS is set, `xcrun stapler staple` is wrapped
+ *     with bounded retries; every other xcrun invocation passes through,
  *   - a heartbeat reports phase/idle time/active codesign while output is
  *     silent, plus a bounded stall diagnostic dump,
  *   - a hard timeout terminates the whole process group and exits 124,
@@ -48,6 +50,9 @@ import { fileURLToPath } from "node:url";
 
 const SHIM_SOURCE_PATH = fileURLToPath(
   new URL("./macos-codesign-shim.sh", import.meta.url),
+);
+const STAPLER_SHIM_SOURCE_PATH = fileURLToPath(
+  new URL("./macos-stapler-retry-shim.sh", import.meta.url),
 );
 const DEFAULT_CODESIGN_LOG = join(
   tmpdir(),
@@ -264,6 +269,26 @@ function resolveRealCodesign(pathValue) {
   return "/usr/bin/codesign";
 }
 
+function resolveRealXcrun(pathValue) {
+  try {
+    const result = spawnSync("bash", ["-c", "command -v xcrun"], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: pathValue },
+    });
+    const candidates = (result.stdout ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const candidate = candidates[candidates.length - 1];
+    if (typeof candidate === "string" && candidate.startsWith("/")) {
+      return candidate;
+    }
+  } catch {
+    // Fall through to the system default.
+  }
+  return "/usr/bin/xcrun";
+}
+
 /**
  * Line splitter that keeps partial lines buffered so a child killed mid-line
  * still flushes its remainder on exit ('end' or an explicit flush()).
@@ -428,41 +453,74 @@ function run() {
   };
 
   const isDarwin = process.platform === "darwin";
-  const useShim = options.codesignShim && isDarwin;
+  const useCodesignShim = options.codesignShim && isDarwin;
+  const useStaplerShim =
+    typeof process.env.PI_STAPLER_MAX_ATTEMPTS === "string" &&
+    process.env.PI_STAPLER_MAX_ATTEMPTS.trim() !== "";
+  const useShim = useCodesignShim || useStaplerShim;
   let shimRoot = "";
   let childEnv = { ...process.env };
 
-  let shimActive = false;
+  let codesignShimActive = false;
+  let staplerShimActive = false;
   if (useShim) {
     try {
-      const realCodesign = resolveRealCodesign(process.env.PATH ?? "");
       shimRoot = mkdtempSync(join(tmpdir(), "pi-desktop-signing-watchdog-"));
       const shimDir = join(shimRoot, "bin");
       mkdirSync(shimDir, { recursive: true });
-      const shimPath = join(shimDir, "codesign");
-      writeFileSync(shimPath, readFileSync(SHIM_SOURCE_PATH));
-      chmodSync(shimPath, 0o755);
-      mkdirSync(dirname(options.codesignLog), { recursive: true });
-      // Start from an empty log so a previous run cannot pollute the summary.
-      writeFileSync(options.codesignLog, "");
+      if (useCodesignShim) {
+        const realCodesign = resolveRealCodesign(process.env.PATH ?? "");
+        const shimPath = join(shimDir, "codesign");
+        writeFileSync(shimPath, readFileSync(SHIM_SOURCE_PATH));
+        chmodSync(shimPath, 0o755);
+        mkdirSync(dirname(options.codesignLog), { recursive: true });
+        // Start from an empty log so a previous run cannot pollute the summary.
+        writeFileSync(options.codesignLog, "");
+        childEnv = {
+          ...childEnv,
+          PI_CODESIGN_LOG: options.codesignLog,
+          PI_CODESIGN_REAL: realCodesign,
+        };
+        codesignShimActive = true;
+      }
+      if (useStaplerShim) {
+        const realXcrun = resolveRealXcrun(process.env.PATH ?? "");
+        const shimPath = join(shimDir, "xcrun");
+        writeFileSync(shimPath, readFileSync(STAPLER_SHIM_SOURCE_PATH));
+        chmodSync(shimPath, 0o755);
+        childEnv = { ...childEnv, PI_XCRUN_REAL: realXcrun };
+        staplerShimActive = true;
+      }
       childEnv = {
         ...childEnv,
         PATH: `${shimDir}:${process.env.PATH ?? ""}`,
-        PI_CODESIGN_LOG: options.codesignLog,
-        PI_CODESIGN_REAL: realCodesign,
       };
-      shimActive = true;
     } catch (error) {
-      // Timing data is diagnostics: losing it must not fail the release.
+      if (shimRoot !== "") {
+        try {
+          rmSync(shimRoot, { recursive: true, force: true });
+        } catch {
+          // Best effort: a leftover temp directory is harmless.
+        }
+      }
       shimRoot = "";
       process.stderr.write(
-        `[sign] warning: codesign timing shim disabled (${redact(error.message)})\n`,
+        `[sign] warning: signing command shims disabled (${redact(error.message)})\n`,
       );
+      codesignShimActive = false;
+      staplerShimActive = false;
+      if (useStaplerShim) {
+        process.stderr.write(
+          "[sign] error: could not install the requested stapler retry shim.\n",
+        );
+        process.exitCode = 1;
+        return;
+      }
     }
   }
 
   process.stdout.write(
-    `[sign] watchdog label=${options.label} timeout=${options.timeoutSeconds}s stall=${options.stallSeconds}s heartbeat=${options.heartbeatSeconds}s codesign-shim=${shimActive ? "on" : "off"}\n`,
+    `[sign] watchdog label=${options.label} timeout=${options.timeoutSeconds}s stall=${options.stallSeconds}s heartbeat=${options.heartbeatSeconds}s codesign-shim=${codesignShimActive ? "on" : "off"} stapler-shim=${staplerShimActive ? "on" : "off"}\n`,
   );
   process.stdout.write(
     `[sign] watchdog command: ${redact(options.command.map((part) => (/\s/.test(part) ? JSON.stringify(part) : part)).join(" "))}\n`,
@@ -485,7 +543,7 @@ function run() {
   );
   const heartbeatDueMs = Math.max(0, heartbeatIntervalMs - tickIntervalMs);
   const readShimState = () =>
-    useShim
+    useCodesignShim && codesignShimActive
       ? readCodesignLog(options.codesignLog)
       : { calls: [], active: [], failures: 0 };
 
@@ -563,7 +621,7 @@ function run() {
   }
 
   function codesignLogTail() {
-    if (!useShim) return [];
+    if (!useCodesignShim || !codesignShimActive) return [];
     try {
       const raw = readFileSync(options.codesignLog, "utf8");
       return raw

@@ -26,6 +26,10 @@ fn key(entity: &PortableEntity) -> (String, String) {
     (entity.domain.clone(), entity.entity_id.clone())
 }
 
+pub(super) fn same_version(left: &PortableEntity, right: &PortableEntity) -> bool {
+    left.deleted == right.deleted && left.digest == right.digest
+}
+
 fn index(manifest: Option<&RevisionManifest>) -> BTreeMap<(String, String), PortableEntity> {
     manifest
         .map(|manifest| {
@@ -123,7 +127,7 @@ pub fn three_way(
             (None, None, None) => Vec::new(),
             (None, Some(local), None) => vec![local.clone()],
             (None, None, Some(remote)) => vec![remote.clone()],
-            (None, Some(local), Some(remote)) if local.digest == remote.digest => {
+            (None, Some(local), Some(remote)) if same_version(local, remote) => {
                 vec![local.clone()]
             }
             (None, Some(local), Some(remote)) => {
@@ -162,7 +166,7 @@ pub fn three_way(
                     vec![local_candidate, remote_candidate]
                 }
             }
-            (Some(_base), Some(local), Some(remote)) if local.digest == remote.digest => {
+            (Some(_base), Some(local), Some(remote)) if same_version(local, remote) => {
                 vec![local.clone()]
             }
             (Some(base), Some(local), Some(remote))
@@ -185,13 +189,13 @@ pub fn three_way(
                     vec![local_candidate, remote_candidate]
                 }
             }
-            (Some(base), Some(local), remote) if local.digest == base.digest => {
+            (Some(base), Some(local), remote) if same_version(local, base) => {
                 remote.cloned().into_iter().collect()
             }
-            (Some(base), local, Some(remote)) if remote.digest == base.digest => {
+            (Some(base), local, Some(remote)) if same_version(remote, base) => {
                 local.cloned().into_iter().collect()
             }
-            (Some(base), None, Some(remote)) if remote.digest == base.digest => {
+            (Some(base), None, Some(remote)) if same_version(remote, base) => {
                 vec![PortableEntity {
                     domain: base.domain.clone(),
                     entity_id: base.entity_id.clone(),
@@ -205,7 +209,7 @@ pub fn three_way(
                     resource_ids: Vec::new(),
                 }]
             }
-            (Some(base), Some(local), None) if local.digest == base.digest => {
+            (Some(base), Some(local), None) if same_version(local, base) => {
                 vec![PortableEntity {
                     domain: base.domain.clone(),
                     entity_id: base.entity_id.clone(),
@@ -290,18 +294,11 @@ pub fn snapshot_with_tombstones(
             continue;
         }
         if selection.is_selected(&entity.domain) {
-            snapshot.manifest.entities.push(PortableEntity {
-                domain: entity.domain.clone(),
-                entity_id: entity.entity_id.clone(),
-                label: entity.label.clone(),
-                deleted: true,
-                requires_approval: entity.requires_approval,
-                secret_bearing: entity.secret_bearing,
-                mapping_required: entity.mapping_required,
-                digest: entity.digest.clone(),
-                payload: entity.payload.clone(),
-                resource_ids: Vec::new(),
-            });
+            let mut tombstone = entity.clone();
+            tombstone.deleted = true;
+            tombstone.resource_ids.clear();
+            refresh_digest(&mut tombstone);
+            snapshot.manifest.entities.push(tombstone);
         } else {
             // Category opt-out is a subscription policy, not a delete. Keep
             // the last acknowledged value in the local merge input so remote
@@ -503,5 +500,30 @@ mod tests {
         assert_eq!(merged.entities.len(), 1);
         assert_eq!(merged.entities[0].payload["theme"], "dark");
         assert_eq!(merged.entities[0].payload["language"], "zh-CN");
+    }
+
+    #[test]
+    fn remote_deletion_reaches_an_unchanged_device() {
+        let base = manifest(vec![entity("a", "0")]);
+        let mut deleted = base.entities[0].clone();
+        deleted.deleted = true;
+        let remote = manifest(vec![deleted]);
+        let merged = three_way(Some(&base), &base, Some(&remote)).expect("remote deletion");
+        assert!(merged.conflicts.is_empty());
+        assert!(merged.entities[0].deleted);
+    }
+
+    #[test]
+    fn remote_deletion_conflicts_with_an_offline_edit() {
+        let base = manifest(vec![entity("a", "0")]);
+        let local = manifest(vec![entity("a", "edited")]);
+        let mut deleted = base.entities[0].clone();
+        deleted.deleted = true;
+        let remote = manifest(vec![deleted]);
+        let merged = three_way(Some(&base), &local, Some(&remote)).expect("delete versus edit");
+        assert_eq!(merged.conflicts.len(), 1);
+        assert_eq!(merged.entities.len(), 2);
+        assert!(merged.entities.iter().any(|entity| entity.deleted));
+        assert!(merged.entities.iter().any(|entity| !entity.deleted));
     }
 }

@@ -7,6 +7,10 @@
  * Companion of `RemoteHostRecord` inside main (which additionally carries
  * `deviceToken`). See ADR 0286 §Registry and R2b pairing UX.
  */
+import type { RacpProjectSummary, RacpSessionMode, RacpPermissionMode } from "../racp.js";
+import type { SessionSummary } from "./sessions.js";
+import type { ProviderImportSummary } from "../provider-sync.js";
+import type { AskToolRequest, ToolPermissionRequest } from "./agent.js";
 
 /**
  * How the desktop reaches a paired host.
@@ -55,13 +59,19 @@ export type RemoteHostSshMetadata = {
   remotePort: number;
   /** Release version the bootstrap installed, checked against `APP_VERSION`. */
   version: string;
+  /** Identity enrolled during bootstrap; absent on older descriptors. */
+  hostId?: string;
 };
+
+export type RemoteHostConnectionStatus = "connected" | "connecting" | "reconnecting" | "disconnected" | "action-required";
 
 export type RemoteHostSummary = {
   hostKey: string;
   label: string;
   url: string;
   connected: boolean;
+  /** Additive display state; absent on summaries produced by older desktop versions. */
+  status?: RemoteHostConnectionStatus;
   /** Absent on records written before the SSH bootstrap existed → `direct`. */
   transport?: RemoteHostTransport;
 };
@@ -136,3 +146,39 @@ export type RemoteHostBootstrapResult = {
   /** Ordered bootstrap steps that completed, for a Settings progress line. */
   steps: string[];
 };
+
+/** Remote filesystem paths are interpreted by the Host, never by Desktop. */
+export type RemoteHostProjectsRequest = { hostKey: string };
+export type RemoteHostProjectsResult = { projects: RacpProjectSummary[] };
+/** Remote Host paths are display/selection data, never local workspace targets. */
+export type RemoteHostBrowseProjectsRequest = { hostKey: string; path?: string };
+export type RemoteHostBrowseProjectsResult = {
+  path: string;
+  parent?: string;
+  entries: { name: string; path: string }[];
+};
+export type RemoteHostRegisterProjectRequest = { hostKey: string; path: string };
+export type RemoteHostRegisterProjectResult = { project: RacpProjectSummary & { path?: string } };
+export type RemoteHostSessionsRequest = { hostKey: string };
+export type RemoteHostSessionsResult = { sessions: SessionSummary[] };
+export type RemoteHostCreateSessionRequest = {
+  hostKey: string;
+  projectId: string;
+  title?: string;
+  mode?: RacpSessionMode;
+  permissionMode?: RacpPermissionMode;
+};
+export type RemoteHostCreateSessionResult = { session: SessionSummary };
+export type RemoteHostReconnectRequest = { hostKey: string };
+export type RemoteHostSyncProvidersRequest = {
+  hostKey: string;
+  providerIds: string[];
+  setDefault: boolean;
+};
+export type RemoteHostSyncProvidersResult = ProviderImportSummary;
+
+/** Main-to-renderer reconciliation only; never a remote mutation request. */
+export type RemoteInteractionUpdate = { sessionId: string } & (
+  | { kind: "snapshot"; permissions: ToolPermissionRequest[]; asks: AskToolRequest[] }
+  | { kind: "resolved"; requestKind: "permission" | "ask"; requestId: string }
+);

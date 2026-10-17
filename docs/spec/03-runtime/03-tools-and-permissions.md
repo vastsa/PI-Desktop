@@ -226,9 +226,11 @@ as binary content.
 - **Addressing.** In a project session, the model addresses scratch by absolute
   path only; the path is advertised in the system prompt, relative tool paths
   resolve against the project workspace, and `Bash` exports
-  `PI_SCRATCH_DIR`. In a temporary session, that same scratch directory is the
-  session workspace root, so relative Read/Glob/Grep/Write/Edit/Bash paths work
-  there without inheriting a project.
+  `PI_SCRATCH_DIR`. POSIX shells, including Git Bash on Windows, receive the
+  forward-slash path advertised in the prompt; PowerShell and cmd keep the
+  native path spelling. In a temporary session, that same scratch directory is
+  the session workspace root, so relative Read/Glob/Grep/Write/Edit/Bash paths
+  work there without inheriting a project.
 - **Containment.** `resolve_tool_path` tries the workspace root first, then
   the scratch root, applying the identical two-layer defense (lexical `..`
   normalization + canonicalized-ancestor symlink check) to each. A symlink
@@ -362,6 +364,50 @@ Serialization also protects the snapshot store, which both producers and `Edit`
 mutate: without the per-session permit, a concurrent record could land between a
 validation and its write.
 
+## 4e. Isolated session worktrees (ADR 0329)
+
+A session created with `isolated: true` in a git project owns a dedicated
+worktree at `<data_dir>/worktrees/<project-key>/<id>` on branch
+`pi-desktop/<id>`, created from the project's current `HEAD` (uncommitted
+project changes are not copied; git-ignored files listed in
+`.worktreeinclude` are, without following links). For such a session:
+
+- the worktree replaces the project path as `workspaceRoot` for every rule in
+  §4–§5, so file tools, Bash's working directory, review snapshots, and
+  artifacts resolve inside it; it never falls back to the main checkout
+  (a missing worktree fails with a `WORKTREE_*` error);
+- `AGENTS.md` instructions are read from the worktree, while project identity
+  (memory, skills, plugins, MCP, subagents) stays keyed to the project path;
+- Bash receives `PI_PORT` (first port of a 10-port block in 41000–48999; a
+  block is assigned only when all ten ports are free), `PI_PROJECT_ROOT`, and
+  `PI_WORKTREE_ROOT`;
+- the optional per-project setup command runs once in each new worktree, with
+  the same variables, in the user's default command shell
+  (`defaultCommandShell`, otherwise the platform default: Windows PowerShell on
+  Windows, bash elsewhere). It is not translated between dialects, so on
+  Windows it must use PowerShell syntax (`$env:PI_PORT`, `;` rather than
+  `&&` on Windows PowerShell 5.1) unless a POSIX shell such as Git Bash is
+  the configured default;
+- git hooks and fsmonitor are disabled for host-run git commands in the
+  worktree, and removal never follows links out of it;
+- the registered worktree folder must be a real directory: if it (or a
+  directory down to the project subdirectory) was replaced by a symbolic
+  link or a Windows junction, it is treated as missing (`WORKTREE_MISSING`)
+  and is never used as a tool root, merged, or synced, and deleting the
+  session removes only the link, never its target.
+
+The host's workspace diff collector applies the same Git hardening to every
+repository it inspects, including non-isolated workspaces. Each host-started
+Git command disables repository-configured hooks and `core.fsmonitor`, and
+removes environment variables that can redirect Git to another repository or
+inject command-scope configuration. Diff invocations also disable external diff
+and text-conversion helpers.
+
+Merging into the project is an explicit user action (preview, then merge with
+the preview token); it syncs the project branch into the worktree and only
+fast-forwards the project, so conflicts stay in the worktree. Deleting an
+isolated session discards its worktree and branch.
+
 ## 5. Bash Rules
 
 Host execution baseline:
@@ -370,12 +416,32 @@ Host execution baseline:
 - Default cwd = the originating session's `workspaceRoot`
 - Confirmation required by default
 - Set a mandatory 60s timeout; accept a 1s–21,600s override (D329)
+- A timeout returns `TOOL_TIMEOUT` with the effective `timeoutMs` budget and
+  guidance to raise that budget or split the command
 - Stream stdout and stderr separately, then return bounded final output
 - Truncate large output without mixing the two streams
 - No interactive TTY (MVP)
 - A command that exits non-zero returns `ok: false`, `isError: true`, and
   `errorCode: TOOL_FAILED` while preserving its `exitCode`, stdout, and stderr
   in `content` so the agent can diagnose the command without blindly retrying.
+- `runInBackground: true` detaches the command from the turn: the call returns
+  `backgroundTaskId` as soon as the shell starts, no timeout applies, and the
+  process survives `tools.abort` and `agent.abort`. The host owns the process
+  tree, reports it through the composer's running-tasks bar, and stops it on
+  request or on app shutdown. At most 32 tasks run concurrently and each stream
+  keeps its last 256KB.
+- Background output is drained before a terminal state is published, including
+  output queued when the process exits or is stopped. UTF-8 characters split
+  across pipe reads remain intact. Shutdown signals do not acquire output locks.
+- The task list keeps the existing Composer order: Todo, background commands,
+  Plan/Ask decisions, then the input. There is no configurable display priority.
+  The list scrolls within `min(200px, 24vh)` so additional tasks do not displace
+  the decision surfaces. Existing approval and Ask input gating is unchanged.
+- Only one output preview is open at a time. While its task runs, the Renderer
+  refreshes that preview at one-second intervals after the previous read settles;
+  collapsed outputs are not fetched. The preview shows at most 8,000 stdout
+  characters and 4,000 stderr characters. Late reads from a previous selection
+  are ignored. Read/stop failures are visible and stopping can be retried.
 
 Shell catalog (D190) exposes the stable IDs `windows-powershell`, `windows-pwsh`,
 `cmd`, `git-bash`, and `bash` where supported by the platform. The host persists
@@ -392,7 +458,7 @@ or executable path hash is accepted as shell identity.
 2. Unix: well-known locations (`/bin/bash`, `/usr/bin/bash`, `/usr/local/bin/bash`, Homebrew), then PATH
 3. Windows: `bash.exe` from Git for Windows — derived from the `git` on PATH, then standard install dirs, then PATH excluding the WSL launcher in `System32`
 
-- Unix invokes `bash -lc` (login shell keeps profile PATH for Finder/Dock launches); Windows invokes `bash -c` with `CREATE_NO_WINDOW`
+- Unix invokes `bash -lc` (login shell keeps profile PATH for Finder/Dock launches); Windows invokes `bash -c` with `CREATE_NO_WINDOW`. The hidden host-core runner that owns the command tree is created with `CREATE_NO_WINDOW` and, only when the job that contains the host grants `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, with `CREATE_BREAKAWAY_FROM_JOB`; it is then assigned to its own kill-on-close Job Object. Requesting the breakaway from the host's own job keeps a launcher or policy Job around the Desktop process from becoming the runner's termination scope. When that job withholds `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, the flag is omitted and the runner joins the host-owned job as a nested job, because `CreateProcess` fails with `ERROR_ACCESS_DENIED` for a breakaway the job forbids; the shell itself stays inside the host-owned job either way, so timeout and abort still terminate the complete command tree.
 - On Unix, the Bash tool additionally probes the user's login shell for its
   PATH — `$SHELL` (fallback `/bin/zsh` → `/bin/bash` → `/bin/sh`) with
   `-lic 'printf %s "$PATH"'`, 5s-bounded, cached per process — and injects it
@@ -406,6 +472,12 @@ or executable path hash is accepted as shell identity.
 - No bash bundled in the installer: Git for Windows is the Windows prerequisite (the app requires git anyway)
 - Resolution failure returns stable `SHELL_NOT_FOUND` with install guidance
 - Windows PowerShell and cmd use their native non-interactive invocation.
+- PowerShell output passes through PowerShell's own formatter, so objects
+  (tables, lists, hashtables, `Measure-Object` results) reach the agent as a
+  console shows them, not as type names. Stderr lines from native commands are
+  forwarded to stderr and do not fail the call by themselves: the call reports
+  the native exit code. Any other PowerShell error fails the call with exit
+  code 1.
 - PowerShell 7 resolves `pwsh.exe` from `%ProgramFiles%\PowerShell\7` (or
   `ProgramW6432` when the host process is 32-bit), then PATH, which covers
   machine-scope, Store, user-scope, and portable installs. The PATH probe
@@ -634,6 +706,16 @@ card can say which delegate wants the call (see `04-ux/03-permission-ux.md`
 Session-scoped `allow-session` grants are still per `toolName` and per session:
 one delegate's approval of `Bash` applies to the whole session, including the
 parent and other delegates.
+
+Inside an isolated session (§4e), a delegate whose tools include `Write` or
+`Edit` runs in its own worktree, branched from the session worktree after the
+session's pending edits are checkpointed; its `tools.execute` calls carry the
+delegation chain id as `delegationId`, which re-roots path rules and Bash to
+that worktree. A completed run is merged back with the same algorithm as
+"Merge into project"; a conflict, failure, or stop keeps the delegate branch
+and the report tells the parent to resume it. Read-only and Bash-only
+delegates, and every delegate of a non-isolated session, share the owning
+session's root unchanged.
 
 ## 11. Plugin Tools
 

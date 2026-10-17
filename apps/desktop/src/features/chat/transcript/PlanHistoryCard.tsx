@@ -1,3 +1,4 @@
+import { useChatSessionCapability } from "../../../hooks/use-chat-session-capability";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanProposal, UiMessage } from "@pi-desktop/shared";
@@ -15,6 +16,7 @@ export function PlanHistoryCard({ message, proposal, onUserInteraction }: {
   message: UiMessage; proposal: PlanProposal; onUserInteraction?: () => void;
 }) {
   const { t } = useTranslation();
+  const localToolsAllowed = useChatSessionCapability("canUseLocalTools");
   const bodyId = useId();
   const reveal = useMessageRevealRequest(message.id);
   const disclosure = useAutomaticDisclosure(false, reveal, disclosureKey("tool", message.id));
@@ -37,9 +39,9 @@ export function PlanHistoryCard({ message, proposal, onUserInteraction }: {
       </Badge>
       {message.planHistory?.superseded && <Badge>{t("planHistory.superseded")}</Badge>}
     </div>
-    {path && <Button variant="ghost" className="plan-history-artifact"
+    {path && <Button variant="ghost" className="plan-history-artifact" disabled={!localToolsAllowed}
       aria-label={t(`${kind}.openArtifactLabel`, { path })}
-      onClick={() => { onUserInteraction?.(); openTab(sessionId, preferredFileWorkPanelTab(path, views)); }}>
+      onClick={() => { if (!localToolsAllowed) return; onUserInteraction?.(); openTab(sessionId, preferredFileWorkPanelTab(path, views)); }}>
       {path}
     </Button>}
     {disclosure.open && <div id={bodyId} className="plan-history-body">

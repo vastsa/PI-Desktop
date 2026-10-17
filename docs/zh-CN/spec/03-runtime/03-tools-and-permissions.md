@@ -178,7 +178,8 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
 
 - **寻址。** 该模型仅通过绝对路径寻址；路径
   在系统提示中公布。相对刀具路径始终解析
-  反对工作区。 `Bash` 还导出 `PI_SCRATCH_DIR`。
+  反对工作区。 `Bash` 还导出 `PI_SCRATCH_DIR`。POSIX shell（包括 Windows 上的
+  Git Bash）收到提示中展示的正斜杠路径；PowerShell 和 cmd 保留原生路径格式。
 - **遏制。** `resolve_tool_path` 首先尝试工作空间根目录，然后
   暂存根，应用相同的两层防御（词汇 `..`
   规范化+规范化祖先符号链接检查）到每个。符号链接
@@ -301,6 +302,38 @@ type ReviewChange = {
 `patch`）——返回带有错误专属恢复提示的终止工具结果，代理随后停止并报告准确的不匹配。
 不要手动编辑旧的 unified-diff 块头，也不要继续修复循环。
 
+## 4e. 隔离会话 worktree（ADR 0329）
+
+在 git 项目中以 `isolated: true` 创建的会话拥有专属 worktree，位于
+`<data_dir>/worktrees/<project-key>/<id>`，分支为 `pi-desktop/<id>`，从项目当前
+`HEAD` 创建（项目中未提交的改动不会被复制；`.worktreeinclude` 列出的 git 忽略文件会被
+复制，且不跟随链接）。对这类会话：
+
+- worktree 取代项目路径成为 §4–§5 所有规则的 `workspaceRoot`，文件工具、Bash 工作
+  目录、审阅快照和产物都在其中解析；绝不回退到主检出（worktree 丢失时返回
+  `WORKTREE_*` 错误）；
+- `AGENTS.md` 指令从 worktree 读取，而项目身份（记忆、技能、插件、MCP、子代理）仍以
+  项目路径为键；
+- Bash 获得 `PI_PORT`（41000–48999 中一个 10 端口块的首端口；只有整段 10 个端口都空闲时才分配该块）、
+  `PI_PROJECT_ROOT` 和 `PI_WORKTREE_ROOT`；
+- 可选的项目初始化命令在每个新 worktree 中运行一次，带同样的变量，使用用户的默认命令
+  shell（`defaultCommandShell`，未设置时用平台默认：Windows 上为 Windows PowerShell，
+  其他平台为 bash）。命令不会在方言之间转换，因此在 Windows 上必须使用 PowerShell 语法
+  （`$env:PI_PORT`；Windows PowerShell 5.1 用 `;` 而不是 `&&`），除非默认 shell 配置为
+  Git Bash 等 POSIX shell；
+- 宿主在 worktree 中运行的 git 命令禁用 hooks 和 fsmonitor，删除时绝不跟随链接越出
+  worktree；
+- 登记的 worktree 文件夹必须是真实目录：若它（或通往项目子目录的某一级目录）被替换为符号链接或
+  Windows junction，即视为缺失（`WORKTREE_MISSING`），不会被用作工具根目录、合并或同步；删除会话时
+  只删除链接本身，绝不删除其目标。
+
+宿主的工作区差异收集器会对其检查的所有仓库应用相同的 Git 加固措施，包括非隔离工作区。每次由宿主启动
+Git 命令都会禁用仓库配置的 hooks 和 `core.fsmonitor`，并移除可将 Git 重定向到其他仓库或注入命令级配置的环境变量。差异命令也会禁用外部 diff 和文本转换辅助程序。
+
+合并到项目是显式的用户操作（先预览，再携带预览令牌合并）：先把项目分支同步进
+worktree，项目只做快进，因此冲突留在 worktree 中。删除隔离会话即丢弃其 worktree
+和分支。
+
 ## 5. Bash 规则
 
 主机执行基线：
@@ -309,6 +342,7 @@ type ReviewChange = {
 - 默认 cwd = 原始会话的 `workspaceRoot`
 - 默认需要确认
 - 设置强制 60 秒超时；接受 1 秒至 21,600 秒覆盖（D329）
+- 超时返回 `TOOL_TIMEOUT`，错误消息包含实际 `timeoutMs` 预算，并建议延长预算或拆分命令
 - 分别流式传输 stdout 和 stderr，然后返回有界的最终输出
 - 截断大输出而不混合两个流
 - 没有交互式 TTY (MVP)
@@ -331,7 +365,7 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 2. Unix：众所周知的位置（`/bin/bash`、`/usr/bin/bash`、`/usr/local/bin/bash`、Homebrew），然后是 PATH
 3. Windows：来自 Git 的 Windows 的 `bash.exe` — 派生自 PATH 上的 `git`，然后是标准安装目录，然后是排除 `System32` 中的 WSL 启动器的 PATH
 
-- Unix 调用 `bash -lc`（登录 shell 为 Finder/Dock 启动保留配置文件路径）； Windows 使用 `CREATE_NO_WINDOW` 调用 `bash -c`
+- Unix 调用 `bash -lc`（登录 shell 为 Finder/Dock 启动保留配置文件路径）；Windows 使用 `CREATE_NO_WINDOW` 调用 `bash -c`。负责拥有命令树的隐藏 host-core runner 会使用 `CREATE_NO_WINDOW` 创建，并且仅当宿主所在的 job 授予 `JOB_OBJECT_LIMIT_BREAKAWAY_OK` 时才加上 `CREATE_BREAKAWAY_FROM_JOB`，然后被分配到自己的 kill-on-close Job Object 中。按宿主自身 job 的能力请求 breakaway，使启动器或策略 Job 不会成为 Desktop 进程的终止范围。当该 job 未授予 `JOB_OBJECT_LIMIT_BREAKAWAY_OK` 时，`CreateProcess` 会以 `ERROR_ACCESS_DENIED` 拒绝该 breakaway，因此不再带上该标志，runner 改以嵌套 job 的形式加入 host 拥有的 job；无论哪种情况，shell 本身都留在这个 host 拥有的 job 中，所以超时和中止仍会终止完整的命令树。
 - 在 Unix 上，Bash 工具另外探测用户的登录 shell 以获取其信息
   路径 — `$SHELL`（回退 `/bin/zsh` → `/bin/bash` → `/bin/sh`）
   `-lic 'printf %s "$PATH"'`，5 秒范围内，每个进程缓存 — 并注入它
@@ -343,6 +377,10 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - 安装程序中没有捆绑 bash：Windows 的 Git 是 Windows 的先决条件（无论如何，该应用程序都需要 git）
 - 解决失败返回稳定的 `SHELL_NOT_FOUND` 并提供安装指导
 - Windows PowerShell 和 cmd 使用其本机非交互式调用。
+- PowerShell 输出经过 PowerShell 自身的格式化器，因此对象（表格、列表、哈希表、
+  `Measure-Object` 结果）以控制台显示的形式交给 Agent，而不是类型名。原生命令
+  写入 stderr 的行会转发到 stderr，但本身不会使调用失败：调用报告原生命令的退出码。
+  其他 PowerShell 错误会使调用以退出码 1 失败。
 - PowerShell 7 先解析 `%ProgramFiles%\PowerShell\7`（宿主进程为 32 位时为
   `ProgramW6432`）下的 `pwsh.exe`，再回退到 PATH，覆盖机器级安装、Store、
   用户级与便携安装。它与 Windows PowerShell 5.1 共用同一调用契约，且从不被
@@ -351,6 +389,18 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - Git Bash 使用发现的 Git 来执行 Windows 可执行文件。
 - Unix Bash 使用经过批准的系统 Bash 条目。
 - 用户中止和超时在返回之前终止整个进程树。
+- `runInBackground: true` 让命令脱离本轮：shell 一启动就返回 `backgroundTaskId`，
+  不再套用超时，进程也不会被 `tools.abort` / `agent.abort` 终止。进程树归宿主
+  所有，通过输入框上方的运行中任务栏展示，可由用户停止或随应用退出而结束。
+    最多同时运行 32 个任务，每个输出流保留最后 256KB。
+- 后台任务先排空输出，再发布最终状态，保留跨管道读取边界的 UTF-8 字符；
+  退出和停止时已排队的输出不会丢失。关闭宿主时发送停止信号不依赖输出锁。
+- 输入框上方保持 Todo、后台命令、Plan/Ask 决策、输入框的既有顺序，没有可配置的
+  显示优先级。任务列表在 `min(200px, 24vh)` 内滚动，不随任务数量无限增高；
+  审批和 Ask 对输入的既有约束不变。
+- 同时只展开一个输出预览；任务运行时，上次读取完成后每秒刷新一次，折叠的日志
+  不读取。预览最多展示 stdout 的 8,000 字符和 stderr 的 4,000 字符，忽略切换前
+  的过期响应。读取或停止失败会显示错误，停止操作可以重试。
 
 初始拒绝名单（可扩展）：
 
@@ -548,6 +598,12 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 会话范围的 `allow-session` 拨款仍按 `toolName` 和每个会话进行：
 一名代表对 `Bash` 的批准适用于整个会议，包括
 家长和其他代表。
+
+在隔离会话（§4e）中，工具包含 `Write` 或 `Edit` 的子代理在自己的 worktree 中运行：
+先为会话的未提交编辑建立检查点，再从会话 worktree 分出分支；它的 `tools.execute`
+调用携带委派链 id `delegationId`，路径规则和 Bash 因此以该 worktree 为根。运行完成后
+用与“合并到项目”相同的算法合回；冲突、失败或停止时保留子代理分支，报告会提示父代理
+续跑处理。只读和仅 Bash 的子代理，以及非隔离会话的所有子代理，仍共享所属会话的根目录。
 
 ## 11. 插件工具
 

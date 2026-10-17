@@ -50,6 +50,7 @@ import { generateSummaryWithUsage } from "./pi-runtime-compaction-summary.js";
 import { createCompactionSummaryMessage, type CompactionSummaryMessage } from "./pi-runtime-messages.js";
 import type { CompactionSettings, Entry, MessageEntry } from "./pi-runtime-types.js";
 import type { UsageObserver } from "./request-usage.js";
+import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
 import {
   DEFAULT_MAX_TOKENS,
@@ -448,7 +449,10 @@ function truncateDelegateUserMessage(
   tokenBudget: number,
 ): UserMessage {
   const text = delegateUserMessageText(message);
-  const maxChars = Math.max(1, tokenBudget) * 4;
+  const maxChars = Math.max(
+    1,
+    Math.floor(tokenBudget * ESTIMATED_TEXT_CHARS_PER_TOKEN),
+  );
   if (text.length <= maxChars) return message;
   if (maxChars <= DELEGATE_RETENTION_TRUNCATION_MARKER.length) {
     return {

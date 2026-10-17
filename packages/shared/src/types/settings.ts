@@ -88,7 +88,20 @@ export type AppSettings = {
    * Absent means 1. Range 0.8–1.5 in 0.025 steps. Window zoom is independent.
    */
   fontScale?: number;
-  /** Transcript presentation only; absent means detailed. Reasoning is retained. */
+  /**
+   * Show model reasoning in the transcript. Off keeps the live thinking
+   * indicator visible and hides completed reasoning rows and excerpts; absent
+   * falls back to the legacy `thinkingDisplayMode`. This is a presentation
+   * preference only: it never changes model thinking levels, stored reasoning,
+   * export, or execution, and it does not control turn-process folding.
+   */
+  showThinking?: boolean;
+  /**
+   * @deprecated Retained for persisted-settings compatibility. New writes use
+   * `showThinking`; this field is read only as a fallback when `showThinking`
+   * is absent. An explicit `compact` hides reasoning; `detailed`, an unknown
+   * value, or an absent field shows it.
+   */
   thinkingDisplayMode?: "detailed" | "compact";
   /**
    * @deprecated Unreleased D343 px field. Reads migrate into `fontScale`
@@ -157,6 +170,21 @@ export type AppSettings = {
    * platforms. Absent and false mean the system manages sleep normally.
    */
   preventScreenSleep?: boolean;
+  /**
+   * Sidebar project "running" affordances. The master switch gates both
+   * sub-switches; absent means disabled, so a fresh install shows a clean
+   * sidebar until the user opts in.
+   */
+  sidebarRunningIndicators?: boolean;
+  /** Count badge beside a project name. Only honored while the master is on. */
+  sidebarRunningBadge?: boolean;
+  /** Activity rail down the project group. Only honored while the master is on. */
+  sidebarRunningRail?: boolean;
+  /**
+   * Last-reply date shown at the right edge of session rows. Absent means
+   * disabled, so a fresh install shows a clean sidebar until the user opts in.
+   */
+  sidebarSessionTime?: boolean;
   /** Voice input settings (D-voice-runtime). */
   voice?: VoiceInputSettings;
   onboardingDismissed: boolean;

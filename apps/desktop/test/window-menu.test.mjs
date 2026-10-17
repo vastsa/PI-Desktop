@@ -397,7 +397,11 @@ test("desktop packaging builds the native host before every local target", () =>
       `${name} must build the native host before the packaging command`,
     );
   }
-  assert.equal(packageJson.build.win.extraResources[0].to, "bin/pi-desktop-host-core.exe");
+  assert.ok(
+    packageJson.build.win.extraResources.some(
+      ({ to }) => to === "bin/pi-desktop-host-core.exe",
+    ),
+  );
   assert.equal(packageJson.build.linux.extraResources[0].to, "bin/pi-desktop-host-core");
   assert.equal(packageJson.build.mac.extraResources[0].to, "bin/pi-desktop-host-core");
   assert.match(iconScriptSource, /package_icon = BUILD \/ "icon\.png"/);

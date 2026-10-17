@@ -77,15 +77,30 @@ describe("loadProjectInstructions", () => {
     });
   });
 
-  it("caps the complete chain at 32 KiB without splitting UTF-8 characters", async () => {
+  it("caps the project chain at 32 KiB without splitting UTF-8 characters and marks the cut", async () => {
     root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
     await writeFile(join(root, "AGENTS.md"), "中".repeat(20_000));
 
     const loaded = await loadProjectInstructions(root);
-    expect(Buffer.byteLength(loaded!.entries[0].content, "utf8")).toBeLessThanOrEqual(
-      32 * 1024,
+    const [content, notice] = loaded!.entries[0].content.split("\n\n");
+    expect(Buffer.byteLength(content, "utf8")).toBeLessThanOrEqual(32 * 1024);
+    expect(content.endsWith("中")).toBe(true);
+    expect(notice).toBe(
+      "[PI-Desktop truncated AGENTS.md: loaded the first 32766 of 60000 bytes; the rest of this file is not in context.]",
     );
-    expect(loaded!.entries[0].content.endsWith("中")).toBe(true);
+  });
+
+  it("does not load later project files once a truncated file exhausts the budget", async () => {
+    root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
+    await mkdir(join(root, "packages"), { recursive: true });
+    await writeFile(join(root, "AGENTS.md"), "r".repeat(40 * 1024));
+    await writeFile(join(root, "packages", "AGENTS.md"), "Use package rules.");
+
+    const loaded = await loadProjectInstructions(root, "packages/index.ts");
+    expect(loaded!.entries.map((entry) => entry.source)).toEqual(["AGENTS.md"]);
+    expect(loaded!.entries[0].content).toBe(
+      `${"r".repeat(32 * 1024)}\n\n[PI-Desktop truncated AGENTS.md: loaded the first 32768 of 40960 bytes; the rest of this file is not in context.]`,
+    );
   });
 
   it("treats missing and blank project instructions as absent", async () => {
@@ -166,14 +181,34 @@ describe("loadInstructionChain", () => {
     });
   });
 
-  it("shares the 32 KiB byte budget between global and project instructions", async () => {
+  it("gives global and project instructions independent 32 KiB budgets", async () => {
     root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
     const globalPath = join(root, "global-AGENTS.md");
     await writeFile(globalPath, "a".repeat(32 * 1024));
+    await writeFile(join(root, "AGENTS.md"), "p".repeat(32 * 1024));
+
+    await expect(loadInstructionChain(root, undefined, globalPath)).resolves.toEqual({
+      entries: [
+        { source: "~/.pi/agent/AGENTS.md", content: "a".repeat(32 * 1024) },
+        { source: "AGENTS.md", content: "p".repeat(32 * 1024) },
+      ],
+    });
+  });
+
+  it("marks an oversized global file as truncated and still loads project instructions", async () => {
+    root = await mkdtemp(join(tmpdir(), "pi-desktop-instructions-"));
+    const globalPath = join(root, "global-AGENTS.md");
+    await writeFile(globalPath, "a".repeat(64 * 1024));
     await writeFile(join(root, "AGENTS.md"), "Use project conventions.");
 
     await expect(loadInstructionChain(root, undefined, globalPath)).resolves.toEqual({
-      entries: [{ source: "~/.pi/agent/AGENTS.md", content: "a".repeat(32 * 1024) }],
+      entries: [
+        {
+          source: "~/.pi/agent/AGENTS.md",
+          content: `${"a".repeat(32 * 1024)}\n\n[PI-Desktop truncated ~/.pi/agent/AGENTS.md: loaded the first 32768 of 65536 bytes; the rest of this file is not in context.]`,
+        },
+        { source: "AGENTS.md", content: "Use project conventions." },
+      ],
     });
   });
 });

@@ -940,3 +940,22 @@ SHA-256 并发布该版本，再把目录与安装包同步到
 - [开发者体验](/zh-CN/spec/07-plugins/10-plugin-devex)
 - [权限](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)
 - [Hello 参考插件](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/hello)
+
+### Fetch redirect policy (unreleased)
+
+Check host support before relying on a policy; old hosts can ignore unknown
+request fields. Never fall back to a raw network request.
+
+```js
+if (typeof pi.net.getCapabilities !== "function") throw new Error("Upgrade PI-Desktop");
+const capabilities = await pi.net.getCapabilities();
+if (!capabilities.fetchRedirectModes.includes("error")) throw new Error("Unsupported host");
+const response = await pi.net.fetch({ url: endpoint, redirect: "error" });
+```
+
+`error` rejects every 3xx with `REDIRECT_DISALLOWED` before accessing Location.
+`manual` returns the original status, headers and body. Omitted/`follow` retains
+the existing bounded, per-hop egress-checked behavior. Invalid modes are rejected
+before I/O. No mode expands network permissions. See the
+[complete contract](/spec/07-plugins/03-plugin-api.md#net) and the
+local-only test plugin at `examples/plugins/fetch-redirect/README.md` in the repository.

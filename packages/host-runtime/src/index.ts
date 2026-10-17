@@ -18,3 +18,5 @@ export * from "./live-work/coordinator.js";
 export * from "./live-work/context.js";
 export * from "./live-work/feedback-scheduler.js";
 export * from "./live-work/result-summary.js";
+export * from "./fs-index.js";
+export * from "./chat-ref-resolve.js";

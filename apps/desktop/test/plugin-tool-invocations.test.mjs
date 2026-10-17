@@ -52,6 +52,7 @@ const PLUGIN = `
       execute: async (args, ctx) => {
         ctx.signal.addEventListener("abort", () => aborted.add(ctx.sessionId), { once: true });
         await pi.desktop.invoke({ operation: "session/get", args: [ctx.sessionId] });
+        if (args.reveal) await pi.browser.reveal();
         if (args.wait) {
           return new Promise((resolve) => {
             const finish = () => { aborted.add(ctx.sessionId); resolve({ aborted: true }); };
@@ -76,12 +77,13 @@ const PLUGIN = `
 async function fixture(t, onInvoke) {
   const dir = mkdtempSync(join(tmpdir(), "pi-tool-invocations-"));
   const id = "demo.invocations";
-  const permissions = ["agent.tool.register", "desktop.control", "session.read"];
+  const permissions = ["agent.tool.register", "browser.cdp", "desktop.control", "session.read"];
   writeFileSync(join(dir, "manifest.json"), JSON.stringify({
     schemaVersion: 1, id, name: id, version: "0.0.1", main: "main.js", permissions,
   }));
   writeFileSync(join(dir, "main.js"), PLUGIN);
   const calls = [];
+  const reveals = [];
   const runtime = new PluginRuntime({
     hostEntry,
     spawnProcess({ entry }) {
@@ -97,14 +99,24 @@ async function fixture(t, onInvoke) {
       operations: [{ id: "session/get", risk: "read" }, { id: "session/create", risk: "write" }],
       async invoke(input) { calls.push(input); return onInvoke(input); },
     },
+    browser: {
+      async reveal(sessionId) { reveals.push(sessionId); },
+    },
     getSessionContext: async (sessionId) => ({ sessionId, messages: [], truncated: false }),
   });
   t.after(async () => { await runtime.unload(id); rmSync(dir, { recursive: true, force: true }); });
   await runtime.loadFromPath(dir, permissions);
   const tool = runtime.getTools().find((entry) => entry.name === "probe");
   assert.ok(tool);
-  return { id, runtime, tool, calls };
+  return { id, runtime, tool, calls, reveals };
 }
+
+test("browser.reveal reaches Main with the invoking session context", { timeout: 5000 }, async (t) => {
+  const { tool, reveals } = await fixture(t, async () => ({}));
+  const result = await tool.execute({ reveal: true }, { sessionId: "session-b", turnId: "turn-b" });
+  assert.equal(result.sessionId, "session-b");
+  assert.deepEqual(reveals, ["session-b"]);
+});
 
 test("real plugin calls keep sender identity through concurrent out-of-order completion", { timeout: 5000 }, async (t) => {
   const enteredA = deferred();

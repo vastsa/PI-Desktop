@@ -5,6 +5,7 @@ const {
   FILE_MANAGER_PLUGIN_TAB,
   activateWorkPanelTabState,
   browserPluginTab,
+  browserPluginTabForReveal,
   closeWorkPanelTabState,
   createWorkPanelFileRequest,
   emptyWorkPanelContext,
@@ -71,6 +72,16 @@ test("selecting an already-open tool removes only the source launcher tab", () =
 
   assert.deepEqual(replaced.tabs, [browser]);
   assert.equal(replaced.activeTabId, browser.id);
+});
+
+test("Browser reveal reuses the originating session's browser tab", () => {
+  const first = browserPluginTab("https://example.com/first");
+  const latest = browserPluginTab("https://example.com/latest");
+  const tabs = [first, toolWorkPanelTab("review"), latest];
+
+  assert.equal(browserPluginTabForReveal(tabs, "review", first.id), first);
+  assert.equal(browserPluginTabForReveal(tabs, latest.id), latest);
+  assert.equal(browserPluginTabForReveal([], null).id, browserPluginTab().id);
 });
 
 test("file tabs normalize lexical paths and remain distinct by resource", () => {

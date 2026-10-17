@@ -206,7 +206,9 @@ Renderer, Electron, host, and agent should propagate these identifiers.
 The application still preserves bounded duration metadata needed by product
 features: `ToolsExecuteResult.duration_ms`, transcript `toolDurationMs` and
 `responseDurationMs`, delegation start/completion timestamps, and bounded
-provider diagnostics. These values support the transcript, context inspector,
+provider diagnostics. Completed assistant responses use pi-ai 1.1.0's
+monotonic request duration when available; interrupted responses retain the
+sidecar stopwatch estimate. These values support the transcript, context inspector,
 throughput display, and audit records; they do not create timing log lines.
 
 Host-core audit rows may retain the existing permission and execution timing

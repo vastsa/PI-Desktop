@@ -5,7 +5,7 @@ import type {
   UiMessage,
 } from "@pi-desktop/shared";
 import { addUsage, hostedSearchRounds } from "@pi-desktop/shared";
-import { isDelegationStartTool } from "./tool-display";
+import { getToolAction, isDelegationStartTool } from "./tool-display";
 import { messageContentFacts } from "./transcript-summary";
 
 export type AssistantActivityItem =
@@ -83,6 +83,18 @@ function isVisibleMessage(message: UiMessage): boolean {
  * tools, and lifecycle rows (TaskWait/TaskList/TaskStop) do not (D319). */
 function isDelegationStartActivity(item: AssistantActivityItem): boolean {
   return item.kind === "tool" && isDelegationStartTool(item.message.toolName);
+}
+
+/**
+ * A `Bash` call or a run alias renders as a standalone row outside any process
+ * or activity-group disclosure (ADR turn-process-and-thinking-display).
+ * Adjacent Bash rows each stay standalone, so a run item neither joins the
+ * preceding segment nor absorbs the next one.
+ */
+export function isStandaloneRunActivity(
+  item: AssistantActivityItem,
+): item is Extract<AssistantActivityItem, { kind: "tool" }> {
+  return item.kind === "tool" && getToolAction(item.message.toolName) === "run";
 }
 
 /** Delegate rows grouped by the `Task` call that produced them, chains merged. */
@@ -233,11 +245,20 @@ export function buildTranscriptEntries(
   const pushActivity = (item: AssistantActivityItem) => {
     const current = ensureTurn(item.message);
     const last = current.parts[current.parts.length - 1];
+    const standalone = isStandaloneRunActivity(item);
+    const lastStandalone =
+      last?.kind === "activity" &&
+      last.items.length === 1 &&
+      isStandaloneRunActivity(last.items[0]);
     // A delegation card is only the Task fan-out. Mixing the parent's later
     // Read/Grep/thinking into that group painted them as subagent work (D319).
+    // A standalone run row never merges with a neighbour, so adjacent Bash
+    // calls each keep their own row.
     if (
       last?.kind === "activity" &&
       last.items.length > 0 &&
+      !standalone &&
+      !lastStandalone &&
       isDelegationStartActivity(last.items[0]) === isDelegationStartActivity(item)
     ) {
       last.items.push(item);

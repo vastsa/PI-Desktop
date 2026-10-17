@@ -207,7 +207,24 @@ async function requestSummary(
       ),
     };
   }
-  return { ok: true, value: { text: textFromContent(response.content), usage: response.usage } };
+  // Thinking-only / output-limited replies extract to "" via textFromContent
+  // (thinking blocks are excluded). An empty checkpoint would look like a
+  // successful compaction while silently discarding working context.
+  const text = textFromContent(response.content);
+  if (!text.trim()) {
+    const limited =
+      response.stopReason === "length"
+        ? " (output limited before any summary text)"
+        : "";
+    return {
+      ok: false,
+      error: new CompactionError(
+        "summarization_failed",
+        `${errorLabel} failed: empty summary text${limited}`,
+      ),
+    };
+  }
+  return { ok: true, value: { text, usage: response.usage } };
 }
 
 export async function generateSummaryWithUsage(

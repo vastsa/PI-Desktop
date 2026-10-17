@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
 import {
   hostedSearchReplayProjection,
   normalizeContext,
@@ -55,7 +56,7 @@ describe("typed Anthropic search error results", () => {
       expect(projection).toEqual(result.wire);
       const assistant = message(result);
       const expectedChars = [request, result].reduce((sum, block) => sum + JSON.stringify(hostedSearchReplayProjection(block)).length, 0);
-      expect(estimateMessageTokens(assistant, model)).toBe(Math.ceil(expectedChars / 4));
+      expect(estimateMessageTokens(assistant, model)).toBe(Math.ceil(expectedChars / ESTIMATED_TEXT_CHARS_PER_TOKEN));
       let fetches = 0;
       const events = [
         { type: "message_start", message: { id: "response-1", model: model.id, usage: { input_tokens: 1, output_tokens: 0 } } },

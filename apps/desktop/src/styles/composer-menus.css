@@ -533,18 +533,18 @@
 }
 
 /*
-  The full wire id is the identity, and it stays whole: a long route name wraps
-  instead of hiding the part that distinguishes two configured models. The id,
-  its friendly name and the badges share one line — id first, name next, badges
-  on the trailing edge — because the stacked column that preceded it pushed
-  every row's content into the left half of the menu and left the rest empty.
+  One row per model, and it stays one row: the friendly name takes the space it
+  needs up to the row's trailing markers (provider, capability icons, context
+  window), and anything longer than that is truncated with an ellipsis instead
+  of wrapping the row onto a second line. The full name and the wire id remain
+  reachable as the button's title, so identity is still one hover away.
 */
 .composer-model-option-main {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: 2px 8px;
 }
@@ -561,8 +561,9 @@
   flex: 0 1 auto;
   max-width: 100%;
   color: var(--ds-text-primary);
-  overflow-wrap: anywhere;
-  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A name the user set is a label of its own, and reads as one: the catalog name
@@ -577,12 +578,23 @@
 
 .composer-model-option-meta {
   display: flex;
-  flex: 0 0 auto;
-  /* Pinned to the row's trailing edge: the capability icons and the window are
-     what a row shows on the right. */
+  flex: 0 1 auto;
+  min-width: 0;
+  /* Pinned to the row's trailing edge: the provider, the capability icons and
+     the window are what a row shows on the right. The provider name gives way
+     first, so a long model name keeps its own space. */
   margin-left: auto;
   align-items: center;
   gap: 4px;
+}
+
+/* The provider trailing a row is supporting text on a shared line: it yields
+   width before the model name and never wraps the row. */
+.composer-model-option-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Capability markers are icons, not words: a row carries up to two of them, and
@@ -606,7 +618,7 @@
   border-radius: var(--radius-sm);
 }
 
-.composer-plus-item.active span:last-child {
+.composer-plus-item.active span:last-child:not(.composer-ac-path) {
   color: var(--ds-text-primary);
 }
 

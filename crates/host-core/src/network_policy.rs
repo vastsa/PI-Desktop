@@ -3,7 +3,7 @@
 //!
 //! `packages/shared/src/network-policy.ts` holds the whole policy and lives in
 //! the processes that judge an address. The host asks it one question: is the
-//! relaxed mode in force? That is the answer the WebDAV transport needs before
+//! relaxed mode in force? That is the answer the S3 transport needs before
 //! it opens a plaintext hop to a LAN endpoint the user configured. The stored
 //! settings value is mirrored here whenever the app hands the host its
 //! settings, exactly as `network_proxy.rs` mirrors the proxy.

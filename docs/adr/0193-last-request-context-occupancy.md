@@ -1,6 +1,7 @@
 # ADR 0193: Last-request occupancy in the context inspector
 
-- Status: Accepted
+- Status: Accepted (amended 2026-10-11: occupancy no longer adds
+  `reasoningTokens`, which the reported output already contains)
 - Date: 2026-09-09
 - Deciders: PI-Desktop renderer and UX maintainers
 - Amends: D103, D184, D244, D347, ADR 0047, ADR 0103, ADR 0184
@@ -18,14 +19,17 @@ total after nine tool calls. The numbers were billed correctly and still
 looked like a leak. OpenCode's context widget and compaction check use only
 the last assistant message:
 
-`input + output + reasoning + cache.read + cache.write`
+`input + output + cache.read + cache.write`
 
 ## Decision
 
 1. Occupancy, remaining capacity, used/window counts, turn total, provider
    input/output/cache/reasoning, and cache hit rate are the newest
    usage-bearing assistant message (the last model request). Occupancy is
-   `input + output + reasoning + cacheRead + cacheWrite` on that message.
+   `input + output + cacheRead + cacheWrite` on that message: `output` already
+   carries the reasoning tokens (Chat Completions `completion_tokens`, Responses
+   `output_tokens`, Google `candidatesTokenCount + thoughtsTokenCount`), so
+   `reasoningTokens` is a subset and is never added again.
 2. Completed-turn generation speed and the aggregate tool row still describe
    the visual turn (every fragment and tool call between the surrounding
    user messages).

@@ -20,8 +20,10 @@ attachment validation against the running model and workspace; the sidecar
 rechecks the target after asynchronous preparation and calls `Agent.steer`.
 
 Steering keeps the active configuration and durable turn. Started tools finish
-before the next model request consumes input. The runtime handles admission
-at its closing boundary and while awaiting delegates. Stop closes admission
+before the next model request consumes input, except `TaskWait`, which yields
+to accepted user input without canceling its delegates (issue #1607). The
+runtime handles admission at its closing boundary and while awaiting delegates.
+Stop closes admission
 and retains accepted input as history without independently replaying it.
 
 The existing event-persistence module journals input through the outbox.

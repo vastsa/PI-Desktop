@@ -4,6 +4,7 @@ import {
   type EnglishCatalog,
 } from "@pi-desktop/i18n/locale-info";
 import { en } from "@pi-desktop/i18n/locales/en";
+import { remoteEn, remoteZh } from "../locales/remote";
 
 type LocaleModule = { default: EnglishCatalog };
 type NonEnglishLocale = Exclude<AppLocale, "en">;
@@ -44,6 +45,7 @@ export async function loadRendererResources(
       return [
         id,
         {
+          remote: id === "zh-CN" || id === "zh-TW" ? remoteZh : remoteEn,
           translation: flattenCatalog(
             catalog as unknown as Record<string, unknown>,
           ),

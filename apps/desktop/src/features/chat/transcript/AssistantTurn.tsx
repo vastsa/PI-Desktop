@@ -20,9 +20,11 @@ import {
   collectDelegationTimings,
 } from "../../../lib/subagent-topology";
 import {
-  resolveThinkingDisplayMode,
-  shouldGroupTurnProcess,
+  segmentTurnProcess,
+  type TurnProcessRunSegment,
 } from "../../../lib/turn-process";
+import { sessionAllows } from "../../../lib/remote-session-safety";
+import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
 import { useAppStore } from "../../../stores/app-store";
 import { IconBranch, IconReview } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
@@ -34,6 +36,8 @@ import {
 import { activityItemsEqual } from "./ActivityGroup";
 import { GeneratedImages } from "./GeneratedImages";
 import { MessageRow } from "./MessageRow";
+import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
+import { ToolRow } from "./ToolRow";
 import { assistantTurnMenuItems } from "./menu-items";
 import {
   useChatTextActions,
@@ -53,6 +57,7 @@ import { slotMessage } from "../../../plugins/renderer-slots/slot-message";
 type AssistantTurnProps = {
   entry: AssistantTurnEntry;
   isActive: boolean;
+  delegationsLive?: boolean;
   runtimeActivity?: AgentActivity;
 };
 
@@ -60,7 +65,7 @@ function assistantTurnPropsEqual(
   previous: AssistantTurnProps,
   next: AssistantTurnProps,
 ) {
-  if (previous.isActive !== next.isActive || previous.runtimeActivity !== next.runtimeActivity) return false;
+  if (previous.isActive !== next.isActive || previous.delegationsLive !== next.delegationsLive || previous.runtimeActivity !== next.runtimeActivity) return false;
   if (previous.entry === next.entry) return true;
   if (
     previous.entry.id !== next.entry.id ||
@@ -130,11 +135,13 @@ export function TranscriptEntryView({
   entry,
   isRunning,
   isActive,
+  delegationsLive,
   runtimeActivity,
 }: {
   entry: TranscriptEntry;
   isRunning: boolean;
   isActive: boolean;
+  delegationsLive?: boolean;
   runtimeActivity?: AgentActivity;
 }) {
   if (entry.kind === "assistant-turn") {
@@ -142,6 +149,7 @@ export function TranscriptEntryView({
       <AssistantTurn
         entry={entry}
         isActive={isActive}
+        delegationsLive={delegationsLive}
         runtimeActivity={runtimeActivity}
       />
     );
@@ -161,6 +169,7 @@ function transcriptEntryKey(entry: TranscriptEntry): string {
 type TranscriptHistoryProps = {
   entries: TranscriptEntry[];
   isRunning: boolean;
+  liveDelegations?: ReadonlyMap<string, true>;
 };
 
 /**
@@ -171,6 +180,7 @@ type TranscriptHistoryProps = {
 export const TranscriptHistory = memo(function TranscriptHistory({
   entries,
   isRunning,
+  liveDelegations,
 }: TranscriptHistoryProps) {
   return (
     <>
@@ -180,6 +190,7 @@ export const TranscriptHistory = memo(function TranscriptHistory({
           entry={entry}
           isRunning={isRunning}
           isActive={false}
+          delegationsLive={entry.kind === "assistant-turn" && liveDelegations?.has(entry.id)}
         />
       ))}
     </>
@@ -187,6 +198,7 @@ export const TranscriptHistory = memo(function TranscriptHistory({
 }, (previous, next) => {
   if (
     previous.isRunning !== next.isRunning ||
+    previous.liveDelegations !== next.liveDelegations ||
     previous.entries.length !== next.entries.length
   ) {
     return false;
@@ -223,9 +235,28 @@ export const TranscriptTail = memo(function TranscriptTail({
   transcriptEntryEqual(previous.entry, next.entry)
 );
 
+/**
+ * A `Bash`/run call rendered on its own, outside every process and activity
+ * disclosure. It stays visible with all disclosures collapsed, and its own
+ * detail stays closed until the user opens it.
+ */
+const StandaloneRunRow = memo(function StandaloneRunRow({
+  segment,
+}: {
+  segment: TurnProcessRunSegment;
+}) {
+  return (
+    <div className="turn-run-row" data-run-row="true">
+      <ToolRow imagesInTurn message={segment.item.message} />
+      <ReviewChangeCard message={segment.item.message} />
+    </div>
+  );
+});
+
 export const AssistantTurn = memo(function AssistantTurn({
   entry,
   isActive,
+  delegationsLive,
   runtimeActivity,
 }: AssistantTurnProps) {
   const { t } = useTranslation();
@@ -233,6 +264,9 @@ export const AssistantTurn = memo(function AssistantTurn({
   const { copyText, selectText } = useChatTextActions();
   const retryAssistantMessage = useAppStore((s) => s.retryAssistantMessage);
   const forkAssistantMessage = useAppStore((s) => s.forkAssistantMessage);
+  const paneSessionId = useSlotSessionId();
+  const session = useAppStore((s) => s.sessions.find((item) => item.id === paneSessionId));
+  const canEditMessages = sessionAllows(session ?? (paneSessionId.startsWith("remote:") ? { id: paneSessionId } : undefined), "canEditMessages");
   const summary = getAssistantTurnSummary(entry);
   const { actionMessage, metaMessage, latestUsageMessage, usage, responseDurationMs, responseOutputTokens } = summary;
   const modelId = metaMessage?.modelId ?? latestUsageMessage?.modelId;
@@ -264,7 +298,7 @@ export const AssistantTurn = memo(function AssistantTurn({
               ".message-bubble",
             ),
           ].at(-1) ?? null,
-        complete: complete && Boolean(actionMessage),
+        complete: complete && Boolean(actionMessage) && canEditMessages,
         actions: { copyText, selectText },
         onRegenerate: () => {
           if (actionMessage) void retryAssistantMessage(actionMessage.id);
@@ -288,8 +322,8 @@ export const AssistantTurn = memo(function AssistantTurn({
   // or text and never on a Task's attached child transcript identity.
   const delegationItems = useMemo(() => tools.map((message) => ({ kind: "tool" as const, message })), [tools]);
   const rawDelegationStatuses = useMemo(
-    () => collectDelegationStatuses(delegationItems, { turnLive: isActive }),
-    [delegationItems, isActive],
+    () => collectDelegationStatuses(delegationItems, { turnLive: isActive || delegationsLive === true }),
+    [delegationItems, isActive, delegationsLive],
   );
   const rawDelegationTimings = useMemo(
     () => collectDelegationTimings(delegationItems),
@@ -309,12 +343,12 @@ export const AssistantTurn = memo(function AssistantTurn({
   );
   statusesRef.current = turnDelegationStatuses;
   timingsRef.current = turnDelegationTimings;
-  const groupProcess = useAppStore((state) =>
-    shouldGroupTurnProcess(
-      resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode),
-    ),
-  );
   const { process, responses } = summary;
+  const segments = useMemo(() => segmentTurnProcess(process), [process]);
+  // The live tail is the turn's actual last part. A process chunk opens and
+  // reports live state only while it owns that part, so a superseded thinking
+  // chunk cannot keep a false "Thinking" header once a Bash call or a separate
+  // streamed answer takes over the turn.
   const activePart = isActive ? entry.parts.at(-1) : undefined;
   const partContext = { isActive, activePart, runtimeActivity, turnDelegationStatuses, turnDelegationTimings };
 
@@ -328,16 +362,26 @@ export const AssistantTurn = memo(function AssistantTurn({
       aria-label={t("chat.assistantMessage")}
     >
       <div className="message-col">
-        {groupProcess ? (
-          <>
-            <TurnProcess turnId={entry.id} processParts={process} turnParts={entry.parts} isActive={isActive} delegationStatuses={turnDelegationStatuses}>
-              <AssistantTurnParts parts={process} {...partContext} />
+        {segments.map((segment) => {
+          if (segment.kind === "run") {
+            return <StandaloneRunRow key={`run-${segment.key}`} segment={segment} />;
+          }
+          const ownsActiveTail =
+            activePart !== undefined && segment.parts.includes(activePart);
+          return (
+            <TurnProcess
+              key={`process-${segment.key}`}
+              turnId={segment.key}
+              processParts={segment.parts}
+              turnParts={entry.parts}
+              isActive={isActive && ownsActiveTail}
+              delegationStatuses={turnDelegationStatuses}
+            >
+              <AssistantTurnParts parts={segment.parts} {...partContext} />
             </TurnProcess>
-            <AssistantTurnParts parts={responses} {...partContext} />
-          </>
-        ) : (
-          <AssistantTurnParts parts={entry.parts} {...partContext} />
-        )}
+          );
+        })}
+        <AssistantTurnParts parts={responses} {...partContext} />
         {generatedImages}
         {!isActive && metaMessage ? (
           <MessageMeta
@@ -352,22 +396,22 @@ export const AssistantTurn = memo(function AssistantTurn({
             <MessageTimestamp createdAt={actionMessage.createdAt} />
             <ActionSlotSide slot="assistantAction" side="left" message={slotReply} />
             <CopyButton text={content} label={t("chat.copy")} />
-            <TooltipButton
+            {canEditMessages ? <TooltipButton
               className="copy-btn icon"
               tooltip={t("chat.forkResponse")}
               ariaLabel={t("chat.forkResponse")}
               onClick={() => void forkAssistantMessage(actionMessage.id)}
             >
               <IconBranch size={13} />
-            </TooltipButton>
-            <TooltipButton
+            </TooltipButton> : null}
+            {canEditMessages ? <TooltipButton
               className="copy-btn icon"
               tooltip={t("chat.retry")}
               ariaLabel={t("chat.retry")}
               onClick={() => void retryAssistantMessage(actionMessage.id)}
             >
               <IconReview size={13} />
-            </TooltipButton>
+            </TooltipButton> : null}
             <ActionSlotSide slot="assistantAction" side="right" message={slotReply} />
           </div>
         ) : null}

@@ -28,12 +28,16 @@ pub(crate) fn simple_canonicalize(path: &Path) -> std::io::Result<PathBuf> {
 pub struct WorkspaceState {
     pub path: Option<String>,
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<crate::db::RemoteWorkspace>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectWorkspace {
     pub path: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<crate::db::RemoteWorkspace>,
 }
 
 impl WorkspaceState {
@@ -42,8 +46,20 @@ impl WorkspaceState {
             (Some(path), Some(name)) => Some(ProjectWorkspace {
                 path: path.clone(),
                 name: name.clone(),
+                remote: self.remote.clone(),
             }),
             _ => None,
+        }
+    }
+
+    pub fn set_remote(&mut self, project: &crate::db::ProjectGroupRecord) -> ProjectWorkspace {
+        self.path = Some(project.primary_path.clone());
+        self.name = Some(project.name.clone());
+        self.remote = project.remote.clone();
+        ProjectWorkspace {
+            path: project.primary_path.clone(),
+            name: project.name.clone(),
+            remote: project.remote.clone(),
         }
     }
 
@@ -56,17 +72,20 @@ impl WorkspaceState {
             .unwrap_or("workspace")
             .to_string();
         let path_str = path.to_string_lossy().to_string();
+        self.remote = None;
         self.path = Some(path_str.clone());
         self.name = Some(name.clone());
         ProjectWorkspace {
             path: path_str,
             name,
+            remote: None,
         }
     }
 
     pub fn clear(&mut self) {
         self.path = None;
         self.name = None;
+        self.remote = None;
     }
 }
 

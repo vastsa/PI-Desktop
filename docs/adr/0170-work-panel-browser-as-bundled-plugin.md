@@ -37,8 +37,11 @@ guest.
    network-interception methods are refused. No DevTools websocket is exposed.
 5. **Host `BrowserPreview` remains a thin facade** (Plan/subagent name
    stability). It errors if `pi.browser` is disabled; otherwise it loads the
-   workspace file into the guest when that session's chrome is visible and
-   reveals the plugin view. Plugin CDP stays Agent-only (`plugin_*`).
+   workspace file into the guest and reveals the plugin view. The bundled
+   Browser agent tool calls `pi.browser.reveal()` before page operations; the
+   host opens the originating session's existing Browser tab and waits for its
+   view to become visible. Background sessions never take focus. Plugin CDP
+   stays Agent-only (`plugin_*`).
 6. The original singleton guest decision is superseded by
    [Retain a host-owned browser page per resource tab](retained-browser-pages-per-tab.md).
    BrowserHost now retains one page per session/tab while plugin chrome remains

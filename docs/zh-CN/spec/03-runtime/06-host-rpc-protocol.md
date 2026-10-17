@@ -226,7 +226,8 @@ type ToolBudgetHealth = {
 ### 会议
 - `session.list`
 - `session.create` — 接受可选的 `thinkingLevel`； missing/null 默认值
-至 `off`
+至 `off`。可选的 `isolated: true`（ADR 0329）同时要求 `projectPath`，并在返回前为新会话
+创建专属 git worktree；无法创建时会话会被删除，调用以 `WORKTREE_*` 错误（§7）失败。
 - `session.fork` — accepts `sessionId`, an optional caller-provided display
   `title`, and optional `throughMessageId`; creates
   one independent session from the source's current active canonical
@@ -241,10 +242,14 @@ type ToolBudgetHealth = {
   `CONFLICT`, normalized by Electron to `AGENT_BUSY`. The source turn continues
   without sharing runtime state with the child.
 - `session.get`
-- `session.delete`
+- `session.delete` — 对隔离会话还会删除其 worktree 和分支（丢弃未合并的工作）
 - `session.getScratchPath` — 会话的 scratch 目录（D114），按需创建
 - `session.rename` — 在主机边界裁剪并校验标题，接受 1–80 个 Unicode 码点；成功后将标题来源
   标记为 `manual`，但不更新 `updated_at`、转录内容、消息数或历史通知标题快照。
+- `session.deriveTitle` — `{ id, title }`：应用确定性的首条提示兜底标题，返回
+  `{ updated: boolean }`。标题按同样的 1–80 码点规则校验，且只在存储标题仍是可识别占位
+  标题、标题来源为 `default` 时写入；写入后仍保留该来源，因此标题插件还能替换派生文本，
+  并且不更新 `updated_at`、转录内容或消息数。
 - `session.configure` — 以原子方式持久保存 `mode`、`providerId`、`modelId`，
   以及可选的 `thinkingLevel` 用于下一个 pi 回合； omitting/null
   `thinkingLevel` 保留当前值；返回无效模式或级别
@@ -405,11 +410,63 @@ off | minimal | low | medium | high | xhigh | max
 可能会返回 `thinking`；主机存储将其映射到规范内容块，而不是
 而不是将其附加到答案 `content` 中。
 
+### 会话 worktree（ADR 0329）
+
+新增的 `worktree.*` 方法为增量 RPC，不升协议版本。失败使用代码 1025 及 `WORKTREE_*`
+字符串代码。
+
+- `worktree.probe({ projectPath })` → `{ available, uncommittedChanges }`；项目无法承载
+  隔离会话时（非 git、无提交、分离 `HEAD`、缺少 git 或低于 2.29、远程主机项目——
+  `WORKTREE_REMOTE_UNSUPPORTED` 等）返回
+  `{ available: false, errorCode, message }`。`session.create` 对远程主机项目的 `isolated: true` 以同一代码拒绝，
+  不会创建任何会话。
+- `worktree.preview({ sessionId })` → `{ preview }`，包含将要合入的提交、文件及
+  `previewToken`。令牌覆盖会话 `HEAD`、项目分支最新提交、冲突状态，以及所有未提交和未跟踪文件的完整内容。
+- `worktree.merge({ sessionId, previewToken })` → `{ outcome }`。令牌不再匹配（会话或项目分支有变化）为
+  `WORKTREE_CHANGED_SINCE_PREVIEW`；项目有未提交改动为 `WORKTREE_PROJECT_DIRTY`；冲突为
+  `WORKTREE_CONFLICT`，worktree 保持冲突状态，项目不受影响。项目检出必须仍在会话的所属分支上、worktree
+  必须仍在自己的分支上，每次写入前都会重新检查（`WORKTREE_OWNER_BRANCH_CHANGED`、
+  `WORKTREE_SESSION_BRANCH_CHANGED`）；快进绑定到检查过的那个提交，完成后再核对。执行期间宿主持有会话的工具：
+  最多等待正在运行的工具五秒，超时返回 `WORKTREE_BUSY`，新的工具调用排队等到结束。
+- `worktree.behind({ sessionId })` → `{ commits }`，即会话尚未包含的项目分支提交数。
+- `worktree.behindAll()` → `{ counts, statusesChanged }`：以会话 id 为键给出每个隔离会话的同一计数
+  （读不到的会话省略），每次并发检查少量会话。处于冲突状态的会话会先检查是否已解决；
+  `statusesChanged` 提示渲染层刷新会话列表。渲染层在后台读取，用于侧边栏标记。
+- `worktree.sync({ sessionId })` → `{ outcome }`（`synced` 及 `commits`，或 `upToDate`）：
+  “从项目同步”先提交会话中待提交的工作，再把项目分支合入会话 worktree，与合并一样持有会话工具并检查自身分支。
+  不改动项目检出；冲突为 `WORKTREE_CONFLICT`，留在 worktree 中，并像合并冲突一样标记会话。
+- `worktree.pendingWork({ sessionId })` → `{ pending }`，即删除会丢弃的未合并工作。
+- `worktree.setupLog({ sessionId })` → `{ setupStatus, log }`。
+- `worktree.location({ sessionId })` → `{ path }`；仅供 Electron Main 的“在文件夹中显示”
+  使用，绝不转发给渲染器。
+- `worktree.setupCommand.get({ projectPath })` → `{ command }`；
+  `worktree.setupCommand.set({ projectPath, command })` → `{ ok }`（未知项目为
+  `NOT_FOUND`）。该命令在每个新 worktree 中运行一次。
+- `worktree.delegate.create({ sessionId, delegationId })` → `{ worktree }` 和
+  `worktree.delegate.settle({ sessionId, delegationId, merge })` → `{ settlement }`——仅供
+  agent-runtime 为隔离会话中的 `Write`/`Edit` 子代理使用（03-tools-and-permissions §10.2）。两者使用
+  10 分钟的传输期限（`WORKTREE_DELEGATE_RPC_TIMEOUT_MS`），因为提交和合并前可能要等待会话的工具。
+
 ### 工具
 - `tools.list`
 - `tools.execute`
 - `tools.abort`
 - 有序 `stdout`/`stderr` 块的 `tools.output` 通知
+
+### 后台任务
+- `backgroundTasks.list`
+- `backgroundTasks.output`
+- `backgroundTasks.stop`
+- `backgroundTasks.changed` 通知，携带 `{ version }`；任务启动、退出或被停止时发出
+
+`tools.execute` 带 `runInBackground: true` 时启动的是归宿主所有的 `Bash` 命令，
+而不是本轮的命令：调用立即以 `backgroundTaskId` 返回，任务不进入按工具调用注册的
+取消表，因此 `tools.abort` / `agent.abort` 都无法触及它，输出按流保存在有界环形缓冲
+中。注册表位于宿主进程内，宿主关闭时会停止全部任务，因此应用退出不会残留孤儿进程。
+
+输出块不会触发 `backgroundTasks.changed`；该事件仍用于生命周期状态失效通知，
+不承担高频日志传输。客户端只读取当前展开的输出。最终状态包含排空后的尾部输出，
+即使并发读取占用输出锁，关闭宿主仍会向每个任务发送停止信号。
 
 ### 贝壳
 - `commandShells.list`
@@ -422,7 +479,7 @@ off | minimal | low | medium | high | xhigh | max
 在命令启动后重试命令，并在之前获取超时的子命令
 释放执行槽。
 
-`session.appendMessage` 通过消息 ID 是幂等的。若该 id 已属于另一会话，则在写 JSONL 之前改写为 `{sessionId}:{id}`，之后重放原始 id 为无操作（D444）。Electron 主进程可以在 host-core 重启时把消息留在应用自有 outbox 里；握手成功后按顺序冲洗，并把 `UNIQUE constraint failed: messages.id` 当作确认而不是停整队。带 `PERMISSION_DENIED:` 前缀的追加同样丢弃以免毒消息卡住 FIFO（D597）。进行中检查点从不经过发件箱：检查点只对存活的主机有意义，在最终行之后重放它是错误的。
+`session.appendMessage` 通过消息 ID 是幂等的。若该 id 已属于另一会话，则在写 JSONL 之前改写为 `{sessionId}:{id}`，之后重放原始 id 为无操作（D444）。Electron 主进程可以在 host-core 重启时把消息留在应用自有 outbox 里；握手成功后按顺序冲洗，并把 `UNIQUE constraint failed: messages.id` 当作确认而不是停整队。带 `PERMISSION_DENIED:` 前缀的追加同样丢弃以免毒消息卡住 FIFO（D597）。无法归类的追加会在同一 Host 代内按有界退避重试，连续失败后隔离到应用自有的死信文件而不是长期占用队头，因此单条被拒追加不会拖垮所有会话的写入（D656）。进行中检查点从不经过发件箱：检查点只对存活的主机有意义，在最终行之后重放它是错误的。
 
 ### 权限
 - `permissions.evaluate`
@@ -572,6 +629,9 @@ type ToolsExecuteParams = {
   expectedCommandShellDialect?: "powershell" | "cmd" | "posix"
   /** Bash only: host default 60000; accepted override 1000..21600000. */
   timeoutMs?: number
+  /** Isolated `Write`/`Edit` delegate chain id; re-roots the call to that
+   * delegate's worktree (ADR 0329). Omitted for every other call. */
+  delegationId?: string
 }
 ```
 
@@ -919,6 +979,7 @@ JSON-RPC 错误携带一个数字 `code` 以及 `data.errorCode`，后者是来�
 | 1022 | PLUGIN_MARKET_NOT_FOUND | 平台没有该插件或该版本 |
 | 1023 | PLUGIN_MARKET_RATE_LIMITED | 下载接口要求客户端等待后重试 |
 | 1024 | PLUGIN_MARKET_NO_SOURCE | 没有任何分发目标能提供该包 |
+| 1025 | WORKTREE_* | 所有隔离会话 worktree 失败（`WORKTREE_NOT_GIT`、`WORKTREE_CONFLICT`、`WORKTREE_PROJECT_DIRTY`、`WORKTREE_MISSING` 等）共用此槽位，以字符串代码区分 |
 | -32029 | HOST_OVERLOADED | RPC 调度程序容量已耗尽 |
 | -32601 | — | 未知方法 |
 | -32700 | — | 无法解析的请求行 |

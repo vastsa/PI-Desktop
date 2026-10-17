@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 const UNSUPPORTED: Record<string, string> = {
   "amazon-bedrock":
     "requires SigV4 request signing plus a region, not a base URL and API key",
-  "azure-openai-responses":
+  azure:
     "requires a per-resource endpoint and a deployment id",
   "cloudflare-ai-gateway": "the base URL embeds the account and gateway id",
   "cloudflare-workers-ai": "the base URL embeds the account id",

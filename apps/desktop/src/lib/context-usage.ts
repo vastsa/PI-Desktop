@@ -25,15 +25,18 @@ export function usageTokenTotal(usage: MessageUsage): number {
 }
 
 /**
- * Occupancy of one model request, matching OpenCode's context widget:
- * `input + output + reasoning + cache.read + cache.write` on that request.
- * Cache reads from earlier tool-loop calls are not occupancy.
+ * Occupancy of one model request: `input + output + cache.read + cache.write`
+ * on that request. `output` already carries the reasoning tokens — Chat
+ * Completions reports `completion_tokens` including `reasoning_tokens`,
+ * Responses reports `output_tokens` including `reasoning_tokens`, and Google
+ * reports `candidatesTokenCount + thoughtsTokenCount` — so `reasoningTokens`
+ * is a subset and must not be added again. Cache reads from earlier tool-loop
+ * calls are not occupancy.
  */
 export function contextOccupancyTokens(usage: MessageUsage): number {
   const occupancy =
     positiveTokenCount(usage.inputTokens) +
     positiveTokenCount(usage.outputTokens) +
-    positiveTokenCount(usage.reasoningTokens) +
     positiveTokenCount(usage.cacheReadTokens) +
     positiveTokenCount(usage.cacheWriteTokens);
   return occupancy > 0 ? occupancy : usageTokenTotal(usage);

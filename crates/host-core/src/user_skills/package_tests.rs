@@ -185,3 +185,36 @@ fn skill_document_limit_still_matches_the_prompt_sized_cap() {
     let error = registry.create(payload).unwrap_err().to_string();
     assert!(error.contains("document exceeds"), "error = {error}");
 }
+
+#[test]
+fn approved_resource_replacement_checks_the_baseline_and_preserves_extra_files() {
+    let app = tempdir().unwrap();
+    let (mut registry, id, root) = packaged_skill(&app);
+    let project = app.path().join("project");
+    let project_path = Some(project.to_str().unwrap());
+    let before = vec![
+        ("data.txt".into(), b"old".to_vec()),
+        ("removed.txt".into(), b"remove".to_vec()),
+    ];
+    registry
+        .write_package_files(&id, CapabilityLevel::Project, project_path, &before)
+        .unwrap();
+    fs::write(root.join("unrelated.txt"), b"keep").unwrap();
+    let next = vec![("data.txt".into(), b"new".to_vec())];
+    fs::write(root.join("data.txt"), b"local edit").unwrap();
+    assert!(registry
+        .replace_package_files(&id, CapabilityLevel::Project, project_path, &before, &next)
+        .is_err());
+    assert_eq!(fs::read(root.join("data.txt")).unwrap(), b"local edit");
+    assert!(root.join("removed.txt").exists());
+    fs::write(root.join("data.txt"), b"old").unwrap();
+    registry
+        .replace_package_files(&id, CapabilityLevel::Project, project_path, &before, &next)
+        .unwrap();
+    registry
+        .replace_package_files(&id, CapabilityLevel::Project, project_path, &before, &next)
+        .unwrap();
+    assert_eq!(fs::read(root.join("data.txt")).unwrap(), b"new");
+    assert!(!root.join("removed.txt").exists());
+    assert_eq!(fs::read(root.join("unrelated.txt")).unwrap(), b"keep");
+}

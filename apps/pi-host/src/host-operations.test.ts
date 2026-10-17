@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -89,6 +89,32 @@ describe("pi-host operations over host-core", () => {
     expect(nested.entries.map((entry) => entry.name)).toEqual(["app"]);
     expect(nested.parent).toBeDefined();
     await expect(operations.projects.browse("/")).rejects.toMatchObject({ code: "REMOTE_PATH_FORBIDDEN" });
+  });
+
+  it("canonicalizes a symlink browse root without allowing symlink escapes", async () => {
+    const scratch = await realpath(await mkdtemp(join(tmpdir(), "pi-host-browse-root-")));
+    dirs.push(scratch);
+    const root = join(scratch, "root");
+    const linkedRoot = join(scratch, "linked-root");
+    const outside = join(scratch, "outside");
+    await mkdir(join(root, "work"), { recursive: true });
+    await mkdir(outside);
+    await symlink(root, linkedRoot, "dir");
+    await symlink(outside, join(root, "escape"), "dir");
+    const operations = createHostOperations({
+      getHost: () => fakeHost([], root),
+      runtime: { compact: async () => ({ accepted: true }), isBusy: () => false },
+      browseRoot: linkedRoot,
+    });
+    const top = await operations.projects.browse();
+    expect(top).toEqual({ path: root, entries: [{ name: "work", path: join(root, "work") }] });
+    const nested = await operations.projects.browse(top.entries[0]!.path);
+    expect(nested).toEqual({ path: join(root, "work"), parent: root, entries: [] });
+    expect(await operations.projects.browse(linkedRoot)).toEqual(top);
+    await expect(operations.projects.browse(join(linkedRoot, "escape")))
+      .rejects.toMatchObject({ code: "REMOTE_PATH_FORBIDDEN" });
+    await expect(operations.projects.browse(outside))
+      .rejects.toMatchObject({ code: "REMOTE_PATH_FORBIDDEN" });
   });
 
   it("serves workspace reads against the session root and refuses escapes", async () => {

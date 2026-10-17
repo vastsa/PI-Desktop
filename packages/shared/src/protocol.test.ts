@@ -15,11 +15,12 @@ import {
   isGlobalPermissionMode,
   isToolsOutputParams,
   AGENT_COMPACT_RPC_TIMEOUT_MS,
-  CONFIG_SYNC_RPC_TIMEOUT_MS,
   COMMAND_RPC_BUFFER_MS,
   COMPACTION_SUMMARY_MAX_RETRIES,
   COMPACTION_SUMMARY_RETRY_BUDGET_MS,
   STREAM_IDLE_TIMEOUT_MS,
+  TOOL_QUEUE_WAIT_MS,
+  WORKTREE_DELEGATE_RPC_TIMEOUT_MS,
   rpcTimeoutMs,
   type PlanExecution,
   type PlanArtifact,
@@ -51,6 +52,18 @@ describe("Plan protocol contracts", () => {
     expect(IPC_WHITELIST.has(IPC.invoke.providersRefreshModelCatalog)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.invoke.windowSetWorkPanelChatWidth)).toBe(true);
     expect(IPC_WHITELIST.has(IPC.event.windowWorkPanelResize)).toBe(true);
+    expect(IPC.invoke.lifecycleDialogReady).toBe("pi-desktop/window/lifecycleDialog/ready");
+    expect(IPC.invoke.lifecycleDialogRespond).toBe("pi-desktop/window/lifecycleDialog/respond");
+    expect(IPC.event.lifecycleDialogRequest).toBe("pi-desktop/window/event/lifecycleDialogRequest");
+    expect(IPC.event.lifecycleDialogDismiss).toBe("pi-desktop/window/event/lifecycleDialogDismiss");
+    for (const channel of [
+      IPC.invoke.lifecycleDialogReady,
+      IPC.invoke.lifecycleDialogRespond,
+      IPC.event.lifecycleDialogRequest,
+      IPC.event.lifecycleDialogDismiss,
+    ]) {
+      expect(IPC_WHITELIST.has(channel)).toBe(true);
+    }
     expect(IPC.invoke.appOpenFeedback).toBe("pi-desktop/app/openFeedback");
     expect(IPC_WHITELIST.has(IPC.invoke.appOpenFeedback)).toBe(true);
     expect(IPC.invoke.fsOpen).toBe("pi-desktop/fs/open");
@@ -248,6 +261,14 @@ describe("Plan protocol contracts", () => {
     );
   });
 
+  it("lets a subagent worktree merge outlast its permit waits (ADR 0329)", () => {
+    for (const method of ["worktree.delegate.create", "worktree.delegate.settle"]) {
+      expect(rpcTimeoutMs(method, {})).toBe(WORKTREE_DELEGATE_RPC_TIMEOUT_MS);
+    }
+    expect(WORKTREE_DELEGATE_RPC_TIMEOUT_MS).toBeGreaterThan(5_000 + TOOL_QUEUE_WAIT_MS + 3 * 120_000);
+    expect(rpcTimeoutMs("worktree.merge", {})).toBe(130_000);
+  });
+
   it("outlasts the whole model request a manual compaction spends (#795)", () => {
     // One summary prompt plus the sidecar's retry budget: every attempt that
     // stops producing events is cut by the stream watchdog, and each retry pays
@@ -270,19 +291,14 @@ describe("Plan protocol contracts", () => {
     expect(rpcTimeoutMs("agent.getStatus", { sessionId: "s" })).toBe(130_000);
   });
 
-  it("lets a whole cloud sync finish instead of failing on a lost reply", () => {
-    // The sync is one request that answers only when every phase is done, and
-    // the host keeps running after a transport deadline fires. The progress
-    // reports are the liveness signal, so the deadline is only a ceiling that
-    // stops a genuinely lost answer from hanging the caller forever.
+  it("leaves a whole cloud sync unbounded and observable after navigation", () => {
+    // The Host owns sync execution; progress is supplementary, and navigating
+    // away from Settings must not impose a transport deadline on that request.
     expect(IPC.event.configSyncProgress).toBe(
       "pi-desktop/configSync/event/progress",
     );
     expect(IPC_WHITELIST.has(IPC.event.configSyncProgress)).toBe(true);
-    expect(CONFIG_SYNC_RPC_TIMEOUT_MS).toBe(1_800_000);
-    expect(rpcTimeoutMs("configSync.syncNow", {})).toBe(
-      CONFIG_SYNC_RPC_TIMEOUT_MS,
-    );
+    expect(rpcTimeoutMs("configSync.syncNow", {})).toBeUndefined();
     expect(rpcTimeoutMs("configSync.getState", {})).toBe(130_000);
   });
 });

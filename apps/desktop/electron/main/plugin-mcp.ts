@@ -799,6 +799,13 @@ export class McpServerClient {
         this.pending.delete(id);
         removeAbort();
         rejectPromise(mcpError("TIMEOUT", `mcp ${method} timed out after ${timeoutMs}ms`));
+        // The spec asks a sender that stops waiting to cancel the request, so
+        // the server does not keep running work whose result is discarded.
+        // `initialize` must never be cancelled; a failed handshake closes the
+        // transport instead.
+        if (method !== "initialize") {
+          void transport.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: id, reason: "timeout" } }).catch(() => undefined);
+        }
       }, timeoutMs);
       this.pending.set(id, {
         resolve: (value) => { removeAbort(); resolvePromise(value); },

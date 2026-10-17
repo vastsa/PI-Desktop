@@ -442,19 +442,57 @@ export function createApplicationLifecycle({
       case "resetZoom":
         contents.setZoomFactor(1);
         break;
-      case "toggleFullScreen":
+      case "toggleFullScreen": {
+        // Entering fullscreen from a maximized window leaves both flags set on
+        // Windows: `setFullScreen` does not clear the maximize state, and the
+        // maximized state is what `refitWindowToWorkArea` reads first to bail
+        // out. The result is a window that never fits itself back into the
+        // current work area and ends up stranded on another display (issue
+        // #1655). Unmaximize first, then toggle — and remember the windowed
+        // state so leaving fullscreen returns to what the user actually had
+        // rather than a restored-size window.
+        if (!isWindowFullScreen(target)) {
+          const wasMaximized = target.isMaximized();
+          if (wasMaximized) target.unmaximize();
+          if (wasMaximized) {
+            target.once("leave-full-screen", () => {
+              if (target.isDestroyed() || isWindowFullScreen(target)) return;
+              target.maximize();
+            });
+          }
+          setWindowFullScreen(
+            target,
+            true,
+            process.platform === "win32" && target === state.mainWindow,
+          );
+          break;
+        }
         setWindowFullScreen(
           target,
-          !isWindowFullScreen(target),
+          false,
           process.platform === "win32" && target === state.mainWindow,
         );
         break;
+      }
       case "minimize":
         target.minimize();
         break;
       case "toggleMaximize":
-        if (target.isMaximized()) target.unmaximize();
-        else target.maximize();
+        // Maximizing a fullscreen window must leave fullscreen first, or the
+        // window keeps both flags and the same stranding path above applies
+        // (issue #1655).
+        if (target.isMaximized()) {
+          target.unmaximize();
+        } else {
+          if (isWindowFullScreen(target)) {
+            setWindowFullScreen(
+              target,
+              false,
+              process.platform === "win32" && target === state.mainWindow,
+            );
+          }
+          target.maximize();
+        }
         break;
       case "close":
         target.close();

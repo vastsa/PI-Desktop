@@ -26,6 +26,7 @@ pub fn run_cli() -> Result<bool> {
 struct Roots {
     source: PathBuf,
     canonical_source: PathBuf,
+    project_source: PathBuf,
     destination: PathBuf,
 }
 
@@ -40,6 +41,7 @@ impl Roots {
         let suffix = path
             .strip_prefix(&self.source)
             .or_else(|_| path.strip_prefix(&self.canonical_source))
+            .or_else(|_| path.strip_prefix(&self.project_source))
             .ok()?;
         Some(self.destination.join(suffix).to_string_lossy().into_owned())
     }
@@ -256,6 +258,12 @@ pub fn relocate(source: &Path, destination: &Path) -> Result<()> {
     }
     let roots = Roots {
         source: source.to_path_buf(),
+        // Project repositories strip Windows verbatim prefixes and normalize
+        // separators; retain that same canonical spelling when matching keys.
+        project_source: PathBuf::from(
+            crate::db::normalize_project_path(&canonical_source.to_string_lossy())
+                .context("normalize canonical relocation source")?,
+        ),
         canonical_source,
         destination: destination.to_path_buf(),
     };
@@ -336,6 +344,9 @@ fn relocate_database(roots: &Roots) -> Result<()> {
         ("artifacts", "path", false),
         ("turn_queue", "attachments_json", true),
         ("scheduled_tasks", "config_json", true),
+        // Isolated-session worktrees live under the data directory (ADR 0329);
+        // host-core repairs git's back-links on the next start.
+        ("worktrees", "path", false),
     ] {
         if !column_exists(&transaction, table, column)? {
             continue;
@@ -355,7 +366,13 @@ fn relocate_database(roots: &Roots) -> Result<()> {
                     serde_json::from_str(&text).context("parse relocation database metadata")?;
                 roots.structured(&mut value).then(|| value.to_string())
             } else {
-                roots.remap(&text)
+                roots.remap(&text).map(|path| {
+                    if table == "projects" {
+                        crate::db::normalize_project_path(&path).unwrap_or(path)
+                    } else {
+                        path
+                    }
+                })
             };
             if let Some(next) = next {
                 transaction.execute(
@@ -382,7 +399,10 @@ fn relocate_database(roots: &Roots) -> Result<()> {
         for (namespace, key, text) in rows {
             let next_key = if matches!(namespace.as_str(), "projectMemory" | "projectInstructions")
             {
-                roots.remap(&key).unwrap_or_else(|| key.clone())
+                roots
+                    .remap(&key)
+                    .map(|path| crate::db::normalize_project_path(&path).unwrap_or(path))
+                    .unwrap_or_else(|| key.clone())
             } else {
                 key.clone()
             };

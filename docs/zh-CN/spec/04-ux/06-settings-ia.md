@@ -34,25 +34,23 @@
   7. **MCP** — Lucide `Server`（智能体连接）
   8. **子智能体** — Lucide `Bot`（内置与自建的并行工作智能体）
   9. **项目** — Lucide `Archive`（持久项目索引）
-  10. **云同步** — Lucide `CloudDownload`（加密的可移植配置备份与双向同步；仅开发构建可见）
-  11. **远程主机** — Lucide `Globe`（SSH 引导与配对清单；仅开发者模式）
+  10. **云同步** — Lucide `CloudDownload`（加密的可移植配置备份与双向同步；实验性，所有构建可见）
+  11. **远程主机** — Lucide `Globe`（SSH 引导与配对清单；实验性，所有构建可见）
   12. **信息** — Lucide `Info`（版本、日志、更新、开发人员）
   图标具有装饰性（通过 SVG 默认设置为 `aria-hidden`）并保持单色
   带有导轨标签；不要在此处重复使用 refresh/rotate 字形。
 - 目录仍是保持相同顺序的可搜索扁平列表。为便于扫描，目的地分为四个带标题
   的视觉分组：“偏好”（常规、AI、快捷键）、“智能体”（指令、模型、技能、
   MCP、子智能体）、“工作区”（项目）和“系统”（云同步、远程主机、信息；
-  云同步仅开发构建可见、远程主机仅开发者模式可见）。标题使用柔和
+  云同步和远程主机均为所有构建可见的实验性目的地）。标题使用柔和
   的非交互文字，分组之间只使用留白，不绘制分割线；搜索过滤后，空分组及其
   标题一并隐藏。
-- **云同步**暂不对用户开放，是仅开发构建可见的「系统」目的地：其导轨行、页面和设置
-  搜索命中只在开发构建中存在；打包构建会省略它们，停在它的导轨位置会回落到常规。
-  开发者模式不是它的门控，导轨行与页面标题都不带实验性徽章，同步行为本身没有任何
-  变化。移除该目的地的 `developmentOnly` 标记即可对打包构建重新开放。
-- **远程主机**是仅开发者可用的实验性目的地：其导轨行、页面和设置搜索命中仅在
-  `AppSettings.developerMode` 为 `true` 时存在。开发者模式关闭时该行是缺失而不是
-  禁用，设置搜索不会返回它的命中，导轨位置停在该项时会回落到常规。该行和页面标题
-  都带有实验性徽章（`settings.remoteHosts.experimental`）
+- **云同步**是所有构建均可用的实验性「系统」目的地：导轨行、页面和设置搜索命中
+  在开发版与打包版中都存在，导轨行和页面标题均带有实验性徽章
+  （`settings.configSync.experimental`）。开发者模式不影响可见性，同步行为本身不变。
+- **远程主机**是所有构建均可用的实验性目的地：导轨行、页面和设置搜索命中在开发版与
+  打包版中都存在，且不受 `AppSettings.developerMode` 影响。该行和页面标题均带有
+  实验性徽章（`settings.remoteHosts.experimental`）。
 - 不显示其他设置目的地或占位符导航行
 - 主表面上的主要内容窗格，带有大部分标题+升高
   圆形的行卡。其内容使用后可用的完整宽度
@@ -92,7 +90,7 @@
   手动睡眠和合盖遵循系统设置。
 - **网络**卡：
   - **代理**：分段控件 — 系统 / 直连 / 自定义。默认是系统（Chromium 跟随操作系统代理）。直连禁用代理。自定义将一个 HTTP、HTTPS 或 SOCKS5 URL 应用到应用自有出站请求（模型调用、扩展市场、更新、模型目录、插件 `net.fetch`、内置浏览器）。工作区 Bash 和 OAuth 用的系统浏览器不会被改写。
-  - 自定义显示代理 URL（含 `user:pass@`）、默认 `localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16` 的绕过列表（本机、本地模型与所有局域网服务直连，不被代理吞掉），以及一次走该代理的测试。带认证的 URL 通过回环 SOCKS5 中继交给 Chromium（issue #490）。选择持久化为可选 `AppSettings.networkProxy`。无协议/存储版本升级（D340 / ADR 0177）。
+  - 自定义显示代理 URL（含 `user:pass@`）、默认 `localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16` 的绕过列表（本机、本地模型与所有局域网服务直连，不被代理吞掉），以及一次走该代理的测试。带认证的 URL 通过回环 SOCKS5 中继交给 Chromium（issue #490）。选择持久化为可选 `AppSettings.networkProxy`；系统/直连模式下同样保留用户填写的 `url` 与 `bypass`（只有 `mode` 决定谁生效），因此再次选择自定义会恢复它们而不是内置的 `socks5://127.0.0.1:1080`（issue #1541）。无协议/存储版本升级（D340 / ADR 0177）。
   - **网络宽松模式**：一个开关，持久化为 `AppSettings.networkPolicy.mode`（`relaxed` | `strict`），**默认开启**。开启时，你自己填写的端点（模型服务、MCP 服务器、git 远端）可以是回环或局域网地址、可以使用明文 `http`，并容忍透明代理的 fake-IP 答案；关闭则回到"只允许公网 https"。首次用明文访问这类端点时会弹一次告知。它取代的三个旧确认开关（`networkProxy.allowFakeIp`、`configSync.allowInsecureHttp`、以及自填明文开关）都已删除（ADR 0304）。
 - 平台支持的**关闭行为**仍保留在常规中，因为它改变的是
   应用程序窗口行为，而不是智能体行为。
@@ -106,7 +104,7 @@
   都以相同方式展开。关闭时的触发器按当前文案收缩，不超过设置控件列。
 - **默认项**卡：主机支持的默认运行模式（Agent / Plan / Goal）、
   命令 Shell 选择、链接打开目标、上下文用量显示（剩余或已用）、
-  思考显示模式、回车发送控制、无尽重试开关和大段文本粘贴阈值。无尽重试默认关闭；开启后网络/临时提供商故障会持续到成功，
+  显示思考开关、回车发送控制、无尽重试开关和大段文本粘贴阈值。无尽重试默认关闭；开启后网络/临时提供商故障会持续到成功，
   但停止按钮仍可取消回合，开启期间可能持续消耗 API 用量。链接打开目标默认使用工作面板浏览器，
   可将对话、会话记录和插件页的 HTTP(S) 点击路由到系统浏览器。插件/设置页
   若目标是工作面板，会先回到对话再打开（不记入导航栈），避免被遮罩挡住；没有会话时才回退到
@@ -119,13 +117,13 @@
   `composer.transform` 权限时才会显示。宿主不包含提示词增强设置卡，也不会默认安装独立的
   `pi.prompt-enhancement` 插件。插件设置在「插件」页编辑；旧提示词增强偏好的单次迁移见
   `04-ux/12-prompt-enhancement.md`。
-- **思考显示模式**使用菜单选择器，提供详细（默认）和紧凑。两种模式都使用一个
-  整体过程披露。详细模式默认展开过程、显示推理、展开活动中的多项活动组，并在用户
-  未操作时于组完成后将其收起；紧凑模式默认收起过程与活动组，保持工具／搜索载荷
-  关闭，只显示活动思考指示器并隐藏已完成推理。单项活动在两种模式下都直接使用自身
-  披露。全局偏好以 `thinkingDisplayMode` 持久化到宿主设置；缺失值使用详细模式。
-  它只影响展示，不改变模型推理配置；显式披露选择在已挂载的会话窗格内保留。设置
-  搜索会索引该行和两种模式名称。
+- **显示思考**是一个开关，以可选的 `showThinking` 布尔值持久化到宿主设置。关闭时
+  仍显示活动思考指示器，并隐藏已完成的推理行和摘要；已存推理仍会保留，重新打开时
+  重新出现。它只影响展示，不改变模型推理配置，也不控制回合过程或活动组的折叠：
+  无论开关如何，运行中的过程默认展开，未操作的已完成过程默认收起。旧版
+  `thinkingDisplayMode` 字段（`detailed` / `compact`）仅为持久化设置兼容性保留，
+  不再在界面暴露；缺失或未知值显示推理，显式 `compact` 隐藏推理。设置搜索会索引
+  该行。
 - 语音绑定（`AppSettings.speech`）**不属于设置页面**（ADR 0291）。宿主仍保留语音能力与
   `speech/*` IPC，供插件和已存绑定使用；这里不再提供转写/朗读的服务、协议、模型或音色
   选择，设置搜索也不再索引语音相关键。
@@ -314,14 +312,28 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
 - 项目搜索还匹配会话标题。匹配的会话会使其所属项目留在索引中；
   打开该项目后按最新活动列出匹配会话，以 8 条一批显示，而不是截断历史
 - 激活项目或项目会话返回聊天；归档和关闭仍使项目归档页保持打开
+- 明确打开已归档项目会清除渲染层归档状态，使其重新显示在主页侧边栏；仅选择详情行进行检查不会恢复项目
 
 ### 云同步
 
-- **连接**：提供 WebDAV URL、用户名、应用密码、远程目录、设备标签、独立的备份/vault 密码和服务器兼容模式。默认使用严格 CAS；能力测试只使用临时远端对象。选择追加式兼容模式时显示持续风险提示，并在保存前要求确认。
+- **Connection**: S3 endpoint, region, private bucket, prefix, access key ID,
+  secret key, optional token, addressing style, device label and vault password.
+  Choose sync or backup mode and automatic runs. Conditional writes are required;
+  there is no WebDAV/append-only fallback. Legacy data remains without migration.
 - **可移植配置**：支持的类别默认选中；凭据和项目 memory 必须明确选择。预览显示 supported、excluded、secret-bearing、mapping-required 和 pending-approval 计数。
-- **安全**：页面不渲染原始凭据或 vault key。导入的 MCP、skills、subagents、plugins、automations 和项目作用域数据在本地激活审批及必要的文件夹映射完成前保持暂存。断开连接保留本地和远端数据。
+- **Safety**: vault keys and exported secrets are never returned to the page.
+  Connection secrets stay transient; imports keep local approval and mappings.
+  Public HTTP and redirects are rejected; LAN HTTP follows Host network policy.
+  Disconnect preserves local configuration, legacy data and remote objects.
 - **状态与恢复**：显示已配置、已锁定、同步中、离线、不支持服务器、冲突、等待激活、暂停和错误等不同状态。用户可以立即同步、解锁、暂停本设备、批准/拒绝暂存项目以及断开连接。存在待处理状态时，页面不会根据旧的成功记录暗示已经收敛。
-- **快速重返和草稿**：Host 在后台刷新时，先用短时本地缓存绘制最近一次脱敏的状态和历史记录。endpoint、用户名、远程目录、设备标签、兼容模式和类别选择保存在 Renderer 本地存储中，因此离开页面或重载后未完成的表单仍会保留。WebDAV 应用密码继续保存在 Host 管理的 secret storage 中，且只对同一 endpoint 和账户复用；vault 密码永远不会写入 Renderer 存储。
+- **Drafts and recovery**: cache only typed non-secret S3 choices under a new
+  versioned key; ignore old drafts. Blank credentials reuse the exact connection,
+  while explicit clearing/replacement clears the token. Never persist secrets or
+  passwords. Invalidate old history requests when the saved destination/mode
+  changes. Display the latest 30 revisions and disclose indefinite object
+  retention. Sync restore confirms immediate publication; backup restore is
+  local only. Unsaved mode edits do not change restore semantics. Password
+  changes do not revoke unlocked devices.
 
 ### 信息
 - app/host/protocol版本+开放日志
@@ -361,18 +373,17 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
 - 项目档案由设置搜索索引，不会复制为主页
   侧边栏目标或独立的全局搜索页面
 - 返回应用程序从导轨固定的底部操作返回聊天外壳
-- 仅开发者可用的目的地作为一个整体加入导轨、页面和设置搜索，也同样一起离开：
-  开发者模式关闭时导轨省略该行，设置搜索不返回它的命中，打开的远程主机页面会
-  返回到常规；云同步当前仅开发构建可见，打包构建省略它的导轨行、页面和设置搜索
-  命中并回落到常规，开发者模式从不门控它。
+- 仅开发者可用的目的地作为一个整体加入或离开导轨、页面和设置搜索。
+  云同步和远程主机不受开发者模式限制，在所有构建中均可用，并在导轨行与页面标题
+  显示实验性徽章。
 
 ## 4. 验收
 
 1.打开设置隐藏编码应用侧边栏（全页接管）
 2. 导轨顶部显示搜索药丸，底部固定返回应用程序操作并与主侧边栏底部图标行同一条线，
    并精确显示常规、AI、快捷键、指令、模型、技能、MCP、
-   子智能体、项目、云同步（仅开发构建）、远程主机（仅开发者模式）和信息，
-   按此顺序排列；打包构建不显示云同步，并按偏好、智能体、工作区、系统分组。
+   子智能体、项目、云同步、远程主机和信息，按此顺序排列；云同步与远程主机
+   均在打包版中显示实验性标签，并按偏好、智能体、工作区、系统分组。
    没有用量设置目的地。
 3.外观是常规的一部分，没有独立的导轨目的地
 4. Providers 是 Agent 的一部分，没有独立的导轨目的地
@@ -418,7 +429,8 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
 20. 命令 Shell 选择保留平台有效的目录 ID，仅在状态有额外信息时公开
     默认、不可用、回退或无实际 Shell 文案，并且从不授权过时的 ID/dialect
 21. 信息页提供「问题反馈」，打开已预填版本和操作系统的 GitHub bug 表单；设置搜索可索引该行
-22. 技能页的市场视图浏览公网 HTTPS 目录、预览组装后的文档，并只通过 `skills.create` 安装；超限展开文档拒绝写入，来源角标跟随 `sourceId`；预览失败时面板给出可读原因与重试入口（安装按钮可以禁用,但不得无解释地禁用）；来源被公网策略守卫拒绝时明确说明,而不是笼统报「不可达」
+22. 技能页的市场视图浏览公网 HTTPS 目录、预览组装后的文档，并只通过 `skills.create` 安装；超限展开文档拒绝写入，来源角标跟随 `sourceId`；预览失败时面板给出可读原因与重试入口（安装按钮可以禁用,但不得无解释地禁用）；来源被公网策略守卫拒绝时明确说明,而不是笼统报「不可达」。目录查询全部失败或仅部分来源失败时都提供重试按钮；点击后按当前搜索和已配置来源重查，并在请求期间播报加载状态
+23. MCP 市场查询全部失败或部分来源失败时提供重试按钮；点击后重跑当前搜索，并在请求期间播报加载状态
 
 ## 5. Chrome 指标常规
 

@@ -103,6 +103,34 @@ export const RacpRequestContextSchema = Type.Object({
 });
 export type RacpRequestContext = Static<typeof RacpRequestContextSchema>;
 
+export const WorkspaceFilesRequestSchema = Type.Object({
+  path: Type.String({ minLength: 1, maxLength: 4096 }),
+  operation: Type.Union([Type.Literal("list"), Type.Literal("read"), Type.Literal("index"), Type.Literal("resolve"), Type.Literal("image"), Type.Literal("diff"), Type.Literal("instructions")]),
+  ref: Type.Optional(Type.String({ maxLength: 4096 })),
+  mimeType: Type.Optional(Type.String({ maxLength: 256 })),
+}, { additionalProperties: false });
+export type WorkspaceFilesRequest = Static<typeof WorkspaceFilesRequestSchema>;
+
+/** Narrow owner-only tool service; model configuration and credentials never cross it. */
+export const WorkspaceToolExecuteSchema = Type.Object({
+  path: Type.String({ minLength: 1, maxLength: 4096 }),
+  sessionId: Type.String({ minLength: 1, maxLength: 256 }),
+  turnId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolName: Type.Union([Type.Literal("Read"), Type.Literal("Glob"), Type.Literal("Grep"), Type.Literal("Write"), Type.Literal("Edit"), Type.Literal("Bash")]),
+  args: Type.Record(Type.String(), Type.Unknown()),
+  timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 21_600_000 })),
+  expectedCommandShellId: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+  expectedCommandShellDialect: Type.Optional(Type.Union([Type.Literal("posix"), Type.Literal("powershell"), Type.Literal("cmd")])),
+}, { additionalProperties: false });
+export type WorkspaceToolExecute = Static<typeof WorkspaceToolExecuteSchema>;
+export const WorkspaceToolAbortSchema = Type.Object({
+  sessionId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+}, { additionalProperties: false });
+export type WorkspaceToolAbort = Static<typeof WorkspaceToolAbortSchema>;
+export type WorkspaceToolResult = { ok: boolean; content: unknown; isError?: boolean; errorCode?: string; toolCallId?: string };
+
 // ---------------------------------------------------------------------------
 // Canonical resources (spec §5)
 // ---------------------------------------------------------------------------
@@ -422,6 +450,8 @@ export const RacpServerCapabilitiesSchema = Type.Object({
   remoteHostProfile: Type.Boolean(),
   toolRelay: Type.Boolean(),
   terminal: Type.Boolean(),
+  workspaceTools: Type.Optional(Type.Boolean()),
+  workspaceFiles: Type.Optional(Type.Boolean()),
   notifications: Type.Boolean(),
   bindings: Type.Array(Type.Union([Type.Literal("RACP-WS"), Type.Literal("RACP-HTTP"), Type.Literal("RACP-GRPC")])),
 });
@@ -552,11 +582,17 @@ export const RACP_OPERATIONS = {
   "session/configure": { role: "controller", profile: "remote-host", mutation: true },
   "session/fork": { role: "controller", profile: "remote-host", mutation: true },
   "session/rename": { role: "controller", profile: "remote-host", mutation: true },
+  /** The Host's own deterministic first-prompt title; never a controller choice. */
+  "session/deriveTitle": { role: "controller", profile: "remote-host", mutation: true },
   "session/delete": { role: "owner", profile: "remote-host", mutation: true },
   "session/compact": { role: "controller", profile: "remote-host", mutation: true },
   "workspace/list": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/read": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/diff": { role: "viewer", profile: "remote-host", mutation: false },
+  "workspace/toolExecute": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/toolAbort": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/toolShell": { role: "owner", profile: "remote-host", mutation: false },
+  "workspace/files": { role: "owner", profile: "remote-host", mutation: false },
   "terminal/open": { role: "controller", profile: "remote-host", mutation: true },
   "terminal/input": { role: "controller", profile: "remote-host", mutation: true },
   "terminal/resize": { role: "controller", profile: "remote-host", mutation: true },

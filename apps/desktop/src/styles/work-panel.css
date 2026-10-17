@@ -191,8 +191,12 @@
   display: flex;
   min-width: 0;
   max-width: 100%;
+  width: max-content;
   height: 32px;
-  flex: 1 1 auto;
+  /* Only the visible viewport excludes native dragging. Per-tab exclusions
+     escape the overflow clip when scrolled, blocking neighboring titlebars.
+     Keep unused header space outside this content-sized viewport draggable. */
+  flex: 0 1 auto;
   align-items: center;
   gap: 6px;
   overflow-x: auto;
@@ -431,6 +435,27 @@
   width: 100%;
   min-height: calc(var(--leading-chat) * 2em);
   resize: none;
+}
+
+.subagent-transcript-composer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.subagent-transcript-model-picker {
+  flex: 1 1 auto;
+  max-width: calc(100% - 36px);
+  justify-content: flex-start;
+  cursor: not-allowed;
+}
+
+.subagent-transcript-composer-controls > .stop-btn {
+  width: 26px;
+  height: 26px;
+  flex-basis: 26px;
 }
 /* Shared per-tool empty state used by Files and plugin fallback surfaces. */
 .work-tab-empty {

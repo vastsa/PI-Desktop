@@ -33,18 +33,23 @@ test("model, skills, and MCP imports are available from their own settings pages
   assert.match(modelPage, /ImportToggleButton/);
   assert.match(modelPage, /<ModelConfigImportPanel \/>/);
   assert.match(modelImport, /api\.scanImportModelConfigs\(\)/);
+  assert.match(modelImport, /description=\{t\("settings\.importModelsScanDesc"\)\}/);
 
   assert.match(skillsPage, /ImportToggleButton/);
   assert.match(skillsPage, /<AgentSkillImportPanel/);
   assert.match(skillsPage, /level=\{targetLevel\}/);
   assert.match(skillImport, /api\.scanExternalSkills\(/);
   assert.match(skillImport, /level,\s*\.\.\./);
+  assert.match(skillImport, /description=\{t\("settings\.importAgentSkillsDesc"\)\}/);
 
   assert.match(mcpPage, /ImportToggleButton/);
   assert.match(mcpPage, /<AgentMcpImportPanel/);
   assert.match(mcpPage, /level=\{targetLevel\}/);
   assert.match(mcpImport, /api\.scanExternalMcp\(/);
   assert.match(mcpImport, /level,\s*\.\.\./);
+  assert.match(mcpImport, /description=\{t\("settings\.importAgentMcpDesc"\)\}/);
+  assert.match(workbench, /className="import-idle-description"/);
+  assert.match(workbench, /<HelpIcon label=\{hint\} \/>/);
 
   for (const [source, panelId] of [
     [modelPage, "model-config-import-panel"],

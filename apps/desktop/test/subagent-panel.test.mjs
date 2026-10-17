@@ -96,6 +96,14 @@ test("the delegation tab renders a message list with a read-only composer", () =
   assert.match(tabSource, /disabled/);
   assert.match(tabSource, /rows=\{2\}/);
   assert.match(tabSource, /placeholder=\{t\("panel\.subagentReadOnly"\)\}/);
+  assert.match(tabSource, /className="subagent-transcript-composer-controls"/);
+  assert.match(tabSource, /subagent-transcript-model-picker/);
+  assert.match(tabSource, /delegateModelId\(result\)/);
+  assert.match(tabSource, /delegateThinkingLevel\(result\)/);
+  assert.match(tabSource, /<SubagentStopButton delegationId=\{delegationId\} running compact \/>/);
+  assert.doesNotMatch(tabSource, /subagent-transcript-actions/);
+  assert.match(workPanelCss, /\.subagent-transcript-composer-controls \{/);
+  assert.match(workPanelCss, /\.subagent-transcript-model-picker \{/);
   // Display-only: no send path may exist in the composer.
   assert.doesNotMatch(tabSource, /onSubmit|onSend|api\.send/);
 });

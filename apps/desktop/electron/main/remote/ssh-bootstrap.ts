@@ -8,8 +8,7 @@
  * 1. probe the remote with `uname` so the artifact is chosen for *its*
  *    platform, not the desktop's;
  * 2. resolve the bundle at the desktop's version and read the SHA-256 the
- *    release publishes — the desktop holds the trust anchor and never uploads
- *    executable bytes;
+ *    release publishes — the desktop holds the trust anchor;
  * 3. upload the bootstrap script through the SSH channel and run it, which
  *    installs under the remote user's home and starts the host on loopback
  *    with a single-use pairing token;
@@ -25,7 +24,7 @@ import {
   type RemoteHostSshMetadata,
 } from "@pi-desktop/shared";
 import {
-  buildBootstrapScript,
+  type PiHostBootstrapScriptInput,
   parseBootstrapOutput,
   redactBootstrapOutput,
 } from "./pi-host-bootstrap-script.js";
@@ -50,6 +49,8 @@ import {
 } from "./ssh-transport.js";
 import { assertSshPassword } from "./ssh-askpass.js";
 import { racpUrlForLocalPort } from "./ssh-tunnel.js";
+import { installPiHost } from "./pi-host-installer.js";
+import type { uploadSshArtifact } from "./ssh-artifact-transfer.js";
 
 /** Progress the Settings surface can render while a bootstrap runs. */
 export type SshBootstrapStep =
@@ -57,6 +58,7 @@ export type SshBootstrapStep =
   | "resolve-release"
   | "download-checksum"
   | "install"
+  | "upload"
   | "forward"
   | "pair";
 
@@ -66,7 +68,8 @@ export type SshBootstrapDeps = {
   /** Build the SSH transport for one target. Defaults to the system `ssh`. */
   buildTransport?: (target: SshTarget) => SshTransport;
   /** Read the published `.sha256` text. Defaults to an HTTPS GET. */
-  fetchChecksum?: (url: string) => Promise<string>;
+  fetchChecksum?: (url: string, signal?: AbortSignal) => Promise<string>;
+  uploadArtifact?: typeof uploadSshArtifact;
   /** Reserve the loopback port the forward binds. */
   reservePort?: () => Promise<number>;
   /**
@@ -78,6 +81,7 @@ export type SshBootstrapDeps = {
     url: string;
     pairingToken: string;
     label: string;
+    expectedHostId: string;
   }) => Promise<string>;
   /** Called once per completed step, in order. */
   onProgress?: (step: SshBootstrapStep) => void;
@@ -108,7 +112,7 @@ export type SshBootstrapOutcome = {
 };
 
 export type SshBootstrap = {
-  bootstrap(request: RemoteHostBootstrapRequest): Promise<SshBootstrapOutcome>;
+  bootstrap(request: RemoteHostBootstrapRequest, options?: { signal?: AbortSignal }): Promise<SshBootstrapOutcome>;
 };
 
 const DEFAULT_READY_TIMEOUT_SEC = 120;
@@ -173,10 +177,10 @@ export function sshMetadataFromTarget(target: SshTarget): Omit<RemoteHostSshMeta
   };
 }
 
-async function defaultFetchChecksum(url: string): Promise<string> {
+async function defaultFetchChecksum(url: string, signal?: AbortSignal): Promise<string> {
   const response = await fetch(url, {
     redirect: "follow",
-    signal: AbortSignal.timeout(30_000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
     throw fail(`published checksum could not be downloaded (HTTP ${response.status})`, ErrorCodes.HOST_BOOTSTRAP_FAILED, {
@@ -246,7 +250,9 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
   const installTimeoutMs = deps.installTimeoutMs ?? DEFAULT_INSTALL_TIMEOUT_MS;
 
   return {
-    async bootstrap(request) {
+    async bootstrap(request, options = {}) {
+      const signal = options.signal;
+      signal?.throwIfAborted();
       const label = String(request?.label ?? "").trim() || "remote host";
       const target = validateTarget(request);
       const hostKey = (request?.hostKey ?? "").trim() || synthesizeSshHostKey(target, label);
@@ -261,11 +267,14 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
       };
 
       const transport = buildTransport(target);
+      const abort = () => transport.dispose();
+      signal?.addEventListener("abort", abort, { once: true });
       let completed = false;
       try {
         // 1. Ask the remote machine what it is.
         mark("probe");
         const probe = await transport.exec("uname -s && uname -m");
+        signal?.throwIfAborted();
         const remoteTarget = resolveTarget(probe.stdout);
         if (!remoteTarget) {
           throw fail(
@@ -287,7 +296,8 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
         const urls = piHostArtifactUrls(deps.version, remoteTarget);
         const artifactName = piHostArtifactName(deps.version, remoteTarget);
         mark("download-checksum");
-        const expectedSha256 = parseChecksumFile(await fetchChecksum(urls.checksum), artifactName);
+        const expectedSha256 = parseChecksumFile(await fetchChecksum(urls.checksum, signal), artifactName);
+        signal?.throwIfAborted();
         if (!expectedSha256) {
           throw fail(
             `no usable SHA-256 published for ${artifactName}`,
@@ -296,10 +306,9 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
           );
         }
 
-        // 3. Upload and run the script. It downloads the bundle itself, so no
-        //    executable bytes travel over this channel.
+        // 3. Prefer remote download; use a verified upload only if that download fails.
         mark("install");
-        const script = buildBootstrapScript({
+        const scriptInput: PiHostBootstrapScriptInput = {
           version: deps.version,
           artifactUrl: urls.tarball,
           artifactName,
@@ -308,11 +317,12 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
           port: resolveRemotePort(request),
           pairingLifetimeMs: 600_000,
           readyTimeoutSec,
-        });
+        };
         let result: SshExecResult;
         try {
-          result = await transport.execWithInput("sh -s", script, {
-            timeoutMs: installTimeoutMs,
+          result = await installPiHost(transport, scriptInput, {
+            timeoutMs: installTimeoutMs, signal, uploadArtifact: deps.uploadArtifact,
+            onUpload: () => mark("upload"), log,
           });
         } catch (error) {
           // The script names the step it failed at on stdout even when it
@@ -356,6 +366,7 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
         // 4. Forward a loopback port to the host's loopback port.
         mark("forward");
         const localPort = await reservePort();
+        signal?.throwIfAborted();
         const forward = await transport.forward({
           localPort,
           remoteHost: "127.0.0.1",
@@ -367,11 +378,14 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
         mark("pair");
         let deviceToken: string;
         try {
+          signal?.throwIfAborted();
           deviceToken = await deps.exchangePairing({
             url,
             pairingToken: parsed.pairing.token,
             label,
+            expectedHostId: parsed.ready.hostId,
           });
+          signal?.throwIfAborted();
         } catch (error) {
           await forward.close().catch(() => undefined);
           throw error;
@@ -381,6 +395,7 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
           ...sshMetadataFromTarget(target),
           remotePort: parsed.ready.port,
           version: parsed.ready.version,
+          hostId: parsed.ready.hostId,
         };
         completed = true;
         log("info", "ssh bootstrap completed", {
@@ -412,6 +427,7 @@ export function createSshBootstrap(deps: SshBootstrapDeps): SshBootstrap {
         });
         throw error;
       } finally {
+        signal?.removeEventListener("abort", abort);
         // On success the caller adopts the forward, which is a child of this
         // transport — disposing here would tear down the tunnel it just got.
         if (!completed) transport.dispose();

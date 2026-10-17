@@ -28,8 +28,11 @@ for the official `vastsa/PI-Desktop` release lane.
    the final DMG is submitted separately (`xcrun notarytool submit --wait`) and
    must return `status: Accepted` before `xcrun stapler staple` may run; the
    run then verifies the app as `Notarized Developer ID` and both stapled
-   tickets before upload. Stapler retries are bounded and only allowed after
-   Apple accepts. Missing signing or notarization secrets fail the job;
+   tickets before upload. The app's exact `xcrun stapler staple` call is
+   retried at most six times with a 10-second delay by the signing watchdog;
+   all other `xcrun` calls pass through. The DMG stapler has the same bounded
+   retry policy. Retries only occur after Apple accepts the matching
+   notarization submission. Missing signing or notarization secrets fail the job;
    unsigned macOS artifacts must not be published from a tag.
 2. The signing certificate is
    `Developer ID Application: XingYu Liu (DUV63RKYTW)`; Apple team id

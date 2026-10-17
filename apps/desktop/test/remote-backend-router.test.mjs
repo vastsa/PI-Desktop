@@ -46,10 +46,10 @@ test("sessionIdForCall reads positional and object session ids", () => {
   assert.equal(sessionIdForCall([42]), null);
 });
 
-test("routes locally until a backend is registered for the session", async () => {
+test("remote routing fails closed before registration and after disconnect", async () => {
   const router = createBackendRouter();
   const remote = makeRemoteSessionId("h", "s");
-  assert.equal(await router.route("session.get", [{ sessionId: remote }]), ROUTE_LOCAL);
+  await assert.rejects(router.route("session.get", [{ sessionId: remote }]), { errorCode: "AGENT_UNAVAILABLE" });
 
   const calls = [];
   router.registerBackend(remote, {
@@ -65,13 +65,13 @@ test("routes locally until a backend is registered for the session", async () =>
   assert.deepEqual(outcome, { remote: true, value: { id: remote, source: "remote" } });
   assert.equal(calls.length, 1);
 
-  // A channel the backend does not cover falls back to local.
-  assert.equal(await router.route("settings.get", [{ sessionId: remote }]), ROUTE_LOCAL);
+  // Unsupported remote channels must never reach a local side effect.
+  await assert.rejects(router.route("settings.get", [{ sessionId: remote }]), { errorCode: "CAPABILITY_UNAVAILABLE" });
   // A local session id is never routed even after a remote backend exists.
   assert.equal(await router.route("session.get", [{ sessionId: "local" }]), ROUTE_LOCAL);
 
   router.unregisterBackend(remote);
-  assert.equal(await router.route("session.get", [{ sessionId: remote }]), ROUTE_LOCAL);
+  await assert.rejects(router.route("session.get", [{ sessionId: remote }]), { errorCode: "AGENT_UNAVAILABLE" });
 });
 
 test("route surfaces a backend failure to the caller", async () => {
@@ -84,4 +84,11 @@ test("route surfaces a backend failure to the caller", async () => {
     },
   });
   await assert.rejects(() => router.route("session.get", [remote]), /host gone/);
+});
+
+test("malformed remote identifiers cannot fall through to local handlers", async () => {
+  const router = createBackendRouter();
+  await assert.rejects(router.route("files/read", [{ sessionId: "remote:broken", path: "/private/data" }]), {
+    errorCode: "INVALID_ARGUMENT",
+  });
 });

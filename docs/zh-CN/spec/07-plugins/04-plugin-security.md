@@ -293,7 +293,7 @@ MCP 服务器是 `net.fetch` 旁边的第二个出口路径，因此它是声明
   拒绝，而不是贡献其目录的一个前缀，因为 MCP 工具是以延迟加载的按需条目
   （`ToolSearch` 之后）而非常驻列表的形式到达模型的。服务器按需连接，
   并在插件卸载或禁用时关闭。
-  停止调用方会话会取消该会话正在执行的 MCP 请求，并向服务器发送 `notifications/cancelled`；共享连接及其他会话的调用保持有效。
+  停止调用方会话会取消该会话正在执行的 MCP 请求，并向服务器发送 `notifications/cancelled`；共享连接及其他会话的调用保持有效。请求超时后同样会发送取消通知；`initialize` 请求从不取消。
 
 ## 8.2 桌面控制与设备访问
 
@@ -421,3 +421,11 @@ PI-Desktop 自己当前占用（默认是 `Alt+Space` 与 `Alt+Shift+W`；用户
 - 签名验证（仅对包进行 sha256 检查）
 - 声明的清单权限在加载时自动授予
 - `userSelected` root 不跨重启保留，插件每个会话都得重新问一次
+
+### Fetch redirect policy (unreleased)
+
+The host owns the same redirect loop for default and injected single-hop
+transports. `error` refuses every 3xx with REDIRECT_DISALLOWED; `manual` returns
+it without contacting its target. Default follow retains per-hop egress checks.
+See [the source API contract](/spec/07-plugins/03-plugin-api#net) for capability
+detection, deadline semantics and compatibility. No mode expands network grants.

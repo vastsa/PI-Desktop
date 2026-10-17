@@ -123,7 +123,14 @@ fn apply_entity(
                     current.remove(*field);
                 }
             }
-            current.extend(incoming.clone());
+            current.extend(
+                incoming
+                    .iter()
+                    .filter(|(name, _)| {
+                        domains::PORTABLE_APPLICATION_FIELDS.contains(&name.as_str())
+                    })
+                    .map(|(name, value)| (name.clone(), value.clone())),
+            );
         }
         return st.db.set_setting("app", &current);
     }
@@ -139,12 +146,18 @@ fn apply_entity(
             return Ok(());
         }
         let mut payload = entity.payload.clone();
-        let secret_value = payload
-            .get("portableApiKey")
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        let secret_value = config
+            .include_secrets
+            .then(|| {
+                payload
+                    .get("portableApiKey")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .flatten();
         if let Some(object) = payload.as_object_mut() {
             object.remove("portableApiKey");
+            object.remove("secretValue");
             object.insert("id".into(), Value::String(provider_id.into()));
             if let Some(secret) = secret_value.as_ref() {
                 object.insert("secretValue".into(), Value::String(secret.clone()));
@@ -184,6 +197,12 @@ fn apply_entity(
     }
     if entity.domain == domains::DOMAIN_MCP {
         let mut payload = entity.payload.clone();
+        if !config.include_secrets {
+            if let Some(object) = payload.as_object_mut() {
+                object.remove("env");
+                object.remove("headers");
+            }
+        }
         if let Some(path) = mapped_project_path(config, &payload)? {
             if let Some(object) = payload.as_object_mut() {
                 object.remove("projectLogicalId");
@@ -227,6 +246,7 @@ fn apply_entity(
                 .payload
                 .get("packageFiles")
                 .and_then(Value::as_array)
+                .filter(|_| !entity.deleted)
                 .map(|descriptors| {
                     descriptors
                         .iter()
@@ -261,6 +281,15 @@ fn apply_entity(
             .level
             .as_deref()
             .and_then(|value| CapabilityLevel::parse(Some(value)).ok());
+        let expected_package_files = if entity.deleted {
+            Vec::new()
+        } else {
+            st.user_skills.package_files(
+                &id,
+                level.unwrap_or(CapabilityLevel::Global),
+                package_project_path.as_deref(),
+            )?
+        };
         if entity.deleted {
             if !id.is_empty() {
                 st.user_skills
@@ -270,10 +299,11 @@ fn apply_entity(
             st.user_skills.create(input)?;
         }
         if !entity.deleted {
-            st.user_skills.write_package_files(
+            st.user_skills.replace_package_files(
                 &id,
                 level.unwrap_or(CapabilityLevel::Global),
                 package_project_path.as_deref(),
+                &expected_package_files,
                 &package_files,
             )?;
         }
@@ -458,50 +488,6 @@ fn apply_entity(
         )?;
         return Ok(());
     }
-    if entity.domain == domains::DOMAIN_PROJECTS {
-        let Some(paths) = mapped_project_paths(config, &entity.payload)? else {
-            bail!("CONFIG_SYNC_MAPPING_REQUIRED: project folder is not mapped");
-        };
-        let logical_id = entity
-            .payload
-            .get("logicalId")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let is_group = logical_id.starts_with("project-group:")
-            || entity
-                .payload
-                .get("roots")
-                .and_then(Value::as_array)
-                .is_some_and(|roots| roots.len() > 1)
-            || paths.len() > 1;
-        if entity.deleted {
-            if is_group {
-                if let Some(group) = st.db.project_group_for_path(&paths[0])? {
-                    if !group.legacy {
-                        st.db.delete_project_group_record(&group.id)?;
-                    }
-                }
-            }
-        } else if is_group {
-            let name = entity
-                .payload
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("Imported project")
-                .to_string();
-            match st.db.project_group_for_path(&paths[0])? {
-                Some(group) if !group.legacy => {
-                    st.db.update_project_group(&group.id, &name, &paths)?;
-                }
-                _ => {
-                    st.db.create_project_group(&name, &paths)?;
-                }
-            }
-        } else {
-            st.db.ensure_project(&paths[0], false)?;
-        }
-        return Ok(());
-    }
     if entity.domain == domains::DOMAIN_PLUGINS {
         let plugin_id = entity
             .payload
@@ -514,7 +500,7 @@ fn apply_entity(
         } else {
             // Installation and activation remain explicit user actions. The
             // portable intent is retained locally, but no plugin bytes or
-            // permissions are pulled from WebDAV.
+            // permissions are pulled from S3.
             config
                 .plugin_intents
                 .insert(plugin_id.to_string(), entity.payload.clone());
@@ -572,9 +558,7 @@ fn retain_deferred_entity(bundle: &mut PendingBundle, entity: &PortableEntity, r
 
 fn apply_priority(domain: &str) -> u8 {
     match domain {
-        // Project roots and providers are prerequisites for scoped capability
-        // files and application-level model bindings.
-        domains::DOMAIN_PROJECTS => 10,
+        // Providers are prerequisites for application-level model bindings.
         domains::DOMAIN_PROVIDERS => 20,
         domains::DOMAIN_INSTRUCTIONS => 30,
         domains::DOMAIN_MCP
@@ -670,14 +654,17 @@ fn apply_bundle_locked(
                 applied.insert(key_id);
                 continue;
             }
-            if current_map
-                .get(&logical_key)
-                .map(|value| value.digest.as_str())
-                != Some(before.digest.as_str())
-            {
+            let unchanged = if before.deleted {
+                !current_map.contains_key(&logical_key)
+            } else {
+                current_map
+                    .get(&logical_key)
+                    .is_some_and(|current| merge::same_version(current, before))
+            };
+            if !unchanged {
                 continue;
             }
-            if entity.digest == before.digest {
+            if merge::same_version(entity, before) {
                 // The candidate already matches the coherent local snapshot.
                 // Treat it as acknowledged without re-applying it; this is
                 // important for path-bound entities whose local overlay is
@@ -701,22 +688,14 @@ fn apply_bundle_locked(
             }
         }
     }
+    conflicts::record(config, bundle, &applied);
     let next_base = acknowledged_manifest(base, &bundle.manifest, &applied);
-    store_base(st, key, &next_base)?;
     let remaining: Vec<_> = staged
         .approvals
         .iter()
         .filter(|item| !item.approved)
         .cloned()
         .collect();
-    if remaining.is_empty() {
-        clear_pending(st)?;
-    } else {
-        let mut next = staged;
-        next.approvals = remaining;
-        next.journal_state = "staged".into();
-        store_pending(st, key, &next)?;
-    }
     let after = domains::capture(
         st,
         key,
@@ -725,12 +704,34 @@ fn apply_bundle_locked(
         &config.plugin_intents,
         &identity_overrides(config),
     )?;
+    let previous = baseline::load(st, key)?;
+    let applied_logical = bundle
+        .manifest
+        .entities
+        .iter()
+        .filter(|entity| applied.contains(&entity_key(entity)))
+        .map(logical_entity_key)
+        .collect();
+    let observed = baseline::advance_observed(
+        previous.as_ref().map(|value| &value.observed),
+        &after.manifest,
+        &applied_logical,
+    );
+    baseline::store(st, key, &next_base, &observed)?;
     config.last_local_digest = Some(domains::snapshot_digest(&after));
     config.local_change_seen_at = None;
     config.last_success_at = Some(Utc::now().to_rfc3339());
     config.last_revision_id = Some(bundle.remote_revision_id.clone());
     clear_error(config);
     save_config(st, config)?;
+    if remaining.is_empty() {
+        clear_pending(st)?;
+    } else {
+        let mut next = staged;
+        next.approvals = remaining;
+        next.journal_state = "staged".into();
+        store_pending(st, key, &next)?;
+    }
     Ok(())
 }
 

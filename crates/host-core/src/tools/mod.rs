@@ -8,7 +8,10 @@ use std::future::pending;
 use std::io::{self, BufRead, BufReader, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 #[cfg(not(test))]
 use tokio::io::AsyncWriteExt;
@@ -40,6 +43,61 @@ pub const MIN_BASH_TIMEOUT_MS: u64 = 1_000;
 pub const MAX_BASH_TIMEOUT_MS: u64 = 21_600_000;
 pub const DEFAULT_BASH_TIMEOUT_MS: u64 = 60_000;
 pub const INTERNAL_TOOL_RUNNER_FLAG: &str = "--internal-tool-runner";
+// Windows inherits the parent process' Job Object unless the child is created
+// with CREATE_BREAKAWAY_FROM_JOB. The hidden runner is immediately assigned to
+// its own kill-on-close job, so leaving an outer launcher job keeps that job
+// from becoming the runner's termination scope. The flag is only legal when the
+// job the host is in grants JOB_OBJECT_LIMIT_BREAKAWAY_OK: `CreateProcess` fails
+// the whole call with ERROR_ACCESS_DENIED otherwise.
+#[cfg(any(windows, test))]
+const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(any(windows, test))]
+const WINDOWS_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+
+#[cfg(any(windows, test))]
+const fn windows_tool_runner_creation_flags(breakaway_allowed: bool) -> u32 {
+    if breakaway_allowed {
+        WINDOWS_CREATE_NO_WINDOW | WINDOWS_CREATE_BREAKAWAY_FROM_JOB
+    } else {
+        WINDOWS_CREATE_NO_WINDOW
+    }
+}
+
+/// Whether the Job Object that contains this process grants breakaway.
+///
+/// Only the immediate job decides this; an ancestor in a nested chain that
+/// withholds the grant leaves the child in that ancestor instead of failing the
+/// call. A host that is not in a job never needs the flag, and one whose limits
+/// cannot be read is treated as refusing it, because the host-owned job contains
+/// the runner either way.
+#[cfg(windows)]
+fn windows_breakaway_allowed() -> bool {
+    use windows_sys::Win32::System::JobObjects::{
+        IsProcessInJob, JobObjectBasicLimitInformation, QueryInformationJobObject,
+        JOBOBJECT_BASIC_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    let mut in_job = 0;
+    if unsafe { IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut in_job) } == 0
+        || in_job == 0
+    {
+        return false;
+    }
+    let mut limits = JOBOBJECT_BASIC_LIMIT_INFORMATION::default();
+    let mut returned = 0u32;
+    let queried = unsafe {
+        QueryInformationJobObject(
+            std::ptr::null_mut(),
+            JobObjectBasicLimitInformation,
+            (&mut limits as *mut JOBOBJECT_BASIC_LIMIT_INFORMATION).cast(),
+            std::mem::size_of::<JOBOBJECT_BASIC_LIMIT_INFORMATION>() as u32,
+            &mut returned,
+        )
+    };
+    queried != 0 && limits.LimitFlags & JOB_OBJECT_LIMIT_BREAKAWAY_OK != 0
+}
+
 const PIPE_DRAIN_TIMEOUT: Duration = Duration::from_millis(750);
 const PROCESS_TERMINATION_TIMEOUT: Duration = Duration::from_millis(2_000);
 const OUTPUT_CHANNEL_CAPACITY: usize = 64;
@@ -61,12 +119,12 @@ use windows_sys::Win32::System::JobObjects::{
 
 #[cfg(windows)]
 #[derive(Debug, Default)]
-struct ProcessOwnership {
+pub(crate) struct ProcessOwnership {
     job: Option<HANDLE>,
 }
 #[cfg(not(windows))]
 #[derive(Debug, Default)]
-struct ProcessOwnership;
+pub(crate) struct ProcessOwnership;
 
 impl ProcessOwnership {
     #[cfg(windows)]
@@ -176,7 +234,7 @@ impl ProcessOwnership {
     #[cfg(not(windows))]
     fn close_now(&mut self) {}
 
-    fn terminate_fail_closed(&mut self, pid: u32) -> Result<(), String> {
+    pub(crate) fn terminate_fail_closed(&mut self, pid: u32) -> Result<(), String> {
         match self.terminate(pid) {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -206,14 +264,18 @@ impl Drop for ProcessOwnership {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ToolRunnerStartConfig {
-    program: PathBuf,
-    args: Vec<String>,
-    workspace: PathBuf,
+pub(crate) struct ToolRunnerStartConfig {
+    pub(crate) program: PathBuf,
+    pub(crate) args: Vec<String>,
+    pub(crate) workspace: PathBuf,
     #[serde(default)]
-    scratch_dir: Option<PathBuf>,
+    pub(crate) scratch_dir: Option<PathBuf>,
     #[serde(default)]
-    env_path: Option<String>,
+    pub(crate) env_path: Option<String>,
+    /// Session-scoped variables such as `PI_PORT` for an isolated worktree
+    /// (ADR 0329). Empty for every other call.
+    #[serde(default)]
+    pub(crate) extra_env: Vec<(String, String)>,
 }
 
 fn path_has_nul(path: &Path) -> bool {
@@ -397,6 +459,9 @@ pub async fn run_internal_tool_runner() -> Result<i32> {
     if let Some(path) = config.env_path.as_deref() {
         command.env("PATH", path);
     }
+    for (name, value) in &config.extra_env {
+        command.env(name, value);
+    }
     #[cfg(windows)]
     {
         command.creation_flags(0x0800_0000);
@@ -564,10 +629,16 @@ pub struct ToolsExecuteParams {
     /// permission mode. `inherit` and absent behave identically.
     #[serde(default)]
     pub permission_scope: Option<String>,
+    /// Chain id of a Write/Edit subagent with its own worktree (ADR 0329).
+    /// host-core resolves it against its registry; an unknown id is ignored.
+    #[serde(default)]
+    pub delegation_id: Option<String>,
     #[serde(default)]
     pub expected_command_shell_id: Option<String>,
     #[serde(default)]
     pub expected_command_shell_dialect: Option<String>,
+    #[serde(default)]
+    pub run_in_background: bool,
     pub timeout_ms: Option<u64>,
     /// Action names that may run in Plan or Goal mode (ADR 0211). When
     /// set and non-empty, host-core admits this `plugin_*` tool in
@@ -753,7 +824,6 @@ fn spill_output(scratch: Option<&Path>, label: &str, text: &str) -> Option<PathB
     }
 }
 
-#[derive(Debug)]
 pub struct BashExecutionOptions {
     pub session_id: String,
     pub tool_call_id: String,
@@ -761,6 +831,14 @@ pub struct BashExecutionOptions {
     pub timeout_ms: Option<u64>,
     pub cancellation: Option<watch::Receiver<bool>>,
     pub output_tx: Option<mpsc::UnboundedSender<String>>,
+    /// Extra environment for the command, e.g. `PI_PORT` (ADR 0329).
+    pub extra_env: Vec<(String, String)>,
+    /// Start as a background task detached from the turn: no timeout, no
+    /// abort wiring. The caller owns the registry; see `background_tasks`.
+    pub run_in_background: bool,
+    /// Host state the background spawn registers into. Present for RPC-driven
+    /// calls; `None` for test/`local` constructions that never go background.
+    pub app_state: Option<Arc<tokio::sync::Mutex<crate::state::AppState>>>,
 }
 
 impl BashExecutionOptions {
@@ -772,6 +850,9 @@ impl BashExecutionOptions {
             timeout_ms,
             cancellation: None,
             output_tx: None,
+            extra_env: Vec::new(),
+            run_in_background: false,
+            app_state: None,
         }
     }
 }
@@ -2226,12 +2307,12 @@ struct OutputChunk {
 }
 
 #[derive(Debug, Default)]
-struct Utf8Decoder {
+pub(crate) struct Utf8Decoder {
     pending: Vec<u8>,
 }
 
 impl Utf8Decoder {
-    fn push(&mut self, bytes: &[u8]) -> String {
+    pub(crate) fn push(&mut self, bytes: &[u8]) -> String {
         self.pending.extend_from_slice(bytes);
         let mut output = String::new();
         loop {
@@ -2265,7 +2346,7 @@ impl Utf8Decoder {
         output
     }
 
-    fn finish(&mut self) -> String {
+    pub(crate) fn finish(&mut self) -> String {
         if self.pending.is_empty() {
             return String::new();
         }
@@ -2535,16 +2616,16 @@ async fn wait_for_cancellation(receiver: &mut Option<watch::Receiver<bool>>) -> 
     }
 }
 
-struct SpawnedToolRunner {
-    pid: u32,
-    ownership: ProcessOwnership,
+pub(crate) struct SpawnedToolRunner {
+    pub(crate) pid: u32,
+    pub(crate) ownership: ProcessOwnership,
     control: Option<ChildStdin>,
-    stdout: Option<ChildStdout>,
-    stderr: Option<ChildStderr>,
-    wait_task: tokio::task::JoinHandle<std::io::Result<ExitStatus>>,
+    pub(crate) stdout: Option<ChildStdout>,
+    pub(crate) stderr: Option<ChildStderr>,
+    pub(crate) wait_task: tokio::task::JoinHandle<std::io::Result<ExitStatus>>,
 }
 
-async fn spawn_tool_runner(
+pub(crate) async fn spawn_tool_runner(
     config: &ToolRunnerStartConfig,
 ) -> Result<SpawnedToolRunner, (String, String)> {
     #[cfg(not(test))]
@@ -2579,6 +2660,9 @@ async fn spawn_tool_runner(
         if let Some(path) = config.env_path.as_deref() {
             command.env("PATH", path);
         }
+        for (name, value) in &config.extra_env {
+            command.env(name, value);
+        }
     }
 
     #[cfg(not(test))]
@@ -2592,7 +2676,9 @@ async fn spawn_tool_runner(
     #[cfg(unix)]
     command.process_group(0);
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
+    command.creation_flags(windows_tool_runner_creation_flags(
+        windows_breakaway_allowed(),
+    ));
 
     let mut child = spawn_with_retries(&mut command).await?;
     let pid = child.id().unwrap_or_default();
@@ -2741,13 +2827,41 @@ async fn tool_bash(
     args: &Value,
     options: BashExecutionOptions,
 ) -> Result<Value, (String, String)> {
-    let timeout_ms = options.timeout_ms.unwrap_or(DEFAULT_BASH_TIMEOUT_MS);
-    validate_bash_timeout_ms(timeout_ms)?;
     let root = require_workspace(workspace)?;
     let command = args
         .get("command")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ("INVALID_ARGUMENT".into(), "command required".into()))?;
+
+    // Background path: register the process with the detached registry and
+    // return immediately. No timeout budget, no cancellation wiring — the
+    // task outlives the turn by design and is reported via
+    // `backgroundTasks.changed` / `backgroundTasks.*` RPC.
+    if options.run_in_background {
+        let Some(app_state) = options.app_state.as_ref() else {
+            return Err((
+                "INVALID_ARGUMENT".into(),
+                "background execution requires host state (not available for local calls)".into(),
+            ));
+        };
+        let started = crate::background_tasks::spawn_background_task_detached(
+            app_state,
+            &options.session_id,
+            command,
+            &options.command_shell_id,
+            root,
+            scratch,
+        )
+        .await?;
+        return Ok(serde_json::json!({
+            "backgroundTaskId": started,
+            "command": command,
+            "commandShellId": options.command_shell_id,
+        }));
+    }
+
+    let timeout_ms = options.timeout_ms.unwrap_or(DEFAULT_BASH_TIMEOUT_MS);
+    validate_bash_timeout_ms(timeout_ms)?;
 
     let resolved = shell::resolve_shell(&options.command_shell_id)
         .map_err(|message| ("SHELL_NOT_FOUND".to_string(), message))?;
@@ -2770,8 +2884,14 @@ async fn tool_bash(
         program: invocation.program,
         args: invocation.args,
         workspace: root.to_path_buf(),
-        scratch_dir: scratch.map(Path::to_path_buf),
+        scratch_dir: scratch.map(|path| {
+            shell::format_scratch_dir_for_shell(
+                shell::dialect_for_id(&options.command_shell_id),
+                path,
+            )
+        }),
         env_path: shell::user_login_path().map(str::to_string),
+        extra_env: options.extra_env.clone(),
     };
     let SpawnedToolRunner {
         pid,
@@ -2853,7 +2973,15 @@ async fn tool_bash(
     notifier.finish();
 
     match stop {
-        BashStop::TimedOut => Err(("TOOL_TIMEOUT".into(), "bash timed out".into())),
+        BashStop::TimedOut => Err((
+            "TOOL_TIMEOUT".into(),
+            format!(
+                "bash timed out after {timeout_ms}ms and was stopped; \
+                 the command did not finish within the Bash tool's timeoutMs budget. \
+                 Raise timeoutMs for a legitimately long command, or split the work \
+                 into shorter commands that each finish inside the budget"
+            ),
+        )),
         BashStop::Aborted => Err(("TOOL_ABORTED".into(), "bash aborted".into())),
         BashStop::LifecycleFailed(error) => Err((
             "TOOL_FAILED".into(),
@@ -3228,6 +3356,7 @@ mod tests {
             workspace: PathBuf::from("workspace"),
             scratch_dir: None,
             env_path: None,
+            extra_env: Vec::new(),
         };
         let frame = encode_runner_config(&config).unwrap();
         assert_eq!(decode_runner_config(&frame).unwrap().args, config.args);
@@ -3246,8 +3375,78 @@ mod tests {
             workspace: PathBuf::from("workspace"),
             scratch_dir: None,
             env_path: None,
+            extra_env: Vec::new(),
         };
         assert!(encode_runner_config(&nul_config).is_err());
+    }
+
+    #[test]
+    fn windows_tool_runner_flags_follow_the_host_job_capability() {
+        assert_eq!(
+            windows_tool_runner_creation_flags(true),
+            WINDOWS_CREATE_NO_WINDOW | WINDOWS_CREATE_BREAKAWAY_FROM_JOB,
+        );
+        // A job that withholds JOB_OBJECT_LIMIT_BREAKAWAY_OK rejects the
+        // breakaway outright, so the flag must not be requested there.
+        assert_eq!(
+            windows_tool_runner_creation_flags(false),
+            WINDOWS_CREATE_NO_WINDOW,
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_bash_termination_does_not_reach_the_host_job() {
+        // Whatever job the harness runs in, stopping a Bash command must stay
+        // inside the job host-core created for it: a sibling in the harness job
+        // must outlive the termination. That is the #1642 contract, where runner
+        // cleanup took the Desktop tree with it. Under `cargo test` the harness
+        // job withholds JOB_OBJECT_LIMIT_BREAKAWAY_OK, so this also covers the
+        // fallback where the runner cannot leave that job.
+        use std::os::windows::process::CommandExt;
+
+        let mut sibling = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1 >NUL"])
+            .creation_flags(WINDOWS_CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("host-job sibling must start");
+
+        let dir = tempfile::tempdir().unwrap();
+        let dialect = shell::catalog(None)
+            .effective
+            .and_then(|shell| shell::dialect_for_id(&shell.id))
+            .unwrap_or("posix");
+        let command = match dialect {
+            "powershell" => "Start-Sleep -Seconds 30",
+            "cmd" => "ping -n 31 127.0.0.1 >NUL",
+            _ => "sleep 30",
+        };
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Bash",
+            &serde_json::json!({ "command": command }),
+            1_000,
+        )
+        .await;
+        // Without a real termination the sibling check below would be vacuous.
+        assert_eq!(
+            result.error_code.as_deref(),
+            Some("TOOL_TIMEOUT"),
+            "a command in a job without breakaway must still run: {:?}",
+            result.content,
+        );
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(
+            sibling.try_wait().unwrap().is_none(),
+            "stopping a Bash command must not terminate the host's job",
+        );
+        let _ = sibling.kill();
+        let _ = sibling.wait();
     }
 
     #[tokio::test]
@@ -4688,6 +4887,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bash_timeout_error_names_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let shell_id = shell::catalog(None)
+            .effective
+            .expect("test platform must have a command shell")
+            .id;
+        let dialect = shell::dialect_for_id(&shell_id).unwrap_or("posix");
+        let command = match dialect {
+            "powershell" => "Start-Sleep -Seconds 5",
+            "cmd" => "ping -n 6 127.0.0.1 >NUL",
+            _ => "sleep 5",
+        };
+        let result = execute_tool_with_options(
+            Some(dir.path()),
+            None,
+            "Bash",
+            &serde_json::json!({ "command": command }),
+            Some(1_000),
+            Some(BashExecutionOptions {
+                session_id: "timeout-session".into(),
+                tool_call_id: "timeout-call".into(),
+                command_shell_id: shell_id,
+                timeout_ms: Some(1_000),
+                cancellation: None,
+                output_tx: None,
+                extra_env: Vec::new(),
+                run_in_background: false,
+                app_state: None,
+            }),
+        )
+        .await;
+        assert!(!result.ok, "expected a timeout, got: {:?}", result.content);
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(result.error_code.as_deref(), Some("TOOL_TIMEOUT"));
+        let message = result.content["error"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("1000ms"),
+            "timeout message names the budget: {message:?}"
+        );
+        assert!(
+            message.contains("timeoutMs"),
+            "timeout message says how to extend the budget: {message:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn bash_scratch_dir_env_is_posix_formatted_for_git_bash() {
+        if shell::resolve_shell(shell::GIT_BASH_ID).is_err() {
+            eprintln!("git-bash is not installed; skipping the posix scratch env test");
+            return;
+        }
+        let ws = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let scratch = data.path().join("scratch").join("session-dialect");
+        std::fs::create_dir_all(&scratch).unwrap();
+        let result = execute_tool_with_options(
+            Some(ws.path()),
+            Some(&scratch),
+            "Bash",
+            &serde_json::json!({ "command": "printf %s \"$PI_SCRATCH_DIR\"" }),
+            Some(15_000),
+            Some(BashExecutionOptions {
+                session_id: "dialect-session".into(),
+                tool_call_id: "dialect-call".into(),
+                command_shell_id: shell::GIT_BASH_ID.into(),
+                timeout_ms: Some(15_000),
+                cancellation: None,
+                output_tx: None,
+                extra_env: Vec::new(),
+                run_in_background: false,
+                app_state: None,
+            }),
+        )
+        .await;
+        assert!(result.ok, "bash failed: {:?}", result.content);
+        let stdout = result.content["stdout"].as_str().unwrap_or_default();
+        let expected = scratch.to_str().unwrap().replace('\\', "/");
+        assert_eq!(
+            stdout, expected,
+            "PI_SCRATCH_DIR must be a path the posix shell can use directly"
+        );
+    }
+
+    #[tokio::test]
     async fn bash_output_accumulator_is_bounded_and_reports_omissions() {
         let dir = tempfile::tempdir().unwrap();
         #[cfg(windows)]
@@ -4711,6 +4995,9 @@ mod tests {
                 timeout_ms: Some(15_000),
                 cancellation: None,
                 output_tx: None,
+                extra_env: Vec::new(),
+                run_in_background: false,
+                app_state: None,
             }),
         )
         .await;
@@ -4780,6 +5067,9 @@ mod tests {
             timeout_ms: None,
             cancellation: None,
             output_tx: Some(tx),
+            extra_env: Vec::new(),
+            run_in_background: false,
+            app_state: None,
         };
         let mut notifier = OutputNotifier::new(&options);
         for _ in 0..(MAX_OUTPUT_NOTIFICATIONS + 100) {
@@ -4805,6 +5095,9 @@ mod tests {
             timeout_ms: Some(5_000),
             cancellation: None,
             output_tx: None,
+            extra_env: Vec::new(),
+            run_in_background: false,
+            app_state: None,
         };
 
         let output = execute_tool_with_options(
@@ -4881,6 +5174,105 @@ mod tests {
         )
         .await;
         assert_eq!(native.content["exitCode"], 7);
+    }
+
+    #[cfg(windows)]
+    async fn run_windows_powershell(workspace: &Path, command: &str) -> ToolsExecuteResult {
+        let options = BashExecutionOptions {
+            session_id: "powershell-output-session".into(),
+            tool_call_id: "powershell-output-call".into(),
+            command_shell_id: shell::WINDOWS_POWERSHELL_ID.into(),
+            timeout_ms: Some(30_000),
+            cancellation: None,
+            output_tx: None,
+            extra_env: Vec::new(),
+            run_in_background: false,
+            app_state: None,
+        };
+        execute_tool_with_options(
+            Some(workspace),
+            None,
+            "Bash",
+            &serde_json::json!({ "command": command }),
+            Some(30_000),
+            Some(options),
+        )
+        .await
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_formats_pipeline_objects_like_the_console() {
+        // Cmdlets return objects. The agent must read them the way a console
+        // shows them, not as the bare type names that string conversion gives.
+        let workspace = tempfile::tempdir().unwrap();
+        let output = run_windows_powershell(
+            workspace.path(),
+            "[pscustomobject]@{ PiName = 'alpha'; PiSize = 42 } | Format-Table; \
+             @{ piKey = 'piValue' }; 1, 2, 3 | Measure-Object -Sum",
+        )
+        .await;
+        assert!(output.ok, "PowerShell output failed: {:?}", output.content);
+        let stdout = output.content["stdout"].as_str().unwrap_or_default();
+        let has_line = |predicate: &dyn Fn(&str) -> bool| stdout.lines().any(predicate);
+        assert!(
+            has_line(&|line| line.contains("alpha") && line.contains("42")),
+            "Format-Table row missing: {stdout:?}"
+        );
+        assert!(
+            has_line(&|line| line.contains("piKey") && line.contains("piValue")),
+            "hashtable entry missing: {stdout:?}"
+        );
+        assert!(
+            has_line(&|line| line.starts_with("Sum") && line.trim_end().ends_with(": 6")),
+            "Measure-Object sum missing: {stdout:?}"
+        );
+        for type_name in [
+            "Microsoft.PowerShell.Commands.Internal.Format",
+            "System.Collections.Hashtable",
+            "GenericMeasureInfo",
+        ] {
+            assert!(
+                !stdout.contains(type_name),
+                "{type_name} replaced real output: {stdout:?}"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_native_stderr_keeps_the_native_exit_code() {
+        // Git, cargo, npm and most build tools write progress to stderr. That
+        // text stays on stderr, but only the command's own exit code decides
+        // whether it failed.
+        let workspace = tempfile::tempdir().unwrap();
+        let progress = run_windows_powershell(
+            workspace.path(),
+            "cmd /c \"(echo first progress line 1>&2) & (echo second progress line 1>&2)\"",
+        )
+        .await;
+        assert!(
+            progress.ok,
+            "successful command failed: {:?}",
+            progress.content
+        );
+        assert_eq!(progress.content["exitCode"], 0);
+        let stderr = progress.content["stderr"].as_str().unwrap_or_default();
+        assert!(
+            stderr.contains("first progress line") && stderr.contains("second progress line"),
+            "stderr was {stderr:?}"
+        );
+
+        let failure = run_windows_powershell(
+            workspace.path(),
+            "cmd /c \"echo native failure 1>&2 & exit 3\"",
+        )
+        .await;
+        assert_eq!(failure.content["exitCode"], 3, "{:?}", failure.content);
+        assert!(failure.content["stderr"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("native failure"));
     }
     #[tokio::test]
     async fn edit_move_to_self_preserves_source_bytes() {

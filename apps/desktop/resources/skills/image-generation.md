@@ -47,8 +47,10 @@ model is configured, direct the user to Settings → Models; do not select one s
 ## Deliver the result
 
 Results are ordered and contain a status and, for successes, a local image path.
-Show the successful images with Markdown image links and report failed items.
-The desktop also renders their previews directly from the tool result.
+The desktop renders successful images directly from the tool result in the
+conversation. Do not repeat those result paths as Markdown image links; that
+would display the same images twice. Briefly confirm what was generated and
+report failed items.
 
 Use available image inspection tools to check the result when possible. Do not
 claim to have visually inspected an image if you only received its file path.

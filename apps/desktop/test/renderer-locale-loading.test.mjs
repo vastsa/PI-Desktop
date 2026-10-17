@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import i18n from "i18next";
 import test from "node:test";
-import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
-import { applyAppLanguage } from "../src/lib/renderer-language.ts";
-import {
-  loadRendererCatalog,
-  loadRendererResources,
-} from "../src/lib/renderer-catalogs.ts";
+
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+
+const { catalogs, flattenCatalog } = await import("@pi-desktop/i18n");
+const { applyAppLanguage } = await import("../src/lib/renderer-language.ts");
+const { loadRendererCatalog, loadRendererResources } = await import("../src/lib/renderer-catalogs.ts");
 
 test("renderer locale resources load English fallback and the selected catalog", async () => {
   const resources = await loadRendererResources("zh-CN");

@@ -13,7 +13,9 @@ renderer or changing host-owned session storage.
 ## Decision (historical)
 
 Keep the normalized first-prompt fallback synchronous from the renderer's point
-of view. After the initial turn emits `agent_end`, the renderer calls the
+of view. (D654 later restored that fallback as a host-owned write; only the
+one-shot completion below stays removed.) After the initial turn emits
+`agent_end`, the renderer calls the
 allowlisted `session/summarizeTitle` IPC. Electron validates the session and
 prompt, resolves the session's effective provider/model, and invokes the
 agent-runtime `summarizeSessionTitle` one-shot with thinking disabled. The

@@ -1,7 +1,7 @@
-import type { PlanHistoryEntry } from "./plans.js";
+import type { AppError } from "../errors.js";
 /** Shared public types grouped by the owning application domain. */
 import type { SessionMessageOrigin } from "../session-collaboration.js";
-import type { AppError } from "../errors.js";
+import type { PlanHistoryEntry } from "./plans.js";
 
 export type UiMessageRole = "user" | "assistant" | "system" | "tool";
 
@@ -117,8 +117,12 @@ export type UiMessage = {
   providerId?: string;
   /** Token usage for the assistant turn, when the provider reported it. */
   usage?: MessageUsage;
-  /** Elapsed model streaming time used to calculate output throughput. */
+  /** Elapsed assistant response duration used to calculate output throughput. */
   responseDurationMs?: number;
+  /** Client-observed wait from issuing the model request to its first response event. */
+  providerWaitMs?: number;
+  /** Time spent streaming the model's thinking and answer after the first response event. */
+  modelStreamDurationMs?: number;
   /** Output tokens used only for throughput when a stopped stream has no final usage. */
   responseOutputTokens?: number;
   /** Structured failure attached to the assistant turn that failed. */

@@ -198,6 +198,51 @@ describe("discovery candidates", () => {
     }
   });
 
+  it("asks a named endpoint for its model list in the style that endpoint documents", () => {
+    /*
+      StepFun's subscription endpoint speaks Anthropic Messages for chat but
+      publishes its model list the OpenAI way: it answers `Authorization:
+      Bearer` and rejects the Anthropic `x-api-key` header with 401. The preset
+      states that split, so the wire format stays Anthropic Messages while the
+      probe authenticates the way this model list requires.
+    */
+    const profile = inferEndpointProfile({ baseUrl: "https://api.stepfun.com/step_plan/v1" });
+    expect(profile?.apiStyle).toBe("anthropic_messages");
+    expect(profile?.discoveryStyle).toBe("openai_models");
+    expect(
+      profile?.candidates.map((candidate) =>
+        discoveryProbeUrl(candidate.baseUrl, candidate.discoveryStyle),
+      ),
+    ).toEqual(["https://api.stepfun.com/step_plan/v1/models"]);
+  });
+
+  it("keeps a declared model-list style when the base was pasted with its operation", () => {
+    /*
+      The settings form offers `.../step_plan/v1/messages` as the address, so a
+      user may paste back a URL this app itself produced. That is the same
+      deployment as the base endpoint, and it must keep the declared model-list
+      style: the operation is stripped, so a style derived from the stripped
+      path's wire format would describe an endpoint the row is not on.
+    */
+    for (const pasted of [
+      "https://api.stepfun.com/step_plan/v1/models",
+      "https://api.stepfun.com/step_plan/v1/messages",
+    ]) {
+      const profile = inferEndpointProfile({ baseUrl: pasted });
+      expect(profile?.effectiveBaseUrl, pasted).toBe(
+        "https://api.stepfun.com/step_plan/v1",
+      );
+      expect(profile?.apiStyle, pasted).toBe("anthropic_messages");
+      expect(profile?.discoveryStyle, pasted).toBe("openai_models");
+      expect(
+        profile?.candidates.map((candidate) =>
+          discoveryProbeUrl(candidate.baseUrl, candidate.discoveryStyle),
+        ),
+        pasted,
+      ).toEqual(["https://api.stepfun.com/step_plan/v1/models"]);
+    }
+  });
+
   it("keeps every candidate on the origin the user typed", () => {
     for (const baseUrl of [
       "https://api.foo.com",

@@ -133,6 +133,7 @@ test("bootstrap probes, installs, forwards, and pairs in order", async () => {
     user: "deploy",
     remotePort: 41_234,
     version: VERSION,
+    hostId: "host_x",
   });
 
   // One tunnel: reserved here, bound to the port the host reported remotely.
@@ -145,7 +146,7 @@ test("bootstrap probes, installs, forwards, and pairs in order", async () => {
 
   // Pairing spends the single-use token over the forwarded URL only.
   assert.deepEqual(pairings, [
-    { url: `ws://127.0.0.1:${RESERVED_PORT}/v1/racp/ws`, pairingToken: "ppt1.abc", label: "Prod box" },
+    { url: `ws://127.0.0.1:${RESERVED_PORT}/v1/racp/ws`, pairingToken: "ppt1.abc", label: "Prod box", expectedHostId: "host_x" },
   ]);
 
   // What travelled over SSH is the script with the pinned digest and URL, not
@@ -337,4 +338,12 @@ test("sshMetadataOf refuses direct, missing, and malformed descriptors", () => {
       `remotePort ${String(remotePort)}`,
     );
   }
+});
+
+test("SSH identity metadata remains optional for legacy records and rejects malformed enrollment", () => {
+  const ssh = { host: "remote.example", remotePort: 1234, version: VERSION };
+  const record = (value) => ({ hostKey: "h", metadata: { transport: "ssh", ssh: value } });
+  assert.equal(sshMetadataOf(record(ssh)).hostId, undefined);
+  assert.equal(sshMetadataOf(record({ ...ssh, hostId: "enrolled" })).hostId, "enrolled");
+  for (const hostId of ["", "x\n", 42, "x".repeat(257)]) assert.equal(sshMetadataOf(record({ ...ssh, hostId })), null);
 });

@@ -52,12 +52,16 @@ pub struct AppState {
     pub session_grants: HashMap<String, Vec<String>>,
     /// executionId -> responder for plugin tool dispatches awaiting the
     /// desktop runner (Electron main executes the plugin JS and resolves).
+    pub remote_execs: HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>,
     pub plugin_execs: HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>,
     /// Rolling plugin session API brakes. These are intentionally process-local;
     /// a restart is already a natural rate-window boundary.
     pub plugin_import_rates: HashMap<String, Vec<Instant>>,
     pub plugin_batch_import_rates: HashMap<String, Vec<Instant>>,
     pub plugin_delete_rates: HashMap<String, Vec<Instant>>,
+    /// Chat-started processes detached from their turn (dev servers, etc.).
+    /// Lives with the host process; `shutdown` stops every running task.
+    pub background_tasks: crate::background_tasks::BackgroundTaskRegistry,
     pub tool_budget: ToolBudget,
     /// (session_id, tool_call_id) -> cancellation signal for an active Bash
     /// process. The signal is removed by the execution owner in all outcomes.
@@ -137,11 +141,13 @@ impl AppState {
             user_subagents,
             config_sync_lock: Arc::new(tokio::sync::Mutex::new(())),
             config_sync_in_progress: Arc::new(AtomicBool::new(false)),
+            background_tasks: crate::background_tasks::BackgroundTaskRegistry::default(),
             started_at: Instant::now(),
             handshook: false,
             shutting_down: false,
             session_grants: HashMap::new(),
             plugin_execs: HashMap::new(),
+            remote_execs: HashMap::new(),
             plugin_import_rates: HashMap::new(),
             plugin_batch_import_rates: HashMap::new(),
             plugin_delete_rates: HashMap::new(),
@@ -295,6 +301,9 @@ impl AppState {
             let _ = sender.send(true);
         }
         self.active_bash_cancellations.clear();
+        // Chat-started background tasks follow the application: signal every
+        // running supervisor so its process tree is terminated and reaped.
+        crate::background_tasks::stop_all_running_sync(&self.background_tasks);
 
         let pending_request_ids: Vec<String> = self.pending_permissions.keys().cloned().collect();
         for request_id in pending_request_ids {
@@ -304,6 +313,7 @@ impl AppState {
 
         self.pending_bash_aborts.clear();
         self.plugin_execs.clear();
+        self.remote_execs.clear();
     }
 
     pub fn uptime_ms(&self) -> u64 {

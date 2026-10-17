@@ -6,8 +6,9 @@ use tempfile::tempdir;
 ///
 /// The marketplace source is process-global, so two tests pointing it at
 /// different catalogs — or one clearing it while another is mid-fetch —
-/// read each other's value.
-static MARKET_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// read each other's value. Shared with the review RPC tests, which repoint
+/// the same variable at an in-process fixture center.
+pub(crate) static MARKET_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn lock_market_env() -> std::sync::MutexGuard<'static, ()> {
     MARKET_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())

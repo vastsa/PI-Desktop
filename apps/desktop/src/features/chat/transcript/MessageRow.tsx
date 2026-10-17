@@ -11,6 +11,8 @@ import { useTranslation } from "react-i18next";
 import type { UiMessage } from "@pi-desktop/shared";
 import { splitInlineContent } from "@pi-desktop/shared";
 import { useOpenChatFileRef } from "../../../hooks/use-preview-target";
+import { sessionAllows } from "../../../lib/remote-session-safety";
+import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown } from "../../../components/Markdown";
 import {
@@ -82,10 +84,14 @@ export const MessageRow = memo(function MessageRow({
   const editUserMessage = useAppStore((s) => s.editUserMessage);
   const activateMessageRevision = useAppStore((s) => s.activateMessageRevision);
   const deleteMessage = useAppStore((s) => s.deleteMessage);
+  const paneSessionId = useSlotSessionId();
+  const session = useAppStore((s) => s.sessions.find((item) => item.id === paneSessionId));
+  const canEditMessages = sessionAllows(session ?? (paneSessionId.startsWith("remote:") ? { id: paneSessionId } : undefined), "canEditMessages");
   const isUser = message.role === "user";
   const isSessionMessage = Boolean(message.sessionMessage);
-  const editableUserMessage = isUser && !isSessionMessage;
-  const workspaceRoot = useAppStore((s) => s.workspace?.path);
+  const editableUserMessage = isUser && !isSessionMessage && canEditMessages;
+  const localWorkspaceRoot = useAppStore((s) => s.workspace?.path);
+  const workspaceRoot = sessionAllows(session, "canUseLocalTools") ? localWorkspaceRoot : undefined;
   const openFileRef = useOpenChatFileRef();
   // userAction belongs to user cards; other rows keep a plugin-free bar.
   const slotUser = isUser ? slotMessage("user", message) : undefined;

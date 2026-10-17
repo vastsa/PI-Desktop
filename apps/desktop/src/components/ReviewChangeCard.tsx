@@ -1,3 +1,4 @@
+import { useChatSessionCapability } from "../hooks/use-chat-session-capability";
 import { memo, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
@@ -20,13 +21,14 @@ const STATUS_MARKS: Record<ReviewChangeStatus, string> = {
 function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }) {
   const { t } = useTranslation();
   const change = reviewChangeFromMessage(message);
+  const localToolsAllowed = useChatSessionCapability("canUseLocalTools");
   const rollback = useAppStore((state) => state.rollbackWorkspaceChange);
   const [rollingBack, setRollingBack] = useState(false);
 
   if (!change) return null;
 
   const runRollback = async () => {
-    if (!change.reversible || change.state === "rolledBack" || rollingBack) return;
+    if (!localToolsAllowed || !change.reversible || change.state === "rolledBack" || rollingBack) return;
     setRollingBack(true);
     // A conflict or an unavailable snapshot is already reported through the
     // store's toast; this card owns the rollback action only.
@@ -68,7 +70,7 @@ function DiffBody({ message, compact }: { message: UiMessage; compact: boolean }
             <IconCheck size={13} />
             {t("panel.review.rolledBack")}
           </span>
-        ) : change.reversible ? (
+        ) : change.reversible && localToolsAllowed ? (
           <button
             type="button"
             className="review-change-rollback"

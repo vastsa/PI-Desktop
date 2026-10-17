@@ -80,6 +80,28 @@ fn state_defaults_on_and_is_project_specific() {
 }
 
 #[test]
+fn project_capability_state_matches_extended_length_drive_paths() {
+    let dir = tempdir().unwrap();
+    let mut state = CapabilityState::new(dir.path(), "skills");
+    state
+        .set_enabled(
+            "skills",
+            CapabilityLevel::Global,
+            "review",
+            Some("E:/work/app"),
+            false,
+        )
+        .unwrap();
+
+    assert!(!state.enabled(
+        "skills",
+        CapabilityLevel::Global,
+        "review",
+        Some(r"\\?\E:\work\app"),
+    ));
+}
+
+#[test]
 fn suffix_keeps_the_preferred_id_when_it_is_free() {
     let taken = HashSet::new();
     assert_eq!(

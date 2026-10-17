@@ -217,6 +217,12 @@ export function taskObjectiveFromArgs(args: unknown): string {
  * result. An orphan tool row (its assistant lost to a truncated branch) gets a
  * synthesized carrier so the pair stays well-formed — providers reject an
  * unpaired `toolUse`.
+ *
+ * Assistant transport identity is `model.provider` / `model.id` (the same
+ * values live requests use), not the account row id. A vendorKey-bound model
+ * has `model.provider !== provider.id`; tagging history with the account id
+ * makes pi-ai treat same-model reasoning as foreign and empty
+ * `reasoning_content` on Task(resume).
  */
 export function chainRowsToMessages(
   rows: readonly UiMessage[],
@@ -268,8 +274,8 @@ export function chainRowsToMessages(
         role: "assistant",
         content,
         api,
-        provider: provider.id,
-        model: provider.modelId,
+        provider: model.provider,
+        model: model.id,
         usage: usageToPi(row.usage),
         stopReason: "stop",
         timestamp,
@@ -283,8 +289,8 @@ export function chainRowsToMessages(
           role: "assistant",
           content: [],
           api,
-          provider: provider.id,
-          model: provider.modelId,
+          provider: model.provider,
+          model: model.id,
           usage: usageToPi(undefined),
           stopReason: "toolUse",
           timestamp,

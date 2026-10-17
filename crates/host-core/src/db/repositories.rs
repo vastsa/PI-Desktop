@@ -42,6 +42,9 @@ pub(crate) fn normalize_project_path(path: &str) -> Option<String> {
 /// directory exists (matching `WorkspaceState::set`), then normalize
 /// separators/trailing slashes.
 pub(crate) fn canonical_project_path(path: &str) -> Option<String> {
+    if path.starts_with(super::REMOTE_PROJECT_PREFIX) {
+        return normalize_project_path(path);
+    }
     let canonical = std::path::Path::new(path).canonicalize().ok().map(|p| {
         let s = p.to_string_lossy().to_string();
         // Strip Windows extended-length prefix `\\?\X:\...` → `X:\...`
@@ -143,6 +146,7 @@ impl Database {
                 tx.execute_batch(SCHEMA_LATEST)?;
                 tx.execute_batch(PLAN_APPROVALS_SCHEMA)?;
                 tx.execute_batch(crate::session_collaboration::SCHEMA)?;
+                tx.execute_batch(WORKTREE_DDL)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
@@ -200,6 +204,9 @@ impl Database {
             22 => {
                 migrate_v22_to_v23(&conn, path)?;
             }
+            23 => {
+                migrate_v23_to_v24(&conn, path)?;
+            }
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
                 drop(conn);
@@ -246,6 +253,10 @@ impl Database {
         }
         if migrated_version == 22 {
             migrate_v22_to_v23(&conn, path)?;
+            migrated_version = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        }
+        if migrated_version == 23 {
+            migrate_v23_to_v24(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;
@@ -323,6 +334,21 @@ impl Database {
     /// exists on disk (matching `WorkspaceState::set`) so symlinked spellings
     /// of the same directory share one row.
     pub fn ensure_project(&self, path: &str, touch: bool) -> Result<i64> {
+        if path.starts_with(super::REMOTE_PROJECT_PREFIX) {
+            self.remote_workspace_for_path(path)?;
+            let id = self.conn.query_row(
+                "SELECT id FROM projects WHERE path = ?1",
+                params![path],
+                |row| row.get::<_, i64>(0),
+            )?;
+            if touch {
+                self.conn.execute(
+                    "UPDATE projects SET last_opened_at = ?1 WHERE id = ?2",
+                    params![now_ms(), id],
+                )?;
+            }
+            return Ok(id);
+        }
         upsert_project_row(&self.conn, path, touch)?
             .ok_or_else(|| anyhow!("project path must not be blank"))
     }

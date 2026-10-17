@@ -252,14 +252,24 @@ export function registerProviderIpc({
     const timer = setTimeout(() => controller.abort(), 8000);
     try {
       /*
-        The same request builder discovery uses, so "the list loaded" and "the
-        connection test passed" can never describe two different endpoints: one
-        URL rule, one auth rule, one wire style, for a real at-least-once check.
+        The same request builder and the same resolved endpoint discovery
+        uses, so "the list loaded" and "the connection test passed" can never
+        describe two different endpoints: one URL rule, one auth rule, one
+        wire style, for a real at-least-once check. The URL is probed after
+        effective-base-URL resolution (#1687) — a saved operation suffix like
+        `/messages` must not send the test to `<endpoint>/messages/models`
+        while the list on the same page loads from `<endpoint>/models`.
       */
-      const probe = await probeProviderEndpoint({
+      const profile = inferEndpointProfile({
         baseUrl,
+        apiStyle: normalizeApiStyle(detail.provider?.apiStyle),
+        explicitApiStyle: true,
+      });
+      const probe = await probeProviderEndpoint({
+        baseUrl: profile?.effectiveBaseUrl ?? baseUrl,
         apiKey: secret.value,
         apiStyle: detail.provider?.apiStyle,
+        discoveryStyle: profile?.discoveryStyle,
         headers: detail.provider?.headers,
         signal: controller.signal,
       });
@@ -451,8 +461,12 @@ export function registerProviderIpc({
           modelId: model.modelId,
           displayName: info.displayName || modelConfig.name,
           providerId: provider?.id ?? "",
-          contextWindow: operationMetadata?.contextWindow ?? modelConfig.contextWindow,
-          maxTokens: operationMetadata?.maxTokens ?? modelConfig.maxTokens,
+          // The service's own model-list row states what it actually gives;
+          // an endpoint that reports capacity outranks both the catalog and
+          // any stored value it carries (PiDeck parity: reported > catalog >
+          // nothing — an omission is never a guess).
+          contextWindow: model.contextWindow ?? operationMetadata?.contextWindow ?? modelConfig.contextWindow,
+          maxTokens: model.maxTokens ?? operationMetadata?.maxTokens ?? modelConfig.maxTokens,
           // Published modalities, taken before the binding is applied. This
           // record is what the settings panel compares its checkboxes against,
           // so letting a stored override shape it would make the override its

@@ -252,6 +252,30 @@ test("execWithInput runs the script through `sh -s` with the body on stdin", { t
   transport.dispose();
 });
 
+test("execWithInput honors a non-shell command and keeps JSON out of argv", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+  const binary = await writeFixture(t, FIXTURES.argvAndStdin, "ssh-import-stdin");
+  const transport = createSystemSshTransport({ host: "remote.example" }, { binary });
+  t.after(() => transport.dispose());
+  const command = 'node "$HOME/.pi-desktop/pi-host/current/pi-host.js" provider-import';
+  const input = JSON.stringify({ secretValue: "fixture-api-key" });
+  const result = await transport.execWithInput(command, input);
+  const [argv, stdin] = result.stdout.split("ARGV-END\n");
+  assert.equal(argv.split("\n").filter(Boolean).at(-1), command);
+  assert.ok(!argv.includes("fixture-api-key"));
+  assert.equal(stdin, input);
+});
+
+test("execWithInput enforces a combined stdout/stderr cap without echoing input", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+  const binary = await writeFixture(t, '#!/bin/sh\ncat >&2\n', "ssh-output-cap");
+  const transport = createSystemSshTransport({ host: "remote.example" }, { binary });
+  t.after(() => transport.dispose());
+  await assert.rejects(transport.execWithInput("provider-import", "fixture-api-key".repeat(100), { maxOutputBytes: 32 }), (error) => {
+    assert.match(error.message, /output exceeded/);
+    assert.ok(!JSON.stringify(error).includes("fixture-api-key"));
+    return true;
+  });
+});
+
 test("a non-zero exit becomes a typed error carrying both streams", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   const binary = await writeFixture(t, FIXTURES.failing, "ssh-failing");
   const transport = createSystemSshTransport({ host: "remote.example" }, { binary });

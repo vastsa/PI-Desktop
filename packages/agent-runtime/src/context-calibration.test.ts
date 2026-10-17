@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
 import {
   CONTEXT_CALIBRATION_ANOMALY_FREEZE,
   CONTEXT_CALIBRATION_BOUNDARY_GUARD_RATIO,
@@ -209,11 +210,11 @@ describe("ContextEstimateCalibration", () => {
     });
   });
 
-  // ③ Real CJK text: the chars/4 tail is the error this series exists for.
+  // ③ Real CJK text: the pi-ai text estimate is the error this series exists for.
   it("corrects a real CJK tail to the measured cost", () => {
     const calibration = new ContextEstimateCalibration();
     const cjkChars = [...CJK_PARAGRAPH].length;
-    const estimatedTail = Math.ceil(cjkChars / 4);
+    const estimatedTail = Math.ceil(cjkChars / ESTIMATED_TEXT_CHARS_PER_TOKEN);
     // Measured cost of CJK text in the tokenizers this app talks to: between
     // roughly 0.6 and 1.0 tokens per character.
     const measuredTail = Math.round(cjkChars * 0.9);

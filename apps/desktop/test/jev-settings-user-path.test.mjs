@@ -119,6 +119,10 @@ window.jevSettingsProbe = async () => {
     () => document.body.innerText.includes("API key saved securely"),
     "the card did not appear for a stored key",
   );
+  const inlinePrivacyNoticeHidden = !document.body.innerText.includes("sent directly to TypeSafe");
+  const privacyNoticeAvailableFromHelp = [...document.querySelectorAll("button")].some(
+    (candidate) => candidate.getAttribute("aria-label")?.includes("sent directly to TypeSafe"),
+  );
   const toggle = () => document.querySelector('[role="switch"][aria-label="Enable Jev for Agent"]');
   if (!toggle()) throw new Error("the Jev switch is missing");
   const toggleReadyWithKey = !toggle().disabled;
@@ -149,6 +153,8 @@ window.jevSettingsProbe = async () => {
   return {
     hiddenUntilAdded,
     toggleReadyWithKey,
+    inlinePrivacyNoticeHidden,
+    privacyNoticeAvailableFromHelp,
     replaceOffered,
     removeOffered,
     configureOpened,
@@ -247,6 +253,8 @@ app.whenReady().then(async () => {
     assert.deepEqual(result, {
       hiddenUntilAdded: true,
       toggleReadyWithKey: true,
+      inlinePrivacyNoticeHidden: true,
+      privacyNoticeAvailableFromHelp: true,
       replaceOffered: true,
       removeOffered: true,
       configureOpened: true,

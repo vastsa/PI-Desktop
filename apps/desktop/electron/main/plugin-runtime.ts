@@ -11,7 +11,8 @@ import {
 import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
 import { getModuleDirectory } from "./module-path";
 import {
@@ -361,6 +362,8 @@ export type PluginHostServices = {
   ) => Promise<void>;
   /** Open one already-authorized file with the OS-associated application. */
   openPath: (fullPath: string) => Promise<void>;
+  /** Open one already-authorized HTML file in the bundled work-panel Browser. */
+  openInBrowser?: (fullPath: string) => Promise<void>;
   /** Reveal one already-authorized file in the OS file manager. */
   revealPath?: (fullPath: string) => Promise<void>;
   readClipboard: () => Promise<string>;
@@ -368,13 +371,8 @@ export type PluginHostServices = {
   readClipboardHistory: () => Promise<ClipboardHistoryEntry[]>;
   openPanel: (request: PluginPanelRequest) => Promise<void>;
   closePanel: (pluginId: string) => Promise<void>;
-  fetch?: (input: {
-    url: string;
-    method?: string;
-    headers?: Record<string, string>;
-    body?: string;
-    timeoutMs?: number;
-  }) => Promise<{ status: number; headers: Record<string, string>; bodyText: string }>;
+  /** Single-hop transport; the runtime owns redirect and timeout policy. */
+  fetch?: PluginFetchTransport;
   /** The reviewed desktop operation controller shared with MCP. */
   desktopControl?: McpControlController;
   /**
@@ -452,6 +450,7 @@ export type PluginHostServices = {
   }) => Promise<void> | void;
   /** Work-panel guest + CDP, gated by `browser.cdp` in the runtime. */
   browser?: {
+    reveal: (sessionId?: string) => Promise<void>;
     navigate: (
       input: { url?: string; path?: string },
       sessionId?: string,
@@ -539,6 +538,7 @@ const HOST_API_ALLOWLIST = new Set([
   "fs.readRange",
   "fs.readPreview",
   "fs.openDefault",
+  "fs.openInBrowser",
   "fs.reveal",
   "fs.writeText",
   "fs.glob",
@@ -550,9 +550,11 @@ const HOST_API_ALLOWLIST = new Set([
   "clipboard.getHistory",
   "shell.openExternal",
   "net.fetch",
+  "net.getCapabilities",
   "bus.publish",
   "bus.subscribe",
   "bus.unsubscribe",
+  "browser.reveal",
   "browser.navigate",
   "browser.action",
   "browser.setBounds",
@@ -634,8 +636,6 @@ const PANEL_SKILL_CHANNELS = new Set([
 ]);
 /** A plugin may teach at most this many skills; the rest are ignored. */
 const MAX_SKILLS_PER_PLUGIN = 32;
-/** Redirect hops `pi.net.fetch` follows; each one is re-checked against egress. */
-const NET_FETCH_MAX_REDIRECTS = 5;
 
 /**
  * The delay a response advertises, verbatim — the value a plugin has to parse
@@ -1420,6 +1420,9 @@ export class PluginRuntime {
       },
       openPath: async () => {
         throw apiError("UNSUPPORTED", "openPath service missing");
+      },
+      openInBrowser: async () => {
+        throw apiError("UNAVAILABLE", "Browser service missing");
       },
       readClipboard: async () => "",
       writeClipboard: async () => undefined,
@@ -2415,6 +2418,9 @@ export class PluginRuntime {
       case "fs.openDefault":
         await api.fs.openDefault(String(payload?.path ?? ""));
         return { ok: true };
+      case "fs.openInBrowser":
+        await api.fs.openInBrowser(String(payload?.path ?? ""));
+        return { ok: true };
       case "fs.reveal":
         await api.fs.reveal(String(payload?.path ?? ""));
         return { ok: true };
@@ -2439,6 +2445,8 @@ export class PluginRuntime {
       case "shell.openExternal":
         await api.shell.openExternal(String(payload?.url ?? ""));
         return { ok: true };
+      case "net.getCapabilities":
+        return api.net.getCapabilities();
       case "net.fetch":
         return api.net.fetch({
           url: String(payload?.url ?? ""),
@@ -2446,6 +2454,7 @@ export class PluginRuntime {
           headers: (payload?.headers as Record<string, string> | undefined) ?? undefined,
           body: payload?.body ? String(payload.body) : undefined,
           timeoutMs: typeof payload?.timeoutMs === "number" ? payload.timeoutMs : undefined,
+          redirect: payload?.redirect,
         });
       case "plugin.getSettings":
         return api.plugin.getSettings();
@@ -4817,7 +4826,7 @@ export class PluginRuntime {
    * Resolve a request that names a file in another folder of the open project
    * (ADR 0249, ADR 0263, ADR 0264). A view browsing a sibling folder can only
    * address that folder's entries absolutely, and the two host-mediated actions
-   * it offers for them (fs.openDefault, fs.reveal) are the only requests that
+   * it offers for them (fs.openDefault, fs.openInBrowser, fs.reveal) are the only requests that
    * arrive that way. The widening is narrow: only for a plugin whose declared
    * root is the workspace, only for an absolute path already inside one of the
    * project's registered folder roots (resolved through links, so a symlink
@@ -5599,6 +5608,56 @@ export class PluginRuntime {
             path: rel,
           });
         },
+        openInBrowser: async (pathFromRoot: string) => {
+          const { full, rel } =
+            (await this.resolveRegisteredFolderRequest(loaded, pathFromRoot)) ??
+            (await this.resolveFsRequest(loaded, "read", pathFromRoot));
+          if (!statSync(full).isFile()) {
+            this.services.audit?.({
+              pluginId,
+              api: "fs.openInBrowser",
+              ok: false,
+              errorCode: "INVALID_ARGUMENT",
+              ts: Date.now(),
+              path: rel,
+            });
+            throw apiError("INVALID_ARGUMENT", "only files can be opened in the Browser");
+          }
+          if (![".html", ".htm", ".xhtml"].includes(extname(full).toLowerCase())) {
+            this.services.audit?.({
+              pluginId,
+              api: "fs.openInBrowser",
+              ok: false,
+              errorCode: "INVALID_ARGUMENT",
+              ts: Date.now(),
+              path: rel,
+            });
+            throw apiError("INVALID_ARGUMENT", "only HTML files can be opened in the Browser");
+          }
+          try {
+            await this.services.openInBrowser?.(full);
+          } catch (error) {
+            const code = typeof error === "object" && error !== null && "code" in error
+              ? String(error.code)
+              : "OPEN_FAILED";
+            this.services.audit?.({
+              pluginId,
+              api: "fs.openInBrowser",
+              ok: false,
+              errorCode: code,
+              ts: Date.now(),
+              path: rel,
+            });
+            throw apiError(code, error instanceof Error ? error.message : String(error));
+          }
+          this.services.audit?.({
+            pluginId,
+            api: "fs.openInBrowser",
+            ok: true,
+            ts: Date.now(),
+            path: rel,
+          });
+        },
         reveal: async (pathFromRoot: string) => {
           const { full, rel } =
             (await this.resolveRegisteredFolderRequest(loaded, pathFromRoot)) ??
@@ -5945,58 +6004,31 @@ export class PluginRuntime {
         closeOutput: async () => this.refuseAudio(loaded, "audio.closeOutput"),
       },
       net: {
+        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"] }),
         fetch: async (input: {
           url: string;
           method?: string;
           headers?: Record<string, string>;
           body?: string;
           timeoutMs?: number;
+          redirect?: unknown;
         }) => {
           this.assertPermission(loaded, "net.fetch");
-          if (!/^https?:\/\//i.test(input.url)) {
-            throw apiError("INVALID_ARGUMENT", "only http(s) URLs allowed");
-          }
-          this.assertEgress(loaded, input.url, "net.fetch");
-          if (this.services.fetch) {
-            const result = await this.services.fetch(input);
-            this.services.audit?.(
-              netFetchAuditEntry(pluginId, input.url, result.status, result.headers),
-            );
-            return result;
-          }
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 15000);
+          const redirect = parseFetchRedirect(input.redirect);
           try {
-            // Follow redirects by hand: an allowlisted host that 30x-es to an
-            // undeclared one would otherwise carry the request straight out.
-            let url = input.url;
-            let res: Response;
-            for (let hop = 0; ; hop += 1) {
-              res = await fetch(url, {
-                method: input.method ?? "GET",
-                headers: input.headers,
-                body: input.body,
-                redirect: "manual",
-                signal: controller.signal,
-              });
-              if (res.status < 300 || res.status > 399) break;
-              const location = res.headers.get("location");
-              if (!location) break;
-              if (hop >= NET_FETCH_MAX_REDIRECTS) {
-                throw apiError("UNAVAILABLE", `too many redirects: ${input.url}`);
-              }
-              url = new URL(location, url).toString();
-              this.assertEgress(loaded, url, "net.fetch");
+            const { url, result } = await pluginNetFetch(
+              { ...input, redirect },
+              (url) => this.assertEgress(loaded, url, "net.fetch"),
+              this.services.fetch,
+            );
+            this.services.audit?.(netFetchAuditEntry(pluginId, url, result.status, result.headers));
+            return result;
+          } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "REDIRECT_DISALLOWED") {
+              this.services.audit?.({ pluginId, api: "net.fetch", ok: false,
+                errorCode: error.code, ts: Date.now() });
             }
-            const headers: Record<string, string> = {};
-            res.headers.forEach((value, key) => {
-              headers[key] = value;
-            });
-            const bodyText = await res.text();
-            this.services.audit?.(netFetchAuditEntry(pluginId, url, res.status, headers));
-            return { status: res.status, headers, bodyText };
-          } finally {
-            clearTimeout(timer);
+            throw error;
           }
         },
       },
@@ -6007,6 +6039,19 @@ export class PluginRuntime {
           this.busUnsubscribe(loaded, subscriptionId),
       },
       browser: {
+        reveal: async () => {
+          this.assertPermission(loaded, "browser.cdp");
+          if (!this.services.browser) {
+            throw apiError("UNAVAILABLE", "browser host missing");
+          }
+          await this.services.browser.reveal(this.browserSessionId(pluginId));
+          this.services.audit?.({
+            pluginId,
+            api: "browser.reveal",
+            ok: true,
+            ts: Date.now(),
+          });
+        },
         navigate: async (input: { url?: string; path?: string } = {}) => {
           this.assertPermission(loaded, "browser.cdp");
           if (!this.services.browser) {

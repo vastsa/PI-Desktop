@@ -25,6 +25,11 @@ import {
 } from "./icons";
 import { AnchoredMenu } from "./settings/AnchoredMenu";
 import { cx } from "./ui";
+import { useRemoteProjects } from "../hooks/use-remote-projects";
+import { remoteProjectKey, type RemoteProjectEntry } from "../lib/remote-project-catalog";
+import { isRemoteSession } from "../lib/remote-session-safety";
+
+type ProjectMenuEntry = { key: string; name: string; title: string; localPath?: string; remoteProject?: RemoteProjectEntry };
 
 export function HomeProjectSwitcher({
   name,
@@ -40,6 +45,7 @@ export function HomeProjectSwitcher({
   const projectMeta = useAppStore((state) => state.projectMeta);
   const projectSort = useAppStore((state) => state.projectSort);
   const activeProjectPath = useAppStore((state) => state.activeProjectPath);
+  const activeSession = useAppStore((state) => state.sessions.find((session) => session.id === state.activeSessionId));
   const newSession = useAppStore((state) => state.newSession);
   const openProject = useAppStore((state) => state.openProject);
   const cloneProject = useAppStore((state) => state.cloneProject);
@@ -53,6 +59,7 @@ export function HomeProjectSwitcher({
   const [highlight, setHighlight] = useState(0);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const remoteCatalog = useRemoteProjects(open && view === "list");
 
   const projects = useMemo(
     () =>
@@ -66,10 +73,20 @@ export function HomeProjectSwitcher({
     [openProjectPaths, openProjects, workspace, projectMeta, projectSort],
   );
   const visible = useMemo(
-    () => filterSwitcherProjects(projects, query),
-    [projects, query],
+    (): ProjectMenuEntry[] => [
+      ...filterSwitcherProjects(projects, query).map((project) => ({ key: project.key, name: project.name,
+        title: openProjects.find((item) => item.path === project.path)?.remote?.path
+          ?? (workspace?.path === project.path ? workspace.remote?.path : undefined)
+          ?? project.path, localPath: project.path })),
+      ...remoteCatalog.projects.filter((project) => `${project.label} ${project.hostLabel}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+        .map((project) => ({ key: `remote:${project.key}`, name: `${project.label} · ${project.hostLabel}`,
+          title: `${project.label} · ${project.hostLabel}`, remoteProject: project })),
+    ],
+    [projects, query, remoteCatalog.projects, openProjects, workspace],
   );
-  const activeKey = normalizeProjectPath(activeProjectPath ?? path);
+  const activeKey = isRemoteSession(activeSession) && activeSession?.remoteHostKey && activeSession.remoteProjectId
+    ? `remote:${remoteProjectKey(activeSession.remoteHostKey, activeSession.remoteProjectId)}`
+    : normalizeProjectPath(activeProjectPath ?? path);
   const cloneTarget = parseGitCloneUrl(cloneUrl, {
     allowInsecureHttp: allowInsecureUserEndpoints(settings),
   });
@@ -109,6 +126,15 @@ export function HomeProjectSwitcher({
     },
     [activeKey, busy, close, newSession, reportError],
   );
+
+  const selectMenuProject = async (project: ProjectMenuEntry) => {
+    if (project.localPath) return selectProject(project.localPath);
+    if (busy || busyRef.current || !project.remoteProject?.connected) return;
+    busyRef.current = true; setBusy(true);
+    try { await newSession({ remoteProject: project.remoteProject }); close(); }
+    catch (error) { reportError(error); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
 
   const startClone = useCallback(async () => {
     if (busy || busyRef.current || !cloneTarget) return;
@@ -188,7 +214,7 @@ export function HomeProjectSwitcher({
       const target = visible[highlight];
       if (!target) return;
       event.preventDefault();
-      void selectProject(target.path);
+      void selectMenuProject(target);
     }
   };
 
@@ -213,7 +239,7 @@ export function HomeProjectSwitcher({
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label={`${t("project.switchProject")}: ${name}`}
-          title={path || t("project.switchProject")}
+          title={(workspace?.path === path ? workspace?.remote?.path : undefined) || path || t("project.switchProject")}
           disabled={busy}
           onClick={() => {
             if (open) {
@@ -323,15 +349,15 @@ export function HomeProjectSwitcher({
                     tabIndex={-1}
                     aria-checked={current}
                     data-switcher-index={index}
-                    title={project.path}
+                    title={project.title}
                     className={cx(
                       "home-project-switcher-item",
                       current && "is-current",
                       highlight === index && "is-active",
                     )}
-                    disabled={busy}
+                    disabled={busy || project.remoteProject?.connected === false}
                     onMouseEnter={() => setHighlight(index)}
-                    onClick={() => void selectProject(project.path)}
+                    onClick={() => void selectMenuProject(project)}
                   >
                     <IconFolder size={14} aria-hidden />
                     <span className="home-project-switcher-item-name">
@@ -349,6 +375,8 @@ export function HomeProjectSwitcher({
               })
             )}
           </div>
+          {remoteCatalog.busy && <p role="status">{t("remote:loading")}</p>}
+          {remoteCatalog.error && <p role="alert">{remoteCatalog.error}</p>}
           <div className="home-project-switcher-divider" aria-hidden />
           <button
             type="button"

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { parseArgs, resolveConfig } from "./config.js";
-import { startPiHost } from "./app.js";
 
 /**
  * `pi-host [--data-dir <dir>] [--port <n>] [--pair] [--host-core <bin>] [--sidecar <entry>]`
@@ -11,11 +10,17 @@ import { startPiHost } from "./app.js";
  * Everything else is structured stderr.
  */
 async function main(): Promise<void> {
+  if (process.argv[2] === "provider-import") {
+    const { runProviderImport } = await import("./provider-import.js");
+    process.exitCode = await runProviderImport(process.argv.slice(3));
+    return;
+  }
   const args = parseArgs(process.argv.slice(2));
   if (args.help === true) {
     process.stdout.write(
       [
         "pi-host — headless PI Agent Host (RACP-WS on loopback)",
+        "  provider-import          import selected providers from SSH stdin",
         "",
         "  --data-dir <dir>          host data directory (default ~/.pi-desktop)",
         "  --port <n>                loopback port (default 0 = pick free)",
@@ -32,6 +37,7 @@ async function main(): Promise<void> {
     return;
   }
   const config = resolveConfig(args);
+  const { startPiHost } = await import("./app.js");
   const app = await startPiHost(config);
   process.stdout.write(`PI_HOST_READY ${JSON.stringify({ hostId: app.hostId, host: app.address.host, port: app.address.port, version: (await import("@pi-desktop/shared")).APP_VERSION })}\n`);
   if (config.pair) {

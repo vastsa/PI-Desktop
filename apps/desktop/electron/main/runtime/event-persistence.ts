@@ -5,6 +5,7 @@ import type { RuntimeState } from "./context";
 import type { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
+import type { SessionCoordination } from "./session-coordination";
 
 export type EventPersistenceDependencies = {
   runtimeState: RuntimeState;
@@ -28,6 +29,11 @@ export type EventPersistenceDependencies = {
    * returning early does not stop this function from running.
    */
   isStaleTerminalEvent: (envelope: AgentEventEnvelope) => boolean;
+  /** Per-session turn history and rewrite fence shared with transcript IPC. */
+  transcriptRewrite: Pick<
+    SessionCoordination,
+    "beginTranscriptRewrite" | "deferTranscriptEvent" | "isStaleTranscriptEvent"
+  >;
   finishApprovedExecution: (...args: any[]) => Promise<void>;
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
 };
@@ -49,11 +55,16 @@ export function createEventPersistence({
   logger,
   finishTurn,
   isStaleTerminalEvent,
+  transcriptRewrite,
   finishApprovedExecution,
   emitAgentEvent,
 }: EventPersistenceDependencies): {
   subagentTagged: (message: UiMessage, envelope: AgentEventEnvelope) => UiMessage;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
+  beginTranscriptRewrite: (sessionId: string) => {
+    commit: () => void;
+    rollback: () => void;
+  };
   flush: () => Promise<void>;
 } {
   const inflightSnapshots = new Map<string, UiMessage>();
@@ -70,14 +81,43 @@ export function createEventPersistence({
       await Promise.allSettled([...pendingWrites]);
     }
   }
+
+  function beginTranscriptRewrite(sessionId: string) {
+    const lease = transcriptRewrite.beginTranscriptRewrite(sessionId);
+    let settled = false;
+    return {
+      commit(): void {
+        if (settled) return;
+        settled = true;
+        lease.commit();
+      },
+      rollback(): void {
+        if (settled) return;
+        settled = true;
+        for (const envelope of lease.rollback()) {
+          try {
+            persistAgentEvent(envelope);
+          } catch (error) {
+            logger.app("persistence", "warn", "transcript rewrite event replay failed", {
+              sessionId,
+              data: String(error),
+            });
+          }
+        }
+      },
+    };
+  }
 function subagentTagged(message: UiMessage, envelope: AgentEventEnvelope): UiMessage {
   return tagMessageToolLineage(message, envelope);
 }
 
 
 function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined {
+  if (transcriptRewrite.deferTranscriptEvent(envelope)) return;
+  const activeTurnId = activeTurns.get(envelope.sessionId);
+  if (transcriptRewrite.isStaleTranscriptEvent(envelope, activeTurnId)) return;
   const event = envelope.event;
-  const turnId = activeTurns.get(envelope.sessionId);
+  const turnId = activeTurnId;
   const usage = usageForEvent(envelope);
   if (usage) {
     if (ownsUsageTurn(envelope, turnId)) addActiveTurnUsage(envelope.sessionId, usage);
@@ -382,5 +422,5 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     return message;
   }
 }
-  return { subagentTagged, persistAgentEvent, flush };
+  return { subagentTagged, persistAgentEvent, beginTranscriptRewrite, flush };
 }

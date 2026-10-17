@@ -8,7 +8,15 @@ import { useState } from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
-import type { AgentActivity, AgentEventEnvelope, UiMessage } from "@pi-desktop/shared";
+import type {
+  AgentActivity,
+  AgentEventEnvelope,
+  UiMessage,
+} from "@pi-desktop/shared";
+import {
+  ContextMenu,
+  useContextMenu,
+} from "../../apps/desktop/src/components/ContextMenu";
 import { Markdown } from "../../apps/desktop/src/components/Markdown";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
@@ -123,6 +131,142 @@ async function markdownLinkInteractionProbe(
       settings: initialState.settings,
       openUrlInWorkPanel: initialState.openUrlInWorkPanel,
     });
+  }
+}
+
+async function contextMenuSubmenuInteractionProbe() {
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;top:24px;left:24px";
+  document.body.append(host);
+  const root = createRoot(host);
+  const selections: string[] = [];
+  const items = [
+    {
+      id: "open-with",
+      label: "Open with",
+      submenu: [
+        {
+          id: "file-manager",
+          label: "File Manager",
+          onSelect: () => selections.push("file-manager"),
+        },
+        {
+          id: "built-in-browser",
+          label: "Built-in browser",
+          onSelect: () => selections.push("built-in-browser"),
+        },
+        {
+          id: "default-browser",
+          label: "Default browser",
+          onSelect: () => selections.push("default-browser"),
+        },
+      ],
+    },
+  ];
+
+  function Fixture() {
+    const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="html-file-reference"
+          onContextMenu={(event) => openContextMenu(event, { items })}
+        >
+          page.html
+        </button>
+        <ContextMenu state={contextMenu} onClose={closeContextMenu} />
+      </>
+    );
+  }
+
+  const nextFrame = () =>
+    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const openMenu = async () => {
+    const target = host.querySelector<HTMLButtonElement>(
+      "[data-testid=html-file-reference]",
+    );
+    assert(target, "HTML reference fixture did not render");
+    flushSync(() =>
+      target.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 80,
+          clientY: 80,
+        }),
+      ),
+    );
+    await nextFrame();
+    const menuTrigger = document.body.querySelector<HTMLButtonElement>(
+      '[data-context-menu-item="open-with"]',
+    );
+    assert(menuTrigger, "HTML reference menu did not render Open with");
+    return menuTrigger;
+  };
+
+  try {
+    flushSync(() => root.render(<Fixture />));
+    const trigger = await openMenu();
+    assert(
+      document.body.querySelector('[data-context-menu-item="open-with"]'),
+      "HTML reference menu did not render Open with",
+    );
+    flushSync(() => trigger.click());
+    assert(
+      document.body.querySelector('[data-context-menu-item="file-manager"]'),
+      "clicking Open with did not reveal its second-level actions",
+    );
+    flushSync(() => trigger.click());
+    assert(
+      document.body.querySelector('[data-context-menu-item="file-manager"]'),
+      "clicking an already-open Open with row closed its submenu",
+    );
+    flushSync(() =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-context-menu-item="built-in-browser"]')
+        ?.click(),
+    );
+    assert(
+      selections.length === 1 && selections[0] === "built-in-browser",
+      `selecting a submenu destination returned ${selections.join(", ") || "nothing"}`,
+    );
+    assert(
+      !document.body.querySelector('[data-context-menu-item="open-with"]'),
+      "choosing a destination did not close the context menu",
+    );
+
+    const keyboardTrigger = await openMenu();
+    keyboardTrigger.focus();
+    flushSync(() =>
+      keyboardTrigger.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+      ),
+    );
+    await nextFrame();
+    const firstSubmenuItem = document.body.querySelector<HTMLButtonElement>(
+      '[data-context-menu-item="file-manager"]',
+    );
+    assert(
+      firstSubmenuItem && document.activeElement === firstSubmenuItem,
+      "ArrowRight did not open and focus the submenu",
+    );
+    flushSync(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    assert(
+      !document.body.querySelector('[data-context-menu-item="file-manager"]') &&
+        document.body.querySelector('[data-context-menu-item="open-with"]') &&
+        document.activeElement === keyboardTrigger,
+      "Escape did not return focus to Open with while keeping the root menu open",
+    );
+    return { ok: true, selections, keyboardEscapeReturnedFocus: true };
+  } finally {
+    flushSync(() => root.unmount());
+    host.remove();
   }
 }
 
@@ -309,15 +453,18 @@ globalThis.transcriptRenderProbe = async () => {
   };
   try {
     const groups = 100;
+    // The render-count regression needs ordinary activity groups. A Bash row is
+    // standalone and bypasses ActivityGroup, so this fixture uses Read rows; the
+    // standalone Bash row is exercised separately below.
     let messages = [message("user", "user", "Inspect the workspace")];
     for (let index = 0; index < groups; index++) {
       messages.push(
         message(`tool-${index}`, "tool", "done", {
-          toolName: "Bash",
+          toolName: "Read",
           toolCallId: `call-${index}`,
           toolStatus: "success",
-          toolArgs: { command: `printf step-${index}` },
-          toolResult: { details: { stdout: "done", exitCode: 0 } },
+          toolArgs: { path: `file-${index}.ts` },
+          toolResult: `contents of file-${index}.ts`,
         }),
       );
       messages.push(
@@ -351,7 +498,7 @@ globalThis.transcriptRenderProbe = async () => {
     messages = [...messages];
     messages[1] = {
       ...messages[1],
-      toolArgs: { command: "printf changed-command" },
+      toolArgs: { path: "changed-file.ts" },
     };
     render(messages);
     assert(
@@ -359,8 +506,40 @@ globalThis.transcriptRenderProbe = async () => {
       "changed tool group did not render exactly once",
     );
     assert(
-      container.textContent?.includes("changed-command"),
+      container.textContent?.includes("changed-file.ts"),
       "changed tool row not visible",
+    );
+
+    // A standalone Bash row is not an activity group: it updates through its own
+    // rendered command, outside every process disclosure.
+    const bashMessages = (command: string): UiMessage[] => [
+      message("bash-user", "user", "Run"),
+      message("bash-row", "tool", "", {
+        toolName: "Bash",
+        toolCallId: "bash-call",
+        toolStatus: "success",
+        toolArgs: { command },
+        toolResult: { details: { stdout: "ok", exitCode: 0 } },
+      }),
+    ];
+    render(bashMessages("printf before"));
+    const bashRow = container.querySelector<HTMLElement>('[data-message-id="bash-row"]');
+    assert(bashRow, "the standalone Bash row did not render");
+    assert(
+      bashRow.closest(".turn-process") === null,
+      "the Bash row must render outside every process disclosure",
+    );
+    assert(container.textContent?.includes("printf before"), "the Bash command did not render");
+    globalThis.__activityGroupRenders = [];
+    render(bashMessages("printf after"));
+    assert(
+      container.textContent?.includes("printf after") &&
+        !container.textContent?.includes("printf before"),
+      "the Bash row did not update its rendered command",
+    );
+    assert(
+      globalThis.__activityGroupRenders.length === 0,
+      "a standalone Bash row must not render an activity group",
     );
 
     // Keep Task's own message stable: a later lifecycle result must still
@@ -466,17 +645,20 @@ globalThis.transcriptRenderProbe = async () => {
 
     const statusLifecycle = await transcriptStatusProbe();
     const markdownLinks = await markdownLinkInteractionProbe(i18n);
+    const contextMenuSubmenu = await contextMenuSubmenuInteractionProbe();
+    const turnProcess = await turnProcessProbe();
     return {
-      ok: statusLifecycle.ok && markdownLinks.ok,
+      ok: statusLifecycle.ok && markdownLinks.ok && contextMenuSubmenu.ok && turnProcess.ok,
       statusLifecycle,
       markdownLinks,
+      contextMenuSubmenu,
       groups,
       textUpdates: 20,
       textUpdateRenders,
       changedToolRenders: 1,
       taskLifecycleUpdated: true,
       taskTimingUpdated: true,
-      turnProcess: await turnProcessProbe(),
+      turnProcess,
       messageEditing: await transcriptEditProbe(),
       textUpdateDurationMs,
     };

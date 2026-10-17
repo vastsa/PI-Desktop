@@ -1,9 +1,9 @@
 /**
  * Public contracts for the Host-owned portable configuration synchronizer.
  *
- * These types intentionally contain status and redacted summaries only. Raw
- * WebDAV credentials, vault keys, backup passwords, and portable secret values
- * never cross the Host/Preload boundary.
+ * Responses contain redacted status only. S3 secrets and backup passwords are
+ * accepted as transient inputs; vault keys and portable secret values are
+ * never returned to the renderer.
  */
 
 export const CONFIG_SYNC_CATEGORIES = [
@@ -14,7 +14,6 @@ export const CONFIG_SYNC_CATEGORIES = [
   "skills",
   "subagents",
   "instructions",
-  "projects",
   "plugins",
   "automation",
   "memory",
@@ -35,33 +34,31 @@ export type ConfigSyncStatus =
   | "paused"
   | "error";
 
-export type ConfigSyncRemoteMode = "strict" | "appendOnly";
+export type ConfigSyncMode = "sync" | "backup";
 
 export type ConfigSyncCategorySelection = Record<ConfigSyncCategory, boolean>;
 
 /**
  * The step a run is in. `capture` collects the local snapshot, `download` reads
  * the remote revision's resources, `merge` reconciles both, `upload` writes the
- * merged revision's resources, `apply` writes the result locally, and `cleanup`
- * deletes revisions the retention window no longer keeps.
+ * merged revision's resources, and `apply` writes the result locally.
+ * Immutable remote objects are retained; there is no physical cleanup phase.
  */
 export type ConfigSyncPhase =
   | "capture"
   | "download"
   | "merge"
   | "upload"
-  | "apply"
-  | "cleanup";
+  | "apply";
 
 /**
  * What a running sync is doing, reported while it runs.
  *
  * The sync is a single request, so without these the interface has nothing to
  * show between the click and the answer. `done`/`total` are that phase's units
- * — objects for `download`/`upload` (the device tips being read, in append-only
- * mode) and entities for `capture`/`merge`/`apply`, while `cleanup` reports the
- * phase without counting it — and `total === 0` means the size of the phase is
- * not known in advance. `bytesDone`/`bytesTotal` are a byte pair that only
+ * — objects for `download`/`upload` and entities for `capture`/`merge`/`apply`.
+ * `total === 0` means the size of the phase is not known in advance.
+ * `bytesDone`/`bytesTotal` are a byte pair that only
  * `upload` reports in full — `download` reports `bytesDone` alone, because a
  * remote manifest names resources by id rather than by length — and
  * `bytesTotal === 0` means the byte count is not known.
@@ -73,12 +70,18 @@ export type ConfigSyncProgress = {
   bytesDone: number;
   bytesTotal: number;
 };
-export type ConfigSyncPreferences = {
+export type ConfigSyncConnection = {
   endpoint: string;
-  username: string;
-  directory: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  accessKeyId: string;
+  pathStyle: boolean;
+};
+
+export type ConfigSyncPreferences = ConfigSyncConnection & {
   deviceLabel: string;
-  remoteMode?: ConfigSyncRemoteMode;
+  mode: ConfigSyncMode;
   categories: ConfigSyncCategorySelection;
   includeSecrets: boolean;
   includeMemory: boolean;
@@ -134,10 +137,13 @@ export type ConfigSyncState = {
   locked: boolean;
   status: ConfigSyncStatus;
   endpoint?: string;
-  username?: string;
-  directory?: string;
+  region?: string;
+  bucket?: string;
+  prefix?: string;
+  accessKeyId?: string;
+  pathStyle: boolean;
   deviceLabel?: string;
-  remoteMode: ConfigSyncRemoteMode;
+  mode: ConfigSyncMode;
   categories: ConfigSyncCategorySelection;
   includeSecrets: boolean;
   includeMemory: boolean;
@@ -153,19 +159,27 @@ export type ConfigSyncState = {
 
 export type ConfigSyncConfigureInput = {
   endpoint: string;
-  username: string;
-  /** Supplied only when changing the WebDAV credential. */
-  appPassword?: string;
-  directory: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  accessKeyId: string;
+  /** Omitted fields reuse saved credentials only for the same connection. */
+  secretAccessKey?: string;
+  /** Empty string explicitly clears a saved session token. */
+  sessionToken?: string;
+  pathStyle?: boolean;
   deviceLabel: string;
   /** Required when creating or unlocking the encrypted vault. */
   backupPassword: string;
-  remoteMode?: ConfigSyncRemoteMode;
+  mode?: ConfigSyncMode;
   categories?: Partial<ConfigSyncCategorySelection>;
   includeSecrets?: boolean;
   includeMemory?: boolean;
   automaticSync?: boolean;
 };
+
+export type ConfigSyncTestInput = Omit<ConfigSyncConfigureInput, "backupPassword">;
+export type ConfigSyncTestResult = { ok: true; conditionalWrites: true };
 
 export type ConfigSyncApprovalInput = {
   approvalId: string;

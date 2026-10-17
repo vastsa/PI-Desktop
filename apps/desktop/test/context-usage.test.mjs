@@ -203,7 +203,7 @@ test("context usage falls back to input and output when total is absent", () => 
   );
 });
 
-test("occupancy sums last-request input, output, reasoning, and cache", () => {
+test("occupancy sums last-request input, output, and cache, not reasoning twice", () => {
   const usage = {
     inputTokens: 10,
     outputTokens: 5,
@@ -212,8 +212,9 @@ test("occupancy sums last-request input, output, reasoning, and cache", () => {
     reasoningTokens: 3,
     totalTokens: 15,
   };
-  assert.equal(contextOccupancyTokens(usage), 100);
-  assert.equal(calculateContextUsage(usage, 200).usedTokens, 100);
+  // `outputTokens` already includes `reasoningTokens`, so occupancy is 97.
+  assert.equal(contextOccupancyTokens(usage), 97);
+  assert.equal(calculateContextUsage(usage, 200).usedTokens, 97);
   assert.equal(usageTokenTotal(usage), 15);
 });
 

@@ -10,6 +10,86 @@ fn test_context() -> (tempfile::TempDir, Database, SecretStore) {
 }
 
 #[test]
+fn switching_provider_to_no_auth_clears_its_api_key() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Custom gateway".into(),
+            vendor_key: Some("custom".into()),
+            provider_type: Some("openai_compatible".into()),
+            protocol: Some("openai_compatible".into()),
+            base_url: Some("http://127.0.0.1:11434/v1".into()),
+            auth_kind: Some("api_key_and_base_url".into()),
+            models: None,
+            default_model_id: Some("local-chat".into()),
+            secret_value: Some("fixture-api-key".into()),
+            api_style: Some("chat_completions".into()),
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    let api_key_ref = secret_ref_for_provider(&provider.id);
+    assert!(provider.has_secret);
+    assert!(secrets.has(&api_key_ref));
+    let oauth_ref = secret_ref_for_provider_oauth(&provider.id);
+    secrets.set(&oauth_ref, "fixture-oauth-credential").unwrap();
+
+    let updated = update_provider(
+        &db,
+        &secrets,
+        ProviderUpdateInput {
+            id: provider.id.clone(),
+            name: None,
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: Some("none".into()),
+            models: None,
+            default_model_id: None,
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+            enabled: None,
+        },
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(updated.auth_kind, "none");
+    assert!(updated.has_secret);
+    assert!(updated.has_oauth);
+    assert!(!secrets.has(&api_key_ref));
+    assert_eq!(
+        secrets.get(&oauth_ref).unwrap().as_deref(),
+        Some("fixture-oauth-credential")
+    );
+    let stored_secret_ref: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT secret_ref FROM providers WHERE id = ?1",
+            params![provider.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored_secret_ref, None);
+}
+
+#[test]
 fn reasoning_override_roundtrips_and_preserves_provider_config() {
     let (_dir, db, secrets) = test_context();
     let provider = create_provider(

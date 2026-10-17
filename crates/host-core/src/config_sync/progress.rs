@@ -2,7 +2,7 @@
 //!
 //! A sync is one request: it captures the local snapshot, reads the remote
 //! revision, merges, uploads every resource object, publishes the head, applies
-//! the result and cleans up history. The caller hears back only at the end, and
+//! the result. The caller hears back only at the end, and
 //! the upload is unbatched — one object per resource, two round trips each — so
 //! a vault with a few hundred resources looks like a frozen window unless the
 //! work reports itself. That is what a [`SyncProgressObserver`] is for.
@@ -29,8 +29,6 @@ pub(crate) enum SyncPhase {
     Upload,
     /// Writing the approved result locally.
     Apply,
-    /// Deleting revisions the retention window no longer keeps.
-    Cleanup,
 }
 
 impl SyncPhase {
@@ -42,7 +40,6 @@ impl SyncPhase {
             SyncPhase::Merge => "merge",
             SyncPhase::Upload => "upload",
             SyncPhase::Apply => "apply",
-            SyncPhase::Cleanup => "cleanup",
         }
     }
 }
@@ -135,7 +132,6 @@ impl ProgressNotifier {
             SyncPhase::Merge => 2,
             SyncPhase::Upload => 3,
             SyncPhase::Apply => 4,
-            SyncPhase::Cleanup => 5,
         }
     }
 
@@ -197,7 +193,6 @@ mod tests {
             (SyncPhase::Merge, "merge"),
             (SyncPhase::Upload, "upload"),
             (SyncPhase::Apply, "apply"),
-            (SyncPhase::Cleanup, "cleanup"),
         ];
         for (phase, name) in phases {
             assert_eq!(phase.as_str(), name);

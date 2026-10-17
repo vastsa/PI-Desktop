@@ -197,7 +197,9 @@ describe("hosted search target model threading", () => {
     const large = contextBudgetFor(target, [searchHistory("gpt-test", 10_100)])
       .tokens;
     expect(small).toBeGreaterThan(0);
-    expect(large - small).toBe(2_500);
+    expect(large - small).toBe(
+      Math.ceil(10_100 / 3.5) - Math.ceil(100 / 3.5),
+    );
   });
 
   it("charges nothing for search the target model cannot replay", () => {

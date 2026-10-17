@@ -14,11 +14,16 @@ fn migrate_v22_to_v23_tx(tx: &Transaction<'_>) -> Result<()> {
         )?;
         // Older releases stored default and manually-entered titles in the
         // same column. Preserve the distinction where it is observable: only
-        // known placeholders remain eligible for the standalone title plugin;
-        // every other pre-existing title is treated as manual.
+        // known placeholders remain eligible for automatic replacement; every
+        // other pre-existing title is treated as manual. The list mirrors
+        // `sessions::PLACEHOLDER_TITLES` and covers the localized
+        // `chat.untitledTask` / `nav.newChat` labels the renderer writes.
         tx.execute(
             "UPDATE sessions SET title_source = CASE
-                 WHEN title IN ('', 'New task', 'New chat', '新建任务', '新对话') THEN 'default'
+                 WHEN title IN ('', 'New task', 'New chat', '新建任务', '新对话',
+                                '新建任務', '新對話', '새 작업', '새 채팅',
+                                'Tarefa sem título', 'Nova conversa',
+                                'Yeni görev', 'Yeni sohbet') THEN 'default'
                  ELSE 'manual'
              END",
             [],

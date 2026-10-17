@@ -18,18 +18,8 @@
  *   probed.
  */
 
-import type { CatalogApiStyle } from "./model-catalog.js";
+import type { CatalogApiStyle, DiscoveryStyle } from "./model-catalog.js";
 import { NAMED_ENDPOINT_PRESETS } from "./provider-presets.js";
-
-/**
- * How a model-list probe asks a service what it serves.
- *
- * This is deliberately narrower than {@link CatalogApiStyle}: a successful
- * `GET {base}/models` with `Authorization: Bearer` proves the endpoint answers
- * OpenAI-compatible discovery, and nothing about whether the generation call is
- * `/chat/completions`, `/responses` or something else.
- */
-export type DiscoveryStyle = "openai_models" | "anthropic_models" | "google_models";
 
 /** Where a resolved value came from, strongest first in the confidence table. */
 export type EndpointEvidenceType =
@@ -99,6 +89,13 @@ export interface ProviderEndpointDefinition {
   baseUrls?: string[];
 
   apiStyle?: CatalogApiStyle;
+
+  /**
+   * Model-list style this endpoint documents, when it differs from the one
+   * `apiStyle` implies. A service may publish its model list in another style
+   * than it generates in, and only such a statement — never a derivation from
+   * `apiStyle` — may override the resolved profile's probe style.
+   */
   discoveryStyle?: DiscoveryStyle;
 
   /** Documented path suffixes for this provider's endpoints. */
@@ -171,7 +168,7 @@ export const PROVIDER_ENDPOINT_DEFINITIONS: readonly ProviderEndpointDefinition[
       ...(host ? { hosts: [host] } : {}),
       ...(path ? { paths: [path] } : {}),
       apiStyle: preset.apiStyle,
-      discoveryStyle: discoveryStyleForApiStyle(preset.apiStyle),
+      ...(preset.discoveryStyle ? { discoveryStyle: preset.discoveryStyle } : {}),
     };
   });
 
@@ -344,6 +341,24 @@ export function inferEndpointProfile(input: EndpointProfileInput): EndpointProfi
       detail: operation.suffix,
     });
   }
+  /*
+    The registry is consulted twice: once for the URL as typed, and once for the
+    base behind a pasted operation. `GET {base}/models` and `POST {base}/messages`
+    are the same deployment, and provider documentation names the deployment by
+    its operation URL, so an endpoint that states its model-list style states it
+    for both spellings. The typed value is resolved before the form normalizes
+    it, so a pasted `.../step_plan/v1/messages` would otherwise drop the
+    declaration and probe a model list that answers only Bearer with `x-api-key`.
+  */
+  const declaredFromOperation =
+    !registryByUrl && operation?.basePath !== undefined
+      ? providerEndpointDefinitionForUrl(
+          `${parsed.origin}${operation.basePath}`,
+          canonicalEndpointUrl,
+        )
+      : undefined;
+  const declaredDiscoveryStyle =
+    registryByUrl?.discoveryStyle ?? declaredFromOperation?.discoveryStyle;
   if (registryByUrl?.apiStyle) {
     evidence.push({
       type: "known_endpoint",
@@ -424,10 +439,13 @@ export function inferEndpointProfile(input: EndpointProfileInput): EndpointProfi
   /*
     The probe style follows the wire style that will actually be used, so
     "discovery succeeded" and "the row is configured this way" can never
-    disagree. A registry entry for the same host may still offer its own style
-    as a later candidate (see `buildDiscoveryCandidates`).
+    disagree — unless the endpoint itself states how its model list is asked.
+    StepFun Plan answers generation on Anthropic Messages but publishes its
+    model list to a Bearer token, so a declaration outranks the derivation. A
+    registry entry for the same host may still offer its own style as a later
+    candidate (see `buildDiscoveryCandidates`).
   */
-  profile.discoveryStyle = discoveryStyleForApiStyle(apiStyle);
+  profile.discoveryStyle = declaredDiscoveryStyle ?? discoveryStyleForApiStyle(apiStyle);
   profile.candidates = buildDiscoveryCandidates(profile);
   return profile;
 }
@@ -479,7 +497,8 @@ export function buildDiscoveryCandidates(profile: EndpointProfile): EndpointCand
       for (const baseUrl of definition.baseUrls ?? []) {
         add({
           baseUrl,
-          discoveryStyle: definition.discoveryStyle ?? discoveryStyle,
+          discoveryStyle:
+            definition.discoveryStyle ?? discoveryStyleForApiStyle(definition.apiStyle),
           ...(definition.apiStyle ? { apiStyleHint: definition.apiStyle } : {}),
           evidence: {
             type: "known_host",

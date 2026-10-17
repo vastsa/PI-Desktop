@@ -1,0 +1,4 @@
+provider: github
+owner: vastsa
+repo: PI-Desktop
+updaterCacheDirName: '@pi-desktopdesktop-updater'

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -71,6 +71,60 @@ impl Drop for ToolPermit {
         let mut state = self.budget.lock();
         state.release(&self.request);
         state.dispatch();
+        drop(state);
+        self.budget.released.notify_waiters();
+    }
+}
+
+/// Marks a session whose exclusive permit is awaited; see `BudgetState::
+/// exclusive_pending`.
+struct PendingExclusive {
+    budget: ToolBudget,
+    session_id: String,
+}
+
+impl PendingExclusive {
+    fn register(budget: &ToolBudget, session_id: &str) -> Self {
+        *budget
+            .lock()
+            .exclusive_pending
+            .entry(session_id.to_string())
+            .or_default() += 1;
+        Self {
+            budget: budget.clone(),
+            session_id: session_id.to_string(),
+        }
+    }
+}
+
+impl Drop for PendingExclusive {
+    fn drop(&mut self) {
+        let mut state = self.budget.lock();
+        if let Some(count) = state.exclusive_pending.get_mut(&self.session_id) {
+            *count -= 1;
+            if *count == 0 {
+                state.exclusive_pending.remove(&self.session_id);
+            }
+        }
+        // Calls held back while the permit was awaited may run now (or
+        // stay held by the granted exclusive permit).
+        state.dispatch();
+    }
+}
+
+/// See `ToolBudget::acquire_session_exclusive`.
+pub struct SessionExclusivePermit {
+    budget: ToolBudget,
+    session_id: String,
+}
+
+impl Drop for SessionExclusivePermit {
+    fn drop(&mut self) {
+        let mut state = self.budget.lock();
+        state.exclusive.remove(&self.session_id);
+        state.dispatch();
+        drop(state);
+        self.budget.released.notify_waiters();
     }
 }
 
@@ -89,12 +143,17 @@ pub struct ToolBudgetSnapshot {
 struct Request {
     session_id: String,
     class: ToolClass,
+    /// Runs in a subagent's own worktree (ADR 0329), so holding the session
+    /// for work in the session worktree does not need to stop it.
+    own_worktree: bool,
 }
 
 #[derive(Default)]
 struct SessionUsage {
     active: usize,
     mutations: usize,
+    /// Of `active`, calls rooted in a subagent's own worktree.
+    own_worktree: usize,
 }
 
 struct WaitingRequest {
@@ -112,6 +171,11 @@ struct BudgetState {
     waiting: VecDeque<WaitingRequest>,
     queued: usize,
     next_id: u64,
+    /// Sessions held by a `SessionExclusivePermit`.
+    exclusive: HashSet<String>,
+    /// Sessions whose exclusive permit is being awaited; their new calls wait
+    /// too, so steady traffic cannot keep the session from ever going quiet.
+    exclusive_pending: HashMap<String, usize>,
 }
 
 impl ToolClass {
@@ -132,6 +196,12 @@ impl BudgetState {
         {
             return false;
         }
+        if !request.own_worktree
+            && (self.exclusive.contains(&request.session_id)
+                || self.exclusive_pending.contains_key(&request.session_id))
+        {
+            return false;
+        }
         self.sessions.get(&request.session_id).is_none_or(|usage| {
             usage.active < MAX_IN_FLIGHT_PER_SESSION
                 && (request.class != ToolClass::Mutation
@@ -147,6 +217,9 @@ impl BudgetState {
         if request.class == ToolClass::Mutation {
             usage.mutations += 1;
         }
+        if request.own_worktree {
+            usage.own_worktree += 1;
+        }
     }
 
     fn release(&mut self, request: &Request) {
@@ -159,6 +232,9 @@ impl BudgetState {
         usage.active -= 1;
         if request.class == ToolClass::Mutation {
             usage.mutations -= 1;
+        }
+        if request.own_worktree {
+            usage.own_worktree -= 1;
         }
         if usage.active == 0 {
             self.sessions.remove(&request.session_id);
@@ -224,18 +300,26 @@ impl Drop for QueueGuard {
             .position(|entry| entry.id == id)
             .expect("waiting request remains registered until cleanup");
         let entry = state.waiting.remove(index).expect("queue index exists");
-        if entry.granted {
+        let released = entry.granted;
+        if released {
             state.release(&entry.request);
         } else {
             state.queued -= 1;
         }
         state.dispatch();
+        drop(state);
+        if released {
+            self.budget.released.notify_waiters();
+        }
     }
 }
 
 #[derive(Clone, Default)]
 pub struct ToolBudget {
     state: Arc<Mutex<BudgetState>>,
+    /// Woken whenever a session's last tool finishes or an exclusive permit
+    /// drops, for `acquire_session_exclusive`.
+    released: Arc<Notify>,
 }
 
 impl ToolBudget {
@@ -256,7 +340,18 @@ impl ToolBudget {
         session_id: &str,
         tool_name: &str,
     ) -> Result<ToolPermit, AdmissionError> {
-        self.acquire_with_timeout(session_id, tool_name, QUEUE_WAIT)
+        self.acquire_with_timeout(session_id, tool_name, false, QUEUE_WAIT)
+            .await
+    }
+
+    /// `acquire` for a call rooted in a subagent's own worktree: a session
+    /// hold for the session worktree does not stop it.
+    pub async fn acquire_in_own_worktree(
+        &self,
+        session_id: &str,
+        tool_name: &str,
+    ) -> Result<ToolPermit, AdmissionError> {
+        self.acquire_with_timeout(session_id, tool_name, true, QUEUE_WAIT)
             .await
     }
 
@@ -264,11 +359,13 @@ impl ToolBudget {
         &self,
         session_id: &str,
         tool_name: &str,
+        own_worktree: bool,
         wait: Duration,
     ) -> Result<ToolPermit, AdmissionError> {
         let request = Request {
             session_id: session_id.to_string(),
             class: ToolClass::from_name(tool_name),
+            own_worktree,
         };
         let ready = Arc::new(Notify::new());
         let guard = {
@@ -301,6 +398,45 @@ impl ToolBudget {
         match tokio::time::timeout(wait, ready.notified()).await {
             Ok(()) => Ok(guard.into_permit()),
             Err(_) => Err(AdmissionError::QueueWaitTimeout),
+        }
+    }
+
+    /// Hold `session_id` alone: wait (at most `wait`) until none of its tools
+    /// is in flight, then keep every new tool of that session queued until
+    /// the permit drops. Used around git operations on an isolated session's
+    /// worktree (ADR 0329) so a Bash or Write call cannot interleave with
+    /// them. `None` when the session stayed busy; other sessions and global
+    /// capacity are unaffected either way.
+    pub async fn acquire_session_exclusive(
+        &self,
+        session_id: &str,
+        wait: Duration,
+    ) -> Option<SessionExclusivePermit> {
+        let deadline = tokio::time::Instant::now() + wait;
+        // Dropped on every exit, including cancellation of this future.
+        let _pending = PendingExclusive::register(self, session_id);
+        loop {
+            // Registered before the check, so a release in between still wakes us.
+            let released = self.released.notified();
+            tokio::pin!(released);
+            released.as_mut().enable();
+            {
+                let mut state = self.lock();
+                let busy = state
+                    .sessions
+                    .get(session_id)
+                    .is_some_and(|usage| usage.active > usage.own_worktree);
+                if !busy && !state.exclusive.contains(session_id) {
+                    state.exclusive.insert(session_id.to_string());
+                    return Some(SessionExclusivePermit {
+                        budget: self.clone(),
+                        session_id: session_id.to_string(),
+                    });
+                }
+            }
+            if tokio::time::timeout_at(deadline, released).await.is_err() {
+                return None;
+            }
         }
     }
 

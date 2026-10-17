@@ -2,22 +2,26 @@ import type {
   ConfigSyncCategory,
   ConfigSyncCategorySelection,
   ConfigSyncHistoryEntry,
-  ConfigSyncRemoteMode,
+  ConfigSyncMode,
   ConfigSyncState,
 } from "@pi-desktop/shared";
 
 /**
  * The draft is deliberately limited to non-sensitive connection fields.
- * The WebDAV app password and derived vault key stay in Host-owned secret
- * storage; the passwords are never copied into renderer persistence, even as a
+ * S3 secrets and derived vault keys stay in Host-owned secret storage;
+ * passwords are never copied into renderer persistence, even as a
  * convenience cache.
  */
 export type ConfigSyncDraft = {
   endpoint?: string;
-  username?: string;
-  directory?: string;
+  region?: string;
+  bucket?: string;
+  prefix?: string;
+  accessKeyId?: string;
+  pathStyle?: boolean;
+  automaticSync?: boolean;
   deviceLabel?: string;
-  remoteMode?: ConfigSyncRemoteMode;
+  mode?: ConfigSyncMode;
   categories?: Partial<ConfigSyncCategorySelection>;
   /** False means the user left an unsaved draft; true mirrors Host state. */
   saved?: boolean;
@@ -25,8 +29,11 @@ export type ConfigSyncDraft = {
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export const CONFIG_SYNC_DRAFT_STORAGE_KEY = "pi.desktop.configSyncDraft";
+export const CONFIG_SYNC_DRAFT_STORAGE_KEY = "pi.desktop.configSyncS3Draft.v1";
 export const CONFIG_SYNC_HISTORY_CACHE_TTL_MS = 30_000;
+
+const TEXT_FIELDS = ["endpoint", "region", "bucket", "prefix", "accessKeyId", "deviceLabel"] as const;
+const BOOLEAN_FIELDS = ["pathStyle", "automaticSync", "saved"] as const;
 
 const CATEGORY_KEYS: ConfigSyncCategory[] = [
   "application",
@@ -36,7 +43,6 @@ const CATEGORY_KEYS: ConfigSyncCategory[] = [
   "skills",
   "subagents",
   "instructions",
-  "projects",
   "plugins",
   "automation",
   "memory",
@@ -61,8 +67,8 @@ function text(value: unknown): string | undefined {
   return value;
 }
 
-function remoteMode(value: unknown): ConfigSyncRemoteMode | undefined {
-  return value === "strict" || value === "appendOnly" ? value : undefined;
+function syncMode(value: unknown): ConfigSyncMode | undefined {
+  return value === "sync" || value === "backup" ? value : undefined;
 }
 
 export function readConfigSyncDraft(store: StorageLike | null = storage()): ConfigSyncDraft {
@@ -74,13 +80,15 @@ export function readConfigSyncDraft(store: StorageLike | null = storage()): Conf
     if (!object(parsed)) return {};
 
     const draft: ConfigSyncDraft = {};
-    for (const key of ["endpoint", "username", "directory", "deviceLabel"] as const) {
+    for (const key of TEXT_FIELDS) {
       const value = text(parsed[key]);
       if (value !== undefined) draft[key] = value;
     }
-    const mode = remoteMode(parsed.remoteMode);
-    if (mode) draft.remoteMode = mode;
-    if (typeof parsed.saved === "boolean") draft.saved = parsed.saved;
+    const mode = syncMode(parsed.mode);
+    if (mode) draft.mode = mode;
+    for (const key of BOOLEAN_FIELDS) {
+      if (typeof parsed[key] === "boolean") draft[key] = parsed[key];
+    }
 
     if (object(parsed.categories)) {
       const categories: Partial<ConfigSyncCategorySelection> = {};
@@ -105,13 +113,15 @@ export function writeConfigSyncDraft(
   if (!store) return;
   try {
     const value: Record<string, unknown> = {};
-    for (const key of ["endpoint", "username", "directory", "deviceLabel"] as const) {
+    for (const key of TEXT_FIELDS) {
       const next = text(draft[key]);
       if (next !== undefined) value[key] = next;
     }
-    const mode = remoteMode(draft.remoteMode);
-    if (mode) value.remoteMode = mode;
-    if (typeof draft.saved === "boolean") value.saved = draft.saved;
+    const mode = syncMode(draft.mode);
+    if (mode) value.mode = mode;
+    for (const key of BOOLEAN_FIELDS) {
+      if (typeof draft[key] === "boolean") value[key] = draft[key];
+    }
     if (draft.categories && object(draft.categories)) {
       const categories: Partial<ConfigSyncCategorySelection> = {};
       for (const key of CATEGORY_KEYS) {
@@ -144,8 +154,19 @@ export function getCachedConfigSyncState(): ConfigSyncState | null {
   return cachedState;
 }
 
-export function cacheConfigSyncState(next: ConfigSyncState): void {
+/** Returns true when callers must invalidate their in-flight history request. */
+export function cacheConfigSyncState(next: ConfigSyncState): boolean {
+  const previous = cachedState;
+  const changed = previous === null ||
+    ["configured", "endpoint", "region", "bucket", "prefix", "accessKeyId", "pathStyle", "mode"].some(
+      (key) => previous[key as keyof ConfigSyncState] !== next[key as keyof ConfigSyncState],
+    );
+  if (changed) {
+    cachedHistory = null;
+    cachedHistoryAt = 0;
+  }
   cachedState = next;
+  return changed;
 }
 
 export function getCachedConfigSyncHistory(): ConfigSyncHistoryEntry[] {

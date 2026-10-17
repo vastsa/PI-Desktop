@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fetch Redirect Probe</title>
+<style>
+  body { font: 14px system-ui; padding: 16px; color-scheme: light dark; }
+  label { display: block; margin: 12px 0; }
+  input { width: 95%; } pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+<h1>Fetch Redirect Probe</h1>
+<p>Start fixture.mjs locally. No credentials or external services are needed.</p>
+<form id="probe">
+  <label>Fixture URL <input id="url" type="url" required placeholder="Paste the URL printed by fixture.mjs"></label>
+  <label>Redirect policy <select id="policy"><option>error</option><option>manual</option><option>follow</option></select></label>
+  <button id="run">Run probe</button>
+</form>
+<pre id="result" role="status" aria-live="polite"></pre>
+<script>
+  document.getElementById("probe").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = document.getElementById("run");
+    const result = document.getElementById("result");
+    button.disabled = true;
+    result.textContent = "Requesting…";
+    try {
+      const response = await window.pluginBridge.invoke("probe.fetch", {
+        url: document.getElementById("url").value,
+        redirect: document.getElementById("policy").value,
+      });
+      result.textContent = JSON.stringify(response, null, 2);
+    } catch (error) {
+      result.textContent = `${error.code ?? "ERROR"}: ${error.message}`;
+    } finally { button.disabled = false; }
+  });
+</script>
+</html>

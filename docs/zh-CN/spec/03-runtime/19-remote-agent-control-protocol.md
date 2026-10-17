@@ -204,6 +204,7 @@ owner，工作区读取都按会话持久根、Host 忽略规则和 `PATH_OUTSID
 | `session/configure` | controller | 空闲时修改模式、provider/模型、思考等级或权限模式，规则同 `pi-desktop/session/configure` |
 | `session/fork` | controller | 将空闲会话（可指定消息 id）fork 为新的空闲会话 |
 | `session/rename` | controller | 重命名会话 |
+| `session/deriveTitle` | controller | 对仍未命名的会话应用 Host 确定性的首条提示标题；返回 `{ updated }`，永不覆盖重命名 |
 | `session/delete` | owner | 删除会话及其在 Host 上的 transcript |
 | `session/compact` | controller | 对活动会话执行手动上下文检查点 |
 | `workspace/list` | viewer | 有界列出会话根下的条目，遵守 Host 忽略规则 |

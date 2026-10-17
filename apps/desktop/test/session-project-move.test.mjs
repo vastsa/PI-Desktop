@@ -88,7 +88,8 @@ test("renderer api and store expose one guarded move action", () => {
 
 test("sidebar sessions drag onto project groups without a menu fallback", () => {
   assert.match(sidebar, /const SESSION_DRAG_MIME = "application\/x-pi-desktop-session";/);
-  assert.match(sidebar, /draggable=\{!running\}/);
+  assert.match(sidebar, /draggable=\{!running && !isRemoteSession\(session\)\}/);
+  assert.match(sidebar, /if \(running \|\| isRemoteSession\(session\)\)[\s\S]*?event\.preventDefault\(\)/);
   assert.match(sidebar, /beginSessionDrag\(event, session\.id\)/);
   assert.match(sidebar, /onDragEnd=\{endSessionDrag\}/);
   assert.match(sidebar, /is-dragging/);
@@ -97,7 +98,7 @@ test("sidebar sessions drag onto project groups without a menu fallback", () => 
   assert.match(sidebar, /dropProjectKey === entry\.key \? "is-drop-target" : ""/);
   assert.doesNotMatch(sidebar, /data-action="move-session-to-project"/);
   assert.doesNotMatch(sidebar, /nav\.moveToProject/);
-  assert.match(sidebar, /disabled=\{Boolean\(runningSessions\[session\.id\]\)\}/);
+  assert.match(sidebar, /disabled: Boolean\(runningSessions\[session\.id\]\)/);
   // A drag inside the same project group must not offer itself as a target.
   assert.match(
     sidebar,

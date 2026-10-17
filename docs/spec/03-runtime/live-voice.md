@@ -181,6 +181,13 @@ underlying Dictation capability remain unchanged and are not deleted or rewritte
 by the UI. Old settings with no `liveVoice` value read as disabled with no
 bindings.
 
+When the hidden local Dictation capability loads an STT model, it releases the
+model after ten minutes in a terminal phase without a new recording. Starting a
+recording cancels a pending unload; a later recording lazily reloads the model
+from its on-disk cache. This changes idle memory use and the first-recording
+latency after a long idle period, but does not alter Dictation settings or the
+downloaded model files.
+
 Live DTOs and IPC contracts live in `packages/shared`. Pure wire parsing and
 PCM math are exported only from `@pi-desktop/voice-runtime/live`; they do not
 enter the old local transcription runtime. Electron Main remains an

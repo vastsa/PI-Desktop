@@ -7,7 +7,6 @@ use uuid::Uuid;
 use crate::db::{ms_to_ts, now_ms, ts_to_ms, Database};
 use crate::notifications::{self, Notification};
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
 
 use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 
@@ -138,6 +137,10 @@ pub struct SessionSummary {
     /// deleting the task frees its sessions back into the ordinary lists.
     #[serde(default)]
     pub scheduled_run: bool,
+    /// The session's isolated worktree (ADR 0329); absent for every other
+    /// session. Filled in by the list and single-summary reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<crate::session_worktrees::lifecycle::WorktreeSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -334,11 +337,33 @@ pub struct SearchHit {
     pub created_at: String,
 }
 
+/// Titles the app writes for a session the user has not named yet.
+///
+/// The renderer creates a session with its localized `chat.untitledTask` label
+/// and also recognizes `nav.newChat`, so host-core has to recognize the same
+/// values: it owns title eligibility and cannot read the renderer catalog when
+/// it decides whether a title may still be replaced. German, Spanish, and
+/// French fall back to the English label. Keep this in sync with the migration
+/// list in `db/session_title_source_migration.rs` and `LEGACY_DEFAULT_TITLES`
+/// in the renderer.
+const PLACEHOLDER_TITLES: [&str; 13] = [
+    "",
+    "New task",
+    "New chat",
+    "新建任务",
+    "新对话",
+    "新建任務",
+    "新對話",
+    "새 작업",
+    "새 채팅",
+    "Tarefa sem título",
+    "Nova conversa",
+    "Yeni görev",
+    "Yeni sohbet",
+];
+
 fn is_default_title(title: &str) -> bool {
-    matches!(
-        title.trim(),
-        "" | "New task" | "New chat" | "新建任务" | "新对话"
-    )
+    PLACEHOLDER_TITLES.contains(&title.trim())
 }
 
 // ---- UiMessage ⇄ transcript record mapping -----------------------------------
@@ -1172,7 +1197,6 @@ pub fn restore_orphaned_session(db: &Database, session_id: &str) -> Result<bool>
             &records,
             &read.compactions,
         )?;
-        invalidate_transcript_layout(session_id);
     }
     let created_at = records
         .first()
@@ -1285,7 +1309,20 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         // Read by name: search and listing build their own column lists, so the
         // alias keeps this mapper independent of any one query's column order.
         scheduled_run: row.get("scheduled_run")?,
+        worktree: None,
     })
+}
+
+/// Attach isolated-worktree badges. Sessions without a worktree are untouched.
+fn attach_worktrees(db: &Database, summaries: &mut [SessionSummary]) -> Result<()> {
+    let mut worktrees = crate::session_worktrees::lifecycle::summaries(db)?;
+    if worktrees.is_empty() {
+        return Ok(());
+    }
+    for summary in summaries {
+        summary.worktree = worktrees.remove(&summary.id);
+    }
+    Ok(())
 }
 
 // ---- sessions ---------------------------------------------------------------
@@ -1298,6 +1335,7 @@ pub fn list_sessions(db: &Database) -> Result<Vec<SessionSummary>> {
     for row in rows {
         out.push(row?);
     }
+    attach_worktrees(db, &mut out)?;
     Ok(out)
 }
 
@@ -1426,6 +1464,8 @@ pub fn create_session_with_options(
         created_at: ms_to_ts(now),
         // The run row that owns this transcript is written after creation.
         scheduled_run: false,
+        // A new or forked session starts without a worktree (ADR 0329).
+        worktree: None,
     })
 }
 
@@ -1449,43 +1489,13 @@ pub fn session_mode(db: &Database, id: &str) -> Result<Option<String>> {
         .map(|mode| normalize_mode(Some(&mode))))
 }
 
-/// Process-wide cache of transcript layouts, keyed by session id.
-///
-/// The layout is derived data: it can always be rebuilt by scanning the file,
-/// and `file_len` makes a stale entry detectable. Caching it turns a repeated
-/// session open, and each older page, into a bounded seek-and-parse instead of
-/// another full-history scan.
-static TRANSCRIPT_LAYOUTS: OnceLock<Mutex<HashMap<String, transcripts::TranscriptLayout>>> =
-    OnceLock::new();
-
-fn layout_cache() -> &'static Mutex<HashMap<String, transcripts::TranscriptLayout>> {
-    TRANSCRIPT_LAYOUTS.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-/// Return an up-to-date layout for one session, reusing the cached offsets and
+/// Return an up-to-date layout for one session, reusing cached offsets and
 /// scanning only what was appended since.
 pub(crate) fn session_layout(
     db: &Database,
     session_id: &str,
 ) -> Result<transcripts::TranscriptLayout> {
-    let cached = layout_cache()
-        .lock()
-        .ok()
-        .and_then(|guard| guard.get(session_id).cloned())
-        .unwrap_or_default();
-    let layout = transcripts::refresh_layout(db.data_dir(), session_id, cached)?;
-    if let Ok(mut guard) = layout_cache().lock() {
-        guard.insert(session_id.to_string(), layout.clone());
-    }
-    Ok(layout)
-}
-
-/// Drop a session's cached layout. Called after a rewrite or a delete so the
-/// next read rebuilds from the file rather than trusting stale offsets.
-pub fn invalidate_transcript_layout(session_id: &str) {
-    if let Ok(mut guard) = layout_cache().lock() {
-        guard.remove(session_id);
-    }
+    transcripts::layout::session_layout(db.data_dir(), session_id)
 }
 
 pub fn get_session(db: &Database, id: &str) -> Result<Option<SessionDetail>> {
@@ -1502,11 +1512,15 @@ pub fn get_session(db: &Database, id: &str) -> Result<Option<SessionDetail>> {
 /// `SUMMARY_SELECT`, so this is one indexed row.
 pub fn session_summary(db: &Database, id: &str) -> Result<Option<SessionSummary>> {
     let sql = format!("{SUMMARY_SELECT} AND s.id = ?1");
-    Ok(db
+    let mut summary = db
         .conn()
         .prepare_cached(&sql)?
         .query_row(params![id], summary_from_row)
-        .optional()?)
+        .optional()?;
+    if let Some(summary) = summary.as_mut() {
+        attach_worktrees(db, std::slice::from_mut(summary))?;
+    }
+    Ok(summary)
 }
 
 /// Load a session detail with an optional renderer-facing message window.
@@ -1522,55 +1536,62 @@ pub fn get_session_with_options(
         return Ok(None);
     };
 
-    let (records, compactions, message_start, has_more_before, message_end, has_more_after) =
-        if let Some(raw_limit) = options.message_limit.filter(|limit| *limit > 0) {
-            let limit = raw_limit.min(1_000) as usize;
-            // Window coordinates are physical transcript lines, so they must be
-            // clamped against the file layout rather than against `last_seq`.
-            // The index counter is a deduplicated logical count: a retried
-            // append leaves two lines with one id, and mixing the two spaces
-            // silently dropped the newest messages of a long session.
-            let layout = session_layout(db, id)?;
-            let total = layout.message_count();
-            let before = if let Some(message_id) = options.message_around.as_deref() {
-                let Some(position) =
-                    transcripts::find_message_position(db.data_dir(), id, &layout, message_id)?
-                else {
-                    return Ok(None);
+    let bounded = if let Some(raw_limit) = options.message_limit.filter(|limit| *limit > 0) {
+        let limit = raw_limit.min(1_000) as usize;
+        Some(transcripts::layout::with_layout_recovery(
+            db.data_dir(),
+            id,
+            |layout| {
+                let total = layout.message_count();
+                let before = if let Some(message_id) = options.message_around.as_deref() {
+                    let Some(position) =
+                        transcripts::find_message_position(db.data_dir(), id, layout, message_id)?
+                    else {
+                        return Ok(None);
+                    };
+                    (position + limit / 2 + 1).min(total)
+                } else {
+                    match options.message_before {
+                        Some(value) => (value.max(0) as usize).min(total),
+                        None => total,
+                    }
                 };
-                (position + limit / 2 + 1).min(total)
-            } else {
-                match options.message_before {
-                    Some(value) => (value.max(0) as usize).min(total),
-                    None => total,
-                }
-            };
-            let start = before.saturating_sub(limit);
-            let read = transcripts::read_transcript_window_with_layout(
-                db.data_dir(),
-                id,
-                &layout,
-                start,
-                Some(before.saturating_sub(start)),
-            )?;
-            (
-                dedupe_records(read.messages),
-                read.compactions,
-                Some(start as i64),
-                Some(start > 0),
-                Some(before as i64),
-                Some(before < total),
-            )
-        } else {
-            let read = transcripts::read_transcript_with_compactions(db.data_dir(), id)?;
-            (
-                dedupe_records(read.messages),
-                read.compactions,
-                None,
-                None,
-                None,
-                None,
-            )
+                let start = before.saturating_sub(limit);
+                let read = transcripts::read_transcript_window_with_layout(
+                    db.data_dir(),
+                    id,
+                    layout,
+                    start,
+                    Some(before.saturating_sub(start)),
+                )?;
+                Ok(Some((
+                    dedupe_records(read.messages),
+                    read.compactions,
+                    Some(start as i64),
+                    Some(start > 0),
+                    Some(before as i64),
+                    Some(before < total),
+                )))
+            },
+        )?)
+    } else {
+        None
+    };
+    let (records, compactions, message_start, has_more_before, message_end, has_more_after) =
+        match bounded {
+            Some(Some(window)) => window,
+            Some(None) => return Ok(None),
+            None => {
+                let read = transcripts::read_transcript_with_compactions(db.data_dir(), id)?;
+                (
+                    dedupe_records(read.messages),
+                    read.compactions,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
         };
     // Content comes from the transcript file; SQLite only indexes it. A
     // renderer window may additionally request a display cap so a single
@@ -1613,14 +1634,13 @@ pub fn get_session_with_options(
             .and_then(|message| message.parent_tool_call_id.as_deref())
     });
     let navigation_parent = match parent_call_id {
-        Some(call_id) => {
-            transcripts::read_tool_call(db.data_dir(), id, &session_layout(db, id)?, call_id)?.map(
-                |record| match options.content_limit {
-                    Some(limit) => record_to_ui_for_display(record, limit),
-                    None => record_to_ui(record),
-                },
-            )
-        }
+        Some(call_id) => transcripts::layout::with_layout_recovery(db.data_dir(), id, |layout| {
+            transcripts::read_tool_call(db.data_dir(), id, layout, call_id)
+        })?
+        .map(|record| match options.content_limit {
+            Some(limit) => record_to_ui_for_display(record, limit),
+            None => record_to_ui(record),
+        }),
         None => None,
     };
     Ok(Some(SessionDetail {
@@ -1756,8 +1776,6 @@ pub fn fork_session_through(
     let title = requested_title
         .map(|value| value.chars().take(100).collect::<String>())
         .unwrap_or_else(|| format!("{} (branch)", source.summary.title));
-
-    invalidate_transcript_layout(&id);
     if let Err(error) = transcripts::write_transcript_with_compactions(
         db.data_dir(),
         &id,
@@ -1791,7 +1809,6 @@ pub fn fork_session_through(
         Ok(())
     })();
     if let Err(error) = indexed {
-        invalidate_transcript_layout(&id);
         transcripts::remove_session_files(db.data_dir(), &id);
         return Err(error);
     }
@@ -1811,6 +1828,8 @@ pub fn fork_session_through(
         created_at,
         // A fork is the user's own conversation, not the automation's transcript.
         scheduled_run: false,
+        // A new or forked session starts without a worktree (ADR 0329).
+        worktree: None,
     };
     let messages = records.into_iter().map(record_to_ui).collect();
     Ok(ForkSessionResult::Created(Box::new(SessionDetail {
@@ -1902,7 +1921,6 @@ pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
     if n > 0 {
         // Here rather than in the RPC handler so every deletion path (UI,
         // failed scheduled-run cleanup) also drops the transcript files.
-        invalidate_transcript_layout(id);
         transcripts::remove_session_files(db.data_dir(), id);
     }
     Ok(n > 0)
@@ -1927,6 +1945,42 @@ pub fn rename_session(db: &Database, id: &str, title: &str) -> Result<bool> {
         .conn()
         .prepare_cached("UPDATE sessions SET title = ?1, title_source = ?2 WHERE id = ?3")?
         .execute(params![title, TITLE_SOURCE_MANUAL, id])?;
+    Ok(n > 0)
+}
+
+/// Replace a still-untitled session's placeholder with text derived from its
+/// first prompt.
+///
+/// This is the deterministic local fallback that keeps a new session readable
+/// without any plugin. It deliberately keeps the `default` title source: the
+/// derived text was not chosen by the user, so an installed title plugin may
+/// still upgrade it through `set_automatic_session_title`. The write only
+/// applies while host-core still sees a recognized placeholder, so a manual
+/// rename, a plugin-generated title, or an earlier derivation all win.
+pub fn derive_session_title(db: &Database, id: &str, title: &str) -> Result<bool> {
+    let title = normalize_session_title(title)?;
+    let current: Option<(String, String)> = db
+        .conn()
+        .query_row(
+            "SELECT title, title_source FROM sessions
+             WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((current_title, title_source)) = current else {
+        return Ok(false);
+    };
+    if title_source != TITLE_SOURCE_DEFAULT || !is_default_title(&current_title) {
+        return Ok(false);
+    }
+    let n = db
+        .conn()
+        .prepare_cached(
+            "UPDATE sessions SET title = ?1
+             WHERE id = ?2 AND title = ?3 AND title_source = ?4 AND deleted_at IS NULL",
+        )?
+        .execute(params![title, id, current_title, TITLE_SOURCE_DEFAULT])?;
     Ok(n > 0)
 }
 
@@ -2111,6 +2165,7 @@ pub fn append_message(
                 )?;
             }
         } else {
+            update_delegation_snapshot(db, session_id, &record)?;
             return Ok(());
         }
     } else {
@@ -2119,6 +2174,7 @@ pub fn append_message(
                 let original_id = record.id.clone();
                 record.id = namespaced_message_id(session_id, &record.id);
                 if message_indexed(db, session_id, &record.id)? {
+                    update_delegation_snapshot(db, session_id, &record)?;
                     return Ok(());
                 }
                 // Old hosts wrote JSONL then failed UNIQUE. Replaying that
@@ -2251,7 +2307,6 @@ fn repair_unindexed_transcript_message(
         return Ok(false);
     }
     records[position] = record.clone();
-    invalidate_transcript_layout(session_id);
     rebuild_session_message_index(db, session_id, &records)?;
     tracing::warn!(
         %session_id,
@@ -2346,37 +2401,100 @@ fn streaming_assistant_indexed(db: &Database, session_id: &str, message_id: &str
     }
 }
 
-/// The same question answered from the transcript: walk backwards from the tail
-/// 64 message lines at a time and stop at the last copy of the id. This is the
-/// fallback for a message the index cannot answer for, which is a row written
-/// before the cached column existed.
 fn streaming_assistant_in_transcript(
     db: &Database,
     session_id: &str,
     message_id: &str,
 ) -> Result<bool> {
-    let layout = session_layout(db, session_id)?;
-    let mut end = layout.message_count();
-    while end > 0 {
-        let start = end.saturating_sub(64);
-        let window = transcripts::read_transcript_window_with_layout(
-            db.data_dir(),
-            session_id,
-            &layout,
-            start,
-            Some(end - start),
-        )?;
-        if let Some(record) = window
-            .messages
-            .iter()
-            .rev()
-            .find(|record| record.id == message_id)
-        {
-            return Ok(record_is_streaming(record));
+    Ok(indexed_message_record(db, session_id, message_id)?
+        .is_some_and(|record| record_is_streaming(&record)))
+}
+
+fn indexed_message_record(
+    db: &Database,
+    session_id: &str,
+    message_id: &str,
+) -> Result<Option<MessageRecord>> {
+    transcripts::layout::with_layout_recovery(db.data_dir(), session_id, |layout| {
+        let mut end = layout.message_count();
+        while end > 0 {
+            let start = end.saturating_sub(64);
+            let window = transcripts::read_transcript_window_with_layout(
+                db.data_dir(),
+                session_id,
+                layout,
+                start,
+                Some(end - start),
+            )?;
+            if let Some(record) = window
+                .messages
+                .into_iter()
+                .rev()
+                .find(|record| record.id == message_id)
+            {
+                return Ok(Some(record));
+            }
+            end = start;
         }
-        end = start;
+        Ok(None)
+    })
+}
+
+/// Task is already a completed tool call while its delegated work is running.
+/// Only its matching terminal result may replace that provisional result; replay
+/// must neither reopen a settled delegate nor overwrite another call's metadata.
+fn update_delegation_snapshot(
+    db: &Database,
+    session_id: &str,
+    incoming: &MessageRecord,
+) -> Result<()> {
+    if incoming.role != "tool" || incoming.tool_name.as_deref() != Some("Task") {
+        return Ok(());
     }
-    Ok(false)
+    let Some(next) = incoming
+        .blocks
+        .as_array()
+        .and_then(|blocks| blocks.iter().find(|block| block["type"] == "tool_call"))
+    else {
+        return Ok(());
+    };
+    let details = &next["result"]["details"];
+    if !matches!(
+        details["status"].as_str(),
+        Some("completed" | "stopped" | "aborted" | "failed" | "timed_out")
+    ) {
+        return Ok(());
+    }
+    let Some(id) = details["delegationId"].as_str().filter(|id| !id.is_empty()) else {
+        return Ok(());
+    };
+    let Some(mut existing) = indexed_message_record(db, session_id, &incoming.id)? else {
+        return Ok(());
+    };
+    if existing.role != "tool" || existing.tool_name.as_deref() != Some("Task") {
+        return Ok(());
+    }
+    let Some(block) = existing
+        .blocks
+        .as_array_mut()
+        .and_then(|blocks| blocks.iter_mut().find(|block| block["type"] == "tool_call"))
+    else {
+        return Ok(());
+    };
+    if block["callId"] != next["callId"]
+        || block["result"]["details"]["delegationId"].as_str() != Some(id)
+        || block["result"]["details"]["status"] != "running"
+    {
+        return Ok(());
+    }
+    block["result"] = next["result"].clone();
+    block["text"] = next["text"].clone();
+    if !transcripts::update_message(db.data_dir(), session_id, &existing)? {
+        return Err(anyhow!(
+            "delegation snapshot is missing from its transcript"
+        ));
+    }
+    Ok(())
 }
 
 /// Append one canonical record: transcript line first, then the index row.
@@ -2695,7 +2813,6 @@ fn rewrite_transcript_body(db: &Database, session_id: &str, messages: &[UiMessag
             .into_iter()
             .filter(|record| compaction_valid_for_records(record, &records))
             .collect();
-    invalidate_transcript_layout(session_id);
     transcripts::write_transcript_with_compactions(
         db.data_dir(),
         session_id,
@@ -3359,7 +3476,6 @@ pub fn save_active_branch_revision(
     root.revision_count = Some(total);
     root.active_revision = Some(active);
     let (record, _) = ui_to_record(root);
-    invalidate_transcript_layout(session_id);
     transcripts::update_message(db.data_dir(), session_id, &record)?;
     Ok(Some(ActiveRevisionSave {
         root_user_id,
@@ -3484,7 +3600,6 @@ pub fn activate_message_revision(
         &combined,
         &[root_user_id.to_string()],
     )?;
-    invalidate_transcript_layout(session_id);
     transcripts::write_transcript_with_compactions(
         db.data_dir(),
         session_id,
@@ -3558,7 +3673,6 @@ pub fn import_session(
         return Ok(false);
     }
     let (records, texts) = records_and_texts(messages);
-    invalidate_transcript_layout(&summary.id);
     transcripts::write_transcript(db.data_dir(), &summary.id, &summary.created_at, &records)?;
     let indexed = (|| -> Result<()> {
         let tx = conn.unchecked_transaction()?;
@@ -3613,7 +3727,6 @@ pub fn import_session(
     if let Err(e) = indexed {
         // Don't leave transcript files behind for a session row that never
         // materialized.
-        invalidate_transcript_layout(&summary.id);
         transcripts::remove_session_files(db.data_dir(), &summary.id);
         return Err(e);
     }
@@ -4697,6 +4810,120 @@ mod tests {
     }
 
     #[test]
+    fn derived_prompt_title_stays_eligible_for_the_title_plugin() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        append_message(
+            &db,
+            &session.id,
+            &user_msg("user-1", "Fix the login button", "2026-01-01T00:00:01Z"),
+            None,
+        )
+        .unwrap();
+        let before: i64 = db
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM sessions WHERE id = ?1",
+                params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(derive_session_title(&db, &session.id, "Fix login bug").unwrap());
+        let derived = get_session(&db, &session.id).unwrap().unwrap();
+        assert_eq!(derived.summary.title, "Fix login bug");
+        let after: i64 = db
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM sessions WHERE id = ?1",
+                params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(after, before);
+
+        // The derived text is still an automatic title: the plugin reads it as
+        // the expected title and may replace it.
+        let context = auto_title_context(&db, &session.id).unwrap().unwrap();
+        assert_eq!(context.expected_title, "Fix login bug");
+        assert_eq!(context.user_prompt, "Fix the login button");
+        assert!(
+            set_automatic_session_title(&db, &session.id, "Fix login bug", "Login fix").unwrap()
+        );
+        assert_eq!(
+            get_session(&db, &session.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .title,
+            "Login fix"
+        );
+        assert!(auto_title_context(&db, &session.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn derived_prompt_title_never_overrides_named_sessions() {
+        let db = test_db();
+        let manual = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(rename_session(&db, &manual.id, "Picked by user").unwrap());
+        assert!(!derive_session_title(&db, &manual.id, "First prompt").unwrap());
+        assert_eq!(
+            get_session(&db, &manual.id).unwrap().unwrap().summary.title,
+            "Picked by user"
+        );
+
+        let generated = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(set_automatic_session_title(&db, &generated.id, "New task", "Generated").unwrap());
+        assert!(!derive_session_title(&db, &generated.id, "First prompt").unwrap());
+
+        let named =
+            create_session(&db, Some("Named up front".into()), None, None, None, None).unwrap();
+        assert!(!derive_session_title(&db, &named.id, "First prompt").unwrap());
+
+        let returned = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(derive_session_title(&db, &returned.id, "First prompt").unwrap());
+        assert!(!derive_session_title(&db, &returned.id, "Second prompt").unwrap());
+        assert_eq!(
+            get_session(&db, &returned.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .title,
+            "First prompt"
+        );
+
+        assert!(!derive_session_title(&db, "missing", "First prompt").unwrap());
+        assert!(derive_session_title(&db, &returned.id, "  ").is_err());
+    }
+
+    #[test]
+    fn localized_placeholder_titles_accept_the_first_prompt_fallback() {
+        let db = test_db();
+        for placeholder in [
+            "새 작업",
+            "新建任務",
+            "Tarefa sem título",
+            "Yeni görev",
+            "New chat",
+        ] {
+            let session =
+                create_session(&db, Some(placeholder.into()), None, None, None, None).unwrap();
+            assert!(
+                derive_session_title(&db, &session.id, "Derived label").unwrap(),
+                "{placeholder} must accept the first-prompt fallback"
+            );
+            assert_eq!(
+                get_session(&db, &session.id)
+                    .unwrap()
+                    .unwrap()
+                    .summary
+                    .title,
+                "Derived label"
+            );
+        }
+    }
+
+    #[test]
     fn auto_title_context_is_limited_to_the_first_turn_and_bounded() {
         let db = test_db();
         let session = create_session_with_options(
@@ -4804,6 +5031,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
         };
@@ -4856,6 +5084,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };
@@ -5041,6 +5270,42 @@ mod tests {
             )
             .unwrap();
         assert_eq!(last_seq, 2);
+    }
+
+    #[test]
+    fn delegation_settlement_updates_only_its_running_snapshot() {
+        let db = test_db();
+        let first = create_session(&db, None, None, None, None, None).unwrap();
+        let second = create_session(&db, None, None, None, None, None).unwrap();
+        let mut task = user_msg("task-shared-id", "partial", "2026-10-05T00:00:00Z");
+        task.role = "tool".into();
+        task.tool_name = Some("Task".into());
+        task.tool_call_id = Some(task.id.clone());
+        task.tool_args = Some(json!({"agent": "explorer"}));
+        task.tool_result =
+            Some(json!({"details": {"delegationId": "delegate-A", "status": "running"}}));
+        append_message(&db, &first.id, &task, None).unwrap();
+        append_message(&db, &second.id, &task, None).unwrap();
+        let mut stopped = task.clone();
+        stopped.tool_result =
+            Some(json!({"details": {"delegationId": "delegate-A", "status": "stopped"}}));
+        stopped.tool_args = Some(json!({"agent": "changed"}));
+        append_message(&db, &second.id, &stopped, None).unwrap();
+        // Late replay cannot reopen a settled delegation, including namespaced IDs.
+        append_message(&db, &second.id, &task, None).unwrap();
+        let read = |id: &str| get_session(&db, id).unwrap().unwrap().messages;
+        assert_eq!(read(&second.id).len(), 1);
+        assert_eq!(read(&second.id)[0].tool_result, stopped.tool_result);
+        assert_eq!(read(&second.id)[0].tool_args, task.tool_args);
+        assert_eq!(read(&first.id)[0].tool_result, task.tool_result);
+        let mut foreign = stopped.clone();
+        foreign.tool_result =
+            Some(json!({"details": {"delegationId": "different", "status": "stopped"}}));
+        append_message(&db, &first.id, &foreign, None).unwrap();
+        assert_eq!(read(&first.id)[0].tool_result, task.tool_result);
+        append_message(&db, &first.id, &stopped, None).unwrap();
+        append_message(&db, &first.id, &task, None).unwrap();
+        assert_eq!(read(&first.id)[0].tool_result, stopped.tool_result);
     }
 
     #[test]
@@ -5761,6 +6026,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
         };

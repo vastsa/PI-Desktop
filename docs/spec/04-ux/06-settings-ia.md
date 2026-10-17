@@ -54,8 +54,8 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   7. **MCP** — Lucide `Server` (agent connections)
   8. **Subagents / 子智能体** — Lucide `Bot` (built-in and personal parallel agents)
   9. **Projects / 项目** — Lucide `Archive` (durable project index)
-  10. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync; development builds only)
-  11. **Remote Hosts / 远程主机** — Lucide `Globe` (SSH bootstrap and pairing inventory; developer mode only)
+  10. **Cloud sync / 云同步** — Lucide `CloudDownload` (encrypted portable configuration backup and bidirectional sync; Experimental, all builds)
+  11. **Remote Hosts / 远程主机** — Lucide `Globe` (experimental SSH hosts, sessions, and explicit model copy)
   12. **Info / 信息** — Lucide `Info` (versions, logs, updates, developer)
   Icons are decorative (`aria-hidden` via the SVG default) and stay monochrome
   with the rail label; do not reuse refresh/rotate glyphs here.
@@ -64,7 +64,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
   (Projects), and `System` / `系统` (Cloud sync, Remote Hosts, Info; Cloud sync
-  is development-build-only, Remote Hosts is developer-only). Headings are
+  and Remote Hosts are Experimental destinations available in all builds). Headings are
   muted, non-interactive labels and use whitespace for separation; no divider
   lines are rendered. These are visual landmarks only, not a second navigation
   level.
@@ -74,20 +74,26 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   requirement. Its rail row, page, search hits, and idle Composer entry are
   available to all users.
   It is the only place to enable Live Voice. See the Voice section below.
-- **Cloud sync / 云同步** is not open to users yet: it is a
-  development-build-only `System` / `系统` destination. Its rail row, page,
-  and settings-search hits exist in development builds only; a packaged build
-  omits them, and a rail position left on it falls back to General. Developer
-  mode is not a gate either way, neither the rail row nor the page title
-  carries an Experimental badge, and nothing about the sync behavior itself
-  changes. Removing the destination's `developmentOnly` flag reopens it for
-  packaged builds.
-- **Remote Hosts / 远程主机** is a developer-only, Experimental destination: its
-  rail row, its page, and its settings-search hits exist only while
-  `AppSettings.developerMode` is `true`. With developer mode off the row is
-  absent rather than disabled, settings search returns no hit for it, and a
-  rail position left on it falls back to General. The row and the page title
-  carry the Experimental badge (`settings.remoteHosts.experimental`)
+- **Cloud sync / 云同步** is an Experimental `System` / `系统` destination
+  available in development and packaged builds. Its rail row, page, and
+  settings-search hits are available in every build, and both the row and page
+  title carry `settings.configSync.experimental`. Developer mode does not gate
+  it; sync behavior itself is unchanged.
+- **Remote Hosts / 远程主机** is an Experimental destination in all builds,
+  independent of developer mode. The rail, page and search hits remain available.
+  The row and title carry `settings.remoteHosts.experimental`. After pairing,
+  each host offers **New project**, reconnect, and remove. New project opens the
+  unified Create project dialog with Remote selected and that host preselected;
+  selecting an absolute directory creates a locally managed project bound to
+  the remote workspace. The inventory does not list or create conversations.
+  The Add action row precedes the inventory; SSH installation and existing-host
+  pairing open an accessible dialog. Cancel, Escape, backdrop dismissal, and
+  successful submission close it and clear the draft, returning focus to its
+  trigger. SSH hosts offer eligible-provider
+  copy with empty selection and explicit credential-copy consent. Remote chat
+  uses Host defaults and never activates local workspaces.
+  The narrow MVP supports text, tool/input responses and read-only files/diffs;
+  terminal, attachments, local model controls and local plugin/MCP actions are absent.
 - Loaded plugin Settings entries may appear only in a final **Extensions** group
   after all core groups. The host owns their ordering, search result, titlebar
   and fallback to General. The rail icon is the destination's host token
@@ -168,6 +174,14 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   `AppSettings.keepAwakeWhileRunning` and `AppSettings.preventScreenSleep`,
   take effect immediately, restore on startup, and release their own blocker
   when disabled or during shutdown. Manual sleep and lid close follow the OS.
+- **Sidebar** card: one master switch for project running activity
+  (`AppSettings.sidebarRunningIndicators`) plus independently gated
+  **Count badge** and **Activity rail** switches
+  (`sidebarRunningBadge`, `sidebarRunningRail`). Absent values mean on. The
+  sub-switches are disabled while the master switch is off and keep their
+  stored value, so re-enabling the master restores the previous choice
+  instead of resetting it. The affordances themselves are described in
+  [01-ui-ia.md §3.2](01-ui-ia.md#32-sidebar-project-groups).
 - **Network** card:
   - **Proxy**: a segmented control — System, Direct, Custom. System is the
     default and lets Chromium follow the OS proxy; Direct disables the proxy;
@@ -186,6 +200,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   - The selection persists as optional `AppSettings.networkProxy`
     (`mode` / `url` / `bypass`). Absent means System. No host protocol or
     storage schema version bump (D340 / ADR 0177).
+  - System and Direct keep the `url` and `bypass` the user configured: `mode`
+    decides what applies, and the values come back with Custom instead of the
+    built-in `socks5://127.0.0.1:1080` (issue #1541). Nothing applies them
+    while another mode is selected.
   - **Relaxed network mode**: one switch persisting as
     `AppSettings.networkPolicy.mode` (`relaxed` | `strict`), **on by default**.
     When it is on, an endpoint the user typed themselves — a model base URL, an
@@ -202,38 +220,50 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ### Cloud sync
 
-- **Connection**: WebDAV URL, username, app password, remote directory, device
-  label, a separate backup/vault password, and a server compatibility mode.
-  Strict CAS is the default. The test action uses only temporary remote
-  objects; strict mode must prove conditional creation and readback, while
-  append-only compatibility mode must prove bounded directory listing. Choosing
-  compatibility mode shows a persistent warning and requires confirmation
-  before save. The warning explains that all devices in the vault must use the
-  same mode, history is retained, and concurrent changes may still require
-  review.
-- **Portable configuration**: supported categories are selected by default;
-  credentials and project memory are explicit opt-ins. The preview reports
-  supported, excluded, secret-bearing, mapping-required, and pending-approval
-  counts.
-- **Safety**: the page never renders raw credentials or vault keys. Imported
-  MCP, skills, subagents, plugins, automations, and project-scoped data remain
-  pending until local activation approval and any required folder mapping are
-  complete. HTTPS remains the default. For a trusted LAN endpoint, the page
-  can explicitly acknowledge HTTP risk; public HTTP endpoints are rejected and
-  the warning explains that WebDAV credentials are not encrypted in transit.
-  Disconnect preserves local and remote data.
+- **Status first**: saved devices show current state, destination, last success
+  and manual run above settings. Pause and inline password unlock remain
+  reachable without expanding connection settings; errors, manual progress and
+  pending activation are never hidden behind a disclosure.
+- **Connection**: initial setup exposes endpoint, private bucket, access key
+  ID, secret key and vault password. Mode uses the shared settings picker;
+  automatic runs use `SettingsToggle`. Advanced settings (region, object
+  prefix, addressing, device label and optional session token) start collapsed
+  with unchanged defaults. Saved connections reopen collapsed, while unfinished
+  drafts reopen for editing. Test and Save remain together at the form footer.
+  Connection testing requires reliable conditional writes; no fallback exists.
+- **Portable configuration**: a disclosure inside the same connection form
+  allows category selection before initial setup and later edits. Supported
+  categories are selected by default; credentials and memory remain explicit
+  opt-ins, with the credential warning shown when selected. All checkboxes use
+  the styled shared `Checkbox`, including disabled and mixed states.
+- **Secondary tools**: history/restore, preview, mappings and security/connection
+  maintenance start collapsed. Expanding does not perform a sync, save, or reset
+  entered values. The preview retains its complete counts.
+- **Safety**: exported secrets and vault keys are never returned to the page.
+  Connection secrets exist only in transient password controls. Imported
+  executable/security-sensitive content keeps local approval and mapping.
+  Public HTTP and redirects are rejected; LAN HTTP follows the shared Host
+  network policy, not a page-specific checkbox. Disconnect preserves local
+  configuration and remote objects. Only the new S3 format is supported;
+  there is no legacy-data detection, migration or compatibility notice.
 - **State and recovery**: show distinct configured, locked, syncing, offline,
   unsupported-server, conflict, awaiting-activation, paused, and error states.
   Users can sync now, unlock, pause this device, approve/reject staged items,
   and disconnect. The page does not imply convergence from an old successful
   run while a pending state remains.
-- **Fast revisit and drafts**: render the last redacted state and history from
-  a short-lived local cache while the host refresh runs in the background. Keep
-  endpoint, username, remote directory, device label, compatibility mode, and
-  category choices in renderer-local storage so an unfinished form survives
-  navigation or reload. WebDAV app passwords remain in Host-owned secret
-  storage and are reused only for the same endpoint and account; vault
-  passwords are never written to renderer storage.
+- **Fast revisit and drafts**: cache redacted status/history and typed,
+  non-sensitive connection choices. S3 uses a versioned draft key; old drafts
+  are ignored. Secret keys, session tokens and vault passwords never enter
+  renderer persistence. Blank credentials reuse Host storage only for the exact
+  same connection; an explicit token-clear checkbox and new secret replacement
+  can clear the saved session token. Connection/mode changes invalidate history,
+  including late responses from the previous connection.
+- **History and restore**: show the latest 30 revisions for the saved mode and
+  disclose indefinite object retention without automatic cloud cleanup. Sync
+  restore confirms immediate propagation; backup restore confirms local-only
+  application and permits the current backup. Unsaved mode edits do not change
+  these semantics. Both retain local recovery and approval requirements.
+  Password changes are key rewrapping, not revocation of unlocked devices.
 
 ### 全局 AI (`ai` tab)
 - **Permissions** card: the global permission-mode control
@@ -244,7 +274,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   control column.
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
   command shell selection, Link open destination, context usage display
-  (remaining or used), thinking display mode, Enter-to-send control, the
+  (remaining or used), the Show thinking toggle, Enter-to-send control, the
   infinite provider retry switch, and the large text paste threshold. The
   retry switch is off by default and explains that network/transient provider
   failures keep retrying until success; Stop still cancels the turn and the
@@ -267,17 +297,17 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   settings are edited on the Plugins page; the one-time migration of legacy
   prompt-enhancement preferences is specified in
   `04-ux/12-prompt-enhancement.md`.
-- **Thinking display mode** uses a menu select with Detailed (default) and
-  Compact. Both modes use one whole-process disclosure. Detailed starts the
-  process open, keeps reasoning visible, opens the active multi-item activity
-  group, and closes an untouched group when it completes; Compact starts the
-  process and groups closed, keeps tool/search payloads closed, shows only an
-  active thinking indicator, and hides finished reasoning. Singleton activity
-  uses its item disclosure directly in either mode. The global preference
-  persists as `thinkingDisplayMode` in host-owned settings; missing values use
-  Detailed. It affects presentation only, not model reasoning configuration,
-  and explicit disclosure choices are retained for the mounted session pane.
-  Settings search indexes the row and both mode names.
+- **Show thinking** is a toggle that persists as the optional `showThinking`
+  boolean in host-owned settings. Off keeps the live thinking indicator visible
+  and hides completed reasoning rows and excerpts; stored reasoning is retained
+  and reappears when the toggle is turned back on. It affects presentation only,
+  not model reasoning configuration, and it does not control turn-process or
+  activity-group folding: active processes start open and untouched completed
+  processes fold by default regardless of the toggle. The legacy
+  `thinkingDisplayMode` field (`detailed` / `compact`) is retained only for
+  persisted-settings compatibility and is no longer exposed; an absent or
+  unknown value shows reasoning and an explicit `compact` hides it. Settings
+  search indexes the row.
 - The **Command shell** row in Defaults uses the host-discovered catalog of native
   PowerShell 5.1, PowerShell 7, cmd, Git Bash, and Bash with IDs
   `windows-powershell`, `windows-pwsh`, `cmd`, `git-bash`, and
@@ -371,6 +401,10 @@ a usage tab.
     override is folded into it when the map is read (D438, D439)
 
 ### Model configuration (`agent` tab)
+- The model configuration page groups its sections in this order: **AI
+  services** (including model-catalog status and refresh), **Jev**, then the
+  image-generation model selector. The sections use one consistent vertical
+  spacing rhythm.
 - **Defaults** card: a compact settings row shows the provider name and exact
   model ID beneath the Default model label. A quiet Change action opens the
   picker without duplicating the current value. The picker groups model-level
@@ -427,7 +461,11 @@ a usage tab.
     and model IDs. A selection opens the Host-owned API-key form; after saving,
     that provider remains in the service list and leaves the chooser.
   - the add/edit dialog configures connection identity (name, endpoint, API
-    style, and secret). It shrinks to the overlay on a narrow window, and a
+    style, and authentication). Custom endpoints default to API-key mode and
+    offer a **No API key required** checkbox; choosing it stores `authKind:
+    "none"` and removes any saved API key when editing. Named service presets
+    continue to use API-key authentication. The dialog shrinks to the overlay
+    on a narrow window, and a
     focused credential field keeps its 2px accent ring inside the dialog
     instead of clipping against the scrolling body. It then selects one or
     more models from a searchable multi-select catalog. The discovered-list
@@ -557,9 +595,11 @@ contract modes are intent boundaries, not strict read-only security profiles.
   and the actions that replace or remove the key; removing the key takes the
   switch down first, then the card. The key itself is entered only in the
   service dialog, which is also where it is checked. It stays in Host secure
-  storage; the renderer only learns whether one exists.
-- Explain that `JevClassify` sends only the state and questions the Agent passes
-  to TypeSafe, and warn users not to include secrets or personal information.
+  storage; the renderer only learns whether one exists. Keep the card free of
+  persistent explanatory paragraphs: its heading help icon provides integration
+  and data-handling details, while the switch help icon explains Agent-mode
+  availability. The setup form keeps the privacy notice visible before a key
+  is stored.
 - The tool is on demand and unavailable in Plan and Goal modes. Removing the
   key turns Jev off first, then deletes it.
 
@@ -655,6 +695,9 @@ system while preserving their different data ownership:
   explanation — and a market whose sources were refused by the public-network
   guard says so instead of calling every source unreachable, because a proxied
   user sees that refusal while the same URL opens in their browser (ADR 0177).
+  A failed catalog query offers Retry; the same action remains available when
+  only some sources failed. It repeats the current search over the configured
+  sources and announces loading while the request runs.
   Back reloads the skill list.
 - Skills also exposes **Scan other tools** in its toolbar. The explicit scan
   opens inline on the Skills page, and imported entries follow the current
@@ -664,6 +707,9 @@ system while preserving their different data ownership:
   opens inline on the MCP page. Imported servers follow the current Global /
   Project filter and selected project; secrets and header values are never
   shown in candidate rows.
+- MCP Market offers Retry after a failed query or partial source failure. It
+  repeats the current search through the existing market request path and
+  announces loading while the request runs.
 - The Subagents create/edit sheet pins a model with a searchable, provider-
   grouped anchored menu — the same option-menu control the service picker uses
   — over the configured, runnable models the Composer offers, plus an
@@ -730,6 +776,9 @@ system while preserving their different data ownership:
 - Model configuration, external skills, and external MCP scans live inside
   Models, Skills, and MCP respectively. Each page keeps an explicit scan and
   selection panel; opening or closing the panel never starts a scan.
+- When an import panel opens, show its scan-scope explanation directly above
+  the Scan action; it does not require a help icon. Result-specific guidance
+  remains attached to its existing control.
 - Skills and MCP imports use the destination selected by the page's current
   Global / Project filter. Project scans and writes carry the selected project
   path, and the scan panel resets when that scope changes.
@@ -807,6 +856,9 @@ system while preserving their different data ownership:
   history
 - Activating a project or project session returns to chat; archive and close
   actions keep Project archive open even when the active workspace changes
+- Opening an archived project also clears its renderer-local archive state so
+  the project becomes visible in the home sidebar; merely selecting its row
+  for inspection does not restore it.
 
 ### Info
 - app/host/protocol versions + open logs
@@ -822,7 +874,7 @@ system while preserving their different data ownership:
   - the developer mode switch unlocks the Open console button, F12 on every
     platform, Ctrl+Shift+I on Windows/Linux, the macOS View-menu developer
     tools item, Copy conversation ID / Open session path on the conversation
-    overflow menu, and the Remote Hosts destination on the rail
+    overflow menu. Remote Hosts remains available independently.
   - disabling developer mode closes an open console and disables or removes
     every entry point; Settings search indexes the card, switch, and console
     action
@@ -851,12 +903,10 @@ system while preserving their different data ownership:
 - Project archive is indexed by Settings search and is not duplicated as a home
   sidebar destination or standalone global-search page
 - Back to app returns to chat shell from the rail's pinned footer action
-- Developer-only destinations join and leave the rail, the page, and settings
-  search as one unit: while developer mode is off the rail omits the row,
-  settings search returns no hit for it, and an open Remote Hosts page returns
-  to General. Cloud sync is development-build-only for now: packaged builds
-  omit its rail row, page, and settings-search hits and fall back to General,
-  while developer mode never gates it.
+- Developer-only destinations, where declared, join and leave the rail, page,
+  and search as one unit. Cloud sync and Remote Hosts are Experimental but not
+  developer-only, so both remain available in packaged builds and are not
+  hidden when developer mode changes.
 
 ## 4. Acceptance
 
@@ -864,9 +914,8 @@ system while preserving their different data ownership:
 2. Rail shows the search pill at the top, the back-to-app action pinned at the
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
-   Subagents / 子智能体, Projects / 项目, Cloud sync / 云同步 (development
-   builds only), Remote Hosts / 远程主机 (developer mode only), and Info / 信息
-   in that order. A packaged build leaves Cloud sync out; Voice
+   Subagents / 子智能体, Projects / 项目, Cloud sync / 云同步 and Remote Hosts /
+   远程主机 (both Experimental, all builds), and Info / 信息 in that order. Voice
    appears between AI and Shortcuts only in development builds with developer
    mode on. The rows are grouped under Preferences / 偏好,
    Agent / 智能体, Workspace / 工作区, and System / 系统. There is no

@@ -497,3 +497,82 @@ test("ordinary parent context stays authoritative over tracked live changes", ()
   assert.equal(next, initial);
   assert.equal(next.find((row) => row.id === "task"), parent);
 });
+
+const bookmark = { pinned: false, messageId: "old", offset: -35, scrollTop: 650, windowSize: 100 };
+test("an evicted reading position loads its message without search focus or live-cache writes", async () => {
+  const calls = [];
+  const r = reader(async (...args) => { calls.push(args); return page([message("old")]); });
+  const live = r.get().messages;
+  assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), true);
+  assert.deepEqual(calls, [["s", { messageAround: "old", messageLimit: 60, contentLimit: 65536 }]]);
+  assert.equal(r.view().focus, null);
+  assert.equal(r.view().restored, true);
+  assert.deepEqual(r.visible().map((row) => row.id), ["old"]);
+  assert.equal(r.get().messages, live);
+  await r.loadTranscriptPage("s", "after");
+  assert.equal(r.view().restored, true);
+  r.returnToLatestTranscript("s");
+  assert.equal(r.view(), undefined);
+});
+
+test("a loaded reading anchor does not fetch or replace the existing reading range", async () => {
+  const r = reader(async () => { throw new Error("unexpected read"); }, { messages: [message("old")] });
+  assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), true);
+  assert.equal(r.view(), undefined);
+});
+
+test("input cancellation prevents a delayed restoration from replacing the current view", async () => {
+  const pending = deferred();
+  const r = reader(() => pending.promise);
+  const controller = new AbortController();
+  const request = r.restoreTranscriptReading("s", bookmark, controller.signal);
+  controller.abort();
+  assert.equal(r.view(), undefined);
+  pending.resolve(page([message("old")]));
+  assert.equal(await request, false);
+  assert.equal(r.view(), undefined);
+});
+
+test("search navigation owns a delayed reading restoration", async () => {
+  const pending = deferred();
+  let calls = 0;
+  const r = reader(() => ++calls === 1 ? pending.promise : Promise.resolve(page([message("hit")])));
+  const request = r.restoreTranscriptReading("s", bookmark, new AbortController().signal);
+  await r.navigateTranscript(target("hit"));
+  pending.resolve(page([message("old")]));
+  assert.equal(await request, false);
+  assert.equal(r.view().focus.messageId, "hit");
+});
+
+test("session changes, eviction and new turns invalidate a delayed reading restoration", async () => {
+  for (const patch of [
+    { activeSessionId: "other" }, { retainedSessionIds: [] }, { runningSessions: { s: true } },
+  ]) {
+    const pending = deferred();
+    const r = reader(() => pending.promise);
+    const request = r.restoreTranscriptReading("s", bookmark, new AbortController().signal);
+    r.set(patch);
+    pending.resolve(page([message("old")]));
+    assert.equal(await request, false);
+    assert.equal(r.view(), undefined);
+  }
+});
+
+test("missing reading anchors and IO failures fall back without a stuck loading view", async () => {
+  for (const read of [async () => page([message("different")]), async () => { throw new Error("read failed"); }]) {
+    const r = reader(read);
+    assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), false);
+    assert.equal(r.view(), undefined);
+  }
+});
+
+test("selection revalidation cannot remove a restored range, but an explicit rewrite can", async () => {
+  const r = reader(async () => page([message("old")]), {
+    messages: [message("stale-tail")], selectingSessionId: "s",
+  });
+  assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), true);
+  r.set({ messages: [message("tail")], selectingSessionId: undefined });
+  assert.equal(r.view().restored, true);
+  r.set({ messages: [message("tail", "edited")] });
+  assert.equal(r.view(), undefined);
+});

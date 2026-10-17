@@ -42,6 +42,7 @@ import {
   type ThinkingLevel,
 } from "@pi-desktop/shared";
 import { genericModelConfig } from "./model-capabilities.js";
+import { sessionAffinityCompat } from "./session-affinity.js";
 import type { ModelConfig } from "./thinking-level.js";
 
 export type RuntimeProviderConfig = {
@@ -111,17 +112,47 @@ export function adapterAcceptsCustomFetch(api: Api | undefined): boolean {
   return api !== "google-generative-ai" && api !== "google-vertex";
 }
 
+const NO_AUTH_REQUEST_KEY = "pi-desktop-no-auth";
+const API_KEY_HEADERS = new Set(["api-key", "x-api-key", "x-goog-api-key"]);
+
+function withoutNoAuthCredential(fetchFn: FetchFunction): FetchFunction {
+  return (input, init) => {
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    for (const [name, value] of [...headers]) {
+      const normalizedName = name.toLowerCase();
+      const trimmedValue = value.trim();
+      const bearerValue = trimmedValue.slice(0, 7).toLowerCase() === "bearer "
+        ? trimmedValue.slice(7).trim()
+        : undefined;
+      const isPlaceholderApiKey = API_KEY_HEADERS.has(normalizedName)
+        && trimmedValue === NO_AUTH_REQUEST_KEY;
+      const isPlaceholderAuthorization = normalizedName === "authorization"
+        && (trimmedValue === NO_AUTH_REQUEST_KEY || bearerValue === NO_AUTH_REQUEST_KEY);
+      if (isPlaceholderApiKey || isPlaceholderAuthorization) {
+        headers.delete(name);
+      }
+    }
+    return fetchFn(input, { ...(init ?? {}), headers });
+  };
+}
+
 /**
  * The `fetch` one request may hand to `api`'s adapter: the caller's wrapper
  * where the adapter accepts one, otherwise nothing. Callers keep building the
  * wrapper (response capture, header override); this only decides whether it
- * reaches the adapter.
+ * reaches the adapter. No-auth requests also strip pi-ai's required placeholder
+ * credential before the request leaves the runtime.
  */
 export function providerRequestFetch(
   api: Api | undefined,
   fetchFn: FetchFunction | undefined,
+  authKind?: string,
 ): FetchFunction | undefined {
-  return adapterAcceptsCustomFetch(api) ? fetchFn : undefined;
+  if (!adapterAcceptsCustomFetch(api)) return undefined;
+  if (authKind !== "none") return fetchFn;
+  return withoutNoAuthCredential(fetchFn ?? globalThis.fetch.bind(globalThis));
 }
 
 /** Map a stored provider apiStyle onto a pi-ai wire API. Unknown styles fall
@@ -175,11 +206,11 @@ export function apiBindingForStyle(apiStyle?: string): ApiBinding {
   }
 }
 
-/** The key pi-ai signs requests with; `none` auth still needs a placeholder. */
+/** The API key pi-ai signs requests with; no-auth uses a stripped placeholder. */
 export function providerRequestKey(provider: RuntimeProviderConfig): string {
-  return (
-    provider.apiKey || (provider.authKind === "none" ? "pi-desktop-no-auth" : "")
-  );
+  return provider.authKind === "none"
+    ? NO_AUTH_REQUEST_KEY
+    : provider.apiKey;
 }
 
 /**
@@ -343,6 +374,9 @@ export function buildProviderModel(
   const modelHeaders = {
     ...(copilotDefaults ?? {}),
     ...(catalogModel.headers ?? {}),
+    ...(provider.authKind === "none" && binding.api === "google-generative-ai"
+      ? { "x-goog-api-key": "" }
+      : {}),
   };
   const thinkingProtocolCompat = catalogModel.thinkingProtocol
     ? { forceAdaptiveThinking: catalogModel.thinkingProtocol === "adaptive" }
@@ -405,7 +439,13 @@ export function buildProviderModel(
       }) === "on"
         ? true
         : undefined,
-    compat: { ...compat, ...transcriptCompat(catalog, provider.modelId, binding.api, baseUrl) },
+    // The session-affinity default sits under the row's own compat, so a
+    // catalog entry that already answers the question keeps its answer.
+    compat: {
+      ...(sessionAffinityCompat(provider, binding.api, baseUrl) ?? {}),
+      ...compat,
+      ...transcriptCompat(catalog, provider.modelId, binding.api, baseUrl),
+    },
     ...(Object.keys(modelHeaders).length > 0 ? { headers: modelHeaders } : {}),
   } as Model<Api>;
 }

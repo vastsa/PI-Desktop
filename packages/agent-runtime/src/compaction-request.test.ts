@@ -74,6 +74,46 @@ describe("compactionRequestOptions", () => {
     expect(options.headers).toEqual({ "X-Team": "platform" });
   });
 
+  it("adds the proxy-safe affinity header to custom Responses summaries", async () => {
+    const responsesProvider: RuntimeProviderConfig = {
+      ...provider,
+      id: "responses-gateway",
+      name: "Responses gateway",
+      vendorKey: "custom",
+      apiStyle: "responses",
+      baseUrl: "https://gateway.example.com/v1",
+    };
+    const responsesModel = {
+      ...model,
+      api: "openai-responses",
+      provider: responsesProvider.id,
+      baseUrl: responsesProvider.baseUrl,
+    } as Model<Api>;
+    let received: ModelsSimpleStreamOptions | undefined;
+    let sentPayload: unknown;
+    const collection = {
+      completeSimple: async (
+        _model: Model<Api>,
+        _context: unknown,
+        options: ModelsSimpleStreamOptions,
+      ) => {
+        received = options;
+        sentPayload = await options.onPayload?.({ input: [] }, responsesModel);
+        return "assistant-message";
+      },
+    } as unknown as Models;
+
+    const wrapped = withCompactionRequestHeaders(
+      collection,
+      responsesProvider,
+      "session-42",
+    );
+    await wrapped.completeSimple(responsesModel, context as never, { maxTokens: 4_096 });
+
+    expect(received?.headers).toMatchObject({ "x-session-affinity": "session-42" });
+    expect(sentPayload).toMatchObject({ prompt_cache_key: "session-42" });
+  });
+
   it("clears a caller-supplied fetch for a Google model, with or without row headers", () => {
     const callerFetch = vi.fn(async () => new Response("ok"));
     const googleModel = {

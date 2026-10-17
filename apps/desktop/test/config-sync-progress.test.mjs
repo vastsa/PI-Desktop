@@ -30,7 +30,6 @@ test("every phase names a catalog key", () => {
   assert.deepEqual(Object.keys(CONFIG_SYNC_PHASE_KEYS).sort(), [
     "apply",
     "capture",
-    "cleanup",
     "download",
     "merge",
     "upload",
@@ -71,8 +70,7 @@ test("a download without a byte total falls back to the object count", () => {
 });
 
 test("a report with no announced total stays indeterminate", () => {
-  // merge and cleanup are always counted per run, not per unit; so is a phase
-  // whose total the host has not learned yet.
+  // A phase whose total the host has not learned yet stays indeterminate.
   const view = configSyncProgressView(report("merge", { done: 4, bytesDone: 512 }));
 
   assert.equal(view.determinate, false);

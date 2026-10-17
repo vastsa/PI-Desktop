@@ -142,6 +142,7 @@ test("handles() covers exactly the channels the remote profile serves", () => {
     IPC.invoke.sessionConfigure,
     IPC.invoke.sessionFork,
     IPC.invoke.sessionRename,
+    IPC.invoke.sessionDeriveTitle,
     IPC.invoke.sessionDelete,
     IPC.invoke.toolResolvePermission,
     IPC.invoke.askToolResolve,
@@ -350,6 +351,50 @@ test("sessionRename / sessionDelete forward positional args", async () => {
   assert.deepEqual(client.calls[0].params, { sessionId: HOST_SESSION_ID, title: "New title" });
   await backend.invoke(IPC.invoke.sessionDelete, [REMOTE_SESSION_ID]);
   assert.deepEqual(client.calls[1].params, { sessionId: HOST_SESSION_ID });
+});
+
+test("sessionDeriveTitle asks the host and reports whether it applied the title", async () => {
+  const applied = makeBackend({ "session/deriveTitle": () => ({ updated: true }) });
+  const result = await applied.backend.invoke(IPC.invoke.sessionDeriveTitle, [
+    REMOTE_SESSION_ID,
+    "First prompt label",
+  ]);
+  assert.deepEqual(applied.client.calls[0].params, {
+    sessionId: HOST_SESSION_ID,
+    title: "First prompt label",
+  });
+  assert.deepEqual(result, { updated: true });
+
+  // The host refuses a renamed session; the renderer must see the refusal.
+  const refused = makeBackend({ "session/deriveTitle": () => ({}) });
+  const refusedResult = await refused.backend.invoke(IPC.invoke.sessionDeriveTitle, [
+    REMOTE_SESSION_ID,
+    "First prompt label",
+  ]);
+  assert.deepEqual(refusedResult, { updated: false });
+});
+
+test("sessionDelete reports the confirmed host delete so cached lists drop the row", async () => {
+  const deleted = [];
+  const applied = makeBackend({ "session/delete": () => ({ ok: true }) }, {
+    onSessionDeleted: (hostSessionId) => deleted.push(hostSessionId),
+  });
+  const result = await applied.backend.invoke(IPC.invoke.sessionDelete, [REMOTE_SESSION_ID]);
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(applied.client.calls[0].params, { sessionId: HOST_SESSION_ID });
+  assert.deepEqual(deleted, [HOST_SESSION_ID]);
+
+  // A refused delete leaves the desktop's cached lists untouched.
+  const refusedHosts = [];
+  const refused = makeBackend(
+    { "session/delete": () => { throw new Error("the session has an active turn"); } },
+    { onSessionDeleted: (hostSessionId) => refusedHosts.push(hostSessionId) },
+  );
+  await assert.rejects(
+    refused.backend.invoke(IPC.invoke.sessionDelete, [REMOTE_SESSION_ID]),
+    /active turn/,
+  );
+  assert.deepEqual(refusedHosts, []);
 });
 
 test("toolResolvePermission decodes the encoded requestId back to the host approval id", async () => {

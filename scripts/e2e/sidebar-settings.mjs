@@ -127,10 +127,15 @@ export async function checkSidebarSettings({ cdp, check, waitFor, artifactDir })
       String(sameChat),
     );
     const trace = await finishTrace();
+    // MutationObserver may sample the same commit before computed layout settles.
+    // Ignore only leading zero-width samples; any later width change still fails.
+    const firstVisibleFrame = trace.frames.findIndex((frame) => frame.width > 0);
+    const checkedFrames =
+      firstVisibleFrame >= 0 ? trace.frames.slice(firstVisibleFrame) : trace.frames;
     check(
       trace.animations.length === 0 && (collapsed
         ? trace.frames.length === 0
-        : trace.frames.length > 0 && trace.frames.every(frame => Math.abs(frame.width - width) < 0.5 && frame.animation === "none")),
+        : checkedFrames.length > 0 && checkedFrames.every(frame => Math.abs(frame.width - width) < 0.5 && frame.animation === "none")),
       `${label}: settings return restores layout without sidebar entrance`,
       JSON.stringify({ animations: trace.animations, widths: trace.frames.map(frame => Math.round(frame.width)) }),
     );

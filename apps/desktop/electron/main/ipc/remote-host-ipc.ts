@@ -32,6 +32,7 @@ import {
 } from "../bootstrap/remote-hosts";
 import { exchangePairingToken } from "../remote/racp-remote-host-client";
 import type { IpcRegistrar } from "./types";
+import { registerRemoteSessionIpc } from "./remote-session-ipc.js";
 
 export type RegisterRemoteHostIpcOptions = {
   registrar: IpcRegistrar;
@@ -93,6 +94,7 @@ export function registerRemoteHostIpc(options: RegisterRemoteHostIpcOptions): vo
   const clientInfo =
     options.clientInfo ?? { name: app.getName(), version: app.getVersion() };
   const log = options.log ?? (() => undefined);
+  registerRemoteSessionIpc(registrar, () => requireBoot(getRemoteHostsBoot()));
 
   registrar.handle(
     IPC.invoke.remoteHostList,

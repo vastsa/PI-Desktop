@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { Host } from "./e2e/host.mjs";
-import { checkSidebarRowStates } from "./e2e/sidebar-row-states.mjs";
+import { checkSidebarProjectMenuPlacement, checkSidebarRowStates } from "./e2e/sidebar-row-states.mjs";
 import { checkSidebarSettings } from "./e2e/sidebar-settings.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,15 +58,16 @@ function resolveHostBinary() {
 }
 
 /**
- * Seed four retained project groups into the same throwaway data directory the
+ * Seed five retained project groups into the same throwaway data directory the
  * app will open, using only the host protocol:
  *
- *   alpha   five sessions across four date buckets, so the group draws date
- *           labels as well as rows
+ *   alpha   five sessions across recent and old reply dates, so the flat group
+ *           draws per-row dates as well as sessions
  *   beta    one session, the smallest non-empty group
  *   gamma   no sessions, the empty group
  *   delta   ten sessions that the renderer pins, so the Pinned section has more
  *           rows than its eight-row budget
+ *   history twelve unpinned sessions for the project load-more reset flow
  *
  * `session.import` is the only protocol entry point that accepts a session's own
  * timestamps, which is what puts rows in the yesterday / this-week / older
@@ -84,14 +85,15 @@ async function seedSidebarProjects(hostBinary, dataDir, tempDirs) {
   const beta = join(projectRoot, "beta");
   const gamma = join(projectRoot, "gamma");
   const delta = join(projectRoot, "delta");
-  for (const dir of [alpha, beta, gamma, delta]) mkdirSync(dir, { recursive: true });
+  const history = join(projectRoot, "history");
+  for (const dir of [alpha, beta, gamma, delta, history]) mkdirSync(dir, { recursive: true });
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const dayStart = startOfToday.getTime();
   const stamp = (ms) => new Date(ms).toISOString();
-  // `getTimeGroup` buckets on the calendar day, so these offsets are anchored to
-  // local midnight rather than to the current clock time.
+  // These offsets are anchored to local midnight so the calendar-day boundary
+  // is stable even when this suite runs late in the day.
   const alphaRows = [
     ["alpha today b", Date.now() - 120_000],
     ["alpha today a", Date.now() - 60_000],
@@ -145,6 +147,12 @@ async function seedSidebarProjects(hostBinary, dataDir, tempDirs) {
       await importRow(id, title, delta, updatedMs);
       pinnedSessionIds.push(id);
     }
+    const historySessionIds = [];
+    for (let index = 0; index < 12; index += 1) {
+      const id = `e2e-history-project-${index}`;
+      await importRow(id, `history session ${index}`, history, Date.now() - index * 1_000);
+      historySessionIds.push(id);
+    }
 
     // The host canonicalizes every project path; read the stored values back so
     // the renderer's retained-tab list matches exactly.
@@ -157,15 +165,17 @@ async function seedSidebarProjects(hostBinary, dataDir, tempDirs) {
       beta: canonical("e2e-fold-beta-0"),
       gamma,
       delta: canonical("e2e-fold-delta-0"),
+      history: canonical("e2e-history-project-0"),
     };
-    if (!paths.alpha || !paths.beta || !paths.delta) {
+    if (!paths.alpha || !paths.beta || !paths.delta || !paths.history) {
       throw new Error(`seeded sessions carry no project path: ${JSON.stringify(paths)}`);
     }
     return {
       paths,
       alphaSessionIds,
       pinnedSessionIds,
-      keys: [paths.alpha, paths.beta, paths.gamma, paths.delta],
+      historySessionIds,
+      keys: [paths.alpha, paths.beta, paths.gamma, paths.delta, paths.history],
     };
   } finally {
     await host.stop();
@@ -459,6 +469,47 @@ async function main() {
         ),
       "work-panel toggle enabled",
     );
+
+    if (process.argv.includes("--sidebar-only")) {
+      await cdp.send("Page.enable");
+      const sidebarPreferences = {
+        sessionMeta: Object.fromEntries(
+          sidebarSeed.pinnedSessionIds.map((id) => [id, { pinned: true }]),
+        ),
+        projectMeta: {
+          [sidebarSeed.paths.alpha]: { order: 0 },
+          [sidebarSeed.paths.beta]: { order: 1 },
+          [sidebarSeed.paths.gamma]: { order: 2 },
+          [sidebarSeed.paths.delta]: { order: 3 },
+          [sidebarSeed.paths.history]: { order: 4 },
+        },
+        projectSort: "manual",
+        sessionView: { sort: "recent", archived: false },
+        openProjectPaths: sidebarSeed.keys,
+      };
+      await cdp.evaluate(
+        `window.localStorage.setItem("pi.desktop.sidebarPreferences", ${JSON.stringify(JSON.stringify(sidebarPreferences))})`,
+      );
+      await cdp.send("Page.reload", {});
+      const projectKeys = JSON.stringify(sidebarSeed.keys);
+      await waitFor(
+        () => cdp.evaluate(`(() => {
+          const keys = [...document.querySelectorAll("[data-sidebar-project-group]")]
+            .map((element) => element.getAttribute("data-sidebar-project-group"));
+          return !document.querySelector(".startup-splash") &&
+            ${projectKeys}.every((key) => keys.includes(key));
+        })()`),
+        "all seeded project groups load for menu placement",
+      );
+      await checkSidebarProjectMenuPlacement({ cdp, check, waitFor });
+      const failed = results.filter((entry) => !entry.ok);
+      console.log(
+        `E2E-SIDEBAR-menu-placement: ${results.length - failed.length}/${results.length} checks passed`,
+      );
+      cleanup();
+      clearTimeout(timeout);
+      process.exit(failed.length ? 1 : 0);
+    }
 
     const baseline = await measure();
     check(
@@ -1330,7 +1381,8 @@ async function main() {
         bottom: box.bottom,
         opacity: Number(style.opacity),
         rows: rows.length,
-        dateHeaders: body.querySelectorAll(".sidebar-time-group-header").length,
+        timeHeaders: body.querySelectorAll(".sidebar-time-group-header").length,
+        dateLabels: body.querySelectorAll(".thread-item-last-reply").length,
         emptyState: !!body.querySelector(".sidebar-session-empty"),
         clipMinHeight: clip ? getComputedStyle(clip).minHeight : null,
         clipOverflowY: clip ? getComputedStyle(clip).overflowY : null,
@@ -1456,6 +1508,7 @@ async function main() {
         [sidebarSeed.paths.beta]: { order: 1 },
         [sidebarSeed.paths.gamma]: { order: 2 },
         [sidebarSeed.paths.delta]: { order: 3 },
+        [sidebarSeed.paths.history]: { order: 4 },
       },
       projectSort: "manual",
       sessionView: { sort: "recent", archived: false },
@@ -1520,12 +1573,12 @@ async function main() {
       JSON.stringify({ alpha, beta, gamma }),
     );
     check(
-      alpha?.rows === 5 && alpha.dateHeaders === 3 && alpha.height > 0,
-      "the seeded multi-row group draws its rows and every date label",
+      alpha?.rows === 5 && alpha.timeHeaders === 0 && alpha.dateLabels === 5 && alpha.height > 0,
+      "the seeded multi-row group stays flat and shows a date for every session",
       JSON.stringify(alpha),
     );
     check(
-      beta?.rows === 1 && beta.height > 0 && beta.dateHeaders === 0,
+      beta?.rows === 1 && beta.height > 0 && beta.timeHeaders === 0 && beta.dateLabels === 1,
       "a one-row group folds the same way",
       JSON.stringify(beta),
     );

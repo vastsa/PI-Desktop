@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const { isChatRefOutsideRoots, parseChatRef, resolveChatFileRef } = await import(
-  "../electron/main/chat-ref-resolve.ts"
+  "../../../packages/host-runtime/src/chat-ref-resolve.ts"
 );
 
 /**
@@ -397,6 +397,11 @@ test("an absolute path in the wider store opens though another session wrote it"
   assert.equal(match?.root, "scratch");
   assert.equal(match?.matchedBy, "exact-absolute");
   assert.equal(match?.absolutePath, image);
+  assert.notEqual(match?.sessionScratch, true, "a readable foreign artifact is not executable session scratch");
+  const own = join(scratch, "animation.html");
+  writeFileSync(own, "<h1>Own artifact</h1>");
+  assert.equal((await resolve(own, { scratch, containment }))?.sessionScratch, true);
+  assert.equal((await resolve("animation.html", { scratch, containment }))?.sessionScratch, true);
 });
 
 test("a shorthand still searches the session's own store and not the wider one", async () => {

@@ -30,7 +30,11 @@ to another session is remapped to `{sessionId}:{id}` before the JSONL write
 (D444). The outbox treats `UNIQUE constraint failed: messages.id` as an ack,
 not a pause. A permanently rejected append (`PERMISSION_DENIED:` provenance
 or permission on that row) is dropped the same way so one poison head cannot
-fill the 1024-entry cap and discard every later row (D597).
+fill the 1024-entry cap and discard every later row (D597). An append the host
+keeps refusing with an error the outbox cannot classify is retried on a bounded
+backoff and then quarantined into an application-owned dead-letter file, so no
+append can hold the FIFO head long enough to fill the cap for every session
+(D656).
 
 ## Consequences
 

@@ -385,6 +385,7 @@ const {
   activeUserSkills,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
+  disabledBuiltinSkills,
   loadUserSkillBody,
   resolveEffectiveCommandShell,
   resolveAgentRuntimeLaunch,
@@ -553,10 +554,13 @@ closeBehaviorRuntime = createCloseBehaviorRuntime({
   dataDir,
   getLocale: () => mainState.updaterLocale,
   createTray,
+  logger,
 });
 const {
   applyCloseBehavior,
   confirmQuitDialog,
+  markLifecycleDialogRendererReady,
+  respondLifecycleDialog,
 } = closeBehaviorRuntime;
 
 const createdLauncher = createLauncher({
@@ -626,6 +630,7 @@ const {
   addActiveTurnUsage,
   activeToolCallKey,
   planSubmissionTurnKey,
+  recordTurnStart,
   lockAbortReason,
   isTurnDispatchable,
   isSessionBusy,
@@ -717,6 +722,7 @@ const eventPersistence = createEventPersistence({
   logger,
   finishTurn,
   isStaleTerminalEvent,
+  transcriptRewrite: sessionCoordination,
   finishApprovedExecution,
   emitAgentEvent: (envelope) => emitAgentEvent(envelope),
 });
@@ -748,6 +754,7 @@ const sidecarRuntime = createSidecarRuntime({
   sessionProjects,
   loadUserSkillBody,
   activeUserSkills,
+  disabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
 });
@@ -873,6 +880,9 @@ function registerIpc() {
     sessionCapabilityContext,
     enrichSession,
     acquireSessionOperation,
+    beginTranscriptRewrite: eventPersistence.beginTranscriptRewrite,
+    forgetTranscriptRewriteHistory: sessionCoordination.forgetTranscriptRewriteHistory,
+    recordTurnStart,
     stripWinLongPrefix,
     normalizeSettings,
     validateSettingsWrite,
@@ -904,6 +914,8 @@ function registerIpc() {
     applyCloseBehavior,
     getCloseBehavior: () => mainState.closeBehavior,
     markMenuRendererReady,
+    markLifecycleDialogRendererReady,
+    respondLifecycleDialog,
     executeNativeMenuAction,
     scheduledRunsBySession,
     isQuitting: () => mainState.quitting,
@@ -930,6 +942,7 @@ function registerIpc() {
     describeError,
     activeUserSubagentDocuments,
     disabledBuiltinSubagents,
+    disabledBuiltinSkills,
     pluginViews,
     pluginScopes,
     rememberPluginScopes,

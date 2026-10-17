@@ -181,3 +181,89 @@ test("a shape-mismatched file is treated as empty and preserved on disk until re
   assert.ok(still.includes("oops"));
   await cleanup();
 });
+
+test("upsert and remove refuse to overwrite while the file cannot be read", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const fs = await import("node:fs/promises");
+  // A directory at the registry path makes readFile fail with EISDIR — the
+  // transient-unreadable case (AV lock, ACL) without platform tricks.
+  await fs.mkdir(join(dir, "remote-hosts.json"));
+  const registry = createRemoteHostRegistry({ dataDir: dir, encryption: reversibleEncryption() });
+  await assert.rejects(
+    registry.upsert({ hostKey: "a", label: "A", url: "wss://a", deviceToken: "t-a" }),
+    /refusing to overwrite/,
+  );
+  await assert.rejects(registry.remove("a"), /refusing to overwrite/);
+  // Reads stay permissive, and nothing replaced the blocked file.
+  assert.deepEqual(await registry.list(), []);
+  const stat = await fs.stat(join(dir, "remote-hosts.json"));
+  assert.ok(stat.isDirectory());
+  await cleanup();
+});
+
+test("a future-version file is listed as empty but never overwritten", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const raw = JSON.stringify({ version: 99, hosts: [{ hostKey: "from-the-future" }] });
+  await writeFile(join(dir, "remote-hosts.json"), raw, "utf8");
+  const registry = createRemoteHostRegistry({ dataDir: dir, encryption: reversibleEncryption() });
+  assert.deepEqual(await registry.list(), []);
+  await assert.rejects(
+    registry.upsert({ hostKey: "a", label: "A", url: "wss://a", deviceToken: "t-a" }),
+    /newer app version/,
+  );
+  await assert.rejects(registry.remove("from-the-future"), /newer app version/);
+  assert.equal(await readFile(join(dir, "remote-hosts.json"), "utf8"), raw);
+  await cleanup();
+});
+
+test("a corrupt file is quarantined with its bytes preserved, then pairing continues", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const garbage = '{"version": 1, "hosts": [{"hostKey": "tru';
+  await writeFile(join(dir, "remote-hosts.json"), garbage, "utf8");
+  const warnings = [];
+  const registry = createRemoteHostRegistry({
+    dataDir: dir,
+    encryption: reversibleEncryption(),
+    log: (level, message) => warnings.push({ level, message }),
+  });
+  // list() shows empty (undecryptable bytes), the file survives reads…
+  assert.deepEqual(await registry.list(), []);
+  assert.ok((await readFile(join(dir, "remote-hosts.json"), "utf8")) === garbage);
+  // …and the next pairing moves the broken file aside instead of erasing it.
+  await registry.upsert({ hostKey: "a", label: "A", url: "wss://a", deviceToken: "t-a" });
+  const entries = await (await import("node:fs/promises")).readdir(dir);
+  const quarantine = entries.find((name) => name.startsWith("remote-hosts.json.corrupt-"));
+  assert.ok(quarantine, "quarantine copy must exist");
+  assert.ok((await readFile(join(dir, quarantine), "utf8")) === garbage);
+  const rows = await registry.list();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].hostKey, "a");
+  assert.ok(warnings.some((entry) => /quarantined corrupt/.test(entry.message)));
+  await cleanup();
+});
+
+test("concurrent pairings serialize quarantine and preserve every host", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const garbage = '{"version": 1, "hosts": [{"hostKey": "tru';
+  await writeFile(join(dir, "remote-hosts.json"), garbage, "utf8");
+  const registry = createRemoteHostRegistry({ dataDir: dir, encryption: reversibleEncryption() });
+  const records = Array.from({ length: 12 }, (_, index) => ({
+    hostKey: `host-${index}`,
+    label: `Host ${index}`,
+    url: `wss://host-${index}`,
+    deviceToken: `token-${index}`,
+  }));
+
+  await Promise.all(records.map((record) => registry.upsert(record)));
+
+  const rows = await registry.list();
+  assert.deepEqual(
+    rows.map((row) => row.hostKey).sort(),
+    records.map((record) => record.hostKey).sort(),
+  );
+  const entries = await (await import("node:fs/promises")).readdir(dir);
+  const quarantine = entries.find((name) => name.startsWith("remote-hosts.json.corrupt-"));
+  assert.ok(quarantine, "the original corrupt registry must remain quarantined");
+  assert.equal(await readFile(join(dir, quarantine), "utf8"), garbage);
+  await cleanup();
+});

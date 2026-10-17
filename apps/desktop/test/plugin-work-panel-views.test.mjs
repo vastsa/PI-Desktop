@@ -96,20 +96,26 @@ test("plugin views reach the panel body and the empty state", () => {
   assert.doesNotMatch(panelSource, /openPluginView\(view\)/);
 });
 
-test("the native surface keeps its full bounds while the launcher is active", () => {
+test("the native surface keeps its full and current bounds while the launcher is active", () => {
   assert.match(panelSource, /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/s);
   assert.doesNotMatch(panelSource, /avoid: pluginSurface/);
   assert.doesNotMatch(panelSource, /menuOpen|work-panel-new-menu|placeWorkPanelMenu/);
   assert.doesNotMatch(viewTabSource, /occludedById/);
   assert.match(viewTabSource, /y: rect\.y/);
   assert.match(viewTabSource, /height: rect\.height/);
-  // Visibility and bounds are separate effects: only panel-wide blocking and
-  // lifecycle transitions hide the native page, so creating a New tab cannot
-  // alter the active surface's measured rectangle.
+  // Visibility and bounds are separate effects: blocking controls attachment,
+  // while renderer layout commits and element resizes keep the complete native
+  // rectangle current without changing the active tab.
   assert.match(
     viewTabSource,
-    /pluginViewSetVisible\(pluginId, viewId, !blocked, sessionId\)[\s\S]*pluginViewSetBounds/s,
+    /pluginViewSetVisible\(pluginId, viewId, !blocked, sessionId\)/,
   );
+  assert.match(
+    viewTabSource,
+    /useLayoutEffect\(\(\) => \{\s*reportBounds\(\);\s*\}\)/s,
+  );
+  assert.match(viewTabSource, /new ResizeObserver\(reportBounds\)/);
+  assert.match(viewTabSource, /void api\.pluginViewSetBounds\(\{/);
 });
 
 test("an unknown icon token degrades instead of rendering plugin markup", () => {

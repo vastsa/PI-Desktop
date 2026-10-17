@@ -586,6 +586,7 @@ session root as working directory and stream through `terminal.output`.
 | `session/configure` | controller | Change mode, provider/model, thinking level, or permission mode while idle; same rules as `pi-desktop/session/configure` |
 | `session/fork` | controller | Fork an idle session, optionally through a message id, into a new idle session |
 | `session/rename` | controller | Rename a session |
+| `session/deriveTitle` | controller | Apply the Host's deterministic first-prompt title to a still-untitled session; returns `{ updated }` and never overrides a rename |
 | `session/delete` | owner | Delete a session and its transcript on the Host |
 | `session/compact` | controller | Run a manual context checkpoint on the active session |
 | `workspace/list` | viewer | List entries under the session root, bounded, honoring the Host ignore rules |
@@ -598,6 +599,60 @@ session root as working directory and stream through `terminal.output`.
 | `connection/pair` | authenticated | Exchange the single-use pairing token presented on the upgrade for a device credential (security §3.4); only valid on a pairing connection (D448) |
 | `project/register` | owner | Register a Host directory as a project: the Host canonicalizes and validates the path and returns the project id (D448) |
 | `project/browse` | owner | List directories under a Host path, bounded, for the remote folder picker (D448) |
+
+### 6.2.1 Local-Agent workspace services
+
+New Desktop remote projects keep the Agent, transcript, project metadata, model
+selection and provider transport locally. These additive, owner-only operations
+serve their remote tool workspace without creating a Host project or session.
+Legacy remote-Agent operations above remain unchanged.
+
+- `workspace/toolShell` accepts `{}` and returns `{ shell: CommandShellOption }`.
+  Desktop supplies this effective Host shell to its local Agent. Bash execution
+  verifies the same shell id and dialect, including a second check before spawn.
+- `workspace/toolExecute` accepts `{ path, sessionId, turnId, toolCallId,
+  toolName, args, timeoutMs?, expectedCommandShellId?,
+  expectedCommandShellDialect? }`. Only Read, Glob, Grep, Write, Edit and Bash are
+  accepted; extra top-level fields and provider/credential inputs are rejected.
+  `path` is the owner-selected absolute workspace root, independently
+  canonicalized by the Host. Local permissions and tool admission precede this
+  RPC. The Host reuses the existing bounded runner and containment rules with
+  external paths disabled. It returns the ordinary `{ ok, content, isError?,
+  errorCode?, toolCallId?, ...runnerMetadata }` result.
+- `workspace/toolAbort` accepts `{ sessionId, toolCallId }`, and cancels only
+  the calling device's active operation. Closing the originating connection
+  cancels its outstanding calls. Host restarts invalidate late results.
+- `workspace/files` accepts `{ path, operation, ref?, mimeType? }`, where
+  operation is list/read/index/resolve/image/diff/instructions. It reads only the
+  canonical workspace boundary using existing helpers and no persistent Host
+  session. Existing operations and their payloads remain unchanged; this is an
+  additive operation, not a protocol-major change.
+  For `instructions`, Desktop sends `{ path, operation: "instructions" }` and
+  the Host returns `{ entries: [{ source, content }] }`, or `{ entries: [] }`.
+  Root-only selection takes the first readable, nonempty, contained file in
+  `AGENTS.override.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md` order.
+  A file symlink escaping the root is skipped. At most one entry is returned;
+  `source` is that recognized relative name, not a remote HOME or absolute path.
+  File content is capped at 32 KiB of UTF-8 without splitting a character, with
+  an explicit truncation notice. Desktop validates recognized sources, at most
+  one entry and at most 33,280 UTF-8 bytes including the notice, then merges
+  local global defaults before remote root instructions. Nested traversal and
+  remote global defaults are not supported by this operation.
+
+`workspaceTools` and `workspaceFiles` are optional advertised capabilities; an
+older Host fails with CAPABILITY_UNAVAILABLE/METHOD_NOT_FOUND rather than
+falling back to the Desktop filesystem. Tools are not automatically replayed
+on reconnect. The Host namespaces execution by paired device and local session,
+limits concurrent tools to 32, retains a bounded 4096-key replay fence, and bounds
+arguments/results to 1 MiB. These services never carry model requests, model
+settings, provider headers, API keys or OAuth tokens.
+
+If Write/Edit/Bash loses its reply with HOST_DISCONNECTED, TIMEOUT,
+AGENT_UNAVAILABLE or REMOTE_CONNECTION_FAILED, the Desktop relay reports
+`REMOTE_MUTATION_OUTCOME_UNKNOWN` with `retriable: false`. It cannot prove that
+the mutation did or did not run; inspect remote state before an explicit retry.
+This is a Desktop execution error mapping, not a new wire method or an
+exactly-once guarantee. Read/Glob/Grep retain their ordinary failure mapping.
 
 ### 6.3 Deferred operations
 

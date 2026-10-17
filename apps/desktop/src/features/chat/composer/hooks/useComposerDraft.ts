@@ -13,6 +13,7 @@ import {
   rewriteIdeographicCommaTrigger,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../../../stores/app-store";
+import { sessionAllows } from "../../../../lib/remote-session-safety";
 import { api } from "../../../../lib/api";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import {
@@ -583,7 +584,9 @@ export function useComposerDraft({
     if (!readEditorValue(editor).includes(token)) return;
     const sourceSessionId = reference.sessionId;
     try {
-      const result = await api.fsRead(reference.path, reference.mimeType);
+      const state = useAppStore.getState();
+      if (!sessionAllows(state.sessions.find((item) => item.id === sourceSessionId), "canAttach")) return;
+      const result = await api.fsRead(reference.path, reference.mimeType, sourceSessionId);
       if (result.kind !== "text" || result.content === undefined) {
         const message =
           result.kind === "tooLarge"

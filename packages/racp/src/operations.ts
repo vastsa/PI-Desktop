@@ -2,6 +2,7 @@ import type { AgentHost, Principal } from "@pi-desktop/agent-host";
 import { RacpError } from "@pi-desktop/agent-host";
 import {
   RacpApprovalResponseSchema,
+  WorkspaceToolExecuteSchema, WorkspaceToolAbortSchema, WorkspaceFilesRequestSchema,
   RacpCursorSchema,
   RacpInputResponseSchema,
   RacpRequestContextSchema,
@@ -154,6 +155,32 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
     throw new RacpError("METHOD_NOT_FOUND", "host/list exists only behind a Gateway");
   });
 
+  const requireWorkspaceTools = (context: OperationContext) => {
+    if (!context.operations.workspaceTools || !context.capabilities.workspaceTools) {
+      throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host does not offer workspace tools");
+    }
+    return context.operations.workspaceTools;
+  };
+  const toolOwner = (context: OperationContext) => ({
+    deviceId: context.principal.subject, connectionId: context.connection.id,
+  });
+  handlers.set("workspace/files", async (context, params) => {
+    if (!context.operations.workspaceFiles || !context.capabilities.workspaceFiles) {
+      throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host does not offer workspace files");
+    }
+    return context.operations.workspaceFiles.read(check(WorkspaceFilesRequestSchema, params));
+  });
+  handlers.set("workspace/toolExecute", async (context, params) =>
+    requireWorkspaceTools(context).execute(check(WorkspaceToolExecuteSchema, params), toolOwner(context)));
+  handlers.set("workspace/toolAbort", async (context, params) => {
+    await requireWorkspaceTools(context).abort(check(WorkspaceToolAbortSchema, params), toolOwner(context));
+    return { ok: true };
+  });
+  handlers.set("workspace/toolShell", async (context, params) => {
+    check(Type.Object({}, { additionalProperties: false }), params);
+    return { shell: await requireWorkspaceTools(context).shell() };
+  });
+
   handlers.set("project/list", async (context) => ({ projects: await context.operations.projects.list() }));
   handlers.set("project/register", async (context, params) => {
     const input = check(Type.Object({ path: Type.String({ minLength: 1 }) }), params);
@@ -302,6 +329,17 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
     const summary = (await context.operations.sessions.list()).find((candidate) => candidate.id === input.sessionId);
     if (summary) context.agentHost.publishSessionChange("session.changed", summary);
     return { ok: true };
+  });
+  handlers.set("session/deriveTitle", async (context, params) => {
+    const input = check(Type.Object({ sessionId: Type.String({ minLength: 1 }), title: Type.String({ minLength: 1 }) }), params);
+    // The Host owns title eligibility: it refuses a session the user renamed,
+    // and the derived text stays replaceable by the title plugin.
+    const updated = await context.operations.sessions.deriveTitle(input.sessionId, input.title);
+    if (updated) {
+      const summary = (await context.operations.sessions.list()).find((candidate) => candidate.id === input.sessionId);
+      if (summary) context.agentHost.publishSessionChange("session.changed", summary);
+    }
+    return { updated };
   });
   handlers.set("session/delete", async (context, params) => {
     const input = check(SessionIdParams, params);

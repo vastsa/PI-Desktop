@@ -55,6 +55,8 @@ AI 服务和 OAuth 厂商账户编辑器共用已选模型面板。每个已选�
 - 提供商名称
 - 能力徽章
 - 可选的上下文窗口
+- 服务模型列表为某字段报告正安全整数上下文/输入或输出上限时，该值优先于目录；未报告的字段独立回退到目录值。缺失或非正数不作猜测。
+- 未锚定的中转站（OpenAI 兼容）服务已知模型家族时，可读取权重所有者的已发布记录，该记录优先于转售商共识且不改写配置的线上 ID；所有者的地区/套餐兄弟键仅在其公开键未表态时作为补充证据，不会否决公开键的结论。仅当普通查找无结果、且至少两个不同发布者一致声明同一所有者前缀目标时，才按 models.dev 的 canonical 声明做名称换算，容量始终取自所有者自己的记录。所有者别名在能力或上限上互相矛盾时不借用任何所有者记录。
 - 上限值与用量计数经同一个紧凑格式化函数（`formatCompactTokenCount`）渲染：
   `M` 量级最多两位小数、`K` 量级一位小数，去掉末尾零；`K` 尾数若进位到 1000
   则提升到 `M` 量级。1M 附近的已发布窗口因此保持可区分（1000000 显示 `1M`，
@@ -136,7 +138,7 @@ type RecentModelRef = {
 
 ## 6. Refresh behavior
 
-The pinned pi-ai 1.0.1 catalog is the startup baseline. Startup reads no remote
+The pinned pi-ai 1.1.0 catalog is the startup baseline. Startup reads no remote
 catalog and uses no ambient credentials. `providers.refreshModelCatalog` invokes
 Pi's public refresh API; settings metadata lookups themselves are local.
 
@@ -279,6 +281,8 @@ type ModelCatalogItem = {
 | 结构化修复助手 | `json` 可选 |
 
 除非不可能执行，否则警告是非阻塞的。
+
+Composer 模型列表中的上下文窗口标签通过 `effectiveContextWindow` 按对应 binding 解析：显式的用户额度优先于发现信息；由目录管理的额度跟随发现结果；旧版 binding 保留已保存额度。即使模型发现不可用，只要已保存额度有效，也仍会显示该额度。该显示解析不会修改发现目录或运行时安全预算。
 
 ### 11.1 Reasoning capability resolution
 

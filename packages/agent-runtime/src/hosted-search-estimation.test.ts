@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
 import type { AssistantMessage, Model, Api } from "@earendil-works/pi-ai";
 import { estimateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { convertResponsesMessages } from "@earendil-works/pi-ai/api/openai-responses-shared";
@@ -52,9 +53,9 @@ async function run(api: typeof apis[number], content: unknown[], options: Record
 describe("real dependency hosted-search estimation and requests", () => {
   it("preserves text/thinking/tool/image numeric baselines", () => {
     const message = assistant([{ type: "text", text: "12345678" }, { type: "thinking", thinking: "1234" }, { type: "toolCall", id: "t", name: "run", arguments: { a: 1 } }]);
-    expect(estimateMessageTokens(message)).toBe(6);
-    expect(compaction.estimateTokens(message)).toBe(6);
-    expect(estimateMessageTokens({ role: "user", content: [{ type: "image", data: "", mimeType: "image/png" }], timestamp: 1 })).toBe(1200);
+    expect(estimateMessageTokens(message)).toBe(7);
+    expect(compaction.estimateTokens(message)).toBe(7);
+    expect(estimateMessageTokens({ role: "user", content: [{ type: "image", data: "", mimeType: "image/png" }], timestamp: 1 })).toBe(Math.ceil(4_800 / ESTIMATED_TEXT_CHARS_PER_TOKEN));
     expect(compaction.estimateTokens({ role: "custom", content: "12345" })).toBe(2);
     expect(compaction.estimateTokens({ role: "bashExecution", command: "1234", output: "5678" })).toBe(2);
     expect(compaction.estimateTokens({ role: "branchSummary", summary: "12345" })).toBe(2);
@@ -162,7 +163,7 @@ describe("real dependency hosted-search estimation and requests", () => {
     expect(same).toHaveLength(1);
     expect(other).toHaveLength(0);
     expect(estimateMessageTokens(msg, { ...model("openai-responses"), id: "other" })).toBe(0);
-    expect(estimateMessageTokens(msg)).toBe(Math.ceil(JSON.stringify(same[0]).length / 4));
+    expect(estimateMessageTokens(msg)).toBe(Math.ceil(JSON.stringify(same[0]).length / ESTIMATED_TEXT_CHARS_PER_TOKEN));
     const decorated = { ...(content[0] as object), query: "ignored".repeat(1000), results: [{ url: "ignored".repeat(1000) }] };
     expect(estimateMessageTokens(assistant([decorated]))).toBe(estimateMessageTokens(msg));
   });
@@ -177,7 +178,7 @@ describe("real dependency hosted-search estimation and requests", () => {
     expect(same[0]).toMatchObject({ type: "web_search_call", id: "ws_1" });
     expect(other).toHaveLength(0);
     expect(estimateMessageTokens(msg, { ...model(api), id: "other" })).toBe(0);
-    expect(estimateMessageTokens(msg)).toBe(Math.ceil(JSON.stringify(same[0]).length / 4));
+    expect(estimateMessageTokens(msg)).toBe(Math.ceil(JSON.stringify(same[0]).length / ESTIMATED_TEXT_CHARS_PER_TOKEN));
   });
   it("declares search content and events without fake name/arguments", () => {
     const block: HostedSearchContent = { type: "hostedSearch", phase: "web_search_call", blockId: "legacy" };
@@ -186,7 +187,7 @@ describe("real dependency hosted-search estimation and requests", () => {
     expect(event.partial.content[0]).not.toHaveProperty("arguments");
     const replay = convertResponsesMessages(model("openai-responses"), normalizeContext({ messages: [assistant([block])] }), new Set());
     expect(replay).toEqual([{ type: "web_search_call", id: "legacy", status: "completed" }]);
-    expect(estimateMessageTokens(assistant([block]))).toBe(Math.ceil(JSON.stringify(replay[0]).length / 4));
+    expect(estimateMessageTokens(assistant([block]))).toBe(Math.ceil(JSON.stringify(replay[0]).length / ESTIMATED_TEXT_CHARS_PER_TOKEN));
   });
   it("matches Anthropic replay estimates across models and search toggles", async () => {
     const adapter = await import("@earendil-works/pi-ai/api/anthropic-messages");
@@ -201,7 +202,7 @@ describe("real dependency hosted-search estimation and requests", () => {
       }).result();
       const blocks = body?.messages.find(m => m.role === "assistant")?.content ?? [];
       expect(blocks).toHaveLength(2);
-      expect(estimateMessageTokens(msg)).toBe(Math.ceil(blocks.reduce<number>((sum, block) => sum + JSON.stringify(block).length, 0) / 4));
+      expect(estimateMessageTokens(msg)).toBe(Math.ceil(blocks.reduce<number>((sum, block) => sum + JSON.stringify(block).length, 0) / ESTIMATED_TEXT_CHARS_PER_TOKEN));
       expect(body?.tools?.some(tool => tool.type.startsWith("web_search")) ?? false).toBe(webSearch);
     }
   });

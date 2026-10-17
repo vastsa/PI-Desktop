@@ -18,6 +18,7 @@ test("session fork is wired through protocol, main, API, store, and sidebar", ()
     readStoreModuleSync("runtime/session-coordination.ts"),
   ].join("\n");
   const sidebar = read("../src/components/Sidebar.tsx");
+  const panelSource = read("../src/components/SidebarMenuPanel.tsx");
 
   assert.match(
     protocol,
@@ -33,10 +34,10 @@ test("session fork is wired through protocol, main, API, store, and sidebar", ()
   );
   assert.match(store, /forkSession:\s*async \(id\)/);
   assert.match(store, /commitForkedSession\(result\.session/);
-  assert.match(sidebar, /data-action="fork-session"/);
-  assert.match(sidebar, /disabled=\{Boolean\(runningSessions\[session\.id\]\)\}/);
-  assert.match(sidebar, /<IconBranch size=\{14\} \/>/);
-  assert.match(sidebar, /\[role="menuitem"\]:not\(:disabled\)/);
+  assert.match(sidebar, /id: "fork-session"/);
+  assert.match(sidebar, /disabled: Boolean\(runningSessions\[session\.id\]\)/);
+  assert.match(sidebar, /icon: <IconBranch size=\{14\} \/>/);
+  assert.match(panelSource, /\[role="menuitem"\]:not\(:disabled\)/);
 });
 
 test("assistant response fork reuses isolated session snapshots", () => {

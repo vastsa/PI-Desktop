@@ -10,12 +10,16 @@ import test, { after } from "node:test";
 const { build } = createRequire(new URL("../../../packages/agent-runtime/package.json", import.meta.url))("esbuild");
 const storageDirectory = fileURLToPath(new URL("../electron/main/storage/", import.meta.url));
 const result = await build({
-  stdin: { contents: ['files', 'preferences', 'bootstrap', 'ipc'].map((name) => `export * from "./${name}";`).join("\n") + '\nexport { IPC } from "@pi-desktop/shared";\nexport { catalogs } from "@pi-desktop/i18n";', resolveDir: storageDirectory, loader: "ts" },
+  stdin: { contents: ['files', 'preferences', 'bootstrap', 'startup-recovery', 'ipc'].map((name) => `export * from "./${name}";`).join("\n") + '\nexport { IPC } from "@pi-desktop/shared";\nexport { catalogs } from "@pi-desktop/i18n";', resolveDir: storageDirectory, loader: "ts" },
   bundle: true, platform: "node", format: "esm", write: false,
+  alias: { "original-fs": "node:fs" },
   plugins: [{ name: "external-storage-boundaries", setup(builder) {
     builder.onResolve({ filter: /^@pi-desktop\/shared$/ }, () => ({ path: fileURLToPath(new URL("../../../packages/shared/src/protocol.ts", import.meta.url)) }));
     builder.onResolve({ filter: /^@pi-desktop\/i18n$/ }, () => ({ path: fileURLToPath(new URL("../../../packages/i18n/src/index.ts", import.meta.url)) }));
-    builder.onResolve({ filter: /^(electron|node:child_process)$|host-process$/ }, (args) => ({ path: args.path, namespace: "storage-test-boundary" }));
+    builder.onResolve({ filter: /^(electron|node:child_process)$|host-process$/ }, (args) => {
+      if (args.path === "node:child_process" && args.importer.endsWith("link-types.ts")) return { path: args.path, external: true };
+      return { path: args.path, namespace: "storage-test-boundary" };
+    });
     builder.onLoad({ filter: /.*/, namespace: "storage-test-boundary" }, (args) => {
       if (args.path === "electron") return { contents: "export const app = globalThis.__storageHarness.app; export const dialog = globalThis.__storageHarness.dialog; export const BrowserWindow = globalThis.__storageHarness.BrowserWindow;" };
       if (args.path === "node:child_process") return { contents: "export function execFile(command, args, options, callback) { globalThis.__storageHarness.execFile(command, args, options, callback); }" };
@@ -26,9 +30,20 @@ const result = await build({
 
 const exitSignal = new Error("test process exited");
 const harness = {
-  anchor: "", selection: null, paths: [], windows: [], errors: [], restarts: 0, hostError: null,
+  anchor: "", selection: null, selections: [], paths: [], windows: [], errors: [], messageBoxes: [], messageResponses: [], restarts: 0, hostError: null,
   app: { getPath: (name) => name === "temp" ? maintenanceTemp : harness.anchor, getLocale: () => "en", setPath: (...value) => harness.paths.push(value), whenReady: async () => {}, relaunch: () => { harness.restarts++; }, exit: () => { throw exitSignal; } },
-  dialog: { showOpenDialog: async () => ({ canceled: harness.selection === null, filePaths: [harness.selection] }), showMessageBox: async (...value) => { harness.errors.push(value); return { response: 0 }; } },
+  dialog: {
+    showOpenDialog: async () => {
+      const selected = harness.selections.length ? harness.selections.shift() : harness.selection;
+      return { canceled: selected === null, filePaths: selected === null ? [] : [selected] };
+    },
+    showMessageBox: async (...value) => {
+      const options = value.at(-1);
+      harness.messageBoxes.push(options);
+      if (options?.type === "error") harness.errors.push(value);
+      return { response: harness.messageResponses.shift() ?? 0 };
+    },
+  },
   BrowserWindow: class {
     constructor(options) { this.options = options; this.scripts = []; harness.windows.push(this); this.webContents = { setWindowOpenHandler: () => {}, on: () => {}, executeJavaScript: async (script) => { this.scripts.push(script); } }; }
     setMenu() {}
@@ -67,9 +82,17 @@ async function exists(path) {
   catch (error) { if (error.code === "ENOENT") return false; throw error; }
 }
 const hash = (buffer) => createHash("sha256").update(buffer).digest("hex");
+// Chromium names the single-instance lock `lockfile` on Windows and
+// `SingletonLock` elsewhere, so a real installation anchor holds whichever name
+// its platform uses. Both are covered here on every platform: the cleanup and
+// the migration inventory must skip either name regardless of the host, and the
+// unit-test lane only runs on Linux. Fixturing the POSIX name alone is what let
+// the Windows delete failure ship.
+const installLockNames = ["lockfile", "SingletonLock"];
 const migrate = (value, overrides = {}) => storage.migrateFiles({ source: value.roots, target: value.target, anchor: value.anchor, id: randomUUID(), progress: () => {}, relocate: async () => {}, ...overrides });
 function resetHarness(anchor) {
   harness.anchor = anchor; harness.paths = []; harness.windows = []; harness.errors = [];
+  harness.selections = []; harness.messageBoxes = []; harness.messageResponses = [];
   harness.restarts = 0; harness.hostError = null; harness.selection = null;
 }
 function registerHandlers() {
@@ -77,6 +100,139 @@ function registerHandlers() {
   storage.registerStorageIpc({ registrar: { handleWithEvent: (channel, handler) => handlers.set(channel, handler), assertMainWindowSender: (event) => { if (event !== "main") throw new Error("untrusted sender"); } }, getMainWindow: () => ({}), restart: () => { harness.restarts++; } });
   return (channel, input, event = "main") => handlers.get(storage.IPC.invoke[channel])(event, input);
 }
+
+test("missing default data prompts before creating a fresh profile and normalizes its pointer", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t, { dataMissing: true }); resetHarness(value.anchor);
+  const file = join(value.anchor, storage.STORAGE_PREFERENCE_FILE);
+  storage.writeStoragePreferences(file, {
+    version: 1,
+    roots: { ...value.roots, data: `${value.roots.data}${process.platform === "win32" ? "\\" : "/"}` },
+    backups: [],
+  });
+  harness.messageResponses.push(0);
+
+  const prepared = await storage.prepareStorage(value.roots.data, false);
+
+  assert.equal(harness.messageBoxes.length, 1);
+  assert.equal(harness.messageBoxes[0].buttons.length, 3, "create, select existing, or quit are explicit");
+  assert.equal(await exists(value.roots.data), true);
+  assert.deepEqual(prepared.preferences.roots, value.roots);
+  assert.deepEqual(storage.readStoragePreferences(file, value.roots).roots, value.roots);
+  assert.deepEqual(harness.paths, [["sessionData", value.roots.browser]]);
+  assert.equal(harness.errors.length, 0);
+});
+
+test("first launch without a storage pointer does not trigger missing-profile recovery", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t, { dataMissing: true }); resetHarness(value.anchor);
+
+  const prepared = await storage.prepareStorage(value.roots.data, false);
+
+  assert.equal(harness.messageBoxes.length, 0);
+  assert.equal(await exists(value.roots.data), false);
+  assert.deepEqual(prepared.preferences.roots, value.roots);
+  assert.deepEqual(harness.paths, [["sessionData", value.roots.browser]]);
+});
+
+test("Windows storage root comparison ignores case and separator differences", () => {
+  assert.equal(
+    storage.sameStoragePath("C:\\Users\\Lan\\.pi-desktop", "c:/users/lan/.pi-desktop/", "win32"),
+    true,
+  );
+});
+
+test("missing default data can adopt an existing storage root before boot", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t, { dataMissing: true }); resetHarness(value.anchor);
+  const recovered = join(value.root, "existing-storage");
+  const recoveredRoots = { data: join(recovered, "data"), browser: join(recovered, "browser") };
+  await Promise.all([mkdir(recoveredRoots.data, { recursive: true }), mkdir(recoveredRoots.browser, { recursive: true })]);
+  await put(join(recoveredRoots.data, "pi.sqlite"), "existing database");
+  await put(join(recoveredRoots.browser, "Local Storage/current"), "browser state");
+  const file = join(value.anchor, storage.STORAGE_PREFERENCE_FILE);
+  storage.writeStoragePreferences(file, { version: 1, roots: value.roots, backups: [] });
+  harness.selection = recovered;
+  harness.messageResponses.push(1);
+
+  const prepared = await storage.prepareStorage(value.roots.data, false);
+
+  assert.equal(harness.messageBoxes[0].buttons.length, 3);
+  assert.deepEqual(prepared.preferences.roots, recoveredRoots);
+  assert.deepEqual(storage.readStoragePreferences(file, value.roots).roots, recoveredRoots);
+  assert.deepEqual(harness.paths, [["sessionData", recoveredRoots.browser]]);
+  assert.equal(await readFile(join(recoveredRoots.data, "pi.sqlite"), "utf8"), "existing database");
+  assert.equal(await readFile(join(recoveredRoots.browser, "Local Storage/current"), "utf8"), "browser state");
+  assert.equal(await exists(value.roots.data), false);
+});
+
+test("recovery can select a data directory and keep the installation browser profile", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t, { dataMissing: true }); resetHarness(value.anchor);
+  const recoveredData = join(value.root, "recovered-data");
+  await mkdir(recoveredData);
+  await put(join(recoveredData, "pi.sqlite"), "existing database");
+  const file = join(value.anchor, storage.STORAGE_PREFERENCE_FILE);
+  storage.writeStoragePreferences(file, { version: 1, roots: value.roots, backups: [] });
+  harness.selection = recoveredData;
+  harness.messageResponses.push(1);
+
+  const prepared = await storage.prepareStorage(value.roots.data, false);
+
+  assert.deepEqual(prepared.preferences.roots, { data: recoveredData, browser: value.roots.browser });
+  assert.equal(await readFile(join(recoveredData, "pi.sqlite"), "utf8"), "existing database");
+  assert.deepEqual(harness.paths, [["sessionData", value.roots.browser]]);
+});
+
+test("recovery rejects a selected folder without an existing PI-Desktop database", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t, { dataMissing: true }); resetHarness(value.anchor);
+  const invalidRoot = join(value.root, "not-a-profile");
+  await mkdir(invalidRoot);
+  const file = join(value.anchor, storage.STORAGE_PREFERENCE_FILE);
+  storage.writeStoragePreferences(file, { version: 1, roots: value.roots, backups: [] });
+  const before = await readFile(file);
+  harness.selection = invalidRoot;
+  harness.messageResponses.push(1, 1);
+
+  await assert.rejects(storage.prepareStorage(value.roots.data, false), (error) => error === exitSignal);
+
+  assert.equal(harness.messageBoxes.length, 2);
+  assert.match(harness.messageBoxes[1].message, /does not contain|doesn't contain/);
+  assert.equal(await exists(value.roots.data), false);
+  assert.equal(await exists(invalidRoot), true);
+  assert.equal(harness.paths.length, 0);
+  assert.deepEqual(await readFile(file), before);
+});
+
+test("dismissing default storage recovery exits without creating or switching data", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t, { dataMissing: true }); resetHarness(value.anchor);
+  const file = join(value.anchor, storage.STORAGE_PREFERENCE_FILE);
+  storage.writeStoragePreferences(file, { version: 1, roots: value.roots, backups: [] });
+  const before = await readFile(file);
+  harness.messageResponses.push(2);
+
+  await assert.rejects(storage.prepareStorage(value.roots.data, false), (error) => error === exitSignal);
+
+  assert.equal(harness.messageBoxes[0].buttons.length, 3);
+  assert.equal(await exists(value.roots.data), false);
+  assert.equal(harness.paths.length, 0);
+  assert.deepEqual(await readFile(file), before);
+});
+
+test("missing default data does not bypass pending storage maintenance", { timeout: 60_000 }, async (t) => {
+  const value = await fixture(t, { dataMissing: true }); resetHarness(value.anchor);
+  const file = join(value.anchor, storage.STORAGE_PREFERENCE_FILE);
+  storage.writeStoragePreferences(file, {
+    version: 1,
+    roots: value.roots,
+    backups: [],
+    pending: { id: randomUUID(), kind: "cache", language: "en" },
+  });
+  const before = await readFile(file);
+
+  await assert.rejects(storage.prepareStorage(value.roots.data, false), (error) => error === exitSignal);
+
+  assert.equal(harness.messageBoxes.length, 1);
+  assert.equal(harness.messageBoxes[0].type, "error");
+  assert.equal(await exists(value.roots.data), false);
+  assert.deepEqual(await readFile(file), before);
+});
 
 test("cold migration copies real data, verifies hashes, preserves secret permissions and reports stages", { timeout: 60_000 }, async (t) => {
   const value = await fixture(t);
@@ -86,7 +242,7 @@ test("cold migration copies real data, verifies hashes, preserves secret permiss
   await chmod(value.roots.data, 0o700);
   await put(join(value.roots.browser, "Local Storage/leveldb/test.ldb"), "browser state");
   await put(join(value.roots.browser, storage.STORAGE_PREFERENCE_FILE), "bootstrap pointer");
-  await put(join(value.roots.browser, "SingletonLock"), "installation lock");
+  for (const name of installLockNames) await put(join(value.roots.browser, name), "installation lock");
   const events = []; const relocations = [];
   const next = await migrate(value, { progress: (event) => events.push(event), relocate: async (...roots) => relocations.push(roots) });
   assert.equal(hash(await readFile(join(next.data, "sessions/chat.jsonl"))), hash(payload));
@@ -94,7 +250,7 @@ test("cold migration copies real data, verifies hashes, preserves secret permiss
   assert.equal((await lstat(next.data)).mode & 0o777, 0o700);
   assert.equal(await readFile(join(next.browser, "Local Storage/leveldb/test.ldb"), "utf8"), "browser state");
   assert.equal(await exists(join(next.browser, storage.STORAGE_PREFERENCE_FILE)), false);
-  assert.equal(await exists(join(next.browser, "SingletonLock")), false);
+  for (const name of installLockNames) assert.equal(await exists(join(next.browser, name)), false);
   assert.equal(await readFile(join(value.roots.data, "sessions/chat.jsonl")).then(hash), hash(payload));
   assert.deepEqual(relocations, [[value.roots.data, next.data]]);
   assert.deepEqual([...new Set(events.map((event) => event.stage))], ["scanning", "copying", "verifying", "relocating", "complete"]);
@@ -265,13 +421,13 @@ test("backup removal protects active storage and the installation bootstrap anch
   await put(join(active.data, "session"), "active");
   await put(join(value.roots.data, "old-session"), "old");
   await put(join(value.anchor, storage.STORAGE_PREFERENCE_FILE), "pointer");
-  await put(join(value.anchor, "SingletonLock"), "lock");
+  for (const name of installLockNames) await put(join(value.anchor, name), "lock");
   await put(join(value.anchor, "Local Storage/old"), "old browser");
   await assert.rejects(storage.removeBackups([active], active, value.anchor), /active storage/);
   await storage.removeBackups([value.roots], active, value.anchor);
   assert.equal(await exists(value.roots.data), false);
   assert.equal(await readFile(join(value.anchor, storage.STORAGE_PREFERENCE_FILE), "utf8"), "pointer");
-  assert.equal(await readFile(join(value.anchor, "SingletonLock"), "utf8"), "lock");
+  for (const name of installLockNames) assert.equal(await readFile(join(value.anchor, name), "utf8"), "lock");
   assert.equal(await exists(join(value.anchor, "Local Storage/old")), false);
   assert.equal(await readFile(join(active.data, "session"), "utf8"), "active");
 });

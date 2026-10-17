@@ -6,7 +6,7 @@ import { readStoreSource } from "./helpers/store-source.mjs";
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), "utf8");
 
-const [dialog, editDialog, store, api, protocol, main, styles] = await Promise.all([
+const [dialogSource, editDialog, store, api, protocol, main, styles] = await Promise.all([
   read("../src/components/ProjectCreateDialog.tsx"),
   read("../src/components/ProjectEditDialog.tsx"),
   readStoreSource(),
@@ -15,6 +15,8 @@ const [dialog, editDialog, store, api, protocol, main, styles] = await Promise.a
   readMainSource(),
   read("../src/styles/project-create-dialog.css"),
 ]);
+
+const dialog = dialogSource + await read("../src/components/ProjectFolderPicker.tsx");
 
 test("create project dialog supports named multi-folder setup", () => {
   assert.match(dialog, /role="dialog"/);
@@ -42,7 +44,7 @@ test("create project dialog supports named multi-folder setup", () => {
 test("create project dialog can create the project from a git checkout", () => {
   // Same dialog, same name field: the source toggle turns the folder list into
   // one repository URL plus its clone destination.
-  assert.match(dialog, /type ProjectSource = "local" \| "git"/);
+  assert.match(dialog, /type ProjectSource = "local" \| "git" \| "remote"/);
   assert.match(dialog, /data-project-source="git"/);
   assert.match(dialog, /parseGitCloneUrl/);
   assert.match(dialog, /project\.createSourceLabel/);
@@ -64,7 +66,10 @@ test("create project dialog can create the project from a git checkout", () => {
 
 test("project creation creates one logical group with a primary workspace", () => {
   assert.match(store, /createProjectDialogOpen: boolean/);
-  assert.match(store, /openProject: async \(\) => \{\s*set\(\{ createProjectDialogOpen: true \}\)/);
+  assert.match(
+    store,
+    /openProject: async \(options\) => \{\s*set\(\{\s*createProjectDialogOpen: true,\s*createProjectDialogRemoteHostKey: options\?\.remoteHostKey\s*\}\)/,
+  );
   assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\)/);
   assert.match(store, /const orderedFolders = \[/);
   assert.match(store, /api\.createProjectGroup\(normalizedName, orderedFolders\)/);
@@ -75,7 +80,10 @@ test("project creation creates one logical group with a primary workspace", () =
   assert.match(store, /created\.group\.primaryPath/);
   assert.doesNotMatch(store, /for \(const path of orderedFolders\)/);
   assert.match(store, /get\(\)\.renameProject\(groupPrimary, normalizedName\)/);
-  assert.match(store, /set\(\{ createProjectDialogOpen: false, onboarding, page: "chat" \}\)/);
+  assert.match(
+    store,
+    /set\(\{\s*createProjectDialogOpen: false,\s*createProjectDialogRemoteHostKey: undefined,\s*onboarding,\s*page: "chat"\s*\}\)/,
+  );
   // Folder picks and git checkouts share one project creation semantic.
   assert.match(store, /async function createNamedProjectGroup\(/);
   assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\) =>\s*createNamedProjectGroup\(/);

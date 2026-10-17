@@ -1,16 +1,27 @@
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import { chmod, lstat, mkdir, open, readdir, readlink, realpath, rm, statfs, symlink, writeFile, readFile, stat } from "node:fs/promises";
+import { createReadStream, createWriteStream, promises as fs } from "original-fs";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { StorageProgress } from "@pi-desktop/shared";
 import { STORAGE_PREFERENCE_FILE, type StorageRoots } from "./preferences";
+import { storageLinkTypes } from "./link-types";
+
+// Profile contents are physical files, including user-owned .asar archives.
+// Do not let Electron's virtual archive filesystem reinterpret these paths.
+const { chmod, lstat, mkdir, open, readdir, readlink, realpath, rm, statfs, symlink, writeFile, readFile } = fs;
 
 const OWNER_FILE = ".pi-storage-owner.json";
 export const DATA_CACHE_PATHS = ["cache", "plugins/cache/download", "plugins/cache/backup", "openable-attachments"];
 const BROWSER_CACHE_PATHS = ["Cache", "Code Cache", "GPUCache", "DawnCache", "ShaderCache", "GrShaderCache", "GraphiteDawnCache"];
-const excluded = (name: string) => name === STORAGE_PREFERENCE_FILE || name.startsWith("Singleton") || /^\.storage-.*\.tmp$/.test(name);
+// Chromium names the single-instance lock `SingletonLock` on Linux and macOS
+// but `lockfile` on Windows. Backup cleanup runs while this process still holds
+// that lock, and Windows refuses to unlink a file this process opened without
+// delete sharing, so an omitted Windows name aborts the whole maintenance run
+// with EBUSY instead of skipping one regenerated file. The migration inventory
+// skips the same names: the lock belongs to the installation anchor, not to the
+// copied `browser/` root.
+const excluded = (name: string) => name === STORAGE_PREFERENCE_FILE || name.startsWith("Singleton") || name === "lockfile" || /^\.storage-.*\.tmp$/.test(name);
 export function contains(parent: string, child: string): boolean {
   const part = relative(parent, child);
   return !part || (!part.startsWith(`..${sep}`) && part !== ".." && !isAbsolute(part));
@@ -22,12 +33,16 @@ async function optionalStat(path: string) {
 
 export async function validateTarget(path: string, source: StorageRoots, anchor: string, retryId?: string): Promise<string> {
   if (!isAbsolute(path) || path.includes("\0")) throw new Error("Select an absolute directory.");
-  const target = await realpath(path);
-  if (!(await lstat(path)).isDirectory() || (await lstat(path)).isSymbolicLink()) throw new Error("Select a real directory, not a symbolic link.");
+  const target = await canonicalPath(path);
+  const existing = await optionalStat(path);
+  if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) throw new Error("Select a real directory, not a symbolic link.");
   for (const sourcePath of [source.data, source.browser, anchor]) {
     const canonical = await canonicalPath(sourcePath);
     if (contains(canonical, target) || contains(target, canonical)) throw new Error("The destination must be separate from the current storage directories.");
   }
+  // First-run profiles and destinations chosen in the native picker may not
+  // exist yet. Check separation before creating only the selected destination.
+  if (!existing) await mkdir(path, { recursive: true, mode: 0o700 });
   const names = await readdir(target);
   if (names.length) {
     if (!retryId) throw new Error("Select an empty destination directory.");
@@ -45,7 +60,8 @@ async function inventory(from: string, to: string, entries: Entry[], browser = f
     entries.push({ from, to, kind: "directory", bytes: 0, mode: info.mode });
     for (const name of await readdir(from)) {
       if (browser && excluded(name)) continue;
-      await inventory(join(from, name), join(to, name), entries, browser);
+      // Installation metadata is excluded only at the browser root.
+      await inventory(join(from, name), join(to, name), entries);
     }
   } else if (info.isFile()) {
     entries.push({ from, to, kind: "file", bytes: info.size, mode: info.mode });
@@ -60,7 +76,9 @@ async function digest(path: string): Promise<string> {
 }
 async function canonicalPath(path: string): Promise<string> {
   if (await optionalStat(path)) return realpath(path);
-  return join(await realpath(dirname(path)), relative(dirname(path), path));
+  const parent = dirname(path);
+  if (parent === path) return realpath(path);
+  return join(await canonicalPath(parent), relative(parent, path));
 }
 async function assertClaimed(target: string, id: string, names: string[]): Promise<void> {
   const owner = join(target, OWNER_FILE);
@@ -77,7 +95,9 @@ function relocatedLink(entry: Entry, mappings: Array<[string, string]>): string 
     return isAbsolute(link) ? next : relative(dirname(entry.to), next);
   }
   // A relative external link also needs adjustment because its parent moved.
-  return isAbsolute(link) ? link : relative(dirname(entry.to), absolute);
+  // Windows junction targets can include a trailing separator that symlink()
+  // removes. Use the same lexical absolute path for creation and verification.
+  return isAbsolute(link) ? (process.platform === "win32" ? absolute : link) : relative(dirname(entry.to), absolute);
 }
 
 /** Cold copy only: no database, browser, plugin, or log writer may be running. */
@@ -111,6 +131,9 @@ export async function migrateFiles(input: {
   await inventory(await realpath(source.browser), next.browser, entries, true);
   state.totalBytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
   state.totalFiles = entries.filter((entry) => entry.kind !== "directory").length;
+  const links = entries.filter((entry) => entry.kind === "link");
+  const types = await storageLinkTypes(links.map((entry) => entry.from));
+  const linkTypes = new Map(links.map((entry, index) => [entry.from, types[index]]));
   const space = await statfs(target);
   if (space.bavail * space.bsize < state.totalBytes + 16 * 1024 * 1024) throw new Error("Not enough free space in the destination directory.");
   const mappings: Array<[string, string]> = [[source.data, next.data], [source.browser, next.browser],
@@ -118,26 +141,30 @@ export async function migrateFiles(input: {
   const hashes = new Map<string, string>();
   state.stage = "copying";
   for (const entry of entries) {
-    if (entry.kind === "directory") await mkdir(entry.to, { recursive: false, mode: 0o700 });
-    else if (entry.kind === "link") {
-      const kind = process.platform === "win32" && (await stat(entry.from)).isDirectory() ? "junction" : undefined;
-      await symlink(relocatedLink(entry, mappings), entry.to, kind);
-      state.completedFiles++;
-    } else {
-      const hash = createHash("sha256");
-      await pipeline(createReadStream(entry.from), new Transform({
-        transform(chunk: Buffer, _encoding, callback) {
-          hash.update(chunk);
-          state.completedBytes += chunk.length;
-          progress({ ...state });
-          callback(null, chunk);
-        },
-      }), createWriteStream(entry.to, { flags: "wx", mode: 0o600 }));
-      hashes.set(entry.from, hash.digest("hex"));
-      const file = await open(entry.to, "r+");
-      try { await file.sync(); } finally { await file.close(); }
-      await chmod(entry.to, entry.mode & 0o777);
-      state.completedFiles++;
+    try {
+      if (entry.kind === "directory") await mkdir(entry.to, { recursive: false, mode: 0o700 });
+      else if (entry.kind === "link") {
+        await symlink(relocatedLink(entry, mappings), entry.to, linkTypes.get(entry.from));
+        state.completedFiles++;
+      } else {
+        const hash = createHash("sha256");
+        await pipeline(createReadStream(entry.from), new Transform({
+          transform(chunk: Buffer, _encoding, callback) {
+            hash.update(chunk);
+            state.completedBytes += chunk.length;
+            progress({ ...state });
+            callback(null, chunk);
+          },
+        }), createWriteStream(entry.to, { flags: "wx", mode: 0o600 }));
+        hashes.set(entry.from, hash.digest("hex"));
+        const file = await open(entry.to, "r+");
+        try { await file.sync(); } finally { await file.close(); }
+        await chmod(entry.to, entry.mode & 0o777);
+        state.completedFiles++;
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Storage copy failed: ${entry.from} -> ${entry.to}\n${detail}`, { cause: error });
     }
     progress({ ...state });
   }

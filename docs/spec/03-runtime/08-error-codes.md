@@ -73,8 +73,8 @@ registered; reserved codes in §3.7 remain intentionally absent from
 | `LIMIT_EXCEEDED` | no | a payload exceeded a fixed host bound (item count, byte size, or a 64 MiB NDJSON request line) and was refused |
 | `CONFIG_SYNC_INVALID` | no | invalid sync configuration, password, path, request, or approval input |
 | `CONFIG_SYNC_LOCKED` | no | the local encrypted sync vault is not unlocked |
-| `CONFIG_SYNC_UNSUPPORTED` | no | the vault format or WebDAV server capability is unsupported |
-| `CONFIG_SYNC_REMOTE` | maybe | remote WebDAV object, authentication, quota, or availability failure |
+| `CONFIG_SYNC_UNSUPPORTED` | no | the vault format or S3 conditional-write capability is unsupported |
+| `CONFIG_SYNC_REMOTE` | maybe | S3 object, authentication, quota, or availability failure |
 | `CONFIG_SYNC_CONFLICT` | maybe | remote head, vault identity, or approval digest conflict |
 | `CONFIG_SYNC_CRYPTO` | no | authenticated encryption, object identity, or ciphertext validation failed |
 | `CONFIG_SYNC_MAPPING_REQUIRED` | no | imported project-scoped configuration needs an explicit local folder/group mapping |
@@ -360,10 +360,24 @@ Node sidecar maps provider SDK errors into:
 
 - `PROVIDER_UNAUTHORIZED`
 - `PROVIDER_RATE_LIMITED`
+- `CONTEXT_TOO_LARGE`
 - `MODEL_NOT_CONFIGURED` (provider rejects the selected model with 404)
 - `PROVIDER_ERROR`
 - `NETWORK_ERROR`
 - `STREAM_FAILED`
+
+A provider message is `CONTEXT_TOO_LARGE` when pi-ai's `isContextOverflow`
+recognizes it from the message text — the same check that starts provider
+overflow recovery — or when it carries the context-length wording the
+classifier already matched (HTTP 413 always). The terminal code therefore
+agrees with the recovery decision for every overflow wording pi-ai knows, for
+example DashScope/Qwen `Range of input length should be`, z.ai `Prompt
+exceeds max length`, xAI `maximum prompt length is`, Groq, llama.cpp, and
+Bedrock `Input is too long for requested model`. `CONTEXT_TOO_LARGE` is never
+replayed by either retry budget, and a delegate reports it as
+`SUBAGENT_CONTEXT_OVERFLOW`. Rate-limit wording, including Bedrock's
+`Throttling error: Too many tokens, please wait before trying again.`, is
+classified first and stays `PROVIDER_RATE_LIMITED`.
 
 An exact `terminated` provider message and equivalent premature stream-close
 messages map to `STREAM_FAILED`. A request-setup or post-response

@@ -122,6 +122,10 @@ Only Skills active for the current project are listed or accepted, so project
 scope and plugin activation remain enforced at send time. If the Skill is no
 longer active, its token remains literal prompt text. Unprefixed names are not
 Skill aliases; existing app commands and prompt templates keep their names.
+Bundled Skills are active by default and can be disabled globally in Settings
+> Agent > Skills. A disabled built-in is omitted from the session and slash
+catalogs; a stale direct load is rejected. This switch does not change agent
+tool availability.
 
 ## 9. Ideographic comma opens the slash menu (D405)
 

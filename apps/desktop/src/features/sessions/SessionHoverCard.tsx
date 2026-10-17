@@ -15,6 +15,7 @@ import {
   sessionReferenceIsRunning,
 } from "./session-collaboration-view";
 import type { SessionHoverCardData } from "./useSessionHoverCard";
+import { useHoverCardSelection } from "./useHoverCardSelection";
 
 export function SessionHoverCard({
   card,
@@ -24,6 +25,7 @@ export function SessionHoverCard({
   onOpenSession,
   keepVisible,
   scheduleHide,
+  registerDismissGuard,
 }: {
   card: SessionHoverCardData;
   runningSessions: Readonly<Record<string, boolean>>;
@@ -32,9 +34,11 @@ export function SessionHoverCard({
   onOpenSession: (sessionId: string) => Promise<void>;
   keepVisible: () => void;
   scheduleHide: () => void;
+  registerDismissGuard: (guard: () => boolean) => () => void;
 }) {
   const { t, i18n } = useTranslation();
   const elementRef = useRef<HTMLDivElement>(null);
+  useHoverCardSelection(elementRef, keepVisible, scheduleHide, registerDismissGuard);
   const [position, setPosition] = useState<{ top: number; left: number }>();
   const [summary, setSummary] = useState<SessionCollaborationSummary>();
   const [readState, setReadState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -124,16 +128,12 @@ export function SessionHoverCard({
     <div
       ref={elementRef}
       id={`session-hover-${session.id}`}
-      className="sidebar-session-hover-card"
+      className="sidebar-session-hover-card selectable"
       role="dialog"
       aria-label={t("sessionCollaboration.sessionDetails", { name: session.title })}
       data-session-collaboration={session.id}
       style={{ ...position, visibility: position ? "visible" : "hidden" }}
       onPointerDown={(event) => event.stopPropagation()}
-      onMouseEnter={keepVisible}
-      onMouseLeave={scheduleHide}
-      onFocusCapture={keepVisible}
-      onBlurCapture={scheduleHide}
     >
       <div className="sidebar-session-hover-card-title">{session.title}</div>
       <div className="sidebar-session-hover-card-tags">

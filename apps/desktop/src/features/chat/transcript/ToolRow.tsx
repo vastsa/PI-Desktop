@@ -1,3 +1,5 @@
+import { useChatSessionCapability } from "../../../hooks/use-chat-session-capability";
+import { SubagentStopButton } from "./SubagentStopButton";
 import { PlanHistoryCard } from "./PlanHistoryCard";
 import { planSubmission } from "../../../lib/plan-history";
 import { GeneratedImages } from "./GeneratedImages";
@@ -178,7 +180,8 @@ function HostToolRow({
 }: ToolRowProps) {
   const { t } = useTranslation();
   const detailsId = useId();
-  const root = useAppStore((s) => s.workspace?.path);
+  const localToolsAllowed = useChatSessionCapability("canUseLocalTools");
+  const root = useAppStore((s) => localToolsAllowed ? s.workspace?.path : undefined);
   const openTarget = useOpenPreviewTarget();
   const { fileMenu, openFileMenu, closeFileMenu } = useChatFileMenu();
   const openSubagentTab = useAppStore((s) => s.openSubagentTab);
@@ -394,6 +397,7 @@ function HostToolRow({
       aria-label={`${t("chat.toolCall")}: ${rawName}${agentName ? `, ${agentName}` : ""}${modelLabel ? `, ${modelLabel}` : ""}${statusLabel ? `, ${statusLabel}` : ""}`}
     >
       {variant === "topology" ? (
+        <div className="subagent-topology-node-actions">
         <button
           className="subagent-topology-node-header"
           aria-expanded={panelOpen}
@@ -403,7 +407,7 @@ function HostToolRow({
           onClick={() => {
             if (!hasDetails) return;
             onUserInteraction?.();
-            openSubagentTab(panelSelectionId, agentName || undefined);
+            localToolsAllowed && openSubagentTab(panelSelectionId, agentName || undefined);
           }}
         >
           <span className="subagent-topology-avatar" aria-hidden>
@@ -431,7 +435,8 @@ function HostToolRow({
                   title={modelLabel}
                   aria-label={modelLabel}
                 >
-                  {modelLabel}
+                  <span className="subagent-topology-node-model-name">{modelId}</span>
+                  {thinkingLabel ? <span className="subagent-topology-node-thinking"> {thinkingLabel}</span> : null}
                 </span>
               ) : null}
               <span className="subagent-topology-node-status">
@@ -454,6 +459,8 @@ function HostToolRow({
             <span className="tool-spinner" aria-label={t("chat.running")} />
           ) : null}
         </button>
+        {typeof delegationId === "string" && <SubagentStopButton delegationId={delegationId} running={outcome === "running" && !creating} name={agentName} />}
+        </div>
       ) : (
         <div className={`tool-row-head${runHead ? " is-run" : ""}`}>
           <button
@@ -493,16 +500,16 @@ function HostToolRow({
             ) : null}
             {summary ? (
               <span
-                className={`tool-row-summary${previewTarget ? " linked" : ""}`}
+                className={`tool-row-summary${previewTarget && localToolsAllowed ? " linked" : ""}`}
                 title={
-                  previewTarget
+                  previewTarget && localToolsAllowed
                     ? previewTarget.kind === "file"
                       ? t("chat.previewFile")
                       : t("chat.previewUrl")
                     : undefined
                 }
                 onClick={
-                  previewTarget
+                  previewTarget && localToolsAllowed
                     ? (e) => {
                         // Open the preview target instead of toggling details.
                         e.stopPropagation();
@@ -511,7 +518,7 @@ function HostToolRow({
                     : undefined
                 }
                 onContextMenu={
-                  previewTarget?.kind === "file"
+                  localToolsAllowed && previewTarget?.kind === "file"
                     ? (event) =>
                         openFileMenu(event, { path: previewTarget.path })
                     : undefined

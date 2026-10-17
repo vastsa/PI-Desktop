@@ -92,7 +92,11 @@ protection at all.
    brief plus the most recent message(s) and discards the rest of its history.
    The run continues and records that it was degraded, so the parent's report
    and the lifecycle details say the delegate lost history rather than
-   presenting a complete answer.
+   presenting a complete answer. An extracted summary that is empty or
+   whitespace-only — including a thinking-only or output-limited reply whose
+   text blocks are absent — is a summarization failure, not a successful
+   empty checkpoint. Accepting it would report compaction success while
+   silently discarding the working context.
 
 5. **A terminal code the parent can act on.** When even the degraded context
    does not fit, the run fails with `SUBAGENT_CONTEXT_OVERFLOW`

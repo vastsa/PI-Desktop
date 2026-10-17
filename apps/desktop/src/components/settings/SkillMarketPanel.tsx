@@ -177,6 +177,7 @@ export function SkillMarketPanel({
     url: "",
   });
   const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
+  const [catalogRetry, setCatalogRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,18 +210,7 @@ export function SkillMarketPanel({
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
-      setRemote((current) =>
-        current.status === "idle" || current.status === "ready"
-          ? {
-              status: "loading",
-              entries: current.entries,
-              failed: current.failed,
-              failureKinds: current.failureKinds,
-              failureDetails: current.failureDetails,
-              queryError: current.queryError,
-            }
-          : current,
-      );
+      setRemote((current) => ({ ...current, status: "loading" }));
       api
         .searchSkillMarket(search, [...DEFAULT_SKILL_SOURCES, ...sources])
         .then((result) => {
@@ -254,7 +244,7 @@ export function SkillMarketPanel({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [search, sources]);
+  }, [search, sources, catalogRetry]);
 
   const sourceName = (id?: string) =>
     id
@@ -332,6 +322,11 @@ export function SkillMarketPanel({
 
   const retryPreview = () => {
     if (installFor) loadDocument(installFor);
+  };
+
+  const retryCatalog = () => {
+    setRemote((current) => ({ ...current, status: "loading" }));
+    setCatalogRetry((current) => current + 1);
   };
 
   const install = async () => {
@@ -690,6 +685,9 @@ export function SkillMarketPanel({
           {hasUnresolvedFailure(remote.failureKinds) ? (
             <p className="sklm-status">{t("settings.sklm.dnsHint")}</p>
           ) : null}
+          <button type="button" className="sklm-install is-ghost" onClick={retryCatalog}>
+            {t("settings.sklm.retryCatalog")}
+          </button>
         </>
       ) : null}
       {remote.status === "ready" && remote.failed.length ? (
@@ -706,6 +704,9 @@ export function SkillMarketPanel({
           {hasUnresolvedFailure(remote.failureKinds) ? (
             <p className="sklm-status">{t("settings.sklm.dnsHint")}</p>
           ) : null}
+          <button type="button" className="sklm-install is-ghost" onClick={retryCatalog}>
+            {t("settings.sklm.retryCatalog")}
+          </button>
         </>
       ) : null}
 

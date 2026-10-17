@@ -770,6 +770,12 @@ type SessionSummary = {
  supportedThinkingLevels?: ThinkingLevel[];
  updatedAt: string;
  createdAt: string;
+ /** Isolated sessions only (ADR 0329); never carries a filesystem path. */
+ worktree?: {
+  branch: string;
+  status: "creating" | "active" | "conflict" | "merged" | "missing";
+  setupStatus?: "none" | "running" | "ok" | "failed" | null;
+ };
 };
 
 type UiMessage = {
@@ -863,11 +869,16 @@ ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false`
 最小接口：
 
 - `session/list`
-- `session/create`
+- `session/create` — 可选的 `isolated: true` 配合 `projectPath` 会在专属 git worktree 中创建
+  会话（ADR 0329）；拒绝时返回主机的 `WORKTREE_*` 代码
 - `session/fork({ sessionId, title?, throughMessageId? }) -> { session: SessionDetail }`
 - `session/get`
 - `session/delete`
 - `session/rename`
+- `session/deriveTitle({ id, title }) -> { updated: boolean }` 应用确定性的首条提示兜底标题。
+  只有当存储标题仍是可识别的占位标题且标题来源为 `default` 时，host-core 才接受它；该写入
+  只改元数据，`updated_at`、转录内容与消息数都不变。派生标题会保留该来源，因此已安装的
+  标题插件仍可替换它；`session/rename` 仍是用户拥有的路径。
 - `session/importScan`
 - `session/importRun(candidates) -> { imported, skipped, failed }`
 
@@ -931,8 +942,9 @@ Electron拥有本地化并提供面向用户的分支名称；主机
 转录本，但被排除在恢复的模型上下文之外。
 
 上下文检查器消耗两个附加使用信号。 `MessageUsage` 是
-提供商报告的助理使用情况，`responseDurationMs` 是已用时间
-sidecar 用于显示每秒输出令牌的流时间。 `ToolTokenUsage`
+提供商报告的助理使用情况，`responseDurationMs` 是用于显示每秒输出令牌的
+请求耗时。完整响应优先使用 pi-ai 1.1.0 的单调时钟
+`AssistantMessage.durationMs`；没有该值时仍使用 sidecar 秒表。 `ToolTokenUsage`
 是根据工具调用参数和结果估计的运行时间；提供商不
 报告每个工具的分配，因此渲染器将这些行标记为估计值并
 永远不会将它们合并到确切的提供商总数中。年长的同行可能会忽略所有
@@ -1102,6 +1114,23 @@ type ProjectRecord = {
 };
 ```
 
+## 9a. 会话 worktree API（ADR 0329）
+
+对主机 `worktree.*` 方法的薄转发（06-host-rpc-protocol §4）；错误保留主机的
+`WORKTREE_*` 代码。
+
+- `worktree/probe({ projectPath })` → 项目能否承载隔离会话（不能时给出拒绝代码），以及是否
+  有未提交改动
+- `worktree/preview({ sessionId })` / `worktree/merge({ sessionId, previewToken })`
+- `worktree/behind({ sessionId })` → 提交数，以及 `worktree/sync({ sessionId })` — “从项目同步”；`worktree/behindAll()`
+  → `{ counts: { [sessionId]: count }, statusesChanged }`，用于侧边栏标记
+- `worktree/pendingWork({ sessionId })` — 删除时会丢弃的未合并工作
+- `worktree/setupLog({ sessionId })`
+- `worktree/reveal({ sessionId })` — Electron Main 通过 `worktree.location` 解析文件夹并在
+  系统文件管理器中打开；路径绝不返回给渲染器
+- `worktree/setupCommand/get({ projectPath })` /
+  `worktree/setupCommand/set({ projectPath, command })`
+
 ## 10. 工具权限 API
 
 当工具需要确认时：
@@ -1219,7 +1248,7 @@ type PluginSummary = {
 遮蔽全局项。仅桌面的 `mcp/test` IPC 操作用于强制连接测试，并把状态返回
 MCP 编辑器。设置页的 `mcp.list` 在返回状态前会探测此前就绪的远程连接；服务器失联时，列表显示 `failed`，而不是保留过时的 `ready`。服务器恢复后，“测试连接”会重试。探测失败不会中断正在执行的工具调用；“测试连接”会先关闭旧客户端再重试。
 MCP 编辑器。
-停止会话会中止该会话正在执行的用户 MCP 工具调用，并向服务器发送 `notifications/cancelled`。其他会话共用的连接保持可用；已取消的调用不会重放。取消会结束本地等待，但服务器可能忽略通知并完成已经开始的副作用。
+停止会话会中止该会话正在执行的用户 MCP 工具调用，并向服务器发送 `notifications/cancelled`。其他会话共用的连接保持可用；已取消的调用不会重放。取消会结束本地等待，但服务器可能忽略通知并完成已经开始的副作用。请求超时后同样发送 `notifications/cancelled`（reason 为 `timeout`）；`initialize` 请求从不取消。
 
 ```ts
 type McpServerStatus = {
@@ -1497,6 +1526,14 @@ window/closeBehavior/set({ behavior: "tray" | "quit" })
 在每个平台上启动时都会创建一个，而无论存的是哪种关闭行为，最小化到托盘都
 需要它。
 
+关闭行为与退出确认通过新增的、仅限主窗口的 Electron IPC 在应用内呈现。主进程
+在 renderer 确认 `pi-desktop/window/lifecycleDialog/ready` 后发送
+`pi-desktop/window/event/lifecycleDialogRequest`（`{ requestId, kind }`）；renderer
+通过 `pi-desktop/window/lifecycleDialog/respond` 返回 `{ requestId, choice }`。主进程
+回退时会通过 `pi-desktop/window/event/lifecycleDialogDismiss` 发送 request ID，令 renderer
+移除残留遮罩。主进程校验发送方和待处理的 request ID。renderer 缺失或无响应时，超时后
+回退到原生弹窗；原生弹窗也失败时允许关机继续，不会卡住。托盘退出会先恢复隐藏的主窗口再显示应用内
+确认框。此改动不影响 host RPC 或存储协议。
 Maximize/unmaximize 变化也会发出
 `window/event/maximized`。未知的操作失败。这些仅限电子的通道
 不要跨入 host-core，也不要更改主机 RPC 协议版本。
@@ -1866,26 +1903,29 @@ unchanged. See [provider configuration](12-provider-config-schema.md).
 
 ## 15. 云配置同步
 
-设置 → 云同步页面使用以下 Renderer-to-Main 通道；所有通道都会转发到 Host 所有的 `configSync.*` RPC 方法。该页面当前仅在开发构建可见；通道与其 Host 契约不变：
+The page is available in all builds and carries an Experimental badge. Channel
+names stay stable. Inputs and results use the S3-only contract in
+`types/config-sync.ts` and the current source spec.
 
 | IPC 通道 | Host 方法 | 契约 |
 |---|---|---|
 | `pi-desktop/configSync/getState` | `configSync.getState` | 脱敏状态、类别选择、预览计数和待审批摘要 |
-| `pi-desktop/configSync/test` | `configSync.test` | 使用临时对象进行 WebDAV 能力探测；不持久化配置 |
+| `pi-desktop/configSync/test` | `configSync.test` | S3 conditional-write probe with verified cleanup; returns `{ ok: true, conditionalWrites: true }` without persisting configuration |
 | `pi-desktop/configSync/configure` | `configSync.configure` | 校验 endpoint、保存加密的本地同步元数据并启用 vault |
-| `pi-desktop/configSync/syncNow` | `configSync.syncNow` | 执行一次由 Host 所有的协调周期 |
+| `pi-desktop/configSync/syncNow` | `configSync.syncNow` | runs the saved sync or backup mode |
 | `pi-desktop/configSync/pause` | `configSync.pause` | 仅暂停或恢复本设备 |
 | `pi-desktop/configSync/unlock` | `configSync.unlock` | 为当前进程/设备解锁本地 vault |
 | `pi-desktop/configSync/approve` / `reject` | `configSync.approve` / `configSync.reject` | 记录绑定 digest 的本地激活决定 |
 | `pi-desktop/configSync/mapProject` | `configSync.mapProject` | 将一个不透明项目/组身份绑定到一个或多个明确选择的本地文件夹，并保留 primary-root 顺序 |
-| `pi-desktop/configSync/listHistory` | `configSync.listHistory` | 只列出脱敏的可达 revision 元数据 |
-| `pi-desktop/configSync/restore` | `configSync.restore` | 根据明确确认的历史 revision 创建新的传播 revision，并暂存本地审批/恢复信息 |
+| `pi-desktop/configSync/listHistory` | `configSync.listHistory` | latest 30 indexed revisions for the saved mode; never broadcast as state |
+| `pi-desktop/configSync/restore` | `configSync.restore` | sync publishes with propagation acknowledgment; backup restores locally; both retain recovery and approvals |
 | `pi-desktop/configSync/changePassword` | `configSync.changePassword` | CAS 重新包裹 vault key header，不返回 key 或秘密值 |
 | `pi-desktop/configSync/disconnect` | `configSync.disconnect` | 移除本地同步元数据和 key；不会删除远端 vault 数据 |
 
 输入密码只会被传给需要它的操作。原始秘密、vault key、解密资源或远端 archive 不会返回到 Renderer。`configSync.changed` 事件携带相同的脱敏状态，并由 Host 发起的变更（包括 Host scheduler）触发。Main 只是传输/生命周期协调器，不负责调度、合并、加密或应用配置。
 
-手动同步会在运行期间报告 `configSync.progress`：当前阶段（`capture`、`download`、`merge`、`upload`、`apply` 或 `cleanup`）、该阶段已完成与总量，以及已知时的字节数。因此上传大量资源对象时，界面不会无内容可显示。后台轮询不报告进度，因为只有手动路径有调用方在等待。
+Manual progress uses `capture`, `download`, `merge`, `upload`, and `apply` with
+unit and byte counts. There is no cleanup phase. Background polls stay silent.
 
 ## 16. 实时语音 API
 

@@ -80,3 +80,8 @@ Prefer the official warehouse template:
 
 - https://github.com/vastsa/pi-desktop-plugins/tree/main/plugins/demo.workspace-summary
 - Contribution guide: https://github.com/vastsa/pi-desktop-plugins/blob/main/CONTRIBUTING.md
+
+## Fetch redirect probe
+
+[fetch-redirect](fetch-redirect/README.md) is a local-only fixture plugin for
+host-enforced follow/error/manual policies and capability detection.

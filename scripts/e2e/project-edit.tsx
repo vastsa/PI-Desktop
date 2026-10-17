@@ -78,23 +78,40 @@ async function openEditor() {
 globalThis.projectEditProbe = async () => {
   await openEditor();
   inputName("Website redesign");
-  await click("Remove folder: assets");
-  await until(() => !document.querySelector('[aria-label="Remove folder: assets"]'), "removed extra folder");
+  // Promoting a member folder makes it the primary row and the saved root order.
+  await click("Set as Primary folder: assets");
+  const primaryRow = await until(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>(".project-create-folder-row")];
+    const first = rows[0];
+    return first?.classList.contains("is-primary") && first.textContent?.includes("assets")
+      ? first
+      : null;
+  }, "promoted primary row");
+  const promoted = Boolean(primaryRow) &&
+    !document.querySelector('[aria-label="Set as Primary folder: assets"]') &&
+    Boolean(document.querySelector('[aria-label="Set as Primary folder: website"]'));
+  await click("Remove folder: docs");
+  await until(() => !document.querySelector('[aria-label="Remove folder: docs"]'), "removed extra folder");
   completeTask();
   // Let the update traverse the real ProjectsPage and any resulting IPC loads.
   await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   const input = document.querySelector<HTMLInputElement>("#project-edit-name")!;
   const preserved = input.value === "Website redesign";
-  const foldersPreserved = !document.querySelector('[aria-label="Remove folder: assets"]');
-  if (!preserved || !foldersPreserved) {
-    return { ok: false, name: input.value, preserved, foldersPreserved };
+  const foldersPreserved = !document.querySelector('[aria-label="Remove folder: docs"]');
+  const primaryPreserved = document
+    .querySelector(".project-create-folder-row")
+    ?.textContent?.includes("assets") === true;
+  if (!preserved || !foldersPreserved || !primaryPreserved || !promoted) {
+    return { ok: false, name: input.value, preserved, foldersPreserved, primaryPreserved, promoted };
   }
   await click("Save changes");
   await until(() => !document.querySelector("#project-edit-name"), "saved editor closed");
   await until(() => document.body.textContent?.includes("Website redesign"), "updated project visible");
   const { groups } = await api.listProjectGroups();
   const saved = groups[0]?.name === "Website redesign" &&
-    groups[0]?.primaryPath === "/fixture/website" &&
-    groups[0]?.roots.length === 1 && groups[0]?.roots[0]?.path === "/fixture/website";
-  return { ok: saved, preserved, foldersPreserved, saved };
+    groups[0]?.primaryPath === "/fixture/assets" &&
+    groups[0]?.roots.length === 2 &&
+    groups[0]?.roots[0]?.path === "/fixture/assets" &&
+    groups[0]?.roots[1]?.path === "/fixture/website";
+  return { ok: saved, preserved, foldersPreserved, primaryPreserved, promoted, saved };
 };

@@ -113,7 +113,7 @@ test("activity summary and compact visibility preserve error, search and thinkin
     for (const compact of [false, true]) for (const active of [false, true]) {
       assert.deepEqual(cachedVisibleActivityItems(subset, compact, active), visibleActivityItems(subset, compact, active));
       const parts = [{ kind: "activity", items: subset }, { kind: "message", message: message("progress", "progress") }];
-      assert.equal(cachedVisibleProcessSteps(parts, compact, active), visibleProcessSteps(parts, compact ? "compact" : "detailed", active));
+      assert.equal(cachedVisibleProcessSteps(parts, compact, active), visibleProcessSteps(parts, compact, active));
     }
   }
 });

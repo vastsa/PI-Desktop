@@ -164,7 +164,7 @@ test("layout clamps after send cannot release transcript follow as a gesture", (
   assert.match(transcript, /if \(gesturing && transition\.releasedFollow\) \{/);
 });
 
-test("session activation pins the latest record before the first paint", () => {
+test("session activation pins a first visit and honors a runtime reading bookmark", () => {
   assert.match(
     chatSurface,
     /const activeSessionId = useAppStore\(\(state\) => state\.activeSessionId\);/,
@@ -173,17 +173,16 @@ test("session activation pins the latest record before the first paint", () => {
   assert.match(pane, /sessionId=\{sessionId\}/);
   assert.doesNotMatch(chatSurface, /SessionLoadingSkeleton/);
 
-  // A pane belongs to one session for its lifetime, so activation is its own
-  // first layout: settle at the newest turn with no cross-session state to
-  // unwind, before the first paint.
+  // Cold first visits still settle before paint; an evicted reading bookmark
+  // takes priority over initialization. Chromium covers the actual lifecycle.
   const activationEffect = transcript.match(
-    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, releaseDisclosureAnchor, scrollToBottom\]\);/,
+    /useLayoutEffect\(\(\) => \{([\s\S]*?)\n  \}, \[cancelFollowScroll, releaseDisclosureAnchor, savedReadingPosition, scrollToBottom\]\);/,
   )?.[1];
   assert.ok(activationEffect);
   assert.match(activationEffect, /cancelFollowScroll\(\)/);
-  assert.match(activationEffect, /pinnedRef\.current = true/);
-  assert.match(activationEffect, /setShowJump\(false\)/);
-  assert.match(activationEffect, /scrollToBottom\(\)/);
+  assert.match(activationEffect, /pinnedRef\.current = savedReadingPosition\?\.pinned \?\? true/);
+  assert.match(activationEffect, /setShowJump\(!pinnedRef\.current\)/);
+  assert.match(activationEffect, /if \(pinnedRef\.current\) scrollToBottom\(\)/);
   assert.doesNotMatch(activationEffect, /smooth/);
 });
 

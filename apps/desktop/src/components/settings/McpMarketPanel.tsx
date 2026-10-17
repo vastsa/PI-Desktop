@@ -115,6 +115,7 @@ export function McpMarketPanel({
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [sources, setSources] = useState<MarketSource[]>(loadSources);
   // Whether a plaintext hop to a user-supplied source is allowed, from the
   // stored `networkPolicy`. The panel validates its persisted list with the same
@@ -180,7 +181,11 @@ export function McpMarketPanel({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [search, sources]);
+  }, [search, sources, catalogRetry]);
+  const retryCatalog = () => {
+    setRemote((current) => ({ ...current, status: "loading", loadingMore: false }));
+    setCatalogRetry((current) => current + 1);
+  };
   const loadMore = async () => {
     if (remote.loadingMore) return;
     const generation = requestGeneration.current;
@@ -590,10 +595,30 @@ export function McpMarketPanel({
         </p>
       ) : null}
       {remote.status === "error" ? (
-        <p className="mcpm-status is-error" role="status">
-          {t("settings.mcpMarket.remoteError")}
-          {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
-        </p>
+        <>
+          <p className="mcpm-status is-error" role="status">
+            {t("settings.mcpMarket.remoteError")}
+            {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
+          </p>
+          <button type="button" className="mcpm-install is-ghost" onClick={retryCatalog}>
+            {t("settings.mcpMarket.retry")}
+          </button>
+        </>
+      ) : null}
+      {remote.status === "ready" && remote.failed.length ? (
+        <>
+          <p className="mcpm-status">
+            {t("settings.mcpMarket.remotePartial", { names: remote.failed.join(", ") })}
+          </p>
+          <button
+            type="button"
+            className="mcpm-install is-ghost"
+            disabled={remote.loadingMore}
+            onClick={retryCatalog}
+          >
+            {t("settings.mcpMarket.retry")}
+          </button>
+        </>
       ) : null}
 
       <div className="mcpm-list" role="list">

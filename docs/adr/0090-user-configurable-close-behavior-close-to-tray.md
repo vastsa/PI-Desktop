@@ -31,10 +31,11 @@ matches the desired behavior.
      icon and keeps the app running; the tray menu restores the window or
      quits the app.
    - `quit`: legacy behavior — closing the window exits the app.
-2. The first close with an unset preference shows a native modal dialog
-   (main process) with Cancel / Close to tray / Quit. Picking a non-cancel
-   option persists it forever; Cancel keeps the window open and leaves the
-   preference unset (so the next close prompts again).
+2. The first close with an unset preference shows a themed in-app dialog
+   (Cancel / Close to tray / Quit). Picking a non-cancel option persists it
+   forever; Cancel keeps the window open and leaves the preference unset. If
+   the renderer is not ready or becomes unavailable, Main uses a bounded native
+   fallback; if that also fails, it allows Quit rather than trapping the close.
 3. The preference is stored by Electron main in
    `<data>/close-behavior.json` (same ownership pattern as
    `window-state.json`), NOT in host-core settings: it is app-shell
@@ -70,14 +71,21 @@ matches the desired behavior.
    Windows force-terminates the session after its shutdown timeout, so no
    data is lost, but shutdown is not accelerated by the app.
 
+9. The first-close and explicit-quit dialogs render in the main renderer using
+   the existing theme. Main owns each decision and accepts only a matching
+   request ID from the main window after its readiness handshake. An unanswered
+   request uses a native fallback after ten seconds; failure to show that
+   fallback allows Quit to proceed. Tray Quit restores a hidden main window
+   before presenting the confirmation. These additive Electron channels do not
+   change host RPC, storage schema, or macOS close behavior.
 ## Alternatives considered
 
 - **Store the preference in host-core settings (`AppSettings`):** rejected
   because it would add a Rust schema field and host RPC surface for pure
   shell lifecycle state that only Electron main consumes.
-- **Renderer-drawn first-close dialog:** rejected because the window is
-  closing; a native modal keeps the decision in the process that owns the
-  close lifecycle and works before the renderer has mounted.
+- **Renderer dialog without readiness and fallback handling:** rejected
+  because a missed request could block close. The adopted dialog waits for a
+  ready renderer, correlates responses, and uses a bounded native fallback.
 - **Always close-to-tray without a choice:** rejected — it changes the
   meaning of the close button for users who expect exit.
 - **Tray icon reconciled with the preference:** rejected; D216 keeps one

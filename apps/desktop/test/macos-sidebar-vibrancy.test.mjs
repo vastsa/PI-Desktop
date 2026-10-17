@@ -43,11 +43,16 @@ test("macOS main window enables native sidebar vibrancy only in its platform bra
     "non-mac branch must not set under-window vibrancy",
   );
 
-  // The shared opaque fallback remains in place for Windows/Linux, and comes
-  // from the built-in theme table rather than a local literal.
+  // The platform helper receives the built-in fallback selected from the
+  // native theme. Windows 11 keeps its DWM surface opaque; earlier Windows
+  // builds and Linux retain their existing background behavior.
   assert.match(
     mainWindowBlock,
-    /backgroundColor:\s*builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
+    /\.\.\.mainWindowBackgroundOptions\(\s*process\.platform,\s*initialWindowBackground,\s*windows11NativeCorners,/,
+  );
+  assert.match(
+    windowSource,
+    /const initialWindowBackground = builtinWindowBackground\(\s*nativeTheme\.shouldUseDarkColors \? "dark" : "light",?\s*\)/,
   );
   assert.match(mainWindowBlock, /frame: false/);
   assert.doesNotMatch(

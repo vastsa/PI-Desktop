@@ -79,6 +79,45 @@ jobs:
       - name: Test
         run: cargo test -p host-core --locked
 
+  rust-windows:
+    name: Rust host-core Windows / transcript cache E2E
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy -p host-core --all-targets --locked
+
+      - name: Test transcript module on Windows
+        run: "cargo test -p host-core --locked transcripts::"
+
+      - name: Build host-core
+        run: cargo build -p host-core --locked
+
+      - name: Build Host RPC helper dependency
+        run: pnpm --filter @pi-desktop/shared build
+
+      - name: Run transcript cache Host RPC E2E
+        run: node scripts/e2e-transcript-cache.mjs
+
   trusted-extensions-e2e:
     name: Trusted extensions Electron E2E
     runs-on: ubuntu-latest
@@ -100,7 +139,7 @@ jobs:
       - name: Install virtual display
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes xauth xvfb
+          sudo apt-get install --no-install-recommends --yes openbox xauth xvfb
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -119,6 +158,12 @@ jobs:
 
       - name: Build Desktop bundle
         run: pnpm --filter @pi-desktop/desktop build
+
+      - name: Run browser capture/resize E2E
+        run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node scripts/e2e-browser-capture-resize.mjs'
+
+      - name: Run transcript rendering and disclosure E2E
+        run: xvfb-run --auto-servernum sh -c 'node scripts/e2e-transcript-render.mjs && node scripts/e2e-transcript-disclosure-anchor.mjs'
 
       - name: Build host-core
         run: cargo build -p host-core --locked

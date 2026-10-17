@@ -84,6 +84,13 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 `onResponse`，这样的行不上报捕获到的 HTTP 状态与传输原因：`Retry-After`
 退回有界退避阶梯，issue-234 的传输诊断与重建对它不生效。
 
+会话身份跟随端点归谁所有。在 `openai-completions` 与 `anthropic-messages` 上，
+base URL 主机不属于任何已发布厂商主机的行会带上会话亲和标头，并在 Chat
+Completions 上带上 `prompt_cache_key` 请求体键。自建 `openai-responses` 行保留适配器
+原有的会话标头与缓存键，并额外带上连字符形式的 `x-session-affinity`，这样反向代理丢掉
+下划线标头后仍可按会话路由。属于已发布厂商主机的行以及 OpenCode 线路保持原有出网字节
+（issue #1634；`03-runtime/02-agent-runtime.md` §6.3）。
+
 当 OAuth 厂商围绕本地 provider 行 id 重建运行时模型时，运行时仍保留 pi-ai
 原生传输元数据，不会把该行当作普通 OpenAI 端点。GitHub Copilot 请求会保留
 固定 pin 模型的 IDE 身份标头，包括 `Editor-Version`、`Editor-Plugin-Version`
@@ -111,7 +118,8 @@ OpenAI 风格的 Copilot 线路 API 仍将令牌作为请求密钥签名；所�
 `reasoning_content`。非官方 DeepSeek 端点还会设置 `requiresNonEmptyReasoningReplay`，
 用文档化的非空占位符而不是 `""` 填补缺失推理（OpenCode / 第三方中转在压缩后拒绝空回传；
 见 ADR 0256 / #296）。官方 `deepseek.com` 行仍使用空串回填（#223）。该覆盖不改
-`thinkingFormat`。
+`thinkingFormat`。官方与中转行都会设置 `supportsReasoningEffort: false`；即使开启思考，
+DeepSeek 也不接受通用 OpenAI 的 `reasoning_effort` 请求字段。
 
 当 Pi catalog 记录发布了推理 `effort` 选项且没有 `budget_tokens` 选项时
 （例如 Opus 4.7+、Opus 5.x、Fable），Anthropic Messages 请求会设置
@@ -180,7 +188,7 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
 
 ### 6.2 Catalog responsibilities
 
-1. pi-ai 1.0.1 Providers/Models own published metadata, transport, thinking
+1. pi-ai 1.1.0 Providers/Models own published metadata, transport, thinking
    support and native operation types. Electron's historically named
    `ModelsDevCatalog` is an account-aware adapter over this public API.
 2. Startup is cache-only and disables ambient environment/file credentials.
@@ -387,7 +395,13 @@ Codex CLI 版本（`CODEX_MODELS_CLIENT_VERSION`），账户模型缺失时调�
 
 ### Anthropic token 端点限流
 
-固定版本 pi-ai 1.0.1 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
+每次 token 请求都发送 pi-ai 自己的 `User-Agent`（`pi (<platform> <release>;
+<arch>)`）。Electron Main 把全局 `fetch` 替换为 `net.fetch`，其默认值是
+Chromium 的浏览器 `User-Agent`；token 端点对浏览器和 `claude-code/` 的
+`User-Agent` 每次都返回 429 `rate_limit_error`，不显式设置时登录永远无法
+成功（issue #1337）。服务商行上自定义的 `User-Agent` 仍可覆盖它。
+
+固定版本 pi-ai 1.1.0 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
 有限策略：只重试明确的 HTTP 429，最多总共三次请求。先等待至少 1 秒、再
 等待至少 2 秒；若 `Retry-After` 给出更长的秒数或 HTTP 日期，则遵守该时间。
 服务器要求的等待超出剩余预算时结束本次尝试，不缩短等待后提前重试。

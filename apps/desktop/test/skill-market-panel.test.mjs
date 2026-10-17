@@ -112,6 +112,14 @@ test("the market list explains a policy refusal instead of a bare unreachable", 
   assert.match(panel, /queryError: skillMarketFailureDetail\(error\)/);
 });
 
+test("failed and partial skill catalog searches can be retried", () => {
+  assert.match(panel, /const \[catalogRetry, setCatalogRetry\] = useState\(0\)/);
+  assert.match(panel, /\[search, sources, catalogRetry\]/);
+  assert.match(panel, /const retryCatalog = \(\) => \{/);
+  assert.match(panel, /settings\.sklm\.retryCatalog/);
+  assert.match(panel, /setRemote\(\(current\) => \(\{ \.\.\.current, status: "loading" \}\)\)/);
+});
+
 test("a resolver with no answer is explained as that, not as an address check", () => {
   // Issue #419, second round: one `policy` bucket meant a local resolver that
   // answered nothing produced the same sentence as an address the guard had
@@ -138,7 +146,8 @@ test("a resolver with no answer is explained as that, not as an address check", 
   assert.match(panel, /remote\.failureDetails\[name\]\?\.host/);
   // And the host reaches the state from the IPC result.
   assert.match(panel, /failureDetails: result\.failureDetails \?\? \{\}/);
-  assert.match(panel, /failureDetails: current\.failureDetails/);
+  // The retry loading state preserves the last host details until the request resolves.
+  assert.match(panel, /setRemote\(\(current\) => \(\{ \.\.\.current, status: "loading" \}\)\)/);
 });
 
 test("a proxy fake-IP gets its own copy and names the address it came from", () => {
@@ -182,6 +191,7 @@ test("every shipped locale carries the new skill market strings", async () => {
     "fakeIpHintPlain",
     "failureDetail",
     "retryPreview",
+    "retryCatalog",
     "remoteErrorPolicy",
     "remoteErrorUnresolved",
     "remoteErrorFakeIp",

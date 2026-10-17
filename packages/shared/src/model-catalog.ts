@@ -33,6 +33,16 @@ export const API_STYLES = [
 export type CatalogApiStyle = (typeof API_STYLES)[number];
 
 /**
+ * How a model-list probe asks a service what it serves.
+ *
+ * This is deliberately narrower than {@link CatalogApiStyle}: a successful
+ * `GET {base}/models` with `Authorization: Bearer` proves the endpoint answers
+ * OpenAI-compatible discovery, and nothing about whether the generation call is
+ * `/chat/completions`, `/responses` or something else.
+ */
+export type DiscoveryStyle = "openai_models" | "anthropic_models" | "google_models";
+
+/**
  * Keep persisted provider rows editable when an older or newer client stored
  * an API style this renderer does not know yet. Runtime transport resolution
  * uses the same Chat Completions fallback for unknown styles.

@@ -18,6 +18,7 @@ type BridgeSource = {
   fileReferences: ComposerFileReference[];
   fileReferencesRef: { current: ComposerFileReference[] };
   inputBlocked: boolean;
+  enabled?: boolean;
   applyEditorDraft: (
     text: string,
     references: ComposerFileReference[],
@@ -32,6 +33,7 @@ export function usePluginComposerBridge(source: BridgeSource): void {
   const handleRef = useRef<ComposerDraftHandle | null>(null);
 
   useEffect(() => {
+    if (source.enabled === false) return;
     const text = () => {
       const { ref, valueRef } = latest.current;
       return ref.current ? readEditorValue(ref.current) : valueRef.current;
@@ -39,7 +41,7 @@ export function usePluginComposerBridge(source: BridgeSource): void {
     const handle: ComposerDraftHandle = {
       read() {
         const { inputBlocked, draftKey, referenceSessionId, fileReferencesRef } = latest.current;
-        if (inputBlocked) return null;
+        if (inputBlocked || latest.current.enabled === false) return null;
         return {
           draftKey,
           sessionId: referenceSessionId,
@@ -58,9 +60,13 @@ export function usePluginComposerBridge(source: BridgeSource): void {
         return { start: end, end };
       },
       write(nextText, references, caret, focus) {
+        if (latest.current.enabled === false || latest.current.inputBlocked) return;
         latest.current.applyEditorDraft(nextText, references, caret, focus);
       },
       async stage(sessionId, file) {
+        if (latest.current.enabled === false || latest.current.inputBlocked || sessionId !== latest.current.referenceSessionId) {
+          throw new Error("Composer attachment access unavailable");
+        }
         const result = await api.pasteFiles(sessionId, [file]);
         const staged = result.files[0];
         if (!staged) throw new Error("the host staged no file");
@@ -73,7 +79,7 @@ export function usePluginComposerBridge(source: BridgeSource): void {
       handleRef.current = null;
       unregister();
     };
-  }, []);
+  }, [source.enabled]);
 
   const { value, fileReferences, draftKey, referenceSessionId, inputBlocked } = source;
   useEffect(() => {

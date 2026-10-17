@@ -1,0 +1,6 @@
+{
+  "name": "pi-desktop-window-surface-fixture",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs"
+}

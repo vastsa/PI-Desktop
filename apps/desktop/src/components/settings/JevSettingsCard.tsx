@@ -94,7 +94,7 @@ export function JevSettingsCard({
   return (
     <SettingsCard
       title={t("settings.jevTitle")}
-      description={t("settings.jevDescription")}
+      description={`${t("settings.jevDescription")}\n\n${t("settings.jevPrivacyNotice")}`}
     >
       <SettingsRow
         title={t("settings.jevEnable")}
@@ -129,7 +129,6 @@ export function JevSettingsCard({
           />
         </div>
       </SettingsRow>
-      <p className="jev-settings-privacy-note">{t("settings.jevPrivacyNotice")}</p>
     </SettingsCard>
   );
 }

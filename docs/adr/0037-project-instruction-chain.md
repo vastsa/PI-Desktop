@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-07-30
+- Updated: 2026-10-08 (independent global and project budgets; visible
+  truncation notice, issue #1490)
 - Related: [Agent runtime](../spec/03-runtime/02-agent-runtime.md)
 
 ## Context
@@ -25,9 +27,13 @@ workspace file access in Electron main and host-core.
 3. For every project directory, the first non-empty candidate wins in this order:
    `AGENTS.override.md`, `AGENTS.md`, `CLAUDE.md`,
    `.claude/CLAUDE.md`.
-4. Sources are concatenated from root to target directory, capped at 32 KiB of
-   UTF-8 content. Later, closer entries take precedence and each source is
-   labelled in the prompt.
+4. Sources are concatenated from root to target directory. The global file and
+   the project entries have independent 32 KiB budgets of UTF-8 content, so an
+   oversized global file never removes project instructions. A file cut at its
+   budget keeps whole UTF-8 characters and is followed by a notice that names
+   the source and the loaded and total byte counts; project files after a
+   truncated one are not loaded. Later, closer entries take precedence and
+   each source is labelled in the prompt.
 5. The root chain is loaded when the runtime is created. Before a file-path
    tool executes, the sidecar may request a path-specific chain through the
    Electron-owned `project.instructions.resolve` local proxy. The sidecar does
@@ -51,6 +57,11 @@ workspace file access in Electron main and host-core.
   chain instead of waiting on the general host RPC deadline.
 - Path preflight records its own duration and cache/fallback markers so
   `hostRttMs` continues to describe the actual host tool call.
+- The instruction section can hold up to 64 KiB of file content: 32 KiB from
+  the global file and 32 KiB from the project chain. This mirrors Codex, where
+  `~/.codex/AGENTS.md` is loaded outside the 32 KiB `project_doc_max_bytes`
+  budget that its project files share. A truncated file is visible to the
+  model instead of ending silently.
 - Root instruction changes rebuild an idle runtime on the next prompt. Nested
   rules are re-resolved for future file-path tool calls.
 - This private sidecar proxy remains constrained to a session id and a path

@@ -126,10 +126,14 @@ fn v18_database_migrates_session_thinking_omit() {
 fn v22_database_migrates_session_title_sources_without_losing_titles() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("pi.sqlite");
-    let (default_id, manual_id) = {
+    let (default_id, localized_id, manual_id) = {
         let db = Database::open(&path).unwrap();
         let default_session =
             crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
+        // A v22 install wrote the active locale's placeholder into the title.
+        let localized_session =
+            crate::sessions::create_session(&db, Some("새 작업".into()), None, None, None, None)
+                .unwrap();
         let manual_session = crate::sessions::create_session(
             &db,
             Some("A title chosen by the user".into()),
@@ -143,23 +147,27 @@ fn v22_database_migrates_session_title_sources_without_losing_titles() {
             .execute_batch("ALTER TABLE sessions DROP COLUMN title_source;")
             .unwrap();
         db.conn().pragma_update(None, "user_version", 22).unwrap();
-        (default_session.id, manual_session.id)
+        (default_session.id, localized_session.id, manual_session.id)
     };
 
     let db = Database::open(&path).unwrap();
     assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
     assert!(migration_backup_path(&path, 22).exists());
-    let sources: (String, String) = db
+    let sources: (String, String, String) = db
         .conn()
         .query_row(
             "SELECT
                 (SELECT title_source FROM sessions WHERE id = ?1),
-                (SELECT title_source FROM sessions WHERE id = ?2)",
-            params![default_id, manual_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+                (SELECT title_source FROM sessions WHERE id = ?2),
+                (SELECT title_source FROM sessions WHERE id = ?3)",
+            params![default_id, localized_id, manual_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .unwrap();
-    assert_eq!(sources, ("default".into(), "manual".into()));
+    assert_eq!(
+        sources,
+        ("default".into(), "default".into(), "manual".into())
+    );
     assert_eq!(
         crate::sessions::get_session(&db, &manual_id)
             .unwrap()
@@ -167,6 +175,118 @@ fn v22_database_migrates_session_title_sources_without_losing_titles() {
             .summary
             .title,
         "A title chosen by the user"
+    );
+}
+
+/// v24 adds the isolated-session worktree registry (ADR 0329). A v23 database
+/// keeps its projects and sessions, gains the nullable setup-command column
+/// and the `worktrees` table, and leaves a pre-migration backup.
+#[test]
+fn v23_database_gains_worktree_registry_without_losing_projects() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO projects (path, name, pinned, created_at, last_opened_at)
+                 VALUES ('/work/app', 'app', 1, 1, 2)",
+                [],
+            )
+            .unwrap();
+        let session =
+            crate::sessions::create_session(&db, Some("Kept".into()), None, None, None, None)
+                .unwrap();
+        db.conn()
+            .execute_batch(
+                "DROP TABLE worktrees;
+                 ALTER TABLE projects DROP COLUMN worktree_setup_command;",
+            )
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 23).unwrap();
+        session.id
+    };
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 23).exists());
+    let (name, pinned, command): (String, i64, Option<String>) = db
+        .conn()
+        .query_row(
+            "SELECT name, pinned, worktree_setup_command FROM projects WHERE path = '/work/app'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!((name.as_str(), pinned, command), ("app", 1, None));
+    assert!(crate::sessions::get_session(&db, &session_id)
+        .unwrap()
+        .is_some());
+    let worktrees: i64 = db
+        .conn()
+        .query_row("SELECT COUNT(*) FROM worktrees", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(worktrees, 0);
+}
+
+/// Deleting a session through any path must keep the worktree row, with its
+/// session cleared, so the orphan cleanup can still remove the directory and
+/// branch that exist on disk.
+#[test]
+fn deleting_a_session_orphans_its_worktree_rows_instead_of_dropping_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let session = crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
+    db.conn()
+        .execute(
+            "INSERT INTO worktrees (id, session_id, delegation_id, path, common_dir, branch,
+                                    owner_branch, status, created_at, updated_at)
+             VALUES ('w1', ?1, NULL, '/data/worktrees/p/s1', '/repo/.git', 'pi-desktop/s1',
+                     'main', 'active', 1, 1)",
+            params![session.id],
+        )
+        .unwrap();
+    assert!(crate::sessions::delete_session(&db, &session.id).unwrap());
+    let session_id: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT session_id FROM worktrees WHERE id = 'w1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(session_id, None);
+}
+
+/// A session owns at most one worktree of its own plus one per delegation,
+/// and two active worktrees never share a port block.
+#[test]
+fn worktree_registry_enforces_one_row_per_owner_and_unique_ports() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let session = crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
+    let insert = |id: &str, delegation: Option<&str>, port: Option<i64>| {
+        db.conn().execute(
+            "INSERT INTO worktrees (id, session_id, delegation_id, path, common_dir, branch,
+                                    owner_branch, status, port_base, created_at, updated_at)
+             VALUES (?1, ?2, ?3, '/w/' || ?1, '/repo/.git', 'pi-desktop/' || ?1, 'main',
+                     'active', ?4, 1, 1)",
+            params![id, session.id, delegation, port],
+        )
+    };
+    insert("a", None, Some(41000)).unwrap();
+    assert!(
+        insert("b", None, Some(41010)).is_err(),
+        "second own worktree"
+    );
+    insert("c", Some("d1"), Some(41010)).unwrap();
+    assert!(
+        insert("e", Some("d1"), None).is_err(),
+        "second worktree for one delegation"
+    );
+    assert!(
+        insert("f", Some("d2"), Some(41000)).is_err(),
+        "shared port block"
     );
 }
 
@@ -1392,6 +1512,7 @@ fn project_group_update_detaches_roots_with_chats_without_orphaning_them() {
                 primary.to_string_lossy().into(),
                 second.to_string_lossy().into(),
             ],
+            None,
         )
         .unwrap();
     assert_eq!(updated.name, "Adjusted");
@@ -1418,6 +1539,7 @@ fn project_group_update_detaches_roots_with_chats_without_orphaning_them() {
             &updated.id,
             "Adjusted again",
             &[second.to_string_lossy().into()],
+            None,
         )
         .unwrap_err()
         .to_string()
@@ -1433,6 +1555,7 @@ fn project_group_update_detaches_roots_with_chats_without_orphaning_them() {
             &updated.id,
             "Adjusted again",
             &[primary.to_string_lossy().into()],
+            None,
         )
         .expect("a root with chats can be detached from the group");
     assert_eq!(detached.roots.len(), 1);
@@ -1450,6 +1573,114 @@ fn project_group_update_detaches_roots_with_chats_without_orphaning_them() {
         db.project_session_ids(&canonical_second).unwrap(),
         [session.id]
     );
+}
+
+#[test]
+fn project_group_update_switches_the_primary_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let primary = dir.path().join("primary");
+    let member = dir.path().join("member");
+    let other = dir.path().join("other");
+    std::fs::create_dir_all(&primary).unwrap();
+    std::fs::create_dir_all(&member).unwrap();
+    std::fs::create_dir_all(&other).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group(
+            "Switchable",
+            &[
+                primary.to_string_lossy().into(),
+                member.to_string_lossy().into(),
+                other.to_string_lossy().into(),
+            ],
+        )
+        .unwrap();
+    let canonical_primary = crate::db::canonical_project_path(&primary.to_string_lossy()).unwrap();
+    let canonical_member = crate::db::canonical_project_path(&member.to_string_lossy()).unwrap();
+    let canonical_other = crate::db::canonical_project_path(&other.to_string_lossy()).unwrap();
+    let all_folders = || {
+        vec![
+            primary.to_string_lossy().into_owned(),
+            member.to_string_lossy().into_owned(),
+            other.to_string_lossy().into_owned(),
+        ]
+    };
+
+    // Naming another selected folder promotes it and keeps it first.
+    let switched = db
+        .update_project_group(
+            &group.id,
+            "Switchable",
+            &all_folders(),
+            Some(&canonical_member),
+        )
+        .unwrap();
+    assert_eq!(switched.primary_path, canonical_member);
+    assert_eq!(
+        switched
+            .roots
+            .iter()
+            .map(|root| root.path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            canonical_member.as_str(),
+            canonical_primary.as_str(),
+            canonical_other.as_str()
+        ]
+    );
+    assert_eq!(
+        switched
+            .roots
+            .iter()
+            .map(|root| root.position)
+            .collect::<Vec<_>>(),
+        [0, 1, 2]
+    );
+    // The former primary becomes an ordinary member root.
+    assert!(switched
+        .roots
+        .iter()
+        .skip(1)
+        .any(|root| root.path == canonical_primary));
+    // The switch survives reloading the stored record.
+    let reloaded = db
+        .list_project_groups()
+        .unwrap()
+        .into_iter()
+        .find(|candidate| candidate.id == group.id)
+        .unwrap();
+    assert_eq!(reloaded.primary_path, canonical_member);
+
+    // A primary outside the selected folders is refused.
+    assert!(db
+        .update_project_group(
+            &group.id,
+            "Switchable",
+            std::slice::from_ref(&canonical_primary),
+            Some(&canonical_member),
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("must be one of the group folders"));
+    // Omitting the primary still refuses dropping the stored one.
+    assert!(db
+        .update_project_group(
+            &group.id,
+            "Switchable",
+            std::slice::from_ref(&canonical_primary),
+            None
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("primary folder"));
+    // The refused calls leave the stored switch in place.
+    let unchanged = db
+        .list_project_groups()
+        .unwrap()
+        .into_iter()
+        .find(|candidate| candidate.id == group.id)
+        .unwrap();
+    assert_eq!(unchanged.primary_path, canonical_member);
 }
 
 #[test]
@@ -1551,6 +1782,7 @@ fn editing_a_legacy_project_with_an_extra_folder_upgrades_it_to_a_group() {
                 primary.to_string_lossy().into(),
                 extra.to_string_lossy().into(),
             ],
+            None,
         )
         .unwrap();
     assert!(!upgraded.legacy);

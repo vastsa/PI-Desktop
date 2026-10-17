@@ -1,5 +1,6 @@
 import {
   bindingSupportsImages,
+  effectiveContextWindow,
   isImageGenerationModel,
   type ImageGenerationBindings,
   modelMatchesFilter,
@@ -43,13 +44,21 @@ export function composerModelsForProvider(
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),
     );
+    const binding = composerModelBinding(provider, modelId);
+    const contextWindow = effectiveContextWindow(
+      metadata?.contextWindow,
+      binding?.contextWindow,
+      binding?.contextWindowSource,
+    );
+    const contextLimit = contextWindow === undefined ? {} : { contextWindow };
     const displayName = modelId;
     return metadata
-      ? { ...metadata, modelId, displayName, providerId: provider.id }
+      ? { ...metadata, ...contextLimit, modelId, displayName, providerId: provider.id }
       : {
           modelId,
           displayName,
           providerId: provider.id,
+          ...contextLimit,
           capabilities: ["text"],
           source: "user" as const,
         };

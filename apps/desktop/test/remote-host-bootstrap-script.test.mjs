@@ -3,7 +3,7 @@ import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -75,11 +75,16 @@ async function prepareSandbox(root, { readyVersion = VERSION } = {}) {
       'import { createHash } from "node:crypto";',
       'import { readFileSync } from "node:fs";',
       "const file = process.argv[2];",
+      'if (file === "-c") {',
+      '  const manifest = readFileSync(process.argv[3], "utf8").trim().split("\\n");',
+      '  for (const line of manifest) { const [hash, path] = line.split(/  /); if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) process.exit(1); }',
+      '  process.exit(0);',
+      '}',
       'process.stdout.write(`${createHash("sha256").update(readFileSync(file)).digest("hex")}  ${file}\\n`);',
       "",
     ].join("\n"),
   );
-  await writeFile(join(bin, "sha256sum"), `#!/bin/sh\nexec "${process.execPath}" "${sha256Helper}" "$1"\n`, {
+  await writeFile(join(bin, "sha256sum"), `#!/bin/sh\nexec "${process.execPath}" "${sha256Helper}" "$@"\n`, {
     mode: 0o755,
   });
 
@@ -356,6 +361,9 @@ test("parseBootstrapOutput refuses a ready line with an unusable port", () => {
   assert.equal(ready({ ...valid, port: 41234.5 }).ready, null, "a fractional port is not a port");
   assert.equal(ready({ ...valid, port: "41234" }).ready, null, "a string port is not a port");
   assert.equal(ready({ ...valid, hostId: "" }).ready, null);
+  assert.equal(ready({ ...valid, port: 65536 }).ready, null);
+  assert.equal(ready({ ...valid, host: "0.0.0.0" }).ready, null);
+  assert.equal(ready({ ...valid, host: "example.com" }).ready, null);
   assert.equal(parseBootstrapOutput("PI_HOST_READY {not json").ready, null);
 
   // The pairing line tolerates a missing expiry rather than dropping the token.
@@ -363,3 +371,60 @@ test("parseBootstrapOutput refuses a ready line with an unusable port", () => {
   assert.deepEqual(pairing.pairing, { token: "ppt1.abc", expiresAt: 0 });
   assert.equal(parseBootstrapOutput('PI_HOST_PAIRING_TOKEN {"expiresAt":1}').pairing, null);
 });
+
+async function seedVerifiedInstall(root, sandbox) {
+  const base = join(sandbox.home, ".pi-desktop/pi-host");
+  const current = join(base, "current");
+  await mkdir(join(current, "bin"), { recursive: true });
+  await copyFile(join(root, "bin/node"), join(current, "bin/node"));
+  await copyFile(fileURLToPath(new URL("../../pi-host/scripts/install.sh", import.meta.url)), join(current, "install.sh"));
+  await chmod(join(current, "install.sh"), 0o755);
+  const files = ["bin/node", "bin/pi-host", "bin/pi-desktop-host-core", "pi-host.js", "install.sh"];
+  for (const file of ["bin/pi-host", "bin/pi-desktop-host-core", "pi-host.js"]) {
+    await writeFile(join(current, file), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  }
+  const manifest = (await Promise.all(files.map(async (file) => `${createHash("sha256").update(await readFile(join(current, file))).digest("hex")}  ${file}\n`))).join("");
+  await writeFile(join(current, "SHA256SUMS"), manifest);
+  const manifestDigest = createHash("sha256").update(manifest).digest("hex");
+  await writeFile(join(base, ".release.sha256"), `${VERSION} ${sandbox.digest} ${manifestDigest}\n`);
+  await writeFile(join(root, "bin/curl"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  return { base, current };
+}
+
+test("a fully verified release is reused without a download", async () => {
+  const { dir, cleanup } = await tempDir("pi-host-reuse-");
+  try {
+    const sandbox = await prepareSandbox(dir);
+    const { current } = await seedVerifiedInstall(dir, sandbox);
+    // Any accidental system Node dependency must fail this scenario.
+    await writeFile(join(dir, "bin/node"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const script = join(dir, "bootstrap.sh");
+    await writeFile(script, buildBootstrapScript(scriptInput({ expectedSha256: sandbox.digest })));
+    const result = parseBootstrapOutput(runScript(script, sandbox.env));
+    assert.deepEqual(result.steps, ["reuse", "start", "await-ready", "ok"]);
+    assert.equal(result.ready?.port, 41234);
+    assert.equal(result.pairing?.token, "ppt1.stub");
+    assert.equal(existsSync(join(current, ".release.sha256")), false);
+  } finally { await cleanup(); }
+});
+
+for (const kind of ["damaged", "different-release", "changed-manifest"]) {
+  test(`refuses ${kind} reuse and preserves installed contents on download failure`, async () => {
+    const { dir, cleanup } = await tempDir("pi-host-reuse-refused-");
+    try {
+      const sandbox = await prepareSandbox(dir);
+      const { current } = await seedVerifiedInstall(dir, sandbox);
+      if (kind === "damaged") await writeFile(join(current, "pi-host.js"), "damaged");
+      if (kind === "changed-manifest") await writeFile(join(current, "SHA256SUMS"), "tampered manifest");
+      const before = await readFile(join(current, "pi-host.js"));
+      const script = join(dir, "bootstrap.sh");
+      await writeFile(script, buildBootstrapScript(scriptInput({ expectedSha256: kind === "different-release" ? DIGEST : sandbox.digest })));
+      assert.throws(() => runScript(script, sandbox.env), (error) => {
+        assert.match(String(error.stderr), /PI_HOST_BOOTSTRAP_FAILED download-failed/);
+        assert.ok(!String(error.stdout).includes("PI_HOST_BOOTSTRAP reuse"));
+        return true;
+      });
+      assert.deepEqual(await readFile(join(current, "pi-host.js")), before);
+    } finally { await cleanup(); }
+  });
+}

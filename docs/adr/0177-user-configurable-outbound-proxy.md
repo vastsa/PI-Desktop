@@ -52,6 +52,11 @@ A single Settings control should apply one proxy to app-owned traffic.
    `localhost,127.0.0.1,::1,<local>` so loopback MCP and local models stay
    direct.
 
+For host-core curl in every proxy mode, Windows builds use Schannel's
+best-effort revocation mode when the installed curl advertises it. This
+tolerates unavailable or offline revocation distribution points while keeping
+certificate verification on.
+
 5. **Not rewritten**: workspace Bash (host-core spawn env strips proxy
    keys so credentials cannot leak into `env`), and the system browser used
    for OAuth (`shell.openExternal`). Plugin utility processes keep their

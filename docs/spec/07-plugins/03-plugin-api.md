@@ -264,6 +264,7 @@ pi.fs.readPreview(pathFromRoot: string): Promise<{
   size: number
 }>
 pi.fs.openDefault(pathFromRoot: string): Promise<void>
+pi.fs.openInBrowser(pathFromRoot: string): Promise<void>
 pi.fs.reveal(pathFromRoot: string): Promise<void>
 pi.fs.writeText(pathFromRoot: string, content: string): Promise<void>
 pi.fs.glob(pattern: string): Promise<string[]>
@@ -297,10 +298,20 @@ returns `text` (capped at 512 KiB), `image` (capped at 5 MiB, as a data URL),
 associated application. It uses the same `fs.read` root, symlink, protected-path,
 deny-list, and scope checks as `fs.readText`; directories are rejected. The host
 audits the operation. A path is root-relative by default, and an absolute path is
-accepted only by this action and `fs.reveal` (no other mode takes one) when it lies
+accepted only by `fs.openDefault`, `fs.openInBrowser`, and `fs.reveal` (no other mode takes one) when it lies
 inside a registered folder root of the open project — which then becomes the
 containment base for the request (ADR 0249 §5, ADR 0264). That is the shape a view
 uses to name a file in a project folder other than the primary one.
+
+`fs.openInBrowser` opens one existing `.html`, `.htm`, or `.xhtml` file in a new
+resource tab in the active local session's bundled work-panel Browser. It uses
+the same `fs.read` root, symlink, protected-path, deny-list, and scope checks as
+`fs.openDefault`; directories and other file types are rejected. An absolute
+path is accepted only when it lies inside a registered folder root of the open
+project, with the matched folder as the containment base. The Browser plugin
+must be enabled. This host-mediated preview does not grant `browser.cdp` or expose
+Browser actions or page contents to the caller. The Browser itself retains its
+existing local-file navigation policy (ADR 0328).
 
 `fs.reveal` reveals one existing readable file in the operating system's file
 manager and selects it when the platform supports that behavior. It uses the
@@ -531,7 +542,10 @@ pi.session.setAutoTitle(input: {
 ```
 
 Context is returned only for an active session whose title source is still
-`default`. The host does not return attachments, tool calls, later turns, or
+`default`. That source covers both a new session's placeholder and the
+deterministic first-prompt fallback the core writes itself, so a plugin must
+expect `expectedTitle` to be the current derived text rather than a localized
+placeholder. The host does not return attachments, tool calls, later turns, or
 the rest of the transcript. Title updates accept 1–80 Unicode code points and
 use the exact `expectedTitle` as a compare-and-set; a manual rename or another
 update makes the result `{ updated: false }`. Both methods require
@@ -800,6 +814,7 @@ hrefs (D330 / ADR 0168). Other schemes fail with `INVALID_ARGUMENT`.
 
 ### browser (requires `browser.cdp`)
 ```ts
+pi.browser.reveal(): Promise<void>
 pi.browser.navigate(input: { url?: string; path?: string }): Promise<BrowserState | null>
 pi.browser.action(input: { action: "back" | "forward" | "reload" | "stop" }): Promise<void>
 pi.browser.setBounds(hole: { x: number; y: number; width: number; height: number }): Promise<unknown>
@@ -820,6 +835,10 @@ redirects; it does not wait for slow images or subframes. `browser:state` report
 loading immediately and optionally includes `loadError` for failed navigation.
 Optional `sessionId` and `tabId` identify the host-owned work-panel destination;
 plugins do not select these identities through navigation arguments.
+With the high-risk `browser.cdp` permission, `navigate` may open an existing
+local file through an absolute path or `file:` URL. Relative paths remain
+workspace-scoped. A local file page may navigate to other existing local files;
+web pages retain only the prior in-workspace file-navigation allowance.
 
 The current guest page is a host-owned `WebContentsView` (`persist:work-browser`).
 Each resource tab retains its own page. A navigation for a background session is
@@ -832,8 +851,21 @@ storage, target, and network-interception methods fail with
 `plugins.execute` `sessionId`, not from plugin arguments (D333 / ADR 0170).
 Page operations (`navigate`, `action`, `openExternal`, `getState`, snapshot,
 screenshot, and CDP calls) are available only while the Browser view is
-visible. Calls made while it is hidden fail with `UNAVAILABLE`; use
-`BrowserPreview` to ask the host to reveal the Browser view before continuing.
+visible. `reveal()` asks the host to activate the Browser tab for the calling
+session and resolves only after that session's view is visible. A background
+session never takes focus; if it cannot become visible, `reveal()` fails with
+`UNAVAILABLE`. The bundled Browser agent tool calls `reveal()` before each
+operation. `BrowserPreview` remains the live-reloading workspace-file preview.
+
+Full-page `screenshot` captures are proportionally scaled to no more than
+1280×2048 output pixels. Viewport screenshots and raw `Page.captureScreenshot`
+CDP calls retain their existing dimensions.
+
+Screenshot captures, including raw `Page.captureScreenshot` CDP calls, have a
+30-second host-side deadline. A capture that exceeds it fails with `TIMEOUT`;
+the host detaches the stalled CDP session and releases that page's capture
+queue so a later capture can reattach and proceed. Other CDP methods retain
+their existing timeout behavior.
 
 `getHistory` returns newest-first entries explicitly recorded by the host, with
 text and images interleaved in capture order. Content written through
@@ -892,8 +924,36 @@ pi.net.fetch(input: {
  headers?: Record<string, string>
  body?: string
  timeoutMs?: number
+ redirect?: "follow" | "error" | "manual"
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
+
+
+`redirect` is optional: omitted or `follow` preserves the existing policy (up to
+five followed 3xx responses with Location, relative to the current URL, each
+checked against the granted egress policy). Existing method/header/body handling
+is unchanged; this is not a promise of browser Fetch redirect rewriting.
+`manual` returns the first response's status, headers (including Location) and
+body without visiting its target. `error` rejects **any 300–399 response** with
+`REDIRECT_DISALLOWED`, even without Location; it never visits the target. Other
+statuses, including 429, remain normal responses. In follow mode a 3xx without
+Location is returned unchanged; a loop exceeds the five-hop cap with
+`UNAVAILABLE`. One timeout covers the whole chain and response body (`TIMEOUT`).
+Invalid redirect values fail with `INVALID_ARGUMENT` before network I/O.
+
+The host owns redirect handling for both the default and injected single-hop
+transport. Every followed hop still passes the existing permission/egress
+checks; these modes grant no additional network access. Policy refusals are
+audited without response bodies or headers.
+
+Before using the option on a potentially older host, query
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: string[] }>` and require
+the desired mode. This read-only query needs no network permission and performs
+no network I/O. A missing method, rejected query, or absent mode means
+unsupported: do not send the request. Older hosts may silently ignore unknown
+fetch options, so passing `redirect` alone is **not** capability detection.
+This API is unreleased; released 0.17.0 and older do not advertise it.
+No same-origin-only mode is introduced by this change.
 
 `fetch` answers with the upstream response unchanged — `status`, `headers`, and
 `bodyText` — so a `429` is data your plugin can read, `Retry-After` included,
@@ -1239,7 +1299,7 @@ The host-owned preload forwards only fixed channels to the plugin runtime:
 | `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
 | `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list` | `ui.theme` |
 | `models.list` | `models.list` |
-| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.writeText` | `fs.write` |
 | `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
@@ -1280,6 +1340,7 @@ Any of the following calls must be logged for audit:
 - fs.stat, fs.readRange, fs.remove, fs.requestDirectory, and every refused fs call (with its path and
   `errorCode`), plus each consent answer and why it was asked (`scope` / `rate`)
 - fs.openDefault (with its root-relative path and whether the OS open succeeded)
+- fs.openInBrowser (with its root-relative path and whether the Browser open was accepted)
 - fs.reveal (with its root-relative path and whether the file manager reveal succeeded)
 - fs.readPreview (with its root-relative path and classified `kind`)
 - execute after agent.registerTool (including tools discovered from a plugin's
@@ -1317,7 +1378,7 @@ Log fields:
 The desktop plugin runtime now implements the MVP host API surface used by local and marketplace plugins:
 
 - `app.*`, `plugin.*`, `commands.*`, `ui.*`, `workspace.*`
-- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
+- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.openInBrowser` / `fs.reveal` /
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`,
   bounded by `manifest.fs` (ADR 0088)
 - `agent.registerTool` / `unregisterTool` / `agent.complete`
@@ -1349,3 +1410,9 @@ one at runtime.
 
 All high-risk entry points assert declared+granted permissions and emit audit log lines.
 Plugin panels no longer receive the full `pi` object; they use `window.pluginBridge.invoke`.
+
+Renderer ES modules may import `react/jsx-runtime` or
+`react/jsx-dev-runtime` for automatic JSX. The host import map exposes both of
+its runtimes alongside `react`, `react-dom`, and `react-dom/client`, before
+evaluating plugin entries. This keeps compiled JSX, hooks and context on the
+host React instance in production and development builds.

@@ -16,7 +16,7 @@ pub(crate) use capture_impl::{
     capture, global_instruction_path_for_sync, remove_instruction_file, write_instruction_file,
 };
 #[cfg(test)]
-pub(crate) use capture_impl::{capture_instructions, capture_memory, capture_projects};
+pub(crate) use capture_impl::{capture_instructions, capture_memory};
 
 pub const DOMAIN_APPLICATION: &str = "application";
 pub const DOMAIN_PROVIDERS: &str = "providers";
@@ -24,7 +24,6 @@ pub const DOMAIN_MCP: &str = "mcp";
 pub const DOMAIN_SKILLS: &str = "skills";
 pub const DOMAIN_SUBAGENTS: &str = "subagents";
 pub const DOMAIN_INSTRUCTIONS: &str = "instructions";
-pub const DOMAIN_PROJECTS: &str = "projects";
 pub const DOMAIN_PLUGINS: &str = "plugins";
 pub const DOMAIN_AUTOMATION: &str = "automation";
 pub const DOMAIN_MEMORY: &str = "memory";
@@ -34,6 +33,7 @@ pub(crate) const PORTABLE_APPLICATION_FIELDS: &[&str] = &[
     "language",
     "fontFamily",
     "fontScale",
+    "showThinking",
     "thinkingDisplayMode",
     "enterToSend",
     "largePasteThreshold",
@@ -59,14 +59,13 @@ const PROJECT_IDENTITY_NAMESPACE: &str = "configSyncIdentities";
 const PROJECT_IDENTITY_KEY: &str = "projects";
 const PROJECT_GROUP_IDENTITY_KEY: &str = "groups";
 
-pub const ALL_DOMAINS: [&str; 10] = [
+pub const ALL_DOMAINS: [&str; 9] = [
     DOMAIN_APPLICATION,
     DOMAIN_PROVIDERS,
     DOMAIN_MCP,
     DOMAIN_SKILLS,
     DOMAIN_SUBAGENTS,
     DOMAIN_INSTRUCTIONS,
-    DOMAIN_PROJECTS,
     DOMAIN_PLUGINS,
     DOMAIN_AUTOMATION,
     DOMAIN_MEMORY,
@@ -99,6 +98,7 @@ pub const DOMAIN_ADAPTERS: &[DomainAdapterSpec] = &[
             "language",
             "fontFamily",
             "fontScale",
+            "showThinking",
             "thinkingDisplayMode",
             "enterToSend",
             "keybindings",
@@ -206,24 +206,6 @@ pub const DOMAIN_ADAPTERS: &[DomainAdapterSpec] = &[
         merge_granularity: "one file or group text",
         activation_policy: "approval required before write",
         recovery_policy: "atomic file replacement journal",
-    },
-    DomainAdapterSpec {
-        domain: DOMAIN_PROJECTS,
-        schema_version: 1,
-        exportable_fields: &[
-            "logical identity",
-            "name",
-            "group roots",
-            "ordering",
-            "pinned",
-        ],
-        secret_fields: &[],
-        local_overlays: &["absolute folder bindings"],
-        identity: "host-assigned logical project/group id",
-        references: &["root mappings"],
-        merge_granularity: "project or ordered group",
-        activation_policy: "mapping and approval required",
-        recovery_policy: "database import journal",
     },
     DomainAdapterSpec {
         domain: DOMAIN_PLUGINS,
@@ -348,7 +330,7 @@ impl CategorySelection {
     }
 
     pub fn is_selected(&self, domain: &str) -> bool {
-        self.0.get(domain).copied().unwrap_or(true)
+        ALL_DOMAINS.contains(&domain) && self.0.get(domain).copied().unwrap_or(true)
     }
 
     pub fn include_secrets(&self, requested: bool) -> bool {
@@ -585,6 +567,22 @@ pub fn snapshot_digest(snapshot: &LocalSnapshot) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Remove retired domains from decoded revisions and local recovery state.
+/// Resource references are projected with the retained entities, after remote
+/// readers have validated the complete authenticated manifest.
+pub(crate) fn retain_supported_entities(manifest: &mut RevisionManifest) {
+    manifest
+        .entities
+        .retain(|entity| adapter_for(&entity.domain).is_some());
+    manifest.resource_ids = manifest
+        .entities
+        .iter()
+        .flat_map(|entity| entity.resource_ids.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+}
+
 pub fn preview(snapshot: &LocalSnapshot, selection: &CategorySelection) -> PreviewCounts {
     let mut counts = PreviewCounts::default();
     let mut by_category: BTreeMap<String, CategoryPreview> = BTreeMap::new();
@@ -628,6 +626,15 @@ mod tests {
     fn adapter_registry_covers_every_portable_domain() {
         assert_eq!(DOMAIN_ADAPTERS.len(), ALL_DOMAINS.len());
         assert!(!PORTABLE_APPLICATION_FIELDS.contains(&"defaultPermissionMode"));
+        // The explicit reasoning-display boolean and its legacy fallback are
+        // both portable, and both are advertised by the application adapter.
+        assert!(PORTABLE_APPLICATION_FIELDS.contains(&"showThinking"));
+        assert!(PORTABLE_APPLICATION_FIELDS.contains(&"thinkingDisplayMode"));
+        let application = adapter_for(DOMAIN_APPLICATION).expect("application adapter");
+        assert!(application.exportable_fields.contains(&"showThinking"));
+        assert!(application
+            .exportable_fields
+            .contains(&"thinkingDisplayMode"));
         for domain in ALL_DOMAINS {
             let adapter = adapter_for(domain).expect("portable domain adapter");
             assert_eq!(adapter.schema_version, 1);
@@ -719,23 +726,28 @@ mod tests {
             .ensure_project(&project.to_string_lossy(), false)
             .unwrap();
 
-        let first = capture_projects(&mut state, &ProjectIdentityOverrides::default()).unwrap();
-        let second = capture_projects(&mut state, &ProjectIdentityOverrides::default()).unwrap();
-        assert_eq!(
-            first[0].payload["logicalId"],
-            second[0].payload["logicalId"]
-        );
-        assert!(first[0].payload["logicalId"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("project:")));
         let stored_path = state.db.list_projects().unwrap()[0].path.clone();
+        let first = project_scope(
+            &mut state,
+            &stored_path,
+            &ProjectIdentityOverrides::default(),
+        )
+        .unwrap();
+        let second = project_scope(
+            &mut state,
+            &stored_path,
+            &ProjectIdentityOverrides::default(),
+        )
+        .unwrap();
+        assert_eq!(first.0, second.0);
+        assert!(first.0.starts_with("project:"));
 
         let mut overrides = ProjectIdentityOverrides::default();
         overrides
             .project_ids
-            .insert(stored_path, "project:from-other-device".into());
-        let mapped = capture_projects(&mut state, &overrides).unwrap();
-        assert_eq!(mapped[0].payload["logicalId"], "project:from-other-device");
+            .insert(stored_path.clone(), "project:from-other-device".into());
+        let mapped = project_scope(&mut state, &stored_path, &overrides).unwrap();
+        assert_eq!(mapped.0, "project:from-other-device");
     }
 
     #[test]

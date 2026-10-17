@@ -83,17 +83,18 @@ export type BuiltinSkillInput = {
   workspacePath?: string | null;
   /** Directories of currently loaded plugins, used to detect a dev workspace. */
   pluginPaths?: string[];
+  /** User-disabled ids are withheld from the agent and composer catalog. */
+  disabledIds?: readonly string[];
 };
 
-/**
- * Catalog entries for the built-in skills that apply to the given session, read
- * fresh so a packaged update takes effect without a restart.
- */
-export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
-  const ids = [IMAGE_GENERATION_SKILL_ID];
-  if (isPluginWorkspace(input.workspacePath, input.pluginPaths)) ids.push(PLUGIN_DEV_SKILL_ID);
-  return ids.flatMap((id) => {
-    const file = id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE;
+const BUILTIN_SKILL_FILES = [
+  [IMAGE_GENERATION_SKILL_ID, IMAGE_GENERATION_SKILL_FILE],
+  [PLUGIN_DEV_SKILL_ID, PLUGIN_DEV_SKILL_FILE],
+] as const;
+
+/** All bundled skill entries, including ones whose applicability is conditional. */
+export function builtinSkillCatalog(): PluginSkillDef[] {
+  return BUILTIN_SKILL_FILES.flatMap(([id, file]) => {
     const raw = readBuiltinSkill(file);
     if (!raw?.raw.trim()) return [];
     const parsed = parseSkillFrontmatter(raw.raw);
@@ -102,12 +103,39 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
 }
 
 /**
+ * Catalog entries for the built-in skills that apply to the given session, read
+ * fresh so a packaged update takes effect without a restart.
+ */
+export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
+  const ids = [IMAGE_GENERATION_SKILL_ID];
+  if (isPluginWorkspace(input.workspacePath, input.pluginPaths)) ids.push(PLUGIN_DEV_SKILL_ID);
+  const activeIds = new Set(ids);
+  const disabled = new Set(input.disabledIds ?? []);
+  return builtinSkillCatalog().filter(
+    (skill) => activeIds.has(skill.id) && !disabled.has(skill.id),
+  );
+}
+
+/** Refuse a stale on-demand load after a bundled skill has been switched off. */
+export async function assertBuiltinSkillEnabled(
+  id: string,
+  loadDisabledIds: () => Promise<string[]>,
+): Promise<void> {
+  if (id !== IMAGE_GENERATION_SKILL_ID && id !== PLUGIN_DEV_SKILL_ID) return;
+  if ((await loadDisabledIds()).includes(id)) {
+    throw new Error(`Built-in skill "${id}" is disabled in Settings`);
+  }
+}
+
+/**
  * Load a built-in skill body for the `Skill` tool. Returns null for any id the
  * host does not ship, which is the caller's cue to try the plugin registry.
  */
 export function loadBuiltinSkillBody(id: string): LoadedSkillDocument | null {
   if (id !== PLUGIN_DEV_SKILL_ID && id !== IMAGE_GENERATION_SKILL_ID) return null;
-  const raw = readBuiltinSkill(id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE);
+  const raw = readBuiltinSkill(
+    id === IMAGE_GENERATION_SKILL_ID ? IMAGE_GENERATION_SKILL_FILE : PLUGIN_DEV_SKILL_FILE,
+  );
   if (!raw?.raw.trim()) return null;
   const parsed = parseSkillFrontmatter(raw.raw);
   if (!parsed.body) return null;

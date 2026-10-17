@@ -1,8 +1,12 @@
 # ADR 0301: Explicit append-only WebDAV compatibility mode
 
-- Status: Accepted for implementation
+- Status: Superseded by [S3-only configuration backup and sync](s3-only-configuration-backup-sync.md)
 - Date: 2026-09-22
 - Amends: ADR 0300
+
+This document records the removed WebDAV compatibility design. It is not a
+current contract: S3 requires reliable conditional writes, and there is no
+append-only fallback. Existing WebDAV data is preserved without migration.
 
 ## Context
 

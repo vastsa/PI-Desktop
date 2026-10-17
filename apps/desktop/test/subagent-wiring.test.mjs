@@ -34,7 +34,13 @@ test("every launch resolves the subagent catalog and its pinned models", () => {
   assert.match(sessionLaunchSource, /resolveSubagentProviders,/);
   // The catalog is re-read per prompt, registry documents included, so an edit
   // in the UI takes effect on the next turn with no restart (D202).
-  assert.match(sessionLaunchSource, /await loadSubagentDefinitions\(projectPath, \{/);
+  // A remote workspace has no local instruction root: project files that merely
+  // share the remote path must never be scanned on this machine.
+  assert.match(
+    sessionLaunchSource,
+    /const localInstructionRoot = remoteWorkspace \? undefined : projectPath/,
+  );
+  assert.match(sessionLaunchSource, /await loadSubagentDefinitions\(localInstructionRoot, \{/);
   assert.match(
     sessionLaunchSource,
     /userDocuments: await activeUserSubagentDocuments\(projectPath\),/,

@@ -152,7 +152,8 @@ Renderer、Electron、host 和 agent 应传播这些标识符。
 应用仍会保留产品功能所需的有界时长元数据：
 `ToolsExecuteResult.duration_ms`、成绩单中的 `toolDurationMs` 和
 `responseDurationMs`、委托任务的开始/完成时间戳，以及有界的 provider
-诊断信息。这些值用于成绩单、上下文检查器、吞吐量展示和审计记录；
+诊断信息。完整助理响应在可用时使用 pi-ai 1.1.0 的单调请求耗时；
+中断响应仍使用 sidecar 秒表估算。这些值用于成绩单、上下文检查器、吞吐量展示和审计记录；
 它们不会创建 timing 日志行。
 
 host-core 的 audit 行可以保留既有的权限和执行时长字段用于取证检查。

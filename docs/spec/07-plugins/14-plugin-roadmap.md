@@ -63,7 +63,9 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - Inter-plugin message bus ✅ — declared topics, `pi.bus.*` (D178)
 - Theme plugins ✅ — plugins ship CSS files (D175)
 - Enterprise private sources (still planned)
-- Marketplace reviews / quality score (optional, still planned)
+- Marketplace reviews / quality score (partial: the desktop reads public
+  summaries and reviews anonymously and links out to the centre to write;
+  accounts, writing, voting, and reporting live on the centre's web page)
 
 ### R7 — Agent extensions (v1.1 ✅, D387 / D388)
 - v1: ExtensionAPI adapter in the Agent sidecar; tools, commands, lifecycle and

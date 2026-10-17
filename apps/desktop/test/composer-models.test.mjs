@@ -63,6 +63,56 @@ test("configured models remain selectable when discovery is unavailable", () => 
   assert.equal(models[0].displayName, "my-model-v2");
 });
 
+test("Composer context labels use configured limits and retain them without discovery", () => {
+  const provider = {
+    id: "space-bunny",
+    models: [
+      {
+        ...binding("claude-opus-5-5"),
+        contextWindow: 500_000,
+        contextWindowSource: "user",
+      },
+    ],
+  };
+  const [discovered] = composerModelsForProvider(provider, [
+    { ...model("claude-opus-5-5"), contextWindow: 1_000_000 },
+  ]);
+
+  assert.equal(discovered.contextWindow, 500_000);
+
+  const [catalogOwned] = composerModelsForProvider(
+    {
+      id: "space-bunny",
+      models: [
+        {
+          ...binding("catalog-model"),
+          contextWindow: 128_000,
+          contextWindowSource: "catalog",
+        },
+      ],
+    },
+    [{ ...model("catalog-model"), contextWindow: 1_000_000 }],
+  );
+
+  assert.equal(catalogOwned.contextWindow, 1_000_000);
+
+  const [undiscovered] = composerModelsForProvider(
+    {
+      id: "space-bunny",
+      models: [
+        {
+          ...binding("custom-model"),
+          contextWindow: 333_333,
+          contextWindowSource: "user",
+        },
+      ],
+    },
+    undefined,
+  );
+
+  assert.equal(undiscovered.contextWindow, 333_333);
+});
+
 test("unmatched models expose the full thinking ladder unless a binding overrides it", () => {
   const provider = {
     id: "custom",

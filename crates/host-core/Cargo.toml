@@ -18,6 +18,7 @@ globset = "0.4"
 hex = "0.4"
 ignore = "0.4"
 regex = "1"
+ring = "0.17"
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -37,11 +38,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Globalization",
     "Win32_Storage_FileSystem",
     "Win32_System_JobObjects",
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",
+    "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

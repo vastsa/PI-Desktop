@@ -435,7 +435,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
       bigRead("t2", BIG),
       delegateAssistant("a3", "summary", "call-1"),
     ];
-    const messages = seed(rows, 1050);
+    const messages = seed(rows, 1200);
 
     expect(messages[0]).toMatchObject({
       role: "user",
@@ -482,7 +482,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
       ),
     ).toBe(true);
     expectWellFormedPairs(messages);
-    expect(seededTokens(messages)).toBeLessThan(1050);
+    expect(seededTokens(messages)).toBeLessThan(1200);
   });
 
   it("drops parallel calls on one carrier as one unit", () => {
@@ -539,7 +539,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
       bigRead("t1", MEDIUM),
       delegateAssistant("a3", "done", "call-1"),
     ];
-    const messages = seed(rows, 520);
+    const messages = seed(rows, 600);
 
     // The older plain text survives while the newer tool pair goes first.
     expect(
@@ -553,7 +553,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
     ).toBe(true);
     expect(messages.some((message) => message.role === "toolResult")).toBe(false);
     expectWellFormedPairs(messages);
-    expect(seededTokens(messages)).toBeLessThan(520);
+    expect(seededTokens(messages)).toBeLessThan(600);
   });
 
   it("drops whole older messages once no tool pairs remain", () => {
@@ -562,7 +562,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
       delegateAssistant("a2", `mid:${"b".repeat(2000)}`, "call-1"),
       delegateAssistant("a3", `new:${"c".repeat(2000)}`, "call-1"),
     ];
-    const messages = seed(rows, 1010);
+    const messages = seed(rows, 1200);
 
     expect(messages).toHaveLength(3);
     expect(messages[0]).toMatchObject({ role: "user" });
@@ -578,7 +578,7 @@ describe("seedDelegateMessages budget truncation (ADR 0299 §7)", () => {
       `mid:${"b".repeat(2000)}`,
       `new:${"c".repeat(2000)}`,
     ]);
-    expect(seededTokens(messages)).toBeLessThan(1010);
+    expect(seededTokens(messages)).toBeLessThan(1200);
   });
 
   it("seeds the brief alone when nothing else fits", () => {

@@ -90,7 +90,7 @@ export function ImportOption({
   label: string;
   value: string;
   options: { id: string; label: string }[];
-  /** Explains the choice, reached from the label's help icon. */
+  /** Explains the choice from the label's help icon. */
   hint?: string;
   onChange: (id: string) => void;
 }) {
@@ -223,8 +223,7 @@ export function ImportRow({
 
 /**
  * Pre-scan state: what the scan will look at, and the action that starts it.
- * Empty states carry no filler, so a kind without a description shows only the
- * glyph and the action.
+ * Keep the explanation visible so users do not have to discover it in a tooltip.
  */
 export function ImportIdle({
   description,
@@ -238,19 +237,17 @@ export function ImportIdle({
   scanning: boolean;
 }) {
   const { t } = useTranslation();
-  const help = [description, note].filter(Boolean).join(" · ");
+  const copy = [description, note].filter(Boolean).join(" · ");
   return (
     <div className="settings-panel import-panel">
       <div className="import-idle">
         <span className="import-idle-glyph" aria-hidden>
           <IconDownload size={20} />
         </span>
-        <div className="import-idle-actions">
-          <Button variant="secondary" disabled={scanning} onClick={onScan}>
-            {scanning ? t("settings.importScanning") : t("settings.importScan")}
-          </Button>
-          {help ? <HelpIcon label={help} /> : null}
-        </div>
+        {copy ? <p className="import-idle-description">{copy}</p> : null}
+        <Button variant="secondary" disabled={scanning} onClick={onScan}>
+          {scanning ? t("settings.importScanning") : t("settings.importScan")}
+        </Button>
       </div>
     </div>
   );

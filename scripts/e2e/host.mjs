@@ -61,9 +61,11 @@ function failPending(pending, error) {
 }
 
 export class Host {
-  constructor(binary, dataDir) {
+  constructor(binary, dataDir, { env = {}, quiet = false } = {}) {
     this.binary = binary;
     this.dataDir = dataDir;
+    this.env = { ...env };
+    this.quiet = quiet;
     this.child = null;
     this.stdoutReader = null;
     this.pending = new Map();
@@ -82,13 +84,13 @@ export class Host {
     const child = spawn(this.binary, [], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-      env: { ...process.env, PI_DESKTOP_DATA_DIR: this.dataDir },
+      env: { ...process.env, ...this.env, PI_DESKTOP_DATA_DIR: this.dataDir },
     });
     this.child = child;
     this.exitPromise = new Promise((resolveExit) => {
       child.once("exit", (code, signal) => {
         this.exited = true;
-        const suffix = this.stderr.trim()
+        const suffix = !this.quiet && this.stderr.trim()
           ? " stderr=" + this.stderr.trim().slice(-500)
           : "";
         failPending(
@@ -105,14 +107,14 @@ export class Host {
     });
     child.stderr.on("data", (chunk) => {
       this.stderr += String(chunk);
-      if (process.env.DEBUG_HOST) process.stderr.write(chunk);
+      if (!this.quiet && process.env.DEBUG_HOST) process.stderr.write(chunk);
     });
     this.stdoutReader = readNdjsonLines(child.stdout, (line) => {
       let message;
       try {
         message = JSON.parse(line);
       } catch {
-        if (process.env.DEBUG_HOST) console.error("host non-JSON stdout: " + line);
+        if (!this.quiet && process.env.DEBUG_HOST) console.error("host non-JSON stdout: " + line);
         return;
       }
       if (message.id !== undefined && message.id !== null) {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
+import { sessionAllows } from "../../../../lib/remote-session-safety";
 import { api } from "../../../../lib/api";
 import { useAppStore } from "../../../../stores/app-store";
 import { isImageReference } from "../image-attachments";
@@ -29,10 +30,12 @@ export function useComposerImagePreview({
 }) {
   const currentSessionId = useAppStore((s) => s.activeSessionId ?? "");
   const workspaceRoot = useAppStore((s) => s.workspace?.path ?? null);
+  const attachmentsAllowed = useAppStore((s) => sessionAllows(s.sessions.find((item) => item.id === sessionId) ?? (sessionId.startsWith("remote:") ? { id: sessionId } : undefined), "canAttach"));
   const images = useMemo(() => references.filter((reference) =>
+    attachmentsAllowed &&
     reference.sessionId === sessionId &&
     isImageReference(reference),
-  ), [references, sessionId]);
+  ), [references, sessionId, attachmentsAllowed]);
   const [request, setRequest] = useState<PreviewRequest | null>(null);
   const [generation, setGeneration] = useState(0);
   const [loaded, setLoaded] = useState<{
@@ -49,7 +52,7 @@ export function useComposerImagePreview({
     };
     publish();
     for (const reference of images) {
-      void api.fsReadImageDataUrl(reference.path, reference.mimeType).then(
+      void api.fsReadImageDataUrl(reference.path, reference.mimeType, sessionId ?? undefined).then(
         (result) => {
           sources.set(reference.id, result.kind === "image" && result.dataUrl
             ? { status: "ready", src: result.dataUrl }

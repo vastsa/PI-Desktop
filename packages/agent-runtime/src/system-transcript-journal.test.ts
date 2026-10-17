@@ -45,6 +45,51 @@ describe("model system journal", () => {
     expect(entries.map((item) => item.message.role)).toEqual(["system", "user"]);
   });
 
+  it("does not persist a cloned system event twice, but keeps the same payload at a new timestamp", async () => {
+    const journal = new SystemTranscriptJournal();
+    const entries: MessageEntry[] = [];
+    const rows: UiMessage[] = [];
+    const append = async (row: UiMessage) => { rows.push(row); };
+
+    await journal.persist([initial], entries, append);
+    await journal.persist(structuredClone([initial]), entries, append);
+    await journal.persist([{ ...initial, timestamp: initial.timestamp + 1 }], entries, append);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => readSystemMessage(row.modelSystem?.messageJson))).toEqual([
+      initial,
+      { ...initial, timestamp: initial.timestamp + 1 },
+    ]);
+    expect(entries).toHaveLength(2);
+  });
+
+  it("collapses exact duplicate system rows during replay without dropping distinct events", () => {
+    const duplicate = { ...userRow, id: "system-duplicate", role: "system" as const, modelSystem: {
+      version: 1 as const, messageJson: JSON.stringify(initial), beforeMessageId: userRow.id,
+    } };
+    const distinct = { ...duplicate, id: "system-distinct", modelSystem: {
+      ...duplicate.modelSystem,
+      messageJson: JSON.stringify({ ...initial, timestamp: initial.timestamp + 1 }),
+    } };
+
+    const replay = orderSystemRows([duplicate, { ...duplicate, id: "system-copy" }, distinct, userRow]);
+    expect(replay.filter((row) => row.modelSystem)).toHaveLength(2);
+    expect(replay.map((row) => row.id)).toContain("system-duplicate");
+    expect(replay.map((row) => row.id)).toContain("system-distinct");
+  });
+
+  it("recognizes a reconstructed system event after restoring or remembering it", () => {
+    const restored = new SystemTranscriptJournal();
+    restored.restore({ ...userRow, id: "saved-system", role: "system", modelSystem: {
+      version: 1, messageJson: JSON.stringify(initial),
+    } });
+    expect(restored.isPersisted(structuredClone(initial))).toBe(true);
+
+    const remembered = new SystemTranscriptJournal();
+    remembered.remember(initial, "checkpoint-system");
+    expect(remembered.isPersisted(structuredClone(initial))).toBe(true);
+  });
+
   it("replaces skill sections without rewriting the old prefix", () => {
     const original = [initial, user];
     const changed = syncSystemSections(original, { runtime: "Instructions", skills: "Second skill" });

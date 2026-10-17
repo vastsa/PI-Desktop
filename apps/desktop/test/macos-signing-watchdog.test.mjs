@@ -36,6 +36,9 @@ function runWatchdog(args, { env = {}, cwd = repoRoot } = {}) {
         PI_SIGNING_HEARTBEAT_SECONDS: "",
         PI_CODESIGN_LOG: "",
         PI_CODESIGN_REAL: "",
+        PI_STAPLER_MAX_ATTEMPTS: "",
+        PI_STAPLER_RETRY_DELAY_SECONDS: "",
+        PI_XCRUN_REAL: "",
         GITHUB_STEP_SUMMARY: "",
         ...env,
       },
@@ -336,6 +339,159 @@ test(
     );
   },
 );
+
+test("the app stapler shim retries only stapler staple and preserves arguments", async (t) => {
+  const root = await makeTempDir(t);
+  const fakeBin = join(root, "fakebin");
+  const callLog = join(root, "xcrun-calls.log");
+  const invocationLog = join(root, "xcrun-invocations.log");
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(
+    join(fakeBin, "xcrun"),
+    `#!/bin/bash
+printf '<%s>\\n' "$@" >> "$PI_TEST_XCRUN_LOG"
+printf 'call\\n' >> "$PI_TEST_XCRUN_INVOCATIONS"
+if [[ "$1 $2" == "stapler staple" ]]; then
+  PI_TEST_CALLS="$(wc -l < "$PI_TEST_XCRUN_INVOCATIONS" | tr -d ' ')"
+  if (( PI_TEST_CALLS <= PI_TEST_XCRUN_FAILURES )); then
+    echo "The network connection was lost." >&2
+    exit 68
+  fi
+fi
+echo "fake xcrun completed"
+exit 0
+`,
+  );
+  await chmod(join(fakeBin, "xcrun"), 0o755);
+
+  const { status, stdout, stderr } = await runWatchdog(
+    [
+      "--label",
+      "stapler-retry",
+      "--no-codesign-shim",
+      "--",
+      "bash",
+      "-c",
+      'xcrun "$@"',
+      "bash",
+      "stapler",
+      "staple",
+      "/tmp/PI Desktop.app",
+    ],
+    {
+      env: {
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        PI_TEST_XCRUN_LOG: callLog,
+        PI_TEST_XCRUN_INVOCATIONS: invocationLog,
+        PI_TEST_XCRUN_FAILURES: "2",
+        PI_STAPLER_MAX_ATTEMPTS: "3",
+        PI_STAPLER_RETRY_DELAY_SECONDS: "0",
+      },
+    },
+  );
+
+  assert.equal(status, 0, `${stdout}\n${stderr}`);
+  assert.match(stdout, /stapler-shim=on/);
+  assert.match(stderr, /stapler staple attempt 1\/3 failed/);
+  assert.match(stderr, /stapler staple attempt 2\/3 failed/);
+  assert.equal(
+    (await readFile(callLog, "utf8")).split("\n").filter(Boolean).length,
+    9,
+    "three attempts must each preserve the three xcrun arguments",
+  );
+  assert.equal(
+    (await readFile(invocationLog, "utf8")).trim().split("\n").length,
+    3,
+  );
+  assert.ok(stdout.includes("[sign] fake xcrun completed"));
+});
+
+test("the app stapler shim fails after its configured bound", async (t) => {
+  const root = await makeTempDir(t);
+  const fakeBin = join(root, "fakebin");
+  const callLog = join(root, "xcrun-calls.log");
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(
+    join(fakeBin, "xcrun"),
+`#!/bin/bash
+printf 'call\\n' >> "$PI_TEST_XCRUN_INVOCATIONS"
+exit 68
+`,
+  );
+  await chmod(join(fakeBin, "xcrun"), 0o755);
+
+  const { status, stdout, stderr } = await runWatchdog(
+    [
+      "--label",
+      "stapler-exhausted",
+      "--no-codesign-shim",
+      "--",
+      "bash",
+      "-c",
+      "xcrun stapler staple /tmp/PI-Desktop.app",
+    ],
+    {
+      env: {
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        PI_TEST_XCRUN_INVOCATIONS: callLog,
+        PI_STAPLER_MAX_ATTEMPTS: "3",
+        PI_STAPLER_RETRY_DELAY_SECONDS: "0",
+      },
+    },
+  );
+
+  assert.equal(status, 68, `${stdout}\n${stderr}`);
+  assert.match(stdout, /stapler-shim=on/);
+  assert.equal((await readFile(callLog, "utf8")).trim().split("\n").length, 3);
+  assert.equal((stderr.match(/stapler staple attempt .* failed/g) ?? []).length, 2);
+});
+
+test("the app stapler shim passes non-stapling xcrun commands through once", async (t) => {
+  const root = await makeTempDir(t);
+  const fakeBin = join(root, "fakebin");
+  const callLog = join(root, "xcrun-calls.log");
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(
+    join(fakeBin, "xcrun"),
+    `#!/bin/bash
+printf '<%s>\\n' "$@" >> "$PI_TEST_XCRUN_LOG"
+exit 0
+`,
+  );
+  await chmod(join(fakeBin, "xcrun"), 0o755);
+
+  const { status, stdout, stderr } = await runWatchdog(
+    [
+      "--label",
+      "notarytool-passthrough",
+      "--no-codesign-shim",
+      "--",
+      "bash",
+      "-c",
+      'xcrun "$@"',
+      "bash",
+      "notarytool",
+      "submit",
+      "/tmp/PI Desktop.app",
+    ],
+    {
+      env: {
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        PI_TEST_XCRUN_LOG: callLog,
+        PI_STAPLER_MAX_ATTEMPTS: "6",
+        PI_STAPLER_RETRY_DELAY_SECONDS: "0",
+      },
+    },
+  );
+
+  assert.equal(status, 0, `${stdout}\n${stderr}`);
+  assert.deepEqual((await readFile(callLog, "utf8")).trim().split("\n"), [
+    "<notarytool>",
+    "<submit>",
+    "</tmp/PI Desktop.app>",
+  ]);
+  assert.doesNotMatch(stderr, /stapler staple attempt/);
+});
 
 test("--no-codesign-shim runs the command untouched and reports zero calls", async (t) => {
   const root = await makeTempDir(t);

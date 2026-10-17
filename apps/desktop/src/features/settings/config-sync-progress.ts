@@ -17,7 +17,6 @@ export const CONFIG_SYNC_PHASE_KEYS: Record<ConfigSyncPhase, string> = {
   merge: "settings.configSync.progress.phase.merge",
   upload: "settings.configSync.progress.phase.upload",
   apply: "settings.configSync.progress.phase.apply",
-  cleanup: "settings.configSync.progress.phase.cleanup",
 };
 
 /** What the card renders for one report. */

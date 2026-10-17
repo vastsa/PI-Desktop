@@ -45,10 +45,14 @@ const {app,BrowserWindow,ipcMain}=require('electron');
 const path=require('node:path');
 app.setPath('userData',path.join(__dirname,'profile'));
 let group={id:'website',name:'Website',primaryPath:'/fixture/website',lastOpenedAt:1,pinned:false,
- roots:[{path:'/fixture/website',name:'website',position:0},{path:'/fixture/assets',name:'assets',position:1}]};
+ roots:[{path:'/fixture/website',name:'website',position:0},{path:'/fixture/assets',name:'assets',position:1},{path:'/fixture/docs',name:'docs',position:2}]};
 ipcMain.handle('pi-desktop/project-group/list',()=>({ok:true,data:{groups:[group]}}));
 ipcMain.handle('pi-desktop/project-group/update',(_event,input)=>{
- group={...group,name:input.name,roots:input.folders.map((p,i)=>({path:p,name:path.basename(p),position:i}))};
+ // Mirrors the host: an explicit primary is promoted and stays the first root.
+ const primary=input.primary??input.folders[0];
+ const ordered=[primary,...input.folders.filter(p=>p!==primary)];
+ group={...group,name:input.name,primaryPath:primary,
+  roots:ordered.map((p,i)=>({path:p,name:path.basename(p),position:i}))};
  return {ok:true,data:{group}};
 });
 app.whenReady().then(async()=>{

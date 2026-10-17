@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { sessionAllows } from "./remote-session-safety";
+import { useSlotSessionId } from "../plugins/renderer-slots/use-slots";
 import { api } from "./api";
 import { useAppStore } from "../stores/app-store";
 
@@ -44,10 +46,16 @@ export function useReferencedImageDataUrl(
   ref: string | null | undefined,
   mimeType?: string,
 ): string | null {
-  const workspaceRoot = useAppStore((s) => s.workspace?.path ?? null);
+  const paneSessionId = useSlotSessionId();
+  const sessionId = useAppStore((s) => paneSessionId || s.activeSessionId);
+  const localToolsAllowed = useAppStore((s) => {
+    const id = paneSessionId || s.activeSessionId;
+    return sessionAllows(s.sessions.find((item) => item.id === id) ?? (id?.startsWith("remote:") ? { id } : undefined), "canUseLocalTools");
+  });
+  const workspaceRoot = useAppStore((s) => localToolsAllowed ? s.workspace?.path ?? null : null);
   const normalizedRef = typeof ref === "string" ? ref.trim() : "";
-  const requestedKey = normalizedRef && !/^(?:https?|data|blob):/i.test(normalizedRef)
-    ? cacheKey(workspaceRoot, normalizedRef, mimeType)
+  const requestedKey = localToolsAllowed && normalizedRef && !/^(?:https?|data|blob):/i.test(normalizedRef)
+    ? cacheKey(sessionId ? `${workspaceRoot ?? ""}:${sessionId}` : workspaceRoot, normalizedRef, mimeType)
     : null;
   const [resolved, setResolved] = useState<{ key: string; dataUrl: string | null }>({
     key: "", dataUrl: null,
@@ -65,7 +73,7 @@ export function useReferencedImageDataUrl(
     let current = true;
     setResolved({ key: requestedKey, dataUrl: null });
     void api
-      .fsReadImageDataUrl(normalizedRef, mimeType)
+      .fsReadImageDataUrl(normalizedRef, mimeType, sessionId)
       .then((result) => {
         const next = result.kind === "image" && result.dataUrl ? result.dataUrl : null;
         if (next) rememberDataUrl(requestedKey, next);
@@ -77,7 +85,7 @@ export function useReferencedImageDataUrl(
     return () => {
       current = false;
     };
-  }, [requestedKey, normalizedRef, mimeType]);
+  }, [requestedKey, normalizedRef, mimeType, sessionId]);
   if (!requestedKey) return null;
   const cached = dataUrlCache.get(requestedKey);
   return cached ?? (resolved.key === requestedKey ? resolved.dataUrl : null);

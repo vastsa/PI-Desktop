@@ -17,6 +17,7 @@ const {
   groupSubagentModelChoices,
   isSubagentModelProvider,
   subagentModelChoices,
+  subagentModelDisplay,
   subagentModelOrphanPin,
   subagentModelPin,
   subagentModelPinParts,
@@ -42,6 +43,43 @@ const provider = (over = {}) => ({
   authKind: "api_key_and_base_url",
   models: [binding("claude-haiku-4-5"), binding("claude-sonnet-4-6")],
   ...over,
+});
+
+test("saved model identity survives disable and re-enable without changing picker eligibility", () => {
+  const configured = provider();
+  const pin = "p1/claude-haiku-4-5";
+  const available = subagentModelDisplay(pin, [configured]);
+  assert.deepEqual(available, {
+    providerId: "p1", providerName: "Anthropic", modelId: "claude-haiku-4-5", status: "available",
+  });
+  const disabled = { ...configured, enabled: false };
+  assert.deepEqual(subagentModelDisplay(pin, [disabled]), { ...available, status: "disabled" });
+  assert.deepEqual(subagentModelChoices([disabled]), []);
+  assert.deepEqual(subagentModelDisplay(pin, [configured]), available);
+  assert.deepEqual(subagentModelDisplay(pin, [{ ...configured, hasSecret: false }]), { ...available, status: "unavailable" });
+});
+
+test("display resolution accepts unique legacy aliases and rejects ambiguous account identity", () => {
+  const first = provider({ name: "Shared Workspace", vendorKey: "custom" });
+  const second = provider({ id: "p2", name: "Shared Workspace", vendorKey: "custom", enabled: false });
+  assert.equal(subagentModelDisplay("Shared Workspace/claude-haiku-4-5", [first]).providerId, "p1");
+  assert.equal(subagentModelDisplay("Shared Workspace/claude-haiku-4-5", [first, second]), null);
+  assert.equal(subagentModelDisplay("p2/claude-haiku-4-5", [first, second]).providerId, "p2");
+  assert.equal(subagentModelDisplay("custom/claude-haiku-4-5", [first]), null);
+  const vendor = provider({ vendorKey: "shared_workspace", name: "Different", models: [] });
+  assert.equal(subagentModelDisplay("Shared Workspace/claude-haiku-4-5", [first, vendor]), null);
+  // An exact ID beats another provider's normalized name or vendor alias.
+  assert.equal(subagentModelDisplay("p1/claude-haiku-4-5", [first, provider({ id: "p2", name: "p1" })]).providerId, "p1");
+  assert.equal(subagentModelDisplay("Anthropic/CLAUDE-HAIKU-4-5", [provider()]).modelId, "claude-haiku-4-5");
+  assert.equal(subagentModelDisplay("anthropic/claude-haiku-4-5", [provider(), provider({ id: "p2", enabled: false })]), null);
+});
+
+test("missing providers and bindings preserve unresolved pins instead of inventing identity", () => {
+  assert.equal(subagentModelDisplay("deleted/claude-haiku-4-5", [provider()]), null);
+  assert.equal(subagentModelDisplay("p1/deleted-model", [provider()]), null);
+  assert.equal(subagentModelDisplay("not-a-pin", [provider()]), null);
+  const legacy = provider({ models: [], defaultModelId: "legacy-model", enabled: false });
+  assert.equal(subagentModelDisplay("p1/legacy-model", [legacy]).status, "disabled");
 });
 
 test("a pin uses the vendor key a person would type, not the UUID", () => {

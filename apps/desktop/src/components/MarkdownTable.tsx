@@ -1,9 +1,9 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useBlockingOverlay } from "../lib/blocking-overlay";
 import { useAppStore } from "../stores/app-store";
 import { IconClose, IconCopy, IconDownload, IconPanelMaximize } from "./icons";
-import { portalOverlay, TooltipButton } from "./ui";
+import { OverlayBackdrop, portalOverlay, TooltipButton } from "./ui";
 import "../styles/markdown-table.css";
 
 function TablePreview({ children, onClose }: {
@@ -24,32 +24,37 @@ function TablePreview({ children, onClose }: {
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
   }, []);
-  const handleKeyDown = (event: KeyboardEvent) => {
-    event.stopPropagation();
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    }
-    if (event.key !== "Tab") return;
-    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
-    );
-    if (!focusable?.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
   return portalOverlay(
-    <div
+    <OverlayBackdrop
       className="overlay markdown-table-overlay"
       role="presentation"
-      onKeyDown={handleKeyDown}
+      onKeyDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -75,7 +80,7 @@ function TablePreview({ children, onClose }: {
         </header>
         <div className="markdown-table-preview-body prose-chat">{children}</div>
       </div>
-    </div>,
+    </OverlayBackdrop>,
   );
 }
 

@@ -18,6 +18,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
 import { ProviderSetupDialog } from "../../apps/desktop/src/components/settings/ProviderSetupDialog";
+import { isPluginCatalogSetupForProvider } from "../../apps/desktop/src/components/settings/provider-setup-mode";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 
 const calls = [];
@@ -136,7 +137,7 @@ function PluginCatalogSurface() {
   return React.createElement(ProviderSetupDialog, {
     key: selected?.providerId ?? "add",
     provider,
-    pluginCatalogSetup: !!selected,
+    pluginCatalogSetup: isPluginCatalogSetupForProvider(selected, provider),
     pluginCatalogPluginName: selected?.pluginName,
     onClose: () => mount(null),
     onSaved: () => { saved = true; mount(null); },
@@ -144,7 +145,31 @@ function PluginCatalogSurface() {
   });
 }
 
+function BuiltInServiceSurface() {
+  return React.createElement(ProviderSetupDialog, {
+    provider: null,
+    pluginCatalogSetup: isPluginCatalogSetupForProvider(null, null),
+    onClose: () => mount(null),
+    onSaved: () => {},
+  });
+}
+
 window.pluginProviderCatalogProbe = async () => {
+  // The empty add state has no selected provider. Choosing a built-in service
+  // must reach the ordinary key form instead of the plugin-only empty state.
+  mount(React.createElement(BuiltInServiceSurface));
+  const builtInTile = await waitFor(
+    () => document.querySelector('[data-service-id="openai"]'),
+    "the built-in service tile was not shown",
+  );
+  flushSync(() => builtInTile.click());
+  const builtInKeyField = await waitFor(
+    () => document.querySelector('input[type="password"]'),
+    "selecting a built-in provider did not open its API key form",
+  );
+  const builtInServiceOpensKeyForm = !!builtInKeyField &&
+    !document.documentElement.innerText.includes("The selected provider is no longer available.");
+
   mount(React.createElement(PluginCatalogSurface));
   const category = await waitFor(
     () => document.querySelector('[data-plugin-provider-category="公益 AI 站"]'),
@@ -184,6 +209,7 @@ window.pluginProviderCatalogProbe = async () => {
     "saving one key hid another unconfigured provider",
   );
   return {
+    builtInServiceOpensKeyForm,
     categoryShown: !!category,
     publisherShown,
     tileEndpointShown,
@@ -281,6 +307,7 @@ app.whenReady().then(async () => {
     const line = output.split(/\r?\n/).find((item) => item.startsWith("PLUGIN_PROVIDER_CATALOG_PROBE "));
     assert(line, output.slice(-6000));
     assert.deepEqual(JSON.parse(line.slice("PLUGIN_PROVIDER_CATALOG_PROBE ".length)), {
+      builtInServiceOpensKeyForm: true,
       categoryShown: true,
       publisherShown: false,
       tileEndpointShown: false,

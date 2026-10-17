@@ -18,6 +18,8 @@ import type {
   RacpApprovalRequest,
   RacpEventEnvelope,
   RacpInputRequest,
+  RacpSessionSnapshot,
+  RemoteInteractionUpdate,
   ToolPermissionRequest,
 } from "@pi-desktop/shared";
 import { makeRemoteApprovalRequestId, makeRemoteSessionId } from "./backend-router.js";
@@ -51,6 +53,9 @@ export type RemoteEventBridgeOptions = {
 export interface RemoteEventBridge {
   /** Handle one RACP envelope. Unknown kinds are dropped. */
   handle(envelope: RacpEventEnvelope): void;
+  /** Reconcile attach state through the same translations as the live stream. */
+  restoreSnapshot(snapshot: RacpSessionSnapshot): void;
+  forgetSession(hostSessionId: string): void;
 }
 
 const APPROVAL_KIND = { tool: "tool", plan: "plan", goal: "goal" } as const;
@@ -143,6 +148,27 @@ function toPlanningStateAgentEvent(
 export function createRemoteEventBridge(options: RemoteEventBridgeOptions): RemoteEventBridge {
   const { hostKey, emit, onLifecycle } = options;
   const log = options.log ?? (() => undefined);
+  type PromptState = { epoch: string; sequence: number; snapshotSequence: number; seen: Set<string>; retired: Set<string> };
+  const prompts = new Map<string, PromptState>();
+  const stateFor = (sessionId: string, epoch: string): PromptState | undefined => {
+    let state = prompts.get(sessionId);
+    if (state?.retired.has(epoch)) return undefined;
+    if (!state || state.epoch !== epoch) {
+      const retired = state?.retired ?? new Set<string>();
+      if (state) retired.add(state.epoch);
+      if (retired.size > 16) retired.delete(retired.values().next().value!);
+      state = { epoch, sequence: 0, snapshotSequence: -1, seen: new Set(), retired };
+      prompts.set(sessionId, state);
+      if (prompts.size > 128) prompts.delete(prompts.keys().next().value!);
+    }
+    return state;
+  };
+  const remember = (state: PromptState, key: string) => {
+    if (state.seen.has(key)) return false;
+    state.seen.add(key);
+    if (state.seen.size > 512) state.seen.delete(state.seen.values().next().value!);
+    return true;
+  };
   const remoteIdOf = (hostSessionId: string) => makeRemoteSessionId(hostKey, hostSessionId);
   const emitAgentEvent = (
     envelope: RacpEventEnvelope,
@@ -160,6 +186,9 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
     };
     emit(IPC.event.agentMessage, local);
   };
+  const emitInteractions = (update: RemoteInteractionUpdate): void => {
+    emit(IPC.event.remoteInteractions, update);
+  };
 
   const handleHostSession = (envelope: RacpEventEnvelope): void => {
     const session = extractSessionRef(envelope.payload);
@@ -172,7 +201,6 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       onLifecycle?.({ kind: "session.created", hostSessionId: session.id, remoteSessionId, session });
       emit(IPC.event.sessionsChanged, {
         reason: "remote.session.created",
-        selectSessionId: remoteSessionId,
       });
       return;
     }
@@ -190,6 +218,9 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
   const handleSessionScope = (envelope: RacpEventEnvelope): void => {
     if (typeof envelope.sessionId !== "string") return;
     const remoteSessionId = remoteIdOf(envelope.sessionId);
+    const state = stateFor(envelope.sessionId, envelope.epoch);
+    if (!state) return;
+    if (envelope.sequence !== undefined) state.sequence = Math.max(state.sequence, envelope.sequence);
     switch (envelope.kind) {
       case "item.started":
       case "item.delta":
@@ -231,6 +262,7 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         // Plan / goal approvals ride the following `planning_state` event; the
         // renderer's plan card is driven by that, not by a synthetic tool card.
         if (approval.kind !== APPROVAL_KIND.tool) return;
+        if (!remember(state, `approval:${approval.id}`)) return;
         emitAgentEvent(envelope, remoteSessionId, {
           type: "tool_permission_request",
           request: toToolPermissionRequest(remoteSessionId, approval),
@@ -240,6 +272,7 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
       case "input.requested": {
         const input = extractInputRequest(envelope.payload);
         if (!input) return;
+        if (!remember(state, `input:${input.id}`)) return;
         emitAgentEvent(envelope, remoteSessionId, {
           type: "asktool_request",
           request: toAskToolRequest(remoteSessionId, input),
@@ -247,14 +280,24 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
         return;
       }
       case "approval.resolved":
-      case "input.resolved":
+      case "input.resolved": {
+        const payload = envelope.payload;
+        const kind = envelope.kind === "approval.resolved" ? "approval" : "input";
+        const id = isRecord(payload) ? payload[`${kind}Id`] : undefined;
+        if (typeof id === "string") {
+          remember(state, `${kind}:${id}`);
+          emitInteractions({ kind: "resolved", sessionId: remoteSessionId,
+            requestKind: kind === "approval" ? "permission" : "ask",
+            requestId: kind === "approval" ? makeRemoteApprovalRequestId(remoteSessionId, id) : id });
+          emit(IPC.event.sessionsChanged, { reason: `remote.${kind}.resolved` });
+        }
+        return;
+      }
       case "terminal.changed":
       case "terminal.output":
       case "resync.required":
-        // Approvals settle through the renderer's own resolve call; the plan
-        // and status changes come as `session.changed` payloads. Terminal
-        // events belong to Stage 5. `resync.required` is Stage 3b — the
-        // connection layer must consume it, not the bridge.
+        // Terminal events belong to their work-panel consumer. Subscription
+        // recovery is owned by the connection, not the translation layer.
         return;
       default:
         return;
@@ -262,6 +305,40 @@ export function createRemoteEventBridge(options: RemoteEventBridgeOptions): Remo
   };
 
   return {
+    forgetSession(sessionId) { prompts.delete(sessionId); },
+    restoreSnapshot(snapshot) {
+      const sessionId = snapshot.session.id;
+      const state = stateFor(sessionId, snapshot.cursor.epoch);
+      if (!state || snapshot.cursor.sequence < state.sequence || snapshot.cursor.sequence < state.snapshotSequence) return;
+      state.snapshotSequence = snapshot.cursor.sequence;
+      const envelope = (kind: RacpEventEnvelope["kind"], payload: unknown, turnId?: string): RacpEventEnvelope => ({
+        eventId: `snapshot:${sessionId}:${snapshot.cursor.sequence}`, scope: "session", sessionId,
+        epoch: snapshot.cursor.epoch, sequence: snapshot.cursor.sequence, revision: snapshot.revision,
+        occurredAt: snapshot.generatedAt, kind, payload, ...(turnId ? { turnId } : {}),
+      });
+      for (const approval of snapshot.pendingApprovals) {
+        if (approval.sessionId !== sessionId) continue;
+        if (approval.kind === "tool") handleSessionScope(envelope("approval.requested", approval, approval.turnId));
+        else if (remember(state, `approval:${approval.id}`)) {
+          handleSessionScope(envelope("session.changed", { event: {
+            sessionId, state: "awaiting_approval", kind: approval.kind, proposalId: approval.id,
+            title: approval.title ?? approval.summary, question: approval.question,
+            artifact: approval.artifact, version: approval.revision,
+          } }, approval.turnId));
+        }
+      }
+      for (const input of snapshot.pendingInputs) {
+        if (input.sessionId === sessionId) handleSessionScope(envelope("input.requested", input, input.turnId));
+      }
+      state.sequence = snapshot.cursor.sequence;
+      const remoteSessionId = remoteIdOf(sessionId);
+      emitInteractions({ kind: "snapshot", sessionId: remoteSessionId,
+        permissions: snapshot.pendingApprovals.filter(item => item.sessionId === sessionId && item.kind === "tool")
+          .map(item => toToolPermissionRequest(remoteSessionId, item)),
+        asks: snapshot.pendingInputs.filter(item => item.sessionId === sessionId)
+          .map(item => toAskToolRequest(remoteSessionId, item)),
+      });
+    },
     handle(envelope) {
       try {
         if (envelope.scope === "host") return handleHostSession(envelope);

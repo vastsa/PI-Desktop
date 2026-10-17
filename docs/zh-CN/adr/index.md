@@ -11,6 +11,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 
 | 决策 | 说明 |
 |---|---|
+| [配置同步中的本机项目列表](/adr/device-local-project-lists-in-config-sync) | 移除 projects 类别，忽略旧项目实体，保留云端历史及项目级能力的本地映射 |
 | [ADR 0001：Electron 桌面壳](/adr/0001-use-electron) | 桌面窗口与平台能力的承载层 |
 | [ADR 0005：本地插件系统](/adr/0005-user-installable-plugin-system) | 用户安装插件的第一阶段边界 |
 | [ADR 0009：English-first 全球化](/adr/0009-english-first-globalization) | 源语言、术语和协作规则 |
@@ -50,7 +51,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | [ADR 0191：明确标注两个 macOS 发布架构](/adr/0191-label-both-macos-release-architectures) | macOS DMG/ZIP 统一使用 `-arm64` / `-x64` 后缀，更新源 URL 与校验和保持一致 |
 | [ADR 0192：为已配置模型设置别名并允许复制模型 id](/adr/0192-model-alias) | 别名只用于展示；配置页模型 id 可选择复制，请求仍使用真实 id |
 | [ADR 0193：上下文检查器按最后一次请求计算占用](/adr/0193-last-request-context-occupancy) | 占用、本轮合计和缓存读写取最新一条助手消息，不再把工具循环里的每次请求加总 |
-| [ADR 0323：会话标题由独立插件拥有](/adr/0323-plugin-owned-session-titles) | 核心保留默认标题；独立插件可配置提示词、模型与思考级别，并通过主机 CAS 更新标题 |
+| [ADR 0323：会话标题由独立插件拥有](/adr/0323-plugin-owned-session-titles) | 核心保留确定性首条提示兜底标题；独立插件可配置提示词、模型与思考级别，并通过主机 CAS 升级该标题 |
 | [ADR 0324：提示词增强由可选插件拥有](/adr/0324-plugin-owned-composer-prompt-enhancement) | 输入框只提供受权限约束的通用文本转换扩展点；提示词增强需用户单独安装，旧设置在首次加载时迁移 |
 | [ADR 0194：可选的子智能体思考覆盖](/adr/0194-subagent-thinking-parameter-omission) | 子智能体可继承、显式关闭或不发送思考参数 |
 | [ADR 0195：视口固定的工作面板开关](/adr/0195-viewport-fixed-work-panel-toggle) | 非设置页右上角提供与 Cmd/Ctrl+J 等价的指针开关 |
@@ -262,7 +263,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0191 | [明确标注两个 macOS 发布架构](/adr/0191-label-both-macos-release-architectures) | 已接受（修订 ADR 0145 / D353） |
 | 0192 | [为已配置模型设置别名并允许复制模型 id](/adr/0192-model-alias) | 已接受（修订 D266） |
 | 0193 | [上下文检查器按最后一次请求计算占用](/adr/0193-last-request-context-occupancy) | 已接受（修订 ADR 0047 / ADR 0103 / ADR 0184） |
-| 0323 | [会话标题由独立插件拥有](/adr/0323-plugin-owned-session-titles) | 已接受 |
+| 0323 | [会话标题由独立插件拥有](/adr/0323-plugin-owned-session-titles) | 已接受（修订 ADR 0186；D654 保留首条提示兜底） |
 | 0324 | [提示词增强由可选插件拥有](/adr/0324-plugin-owned-composer-prompt-enhancement) | 已接受（修订 ADR 0121） |
 | 0194 | [可选的子智能体思考覆盖](/adr/0194-subagent-thinking-parameter-omission) | 已接受待实现 |
 | 0195 | [视口固定的工作面板开关](/adr/0195-viewport-fixed-work-panel-toggle) | 已接受（修订 ADR 0068 / ADR 0085） |

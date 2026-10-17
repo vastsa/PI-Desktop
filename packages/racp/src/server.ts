@@ -178,6 +178,8 @@ export class RacpServer {
       remoteHostProfile: true,
       toolRelay: false,
       terminal: Boolean(options.operations.terminal),
+      workspaceTools: Boolean(options.operations.workspaceTools),
+      workspaceFiles: Boolean(options.operations.workspaceFiles),
       notifications: false,
       bindings: ["RACP-WS"],
     };
@@ -262,6 +264,9 @@ export class RacpServer {
       this.options.operations.terminal?.detach(terminalId);
     }
     connection.terminals.clear();
+    void this.options.operations.workspaceTools?.disconnect(connection.id).catch(() => {
+      this.options.log("warn", "workspace tool disconnect cleanup failed", { connectionId: connection.id });
+    });
     connection.close(1000, "closed");
     this.options.log("info", "racp connection released", { connectionId: connection.id });
   }

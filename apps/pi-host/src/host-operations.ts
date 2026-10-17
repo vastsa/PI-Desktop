@@ -1,3 +1,5 @@
+import { createWorkspaceFiles } from "./workspace-files.js";
+import { createWorkspaceTools } from "./workspace-tools.js";
 import { readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -143,6 +145,12 @@ export function createSessionCatalog(deps: HostOperationsDeps): RacpSessionCatal
     async rename(sessionId, title) {
       await requireHost(getHost).call("session.rename", { id: sessionId, title }).catch(hostError);
     },
+    async deriveTitle(sessionId, title) {
+      const result = await requireHost(getHost)
+        .call<{ updated?: boolean }>("session.deriveTitle", { id: sessionId, title })
+        .catch(hostError);
+      return result.updated === true;
+    },
     async delete(sessionId) {
       if (deps.runtime.isBusy(sessionId)) throw new RacpError("CONFLICT", "the session has an active turn");
       await requireHost(getHost).call("session.delete", { id: sessionId }).catch(hostError);
@@ -189,7 +197,7 @@ export function createProjectCatalog(deps: HostOperationsDeps): RacpProjectCatal
       return { ...projectSummary(result.project), path: result.project.path };
     },
     async browse(path) {
-      const target = path ? await canonicalDirectory(path) : browseRoot;
+      const target = await canonicalDirectory(path ?? browseRoot);
       const rootReal = await realpath(browseRoot).catch(() => browseRoot);
       if (target !== rootReal && !target.startsWith(rootReal.endsWith("/") ? rootReal : `${rootReal}/`)) {
         throw new RacpError("REMOTE_PATH_FORBIDDEN", "path is outside the browsable root");
@@ -246,6 +254,8 @@ export function createHostOperations(deps: HostOperationsDeps): Omit<RacpHostOpe
     sessions: createSessionCatalog(deps),
     projects: createProjectCatalog(deps),
     workspace: createWorkspaceAccess(deps),
+    workspaceTools: createWorkspaceTools(deps.getHost),
+    workspaceFiles: createWorkspaceFiles(),
     ...(deps.revokeDevice ? { revokeDevice: deps.revokeDevice } : {}),
   };
 }

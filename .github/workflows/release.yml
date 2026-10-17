@@ -289,6 +289,8 @@ jobs:
           # watchdog (diagnostics + summary) inside the 60-minute job budget.
           PI_SIGNING_TIMEOUT_SECONDS: "1800"
           PI_SIGNING_STALL_SECONDS: "300"
+          PI_STAPLER_MAX_ATTEMPTS: "6"
+          PI_STAPLER_RETRY_DELAY_SECONDS: "10"
         run: |
           set -euo pipefail
           # Artifact names are defined in apps/desktop/package.json: the mac

@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const patchDependencyCheck = join(here, "check-pi-dependencies.mjs");
 const patchCheck = join(here, "check-pi-patches.mjs");
 
-const TARGET = "1.0.1";
+const TARGET = "1.1.0";
 const PATCHED = [
   {
     name: "@earendil-works/pi-agent-core",

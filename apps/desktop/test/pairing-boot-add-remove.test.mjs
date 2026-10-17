@@ -56,19 +56,27 @@ function fakeSession(id) {
  * test can assert on `closeHost`. */
 function fakeAdapter({ sessions = [], failConnect } = {}) {
   const listeners = new Set();
+  let state = "disconnected";
   return {
-    state: "disconnected",
+    state: () => state,
     async connect() {
       if (failConnect) throw failConnect;
-      this.state = "connected";
+      state = "connected";
     },
     async close() {
-      this.state = "disconnected";
+      state = "disconnected";
       listeners.clear();
     },
     client: {
-      request: async (method) =>
-        method === "session/list" ? { sessions } : { ok: true },
+      request: async (method, params) => {
+        if (method === "session/list") return { sessions };
+        if (method === "events/subscribe") return { subscriptionId: `sub-${params.sessionId ?? "host"}`, starting: { epoch: "e1", sequence: 1 }, replayComplete: true };
+        if (method === "session/attach") {
+          const session = sessions.find((row) => row.id === params.sessionId);
+          return { session, snapshot: { session, items: [], activeItems: [], pendingApprovals: [], pendingInputs: [], queuedTurns: [], hasMoreHistory: false, cursor: { epoch: "e1", sequence: 0 }, revision: 1, generatedAt: session.updatedAt } };
+        }
+        return { ok: true };
+      },
       subscribe: (fn) => {
         listeners.add(fn);
         return () => listeners.delete(fn);
@@ -163,8 +171,8 @@ test("addHost on an existing hostKey rotates the live connection in place", asyn
   await boot.addHost({ hostKey: "a", label: "A", url: "wss://a", deviceToken: "t2" });
   assert.equal(adapters.length, 2);
   // The first adapter is closed once the second rotates in.
-  assert.equal(adapters[0].state, "disconnected");
-  assert.equal(adapters[1].state, "connected");
+  assert.equal(adapters[0].state(), "disconnected");
+  assert.equal(adapters[1].state(), "connected");
   const listed = await boot.list();
   assert.equal(listed.length, 1);
   await boot.closeAll();
@@ -189,7 +197,7 @@ test("removeHost closes the live connection and drops the record", async () => {
   });
   await boot.addHost({ hostKey: "a", label: "A", url: "wss://a", deviceToken: "t" });
   await boot.removeHost("a");
-  assert.equal(adapters[0].state, "disconnected");
+  assert.equal(adapters[0].state(), "disconnected");
   assert.equal(
     router.resolveBackend(IPC.invoke.sessionGet, [
       { id: makeRemoteSessionId("a", "s1") },
@@ -219,13 +227,13 @@ test("list surface strips device tokens even when the record is on disk", async 
     deviceToken: "device-secret",
   });
   const listed = await boot.list();
-  // The summary shape has exactly these five fields: the four the pairing UX
-  // has always shown, plus the transport marker the SSH bootstrap added. A
-  // record with no metadata is a direct host, so the marker defaults there.
+  // The summary contains routing/status fields only; the device credential
+  // remains private. SSH metadata defaults to the direct transport.
   assert.deepEqual(Object.keys(listed[0]).sort(), [
     "connected",
     "hostKey",
     "label",
+    "status",
     "transport",
     "url",
   ]);

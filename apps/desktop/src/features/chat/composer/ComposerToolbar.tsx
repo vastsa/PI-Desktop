@@ -43,6 +43,9 @@ export type ComposerToolbarProps = {
   permissionOpen: boolean;
   setPermissionOpen: Dispatch<SetStateAction<boolean>>;
   controlsBlocked: boolean;
+  localToolsAllowed?: boolean;
+  attachmentsAllowed?: boolean;
+  stopAllowed?: boolean;
   pasting: boolean;
   pickAndAttach: () => Promise<void>;
   configureActiveSession: AppState["configureActiveSession"];
@@ -79,6 +82,9 @@ export function ComposerToolbar({
   permissionOpen,
   setPermissionOpen,
   controlsBlocked,
+  localToolsAllowed = true,
+  attachmentsAllowed = true,
+  stopAllowed = true,
   pasting,
   pickAndAttach,
   configureActiveSession,
@@ -113,7 +119,7 @@ export function ComposerToolbar({
             className="icon-btn icon-btn-square"
             tooltip={t("chat.addFiles")}
             ariaLabel={t("chat.addFiles")}
-            disabled={controlsBlocked || pasting}
+            disabled={controlsBlocked || pasting || !attachmentsAllowed}
             onClick={() => {
               setPermissionOpen(false);
               void pickAndAttach();
@@ -122,7 +128,7 @@ export function ComposerToolbar({
             <IconPlus size={15} aria-hidden="true" />
           </TooltipButton>
         </div>
-        <LiveVoiceControls t={t} workSessionId={workSessionId} />
+        {localToolsAllowed ? <LiveVoiceControls t={t} workSessionId={workSessionId} /> : null}
         <TooltipButton
           type="button"
           className="icon-btn mode-chip composer-mode-chip"
@@ -175,11 +181,11 @@ export function ComposerToolbar({
                   });
                 }
           }} />
-        <ComposerControlSlots side="left" />
+        {localToolsAllowed ? <ComposerControlSlots side="left" /> : null}
       </div>
 
       <div className="composer-right">
-        <ComposerControlSlots side="right" />
+        {localToolsAllowed ? <ComposerControlSlots side="right" /> : null}
         {contextUsage ? <ContextUsageInspector {...contextUsage} /> : null}
         <ComposerModelPicker
           t={t}
@@ -235,6 +241,7 @@ export function ComposerToolbar({
             className="stop-btn"
             tooltip={t("chat.stopGenerating")}
             ariaLabel={t("chat.stopGenerating")}
+            disabled={!stopAllowed}
             onClick={() => void abort()}
           >
             <IconStop size={14} />

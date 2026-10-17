@@ -9,6 +9,7 @@ import { useChatFileMenu } from "../hooks/use-chat-file-menu";
 import { ContextMenu } from "./ContextMenu";
 import { useAppStore } from "../stores/app-store";
 import type { ToolBlock, ToolChip } from "../lib/tool-presentation";
+import { AskToolRichText } from "./AskToolRichText";
 
 /*
  * Renderer for the structured tool presentation (D192). Blocks arrive with a
@@ -35,6 +36,10 @@ const BLOCK_LABEL_KEYS: Record<ToolBlock["role"], string> = {
 
 function blockCopyText(block: ToolBlock): string {
   switch (block.kind) {
+    case "asktool":
+      return block.questions
+        .map(({ question, answers }) => `${question}：${answers?.join("、") ?? ""}`)
+        .join("\n---\n");
     case "code":
       return block.text;
     case "diff":
@@ -79,6 +84,49 @@ function MoreNote({ hidden }: { hidden: number }) {
     <div className="tool-block-more">
       {t("chat.toolBlockMore", { count: hidden })}
     </div>
+  );
+}
+
+function AskToolResult({
+  block,
+}: {
+  block: Extract<ToolBlock, { kind: "asktool" }>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <dl className="tool-asktool-results" aria-label={t("askTool.historyTitle")}>
+      {block.questions.map((entry, index) => (
+        <div className="tool-asktool-entry" key={`${index}-${entry.question}`}>
+          <dt className="tool-asktool-question">
+            <span className="tool-asktool-question-number">
+              {t("askTool.questionNumber", { number: index + 1 })}
+            </span>
+            <span className="tool-asktool-question-copy">
+              <AskToolRichText source={entry.question} />
+            </span>
+          </dt>
+          <dd className="tool-asktool-answer">
+            <span className="tool-asktool-answer-label">
+              {t("askTool.answerLabel")}
+            </span>
+            <span className="tool-asktool-answer-values">
+              {entry.answers?.length ? (
+                entry.answers.map((answer, answerIndex) => (
+                  <span
+                    className="tool-asktool-answer-value"
+                    key={`${answerIndex}-${answer}`}
+                  >
+                    <AskToolRichText source={answer} />
+                  </span>
+                ))
+              ) : (
+                <span className="tool-asktool-skipped">{t("askTool.skipped")}</span>
+              )}
+            </span>
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -160,6 +208,8 @@ function MatchList({ block }: { block: Extract<ToolBlock, { kind: "matches" }> }
 
 function BlockBody({ block, streaming }: { block: ToolBlock; streaming: boolean }) {
   switch (block.kind) {
+    case "asktool":
+      return <AskToolResult block={block} />;
     case "code":
       return (
         <LargeTextPreview
@@ -241,7 +291,11 @@ export function ToolDetailBlocks({
   return (
     <>
       {blocks.map((block, index) => {
-        const label = block.label ?? t(BLOCK_LABEL_KEYS[block.role]);
+        const label =
+          block.label ??
+          (block.kind === "asktool"
+            ? t("askTool.historyTitle")
+            : t(BLOCK_LABEL_KEYS[block.role]));
         return (
           <section
             className={cx("tool-block", plain && "is-plain")}

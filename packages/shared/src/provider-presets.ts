@@ -1,6 +1,6 @@
 /** Shared identifiers and connection defaults for first-class provider presets. */
 
-import type { CatalogApiStyle } from "./model-catalog.js";
+import type { CatalogApiStyle, DiscoveryStyle } from "./model-catalog.js";
 
 export const OPENCODE_GO_API_STYLE = "opencode_go" as const;
 export const OPENCODE_GO_NAME = "OpenCode Go";
@@ -13,6 +13,12 @@ export type NamedEndpointPreset = {
   name: string;
   baseUrl: string;
   apiStyle: CatalogApiStyle;
+  /**
+   * Model-list style this preset's deployment documents, when it differs from
+   * the one `apiStyle` implies. Only a documented statement belongs here; a
+   * derivation from `apiStyle` must not override the probe style.
+   */
+  discoveryStyle?: DiscoveryStyle;
   /** i18n key under `settings`. */
   labelKey: string;
   aliases?: readonly string[];
@@ -209,6 +215,8 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     name: "StepFun Plan",
     baseUrl: "https://api.stepfun.com/step_plan/v1",
     apiStyle: "anthropic_messages",
+    // Subscription plan: generation on /messages, model list with a Bearer token.
+    discoveryStyle: "openai_models",
     labelKey: "settings.presetStepfunPlan",
   },
   {
@@ -374,6 +382,31 @@ function normalizedVendorKey(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/_/g, "-");
 }
 
+function endpointHost(value: string | undefined): string | undefined {
+  const normalized = normalizeEndpointUrl(value);
+  if (!normalized) return undefined;
+  try {
+    return new URL(normalized).host.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a configured base URL addresses a vendor's own published endpoint.
+ *
+ * Matching is by host, not by the full canonical URL: an OpenAI-compatible
+ * vendor is routinely configured with a path the preset record does not spell
+ * out (`/v1`, a Coding-Plan suffix, a regional host) and that is still the
+ * vendor's host. A row pointed anywhere else belongs to the user — a
+ * self-hosted gateway or a relay — and the runtime decides its request shape.
+ */
+export function addressesPublishedVendorHost(baseUrl: string | undefined): boolean {
+  const host = endpointHost(baseUrl);
+  if (!host) return false;
+  return NAMED_ENDPOINT_PRESETS.some((preset) => endpointHost(preset.baseUrl) === host);
+}
+
 function presetByUrl(url: string): NamedEndpointPreset | undefined {
   const exact = NAMED_ENDPOINT_PRESETS.find(
     (preset) => normalizeEndpointUrl(preset.baseUrl) === url,
@@ -489,6 +522,8 @@ export const DEEPSEEK_REASONING_REPLAY_PLACEHOLDER =
 
 export type DeepSeekRequestCompat = {
   requiresReasoningContentOnAssistantMessages: true;
+  /** DeepSeek endpoints reject the OpenAI-style `reasoning_effort` field. */
+  supportsReasoningEffort: false;
   /** When set, missing reasoning is filled with {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}. */
   requiresNonEmptyReasoningReplay?: true;
 };
@@ -502,10 +537,14 @@ export function deepseekRequestCompat(input: {
 }): DeepSeekRequestCompat | undefined {
   if (!isDeepSeekReasoningReplay(input)) return undefined;
   if (isOfficialDeepSeekEndpoint(input)) {
-    return { requiresReasoningContentOnAssistantMessages: true };
+    return {
+      requiresReasoningContentOnAssistantMessages: true,
+      supportsReasoningEffort: false,
+    };
   }
   return {
     requiresReasoningContentOnAssistantMessages: true,
+    supportsReasoningEffort: false,
     requiresNonEmptyReasoningReplay: true,
   };
 }

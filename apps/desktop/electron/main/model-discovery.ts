@@ -24,6 +24,14 @@ import {
 export type DiscoveredModel = {
   modelId: string;
   displayName: string;
+  /**
+   * Capacity the service itself reported on its model-list row
+   * (`context_window` / `context_length` / `inputTokenLimit` / …). Endpoint-
+   * reported values outrank catalog enrichment; absent means the service
+   * stated nothing, so nothing is guessed.
+   */
+  contextWindow?: number;
+  maxTokens?: number;
 };
 
 export const DISCOVERY_TIMEOUT_MS = 10_000;
@@ -85,6 +93,42 @@ function dedupeSort(models: DiscoveredModel[]): DiscoveredModel[] {
 }
 
 /**
+ * The first positive safe integer a row of a model list states for a capacity,
+ * reading the OpenAI/Anthropic and Google/Gemini spellings side by side the
+ * way the service's own console does. Zero, fractional and missing values
+ * state nothing: an endpoint that omits a capacity is not evidence it is
+ * small, so nothing is guessed in its place.
+ */
+function firstPositiveInteger(row: Record<string, unknown> | null | undefined, keys: readonly string[]): number | undefined {
+  if (!row) return undefined;
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value;
+  }
+  return undefined;
+}
+
+/** Context capacity the service itself stated on the row, or nothing. */
+function reportedContextWindow(row: Record<string, unknown> | null): number | undefined {
+  return firstPositiveInteger(row, [
+    "context_window",
+    "context_length",
+    "inputTokenLimit",
+    "contextWindow",
+  ]);
+}
+
+/** Output capacity the service itself stated on the row, or nothing. */
+function reportedMaxTokens(row: Record<string, unknown> | null): number | undefined {
+  return firstPositiveInteger(row, [
+    "max_output_tokens",
+    "max_tokens",
+    "outputTokenLimit",
+    "maxTokens",
+  ]);
+}
+
+/**
  * Normalize a model-list response body. Pure.
  *
  * `style` is either a wire API style or a discovery style; both name the same
@@ -110,7 +154,16 @@ export function normalizeModelList(
           typeof item?.displayName === "string" && item.displayName
             ? item.displayName
             : modelId;
-        return [{ modelId, displayName }];
+        const contextWindow = reportedContextWindow(item);
+        const maxTokens = reportedMaxTokens(item);
+        return [
+          {
+            modelId,
+            displayName,
+            ...(contextWindow !== undefined ? { contextWindow } : {}),
+            ...(maxTokens !== undefined ? { maxTokens } : {}),
+          },
+        ];
       }),
     );
   }
@@ -132,7 +185,16 @@ export function normalizeModelList(
         typeof item?.display_name === "string" && item.display_name
           ? item.display_name
           : modelId;
-      return [{ modelId, displayName }];
+      const contextWindow = reportedContextWindow(item);
+      const maxTokens = reportedMaxTokens(item);
+      return [
+        {
+          modelId,
+          displayName,
+          ...(contextWindow !== undefined ? { contextWindow } : {}),
+          ...(maxTokens !== undefined ? { maxTokens } : {}),
+        },
+      ];
     }),
   );
 }

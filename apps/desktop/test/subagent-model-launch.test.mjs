@@ -31,6 +31,7 @@ test("launch resolves definition-only pins without granting Task.model selection
         if (method === "providers.list") return { providers };
         if (method === "providers.getSecret") return {};
         if (method === "agents.active") return { subagents: [{ id: "reviewer", path }] };
+        if (method === "skills.disabledBuiltins") return { disabled: [] };
         if (method === "skills.active") return { skills: [] };
         if (method === "mcp.active") return { servers: [] };
         if (method === "project.memory.get") return {};

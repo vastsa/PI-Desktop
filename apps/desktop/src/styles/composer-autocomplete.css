@@ -89,6 +89,20 @@
   font-size: var(--text-xs-plus, var(--text-sm));
 }
 
+.composer-ac-path {
+  /* The relative path takes the remaining width and truncates first, so the
+     leaf name survives as long as it can. */
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-xs-plus, var(--text-sm));
+}
+
 .composer-ac-hl {
   color: var(--ds-accent);
   font-weight: var(--font-weight-semibold);

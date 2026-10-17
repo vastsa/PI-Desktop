@@ -22,8 +22,10 @@ same rules so direct IPC callers cannot persist invalid titles.
 Renaming updates `sessions.title` and marks its host-owned `title_source` as
 `manual`. It does not modify the transcript, message count, project binding,
 empty-session predicate, or `updated_at` activity timestamp. Plugin-generated
-titles use a compare-and-set against the default title, so a manual rename wins
-a race without renderer-local title state.
+titles use a compare-and-set against the automatic title, so a manual rename
+wins a race without renderer-local title state. The core's own first-prompt
+fallback keeps that source `default` and stays replaceable, which is why only a
+`manual` title opts out of automatic replacement.
 
 Historical notification title snapshots remain unchanged. Newly rendered
 surfaces read the current session summary, so the renamed title is shown in the
