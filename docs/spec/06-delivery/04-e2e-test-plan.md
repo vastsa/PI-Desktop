@@ -18159,3 +18159,18 @@ host-created files. The full app's file-preview viewer is covered separately.
   the theme-token and reduced-motion guarantees; the interactive sidebar
   scenario remains a manual validation scenario run in a capable
   environment.
+
+## E2E-COMPOSER-remember-model-and-thinking
+
+- Preconditions: Two enabled chat models supporting low/high; isolated profile.
+- Steps: Select B, choose low, switch to A and back. Submit successfully with B,
+  create another chat, and restart. Navigate to an old chat, then create a new
+  one. Exercise failed/stale writes, blocked approval and next-turn staging.
+- Expected: B restores low on return and in new chats/restart after usage. Drafts
+  win; existing chats keep their binding. Recency changes only on accepted send.
+  Failed/blocked/older writes and navigation never overwrite reasoning memory.
+  Auto permissions never carry into a new chat; absent memory keeps defaults.
+- Spec: 03-runtime/13-model-catalog-and-selection.md, Per-model Composer reasoning memory.
+- Coverage: composer-model-preferences.test.mjs, composer-preferences-flow.test.mjs,
+  recent-model-flow.test.mjs, scripts/e2e-composer-preferences.mjs.
+- Status: Automated coverage; task validation results recorded in the PR.

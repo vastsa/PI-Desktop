@@ -1,3 +1,4 @@
+import { rememberedComposerThinking } from "../lib/composer-model-preferences";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import { inheritedSessionModelBinding } from "../lib/session-model";
 import {
@@ -381,7 +382,9 @@ export function Composer({
   const sessionThinkingLevel =
     activeSession?.thinkingLevel ??
     (!activeSession ? draftConfiguration?.thinkingLevel : undefined) ??
-    draftThinkingLevel;
+    (!activeSession
+      ? rememberedComposerThinking(provider, modelId, thinkingProvider?.supportedThinkingLevels, draftThinkingLevel, selectedModelInfo?.catalogSource)
+      : draftThinkingLevel);
   const configuredThinkingLevel = isThinkingLevel(sessionThinkingLevel)
     ? sessionThinkingLevel
     : "off";

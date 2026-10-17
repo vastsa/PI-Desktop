@@ -9746,3 +9746,18 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **关联规格**：`04-ux/06-settings-ia.md`、`04-ux/09-interaction-patterns.md`、ADR 0294、D659、issue #1653。
 - **验收**：仅在 Host 项目激活成功后，渲染层才恢复该规范化路径的本地归档元数据。
 - **状态**：`apps/desktop/test/app-store-sidebar.test.mjs` 与 `apps/desktop/test/project-create-dialog.test.mjs` 有源码契约覆盖；完整 UI 场景仍为草稿，仅在明确请求且环境可用时运行。
+
+## E2E-COMPOSER-remember-model-and-thinking
+
+- Preconditions: Two enabled chat models supporting low/high; isolated profile.
+- Steps: Select B, choose low, switch to A and back. Submit successfully with B,
+  create another chat, and restart. Navigate to an old chat, then create a new
+  one. Exercise failed/stale writes, blocked approval and next-turn staging.
+- Expected: B restores low on return and in new chats/restart after usage. Drafts
+  win; existing chats keep their binding. Recency changes only on accepted send.
+  Failed/blocked/older writes and navigation never overwrite reasoning memory.
+  Auto permissions never carry into a new chat; absent memory keeps defaults.
+- Spec: 03-runtime/13-model-catalog-and-selection.md, Per-model Composer reasoning memory.
+- Coverage: composer-model-preferences.test.mjs, composer-preferences-flow.test.mjs,
+  recent-model-flow.test.mjs, scripts/e2e-composer-preferences.mjs.
+- Status: Automated coverage; task validation results recorded in the PR.

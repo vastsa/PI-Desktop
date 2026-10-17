@@ -636,3 +636,18 @@ The default conversation model has a separate **Image generation model** row bel
 it. Model Advanced can select that unique binding; provider form Save commits it,
 Cancel discards it, and replacing it leaves the conversation default unchanged.
 See [image generation and editing](21-image-generation.md) for the tool and batch contract.
+
+### Per-model Composer reasoning memory
+
+The existing recent-model history remains authoritative: only accepted message
+submission updates model recency. Selecting a model alone does not reorder it.
+Explicit Composer selections additionally remember reasoning per provider/model
+on this device. Switching back, new chats inheriting that model, and restart
+restore the remembered level, clamped to current supported levels. An explicit
+draft wins; absent memory preserves current catalog/unmatched-model defaults.
+
+Existing conversations keep their configuration. Navigation, permission changes,
+failed or blocked writes never update memory. Accepted next-turn staging does;
+an older result cannot supersede a newer choice. Permissions remain inherited.
+The versioned localStorage preference is bounded to 100 entries. Corrupt or
+unavailable storage falls back safely; no IPC/database/Plugin SDK changes occur.
