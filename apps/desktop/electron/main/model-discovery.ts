@@ -15,6 +15,8 @@
  * "Test connection" cannot drift into two different URL or auth rules.
  */
 
+import { fetchProviderMetadata } from "./provider-metadata-fetch.ts";
+
 import {
   discoveryProbeUrl,
   discoveryStyleForApiStyle,
@@ -280,7 +282,7 @@ async function probeAnthropicMessagesEndpoint(opts: {
   if (allowOrigin && originOf(requestUrl) !== allowOrigin) {
     throw new Error("message endpoint request refused: it left the configured origin");
   }
-  const response = await fetch(requestUrl, {
+  const response = await fetchProviderMetadata(requestUrl, {
     method: "OPTIONS",
     signal: opts.signal,
     redirect: "manual",
@@ -361,7 +363,7 @@ export async function probeModelList(opts: {
 
   let url = request.url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    const res = await fetch(url, {
+    const res = await fetchProviderMetadata(url, {
       headers: request.headers,
       signal: responseSignal,
       // Never let fetch carry the credential to another origin on its own.

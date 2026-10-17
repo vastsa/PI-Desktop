@@ -159,6 +159,9 @@ jobs:
       - name: Build Desktop bundle
         run: pnpm --filter @pi-desktop/desktop build
 
+      - name: Run provider optional client certificate E2E
+        run: pnpm test:e2e:provider-client-certificate
+
       - name: Run browser capture/resize E2E
         run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node scripts/e2e-browser-capture-resize.mjs'
 

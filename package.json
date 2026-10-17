@@ -46,6 +46,7 @@
     "test:e2e:copy-tex": "node scripts/e2e-copy-tex.mjs",
     "test:e2e:transcript-disclosure": "node scripts/e2e-transcript-disclosure-anchor.mjs",
     "test:e2e:images": "node scripts/e2e-image-generation.mjs && node scripts/e2e-image-generation-ui.mjs && node scripts/e2e-image-chat.mjs",
+    "test:e2e:provider-client-certificate": "node scripts/e2e-provider-client-certificate.mjs",
     "test:e2e:provider-order": "node scripts/e2e-provider-order.mjs",
     "test:e2e:project-edit": "node scripts/e2e-project-edit.mjs",
     "test:e2e:provider-api-style": "node scripts/e2e-provider-api-style.mjs",
