@@ -2220,21 +2220,21 @@ export function Sidebar({
           {isRemoteSession(session) && <span className="thread-item-source" title={session.remoteHostLabel}>{t("remote:remote")}</span>}
           <WorktreeBadge worktree={session.worktree} sessionId={session.id} />
           <span className="thread-item-title">{taskTitle(session.title)}</span>
-          {lastReplyDate ? (
-            <>
-              <span className="thread-item-date-separator" aria-hidden="true">
-                |
-              </span>
-              <span className="thread-item-last-reply">{lastReplyDate}</span>
-            </>
-          ) : null}
           {options?.global ? (
             <span className="thread-item-project">
               {owningProject}
             </span>
           ) : null}
         </button>
-        <div className="sidebar-row-actions">
+        <div
+          className={cx(
+            "thread-item-meta",
+            sessionMenu === session.id && "is-menu-open",
+          )}
+        >
+          {lastReplyDate ? (
+            <span className="thread-item-last-reply">{lastReplyDate}</span>
+          ) : null}
           <TooltipButton
             type="button"
             className="thread-item-more"

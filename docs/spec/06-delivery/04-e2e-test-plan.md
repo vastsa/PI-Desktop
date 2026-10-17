@@ -16201,8 +16201,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Steps**: In dark and light themes, select a project conversation, hover its
   project title and an unselected conversation, then hover the selected row.
   Check that a project session date is visible at rest and replaced by its
-  action on hover and focus. Exercise the window-blur handler, drop-target
-  styling, project action hover and keyboard Tab/Shift+Tab focus. Fold and
+  action in the same trailing slot on hover and focus; verify no divider appears
+  before the date, dates through seven calendar days are relative, and older
+  dates show month and day without a year. Exercise the window-blur handler,
+  drop-target styling, project action hover and keyboard Tab/Shift+Tab focus. Fold and
   reopen its group. Select pinned and
   standalone conversations. Open Settings and return. Enable reduced motion and
   inspect both row transition durations. In a separate twelve-session project,
@@ -16217,7 +16219,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   wins over hover, and blur releases hover without clearing selection. Settings
   replaces sidebar navigation, and returning restores conversation and workspace
   context without a second selected row. Project session rows show dates at rest
-  and reveal actions in their place on hover and focus. Loading more sessions
+  in the same trailing slot used for session actions, with no divider. Hover and
+  focus replace the date with the action in that slot. Dates through seven
+  calendar days are relative and older dates show month and day without a year.
+  Loading more sessions
   reveals all twelve; folding and reopening restores the initial ten and the
   two-session remainder control. Rendered component tests additionally cover no
   selected session, a pending destination and non-chat page state.

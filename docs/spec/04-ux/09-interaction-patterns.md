@@ -1600,6 +1600,11 @@ Project drag/drop follows these patterns:
   and remain reachable through keyboard focus (`:focus-within` /
   `:focus-visible`) without a pointer. A spelled-out control never triggers the
   row or header underneath it as well.
+- Project session dates and the overflow action share one trailing slot: the
+  date is visible at rest, then yields that slot to the action on hover or
+  keyboard focus. Dates through seven calendar days use a relative day label;
+  older dates use the localized month and day without a year. On devices without
+  hover, the action stays available in that slot.
 - The hover card's own navigation controls are the only interactive surfaces
   inside the card; the row keeps receiving pointer events everywhere else on
   it.
