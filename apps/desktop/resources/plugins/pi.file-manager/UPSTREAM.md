@@ -45,7 +45,7 @@ directory carries the built view the plugin publishes, not its React source.
 
 ## Local changes
 
-Two, so a re-sync stays a copy:
+Three, so a re-sync stays reproducible:
 
 - `manifest.json` gains `"license": "MIT"` (after `author`), making the vendored
   copy 14191 bytes
@@ -62,6 +62,12 @@ Two, so a re-sync stays a copy:
   ancestor's `"module"`, which is why the marker cannot live one directory up.
   In a packaged app the file is inert, and deleting it only costs the developer
   experience, never a user.
+- `views/assets/index.js` is rebuilt from the tagged `views-src/` with one
+  additive tree-row change: regular, non-symlink files publish
+  `application/x-pi-desktop-workspace-file` with their workspace-relative path
+  and leaf name during an HTML drag. Directories and symlinks remain
+  non-draggable. The local bundle is 1345647 bytes with sha256
+  `89c2b949b605a934a3131bc614dfc670046bd2cb502db81b3fec255b202c5e45`.
 
 ## Re-syncing a newer release
 
