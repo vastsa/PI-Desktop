@@ -1779,6 +1779,8 @@ written into the Markdown file. Project visibility is stored separately in
 `<data>/agent-capabilities/subagent-scopes.json`, keyed by document id. Missing
 entries default to global; malformed scope state fails the query rather than
 exposing project-only documents globally. Older versions do not enforce scopes.
+Scope state is device-local; config sync does not carry it (see
+[Config sync](22-config-sync.md#2-portable-domains)).
 
 - `agents.list` → `{ subagents: UserSubagentRecord[] }`
 - `agents.active(projectPath?)` → enabled documents whose scope matches the project

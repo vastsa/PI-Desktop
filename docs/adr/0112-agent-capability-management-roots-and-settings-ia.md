@@ -88,8 +88,9 @@ results for the selected project. `agents.active` similarly filters global
 subagent documents by app-local project scope. Scope metadata has its own
 `agent-capabilities/subagent-scopes.json` file so older enablement writers do
 not erase it. Missing entries remain globally active for compatibility; older
-application versions cannot enforce these scopes. Plugin and builtin activation
-remain unchanged.
+application versions cannot enforce these scopes. The scopes name folders on
+one device, so config sync neither captures nor applies them. Builtin subagents
+and plugins keep their own activation and do not read these scopes.
 
 ## Consequences
 

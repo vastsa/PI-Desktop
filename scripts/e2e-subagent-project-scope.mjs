@@ -12,15 +12,18 @@ process.env.PI_DESKTOP_AGENTS_DIR = join(root, "agents");
 const host = new Host(resolveHostBinary(), join(root, "data"));
 const projectA = join(root, "a");
 const projectB = join(root, "b");
-const active = async (projectPath) => (await host.call("agents.active", { projectPath })).subagents;
+// The scope prefix `<root>/a/` ends inside '中' in this sibling path.
+const projectCjk = join(root, "中文项目");
+const active = async (projectPath) => (await host.call("agents.active", { projectPath }, 5_000)).subagents;
 const names = async (projectPath) => (await active(projectPath)).map((record) => record.id);
 try {
-  await Promise.all([projectA, projectB].map((path) => mkdir(path, { recursive: true })));
+  await Promise.all([projectA, projectB, projectCjk].map((path) => mkdir(path, { recursive: true })));
   await host.start();
   await host.call("agents.create", { name: "scoped-reviewer", description: "Scoped fixture", body: "Review only.", scope: { mode: "projects", projects: [projectA] } });
   await host.call("agents.create", { name: "global-reviewer", description: "Legacy fixture", body: "Review." });
   assert.deepEqual(await names(projectA), ["global-reviewer", "scoped-reviewer"]);
   assert.deepEqual(await names(projectB), ["global-reviewer"]);
+  assert.deepEqual(await names(projectCjk), ["global-reviewer"]);
   assert.deepEqual(await names(null), ["global-reviewer"]);
   const documents = await Promise.all((await active(projectB)).map(async (record) => ({ id: record.id, document: await readFile(record.path, "utf8") })));
   const { definitions: catalog } = await loadSubagentDefinitions(projectB, { userDocuments: documents });

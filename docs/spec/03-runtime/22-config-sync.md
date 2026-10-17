@@ -58,7 +58,9 @@ are ignored during sync and restore; this does not delete local projects or
 remote revision history. Project-scoped MCP, skills, instructions, memory, and
 automation bindings remain supported through local folder mappings. Receiving
 devices register their own projects and groups when those features require a
-local workspace.
+local workspace. User subagent project scopes are device-local as well: sync
+and backup neither capture nor apply them, so a received definition keeps this
+device's scope, or starts global when it is new.
 
 Project and workspace bindings are represented by opaque logical identifiers.
 Host-core assigns a persistent logical identity to each registered standalone

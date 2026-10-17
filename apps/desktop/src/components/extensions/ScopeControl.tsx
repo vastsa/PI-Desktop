@@ -396,9 +396,16 @@ function ScopeProjectsSummary({
 
   if (inline) {
     return (
-      <div className="scope-inline-projects" aria-label={t("extensions.scope.pickerTitle", { name: label })}>
-        {pickerContent}
-      </div>
+      <>
+        {count === 0 ? (
+          <span className="scope-warn" role="status">
+            {t("extensions.scope.noProjectsWarning")}
+          </span>
+        ) : null}
+        <div className="scope-inline-projects" aria-label={t("extensions.scope.pickerTitle", { name: label })}>
+          {pickerContent}
+        </div>
+      </>
     );
   }
 
