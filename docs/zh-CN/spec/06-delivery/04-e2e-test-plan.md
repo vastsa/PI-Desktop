@@ -5982,6 +5982,7 @@ eleven-tool-round desktop paths are verified by
 | C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |
 | C / Quality — Continue after malformed tool output | E2E-RUNTIME-malformed-tool-call-continue-recovery |
 | B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
+| C / E / Quality — 模型页的子代理委托目录 | [E2E-267](#e2e-267模型页显示并编辑子代理委托目录) |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
 | C / E / Security / Quality — Live Voice 四阶段交互 | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
@@ -10363,3 +10364,29 @@ Electron 一侧——工具自动签发、指示器、"停止"中止轮次、绘
 - runtime 测试补充新输入和父回合取消、延迟 RPC 错误、旧 Host/远程能力缺失、混合选择器拒绝、原委派控制及无子代理配置的工具注册。
 - Host 测试覆盖先完成后等待、重复读取、Unicode 截断、归属查找、幂等停止与停止请求待确认。Windows 子孙进程清理测试仍须执行，原生失败单独报告。
 - 在子进程已退出、监管任务尚未排空管道时请求停止，检查原退出结果、最终输出和重复读取的耗时。延迟能力探测或第一次 Host 观察，检查等待总时限。Electron 会话记录用例渲染尚待确认的 Bash 停止请求和混合作业列表。
+### E2E-267：模型页显示并编辑子代理委托目录
+
+- **前提条件**：两个 AI 服务已配置、已启用并持有凭据，第一个有两个模型、第二个有一个；
+  仅其中一个模型勾选了“可供 AI 自动调度”。可委派任务的父 Agent 会话可用。
+- **步骤**：
+  1. 打开设置 → 模型，阅读底部的 **子代理模型** 行。
+  2. 展开其折叠区，勾选第二个服务的模型，再看这一行。
+  3. 发起一次父会话回合，检查 Task 工具收到的委托模型摘要。
+  4. 回到该行取消该模型，再看这一行。
+  5. 关闭第二个服务，重新展开折叠区。
+  6. 在第一个服务自己的模型对话框中切换“可供 AI 自动调度”，返回模型页。
+- **预期**：该行列出的正是已勾选的模型（`provider · model`），一个都没有时显示空状态说明。
+  勾选会把 `availableForSubagents` 写入该服务的绑定，下一次父会话回合即可在委托目录中看到
+  该模型；取消勾选会把它从目录移除，且不在已存绑定上留下 `false`。服务已关闭或缺少凭据时，
+  已勾选的行仍然可见可改，并注明为何暂不生效，同时其模型不进入目录。服务对话框与这一行
+  双向显示同一开关，两个界面不会各说各话。插件拥有的服务行只读。没有任何服务配置模型时
+  整行隐藏；保存被拒绝时报告错误，而不是静默保留旧值。
+- **关联规格**：`03-runtime/02-agent-runtime.md` §5f、
+  `03-runtime/11-provider-model-system.md` §7、`04-ux/06-settings-ia.md`（模型配置）、
+  D278、ADR subagent-model-opt-in、issue #1736。
+- **验收**：C / E / Quality —— 父 agent 可挑选的委托目录能在模型页一处查看并修改，且不新增
+  第二份保存的选择；每一行都说明某个已勾选模型为何暂不生效。
+- **里程碑**：Post-MVP 模型配置。
+- **状态**：`apps/desktop/test/subagent-delegation.test.mjs` 有单元覆盖（候选构造、分组、
+  只读与受阻状态、以及精确的提供商写入）。交互式的“保存 → 下一回合目录”路径仍为草稿，
+  仅在明确请求且环境可用时运行。

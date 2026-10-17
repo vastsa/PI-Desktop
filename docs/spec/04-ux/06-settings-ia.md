@@ -536,9 +536,21 @@ a usage tab.
 
 ### Model configuration (`agent` tab)
 - The model configuration page groups its sections in this order: **AI
-  services** (including model-catalog status and refresh), **Jev**, then the
-  image-generation model selector. The sections use one consistent vertical
-  spacing rhythm.
+  services** (including model-catalog status and refresh), **Jev**, the
+  image-generation model selector, then the **Subagent models** row. The sections
+  use one consistent vertical spacing rhythm.
+- **Subagent models** is one settings row plus one disclosure, below the
+  image-generation selector. The row states which configured models carry the
+  `availableForSubagents` opt-in — exactly the delegation catalog the parent agent
+  sees — as `provider · model` labels, or an empty-state line when none does. The
+  disclosure lists every configured binding grouped by service with a checkbox per
+  model, so the opt-in can be reviewed and changed without opening each service's
+  model dialog. It reads and writes `ModelBinding.availableForSubagents`, never a
+  second stored selection, and a save re-reads the service and rewrites only that
+  binding through `providers.update`, so a concurrent edit survives. An opted-in
+  model of a service that is off or holds no credential stays visible and editable
+  with the reason it is idle; a plugin-owned service row is read-only because the
+  RPC refuses it. The row is hidden while no service has a configured model.
 - **Defaults** card: a compact settings row shows the provider name and exact
   model ID beneath the Default model label. A quiet Change action opens the
   picker without duplicating the current value. The picker groups model-level
