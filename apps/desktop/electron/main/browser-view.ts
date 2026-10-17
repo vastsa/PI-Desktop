@@ -42,15 +42,19 @@ export function normalizeUrl(raw: string): string | null {
   }
 }
 
+function rootBoundary(root: string): string {
+  return root.endsWith(sep) ? root : root + sep;
+}
+
 function isWithinRoot(path: string, root: string): boolean {
   try {
     const realRoot = realpathSync(resolve(root));
     const realPath = realpathSync(resolve(path));
-    return realPath === realRoot || realPath.startsWith(realRoot + sep);
+    return realPath === realRoot || realPath.startsWith(rootBoundary(realRoot));
   } catch {
     const resolvedRoot = resolve(root);
     const resolvedPath = resolve(path);
-    return resolvedPath === resolvedRoot || resolvedPath.startsWith(resolvedRoot + sep);
+    return resolvedPath === resolvedRoot || resolvedPath.startsWith(rootBoundary(resolvedRoot));
   }
 }
 
