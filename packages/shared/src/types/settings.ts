@@ -11,15 +11,14 @@ import type { SpeechSettings } from "./speech.js";
 import type { ThinkingLevel } from "./models.js";
 import type { UpdatePreference } from "./platform.js";
 import type { LiveVoiceSettings } from "./live-voice.js";
+import type { JevClassifierBinding } from "../jev.js";
 
 export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 
 /**
- * What a TypeSafe key check answered.
- *
- * `ok` means the classifier answered this key at its own address. A refusal
- * carries the HTTP `status` and `message` when TypeSafe sent one; `message` is
- * provider text with the key already redacted.
+ * `ok` means the configured classifier endpoint answered this key. A refusal
+ * carries the HTTP `status` and `message` when the endpoint sent one; `message`
+ * is provider text with the key already redacted.
  */
 export type JevKeyCheckResult = {
   ok: boolean;
@@ -27,6 +26,11 @@ export type JevKeyCheckResult = {
   message?: string;
 };
 
+/** Input for the non-persisting System One credential check. */
+export type JevKeyCheckInput = {
+  apiKey: string;
+  binding: JevClassifierBinding;
+};
 /**
  * What closing the main window does on Windows/Linux. macOS keeps the native
  * Dock lifecycle and never consults this preference.
@@ -57,8 +61,10 @@ export type AppSettings = {
    * Absent and false use the bounded ten-retry policy.
    */
   infiniteProviderRetry?: boolean;
-  /** Allow Agent mode to call TypeSafe Jev for explicit structured classifications. */
+  /** Allow Agent mode to call the configured Jev System One classifier. */
   jevEnabled?: boolean;
+  /** Non-secret System One endpoint/model. Absent keeps the official legacy default. */
+  jevClassifier?: JevClassifierBinding | null;
   /** Prevent idle system sleep while this desktop app runs; off when absent. */
   keepAwakeWhileRunning?: boolean;
   /** Configured command shell for the agent Bash protocol tool. */

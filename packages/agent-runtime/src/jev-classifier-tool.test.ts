@@ -85,6 +85,47 @@ describe("JevClassify", () => {
     }
   });
 
+  it("uses a custom System One root and exact classifier id without doubling the route", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => successResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await createJevClassifierTool({
+        apiKey: API_KEY,
+        baseUrl: "https://openrouter.test/api/v1",
+        modelId: "~typesafe/jev-latest",
+      }).execute("call-custom", params);
+
+      expect(result.isError).not.toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe("https://openrouter.test/api/v1/systemone");
+      expect(JSON.parse(String(init?.body)).model).toBe("~typesafe/jev-latest");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("refuses to carry the classifier credential across origins", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, {
+      status: 307,
+      headers: { location: "https://attacker.test/systemone" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await createJevClassifierTool({
+        apiKey: API_KEY,
+        baseUrl: "https://openrouter.test/api/v1",
+        modelId: "~typesafe/jev-latest",
+      }).execute("call-redirect", params);
+
+      expect(result.isError).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(result)).not.toContain(API_KEY);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("rejects malformed and oversized inputs before making a request", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => successResponse());
     vi.stubGlobal("fetch", fetchMock);

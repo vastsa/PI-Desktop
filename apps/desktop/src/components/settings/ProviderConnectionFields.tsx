@@ -9,12 +9,20 @@
  */
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import type { CatalogApiStyle } from "@pi-desktop/shared";
+import {
+  JEV_SYSTEM_ONE_API_STYLE,
+  type CatalogApiStyle,
+} from "@pi-desktop/shared";
 import { Field, Input, SettingsToggle } from "../ui";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { ServiceMonogram } from "./ServiceMonogram";
 import { endpointLabel } from "./service-catalog";
-import { API_STYLE_LABEL_KEYS, CUSTOM_PROVIDER_API_STYLES } from "./provider-api-style";
+import {
+  API_STYLE_LABEL_KEYS,
+  CUSTOM_PROVIDER_SETUP_API_STYLES,
+  PROVIDER_SETUP_API_STYLE_LABEL_KEYS,
+  type ProviderSetupApiStyle,
+} from "./provider-api-style";
 
 export type ProviderConnectionFieldsProps = {
   named: boolean;
@@ -41,8 +49,9 @@ export type ProviderConnectionFieldsProps = {
   onBaseUrlChange: (value: string) => void;
   commitBaseUrl: () => void;
   baseUrlError?: string;
-  apiStyle: CatalogApiStyle;
-  onApiStyleChange: (value: CatalogApiStyle) => void;
+  apiStyle: ProviderSetupApiStyle;
+  onApiStyleChange: (value: ProviderSetupApiStyle) => void;
+  allowSystemOne?: boolean;
   /** What the endpoint itself said about the format, when it said anything. */
   apiStyleNote?: string;
   accountOnlyApiStyle: boolean;
@@ -73,6 +82,7 @@ export function ProviderConnectionFields({
   baseUrlError,
   apiStyle,
   onApiStyleChange,
+  allowSystemOne = false,
   apiStyleNote,
   accountOnlyApiStyle,
   requiresApiStyleChoice,
@@ -210,19 +220,21 @@ export function ProviderConnectionFields({
                 label={t("settings.apiStyle")}
                 value={apiStyle}
                 disabled={saving}
-                onChange={(id) => onApiStyleChange(id as CatalogApiStyle)}
+                onChange={(id) => onApiStyleChange(id as ProviderSetupApiStyle)}
                 options={[
                   ...(accountOnlyApiStyle
                     ? [{
                         id: apiStyle,
-                        label: t(API_STYLE_LABEL_KEYS[apiStyle]),
+                        label: t(API_STYLE_LABEL_KEYS[apiStyle as CatalogApiStyle]),
                         disabled: true,
                       }]
                     : []),
-                  ...CUSTOM_PROVIDER_API_STYLES.map((style) => ({
-                    id: style,
-                    label: t(API_STYLE_LABEL_KEYS[style]),
-                  })),
+                  ...CUSTOM_PROVIDER_SETUP_API_STYLES
+                    .filter((style) => allowSystemOne || style !== JEV_SYSTEM_ONE_API_STYLE)
+                    .map((style) => ({
+                      id: style,
+                      label: t(PROVIDER_SETUP_API_STYLE_LABEL_KEYS[style]),
+                    })),
                 ]}
               />
             </Field>

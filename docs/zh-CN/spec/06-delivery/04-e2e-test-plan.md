@@ -5740,6 +5740,7 @@ eleven-tool-round desktop paths are verified by
 | B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
 | C / Quality — 自建端点收到会话 id | E2E-PROVIDER-custom-endpoint-session-identity |
 | B / F / Quality — 已选模型顺序 | E2E-MODEL-selected-order-persists |
+| B / E / F / 安全性 / 品质 — Jev System One 分类器 | E2E-JEV-SYSTEM-ONE |
 | E / F / Quality — MCP 服务器超时覆盖 | E2E-261 |
 | C / D / Quality — 折叠项目后重置会话历史 | E2E-263 |
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
@@ -5816,6 +5817,7 @@ eleven-tool-round desktop paths are verified by
 | M5（Skill 常驻） | E2E-254 |
 | M6 | E2E-104、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、E2E-117、 E2E-118、E2E-119、E2E-120、E2E-103 |
 | M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-UPDATE-preference-and-once-only-reminder、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-SETTINGS-inline-capability-imports、E2E-166、E2E-SUBAGENT-resume-a-settled-delegation |
+| M6+（Jev System One 分类器） | E2E-JEV-SYSTEM-ONE |
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+（已选模型顺序） | E2E-MODEL-selected-order-persists |
 | M6+（MCP 服务器超时覆盖） | E2E-261 |
@@ -9603,6 +9605,17 @@ Follow the [current S3 acceptance scenario](/spec/06-delivery/04-e2e-test-plan#e
 - **里程碑：** 提供商配置维护。
 - **状态：** `pnpm test:e2e:provider-api-style`、`official-native-search.test.ts`；
   共享路由测试覆盖伪装域名、不安全地址和未知中转站。未验证线上服务或 Host/SQLite 保存。
+
+
+#### E2E-JEV-SYSTEM-ONE：官方与自定义分类器设置不进入聊天模型体系
+
+- **前提：** 使用隔离的 Electron 配置文件、伪造 Host IPC／安全存储和完全离线的 `globalThis.fetch` fixture。fixture 同时提供官方 `https://api.typesafe.ai/v1/systemone` 路由，以及 OpenRouter 风格的自定义路由：配置的 API 根地址为 `https://openrouter.test/api/v1`、模型为 `~typesafe/jev-latest`、最终操作地址为 `https://openrouter.test/api/v1/systemone`。先执行 `pnpm build:js`，再执行 `pnpm test:e2e:jev`。禁止使用真实服务、真实凭据或付费请求。
+- **步骤：** 1）记录已有提供商行、默认聊天模型、默认模型选项、Composer 模型选项和子智能体模型选项。打开**添加服务**，确认分类器分组包含 **TypeSafe（官方）**及默认根地址和 `jev-latest`；确认**自定义端点**仅在新增路径提供仅用于设置的 **System One（分类器）**接口格式，且此时尚无 Jev 卡片。2）分别在干净用例中填写自定义 API 根地址和完整的 `https://openrouter.test/api/v1/systemone` 操作地址，两者都配精确模型 ID 和哨兵密钥；确认服务摘要和隐私说明准确披露已配置的 System One 发送目标。让根地址用例的探测返回 401；让完整地址用例保持探测未完成并关闭对话框；分别比较每次操作前后的伪安全存储和 `AppSettings` 快照。3）对两种 URL 写法分别重复成功探测，断言任何写入前都先命中 fixture，随后密钥进入安全存储、非敏感绑定进入 `AppSettings`、Jev 被启用且卡片出现。4）解析 Agent 启动，用一项选择题、一项评分题、一项是非题和小型 JSON 状态调用 `JevClassify`；再分别在关闭 Jev 及 Plan／Goal 模式下解析目录。5）重新打开模型选择器和提供商设置，再关闭并移除 Jev。另用隔离用例走通官方卡片，保留默认路由／模型覆盖。
+- **预期：** API 根地址和完整操作地址会规范化到同一目标；探测和运行时都只追加一次 `/systemone`，绝不请求 `/systemone/systemone`。自定义 fixture 收到精确地址 `https://openrouter.test/api/v1/systemone`、Bearer 密钥、System One 负载以及精确模型 `~typesafe/jev-latest`；官方用例在默认路由收到 `jev-latest`。探测失败或取消时，安全存储与 `AppSettings` 均零写入，Jev 保持关闭。成功添加不会创建聊天提供商，所有提供商行和默认聊天模型保持不变，分类器也不会加入默认模型、Composer 或子智能体模型选项。`JevClassify` 只在已启用的 Agent 延迟目录中出现，Plan 与 Goal 都不暴露，并返回有界结构化答案和用量。移除时先停用并清除绑定，再删除密钥，卡片随后消失。
+- **规格：** [工具与权限](../03-runtime/03-tools-and-permissions.md)、[提供商／模型系统](../03-runtime/11-provider-model-system.md)、[密钥存储](../03-runtime/14-secrets-storage.md)、[设置 IA](../04-ux/06-settings-ia.md)。
+- **验收：** 不发生真实提供商或付费调用。套件覆盖完整新增路径、官方默认值、自定义目标披露、精确 URL／模型线值、探测→安全存储→设置启用的顺序、失败与取消的原子性、密钥脱敏、仅 Agent 的目录边界、聊天提供商／默认模型／Composer／子智能体隔离、用量、超时、畸形或超大输入拒绝，以及有序移除。
+- **里程碑：** M6+ 维护。
+- **状态：** 通过 `pnpm test:e2e:jev` 完成离线自动化覆盖；UI 用户路径使用隔离 Electron 配置与伪 Host IPC，共享／Main／Runtime 测试覆盖绑定校验、Host 持久化、启动隔离、精确传输字节、超时、取消与重定向拒绝。
 
 #### E2E-260：Windows 更新缓存可安全迁移和回收
 

@@ -3,10 +3,11 @@
  *
  * What the card is now: the state of the integration, shown only once Jev has
  * been added. An install without it has nothing to show here, because adding
- * happens where every other service is added. It reads whether a TypeSafe key
+ * happens where every other service is added. It reads whether a System One key
  * is stored, lets the switch move only when one is, and sends the user to the
  * service dialog to add or replace the key; it never stores a key itself.
- * Removing the key takes the switch down first, and then takes the card away.
+ * Removing the key takes the switch down first, clears the binding, and then
+ * takes the card away.
  *
  * The key is written by the service dialog (see the Jev service setup test);
  * this fixture stands in for that by storing one in the fake Host and
@@ -119,9 +120,9 @@ window.jevSettingsProbe = async () => {
     () => document.body.innerText.includes("API key saved securely"),
     "the card did not appear for a stored key",
   );
-  const inlinePrivacyNoticeHidden = !document.body.innerText.includes("sent directly to TypeSafe");
+  const inlinePrivacyNoticeHidden = !document.body.innerText.includes("configured System One endpoint");
   const privacyNoticeAvailableFromHelp = [...document.querySelectorAll("button")].some(
-    (candidate) => candidate.getAttribute("aria-label")?.includes("sent directly to TypeSafe"),
+    (candidate) => candidate.getAttribute("aria-label")?.includes("configured System One endpoint"),
   );
   const toggle = () => document.querySelector('[role="switch"][aria-label="Enable Jev for Agent"]');
   if (!toggle()) throw new Error("the Jev switch is missing");

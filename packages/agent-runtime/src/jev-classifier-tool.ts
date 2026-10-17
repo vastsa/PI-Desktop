@@ -9,6 +9,11 @@ import type {
 } from "@earendil-works/pi-ai";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
+import {
+  DEFAULT_JEV_CLASSIFIER_BINDING,
+  jevSystemOneUrl,
+  type JevClassifierRuntimeConfig,
+} from "@pi-desktop/shared";
 
 const MAX_CONTEXT_BYTES = 24 * 1024;
 const MAX_JSON_DEPTH = 8;
@@ -19,7 +24,48 @@ const MAX_TEXT_LENGTH = 1_200;
 const models = createModels();
 models.setProvider(typesafeProvider());
 
-const jevModel = TYPESAFE_CLASSIFIER_MODELS["jev-latest"];
+const defaultJevModel = TYPESAFE_CLASSIFIER_MODELS["jev-latest"];
+const MAX_REDIRECTS = 3;
+
+function configuredJev(input: string | JevClassifierRuntimeConfig): JevClassifierRuntimeConfig {
+  return typeof input === "string"
+    ? { ...DEFAULT_JEV_CLASSIFIER_BINDING, apiKey: input }
+    : input;
+}
+
+/** Manual redirect handling so Bearer auth never crosses the configured origin. */
+function sameOriginClassifierFetch(operationUrl: string): typeof fetch {
+  const allowedOrigin = new URL(operationUrl).origin;
+  return async (input, init) => {
+    let url = input instanceof Request ? input.url : String(input);
+    if (new URL(url).origin !== allowedOrigin) {
+      throw new Error("System One request refused: it left the configured origin");
+    }
+    const requestInit: RequestInit = input instanceof Request
+      ? {
+          method: input.method,
+          headers: input.headers,
+          ...(input.method !== "GET" && input.method !== "HEAD"
+            ? { body: await input.clone().arrayBuffer() }
+            : {}),
+          signal: input.signal,
+          ...init,
+          redirect: "manual",
+        }
+      : { ...init, redirect: "manual" };
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+      const response = await globalThis.fetch(url, requestInit);
+      const location = response.headers.get("location");
+      if (response.status < 300 || response.status >= 400 || !location) return response;
+      const next = new URL(location, url);
+      if (next.origin !== allowedOrigin) {
+        throw new Error("System One redirect refused: it left the configured origin");
+      }
+      url = next.toString();
+    }
+    throw new Error("System One request followed too many redirects");
+  };
+}
 
 const choiceQuestionSchema = Type.Object(
   {
@@ -160,13 +206,22 @@ function parseContext(value: unknown): ClassifierContext | undefined {
   return context;
 }
 
-/** Agent-only, deferred call to pi-ai's TypeSafe System One classifier. */
-export function createJevClassifierTool(apiKey: string): AgentTool {
+/** Agent-only, deferred call to the configured System One classifier. */
+export function createJevClassifierTool(
+  input: string | JevClassifierRuntimeConfig,
+): AgentTool {
+  const config = configuredJev(input);
+  const jevModel = {
+    ...defaultJevModel,
+    id: config.modelId,
+    baseUrl: config.baseUrl,
+  };
+  const operationUrl = jevSystemOneUrl(config);
   return {
     name: "JevClassify",
     label: "Jev classify",
     description:
-      "Classify JSON state with TypeSafe Jev and return structured choice, score, or boolean answers. The state and questions are sent directly to TypeSafe; include only information the user has approved for that service.",
+      "Classify JSON state with the configured System One classifier and return structured choice, score, or boolean answers. The state and questions are sent to that configured endpoint; include only information the user has approved for that service.",
     parameters: Type.Object(
       {
         state: Type.Record(Type.String(), Type.Any()),
@@ -201,14 +256,15 @@ export function createJevClassifierTool(apiKey: string): AgentTool {
         ? AbortSignal.any([signal, timeoutSignal])
         : timeoutSignal;
       const result = await models.classify(jevModel, context, {
-        apiKey,
+        apiKey: config.apiKey,
+        fetch: sameOriginClassifierFetch(operationUrl),
         signal: requestSignal,
         timeoutMs: 45_000,
         maxRetries: 1,
       });
       if (result.stopReason !== "stop") {
         const errorMessage = (result.errorMessage ?? "Request did not complete")
-          .replaceAll(apiKey, "[redacted]")
+          .replaceAll(config.apiKey, "[redacted]")
           .slice(0, 1_000);
         return {
           content: [{ type: "text", text: `Jev classification failed: ${errorMessage}` }],

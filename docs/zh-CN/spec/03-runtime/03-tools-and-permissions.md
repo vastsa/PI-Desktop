@@ -60,6 +60,7 @@ Plan 和 Goal 保留其 read/inspection 核心。`Skill` 有意不作延迟：`/
 - `BrowserPreview`
 - `PluginCheck`、`PluginScaffold` 和 `PluginPack`
 - 插件声明的代理工具
+- 用户启用 Jev 并保存已配置的 System One 密钥时的 `JevClassify`
 
 这些工具出现在有界的 `# On-demand tools` 目录中，具有紧凑的结构
 描述。该模型使用确切的名称调用本地 `ToolSearch` 工具或
@@ -72,6 +73,14 @@ sidecar 在每个新用户提示开始时重置此延迟集，并从有效会话
 模式的延迟目录中。主机权限、workspace/scratch 遏制、超时和审核规则
 加载工具时不会改变。`ToolSearch` 本身从不执行工作区操作并且永远不会
 绕过 host-core 策略。
+
+`JevClassify` 仅在 Agent 模式下提供，并且必须在设置 → 模型中显式启用，
+同时已配置的 System One 密钥和 binding 均可用。它是结构化分类器调用，
+不是聊天模型或工作区操作。Agent 必须提供 JSON 状态和类型化问题；调用工具时，
+这些值会直接发送到已配置的端点。该工具校验 JSON 形状并将负载限制为 24 KiB，
+通过 pi-ai 原生 System One 分类器适配器使用已配置的模型 ID 和 45 秒超时，
+仅返回结构化答案和上报的用量。Plan 和 Goal 均不提供该工具。设置中的披露文案
+会警告用户不要传递密钥或个人信息。
 
 ## 3. 常用工具约束
 
@@ -87,6 +96,10 @@ sidecar 在每个新用户提示开始时重置此延迟集，并从有效会话
 `asktool` 是交互式异常：它有一个类型化的请求事件，等待
 渲染器响应没有过期，并返回有界结构化工具
 结果。停止回合可以解决跳过的未决问题。
+
+`JevClassify` 是外部提供商操作，而不是工作区执行工具。它会校验结构化请求、
+传播取消、使用有界的提供商超时，并返回类型化分类结果；它没有文件系统路径或
+host-core 工作区权限表面。
 
 ## 4. 路径规则
 

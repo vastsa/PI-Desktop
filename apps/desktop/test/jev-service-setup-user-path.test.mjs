@@ -2,10 +2,9 @@
  * Isolated Electron user path for adding Jev as a service (D625).
  *
  * Jev is offered where a service is added, not where an existing row is
- * edited, and adding it is one action with two steps: check the TypeSafe key,
- * then store it and turn the classifier on. The check comes first and nothing
- * is written when it fails — otherwise a saved key would be a key the Agent
- * cannot spend, and "enabled" would mean nothing.
+ * edited, and adding it is one action with two steps: check the configured
+ * System One key, then store it and enable the classifier. The check comes
+ * first and nothing is written when it fails.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -40,6 +39,8 @@ let pickedService = null;
 let configured = false;
 let savedSettings = {
   defaultMode: "agent",
+  defaultProviderId: "chat-provider",
+  defaultModelId: "chat-model",
   theme: "light",
   language: "en",
   developerMode: false,
@@ -188,14 +189,14 @@ window.jevServiceSetupProbe = async () => {
   jevCheck = { ok: true, status: 200 };
   mount(React.createElement(JevSurface, { initiallyOpen: true }));
   const cardAbsentBefore = !document.querySelector('[role="switch"][aria-label="Enable Jev for Agent"]');
-  await waitFor(() => !!document.querySelector('input[aria-label="TypeSafe API key"]'), "the Jev form did not open");
+  await waitFor(() => !!document.querySelector('input[aria-label="System One API key"]'), "the Jev form did not open");
   // The dialog is portaled onto documentElement, so the whole page is read.
   const privacyNoticeShown = await waitFor(
-    () => document.documentElement.innerText.includes("sent directly to TypeSafe"),
+    () => document.documentElement.innerText.includes("configured System One endpoint"),
     "the Jev form must carry the privacy notice",
   );
   const noModelPanes = !document.documentElement.innerText.includes("Models from this service");
-  setValue(document.querySelector('input[aria-label="TypeSafe API key"]'), "jev-ui-fixture-key");
+  setValue(document.querySelector('input[aria-label="System One API key"]'), "jev-ui-fixture-key");
   await settle();
   flushSync(() => button("Check and save").click());
   await waitFor(
@@ -204,26 +205,29 @@ window.jevServiceSetupProbe = async () => {
   );
   const cardSwitch = document.querySelector('[role="switch"][aria-label="Enable Jev for Agent"]');
   const switchOn = cardSwitch?.getAttribute("aria-checked") === "true";
-  const dialogClosed = !document.querySelector('input[aria-label="TypeSafe API key"]');
-  // The check, the store and the switch, in that order.
+  const dialogClosed = !document.querySelector('input[aria-label="System One API key"]');
+  // The check, the store and the settings write, in that order.
   const flow = apiCalls.filter((call) => call.channel !== "pi-desktop/secrets/has");
   const checkedFirst = flow[0]?.channel === "pi-desktop/jev/test";
-  const checkedTheTypedKey = checkedFirst && flow[0].input === "jev-ui-fixture-key";
+  const checkedTheTypedKey = checkedFirst
+    && flow[0].input.apiKey === "jev-ui-fixture-key"
+    && flow[0].input.binding.baseUrl === "https://api.typesafe.ai/v1"
+    && flow[0].input.binding.modelId === "jev-latest";
   const storedAfterChecking = flow[1]?.channel === "pi-desktop/secrets/set"
     && flow[1].input.secretRef === JEV_API_KEY_SECRET_REF
     && flow[1].input.value === "jev-ui-fixture-key";
   const enabledAfterStoring = flow[2]?.channel === "pi-desktop/settings/set"
     && flow[2].input.jevEnabled === true;
 
-  // 4) A key TypeSafe refuses is never stored and never enabled.
+  // 4) A key the endpoint refuses is never stored and never enabled.
   apiCalls.length = 0;
   savedKey = undefined;
   configured = false;
   useAppStore.setState({ toasts: [] });
-  jevCheck = { ok: false, status: 401, message: "TypeSafe returned 401: invalid api key" };
+  jevCheck = { ok: false, status: 401, message: "System One returned 401: invalid api key" };
   mount(jevDialog("refused"));
-  await waitFor(() => !!document.querySelector('input[aria-label="TypeSafe API key"]'), "the Jev form did not reopen");
-  setValue(document.querySelector('input[aria-label="TypeSafe API key"]'), "jev-rejected-key");
+  await waitFor(() => !!document.querySelector('input[aria-label="System One API key"]'), "the Jev form did not reopen");
+  setValue(document.querySelector('input[aria-label="System One API key"]'), "jev-rejected-key");
   await settle();
   flushSync(() => button("Check and save").click());
   await waitFor(() => apiCalls.some((call) => call.channel === "pi-desktop/jev/test"), "the key was never checked");
@@ -233,7 +237,7 @@ window.jevServiceSetupProbe = async () => {
     nothingStored: savedKey === undefined
       && !apiCalls.some((call) => call.channel === "pi-desktop/secrets/set"),
     nothingEnabled: !apiCalls.some((call) => call.channel === "pi-desktop/settings/set"),
-    stillOpen: !!document.querySelector('input[aria-label="TypeSafe API key"]'),
+    stillOpen: !!document.querySelector('input[aria-label="System One API key"]'),
     notConfigured: configured === false,
     reported: useAppStore.getState().toasts.some(
       (item) => item.variant === "error" && item.message.includes("401"),
@@ -248,13 +252,13 @@ window.jevServiceSetupProbe = async () => {
   useAppStore.setState({ toasts: [] });
   pendingCheck = { resolve: null, result: { ok: true, status: 200 } };
   mount(jevDialog("abandoned"));
-  await waitFor(() => !!document.querySelector('input[aria-label="TypeSafe API key"]'), "the Jev form did not open");
-  setValue(document.querySelector('input[aria-label="TypeSafe API key"]'), "jev-abandoned-key");
+  await waitFor(() => !!document.querySelector('input[aria-label="System One API key"]'), "the Jev form did not open");
+  setValue(document.querySelector('input[aria-label="System One API key"]'), "jev-abandoned-key");
   await settle();
   flushSync(() => button("Check and save").click());
   await waitFor(() => apiCalls.some((call) => call.channel === "pi-desktop/jev/test"), "the check never started");
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-  await waitFor(() => !document.querySelector('input[aria-label="TypeSafe API key"]'), "Escape did not close the Jev form");
+  await waitFor(() => !document.querySelector('input[aria-label="System One API key"]'), "Escape did not close the Jev form");
   flushSync(() => pendingCheck.resolve());
   await settle();
   await settle();
@@ -265,6 +269,60 @@ window.jevServiceSetupProbe = async () => {
     noSuccessToast: !useAppStore.getState().toasts.some((item) => item.variant === "success"),
   };
   pendingCheck = null;
+
+  // 6) Custom Endpoint can switch to classifier-only System One without
+  // creating a chat provider or changing the current chat default.
+  apiCalls.length = 0;
+  savedKey = undefined;
+  configured = false;
+  jevCheck = { ok: true, status: 200 };
+  let customConfigured = false;
+  mount(React.createElement(ProviderSetupDialog, {
+    provider: null,
+    initialService: "custom",
+    onClose: () => mount(null),
+    onSaved: () => { throw new Error("System One must not create a chat provider"); },
+    onJevConfigured: () => {
+      customConfigured = true;
+      mount(React.createElement(JevSurface));
+    },
+  }));
+  await waitFor(() => !!document.querySelector('button[aria-label="API format"]'), "custom API format did not render");
+  flushSync(() => document.querySelector('button[aria-label="API format"]').click());
+  await waitFor(() => button("System One (classifier)"), "System One format was not offered");
+  flushSync(() => button("System One (classifier)").click());
+  const customBase = await waitFor(
+    () => document.querySelector('input[placeholder="https://openrouter.ai/api/v1"]'),
+    "System One Base URL did not render",
+  );
+  const customModel = document.querySelector('input[placeholder="~typesafe/jev-latest"]');
+  const customKey = document.querySelector('input[aria-label="System One API key"]');
+  setValue(customBase, "https://openrouter.test/api/v1/systemone/");
+  setValue(customModel, "~typesafe/jev-latest");
+  setValue(customKey, "openrouter-fixture-key");
+  await settle();
+  const classifierOnlyCopy = document.documentElement.innerText.includes(
+    "will not appear in chat, default-model, or subagent model lists",
+  );
+  const customNoModelPanes = !document.documentElement.innerText.includes("Models from this service");
+  flushSync(() => button("Check and save").click());
+  await waitFor(() => customConfigured, "custom System One configuration did not finish");
+  const customCardShowsBinding = await waitFor(
+    () => document.body.innerText.includes("openrouter.test")
+      && document.body.innerText.includes("~typesafe/jev-latest"),
+    "the Jev card did not show the custom endpoint and model",
+  );
+  const customFlow = apiCalls.filter((call) => call.channel !== "pi-desktop/secrets/has");
+  const customCheck = customFlow.find((call) => call.channel === "pi-desktop/jev/test");
+  const customSettings = customFlow.find((call) => call.channel === "pi-desktop/settings/set");
+  const customBindingSaved = customCheck?.input.apiKey === "openrouter-fixture-key"
+    && customCheck.input.binding.baseUrl === "https://openrouter.test/api/v1"
+    && customCheck.input.binding.modelId === "~typesafe/jev-latest"
+    && customSettings?.input.jevClassifier.baseUrl === "https://openrouter.test/api/v1"
+    && customSettings.input.jevClassifier.modelId === "~typesafe/jev-latest";
+  const noChatProviderCreated = !apiCalls.some((call) => call.channel === "pi-desktop/providers/create");
+  const chatDefaultPreserved = customSettings?.input.defaultProviderId === "chat-provider"
+    && customSettings.input.defaultModelId === "chat-model";
 
   return {
     offersClassifiers,
@@ -288,6 +346,12 @@ window.jevServiceSetupProbe = async () => {
     abandonedNothingStored: abandoned.nothingStored,
     abandonedNothingEnabled: abandoned.nothingEnabled,
     abandonedSilent: abandoned.noSuccessToast,
+    customBindingSaved,
+    customNoModelPanes,
+    classifierOnlyCopy,
+    noChatProviderCreated,
+    chatDefaultPreserved,
+    customCardShowsBinding,
   };
 };
 `;
@@ -394,6 +458,12 @@ app.whenReady().then(async () => {
       abandonedNothingStored: true,
       abandonedNothingEnabled: true,
       abandonedSilent: true,
+      customBindingSaved: true,
+      customNoModelPanes: true,
+      classifierOnlyCopy: true,
+      noChatProviderCreated: true,
+      chatDefaultPreserved: true,
+      customCardShowsBinding: true,
     });
   } finally {
     await rm(temp, { recursive: true, force: true });

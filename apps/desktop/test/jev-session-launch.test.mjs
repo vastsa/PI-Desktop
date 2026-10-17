@@ -9,7 +9,16 @@ import { repositoryRoot } from "../../../scripts/e2e/boot.mjs";
 const root = repositoryRoot();
 const { build } = createRequire(join(root, "packages/agent-runtime/package.json"))("esbuild");
 
-test("session launch resolves Jev credentials only for opted-in Agent mode", async () => {
+const OFFICIAL = {
+  baseUrl: "https://api.typesafe.ai/v1",
+  modelId: "jev-latest",
+};
+const CUSTOM = {
+  baseUrl: "https://openrouter.test/api/v1",
+  modelId: "~typesafe/jev-latest",
+};
+
+test("session launch resolves the configured Jev classifier only for opted-in Agent mode", async () => {
   const temp = await mkdtemp(join(root, "apps/desktop/.jev-launch-test-"));
   const priorHome = process.env.HOME;
   process.env.HOME = temp;
@@ -36,6 +45,7 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
       models: [],
     };
     const keyReads = [];
+    const endpointChecks = [];
     const logs = [];
     let failJevSecretRead = false;
     const host = {
@@ -93,9 +103,10 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
       bindingForModel: () => undefined,
       effectiveSubagentModelConfig: () => ({ modelConfig: undefined, capabilities: {} }),
       normalizeThinkingLevel: () => "off",
+      assertJevEndpoint: async (url) => endpointChecks.push(url),
     };
     const launchRuntime = createSessionLaunchRuntime(dependencies);
-    const launch = async (mode, jevEnabled) =>
+    const launch = async (mode, jevEnabled, jevClassifier) =>
       launchRuntime.resolveAgentRuntimeLaunch(
         "session-fixture",
         { providerId: provider.id, modelId: provider.defaultModelId },
@@ -104,31 +115,60 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
           defaultModelId: provider.defaultModelId,
           defaultMode: mode,
           jevEnabled,
+          ...(jevClassifier !== undefined ? { jevClassifier } : {}),
         },
       );
 
     const enabledAgent = await launch("agent", true);
-    assert.equal(enabledAgent.sidecarParams.jevApiKey, "jev-launch-fixture-key");
+    assert.deepEqual(enabledAgent.sidecarParams.jev, {
+      ...OFFICIAL,
+      apiKey: "jev-launch-fixture-key",
+    });
     assert.equal(enabledAgent.sidecarParams.provider.apiKey, "");
     assert.deepEqual(keyReads, [{ secretRef: "secret:app:typesafe-jev" }]);
+    assert.deepEqual(endpointChecks, ["https://api.typesafe.ai/v1/systemone"]);
 
     keyReads.length = 0;
-    const disabledAgent = await launch("agent", false);
-    assert.equal("jevApiKey" in disabledAgent.sidecarParams, false);
+    endpointChecks.length = 0;
+    const custom = await launch("agent", true, CUSTOM);
+    assert.deepEqual(custom.sidecarParams.jev, {
+      ...CUSTOM,
+      apiKey: "jev-launch-fixture-key",
+    });
+    assert.deepEqual(endpointChecks, ["https://openrouter.test/api/v1/systemone"]);
+
+    keyReads.length = 0;
+    endpointChecks.length = 0;
+    const disabledAgent = await launch("agent", false, CUSTOM);
+    assert.equal("jev" in disabledAgent.sidecarParams, false);
+    assert.deepEqual(keyReads, []);
+    assert.deepEqual(endpointChecks, []);
+
+    const plan = await launch("plan", true, CUSTOM);
+    assert.equal("jev" in plan.sidecarParams, false);
     assert.deepEqual(keyReads, []);
 
-    const plan = await launch("plan", true);
-    assert.equal("jevApiKey" in plan.sidecarParams, false);
+    logs.length = 0;
+    const invalid = await launch("agent", true, { baseUrl: "file:///tmp", modelId: "jev" });
+    assert.equal("jev" in invalid.sidecarParams, false);
     assert.deepEqual(keyReads, []);
+    assert.deepEqual(endpointChecks, []);
+    assert.deepEqual(logs, [[
+      "session",
+      "warn",
+      "Jev classifier binding is invalid",
+      { sessionId: "session-fixture" },
+    ]]);
 
+    logs.length = 0;
     failJevSecretRead = true;
-    const unavailable = await launch("agent", true);
-    assert.equal("jevApiKey" in unavailable.sidecarParams, false);
+    const unavailable = await launch("agent", true, CUSTOM);
+    assert.equal("jev" in unavailable.sidecarParams, false);
     assert.equal(JSON.stringify(logs).includes("private fixture detail"), false);
     assert.deepEqual(logs, [[
       "session",
       "warn",
-      "Jev API key could not be loaded",
+      "Jev configuration could not be loaded",
       { sessionId: "session-fixture" },
     ]]);
   } finally {

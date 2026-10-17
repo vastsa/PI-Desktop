@@ -5,6 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Connectez Jev à un point de terminaison et un modèle System One personnalisés sans ajouter le classificateur aux listes de modèles de chat.",
       "Les plugins installés s'affichent en cartes dans une grille auto-adaptative, chacune avec une action claire et son état de confiance, de mise à jour et de portée visible.",
       "Consultez les notes et avis publics des plugins du marché et ouvrez le centre de plugins pour en écrire un — l'application de bureau ne se connecte jamais.",
       "Les longues commandes Bash continuent en tâche de fond à la fin du tour, et leur sortie reste consultable.",

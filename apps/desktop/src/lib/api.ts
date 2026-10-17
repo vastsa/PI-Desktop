@@ -32,6 +32,7 @@ import type {
   AgentInstructionFile,
   AppSettings,
   JevKeyCheckResult,
+  JevKeyCheckInput,
   CommandShellCatalog,
   AppVersionInfo,
   BrowserAction,
@@ -161,6 +162,8 @@ import {
   normalizeMode,
   normalizeNetworkProxy,
   normalizeNetworkPolicy,
+  normalizeJevClassifierBinding,
+  resolveJevClassifierBinding,
   resolveFontScale,
   normalizeChatContentMaxWidth,
   validateNetworkPolicy,
@@ -418,12 +421,19 @@ export type SessionHistoryReadOptions = {
 };
 
 export function normalizeSettings(settings: AppSettings): AppSettings {
+  const jev = resolveJevClassifierBinding(
+    (settings as { jevClassifier?: unknown }).jevClassifier,
+  );
   return {
     ...settings,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
-    jevEnabled: (settings as { jevEnabled?: unknown }).jevEnabled === true,
+    jevEnabled:
+      (settings as { jevEnabled?: unknown }).jevEnabled === true &&
+      jev.status !== "invalid",
+    ...(jev.status === "configured" ? { jevClassifier: jev.binding } : {}),
+    ...(jev.status === "invalid" ? { jevClassifier: null } : {}),
     defaultCommandShell: isCommandShellId(
       (settings as { defaultCommandShell?: unknown }).defaultCommandShell,
     )
@@ -468,6 +478,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
     jevEnabled?: unknown;
+    jevClassifier?: unknown;
     smoothStreaming?: unknown;
     sidebarRunningIndicators?: unknown;
     sidebarRunningBadge?: unknown;
@@ -526,6 +537,17 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     throw Object.assign(new Error("jevEnabled is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "jevClassifier")) {
+    if (value.jevClassifier !== null) {
+      const binding = normalizeJevClassifierBinding(value.jevClassifier);
+      if (!binding) {
+        throw Object.assign(new Error("jevClassifier is invalid"), {
+          errorCode: "INVALID_PARAMS",
+        });
+      }
+      value.jevClassifier = binding;
+    }
   }
   if (
     Object.prototype.hasOwnProperty.call(value, "smoothStreaming") &&
@@ -783,12 +805,9 @@ export const api = {
   deleteJevApiKey: () => invoke<void>(IPC.invoke.secretsDelete, JEV_API_KEY_SECRET_REF),
   hasJevApiKey: () =>
     invoke<{ has: boolean }>(IPC.invoke.secretsHas, JEV_API_KEY_SECRET_REF).then((result) => result.has),
-  /**
-   * Ask TypeSafe whether this key works, without storing anything. Jev keeps
-   * a key only after this answered it; the check text is TypeSafe's own.
-   */
-  testJevApiKey: (value: string) =>
-    invoke<JevKeyCheckResult>(IPC.invoke.jevTest, value),
+  /** Check a System One key at the exact endpoint/model without storing it. */
+  testJevApiKey: (input: JevKeyCheckInput | string) =>
+    invoke<JevKeyCheckResult>(IPC.invoke.jevTest, input),
   backgroundTasksList: () =>
     invoke<BackgroundTasksListResult>(IPC.invoke.backgroundTasksList),
   backgroundTasksOutput: (id: string) =>

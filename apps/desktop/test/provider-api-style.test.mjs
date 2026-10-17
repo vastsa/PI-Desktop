@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { register } from "node:module";
 import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { API_STYLES } = await import("@pi-desktop/shared");
-const { CUSTOM_PROVIDER_API_STYLES, needsCustomApiStyleChoice, providerSetupPreset } =
-  await import("../src/components/settings/provider-api-style.ts");
+const { API_STYLES, JEV_SYSTEM_ONE_API_STYLE } = await import("@pi-desktop/shared");
+const {
+  CUSTOM_PROVIDER_API_STYLES,
+  CUSTOM_PROVIDER_SETUP_API_STYLES,
+  needsCustomApiStyleChoice,
+  providerSetupPreset,
+} = await import("../src/components/settings/provider-api-style.ts");
 const { copyProviderConfiguration } = await import("../src/components/settings/provider-copy.ts");
 
 const source = (apiStyle) => ({
@@ -14,9 +18,12 @@ const source = (apiStyle) => ({
     thinkingLevels: ["off"], defaultThinkingLevel: "off" }],
 });
 
-test("custom creation offers general APIs without removing account or named transports", () => {
+test("custom setup adds System One without making it a chat transport", () => {
   assert.deepEqual(CUSTOM_PROVIDER_API_STYLES,
     ["chat_completions", "responses", "anthropic_messages", "google_generative_ai"]);
+  assert.deepEqual(CUSTOM_PROVIDER_SETUP_API_STYLES,
+    [...CUSTOM_PROVIDER_API_STYLES, JEV_SYSTEM_ONE_API_STYLE]);
+  assert.equal(API_STYLES.includes(JEV_SYSTEM_ONE_API_STYLE), false);
   for (const style of ["openai_codex_responses", "pi_messages", "opencode_go"]) {
     assert.ok(API_STYLES.includes(style));
   }

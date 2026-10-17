@@ -56,6 +56,7 @@ import { MicrophoneLeaseRegistry } from "./live-voice/microphone-lease";
 import { createLiveCallService } from "./live-voice/runtime";
 import { createLiveVoiceWidget } from "./live-voice/widget-window";
 import { getActiveRemoteHostsBoot } from "./bootstrap/remote-hosts";
+import { assertJevUserEndpoint } from "./jev-endpoint-policy";
 import { installLiveMicrophonePermissionHandlers } from "./live-voice/microphone-permissions";
 import { MainProcessState } from "./bootstrap/main-state";
 import { registerApplicationActivation } from "./bootstrap/app-activation";
@@ -378,6 +379,7 @@ const createdSessionLaunchRuntime = createSessionLaunchRuntime({
   bindingForModel,
   effectiveSubagentModelConfig,
   normalizeThinkingLevel,
+  assertJevEndpoint: assertJevUserEndpoint,
 });
 sessionLaunchRuntime = createdSessionLaunchRuntime;
 const {

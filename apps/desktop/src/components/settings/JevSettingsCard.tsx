@@ -1,22 +1,30 @@
 /**
  * Jev on the model configuration page (D625, settings IA).
  *
- * The card is the state of the integration: whether a TypeSafe key is stored,
- * whether the classifier is on for Agent mode, and the actions that change
- * either. It is only there once Jev has been added — before that it would be a
+ * The card is the state of the integration: whether a System One key is stored,
+ * whether the classifier is on for Agent mode, and which endpoint/model it
+ * targets. It is only there once Jev has been added — before that it would be a
  * second place to paste a key, and adding stays where every other service is
  * added. The key itself is entered in the service dialog, which checks it
- * against TypeSafe before anything is kept.
+ * against the configured endpoint before anything is kept.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AppSettings } from "@pi-desktop/shared";
+import {
+  resolveJevClassifierBinding,
+  type AppSettings,
+} from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import { Button, SettingsToggle } from "../ui";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
 import { removeJevService } from "./jev-config";
-import { persistJevEnabled, useJevKeyStatus } from "./jev-app-config";
+import {
+  disableAndClearJevConfiguration,
+  persistJevEnabled,
+  useJevKeyStatus,
+} from "./jev-app-config";
+import { endpointLabel } from "./service-catalog";
 
 type BusyAction = "toggle" | "remove" | null;
 
@@ -39,6 +47,10 @@ export function JevSettingsCard({
   const [busy, setBusy] = useState<BusyAction>(null);
   const enabled = settings?.jevEnabled === true;
   const configured = keyStatus === "configured";
+  const bindingResolution = resolveJevClassifierBinding(settings?.jevClassifier);
+  const binding = bindingResolution.status === "invalid"
+    ? null
+    : bindingResolution.binding;
   /*
     Jev is one of the services the user adds from "Add service", so an install
     without it has nothing to show here: a card would only be a second place to
@@ -70,7 +82,7 @@ export function JevSettingsCard({
     setBusy("remove");
     try {
       await removeJevService({
-        setEnabled: persistJevEnabled,
+        disableAndClear: disableAndClearJevConfiguration,
         deleteKey: () => api.deleteJevApiKey(),
       });
       setKeyStatus("missing");
@@ -90,6 +102,9 @@ export function JevSettingsCard({
       : keyStatus === "loading"
         ? t("settings.jevKeyStatusChecking")
         : t("settings.jevKeyMissing");
+  const bindingDetail = binding
+    ? `${keyStatusText} · ${endpointLabel(binding.baseUrl)} · ${binding.modelId}`
+    : `${keyStatusText} · ${t("settings.jevBindingInvalid")}`;
 
   return (
     <SettingsCard
@@ -99,7 +114,7 @@ export function JevSettingsCard({
       <SettingsRow
         title={t("settings.jevEnable")}
         description={t("settings.jevEnableDescription")}
-        detail={keyStatusText}
+        detail={bindingDetail}
       >
         <div className="jev-settings-controls">
           <Button
@@ -123,7 +138,7 @@ export function JevSettingsCard({
           <SettingsToggle
             checked={enabled}
             label={t("settings.jevEnable")}
-            disabled={busy !== null || !settings || (!configured && !enabled)}
+            disabled={busy !== null || !settings || (!enabled && (!configured || !binding))}
             busy={busy === "toggle"}
             onChange={() => void toggleEnabled()}
           />

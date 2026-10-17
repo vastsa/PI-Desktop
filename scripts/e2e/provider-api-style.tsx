@@ -8,9 +8,14 @@ import { ProviderSetupDialog, type ProviderSetupDialogProps } from "../../apps/d
 import { VendorAccountDialog, type VendorAccountForm } from "../../apps/desktop/src/components/settings/VendorAccountDialog";
 import { defaultModelOptions, providerServesChatModels } from "../../apps/desktop/src/components/settings/default-model";
 import { subagentModelChoices } from "../../apps/desktop/src/components/settings/subagent-models";
-import { API_STYLE_LABEL_KEYS, CUSTOM_PROVIDER_API_STYLES } from "../../apps/desktop/src/components/settings/provider-api-style";
-import { copyProviderConfiguration } from "../../apps/desktop/src/components/settings/provider-copy";
+import {
+  API_STYLE_LABEL_KEYS,
+  CUSTOM_PROVIDER_API_STYLES,
+  CUSTOM_PROVIDER_SETUP_API_STYLES,
+  PROVIDER_SETUP_API_STYLE_LABEL_KEYS,
+} from "../../apps/desktop/src/components/settings/provider-api-style";
 import { CUSTOM_SERVICE } from "../../apps/desktop/src/components/settings/service-catalog";
+import { copyProviderConfiguration } from "../../apps/desktop/src/components/settings/provider-copy";
 import { api } from "../../apps/desktop/src/lib/api";
 
 declare global { var providerApiStyleProbe: () => Promise<unknown>; }
@@ -134,6 +139,8 @@ globalThis.providerApiStyleProbe = async () => {
   const apiStyleLabel = (style: string) =>
     i18n.t(API_STYLE_LABEL_KEYS[style as keyof typeof API_STYLE_LABEL_KEYS]);
   const customLabels = () => CUSTOM_PROVIDER_API_STYLES.map(apiStyleLabel);
+  const customSetupLabels = () => CUSTOM_PROVIDER_SETUP_API_STYLES.map((style) =>
+    i18n.t(PROVIDER_SETUP_API_STYLE_LABEL_KEYS[style]));
 
   /*
     The API format row is a SettingsMenuSelect: a trigger button that reports the
@@ -243,11 +250,12 @@ globalThis.providerApiStyleProbe = async () => {
         `${locale}: StepFun discovery used the wrong route or credentials`);
       const stepfunCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
         .find((input) => input.closest("label")?.textContent?.includes("step-5-preview"));
-      await until(() => Boolean(stepfunCheckbox()), "StepFun discovered model");
-      // Exercise explicit selection even when the recommendation preselected it.
-      if (stepfunCheckbox()!.checked) click(stepfunCheckbox());
+      await until(() => stepfunCheckbox()?.checked === true, "StepFun recommended model selected");
+      // Exercise explicit selection after recommendation has settled.
       click(stepfunCheckbox());
-      assert(stepfunCheckbox()!.checked, `${locale}: StepFun model was not selected`);
+      await until(() => stepfunCheckbox()?.checked === false, "StepFun model deselected");
+      click(stepfunCheckbox());
+      await until(() => stepfunCheckbox()?.checked === true, "StepFun model selected");
       await until(() => !control("settings.saveProvider").disabled, "StepFun save enabled");
       click(control("settings.saveProvider"));
       await until(() => creates.length === beforeStepfunCreate + 1, "StepFun saved");
@@ -270,8 +278,8 @@ globalThis.providerApiStyleProbe = async () => {
       assert(!document.querySelector("[data-service-id]"), `${locale}: chooser stayed open after a pick`);
       await openApiStyleMenu();
       const newCustomOptions = optionSnapshot();
-      assert(JSON.stringify(newCustomOptions.map((option) => option.label)) === JSON.stringify(customLabels()),
-        `${locale}: new custom form exposes an account format`);
+      assert(JSON.stringify(newCustomOptions.map((option) => option.label)) === JSON.stringify(customSetupLabels()),
+        `${locale}: new custom form does not expose the setup formats`);
       for (const style of ACCOUNT_ONLY_STYLES) {
         assert(!newCustomOptions.some((option) => option.label === apiStyleLabel(style)),
           `${locale}: new custom form offers the account format ${style}`);
@@ -299,13 +307,15 @@ globalThis.providerApiStyleProbe = async () => {
       const localProbe = discoveries.at(-1)!;
       assert(localProbe.baseUrl === "http://127.0.0.1:11434/v1" && !localProbe.apiKey,
         `${locale}: local model discovery included an API key`);
+      const localModel = () => document.querySelector<HTMLInputElement>(
+        ".provider-models-row input",
+      );
       await until(
-        () => Boolean(document.querySelector<HTMLInputElement>(".provider-models-row input")),
+        () => Boolean(localModel()),
         "local model discovery result",
       );
-      const localModel = document.querySelector<HTMLInputElement>(".provider-models-row input");
-      assert(localModel, `${locale}: the local service model was not selectable`);
-      if (!localModel.checked) click(localModel);
+      assert(localModel(), `${locale}: the local service model was not selectable`);
+      await until(() => localModel()?.checked === true, "local recommended model selected");
       await until(() => !control("settings.saveProvider").disabled, "no-auth provider save enabled");
       const beforeLocalCreate = creates.length;
       savedProvider = undefined;

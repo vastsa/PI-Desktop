@@ -13,12 +13,17 @@ import { useTranslation } from "react-i18next";
 import {
   NAMED_ENDPOINT_PRESETS,
   OPENCODE_GO_API_STYLE,
+  DEFAULT_JEV_CLASSIFIER_BINDING,
+  JEV_SYSTEM_ONE_API_STYLE,
+  isDefaultJevClassifierBinding,
+  resolveJevClassifierBinding,
   normalizeApiStyle,
   type PluginProviderCatalogMeta,
   type CatalogApiStyle,
   type ModelBinding,
   type OAuthVendor,
   type ProviderPublic,
+  type JevClassifierBinding,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
@@ -45,6 +50,7 @@ import {
   isAccountOnlyApiStyle,
   needsCustomApiStyleChoice,
   providerSetupPreset,
+  type ProviderSetupApiStyle,
 } from "./provider-api-style";
 
 import {
@@ -121,6 +127,15 @@ export function ProviderSetupDialog({
   pluginCatalogPluginName,
 }: ProviderSetupDialogProps) {
   const { t } = useTranslation();
+  const appSettings = useAppStore((state) => state.settings);
+  const persistedJev = resolveJevClassifierBinding(appSettings?.jevClassifier);
+  const initialJevBinding = persistedJev.status === "invalid"
+    ? { ...DEFAULT_JEV_CLASSIFIER_BINDING }
+    : persistedJev.binding;
+  const initialCustomJev =
+    initialService === JEV_SERVICE &&
+    persistedJev.status === "configured" &&
+    !isDefaultJevClassifierBinding(persistedJev.binding);
   const [imageModelDraft, setImageModelDraft] = useState<string[] | undefined>();
   const editing = !!provider;
   const apiKeyRef = useRef<HTMLInputElement>(null);
@@ -128,11 +143,21 @@ export function ProviderSetupDialog({
     initialServiceId(initialService, initialDraft, provider),
   );
   const [name, setName] = useState(() => initialDraft?.name ?? initialName(provider));
-  const [baseUrl, setBaseUrl] = useState(() => initialDraft?.baseUrl ?? initialBaseUrl(provider));
+  const [baseUrl, setBaseUrl] = useState(() =>
+    initialCustomJev
+      ? initialJevBinding.baseUrl
+      : initialDraft?.baseUrl ?? initialBaseUrl(provider),
+  );
   const [apiKey, setApiKey] = useState("");
   const [noApiKeyRequired, setNoApiKeyRequired] = useState(() => provider?.authKind === "none");
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() =>
     initialDraft?.apiStyle ?? normalizeApiStyle(provider?.apiStyle),
+  );
+  const [systemOneSetup, setSystemOneSetup] = useState(initialCustomJev);
+  const [jevModelId, setJevModelId] = useState(
+    initialCustomJev
+      ? initialJevBinding.modelId
+      : DEFAULT_JEV_CLASSIFIER_BINDING.modelId,
   );
   const [headerPairs, setHeaderPairs] = useState(() => recordToPairs(provider?.headers));
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -206,6 +231,7 @@ export function ProviderSetupDialog({
   // Named add-path waits for a key so picking a vendor does not 401-probe.
   // Editing reuses the stored secret. Custom still probes a valid URL alone.
   const discoveryActive =
+    !systemOneSetup &&
     !pluginCatalogSetup &&
     Boolean(service) &&
     !requiresApiStyleChoice &&
@@ -227,7 +253,7 @@ export function ProviderSetupDialog({
   useProbeFeedback(discovery, named);
   const recommended = useRecommendedModelSelection({
     // A copy keeps the models it was copied with.
-    enabled: !provider && !initialDraft?.models?.length,
+    enabled: !systemOneSetup && !provider && !initialDraft?.models?.length,
     serviceKey: `${service}|${requestBaseUrl}|${resolvedApiStyle}`,
     discovery,
     setModels,
@@ -247,9 +273,9 @@ export function ProviderSetupDialog({
   const discoveredBaseUrl = discovery.effectiveBaseUrl;
   const adoptedFrom = discovery.resolvedFrom;
   useEffect(() => {
-    if (named || !discoveredBaseUrl || !adoptedFrom) return;
+    if (systemOneSetup || named || !discoveredBaseUrl || !adoptedFrom) return;
     setBaseUrl((current) => (endpointsEqual(current, adoptedFrom) ? discoveredBaseUrl : current));
-  }, [named, discoveredBaseUrl, adoptedFrom]);
+  }, [systemOneSetup, named, discoveredBaseUrl, adoptedFrom]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -280,6 +306,7 @@ export function ProviderSetupDialog({
   const onServiceChange = (next: string) => {
     const previous = namedPreset;
     setService(next);
+    setSystemOneSetup(false);
     setBaseUrlTouched(false);
     // A format picked for the previous service does not carry over: the new
     // service's own format, or the new address, decides again.
@@ -302,7 +329,8 @@ export function ProviderSetupDialog({
   const pickService = (next: string) => {
     setChoosing(false);
     if (next === service) {
-      focusAfterServiceChange(next);
+      if (systemOneSetup) onServiceChange(next);
+      else focusAfterServiceChange(next);
       return;
     }
     // A key belongs to the service it was pasted for.
@@ -525,7 +553,13 @@ export function ProviderSetupDialog({
             commitBaseUrl={commitBaseUrl}
             baseUrlError={baseUrlError}
             apiStyle={apiStyle}
-            onApiStyleChange={(value) => {
+            allowSystemOne={!editing && !initialDraft}
+            onApiStyleChange={(value: ProviderSetupApiStyle) => {
+              if (value === JEV_SYSTEM_ONE_API_STYLE) {
+                setSystemOneSetup(true);
+                setJevModelId((current) => current || DEFAULT_JEV_CLASSIFIER_BINDING.modelId);
+                return;
+              }
               // A hand-picked format is the user's answer and outranks the
               // endpoint's own suggestion from here on.
               setApiStyleTouched(true);
@@ -584,13 +618,33 @@ export function ProviderSetupDialog({
     </>
   );
 
-  /*
-    Jev is the one entry here that is not a provider row: a key and no models,
-    so it renders its own half of the dialog instead of the connection form and
-    the model panes.
-  */
+  const jevBinding: JevClassifierBinding = systemOneSetup
+    ? { baseUrl, modelId: jevModelId }
+    : { ...DEFAULT_JEV_CLASSIFIER_BINDING };
   const jevView = (
-    <JevServiceForm onClose={onClose} onConfigured={() => onJevConfigured?.()} />
+    <JevServiceForm
+      onClose={onClose}
+      onConfigured={() => onJevConfigured?.()}
+      binding={jevBinding}
+      apiKey={apiKey}
+      onApiKeyChange={setApiKey}
+      custom={systemOneSetup}
+      onBindingChange={(next) => {
+        setBaseUrl(next.baseUrl);
+        setJevModelId(next.modelId);
+      }}
+      onApiStyleChange={(style) => {
+        if (style === JEV_SYSTEM_ONE_API_STYLE) return;
+        // A custom classifier opened from the Jev card still carries the
+        // classifier service id. Switching back to a chat format must return
+        // to the Custom Endpoint provider form instead of the official Jev view.
+        setService(CUSTOM_SERVICE);
+        setSystemOneSetup(false);
+        setApiStyleTouched(true);
+        setApiStyle(style);
+      }}
+      onChangeService={() => setChoosing(true)}
+    />
   );
 
   return portalOverlay(
@@ -625,7 +679,7 @@ export function ProviderSetupDialog({
               </Button>
             </div>
           )
-        ) : jevService ? jevView : formView}
+        ) : jevService || systemOneSetup ? jevView : formView}
       </div>
 
       {advancedOpen && (named || custom) ? (

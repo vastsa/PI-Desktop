@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Jev lässt sich mit einem eigenen System-One-Endpunkt und Modell verbinden, ohne den Klassifikator in Chat-Modelllisten aufzunehmen.",
       "Installierte Plugins erscheinen als Karten in einem selbst füllenden Raster, jede mit einer klaren Aktion und sichtbarem Vertrauens-, Update- und Geltungsstatus.",
       "Öffentliche Bewertungen und Rezensionen für Marketplace-Plugins lesen und im Plugin-Center eine schreiben — die Desktop-App meldet sich nie an.",
       "Lange Bash-Befehle laufen nach dem Agenten-Turn als Hintergrundaufgaben weiter; ihre Ausgabe lässt sich später prüfen.",

@@ -57,10 +57,12 @@ import {
 import {
   DEFAULT_COMMAND_TIMEOUT_MS,
   OAUTH_AUTH_KIND,
+  DEFAULT_JEV_CLASSIFIER_BINDING,
   type TrustedExtensionCommand,
   type TrustedExtensionDiagnostic,
   type TrustedExtensionSpec,
   type TrustedExtensionUiResponse,
+  type JevClassifierRuntimeConfig,
 } from "@pi-desktop/shared";
 import type {
   TrustedExtensionRunner,
@@ -978,7 +980,9 @@ export type AgentRuntimeOptions = {
   thinkingLevel: SessionThinkingLevel;
   /** Persisted opt-in for retrying transient provider failures until success. */
   infiniteProviderRetry?: boolean;
-  /** TypeSafe Jev credential, resolved by Electron main only when enabled. */
+  /** Complete System One classifier configuration resolved by Electron main. */
+  jev?: JevClassifierRuntimeConfig;
+  /** @deprecated Official-default compatibility for older callers/tests. */
   jevApiKey?: string;
   systemPrompt?: string;
   /** pi-compatible SYSTEM.md / APPEND_SYSTEM.md resolved for the session (issue #542). */
@@ -1052,6 +1056,7 @@ export type RuntimeMatchConfig = {
   provider: RuntimeProviderConfig;
   thinkingLevel: SessionThinkingLevel;
   jevApiKey?: string;
+  jev?: JevClassifierRuntimeConfig;
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
   trustedExtensions?: TrustedExtensionSpec[];
@@ -1920,7 +1925,7 @@ export class DesktopAgentRuntime {
   private providerRateLimitRetryAttempt = 0;
   /** Opt-in mode removes only the retry-count ceiling; abort and backoff stay intact. */
   private infiniteProviderRetry = false;
-  private jevApiKey?: string;
+  private jev?: JevClassifierRuntimeConfig;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
   private suppressProviderRetryRunEnd = false;
@@ -2023,7 +2028,9 @@ export class DesktopAgentRuntime {
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
-    this.jevApiKey = opts.jevApiKey;
+    this.jev = opts.jev ?? (opts.jevApiKey
+      ? { ...DEFAULT_JEV_CLASSIFIER_BINDING, apiKey: opts.jevApiKey }
+      : undefined);
     this.host = opts.host;
     this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
     this.hostCloseUnsubscribe = this.host.onClose?.(() => {
@@ -2708,7 +2715,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       !this.disposed &&
       providerMatches &&
       this.mode === config.mode &&
-      this.jevApiKey === config.jevApiKey &&
+      this.jev?.apiKey === (config.jev?.apiKey ?? config.jevApiKey) &&
+      this.jev?.baseUrl === (config.jev?.baseUrl ?? (config.jevApiKey ? DEFAULT_JEV_CLASSIFIER_BINDING.baseUrl : undefined)) &&
+      this.jev?.modelId === (config.jev?.modelId ?? (config.jevApiKey ? DEFAULT_JEV_CLASSIFIER_BINDING.modelId : undefined)) &&
       this.thinkingLevel ===
         clampThinkingLevel(config.provider, config.thinkingLevel) &&
       current === next &&
@@ -3867,8 +3876,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     const builtins = tools.map(exec);
     const jevTools: AgentTool[] =
-      this.mode === "agent" && this.jevApiKey
-        ? [createJevClassifierTool(this.jevApiKey)]
+      this.mode === "agent" && this.jev
+        ? [createJevClassifierTool(this.jev)]
         : [];
 
     // Plugins contribute Agent tools by default. Plan/Goal modes only

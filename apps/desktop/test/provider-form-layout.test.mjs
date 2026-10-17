@@ -76,7 +76,7 @@ test("custom API format sits beside the key, not in a disclosure", () => {
   assert.match(setupSource, /provider-advanced-dialog/);
   assert.match(setupSource, /settings\.advancedSettings/);
   assert.match(fieldsSource, /settings\.apiStyle"/);
-  assert.match(fieldsSource, /CUSTOM_PROVIDER_API_STYLES\.map/);
+  assert.match(fieldsSource, /CUSTOM_PROVIDER_SETUP_API_STYLES/);
   assert.doesNotMatch(fieldsSource, /settings\.apiStyleDerived/);
   assert.match(fieldsSource, /provider-service-chip/);
   // The format choice belongs to the custom rows only.
