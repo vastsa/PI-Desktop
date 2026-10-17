@@ -60,6 +60,7 @@ test("sidebar renders global pins once, outside project folding and history limi
       activeSessionId: null,
       selectingSessionId: null,
       page: "chat",
+      settings: { sidebarSessionTime: true },
       projectCollapsed: {},
       sessionView: { sort: "recent", archived: false },
     };

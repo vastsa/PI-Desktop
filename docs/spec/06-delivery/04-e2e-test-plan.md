@@ -10048,9 +10048,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Steps**: Start a multi-step Agent turn that calls `TodoWrite` with ordered
   pending and `in_progress` items. Observe the TodoDock above the Composer;
   confirm its progress text is left-aligned, its separate arrow button is at
-  the right edge, and clicking the text does not expand it. Click the upward
-  arrow to expand, then confirm the arrow points down. Switch sessions and
-  confirm the checklist stays session-scoped.
+  the right edge, measures at least 36px square, and contains an independently
+  sized 18px arrow icon. Confirm clicking the text does not expand it. Click
+  the upward arrow to expand, then confirm the arrow points down. Switch
+  sessions and confirm the checklist stays session-scoped.
   Expand a checklist longer than the dock's height cap: every row must render
   and the list must scroll inside the dock without growing the Composer stack.
   Complete and cancel items, confirm the all-cancelled label, then clear the
@@ -16197,7 +16198,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 #### E2E-LAYOUT-sidebar-row-states
 
 - **Preconditions**: Host-seeded project, pinned and standalone conversations;
-  a current workspace; built desktop with isolated data and profile directories.
+  the sidebar Session time preference enabled; a current workspace; built
+  desktop with isolated data and profile directories.
 - **Steps**: In dark and light themes, select a project conversation, hover its
   project title and an unselected conversation, then hover the selected row.
   Check that a project session date is visible at rest and replaced by its

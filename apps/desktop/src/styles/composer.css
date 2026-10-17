@@ -737,19 +737,19 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 38px;
+  min-height: 44px;
   align-items: center;
   gap: 10px;
-  padding: 5px 8px 5px 12px;
+  padding: 4px 8px 4px 12px;
   color: var(--ds-text-primary);
   text-align: left;
 }
 
-.todo-dock-toggle {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+.todo-dock-toggle.btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
   padding: 0;
   color: var(--ds-text-muted);
 }

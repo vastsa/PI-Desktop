@@ -70,10 +70,9 @@ function resolveHostBinary() {
  *   history twelve unpinned sessions for the project load-more reset flow
  *
  * `session.import` is the only protocol entry point that accepts a session's own
- * timestamps, which is what puts rows in the yesterday / this-week / older
- * buckets. The retained-tab list, the pin set, and the project ordering are
- * renderer-local, so they are handed to the app through its own persisted
- * sidebar preferences.
+ * timestamps, which supplies the relative and calendar-date row labels. The
+ * retained-tab list, the pin set, and the project ordering are renderer-local,
+ * so they are handed to the app through its own persisted sidebar preferences.
  *
  * `tempDirs` receives the project root as soon as it exists, so a failure here
  * still leaves the caller's clean-up able to remove it.
@@ -112,6 +111,7 @@ async function seedSidebarProjects(hostBinary, dataDir, tempDirs) {
   const host = new Host(hostBinary, dataDir);
   try {
     await host.start();
+    await host.call("settings.set", { sidebarSessionTime: true });
     await host.call("workspace.set", { path: alpha });
     const importRow = async (id, title, projectPath, updatedMs) => {
       const result = await host.call("session.import", {

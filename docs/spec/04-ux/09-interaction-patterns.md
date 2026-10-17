@@ -297,10 +297,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   a stable path order until they are moved.
 - Each project group shows the ten most-recent rows in the active sort order
   by default; the remaining sessions fold behind a **Load N more…** control.
-  The expanded list remains flat. Each project session row shows its title and
-  localized last-reply age through seven calendar days, then a concrete date;
-  hover or keyboard focus replaces the date with the session actions. Expanded
-  state is per-group, for the current session only, and not persisted.
+  The expanded list remains flat. When Session time is enabled, each project
+  session row shows its title and localized last-reply age through seven
+  calendar days, then a month/day date; hover or keyboard focus replaces the
+  date with the session actions. Expanded state is per-group, for the current
+  session only, and not persisted.
 - Presentation changes are saved best-effort. Storage failure must not block
   project activation, session selection, or agent execution.
 
@@ -1600,11 +1601,11 @@ Project drag/drop follows these patterns:
   and remain reachable through keyboard focus (`:focus-within` /
   `:focus-visible`) without a pointer. A spelled-out control never triggers the
   row or header underneath it as well.
-- Project session dates and the overflow action share one trailing slot: the
-  date is visible at rest, then yields that slot to the action on hover or
-  keyboard focus. Dates through seven calendar days use a relative day label;
-  older dates use the localized month and day without a year. On devices without
-  hover, the action stays available in that slot.
+- When Session time is enabled, project session dates and the overflow action
+  share one trailing slot: the date is visible at rest, then yields that slot
+  to the action on hover or keyboard focus. Dates through seven calendar days
+  use a relative day label; older dates use the localized month and day without
+  a year. On devices without hover, the action stays available in that slot.
 - The hover card's own navigation controls are the only interactive surfaces
   inside the card; the row keeps receiving pointer events everywhere else on
   it.

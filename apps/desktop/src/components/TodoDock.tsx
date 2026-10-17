@@ -70,7 +70,7 @@ export function TodoDock({ sessionId }: { sessionId: string }) {
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
-          {expanded ? <IconChevronDown size={14} /> : <IconChevronUp size={14} />}
+          {expanded ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
         </Button>
       </div>
       <div id={contentId} className="todo-dock-content" aria-hidden={!expanded}>
