@@ -9748,3 +9748,22 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **关联规格**：`04-ux/06-settings-ia.md`、`04-ux/09-interaction-patterns.md`、ADR 0294、D659、issue #1653。
 - **验收**：仅在 Host 项目激活成功后，渲染层才恢复该规范化路径的本地归档元数据。
 - **状态**：`apps/desktop/test/app-store-sidebar.test.mjs` 与 `apps/desktop/test/project-create-dialog.test.mjs` 有源码契约覆盖；完整 UI 场景仍为草稿，仅在明确请求且环境可用时运行。
+
+### E2E-FAST-MODE：`/fast` 只在允许的模型上请求优先档位
+
+- **前置条件**：一个 ChatGPT 订阅（Codex）账号和一个 Responses API key 提供商，各配置两个模型。
+  自动化路径不需要真实提供商；手动路径使用可捕获请求的本地端点或用户授权的账号。
+- **步骤**：
+  1. 在「设置 → 模型」中为每个提供商的一个模型勾选 **Fast 模式**；确认 Chat Completions 提供商上该勾选框不可用。
+  2. 在允许的 Codex 模型上新建任务，输入 `/fast`，发送一条提示。
+  3. 再次发送 `/fast`，然后再发送一条提示。
+  4. 把会话切换到未允许的模型，发送 `/fast`。
+  5. 在 Fast 开启时 fork 会话；重启应用后重新打开两个会话。
+- **预期**：第 1 步只在 binding 上保存 `fastModeAllowed`。第 2 步模型芯片显示 Fast 标识，请求体带有
+  `service_tier: "priority"`；Responses API key 模型改为提示按 token 计费的价格。第 3 步清除标识和该字段。
+  第 4 步给出模型设置提示并拒绝，不保存任何状态。第 5 步 fork 和重启后开关保持开启。子代理和压缩请求
+  从不携带该字段。远程会话拒绝 `/fast`。
+- **关联规格**：`03-runtime/11-provider-model-system.md`、`03-runtime/04-data-storage.md`（v25）、
+  `04-ux/04-builtin-commands.md`、ADR 0331、issue #1657。
+- **状态**：自动化覆盖见英文版。完整的设置 → `/fast` → 捕获请求路径为手动验证场景。
+

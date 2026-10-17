@@ -18172,3 +18172,35 @@ host-created files. The full app's file-preview viewer is covered separately.
   the theme-token and reduced-motion guarantees; the interactive sidebar
   scenario remains a manual validation scenario run in a capable
   environment.
+
+### E2E-FAST-MODE: `/fast` asks for the priority tier only on an allowed model
+
+- **Preconditions**: A ChatGPT subscription (Codex) account and a Responses
+  API-key provider, each with two configured models. No real provider is
+  required for the automated path; the manual path uses a capturing local
+  endpoint or the user's authorized account.
+- **Steps**:
+  1. In Settings → Models, check **Fast mode** on one model of each provider.
+     Confirm the checkbox is disabled on a Chat Completions provider.
+  2. Start a new task on the allowed Codex model, type `/fast`, send a prompt.
+  3. Send `/fast` again, then send another prompt.
+  4. Switch the session to the model without the opt-in and send `/fast`.
+  5. Fork the session while Fast is on; restart the app and reopen both.
+- **Expected**: Step 1 persists `fastModeAllowed` on the binding only. Step 2
+  shows the Fast mark on the model chip and the request body carries
+  `service_tier: "priority"`; a Responses API-key model shows the per-token
+  price toast instead. Step 3 clears the mark and the field. Step 4 refuses
+  with the model-settings hint and stores nothing. Step 5 keeps the switch on
+  the fork and across restart. Subagent and compaction requests never carry
+  the field. Remote sessions refuse `/fast`.
+- **Specs linked**: `03-runtime/11-provider-model-system.md`,
+  `03-runtime/04-data-storage.md` (v25), `04-ux/04-builtin-commands.md`,
+  ADR 0331, issue #1657.
+- **Status**: Automated coverage: `apps/desktop/test/fast-mode-command.test.mjs`
+  (draft → created session, toggle, refusals, remote, chip),
+  `apps/desktop/test/fast-mode-session-launch.test.mjs` (launch resolution),
+  `packages/agent-runtime/src/fast-mode.test.ts` (request body through the real
+  pi-ai Responses and Completions adapters), host-core migration, RPC and fork
+  tests. The full settings → `/fast` → captured request path is a manual
+  validation scenario.
+

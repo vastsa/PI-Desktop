@@ -790,6 +790,7 @@ export function createSessionSlice({
             modelId: config.modelId ?? state.draftConfiguration?.modelId,
             permissionMode:
               config.permissionMode ?? state.draftConfiguration?.permissionMode,
+            fastMode: config.fastMode ?? state.draftConfiguration?.fastMode,
           },
         }));
         return;
