@@ -81,6 +81,7 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
                 supports_documents: binding.supports_documents,
                 available_for_subagents: binding.available_for_subagents,
                 native_web_search: binding.native_web_search,
+                fast_mode_allowed: binding.fast_mode_allowed,
             })
         })
         .collect()
@@ -104,6 +105,7 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
                 supports_documents: None,
                 available_for_subagents: None,
                 native_web_search: None,
+                fast_mode_allowed: None,
             }]
         })
         .unwrap_or_default()
@@ -490,6 +492,7 @@ mod tests {
             supports_documents: None,
             available_for_subagents: None,
             native_web_search: None,
+            fast_mode_allowed: None,
         }
     }
 

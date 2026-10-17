@@ -603,6 +603,7 @@ export function registerSessionIpc({
         modelId?: string;
         thinkingLevel?: SessionThinkingLevel;
         permissionMode?: "inherit" | "ask" | "accept-edits" | "auto";
+        fastMode?: boolean;
       },
     ) => {
       rejectNativeMutation(id, "configuration");

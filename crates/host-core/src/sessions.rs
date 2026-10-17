@@ -128,6 +128,10 @@ pub struct SessionSummary {
     pub thinking_level: String,
     #[serde(default = "default_permission_mode")]
     pub permission_mode: String,
+    /// The `/fast` switch for this session's main turns (ADR 0331). Requests
+    /// use the priority tier only when the model binding also allows it.
+    #[serde(default)]
+    pub fast_mode: bool,
     pub updated_at: String,
     pub created_at: String,
     /// True when this session is the transcript owned by a scheduled-task run.
@@ -1290,7 +1294,8 @@ fn session_created_at(db: &Database, session_id: &str) -> Result<String> {
 const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
             s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
-            EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run
+            EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run,
+            s.fast_mode
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
@@ -1310,6 +1315,7 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         // Read by name: search and listing build their own column lists, so the
         // alias keeps this mapper independent of any one query's column order.
         scheduled_run: row.get("scheduled_run")?,
+        fast_mode: row.get("fast_mode")?,
         worktree: None,
     })
 }
@@ -1365,6 +1371,8 @@ pub struct SessionCreateOptions {
     pub project_path: Option<String>,
     pub thinking_level: Option<String>,
     pub permission_mode: Option<String>,
+    /// The `/fast` switch (ADR 0331); false keeps the default service tier.
+    pub fast_mode: bool,
 }
 
 pub fn create_session_with_thinking(
@@ -1386,6 +1394,7 @@ pub fn create_session_with_thinking(
             project_path,
             thinking_level,
             permission_mode: None,
+            fast_mode: false,
         },
     )
 }
@@ -1407,6 +1416,7 @@ pub fn create_session_with_options(
         project_path,
         thinking_level,
         permission_mode,
+        fast_mode,
     } = options;
     let now = now_ms();
     let id = Uuid::new_v4().to_string();
@@ -1436,8 +1446,8 @@ pub fn create_session_with_options(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, title_source, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+                permission_mode, title_source, fast_mode, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
         )?
         .execute(params![
             id,
@@ -1449,6 +1459,7 @@ pub fn create_session_with_options(
             thinking_level,
             permission_mode,
             title_source,
+            fast_mode,
             now
         ])?;
     Ok(SessionSummary {
@@ -1461,6 +1472,7 @@ pub fn create_session_with_options(
         mode,
         thinking_level,
         permission_mode,
+        fast_mode,
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
         // The run row that owns this transcript is written after creation.
@@ -1793,10 +1805,11 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, source, pinned, last_seq, created_at, updated_at
+                    permission_mode, fast_mode, source, pinned, last_seq, created_at,
+                    updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, NULL, 0, ?3, ?4, ?4
+                        permission_mode, fast_mode, NULL, 0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1825,6 +1838,7 @@ pub fn fork_session_through(
         mode: source.summary.mode,
         thinking_level: source.summary.thinking_level,
         permission_mode: source.summary.permission_mode,
+        fast_mode: source.summary.fast_mode,
         updated_at: created_at.clone(),
         created_at,
         // A fork is the user's own conversation, not the automation's transcript.
@@ -1870,6 +1884,31 @@ pub fn configure_session_with_thinking(
     thinking_level: Option<&str>,
     permission_mode: Option<&str>,
 ) -> Result<Option<SessionSummary>> {
+    configure_session_with_fast_mode(
+        db,
+        id,
+        mode,
+        provider_id,
+        model_id,
+        thinking_level,
+        permission_mode,
+        None,
+    )
+}
+
+/// Full configurator. Every `None` preserves the persisted value, including
+/// the `/fast` switch (ADR 0331).
+#[allow(clippy::too_many_arguments)]
+pub fn configure_session_with_fast_mode(
+    db: &Database,
+    id: &str,
+    mode: &str,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    thinking_level: Option<&str>,
+    permission_mode: Option<&str>,
+    fast_mode: Option<bool>,
+) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
         return Err(anyhow!("mode must be plan or agent"));
     }
@@ -1896,7 +1935,8 @@ pub fn configure_session_with_thinking(
              SET mode = ?2, provider_id = COALESCE(?3, provider_id),
                  model_id = COALESCE(?4, model_id),
                  thinking_level = COALESCE(?5, thinking_level),
-                 permission_mode = COALESCE(?6, permission_mode), updated_at = ?7
+                 permission_mode = COALESCE(?6, permission_mode),
+                 fast_mode = COALESCE(?8, fast_mode), updated_at = ?7
              WHERE id = ?1",
         )?
         .execute(params![
@@ -1906,7 +1946,8 @@ pub fn configure_session_with_thinking(
             model_id,
             thinking_level,
             permission_mode,
-            now_ms()
+            now_ms(),
+            fast_mode
         ])?;
     if changed == 0 {
         return Ok(None);
@@ -4746,6 +4787,76 @@ mod tests {
         assert_eq!(omitted.thinking_level, "omit");
     }
 
+    /// ADR 0331: `/fast` is stored per session, survives configures that do
+    /// not mention it, and is copied by a fork.
+    #[test]
+    fn session_fast_mode_is_persisted_preserved_and_forked() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        assert!(!session.fast_mode);
+
+        let set = |enabled: Option<bool>, mode: &str| {
+            configure_session_with_fast_mode(
+                &db,
+                &session.id,
+                mode,
+                None,
+                None,
+                None,
+                None,
+                enabled,
+            )
+            .unwrap()
+            .unwrap()
+        };
+        assert!(set(Some(true), "agent").fast_mode);
+        assert!(set(None, "plan").fast_mode);
+        let kept = configure_session(&db, &session.id, "agent", None, None)
+            .unwrap()
+            .unwrap();
+        assert!(kept.fast_mode);
+        assert!(
+            get_session(&db, &session.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .fast_mode
+        );
+
+        let ForkSessionResult::Created(fork) =
+            fork_session_through(&db, &session.id, None, None).unwrap()
+        else {
+            panic!("expected fork");
+        };
+        assert!(fork.summary.fast_mode);
+        assert!(
+            get_session(&db, &fork.summary.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .fast_mode
+        );
+
+        assert!(!set(Some(false), "agent").fast_mode);
+
+        let created = create_session_with_options(
+            &db,
+            SessionCreateOptions {
+                fast_mode: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(created.fast_mode);
+        assert!(
+            get_session(&db, &created.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .fast_mode
+        );
+    }
+
     #[test]
     fn create_session_permission_mode_is_optional_and_validated() {
         let db = test_db();
@@ -5038,6 +5149,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            fast_mode: false,
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
@@ -5091,6 +5203,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            fast_mode: false,
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
@@ -6033,6 +6146,7 @@ mod tests {
             permission_mode: "inherit".into(),
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
+            fast_mode: false,
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),

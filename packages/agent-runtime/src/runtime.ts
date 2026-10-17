@@ -240,6 +240,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
+import { withFastModeOptions } from "./fast-mode.js";
 import { withSessionAffinityOptions } from "./session-affinity.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
 import type { CompactionRequestShape } from "./compaction-diagnostics.js";
@@ -978,6 +979,11 @@ export type AgentRuntimeOptions = {
   thinkingLevel: SessionThinkingLevel;
   /** Persisted opt-in for retrying transient provider failures until success. */
   infiniteProviderRetry?: boolean;
+  /**
+   * Fast mode for main turns, already resolved by the launcher from the
+   * session `/fast` switch and the model binding's opt-in (ADR 0331).
+   */
+  fastMode?: boolean;
   /** TypeSafe Jev credential, resolved by Electron main only when enabled. */
   jevApiKey?: string;
   systemPrompt?: string;
@@ -1920,6 +1926,7 @@ export class DesktopAgentRuntime {
   private providerRateLimitRetryAttempt = 0;
   /** Opt-in mode removes only the retry-count ceiling; abort and backoff stay intact. */
   private infiniteProviderRetry = false;
+  private fastMode = false;
   private jevApiKey?: string;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
@@ -2023,6 +2030,7 @@ export class DesktopAgentRuntime {
     this.provider = opts.provider;
     this.thinkingLevel = clampThinkingLevel(opts.provider, opts.thinkingLevel);
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
+    this.fastMode = opts.fastMode === true;
     this.jevApiKey = opts.jevApiKey;
     this.host = opts.host;
     this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
@@ -2183,14 +2191,19 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ),
           m.api,
         );
-        const hookedOptions = withSessionAffinityOptions(
-          this.withExtensionProviderHooks(requestOptions, m),
-          {
-            provider: this.provider,
-            api: m.api,
-            baseUrl: m.baseUrl,
-            sessionId: this.sessionId,
-          },
+        // Only main turns ask for the priority tier: subagents, compaction and
+        // one-shot requests build their own options and keep the default.
+        const hookedOptions = withFastModeOptions(
+          withSessionAffinityOptions(
+            this.withExtensionProviderHooks(requestOptions, m),
+            {
+              provider: this.provider,
+              api: m.api,
+              baseUrl: m.baseUrl,
+              sessionId: this.sessionId,
+            },
+          ),
+          this.fastMode,
         );
         // The watchdog must be able to *stop* what it abandons. It wraps the
         // retry adapter, so draining alone would let the adapter wake from its
@@ -2327,6 +2340,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   setInfiniteProviderRetry(enabled: boolean): void {
     if (this.disposed) throw new Error("runtime disposed");
     this.infiniteProviderRetry = enabled;
+  }
+
+  /** Apply the session `/fast` switch to the next turn of a reused runtime. */
+  setFastMode(enabled: boolean): void {
+    if (this.disposed) throw new Error("runtime disposed");
+    this.fastMode = enabled;
   }
 
   /** Refresh catalog instructions without changing the running session owner. */

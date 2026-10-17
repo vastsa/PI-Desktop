@@ -839,6 +839,9 @@ function bindingFromGenericModel(
     ...(record?.nativeWebSearch === true || record?.native_web_search === true
       ? { nativeWebSearch: true }
       : {}),
+    ...(record?.fastModeAllowed === true || record?.fast_mode_allowed === true
+      ? { fastModeAllowed: true }
+      : {}),
   };
 }
 
