@@ -1,4 +1,5 @@
 mod model_fallbacks;
+mod project_scope;
 
 use crate::activation::ActivationScope;
 use crate::agent_capabilities::{
@@ -87,14 +88,13 @@ pub struct UserSubagentInput {
     pub thinking_level: Option<String>,
     pub max_tokens: Option<u32>,
     pub enabled: Option<bool>,
-    /// Kept for protocol compatibility; subagents are global-only now.
-    #[allow(dead_code)]
     pub scope: Option<ActivationScope>,
 }
 
 pub struct UserSubagentRegistry {
     state: CapabilityState,
     builtins: CapabilityState,
+    scopes: project_scope::ProjectScopes,
 }
 
 fn normalize_name(value: &str) -> String {
@@ -270,17 +270,20 @@ impl UserSubagentRegistry {
         Self {
             state: CapabilityState::new(data_dir, SUBAGENT_KIND),
             builtins: CapabilityState::new(data_dir, SUBAGENT_BUILTIN_KIND),
+            scopes: project_scope::ProjectScopes::new(data_dir),
         }
     }
 
     fn scan(&mut self) -> Result<Vec<UserSubagentRecord>> {
         let directory = capability_dir(CapabilityLevel::Global, None, "subagents")?;
+        let scopes = self.scopes.read()?;
         let mut records = Vec::new();
         let mut seen = HashSet::new();
         for path in sorted_files(&directory, "md") {
-            let Some(record) = parse_record(&path, &self.state) else {
+            let Some(mut record) = parse_record(&path, &self.state) else {
                 continue;
             };
+            record.scope = scopes.get(&record.id).cloned().unwrap_or_default();
             if seen.insert(record.id.clone()) {
                 records.push(record);
             }
@@ -296,11 +299,11 @@ impl UserSubagentRegistry {
         self.scan()
     }
 
-    pub fn active_for(&mut self, _project_path: Option<&str>) -> Result<Vec<UserSubagentRecord>> {
+    pub fn active_for(&mut self, project_path: Option<&str>) -> Result<Vec<UserSubagentRecord>> {
         Ok(self
             .scan()?
             .into_iter()
-            .filter(|record| record.enabled)
+            .filter(|record| record.enabled && record.scope.matches(project_path))
             .collect())
     }
 
@@ -347,7 +350,7 @@ impl UserSubagentRegistry {
             level: Some("global".into()),
             description,
             enabled: input.enabled.unwrap_or(true),
-            scope: ActivationScope::default(),
+            scope: input.scope.unwrap_or_default().normalized(),
             tools,
             model: normalize_model(input.model.as_deref())?,
             fallback_models: model_fallbacks::normalize(
@@ -372,6 +375,7 @@ impl UserSubagentRegistry {
         if document.len() > MAX_SUBAGENT_BYTES {
             bail!("SUBAGENT_INVALID: document exceeds {MAX_SUBAGENT_BYTES} bytes");
         }
+        self.scopes.set(&record.id, Some(&record.scope))?;
         fs::write(&path, &document).with_context(|| format!("write {}", path.display()))?;
         if !record.enabled {
             self.state.set_enabled(
@@ -442,6 +446,10 @@ impl UserSubagentRegistry {
             None => current.max_tokens,
         };
         next.enabled = input.enabled.unwrap_or(current.enabled);
+        next.scope = input
+            .scope
+            .unwrap_or_else(|| current.scope.clone())
+            .normalized();
         next.path = current.path.clone();
         if next.id != current.id {
             next.path = capability_dir(CapabilityLevel::Global, None, "subagents")?
@@ -453,11 +461,13 @@ impl UserSubagentRegistry {
         if document.len() > MAX_SUBAGENT_BYTES {
             bail!("SUBAGENT_INVALID: document exceeds {MAX_SUBAGENT_BYTES} bytes");
         }
+        self.scopes.set(&next.id, Some(&next.scope))?;
         fs::write(&next.path, &document)?;
         if next.path != current.path {
-            fs::remove_file(&current.path).ok();
+            fs::remove_file(&current.path)?;
+            self.scopes.set(&current.id, None)?;
         }
-        if next.enabled != current.enabled {
+        if next.enabled != current.enabled || next.id != current.id {
             self.state.set_enabled(
                 SUBAGENT_KIND,
                 CapabilityLevel::Global,
@@ -485,7 +495,8 @@ impl UserSubagentRegistry {
         let Some(record) = self.find(id)? else {
             return Ok(false);
         };
-        fs::remove_file(&record.path).ok();
+        fs::remove_file(&record.path)?;
+        self.scopes.set(&record.id, None)?;
         let _ = self.scan()?;
         Ok(true)
     }
@@ -509,7 +520,10 @@ impl UserSubagentRegistry {
         id: &str,
         scope: ActivationScope,
     ) -> Result<Option<UserSubagentRecord>> {
-        let _ = scope;
+        if self.find(id)?.is_none() {
+            return Ok(None);
+        }
+        self.scopes.set(id, Some(&scope))?;
         self.find(id)
     }
 
@@ -808,5 +822,50 @@ mod tests {
             .path()
             .join("agent-capabilities/subagent-builtins.json")
             .exists());
+    }
+    #[test]
+    fn project_scope_survives_restart_and_rename() {
+        use crate::activation::ActivationMode;
+        use crate::agent_capabilities::test_support;
+        let data = tempdir().unwrap();
+        let agents = tempdir().unwrap();
+        test_support::with_global_agents(agents.path(), || {
+            let mut registry = UserSubagentRegistry::new(data.path());
+            let input = UserSubagentInput {
+                name: Some("reviewer".into()),
+                description: Some("Review".into()),
+                scope: Some(ActivationScope {
+                    mode: ActivationMode::Projects,
+                    projects: vec!["/project-a/".into()],
+                }),
+                ..Default::default()
+            };
+            registry.create(input).unwrap();
+            assert!(registry.active_for(Some("/project-b")).unwrap().is_empty());
+            assert!(registry.active_for(None).unwrap().is_empty());
+            assert_eq!(
+                registry.active_for(Some("/project-a/src")).unwrap().len(),
+                1
+            );
+            let mut registry = UserSubagentRegistry::new(data.path());
+            assert!(registry.active_for(Some("/project-b")).unwrap().is_empty());
+            registry.set_enabled("reviewer", false).unwrap();
+            registry
+                .update(
+                    "reviewer",
+                    UserSubagentInput {
+                        name: Some("renamed".into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            assert!(registry.active_for(Some("/project-b")).unwrap().is_empty());
+            assert!(!registry.find("renamed").unwrap().unwrap().enabled);
+            registry.set_enabled("renamed", true).unwrap();
+            registry
+                .set_scope("renamed", ActivationScope::default())
+                .unwrap();
+            assert_eq!(registry.active_for(None).unwrap().len(), 1);
+        });
     }
 }
