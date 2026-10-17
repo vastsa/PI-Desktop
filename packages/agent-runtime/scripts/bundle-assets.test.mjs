@@ -41,7 +41,9 @@ function onePixelPng() {
   ]);
 }
 
-it("bundles a runnable image-resize worker and its Photon WASM asset", async () => {
+// This integration test bundles the full runtime and starts a real worker.
+// Parallel unit-test transforms can exceed the default five-second budget.
+it("bundles a runnable image-resize worker and its Photon WASM asset", { timeout: 30_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-runtime-image-resize-"));
   const bundle = join(root, "bundle");
 

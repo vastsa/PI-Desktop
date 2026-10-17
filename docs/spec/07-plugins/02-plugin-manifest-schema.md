@@ -297,8 +297,8 @@ main-window default of 12 DIP (`--radius-md`). Invalid or fractional values
 reject the manifest. On Windows build 22000 and later, 0 requests square
 corners and every positive value requests the same native DWM rounded
 preference; Windows chooses the exact radius. Earlier Windows builds retain the
-requested DIP radius. On Windows 11, an 8-digit background is composited over
-the resolved built-in theme color so the top-level window remains opaque.
+requested DIP radius. On all supported Windows versions, an 8-digit background
+is flattened over the resolved built-in theme color so the main window remains opaque.
 
 type PluginSkillContrib = {
  id?: string; // defaults to the file name without its extension

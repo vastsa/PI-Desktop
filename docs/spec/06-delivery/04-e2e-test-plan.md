@@ -10420,7 +10420,26 @@ This test plan spec is accepted when:
 ### US-UI-19 Permanent Stage Manager bounds restore (macOS only)
 - On macOS with Stage Manager, shrink or unfocus the PI window until width < 800 or height < 560.
 - Expect the shell to re-assert a Codex-like footprint (~1200×800, min 800×560 capped to the display work area) and keep restoring while still collapsed (not only during the first 20s after launch).
+- If recovery temporarily enables always-on-top on macOS, confirm it remains pinned before the latest recovery's four-second deadline and, once normal bounds are restored, is cleared by the first watchdog check after that deadline; another recovery renews the deadline. On Windows/Linux, trigger bounds recovery through focus/show/restore and confirm it never enables always-on-top; normal focus and minimize/restore must not leave the window pinned either.
 - The recovery watchdog is macOS-only (D447). On Windows/Linux it must not run at all: the app must never re-layer or re-raise its own window unprompted. Focus another window, then confirm PI-Desktop stays behind it instead of jumping back to the top of the stack, and that a stacking check (`xprop -root _NET_CLIENT_LIST_STACKING`) never shows it returning to the top periodically.
+- Manual Windows acceptance: maximize PI-Desktop and use Alt+Tab in both directions; repeat after minimize/restore. Confirm the selected application is unobscured. Mocked lifecycle tests do not establish this native stacking behavior.
+  On Windows 10 and Windows 11, confirm the main window is opaque
+  (`transparent: false`), retains `thickFrame: true` (`WS_THICKFRAME`), and uses
+  authoritative native fullscreen state. From both normal and maximized
+  states, press F11 and inspect the middle button: glyph, tooltip, and
+  accessible name must all indicate Restore. Exit via that button, then repeat
+  using F11 to exit. The maximized → fullscreen → maximized journey must never
+  expose transient normal bounds or an app-driven unmaximize/maximize on either
+  leg. Verify the final native normal/maximized state matches the starting
+  state: maximized bounds stay native, while normal restore bounds are clamped
+  to `workArea` only after settled state is published. State and corner updates
+  must wait for Electron's native flags. Repeat after renderer reload while
+  fullscreen. Qualify taskbar minimize/restore before, during, and after the
+  fullscreen journey; native flags, bounds, corners, and Restore/Maximize button
+  state must remain consistent. Repeat on each display of a physical
+  dual-monitor setup with its configured taskbar/DPI layout. Windows 10/11 and
+  physical dual-monitor qualification remain pending until native evidence for
+  the tested candidate is recorded; these scenarios are not passed-result claims.
 
 ### US-UI-20 Dark floating composer box
 - Switch to dark theme on chat home.
@@ -12710,8 +12729,8 @@ This test plan spec is accepted when:
 #### E2E-167: Window edge resize stays smooth and persists the settled bounds
 
 - **Preconditions**: PI-Desktop is open in a normal, non-maximized window on
-  macOS, Windows, or Linux. On Windows, the left, bottom, and right rim must
-  have no visible native border. Run the case with the work panel closed and once
+  macOS, Windows, or Linux. Qualify Windows 10 and Windows 11 separately with an
+  opaque main window and `WS_THICKFRAME` retained. Run the case with the work panel closed and once
   with it open at a committed width.
 - **Steps**:
   1. Drag each reachable window edge and one corner slowly, including a brief
@@ -12732,30 +12751,45 @@ This test plan spec is accepted when:
      resizing. Apply authorized theme radii of 0 and 24 DIP, then return to a
      built-in theme. Radius 0 must be square. On Windows 11, positive values
      request the same system-rounded preference and are not asserted as exact
-     DIP radii; on earlier Windows builds, the existing clip retains its exact
-     DIP behavior. Reject an out-of-range radius without changing the surface.
+     DIP radii; earlier Windows builds stay rectangular for every request and
+     have no application window region. Confirm all client edges remain visible
+     without an asymmetric bright strip. Reject an out-of-range radius without
+     changing the surface.
   7. On Windows, minimize and restore the window, then confirm the selected
      corner preference is applied again. Open browser and plugin child views and
-     confirm their pixels stay within the top-level silhouette. On Windows 11,
-     also verify alpha theme colors are flattened over the built-in theme
-     background on an opaque top-level window.
+     confirm their pixels stay within the top-level silhouette. On all supported
+     Windows versions, verify alpha theme colors are flattened over the built-in
+     theme background on an opaque thick-frame main window.
+  8. Run the Windows 10/11 fullscreen qualification sequence in US-UI-19:
+     normal/maximized → F11 → exit via F11 or the middle Restore button, renderer
+     reload while fullscreen, and taskbar minimize/restore. Record native flags,
+     bounds, corner preference, and controls through each transition; qualify
+     physical dual-monitor runs separately.
 - **Expected**: Native edge and corner hit regions remain available in frameless
   chrome, the minimum size remains 800×560 (capped to the display
   work area), and the recovery watchdog does not
   compete with a slow resize stream. The renderer-owned divider updates the
   bounded panel target without changing native bounds; the last settled window
   bounds and the committed panel width reopen after relaunch. Windows uses
-  Electron's frameless native hit regions without the thick-frame rim; no left, bottom,
-  or right native rim is visible. No temporary
+  Electron's frameless native hit regions. All supported Windows versions keep
+  an opaque main window with `thickFrame: true` for native fullscreen and
+  maximized restore; record any native rim, shadow, and animation changes. No temporary
   work-panel reservation width is persisted or restored.
   Windows 11 uses DWM's native rounded preference for positive radii and a
   square preference for radius 0, maximize, and fullscreen. The default request
   remains 12 DIP and authorized themes retain the integer 0..24 DIP range, but
   DWM selects the actual positive radius and the test does not require 12 and
-  24 to look different. Its top-level surface is opaque, including when a
-  contributed alpha color is flattened over the built-in theme background.
-  Earlier Windows builds retain the existing content clip and integer shape
-  hit region. Browser/plugin child views stay within the top-level outline;
+  24 to look different. On all supported Windows versions, contributed alpha
+  colors are flattened over the built-in theme background without window
+  transparency. Earlier Windows builds use native square corners without a
+  `contentView` clip or `setShape()` region; theme radius requests are still
+  validated and acknowledged. Client pixels and native resize targets must
+  remain intact on the left, right, and bottom edges at 100%, 125%, 150%, 175%,
+  and 200% scale, after theme changes, resize, minimize/restore, and fullscreen.
+  Fullscreen uses authoritative native state with no intermediate
+  unmaximize/maximize or transient normal bounds during the maximized round
+  trip. Exit preserves native maximized bounds; normal bounds are clamped to
+  `workArea` after settled state publication. Browser/plugin child views stay within the top-level outline;
   Windows 11 corner click behavior is recorded as native system behavior and
   is not treated as `setShape()` click-through.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
@@ -12769,11 +12803,26 @@ This test plan spec is accepted when:
   controls in an isolated profile. The isolated `test:e2e:window-surface`
   candidate samples controlled light/dark desktop backgrounds and child-view
   bounds. Windows 11 additionally verifies the opaque DWM path and system
-  preference; earlier Windows builds verify the legacy clip and shape path.
+  preference; earlier Windows builds verify the native rectangle, absence of
+  a custom HWND region, and all four client edges. Use
+  `node scripts/e2e-window-surface.mjs --windows10-policy` to exercise the
+  Windows 10 policy on a newer Windows host; this is policy/geometry regression
+  evidence only, not Windows 10 compositor qualification.
+  Native probes run without a console window and wait for foreground focus
+  before sampling. Fullscreen coverage uses physical monitor bounds and an
+  on-screen taskbar-edge sample, including when taskbar auto-hide moves its
+  window off-screen; ordinary work-area coverage must not pass as fullscreen.
+  DWM surface checks verify the native corner preference and each corner's
+  interior/exterior pixels. Only the measured system border and its one-pixel
+  antialias fringe are excluded from application color assertions.
   Both Windows suites still require a dedicated Windows desktop; source tests
-  do not qualify native compositing.
+  do not qualify native compositing. Windows 10/11 fullscreen, taskbar, and
+  physical dual-monitor journeys require recorded native evidence for the
+  tested candidate; this catalog does not claim they have passed.
   `test:e2e:window-resize-native` adds physical Windows left/right/bottom/corner
-  drags and the 800×560 minimum; run it on a dedicated interactive desktop,
+  drags and the 800×560 DIP window minimum, measured with DWM visible bounds
+  and per-monitor DPI awareness to exclude invisible resize margins. Run it
+  on a dedicated interactive desktop,
   since another app can take foreground or pointer input during the gesture.
   Relaunch persistence remains for native qualification; macOS/Linux native
   edge behavior is unchanged.

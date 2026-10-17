@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   applyWindowCornerRadius,
+  DEFAULT_WINDOW_CORNER_RADIUS,
   installWindows11CornerController,
+  normalizeWindowCornerRadius,
   usesWindows11NativeCorners,
 } from "../electron/main/window-native-corners.ts";
 
@@ -44,6 +47,14 @@ function makeScreen() {
 }
 
 const logger = { app() {} };
+
+test("default radius matches the global token and requests retain the SDK range", () => {
+  const tokens = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+  const match = tokens.match(/^\s*--radius-md:\s*(\d+(?:\.\d+)?)px;/m);
+  assert.ok(match);
+  assert.equal(DEFAULT_WINDOW_CORNER_RADIUS, Number(match[1]));
+  assert.deepEqual([-1, 0, 4.4, 12, 24, 100].map(normalizeWindowCornerRadius), [0, 0, 4, 12, 24, 24]);
+});
 
 test("Windows 11 detection uses the native build threshold", () => {
   assert.equal(usesWindows11NativeCorners("win32", "10.0.21999"), false);
@@ -87,11 +98,13 @@ test("DWM preference follows theme radius, window state, and display updates", a
 
   fixture.setFullScreen(true);
   fixture.window.emit("enter-full-screen");
+  await new Promise(setImmediate);
   await controller.flush();
   assert.equal(host.calls.at(-1).params.preference, "square");
 
   fixture.setFullScreen(false);
   fixture.window.emit("leave-full-screen");
+  await new Promise(setImmediate);
   await controller.flush();
   assert.equal(host.calls.at(-1).params.preference, "round");
 
@@ -111,6 +124,41 @@ test("DWM preference follows theme radius, window state, and display updates", a
   assert.equal(screen.listenerCount("display-metrics-changed"), 0);
   assert.equal(await applyWindowCornerRadius(fixture.window, 8), null);
 });
+
+for (const entering of [true, false]) {
+  test(`fullscreen corner updates wait for the published native state: entering=${entering}`, async () => {
+    const fixture = makeWindow();
+    fixture.setFullScreen(!entering);
+    const host = makeHost();
+    const controller = await installWindows11CornerController(fixture.window, 12, () => host, makeScreen(), logger);
+    fixture.window.emit(entering ? "enter-full-screen" : "leave-full-screen");
+    fixture.setFullScreen(entering);
+    await new Promise(setImmediate);
+    await controller.flush();
+    assert.equal(host.calls.at(-1).params.preference, entering ? "square" : "round");
+    fixture.close();
+  });
+}
+
+for (const closed of [true, false]) {
+  test(`deferred fullscreen corner updates skip unavailable windows: closed=${closed}`, async () => {
+    const fixture = makeWindow();
+    const host = makeHost();
+    const controller = await installWindows11CornerController(fixture.window, 12, () => host, makeScreen(), logger);
+    const initialCallCount = host.calls.length;
+    fixture.window.emit("enter-full-screen");
+    fixture.setFullScreen(true);
+    if (closed) fixture.close();
+    else fixture.window.isDestroyed = () => true;
+    await new Promise(setImmediate);
+    await controller.flush();
+    assert.equal(host.calls.length, initialCallCount);
+    if (closed) {
+      assert.equal(fixture.window.listenerCount("enter-full-screen"), 0);
+      assert.equal(fixture.window.listenerCount("leave-full-screen"), 0);
+    }
+  });
+}
 
 test("overlapping theme requests leave DWM with the newest preference", async () => {
   let beginSlowCall;

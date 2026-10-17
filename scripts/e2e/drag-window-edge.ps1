@@ -11,21 +11,36 @@ using System.Runtime.InteropServices;
 
 public struct NativePoint { public int X; public int Y; }
 public struct NativeRect { public int Left; public int Top; public int Right; public int Bottom; }
+public struct NativeGuiInfo {
+  public int Size; public uint Flags;
+  public IntPtr Active; public IntPtr Focus; public IntPtr Capture;
+  public IntPtr MenuOwner; public IntPtr MoveSize; public IntPtr Caret;
+  public NativeRect CaretBounds;
+}
 public static class NativePointer {
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out NativePoint point);
   [DllImport("user32.dll", SetLastError = true)] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out NativeRect rect, int size);
+  [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+  [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint threadId, ref NativeGuiInfo info);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
 }
 '@
 
+[void][NativePointer]::SetThreadDpiAwarenessContext([IntPtr](-4))
 $targetProcess = [System.Diagnostics.Process]::GetProcessById($targetProcessId)
 $windowHandle = $targetProcess.MainWindowHandle
 if ($windowHandle -eq [IntPtr]::Zero) { throw 'E2E main window is unavailable' }
+$dpi = [NativePointer]::GetDpiForWindow($windowHandle)
+if ($dpi -eq 0) { throw 'Cannot read E2E window DPI' }
+$scaleFactor = $dpi / 96.0
 
 $before = [NativeRect]::new()
 $savedCursor = [NativePoint]::new()
@@ -37,9 +52,10 @@ foreach ($attempt in 1..3) {
 }
 if (-not $cursorSaved) { throw 'Cannot save pointer position' }
 [void][NativePointer]::SetForegroundWindow($windowHandle)
-Start-Sleep -Milliseconds 100
-if ([NativePointer]::GetForegroundWindow() -ne $windowHandle) {
-  throw 'E2E window could not receive foreground input'
+$focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+while ([NativePointer]::GetForegroundWindow() -ne $windowHandle) {
+  if ([DateTime]::UtcNow -gt $focusDeadline) { throw 'E2E window could not receive foreground input' }
+  Start-Sleep -Milliseconds 25
 }
 
 $startX = [int](($before.Left + $before.Right) / 2)
@@ -59,6 +75,8 @@ switch ($edge) {
     $deltaY = -30
   }
 }
+$deltaX = [int][Math]::Round($deltaX * $scaleFactor)
+$deltaY = [int][Math]::Round($deltaY * $scaleFactor)
 $pressed = $false
 try {
   if (-not [NativePointer]::SetCursorPos($startX, $startY)) { throw 'Cannot position the E2E pointer' }
@@ -85,19 +103,47 @@ try {
     throw 'E2E window lost foreground during the drag'
   }
 } finally {
-  if ($pressed) { [NativePointer]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero) }
-  [void][NativePointer]::SetCursorPos($savedCursor.X, $savedCursor.Y)
+  try {
+    if ($pressed) {
+      [NativePointer]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+      $owner = [uint32]0
+      $thread = [NativePointer]::GetWindowThreadProcessId($windowHandle, [ref]$owner)
+      $releaseDeadline = [DateTime]::UtcNow.AddSeconds(5)
+      do {
+        $gui = [NativeGuiInfo]::new()
+        $gui.Size = [Runtime.InteropServices.Marshal]::SizeOf($gui)
+        if (-not [NativePointer]::GetGUIThreadInfo($thread, [ref]$gui)) {
+          throw 'Cannot inspect the native resize loop'
+        }
+        $released = ([int][NativePointer]::GetAsyncKeyState(0x01) -band 0x8000) -eq 0 -and
+          ($gui.Flags -band 2) -eq 0
+        if ($released) { break }
+        if ([DateTime]::UtcNow -gt $releaseDeadline) { throw 'Native resize did not finish after mouse release' }
+        Start-Sleep -Milliseconds 25
+      } while ($true)
+    }
+  } finally {
+    [void][NativePointer]::SetCursorPos($savedCursor.X, $savedCursor.Y)
+  }
 }
 
 Start-Sleep -Milliseconds 100
 $after = [NativeRect]::new()
 if (-not [NativePointer]::GetWindowRect($windowHandle, [ref]$after)) { throw 'Cannot read resized E2E window bounds' }
+$visible = [NativeRect]::new()
+if ([NativePointer]::DwmGetWindowAttribute($windowHandle, 9, [ref]$visible, 16) -ne 0) {
+  throw 'Cannot read resized E2E visible window bounds'
+}
 $restored = [NativePointer]::SetWindowPos(
   $windowHandle, [IntPtr]::Zero, $before.Left, $before.Top,
   $before.Right - $before.Left, $before.Bottom - $before.Top, 0x0014
 )
 @{
   restored = $restored
+  dpi = $dpi
+  scaleFactor = $scaleFactor
+  afterVisibleWidth = ($visible.Right - $visible.Left) / $scaleFactor
+  afterVisibleHeight = ($visible.Bottom - $visible.Top) / $scaleFactor
   beforeWidth = $before.Right - $before.Left
   afterWidth = $after.Right - $after.Left
   beforeHeight = $before.Bottom - $before.Top

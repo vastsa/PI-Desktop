@@ -1502,8 +1502,12 @@ type WindowControlAction =
   | "getState" | "minimize" | "toggleMaximize" | "close";
 
 window/control({ action: WindowControlAction })
-  -> { maximized: boolean }
+  -> { maximized: boolean; fullScreen: boolean }
 ```
+
+所有响应使用相同的最大化/全屏状态结构。全屏时，中间窗口按钮调用
+`nativeMenuAction("toggleFullScreen")` 返回此前窗口状态；否则调用
+`window/control` 的 `toggleMaximize`。
 
 Windows/Linux 的关闭行为（D230、ADR 0090）通过两个附加的、由主进程拥有的
 通道读写。`closeBehavior/get` 返回持久化的偏好以及该平台是否支持它
@@ -1538,6 +1542,23 @@ Maximize/unmaximize 变化也会发出
 `window/event/maximized`。未知的操作失败。这些仅限电子的通道
 不要跨入 host-core，也不要更改主机 RPC 协议版本。
 preload 故意不公开任意的 BrowserWindow 调整大小通道。
+Windows 保留 Electron 原生无边框边缘/角落命中检测，渲染层不提交窗口几何。
+所有受支持的 Windows 版本均以 `transparent: false`、`thickFrame: true` 创建
+主窗口，由 Electron/Chromium 拥有原生全屏和最大化还原行为。原生
+`isFullScreen()` 是窗口控制状态和全屏事件的权威来源；切换全屏时不插入任何
+取消最大化或重新最大化步骤。状态发布和圆角更新等待 Electron 原生标志稳定。
+退出全屏时先发布原生状态，再仅将普通还原边界裁剪到显示器 `workArea`；
+原生最大化边界保持不变。
+`window/setBackgroundColor` 仍仅限 Electron 本地及主渲染器调用，现有请求和
+响应结构不变。可选 `cornerRadius` 是 0 至 24 DIP 的整数，省略时恢复 Windows
+主窗口的全局 `--radius-md` 默认值 12 DIP。仅 Windows build 22000 及以后使用
+DWM：0 请求直角，正值请求系统圆角，实际半径由 Windows 决定；最大化和全屏
+请求直角。旧版 Windows 在不透明厚边框窗口上保留 `contentView` 半径和原生
+`setShape()` 区域。所有受支持的 Windows 版本均将 alpha 背景色与解析后的内置
+主题背景合成，不产生窗口透明度。Linux 原生背景和 macOS vibrancy 行为不变。
+内部 Main 到 Host Core 的 DWM 调用校验 HWND 属于 Electron 进程，不向 preload、
+渲染器 IPC 或插件 API 暴露；原生效果仍需 Windows 验收。格式错误的值在改变
+背景前以 `INVALID_ARGUMENT` 失败。
 特定于几何形状的能力是有界的目标状态工作面板保留与聊天宽度更新
 （D163、D255，ADR 0032/0122）：
 

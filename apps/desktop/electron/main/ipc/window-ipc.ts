@@ -20,10 +20,11 @@ import {
   type WorkPanelReservationState,
 } from "../work-panel-window";
 import {
+  applyWindowCornerRadius,
   DEFAULT_WINDOW_CORNER_RADIUS,
-} from "../window-shape";
-import { applyWindowCornerRadius, usesWindows11NativeCorners } from "../window-native-corners";
+} from "../window-native-corners";
 import { applyMainWindowBackground } from "../window-background";
+import { isWindowFullScreen } from "../window-fullscreen";
 import type { IpcRegistrar } from "./types";
 
 export type WindowIpcDependencies = {
@@ -141,15 +142,10 @@ export function registerWindowIpc({
     const color = isWindowBackgroundColor(requested)
       ? requested
       : builtinWindowBackground(theme);
-    const windows11NativeCorners = usesWindows11NativeCorners(
-      process.platform,
-      process.getSystemVersion(),
-    );
     applyMainWindowBackground(
       mainWindow,
       process.platform,
       color,
-      windows11NativeCorners,
       builtinWindowBackground(theme),
     );
     const cornerRadius = process.platform === "win32"
@@ -169,7 +165,7 @@ export function registerWindowIpc({
       throw new Error("unsupported window control action");
     }
     const mainWindow = getMainWindow();
-    if (!mainWindow || mainWindow.isDestroyed()) return { maximized: false };
+    if (!mainWindow || mainWindow.isDestroyed()) return { maximized: false, fullScreen: false };
     switch (input.action as WindowControlAction) {
       case "getState":
         break;
@@ -186,6 +182,7 @@ export function registerWindowIpc({
     }
     return {
       maximized: !mainWindow.isDestroyed() && mainWindow.isMaximized(),
+      fullScreen: !mainWindow.isDestroyed() && isWindowFullScreen(mainWindow),
     };
   });
 

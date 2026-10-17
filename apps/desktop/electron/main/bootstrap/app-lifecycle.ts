@@ -410,6 +410,8 @@ export function createApplicationLifecycle({
       return { maximized: false, fullScreen: false };
     }
 
+    // Every Windows main window retains the native thick frame.
+    const nativeWindowsMain = process.platform === "win32" && target === state.mainWindow;
     const contents = target.webContents;
     switch (action) {
       case "undo":
@@ -443,34 +445,29 @@ export function createApplicationLifecycle({
         contents.setZoomFactor(1);
         break;
       case "toggleFullScreen": {
-        // Entering fullscreen from a maximized window leaves both flags set on
-        // Windows: `setFullScreen` does not clear the maximize state, and the
-        // maximized state is what `refitWindowToWorkArea` reads first to bail
-        // out. The result is a window that never fits itself back into the
-        // current work area and ends up stranded on another display (issue
-        // #1655). Unmaximize first, then toggle — and remember the windowed
-        // state so leaving fullscreen returns to what the user actually had
-        // rather than a restored-size window.
+        // Windows native fullscreen owns its restore state without an
+        // intermediate normal-size window. Other windows keep their interlock.
         if (!isWindowFullScreen(target)) {
           const wasMaximized = target.isMaximized();
-          if (wasMaximized) target.unmaximize();
-          if (wasMaximized) {
+          if (!nativeWindowsMain && wasMaximized) target.unmaximize();
+          if (!nativeWindowsMain && wasMaximized) {
             target.once("leave-full-screen", () => {
-              if (target.isDestroyed() || isWindowFullScreen(target)) return;
-              target.maximize();
+              // Electron can publish its native fullscreen flag after this event.
+              setImmediate(() => {
+                if (target.isDestroyed() || isWindowFullScreen(target)) return;
+                target.maximize();
+              });
             });
           }
           setWindowFullScreen(
             target,
             true,
-            process.platform === "win32" && target === state.mainWindow,
           );
           break;
         }
         setWindowFullScreen(
           target,
           false,
-          process.platform === "win32" && target === state.mainWindow,
         );
         break;
       }
@@ -488,7 +485,6 @@ export function createApplicationLifecycle({
             setWindowFullScreen(
               target,
               false,
-              process.platform === "win32" && target === state.mainWindow,
             );
           }
           target.maximize();

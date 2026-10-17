@@ -2,7 +2,7 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 import { isWindowBackgroundColor } from "@pi-desktop/plugin-sdk";
 
 type BackgroundPlatform = NodeJS.Platform;
-type BackgroundWindow = Pick<BrowserWindow, "contentView" | "setBackgroundColor">;
+type BackgroundWindow = Pick<BrowserWindow, "setBackgroundColor">;
 
 /** Convert the Plugin SDK's RRGGBBAA value to Electron's unambiguous CSS form. */
 export function toElectronBackgroundColor(color: string): string {
@@ -23,17 +23,14 @@ export function toElectronBackgroundColor(color: string): string {
 export function mainWindowBackgroundOptions(
   platform: BackgroundPlatform,
   color: string,
-  windows11NativeCorners = false,
   opaqueFallbackColor = color,
 ): Pick<BrowserWindowConstructorOptions, "backgroundColor" | "transparent"> {
   if (platform === "win32") {
-    if (windows11NativeCorners) {
-      return {
-        transparent: false,
-        backgroundColor: toOpaqueElectronBackgroundColor(color, opaqueFallbackColor),
-      };
-    }
-    return { transparent: true, backgroundColor: "#00000000" };
+    // Electron disables thickFrame on transparent windows, bypassing native fullscreen.
+    return {
+      transparent: false,
+      backgroundColor: toOpaqueElectronBackgroundColor(color, opaqueFallbackColor),
+    };
   }
   if (platform === "darwin") return {};
   return { backgroundColor: toElectronBackgroundColor(color) };
@@ -44,25 +41,19 @@ export function applyMainWindowBackground(
   window: BackgroundWindow,
   platform: BackgroundPlatform,
   color: string,
-  windows11NativeCorners = false,
   opaqueFallbackColor = color,
 ): boolean {
   if (platform === "darwin") return false;
 
-  const useOpaqueWindowsSurface = platform === "win32" && windows11NativeCorners;
-  const electronColor = useOpaqueWindowsSurface
+  const electronColor = platform === "win32"
     ? toOpaqueElectronBackgroundColor(color, opaqueFallbackColor)
     : toElectronBackgroundColor(color);
-  if (platform === "win32" && !useOpaqueWindowsSurface) {
-    window.contentView.setBackgroundColor(electronColor);
-  } else {
-    window.setBackgroundColor(electronColor);
-  }
+  window.setBackgroundColor(electronColor);
   return true;
 }
 
 /**
- * Windows 11's DWM corner path requires an opaque top-level surface. Preserve
+ * Native Windows fullscreen requires an opaque thick-frame window. Preserve
  * a plugin theme's translucent color by flattening it onto the host palette.
  */
 function toOpaqueElectronBackgroundColor(color: string, fallbackColor: string): string {

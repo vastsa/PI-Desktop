@@ -1,12 +1,15 @@
 import type { BrowserWindow, Screen } from "electron";
+import { MAX_WINDOW_CORNER_RADIUS } from "@pi-desktop/plugin-sdk";
 import type { HostProcess } from "./host-process";
 import type { Logger } from "./logger";
 import { isWindowFullScreen } from "./window-fullscreen.ts";
-import {
-  DEFAULT_WINDOW_CORNER_RADIUS,
-  normalizeWindowCornerRadius,
-  setWindowCornerRadius,
-} from "./window-shape.ts";
+
+/** Matches the renderer's global `--radius-md` token (12px). */
+export const DEFAULT_WINDOW_CORNER_RADIUS = 12;
+
+export function normalizeWindowCornerRadius(radius: number): number {
+  return Math.max(0, Math.min(MAX_WINDOW_CORNER_RADIUS, Math.round(radius)));
+}
 
 const controllers = new WeakMap<BrowserWindow, NativeCornerController>();
 
@@ -46,10 +49,36 @@ function nativeHandleAsDecimal(window: BrowserWindow): string {
   return handle.toString(10);
 }
 
+/** Keep Windows 10's native rectangle; only Windows 11 can round a thick frame. */
+export async function installWindowsCornerController(
+  window: BrowserWindow,
+  systemVersion: string,
+  getHost: HostProvider,
+  windowScreen: CornerScreen,
+  logger: WindowLogger,
+  initialRadius = DEFAULT_WINDOW_CORNER_RADIUS,
+): Promise<NativeCornerController> {
+  if (usesWindows11NativeCorners("win32", systemVersion)) {
+    return installWindows11CornerController(window, initialRadius, getHost, windowScreen, logger);
+  }
+
+  // A content-sized setShape() region is relative to the outer HWND, not its
+  // client origin: it exposes the left non-client rim and cuts the right edge.
+  // Cropping to the client area would also remove native resize hit regions.
+  // Leave both the HWND and content view unclipped on Windows 10. Continue to
+  // acknowledge theme radius requests without changing the IPC response shape.
+  const controller: NativeCornerController = {
+    setRadius: async (radius) => normalizeWindowCornerRadius(radius),
+    flush: async () => {},
+  };
+  controllers.set(window, controller);
+  window.once("closed", () => controllers.delete(window));
+  return controller;
+}
+
 /**
  * Use the Windows 11 DWM preference for the main window. The native API owns
- * the visible edge and hit testing; Electron's region-based shape remains the
- * fallback for Windows builds before 22000.
+ * the visible edge and hit testing; earlier Windows builds stay rectangular.
  */
 export async function installWindows11CornerController(
   window: BrowserWindow,
@@ -89,6 +118,13 @@ export async function installWindows11CornerController(
   const reapply = () => {
     void enqueue().catch(reportFailure);
   };
+  const reapplyAfterFullScreen = () => {
+    // Electron publishes the native fullscreen flag after its window event.
+    setImmediate(() => {
+      if (disposed || window.isDestroyed()) return;
+      reapply();
+    });
+  };
   const controller: NativeCornerController = {
     async setRadius(nextRadius) {
       radius = normalizeWindowCornerRadius(nextRadius);
@@ -119,8 +155,8 @@ export async function installWindows11CornerController(
 
   window.on("maximize", reapply);
   window.on("unmaximize", reapply);
-  window.on("enter-full-screen", reapply);
-  window.on("leave-full-screen", reapply);
+  window.on("enter-full-screen", reapplyAfterFullScreen);
+  window.on("leave-full-screen", reapplyAfterFullScreen);
   window.on("show", reapply);
   window.on("restore", reapply);
   windowScreen.on("display-metrics-changed", reapply);
@@ -131,8 +167,8 @@ export async function installWindows11CornerController(
     disposed = true;
     window.removeListener("maximize", reapply);
     window.removeListener("unmaximize", reapply);
-    window.removeListener("enter-full-screen", reapply);
-    window.removeListener("leave-full-screen", reapply);
+    window.removeListener("enter-full-screen", reapplyAfterFullScreen);
+    window.removeListener("leave-full-screen", reapplyAfterFullScreen);
     window.removeListener("show", reapply);
     window.removeListener("restore", reapply);
     window.removeListener("closed", dispose);
@@ -152,12 +188,13 @@ export async function installWindows11CornerController(
   return controller;
 }
 
-/** Apply a theme's requested radius through DWM or the legacy Windows path. */
+/** Acknowledge a theme's radius request; the installed platform policy owns its rendering. */
 export async function applyWindowCornerRadius(
   window: BrowserWindow,
   radius: number,
 ): Promise<number | null> {
+  if (window.isDestroyed()) return null;
   const nativeController = controllers.get(window);
   if (nativeController) return nativeController.setRadius(radius);
-  return setWindowCornerRadius(window, radius);
+  return null;
 }

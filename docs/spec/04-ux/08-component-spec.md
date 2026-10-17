@@ -82,9 +82,14 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   width in the renderer, so dragging left gives the panel more internal space
   and dragging right returns space to MainChat (§5.4)
 - Window resize: native edges and corners on all platforms resize the fixed
-  application window; Windows keeps Electron's frameless hit test without its
-  painted thick-frame rim;
-  they never resize or reserve the work panel. Responsive layout follows
+  application window; Windows keeps Electron's frameless hit test. All supported
+  Windows versions use an opaque main window (`transparent: false`) with
+  `thickFrame: true` for native fullscreen and maximized restore, so native rim,
+  shadow, and animations may return.
+  Windows 10 uses native square corners without an application clip or window
+  region, preventing the asymmetric exposed frame and clipped content. Windows
+  11 retains its DWM corner policy. Native window edges never resize or reserve
+  the work panel. Responsive layout follows
   [07-ui-design-system.md](07-ui-design-system.md) §10.1
 
 ### 1.5 Accessibility
@@ -176,9 +181,14 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   additionally exposes the native developer-tools role. All platforms expose
   F12, and Windows/Linux also expose Ctrl+Shift+I; the commands and Settings
   Open console action are unavailable while the mode is disabled.
-- Window buttons have localized tooltips and accessible names. The maximize
-  glyph reflects the initial native state plus later maximize/unmaximize
-  events. Each Windows/Linux button is an explicit non-drag pointer target so
+- Window buttons have localized tooltips and accessible names. The middle
+  button shows the Restore glyph, tooltip, and accessible name whenever
+  `maximized || fullScreen`, including initial state and subsequent events.
+  In fullscreen it exits fullscreen to the previous state; otherwise it toggles
+  maximize. On all supported Windows versions, native `isFullScreen()` is
+  authoritative, and fullscreen toggles never unmaximize or re-maximize the
+  main window as an intermediate step. State and corner updates wait for native
+  flags to settle. Each Windows/Linux button is an explicit non-drag pointer target so
   the surrounding titlebar drag region cannot consume minimize, maximize,
   restore, or close clicks. Their shared 112×46px control band is opaque
   `bg-primary`, preventing destination content from bleeding through the
