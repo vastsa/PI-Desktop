@@ -42,15 +42,23 @@ const frame = () => new Promise(requestAnimationFrame);
 async function waitFor(query) { for (let i=0;i<120;i++) { const value=query(); if(value) return value; await frame(); } throw new Error("UI condition not reached: " + document.body.innerText + JSON.stringify([...document.querySelectorAll("button")].map(n => ({label:n.getAttribute("aria-label"),cls:n.className})))); }
 const radio = (label) => [...document.querySelectorAll('[role="radio"]')].find(n => n.getAttribute("aria-label") === label);
 const saveButton = () => [...document.querySelectorAll("button")].find(n => n.textContent.trim() === "Save");
+const emptySelectionWarning = () => [...document.querySelectorAll('.ext-sheet [role="status"]')].find(n => n.textContent.trim() === i18n.t("extensions.scope.noProjectsWarning"));
 async function edit() { const button=await waitFor(() => document.querySelector('.settings-icon-button[aria-label*="scope-reviewer"]')); flushSync(() => button.click()); const projects = await waitFor(() => radio("Projects")); projects.scrollIntoView({ block: "center" }); await frame(); }
 window.subagentProjectScopeProbe = async () => {
+  await waitFor(() => document.querySelector('.settings-icon-button[aria-label*="scope-reviewer"]'));
+  const groups = [...document.querySelectorAll(".agent-capability-group")].map((group) => ({
+    label: group.querySelector(".agent-capability-group-label")?.textContent ?? null,
+    path: group.querySelector("code.agent-capability-group-path")?.textContent ?? null,
+  }));
   await edit();
   if (radio("Off")) throw new Error("Scope must not include enablement");
   flushSync(() => radio("Projects").click());
   await waitFor(() => [...document.querySelectorAll('[role="option"]')].find(n => n.textContent.includes("Recent only")));
   const a = await waitFor(() => [...document.querySelectorAll('[role="option"]')].find(n => n.textContent.includes("Project A")));
   if (a.getAttribute("aria-selected") !== "false") throw new Error("Current project must not be selected automatically");
+  if (!emptySelectionWarning()) throw new Error("An empty project selection must warn that the subagent stays inactive");
   flushSync(() => a.click());
+  if (emptySelectionWarning()) throw new Error("Selecting a project must clear the empty-selection warning");
   const b = await waitFor(() => [...document.querySelectorAll('[role="option"]')].find(n => n.textContent.includes("Project B")));
   if (!b.closest(".ext-sheet")) throw new Error("Project choices must stay inside the editor");
   flushSync(() => b.click());
@@ -65,7 +73,7 @@ window.subagentProjectScopeProbe = async () => {
   flushSync(() => radio("Projects").click());
   flushSync(() => saveButton().click());
   await waitFor(() => saved.length === 3 && !radio("Projects"));
-  return { saved };
+  return { saved, groups };
 };
 `;
 
@@ -176,6 +184,11 @@ app.whenReady().then(async () => {
     assert(resultLine, output);
     const result = JSON.parse(resultLine.slice("SUBAGENT_PROJECT_SCOPE ".length));
 
+    assert.deepEqual(
+      result.groups,
+      [{ label: "Custom", path: "~/.agents/subagents" }],
+      "User subagents are grouped by source; a level label would contradict project-scoped rows",
+    );
     assert.equal(result.saved.length, 3);
     assert(result.saved.every((draft) => draft.enabled === false), "Scope edits preserve disabled state");
     assert.deepEqual(result.saved[0].scope, { mode: "projects", projects: ["/project-a", "/project-b"] });

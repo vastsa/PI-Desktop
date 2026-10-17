@@ -70,6 +70,9 @@ test("skills and MCP filter one list by level instead of stacking two sections",
   assert.doesNotMatch(subagentSettings, /AgentProjectPicker|projectPath|CapabilityFilter/);
   assert.match(subagents, /extensions\.scope\.global/);
   assert.match(subagents, /extensions\.scope\.projectCount/);
+  // The user group is named by source: a level label reads as activation scope.
+  assert.match(subagents, /label=\{t\("extensions\.subagents\.sourceCustom"\)\}/);
+  assert.doesNotMatch(subagents, /settings\.globalLevel/);
   assert.match(subagents, /t\("settings\.subagentsEmpty"\)/);
   assert.doesNotMatch(subagents, /settings\.subagents\.empty|t\("subagents\.empty"\)/);
 });

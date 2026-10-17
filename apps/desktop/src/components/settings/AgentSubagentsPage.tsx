@@ -440,7 +440,7 @@ export function AgentSubagentsPage() {
             {showOwnedGroup ? (
               <>
                 <CapabilityGroupHeader
-                  label={t("settings.globalLevel")}
+                  label={t("extensions.subagents.sourceCustom")}
                   path={GLOBAL_SUBAGENTS_PATH}
                   count={visibleOwned.length}
                 />
