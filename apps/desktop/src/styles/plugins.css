@@ -1135,8 +1135,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 14px 12px;
-  border-top: 1px solid var(--ds-border-subtle);
+  padding: 8px 14px 12px;
+  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
 }
 
 /* The rating and the install action are fixed-size; the review line takes the
