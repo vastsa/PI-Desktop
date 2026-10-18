@@ -377,3 +377,18 @@ Electron 使用本地 `Pi catalog` 记录装饰缓存和新发现的模型行。
 ## 生图模型绑定
 
 默认对话模型下方有独立的生图模型行。模型高级设置可指定唯一绑定；保存服务商表单才生效，取消丢弃选择，替换不会改变对话默认值。工具和批量合约见[图片生成与编辑](/zh-CN/spec/03-runtime/21-image-generation)。
+
+### Per-model Composer reasoning memory
+
+The existing recent-model history remains authoritative: only accepted message
+submission updates model recency. Selecting a model alone does not reorder it.
+Explicit Composer selections additionally remember reasoning per provider/model
+on this device. Switching back, new chats inheriting that model, and restart
+restore the remembered level, clamped to current supported levels. An explicit
+draft wins; absent memory preserves current catalog/unmatched-model defaults.
+
+Existing conversations keep their configuration. Navigation, permission changes,
+failed or blocked writes never update memory. Accepted next-turn staging does;
+an older result cannot supersede a newer choice. Permissions remain inherited.
+The versioned localStorage preference is bounded to 100 entries. Corrupt or
+unavailable storage falls back safely; no IPC/database/Plugin SDK changes occur.

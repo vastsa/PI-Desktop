@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { rememberComposerModel } from "../../lib/composer-model-preferences";
 import type {
   Mode,
   PendingInteractiveRequests,
@@ -170,6 +171,7 @@ export function createSessionSlice({
 > {
   const pendingInteractiveRestoreGenerations = new Map<string, number>();
 
+  let modelChoiceIntent = 0;
   const refreshSessionList = createRefreshCoordinator(async () => {
     const result = await api.listSessions();
     set((state) => {
@@ -778,9 +780,16 @@ export function createSessionSlice({
       }
     },
 
-    configureActiveSession: async (config) => {
+    configureActiveSession: async (config, options) => {
       const sessionId = get().activeSessionId;
+      const choiceIntent = options?.rememberModel ? ++modelChoiceIntent : undefined;
+      const rememberChoice = () => {
+        if (choiceIntent !== undefined && choiceIntent === modelChoiceIntent) {
+          rememberComposerModel(config);
+        }
+      };
       if (!sessionId) {
+        rememberChoice();
         set((state) => ({
           draftConfiguration: {
             mode: config.mode,
@@ -807,6 +816,7 @@ export function createSessionSlice({
             config,
           ),
         );
+        rememberChoice();
         set((state) => ({
           sessions: state.sessions.map((session) =>
             session.id === sessionId
@@ -822,6 +832,7 @@ export function createSessionSlice({
       );
       runtime.pendingSessionConfigurations.delete(sessionId);
       const result = await api.configureSession(sessionId, payload);
+      rememberChoice();
       set((state) => ({
         sessions: state.sessions.map((session) =>
           session.id === sessionId

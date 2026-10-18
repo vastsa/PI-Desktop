@@ -1,0 +1,81 @@
+import i18n from "i18next";
+import { en } from "@pi-desktop/i18n";
+import assert from "node:assert/strict";
+import { register } from "node:module";
+import test from "node:test";
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const { useAppStore, materializeDraftSession } = await import("../src/stores/app-store.ts");
+const { api } = await import("../src/lib/api.ts");
+const { loadRecentModels } = await import("../src/lib/recent-models.ts");
+const key = "pi.desktop.composerModelPreferences.v1";
+
+test("reasoning memory follows accepted choices without changing usage-based model inheritance", async t => {
+  await i18n.init({ lng: "en", resources: { en: { translation: en } } });
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const storage = new Map();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
+    getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value),
+  } });
+  t.after(() => { if (original) Object.defineProperty(globalThis, "localStorage", original); else delete globalThis.localStorage; });
+  const provider = { id: "p", enabled: true, authKind: "none", supportedThinkingLevels: ["low", "high"], models: ["a", "b"].map(id => ({ id, thinkingLevels: ["low", "high"], defaultThinkingLevel: "high" })) };
+  useAppStore.setState({ providers: [provider], providerModels: {}, activeSessionId: null, sessions: [], recentModels: [], draftConfiguration: null, pendingPlans: {}, runningSessions: {}, workspace: null,
+    settings: { defaultProviderId: "p", defaultModelId: "a", defaultMode: "agent", defaultPermissionMode: "ask" } });
+  let sequence = 0;
+  let reject = false;
+  let held;
+  t.mock.method(api, "createSession", async config => ({ session: { ...config, id: `memory-${++sequence}`, title: "Conversation", messageCount: 0 } }));
+  t.mock.method(api, "configureSession", async (id, config) => {
+    if (reject) throw new Error("rejected");
+    if (held) await held;
+    return { session: { ...useAppStore.getState().sessions.find(s => s.id === id), ...config, id } };
+  });
+  t.mock.method(api, "prompt", async () => ({}));
+  const choose = (modelId, thinkingLevel, options = { rememberModel: true }) => useAppStore.getState().configureActiveSession({ mode: "agent", providerId: "p", modelId, thinkingLevel }, options);
+  const current = () => useAppStore.getState().sessions.find(s => s.id === useAppStore.getState().activeSessionId);
+  await choose("b", "low");
+  assert.deepEqual(loadRecentModels(), [], "choosing is not usage");
+  await materializeDraftSession();
+  assert.equal(current().thinkingLevel, "low", "explicit draft wins");
+  assert.equal(await useAppStore.getState().sendPrompt("Use B"), true);
+  assert.equal(loadRecentModels()[0].modelId, "b");
+  useAppStore.setState({ runningSessions: {}, isRunning: false, activeSessionId: null, draftConfiguration: null, recentModels: loadRecentModels() });
+  await materializeDraftSession();
+  assert.equal(current().modelId, "b");
+  assert.equal(current().thinkingLevel, "low", "new chat restores persisted reasoning");
+  assert.notEqual(current().permissionMode, "auto");
+  const configured = useAppStore.getState().providers;
+  useAppStore.setState({ providers: [{ ...provider, models: provider.models.map(model => ({ ...model, thinkingLevels: [], defaultThinkingLevel: null })) }], activeSessionId: null, draftConfiguration: null });
+  await materializeDraftSession();
+  assert.equal(current().thinkingLevel, "low", "empty generic bindings restore low when creating a session");
+  await choose("b", "omit");
+  useAppStore.setState({ activeSessionId: null, draftConfiguration: null });
+  await materializeDraftSession();
+  assert.equal(current().thinkingLevel, "omit", "empty generic bindings restore omit when creating a session");
+  useAppStore.setState({ providers: configured });
+  await choose("b", "low");
+  const before = storage.get(key);
+  // Explicit omission uses an empty options object, as permission/mode callers do.
+  await choose("b", "low");
+  await choose("b", "high", {});
+  assert.equal(storage.get(key), before, "non-menu configuration must not record");
+  reject = true;
+  await assert.rejects(choose("b", "high"));
+  reject = false;
+  assert.equal(storage.get(key), before);
+  let release;
+  held = new Promise(resolve => { release = resolve; });
+  const slow = choose("b", "high");
+  useAppStore.setState({ activeSessionId: null });
+  await choose("a", "low");
+  release(); await slow; held = undefined;
+  assert.equal(JSON.parse(storage.get(key))[0].modelId, "a", "stale response cannot replace newer intent");
+  assert.equal(loadRecentModels()[0].modelId, "b", "reasoning memory does not reorder usage");
+  const id = useAppStore.getState().sessions.at(-1).id;
+  useAppStore.setState({ activeSessionId: id, pendingPlans: { [id]: { status: "pending" } } });
+  const blocked = storage.get(key);
+  await choose("b", "high");
+  assert.equal(storage.get(key), blocked);
+  useAppStore.setState({ pendingPlans: {}, runningSessions: { [id]: true } });
+  await choose("b", "high");
+  assert.equal(JSON.parse(storage.get(key))[0].thinkingLevel, "high", "accepted next-turn staging records intent");
+});

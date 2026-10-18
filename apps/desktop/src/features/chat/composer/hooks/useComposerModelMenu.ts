@@ -1,3 +1,4 @@
+import { rememberedComposerThinking } from "../../../../lib/composer-model-preferences";
 import { sameRecentModel } from "../../../../lib/recent-models";
 import type {
   Mode,
@@ -40,7 +41,7 @@ type UseComposerModelMenuOptions = {
   controlsBlocked: boolean;
   configureActiveSession: (configuration: {
     mode: Mode; providerId?: string; modelId?: string; thinkingLevel: SessionThinkingLevel;
-  }) => Promise<void>;
+  }, options?: { rememberModel?: boolean }) => Promise<void>;
 };
 
 export function useComposerModelMenu({
@@ -96,7 +97,7 @@ export function useComposerModelMenu({
           providerId: current.providerId,
           modelId: current.modelId,
           thinkingLevel: level,
-        });
+        }, { rememberModel: true });
       },
       onError: (error) => {
         const current = thinkingConfigRef.current;
@@ -235,8 +236,10 @@ export function useComposerModelMenu({
   }, [modelHighlight, open]);
 
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
+    const sessionId = useAppStore.getState().activeSessionId;
     thinkingQueueRef.current?.invalidate();
     await thinkingQueueRef.current?.idle();
+    if (useAppStore.getState().activeSessionId !== sessionId) return;
     if (isImageGenerationModel(
       imageGenerationBindings(
         useAppStore.getState().settings?.imageGenerationModels,
@@ -263,7 +266,8 @@ export function useComposerModelMenu({
         sameComposerModelId(modelId ?? "", nextModelId);
       const nextThinkingLevel = selectedSameModel
         ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)
-        : (nextModel?.catalogSource === "models.dev"
+        : rememberedComposerThinking(candidate, nextModelId, nextModelProvider?.supportedThinkingLevels,
+          (nextModel?.catalogSource === "models.dev"
           ? initialThinkingLevelForBinding(
               nextBinding,
               nextModelProvider?.supportedThinkingLevels,
@@ -271,13 +275,13 @@ export function useComposerModelMenu({
           : initialThinkingLevelForUnmatchedModel(
               nextBinding,
               nextModelProvider?.supportedThinkingLevels,
-            ));
+            )), nextModel?.catalogSource);
       await configureActiveSession({
         mode,
         providerId: candidate.id,
         modelId: nextModelId,
         thinkingLevel: nextThinkingLevel,
-      });
+      }, { rememberModel: true });
       setQuery("");
       setOtherModelsExpanded(false);
       setModelHighlight(-1);

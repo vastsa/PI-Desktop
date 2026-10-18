@@ -1,3 +1,4 @@
+import { rememberedComposerThinking } from "../../lib/composer-model-preferences";
 import type {
   ContextCompactionRecord,
   SessionDetail,
@@ -317,7 +318,9 @@ export function createSessionCoordination({
       created = await api.createSession({
         title: untitledTaskTitle(),
         mode: draftConfig?.mode ?? normalizeMode(settings?.defaultMode),
-        thinkingLevel: draftConfig?.thinkingLevel ?? defaultThinkingLevel,
+        thinkingLevel: draftConfig?.thinkingLevel ?? rememberedComposerThinking(
+          defaultProvider, inherited.modelId, defaultProvider?.supportedThinkingLevels, defaultThinkingLevel, catalogModel?.catalogSource,
+        ),
         permissionMode: draftConfig?.permissionMode,
         providerId: inherited.providerId,
         modelId: inherited.modelId,
