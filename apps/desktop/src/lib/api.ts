@@ -670,6 +670,17 @@ export const api = {
     invoke<{ ok: boolean }>(IPC.invoke.notificationSetViewingSession, {
       sessionId,
     }),
+  /**
+   * Report the session on screen to the main process. Plugin
+   * `pi.session.getActive()` and the `session:activated` event answer from it,
+   * so the shell — not a plugin — is what decides which session is active.
+   */
+  setPluginActiveSession: (input: {
+    sessionId: string | null;
+    projectPath?: string | null;
+    /** Renderer-side counter: a slower push must never undo a newer one. */
+    seq?: number;
+  }) => invoke<{ ok: boolean }>(IPC.invoke.pluginSessionActive, input),
   listSessions: () =>
     invoke<{ sessions: SessionSummary[] }>(IPC.invoke.sessionList).then((result) => ({
       ...result,
@@ -1710,6 +1721,42 @@ export const api = {
         revealOnly?: boolean;
       }),
     );
+  },
+  /**
+   * A plugin asked to show one of its own views in a session's work panel
+   * (`pi.ui.revealView`). The shell owns tabs, so it opens the tab for the
+   * session the main process already validated as the active one.
+   */
+  onPluginViewReveal: (
+    listener: (event: {
+      pluginId: string;
+      viewId: string;
+      sessionId: string;
+      location?: string;
+    }) => void,
+  ) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.pluginViewReveal, (payload) => {
+      const event = payload as {
+        pluginId?: unknown;
+        viewId?: unknown;
+        sessionId?: unknown;
+        location?: unknown;
+      };
+      if (
+        typeof event?.pluginId !== "string" ||
+        typeof event?.viewId !== "string" ||
+        typeof event?.sessionId !== "string"
+      ) {
+        return;
+      }
+      listener({
+        pluginId: event.pluginId,
+        viewId: event.viewId,
+        sessionId: event.sessionId,
+        ...(typeof event.location === "string" && event.location ? { location: event.location } : {}),
+      });
+    });
   },
   onBrowserOpenFile: (listener: (event: { path: string }) => void) => {
     if (!window.piDesktop?.on) return () => undefined;

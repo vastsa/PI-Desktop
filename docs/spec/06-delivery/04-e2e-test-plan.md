@@ -7471,7 +7471,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/03-tools-and-permissions.md`, `03-runtime/05-host-core-rust.md`,
   `03-runtime/06-host-rpc-protocol.md`, `05-security/01-security.md`, ADR 0053,
-  ADR 0331
+  ADR 0332
 - **Acceptance**: E (tools and permissions), Security
 - **Milestone**: M6
 - **Status**: Automated: `test:e2e:plan` covers approval-before-execution and
@@ -18186,3 +18186,41 @@ host-created files. The full app's file-preview viewer is covered separately.
   the theme-token and reduced-motion guarantees; the interactive sidebar
   scenario remains a manual validation scenario run in a capable
   environment.
+
+### E2E-267: A plugin follows the selected session and opens its own view
+
+- **Preconditions**: A development plugin that declares one
+  `contributes.views` entry and holds `ui.view`, and whose command calls
+  `pi.session.getActive()`, subscribes to `pi.events.on("session:activated")`,
+  and then calls `pi.ui.revealView({ location: "src/App.tsx" })`. Two sessions
+  exist in different projects; one of them is running a turn.
+- **Steps**:
+  1. Select the idle session and run the plugin's command.
+  2. Switch to the other project's session and start a turn; re-check the
+     payload the plugin reported.
+  3. While that turn runs, run the plugin's command and inspect the work panel.
+  4. Switch to the first session, then run the plugin's command again from a
+     stale reference to the previous session id.
+  5. Disable the plugin and re-open the same work-panel tab.
+- **Expected**: `pi.session.getActive()` answers with the session on screen, its
+  project path, and `activeTurn: null` while it is idle. `session:activated`
+  arrives once per real change — a selection switch, a project change, and the
+  turn starting or finishing — and the running session reports the durable
+  `turnId` with its start time rather than an inferred one. `pi.ui.revealView`
+  opens the plugin's view as a work-panel tab of the active session and focuses
+  it, and the view receives `src/App.tsx` through `piViewOpen`/`view:open`
+  without being reloaded when it is already open. A call naming a session the
+  user left fails with `INVALID_ARGUMENT` and opens nothing. Revealing without
+  `ui.view` fails with `PERMISSION_DENIED`. With the plugin disabled the tab
+  reports the missing view instead of showing stale content.
+- **Specs linked**: `07-plugins/03-plugin-api.md` §ui, §session follow, §5
+  events, §6 panel bridge; ADR 0331.
+- **Acceptance**: A plugin can follow the selected session and show its own view
+  beside it without importing host internals, and a stale session can never be
+  revealed onto a panel the user is no longer looking at.
+- **Status**: Draft. Unit coverage in
+  `apps/desktop/test/plugin-session-follow.test.mjs` (snapshot assembly,
+  announcement deduplication, stale-turn and stale-session refusal,
+  `ui.view` gating, panel-bridge channel) and the wiring contract in
+  `apps/desktop/test/main-wiring-contract.test.mjs`; the interactive Electron
+  scenario remains a manual validation run.

@@ -9874,7 +9874,7 @@ mod tests {
             assert_eq!(result["ok"], false);
         }
 
-        // Deny by effect (ADR 0331): a builtin nobody classified is not a
+        // Deny by effect (ADR 0332): a builtin nobody classified is not a
         // contract-mode denial. It reaches the ordinary path, where the tool
         // registry rejects the unregistered name.
         let unclassified = handle_request(
@@ -10034,7 +10034,7 @@ mod tests {
             assert_eq!(result["ok"], false);
         }
 
-        // Deny by effect (ADR 0331): a builtin nobody classified is not a
+        // Deny by effect (ADR 0332): a builtin nobody classified is not a
         // contract-mode denial. It reaches the ordinary path, where the tool
         // registry rejects the unregistered name.
         let unclassified = handle_request(

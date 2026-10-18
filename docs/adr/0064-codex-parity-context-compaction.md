@@ -98,7 +98,7 @@ retained-tail recovery, ADR 0061's model-window-derived budgets, and ADR 0061's
    `floor(hardLimit * 0.9)`, matching the `should_roll_over` turn boundary.
    `hardLimit` remains the final request guard (D623). The name is synchronized
    across `activeTools()` and `isCoreTool()`.
-   *(Amended by ADR 0331: a contract mode keeps a deny list instead of an
+   *(Amended by ADR 0332: a contract mode keeps a deny list instead of an
    allowlist, so `new_context` is no longer named in
    `crates/host-core/src/permissions.rs`. It is admitted by falling through the
    deny list, and `apps/desktop/test/context-compaction.test.mjs` asserts it

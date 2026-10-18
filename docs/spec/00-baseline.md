@@ -194,7 +194,7 @@
      checkpoints, and one overflow retry. The model can request a new window through
      `new_context`; every compaction adds a transcript row and one warning.
      No user-facing settings**
-44. Plan tools and policy (ADR 0331 amendment): **Read / Glob / Grep /
+44. Plan tools and policy (ADR 0332 amendment): **Read / Glob / Grep /
     BrowserPreview / asktool / Bash / SubmitPlan, discoverable user MCP tools,
     and plugins with `planSafeActions`. Builtins that change files, session
     state, or spawned work are hard-denied; every other builtin follows the

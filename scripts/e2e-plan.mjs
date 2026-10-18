@@ -257,7 +257,7 @@ async function scenario105(binary, tempRoot) {
       });
       assertToolFailure(result, code);
     }
-    // Deny by effect (ADR 0331): a builtin nobody classified is not a
+    // Deny by effect (ADR 0332): a builtin nobody classified is not a
     // contract-mode denial. It reaches the ordinary path, where the host
     // rejects the unregistered name.
     const unclassified = await ctx.host.call("tools.execute", {

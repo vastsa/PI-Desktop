@@ -4238,7 +4238,7 @@ eleven-tool-round desktop paths are verified by
   免去重复确认，但不授权其他工具或会话。运行时仍为同一 pi Agent，且所有拒绝都会经过审计。
 - **链接规格**：`03-runtime/02-agent-runtime.md`，
   `03-runtime/03-tools-and-permissions.md`、`03-runtime/05-host-core-rust.md`、
-  `03-runtime/06-host-rpc-protocol.md`、`05-security/01-security.md`、ADR 0053、ADR 0331
+  `03-runtime/06-host-rpc-protocol.md`、`05-security/01-security.md`、ADR 0053、ADR 0332
 - **接受**：E（工具和权限）、安全
 - **里程碑**：M6
 - **状态**：自动化：`test:e2e:plan` 覆盖批准前不执行和会话授权复用；host-core

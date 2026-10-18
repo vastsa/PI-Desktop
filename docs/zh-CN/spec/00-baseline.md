@@ -156,7 +156,7 @@
      一次溢出重试。该模型可以通过请求一个新窗口
      `new_context`；每次压缩都会添加一行记录和一个警告。
      没有面向用户的设置**
-44. Plan 工具和策略（ADR 0331 修订）：**Read / Glob / Grep / BrowserPreview /
+44. Plan 工具和策略（ADR 0332 修订）：**Read / Glob / Grep / BrowserPreview /
     asktool / Bash / SubmitPlan、可发现的用户 MCP 工具，以及声明
     `planSafeActions` 的插件。会改变文件、会话状态或派生工作的内置工具被硬拒绝；
     其余内置工具走普通权限路径。Bash 和用户 MCP 工具需要确认或精确工具名的会话授权，

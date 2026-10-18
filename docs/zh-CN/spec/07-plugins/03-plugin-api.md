@@ -206,6 +206,28 @@ pi.project.create(input: { path: string }): Promise<{
 `project.create`；省略 `projectId` 的导入会保持未绑定，`projectPath` 只是历史来源
 元数据，本身不会创建项目。
 
+`pi.ui.revealView` 在某个会话的工作面板中显示插件自己的 `contributes.views`，
+这是替代插件直接读写宿主导航的受支持接口：
+
+```ts
+pi.ui.revealView(input?: {
+  viewId?: string   // contributes.views 之一；只声明一个视图时可省略
+  location?: string // 视图已经收到的那个不透明主体
+  sessionId?: string // 用哪个会话的面板显示；默认当前选中会话
+}): Promise<void>
+```
+
+和视图本身一样需要 `ui.view`。宿主解析视图并拒绝不能唯一对应一个已声明视图的
+`viewId`（没有声明任何视图、或名字未知为 `NOT_FOUND`；声明多个却未指名时为
+`INVALID_ARGUMENT`）；`location` 上限 8 KiB。`sessionId` 会与用户当前正在看的
+会话比较：已不是当前会话时以 `INVALID_ARGUMENT` 拒绝，而不是打开一个没人看的
+标签页；没有选中会话时同样拒绝。标签页属于外壳——插件给出视图与主体，由外壳
+打开并聚焦——因此 `location` 仍沿 `piViewOpen` / `view:open` 传递，已加载的视图
+不会被重载。
+
+`pi.ui.openPanel()` 打开独立窗口，`pi.browser.reveal()` 激活 Browser，
+`pi.fs.openDefault` / `pi.fs.reveal` 把文件交给操作系统；三者都不是它。
+
 ### 工作区/fs
 ```ts
 pi.workspace.get(): Promise<{
@@ -394,6 +416,35 @@ pi.session.getLlmContext(): Promise<PluginLlmContext>
 在工具执行之外调用会以 `INVALID_ARGUMENT` 失败。子代理行会被省略。插件自己
 正在飞行的工具调用会从尾部剥掉。compaction 摘要替换检查点之前的历史。
 合计内容上限 200k 字符。
+
+### 会话跟随（不需要额外权限）
+
+选中会话就是用户正在看的东西，宿主本来就在显示它；跟随它不需要权限，
+与 `workspace.get` 报告当前打开的文件夹同理。
+
+```ts
+pi.session.getActive(): Promise<PluginActiveSession | null>
+
+type PluginActiveSession = {
+  sessionId: string
+  projectPath: string | null   // 该会话所属项目的工作目录
+  activeTurn: { turnId: string; startedAt: number } | null
+}
+```
+
+它不接受 session id：宿主报告选中项，而不允许插件去寻址用户没在看的会话。若插件的
+激活范围与当前项目不匹配，调用以 `PERMISSION_DENIED` 拒绝——与 `pi.ui.revealView`
+和视图 IPC 的答案一致，因此按项目激活的插件不会得知另一个项目打开了哪个会话。
+`null` 表示首页、设置页，或没有选中任何聊天会话。`activeTurn` 是该会话正在跑的
+那个持久宿主回合，空闲时为 `null`，因此插件不必从上一回合的结束事件或草稿变化
+去推断「正在运行的任务」；`startedAt` 是宿主时钟（epoch 毫秒），取自该回合开始的
+时刻。
+
+快照是值而不是句柄：两次调用之间会话可能已经切换或结束，因此插件应比较
+`sessionId`，把不一致当作「这个答案属于用户已经离开的会话」。下面的
+`session:activated` 事件在快照变化时投递同一载荷，这才是无需轮询的原因。
+`session.getLlmContext` 是另一项能力：它限定在插件自己进行中的工具调用上，
+无法寻址选中会话。
 
 ### 会话自动标题（需要 `session.autoTitle`）
 
@@ -966,10 +1017,15 @@ pi.events.off(event, handler)
   也不会报错。目前尚无任何已发布宿主会发出该事件（0.14.8 也尚未包含），因此依赖它
   的插件必须按真正包含该事件的发布版本要求，而不能假定 0.14.7 或 0.14.8。
 
+- `session:activated` —— 载荷是 `PluginActiveSession` 对象或 `null`，在该快照变化时
+  发送：用户切到另一个会话（或离开聊天）、选中会话的项目变化、或它的运行回合开始
+  / 结束。投递与其它事件一样是即发即忘；载荷里的快照就是答案，漏掉一次只需调用
+  一次 `pi.session.getActive()` 补齐。不需要权限，且其中回合 id 与
+  `session:turnEnded` 报告的身份一致。
+
 抛出的处理程序会被记录下来，并且不会影响其他侦听器或插件。
 
-计划活动：
-- `session:activated`
+计划活动：无。
 
 ## 6. 面板桥 API
 
@@ -1010,6 +1066,8 @@ window.pluginBridge.on(event, handler)
 | `clipboard.writeText` | `clipboard.write` |
 | `shell.openExternal` | `shell.openExternal` |
 | `net.fetch` | `net.fetch` |
+| `session.getActive` | 无 |
+| `ui.revealView` | `ui.view` |
 
 `plugin.setSettings`、`fs.remove` 和任意 Electron IPC 未暴露。主机自己
 没有实现的通道会被转发到插件的 `onPanelInvoke(channel, payload)`，
@@ -1032,6 +1090,9 @@ window.pluginBridge.on(event, handler)
   已经从入口 URL 拿到它；这个事件投递的是之后的 location。
 - `session:turnEnded` —— 与 §5 的插件进程事件同一载荷，在宿主回合到达终止状态
   时发送。
+- `session:activated` —— 与 §5 的插件进程事件同一载荷，在选中会话、它的项目或它的
+  运行回合发生变化时发给停靠视图。独立 `ui.panel` 窗口属于应用级、不属于某个会话，
+  因此它是唯一不会收到该事件的表面。
 
 ## 7. 通话审计
 
@@ -1054,6 +1115,8 @@ window.pluginBridge.on(event, handler)
 - 服务启动/停止/重新启动
 - models.list（返回行数）
 - session.getLlmContext（会话 id、消息数、truncated 标志 —— 不含转录文本）
+- session.getActive（只记录选中会话的存在，不含转录）
+- ui.revealView（视图 id、会话 id、是否携带 location）
 - agent.complete（模型 key、体积、usage —— 不含提示或补全文本）
 - provider.oauth（插件 id、声明的 provider id、操作、结果/错误码——绝不记录凭据内容）
 
@@ -1085,6 +1148,7 @@ window.pluginBridge.on(event, handler)
 - `speech.registerAdapter` / `unregisterAdapter`（`speech.adapter.register`）
 
 - `models.list`、`session.getLlmContext`
+- `session.getActive` 与 `session:activated` 事件（`ui.revealView` 需要 `ui.view`）
 - `onProviderOAuth` 和 `pi.providers.oauth.prompt` / `notify`（`provider.oauth`）
 - `clipboard.*`、`shell.openExternal`、`net.fetch`
 - `browser.*`（访客页 CDP；`browser.cdp`）

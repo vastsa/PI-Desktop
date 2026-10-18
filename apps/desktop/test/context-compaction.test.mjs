@@ -129,7 +129,7 @@ test("the hard boundary is enforced by the host, with a model-side escape hatch"
     runtime,
     /messages: \[\s*\.\.\.context\.messages,\s*\{\s*role: "system",\s*content: "",\s*sections: \{ \[CONTEXT_BUDGET_SECTION\]: reminder \}/,
   );
-  // ADR 0331: the contract modes keep a deny list instead of a read-only
+  // ADR 0332: the contract modes keep a deny list instead of a read-only
   // allowlist, so `new_context` is admitted by falling through it. Denying it
   // there would take compaction away from Plan and Goal.
   const contractDenyList = hostPermissions.match(
