@@ -420,6 +420,9 @@ export type SessionHistoryReadOptions = {
 export function normalizeSettings(settings: AppSettings): AppSettings {
   return {
     ...settings,
+    sidebarRunningIndicators: settings.sidebarRunningIndicators !== false,
+    sidebarRunningBadge: settings.sidebarRunningBadge !== false,
+    sidebarRunningRail: settings.sidebarRunningRail === true,
     defaultMode: normalizeMode((settings as { defaultMode?: unknown }).defaultMode),
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,

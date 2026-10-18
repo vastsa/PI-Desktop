@@ -18154,15 +18154,17 @@ host-created files. The full app's file-preview viewer is covered separately.
      remote host's project.
   4. Open Settings → General → Sidebar and turn off **Show running activity
      on projects**, then re-check the sidebar.
-  5. Turn the master switch back on, turn off **Count badge** only, and
-     re-check. Repeat with **Activity rail** only.
-  6. Enable the OS "reduce motion" setting and re-check the rail.
+  5. Turn the master switch back on and turn on **Activity rail**.
+  6. Turn off **Count badge** only and re-check; turn it back on.
+  7. Turn off **Activity rail** only and re-check; turn it back on.
+  8. Enable the OS "reduce motion" setting and re-check the rail.
 - **Expected**: A project with live work marks its header — the collapsed
-  header keeps showing the count badge and the activity rail, so the project
-  is identifiable without expanding it. Running and permission-waiting counts
-  are separate figures and never merge into one number. The remote host group
-  shows the same pair. The master switch removes both affordances at once and
-  leaves the two sub-switches disabled but retaining their stored value, so
+  header shows only the count badge by default; the activity rail is off.
+  Running and permission-waiting counts are separate figures and never merge
+  into one number. The remote host group shows the same default. Turning on the
+  activity rail displays it alongside the badge. The master switch removes
+  both affordances at once and leaves the two sub-switches disabled while
+  retaining their stored value, so
   re-enabling the master restores the previous choice. Each sub-switch hides
   only its own affordance. Under reduced motion both affordances stay visible
   with their animation removed. Settings persist across a renderer reload.
@@ -18171,12 +18173,12 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Acceptance**: The "is anything running under here?" answer is available
   from a collapsed project group, and each affordance can be switched off
   independently through a persisted setting.
-- **Status**: Draft. Unit coverage in
-  `apps/desktop/test/sidebar-project-runs.test.mjs` covers the count
-  classification, the master/sub-switch gating, both render call sites, and
-  the theme-token and reduced-motion guarantees; the interactive sidebar
-  scenario remains a manual validation scenario run in a capable
-  environment.
+- **Status**: Draft. Existing unit coverage in
+  `apps/desktop/test/sidebar-project-runs.test.mjs` covers count
+  classification, master/sub-switch gating, both render call sites, and
+  theme-token and reduced-motion guarantees. It does not exercise settings
+  API default normalization or the full interaction; those remain manual
+  validation in a capable environment.
 
 ### E2E-267: A plugin follows the selected session and opens its own view
 

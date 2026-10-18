@@ -71,6 +71,7 @@ This log freezes previously open questions into concrete decisions.
 | D020 | Auto-update | **Post-MVP** |
 | D021 | First-run onboarding | **Inline checklist (not modal wizard)** |
 | D022 | Local telemetry | **Local logs only in MVP (no remote telemetry)** |
+| D664 | Sidebar running activity defaults | **When unset, the master and Count badge resolve on while Activity rail resolves off. Explicit saved values remain authoritative. The master continues gating both affordances; turning it off does not rewrite either child preference. No schema or migration change.** |
 
 
 ## C. Provider & model coverage decisions (0.3.4)
@@ -7766,3 +7767,14 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/composer-chip-descenders.test.mjs`, and the composer
   slots and thinking contracts. See `04-ux/08-component-spec.md` §11 and
   US-UI-73.
+
+## 2026-10-18 — Default sidebar running activity to the count badge (D664)
+
+- When the three optional sidebar activity settings are absent, the master and
+  Count badge resolve on while Activity rail resolves off. Explicitly saved
+  values remain authoritative, and the master still gates both affordances
+  without rewriting either child preference.
+- The count keeps live work discoverable without making the animated rail a
+  default. Settings reads apply these defaults through renderer API
+  normalization; no persisted schema or migration change is required. See
+  `04-ux/01-ui-ia.md`, `04-ux/06-settings-ia.md`, and E2E-266.
