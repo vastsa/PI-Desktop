@@ -11,11 +11,17 @@ const NO_OUTPUT = "—";
  * Shows chat-started background commands (dev servers, watchers) above the
  * composer. The lifecycle lives in host-core — a task survives turn aborts
  * and renderer reloads; this bar only reflects registry state and can stop a
- * task on request. Every task is listed; running ones float to the top.
+ * task on request.
+ *
+ * Only work that is still running, or that the renderer just watched finish,
+ * earns a row here: a command that ended long ago is history, not something
+ * the user is waiting on, and it must not sit above the composer forever.
+ * Running tasks float to the top.
  */
 export function BackgroundTasksBar(): React.JSX.Element | null {
   const { t } = useTranslation();
-  const { tasks, expandedId, output, stoppingIds, error, toggleOutput, stop } = useBackgroundTasks();
+  const { tasks, expandedId, output, stoppingIds, error, toggleOutput, stop, dismiss } =
+    useBackgroundTasks();
   const outputText = useMemo(
     () => formatOutput(output, expandedId ?? ""),
     [output, expandedId],
@@ -77,7 +83,17 @@ export function BackgroundTasksBar(): React.JSX.Element | null {
               >
                 {stopping ? t("backgroundTasks.stopping") : t("backgroundTasks.stop")}
               </Button>
-            ) : null}
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="background-task-action"
+                onClick={() => dismiss(task.id)}
+              >
+                {t("backgroundTasks.dismiss")}
+              </Button>
+            )}
             {expandedId === task.id ? (
               <pre className="background-task-output">
                 {outputText || NO_OUTPUT}

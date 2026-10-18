@@ -693,6 +693,7 @@ export const zhTW = {
     output: "輸出",
     stop: "停止",
     stopping: "停止中…",
+    dismiss: "關閉",
   },
   planHistory: {
     pending: "待審批",

@@ -7858,6 +7858,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   fetched and refreshed; old responses cannot erase it. Each stream remains
   bounded to 256KiB and retains its final marker after exit. A Stop failure is
   visible without an unhandled rejection and the control remains retryable.
+  An ended task keeps its row only for a short grace window and can be closed
+  from the bar, so finished commands do not accumulate above the composer.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),
   `03-runtime/06-host-rpc-protocol.md` (§4)
 - **Acceptance criterion**: C, E, F
@@ -7869,7 +7871,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   exercises production React components in isolated Electron at 1280px, 700px,
   and 390px widths. Host tests cover exit-before-drain and shutdown under output
   lock contention. The full agent-to-Desktop journey and an 83-minute paced
-  100,000-line soak remain manual; the automated volume test is accelerated.)
+  100,000-line soak remain manual; the automated volume test is accelerated.
+  Renderer visibility (grace window, close action, pinned output preview) is
+  covered by `apps/desktop/test/background-tasks-bar-visibility.test.mjs` with a
+  controlled clock; the multi-second hand-off itself is not timed in Electron.)
 
 #### E2E-117: Agent/Plan/Goal UX and locales contain no Chat controls
 

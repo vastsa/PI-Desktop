@@ -693,6 +693,7 @@ export const zhCN = {
     output: "输出",
     stop: "停止",
     stopping: "停止中…",
+    dismiss: "关闭",
   },
   planHistory: {
     pending: "待审批",

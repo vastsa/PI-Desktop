@@ -131,3 +131,20 @@ test("the bar styles exist and mark a running task with a pulse", () => {
 test("the running/stopped/failed/exited labels are translated", () => {
   assert.match(i18nEn, /backgroundTasks: \{[^}]*running: "Running"/);
 });
+
+test("the bar shows only live work: a finished row expires and can be closed", async () => {
+  const visibility = await readFile(
+    new URL("../src/features/chat/background-tasks/bar-visibility.ts", import.meta.url),
+    "utf8",
+  );
+  // The grace window is a named constant, not a magic number in the component.
+  assert.match(visibility, /export const ENDED_VISIBLE_MS = 10_000;/);
+  assert.match(controller, /selectVisibleTasks\(visibility, tasks, clock, expandedId\)/);
+  assert.match(controller, /observeTasks\(current, result\.tasks, observedAt\)/);
+  assert.match(controller, /dismissTask\(current, id\)/);
+  // A finished row offers closing instead of stopping: it must be able to leave
+  // the composer without touching the process lifecycle.
+  assert.match(bar, /\{t\("backgroundTasks\.dismiss"\)\}/);
+  assert.match(bar, /onClick=\{\(\) => dismiss\(task\.id\)\}/);
+  assert.match(i18nEn, /backgroundTasks: \{[^}]*dismiss: "Dismiss"/);
+});
