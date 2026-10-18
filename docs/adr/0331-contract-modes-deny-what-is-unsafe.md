@@ -22,12 +22,17 @@ the effect of a call rather than the provenance of its name.
 
 ## Decision
 
+Contract modes are effect-scoped rather than capability-scoped: the gate asks
+what a call does, not where its name comes from.
+
 - A contract mode denies the builtins that act on state instead of inspecting
   it: the ones that write files or session state (`Write`, `Edit`, `TodoWrite`,
   `GenerateImages`, `PluginScaffold`, `PluginPack`, the `ScheduledTask*` tools),
   the delegation family that spawns and controls work (`Task*`), and
   `JevClassify`, whose paid provider call must not run from a reference retained
-  across a mode switch.
+  across a mode switch. A builtin that reaches the network on its own belongs on
+  this list too; `Bash` and a user MCP tool are absent because a permission card
+  already covers what they can do.
 - Every other builtin is admitted by the gate and falls through to the ordinary
   permission path, which still applies risk, the effective permission mode,
   session grants, and the external-path rule. `Read`, `Glob`, `Grep`,
@@ -69,6 +74,13 @@ family) before any host action, and the drift test keeps the two languages in
 step. None of those catches a state-changing builtin nobody added to the list,
 so it stays reachable in Plan until someone classifies it. Deciding what a new
 builtin does to state is part of adding it.
+
+The gate admits names the allowlist never listed: `ToolSearch`, `PluginCheck`,
+`Skill`, and any builtin added later. What a contract mode declares to the model
+barely moves: `ToolSearch` is the one addition, because an MCP tool stays
+deferred behind it, and `PluginCheck` and `Skill` pass the gate without ever
+being built in a contract mode. The exposure sits in the gate, so the deny list
+is the contract, not the runtime's declaration set.
 
 Approval is not filesystem isolation: an approved shell command or opaque MCP
 call may mutate state. This policy controls authorization, not the effects of

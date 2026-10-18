@@ -95,9 +95,13 @@ sidecar's workspace file resolver remain restricted to the session workspace.
 
 Plan is not itself the workspace security boundary. Host-core resolves the
 durable session mode for every `tools.execute` call and applies the Plan matrix
-before permission modes, grants, plugin risk, or renderer/sidecar state. Plan
-denies state-changing builtins and plugin tools without `planSafeActions`, while
-BrowserPreview is the explicit read-only UI inspection exception (it reveals
+before permission modes, grants, plugin risk, or renderer/sidecar state. The
+contract modes are effect-scoped rather than capability-scoped: they deny the
+builtins that act on state and plugin tools without `planSafeActions`, and admit
+every other name by omission, so a builtin nobody classified reaches the ordinary
+permission path. A builtin that writes, delegates, spends a paid call, or reaches
+the network on its own belongs on the deny list when it is added. BrowserPreview
+is the explicit read-only UI inspection exception (it reveals
 bundled `pi.browser` chrome; raw CDP plugin tools stay denied in Plan). Bash
 remains available in Plan: every permission mode, Auto included, prompts, and an
 approved command may mutate the workspace or scratch directory. The UI must

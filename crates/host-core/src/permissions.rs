@@ -195,6 +195,9 @@ impl PermissionManager {
         if tool_name.starts_with("plugin_") {
             // The declaration is the escape hatch (ADR 0211): without one the
             // plugin runtime refuses the call too, so a card would be theater.
+            // The per-action restriction is enforced there, in
+            // `apps/desktop/electron/main/plugin-runtime.ts`, where a plugin
+            // tool's `execute` rejects an undeclared action in plan/goal.
             return if plan_safe_actions.is_some_and(|actions| !actions.is_empty()) {
                 ContractAdmission::Allowed
             } else {
