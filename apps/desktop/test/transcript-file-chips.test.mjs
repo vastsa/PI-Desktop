@@ -82,9 +82,23 @@ test("a file chip is routed by where the reference resolved, never optimisticall
   // roots, and positioned references need the host viewer's line navigation.
   assert.match(hook, /inProject: false/);
   assert.match(hook, /openFile\(resolved\.path, mimeType, \{ line, column \}\)/);
-  // The OS handoff is no longer what a chat click does; the channel itself
-  // stays part of the public IPC surface.
-  assert.doesNotMatch(hook, /api\.fsOpen\(/);
+  // Only the explicit default-browser destination may request the OS handoff;
+  // an ordinary transcript click keeps its resolved in-app destination.
+  const defaultBrowserIndex = hook.indexOf(
+    'if (destination === "default-browser")',
+  );
+  const defaultBrowserBranch = hook.slice(
+    defaultBrowserIndex,
+    hook.indexOf("const hasPosition", defaultBrowserIndex),
+  );
+  assert.match(
+    defaultBrowserBranch,
+    /await api\.fsOpen\(resolved\.absolutePath, mimeType, sessionId\)/,
+  );
+  assert.doesNotMatch(
+    hook.slice(0, defaultBrowserIndex),
+    /api\.fsOpen\(/,
+  );
   assert.match(
     api,
     /fsOpen: \(path: string, mimeType\?: string, sessionId\?: string\) =>\s*invoke\(IPC\.invoke\.fsOpen, \{ path, mimeType, \.\.\.\(sessionId \? \{ sessionId \} : \{\}\) \}\)/,

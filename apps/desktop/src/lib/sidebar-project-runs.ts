@@ -50,7 +50,7 @@ export function resolveSidebarRunningAffordances(
       }
     | null,
 ): SidebarRunningAffordances {
-  const master = settings?.sidebarRunningIndicators !== false;
+  const master = settings?.sidebarRunningIndicators === true;
   return {
     badge: master && settings?.sidebarRunningBadge !== false,
     rail: master && settings?.sidebarRunningRail !== false,

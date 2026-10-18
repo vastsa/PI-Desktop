@@ -77,6 +77,9 @@ const PLUGIN_MAIN = `
           payload.grantId,
         ));
       }
+      if (channel === "try.openInBrowser") {
+        return attempt(() => pi.fs.openInBrowser(payload.path));
+      }
       throw new Error("unknown channel: " + channel);
     },
   };
@@ -126,13 +129,24 @@ function writePlugin({ id, permissions, fs: fsPolicy }) {
  */
 async function harness(
   t,
-  { id, permissions, fs: fsPolicy, workspace, granted, consent, protectedPaths, folders },
+  {
+    id,
+    permissions,
+    fs: fsPolicy,
+    workspace,
+    granted,
+    consent,
+    protectedPaths,
+    folders,
+    openInBrowser: openInBrowserImpl,
+  },
 ) {
   const ws = workspace ?? makeWorkspace();
   const audits = [];
   const consents = [];
   const trashed = [];
   const opened = [];
+  const browserOpened = [];
   const revealed = [];
   const answers = [...(consent ?? [])];
   const runtime = new PluginRuntime({
@@ -159,6 +173,7 @@ async function harness(
     audit: (entry) => audits.push(entry),
     trashItem: async (fullPath) => trashed.push(fullPath),
     openPath: async (fullPath) => opened.push(fullPath),
+    openInBrowser: openInBrowserImpl ?? (async (fullPath) => browserOpened.push(fullPath)),
     revealPath: async (fullPath) => revealed.push(fullPath),
     ...(protectedPaths ? { protectedPaths: () => protectedPaths } : {}),
     ...(consent
@@ -175,7 +190,7 @@ async function harness(
   });
   const dir = writePlugin({ id, permissions, fs: fsPolicy });
   await runtime.loadFromPath(dir, granted);
-  return { runtime, ws, audits, consents, trashed, opened, revealed, dir };
+  return { runtime, ws, audits, consents, trashed, opened, browserOpened, revealed, dir };
 }
 
 function refused(t, promise, code, pattern) {
@@ -494,6 +509,83 @@ test("default-app opening reuses the readable file scope", async (t) => {
   );
 });
 
+test("opening an HTML file in the Browser reuses the readable file scope", async (t) => {
+  const { runtime, ws, browserOpened, audits } = await harness(t, {
+    id: "fs.open-in-browser.scoped",
+    permissions: ["fs.read"],
+    fs: { read: { scope: ["docs/**", "docs"] } },
+    workspace: makeWorkspace({
+      "docs/index.HTML": "<h1>hello</h1>",
+      "docs/readme.md": "text",
+      "notes.html": "<p>outside scope</p>",
+    }),
+  });
+
+  assert.deepEqual(
+    await runtime.invokePanelBridge("fs.open-in-browser.scoped", "try.openInBrowser", {
+      path: "docs/index.HTML",
+    }),
+    { ok: true, value: null },
+  );
+  assert.deepEqual(browserOpened, [realpathSync(join(ws, "docs/index.HTML"))]);
+  assert.ok(
+    audits.some((entry) => entry.api === "fs.openInBrowser" && entry.ok === true),
+    "opening an HTML file in the Browser is audited",
+  );
+
+  const markdown = await runtime.invokePanelBridge(
+    "fs.open-in-browser.scoped",
+    "try.openInBrowser",
+    { path: "docs/readme.md" },
+  );
+  assert.equal(markdown.ok, false);
+  assert.equal(markdown.code, "INVALID_ARGUMENT");
+  assert.match(markdown.message, /only HTML files/);
+
+  const outside = await runtime.invokePanelBridge(
+    "fs.open-in-browser.scoped",
+    "try.openInBrowser",
+    { path: "notes.html" },
+  );
+  assert.equal(outside.ok, false);
+  assert.equal(outside.code, "PERMISSION_DENIED");
+  assert.match(outside.message, /outside manifest\.fs\.read\.scope/);
+
+  const directory = await runtime.invokePanelBridge(
+    "fs.open-in-browser.scoped",
+    "try.openInBrowser",
+    { path: "docs" },
+  );
+  assert.equal(directory.ok, false);
+  assert.equal(directory.code, "INVALID_ARGUMENT");
+  assert.match(directory.message, /only files/);
+});
+
+test("a disabled Browser is reported and the failed open is audited", async (t) => {
+  const { runtime, audits } = await harness(t, {
+    id: "fs.open-in-browser.unavailable",
+    permissions: ["fs.read"],
+    fs: { read: { scope: ["docs/**", "docs"] } },
+    workspace: makeWorkspace({ "docs/a.html": "<p>preview</p>" }),
+    openInBrowser: async () => {
+      throw Object.assign(new Error("Browser plugin is disabled"), { code: "UNAVAILABLE" });
+    },
+  });
+
+  const result = await runtime.invokePanelBridge(
+    "fs.open-in-browser.unavailable",
+    "try.openInBrowser",
+    { path: "docs/a.html" },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "UNAVAILABLE");
+  assert.match(result.message, /Browser plugin is disabled/);
+  assert.ok(
+    audits.some((entry) => entry.api === "fs.openInBrowser" && entry.errorCode === "UNAVAILABLE"),
+    "the failed Browser request is auditable",
+  );
+});
+
 test("file reveal reuses the readable file scope", async (t) => {
   const { runtime, ws, revealed, audits } = await harness(t, {
     id: "fs.reveal.scoped",
@@ -528,8 +620,11 @@ test("file reveal reuses the readable file scope", async (t) => {
 });
 
 test("a host action reaches a file in another folder of the open project", async (t) => {
-  const other = makeWorkspace({ "notes.txt": "second folder" });
-  const { runtime, ws, opened, revealed } = await harness(t, {
+  const other = makeWorkspace({
+    "notes.txt": "second folder",
+    "index.html": "<h1>second folder</h1>",
+  });
+  const { runtime, ws, opened, browserOpened, revealed } = await harness(t, {
     id: "fs.folders.open",
     permissions: ["fs.read"],
     fs: { read: { root: "workspace", scope: ["**"] } },
@@ -550,6 +645,11 @@ test("a host action reaches a file in another folder of the open project", async
     realpathSync(join(ws, "notes.txt")),
     realpathSync(join(other, "notes.txt")),
   ]);
+
+  await runtime.invokePanelBridge("fs.folders.open", "fs.openInBrowser", {
+    path: join(other, "index.html"),
+  });
+  assert.deepEqual(browserOpened, [realpathSync(join(other, "index.html"))]);
 
   await runtime.invokePanelBridge("fs.folders.open", "fs.reveal", {
     path: join(other, "notes.txt"),

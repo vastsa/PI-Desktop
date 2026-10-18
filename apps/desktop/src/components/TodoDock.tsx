@@ -42,32 +42,37 @@ export function TodoDock({ sessionId }: { sessionId: string }) {
     : finished
       ? t("chat.todo.completed", { completed, total: denominator })
       : t("chat.todo.progress", { completed, total: denominator });
-  const statusLabel = current
-    ? t("chat.todo.current", { completed, total: denominator, content: current.content })
-    : progressLabel;
-
+  const currentShimmers = !expanded && current !== undefined;
   return (
     <div className={`todo-dock${expanded ? " is-expanded" : ""}`}>
-      <Button
-        type="button"
-        variant="ghost"
-        className="todo-dock-header"
-        aria-label={statusLabel}
-        aria-controls={contentId}
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
+      <div className="todo-dock-header">
         <span className="todo-dock-header-symbol" aria-hidden>
           {allCancelled ? "⊘" : finished ? "✓" : "◐"}
         </span>
-        <span className="todo-dock-header-text">{progressLabel}</span>
-        {current ? (
-          <span className="todo-dock-header-current" title={current.content}>
-            {current.content}
-          </span>
-        ) : null}
-        {expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-      </Button>
+        <div className="todo-dock-header-copy">
+          <span className="todo-dock-header-text">{progressLabel}</span>
+          {current ? (
+            <span
+              className={`todo-dock-header-current${currentShimmers ? " todo-dock-shimmer" : ""}`}
+              title={current.content}
+            >
+              {current.content}
+            </span>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          className="todo-dock-toggle"
+          aria-label={expanded ? t("chat.todo.collapse") : t("chat.todo.expand")}
+          title={expanded ? t("chat.todo.collapse") : t("chat.todo.expand")}
+          aria-controls={contentId}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
+        </Button>
+      </div>
       <div id={contentId} className="todo-dock-content" aria-hidden={!expanded}>
         <div className="todo-dock-clip">
           {/* The expanded dock lists every row (#1319): the list scrolls
@@ -80,7 +85,7 @@ export function TodoDock({ sessionId }: { sessionId: string }) {
             tabIndex={expanded ? 0 : -1}
           >
             {snapshot.todos.map((todo, index) => (
-              <TodoRow key={`${index}:${todo.content}`} todo={todo} />
+              <TodoRow key={`${index}:${todo.content}`} todo={todo} shimmer={expanded} />
             ))}
           </div>
         </div>
@@ -89,16 +94,22 @@ export function TodoDock({ sessionId }: { sessionId: string }) {
   );
 }
 
-function TodoRow({ todo }: { todo: SessionTodo }) {
+/* `shimmer` is only true while the list is open: the collapsed header already
+   carries the working step's text, and the list stays mounted behind the
+   disclosure, so without this gate the same text would sweep twice. */
+function TodoRow({ todo, shimmer }: { todo: SessionTodo; shimmer: boolean }) {
   const { t } = useTranslation();
   const label = t(`chat.todo.status.${todo.status}`);
-  const completed = todo.status === "completed";
+  const working = shimmer && todo.status === "in_progress";
   return (
     <div className={`todo-dock-row todo-dock-row-${todo.status}`} role="listitem">
       <span className="todo-dock-row-symbol" role="img" aria-label={label} title={label}>
-        {completed ? <IconCheck size={13} aria-hidden /> : statusSymbol(todo.status)}
+        {todo.status === "completed" ? <IconCheck size={13} aria-hidden /> : statusSymbol(todo.status)}
       </span>
-      <span className="todo-dock-row-content" title={todo.content}>
+      <span
+        className={`todo-dock-row-content${working ? " todo-dock-shimmer" : ""}`}
+        title={todo.content}
+      >
         {todo.content}
       </span>
     </div>

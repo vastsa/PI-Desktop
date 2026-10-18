@@ -3880,7 +3880,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // the catalog and the mode filter decides what survives: a plugin tool
     // needs `planSafeActions` (ADR 0211), while an MCP tool has no such
     // declaration and must stay visible for its approval card to be reachable
-    // (ADR 0330). The host still enforces both at execute time.
+    // (ADR 0331). The host still enforces both at execute time.
     const pluginTools: AgentTool[] = this.pluginTools.map((def) => {
       // Plan/Goal modes annotate the description so the model knows which
       // actions it may actually call.
@@ -4043,7 +4043,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * What a contract mode offers the model. It refuses what changes state and a
    * tool that runs outside the host permission path; everything else reaches
    * the host, which gates `Bash`, an opaque MCP tool, and a plugin tool without
-   * a declaration (ADR 0330).
+   * a declaration (ADR 0331).
    */
   private isToolAllowedInMode(name: string): boolean {
     const kind = proposalKindForMode(this.mode);

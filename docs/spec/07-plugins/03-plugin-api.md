@@ -264,6 +264,7 @@ pi.fs.readPreview(pathFromRoot: string): Promise<{
   size: number
 }>
 pi.fs.openDefault(pathFromRoot: string): Promise<void>
+pi.fs.openInBrowser(pathFromRoot: string): Promise<void>
 pi.fs.reveal(pathFromRoot: string): Promise<void>
 pi.fs.writeText(pathFromRoot: string, content: string): Promise<void>
 pi.fs.glob(pattern: string): Promise<string[]>
@@ -297,10 +298,20 @@ returns `text` (capped at 512 KiB), `image` (capped at 5 MiB, as a data URL),
 associated application. It uses the same `fs.read` root, symlink, protected-path,
 deny-list, and scope checks as `fs.readText`; directories are rejected. The host
 audits the operation. A path is root-relative by default, and an absolute path is
-accepted only by this action and `fs.reveal` (no other mode takes one) when it lies
+accepted only by `fs.openDefault`, `fs.openInBrowser`, and `fs.reveal` (no other mode takes one) when it lies
 inside a registered folder root of the open project — which then becomes the
 containment base for the request (ADR 0249 §5, ADR 0264). That is the shape a view
 uses to name a file in a project folder other than the primary one.
+
+`fs.openInBrowser` opens one existing `.html`, `.htm`, or `.xhtml` file in a new
+resource tab in the active local session's bundled work-panel Browser. It uses
+the same `fs.read` root, symlink, protected-path, deny-list, and scope checks as
+`fs.openDefault`; directories and other file types are rejected. An absolute
+path is accepted only when it lies inside a registered folder root of the open
+project, with the matched folder as the containment base. The Browser plugin
+must be enabled. This host-mediated preview does not grant `browser.cdp` or expose
+Browser actions or page contents to the caller. The Browser itself retains its
+existing local-file navigation policy (ADR 0328).
 
 `fs.reveal` reveals one existing readable file in the operating system's file
 manager and selects it when the platform supports that behavior. It uses the
@@ -1290,7 +1301,7 @@ The host-owned preload forwards only fixed channels to the plugin runtime:
 | `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
 | `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list` | `ui.theme` |
 | `models.list` | `models.list` |
-| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.writeText` | `fs.write` |
 | `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
@@ -1331,6 +1342,7 @@ Any of the following calls must be logged for audit:
 - fs.stat, fs.readRange, fs.remove, fs.requestDirectory, and every refused fs call (with its path and
   `errorCode`), plus each consent answer and why it was asked (`scope` / `rate`)
 - fs.openDefault (with its root-relative path and whether the OS open succeeded)
+- fs.openInBrowser (with its root-relative path and whether the Browser open was accepted)
 - fs.reveal (with its root-relative path and whether the file manager reveal succeeded)
 - fs.readPreview (with its root-relative path and classified `kind`)
 - execute after agent.registerTool (including tools discovered from a plugin's
@@ -1368,7 +1380,7 @@ Log fields:
 The desktop plugin runtime now implements the MVP host API surface used by local and marketplace plugins:
 
 - `app.*`, `plugin.*`, `commands.*`, `ui.*`, `workspace.*`
-- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
+- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.openInBrowser` / `fs.reveal` /
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`,
   bounded by `manifest.fs` (ADR 0088)
 - `agent.registerTool` / `unregisterTool` / `agent.complete`

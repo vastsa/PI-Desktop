@@ -307,6 +307,21 @@
   opacity: 0.55;
 }
 
+.context-menu-item.has-submenu {
+  gap: 8px;
+}
+
+.context-menu-submenu-chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--ds-text-muted);
+}
+
+.context-menu-submenu {
+  z-index: 61;
+}
+
 .context-menu-item.danger {
   color: var(--ds-error);
 }

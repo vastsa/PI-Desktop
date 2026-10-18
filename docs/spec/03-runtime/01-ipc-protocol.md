@@ -1893,6 +1893,11 @@ Renderer IPC kept for the Plan-safe preview facade and URL fallback:
   `location` in the matching
   runtime panel context. Navigation of a background session does not steal the
   visible guest.
+- plugin file action: `browser/event/openFile {path}`. Electron Main emits this
+  only after the plugin's `fs.openInBrowser` request passes its declared
+  `fs.read` scope and HTML-file checks. The renderer opens the absolute path in a
+  new Browser resource tab for the active local session; the Browser plugin
+  must be enabled. This route grants no `browser.cdp` access.
 
 ### fs (read-only)
 

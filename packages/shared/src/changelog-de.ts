@@ -5,9 +5,12 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Installierte Plugins erscheinen als Karten in einem selbst füllenden Raster, jede mit einer klaren Aktion und sichtbarem Vertrauens-, Update- und Geltungsstatus.",
+      "Öffentliche Bewertungen und Rezensionen für Marketplace-Plugins lesen und im Plugin-Center eine schreiben — die Desktop-App meldet sich nie an.",
       "Lange Bash-Befehle laufen nach dem Agenten-Turn als Hintergrundaufgaben weiter; ihre Ausgabe lässt sich später prüfen.",
       "Parallele Sitzungen eines Projekts laufen jeweils in einem eigenen Git-Worktree.",
       "Die Todo-Liste bleibt neben dem Composer angedockt und lässt sich bei Bedarf erweitern.",
+      "Der laufende Schritt der Checkliste ist auf einen Blick zu sehen: Ein Lichtstreifen wandert über seinen Text, erledigte Zeilen bleiben schlichter durchgestrichener Text.",
       "Bash-Befehle und Denkprozess erscheinen in getrennten Zeilen im Gespräch.",
       "Projektgruppen zeigen laufende Aktivitäten auch im eingeklappten Zustand; Zähler und Aktivitätsleiste lassen sich unabhängig einstellen.",
       "Projekt- und Sitzungsdetails lassen sich über Kontext-Untermenüs in der Seitenleiste kopieren.",

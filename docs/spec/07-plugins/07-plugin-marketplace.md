@@ -194,7 +194,9 @@ user who never installed anything.
 
 ### Phase C (partial ✅)
 - Auto-update policy + permission-diff gating implemented
-- Ratings / mandatory signing still planned
+- Ratings: the desktop reads public summaries and reviews (anonymous, no
+  account) and links out to the centre for writing; mandatory signing still
+  planned
 
 ### Phase D (in progress)
 
@@ -502,6 +504,7 @@ Extensions
 │ ├─ Categories
 │ └─ Card grid
 ├─ Detail sheet (shared by both tabs)
+│ └─ Review drawer (public reads; covers the detail sheet)
 └─ Permission dialog (install / upgrade)
 ```
 
@@ -513,26 +516,64 @@ contextual primary action (Browse marketplace / Refresh marketplace) and moves
 Check for updates, Apply automatic updates, Install package, and Load local
 plugin into an overflow menu (D169).
 
-Installed rows intentionally default to a quiet two-line summary containing the
-plugin name, optional local-source marker, id, and version. The state group
-heading carries Active / Turned off / Updates available / Needs attention, and
-load errors remain inline. Capabilities, resident service status, and
-risk-tinted permission chips are rendered inside a collapsed native Details
-disclosure; expanding it exposes the existing full readout without making every
-row tall. Installed rows use one current-state scope trigger; opening it shows
-the three scope choices with their explanations, and choosing This project
-opens the existing project picker. Row icon actions remain visible at rest and
-show their labels on hover and keyboard focus. This is a renderer-only
-presentation choice; plugin
-permissions and activation contracts are unchanged.
+Installed plugins are cards in an auto-filling grid
+(`minmax(min(340px, 100%), 1fr)`), so a column never overflows a container
+narrower than one card. Each card defaults to a quiet summary with the plugin
+name, optional local-source marker, id, version, and a public rating chip. The
+state group heading carries Active / Turned off / Updates available / Needs
+attention, and load errors remain inline. Capabilities, resident service
+status, and risk-tinted permission chips are rendered inside a collapsed native
+Details disclosure; expanding it exposes the existing full readout without
+making every card tall. A card's control rail clusters at its left edge and
+wraps: the compact scope trigger first, then the card's one call to action
+(update to the available version, or open the plugin's panel), then the 28px
+settings and overflow icon actions. A disabled plugin has no primary action and
+no settings icon. Opening the scope trigger shows the three scope choices with
+their explanations, and choosing This project opens the existing project
+picker. Icon actions remain visible at rest and show their labels on hover and
+keyboard focus. A verified card shows the trust shield when the installed
+record carries a verified trust tier; there is no "verified installed" label.
+This is a renderer-only presentation choice; plugin permissions and activation
+contracts are unchanged.
 
 The Detail sheet must show:
 - Permissions, grouped and labeled by risk tier
+- Ratings summary between permissions and versions: the one-decimal average,
+  the rating count, and the good / medium / bad split; an unavailable centre
+  reads as unavailable, never as zero, and the review entry stays reachable
+  so its retry and its link out are never lost
 - Author
 - Version (selectable version list)
 - Update time
 - Risk description (safety notes callout)
 - Install button
+
+Public reviews are reads. Hovering nothing, signing in nowhere: the desktop
+never authenticates, never posts, votes, or reports. "See all reviews" opens an
+independent review drawer at the same dialog level as the detail sheet; it
+covers the sheet while the sheet keeps its mounted state and scroll position,
+and Escape closes only the topmost drawer. The covered sheet is `inert` and Tab
+is trapped inside the drawer, so keyboard focus can never land on what it
+covers; closing returns focus to the button that opened it. The drawer entry is
+not gated on the summary: when the summary read fails or the centre predates
+review support, the drawer is still reachable — it retries its own list and
+always carries the disabled composer plus the link out, which falls back to the
+official plugin page until the host reports the effective `reviewUrl`. The
+drawer filters
+by sentiment, sorts by newest or most helpful, and pages with a stable cursor
+(rows deduplicated by id; an answer for a filter the user has left is dropped;
+a successful summary read replaces the ratings for the ids just requested, so
+a plugin the centre stops serving loses its rating instead of keeping a stale
+one); every visible string, including accessible names, is localized. A
+review's
+version is labelled as user-reported — it is the author's claim, not an
+installed version. Its composer is permanently
+disabled and its one action is a real link — "Write a review on the plugin
+center" — that opens the centre's own page in the system browser
+(`browserOpenExternal`), using the host-provided `reviewUrl` for the effective
+centre origin and falling back to
+`https://plugins.aiuo.net/plugins/{encodedId}#reviews`. Reading reviews never
+gates or delays install, update, or any other plugin action.
 
 The Extensions list page keeps its overview copy compact: the page header and
 tab labels identify the surface, while section headers and empty states use
@@ -591,7 +632,9 @@ All download metadata must include `shasum`.
 - Remote plugin code hot patching
 - Silent auto-install
 - Unverified download-and-execute
-- Comment/social system (can be deferred)
+- Comment/social system inside the desktop: public reads only, while writing,
+  voting, and reporting stay on the centre's own web page (the composer is a
+  link out, never a desktop form)
 
 ## 12. Acceptance (marketplace read-only + install)
 

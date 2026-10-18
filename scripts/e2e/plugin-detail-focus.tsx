@@ -36,6 +36,9 @@ Object.assign(globalThis, { pluginDetailFocusProbe: async () => {
     listProjects: async () => ({ projects: [] }), listPlugins: async () => ({ plugins: [] }),
     listPluginServices: async () => [], marketCheckUpdates: async () => ({}),
     marketSearch: async () => ({ plugins: [plugin] }), marketGetDetail: async () => ({ plugin }),
+    // The page batches public rating summaries for every id it can show; the
+    // fixture answers with none, which reads as "no chip".
+    marketReviewSummaries: async () => ({}),
     onPluginChanged: () => () => {}, onPluginInstallProgress: () => () => {},
   });
   usePluginBrowseState.setState({ tab: "market" });

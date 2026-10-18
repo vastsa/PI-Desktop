@@ -9,7 +9,7 @@ const RETAINED_MODE_TOOLS = new Set(["Write", "Edit", "Task", "TaskWait", "TaskL
  * the delegation family that spawns and controls work, and `JevClassify`, whose
  * Agent-only paid call must not run from a reference retained across a mode
  * switch. Every other name reaches the host permission path, which decides
- * (ADR 0330). `crates/host-core/src/permissions.rs` mirrors this list, and
+ * (ADR 0331). `crates/host-core/src/permissions.rs` mirrors this list, and
  * `mode-tool-access.test.ts` asserts the two stay identical.
  */
 export const CONTRACT_MODE_STATE_CHANGING: ReadonlySet<string> = new Set([

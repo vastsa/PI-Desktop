@@ -275,6 +275,7 @@ function buildApi() {
         })),
       readPreview: (path) => call("fs.readPreview", [path]),
       openDefault: (path) => call("fs.openDefault", [path]),
+      openInBrowser: (path) => call("fs.openInBrowser", [path]),
       reveal: (path) => call("fs.reveal", [path]),
       writeText: (path, content) => call("fs.writeText", [path, content]),
       glob: (pattern) => call("fs.glob", [pattern]),

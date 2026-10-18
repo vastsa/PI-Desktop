@@ -1,4 +1,4 @@
-# ADR 0330: Contract modes deny what is unsafe
+# ADR 0331: Contract modes deny what is unsafe
 
 - Status: Accepted
 - Date: 2026-10-15

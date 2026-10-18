@@ -27,7 +27,7 @@ test("formats session activity through seven calendar days and uses a date after
   );
   assert.equal(
     formatSessionLastReplyDate(atLocalDay(8), now, "en"),
-    "Oct 8, 2026",
+    "Oct 8",
   );
 });
 
@@ -37,12 +37,12 @@ test("invalid timestamps do not render a misleading date", () => {
 });
 
 test("project session rows show the date until hover or focus reveals actions", () => {
-  assert.match(sidebarSource, /showLastReplyDate:\s*true/);
-  assert.match(sidebarSource, /className="thread-item-date-separator"/);
+  assert.match(sidebarSource, /sidebarSessionTime === true/);
+  assert.match(sidebarSource, /className=\{cx\([\s\S]*?"thread-item-meta"[\s\S]*?sessionMenu === session\.id/);
   assert.match(sidebarSource, /className="thread-item-last-reply"/);
   assert.match(
     sidebarStyles,
-    /\.thread-item:hover \.thread-item-last-reply,[\s\S]*?\.thread-item:focus-within \.thread-item-last-reply\s*\{\s*display:\s*none;/,
+    /\.thread-item:hover \.thread-item-last-reply,[\s\S]*?\.thread-item:focus-within \.thread-item-last-reply\s*\{\s*opacity:\s*0;\s*visibility:\s*hidden;/,
   );
   assert.match(
     sidebarStyles,

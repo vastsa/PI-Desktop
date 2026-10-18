@@ -203,7 +203,7 @@ Panel bridge file channels are permission-gated as follows:
 
 | Channel | Required permission |
 |---|---|
-| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.registerDropped` | `fs.read` plus a real drop gesture |
 | `fs.writeText` | `fs.write` |
 

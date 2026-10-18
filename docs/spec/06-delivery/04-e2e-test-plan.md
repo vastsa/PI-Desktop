@@ -3502,6 +3502,15 @@ identify the platform validation still needed.
 
 - **Focus regression**: In light and dark themes, open a marketplace card and press Escape. Like pointer dismissal, Escape leaves no line or focus ring on the card. Then use Tab and Shift+Tab: the detail button shows a complete, unclipped ring, and Install remains separately focusable. Automated focus-state regression: `node scripts/e2e-plugin-detail-focus.mjs`; verify the rendered ring visually.
 
+#### E2E-PLUGIN-reviews-public-reads: Public ratings and reviews stay read-only in the desktop
+
+- **Preconditions**: Extensions reachable with at least one installed and one marketplace plugin the centre knows, plus a second run against a centre that has no review API.
+- **Steps**: 1) Open Extensions → Installed and, without visiting Marketplace, confirm a published plugin's card shows a rating chip only when the centre returned a summary. 2) Open a marketplace card's detail sheet and read the ratings summary between Permissions and Versions; press "See all reviews". 3) In the drawer, filter by sentiment and switch between newest and most helpful; page with Load more. 4) Inspect the composer: it is disabled, and its one action is the link to the plugin centre page. 5) Press Escape once (only the drawer closes) and again (the sheet closes). 6) Reopen the sheet and confirm the drawer left its scroll position untouched. 7) Repeat against the centre without review support and read the summary.
+- **Expected**: Installed and marketplace ids are batched into one summary read that never requires a Marketplace refresh; an unavailable centre shows no fabricated zeros, and the detail summary says ratings are unavailable — while the review entry stays reachable and the drawer retries its own list, so its disabled composer and its web link (official fallback until the host reports `reviewUrl`) are never lost; a successful summary read replaces the ratings for the ids just requested, so a plugin the centre stops serving loses its stale rating chip; the chip rides the card's existing metadata line and adds no row; the drawer covers the mounted detail sheet, keeps its scroll position, closes on the first Escape only, returns focus to its opener (Escape claims the key with preventDefault/stopPropagation; the covered sheet is inert and Tab is trapped inside the drawer), appends pages deduplicated by review id, and drops an answer for a filter the user already left; a review's version reads as user-reported, never as an installed version; the composer accepts no input, and the only write path is the real link opened through `browserOpenExternal` in the system browser on a primary or middle click (right-click stays with the platform menu), with a failed open reported as a toast; no sign-in, vote, report, or review-writing UI exists in any locale.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §7, `07-plugins/14-plugin-roadmap.md`
+- **Acceptance**: G (Extensions page) + Security
+- **Status**: Automated fixture (`node scripts/e2e-plugin-reviews-drawer.mjs`: three probes — full path with card chip, section order, paging/dedup, filter stale-drop, error+retry, link href/middle-click-only/failure toast, Tab trap + inert, Escape/focus/scroll restoration; stale-summary replacement; unavailable-summary drawer entry + retry + fallback link) plus unit-covered (`plugin-reviews-logic.test.mjs`, `plugin-reviews-surface.test.mjs`)
+
 #### E2E-024F: Refresh the official marketplace catalog
 
 - **Preconditions**: Network available to `plugins.aiuo.net`.
@@ -3632,7 +3641,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: At least one enabled plugin, one disabled plugin, and one plugin whose load failed.
 - **Steps**: 1) Open Extensions → Installed while plugin changed events are arriving in a burst. 2) Read the tab and group counts. 3) Confirm the failed plugin sits under Needs attention with its error message. 4) Search by author and by permission. 5) Clear the search.
-- **Expected**: The page remains usable during transient host backpressure: identical plugin and extension registry refreshes coalesce, and renderer-facing RPC calls retry explicit `HOST_OVERLOADED` responses with bounded backoff before surfacing an error. Rows group as Needs attention / Updates available / Active / Turned off with counts; `status: "error" | "load_error"` renders the error message inline instead of being silent; each row defaults to a two-line name/id/version summary, while a Details disclosure reveals risk-tinted permission chips, capabilities, and resident service status; the single scope trigger opens explained Off / This project / Everywhere choices and the project picker; row icon actions expose hover/focus labels; the result count reflects the filtered subset and clearing restores every group.
+- **Expected**: The page remains usable during transient host backpressure: identical plugin and extension registry refreshes coalesce, and renderer-facing RPC calls retry explicit `HOST_OVERLOADED` responses with bounded backoff before surfacing an error. Plugins group as Needs attention / Updates available / Active / Turned off with counts; `status: "error" | "load_error"` renders the error message inline instead of being silent; each plugin is a card in an auto-filling grid, defaulting to a quiet name/id/version summary (plus a rating chip when the centre has one), while a Details disclosure reveals risk-tinted permission chips, capabilities, and resident service status; the single scope trigger opens explained Off / This project / Everywhere choices and the project picker; card icon actions expose hover/focus labels; the result count reflects the filtered subset and clearing restores every group.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `07-plugins/13-plugin-permissions-matrix.md`
 - **Acceptance**: G (installed plugin management)
 - **Status**: Documented
@@ -3858,11 +3867,14 @@ window; opening a normal panel afterward must still work.
   the compact two-tier header presents the extension mark/title and contextual
   action rail below the native window-control band, then confirm the Installed and Marketplace tabs are the only tabs and both reach the content
   without a four-card numeric overview band or explanatory header/section
-  paragraphs. 3) Confirm installed rows begin
-  as a quiet two-line summary, then expand Details on one row and inspect its
-  capabilities, service status, and permissions. 4) Use the compact scope
-  control and its explained scope menu, contextual primary action, and a
-  secondary update/action button. 5)
+  paragraphs. 3) Confirm installed plugins are cards in an
+  auto-filling grid — cards keep their width above 340px and collapse below —
+  then expand Details on one card and inspect its capabilities, service status,
+  and permissions. 4) Use the compact scope
+  control and its explained scope menu, the card's one call to action (Update to
+  the available version, or Open panel), and the 28px settings and overflow icon
+  actions; widen and narrow the window to see the rail wrap at the card's left
+  edge rather than clip. 5)
   Switch to light theme and repeat. 6) Keyboard-focus the Details disclosure,
   scope states, and each action.
 - **Expected**: The four numeric overview cards are absent; the header uses a
@@ -3871,10 +3883,11 @@ window; opening a normal panel afterward must still work.
   installed group counts, and any update alert remain available in their
   relevant surfaces. The page header, section headers, empty states, and update
   alert use compact labels and actions; decision-specific explanations remain
-  in disclosures, details, and dialogs. Installed rows keep their default height low while the
+  in disclosures, details, and dialogs. Cards keep their default height low while the
   disclosure exposes the complete secondary readout. The scope trigger stays
-  aligned with the row action rail, its menu explains each state, and icon
-  actions remain visible at rest while showing labels on hover and focus.
+  aligned with the card's control rail, its menu explains each state, and icon
+  actions remain visible at rest while showing labels on hover and focus; a
+  disabled card shows no primary action and no settings icon.
   Primary and secondary buttons keep
   visible semantic surfaces, text, borders, hover states, and focus rings in
   both themes, and keyboard focus does not depend on pointer hover.
@@ -3882,7 +3895,8 @@ window; opening a normal panel afterward must still work.
   `07-plugins/07-plugin-marketplace.md`, ADR 0058, D196
 - **Acceptance**: G (Extensions page) + Quality
 - **Status**: Unit-covered (`extensions-page.test.mjs`,
-  `plugins-page-style.test.mjs`); visual scenario Draft
+  `plugins-page-style.test.mjs`, `plugin-reviews-surface.test.mjs`);
+  visual scenario Draft
 
 #### E2E-024O: Marketplace hides development-only sample plugins
 
@@ -7457,7 +7471,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/03-tools-and-permissions.md`, `03-runtime/05-host-core-rust.md`,
   `03-runtime/06-host-rpc-protocol.md`, `05-security/01-security.md`, ADR 0053,
-  ADR 0330
+  ADR 0331
 - **Acceptance**: E (tools and permissions), Security
 - **Milestone**: M6
 - **Status**: Automated: `test:e2e:plan` covers approval-before-execution and
@@ -7806,10 +7820,12 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   descendants, output events, audit, and turn state after the shutdown grace.
 - **Expected**: The process group/job tree is terminated, no descendant remains,
   no later output arrives, the turn returns `TURN_ABORTED`, and the workspace is
-  not rolled back automatically. On Windows, the hidden runner first breaks
-  away from any parent Job Object before entering its own kill-on-close job; a
-  denied breakaway fails the tool closed instead of allowing the Desktop tree
-  to become the termination scope.
+  not rolled back automatically. On Windows, the hidden runner requests
+  `CREATE_BREAKAWAY_FROM_JOB` only when the job that contains the host grants
+  `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, then enters its own kill-on-close job. A host
+  job that withholds breakaway leaves the runner in a nested job instead of
+  failing the tool closed; termination is still scoped to that job, so the
+  Desktop tree never becomes the termination scope.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
   `03-runtime/07-process-model.md`, `03-runtime/08-error-codes.md`,
   `03-runtime/16-tool-result-limits.md`, `05-security/01-security.md`, ADR 0054
@@ -9517,9 +9533,14 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      the view's top-left folder control to the project's second folder and
      confirm the tree follows it while the app's visible workspace does not,
      then switch back to the project's primary folder.
-  4. Right-click a file and confirm **Open with default app** and **Show in
-     folder** are offered and work; right-click a directory and confirm they are
-     not offered, because the host refuses the action for directories.
+  4. Right-click an HTML file and confirm **Open in built-in Browser** appears
+     under Open With. Select it and verify a new Browser resource tab opens the
+     file in the active local session while the File Manager tab remains open.
+     Right-click a non-HTML file and confirm that item is absent. Confirm
+     **Open with default app** and **Show in folder** remain available for files
+     and work. For directories, confirm the built-in Browser and Show in folder
+     actions are absent, the default-app action is disabled, and editor choices
+     remain available.
   5. Open a text file, edit it, and save. Confirm the file on disk changed and
      the editor keeps the saved content. Change the same file outside the app,
      edit and save again, and confirm the conflict is reported instead of the
@@ -9550,13 +9571,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Specs linked**: `07-plugins/03-plugin-api.md` §3,
   `07-plugins/13-plugin-permissions-matrix.md` §2,
   `04-ux/08-component-spec.md` §5, ADR 0104, ADR 0109, ADR 0111,
-  ADR 0169, ADR 0241, ADR 0249, ADR 0263
+  ADR 0169, ADR 0241, ADR 0249, ADR 0263, ADR 0330
 - **Acceptance**: G (plugins), D (workspace), Security, Quality
 - **Milestone**: M6+
 - **Status**: Unit coverage in `apps/desktop/test/bundled-plugins.test.mjs`
   (manifest contract, public-bridge-only page, vendored checksums),
-  `apps/desktop/test/plugin-fs-scope.test.mjs` (`fs.openDefault` and `fs.reveal`
-  guards), `apps/desktop/test/plugin-work-panel-views.test.mjs` (docked-view
+  `apps/desktop/test/plugin-fs-scope.test.mjs` (`fs.openDefault`,
+  `fs.openInBrowser`, and `fs.reveal` guards),
+  `apps/desktop/test/browser-preview-tool.test.mjs` (Browser resource-tab event
+  routing), `apps/desktop/test/plugin-work-panel-views.test.mjs` (docked-view
   event broadcast), and host-core
   `bundled_plugins_refresh_from_disk_but_keep_user_state`; the packaged journey
   is Draft (run only in a capable environment when this surface changes)
@@ -10032,8 +10055,12 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Preconditions**: An isolated local Electron profile with a deterministic
   Agent/host fixture, two Desktop sessions, and no real provider or paid API.
 - **Steps**: Start a multi-step Agent turn that calls `TodoWrite` with ordered
-  pending and `in_progress` items. Observe the TodoDock above the Composer,
-  expand it, switch sessions, and confirm the checklist stays session-scoped.
+  pending and `in_progress` items. Observe the TodoDock above the Composer;
+  confirm its progress text is left-aligned, its separate arrow button is at
+  the right edge, measures at least 36px square, and contains an independently
+  sized 18px arrow icon. Confirm clicking the text does not expand it. Click
+  the upward arrow to expand, then confirm the arrow points down. Switch
+  sessions and confirm the checklist stays session-scoped.
   Expand a checklist longer than the dock's height cap: every row must render
   and the list must scroll inside the dock without growing the Composer stack.
   Complete and cancel items, confirm the all-cancelled label, then clear the
@@ -10045,8 +10072,11 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   advances revision, including clear, and emits one committed `todos.changed`
   snapshot. Invalid or unauthorized writes do not mutate or emit. TodoDock
   renders plain text, separates collapsed progress from the current item,
-  uses compact square status marks in a flat expanded list, does not take focus,
-  resets expansion on session changes, lists every ordered row with the dock's
+  uses glyph status marks in a flat expanded list, does not take focus,
+  strikes through completed task text, sweeps a light band across the working
+  step's text only (the header line while collapsed, its row while expanded),
+  resets expansion on session changes,
+  lists every ordered row with the dock's
   own list as the scrollport, and keeps a collapsed dock to its header height,
   rejects stale events, and skips local recovery for `remote:` sessions because
   RACP v1 has no Todo snapshot operation.
@@ -10104,9 +10134,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | F — Persistence | E2E-020, E2E-021, E2E-021a, E2E-038, E2E-SETTINGS-inline-capability-imports, E2E-040, E2E-042, E2E-047, E2E-048, E2E-051, E2E-054, E2E-056, E2E-061, E2E-062, E2E-064, E2E-066, E2E-068, E2E-071, E2E-072, E2E-073, E2E-082, E2E-084, E2E-096, E2E-098, E2E-102, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-102i, E2E-103, E2E-AGENTS-001, E2E-061a, E2E-073a, E2E-104, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-118, E2E-119, E2E-120, E2E-121, E2E-123, E2E-142, E2E-146, E2E-146a, E2E-148, E2E-151, E2E-158, E2E-160, E2E-168, E2E-171, E2E-177, E2E-178, E2E-183, E2E-186, E2E-005J, E2E-PROVIDER-custom-endpoint-no-api-key, E2E-PLUGIN-session-orchestrator-real-workers, E2E-PLUGIN-provider-catalog-add-service, E2E-SESSION-outbox-unclassifiable-failure-does-not-stall-the-queue |
 | F — Persistence (project ordering) | E2E-251 |
 | G / Security — Fetch redirect policy | E2E-PLUGIN-fetch-redirect-policy |
-| G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-imported-pi-package-wrapper, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-PLUGIN-provider-catalog-add-service |
+| G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024AA, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-imported-pi-package-wrapper, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-PLUGIN-provider-catalog-add-service, E2E-PLUGIN-reviews-public-reads |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
-| Security | E2E-SETTINGS-inline-capability-imports, E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PROVIDER-custom-endpoint-no-api-key, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-PLUGIN-provider-catalog-add-service |
+| Security | E2E-SETTINGS-inline-capability-imports, E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PROVIDER-custom-endpoint-no-api-key, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-PLUGIN-provider-catalog-add-service, E2E-PLUGIN-reviews-public-reads |
 | Quality | E2E-SETTINGS-inline-capability-imports, E2E-CHAT-long-history-stream-keeps-responsive, E2E-CHAT-running-status-survives-output-pauses, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-UPDATE-preference-and-once-only-reminder, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation, E2E-PLUGIN-provider-catalog-add-service |
 | Quality (sidebar menu placement) | E2E-021c |
 | Quality (project ordering) | E2E-253 |
@@ -11130,10 +11160,12 @@ This test plan spec is accepted when:
 
 ### US-UI-73 Composer mode selector has stable width
 - Open the empty home and a docked thread in both English and zh-CN.
-- Switch the Composer mode chip through Agent/Plan/Goal several times.
-- Expect the mode chip to keep one fixed width sized for the longest built-in
-  label (English "Agent" / zh-CN "智能体"); the adjacent Thinking and
-  permission controls, send button, and composer shell do not move or resize.
+- Open the Composer mode chip and switch between Agent/Plan/Goal several times.
+- Expect the chip to list the three modes as checked menu items, to name only
+  the committed mode, and to keep one fixed width sized for the longest built-in
+  label (English "Agent" / zh-CN "智能体") plus its caret; the adjacent Thinking
+  and permission controls, send button, and composer shell do not move or
+  resize.
 - In Goal, expect the permission chip to remain visible with the same geometry,
   show Full auto / 全自动, and stay disabled without opening a permission menu.
   The Plan/Goal approval card remains the separate execution-policy control.
@@ -13315,7 +13347,8 @@ are withdrawn with ADR 0165.
     canonical path. Quoted and scratch-absolute paths are included.
   - A chip plus a short prompt keeps the user plate content-sized; it does
     not stretch to the `min(82%, 600px)` ceiling.
-  - Clicking the HTML chip opens the work-panel browser on that file.
+  - Clicking an unpositioned project or scratch HTML chip opens the work-panel
+    browser on that file.
   - Clicking the workspace source chip opens it in the File Manager work-panel
     view on that file; the host `file:` tab and the OS default application are
     no longer what a chip click opens.
@@ -13414,8 +13447,9 @@ are withdrawn with ADR 0165.
 #### E2E-CHAT-file-ref-opens-the-surface-that-owns-it
 
 - **Preconditions**: The bundled File Manager plugin is loaded and enabled and
-  the work panel is closed. The open session's scratch store holds one file and
-  the attachment store one blob. The project is a group whose primary folder
+  the work panel is closed. The open session's scratch store holds one HTML
+  file and one other file, and the attachment store holds one blob. The project
+  is a group whose primary folder
   contains an `.html` page and a text file, and whose second folder holds a text
   file of its own. The same session's transcript carries a `Read` row whose
   summary names a project file, a `Glob` result listing project paths, and a
@@ -13424,7 +13458,8 @@ are withdrawn with ADR 0165.
   unsaved edit into that view and click the same reference again. 3) Click a
   reference that resolves into the session scratch store, then the
   `attachments/<sha256>` reference. 4) Click a workspace `.html` reference in an
-  assistant reply and the same reference as a sent user chip. 5) Click the file
+  assistant reply and the same reference as a sent user chip; click the scratch
+  HTML reference too. 5) Click the file
   path in the tool row's summary, then a path in the `Glob` result's file list
   and a path heading of the `Grep` result. 6) Disable the File Manager plugin,
   then click a project file reference and the tool row summary. 7) Click a
@@ -13432,16 +13467,18 @@ are withdrawn with ADR 0165.
   in its primary folder. 8) Right-click the sent `@path` chip, the inline-code
   reference, the markdown link, the local image, a tool row's file path, a tool
   result's file list, and an attachment image chip; then right-click a reference
-  that matches nothing. 9) On that chip, use Copy full path and Copy relative
-  path, then do the same on a reference that resolves in the session scratch
-  store.
+  that matches nothing. On an HTML reference, open the Open with submenu and
+  choose File Manager, built-in browser, and default browser; repeat for the
+  scratch HTML file. 9) Use Copy full path and Copy relative path, then do the
+  same on a reference that resolves in the session scratch store.
 - **Expected**:
-  - Right-clicking a file reference opens the renderer's own menu with the
-    file's own folder (Show in folder) and both of its addresses (Copy full
-    path, Copy relative path). The inline-code reference, the file link, the
-    local image, a tool row's path, a tool result's file or match list, and an
-    attachment image chip offer the same items, and a reference that matches
-    nothing reports itself instead of revealing a same-named file elsewhere.
+  - Right-clicking a file reference offers Copy full path and Copy relative
+    path on each transcript surface that names it. The transcript menu has no
+    Show in folder item. An unpositioned HTML reference also has a second-level
+    Open with submenu for File Manager, built-in browser, and default browser;
+    non-HTML references keep only the copy actions. Each open choice resolves
+    the reference first, and a missing reference reports itself without opening
+    a same-named file elsewhere.
   - A copy writes exactly what it names: the absolute address for the full copy
     and the project-relative spelling for the relative one; a scratch or
     attachment file reports that it has no relative path instead of copying an
@@ -13453,11 +13490,12 @@ are withdrawn with ADR 0165.
     is still in the editor and no second tab appears.
   - A scratch or attachment file opens in the host `file:` tab under Open
     resources, addressed by its absolute path, never in the File Manager view.
-  - A `.html` / `.htm` page of the project's primary folder opens in the
-    work-panel side browser, from the assistant reply and the user chip alike; a
-    page in a sibling folder is a project file like any other and opens in the
-    File Manager view, because the side browser is rooted at the primary folder
-    (ADR 0263).
+  - A plain click on an unpositioned `.html` / `.htm` reference from any
+    project folder or session scratch opens it in the work-panel side browser.
+    In the Open with submenu, File Manager opens the resolved file in that
+    plugin view, built-in browser opens the same absolute path in the side
+    browser, and default browser uses the host's validated OS file-open path.
+    A positioned HTML reference keeps its line-aware host file tab behavior.
   - A tool surface reaches the destination of the file it names, not one of its
     own: the tool row's summary path and the paths of the `Glob` file list and
     the `Grep` path headings open the same project file in the File Manager view.
@@ -13479,12 +13517,15 @@ are withdrawn with ADR 0165.
 - **Acceptance**: C (conversation & stream), G (plugins), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered
-  (`apps/desktop/test/transcript-file-chips.test.mjs` for the wiring and
-  `apps/desktop/test/tool-row-file-refs.test.mjs` for the work-panel entry each
-  shape of resolution produces). The isolated Electron renderer journey in
+  (`apps/desktop/test/chat-file-open-with-menu.test.mjs` for menu destinations
+  and resolved-path routing, `apps/desktop/test/transcript-file-chips.test.mjs`
+  for the wiring, and `apps/desktop/test/tool-row-file-refs.test.mjs` for the
+  work-panel entry each shape of resolution produces). The isolated Electron renderer journey in
   `scripts/e2e-file-ref-line-scroll.mjs` verifies a Markdown link enables the
   File Manager on demand and a positioned reference still opens in the host
-  viewer; the full packaged UI journey remains Draft.
+  viewer. `pnpm test:e2e:transcript` also exercises the rendered second-level
+  menu, destination selection, and keyboard focus return; the full
+  file-reference journey through all three destinations remains Draft.
 
 #### E2E-CHAT-mp4-attachment-opens-in-system-player
 
@@ -15985,7 +16026,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   1. Open the work panel and request the user's preferred width.
   2. Drag the inner divider toward MainChat's left edge, including during
      pointer preview, then release.
-  3. Manually reopen the sidebar after the layout collapsed it.
+  3. Manually reopen the sidebar after the layout collapsed it. Repeat in an
+     866px viewport, where the reopen narrows the panel below 244px, then
+     collapse the sidebar again and drag the divider toward the panel.
   4. Close the work panel and confirm the sidebar returns; repeat after
      manually collapsing the sidebar.
   5. Repeat divider changes with `ArrowLeft`, `ArrowRight`, `Home`, and `End`.
@@ -16005,7 +16048,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   budget is exhausted the expanded sidebar collapses immediately, and the panel
   may keep growing afterwards. A manual reopen spends panel width first;
   MainChat is preserved where possible and otherwise lands on the 460px reopen
-  target. Closing the panel restores only a sidebar the layout collapsed. The
+  target. That width is lent, not stored: the stored preferred width is
+  unchanged, collapsing the sidebar again restores it, and divider drags still
+  stop at 244px. Closing the panel restores only a sidebar the layout collapsed. The
   separator's ARIA minimum/maximum follow the same dynamic budget. The panel
   header's `+`, maximize, and viewport-fixed collapse toggle resolve to a single
   control gap (`--ds-work-panel-control-gap`) with no divider, inset, or margin
@@ -16168,12 +16213,15 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 #### E2E-LAYOUT-sidebar-row-states
 
 - **Preconditions**: Host-seeded project, pinned and standalone conversations;
-  a current workspace; built desktop with isolated data and profile directories.
+  the sidebar Session time preference enabled; a current workspace; built
+  desktop with isolated data and profile directories.
 - **Steps**: In dark and light themes, select a project conversation, hover its
   project title and an unselected conversation, then hover the selected row.
   Check that a project session date is visible at rest and replaced by its
-  action on hover and focus. Exercise the window-blur handler, drop-target
-  styling, project action hover and keyboard Tab/Shift+Tab focus. Fold and
+  action in the same trailing slot on hover and focus; verify no divider appears
+  before the date, dates through seven calendar days are relative, and older
+  dates show month and day without a year. Exercise the window-blur handler,
+  drop-target styling, project action hover and keyboard Tab/Shift+Tab focus. Fold and
   reopen its group. Select pinned and
   standalone conversations. Open Settings and return. Enable reduced motion and
   inspect both row transition durations. In a separate twelve-session project,
@@ -16188,7 +16236,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   wins over hover, and blur releases hover without clearing selection. Settings
   replaces sidebar navigation, and returning restores conversation and workspace
   context without a second selected row. Project session rows show dates at rest
-  and reveal actions in their place on hover and focus. Loading more sessions
+  in the same trailing slot used for session actions, with no divider. Hover and
+  focus replace the date with the action in that slot. Dates through seven
+  calendar days are relative and older dates show month and day without a year.
+  Loading more sessions
   reveals all twelve; folding and reopening restores the initial ten and the
   two-session remainder control. Rendered component tests additionally cover no
   selected session, a pending destination and non-chat page state.

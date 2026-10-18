@@ -55,6 +55,7 @@
 | D657 | 让内置浏览器打开工作区外的本地文件 | **修订 ADR 0170：通过绝对路径或 `file:` URL 可打开任意已存在的本地普通文件，本地文件页面也可导航到其他已存在的本地文件。相对输入仍以工作区为根；HTTP(S) 页面只保留此前工作区内文件链接的权限。缺失文件、目录与远程文件 authority 仍被阻止。`BrowserPreview` 与 sidecar 继续使用工作区根解析。公开的 `pi.browser.navigate` API 在高风险 `browser.cdp` 权限下采用相同策略。见 ADR 0328、E2E-059、`04-ux/08-component-spec.md` 与 `05-security/01-security.md`。** | 用户需要检查项目外的本地 HTML，而工作区范围内的 Agent 文件工具和远程页面导航仍须保留原有边界（#1627）。 |
 | D659 | 重新打开归档项目后恢复侧栏显示 | **修订 D093 / D455：成功明确激活项目时，清除该规范化路径的渲染层归档标记并持久化，使用户从「项目归档」点击「打开」、通过「添加项目」再次选择同一目录，或打开项目会话后，都能在主页侧边栏看到该项目。仅选择归档详情行而未激活，以及普通会话刷新，都不改变归档状态。不更改 Host/项目/会话存储或协议。见 ADR 0294、E2E-264 与 issue #1653。** | 用户明确重新打开项目后，活动工作区虽已切换，但按路径存储的归档展示标记仍在，导致项目从侧栏隐藏。 |
 | D661 | 分段回合过程与独立的思考偏好 | **取代 D633 / D651 与 `turn-process-and-thinking-display` ADR 中记录的 `Detailed` / `Compact` 显示模式行为与单一整体过程披露：回合渲染为按时间顺序排列的可折叠过程片段，Bash 与 run 别名位于所有折叠容器之外（回合级过程披露与任何普通活动组），即使所有组都收起也保持可见，且过程／组折叠默认值不依赖思考偏好。偏好为可选的布尔值 `AppSettings.showThinking`；缺失或非布尔值回退到旧版 `thinkingDisplayMode` 字段（`compact` 隐藏，`detailed`／未知／缺失显示），该旧字段仅为持久化设置兼容性保留。`showThinking` 加入可移植应用字段，因此会像旧字段一样同步；其余 Host 协议、持久化 schema、权限或插件契约不变。见修订后的 ADR、`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` 与 E2E-CHAT-turn-process-and-thinking-display。** | 单一扁平容器让较长的工具／搜索序列难以浏览，并把推理可见性与过程折叠挤进同一个二值开关；独立布尔值加上始终可见的 Bash 行，让命令密集的回合保持可读又不遮挡回答。 |
+| D662 | 插件在工作面板 Browser 中打开受范围限制的 HTML | **在 `fs.read` 下新增 `pi.fs.openInBrowser(pathFromRoot)`。宿主执行插件常规的读取路径包含、受保护路径、凭据拒绝名单、声明范围与项目注册文件夹检查；仅接受已存在的 `.html`、`.htm`、`.xhtml` 文件。验证后，Main 请求渲染进程为当前本地会话创建 Browser 资源标签页。Browser 插件必须启用。此操作不授予 `browser.cdp`，不改变 BrowserPreview 或本地文件导航策略，也不新增 host-core 协议或持久化状态。见 ADR 0330、`07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、`04-ux/08-component-spec.md` 与 E2E-153。** | 文件管理器需要在应用内预览 HTML；如果授予插件 `browser.cdp`，也会暴露无关的页面检查与控制能力。 |
 
 ## B. 辅助实现默认值
 
@@ -343,8 +344,8 @@
 
 | 身份证号 | 主题 | 决定 | 基本原理 |
 |---|---|---|---|
-| D114 | 代理临时文件的每个会话暂存目录 | **每个会话将 `<data_dir>/scratch/<sessionId>/` 作为 strict/no-HTML/no-link/Electron/`<data_dir>/scratch/<sessionId>/` 的第二个包含根（仅限绝对路径；相对路径保持工作区限制）。该路径在系统提示符中公布，并在 Bash 中公布为 `PI_SCRATCH_DIR`。 Scratch 在没有权限卡的情况下写入自动允许，并从工件表中排除。 Scratch 是惰性创建的，随会话一起删除，并在启动时清除（孤儿，>7 天陈旧）。 Glob/Grep/BrowserPreview 仍仅限工作区。 Plan 不公开 Write/Edit； Plan Bash 获批后仍可改变暂存（ADR 0330：每种权限模式都发权限卡）。** | Temp/intermediate 文件（一次性脚本、下载的数据、草稿）污染了用户的项目和 git 状态；主机拥有的根具有相同的词法+符号链接防御，可以保持沙箱模型完整，同时为模型提供合法的临时工作空间 |
-| D115 | 权限模式：全局默认+每会话覆盖 | *（Composer 演示文稿被 D132 取代；检查点 Plan 子句被 D189 取代）* **权限模式管理高风险工具审批：`ask`（确认所有内容，默认）、`accept-edits`（自动允许 Write/Edit、确认 Bash/plugins）、`auto` （自动允许全部）。全局默认值位于设置 `defaultPermissionMode` 中；每个会话都存储 `permission_mode`（架构 v5，默认 `inherit`），在不继承时会覆盖它。解决方案：会话覆盖→全局默认→询问，仅在 host-core `tools.execute` 中强制执行。 Plan 保留选择器；它的 Write/Edit/plugin 硬拒绝排名高于每种模式，而 Bash 在每种模式下都弹出权限卡（ADR 0330）。** | 确认每个 Write/Edit 都会使长代理运行高摩擦，但单个全局切换太粗糙 - 受信任的临时会话和有风险的回购会话需要不同的姿势；保持主机端强制执行可保护安全边界 |
+| D114 | 代理临时文件的每个会话暂存目录 | **每个会话将 `<data_dir>/scratch/<sessionId>/` 作为 strict/no-HTML/no-link/Electron/`<data_dir>/scratch/<sessionId>/` 的第二个包含根（仅限绝对路径；相对路径保持工作区限制）。该路径在系统提示符中公布，并在 Bash 中公布为 `PI_SCRATCH_DIR`。 Scratch 在没有权限卡的情况下写入自动允许，并从工件表中排除。 Scratch 是惰性创建的，随会话一起删除，并在启动时清除（孤儿，>7 天陈旧）。 Glob/Grep/BrowserPreview 仍仅限工作区。 Plan 不公开 Write/Edit； Plan Bash 获批后仍可改变暂存（ADR 0331：每种权限模式都发权限卡）。** | Temp/intermediate 文件（一次性脚本、下载的数据、草稿）污染了用户的项目和 git 状态；主机拥有的根具有相同的词法+符号链接防御，可以保持沙箱模型完整，同时为模型提供合法的临时工作空间 |
+| D115 | 权限模式：全局默认+每会话覆盖 | *（Composer 演示文稿被 D132 取代；检查点 Plan 子句被 D189 取代）* **权限模式管理高风险工具审批：`ask`（确认所有内容，默认）、`accept-edits`（自动允许 Write/Edit、确认 Bash/plugins）、`auto` （自动允许全部）。全局默认值位于设置 `defaultPermissionMode` 中；每个会话都存储 `permission_mode`（架构 v5，默认 `inherit`），在不继承时会覆盖它。解决方案：会话覆盖→全局默认→询问，仅在 host-core `tools.execute` 中强制执行。 Plan 保留选择器；它的 Write/Edit/plugin 硬拒绝排名高于每种模式，而 Bash 在每种模式下都弹出权限卡（ADR 0331）。** | 确认每个 Write/Edit 都会使长代理运行高摩擦，但单个全局切换太粗糙 - 受信任的临时会话和有风险的回购会话需要不同的姿势；保持主机端强制执行可保护安全边界 |
 | D132 | Composer权限菜单仅显示有效模式 | **代理模式 Composer 芯片和菜单仅公开 `ask`、`accept-edits` 和 `auto`，直接选择有效模式，没有 global-default/inherit 条目或出处标签。选择一个项目会存储显式会话覆盖。在用户选择模式之前，D115 中现有的 `inherit` 持久性和分辨率保持不变。这仅取代 D115 的输入框演示条款。** | 继承的条目重复了可选择的模式并暴露了存储来源，而不是用户选择的权限状态；三种有效模式的呈现，在不改变主机执行的情况下，让控制变得直接 |
 | D116 | 提供商失败作为辅助消息 | **每个 provider/model 转向失败都会通过可选的 `UiMessage.error` 附加到持久的 `role=assistant`、`status=error` 转录消息。该消息显示本地化的摘要和稳定的代码，将经过编辑的提供程序详细信息保留在可访问的披露后面，并提供适合上下文的重试或设置操作。消息绑定失败从不使用 toast/global 横幅呈现，也从不重新进入以后的模型上下文。** | 错误属于失败的回合；将它们保留在转录本中使得响应在会话 switches/restarts 之后可诊断，而不会污染下一个模型请求或暴露凭据 |
 | D127 | 上下文保留重新播种+传输重试 | **除了 user/assistant 文本和思考之外，从持久记录中重新播种重新创建的 pi 运行时还会恢复工具 call/result 对（来自工具行的 `role=assistant`/`status=error`/`UiMessage.error`）。中断的工具行恢复为错误结果；孤立的工具行获得一个合成的仅呼叫辅助载体，因此对保持相邻且格式良好。失败的助理将仅保留成绩单。另外，请求设置使用一次有界 pi-ai 重试来处理暂时的 transport/provider 失败；响应后流恢复由 D186 定义。** | 在任何运行时重新创建（regenerate/edit、配置更改、重新启动）后，纯文本重新播种会崩溃会话的上下文：模型丢失了它收集的所有工具结果，并且在没有可见工具使用的情况下看到自己的历史答案，停止调用工具，将代理会话降级为裸聊天。事件触发器是一个未重试的提供程序超时，迫使用户重新生成。 D127 更正最初重复的 D120 标识符； D120 仍然是由基线 0.4.6 冻结的早期应用程序更新决策。 |
@@ -5455,3 +5456,26 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   i18n 目录测试覆盖。见修订后的 ADR、`04-ux/06-settings-ia.md`、
   `04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` 与
   E2E-CHAT-turn-process-and-thinking-display。
+
+## 2026-10-16 —— 插件在工作面板 Browser 中打开受范围限制的 HTML 文件（D662）
+
+- 在 `fs.read` 下新增 `pi.fs.openInBrowser(pathFromRoot)`。宿主沿用插件常规的
+  读取路径包含检查、受保护路径检查、凭据拒绝名单、声明范围与项目注册文件夹检查；
+  只接受已存在的 `.html`、`.htm` 与 `.xhtml` 文件，并审计每次调用。
+- 验证通过后，Main 发送专用事件；渲染进程为当前本地会话打开 Browser 资源标签页。
+  Browser 插件必须启用。此操作不授予 `browser.cdp`，也不暴露 Browser 控制能力。
+- 由 `apps/desktop/test/plugin-fs-scope.test.mjs` 与
+  `apps/desktop/test/browser-preview-tool.test.mjs` 覆盖。E2E-153 的已打包文件管理器
+  场景覆盖完整用户流程。见 ADR 0330 以及插件 API、权限、安全与组件规格。
+
+## 2026-10-17 —— Composer 模式控件改为打开菜单而非循环切换（D663）
+
+- Composer 左侧的 Agent/Plan/Goal 触发器仍只显示当前模式，固定宽度 96px
+  （已包含菜单箭头）；点击打开一个菜单，三行都是带选中标记的 radio 菜单项，
+  选中后关闭菜单并配置当前会话。
+- 放弃循环切换：到达目标模式需要多次点击，且始终看不到其他选项。曾实现“三个
+  常驻分段选项”，但每个状态约多占 70px 工具栏宽度，挤压相邻的权限控件。
+- 权限芯片保留原有的固定宽度菜单；打开任一菜单会关闭另一个。`nextMode` 已删除。
+  由 `apps/desktop/test/composer-mode-menu.test.mjs`、
+  `apps/desktop/test/composer-chip-descenders.test.mjs` 以及 composer 插槽与
+  思考等级契约覆盖。见 `04-ux/08-component-spec.md` §11 与 US-UI-73。

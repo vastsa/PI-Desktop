@@ -25,9 +25,11 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type RefObject,
   type ReactNode,
 } from "react";
 import { portalToBody } from "../lib/portal-visibility";
+import { IconChevronRight } from "./icons";
 import {
   placeContextMenu,
   type ContextMenuPlacement,
@@ -35,7 +37,7 @@ import {
 } from "../lib/context-menu";
 import { texClipboardPayload } from "../lib/selection-tex";
 
-export type ContextMenuItem = {
+type ContextMenuAction = {
   /** Stable identity for React keys and for tests naming a row. */
   id: string;
   label: string;
@@ -45,7 +47,14 @@ export type ContextMenuItem = {
   danger?: boolean;
   /** Hairline above this item, splitting the menu into groups. */
   separatorBefore?: boolean;
-  onSelect: (selection: string) => void;
+  onSelect?: (selection: string) => void;
+};
+
+export type ContextMenuSubmenuItem = ContextMenuAction;
+
+export type ContextMenuItem = ContextMenuAction & {
+  /** A single secondary level; submenus stay within the same menu surface. */
+  submenu?: ContextMenuSubmenuItem[];
 };
 
 export type ContextMenuRequest = {
@@ -186,7 +195,17 @@ export function ContextMenu({
   onClose: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+  const submenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [placement, setPlacement] = useState<ContextMenuPlacement | null>(null);
+  const [openSubmenuId, setOpenSubmenuId] = useState<string | null>(null);
+
+  const closeSubmenu = useCallback(() => setOpenSubmenuId(null), []);
+
+  const setHoveredSubmenu = useCallback((item: ContextMenuItem) => {
+    const next = item.submenu?.length ? item.id : null;
+    setOpenSubmenuId((current) => current === next ? current : next);
+  }, []);
 
   const measure = useCallback(
     (request: ContextMenuState) => {
@@ -210,7 +229,10 @@ export function ContextMenu({
   // A menu that is not on screen owns no placement; the closed surface is
   // unmounted, so the next one starts over from its own measurement.
   useEffect(() => {
-    if (!state) setPlacement(null);
+    setOpenSubmenuId(null);
+    if (!state) {
+      setPlacement(null);
+    }
   }, [state]);
 
   /*
@@ -257,7 +279,10 @@ export function ContextMenu({
     */
     const onOutside = (event: Event) => {
       const target = event.target as Node | null;
-      if (target && menu?.contains(target)) return;
+      if (
+        target &&
+        (menu?.contains(target) || submenuRef.current?.contains(target))
+      ) return;
       onClose();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -265,7 +290,12 @@ export function ContextMenu({
       // Stop so a surrounding overlay does not also close on this Escape.
       event.preventDefault();
       event.stopPropagation();
-      onClose();
+      if (openSubmenuId) {
+        closeSubmenu();
+        submenuTriggerRef.current?.focus();
+      } else {
+        onClose();
+      }
     };
     window.addEventListener("pointerdown", onOutside, true);
     window.addEventListener("contextmenu", onOutside, true);
@@ -281,7 +311,7 @@ export function ContextMenu({
       window.removeEventListener("blur", onClose);
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [onClose, state]);
+  }, [closeSubmenu, onClose, openSubmenuId, state]);
 
   // Keyboard users land on the first item; Enter then runs it instead of
   // re-opening the menu.
@@ -306,7 +336,7 @@ export function ContextMenu({
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     const items = Array.from(
       event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled)',
+        '[data-context-menu-root-item]:not(:disabled)',
       ),
     );
     if (!items.length) return;
@@ -341,7 +371,175 @@ export function ContextMenu({
           : undefined
       }
     >
-      {state.items.map((item, index) => (
+      {state.items.map((item, index) => {
+        const hasSubmenu = Boolean(item.submenu?.length);
+        const submenuOpen = hasSubmenu && openSubmenuId === item.id;
+        return (
+          <Fragment key={item.id}>
+            {item.separatorBefore && index > 0 ? (
+              <div className="context-menu-separator" role="separator" />
+            ) : null}
+            <button
+              ref={submenuOpen ? submenuTriggerRef : undefined}
+              type="button"
+              role="menuitem"
+              aria-haspopup={hasSubmenu ? "menu" : undefined}
+              aria-expanded={hasSubmenu ? submenuOpen : undefined}
+              className={`context-menu-item${item.danger ? " danger" : ""}${hasSubmenu ? " has-submenu" : ""}`}
+              data-context-menu-root-item
+              data-context-menu-item={item.id}
+              disabled={item.disabled}
+              onMouseEnter={() => setHoveredSubmenu(item)}
+              onKeyDown={(event) => {
+                if (!hasSubmenu || event.key !== "ArrowRight") return;
+                event.preventDefault();
+                event.stopPropagation();
+                setOpenSubmenuId(item.id);
+                requestAnimationFrame(() => {
+                  submenuRef.current
+                    ?.querySelector<HTMLButtonElement>(
+                      '[data-context-menu-submenu-item]:not(:disabled)',
+                    )
+                    ?.focus();
+                });
+              }}
+              onClick={() => {
+                if (hasSubmenu) {
+                  setOpenSubmenuId(item.id);
+                  return;
+                }
+                // Close first: an item that opens a dialog must not leave a menu
+                // layered over it.
+                onClose();
+                item.onSelect?.(state.selection);
+              }}
+            >
+              {item.icon ? (
+                <span className="context-menu-icon" aria-hidden>
+                  {item.icon}
+                </span>
+              ) : null}
+              <span className="context-menu-label">{item.label}</span>
+              {hasSubmenu ? (
+                <span className="context-menu-submenu-chevron" aria-hidden>
+                  <IconChevronRight size={14} />
+                </span>
+              ) : null}
+            </button>
+            {submenuOpen && item.submenu ? (
+              <ContextMenuSubmenu
+                anchorRef={submenuTriggerRef}
+                menuRef={submenuRef}
+                label={item.label}
+                items={item.submenu}
+                selection={state.selection}
+                onClose={onClose}
+                onCloseSubmenu={closeSubmenu}
+              />
+            ) : null}
+          </Fragment>
+        );
+      })}
+    </div>,
+  );
+}
+
+function ContextMenuSubmenu({
+  anchorRef,
+  menuRef,
+  label,
+  items,
+  selection,
+  onClose,
+  onCloseSubmenu,
+}: {
+  anchorRef: RefObject<HTMLButtonElement | null>;
+  menuRef: RefObject<HTMLDivElement | null>;
+  label: string;
+  items: ContextMenuSubmenuItem[];
+  selection: string;
+  onClose: () => void;
+  onCloseSubmenu: () => void;
+}) {
+  const [placement, setPlacement] = useState<ContextMenuPlacement | null>(null);
+
+  const measure = useCallback(() => {
+    const anchor = anchorRef.current?.getBoundingClientRect();
+    const menu = menuRef.current;
+    if (!anchor || !menu) return;
+    const rect = menu.getBoundingClientRect();
+    const margin = 8;
+    const gap = 2;
+    const opensLeft = anchor.right + rect.width > window.innerWidth - margin;
+    const left = opensLeft
+      ? Math.max(margin, anchor.left - rect.width - gap)
+      : anchor.right + gap;
+    const top = Math.min(
+      Math.max(margin, anchor.top),
+      Math.max(margin, window.innerHeight - rect.height - margin),
+    );
+    setPlacement((previous) =>
+      previous && previous.top === top && previous.left === left
+        ? previous
+        : { top, left },
+    );
+  }, [anchorRef, menuRef]);
+
+  useLayoutEffect(() => {
+    measure();
+  }, [measure, items]);
+
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(menu);
+    return () => observer.disconnect();
+  }, [measure, menuRef]);
+
+  const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseSubmenu();
+      anchorRef.current?.focus();
+      return;
+    }
+    if (!(["ArrowDown", "ArrowUp", "Home", "End"] as string[]).includes(event.key)) return;
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        '[data-context-menu-submenu-item]:not(:disabled)',
+      ),
+    );
+    if (!buttons.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? buttons.length - 1
+        : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  };
+
+  return portalToBody(
+    <div
+      ref={menuRef}
+      className={`context-menu context-menu-submenu${placement ? " is-open" : ""}`}
+      role="menu"
+      aria-label={label}
+      onKeyDown={onMenuKeyDown}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      style={placement
+        ? { top: `${placement.top}px`, left: `${placement.left}px` }
+        : undefined}
+    >
+      {items.map((item, index) => (
         <Fragment key={item.id}>
           {item.separatorBefore && index > 0 ? (
             <div className="context-menu-separator" role="separator" />
@@ -351,12 +549,11 @@ export function ContextMenu({
             role="menuitem"
             className={`context-menu-item${item.danger ? " danger" : ""}`}
             data-context-menu-item={item.id}
+            data-context-menu-submenu-item
             disabled={item.disabled}
             onClick={() => {
-              // Close first: an item that opens a dialog must not leave a menu
-              // layered over it.
               onClose();
-              item.onSelect(state.selection);
+              item.onSelect?.(selection);
             }}
           >
             {item.icon ? (

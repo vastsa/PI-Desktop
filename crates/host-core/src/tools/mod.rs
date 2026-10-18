@@ -45,16 +45,57 @@ pub const DEFAULT_BASH_TIMEOUT_MS: u64 = 60_000;
 pub const INTERNAL_TOOL_RUNNER_FLAG: &str = "--internal-tool-runner";
 // Windows inherits the parent process' Job Object unless the child is created
 // with CREATE_BREAKAWAY_FROM_JOB. The hidden runner is immediately assigned to
-// its own kill-on-close job, so it must first leave any outer launcher job;
-// otherwise terminating the runner job can terminate the whole Desktop tree.
+// its own kill-on-close job, so leaving an outer launcher job keeps that job
+// from becoming the runner's termination scope. The flag is only legal when the
+// job the host is in grants JOB_OBJECT_LIMIT_BREAKAWAY_OK: `CreateProcess` fails
+// the whole call with ERROR_ACCESS_DENIED otherwise.
 #[cfg(any(windows, test))]
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(any(windows, test))]
 const WINDOWS_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 #[cfg(any(windows, test))]
-const fn windows_tool_runner_creation_flags() -> u32 {
-    WINDOWS_CREATE_NO_WINDOW | WINDOWS_CREATE_BREAKAWAY_FROM_JOB
+const fn windows_tool_runner_creation_flags(breakaway_allowed: bool) -> u32 {
+    if breakaway_allowed {
+        WINDOWS_CREATE_NO_WINDOW | WINDOWS_CREATE_BREAKAWAY_FROM_JOB
+    } else {
+        WINDOWS_CREATE_NO_WINDOW
+    }
+}
+
+/// Whether the Job Object that contains this process grants breakaway.
+///
+/// Only the immediate job decides this; an ancestor in a nested chain that
+/// withholds the grant leaves the child in that ancestor instead of failing the
+/// call. A host that is not in a job never needs the flag, and one whose limits
+/// cannot be read is treated as refusing it, because the host-owned job contains
+/// the runner either way.
+#[cfg(windows)]
+fn windows_breakaway_allowed() -> bool {
+    use windows_sys::Win32::System::JobObjects::{
+        IsProcessInJob, JobObjectBasicLimitInformation, QueryInformationJobObject,
+        JOBOBJECT_BASIC_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    let mut in_job = 0;
+    if unsafe { IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut in_job) } == 0
+        || in_job == 0
+    {
+        return false;
+    }
+    let mut limits = JOBOBJECT_BASIC_LIMIT_INFORMATION::default();
+    let mut returned = 0u32;
+    let queried = unsafe {
+        QueryInformationJobObject(
+            std::ptr::null_mut(),
+            JobObjectBasicLimitInformation,
+            (&mut limits as *mut JOBOBJECT_BASIC_LIMIT_INFORMATION).cast(),
+            std::mem::size_of::<JOBOBJECT_BASIC_LIMIT_INFORMATION>() as u32,
+            &mut returned,
+        )
+    };
+    queried != 0 && limits.LimitFlags & JOB_OBJECT_LIMIT_BREAKAWAY_OK != 0
 }
 
 const PIPE_DRAIN_TIMEOUT: Duration = Duration::from_millis(750);
@@ -2635,7 +2676,9 @@ pub(crate) async fn spawn_tool_runner(
     #[cfg(unix)]
     command.process_group(0);
     #[cfg(windows)]
-    command.creation_flags(windows_tool_runner_creation_flags());
+    command.creation_flags(windows_tool_runner_creation_flags(
+        windows_breakaway_allowed(),
+    ));
 
     let mut child = spawn_with_retries(&mut command).await?;
     let pid = child.id().unwrap_or_default();
@@ -3338,16 +3381,72 @@ mod tests {
     }
 
     #[test]
-    fn windows_tool_runner_leaves_outer_job_before_owning_the_process_tree() {
-        assert_eq!(windows_tool_runner_creation_flags(), 0x0900_0000);
-        assert_ne!(
-            windows_tool_runner_creation_flags() & WINDOWS_CREATE_BREAKAWAY_FROM_JOB,
-            0,
+    fn windows_tool_runner_flags_follow_the_host_job_capability() {
+        assert_eq!(
+            windows_tool_runner_creation_flags(true),
+            WINDOWS_CREATE_NO_WINDOW | WINDOWS_CREATE_BREAKAWAY_FROM_JOB,
         );
-        assert_ne!(
-            windows_tool_runner_creation_flags() & WINDOWS_CREATE_NO_WINDOW,
-            0,
+        // A job that withholds JOB_OBJECT_LIMIT_BREAKAWAY_OK rejects the
+        // breakaway outright, so the flag must not be requested there.
+        assert_eq!(
+            windows_tool_runner_creation_flags(false),
+            WINDOWS_CREATE_NO_WINDOW,
         );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_bash_termination_does_not_reach_the_host_job() {
+        // Whatever job the harness runs in, stopping a Bash command must stay
+        // inside the job host-core created for it: a sibling in the harness job
+        // must outlive the termination. That is the #1642 contract, where runner
+        // cleanup took the Desktop tree with it. Under `cargo test` the harness
+        // job withholds JOB_OBJECT_LIMIT_BREAKAWAY_OK, so this also covers the
+        // fallback where the runner cannot leave that job.
+        use std::os::windows::process::CommandExt;
+
+        let mut sibling = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1 >NUL"])
+            .creation_flags(WINDOWS_CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("host-job sibling must start");
+
+        let dir = tempfile::tempdir().unwrap();
+        let dialect = shell::catalog(None)
+            .effective
+            .and_then(|shell| shell::dialect_for_id(&shell.id))
+            .unwrap_or("posix");
+        let command = match dialect {
+            "powershell" => "Start-Sleep -Seconds 30",
+            "cmd" => "ping -n 31 127.0.0.1 >NUL",
+            _ => "sleep 30",
+        };
+        let result = execute_tool(
+            Some(dir.path()),
+            None,
+            "Bash",
+            &serde_json::json!({ "command": command }),
+            1_000,
+        )
+        .await;
+        // Without a real termination the sibling check below would be vacuous.
+        assert_eq!(
+            result.error_code.as_deref(),
+            Some("TOOL_TIMEOUT"),
+            "a command in a job without breakaway must still run: {:?}",
+            result.content,
+        );
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(
+            sibling.try_wait().unwrap().is_none(),
+            "stopping a Bash command must not terminate the host's job",
+        );
+        let _ = sibling.kill();
+        let _ = sibling.wait();
     }
 
     #[tokio::test]

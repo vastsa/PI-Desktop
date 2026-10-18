@@ -1229,6 +1229,8 @@ export type PluginHostApi = {
     readPreview: (pathFromRoot: string) => Promise<PluginFsPreview>;
     /** Open an existing readable file with the operating system's default app. */
     openDefault: (pathFromRoot: string) => Promise<void>;
+    /** Open an existing readable HTML file in the bundled work-panel Browser. */
+    openInBrowser: (pathFromRoot: string) => Promise<void>;
     /** Reveal an existing readable file in the operating system's file manager. */
     reveal: (pathFromRoot: string) => Promise<void>;
     writeText: (pathFromRoot: string, content: string) => Promise<void>;

@@ -48,7 +48,8 @@
   position: relative;
 }
 
-.composer-permission-menu {
+.composer-permission-menu,
+.composer-mode-menu {
   position: fixed;
   top: 0;
   left: 0;
@@ -95,6 +96,7 @@
 }
 
 .composer-permission-menu.is-open,
+.composer-mode-menu.is-open,
 .composer-model-menu.is-open {
   opacity: 1;
   pointer-events: auto;
@@ -104,10 +106,10 @@
 .composer-model-thinking-menu {
   z-index: 60;
   /*
-    One label per row plus two capability icons: wide enough for that and no
-    wider, so the panel stays a menu rather than a second window.
+    Wide enough for a full model row plus six reasoning stops under the slider;
+    narrower values ellipsized the "medium" label into "medi…".
   */
-  width: min(280px, calc(100vw - 24px));
+  width: min(320px, calc(100vw - 24px));
 }
 
 .composer-model-thinking-menu.is-open {
@@ -116,11 +118,14 @@
 }
 
 .composer-model-thinking-chip {
-  max-width: min(280px, calc(100vw - 24px));
+  max-width: min(320px, calc(100vw - 24px));
   min-width: 0;
-  height: 26px !important;
-  padding: 0 8px !important;
-  gap: 4px !important;
+  /*
+    One quiet label, one badge, one caret. The model name is the only element
+    asking for attention; the reasoning level rides along as metadata.
+  */
+  padding: 0 6px 0 10px !important;
+  gap: 6px !important;
   border-radius: var(--radius-full) !important;
   color: var(--ds-text-secondary) !important;
   font-size: var(--text-sm);
@@ -142,14 +147,18 @@
   transform: none;
 }
 
+/*
+  The glyph belongs to the collapsed form only. At the 450px floor the chip
+  drops its labels and keeps this icon as the trigger; at full width the model
+  name already says what the control is, so the icon only added noise.
+*/
 .composer-model-thinking-icon {
-  display: inline-flex;
+  display: none;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  color: var(--ds-accent);
+  color: var(--ds-text-muted);
 }
-
 .composer-model-thinking-model,
 .composer-model-thinking-level {
   min-width: 0;
@@ -160,17 +169,35 @@
 
 .composer-model-thinking-model {
   max-width: 170px;
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
 }
 
+/*
+  The level badge is tonal rather than accented: it sits next to the name, so
+  it must read as metadata without competing with the primary ink.
+*/
 .composer-model-thinking-level {
-  max-width: 88px;
-  color: var(--ds-accent);
-  font-size: var(--text-sm);
+  flex: 0 0 auto;
+  display: inline-block;
+  max-width: 96px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
 }
 
-.composer-model-thinking-dot {
+.composer-model-thinking-chevron {
   flex: 0 0 auto;
-  color: var(--ds-text-muted);
+  color: var(--ds-text-faint);
+  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.composer-model-thinking-chip:hover .composer-model-thinking-chevron,
+.composer-model-thinking-chip.active .composer-model-thinking-chevron {
+  color: var(--ds-text-secondary);
 }
 
 .composer-model-thinking-menu .composer-menu-root {

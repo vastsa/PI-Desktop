@@ -638,6 +638,13 @@ export function createPluginServices({
      * (ADR 0263) instead of the bare primary path.
      */
     getWorkspaceInfo: () => pluginWorkspaceInfo(getWorkspacePath()),
+    openInBrowser: async (fullPath) => {
+      const preview = await browserHost.previewFile();
+      if (!preview.ok) {
+        throw Object.assign(new Error(preview.content), { code: "UNAVAILABLE" });
+      }
+      sendToRenderer(IPC.event.browserOpenFile, { path: fullPath });
+    },
     /**
      * The project each live session belongs to, so an fs call made by one
      * session's tool follows that session instead of whichever project the

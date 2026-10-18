@@ -421,10 +421,10 @@ export function SettingsPage() {
                   description={t("settings.sidebarRunningIndicatorsDesc")}
                 >
                   <SettingsToggle
-                    checked={settings.sidebarRunningIndicators !== false}
+                    checked={settings.sidebarRunningIndicators === true}
                     label={t("settings.sidebarRunningIndicators")}
                     onChange={() => void saveSettings({
-                      sidebarRunningIndicators: settings.sidebarRunningIndicators === false,
+                      sidebarRunningIndicators: settings.sidebarRunningIndicators !== true,
                     })}
                   />
                 </SettingsRow>
@@ -435,21 +435,30 @@ export function SettingsPage() {
                 */}
                 <SettingsRow title={t("settings.sidebarRunningBadge")}>
                   <SettingsToggle
-                    checked={settings.sidebarRunningBadge !== false}
+                    checked={settings.sidebarRunningBadge === true}
                     label={t("settings.sidebarRunningBadge")}
-                    disabled={settings.sidebarRunningIndicators === false}
+                    disabled={settings.sidebarRunningIndicators !== true}
                     onChange={() => void saveSettings({
-                      sidebarRunningBadge: settings.sidebarRunningBadge === false,
+                      sidebarRunningBadge: settings.sidebarRunningBadge !== true,
                     })}
                   />
                 </SettingsRow>
                 <SettingsRow title={t("settings.sidebarRunningRail")}>
                   <SettingsToggle
-                    checked={settings.sidebarRunningRail !== false}
+                    checked={settings.sidebarRunningRail === true}
                     label={t("settings.sidebarRunningRail")}
-                    disabled={settings.sidebarRunningIndicators === false}
+                    disabled={settings.sidebarRunningIndicators !== true}
                     onChange={() => void saveSettings({
-                      sidebarRunningRail: settings.sidebarRunningRail === false,
+                      sidebarRunningRail: settings.sidebarRunningRail !== true,
+                    })}
+                  />
+                </SettingsRow>
+                <SettingsRow title={t("settings.sidebarSessionTime")}>
+                  <SettingsToggle
+                    checked={settings.sidebarSessionTime === true}
+                    label={t("settings.sidebarSessionTime")}
+                    onChange={() => void saveSettings({
+                      sidebarSessionTime: settings.sidebarSessionTime !== true,
                     })}
                   />
                 </SettingsRow>

@@ -172,14 +172,19 @@ export type AppSettings = {
   preventScreenSleep?: boolean;
   /**
    * Sidebar project "running" affordances. The master switch gates both
-   * sub-switches; absent means enabled, so existing installs keep the
-   * badges and the activity rail without a migration.
+   * sub-switches; absent means disabled, so a fresh install shows a clean
+   * sidebar until the user opts in.
    */
   sidebarRunningIndicators?: boolean;
-  /** Count badge beside a project name. Absent means enabled. */
+  /** Count badge beside a project name. Only honored while the master is on. */
   sidebarRunningBadge?: boolean;
-  /** Activity rail down the project group. Absent means enabled. */
+  /** Activity rail down the project group. Only honored while the master is on. */
   sidebarRunningRail?: boolean;
+  /**
+   * Last-reply date shown at the right edge of session rows. Absent means
+   * disabled, so a fresh install shows a clean sidebar until the user opts in.
+   */
+  sidebarSessionTime?: boolean;
   /** Voice input settings (D-voice-runtime). */
   voice?: VoiceInputSettings;
   onboardingDismissed: boolean;

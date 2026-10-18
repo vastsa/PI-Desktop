@@ -46,13 +46,13 @@ test("totalRunningProjects counts groups with live work, not sessions", () => {
   assert.equal(totalRunningProjects([running, waiting, idle]), 2);
 });
 
-test("affordances default on so an existing install needs no migration", () => {
+test("affordances default off so a fresh install shows a clean sidebar", () => {
   assert.deepEqual(resolveSidebarRunningAffordances(undefined), {
-    badge: true,
-    rail: true,
+    badge: false,
+    rail: false,
   });
-  assert.deepEqual(resolveSidebarRunningAffordances({}), { badge: true, rail: true });
-  assert.deepEqual(resolveSidebarRunningAffordances(null), { badge: true, rail: true });
+  assert.deepEqual(resolveSidebarRunningAffordances({}), { badge: false, rail: false });
+  assert.deepEqual(resolveSidebarRunningAffordances(null), { badge: false, rail: false });
 });
 
 test("the master switch gates both sub-switches", () => {
@@ -60,6 +60,14 @@ test("the master switch gates both sub-switches", () => {
   assert.deepEqual(
     resolveSidebarRunningAffordances({
       sidebarRunningIndicators: false,
+      sidebarRunningBadge: true,
+      sidebarRunningRail: true,
+    }),
+    { badge: false, rail: false },
+  );
+  // Master off by absence (default), sub-switches on: still off.
+  assert.deepEqual(
+    resolveSidebarRunningAffordances({
       sidebarRunningBadge: true,
       sidebarRunningRail: true,
     }),

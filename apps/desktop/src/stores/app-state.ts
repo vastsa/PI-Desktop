@@ -387,7 +387,13 @@ export type AppState = {
   activeWorkPanelTabId: string | null;
   /** Runtime-only work panel state owned by each conversation. */
   workPanelContexts: Record<string, WorkPanelContext>;
+  /** The user's preferred panel width; persisted, never below the regular minimum. */
   workPanelWidth: number;
+  /**
+   * Runtime-only width a manual sidebar reopen lends to the sidebar. It ends
+   * when the sidebar collapses or the user resizes the panel.
+   */
+  workPanelYieldedWidth: number | null;
   /** Chat-initiated "preview this file" request consumed by the files viewer. */
   workPanelFileRequest: {
     path: string;
@@ -419,6 +425,7 @@ export type AppState = {
   /** Hide the visible panel while retaining its session-owned context. */
   resetWorkPanelContext: () => void;
   setWorkPanelWidth: (width: number) => void;
+  setWorkPanelYieldedWidth: (width: number | null) => void;
   openFileInWorkPanel: (
     path: string,
     mimeType?: string,

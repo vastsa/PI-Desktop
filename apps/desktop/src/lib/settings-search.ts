@@ -93,7 +93,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.sidebarRunningIndicators",
       "settings.sidebarRunningIndicatorsDesc",
       "settings.sidebarRunningBadge",
-      "settings.sidebarRunningRail",
+      "settings.sidebarSessionTime",
     ],
   },
   {

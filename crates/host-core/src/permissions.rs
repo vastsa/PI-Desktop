@@ -154,7 +154,7 @@ impl PermissionManager {
     /// spawns and controls work (`Task*`), and `JevClassify`, whose Agent-only
     /// paid call must not run from a reference retained across a mode switch.
     /// Every other name reaches the ordinary permission path, so the gate
-    /// answers by effect instead of by provenance (ADR 0330). `PluginCheck` and
+    /// answers by effect instead of by provenance (ADR 0331). `PluginCheck` and
     /// `Skill` are absent because they only read, and the runtime never creates
     /// either outside Agent mode. `packages/agent-runtime/src/mode-tool-access.ts`
     /// mirrors this list, and a test asserts the two stay identical.
@@ -559,7 +559,7 @@ mod tests {
     /// would otherwise allow. `auto` and `accept-edits` cannot re-enable it,
     /// and neither can a session grant. The test drives the list itself, so it
     /// pins the wiring for every name on it; a state-changing builtin missing
-    /// from the list is invisible here, which is the omission ADR 0330 accepts.
+    /// from the list is invisible here, which is the omission ADR 0331 accepts.
     #[test]
     fn contract_modes_deny_state_changing_builtins_in_every_permission_mode() {
         let pm = PermissionManager::default();
@@ -583,7 +583,7 @@ mod tests {
         }
     }
 
-    /// The posture is deny-by-effect (ADR 0330): a builtin nobody classified is
+    /// The posture is deny-by-effect (ADR 0331): a builtin nobody classified is
     /// not refused here, it follows the ordinary permission path. `auto` admits
     /// it, every other permission mode asks.
     #[test]

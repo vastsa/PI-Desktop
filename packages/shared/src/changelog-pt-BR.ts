@@ -5,9 +5,12 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Os plugins instalados aparecem como cartões em uma grade de preenchimento automático, cada um com uma ação clara e o estado de confiança, atualização e escopo à vista.",
+      "Leia notas e avaliações públicas dos plugins do mercado e abra o centro de plugins para escrever uma — o aplicativo de desktop nunca faz login.",
       "Comandos Bash longos continuam em tarefas em segundo plano após o turno, e você pode consultar a saída depois.",
       "Conversas paralelas do mesmo projeto são executadas em worktrees Git isoladas.",
       "Mantenha a lista Todo ao lado do Composer e expanda-a quando precisar ver tudo.",
+      "Veja qual etapa está em execução: uma faixa de luz atravessa o texto dela, e as linhas concluídas ficam como texto riscado simples.",
       "Comandos Bash e raciocínio aparecem em linhas separadas na conversa.",
       "O cabeçalho do projeto mostra atividades em andamento mesmo quando recolhido; configure o contador e a faixa de atividade separadamente.",
       "Copie detalhes de projetos e sessões pelos submenus de contexto da barra lateral.",
