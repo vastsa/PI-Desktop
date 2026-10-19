@@ -48,6 +48,7 @@ export type SlotEntry = {
   readonly key?: string;
   /** `toolCard` only: the bare tool name the card registered for. */
   readonly toolName?: string;
+  readonly streaming?: boolean;
 };
 
 /** A `composerTrigger` registration: the symbol it owns and its provider. */
@@ -160,6 +161,7 @@ export class SlotRegistry {
       component: accepted.component as SlotEntry["component"],
       sides: sidesOf(accepted),
       ...keyed,
+      ...(accepted.slot === "blockRenderer" && accepted.streaming ? { streaming: true } : {}),
     };
     this.commit({ entries: [...this.state.entries, entry] });
     return this.disposer(() =>
