@@ -24,9 +24,11 @@ describe("RACP-WS over a loopback socket", () => {
       await client.request("events/subscribe", { scope: "session", sessionId: "s1" });
       await client.request("turn/start", { sessionId: "s1", input: { text: "hi" }, context: { requestId: "r1" } });
       h.host.ingest({ sessionId: "s1", turnId: "rt_1", ts: 1, event: { type: "agent_start" } });
-      await expect.poll(() => events, { timeout: 2_000 }).toHaveLength(1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(events).toHaveLength(1);
       await client.close();
-      await expect.poll(() => h.server.connectionCount(), { timeout: 2_000 }).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(h.server.connectionCount()).toBe(0);
     } finally {
       await binding.close();
     }

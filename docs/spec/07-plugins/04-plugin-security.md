@@ -121,10 +121,10 @@ before it is ever sent to the UI:
   keeps `vibrancy` and its native corner behavior; Linux retains native corner
   behavior. Windows defaults to a 12 DIP corner request. On Windows 11 (build
   22000+), radius 0 requests square corners and positive values use the same
-  system-rounded preference, while the OS chooses the actual radius. Earlier
-  Windows builds retain the requested DIP radius. On all supported Windows
-  versions, alpha backgrounds are flattened over the resolved built-in theme
-  color to keep the main window opaque
+  system-rounded preference, while the OS chooses the actual radius; alpha
+  backgrounds are composited over the resolved built-in theme color to keep the
+  top-level window opaque. Earlier Windows builds retain the requested DIP
+  radius
 - The CSS is read from disk at load time and delivered whole over IPC; the
   renderer injects it into a single dedicated `<style>` element appended after
   the app's own stylesheets, so it can override tokens but never inject markup.
