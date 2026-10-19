@@ -700,6 +700,7 @@ export const en = {
     output: "Output",
     stop: "Stop",
     stopping: "Stopping…",
+    dismiss: "Dismiss",
   },
   planHistory: {
     pending: "Awaiting approval",

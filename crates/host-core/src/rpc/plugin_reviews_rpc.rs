@@ -13,7 +13,8 @@ use tokio::sync::Mutex;
 
 use super::{plugin_err, rpc_err, JsonRpcError};
 use crate::plugins::reviews::{
-    fetch_review_summaries, fetch_reviews, PluginReviewQuery, ReviewSentiment, ReviewSort,
+    fetch_review_summaries, fetch_review_tickers, fetch_reviews, PluginReviewQuery,
+    ReviewSentiment, ReviewSort,
 };
 use crate::state::AppState;
 
@@ -31,6 +32,7 @@ pub(super) async fn handle(
 ) -> Result<Value, JsonRpcError> {
     match method {
         "market.reviewSummaries" => review_summaries(state, params).await,
+        "market.reviewTickers" => review_tickers(state, params).await,
         "market.reviews" => reviews(state, params).await,
         _ => Err(rpc_err(
             -32601,
@@ -59,6 +61,27 @@ async fn review_summaries(
         .map_err(worker_error)?
         .map_err(plugin_err)?;
     Ok(json!({ "summaries": summaries }))
+}
+
+/// Selected review ticker rows for the given plugin ids.
+///
+/// Same batching and origin rules as the summaries read. The center decides the
+/// selection and the order, and it keeps them stable for a UTC day; the host
+/// does not re-rank, so the card shows what the marketplace chose.
+async fn review_tickers(
+    state: &Arc<Mutex<AppState>>,
+    params: Value,
+) -> Result<Value, JsonRpcError> {
+    let ids = parse_ids(&params)?;
+    if ids.is_empty() {
+        return Ok(json!({ "tickers": {} }));
+    }
+    let origin = review_origin(state).await?;
+    let tickers = tokio::task::spawn_blocking(move || fetch_review_tickers(&origin, &ids))
+        .await
+        .map_err(worker_error)?
+        .map_err(plugin_err)?;
+    Ok(json!({ "tickers": tickers }))
 }
 
 /// One page of public reviews, with the summary and the trusted webpage URL.

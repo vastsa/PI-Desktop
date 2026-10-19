@@ -88,6 +88,11 @@
   `AppSettings.keepAwakeWhileRunning` 和 `AppSettings.preventScreenSleep`，
   切换立即生效、启动时恢复，关闭对应开关或退出应用时分别释放阻止器。
   手动睡眠和合盖遵循系统设置。
+- **侧边栏**卡片：一个项目运行活动总开关
+  (`AppSettings.sidebarRunningIndicators`) 与独立的**数量徽标**和**活动流光**开关
+  (`sidebarRunningBadge`、`sidebarRunningRail`)。未设置时总开关和数量徽标默认开启，活动流光默认关闭；
+  已保存的值优先生效。总开关关闭时两个子开关置灰并保留各自已保存的选项，重新开启后恢复原选择。
+  提示样式见 [`01-ui-ia.md` §3.2](01-ui-ia.md#32-侧边栏项目组)。
 - **网络**卡：
   - **代理**：分段控件 — 系统 / 直连 / 自定义。默认是系统（Chromium 跟随操作系统代理）。直连禁用代理。自定义将一个 HTTP、HTTPS 或 SOCKS5 URL 应用到应用自有出站请求（模型调用、扩展市场、更新、模型目录、插件 `net.fetch`、内置浏览器）。工作区 Bash 和 OAuth 用的系统浏览器不会被改写。
   - 自定义显示代理 URL（含 `user:pass@`）、默认 `localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16` 的绕过列表（本机、本地模型与所有局域网服务直连，不被代理吞掉），以及一次走该代理的测试。带认证的 URL 通过回环 SOCKS5 中继交给 Chromium（issue #490）。选择持久化为可选 `AppSettings.networkProxy`；系统/直连模式下同样保留用户填写的 `url` 与 `bypass`（只有 `mode` 决定谁生效），因此再次选择自定义会恢复它们而不是内置的 `socks5://127.0.0.1:1080`（issue #1541）。无协议/存储版本升级（D340 / ADR 0177）。

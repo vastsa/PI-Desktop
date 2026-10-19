@@ -1,5 +1,5 @@
-/*
-  Plugins page — alerts, search and segmented filters, plugin rows and cards,
+﻿/*
+  Plugins page 鈥?alerts, search and segmented filters, plugin rows and cards,
   the detail sheet (permissions, versions, readme), and install/permission
   modals.
 */
@@ -11,8 +11,8 @@
    page renders correctly in both themes.
 
    The page draws no dividers (D296). In-flow structure is carried by three
-   tonal layers — the page, soft tiles mixed from the text colour, and the
-   raised pill of an active control — plus spacing. Hairlines, inset rings and
+   tonal layers 鈥?the page, soft tiles mixed from the text colour, and the
+   raised pill of an active control 鈥?plus spacing. Hairlines, inset rings and
    border-top/bottom rules are reserved for floating layers (menus, the detail
    sheet, dialogs, tooltips), where an edge is an elevation cue rather than a
    partition. */
@@ -1102,39 +1102,97 @@
 }
 
 .plugins-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
+  display: block;
+  overflow: hidden;
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plugins-card-author {
+  display: inline-block;
+  max-width: 14ch;
   overflow: hidden;
   text-overflow: ellipsis;
+  vertical-align: bottom;
   white-space: nowrap;
-  max-width: 14ch;
 }
 
-/* Two clamped lines keep every card the same height without a min-height hack. */
+/* The description is the card's body: four quiet lines, never a teaser. */
 .plugins-card-desc {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
   overflow: hidden;
   color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-  line-height: var(--leading-body);
+  font-size: var(--text-md-plus);
+  line-height: var(--leading-prose);
 }
 
 .plugins-card-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 2px 14px 12px;
+  gap: 8px;
+  padding: 8px 14px 12px;
+  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+}
+
+/* The rating and the install action are fixed-size; the review line takes the
+   space that is left, so neither can be squeezed by a long quote. */
+.plugins-card-foot .plugins-rating {
+  flex: 0 0 auto;
+}
+
+.plugins-card-foot .btn,
+.plugins-card-foot .plugins-installed-mark {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.plugins-card-review {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-body);
+}
+
+.plugins-card-review::before {
+  content: "";
+  flex: 0 0 1px;
+  height: 9px;
+  background: var(--ds-border-subtle);
+}
+
+.plugins-card-review-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: plugins-review-fade var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+@keyframes plugins-review-fade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugins-card-review-text {
+    animation: none;
+  }
 }
 
 .plugins-card-state {
@@ -1467,7 +1525,7 @@
   justify-content: center;
 }
 
-/* The composer stays inert — reviews are written on the centre — and its one
+/* The composer stays inert 鈥?reviews are written on the centre 鈥?and its one
    action is a real link there. */
 .plugins-reviews-composer {
   display: flex;
@@ -2176,8 +2234,8 @@
   padding: 14px 18px 18px;
 }
 
-/* Manual install and update: one dialog follows the host's reports — the phase
-   it is in, the mirror being tried, the bytes that arrived — and ends either on
+/* Manual install and update: one dialog follows the host's reports 鈥?the phase
+   it is in, the mirror being tried, the bytes that arrived 鈥?and ends either on
    its own success or as a failure report naming the mirrors that were tried. */
 .plugins-install-modal {
   width: min(560px, 100%);
@@ -2343,3 +2401,4 @@
     transition: none;
   }
 }
+

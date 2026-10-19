@@ -30,6 +30,10 @@ pub(crate) const MAX_REVIEW_RESPONSE_BYTES: usize = 1024 * 1024;
 /// The number of plugin ids one summaries request may carry.
 pub(crate) const MAX_SUMMARY_IDS: usize = 100;
 
+/// How many rows one ticker may carry. The center returns at most this many;
+/// a larger answer is a contract violation, not a longer carousel.
+pub(crate) const MAX_TICKER_ROWS: usize = 10;
+
 /// Bodies a public read may carry; the write contract bounds them at 2000
 /// unicode codepoints.
 const MAX_REVIEW_BODY_CHARS: usize = 2000;
@@ -96,6 +100,30 @@ pub struct PluginReviewPage {
     pub summary: PluginReviewSummary,
     /// Reviews webpage on the trusted center, built by the host.
     pub review_url: String,
+}
+
+/// One row of a marketplace card's review ticker.
+///
+/// The center selects and orders these; the host only validates the shape. The
+/// row is deliberately smaller than a full review: the card shows one line, so
+/// the body is bounded and the private fields are not part of the contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginReviewTickerRow {
+    pub id: String,
+    pub author_name: String,
+    pub rating_half_stars: u8,
+    pub body: String,
+    pub helpful_count: u64,
+    pub created_at: String,
+}
+
+/// The selected ticker rows for one plugin, best first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginReviewTicker {
+    pub plugin_id: String,
+    pub rows: Vec<PluginReviewTickerRow>,
 }
 
 /// Which reviews one read asks for.
@@ -225,6 +253,11 @@ pub(crate) fn summaries_url(origin: &str, ids: &[String]) -> String {
     )
 }
 
+/// Tickers URL for one batch of ids on the trusted origin.
+pub(crate) fn tickers_url(origin: &str, ids: &[String]) -> String {
+    format!("{origin}/api/v1/review-tickers?pluginIds={}", ids.join(","))
+}
+
 /// Reviews URL for one query on the trusted origin.
 pub(crate) fn reviews_url(origin: &str, query: &PluginReviewQuery) -> String {
     let mut url = format!(
@@ -277,6 +310,38 @@ pub(crate) fn fetch_review_summaries(
     Ok(summaries)
 }
 
+/// Read the selected ticker rows for the given ids, batched and deduplicated.
+///
+/// Ids the center does not know are left out; ids the center answers for but
+/// nobody asked about are dropped. A failed batch fails the whole read, for the
+/// same reason as summaries: a partial map would look like "this plugin has no
+/// review line", which is a different claim.
+pub(crate) fn fetch_review_tickers(
+    origin: &str,
+    ids: &[String],
+) -> Result<BTreeMap<String, PluginReviewTicker>> {
+    let requested: BTreeSet<&str> = ids.iter().map(String::as_str).collect();
+    let mut tickers = BTreeMap::new();
+    for chunk in summary_id_chunks(ids) {
+        let url = tickers_url(origin, &chunk);
+        let (status, payload) = get_json(&url)?;
+        if status != 200 {
+            return Err(center_refusal(&url, status, &payload));
+        }
+        let wire: TickersWire = serde_json::from_slice(&payload).map_err(|error| {
+            anyhow!("PLUGIN_MARKET_INVALID: the plugin center's review ticker answer is not readable: {error}")
+        })?;
+        for (id, ticker) in wire.tickers {
+            if !requested.contains(id.as_str()) {
+                continue;
+            }
+            validate_ticker(&ticker, &id)?;
+            tickers.insert(id, ticker);
+        }
+    }
+    Ok(tickers)
+}
+
 /// Read one page of public reviews plus its summary and webpage URL.
 pub(crate) fn fetch_reviews(origin: &str, query: &PluginReviewQuery) -> Result<PluginReviewPage> {
     let url = reviews_url(origin, query);
@@ -317,6 +382,12 @@ struct ReviewsWire {
     reviews: Vec<PluginReview>,
     next_cursor: Option<String>,
     summary: PluginReviewSummary,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TickersWire {
+    tickers: BTreeMap<String, PluginReviewTicker>,
 }
 
 /// Validate one summary against the public contract.
@@ -419,6 +490,52 @@ fn validate_review(review: &PluginReview, expected_plugin_id: &str) -> Result<()
 fn validate_review_date(review_id: &str, field: &str, value: &str) -> Result<()> {
     if DateTime::parse_from_rfc3339(value).is_err() {
         bail!("PLUGIN_MARKET_INVALID: review {review_id} has an invalid {field} timestamp");
+    }
+    Ok(())
+}
+
+/// Validate one plugin's ticker against the public contract.
+///
+/// The rows are the center's selection, so the host checks bounds and identity,
+/// not order: an ordering rule belongs to the center, and duplicating it here
+/// would let two implementations disagree about what a card shows.
+fn validate_ticker(ticker: &PluginReviewTicker, expected_plugin_id: &str) -> Result<()> {
+    if ticker.plugin_id != expected_plugin_id {
+        bail!(
+            "PLUGIN_MARKET_INVALID: review ticker for {expected_plugin_id} names {}",
+            ticker.plugin_id
+        );
+    }
+    if ticker.rows.len() > MAX_TICKER_ROWS {
+        bail!("PLUGIN_MARKET_INVALID: review ticker for {expected_plugin_id} carries more than {MAX_TICKER_ROWS} rows");
+    }
+    let mut seen = BTreeSet::new();
+    for row in &ticker.rows {
+        if row.id.trim().is_empty() {
+            bail!("PLUGIN_MARKET_INVALID: review ticker for {expected_plugin_id} carried a row without an id");
+        }
+        if !seen.insert(row.id.as_str()) {
+            bail!(
+                "PLUGIN_MARKET_INVALID: review ticker for {expected_plugin_id} repeated review {}",
+                row.id
+            );
+        }
+        if !(8..=10).contains(&row.rating_half_stars) {
+            bail!(
+                "PLUGIN_MARKET_INVALID: ticker review {} is below the four-star gate",
+                row.id
+            );
+        }
+        if row.body.trim().is_empty() || row.body.chars().count() > MAX_REVIEW_BODY_CHARS {
+            bail!(
+                "PLUGIN_MARKET_INVALID: ticker review {} has a body outside the public bounds",
+                row.id
+            );
+        }
+        if row.author_name.chars().count() > MAX_AUTHOR_NAME_CHARS {
+            bail!("PLUGIN_MARKET_INVALID: ticker review {} has an author name outside the public bounds", row.id);
+        }
+        validate_review_date(&row.id, "createdAt", &row.created_at)?;
     }
     Ok(())
 }
@@ -562,6 +679,68 @@ mod tests {
         assert_eq!(REVIEW_TIMEOUT_SECONDS, 5);
         assert_eq!(MAX_REVIEW_RESPONSE_BYTES, 1024 * 1024);
         assert_eq!(MAX_SUMMARY_IDS, 100);
+        assert_eq!(MAX_TICKER_ROWS, 10);
+    }
+
+    #[test]
+    fn a_ticker_row_is_the_public_contract() {
+        let row = PluginReviewTickerRow {
+            id: "rev_1".into(),
+            author_name: "linzhou27".into(),
+            rating_half_stars: 10,
+            body: "装上之后基本没再开过系统文件管理器。".into(),
+            helpful_count: 60,
+            created_at: "2026-10-16T08:00:00Z".into(),
+        };
+        let ticker = PluginReviewTicker {
+            plugin_id: "pi.file-manager".into(),
+            rows: vec![row.clone()],
+        };
+        assert!(validate_ticker(&ticker, "pi.file-manager").is_ok());
+
+        // Identity is checked: a ticker filed under another plugin is a
+        // contract violation, not a row to render on the wrong card.
+        assert!(validate_ticker(&ticker, "pi.other").is_err());
+
+        // The gate and the row bounds are the center's, and the host refuses to
+        // render an answer that breaks them.
+        let mut below_gate = ticker.clone();
+        below_gate.rows[0].rating_half_stars = 7;
+        assert!(validate_ticker(&below_gate, "pi.file-manager").is_err());
+
+        let mut too_many = ticker.clone();
+        too_many.rows = (0..=MAX_TICKER_ROWS)
+            .map(|index| PluginReviewTickerRow {
+                id: format!("rev_{index}"),
+                ..row.clone()
+            })
+            .collect();
+        assert!(validate_ticker(&too_many, "pi.file-manager").is_err());
+
+        let mut duplicate = ticker.clone();
+        duplicate.rows.push(row.clone());
+        assert!(validate_ticker(&duplicate, "pi.file-manager").is_err());
+
+        let mut empty_body = ticker.clone();
+        empty_body.rows[0].body = "   ".into();
+        assert!(validate_ticker(&empty_body, "pi.file-manager").is_err());
+
+        let mut bad_date = ticker.clone();
+        bad_date.rows[0].created_at = "yesterday".into();
+        assert!(validate_ticker(&bad_date, "pi.file-manager").is_err());
+
+        let mut empty_id = ticker.clone();
+        empty_id.rows[0].id = "  ".into();
+        assert!(validate_ticker(&empty_id, "pi.file-manager").is_err());
+    }
+
+    #[test]
+    fn ticker_url_names_the_ticker_route() {
+        let ids = vec!["a.b".to_string(), "c-d".to_string()];
+        assert_eq!(
+            tickers_url("https://plugins.aiuo.net", &ids),
+            "https://plugins.aiuo.net/api/v1/review-tickers?pluginIds=a.b,c-d"
+        );
     }
 
     #[test]

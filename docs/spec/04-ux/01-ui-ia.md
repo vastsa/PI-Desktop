@@ -124,7 +124,8 @@ destination, chat as the home surface, tools and permissions inline.
   left takes space until MainChat reaches 450px, at which point the expanded
   sidebar yields immediately, and moving it right gives space back. A manual
   sidebar reopen spends work-panel width first and otherwise targets a 460px
-  MainChat width. The sole
+  MainChat width, without changing the stored panel width, which returns when
+  the sidebar collapses again. The sole
   panel-level control is the viewport-fixed toggle; each session retains its own runtime
   open state, tab set, active tab, and Browser resource in renderer memory.
   Selecting another session swaps the visible panel context without deleting
@@ -238,8 +239,11 @@ destination, chat as the home surface, tools and permissions inline.
     the header while the group is collapsed, plus a matching count.
   Remote host groups carry the same pair. Settings → General → Sidebar owns
   one master switch (`AppSettings.sidebarRunningIndicators`) gating two
-  sub-switches (`sidebarRunningBadge`, `sidebarRunningRail`); absent values
-  mean on, so existing installs keep the affordances without a migration.
+  sub-switches (`sidebarRunningBadge`, `sidebarRunningRail`). When unset, the
+  master and Count badge resolve on while Activity rail resolves off; explicit
+  saved values remain authoritative. The master gates both affordances, and
+  turning it off leaves the saved sub-switch choices intact. No settings
+  migration is required.
   Motion is decoration only: `prefers-reduced-motion` keeps both static
   shapes legible with the animation removed.
 - **Project actions**: open folder reveals the primary project directory; Edit

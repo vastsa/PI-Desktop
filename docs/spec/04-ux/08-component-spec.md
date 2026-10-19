@@ -2862,11 +2862,13 @@ reasoning-level control.
 - Padding: px-4 py-3 inner textarea
 - Font: text-sm for Agent, Plan, and Goal; mode changes semantics and tool
   controls, not the typography
-- The Agent/Plan/Goal mode chip reserves one fixed 88px width, sized from the
-  longest built-in label in English and zh-CN ("Agent" / "智能体"). Its label
-  stays single-line and ellipsizes if a future locale exceeds that budget, so
-  switching modes never reflows the adjacent Composer controls. Cycling the
-  chip cross-fades the icon and label in place. While the live turn is
+- The Agent/Plan/Goal mode chip reserves one fixed 96px width, sized from the
+  longest built-in label in English and zh-CN ("Agent" / "智能体") plus its
+  menu caret. Its label stays single-line and ellipsizes if a future locale
+  exceeds that budget, so switching modes never reflows the adjacent Composer
+  controls. The chip names the committed mode and opens one menu listing the
+  three modes, each a checked menu item; choosing one closes the menu and
+  configures the active session. While the live turn is
   `planning`, the chip pulses on its icon (purple) instead of leaving a
   second status row parked above the composer; a staged mode choice still
   updates the chip immediately and does not start that pulse until the
@@ -3135,7 +3137,7 @@ reasoning-level control.
   to Off-only. An active pending Plan or Goal approval still disables these
   controls. Approval actions are the exception while awaiting approval. The
   Composer-left Agent/Plan/Goal chip is the sole mode
-  control and cycles Agent → Plan → Goal → Agent on click. The Composer-right
+  control and opens the mode menu on click. The Composer-right
   model × reasoning chip owns both selections. Palette and Composer slash mode commands use the
   same active-session configuration path; after host confirmation resolves an
   approval, the approval surface is removed rather than remaining as a terminal

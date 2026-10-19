@@ -437,6 +437,13 @@ Host execution baseline:
   Plan/Ask decisions, then the input. There is no configurable display priority.
   The list scrolls within `min(200px, 24vh)` so additional tasks do not displace
   the decision surfaces. Existing approval and Ask input gating is unchanged.
+- A finished background task is not permanent furniture. Its row lives for a
+  10-second grace window after the renderer observed the task end, so the exit
+  code stays readable, then it leaves the bar. A task that had already finished
+  when the renderer first loaded is registry history and never appears. Closing
+  a finished row removes it immediately; an open output preview pins its row so
+  a log being read cannot vanish underneath it. Closing is a view action only —
+  the host keeps its bounded task history.
 - Only one output preview is open at a time. While its task runs, the Renderer
   refreshes that preview at one-second intervals after the previous read settles;
   collapsed outputs are not fetched. The preview shows at most 8,000 stdout

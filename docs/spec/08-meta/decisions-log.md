@@ -71,6 +71,7 @@ This log freezes previously open questions into concrete decisions.
 | D020 | Auto-update | **Post-MVP** |
 | D021 | First-run onboarding | **Inline checklist (not modal wizard)** |
 | D022 | Local telemetry | **Local logs only in MVP (no remote telemetry)** |
+| D664 | Sidebar running activity defaults | **When unset, the master and Count badge resolve on while Activity rail resolves off. Explicit saved values remain authoritative. The master continues gating both affordances; turning it off does not rewrite either child preference. No schema or migration change.** |
 
 
 ## C. Provider & model coverage decisions (0.3.4)
@@ -7749,3 +7750,31 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `apps/desktop/test/browser-preview-tool.test.mjs`. The packaged File Manager
   scenario in E2E-153 covers the complete user path. See ADR 0330 and the
   plugin API, permission, security, and component specs.
+
+## 2026-10-17 — Composer mode control opens a menu instead of cycling (D663)
+
+- The Composer-left Agent/Plan/Goal trigger keeps naming only the committed
+  mode, at a fixed 96px that now includes its caret; clicking it opens one menu
+  whose three rows are radio menu items with the committed mode checked.
+  Choosing a row closes the menu and configures the active session.
+- Cycling was replaced because reaching a specific mode took repeated clicks
+  and never showed the alternatives. A row of three always-visible segmented
+  options was implemented and dropped: it needed roughly 70px more toolbar
+  width per extra state and crowded the approval control beside it.
+- The approval chip keeps its existing fixed-width menu, and opening either
+  menu closes the other. `nextMode` is removed. Covered by
+  `apps/desktop/test/composer-mode-menu.test.mjs`,
+  `apps/desktop/test/composer-chip-descenders.test.mjs`, and the composer
+  slots and thinking contracts. See `04-ux/08-component-spec.md` §11 and
+  US-UI-73.
+
+## 2026-10-18 — Default sidebar running activity to the count badge (D664)
+
+- When the three optional sidebar activity settings are absent, the master and
+  Count badge resolve on while Activity rail resolves off. Explicitly saved
+  values remain authoritative, and the master still gates both affordances
+  without rewriting either child preference.
+- The count keeps live work discoverable without making the animated rail a
+  default. Settings reads apply these defaults through renderer API
+  normalization; no persisted schema or migration change is required. See
+  `04-ux/01-ui-ia.md`, `04-ux/06-settings-ia.md`, and E2E-266.

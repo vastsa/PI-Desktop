@@ -92,7 +92,7 @@ export function AppShell() {
     startupRetrying,
     sidebarToggleShortcut,
     workPanelToggleTooltip,
-    workPanelWidth,
+    requestedWorkPanelWidth,
   } = useAppShellRuntime();
   useCopyTex();
 
@@ -113,7 +113,7 @@ export function AppShell() {
     containerWidth: shellWidth,
     sidebarWidth,
     sidebarCollapsed,
-    requestedPanelWidth: workPanelWidth,
+    requestedPanelWidth: requestedWorkPanelWidth,
     maximized: workPanelMaximized,
   }).panelWidth;
 

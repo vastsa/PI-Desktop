@@ -211,9 +211,12 @@ export function AgentExtensionDetails({ status }: { status: PluginAgentExtension
 export function RatingChip({
   summary,
   locale,
+  showDot = true,
 }: {
   summary: PluginReviewSummary | undefined;
   locale: string;
+  /** The card footer separates rating from review text with its own rule. */
+  showDot?: boolean;
 }) {
   const { t } = useTranslation();
   const avg = summary ? formatRatingAvg(summary.ratingAvg, locale) : null;
@@ -227,9 +230,11 @@ export function RatingChip({
         count: summary.ratingCount,
       })}
     >
-      <span className="plugins-dot" aria-hidden>
-        ·
-      </span>
+      {showDot ? (
+        <span className="plugins-dot" aria-hidden>
+          ·
+        </span>
+      ) : null}
       <IconStar size={11} style={{ fill: "currentColor" }} aria-hidden="true" />
       <span className="plugins-rating-text">
         {t("plugins.reviews.ratingChip", { avg, count: summary.ratingCount })}

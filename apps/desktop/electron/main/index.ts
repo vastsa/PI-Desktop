@@ -332,6 +332,14 @@ const pluginServices = createPluginServices({
       ) => Promise<any>
     )(...args);
   },
+  /**
+   * The live turn of one session, read through the one map that owns turn
+   * identity. Bound lazily because `activeTurns` is declared below, next to the
+   * coordination instance that reads it too.
+   */
+  getActiveTurn: (sessionId) => activeTurns.get(sessionId) ?? null,
+  /** The same scope lookup every plugin view IPC consults. */
+  isPluginActiveInProject: (pluginId) => pluginActiveInProject(pluginId, currentWorkspacePath()),
   vendorOAuth,
 });
 const {
@@ -623,6 +631,13 @@ const sessionCoordination = createSessionCoordination({
   activeTurns,
   getMainWindow,
   getViewingSessionId: () => mainState.notificationViewingSessionId,
+  /**
+   * Plugin surfaces follow turn starts from here, so a selected session that
+   * begins running is reported with the durable turn id instead of being
+   * inferred from the previous turn's end.
+   */
+  onTurnStarted: (sessionId: string, turnId: string) =>
+    pluginServices.pluginSession.noteTurnStarted(sessionId, turnId),
 });
 const {
   activeTurnUsages,
@@ -865,6 +880,8 @@ function registerIpc() {
     setNotificationViewingSessionId: (sessionId: string | null) => {
       mainState.notificationViewingSessionId = sessionId;
     },
+    /** The shell reports the session on screen; plugin surfaces read it. */
+    setActivePluginSession: (next) => pluginServices.pluginSession.setActiveSession(next),
     getPluginLauncherWindow: () => mainState.pluginLauncherWindow,
     togglePluginLauncher,
     safeOpenExternal,

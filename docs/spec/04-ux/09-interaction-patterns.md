@@ -1211,8 +1211,11 @@ Work-panel and application-window resizing are implemented in MVP:
   occupies flex space, the shared budget continues to count the sidebar.
 - Reopening a sidebar the layout collapsed spends work-panel width first: the
   panel keeps its width while MainChat stays at or above 450px, and otherwise
-  the reopen targets 460px. Closing the panel restores only a sidebar the
-  layout collapsed; a manual collapse stays collapsed.
+  the reopen targets 460px. That width is only lent: the preferred panel width
+  stays stored, extra client width returns to the panel first, collapsing the
+  sidebar again restores the preferred width, and divider drags keep the 244px
+  minimum. Closing the panel restores only a sidebar the layout collapsed; a
+  manual collapse stays collapsed.
 - No panel action requests a positive native reservation: the preferred panel
   width is renderer-local, the native seam stays at zero, and native window
   edges resize only the fixed app window. Background-session artifacts never

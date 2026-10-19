@@ -43,8 +43,14 @@ MainChat to its floor while the expanded sidebar kept its full width.
    the panel can continue growing after the sidebar has yielded.
 3. A manual sidebar reopen spends work-panel width first. It preserves the
    current MainChat width where possible; if the 450px floor would be crossed,
-   it targets `460px`. This reopen path may persist a positive compact panel
-   width below the ordinary `244px` presentation minimum.
+   it targets `460px`. The panel only lends that width, which may be a positive
+   compact width below the ordinary `244px` presentation minimum. The loan
+   holds while the sidebar stays expanded; extra client width goes back to the
+   panel first, and collapsing the sidebar or resizing the panel ends it. The
+   preferred panel width stays stored, and resize gestures keep the `244px`
+   minimum. *(Amended 2026-10-17: the reopen previously stored the compact
+   width as the preferred width, so the panel stayed narrow when space returned
+   and its drag minimum fell to 1px.)*
 4. Automatic sidebar collapse is remembered only until the work panel closes.
    Closing the panel restores a sidebar collapsed by the layout mechanism.
    Manual sidebar collapse, manual reopen and a subsequent manual collapse clear
