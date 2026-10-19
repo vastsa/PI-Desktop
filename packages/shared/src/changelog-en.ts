@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Connect Jev to a custom System One endpoint and model without adding the classifier to chat model lists.",
       "Browse installed plugins as cards in an auto-filling grid, each with one clear action and its trust, update, and scope state at a glance.",
       "Read public ratings and reviews for marketplace plugins, and open the plugin center to write one — the desktop never signs in.",
       "Keep long-running Bash commands going after a turn ends, then review their output as background tasks.",

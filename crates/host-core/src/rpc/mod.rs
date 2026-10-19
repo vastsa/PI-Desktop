@@ -823,6 +823,12 @@ fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<Strin
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
         object.remove("planApprovalPermissionMode");
+        // `settings.set` is a shallow merge. A renderer that removes a custom
+        // Jev binding sends an explicit null; normalize it away after the merge
+        // so the stored absence again means the official legacy default.
+        if object.get("jevClassifier").is_some_and(Value::is_null) {
+            object.remove("jevClassifier");
+        }
         if object.get("defaultMode").and_then(Value::as_str) == Some("chat") {
             object.insert("defaultMode".into(), Value::String("plan".into()));
         }
@@ -1009,6 +1015,53 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             return Err(rpc_err(
                 1002,
                 "insecureNoticeAcknowledged must be a boolean",
+                "INVALID_PARAMS",
+            ));
+        }
+    }
+    if let Some(binding) = object.get("jevClassifier").filter(|v| !v.is_null()) {
+        let Some(binding) = binding.as_object() else {
+            return Err(rpc_err(
+                1002,
+                "jevClassifier must be an object",
+                "INVALID_PARAMS",
+            ));
+        };
+        if binding.len() != 2 {
+            return Err(rpc_err(
+                1002,
+                "invalid Jev classifier binding",
+                "INVALID_PARAMS",
+            ));
+        }
+        let base_url = binding
+            .get("baseUrl")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty() && value.len() <= 2048);
+        let model_id = binding
+            .get("modelId")
+            .and_then(Value::as_str)
+            .filter(|value| {
+                let value = value.trim();
+                !value.is_empty()
+                    && value.len() <= 256
+                    && !value
+                        .chars()
+                        .any(|ch| ch.is_whitespace() || ch.is_control())
+            });
+        let valid_url = base_url
+            .and_then(|value| reqwest::Url::parse(value.trim()).ok())
+            .is_some_and(|url| {
+                matches!(url.scheme(), "http" | "https")
+                    && url.username().is_empty()
+                    && url.password().is_none()
+                    && url.query().is_none()
+                    && url.fragment().is_none()
+            });
+        if !valid_url || model_id.is_none() {
+            return Err(rpc_err(
+                1002,
+                "invalid Jev classifier binding",
                 "INVALID_PARAMS",
             ));
         }
@@ -7534,6 +7587,68 @@ mod tests {
         );
         assert!(catalog["choices"].is_array());
         assert!(catalog["effective"].is_object() || catalog["effective"].is_null());
+    }
+
+    #[tokio::test]
+    async fn jev_classifier_binding_round_trips_clears_and_validates() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({
+                "jevEnabled": true,
+                "jevClassifier": {
+                    "baseUrl": "https://openrouter.test/api/v1",
+                    "modelId": "~typesafe/jev-latest"
+                }
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let stored = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            stored["jevClassifier"]["baseUrl"],
+            "https://openrouter.test/api/v1"
+        );
+        assert_eq!(stored["jevClassifier"]["modelId"], "~typesafe/jev-latest");
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "jevEnabled": false, "jevClassifier": null }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let cleared = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert!(cleared.get("jevClassifier").is_none());
+        assert_eq!(cleared["jevEnabled"], false);
+
+        for invalid in [
+            json!({ "baseUrl": "file:///tmp", "modelId": "jev" }),
+            json!({ "baseUrl": "https://openrouter.test/api/v1", "modelId": "two ids" }),
+            json!({ "baseUrl": "https://user:secret@openrouter.test/api/v1", "modelId": "jev" }),
+        ] {
+            let error = handle_request(
+                state.clone(),
+                "settings.set",
+                json!({ "jevClassifier": invalid }),
+                tx.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
     }
 
     #[tokio::test]

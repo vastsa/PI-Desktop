@@ -1,6 +1,7 @@
 import {
   API_STYLES,
   OPENCODE_GO_API_STYLE,
+  JEV_SYSTEM_ONE_API_STYLE,
   matchNamedPreset,
   type CatalogApiStyle,
   type ProviderPublic,
@@ -15,6 +16,16 @@ export const CUSTOM_PROVIDER_API_STYLES = API_STYLES.filter(
   (style) => !isAccountOnlyApiStyle(style) && style !== OPENCODE_GO_API_STYLE,
 );
 
+/** Setup-only classifier format; it never joins the chat transport catalog. */
+export type ProviderSetupApiStyle =
+  | CatalogApiStyle
+  | typeof JEV_SYSTEM_ONE_API_STYLE;
+
+export const CUSTOM_PROVIDER_SETUP_API_STYLES: readonly ProviderSetupApiStyle[] = [
+  ...CUSTOM_PROVIDER_API_STYLES,
+  JEV_SYSTEM_ONE_API_STYLE,
+];
+
 /** Localized names for every transport in the catalog. */
 export const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   chat_completions: "settings.apiStyleChatCompletions",
@@ -24,6 +35,14 @@ export const API_STYLE_LABEL_KEYS: Record<CatalogApiStyle, string> = {
   openai_codex_responses: "settings.apiStyleCodexResponses",
   pi_messages: "settings.apiStylePiMessages",
   opencode_go: "settings.apiStyleOpenCodeGo",
+};
+
+export const PROVIDER_SETUP_API_STYLE_LABEL_KEYS: Record<
+  ProviderSetupApiStyle,
+  string
+> = {
+  ...API_STYLE_LABEL_KEYS,
+  [JEV_SYSTEM_ONE_API_STYLE]: "settings.apiStyleSystemOne",
 };
 
 export function needsCustomApiStyleChoice(

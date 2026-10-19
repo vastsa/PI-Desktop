@@ -1,43 +1,43 @@
 /**
- * TypeSafe reachability check for the Jev classifier key.
+ * Reachability check for the configured Jev System One credential.
  *
- * Jev is configured from settings, where a wrong or expired key would
- * otherwise be discovered by the Agent mid-task. The check is the smallest
- * real System One round trip — one boolean question over a one-field state —
- * against the same address and classifier id the Agent's `JevClassify` tool
- * uses, so "the key works" means TypeSafe answered this key, not that the
- * string looks plausible.
- *
- * Nothing is written here: the caller stores the key only when this answered.
- * The key never reaches a log line or an error message; failure text is
- * redacted before it is returned.
+ * This performs the smallest real classification request against the same
+ * normalized endpoint and model that Agent runtime will use. It stores nothing,
+ * never logs the credential, and follows redirects only inside the configured
+ * origin so Bearer auth cannot escape to another service.
  */
 import {
-  TYPESAFE_JEV_MODEL_ID,
-  TYPESAFE_SYSTEM_ONE_URL,
+  DEFAULT_JEV_CLASSIFIER_BINDING,
+  jevSystemOneUrl,
+  normalizeJevClassifierBinding,
+  type JevClassifierBinding,
   type JevKeyCheckResult,
 } from "@pi-desktop/shared";
 
 export const JEV_PROBE_TIMEOUT_MS = 20_000;
-
-/** Longest provider message echoed back to the settings dialog. */
 const MAX_DETAIL_LENGTH = 300;
+const MAX_REDIRECTS = 3;
 
 export type JevProbeOptions = {
-  /** The caller's own cancellation, combined with the timeout. */
   signal?: AbortSignal;
-  /** Test seam; defaults to the global fetch. */
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Production injects the app's DNS/route/network-policy guard. */
+  assertEndpoint?: (url: string) => Promise<void>;
 };
 
-/**
- * The smallest valid System One request: `bool` is PI-Desktop's public name for
- * the wire-level `noul` question (see pi-ai's System One transport).
- */
-function probeRequestBody() {
+function isProbeOptions(value: unknown): value is JevProbeOptions {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  // The legacy `(key, options)` shape allowed an empty object. New bindings
+  // always identify themselves with at least one binding field, including
+  // malformed partial bindings that must fail validation rather than fall back.
+  return !("baseUrl" in record || "modelId" in record);
+}
+
+function probeRequestBody(modelId: string) {
   return {
-    model: TYPESAFE_JEV_MODEL_ID,
+    model: modelId,
     state: { probe: true },
     questions: {
       reachable: {
@@ -52,50 +52,110 @@ function probeRequestBody() {
   };
 }
 
-/** A message that never carries the credential it describes. */
 function redact(value: string, apiKey: string): string {
-  if (!apiKey) return value;
-  return value.split(apiKey).join("[redacted]");
+  return apiKey ? value.split(apiKey).join("[redacted]") : value;
 }
 
+async function postWithSameOriginRedirects(
+  startUrl: string,
+  init: RequestInit,
+  fetchImpl: typeof fetch,
+): Promise<Response> {
+  const allowedOrigin = new URL(startUrl).origin;
+  let url = startUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    const response = await fetchImpl(url, { ...init, redirect: "manual" });
+    const location = response.headers?.get?.("location");
+    if (response.status < 300 || response.status >= 400 || !location) return response;
+    const next = new URL(location, url);
+    if (next.origin !== allowedOrigin) {
+      throw Object.assign(
+        new Error("System One redirect refused: it left the configured origin"),
+        { status: response.status },
+      );
+    }
+    url = next.toString();
+  }
+  throw new Error("System One request followed too many redirects");
+}
+
+/**
+ * `bindingOrOptions` keeps the original `(key, options)` test/caller shape
+ * compatible; new callers pass `(key, binding, options)`.
+ */
 export async function probeJevApiKey(
   apiKey: string,
-  options: JevProbeOptions = {},
+  bindingOrOptions: JevClassifierBinding | JevProbeOptions = {
+    ...DEFAULT_JEV_CLASSIFIER_BINDING,
+  },
+  explicitOptions: JevProbeOptions = {},
 ): Promise<JevKeyCheckResult> {
+  const options = isProbeOptions(bindingOrOptions)
+    ? bindingOrOptions
+    : explicitOptions;
+  const binding = isProbeOptions(bindingOrOptions)
+    ? { ...DEFAULT_JEV_CLASSIFIER_BINDING }
+    : bindingOrOptions;
   const key = apiKey.trim();
-  if (!key) return { ok: false, message: "No TypeSafe API key was provided." };
+  if (!key) return { ok: false, message: "No System One API key was provided." };
+  const normalized = normalizeJevClassifierBinding(binding);
+  if (!normalized) {
+    return { ok: false, message: "The System One endpoint or model is invalid." };
+  }
+  const requestUrl = jevSystemOneUrl(normalized);
   const timeoutMs = options.timeoutMs ?? JEV_PROBE_TIMEOUT_MS;
-  const timeout = AbortSignal.timeout(timeoutMs);
-  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  const timeoutController = new AbortController();
+  const timeoutTimer = setTimeout(() => timeoutController.abort(), timeoutMs);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutController.signal])
+    : timeoutController.signal;
   const doFetch = options.fetchImpl ?? globalThis.fetch;
   try {
-    const response = await doFetch(TYPESAFE_SYSTEM_ONE_URL, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify(probeRequestBody()),
-      signal,
-    });
+    await options.assertEndpoint?.(requestUrl);
+    const response = await postWithSameOriginRedirects(
+      requestUrl,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${key}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(probeRequestBody(normalized.modelId)),
+        signal,
+      },
+      doFetch,
+    );
     if (response.ok) return { ok: true, status: response.status };
     const body = await response.text().catch(() => "");
-    const detail = redact(body.slice(0, MAX_DETAIL_LENGTH).trim(), key);
+    const detail = redact(body.trim(), key).slice(0, MAX_DETAIL_LENGTH);
     return {
       ok: false,
       status: response.status,
       message: detail
-        ? `TypeSafe returned ${response.status}: ${detail}`
-        : `TypeSafe returned ${response.status}`,
+        ? `System One returned ${response.status}: ${detail}`
+        : `System One returned ${response.status}`,
     };
   } catch (error) {
     if (options.signal?.aborted) {
-      return { ok: false, message: "The TypeSafe key check was cancelled." };
+      return { ok: false, message: "The System One key check was cancelled." };
     }
     const name = (error as { name?: unknown }).name;
     if (name === "TimeoutError" || name === "AbortError") {
       return {
         ok: false,
-        message: `TypeSafe did not answer within ${Math.round(timeoutMs / 1000)}s.`,
+        message: `The System One endpoint did not answer within ${Math.round(timeoutMs / 1000)}s.`,
       };
     }
-    return { ok: false, message: redact(error instanceof Error ? error.message : String(error), key) };
+    const status = (error as { status?: unknown }).status;
+    return {
+      ok: false,
+      ...(typeof status === "number" ? { status } : {}),
+      message: redact(
+        error instanceof Error ? error.message : String(error),
+        key,
+      ).slice(0, MAX_DETAIL_LENGTH),
+    };
+  } finally {
+    clearTimeout(timeoutTimer);
   }
 }

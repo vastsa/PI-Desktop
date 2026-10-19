@@ -229,13 +229,23 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
 5. Chat, image and classifier models are selected by operation type even when
    they share a model ID. pi-ai remains responsible for OAuth, wire identity,
    transport and typed non-chat operations that models.dev does not describe.
-   PI-Desktop's optional Jev integration uses pi-ai's built-in
-   `typesafe/jev-latest` classifier directly; it is never listed or selectable
-   as a chat provider/model, and it owns no provider row even though it is
-   added from the same service chooser. The key is checked against TypeSafe
-   over that same System One address before settings keeps it, so a saved key
-   and an explicit Jev setting together mean Agent mode receives the on-demand
-   `JevClassify` tool.
+   PI-Desktop's optional Jev integration remains an Agent-only `JevClassify`
+   tool. It owns no provider row and is never listed or selectable as a chat,
+   Composer, default or subagent model; Plan and Goal do not receive the tool.
+   The **TypeSafe (official)** setup tile keeps the default
+   `https://api.typesafe.ai/v1` API root and exact `jev-latest` model ID.
+   **Add service → Custom endpoint** additionally offers the setup-only
+   **System One (classifier)** API format. It collects a System One Base URL,
+   exact model ID and API key without adding that format to chat transports.
+   An API root or a full final `/systemone` operation URL is accepted and
+   normalized so probe and runtime requests append `/systemone` exactly once;
+   the configured model ID is sent unchanged in the request body. Settings
+   discloses that the classification state and questions go directly to the
+   configured System One endpoint. Save first probes that exact endpoint/model.
+   Only success stores the key in secure storage, writes the non-secret binding
+   to `AppSettings`, and enables Jev; failure or cancellation writes nothing.
+   This reuses existing settings and secret-storage contracts and changes no
+   database schema, Host protocol, plugin API or architecture.
 6. Free-form IDs remain configurable. Conservative generic metadata applies
    when no published model matches; explicit user overrides remain supported.
    Unknown relay metadata uses exact final-segment matching and an unambiguous

@@ -4,6 +4,8 @@ import {
   isActiveInProject,
   isCommandShellCatalog,
   JEV_API_KEY_SECRET_REF,
+  jevSystemOneUrl,
+  resolveJevClassifierBinding,
   imageGenerationBindings,
   isImageGenerationModel,
   normalizeMode,
@@ -16,6 +18,7 @@ import {
   type SessionThinkingLevel,
   type UserSkillRecord,
   type UserSubagentRecord,
+  type JevClassifierRuntimeConfig,
 } from "@pi-desktop/shared";
 import {
   capabilitiesFromModelConfig,
@@ -79,6 +82,8 @@ export type SessionLaunchRuntimeDependencies = {
     capabilities: ReturnType<typeof capabilitiesFromModelConfig>;
   };
   normalizeThinkingLevel: (value: unknown) => SessionThinkingLevel;
+  /** Re-check the user-entered classifier destination before exposing its key. */
+  assertJevEndpoint?: (url: string) => Promise<void>;
 };
 
 export function createSessionLaunchRuntime({
@@ -95,6 +100,7 @@ export function createSessionLaunchRuntime({
   bindingForModel,
   effectiveSubagentModelConfig,
   normalizeThinkingLevel,
+  assertJevEndpoint = async () => undefined,
 }: SessionLaunchRuntimeDependencies) {
   const isHostUnavailable = (error: unknown): boolean =>
     (error as { errorCode?: string } | null | undefined)?.errorCode ===
@@ -679,20 +685,28 @@ export function createSessionLaunchRuntime({
     const mode = normalizeMode(
       overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
     );
-    let jevApiKey: string | undefined;
+    let jev: JevClassifierRuntimeConfig | undefined;
     if (mode === "agent" && settings.jevEnabled === true) {
-      try {
-        const saved = await runtimeState.host!.call<{ value?: string | null }>(
-          "secrets.getForRuntime",
-          { secretRef: JEV_API_KEY_SECRET_REF },
-        );
-        if (typeof saved.value === "string" && saved.value.trim().length > 0) {
-          jevApiKey = saved.value;
-        }
-      } catch {
-        logger.app("session", "warn", "Jev API key could not be loaded", {
+      const resolved = resolveJevClassifierBinding(settings.jevClassifier);
+      if (resolved.status === "invalid") {
+        logger.app("session", "warn", "Jev classifier binding is invalid", {
           sessionId,
         });
+      } else {
+        try {
+          await assertJevEndpoint(jevSystemOneUrl(resolved.binding));
+          const saved = await runtimeState.host!.call<{ value?: string | null }>(
+            "secrets.getForRuntime",
+            { secretRef: JEV_API_KEY_SECRET_REF },
+          );
+          if (typeof saved.value === "string" && saved.value.trim().length > 0) {
+            jev = { ...resolved.binding, apiKey: saved.value };
+          }
+        } catch {
+          logger.app("session", "warn", "Jev configuration could not be loaded", {
+            sessionId,
+          });
+        }
       }
     }
     return {
@@ -706,7 +720,7 @@ export function createSessionLaunchRuntime({
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
-        ...(jevApiKey ? { jevApiKey } : {}),
+        ...(jev ? { jev } : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         attachmentsDir: join(dataDir, "attachments"),

@@ -269,11 +269,12 @@ export const IPC = {
     providersSetSecret: "pi-desktop/providers/setSecret",
     providersTest: "pi-desktop/providers/testConnection",
     /**
-     * Check a TypeSafe key before the Jev settings row keeps it.
+     * Check a configured System One key before Jev keeps it.
      *
-     * Jev is not a provider row, so `providersTest` cannot answer this: the
-     * key is checked by the same System One round trip the Agent's
-     * `JevClassify` tool makes, and only a key that answered is stored.
+     * Jev is not a chat provider row, so `providersTest` cannot answer this:
+     * the supplied endpoint/model receive the same minimal classifier round
+     * trip the Agent's `JevClassify` tool makes, and only an answered key is
+     * stored.
      */
     jevTest: "pi-desktop/jev/test",
     providersListModels: "pi-desktop/providers/listModels",

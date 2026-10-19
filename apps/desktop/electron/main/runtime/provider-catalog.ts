@@ -4,6 +4,8 @@ import {
   defaultCommandShellForPlatform,
   isCommandShellId,
   validateNetworkProxy,
+  normalizeJevClassifierBinding,
+  resolveJevClassifierBinding,
   validateSpeechSettings,
   type CommandShellId,
   type ModelBinding,
@@ -166,14 +168,19 @@ export function createProviderCatalogRuntime({
   ): T & { defaultCommandShell: CommandShellId } => {
     const value = (
       settings && typeof settings === "object" ? settings : {}
-    ) as T & { defaultCommandShell?: unknown };
+    ) as T & { defaultCommandShell?: unknown; jevClassifier?: unknown };
+    const jev = resolveJevClassifierBinding(value.jevClassifier);
     return {
       ...(value as T),
       infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
         .infiniteProviderRetry === true,
       keepAwakeWhileRunning: (value as T & { keepAwakeWhileRunning?: unknown })
         .keepAwakeWhileRunning === true,
-      jevEnabled: (value as T & { jevEnabled?: unknown }).jevEnabled === true,
+      jevEnabled:
+        (value as T & { jevEnabled?: unknown }).jevEnabled === true &&
+        jev.status !== "invalid",
+      ...(jev.status === "configured" ? { jevClassifier: jev.binding } : {}),
+      ...(jev.status === "invalid" ? { jevClassifier: null } : {}),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),
@@ -192,6 +199,7 @@ export function createProviderCatalogRuntime({
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
       networkProxy?: unknown;
+      jevClassifier?: unknown;
     };
     if (
       Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
@@ -224,6 +232,17 @@ export function createProviderCatalogRuntime({
       throw Object.assign(new Error("jevEnabled is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
+    }
+    if (Object.prototype.hasOwnProperty.call(value, "jevClassifier")) {
+      if (value.jevClassifier !== null) {
+        const binding = normalizeJevClassifierBinding(value.jevClassifier);
+        if (!binding) {
+          throw Object.assign(new Error("jevClassifier is invalid"), {
+            errorCode: ErrorCodes.INVALID_PARAMS,
+          });
+        }
+        value.jevClassifier = binding;
+      }
     }
     if (
       Object.prototype.hasOwnProperty.call(value, "updatePreference") &&

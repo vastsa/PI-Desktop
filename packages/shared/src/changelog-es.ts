@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-16",
     highlights: [
+      "Conecta Jev a un endpoint y modelo personalizados de System One sin añadir el clasificador a las listas de modelos de chat.",
       "Los plugins instalados aparecen como tarjetas en una cuadrícula autoajustable, cada una con una acción clara y su estado de confianza, actualización y alcance a la vista.",
       "Lee valoraciones y reseñas públicas de los plugins del mercado y abre el centro de plugins para escribir una: la aplicación de escritorio nunca inicia sesión.",
       "Los comandos Bash largos continúan como tareas en segundo plano cuando termina el turno, y puedes consultar su salida después.",

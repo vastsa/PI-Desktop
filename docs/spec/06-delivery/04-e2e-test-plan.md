@@ -10118,6 +10118,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | C / Quality — Self-hosted endpoint receives the session id | E2E-PROVIDER-custom-endpoint-session-identity |
 | B / F / Quality — Selected model order | E2E-MODEL-selected-order-persists |
 | E / F / Quality — MCP server timeout override | E2E-261 |
+| B / E / F / Security / Quality — Jev System One classifier | E2E-JEV-SYSTEM-ONE |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | A / C / F / Quality — Tray session navigation | E2E-TRAY-bounded-session-navigation |
 | B — Model config | E2E-005, E2E-PROVIDER-custom-endpoint-no-api-key, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209, E2E-PLUGIN-provider-catalog-add-service |
@@ -10195,6 +10196,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-SETTINGS-inline-capability-imports, E2E-210, E2E-UPDATE-preference-and-once-only-reminder, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-259, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+ (Selected model order) | E2E-MODEL-selected-order-persists |
+| M6+ (Jev System One classifier) | E2E-JEV-SYSTEM-ONE |
 | M6+ (MCP server timeout override) | E2E-261 |
 | M6+ (Destination loading and focus) | E2E-087b |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
@@ -17980,55 +17982,71 @@ host-created files. The full app's file-preview viewer is covered separately.
   rejected submission does not. Deferred configuration alone does not count
   as usage.
 
-- **Preconditions:** Isolated Electron profile, fake Host IPC/secret storage,
-  and a `globalThis.fetch` fixture for `https://api.typesafe.ai/v1/systemone`.
-  Build workspace JS packages with `pnpm build:js`, then run
-  `pnpm test:e2e:jev`. Do not use a real TypeSafe key or endpoint.
-- **Steps:** 1) On the service chooser's add path, confirm Jev is offered in
-  its own Classifiers group and absent when an existing row changes service,
-  and that no Jev card is on the model configuration page yet. 2) Open the Jev
-  form, paste a sentinel key and Check and save: the fixture answers the check,
-  the key reaches Host secure storage, Jev is on, and the card appears. Confirm
-  AI services (with catalog status and refresh) precede Jev and image generation,
-  and that the card's privacy explanation is available from its heading help
-  control instead of as a persistent paragraph.
-  3) Resolve a session launch with Jev enabled, then disabled and in Plan mode.
-  4) Through the runtime's deferred catalog, request Jev in Agent mode and
-  inspect Plan/Goal catalogs. 5) Call `JevClassify` with one choice, one score
-  and one boolean question over a small JSON state. 6) Answer a check with 401
-  for a second key: nothing is written and Jev stays off. 7) Start a check and
-  close the dialog while it is still in flight: the key is not stored and Jev
-  stays off. 8) In the Jev card, switch Jev off and remove the key; the card
-  leaves with it.
-- **Expected:** The check runs before any write, in the order check, store, then
-  enable, so a refused key leaves no secret and no enabled setting behind, and
-  the refusal is reported with TypeSafe's status. The card is on the page only
-  once Jev has been added, and it leaves when the key does. The UI never returns
-  the key to settings state, and removal disables Jev before deleting it. Only
-  the Jev title, key status and controls occupy the card; explanatory privacy
-  copy appears on demand from the heading help control. AI services stay above
-  Jev, followed by image generation. An enabled Agent launch reads the key and
-  passes it ephemerally to the sidecar.
-  `JevClassify` appears in the Agent's deferred catalog only with a key and
-  never in Plan or Goal. Closing the dialog cancels an in-flight check the same
-  way a refused key does: nothing stored, nothing enabled. The fixture receives
-  the TypeSafe System One payload and bearer header; the tool returns bounded
-  structured answers and usage.
-- **Specs:** [Tools and permissions](../03-runtime/03-tools-and-permissions.md),
-  [provider/model system](../03-runtime/11-provider-model-system.md),
-  [secrets storage](../03-runtime/14-secrets-storage.md),
-  [settings IA](../04-ux/06-settings-ia.md).
-- **Acceptance:** No paid or real-provider call. The suite verifies the UI user
-  path, the ordered check-then-store gate, the refused-key path, the fixed
-  secret reference, opt-in Agent launch boundary, deferred mode catalog,
-  request body, bearer auth, usage, error redaction, cancellation, timeout,
-  malformed and oversized input rejection, and key removal.
 - Disable/remove a provider or model and mark a model for image generation:
   unavailable history entries are skipped for inheritance and recent menu rows.
 - Settings contains no fixed chat-default picker or Make default service action;
   image model selection and provider configuration remain available.
 - Coverage: recent-models.test.mjs, recent-model-flow.test.mjs,
   default-model-picker.test.mjs, and scripts/e2e-composer-model-selection.mjs.
+
+#### E2E-JEV-SYSTEM-ONE: Official and custom classifier setup stays isolated from chat
+
+- **Preconditions:** Isolated Electron profiles, fake Host IPC/secure storage,
+  and an offline `globalThis.fetch` fixture. It serves the official
+  `https://api.typesafe.ai/v1/systemone` route and an OpenRouter-style custom
+  route whose configured API root is `https://openrouter.test/api/v1`, model is
+  `~typesafe/jev-latest`, and operation URL is
+  `https://openrouter.test/api/v1/systemone`. Build workspace JS packages with
+  `pnpm build:js`, then run `pnpm test:e2e:jev`. Real services, real credentials
+  and paid requests are forbidden.
+- **Steps:** 1) Record the existing provider rows, default chat model,
+  default-model options, Composer model options and Subagent model options. Open
+  **Add service** and confirm the
+  Classifiers group contains **TypeSafe (official)** with the default root and
+  `jev-latest`; confirm **Custom endpoint** offers the setup-only **System One
+  (classifier)** API format only on the add path. No Jev card exists yet.
+  2) In separate clean cases, enter first the custom API root and then the full
+  `https://openrouter.test/api/v1/systemone` operation URL, each with the exact
+  model ID and a sentinel key. Confirm the service summary and privacy copy
+  disclose the configured System One destination. Return 401 from the root-URL
+  probe; leave the full-URL probe in flight and close the dialog. Snapshot fake
+  secure storage and `AppSettings` before and after each case. 3) Repeat both
+  URL forms with successful probes. Assert each probe reaches the fixture before
+  any write, then the key enters secure storage, the non-secret binding enters
+  `AppSettings`, Jev is enabled, and its card appears.
+  4) Resolve an Agent launch, call `JevClassify` with one choice,
+  one score and one boolean question over a small JSON state, then resolve with
+  Jev disabled and inspect Plan/Goal catalogs. 5) Reopen model selectors and
+  provider settings, then disable and remove Jev. Run the official tile happy
+  path in a separate isolated case to preserve its default route/model coverage.
+- **Expected:** The API-root and complete-operation inputs normalize to the same
+  target. Both probe and runtime requests append `/systemone` exactly once;
+  neither requests `/systemone/systemone`. The custom fixture receives the
+  precise URL `https://openrouter.test/api/v1/systemone`, bearer key, System One
+  payload and exact model `~typesafe/jev-latest`. The official case receives
+  `jev-latest` at its default route. A refusal or cancellation performs zero
+  secure-storage and `AppSettings` writes and leaves Jev off. A successful add
+  creates no chat provider, preserves every provider row and the default chat
+  model, and never adds the classifier to default-model, Composer or Subagent
+  model options.
+  `JevClassify` appears only in the enabled Agent deferred catalog, never in
+  Plan or Goal, and returns bounded structured answers and usage. Removal
+  disables and clears the binding before deleting the key; the card then leaves.
+- **Specs:** [Tools and permissions](../03-runtime/03-tools-and-permissions.md),
+  [provider/model system](../03-runtime/11-provider-model-system.md),
+  [secrets storage](../03-runtime/14-secrets-storage.md),
+  [settings IA](../04-ux/06-settings-ia.md).
+- **Acceptance:** No real-provider or paid call. The suite covers the complete
+  add path, official defaults, custom target disclosure, exact URL/model wire
+  values, ordered probe/store/settings enablement, failure and cancellation
+  atomicity, secure-key redaction, Agent-only catalog boundary, chat/provider/
+  default/Composer/Subagent isolation, usage, timeout and malformed/oversized
+  input rejection, and ordered removal.
+- **Milestone:** M6+ maintenance.
+- **Status:** Automated offline coverage via `pnpm test:e2e:jev`; the UI journey
+  uses isolated Electron profiles and fake Host IPC, while shared/Main/runtime
+  tests cover binding validation, Host persistence, launch isolation, exact
+  transport bytes, timeout, cancellation and redirect refusal.
 
 
 #### E2E-CHAT-subagent-direct-stop

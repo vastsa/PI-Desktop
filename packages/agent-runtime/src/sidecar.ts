@@ -106,8 +106,10 @@ type RuntimeParams = {
   turnId?: string;
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
-  /** Opt-in TypeSafe classifier credential resolved by Electron main. */
+  /** @deprecated Official-default compatibility for older Main callers/tests. */
   jevApiKey?: string;
+  /** Complete configured System One identity plus ephemeral credential. */
+  jev?: import("@pi-desktop/shared").JevClassifierRuntimeConfig;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
@@ -235,6 +237,7 @@ async function runtimeFor(
     subagentProviders,
     subagentModelKeys,
     jevApiKey: params.jevApiKey,
+    jev: params.jev,
     projectInstructions: params.projectInstructions,
     customSystemPrompt: params.customSystemPrompt,
     projectMemory: params.projectMemory,
@@ -302,6 +305,7 @@ async function runtimeFor(
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
     jevApiKey: params.jevApiKey,
+    jev: params.jev,
     history,
     compaction,
     compactionSettings: params.compactionSettings,

@@ -59,7 +59,7 @@ their full schemas up front:
 - `BrowserPreview`
 - `PluginCheck`, `PluginScaffold`, and `PluginPack`
 - plugin-declared agent tools
-- `JevClassify` when the user enables Jev and saves a TypeSafe API key
+- `JevClassify` when the user enables Jev and saves a configured System One key
 
 These tools appear in a bounded `# On-demand tools` catalog with compact
 descriptions. The model calls the local `ToolSearch` tool with an exact name or
@@ -77,11 +77,12 @@ tool is loaded. `ToolSearch` itself never executes a workspace operation and
 never bypasses host-core policy.
 
 `JevClassify` is offered only in Agent mode, only when explicitly enabled in
-Settings → Models, and only while its TypeSafe key is available. It is a
-structured classifier call, not a chat model or workspace operation. The Agent
-must supply its JSON state and typed questions; those values go directly to
-TypeSafe when the tool is called. The tool validates JSON shape and bounds the
-payload to 24 KiB, uses the pi-ai `jev-latest` classifier with a 45-second
+Settings → Models, and only while its configured System One key and binding are
+available. It is a structured classifier call, not a chat model or workspace
+operation. The Agent must supply its JSON state and typed questions; those
+values go directly to the configured endpoint when the tool is called. The tool
+validates JSON shape and bounds the payload to 24 KiB, uses pi-ai's native
+System One classifier adapter with the configured model id and a 45-second
 timeout, and returns only structured answers and reported usage. Plan and Goal
 never receive the tool. The settings disclosure warns users not to pass secrets
 or personal information.

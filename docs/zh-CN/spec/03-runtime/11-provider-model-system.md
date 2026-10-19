@@ -203,15 +203,22 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
    projected once at the account boundary and reused for ordinary sessions,
    delegates, compaction and image lookup. Pi's unsupported/null effort mappings
    cannot be re-enabled by stale persisted settings. No saved data is rewritten.
-5. Chat, image and classifier models are selected by operation type even when
-   they share a model ID. A small display-only operation metadata supplement
-   preserves settings visibility for image/audio/video/embedding records that
-   Pi does not publish. It supplies no runtime auth, dispatch, price or entitlement.
-6. Free-form IDs remain configurable. Conservative generic metadata applies
-   when no published model matches; explicit user overrides remain supported.
-   Unknown relay metadata uses exact final-segment matching and an unambiguous
-   official publisher. Known endpoint aliases cannot borrow past an ambiguous
-   same-endpoint miss. No deployment/date/thinking suffix is removed.
+5. 即使聊天、图像和分类器使用相同模型 ID，也必须按操作类型分别选择。一个仅用于展示的
+   小型操作元数据补充表，继续保证 Pi 未发布的图像／音频／视频／嵌入记录能在设置中显示；
+   它不提供运行时认证、分派、价格或权限。PI-Desktop 的可选 Jev 集成始终只是 Agent 模式的
+   `JevClassify` 工具：它不拥有提供商行，也不会出现在聊天、Composer、默认模型或子智能体
+   模型列表中；Plan 和 Goal 不会获得该工具。**TypeSafe（官方）**设置卡片继续使用默认
+   API 根地址 `https://api.typesafe.ai/v1` 和精确模型 ID `jev-latest`。
+   **添加服务 → 自定义端点**的接口格式另提供仅用于设置的 **System One（分类器）**。
+   选择后填写 System One 基础 URL、精确模型 ID 和 API 密钥，不会把该格式加入聊天传输。
+   基础 URL 可填写 API 根地址或末尾带完整 `/systemone` 的操作地址；探测与运行时会规范化地址，
+   确保 `/systemone` 只追加一次，并在请求正文中原样发送配置的模型 ID。设置界面明确告知用户，
+   分类状态与问题会直接发往已配置的 System One 端点。保存前先探测这一精确端点／模型；只有
+   成功后才把密钥写入安全存储、把非敏感绑定写入 `AppSettings` 并启用 Jev，失败或取消均零写入。
+   此功能复用现有设置与密钥存储契约，不改变数据库架构、Host 协议、插件 API 或系统架构。
+6. 目录未发布的模型仍可自由填写 ID。没有发布记录时使用保守的通用元数据，并继续支持
+   用户显式覆盖。未知中转模型只按精确的末段 ID 和无歧义的官方发布方匹配；已知端点别名
+   遇到同端点歧义缺失时也不能借用其他记录。不得通过删除部署、日期或思考后缀来制造匹配。
 7. Settings catalog refresh calls Pi's public refresh API. Release scripts no
    longer fetch or package the independent Pi catalog JSON catalog. Pi version
    pins provide the reproducible catalog baseline.

@@ -527,9 +527,12 @@ a usage tab.
     Moonshot/Kimi, Zhipu, SiliconFlow, Volcengine Ark, MiniMax,
     MiniMax (OpenAI), Xiaomi, Kimi
     For Coding) then show Service + API key, with the published host as a
-    one-line summary. Custom endpoint then shows Service, Name beside Base URL,
-    and API key beside API format in three explicit rows so each input keeps a
-    stable alignment as the form changes. The custom Base URL field accepts
+    one-line summary. With a chat API format, Custom endpoint then shows Service,
+    Name beside Base URL, and API key beside API format in three explicit rows so
+    each input keeps a stable alignment as the form changes. Its API format menu
+    also offers the setup-only **System One (classifier)** choice on the add path;
+    that choice opens the classifier form below rather than creating a provider.
+    The custom Base URL field for chat formats accepts
     only http(s) service base URLs and trims pasted operation paths such as `/models`,
     `/messages`, `/chat/completions`, or `/responses` when the field loses
     focus. The placeholder is enough — no helper paragraph under the URL.
@@ -580,30 +583,36 @@ contract modes are intent boundaries, not strict read-only security profiles.
 
 ### Jev classifier
 
-- Keep Jev out of the chat provider/model list: it is a TypeSafe structured
-  classifier, not a conversation model, and it owns no provider row.
-- Offer it from **Add service**, in its own Classifiers group, on the add path
-  only: changing an existing row's service never turns it into a classifier.
-  The tile carries the TypeSafe address the key is spent on.
-- Adding Jev is one action with two steps: check the key against TypeSafe, then
-  store it and turn the classifier on. Nothing is written when the check fails,
-  and closing the dialog while the check is still running cancels the whole
-  action, so an enabled Jev always has a key the Agent can spend and an
-  abandoned dialog never leaves a credential behind. The credential is a
-  TypeSafe API key; this integration has no OAuth path.
-- The model configuration page shows the Jev card only once Jev has been added:
-  an install without it has nothing there to configure, and adding stays in the
-  service chooser. The card carries the stored-key state, the Agent-mode switch
-  and the actions that replace or remove the key; removing the key takes the
-  switch down first, then the card. The key itself is entered only in the
-  service dialog, which is also where it is checked. It stays in Host secure
-  storage; the renderer only learns whether one exists. Keep the card free of
-  persistent explanatory paragraphs: its heading help icon provides integration
-  and data-handling details, while the switch help icon explains Agent-mode
-  availability. The setup form keeps the privacy notice visible before a key
-  is stored.
-- The tool is on demand and unavailable in Plan and Goal modes. Removing the
-  key turns Jev off first, then deletes it.
+- Jev remains an Agent-only `JevClassify` integration, not a conversation
+  provider or model. It owns no provider row, does not change the default chat
+  model, and never appears in Composer, default-model or Subagent model lists.
+  Plan and Goal do not expose the tool.
+- **Add service** offers two add-only entries. The Classifiers group keeps a
+  **TypeSafe (official)** tile with defaults `https://api.typesafe.ai/v1` and
+  `jev-latest`. **Custom endpoint** adds the setup-only API format **System One
+  (classifier)**; changing an existing provider's service or API format cannot
+  turn that provider into a classifier.
+- The custom classifier form asks for **System One Base URL**, **Model ID** and
+  **API key**. The URL accepts either an API root or the complete final
+  `/systemone` operation; normalization makes probe and runtime append that
+  segment exactly once. The model ID is sent exactly as entered after safe
+  trimming. The selected service chip shows the destination host, and visible
+  privacy copy states that `JevClassify` sends its state and questions directly
+  to the configured System One endpoint.
+- Check and save is one ordered action: probe that exact endpoint/model, store
+  the key in Host secure storage, persist the non-secret endpoint/model binding
+  in `AppSettings`, then enable Jev. A refused probe writes neither secret nor
+  settings, and closing the dialog while the probe is in flight cancels with
+  zero writes. This path has no OAuth flow and does not create a chat provider.
+- The model configuration page shows the Jev card only after a successful add.
+  The card carries stored-key state, the Agent-mode switch, and replace/remove
+  actions. The renderer learns only whether the key exists. The heading help
+  explains the integration and configured-endpoint data handling; the switch
+  help explains Agent-only availability. Removing the key first disables Jev
+  and clears its non-secret binding, then deletes the secret and removes the
+  card.
+- The setup reuses existing `AppSettings` and secure storage. It introduces no
+  database schema, Host protocol, plugin API or architecture change.
 
 ### Agent capability destinations (Skills / MCP / Subagents)
 

@@ -1,11 +1,9 @@
 /**
- * Contract test for the TypeSafe key check behind Jev (settings IA, D625).
+ * Contract tests for the non-persisting Jev System One credential check.
  *
- * Jev keeps a key only when TypeSafe answered it, so this probe is the gate:
- * it must ask the same address and classifier the Agent's `JevClassify` tool
- * uses, report a refusal with its status, never leak the key into its own
- * message, and answer a hung or unreachable service with a sentence instead
- * of a rejection.
+ * The probe must ask the same normalized endpoint and exact classifier id the
+ * Agent's `JevClassify` tool uses, report refusals with status, never leak the
+ * key, refuse cross-origin credential redirects, and bound silent services.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -56,6 +54,20 @@ test("the check asks the System One endpoint the classifier tool uses", async ()
   assert.deepEqual(Object.keys(question.criteria), ["true", "false"]);
 });
 
+test("legacy empty options still use the official binding", async () => {
+  const originalFetch = globalThis.fetch;
+  const { calls, fetch } = recordingFetch(jsonResponse({ ok: true, status: 200 }));
+  globalThis.fetch = fetch;
+  try {
+    const result = await probeJevApiKey(KEY, {});
+    assert.deepEqual(result, { ok: true, status: 200 });
+    assert.equal(calls[0].url, TYPESAFE_SYSTEM_ONE_URL);
+    assert.equal(JSON.parse(calls[0].init.body).model, TYPESAFE_JEV_MODEL_ID);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("a trimmed key is what travels, and a blank key sends nothing", async () => {
   const { calls, fetch } = recordingFetch(jsonResponse({ ok: true, status: 200 }));
   await probeJevApiKey(`  ${KEY}  `, { fetchImpl: fetch });
@@ -80,10 +92,58 @@ test("a refused key reports TypeSafe's status without repeating the key", async 
   assert.match(result.message, /\[redacted\]/);
 });
 
+test("a long key is redacted before provider detail is truncated", async () => {
+  const longKey = `fixture-${"k".repeat(400)}`;
+  const { fetch } = recordingFetch(
+    jsonResponse({ ok: false, status: 401, body: `invalid api key ${longKey}` }),
+  );
+  const result = await probeJevApiKey(longKey, { fetchImpl: fetch });
+
+  assert.equal(result.ok, false);
+  assert.match(result.message, /\[redacted\]/);
+  assert.ok(!result.message.includes(longKey.slice(0, 80)));
+});
+
 test("a refusal without a body still names the status", async () => {
   const { fetch } = recordingFetch(jsonResponse({ ok: false, status: 403 }));
   const result = await probeJevApiKey(KEY, { fetchImpl: fetch });
-  assert.deepEqual(result, { ok: false, status: 403, message: "TypeSafe returned 403" });
+  assert.deepEqual(result, { ok: false, status: 403, message: "System One returned 403" });
+});
+
+test("a custom root and full operation use one /systemone with the exact model id", async () => {
+  for (const baseUrl of [
+    "https://openrouter.test/api/v1",
+    "https://openrouter.test/api/v1/systemone/",
+  ]) {
+    const { calls, fetch } = recordingFetch(jsonResponse({ ok: true, status: 200 }));
+    const asserted = [];
+    const result = await probeJevApiKey(KEY, {
+      baseUrl,
+      modelId: "~typesafe/jev-latest",
+    }, {
+      fetchImpl: fetch,
+      assertEndpoint: async (url) => asserted.push(url),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(calls[0].url, "https://openrouter.test/api/v1/systemone");
+    assert.deepEqual(asserted, ["https://openrouter.test/api/v1/systemone"]);
+    assert.equal(JSON.parse(calls[0].init.body).model, "~typesafe/jev-latest");
+  }
+});
+
+test("a credential-bearing redirect cannot leave the configured origin", async () => {
+  const { calls, fetch } = recordingFetch(new Response(null, {
+    status: 307,
+    headers: { location: "https://attacker.test/systemone" },
+  }));
+  const result = await probeJevApiKey(KEY, {
+    baseUrl: "https://openrouter.test/api/v1",
+    modelId: "~typesafe/jev-latest",
+  }, { fetchImpl: fetch });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /left the configured origin/);
+  assert.equal(calls.length, 1);
+  assert.ok(!result.message.includes(KEY));
 });
 
 test("an unreachable service answers with a message, not a rejection", async () => {

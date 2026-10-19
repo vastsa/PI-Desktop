@@ -34,3 +34,49 @@ test("invalid retry writes stay rejected at both boundaries", () => {
     assert.throws(() => main.validateSettingsWrite(settings), /infiniteProviderRetry is invalid/);
   }
 });
+
+test("Jev classifier settings normalize safely and reject corrupt writes", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { piDesktop: { platform: "win32" } };
+  try {
+    const binding = {
+      baseUrl: "https://openrouter.test/api/v1/systemone/",
+      modelId: " ~typesafe/jev-latest ",
+    };
+    const normalized = renderer.normalizeSettings({
+      defaultMode: "agent",
+      jevEnabled: true,
+      jevClassifier: binding,
+    });
+    assert.equal(normalized.jevEnabled, true);
+    assert.deepEqual(normalized.jevClassifier, {
+      baseUrl: "https://openrouter.test/api/v1",
+      modelId: "~typesafe/jev-latest",
+    });
+    assert.deepEqual(main.validateSettingsWrite(structuredClone(normalized)).jevClassifier,
+      normalized.jevClassifier);
+
+    for (const invalid of [null, {}, { baseUrl: "file:///tmp", modelId: "jev" },
+      { baseUrl: "https://openrouter.test/api/v1", modelId: "two ids" }]) {
+      const stored = renderer.normalizeSettings({
+        defaultMode: "agent",
+        jevEnabled: true,
+        jevClassifier: invalid,
+      });
+      assert.equal(stored.jevEnabled, false, "corrupt explicit binding must fail closed");
+      assert.equal(stored.jevClassifier, null);
+    }
+    assert.throws(
+      () => renderer.validateSettingsWrite({ jevClassifier: { baseUrl: "bad", modelId: "" } }),
+      /jevClassifier is invalid/,
+    );
+    assert.throws(
+      () => main.validateSettingsWrite({ jevClassifier: { baseUrl: "bad", modelId: "" } }),
+      /jevClassifier is invalid/,
+    );
+    assert.equal(renderer.validateSettingsWrite({ jevClassifier: null }).jevClassifier, null);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});

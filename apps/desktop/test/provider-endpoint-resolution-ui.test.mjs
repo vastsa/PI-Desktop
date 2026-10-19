@@ -96,10 +96,12 @@ test("the form adopts the address that answered and says what it detected", () =
   assert.match(setupSource, /resolveEndpointDraft\(/);
   assert.match(setupSource, /discovery\.effectiveBaseUrl/);
   // The answer belongs to the address it was produced for, so a URL typed since
-  // that probe is never reverted to an earlier result.
+  // that probe is never reverted to an earlier result. Classifier setup is an
+  // independent operation and must never adopt a chat discovery result.
   assert.match(setupSource, /const adoptedFrom = discovery\.resolvedFrom;/);
+  assert.match(setupSource, /systemOneSetup \|\| named \|\| !discoveredBaseUrl \|\| !adoptedFrom/);
   assert.match(setupSource, /endpointsEqual\(current, adoptedFrom\) \? discoveredBaseUrl : current/);
-  assert.match(setupSource, /\[named, discoveredBaseUrl, adoptedFrom\]/);
+  assert.match(setupSource, /\[systemOneSetup, named, discoveredBaseUrl, adoptedFrom\]/);
   assert.match(setupSource, /settings\.apiStyleAutoDetected/);
 });
 
