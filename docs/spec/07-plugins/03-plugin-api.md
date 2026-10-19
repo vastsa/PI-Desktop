@@ -1416,3 +1416,19 @@ Renderer ES modules may import `react/jsx-runtime` or
 its runtimes alongside `react`, `react-dom`, and `react-dom/client`, before
 evaluating plugin entries. This keeps compiled JSX, hooks and context on the
 host React instance in production and development builds.
+
+### Opt-in streaming block renderers
+
+A `blockRenderer` registration may declare boolean `streaming: true`. The
+host then renders incomplete fences with growing source and supplies `closed`,
+`streaming`, `sessionId`, `messageId`, and message-relative `fenceId`. Terminal
+status changes are delivered even without new source. Identity belongs to the
+original transcript, never model-authored JSON. Existing registrations keep
+their closed-fence, props-once contract and receive no extra props.
+
+Namespaced ownership, renderer trust, source anchors, and the 4000px bound
+remain in force. Streaming blocks are observed for asynchronous overflow;
+observers disconnect on disposal. Errors, unload and overflow recover source.
+This extends neither renderer privileges nor action dispatch authority. GenUI
+can use this contract without becoming a bundled dependency. See ADR
+`streaming-plugin-fences` and the isolated streaming renderer fixture.

@@ -379,3 +379,5 @@ Each ADR includes:
 | plugin-fetch-redirect-policy | [Host-enforced plugin fetch redirect policy](plugin-fetch-redirect-policy.md) | Accepted (implementation candidate for #1475) |
 
 | local-agent-remote-workspace-tools | [Local Agent and model requests for remote workspaces](local-agent-remote-workspace-tools.md) | Accepted for implementation |
+
+| streaming-plugin-fences | [Opt-in streaming plugin fences](streaming-plugin-fences.md) | Proposed |

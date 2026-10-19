@@ -1,8 +1,9 @@
 /**
  * The `blockRenderer` slot host (`docs/plugin-plan/ui/block-renderer/`).
  *
- * A claimed fence hands `{ language, source }` to the plugin once (props-once)
+ * A default claimed fence hands `{ language, source }` to the plugin once (props-once)
  * and the plugin owns the whole block — head, copy button, error display.
+ * Opt-in streaming registrations also receive live source and host identity.
  * The host keeps exactly one guarantee: content taller than 4000px counts as
  * a render failure and falls back to the host code block, and so does a
  * component that throws (via the boundary's fallback) — the source code must
@@ -18,6 +19,7 @@ import {
   SlotErrorBoundary,
   SlotMount,
   slotElement,
+  useSlotSessionId,
 } from "../plugins/renderer-slots/use-slots";
 import type { SlotEntry } from "../plugins/renderer-slots/registry";
 import type { SourcePositionProps } from "../lib/markdown-source";
@@ -30,28 +32,48 @@ export function PluginBlockRenderer({
   entry,
   language,
   source,
+  messageId,
+  fenceId,
+  closed,
+  streaming,
   sourcePosition,
   fallback,
 }: {
   entry: SlotEntry;
   language: string;
   source: string;
+  messageId: string;
+  fenceId: string;
+  closed: boolean;
+  streaming: boolean;
   /** Where the fence sits in the message source. */
   sourcePosition: SourcePositionProps;
   /** The host default block, shown when the plugin fails the contract. */
   fallback: ReactNode;
 }) {
-  // props-once: the first mount's projection is the only one there is.
+  // Default registrations retain their first projection across later renders.
   const onceRef = useRef<PluginBlockRendererSlotProps>({ language, source });
+  const sessionId = useSlotSessionId();
+  const props = entry.streaming
+    ? { language, source, sessionId, messageId, fenceId, closed, streaming }
+    : onceRef.current;
   const clampRef = useRef<HTMLDivElement>(null);
   const [overflowed, setOverflowed] = useState(false);
 
   useLayoutEffect(() => {
     const el = clampRef.current;
-    if (el && blockRendererOverflow(el.scrollHeight)) {
-      setOverflowed(true);
-    }
-  }, []);
+    if (!el) return;
+    const measure = () => {
+      if (blockRendererOverflow(el.scrollHeight)) setOverflowed(true);
+    };
+    measure();
+    if (!entry.streaming || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // The clamp can stay at 4000px while its contents continue to grow.
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [entry.streaming, source, overflowed]);
 
   if (overflowed) return fallback;
   return (
@@ -62,7 +84,7 @@ export function PluginBlockRenderer({
         style={{ maxHeight: BLOCK_RENDERER_MAX_HEIGHT_PX }}
         {...sourcePosition}
       >
-        <SlotMount entry={entry}>{slotElement(entry, onceRef.current)}</SlotMount>
+        <SlotMount entry={entry}>{slotElement(entry, props)}</SlotMount>
       </div>
     </SlotErrorBoundary>
   );

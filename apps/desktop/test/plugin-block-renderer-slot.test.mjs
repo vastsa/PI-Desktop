@@ -94,3 +94,34 @@ test("only a prefixed tag is looked up, and only past 4000px is a block too tall
   assert.equal(BLOCK_RENDERER_MAX_HEIGHT_PX, 4000);
   assert.deepEqual([3_999, 4_000, 4_001].map(blockRendererOverflow), [false, false, true]);
 });
+
+
+test("streaming opt-in renders partial fences with stable session and message identity", async (t) => {
+  const ssr = await blocks(t);
+  const { Markdown } = await ssr.load("/src/components/Markdown.tsx");
+  ssr.register("demo.lab", { slot: "blockRenderer", language: "demo.lab:chart", streaming: true, component: propsProbe("stream") });
+  const render = (source, streaming) => ssr.render(createElement(Markdown, { source, streaming, messageId: "reply-7" }), { sessionId: "original-session" });
+  const partial = "Intro.\n\n```demo.lab:chart\n{\"items\":[{\"type\":\"stat\",\"label\":\"A\",\"value\":\"1\"},";
+  const first = probed(render(partial, true), "stream")[0];
+  assert.equal(first.closed, false);
+  assert.equal(first.streaming, true);
+  assert.equal(first.sessionId, "original-session");
+  assert.equal(first.messageId, "reply-7");
+  assert.equal(first.fenceId, "8");
+  const complete = `${partial}]}\n\`\`\``;
+  const settled = probed(render(complete, false), "stream")[0];
+  assert.equal(settled.closed, true);
+  assert.equal(settled.streaming, false);
+  assert.equal(settled.fenceId, first.fenceId);
+  assert.notEqual(settled.source, first.source);
+  assert.equal(settled.source, complete.slice(complete.indexOf("{\"items"), -4));
+  ssr.clear();
+  assert.match(render(complete, false), /class="code-block"/, "unload returns original source to the host");
+});
+
+test("streaming opt-in is boolean and is retained in the slot catalog", async (t) => {
+  const ssr = await blocks(t);
+  assert.throws(() => ssr.register("demo.lab", { slot: "blockRenderer", language: "demo.lab:chart", streaming: "yes", component: propsProbe("bad") }), /streaming must be a boolean/);
+  ssr.register("demo.lab", { slot: "blockRenderer", language: "demo.lab:chart", streaming: true, component: propsProbe("stream") });
+  assert.equal(ssr.registry.entryForKey("blockRenderer", "demo.lab:chart").streaming, true);
+});

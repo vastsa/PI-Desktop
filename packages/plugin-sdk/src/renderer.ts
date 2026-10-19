@@ -119,10 +119,17 @@ export type PluginToolCardSlotProps = {
   readonly sessionId: string;
 };
 
-/** `blockRenderer` props: the fence's language tag and its raw text, once. */
+/** Legacy blocks receive text once. Opt-in streaming blocks also receive identity and lifecycle. */
 export type PluginBlockRendererSlotProps = {
   readonly language: string;
   readonly source: string;
+  /** Present only for a registration with streaming: true. */
+  readonly sessionId?: string;
+  readonly messageId?: string;
+  /** Source offset identifies a fence throughout streaming and history replay. */
+  readonly fenceId?: string;
+  readonly closed?: boolean;
+  readonly streaming?: boolean;
 };
 
 /** `composerControl` props: only where the control is mounted. */
@@ -159,6 +166,8 @@ export type PluginToolCardSlotRegistration = {
 export type PluginBlockRendererSlotRegistration = {
   readonly slot: "blockRenderer";
   readonly language: string;
+  /** Opt in to source updates before the fence closes; default preserves props-once. */
+  readonly streaming?: boolean;
   readonly component: PluginSlotComponent<PluginBlockRendererSlotProps>;
 };
 
@@ -459,6 +468,9 @@ export function slotRegistrationRefusal(
     }
   }
   if (slot === "blockRenderer") {
+    if (candidate.streaming !== undefined && typeof candidate.streaming !== "boolean") {
+      return refusal("PLUGIN_SLOT_INVALID_KEY", "blockRenderer streaming must be a boolean");
+    }
     const language = candidate.language;
     if (typeof language !== "string") {
       return refusal("PLUGIN_SLOT_INVALID_KEY", "blockRenderer requires a language");

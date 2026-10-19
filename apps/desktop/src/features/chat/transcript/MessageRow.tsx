@@ -342,7 +342,7 @@ export const MessageRow = memo(function MessageRow({
               </>
             ) : (
               <div className="prose-chat">
-                <Markdown source={displayed} />
+                <Markdown source={displayed} messageId={message.id} />
               </div>
             )}
           </div>
