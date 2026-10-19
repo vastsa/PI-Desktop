@@ -7784,7 +7784,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - D665 supersedes the macOS `vibrancy: "sidebar"` + `transparent: true` window
   backing from D348. A vibrancy material behind a transparent surface is
   recomposited by WindowServer every frame the window stays dirty, which held an
-  idle focused window near 40% GPU on Apple Silicon (issue #1064). macOS now
+  idle focused window near 89% GPU on an M5 Mac in the report that opened the
+  investigation — and near 40% in a later A/B taken on a build already carrying
+  the #1064 bounded-animation work (issue #1064). macOS now
   paints the opaque background the other platforms already use, keeping the
   `hiddenInset` titlebar, the inset traffic-light position, and the renderer's
   sidebar tint and sheen.

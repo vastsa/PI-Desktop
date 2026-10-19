@@ -18,15 +18,23 @@ sheen over it to read as glass (D348).
 
 That combination made the window surface continuously expensive. A vibrancy
 material behind a transparent surface is re-composited by WindowServer whenever
-the window stays dirty, and on the target hardware the cost was large and
-unconditional: measured with `powermetrics --samplers gpu_power` on an Apple
-Silicon machine, an idle focused window held GPU at
+the window stays dirty, and the cost was large and unconditional.
+
+The report that opened this investigation was an **M5 idling at 89%** with the
+window focused and dropping to nothing once minimized. The controlled
+measurement below was taken later, on a build that already carried the earlier
+bounded-animation work from #1064, so it shows a lower — and much more volatile
+— figure than the original report; it is the A/B that isolated the cause, not
+the baseline.
 
 ```text
 desktop idle baseline       avg 3.6%   max  9.3%
 PI-Desktop focused, idle    avg 40.9%  max 55.6%
 PI-Desktop minimized        avg 3.2%   max  6.1%
 ```
+
+Both point the same way: the load tracks whether the window is visible at all,
+not what it is showing.
 
 Idle page content was not the cause: with the window focused and no session
 running, the app's own GPU process consumed no measurable CPU time and the
@@ -100,8 +108,13 @@ without the per-frame material cost.
 ## Evidence
 
 - Issue #1064 (bounded idle status indicator animations, D348).
-- `powermetrics --samplers gpu_power` A/B on Apple Silicon, focused-idle
-  foreground vs. minimized, before and after this change.
+- Reported against an M5 Mac: ~89% GPU for an idle focused window, dropping
+  once minimized.
+- `powermetrics --samplers gpu_power` A/B on that machine, focused-idle vs.
+  minimized, before and after this change (the 40.9% focused figure is from a
+  build already carrying the bounded-animation work of #1064).
+- After this change the focused-idle case matches the desktop baseline under the
+  same measurement.
 - `apps/desktop/test/macos-opaque-window-surface.test.mjs` — window option and
   native-background contracts.
 - `apps/desktop/test/window-background.test.mjs` — per-platform surface colours.
