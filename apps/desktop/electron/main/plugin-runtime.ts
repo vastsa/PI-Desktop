@@ -11,7 +11,7 @@ import {
 import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
 import { getModuleDirectory } from "./module-path";
@@ -50,6 +50,7 @@ import {
   validateManifest,
   validateMcpServer,
   type ClipboardHistoryEntry,
+  type PluginActiveSession,
   type PluginCompleteInput,
   type PluginCompleteResult,
   type PluginFsMode,
@@ -66,6 +67,7 @@ import {
   type PluginProviderOAuthPrompt,
   type PluginProviderOAuthRequest,
   type PluginProviderContrib,
+  type PluginRevealViewInput,
   type PluginServiceContrib,
   type PluginSettingContrib,
   type PluginComposerTransformInput,
@@ -362,6 +364,8 @@ export type PluginHostServices = {
   ) => Promise<void>;
   /** Open one already-authorized file with the OS-associated application. */
   openPath: (fullPath: string) => Promise<void>;
+  /** Open one already-authorized HTML file in the bundled work-panel Browser. */
+  openInBrowser?: (fullPath: string) => Promise<void>;
   /** Reveal one already-authorized file in the OS file manager. */
   revealPath?: (fullPath: string) => Promise<void>;
   readClipboard: () => Promise<string>;
@@ -489,6 +493,27 @@ export type PluginHostServices = {
     rename: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
     delete: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
+  /**
+   * The session the user is looking at, as the shell shows it. Read from the
+   * host's own selection and turn maps, so a plugin never infers it.
+   */
+  getActiveSession?: () => PluginActiveSession | null;
+  /**
+   * Whether a plugin's contributions still apply to the shell's current
+   * project. The same scope check every view IPC applies, so a project-scoped
+   * plugin cannot read or reveal a session it is inactive in.
+   */
+  isPluginActiveInProject?: (pluginId: string) => boolean;
+  /**
+   * Ask the shell to show one of this plugin's views in a session's work panel.
+   * The runtime has already resolved the view, the scope and a stale session.
+   */
+  revealView?: (request: {
+    pluginId: string;
+    viewId: string;
+    sessionId: string;
+    location: string | null;
+  }) => Promise<void>;
   project?: {
     create: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
@@ -521,6 +546,7 @@ const HOST_API_ALLOWLIST = new Set([
   "plugin.getSettings",
   "plugin.setSettings",
   "plugin.getDataPath",
+  "ui.revealView",
   "ui.openPanel",
   "ui.closePanel",
   "ui.showToast",
@@ -536,6 +562,7 @@ const HOST_API_ALLOWLIST = new Set([
   "fs.readRange",
   "fs.readPreview",
   "fs.openDefault",
+  "fs.openInBrowser",
   "fs.reveal",
   "fs.writeText",
   "fs.glob",
@@ -579,6 +606,7 @@ const HOST_API_ALLOWLIST = new Set([
   "audio.closeOutput",
   "browser.cdp",
   "models.list",
+  "session.getActive",
   "session.getLlmContext",
   "session.getAutoTitleContext",
   "session.setAutoTitle",
@@ -753,6 +781,12 @@ const MAX_GLOB_MATCHES = 500;
 const MAX_LIST_ENTRIES = 1000;
 /** Maximum bytes one plugin range call may cross the broker with. */
 const MAX_FS_READ_RANGE_BYTES = 8 * 1024 * 1024;
+/**
+ * Longest subject `ui.revealView` carries into a view. It travels in a query
+ * parameter and an IPC frame, so it is bounded like every other free-form
+ * string a plugin hands the host.
+ */
+const MAX_VIEW_LOCATION_CHARS = 8 * 1024;
 /** Directories `pi.fs.glob` never walks into; they are noise and are denied anyway. */
 const GLOB_SKIP_DIRS = new Set([".git", "node_modules", ".venv", "__pycache__"]);
 /** Entries in one plugin's write ledger; oldest are dropped past this. */
@@ -1417,6 +1451,9 @@ export class PluginRuntime {
       },
       openPath: async () => {
         throw apiError("UNSUPPORTED", "openPath service missing");
+      },
+      openInBrowser: async () => {
+        throw apiError("UNAVAILABLE", "Browser service missing");
       },
       readClipboard: async () => "",
       writeClipboard: async () => undefined,
@@ -2387,6 +2424,13 @@ export class PluginRuntime {
       case "ui.closePanel":
         await api.ui.closePanel();
         return { ok: true };
+      case "ui.revealView":
+        await api.ui.revealView(payload as PluginRevealViewInput);
+        return { ok: true };
+      case "session.getActive":
+        // A docked view follows the user's selection the same way a plugin
+        // process does, and reads the same snapshot.
+        return this.readActiveSession(loaded);
       case "fs.readText":
         return api.fs.readText(String(payload?.path ?? ""));
       case "fs.stat":
@@ -2411,6 +2455,9 @@ export class PluginRuntime {
         return api.fs.readPreview(String(payload?.path ?? ""));
       case "fs.openDefault":
         await api.fs.openDefault(String(payload?.path ?? ""));
+        return { ok: true };
+      case "fs.openInBrowser":
+        await api.fs.openInBrowser(String(payload?.path ?? ""));
         return { ok: true };
       case "fs.reveal":
         await api.fs.reveal(String(payload?.path ?? ""));
@@ -2978,6 +3025,12 @@ export class PluginRuntime {
       }
       case "session.getLlmContext": {
         return this.readSessionContext(loaded);
+      }
+      case "session.getActive": {
+        // The selected session, not a session the plugin names: the host
+        // reports what the user is looking at and refuses to address anything
+        // else (spec 07-plugins/03 §session).
+        return this.readActiveSession(loaded);
       }
       case "session.getAutoTitleContext": {
         this.assertPermission(loaded, "session.autoTitle");
@@ -4415,6 +4468,103 @@ export class PluginRuntime {
     return current.count > MAX_COMPLETES_PER_WINDOW;
   }
 
+  /**
+   * `session.getActive`: the selected session as the shell shows it.
+   *
+   * Ungated like `workspace.get`, because it reports facts the user already
+   * sees — the session on screen and its project path — and never a session the
+   * plugin names. Turn identity comes from the host's live turn map, so a plugin
+   * does not have to infer a running task from the previous turn's end event.
+   */
+  private async readActiveSession(loaded: LoadedPlugin): Promise<PluginActiveSession | null> {
+    if (!this.services.getActiveSession) {
+      throw apiError("UNSUPPORTED", "host api not available: session.getActive");
+    }
+    // A project-scoped plugin is not part of another project's conversation, so
+    // it does not get to read which session that project has open.
+    if (!this.services.isPluginActiveInProject?.(loaded.manifest.id)) {
+      throw apiError("PERMISSION_DENIED", "plugin is not active in this project");
+    }
+    const snapshot = this.services.getActiveSession();
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "session.getActive",
+      ok: true,
+      ts: Date.now(),
+    });
+    return snapshot;
+  }
+
+  /**
+   * `ui.revealView`: open one of the plugin's own views in a session's work
+   * panel.
+   *
+   * The plugin names a view and a subject; the host decides where the view
+   * appears. Every refusal here replaces a guess: `ui.view` must be held, a
+   * `viewId` must resolve to exactly one declared view, a subject must stay
+   * bounded, and a named session must still be the one the user is looking at.
+   * A work-panel tab belongs to a session, so a stale request would open a
+   * panel nobody is watching — refusing it is the whole point of the call.
+   */
+  private async revealWorkPanelView(
+    loaded: LoadedPlugin,
+    input?: PluginRevealViewInput,
+  ): Promise<void> {
+    this.assertPermission(loaded, "ui.view");
+    const views = loaded.manifest.contributes?.views ?? [];
+    if (views.length === 0) {
+      throw apiError("NOT_FOUND", "plugin does not declare a work panel view");
+    }
+    if (!this.services.isPluginActiveInProject?.(loaded.manifest.id)) {
+      throw apiError("PERMISSION_DENIED", "plugin is not active in this project");
+    }
+    const requested = typeof input?.viewId === "string" ? input.viewId.trim() : "";
+    const view = requested
+      ? views.find((candidate) => candidate?.id === requested)
+      : views.length === 1
+        ? views[0]
+        : undefined;
+    if (!view) {
+      throw apiError(
+        requested ? "NOT_FOUND" : "INVALID_ARGUMENT",
+        requested
+          ? `plugin has no view: ${requested}`
+          : "viewId is required when the plugin declares more than one view",
+      );
+    }
+    const location = typeof input?.location === "string" ? input.location.trim() : "";
+    if (location.length > MAX_VIEW_LOCATION_CHARS) {
+      throw apiError(
+        "INVALID_ARGUMENT",
+        `location must be at most ${MAX_VIEW_LOCATION_CHARS} characters`,
+      );
+    }
+    const named = typeof input?.sessionId === "string" ? input.sessionId.trim() : "";
+    const active = this.services.getActiveSession?.() ?? null;
+    const sessionId = named || active?.sessionId || "";
+    if (!sessionId) {
+      throw apiError("INVALID_ARGUMENT", "no session is active");
+    }
+    if (named && active?.sessionId !== named) {
+      throw apiError("INVALID_ARGUMENT", "the session is no longer the active one");
+    }
+    if (!this.services.revealView) {
+      throw apiError("UNSUPPORTED", "host api not available: ui.revealView");
+    }
+    await this.services.revealView({
+      pluginId: loaded.manifest.id,
+      viewId: view.id,
+      sessionId,
+      location: location || null,
+    });
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "ui.revealView",
+      ok: true,
+      ts: Date.now(),
+    });
+  }
+
   private async readSessionContext(loaded: LoadedPlugin): Promise<PluginLlmContext> {
     this.assertPermission(loaded, "session.read");
     const inFlight = this.inFlightTool(loaded.manifest.id);
@@ -4817,7 +4967,7 @@ export class PluginRuntime {
    * Resolve a request that names a file in another folder of the open project
    * (ADR 0249, ADR 0263, ADR 0264). A view browsing a sibling folder can only
    * address that folder's entries absolutely, and the two host-mediated actions
-   * it offers for them (fs.openDefault, fs.reveal) are the only requests that
+   * it offers for them (fs.openDefault, fs.openInBrowser, fs.reveal) are the only requests that
    * arrive that way. The widening is narrow: only for a plugin whose declared
    * root is the workspace, only for an absolute path already inside one of the
    * project's registered folder roots (resolved through links, so a symlink
@@ -5299,6 +5449,9 @@ export class PluginRuntime {
           this.assertPermission(loaded, "notify");
           return this.services.showNativeNotification(input);
         },
+        /** Show one of this plugin's own views in a session's work panel. */
+        revealView: async (input?: PluginRevealViewInput) =>
+          this.revealWorkPanelView(loaded, input),
       },
       workspace: {
         get: async () => {
@@ -5594,6 +5747,56 @@ export class PluginRuntime {
           this.services.audit?.({
             pluginId,
             api: "fs.openDefault",
+            ok: true,
+            ts: Date.now(),
+            path: rel,
+          });
+        },
+        openInBrowser: async (pathFromRoot: string) => {
+          const { full, rel } =
+            (await this.resolveRegisteredFolderRequest(loaded, pathFromRoot)) ??
+            (await this.resolveFsRequest(loaded, "read", pathFromRoot));
+          if (!statSync(full).isFile()) {
+            this.services.audit?.({
+              pluginId,
+              api: "fs.openInBrowser",
+              ok: false,
+              errorCode: "INVALID_ARGUMENT",
+              ts: Date.now(),
+              path: rel,
+            });
+            throw apiError("INVALID_ARGUMENT", "only files can be opened in the Browser");
+          }
+          if (![".html", ".htm", ".xhtml"].includes(extname(full).toLowerCase())) {
+            this.services.audit?.({
+              pluginId,
+              api: "fs.openInBrowser",
+              ok: false,
+              errorCode: "INVALID_ARGUMENT",
+              ts: Date.now(),
+              path: rel,
+            });
+            throw apiError("INVALID_ARGUMENT", "only HTML files can be opened in the Browser");
+          }
+          try {
+            await this.services.openInBrowser?.(full);
+          } catch (error) {
+            const code = typeof error === "object" && error !== null && "code" in error
+              ? String(error.code)
+              : "OPEN_FAILED";
+            this.services.audit?.({
+              pluginId,
+              api: "fs.openInBrowser",
+              ok: false,
+              errorCode: code,
+              ts: Date.now(),
+              path: rel,
+            });
+            throw apiError(code, error instanceof Error ? error.message : String(error));
+          }
+          this.services.audit?.({
+            pluginId,
+            api: "fs.openInBrowser",
             ok: true,
             ts: Date.now(),
             path: rel,

@@ -6,15 +6,6 @@
   margin-inline-end: 4px;
 }
 
-/* Keep long localized project-menu labels aligned without widening the menu. */
-.worktree-menu-label {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .worktree-dialog-body {
   display: flex;
   flex-direction: column;
@@ -43,25 +34,8 @@
   margin: 0;
   padding: 8px 12px;
   overflow: auto;
-  white-space: pre-wrap;
   border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-xs);
   background: var(--ds-bg-inset);
   font-size: var(--text-sm);
-}
-
-/* Why "New isolated session" is unavailable, under the disabled item. */
-.worktree-menu-reason {
-  max-width: 260px;
-  margin: -2px 0 4px;
-  padding: 0 8px 0 30px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-sm);
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.worktree-delete-loss {
-  margin-inline-start: 6px;
-  color: var(--ds-error);
 }

@@ -20,7 +20,9 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
 import { IPC } from "@pi-desktop/shared";
-import { WorktreeBadge, WorktreeProjectMenuItems, WorktreeSessionMenuItems } from "../../apps/desktop/src/features/worktree/WorktreeSidebarParts";
+import { SidebarMenuPanel } from "../../apps/desktop/src/components/SidebarMenuPanel";
+import { sidebarMenuAction, sidebarMenuSubmenu } from "../../apps/desktop/src/lib/sidebar-menu";
+import { WorktreeBadge, useWorktreeProjectMenuItems, useWorktreeSessionMenuItems } from "../../apps/desktop/src/features/worktree/WorktreeSidebarParts";
 import { WorktreeBehindWatcher } from "../../apps/desktop/src/features/worktree/WorktreeBehind";
 import { WorktreeMergeDialog } from "../../apps/desktop/src/features/worktree/WorktreeMergeDialog";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
@@ -70,12 +72,48 @@ async function settle() { await frame(); await frame(); }
 function check(condition, message) { if (!condition) throw new Error(message); }
 const item = () => document.querySelector('[data-action="new-isolated-session"]');
 const reason = () => document.querySelector("[data-worktree-unavailable]");
+/*
+  The sidebar's rows are menu data now, so these fixtures render the item list
+  the way the sidebar menu panel does: one button per row, the availability
+  reason attached to the disabled row it explains.
+*/
+const ProjectItems = ({ projectPath, projectName, onDone }) => {
+  const items = useWorktreeProjectMenuItems({ projectPath, projectName, onDone });
+  return React.createElement(React.Fragment, null, items.map((entry) =>
+    React.createElement(React.Fragment, { key: entry.id },
+      React.createElement("button", { type: "button", role: "menuitem",
+        "data-action": entry.id, disabled: entry.disabled,
+        "aria-busy": entry.busy || undefined,
+        "aria-describedby": entry.describedBy, title: entry.title,
+        onClick: entry.onSelect },
+        entry.icon,
+        React.createElement("span", { className: "sidebar-menu-label" }, entry.label)),
+      entry.disabled && entry.describedBy
+        ? React.createElement("p", { id: entry.describedBy, "data-worktree-unavailable": "" }, entry.title)
+        : null)));
+};
+const SessionItems = ({ sessionId, title, running, worktree, onDone }) => {
+  const items = useWorktreeSessionMenuItems({ sessionId, title, running, worktree, onDone });
+  return React.createElement(React.Fragment, null, items.map((entry) =>
+    React.createElement("button", { key: entry.id, type: "button", role: "menuitem",
+      "data-action": entry.id, disabled: entry.disabled,
+      "aria-busy": entry.busy || undefined, title: entry.title,
+      onClick: entry.onSelect },
+      entry.icon,
+      React.createElement("span", { className: "sidebar-menu-label" }, entry.label))));
+};
 const rootNode = createRoot(document.getElementById("root"));
 function show(projectPath) {
-  flushSync(() => rootNode.render(React.createElement(WorktreeProjectMenuItems,
+  flushSync(() => rootNode.render(React.createElement(ProjectItems,
     { projectPath, projectName: "P", onDone() {} })));
 }
-async function answer() { while (pending.length) pending.shift()(); await settle(); }
+async function answer() {
+  while (pending.length) pending.shift()();
+  await settle();
+  // The row's own action probes again; drain whatever that queued.
+  while (pending.length) pending.shift()();
+  await settle();
+}
 window.menuProbe = async () => {
   show("/plain");
   check(item().disabled, "item must be disabled while the probe runs");
@@ -97,7 +135,7 @@ window.menuProbe = async () => {
   check(!item().disabled && !reason(), "a git project must enable the item");
   const setupCommandItem = document.querySelector('[data-action="worktree-setup-command"]');
   check(
-    setupCommandItem?.querySelector(".worktree-menu-label")?.textContent === i18n.t("worktree.setupCommand.menu"),
+    setupCommandItem?.querySelector(".sidebar-menu-label")?.textContent === i18n.t("worktree.setupCommand.menu"),
     "setup command label must use the shrinkable text container",
   );
   check(setupCommandItem?.getAttribute("title") === i18n.t("worktree.setupCommand.menu"), "full label must remain available on hover");
@@ -142,7 +180,7 @@ window.menuProbe = async () => {
   // "Sync from project" shows how far behind the session is and syncs it.
   const menuRoot = createRoot(document.getElementById("root"));
   const sessionMenu = (sessionId) => flushSync(() => menuRoot.render(React.createElement(React.StrictMode, null,
-    React.createElement(WorktreeSessionMenuItems, { sessionId, title: "Task", running: false, onDone() {},
+    React.createElement(SessionItems, { sessionId, title: "Task", running: false, onDone() {},
       worktree: { branch: "pi-desktop/" + sessionId, status: "active", setupStatus: "none" } }))));
   const syncItem = () => document.querySelector('[data-action="worktree-sync"]');
   sessionMenu("current");
@@ -161,12 +199,74 @@ window.menuProbe = async () => {
   check(behindAllCalls >= 2, "a sync must re-read the counts");
   check(!marker("stale"), "the marker must clear after the sync");
   flushSync(() => menuRoot.unmount());
+  const submenuHost = document.createElement("div");
+  document.body.appendChild(submenuHost);
+  const submenuRoot = createRoot(submenuHost);
+  const selectedSubmenuActions = [];
+  const submenuContent = {
+    label: "Session actions",
+    items: [sidebarMenuSubmenu({
+      id: "git",
+      label: "Git",
+      items: [
+        sidebarMenuAction({
+          id: "fork",
+          label: "Branch from here",
+          onSelect: () => selectedSubmenuActions.push("fork"),
+        }),
+        sidebarMenuAction({
+          id: "reveal",
+          label: "Show worktree folder",
+          onSelect: () => selectedSubmenuActions.push("reveal"),
+        }),
+      ],
+    })],
+  };
+  flushSync(() => submenuRoot.render(React.createElement(SidebarMenuPanel, {
+    content: submenuContent,
+    position: { top: 90, left: Math.max(8, window.innerWidth - 230) },
+    onKeyDown() {},
+  })));
+  const submenuTrigger = submenuHost.querySelector('[data-submenu-trigger="git"]');
+  check(submenuTrigger?.getAttribute("aria-expanded") === "false", "submenu starts closed");
+  submenuTrigger.dispatchEvent(new PointerEvent("pointerover", {
+    bubbles: true,
+    pointerType: "mouse",
+  }));
+  await settle();
+  check(submenuTrigger.getAttribute("aria-expanded") === "true", "hover opens the submenu");
+  check(submenuHost.querySelector('#sidebar-submenu-git [data-action="fork"]'), "hover shows child actions");
+
+  submenuTrigger.focus();
+  submenuTrigger.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "ArrowRight",
+    bubbles: true,
+    cancelable: true,
+  }));
+  await settle();
+  check(document.activeElement?.getAttribute("data-action") === "fork", "ArrowRight enters the submenu");
+  document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "Escape",
+    bubbles: true,
+    cancelable: true,
+  }));
+  await settle();
+  check(!submenuHost.querySelector("#sidebar-submenu-git"), "Escape closes the child menu");
+  check(document.activeElement === submenuTrigger, "closing restores focus to its trigger");
+
+  submenuTrigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+  await settle();
+  check(submenuTrigger.getAttribute("aria-expanded") === "true", "click opens the submenu without hover");
+  submenuHost.querySelector('[data-action="reveal"]').click();
+  check(JSON.stringify(selectedSubmenuActions) === JSON.stringify(["reveal"]), "child action executes");
+  flushSync(() => submenuRoot.unmount());
+  submenuHost.remove();
   flushSync(() => rows.unmount());
   return { passed: true };
 };
 `;
 
-test("isolated-session sidebar: unavailable reason, merge preview, behind marker, and sync from project", {
+test("sidebar submenu opens on hover, click, and keyboard; worktree actions still work", {
   skip: process.platform === "linux" && !process.env.DISPLAY ? "Electron requires a display" : false,
 }, async () => {
   const temp = await mkdtemp(join(root, "apps/desktop/.worktree-menu-ui-"));

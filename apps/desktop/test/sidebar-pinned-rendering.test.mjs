@@ -46,20 +46,21 @@ test("sidebar renders global pins once, outside project folding and history limi
     const meta = Object.fromEntries(pins.map(({ id }) => [id, { pinned: true }]));
     meta["archived-pin"].archived = true;
     const seed = {
-      sessions: [...pins, ...normal, session("temporary-normal", null)],
+      sessions: [...pins, ...normal, session("date-row", "/dated"), session("temporary-normal", null)],
       sessionMeta: meta,
       projectMeta: {
         "/closed": { name: "Closed project" },
         "/collapsed": { collapsed: true },
         "/archived": { archived: true },
       },
-      openProjectPaths: ["/open", "/collapsed"],
+      openProjectPaths: ["/open", "/collapsed", "/dated"],
       openProjects: [],
       workspace: null,
       activeProjectPath: null,
       activeSessionId: null,
       selectingSessionId: null,
       page: "chat",
+      settings: { sidebarSessionTime: true },
       projectCollapsed: {},
       sessionView: { sort: "recent", archived: false },
     };
@@ -146,6 +147,13 @@ test("sidebar renders global pins once, outside project folding and history limi
       /<div class="sidebar-session-group-clip"><div class="sidebar-session-group-list">/,
     );
     assert.ok(rows(openGroup).length > 0, "an expanded group renders its rows");
+    assert.doesNotMatch(openGroup, /sidebar-time-group-header/);
+    assert.match(openGroup, /class="sidebar-load-more"/);
+
+    const datedGroup =
+      unpinned.match(/data-sidebar-project-group="\/dated"[\s\S]*?<\/section>/)?.[0] ?? "";
+    assert.deepEqual(rows(datedGroup), ["date-row"]);
+    assert.match(datedGroup, /class="thread-item-meta(?: is-menu-open)?"[\s\S]*?class="thread-item-last-reply">Jan 1<\/span>/);
 
     // A retained project with no sessions is the empty state, and it has to sit
     // in the same list layer so the fold animates it away too.

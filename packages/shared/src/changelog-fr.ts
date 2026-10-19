@@ -2,6 +2,27 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.21.0",
+    date: "2026-10-16",
+    highlights: [
+      "Les plugins installés s'affichent en cartes dans une grille auto-adaptative, chacune avec une action claire et son état de confiance, de mise à jour et de portée visible.",
+      "Consultez les notes et avis publics des plugins du marché et ouvrez le centre de plugins pour en écrire un — l'application de bureau ne se connecte jamais.",
+      "Les longues commandes Bash continuent en tâche de fond à la fin du tour, et leur sortie reste consultable.",
+      "Les conversations parallèles d’un projet s’exécutent chacune dans un worktree Git isolé.",
+      "Gardez la liste Todo à côté du Composer et développez-la pour voir toute la liste.",
+      "Repérez l’étape en cours : un reflet lumineux traverse son texte, et les lignes terminées restent du texte barré tout simple.",
+      "Les commandes Bash et le raisonnement s’affichent sur des lignes distinctes dans la conversation.",
+      "L’en-tête des projets signale l’activité en cours même lorsque le groupe est replié ; le compteur et la barre d’activité se règlent séparément.",
+      "Copiez les détails du projet et de la conversation depuis les sous-menus contextuels de la barre latérale.",
+      "Repérez les fichiers par leur chemin relatif complet dans les suggestions @.",
+      "Revenez à la même position de lecture en retournant à une longue conversation.",
+      "Rouvrez les projets archivés depuis la barre latérale.",
+      "Ouvrez les artefacts HTML locaux dans la conversation qui les a créés.",
+      "Faites défiler les tableaux Markdown larges sans déformer la conversation.",
+      "La conversation reste utilisable lorsqu’un outil renvoie une image trop volumineuse.",
+    ],
+  },
+  {
     "version": "0.20.1",
     "date": "2026-10-13",
     "highlights": [

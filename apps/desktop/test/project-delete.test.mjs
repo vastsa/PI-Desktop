@@ -65,7 +65,9 @@ function projectValue(block, key) {
  * menus of the same surface.
  */
 function deleteHandler(source) {
-  const start = source.indexOf('data-action="delete-project"');
+  const start = source.indexOf('data-action="delete-project"') >= 0
+    ? source.indexOf('data-action="delete-project"')
+    : source.indexOf('id: "delete-project"');
   assert.ok(start >= 0, "the delete action is present");
   const rest = source.slice(start);
   const end = rest.search(/\n\s+>\n/);
@@ -139,8 +141,12 @@ test("both project menus expose a destructive delete action", () => {
     ["Sidebar", sidebarSource],
   ]) {
     // The destructive style stays on the menu action until confirmation.
-    assert.match(source, /className="danger"/, surface);
-    assert.match(source, /data-action="delete-project"/, surface);
+    assert.match(source, /className="danger"|danger: true/, surface);
+    assert.match(
+      source,
+      surface === "Sidebar" ? /id: "delete-project"/ : /data-action="delete-project"/,
+      surface,
+    );
     assert.match(source, /<ProjectDeleteDialog/, surface);
   }
 
@@ -151,8 +157,8 @@ test("both project menus expose a destructive delete action", () => {
     "ProjectsPage orders delete after archive",
   );
   assert.ok(
-    sidebarSource.indexOf('data-action="delete-project"') >
-      sidebarSource.indexOf('data-action="toggle-project-archive"'),
+    sidebarSource.indexOf('id: "delete-project"') >
+      sidebarSource.indexOf('id: "toggle-project-archive"'),
     "Sidebar orders delete after archive",
   );
   assert.match(projectsSource, /sessionCount: totalSessions/);

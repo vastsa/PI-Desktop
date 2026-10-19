@@ -303,22 +303,22 @@ test("a referenced conversation never reaches the file-attachment resolver", asy
   );
 });
 
-test("the conversation overflow menu copies the link for every reader", () => {
+test("the session Copy submenu exposes the link to every reader", () => {
   const sidebar = read("../src/components/Sidebar.tsx");
-  assert.match(sidebar, /data-action="copy-session-link"/);
-  assert.match(sidebar, /t\("nav\.copySessionLink"\)/);
+  assert.match(
+    sidebar,
+    /id: "session-copy"[\s\S]*?id: "copy-conversation-id"[\s\S]*?id: "copy-session-link"/,
+  );
   assert.match(sidebar, /navigator\.clipboard\.writeText\(formatSessionLink\(session\.id\)\)/);
   assert.doesNotMatch(sidebar, /pi-desktop:\/\/session\//, "the scheme stays in shared");
 
-  const link = sidebar.indexOf('data-action="copy-session-link"');
-  const fork = sidebar.indexOf('data-action="fork-session"');
-  const developer = sidebar.indexOf('data-action="copy-conversation-id"');
-  assert.ok(
-    link > 0 && link > fork && link < developer,
-    "an ordinary reader sees it; the developer-only actions stay behind their gate",
+  const developerBlock = sidebar.slice(
+    sidebar.indexOf("settings?.developerMode === true"),
+    sidebar.indexOf('id: "session-danger"'),
   );
+  assert.match(developerBlock, /id: "open-session-path"/);
+  assert.doesNotMatch(developerBlock, /copy-conversation-id|copy-session-path/);
 });
-
 test("the reference keys exist in every shipped locale", () => {
   const locales = Object.keys(catalogs);
   assert.equal(locales.length, 9, "nine locales ship");

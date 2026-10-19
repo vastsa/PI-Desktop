@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type BackgroundTaskOutput, type BackgroundTaskSummary } from "../../../lib/api";
+import {
+  type BarVisibility,
+  EMPTY_VISIBILITY,
+  dismissTask,
+  nextExpiryAt,
+  observeTasks,
+  selectVisibleTasks,
+} from "./bar-visibility";
 
 const REFRESH_MS = 1_000;
 type Failure = "load" | "output" | "stop";
 
 export function useBackgroundTasks() {
   const [tasks, setTasks] = useState<BackgroundTaskSummary[]>([]);
+  // Renderer-local view state: which tasks the bar may show. The registry in
+  // host-core stays the source of truth for the processes themselves.
+  const [visibility, setVisibility] = useState<BarVisibility>(EMPTY_VISIBILITY);
+  const [clock, setClock] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
   const [stoppingIds, setStoppingIds] = useState<Set<string>>(() => new Set());
@@ -31,7 +43,10 @@ export function useBackgroundTasks() {
       try {
         const result = await api.backgroundTasksList();
         if (disposed) return;
+        const observedAt = Date.now();
         setTasks(result.tasks);
+        setVisibility((current) => observeTasks(current, result.tasks, observedAt));
+        setClock(observedAt);
         setError((current) => current === "load" ? null : current);
         pollAgain = result.tasks.some((task) => task.state === "running");
       } catch (failure) {
@@ -62,6 +77,17 @@ export function useBackgroundTasks() {
       unsubscribe();
     };
   }, []);
+
+  // Only what the bar should render: running tasks, a finished task during its
+  // post-exit grace window, and the row whose output the user is reading.
+  const visibleTasks = selectVisibleTasks(visibility, tasks, clock, expandedId);
+
+  useEffect(() => {
+    const expiry = nextExpiryAt(visibility, tasks, clock, expandedId);
+    if (expiry === null) return;
+    const timer = setTimeout(() => setClock(Date.now()), Math.max(0, expiry - clock));
+    return () => clearTimeout(timer);
+  }, [visibility, tasks, clock, expandedId]);
 
   const selectedState = tasks.find((task) => task.id === expandedId)?.state;
   useEffect(() => {
@@ -98,6 +124,11 @@ export function useBackgroundTasks() {
     setError((current) => current === "output" ? null : current);
   }, []);
 
+  const dismiss = useCallback((id: string) => {
+    setVisibility((current) => dismissTask(current, id));
+    setExpandedId((current) => current === id ? null : current);
+  }, []);
+
   const stop = useCallback(async (id: string) => {
     if (pendingStops.current.has(id)) return;
     pendingStops.current.add(id);
@@ -117,5 +148,14 @@ export function useBackgroundTasks() {
     }
   }, []);
 
-  return { tasks, expandedId, output, stoppingIds, error, toggleOutput, stop };
+  return {
+    tasks: visibleTasks,
+    expandedId,
+    output,
+    stoppingIds,
+    error,
+    toggleOutput,
+    stop,
+    dismiss,
+  };
 }

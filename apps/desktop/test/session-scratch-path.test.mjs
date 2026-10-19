@@ -44,32 +44,37 @@ test("main opens only a resolved session scratch directory", () => {
   assert.doesNotMatch(handler, /input\.path/);
 });
 
-test("developer-mode conversation overflow copies the id then opens scratch", () => {
-  assert.match(sidebarSource, /data-action="copy-conversation-id"/);
-  assert.match(sidebarSource, /navigator\.clipboard\.writeText\(session\.id\)/);
-  assert.match(sidebarSource, /data-action="open-session-path"/);
-  assert.match(sidebarSource, /api\.openSessionScratchPath\(session\.id\)/);
-  assert.doesNotMatch(sidebarSource, /data-action="copy-session-path"/);
-  assert.doesNotMatch(sidebarSource, /data-action="open-session-folder"/);
-  assert.doesNotMatch(sidebarSource, /copySessionPath/);
+test("session Copy menu exposes id, scratch path, and link", () => {
+  assert.match(sidebarSource, /sidebarMenuSubmenu\(\{[\s\S]*?id: "session-copy"/);
+  assert.match(sidebarSource, /id: "copy-conversation-id"/);
+  assert.match(sidebarSource, /id: "copy-session-path"/);
+  assert.match(sidebarSource, /api\.getSessionScratchPath\(session\.id\)/);
+  assert.match(sidebarSource, /if \(isRemoteSession\(session\)\) return/);
+  assert.match(sidebarSource, /id: "copy-session-link"/);
+  assert.match(sidebarSource, /formatSessionLink\(session\.id\)/);
+  assert.match(sidebarSource, /navigator\.clipboard\.writeText\(value\)/);
 
-  const copyIndex = sidebarSource.indexOf('data-action="copy-conversation-id"');
-  const openIndex = sidebarSource.indexOf('data-action="open-session-path"');
-  const deleteIndex = sidebarSource.indexOf('data-action="delete-session"');
-  assert.ok(copyIndex > 0 && openIndex > copyIndex && deleteIndex > openIndex);
-
-  const developerBlock = sidebarSource.slice(
+  const developerActions = sidebarSource.slice(
     sidebarSource.indexOf("settings?.developerMode === true"),
-    deleteIndex,
+    sidebarSource.indexOf('id: "session-danger"'),
   );
-  assert.match(developerBlock, /copy-conversation-id/);
-  assert.match(developerBlock, /open-session-path/);
+  assert.match(developerActions, /id: "open-session-path"/);
+  assert.doesNotMatch(developerActions, /copy-conversation-id|copy-session-path/);
 });
 
-test("conversation overflow labels are localized", () => {
+test("session and project copy labels are localized", () => {
   assert.match(english, /copyConversationId:\s*"Copy conversation ID"/);
-  assert.match(english, /openSessionPath:\s*"Open session path"/);
-  assert.doesNotMatch(english, /copySessionPath:/);
+  assert.match(english, /copySessionPath:\s*"Copy session path"/);
+  assert.match(english, /copySessionLink:\s*"Copy conversation link"/);
+  assert.match(english, /copyName:\s*"Copy project name"/);
+  assert.match(english, /copyPath:\s*"Copy project path"/);
   assert.match(chinese, /copyConversationId:\s*"复制对话 ID"/);
+  assert.match(chinese, /copySessionPath:\s*"复制会话路径"/);
+  assert.match(chinese, /copyName:\s*"复制项目名称"/);
+  assert.match(chinese, /copyPath:\s*"复制项目路径"/);
+});
+
+test("developer-only open path label remains localized", () => {
+  assert.match(english, /openSessionPath:\s*"Open session path"/);
   assert.match(chinese, /openSessionPath:\s*"打开会话路径"/);
 });

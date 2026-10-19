@@ -16,7 +16,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `clipboard.read` | medium | `clipboard.readText`, `clipboard.getHistory` | Confirm on first use | May read sensitive information and retained clipboard history |
 | `clipboard.write` | medium | `clipboard.writeText` | Confirm on first use | Prevents clipboard pollution |
 | `notify` | low | `ui.notify`, `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | Can be granted by default | Native delivery is OS-controlled; avoid notification-spam abuse |
-| `fs.read` | medium | `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` / `fs.glob` / `fs.list` / `fs.requestDirectory` / dropped-file grant | Granted at install, bounded by `manifest.fs.read` | `fs.stat` and `fs.readRange` share the read gate; a dropped-file grant is one-file, read-only, memory-only, and gesture-bound; all file calls remain root- and deny-list-checked |
+| `fs.read` | medium | `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.openInBrowser` / `fs.reveal` / `fs.glob` / `fs.list` / `fs.requestDirectory` / dropped-file grant | Granted at install, bounded by `manifest.fs.read` | `fs.stat` and `fs.readRange` share the read gate; Browser open accepts HTML only and creates a resource tab without granting CDP; a dropped-file grant is one-file, read-only, memory-only, and gesture-bound; all file calls remain root- and deny-list-checked |
 | `fs.write` | high | `fs.writeText` | Granted at install, bounded by `manifest.fs.write` | Scope is required; a whole-tree pattern fails validation. Out of scope asks the user |
 | `fs.delete` | high | `fs.remove` | Granted at install, bounded by `manifest.fs.delete` | Two tiers (`own` / `scope`), always via the OS trash, non-recursive, rate-braked (§2B) |
 | `fs.read.workspace` | medium | — | Downgraded on load to `fs.read` with a whole-tree scope | Legacy name; predates scopes |
@@ -99,6 +99,9 @@ plugin, so it carries three bounds the other modes do not:
 - `ui.panel` is required to load a panel entry
 - `ui.view` is required to contribute work panel views; it is independent of
   `ui.panel`, so a plugin may ship docked views without a detached window
+- `ui.view` also covers `pi.ui.revealView`, which shows one of the plugin's own
+  views in a session's work panel; following the selected session
+  (`pi.session.getActive`, `session:activated`) needs no permission
 - `agent.tool.register` is required to contribute agentTools
 - When `fs.write` is present, it is recommended to also declare `fs.read`
 - `manifest.fs.<mode>` requires the matching `fs.<mode>` permission; a scope

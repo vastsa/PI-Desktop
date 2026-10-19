@@ -166,11 +166,8 @@ test("sidebar section toolbars open create actions from context menus", () => {
   assert.match(sidebarSource, /data-sidebar-section=\"projects\"/);
   assert.match(sidebarSource, /openSectionMenu\(\"sessions\"/);
   assert.match(sidebarSource, /openSectionMenu\(\"projects\"/);
-  assert.match(sidebarSource, /data-sidebar-section-menu=\{sectionMenu\}/);
-  assert.match(
-    sidebarSource,
-    /className=\"sidebar-row-menu sidebar-floating-menu sidebar-section-menu\"/,
-  );
+  assert.match(sidebarSource, /className="sidebar-section-menu"/);
+  assert.doesNotMatch(sidebarSource, /data-sidebar-section-menu=\{sectionMenu\}/);
   assert.match(sidebarSource, /e\.button === 2/);
   assert.match(sidebarSource, /addEventListener\("pointerdown"/);
 });
@@ -182,8 +179,8 @@ test("sidebar floating menus stay anchored to triggers and pointer positions", (
   const pointPlacement = sidebarSource.match(
     /const placeMenuAtPoint = useCallback\([\s\S]*?\n  }, \[\]\);/,
   )?.[0] ?? "";
-
-  assert.match(triggerPlacement, /const anchor = \{ top: rect\.top, bottom: rect\.bottom \}/);
+  assert.match(sidebarSource, /return portalToBody\(/);
+  assert.match(sidebarSource, /<SidebarMenuPanel/);
   assert.match(triggerPlacement, /placeSidebarFloatingMenuTop\(/);
   assert.match(triggerPlacement, /left:\s*Math\.max\(/);
   assert.match(triggerPlacement, /rect\.right \+ 4/);
@@ -191,13 +188,57 @@ test("sidebar floating menus stay anchored to triggers and pointer positions", (
   assert.match(pointPlacement, /placeSidebarFloatingMenuTop\(/);
   assert.match(pointPlacement, /x \+ 4/);
   assert.match(sidebarSource, /placeMenuAtPoint\(event\.clientX, event\.clientY\)/);
-  assert.match(sidebarSource, /menu\.getBoundingClientRect\(\)\.height/);
+  /* One panel owns every menu, so exactly one surface is ref'd per open. */
+  assert.equal((sidebarSource.match(/ref=\{floatingMenuRef\}/g) ?? []).length, 0);
+  assert.equal((sidebarSource.match(/menuRef=\{floatingMenuRef\}/g) ?? []).length, 4);
   assert.match(sidebarSource, /new ResizeObserver\(reposition\)/);
-  assert.equal((sidebarSource.match(/ref=\{floatingMenuRef\}/g) ?? []).length, 3);
-  assert.match(sidebarSource, /left: menuPosition\.left/);
-  assert.doesNotMatch(sidebarSource, /right: menuPosition\.right/);
+  assert.match(sidebarSource, /const position = \{ top: menuPosition\.top, left: menuPosition\.left \}/);
+  assert.equal((sidebarSource.match(/position=\{position\}/g) ?? []).length, 4);
 });
 
+/*
+  The row menus had grown into long flat lists; these assertions keep related
+  actions behind hover-opened second-level menus while leaving common actions
+  one click away and destructive actions isolated.
+*/
+test("sidebar row menus expose hover submenus for related actions", () => {
+  const sessionMenu = sidebarSource.match(
+    /const sessionMenuContent = useCallback\([\s\S]*?\n    \[\n[\s\S]*?\n    \],\n  \);/,
+  )?.[0] ?? "";
+  const projectMenu = sidebarSource.match(
+    /const projectMenuContent = useCallback\([\s\S]*?\n    \[\n[\s\S]*?\n    \],\n  \);/,
+  )?.[0] ?? "";
+  const sortMenu = sidebarSource.match(
+    /const sortMenuContent = useMemo\([\s\S]*?\n    \[displaySessionSort[\s\S]*?\n  \);/,
+  )?.[0] ?? "";
+
+  assert.ok(sessionMenu, "session menu content must exist");
+  assert.ok(projectMenu, "project menu content must exist");
+  assert.ok(sortMenu, "sort menu content must exist");
+
+  /* Destructive actions are nested instead of sharing the root menu. */
+  assert.match(sessionMenu, /sidebarMenuSubmenu\(\{[\s\S]*?id: "session-danger"[\s\S]*?id: "delete-session"/);
+  assert.match(projectMenu, /sidebarMenuSubmenu\(\{[\s\S]*?id: "project-danger"[\s\S]*?id: "delete-project"/);
+  assert.match(sidebarSource, /sidebarMenuSubmenu\(\{[\s\S]*?id: "batch-danger"[\s\S]*?id: "batch-delete"/);
+  assert.match(sessionMenu, /id: "batch-archive"|id: "copy-session-link"/);
+
+  /* Related actions open as real second-level menus. */
+  assert.match(sessionMenu, /sidebarMenuSubmenu\(\{[\s\S]*?id: "session-git"[\s\S]*?items: gitItems/);
+  assert.match(sessionMenu, /id: "session-copy"[\s\S]*?id: "copy-conversation-id"[\s\S]*?id: "copy-session-path"[\s\S]*?id: "copy-session-link"/);
+  assert.match(sidebarSource, /api\.getSessionScratchPath\(session\.id\)/);
+  assert.match(sessionMenu, /id: "open-session-path"/);
+  assert.match(projectMenu, /sidebarMenuSubmenu\(\{[\s\S]*?id: "project-git"[\s\S]*?items: projectIsolationItems/);
+  assert.match(projectMenu, /id: "project-copy"[\s\S]*?id: "copy-project-name"[\s\S]*?id: "copy-project-path"/);
+  assert.match(projectMenu, /sidebarMenuAction\(\{\s*id: "copy-project-name",\s*label: t\("project\.copyName"\),\s*icon: <IconCopy size=\{14\} \/>,/);
+  assert.match(projectMenu, /id: "project-git"[\s\S]*?icon: <IconBranch size=\{14\} \/>/);
+  assert.match(projectMenu, /copyTextToClipboard\(entry\.displayPath \?\? entry\.path\)/);
+
+  /* The sort popover is two labelled groups instead of a title plus loose rows. */
+  assert.match(sortMenu, /id: "sort"/);
+  assert.match(sortMenu, /id: "view"/);
+  assert.doesNotMatch(sidebarSource, /className="sidebar-popover-title"/);
+  assert.doesNotMatch(sidebarSource, /className="sidebar-popover-divider"/);
+});
 test("portaled sort menu does not stretch to the viewport edge", () => {
   const basePopoverRule = globalStyles.match(
     /\.sidebar-row-menu,\n\.sidebar-popover\s*\{[^}]*\}/s,
@@ -245,7 +286,7 @@ test("sidebar action icons stay quiet until their toolbar or row is hovered", ()
 });
 
 test("project rows expose folder actions and full-path hover", () => {
-  assert.match(sidebarSource, /data-action="open-project-folder"/);
+  assert.match(sidebarSource, /id: "open-project-folder"/);
   assert.match(sidebarSource, /api\.openProjectFolder\(entry\.path\)/);
   assert.doesNotMatch(sidebarSource, /data-action="edit-project-instructions"/);
   assert.doesNotMatch(sidebarSource, /<ProjectInstructionsDialog/);
@@ -327,13 +368,17 @@ test("hidden row actions stay out of the row's click path", () => {
   );
   assert.match(
     globalStyles,
-    /\.thread-item:focus-within \.thread-item-more,\s*\n\.thread-item-more:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
+    /\.thread-item:hover \.thread-item-more,\s*\n\.thread-item:focus-within \.thread-item-more,[\s\S]*?\{[^}]*pointer-events:\s*auto;/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.thread-item-more:focus-visible\s*\{[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/s,
   );
   // Without hover there is no reveal, so a no-hover pointer gets the controls
   // visible and tappable instead of an invisible gutter.
   assert.match(
     globalStyles,
-    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
+    /@media \(hover: none\)\s*\{[\s\S]*?\.thread-item-meta \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
   );
   // The row itself stays clickable where the hidden control used to swallow
   // the click, and spelled-out controls never double-fire the row.

@@ -124,7 +124,8 @@ destination, chat as the home surface, tools and permissions inline.
   left takes space until MainChat reaches 450px, at which point the expanded
   sidebar yields immediately, and moving it right gives space back. A manual
   sidebar reopen spends work-panel width first and otherwise targets a 460px
-  MainChat width. The sole
+  MainChat width, without changing the stored panel width, which returns when
+  the sidebar collapses again. The sole
   panel-level control is the viewport-fixed toggle; each session retains its own runtime
   open state, tab set, active tab, and Browser resource in renderer memory.
   Selecting another session swaps the visible panel context without deleting
@@ -224,6 +225,27 @@ destination, chat as the home surface, tools and permissions inline.
   dense tree rather than detached cards. Hovering or focusing the project title
   reveals the full project path. Pressing the title and moving 8px reorders
   the group.
+- **Running activity**: a project group whose sessions have live work marks
+  that fact on its *header*, because a collapsed group folds its body to a
+  zero-height `inert` region and would otherwise hide every row-level status
+  dot exactly when the answer is most useful. Two independent affordances
+  share one amber `--ds-warning` vocabulary (a pending permission keeps the
+  purple `--ds-purple` used by the conversation row):
+  - a **count badge** after the project name, showing running and
+    permission-waiting counts as separate capsules so the two figures are
+    never read as one number;
+  - an **activity rail**: a 2px track down the group's left edge with a
+    travelling pulse, spanning the opened conversation list and shrinking to
+    the header while the group is collapsed, plus a matching count.
+  Remote host groups carry the same pair. Settings → General → Sidebar owns
+  one master switch (`AppSettings.sidebarRunningIndicators`) gating two
+  sub-switches (`sidebarRunningBadge`, `sidebarRunningRail`). When unset, the
+  master and Count badge resolve on while Activity rail resolves off; explicit
+  saved values remain authoritative. The master gates both affordances, and
+  turning it off leaves the saved sub-switch choices intact. No settings
+  migration is required.
+  Motion is decoration only: `prefers-reduced-motion` keeps both static
+  shapes legible with the animation removed.
 - **Project actions**: open folder reveals the primary project directory; Edit
   project changes the host-owned logical group name and adjusts eligible
   non-primary roots (keeping renderer metadata in sync); pin/unpin changes
@@ -265,10 +287,12 @@ destination, chat as the home surface, tools and permissions inline.
   first, and Name. Pinned rows precede unpinned rows. Project groups switch
   to `manual` by dragging a title or using ArrowUp/ArrowDown on that
   title. Session `manual` remains a compatibility value.
-- **Conversation list**: each group shows the ten most-recent sessions in the
-  active sort order by default; the remainder folds behind a **Load N more…**
-  row that expands the full time-grouped list on click. Pinned rows precede
-  unpinned rows and are never pushed behind the fold; the expansion state is
+- **Conversation list**: each project group shows the ten most-recent sessions
+  in the active sort order by default; the remainder folds behind a **Load N
+  more…** row. The list has no time-group headings. Rows show the title and a
+  localized last-reply age through seven calendar days, then a concrete date;
+  hovering or focusing a row replaces the date with its session actions. Pinned
+  rows precede unpinned rows and are never pushed behind the fold; expansion is
   not persisted.
 - **Standalone sessions**: path-less sessions remain in the separate Sessions
   section and never inherit the last active project's workspace.
@@ -352,13 +376,17 @@ schedule. Renaming an Hourly task does not restart its interval.
 ### 3.4 Extensions
 
 The Extensions destination is a focused plugin surface with a compact header and
-only two tabs: **Installed** and **Marketplace**. Installed groups plugin rows
+only two tabs: **Installed** and **Marketplace**. Installed groups plugin cards
 by state — Needs attention / Updates available / Active / Turned off — as soft
-tiles stacked under a group label (D296). Marketplace remains the browse/install
-card grid and always uses the official catalog. The page draws no dividers:
-header, toolbar, rows, cards and the detail sheet's sections are set apart by
-tone and spacing, and hairlines are reserved for floating layers (menus, sheet,
-dialogs). MCP, Skills, and Subagents are not tabs or sections of Extensions.
+tiles in an auto-filling card grid under a group label (D296). Marketplace
+remains the browse/install card grid and always uses the official catalog.
+Public ratings and reviews are read-only here: cards carry a rating chip, the
+detail sheet carries a ratings summary, and a review drawer opens over the
+sheet; writing a review is a link out to the plugin centre's own page. The page
+draws no dividers: header, toolbar, cards and the detail sheet's sections are
+set apart by tone and spacing, and hairlines are reserved for floating layers
+(menus, sheet, dialogs). MCP, Skills, and Subagents are not tabs or sections of
+Extensions.
 
 ### 3.5 Settings (full-page takeover)
 ### 3.5 Settings (full-page takeover)

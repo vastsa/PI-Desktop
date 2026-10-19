@@ -98,19 +98,13 @@ test("only session rows use the shared two-step delete arm", () => {
 });
 
 test("the session menu deletes on the second click, not the first", () => {
-  assert.match(sidebarSource, /data-action="delete-session"/);
-  assert.match(sidebarSource, /onClick=\{\(\) => requestDeleteSession\(session\)\}/);
+  assert.match(sidebarSource, /id: "delete-session"/);
+  assert.match(sidebarSource, /onSelect: \(\) => requestDeleteSession\(session\),/);
   // The item shows which click it is on, for the pointer and for the tests.
-  assert.match(sidebarSource, /data-armed=\{armedDelete === session\.id \? "true" : undefined\}/);
   assert.match(
     sidebarSource,
-    /className=\{cx\("danger", armedDelete === session\.id && "is-armed"\)\}/,
+    /label:[\s\S]*?armedDelete === session\.id[\s\S]*?t\("nav\.deleteTaskConfirm", \{ defaultValue: "Delete\?" \}\)[\s\S]*?t\("nav\.deleteTask", \{ defaultValue: "Delete" \}\)/,
   );
-  assert.match(
-    sidebarSource,
-    /\{armedDelete === session\.id\s*\?\s*t\("nav\.deleteTaskConfirm", \{ defaultValue: "Delete\?" \}\)\s*:\s*t\("nav\.deleteTask", \{ defaultValue: "Delete" \}\)\}/,
-  );
-  // Session ids are the armed keys of the sidebar's session items.
 
   const request = handlerBlock(sidebarSource, "requestDeleteSession");
   assert.match(request, /if \(armedDelete !== session\.id\) \{/);

@@ -33,7 +33,12 @@ test("the pointer-anchored menu portals, measures, and closes without trapping f
   assert.match(menuSource, /live\.isCollapsed/);
   assert.match(menuSource, /root\.contains\(anchorNode\)/);
   assert.match(menuSource, /root\.contains\(focusNode\)/);
-  assert.match(menuSource, /item\.onSelect\(state\.selection\)/);
+  assert.match(menuSource, /item\.onSelect\?\.\(state\.selection\)/);
+  assert.match(menuSource, /aria-haspopup=\{hasSubmenu \? "menu" : undefined\}/);
+  assert.match(menuSource, /setOpenSubmenuId\(item\.id\)/);
+  assert.match(menuSource, /event\.key !== "ArrowRight"/);
+  assert.match(menuSource, /event\.key === "ArrowLeft"/);
+  assert.match(menuSource, /role="menu"[\s\S]*aria-label=\{label\}/);
   assert.match(menuSource, /if \(!request\.items\.length\) return;/);
 });
 

@@ -1,13 +1,10 @@
 /**
  * The right-click action every file reference in the conversation shares.
  *
- * A reference the transcript already recognises as a file — a chip on a turn, an
- * inline code span, a link, a local image — is a file the user can open with one
- * click, so its menu offers the destination a click has no room for: the file's
- * own folder in the system file manager. The reference travels through the same
- * completion a click uses (`useRevealChatFileRef`, ADR 0262/0263), so a
- * reference that resolved to nothing says so instead of revealing a lookalike
- * somewhere else.
+ * HTML references expose explicit open destinations in the context menu: the
+ * bundled File Manager, built-in browser, and default browser. Each destination
+ * goes through the same resolver as a normal click, so a reference that resolves
+ * to nothing cannot open a lookalike somewhere else.
  *
  * Items are data, exactly as `ContextMenu` takes them: every surface keeps the
  * menu instance it already owns and shares only this vocabulary, so a row that
@@ -17,9 +14,19 @@
 import { useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useContextMenu, type ContextMenuItem } from "../components/ContextMenu";
-import { IconCopy, IconFolderOpen } from "../components/icons";
+import {
+  IconBrowser,
+  IconCopy,
+  IconExternal,
+  IconFolderOpen,
+  IconGlobe,
+} from "../components/icons";
+import { isHtmlFilePath } from "../lib/chat-links";
 import { useChatNativeFilesAllowed } from "./use-chat-session-capability";
-import { useCopyChatFileRef, useRevealChatFileRef } from "./use-preview-target";
+import {
+  useCopyChatFileRef,
+  useOpenChatFileRef,
+} from "./use-preview-target";
 
 export type ChatFileMenuTarget = {
   /** The reference as the surface spelled it, before completion. */
@@ -31,21 +38,51 @@ export type ChatFileMenuTarget = {
 export function useChatFileMenuItems() {
   const { t } = useTranslation();
   const nativeFilesAllowed = useChatNativeFilesAllowed();
-  const revealFileRef = useRevealChatFileRef();
+  const openFileRef = useOpenChatFileRef();
   const copyFileRef = useCopyChatFileRef();
   return useCallback(
     ({ path, baseDir }: ChatFileMenuTarget): ContextMenuItem[] => [
-      ...(nativeFilesAllowed ? [{
-        id: "reveal-in-folder",
-        label: t("chat.revealFileInFolder"),
-        icon: <IconFolderOpen size={14} />,
-        onSelect: () => revealFileRef(path, baseDir),
-      }] : []),
+      ...(nativeFilesAllowed && isHtmlFilePath(path)
+        ? [{
+            id: "open-with",
+            label: t("chat.openWith"),
+            icon: <IconExternal size={14} />,
+            submenu: [
+              {
+                id: "open-with-file-manager",
+                label: t("chat.openWithFileManager"),
+                icon: <IconFolderOpen size={14} />,
+                onSelect: () =>
+                  openFileRef(path, baseDir, undefined, {
+                    destination: "file-manager",
+                  }),
+              },
+              {
+                id: "open-with-built-in-browser",
+                label: t("chat.openWithBuiltInBrowser"),
+                icon: <IconBrowser size={14} />,
+                onSelect: () =>
+                  openFileRef(path, baseDir, undefined, {
+                    destination: "built-in-browser",
+                  }),
+              },
+              {
+                id: "open-with-default-browser",
+                label: t("chat.openWithDefaultBrowser"),
+                icon: <IconGlobe size={14} />,
+                onSelect: () =>
+                  openFileRef(path, baseDir, undefined, {
+                    destination: "default-browser",
+                  }),
+              },
+            ],
+          }]
+        : []),
       {
         id: "copy-full-path",
         label: t("chat.copyFullPath"),
         icon: <IconCopy size={14} />,
-        separatorBefore: nativeFilesAllowed,
+        separatorBefore: nativeFilesAllowed && isHtmlFilePath(path),
         onSelect: () => copyFileRef(path, baseDir, "absolute"),
       },
       {
@@ -55,7 +92,7 @@ export function useChatFileMenuItems() {
         onSelect: () => copyFileRef(path, baseDir, "relative"),
       },
     ],
-    [copyFileRef, nativeFilesAllowed, revealFileRef, t],
+    [copyFileRef, nativeFilesAllowed, openFileRef, t],
   );
 }
 

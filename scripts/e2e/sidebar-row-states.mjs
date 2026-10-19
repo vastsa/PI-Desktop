@@ -140,6 +140,21 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
       current: element.getAttribute('data-current-workspace'),
     };
   })()`);
+  const sessionDateActions = (id) => cdp.evaluate(`(() => {
+    const row = document.querySelector(${JSON.stringify(row(id))});
+    const meta = row?.querySelector('.thread-item-meta');
+    const date = row?.querySelector('.thread-item-last-reply');
+    const action = row?.querySelector('[data-action="session-menu"]');
+    return {
+      dateText: date?.textContent?.trim() ?? "",
+      dateVisibility: date ? getComputedStyle(date).visibility : "missing",
+      dateOpacity: date ? Number.parseFloat(getComputedStyle(date).opacity) : -1,
+      sameSlot: Boolean(meta && date?.parentElement === meta && action?.parentElement === meta),
+      noDivider: !row?.querySelector('.thread-item-date-separator'),
+      actionOpacity: action ? Number.parseFloat(getComputedStyle(action).opacity) : -1,
+      actionPointerEvents: action ? getComputedStyle(action).pointerEvents : "missing",
+    };
+  })()`);
   const point = async (selector) => {
     let target;
     await waitFor(async () => {
@@ -232,6 +247,33 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
         `${theme} project and conversation hover share one row surface, never a nested title fill`,
         JSON.stringify({ groupHover, titleHover, rowHover }),
       );
+
+      const datedRowId = seed.alphaSessionIds.at(-1);
+      await move(600, 120);
+      const dateAtRest = await sessionDateActions(datedRowId);
+      await hover(`${row(datedRowId)} .thread-item-main`);
+      const dateOnHover = await sessionDateActions(datedRowId);
+      check(
+        dateAtRest.dateText.length > 0 && dateAtRest.dateVisibility === "visible" &&
+          dateAtRest.dateOpacity === 1 && dateAtRest.sameSlot && dateAtRest.noDivider &&
+          dateAtRest.actionOpacity === 0 &&
+          dateAtRest.actionPointerEvents === "none" && dateOnHover.dateVisibility === "hidden" &&
+          dateOnHover.dateOpacity === 0 && dateOnHover.sameSlot && dateOnHover.actionOpacity === 1 &&
+          dateOnHover.actionPointerEvents === "auto",
+        `${theme} project session rows swap the resting date for actions in one slot on hover`,
+        JSON.stringify({ dateAtRest, dateOnHover }),
+      );
+      await cdp.evaluate(`document.querySelector(${JSON.stringify(row(datedRowId) + " .thread-item-main")}).focus()`);
+      const dateOnFocus = await sessionDateActions(datedRowId);
+      check(
+        dateOnFocus.dateVisibility === "hidden" && dateOnFocus.actionOpacity === 1 &&
+          dateOnFocus.actionPointerEvents === "auto",
+        `${theme} keyboard focus reveals session actions in place of the date`,
+        JSON.stringify(dateOnFocus),
+      );
+      await cdp.evaluate("document.activeElement instanceof HTMLElement && document.activeElement.blur()");
+      await move(600, 120);
+
       await hover(`${row(id)} .thread-item-main`);
       const selectedHover = await paint(row(id));
       check(
@@ -242,7 +284,13 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
 
       await hover(title(seed.paths.alpha));
       await cdp.evaluate("window.dispatchEvent(new Event('blur'))");
-      await delay(180);
+      await waitFor(async () => {
+        const [headerPaint, selectedPaint] = await Promise.all([
+          paint(header(seed.paths.alpha)),
+          paint(row(id)),
+        ]);
+        return headerPaint.background === transparent && selectedPaint.background === selectedRest.background;
+      }, `${theme} window blur releases hover without clearing selection`);
       const blurredHeader = await paint(header(seed.paths.alpha));
       const blurredSelected = await paint(row(id));
       check(

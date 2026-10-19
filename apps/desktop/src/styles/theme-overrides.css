@@ -215,13 +215,19 @@
   white-space: nowrap;
 }
 
-/* Keep the Agent/Plan/Goal control stable while its localized label changes. */
+/* Keep the Agent/Plan/Goal trigger stable while its localized label changes.
+   The width covers the longest built-in label plus the menu caret. */
 .composer-mode-chip {
-  width: 88px;
-  min-width: 88px;
-  max-width: 88px;
-  flex: 0 0 88px;
-  justify-content: flex-start;
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+  flex: 0 0 96px;
+  justify-content: space-between;
+}
+
+.composer-mode-chip-caret {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
 }
 
 .composer-mode-chip-label {

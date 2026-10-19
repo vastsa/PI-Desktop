@@ -330,11 +330,14 @@ Plan is an additional host policy boundary for agent tools:
 - `net.fetch` is not granted by default
 - `openExternal` should confirm. The host parses the URL and opens only
   `http:`, `https:`, and `mailto:` (D330 / ADR 0168); other schemes fail with
-  `INVALID_ARGUMENT` and never reach `shell.openExternal`. `fs.openDefault` and
-  `fs.reveal` are separate: each accepts only an existing root-relative file
-  that already passes the plugin's `fs.read` policy. They are intended for
-  explicit file-view actions, not arbitrary URL or absolute-path opening;
-  `fs.reveal` only asks the OS file manager to select the file.
+  `INVALID_ARGUMENT` and never reach `shell.openExternal`. `fs.openDefault`,
+  `fs.openInBrowser`, and `fs.reveal` are separate: each accepts only an
+  existing file that already passes the plugin's `fs.read` policy. The Browser
+  action accepts HTML files only and opens a new work-panel resource tab; it
+  does not grant Browser CDP access. These APIs are intended for explicit
+  file-view actions, not arbitrary URL opening. The host-mediated file actions
+  also allow absolute paths under registered project roots; `fs.reveal` only
+  asks the OS file manager to select the file.
 - Plugins are forbidden from silently downloading and executing binaries (not done at all in MVP)
 
 ### 8.0 Egress allowlist

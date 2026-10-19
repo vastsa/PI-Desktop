@@ -376,6 +376,23 @@ cancels an install that is still running, where only the download is
 interruptible. Both are client-side contract: the platform's resolve call is
 unchanged and still sees one request per install or update.
 
+The client also reads public plugin reviews, anonymously:
+
+```text
+GET  /api/v1/review-summaries?pluginIds=id1,id2
+GET  /api/v1/plugins/{pluginId}/reviews?cursor=&limit=&sentiment=&sort=
+```
+
+The summary route answers aggregate ratings for the plugin ids on screen (a
+known plugin without reviews gets a zero summary; an unavailable service is
+distinct from zero), so cards can show a rating without a catalog refresh. The
+reviews route answers one page of visible reviews plus its summary and a
+stable opaque cursor. Both carry only the plugin ids and the chosen filter,
+sort, page size, and cursor — no account, session, or device identifier — and
+the desktop client cannot post, vote, or report: writing a review happens on
+the center's own web page. Public reads are anonymous and never gate install,
+update, or any other client action.
+
 ## 11. Trust tiers
 
 | Tier | Meaning | Who can set it |

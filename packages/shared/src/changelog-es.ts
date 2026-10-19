@@ -2,6 +2,27 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    version: "0.21.0",
+    date: "2026-10-16",
+    highlights: [
+      "Los plugins instalados aparecen como tarjetas en una cuadrícula autoajustable, cada una con una acción clara y su estado de confianza, actualización y alcance a la vista.",
+      "Lee valoraciones y reseñas públicas de los plugins del mercado y abre el centro de plugins para escribir una: la aplicación de escritorio nunca inicia sesión.",
+      "Los comandos Bash largos continúan como tareas en segundo plano cuando termina el turno, y puedes consultar su salida después.",
+      "Las conversaciones paralelas de un proyecto se ejecutan en worktrees de Git independientes.",
+      "Mantén la lista Todo junto al cuadro de composición y amplíala cuando necesites verla completa.",
+      "Localiza el paso que se está ejecutando: una banda de luz recorre su texto, y las filas completadas quedan como texto tachado sin más.",
+      "Los comandos Bash y el razonamiento aparecen en filas separadas de la conversación.",
+      "Los encabezados de proyecto muestran la actividad en curso incluso al contraerlos; puedes configurar por separado el contador y la barra.",
+      "Copia detalles de proyectos y sesiones desde los submenús contextuales de la barra lateral.",
+      "Localiza archivos por su ruta relativa completa en las sugerencias de @.",
+      "Al volver a una conversación larga, regresas a la misma posición de lectura.",
+      "Vuelve a abrir proyectos archivados desde la barra lateral.",
+      "Abre artefactos HTML locales dentro de la sesión que los creó.",
+      "Desplázate por tablas Markdown anchas sin alterar el diseño de la conversación.",
+      "Las conversaciones siguen funcionando si una herramienta devuelve una imagen demasiado grande.",
+    ],
+  },
+  {
     "version": "0.20.1",
     "date": "2026-10-13",
     "highlights": [

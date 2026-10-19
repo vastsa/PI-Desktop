@@ -737,26 +737,30 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 38px;
+  min-height: 44px;
   align-items: center;
   gap: 10px;
-  border: 0;
-  padding: 7px 12px;
-  background: transparent;
+  padding: 4px 8px 4px 12px;
   color: var(--ds-text-primary);
   text-align: left;
-  cursor: pointer;
-  transition: background-color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-/* TodoDock is a disclosure surface; avoid the shared button's scale press
-   feedback, which reads as a jelly effect on this compact header. */
-.todo-dock-header:active:not(:disabled) {
+.todo-dock-toggle.btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  color: var(--ds-text-muted);
+}
+
+/* The separate disclosure control should not use the shared button's scale
+   press feedback, which reads as a jelly effect at this compact size. */
+.todo-dock-toggle:active:not(:disabled) {
   transform: none;
 }
 
-.todo-dock-header:hover,
-.todo-dock-header:focus-visible {
+.todo-dock-toggle:hover:not(:disabled) {
   background: var(--ds-bg-hover);
 }
 
@@ -774,6 +778,14 @@
   font-size: var(--text-sm);
 }
 
+.todo-dock-header-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+}
+
 .todo-dock-header-text {
   flex: 0 0 auto;
   font-size: var(--text-sm);
@@ -788,11 +800,6 @@
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.todo-dock-header > svg {
-  flex: 0 0 auto;
-  color: var(--ds-text-muted);
 }
 
 .todo-dock-content {
@@ -855,14 +862,14 @@
   transition: color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
+/* The status marker is a glyph, not a box: the plain list reads as text and
+   the state is carried by ink plus the completed strike-through. */
 .todo-dock-row-symbol {
-  display: grid;
+  display: inline-flex;
   flex: 0 0 auto;
   width: 16px;
-  height: 16px;
-  place-items: center;
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-3xs);
+  align-items: center;
+  justify-content: center;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
   line-height: var(--leading-none);
@@ -872,8 +879,8 @@
   color: var(--ds-text-muted);
 }
 
-.todo-dock-row-completed .todo-dock-row-symbol {
-  border-color: var(--ds-text-muted);
+.todo-dock-row-completed .todo-dock-row-content {
+  text-decoration: line-through;
 }
 
 .todo-dock-row-in_progress {
@@ -881,18 +888,9 @@
   font-weight: var(--font-weight-medium);
 }
 
-.todo-dock-row-in_progress .todo-dock-row-symbol {
-  border-color: var(--ds-accent);
-  color: var(--ds-accent);
-}
-
 .todo-dock-row-cancelled {
   color: var(--ds-text-muted);
   opacity: 0.72;
-}
-
-.todo-dock-row-cancelled .todo-dock-row-symbol {
-  border-color: var(--ds-text-muted);
 }
 
 .todo-dock-row-content {
@@ -902,15 +900,62 @@
   white-space: nowrap;
 }
 
+/* The one moving part: a light band travelling across the text of the step
+   that is currently running. It is painted into the text itself
+   (`background-clip: text`), so nothing changes shape and no row gains a fill.
+   Geometry that makes it actually loop:
+     · `background-size: 200%` makes the image twice the text width
+     · `background-position` runs 100% → 0%, which keeps the visible window
+       inside the image at every frame (the band never leaves and stalls) and
+       slides the peak from the right edge to the left
+     · both outer stops are equal, so the restart is invisible
+   Both ink stops are `--ds-*` tokens, so light and dark each keep their own
+   contrast and a contributed theme can still move them. */
+.todo-dock-shimmer {
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    var(--ds-text-secondary) 0%,
+    var(--ds-text-secondary) 38%,
+    var(--ds-text-primary) 50%,
+    var(--ds-text-secondary) 62%,
+    var(--ds-text-secondary) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: todo-dock-shimmer-sweep 2.6s linear infinite;
+}
+
+@keyframes todo-dock-shimmer-sweep {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: 0% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .composer-mode-chip[data-planning="true"] svg {
     animation: none;
   }
 
   .todo-dock-header,
+  .todo-dock-toggle,
   .todo-dock-content,
   .todo-dock-row {
     transition: none;
+  }
+
+  /* A frozen sweep would strand the text on one gradient stop, so the reduced
+     state drops the band entirely and paints flat primary ink instead. */
+  .todo-dock-shimmer {
+    animation: none;
+    background-image: none;
+    color: var(--ds-text-primary);
   }
 }
 

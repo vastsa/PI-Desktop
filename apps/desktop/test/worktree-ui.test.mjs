@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { fileURLToPath } from "node:url";
-import { createElement } from "react";
+import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import i18n from "i18next";
 import { I18nextProvider } from "react-i18next";
@@ -15,6 +15,31 @@ import { createServer } from "vite";
 let server;
 let modules;
 const en = catalogs.en.worktree;
+
+/*
+  The worktree rows are menu data now, rendered by the sidebar's own panel.
+  This mirror keeps the assertions about those rows in one place.
+*/
+const renderItems = (items) =>
+  items.map((item) =>
+    createElement("button", {
+      key: item.id,
+      type: "button",
+      role: "menuitem",
+      "data-action": item.id,
+      disabled: item.disabled === true,
+      "aria-busy": item.busy ? true : undefined,
+      title: item.title,
+      onClick: item.onSelect,
+    }, item.icon, createElement("span", { className: "sidebar-menu-label" }, item.label)));
+
+const SessionItems = (props) =>
+  createElement(Fragment, null, renderItems(modules.parts.useWorktreeSessionMenuItems(props)));
+const ProjectItems = (props) =>
+  createElement(Fragment, null, renderItems(modules.parts.useWorktreeProjectMenuItems(props)));
+const DeleteLoss = ({ sessionId }) =>
+  createElement(Fragment, null, modules.parts.useWorktreeDeleteLossText(sessionId));
+
 const previousDocument = globalThis.document;
 const previousWindow = globalThis.window;
 
@@ -122,12 +147,11 @@ test("the sidebar badges isolated sessions and leaves ordinary ones unchanged", 
 });
 
 test("only isolated sessions get worktree menu items, disabled while running or missing", () => {
-  const { WorktreeSessionMenuItems, WorktreeProjectMenuItems } = modules.parts;
   const props = { sessionId: "s1", title: "Task", running: false, onDone() {} };
-  assert.equal(wrap(createElement(WorktreeSessionMenuItems, props)), "");
+  assert.equal(wrap(createElement(SessionItems, props)), "");
 
   const idle = wrap(
-    createElement(WorktreeSessionMenuItems, {
+    createElement(SessionItems, {
       ...props,
       worktree: { branch: "pi-desktop/s1", status: "active", setupStatus: "failed" },
     }),
@@ -141,7 +165,7 @@ test("only isolated sessions get worktree menu items, disabled while running or 
   assert.ok(idle.includes(en.sync.menu));
 
   const running = wrap(
-    createElement(WorktreeSessionMenuItems, {
+    createElement(SessionItems, {
       ...props,
       running: true,
       worktree: { branch: "pi-desktop/s1", status: "active", setupStatus: "none" },
@@ -151,7 +175,7 @@ test("only isolated sessions get worktree menu items, disabled while running or 
   assert.doesNotMatch(running, /worktree-setup-log/);
 
   const missing = wrap(
-    createElement(WorktreeSessionMenuItems, {
+    createElement(SessionItems, {
       ...props,
       worktree: { branch: "pi-desktop/s1", status: "missing" },
     }),
@@ -160,7 +184,7 @@ test("only isolated sessions get worktree menu items, disabled while running or 
   assert.match(missing, /data-action="worktree-reveal"[^>]*disabled/);
 
   const project = wrap(
-    createElement(WorktreeProjectMenuItems, { projectPath: "/p", projectName: "P", onDone() {} }),
+    createElement(ProjectItems, { projectPath: "/p", projectName: "P", onDone() {} }),
   );
   assert.ok(project.includes(en.newIsolatedSession));
   assert.ok(project.includes(en.setupCommand.menu));
@@ -254,9 +278,8 @@ test("merge failures keep conflicts in the session and re-preview a changed sess
 });
 
 test("the delete loss note stays empty until unmerged work is known", () => {
-  const { WorktreeDeleteLossNote } = modules.parts;
   // Before the pending-work answer arrives only the ordinary armed label shows.
-  assert.equal(wrap(createElement(WorktreeDeleteLossNote, { sessionId: "s1" })), "");
+  assert.equal(wrap(createElement(DeleteLoss, { sessionId: "s1" })), "");
   assert.ok(en.deleteLoss.length > 0);
 });
 
@@ -329,7 +352,7 @@ test("the behind marker shows only for sessions that lack project commits", () =
 });
 
 test("a conflicted session hides the behind marker and cannot sync until it resolves", () => {
-  const { WorktreeBadge, WorktreeSessionMenuItems } = modules.parts;
+  const { WorktreeBadge } = modules.parts;
   const { useWorktreeUi } = modules.worktreeUi;
   Object.assign(useWorktreeUi.getInitialState(), { behind: { s1: 3 } });
   const conflicted = { branch: "pi-desktop/s1", status: "conflict", setupStatus: "none" };
@@ -339,7 +362,7 @@ test("a conflicted session hides the behind marker and cannot sync until it reso
   assert.doesNotMatch(badge, /data-worktree-behind/);
 
   const menu = wrap(
-    createElement(WorktreeSessionMenuItems, {
+    createElement(SessionItems, {
       sessionId: "s1",
       title: "Task",
       running: false,

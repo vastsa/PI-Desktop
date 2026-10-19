@@ -1,11 +1,12 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { TooltipButton, cx } from "../../components/ui";
-import { IconChevronDown, IconSearch, IconX } from "../../components/icons";
+import { IconChevronDown, IconSearch, IconStar, IconX } from "../../components/icons";
 import type {
   PluginAgentExtensionStatus,
   PluginCapability,
   PluginFsPolicy,
+  PluginReviewSummary,
   PluginServiceStatus,
   PluginSummary,
 } from "@pi-desktop/shared";
@@ -18,6 +19,11 @@ import {
   permissionRisk,
   orderPermissions,
 } from "./model";
+import {
+  REVIEW_SENTIMENT_LABEL_KEYS,
+  formatRatingAvg,
+  sentimentShares,
+} from "./reviews";
 
 export function PermissionChips({
   permissions,
@@ -192,6 +198,112 @@ export function AgentExtensionDetails({ status }: { status: PluginAgentExtension
           ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The compact rating readout cards carry in their metadata line: one star,
+ * the average, and how many ratings it is worth. Nothing renders when the
+ * centre has no summary for the plugin — an unavailable service must not read
+ * as a zero rating.
+ */
+export function RatingChip({
+  summary,
+  locale,
+  showDot = true,
+}: {
+  summary: PluginReviewSummary | undefined;
+  locale: string;
+  /** The card footer separates rating from review text with its own rule. */
+  showDot?: boolean;
+}) {
+  const { t } = useTranslation();
+  const avg = summary ? formatRatingAvg(summary.ratingAvg, locale) : null;
+  if (!summary || !avg || summary.ratingCount <= 0) return null;
+  return (
+    <span
+      className="plugins-rating"
+      role="img"
+      aria-label={t("plugins.reviews.ratingSummaryAria", {
+        avg,
+        count: summary.ratingCount,
+      })}
+    >
+      {showDot ? (
+        <span className="plugins-dot" aria-hidden>
+          ·
+        </span>
+      ) : null}
+      <IconStar size={11} style={{ fill: "currentColor" }} aria-hidden="true" />
+      <span className="plugins-rating-text">
+        {t("plugins.reviews.ratingChip", { avg, count: summary.ratingCount })}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The average, its rating count, and the good / medium / bad split as bars.
+ * Shown in the detail sheet between permissions and versions, and again at the
+ * top of the review drawer; rendering it only when there is at least one
+ * rating keeps the empty case to a single sentence at the call site.
+ */
+export function ReviewSummaryBlock({
+  summary,
+  locale,
+}: {
+  summary: PluginReviewSummary;
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  const avg = formatRatingAvg(summary.ratingAvg, locale);
+  if (avg === null || summary.ratingCount <= 0) return null;
+  return (
+    <div className="plugins-reviews-summary">
+      <div className="plugins-reviews-score">
+        <span className="plugins-reviews-avg">{avg}</span>
+        <span
+          className="plugins-reviews-stars"
+          role="img"
+          aria-label={t("plugins.reviews.ratingSummaryAria", {
+            avg,
+            count: summary.ratingCount,
+          })}
+        >
+          <IconStar size={13} style={{ fill: "currentColor" }} aria-hidden="true" />
+        </span>
+        <span className="plugins-reviews-count">
+          {t("plugins.reviews.count", { count: summary.ratingCount })}
+        </span>
+      </div>
+      <ul className="plugins-reviews-dist">
+        {sentimentShares(summary).map((share) => {
+          const label = t(REVIEW_SENTIMENT_LABEL_KEYS[share.key]);
+          return (
+            <li
+              key={share.key}
+              className={cx("plugins-reviews-dist-row", `is-${share.key}`)}
+            >
+              <span className="plugins-reviews-dist-label">{label}</span>
+              <span
+                className="plugins-reviews-dist-bar"
+                role="img"
+                aria-label={t("plugins.reviews.distributionAria", {
+                  label,
+                  count: share.count,
+                })}
+              >
+                <span
+                  className="plugins-reviews-dist-fill"
+                  style={{ width: `${share.percent}%` }}
+                />
+              </span>
+              <span className="plugins-reviews-dist-count">{share.count}</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

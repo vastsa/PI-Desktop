@@ -3060,8 +3060,7 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
   主窗口可见；可以进入设置 → 通用。macOS 不在范围内：它保持原生 Dock
   生命周期。
 - **步骤**：1）在偏好未设置时点击关闭按钮（或按关闭窗口快捷键）并回答提示：
-  取消保持窗口打开且偏好仍未设置；关闭到托盘隐藏窗口、显示托盘图标，应用
-  继续运行（进行中的一轮保持存活）；退出则退出应用。2）逐个重跑每种选择，
+  确认显示主题化应用内对话框且初始焦点为“取消”；按 Escape、点击遮罩或取消都会保持窗口打开且偏好仍未设置；关闭到托盘隐藏窗口、显示托盘图标，应用继续运行（进行中的一轮保持存活）；退出则退出应用。renderer 不可用时回退到原生对话框。2）逐个重跑每种选择，
   验证它在完整重启后仍被记住，并且一旦存在选择就再也不会出现第二次提示。
   3）在设为 `tray` 时点击托盘图标：窗口恢复、显示并获得焦点；托盘右键菜单
   提供打开和退出，退出会退出应用。4）在设置 → 通用中在关闭到托盘 / 退出应用
@@ -3071,7 +3070,7 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
   窗口隐藏进托盘（D216），并且点击托盘可以把它带回来。7）向
   `pi-desktop/window/closeBehavior/set` 传入未知值和 `"ask"`，验证它们失败
   关闭，并验证该通道在 macOS 上直接被拒绝。
-- **预期**：每个未设置状态下首次关闭恰好提示一次，取消永远不会持久化选择。
+- **预期**：每个未设置状态下首次关闭恰好显示一次主题化弹窗；Escape、点击遮罩或取消都不会持久化选择。renderer 不可用时限时回退到原生弹窗，原生弹窗也失败时不会卡住关闭。
   托盘模式让应用带着本地化的提示与菜单继续存活且不丢数据；切换到退出应用
   不会移除托盘图标，因为最小化到托盘仍然把它当作回到隐藏窗口的唯一途径。
   偏好在重启后仍然有效，窗口控制的关闭按钮和关闭快捷键都遵循它，存有
@@ -3084,7 +3083,9 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
   D230）、ADR 0078、ADR 0090
 - **验收**：A（应用程序启动）、质量
 - **里程碑**：Windows/Linux 上的 M5（发布资格）
-- **状态**：草稿
+- **状态**：`lifecycle-confirmation-dialog-user-path.test.mjs`、`lifecycle-dialog-broker.test.mjs`
+  与 `lifecycle-close-behavior-runtime.test.mjs` 覆盖主题化弹窗、兜底和主进程关闭/退出选择；
+  完整持久化关闭偏好旅程仍为草稿。
 
 #### E2E-067A：预发行安装发现更新的稳定版本 (D120)
 
@@ -4517,9 +4518,11 @@ eleven-tool-round desktop paths are verified by
   后代、输出事件、审核以及关闭宽限后的状态。
 - **预期**：进程 group/job 树终止，没有后代保留，
   没有后续输出到达，本轮返回 `TURN_ABORTED`，工作空间为
-  不会自动回滚。在 Windows 上，隐藏 runner 会先脱离任何父 Job Object，
-  再进入自己的 kill-on-close job；如果系统拒绝 breakaway，工具会安全失败，
-  不会让 Desktop 进程树成为终止范围。
+  不会自动回滚。在 Windows 上，隐藏 runner 仅当宿主所在的 job 授予
+  `JOB_OBJECT_LIMIT_BREAKAWAY_OK` 时才请求 `CREATE_BREAKAWAY_FROM_JOB`，
+  然后进入自己的 kill-on-close job；若宿主 job 未授予 breakaway，runner
+  改以嵌套 job 运行，而不是让工具安全失败；终止范围仍限定在该 job，
+  因此 Desktop 进程树不会成为终止范围。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md`，
   `03-runtime/07-process-model.md`、`03-runtime/08-error-codes.md`、
   `03-runtime/16-tool-result-limits.md`、`05-security/01-security.md`、ADR 0054
@@ -5709,8 +5712,8 @@ eleven-tool-round desktop paths are verified by
 **E2E-CHAT-session-todo-checklist：TodoWrite 到按会话显示的 TodoDock**
 
 - **前提：** 隔离的本地 Electron 配置、确定性的 Agent/Host fixture、两个 Desktop 会话，不使用真实 Provider 或付费 API。
-- **步骤：** 启动调用 `TodoWrite` 的多步骤 Agent 回合，观察 Composer 上方的 TodoDock，展开后切换会话并确认清单隔离。展开一个超过 dock 高度上限的清单，确认渲染全部条目、列表在 dock 内滚动而不撑高 Composer 栈；完成和取消条目，确认全部取消状态；清空清单后重载/重启 Host。发送乱序旧 `todos.changed` 事件，确认它不能覆盖新快照；再覆盖非法参数、Plan/Goal、委托和远程会话路径。
-- **预期：** 切换会话时收起、收起状态只占标题行高度、列表渲染全部条目并以自身为滚动容器、拒绝旧事件。
+- **步骤：** 启动调用 `TodoWrite` 的多步骤 Agent 回合，观察 Composer 上方的 TodoDock；确认右侧按钮至少为 36px 方形点击区域，箭头图标独立设为 18px，点击标题文本不会展开。点击向上箭头展开并确认箭头转向下方；切换会话并确认清单隔离。展开一个超过 dock 高度上限的清单，确认渲染全部条目、列表在 dock 内滚动而不撑高 Composer 栈；完成和取消条目，确认全部取消状态；清空清单后重载/重启 Host。发送乱序旧 `todos.changed` 事件，确认它不能覆盖新快照；再覆盖非法参数、Plan/Goal、委托和远程会话路径。
+- **预期：** 切换会话时收起、收起状态只占标题行高度、列表渲染全部条目并以自身为滚动容器、拒绝旧事件。展开后是纯文本清单，状态用字形标记而非带边框的方块；进行中的那一步文字带一道扫光，且任一时刻只有一处文字带扫光（收起时在标题行，展开时在对应行）。
 - **链接规格：** `03-runtime/03-tools-and-permissions.md`、`03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`、`04-ux/08-component-spec.md`、ADR 0312。
 - **验收：** C / E / F / Quality / Security。
 - **里程碑：** M6+。
@@ -6636,9 +6639,9 @@ eleven-tool-round desktop paths are verified by
 
 ### US-UI-73 Composer 模式选择器具有稳定的宽度
 - 以英语和中文打开空的主页和停靠的线程。
-- 通过Agent/Plan/Goal多次切换Composer模式芯片。
-- 期望模式芯片为最长的内置保持一个固定的宽度尺寸
-  标签（英文“Agent”/zh-CN“智能体”）；相邻的思维和
+- 打开 Composer 模式芯片，在 Agent/Plan/Goal 之间多次切换。
+- 期望芯片以带选中标记的菜单项列出三个模式、只显示当前模式，并为最长内置标签
+  （英文“Agent”/zh-CN“智能体”）加上箭头保留一个固定宽度；相邻的思考与
   权限控件、发送按钮和 Composer shell 不会移动或调整大小。
 - **链接规格**：`04-ux/08-component-spec.md` §11.3
 - **里程碑**：M5
@@ -7810,12 +7813,12 @@ eleven-tool-round desktop paths are verified by
 #### E2E-204：显式退出在关机前确认（D363）
 
 - **前提条件**：普通交互会话正在运行（不是 boot / supervision / capture 探针）。主窗口可见或已藏到托盘。
-- **步骤**：1) 从托盘菜单选择退出，或按 Cmd+Q / 应用菜单退出。2) 取消原生警告，确认窗口、托盘、host-core 和 sidecar 仍在。3) 再操作一次并确认退出，确认走有序关机。4) Windows/Linux 在关闭行为未设置时关窗，并在 D230 对话框选择退出；确认没有第二次警告。5) 以 `PI_DESKTOP_BOOT_PROBE=1`（及 supervision/capture 等价项）启动，确认 `app.quit()` 不弹对话框。6) 在打包的 Windows NSIS 或 Linux AppImage 安装上，下载更新并选择“重启以更新”；确认退出警告不再出现，安装器完成升级并重新拉起应用。
-- **预期**：误触显式退出可以取消。已经在关闭行为对话框选择退出的用户不会再被问一次。自动化探针不会被警告挡住。应用内更新重启同样不会被警告推迟：平台安装器先于 `app.quit()` 启动，应用一旦超出其等待窗口安装器就会中止，因此更新触发的退出必须立即走有序关机 —— 用户选择该操作时已经确认了重启。见 ADR 0022。
-- **链接规格**：`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`、`08-meta/decisions-log.md`（D216、D230、D363）、ADR 0022
+- **步骤**：1) 从托盘菜单选择退出，或按 Cmd+Q / 应用菜单退出；若窗口藏在托盘，确认主窗口先恢复。2) 确认显示主题化应用内弹窗、标题与正文分开且初始焦点为“取消”；弹窗打开时再次触发退出，确认仍只等待同一个决定，既不重复弹窗也不绕过确认。分别按 Escape、点击遮罩取消，确认窗口、托盘、host-core 和 sidecar 仍在。3) 再次操作并确认退出，验证有序关机。4) Windows/Linux 在关闭行为未设置时关窗，确认 D230 主题弹窗提供取消 / 关闭到托盘 / 退出；取消保持未设置，选择退出不会二次询问。5) 以 `PI_DESKTOP_BOOT_PROBE=1`（及 supervision/capture 等价项）启动，确认 `app.quit()` 不弹窗。6) 在打包的 Windows NSIS 或 Linux AppImage 安装上选择“重启以更新”，确认退出警告不出现且安装器完成升级和重启。
+- **预期**：显式退出可取消；待确认期间的重复退出不会重复弹窗或绕过确认，取消后后续退出会再次询问。托盘退出即使窗口隐藏也能呈现弹窗。已在 D230 选择退出的关窗路径不会再次确认。renderer 不可用、崩溃或超时无响应时限时回退到原生弹窗；原生弹窗也不可用时不得阻塞退出。自动化探针和应用内更新重启均跳过警告，后者直接进入有序关机。
+- **链接规格**：`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`、`08-meta/decisions-log.md`（D216、D230、D363）、ADR 0022、ADR 0090
 - **验收**：A、质量
 - **里程碑**：M5
-- **状态**：单元已覆盖（`close-behavior-tray.test.mjs` 断言探针与更新重启两项豁免，`auto-update.test.mjs` 断言安装闩锁先于 `quitAndInstall` 设置）；原生对话框旅程为草稿
+- **状态**：`lifecycle-dialog-broker.test.mjs`、`lifecycle-confirmation-dialog-user-path.test.mjs`、`lifecycle-close-behavior-runtime.test.mjs`、`close-behavior-tray.test.mjs` 和 `shutdown-regenerate-persistence.test.mjs` 覆盖 broker、renderer 用户旅程、主进程选择及待处理退出；完整应用关机和打包更新旅程仍为草稿，生命周期集成变更时需在可用发布环境运行。
 
 #### E2E-209：从本地智能体存储导入模型配置
 
@@ -8428,7 +8431,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **步骤**：
   1. 打开工作面板并请求用户的首选宽度。
   2. 将内部分隔线向 MainChat 左边缘拖动，包含指针预览阶段，然后释放。
-  3. 在布局收起左栏后手动重开左栏。
+  3. 在布局收起左栏后手动重开左栏。在 866px 视口中重复一次，此时重开会让面板窄于 244px；然后再次收起左栏，并朝面板方向拖动分隔线。
   4. 关闭工作面板并确认左栏恢复；再在手动收起左栏后重复一次。
   5. 用 `ArrowLeft`、`ArrowRight`、`Home`、`End` 重复调整分隔线。
   6. Navigate to the real Plugins and Scheduled routes with the
@@ -8442,7 +8445,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   ink. Hover does not change geometry; sidebar and New Task remain usable.
   Automated by `pnpm test:e2e:layout` using real route components and DOM/CDP
   interaction. This is renderer evidence, not native Windows/Linux hit-test proof.
-- **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
+- **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。重开借出的宽度不会被存储：已存储的首选宽度不变，再次收起左栏即恢复该宽度，分隔线拖动仍停在 244px。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
 - **在运行中的应用里实测的浮层覆盖**：在 Plugins 路由上打开一个插件模态框；模态遮罩是标题栏带内工作面板开关处的命中首选；标题栏带不是命中首选，因此不会绘制在模态遮罩之上；关闭模态框后路由保持干净。这四项命中由 `pnpm test:e2e:layout` 断言，属于渲染器 DOM/CDP 证据，不是原生命中测试证明。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md` §10、`04-ux/08-component-spec.md` §1 与 §5、`04-ux/09-interaction-patterns.md` §8、ADR 0238
 - **验收**：F（持久化）、品质
@@ -8528,14 +8531,16 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 #### E2E-LAYOUT-sidebar-row-states
 
-- **前提条件**：宿主预置项目、置顶和独立会话，存在当前工作区；应用使用隔离的数据与 profile。
+- **前提条件**：宿主预置项目、置顶和独立会话，启用侧边栏“会话时间”偏好，存在当前工作区；应用使用隔离的数据与 profile。
 - **步骤**：分别在深浅主题下选中项目会话，悬停项目标题、未选中和已选中会话；
+  确认项目会话日期静止可见，并在悬停和键盘焦点时于同一尾部位置切换为操作，日期左侧没有分隔线；验证七个日历日内显示相对天数，更早显示不含年份的月/日；
   检查失焦处理、拖拽目标样式、操作按钮悬停及 Tab/Shift+Tab 焦点；折叠后展开
   选中会话的分组，切换置顶与独立会话，打开设置再返回；开启减少动态效果，
   确认项目与会话行的悬停过渡均接近零时长。
 - **预期**：项目与会话共享整行悬停背景、圆角和过渡，标题按钮透明；选中背景
   只属于会话且优先于悬停。工作区仅通过圆点表达，折叠不会转移选中态。
   置顶和独立会话样式一致；焦点轮廓、独立操作按钮反馈和拖拽目标优先级保留。
+  项目会话日期默认可见且与操作共享尾部位置，悬停或聚焦后由操作替换，日期左侧无分隔线。
   失焦释放悬停而不清除选中；设置替换侧栏，返回后恢复会话与工作区上下文。
   渲染测试另覆盖没有选中会话、切换中的目标和非聊天页状态。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` §9.1c
@@ -9776,3 +9781,20 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **关联规格**：`04-ux/06-settings-ia.md`、`04-ux/09-interaction-patterns.md`、ADR 0294、D659、issue #1653。
 - **验收**：仅在 Host 项目激活成功后，渲染层才恢复该规范化路径的本地归档元数据。
 - **状态**：`apps/desktop/test/app-store-sidebar.test.mjs` 与 `apps/desktop/test/project-create-dialog.test.mjs` 有源码契约覆盖；完整 UI 场景仍为草稿，仅在明确请求且环境可用时运行。
+
+### E2E-266：项目折叠时标题显示运行活动
+
+- **前提条件**：至少两个带会话的本地项目组，其中一个有运行中的回合（也可另有等待权限的会话）；另有一个已连接且存在运行会话的远程主机项目组。设置 → 常规 → 侧边栏使用默认值。
+- **步骤**：
+  1. 在一个项目中启动回合并折叠该项目组。
+  2. 检查折叠标题，再展开项目组。
+  3. 在另一个项目中启动并行回合，并在远程主机项目中启动回合。
+  4. 打开设置 → 常规 → 侧边栏，关闭“在项目上显示运行状态”，再检查侧边栏。
+  5. 重新开启总开关，并开启“活动流光”。
+  6. 只关闭“数量徽标”并检查效果，然后重新开启徽标。
+  7. 只关闭“活动流光”并检查效果，然后重新开启活动流光。
+  8. 开启操作系统的“减少动态效果”并检查活动流光。
+- **预期**：默认时有运行活动的项目标题只显示数量徽标，活动流光关闭；运行中与等待权限的数量分开呈现。远程主机项目也遵循相同默认值。启用活动流光后，它与徽标同时显示。关闭总开关会隐藏两种提示，子开关置灰但保留已存值；重新开启后恢复此前选择。每个子开关只隐藏自身提示。减少动态效果时两种提示仍可见，但不播放动画。设置在渲染进程重载后保留。
+- **关联规格**：`04-ux/01-ui-ia.md` §3.2、`04-ux/06-settings-ia.md`（常规 → 侧边栏卡片）。
+- **验收**：项目折叠时仍能回答“这里是否有正在运行的工作”，且两种提示可从持久化设置独立控制。
+- **状态**：草稿。现有 `apps/desktop/test/sidebar-project-runs.test.mjs` 覆盖数量分类、总开关与子开关门控、两种渲染入口，以及主题令牌和减少动态效果保证；它不覆盖设置 API 缺省值规范化或完整交互，相关场景仍需在可用环境手动验证。

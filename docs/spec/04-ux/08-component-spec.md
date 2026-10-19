@@ -201,10 +201,12 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   focused Windows taskbar button also uses native minimize; a second click
   restores/focuses the same window, while clicking a covered window brings it
   to the front. Tray activation restores and focuses tray-hidden windows; Quit
-  remains explicit and, except for automated probes, confirms with a native
-  warning before shutdown (D363). On macOS the tray uses a transparent monochrome template
-  of the PI mark rather than the rounded application tile, so it remains
-  readable in the menu bar.
+  remains explicit and, except for automated probes, restores a tray-hidden main
+  window before showing a themed confirmation with Cancel focused. Escape or a
+  backdrop click cancels. If the main renderer is unavailable, a native warning
+  is the bounded fallback before shutdown (D363). On macOS the tray uses a
+  transparent monochrome template of the PI mark rather than the rounded
+  application tile, so it remains readable in the menu bar.
 - Windows/Linux do not render File/Edit/View/Window/Help in the titlebar and
   do not reserve left-side space for an application menubar. F10 and
   Shift+F10 remain available to focused content.
@@ -449,6 +451,7 @@ visually distinct from list content.
 | Session completed | Green check mark from the latest unread task notification when the row is not selected |
 | Session failed | Red circled alert mark from the latest unread task notification when the row is not selected |
 | Hover row | Project headers and all conversation rows share one full-row `--ds-bg-hover` surface, radius and transition; selected conversation fill takes precedence |
+| Project session metadata | When Session time is enabled, the trailing slot shows the last-reply date at rest and replaces it with session actions on hover or keyboard focus, without a divider. Dates within seven calendar days are relative; older dates show localized month and day without a year |
 | Current workspace | Project header shows the workspace dot, never a persistent selection fill; topbar follows that workspace; composer exposes no workspace identity |
 | Navigation selection | Only the selected conversation on the chat page uses `--ds-bg-active`, including pinned and standalone rows; folding its group never transfers selection to the header. No conversation or a non-chat page means no selected conversation row |
 | Keyboard focus | The focused control keeps its visible outline; the project title stays transparent and independent action buttons retain their own hover feedback |
@@ -603,9 +606,9 @@ visually distinct from list content.
   and Open session path (the session scratch directory in the system file
   manager).
 - Pinned conversations appear once in a global section above Sessions and
-  Projects, independent of date buckets, project collapse, retained tabs, and
-  each project's ten-row history limit. Each pin shows its project display
-  name (full path on hover), or Temporary space for a path-less conversation.
+  Projects, independent of project session dates, project collapse, retained
+  tabs, and each project's ten-row history limit. Each pin shows its project
+  display name (full path on hover), or Temporary space for a path-less conversation.
   The section is omitted when empty and scrolls within `min(233px, 30vh)` when
   needed. Its rows reuse normal selection, status, hover, and overflow actions.
 - Pinning moves the existing row into that section; unpinning returns it to
@@ -747,7 +750,7 @@ controls.
 | Project archive | omitted from default view; restorable from archived view |
 | Project delete | the row-menu danger action always opens a confirmation dialog naming the project and session count; X, Cancel, Escape, and backdrop dismiss without changes; explicit confirmation stops listed running sessions before removing the durable project row, owned sessions/transcripts, and project memory; the folder is never deleted; deleting a root of a stored multi-folder project group is refused until the root is detached through Edit project. Chats on a detached root remain available as a standalone project. A path the host no longer knows is still removed from the list. |
 | Project memory | row-menu editor reads and saves a compact list of titled or untitled memory cards for the exact project path; cards can be added, edited, and removed, the context is available in later chats, and it is never a higher-priority instruction |
-| Session list | exact-path matches only; no basename grouping; the latest ten unpinned sessions appear initially, Load more reveals the remaining history, and collapsing the project clears that expanded-list state so the next expansion returns to the initial ten |
+| Session list | exact-path matches only; no basename grouping; the latest ten unpinned sessions appear initially without time-group headings, and Load more reveals the remaining history; when Session time is enabled, each project row shows the title and a localized last-reply age through seven calendar days or a month/day date afterward; hovering or focusing the row replaces that date with session actions in the same slot; collapsing the project clears the expanded-list state so the next expansion returns to the initial ten |
 | Active group | exactly one group reflects the selected host workspace |
 | Task state | In-progress, selected, completed, and failed indicators update by session without replacing the visible transcript; precedence is in-progress, selected, then terminal outcome |
 
@@ -1057,9 +1060,15 @@ entirely inside the plugin's isolated page:
   without walking the whole workspace up front. Search (`fs.glob`-equivalent
   filename matching) lists hits without expanding the tree, and refresh
   disables itself while it reloads the root and the expanded folders.
-- A context menu on a row offers create, rename/move, **Open with default app**,
-  and **Show in folder**. The last two are offered for files only: the host
-  refuses them for directories.
+- A row context menu is grouped and ordered as Open With, Create, Rename / Move /
+  Delete, Copy Paths, file actions, and Refresh. Open With includes **Open in
+  built-in Browser** for `.html`, `.htm`, and `.xhtml` files plus **Open with
+  default app**; create actions remain available for files and directories,
+  while rename, move, delete, copy, and file actions follow their applicable
+  selection. The default-app action is disabled for directories, while editor
+  choices remain available. The Browser action opens a new Browser resource tab
+  and requires the bundled Browser plugin to be enabled. **Show in folder**
+  remains a file action. The host refuses directory paths for file actions.
 - Selecting a file replaces the tree with a focused viewer: syntax-highlighted
   editing with save, a Markdown preview toggle, image and audio/video viewing,
   CSV/TSV tables with paging and sorting, a JSON tree, and read-only SQLite
@@ -1085,7 +1094,7 @@ entirely inside the plugin's isolated page:
 - The page follows `app.getAppearance` and `appearance:changed` for base theme
   and English/Simplified Chinese copy, and `workspace:changed` for the open
   project and its folder list. `workspace.get`, `app.getAppearance`,
-  `fs.openDefault`, and `fs.reveal` are the only host channels it calls; its own
+  `fs.openDefault`, `fs.openInBrowser`, and `fs.reveal` are the only host channels it calls; its own
   reads and writes go through its host process, which keeps the jail of the one
   folder the view is browsing — never the whole group — refuses credential
   paths, and records writes to its own audit log (ADR 0241, ADR 0263).
@@ -2863,11 +2872,13 @@ reasoning-level control.
 - Padding: px-4 py-3 inner textarea
 - Font: text-sm for Agent, Plan, and Goal; mode changes semantics and tool
   controls, not the typography
-- The Agent/Plan/Goal mode chip reserves one fixed 88px width, sized from the
-  longest built-in label in English and zh-CN ("Agent" / "智能体"). Its label
-  stays single-line and ellipsizes if a future locale exceeds that budget, so
-  switching modes never reflows the adjacent Composer controls. Cycling the
-  chip cross-fades the icon and label in place. While the live turn is
+- The Agent/Plan/Goal mode chip reserves one fixed 96px width, sized from the
+  longest built-in label in English and zh-CN ("Agent" / "智能体") plus its
+  menu caret. Its label stays single-line and ellipsizes if a future locale
+  exceeds that budget, so switching modes never reflows the adjacent Composer
+  controls. The chip names the committed mode and opens one menu listing the
+  three modes, each a checked menu item; choosing one closes the menu and
+  configures the active session. While the live turn is
   `planning`, the chip pulses on its icon (purple) instead of leaving a
   second status row parked above the composer; a staged mode choice still
   updates the chip immediately and does not start that pulse until the
@@ -2952,8 +2963,13 @@ reasoning-level control.
 - The Composer stack places TodoDock above Plan/Goal approval surfaces when the
   active session has a non-empty host-owned checklist. An empty checklist does
   not reserve layout space.
-- The collapsed header separates the completed-task count from the current
-  `in_progress` content, truncating only the task title when space is limited.
+- The header keeps progress and current `in_progress` content left-aligned, and
+  places an independent expand/collapse button at the right edge. Only that
+  button toggles the list; the text area is not interactive. Its arrow points
+  up while collapsed because the list opens upward from the Composer, then
+  points down while expanded. The button provides a 36px square hit target,
+  with its 18px arrow icon sized independently. The current task title truncates
+  when space is limited.
   A checklist whose items are all cancelled has a clear cancelled label
   instead of a misleading `0/0 completed` count.
 - The disclosure is keyboard accessible, does not take focus on updates, and
@@ -2967,10 +2983,19 @@ reasoning-level control.
   collapsed content is `aria-hidden` and reduced-motion users receive an
   immediate state change. A collapsed dock reserves only its header row: the
   list's inset is clipped, never laid out below the header.
-  Expanded rows use a compact, flat checklist layout with square status marks.
-  Completed text and cancelled rows are muted; the in-progress row remains
-  primary and medium-weight. Each status symbol has a localized accessible
-  name, and each row renders plain text.
+  Expanded rows are a plain text list: a glyph status mark, then the task text.
+  The mark is a glyph rather than a bordered box, so no row regains per-row
+  chrome. Completed task text is struck through and muted; cancelled rows are
+  muted; the in-progress row remains primary and medium-weight. Each status
+  symbol has a localized accessible name, and each row renders plain text.
+- The only motion is a light band sweeping across the text of the step that is
+  currently working. It is painted into the text itself
+  (`-webkit-background-clip: text`), so no row changes shape, gains a fill, or
+  reserves space for it. Exactly one string carries it at a time: the collapsed
+  header's current-item line while collapsed, and the in-progress row while
+  expanded. The list stays mounted behind the disclosure, so the collapsed
+  state must not sweep the same text twice. A `prefers-reduced-motion` user
+  gets flat primary ink instead of a frozen band.
 - Renderer snapshots are keyed by session id. A `todos.changed` event with an
   older or equal revision is ignored. Session activation and host recovery
   re-read the authoritative snapshot, including already cached checklists; a
@@ -3122,7 +3147,7 @@ reasoning-level control.
   to Off-only. An active pending Plan or Goal approval still disables these
   controls. Approval actions are the exception while awaiting approval. The
   Composer-left Agent/Plan/Goal chip is the sole mode
-  control and cycles Agent → Plan → Goal → Agent on click. The Composer-right
+  control and opens the mode menu on click. The Composer-right
   model × reasoning chip owns both selections. Palette and Composer slash mode commands use the
   same active-session configuration path; after host confirmation resolves an
   approval, the approval surface is removed rather than remaining as a terminal
@@ -3561,13 +3586,13 @@ Anatomy:
   primary-folder file is addressed to the view as a project-relative path and a
   sibling-folder file as an absolute one, which is also how scratch and
   attachment files are addressed. A reference that matches no file opens nothing
-  and reports itself, as does right-clicking it: the file-reference menu offers
-  that file's own folder in the system file manager and copies its full path or
-  its project-relative path. The same items are offered on a sent `@path` chip,
-  an inline code span, a markdown link, a local image, a tool row's file path,
-  and a path in a tool result's file or match list, through the same completion
-  and the same address; a file outside the project has no relative path to copy
-  and says so instead.
+  and reports itself. Right-clicking a transcript file reference offers Copy
+  full path and Copy relative path on every surface that names it. Unpositioned
+  `.html` and `.htm` references also offer an **Open with** submenu containing
+  File Manager, built-in browser, and default browser. Each choice completes the
+  reference first and opens that exact resolved file. Other file types keep the
+  copy actions only; the transcript menu has no **Show in folder** action. A
+  file outside the project has no relative path to copy and reports that fact.
   The OS default application is no longer what this click does. HTTP(S)
   URLs stay text links. Plain clicks follow the Link open destination setting,
   and right-clicking a URL exposes the same external, work-panel, and copy

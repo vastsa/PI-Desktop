@@ -282,7 +282,7 @@ test("the project body renders the grid, clip, and list layers", () => {
   // fold is supposed to carry away.
   assert.match(
     sidebarSource,
-    /sidebar-session-group-list">\s*\{entry\.sessions\.length > 0 \? renderTimeGroupedSessions\(visibleSessions\) : \(/,
+    /sidebar-session-group-list">\s*\{entry\.sessions\.length > 0 \? renderProjectSessions\(visibleSessions\) : \(/,
   );
 });
 

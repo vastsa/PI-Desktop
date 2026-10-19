@@ -2,6 +2,27 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    version: "0.21.0",
+    date: "2026-10-16",
+    highlights: [
+      "Yüklü eklentiler kendiliğinden dolan bir kart ızgarasında görünür; her kartta net bir eylem ile güven, güncelleme ve kapsam durumu yer alır.",
+      "Mağaza eklentilerinin herkese açık puanlarını ve değerlendirmelerini okuyun, yazmak için eklenti merkezini açın — masaüstü uygulaması hiçbir zaman oturum açmaz.",
+      "Uzun Bash komutları tur bittikten sonra arka plan görevleri olarak çalışmaya devam eder; çıktıları daha sonra inceleyebilirsiniz.",
+      "Aynı projedeki paralel konuşmalar birbirinden yalıtılmış Git worktree'lerinde çalışır.",
+      "Todo listesini Composer'ın yanında sabit tutun, gerektiğinde tamamını açın.",
+      "Yürütülen adımı bir bakışta görün: metninin üzerinden bir ışık geçer, tamamlanan satırlar ise sade üstü çizili metin olarak kalır.",
+      "Bash komutları ve akıl yürütme konuşmada ayrı satırlarda gösterilir.",
+      "Daraltılmış gruplar dâhil, proje başlıklarında devam eden etkinliği görün; sayaç rozeti ve etkinlik şeridini ayrı ayrı ayarlayın.",
+      "Kenar çubuğundaki bağlam alt menülerinden proje ve oturum ayrıntılarını kopyalayın.",
+      "@ önerilerinde dosyaları tam göreli yollarıyla bulun.",
+      "Uzun bir konuşmaya geri döndüğünüzde aynı okuma konumunu koruyun.",
+      "Arşivlenmiş projeleri kenar çubuğundan yeniden açın.",
+      "Yerel HTML çıktılarını oluşturan oturumun içinde açın.",
+      "Geniş Markdown tablolarını sohbet düzenini bozmadan kaydırın.",
+      "Bir araç aşırı büyük bir görsel döndürse bile konuşmayı kullanmaya devam edin.",
+    ],
+  },
+  {
     "version": "0.20.1",
     "date": "2026-10-13",
     "highlights": [

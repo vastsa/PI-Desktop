@@ -2,6 +2,27 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.21.0",
+    date: "2026-10-16",
+    highlights: [
+      "Installierte Plugins erscheinen als Karten in einem selbst füllenden Raster, jede mit einer klaren Aktion und sichtbarem Vertrauens-, Update- und Geltungsstatus.",
+      "Öffentliche Bewertungen und Rezensionen für Marketplace-Plugins lesen und im Plugin-Center eine schreiben — die Desktop-App meldet sich nie an.",
+      "Lange Bash-Befehle laufen nach dem Agenten-Turn als Hintergrundaufgaben weiter; ihre Ausgabe lässt sich später prüfen.",
+      "Parallele Sitzungen eines Projekts laufen jeweils in einem eigenen Git-Worktree.",
+      "Die Todo-Liste bleibt neben dem Composer angedockt und lässt sich bei Bedarf erweitern.",
+      "Der laufende Schritt der Checkliste ist auf einen Blick zu sehen: Ein Lichtstreifen wandert über seinen Text, erledigte Zeilen bleiben schlichter durchgestrichener Text.",
+      "Bash-Befehle und Denkprozess erscheinen in getrennten Zeilen im Gespräch.",
+      "Projektgruppen zeigen laufende Aktivitäten auch im eingeklappten Zustand; Zähler und Aktivitätsleiste lassen sich unabhängig einstellen.",
+      "Projekt- und Sitzungsdetails lassen sich über Kontext-Untermenüs in der Seitenleiste kopieren.",
+      "Dateien in @-Vorschlägen lassen sich am vollständigen relativen Pfad erkennen.",
+      "Beim Zurückkehren zu einer langen Unterhaltung bleibt die zuletzt gelesene Position erhalten.",
+      "Archivierte Projekte lassen sich über die Seitenleiste wieder öffnen.",
+      "Lokale HTML-Artefakte öffnen sich in der Sitzung, in der sie erstellt wurden.",
+      "Breite Markdown-Tabellen lassen sich horizontal scrollen, ohne das Gesprächslayout zu stören.",
+      "Auch nach einem zu großen Tool-Bild bleibt die Unterhaltung bedienbar.",
+    ],
+  },
+  {
     "version": "0.20.1",
     "date": "2026-10-13",
     "highlights": [

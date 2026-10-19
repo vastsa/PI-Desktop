@@ -12,6 +12,10 @@ import {
 import { Badge } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
+import {
+  sidebarMenuAction,
+  type SidebarMenuActionItem,
+} from "../../lib/sidebar-menu";
 import { WorktreeMergeDialog } from "./WorktreeMergeDialog";
 import { WorktreeSetupCommandDialog, WorktreeSetupLogDialog } from "./WorktreeSetupDialogs";
 import {
@@ -23,7 +27,6 @@ import {
 } from "./worktree-actions";
 import { WorktreeBehindMarker } from "./WorktreeBehind";
 import { useWorktreeUi } from "./worktree-ui-store";
-
 /** Session-row badge for an isolated session (PRD R3). */
 export function WorktreeBadge({
   worktree,
@@ -61,7 +64,12 @@ export function WorktreeBadge({
 }
 
 /** Project-menu items: create an isolated session, edit the setup command. */
-export function WorktreeProjectMenuItems({
+/**
+ * Project-menu rows for isolation: start an isolated session, or edit the
+ * setup command. Returned as menu data so the sidebar renders them inside its
+ * own "Git" group next to the other repository actions.
+ */
+export function useWorktreeProjectMenuItems({
   projectPath,
   projectName,
   onDone,
@@ -69,63 +77,162 @@ export function WorktreeProjectMenuItems({
   projectPath: string;
   projectName: string;
   onDone: () => void;
-}) {
+}): SidebarMenuActionItem[] {
   const { t } = useTranslation();
   const open = useWorktreeUi((s) => s.open);
   const reasonId = useId();
-  const [probe, setProbe] = useState<IsolationProbeState>("checking");
-  // Probed each time the menu opens, so the item reflects the current
-  // repository state; a stale answer for another project is dropped.
+  const [probe, setProbe] = useState<{
+    projectPath: string;
+    state: IsolationProbeState;
+  }>({ projectPath: "", state: "checking" });
+  // Probe only while a project menu is open. A new project starts disabled
+  // until its own answer arrives; the previous project's answer never leaks.
   useEffect(() => {
+    if (!projectPath) {
+      setProbe({ projectPath: "", state: "checking" });
+      return;
+    }
     let current = true;
-    setProbe("checking");
+    setProbe({ projectPath, state: "checking" });
     api
       .probeWorktree(projectPath)
-      .then((result) => current && setProbe(result))
-      .catch(() => current && setProbe("unknown"));
+      .then((result) => current && setProbe({ projectPath, state: result }))
+      .catch(() => current && setProbe({ projectPath, state: "unknown" }));
     return () => {
       current = false;
     };
   }, [projectPath]);
-  const { disabled, reason } = isolationAvailability(probe, t);
-  return (
-    <>
-      <button
-        type="button"
-        role="menuitem"
-        data-action="new-isolated-session"
-        disabled={disabled}
-        aria-busy={probe === "checking" || undefined}
-        aria-describedby={reason ? reasonId : undefined}
-        title={reason}
-        onClick={() => {
-          onDone();
-          void createIsolatedSession(projectPath, t);
-        }}
-      >
-        <IconBranch size={14} />
-        {t("worktree.newIsolatedSession")}
-      </button>
-      {reason ? (
-        <p id={reasonId} className="worktree-menu-reason" data-worktree-unavailable="">
-          {reason}
-        </p>
-      ) : null}
-      <button
-        type="button"
-        role="menuitem"
-        data-action="worktree-setup-command"
-        title={t("worktree.setupCommand.menu")}
-        onClick={() => {
-          onDone();
-          open({ kind: "setupCommand", projectPath, projectName });
-        }}
-      >
-        <IconWrench size={14} />
-        <span className="worktree-menu-label">{t("worktree.setupCommand.menu")}</span>
-      </button>
-    </>
-  );
+  const probeState = probe.projectPath === projectPath ? probe.state : "checking";
+  const { disabled, reason } = isolationAvailability(probeState, t);
+  return [
+    sidebarMenuAction({
+      id: "new-isolated-session",
+      label: t("worktree.newIsolatedSession"),
+      icon: <IconBranch size={14} />,
+      disabled,
+      busy: probeState === "checking",
+      describedBy: reason ? reasonId : undefined,
+      title: reason,
+      onSelect: () => {
+        onDone();
+        void createIsolatedSession(projectPath, t);
+      },
+    }),
+    sidebarMenuAction({
+      id: "worktree-setup-command",
+      label: t("worktree.setupCommand.menu"),
+      icon: <IconWrench size={14} />,
+      title: t("worktree.setupCommand.menu"),
+      onSelect: () => {
+        onDone();
+        open({ kind: "setupCommand", projectPath, projectName });
+      },
+    }),
+  ];
+}
+
+/**
+ * A session's isolation rows, when the session has a worktree at all. The
+ * sidebar places them in its "Git" group, so no other session pays for them.
+ */
+export function useWorktreeSessionMenuItems({
+  sessionId,
+  title,
+  worktree,
+  running,
+  onDone,
+}: {
+  sessionId: string;
+  title: string;
+  worktree?: SessionWorktreeSummary;
+  running: boolean;
+  onDone: () => void;
+}): SidebarMenuActionItem[] {
+  const { t } = useTranslation();
+  const open = useWorktreeUi((s) => s.open);
+  // A conflicted session resolves first; syncing again would only report
+  // the same conflict.
+  const conflicted = worktree?.status === "conflict";
+  const syncable = Boolean(worktree) && worktree?.status !== "missing" && !conflicted;
+  // Project commits the session lacks, counted when the menu opens; `-1`
+  // when the count failed (syncing still reports the reason).
+  const [behind, setBehind] = useState<number | null>(null);
+  useEffect(() => {
+    if (!sessionId || !syncable) return;
+    let current = true;
+    setBehind(null);
+    api
+      .getWorktreeBehind(sessionId)
+      .then((count) => {
+        if (!current) return;
+        setBehind(count);
+        useWorktreeUi.getState().setBehindFor(sessionId, count);
+      })
+      .catch(() => current && setBehind(-1));
+    return () => {
+      current = false;
+    };
+  }, [sessionId, syncable]);
+  if (!worktree) return [];
+  const missing = worktree.status === "missing";
+  return [
+    sidebarMenuAction({
+      id: "worktree-merge",
+      label: t("worktree.merge.menu"),
+      icon: <IconPullRequest size={14} />,
+      disabled: running || missing,
+      onSelect: () => {
+        onDone();
+        open({ kind: "merge", sessionId, title });
+      },
+    }),
+    sidebarMenuAction({
+      id: "worktree-sync",
+      label:
+        syncable && behind !== null && behind > 0
+          ? t("worktree.sync.menuBehind", { count: behind })
+          : t("worktree.sync.menu"),
+      icon: <IconRefresh size={14} />,
+      disabled: running || !syncable || behind === null || behind === 0,
+      busy: behind === null && syncable,
+      title: conflicted
+        ? t("worktree.sync.resolveFirst")
+        : behind === 0
+          ? t("worktree.sync.upToDate")
+          : undefined,
+      onSelect: () => {
+        onDone();
+        void syncIsolatedSession(sessionId, t);
+      },
+    }),
+    sidebarMenuAction({
+      id: "worktree-reveal",
+      label: t("worktree.reveal"),
+      icon: <IconFolderOpen size={14} />,
+      disabled: missing,
+      onSelect: () => {
+        onDone();
+        void api.revealWorktree(sessionId).catch((error: unknown) =>
+          useAppStore
+            .getState()
+            .showToast(worktreeErrorMessage(error, t), { variant: "error" }),
+        );
+      },
+    }),
+    ...(worktree.setupStatus && worktree.setupStatus !== "none"
+      ? [
+          sidebarMenuAction({
+            id: "worktree-setup-log",
+            label: t("worktree.setupLog.menu"),
+            icon: <IconFileText size={14} />,
+            onSelect: () => {
+              onDone();
+              open({ kind: "setupLog", sessionId, title });
+            },
+          }),
+        ]
+      : []),
+  ];
 }
 
 /** Session-menu items of an isolated session; nothing for other sessions. */
@@ -167,88 +274,81 @@ export function WorktreeSessionMenuItems({
       current = false;
     };
   }, [sessionId, syncable]);
-  if (!worktree) return null;
+  if (!worktree) return [];
   const missing = worktree.status === "missing";
-  return (
-    <>
-      <button
-        type="button"
-        role="menuitem"
-        data-action="worktree-merge"
-        disabled={running || missing}
-        onClick={() => {
-          onDone();
-          open({ kind: "merge", sessionId, title });
-        }}
-      >
-        <IconPullRequest size={14} />
-        {t("worktree.merge.menu")}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        data-action="worktree-sync"
-        disabled={running || !syncable || behind === null || behind === 0}
-        aria-busy={behind === null && syncable ? true : undefined}
-        title={
-          conflicted
-            ? t("worktree.sync.resolveFirst")
-            : behind === 0
-              ? t("worktree.sync.upToDate")
-              : undefined
-        }
-        onClick={() => {
-          onDone();
-          void syncIsolatedSession(sessionId, t);
-        }}
-      >
-        <IconRefresh size={14} />
-        {syncable && behind !== null && behind > 0
+  return [
+    sidebarMenuAction({
+      id: "worktree-merge",
+      label: t("worktree.merge.menu"),
+      icon: <IconPullRequest size={14} />,
+      disabled: running || missing,
+      onSelect: () => {
+        onDone();
+        open({ kind: "merge", sessionId, title });
+      },
+    }),
+    sidebarMenuAction({
+      id: "worktree-sync",
+      label:
+        syncable && behind !== null && behind > 0
           ? t("worktree.sync.menuBehind", { count: behind })
-          : t("worktree.sync.menu")}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        data-action="worktree-reveal"
-        disabled={missing}
-        onClick={() => {
-          onDone();
-          api.revealWorktree(sessionId).catch((error: unknown) =>
-            useAppStore.getState().showToast(worktreeErrorMessage(error, t), { variant: "error" }),
-          );
-        }}
-      >
-        <IconFolderOpen size={14} />
-        {t("worktree.reveal")}
-      </button>
-      {worktree.setupStatus && worktree.setupStatus !== "none" ? (
-        <button
-          type="button"
-          role="menuitem"
-          data-action="worktree-setup-log"
-          onClick={() => {
-            onDone();
-            open({ kind: "setupLog", sessionId, title });
-          }}
-        >
-          <IconFileText size={14} />
-          {t("worktree.setupLog.menu")}
-        </button>
-      ) : null}
-    </>
-  );
+          : t("worktree.sync.menu"),
+      icon: <IconRefresh size={14} />,
+      disabled: running || !syncable || behind === null || behind === 0,
+      busy: behind === null && syncable,
+      title: conflicted
+        ? t("worktree.sync.resolveFirst")
+        : behind === 0
+          ? t("worktree.sync.upToDate")
+          : undefined,
+      onSelect: () => {
+        onDone();
+        void syncIsolatedSession(sessionId, t);
+      },
+    }),
+    sidebarMenuAction({
+      id: "worktree-reveal",
+      label: t("worktree.reveal"),
+      icon: <IconFolderOpen size={14} />,
+      disabled: missing,
+      onSelect: () => {
+        onDone();
+        void api.revealWorktree(sessionId).catch((error: unknown) =>
+          useAppStore
+            .getState()
+            .showToast(worktreeErrorMessage(error, t), { variant: "error" }),
+        );
+      },
+    }),
+    ...(worktree.setupStatus && worktree.setupStatus !== "none"
+      ? [
+          sidebarMenuAction({
+            id: "worktree-setup-log",
+            label: t("worktree.setupLog.menu"),
+            icon: <IconFileText size={14} />,
+            onSelect: () => {
+              onDone();
+              open({ kind: "setupLog", sessionId, title });
+            },
+          }),
+        ]
+      : []),
+  ];
 }
 
 /**
- * Note after the armed "Delete?" label of an isolated session: deleting removes
+ * The text of the pre-delete warning for an isolated session: deleting removes
  * its worktree and branch, so unmerged work is named before the second click
- * (PRD R5). Renders nothing when nothing would be lost.
+ * (PRD R5). `null` when nothing would be lost.
  */
-export function WorktreeDeleteLossNote({ sessionId }: { sessionId: string }) {
+export function useWorktreeDeleteLossText(sessionId: string): string | null {
   const { t } = useTranslation();
   const [pending, setPending] = useState<WorktreePendingWork | null>(null);
   useEffect(() => {
+    if (!sessionId) {
+      setPending(null);
+      return;
+    }
     let alive = true;
     api
       .getWorktreePendingWork(sessionId)
@@ -258,12 +358,10 @@ export function WorktreeDeleteLossNote({ sessionId }: { sessionId: string }) {
       alive = false;
     };
   }, [sessionId]);
-  if (!pending || (pending.unmergedCommits === 0 && !pending.uncommittedChanges)) return null;
-  return (
-    <span className="worktree-delete-loss" data-worktree-loss="true">
-      {t("worktree.deleteLoss")}
-    </span>
-  );
+  if (!pending || (pending.unmergedCommits === 0 && !pending.uncommittedChanges)) {
+    return null;
+  }
+  return t("worktree.deleteLoss");
 }
 
 /** Renders the open worktree dialog. Mounted once by the sidebar. */

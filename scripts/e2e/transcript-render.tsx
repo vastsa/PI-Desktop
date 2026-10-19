@@ -8,7 +8,15 @@ import { useState } from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
-import type { AgentActivity, AgentEventEnvelope, UiMessage } from "@pi-desktop/shared";
+import type {
+  AgentActivity,
+  AgentEventEnvelope,
+  UiMessage,
+} from "@pi-desktop/shared";
+import {
+  ContextMenu,
+  useContextMenu,
+} from "../../apps/desktop/src/components/ContextMenu";
 import { Markdown } from "../../apps/desktop/src/components/Markdown";
 import { AssistantTurn } from "../../apps/desktop/src/features/chat/transcript/AssistantTurn";
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
@@ -123,6 +131,142 @@ async function markdownLinkInteractionProbe(
       settings: initialState.settings,
       openUrlInWorkPanel: initialState.openUrlInWorkPanel,
     });
+  }
+}
+
+async function contextMenuSubmenuInteractionProbe() {
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;top:24px;left:24px";
+  document.body.append(host);
+  const root = createRoot(host);
+  const selections: string[] = [];
+  const items = [
+    {
+      id: "open-with",
+      label: "Open with",
+      submenu: [
+        {
+          id: "file-manager",
+          label: "File Manager",
+          onSelect: () => selections.push("file-manager"),
+        },
+        {
+          id: "built-in-browser",
+          label: "Built-in browser",
+          onSelect: () => selections.push("built-in-browser"),
+        },
+        {
+          id: "default-browser",
+          label: "Default browser",
+          onSelect: () => selections.push("default-browser"),
+        },
+      ],
+    },
+  ];
+
+  function Fixture() {
+    const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="html-file-reference"
+          onContextMenu={(event) => openContextMenu(event, { items })}
+        >
+          page.html
+        </button>
+        <ContextMenu state={contextMenu} onClose={closeContextMenu} />
+      </>
+    );
+  }
+
+  const nextFrame = () =>
+    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const openMenu = async () => {
+    const target = host.querySelector<HTMLButtonElement>(
+      "[data-testid=html-file-reference]",
+    );
+    assert(target, "HTML reference fixture did not render");
+    flushSync(() =>
+      target.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 80,
+          clientY: 80,
+        }),
+      ),
+    );
+    await nextFrame();
+    const menuTrigger = document.body.querySelector<HTMLButtonElement>(
+      '[data-context-menu-item="open-with"]',
+    );
+    assert(menuTrigger, "HTML reference menu did not render Open with");
+    return menuTrigger;
+  };
+
+  try {
+    flushSync(() => root.render(<Fixture />));
+    const trigger = await openMenu();
+    assert(
+      document.body.querySelector('[data-context-menu-item="open-with"]'),
+      "HTML reference menu did not render Open with",
+    );
+    flushSync(() => trigger.click());
+    assert(
+      document.body.querySelector('[data-context-menu-item="file-manager"]'),
+      "clicking Open with did not reveal its second-level actions",
+    );
+    flushSync(() => trigger.click());
+    assert(
+      document.body.querySelector('[data-context-menu-item="file-manager"]'),
+      "clicking an already-open Open with row closed its submenu",
+    );
+    flushSync(() =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-context-menu-item="built-in-browser"]')
+        ?.click(),
+    );
+    assert(
+      selections.length === 1 && selections[0] === "built-in-browser",
+      `selecting a submenu destination returned ${selections.join(", ") || "nothing"}`,
+    );
+    assert(
+      !document.body.querySelector('[data-context-menu-item="open-with"]'),
+      "choosing a destination did not close the context menu",
+    );
+
+    const keyboardTrigger = await openMenu();
+    keyboardTrigger.focus();
+    flushSync(() =>
+      keyboardTrigger.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+      ),
+    );
+    await nextFrame();
+    const firstSubmenuItem = document.body.querySelector<HTMLButtonElement>(
+      '[data-context-menu-item="file-manager"]',
+    );
+    assert(
+      firstSubmenuItem && document.activeElement === firstSubmenuItem,
+      "ArrowRight did not open and focus the submenu",
+    );
+    flushSync(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    assert(
+      !document.body.querySelector('[data-context-menu-item="file-manager"]') &&
+        document.body.querySelector('[data-context-menu-item="open-with"]') &&
+        document.activeElement === keyboardTrigger,
+      "Escape did not return focus to Open with while keeping the root menu open",
+    );
+    return { ok: true, selections, keyboardEscapeReturnedFocus: true };
+  } finally {
+    flushSync(() => root.unmount());
+    host.remove();
   }
 }
 
@@ -501,11 +645,13 @@ globalThis.transcriptRenderProbe = async () => {
 
     const statusLifecycle = await transcriptStatusProbe();
     const markdownLinks = await markdownLinkInteractionProbe(i18n);
+    const contextMenuSubmenu = await contextMenuSubmenuInteractionProbe();
     const turnProcess = await turnProcessProbe();
     return {
-      ok: statusLifecycle.ok && markdownLinks.ok && turnProcess.ok,
+      ok: statusLifecycle.ok && markdownLinks.ok && contextMenuSubmenu.ok && turnProcess.ok,
       statusLifecycle,
       markdownLinks,
+      contextMenuSubmenu,
       groups,
       textUpdates: 20,
       textUpdateRenders,

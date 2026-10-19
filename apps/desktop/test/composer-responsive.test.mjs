@@ -25,7 +25,7 @@ test("narrow composer containers progressively simplify the model controls", () 
   assert.match(styles, /\.composer-model-thinking\s*\{[\s\S]*?min-width:\s*0;/);
   assert.match(
     styles,
-    /@container composer-stack \(max-width: 560px\)[\s\S]*?\.composer-model-thinking-dot,[\s\S]*?\.composer-model-thinking-level[\s\S]*?display:\s*none;/,
+    /@container composer-stack \(max-width: 560px\)[\s\S]*?\.composer-model-thinking-level[\s\S]*?display:\s*none;/,
   );
   assert.match(
     styles,
@@ -38,6 +38,11 @@ test("narrow composer containers progressively simplify the model controls", () 
   assert.match(
     styles,
     /\.composer-model-thinking-model,\s*\.composer-model-thinking-chevron\s*\{[\s\S]*?display:\s*none;/,
+  );
+  // The collapsed chip keeps a glyph: the labels it drops are what name it.
+  assert.match(
+    styles,
+    /@container composer-stack \(max-width: 450px\)[\s\S]*?\.composer-model-thinking-icon\s*\{[\s\S]*?display:\s*inline-flex;/,
   );
 });
 

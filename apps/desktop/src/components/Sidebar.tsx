@@ -25,12 +25,12 @@ import {
 } from "../lib/sidebar-floating-menu";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { formatSessionLastReplyDate } from "../lib/sidebar-session-date";
 import { SessionHoverCard } from "../features/sessions/SessionHoverCard";
 import { useSessionHoverCard } from "../features/sessions/useSessionHoverCard";
 import { isDefaultSessionTitle, useAppStore } from "../stores/app-store";
 import {
   getGlobalPinnedSessions,
-  groupSidebarSessionsByTime,
   normalizeProjectPath,
   sessionArchived,
   sessionPinned,
@@ -54,6 +54,16 @@ import {
   sidebarSessionStatus,
   type SidebarSessionStatus,
 } from "../lib/sidebar-session-status";
+import {
+  projectRunSummaryIsLive,
+  resolveSidebarRunningAffordances,
+  summarizeProjectRuns,
+} from "../lib/sidebar-project-runs";
+import {
+  ProjectRunBadge,
+  ProjectRunCount,
+  ProjectRunRail,
+} from "./ProjectRunIndicator";
 import { ErrorCodes, formatSessionLink } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
 import type {
@@ -73,19 +83,28 @@ import {
 } from "../lib/sidebar-resize";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
-import { ProjectEditDialog } from "./ProjectEditDialog";
 import {
   WorktreeBadge,
-  WorktreeDeleteLossNote,
   WorktreeDialogs,
-  WorktreeProjectMenuItems,
-  WorktreeSessionMenuItems,
+  useWorktreeDeleteLossText,
+  useWorktreeProjectMenuItems,
+  useWorktreeSessionMenuItems,
 } from "../features/worktree/WorktreeSidebarParts";
 import { WorktreeBehindWatcher } from "../features/worktree/WorktreeBehind";
+import { SidebarMenuPanel, sidebarMenuKeyDown } from "./SidebarMenuPanel";
+import {
+  sidebarMenuAction,
+  sidebarMenuCheck,
+  sidebarMenuGroup,
+  sidebarMenuSection,
+  sidebarMenuSubmenu,
+  type SidebarMenuPanelContent,
+} from "../lib/sidebar-menu";
 import { useArmedDelete } from "../hooks/use-armed-delete";
-import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
-import { SessionRenameDialog } from "./SessionRenameDialog";
 import { useUpdateState } from "../hooks/use-update-state";
+import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
+import { ProjectEditDialog } from "./ProjectEditDialog";
+import { SessionRenameDialog } from "./SessionRenameDialog";
 import {
   IconArchive,
   IconArchiveRestore,
@@ -240,7 +259,7 @@ export function Sidebar({
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const selectingSessionId = useAppStore((s) => s.selectingSessionId);
@@ -261,6 +280,10 @@ export function Sidebar({
   const canNavBack = useAppStore((s) => s.canNavBack);
   const page = useAppStore((s) => s.page);
   const settings = useAppStore((s) => s.settings);
+  // Project headers must answer "is anything running under here?" while the
+  // group is collapsed, so both affordances are resolved once per render
+  // rather than re-derived per row.
+  const runningAffordances = resolveSidebarRunningAffordances(settings);
   const prefetchSession = useAppStore((s) => s.prefetchSession);
   const selectSession = useAppStore((s) => s.selectSession);
   const newSession = useAppStore((s) => s.newSession);
@@ -644,8 +667,6 @@ export function Sidebar({
     sortOpen,
   ]);
 
-  // Footer utility bar: settings / plugins / notifications + build chip.
-
   // An update only earns the accent dot once it is actionable — a pending
   // check or a failed one keeps the chip quiet.
   const updateReady =
@@ -661,32 +682,6 @@ export function Sidebar({
   const buildTitle = updateReady
     ? t("updates.available", { version: update?.availableVersion ?? "" })
     : t("nav.checkForUpdates");
-
-  const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeMenus();
-      return;
-    }
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)',
-      ),
-    );
-    if (!items.length) return;
-    event.preventDefault();
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-            items.length;
-    items[next]?.focus();
-  };
-
   const taskTitle = useCallback((title?: string | null) => {
     const value = (title || "").trim();
     return isDefaultSessionTitle(value) ? t("chat.untitledTask") : value;
@@ -1506,6 +1501,27 @@ export function Sidebar({
     closeMenus();
   };
 
+  const copyTextToClipboard = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(t("chat.copied"));
+    } catch (error) {
+      reportError(error);
+    }
+    closeMenus();
+  };
+
+  const copySessionPath = async (session: SessionSummary) => {
+    if (isRemoteSession(session)) return;
+    try {
+      const { path } = await api.getSessionScratchPath(session.id);
+      await copyTextToClipboard(path);
+    } catch (error) {
+      reportError(error);
+      closeMenus();
+    }
+  };
+
   const openSessionPath = async (session: SessionSummary) => {
     if (isRemoteSession(session)) return;
     closeMenus(false);
@@ -1609,6 +1625,365 @@ export function Sidebar({
       }
     },
     [moveSessionProject, reportError, runningSessions, showToast, t],
+  );
+
+  /**
+   * The row menu acts on the selection while a multi-selection is open, so the
+   * panel's items come from the selection rather than from the clicked row.
+   */
+  const batchSelected = Boolean(
+    sessionMenu && selectedIds.size > 1 && selectedIds.has(sessionMenu),
+  );
+
+  /**
+   * Repository rows of the open menu. Both builders run every render, but they
+   * key their probes and reads to the open target, so a closed menu reads
+   * nothing; `onDone` is the sidebar's own close path.
+   */
+  const menuSession = sessionMenu
+    ? sessions.find((item) => item.id === sessionMenu)
+    : undefined;
+  const sessionWorktreeItems = useWorktreeSessionMenuItems({
+    sessionId: menuSession?.id ?? "",
+    title: taskTitle(menuSession?.title),
+    worktree: menuSession?.worktree,
+    running: Boolean(menuSession && runningSessions[menuSession.id]),
+    onDone: () => closeMenus(false),
+  });
+  const sessionDeleteLoss = useWorktreeDeleteLossText(
+    menuSession && armedDelete === menuSession.id ? menuSession.id : "",
+  );
+  const menuProject = projectMenu
+    ? projectEntries.find((item) => item.key === projectMenu)
+    : undefined;
+  const projectIsolationItems = useWorktreeProjectMenuItems({
+    projectPath: menuProject?.path ?? "",
+    projectName: menuProject?.name ?? "",
+    onDone: () => closeMenus(false),
+  });
+
+
+  const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    sidebarMenuKeyDown(event, closeMenus);
+  };
+
+  const menuSortLabel = (value: Exclude<SessionSort, "manual"> | "created") =>
+    value === "recent"
+      ? t("nav.sortRecent", { defaultValue: "Recently updated" })
+      : value === "oldest"
+        ? t("nav.sortOldest", { defaultValue: "Oldest first" })
+        : value === "name"
+          ? t("nav.sortName", { defaultValue: "Name" })
+          : t("nav.sortCreated", { defaultValue: "Created date" });
+
+
+
+  const sessionMenuContent = useCallback(
+    (session: SessionSummary): SidebarMenuPanelContent => {
+      const meta = sessionMeta[session.id] ?? {};
+      const archived = sessionArchived(session, meta);
+      const pinned = sessionPinned(session, meta);
+      const native = session.source === "pi-native";
+      const gitItems = [
+        ...(native || !sessionAllows(session, "canEditMessages")
+          ? []
+          : [
+              sidebarMenuAction({
+                id: "fork-session",
+                label: t("nav.createBranch"),
+                icon: <IconBranch size={14} />,
+                title: t("nav.createBranch"),
+                disabled: Boolean(runningSessions[session.id]),
+                onSelect: () => void forkSession(session),
+              }),
+            ]),
+        ...sessionWorktreeItems,
+      ];
+      return {
+        label: t("nav.sessionActions", { defaultValue: "Session actions" }),
+        items: [
+          ...(native
+            ? []
+            : [
+                sidebarMenuAction({
+                  id: "rename-session",
+                  label: t("nav.renameTask", { defaultValue: "Rename task" }),
+                  icon: <IconPencil size={14} />,
+                  onSelect: () => {
+                    closeMenus(false);
+                    setRenameFor(session);
+                  },
+                }),
+              ]),
+          sidebarMenuAction({
+            id: "toggle-session-pin",
+            label: pinned
+              ? t("nav.unpinTask", { defaultValue: "Unpin" })
+              : t("nav.pinTask", { defaultValue: "Pin" }),
+            icon: <IconPin size={14} />,
+            onSelect: () => toggleSessionPin(session),
+          }),
+          sidebarMenuAction({
+            id: "toggle-session-archive",
+            label: archived
+              ? t("nav.restoreTask", { defaultValue: "Restore" })
+              : t("nav.archiveTask", { defaultValue: "Archive" }),
+            icon: archived ? <IconArchiveRestore size={14} /> : <IconArchive size={14} />,
+            onSelect: () => void archiveSession(session),
+          }),
+          ...(gitItems.length
+            ? [
+                sidebarMenuSubmenu({
+                  id: "session-git",
+                  label: t("worktree.menu.group", { defaultValue: "Git" }),
+                  icon: <IconBranch size={14} />,
+                  items: gitItems,
+                }),
+              ]
+            : []),
+          sidebarMenuSubmenu({
+            id: "session-copy",
+            label: t("chat.copy", { defaultValue: "Copy" }),
+            icon: <IconCopy size={14} />,
+            items: [
+              sidebarMenuAction({
+                id: "copy-conversation-id",
+                label: t("nav.copyConversationId"),
+                icon: <IconCopy size={14} />,
+                onSelect: () => void copyConversationId(session),
+              }),
+              ...(!isRemoteSession(session)
+                ? [
+                    sidebarMenuAction({
+                      id: "copy-session-path",
+                      label: t("nav.copySessionPath"),
+                      icon: <IconFolder size={14} />,
+                      onSelect: () => void copySessionPath(session),
+                    }),
+                  ]
+                : []),
+              sidebarMenuAction({
+                id: "copy-session-link",
+                label: t("nav.copySessionLink"),
+                icon: <IconCopy size={14} />,
+                onSelect: () => void copySessionLink(session),
+              }),
+            ],
+          }),
+          ...(settings?.developerMode === true && !isRemoteSession(session)
+            ? [
+                sidebarMenuAction({
+                  id: "open-session-path",
+                  label: t("nav.openSessionPath"),
+                  icon: <IconFolder size={14} />,
+                  onSelect: () => void openSessionPath(session),
+                }),
+              ]
+            : []),
+          ...(native
+            ? []
+            : [
+                sidebarMenuSubmenu({
+                  id: "session-danger",
+                  label: t("nav.dangerZone", { defaultValue: "Danger zone" }),
+                  icon: <IconTrash size={14} />,
+                  items: [
+                    sidebarMenuAction({
+                      id: "delete-session",
+                      label: armedDelete === session.id
+                        ? t("nav.deleteTaskConfirm", { defaultValue: "Delete?" })
+                        : t("nav.deleteTask", { defaultValue: "Delete" }),
+                      icon: <IconX size={14} />,
+                      danger: true,
+                      armed: armedDelete === session.id,
+                      onSelect: () => requestDeleteSession(session),
+                    }),
+                  ],
+                  notes: sessionDeleteLoss
+                    ? [{ id: "session-delete-loss", text: sessionDeleteLoss }]
+                    : undefined,
+                }),
+              ]),
+        ],
+      };
+    },
+    [
+      armedDelete,
+      archiveSession,
+      copyConversationId,
+      copySessionPath,
+      copySessionLink,
+      forkSession,
+      openSessionPath,
+      requestDeleteSession,
+      runningSessions,
+      sessionDeleteLoss,
+      sessionMeta,
+      sessionWorktreeItems,
+      settings?.developerMode,
+      t,
+      toggleSessionPin,
+    ],
+  );
+
+  const projectMenuContent = useCallback(
+    (entry: ProjectEntry): SidebarMenuPanelContent => {
+      const archived = Boolean(entry.meta.archived);
+      return {
+        label: t("project.openActions", { name: entry.name }),
+        items: [
+          sidebarMenuAction({
+            id: "open-project-folder",
+            label: t("project.openFolder", { defaultValue: "Open folder" }),
+            icon: <IconFolder size={14} />,
+            onSelect: () => void openProjectFolder(entry),
+          }),
+          sidebarMenuAction({
+            id: "edit-project",
+            label: t("project.edit", { defaultValue: "Edit project" }),
+            icon: <IconPencil size={14} />,
+            onSelect: () => {
+              closeMenus(false);
+              setEditProjectFor(entry);
+            },
+          }),
+          sidebarMenuAction({
+            id: "toggle-project-pin",
+            label: entry.meta.pinned ? t("project.unpin") : t("project.pin"),
+            icon: <IconPin size={14} />,
+            onSelect: () => toggleProjectPin(entry),
+          }),
+          sidebarMenuAction({
+            id: "toggle-project-archive",
+            label: archived
+              ? t("project.restore", { defaultValue: "Restore project" })
+              : t("project.archive", { defaultValue: "Archive project" }),
+            icon: archived ? <IconArchiveRestore size={14} /> : <IconArchive size={14} />,
+            onSelect: () => void archiveProject(entry),
+          }),
+          sidebarMenuSubmenu({
+            id: "project-copy",
+            label: t("chat.copy", { defaultValue: "Copy" }),
+            icon: <IconCopy size={14} />,
+            items: [
+              sidebarMenuAction({
+                id: "copy-project-name",
+                label: t("project.copyName"),
+                icon: <IconCopy size={14} />,
+                onSelect: () => void copyTextToClipboard(entry.name),
+              }),
+              sidebarMenuAction({
+                id: "copy-project-path",
+                label: t("project.copyPath"),
+                icon: <IconFolder size={14} />,
+                onSelect: () => void copyTextToClipboard(entry.displayPath ?? entry.path),
+              }),
+            ],
+          }),
+          sidebarMenuSubmenu({
+            id: "project-git",
+            label: t("worktree.menu.group", { defaultValue: "Git" }),
+            icon: <IconBranch size={14} />,
+            items: projectIsolationItems,
+          }),
+          sidebarMenuSubmenu({
+            id: "project-danger",
+            label: t("nav.dangerZone", { defaultValue: "Danger zone" }),
+            icon: <IconTrash size={14} />,
+            items: [
+              sidebarMenuAction({
+                id: "delete-project",
+                label: t("project.delete", { defaultValue: "Delete project" }),
+                icon: <IconTrash size={14} />,
+                danger: true,
+                onSelect: () => requestDeleteProject(entry),
+              }),
+            ],
+          }),
+        ],
+      };
+    },
+    [
+      archiveProject,
+      openProjectFolder,
+      projectIsolationItems,
+      copyTextToClipboard,
+      requestDeleteProject,
+      t,
+      toggleProjectPin,
+    ],
+  );
+
+  const batchMenuContent = useCallback(
+    (count: number): SidebarMenuPanelContent => ({
+      label: t("nav.sessionActions", { defaultValue: "Session actions" }),
+      hint: t("nav.batchSelectionHint", {
+        defaultValue: "{{count}} sessions selected",
+        count,
+      }),
+      items: [
+        sidebarMenuAction({
+          id: "batch-archive",
+          label: t("nav.batchArchive", { defaultValue: "Archive {{count}} sessions", count }),
+          icon: <IconArchive size={14} />,
+          onSelect: () => void batchArchiveSessions(),
+        }),
+        sidebarMenuSubmenu({
+          id: "batch-danger",
+          label: t("nav.dangerZone", { defaultValue: "Danger zone" }),
+          icon: <IconTrash size={14} />,
+          items: [
+            sidebarMenuAction({
+              id: "batch-delete",
+              label: armedDelete === "batch"
+                ? t("nav.batchDeleteConfirm", { defaultValue: "Delete {{count}} sessions?", count })
+                : t("nav.batchDelete", { defaultValue: "Delete {{count}} sessions", count }),
+              icon: <IconTrash size={14} />,
+              danger: true,
+              armed: armedDelete === "batch",
+              onSelect: () => {
+                if (armedDelete !== "batch") {
+                  setArmedDelete("batch");
+                  return;
+                }
+                setArmedDelete(null);
+                void batchDeleteSessions();
+              },
+            }),
+          ],
+        }),
+      ],
+    }),
+    [armedDelete, batchArchiveSessions, batchDeleteSessions, t],
+  );
+
+  const sortMenuContent = useMemo(
+    (): SidebarMenuPanelContent => ({
+      label: t("nav.sortSessions", { defaultValue: "Sort sessions" }),
+      items: [
+        sidebarMenuGroup({
+          id: "sort",
+          label: t("nav.sortSessions", { defaultValue: "Sort sessions" }),
+          options: (["recent", "oldest", "name", "created"] as const).map((value) => ({
+            id: `sort-${value}`,
+            label: menuSortLabel(value),
+            selected: displaySessionSort === value,
+            onSelect: () => setSort(value),
+          })),
+        }),
+        sidebarMenuSection({
+          id: "view",
+          label: t("nav.viewOptions", { defaultValue: "View" }),
+        }),
+        sidebarMenuCheck({
+          id: "toggle-show-archived",
+          label: t("nav.showArchived", { defaultValue: "Show archived" }),
+          checked: showArchived,
+          onSelect: toggleShowArchived,
+        }),
+      ],
+    }),
+    [displaySessionSort, menuSortLabel, setSort, showArchived, t, toggleShowArchived],
   );
 
   const beginSessionDrag = useCallback(
@@ -1738,7 +2113,12 @@ export function Sidebar({
 
   const renderSessionRows = (
     items: SessionSummary[],
-    options?: { temporary?: boolean; projectPath?: string; global?: boolean },
+    options?: {
+      temporary?: boolean;
+      projectPath?: string;
+      global?: boolean;
+      showLastReplyDate?: boolean;
+    },
   ) => items.map((session) => {
     const meta = sessionMeta[session.id] ?? {};
     const normalizedProjectPath = normalizeProjectPath(session.projectPath);
@@ -1757,6 +2137,13 @@ export function Sidebar({
       outcome: sessionOutcomes[session.id],
       hasPendingPermission,
     });
+    const lastReplyDate = options?.showLastReplyDate
+      ? formatSessionLastReplyDate(
+          session.updatedAt,
+          new Date(),
+          i18n.resolvedLanguage ?? i18n.language,
+        )
+      : "";
     return (
       <div
         key={session.id}
@@ -1839,7 +2226,15 @@ export function Sidebar({
             </span>
           ) : null}
         </button>
-        <div className="sidebar-row-actions">
+        <div
+          className={cx(
+            "thread-item-meta",
+            sessionMenu === session.id && "is-menu-open",
+          )}
+        >
+          {lastReplyDate ? (
+            <span className="thread-item-last-reply">{lastReplyDate}</span>
+          ) : null}
           <TooltipButton
             type="button"
             className="thread-item-more"
@@ -1871,7 +2266,7 @@ export function Sidebar({
     const isMenuOpen = projectMenu === entry.key;
 
     // Show the initial page by default; the remaining sessions stay folded
-    // behind the same load-more affordance used for time-group overflow.
+    // behind the Load more affordance.
     const sessionsExpanded = expandedProjectSessions[entry.key] ?? false;
     const history = entry.sessions.filter((session) => !pinnedSessionIds.has(session.id));
     const { visibleSessions, hiddenCount } = getVisibleProjectSessions(
@@ -1879,24 +2274,24 @@ export function Sidebar({
       sessionsExpanded,
     );
 
-    const renderTimeGroupedSessions = (sessions: SessionSummary[]) => {
-      const result: React.ReactNode[] = [];
-      for (const { group, sessions: groupSessions } of groupSidebarSessionsByTime(sessions)) {
-        // For today, don't show header (as per requirement)
-        if (group !== "today") {
-          const i18nKey =
-            group === "yesterday" ? "nav.timeGroupYesterday" :
-            group === "thisWeek" ? "nav.timeGroupThisWeek" :
-            group === "older14d" ? "nav.timeGroupOlder14d" :
-            "nav.timeGroupArchived";
-          result.push(
-            <div key={`group-header-${group}`} className="sidebar-time-group-header">
-              {t(i18nKey)}
-            </div>
-          );
-        }
-        result.push(...renderSessionRows(groupSessions, { projectPath: entry.path }));
-      }
+    // The live counts cover every session in the group, including pinned and
+    // folded ones, because the header answers for the whole project.
+    const runSummary = summarizeProjectRuns(
+      entry.sessions,
+      runningSessions,
+      pendingPermissions,
+    );
+    const runIsLive = projectRunSummaryIsLive(runSummary);
+    const showRunBadge = runningAffordances.badge && runIsLive;
+    const showRunRail = runningAffordances.rail && runIsLive;
+
+    const renderProjectSessions = (sessions: SessionSummary[]) => {
+      const result: React.ReactNode[] = [
+        ...renderSessionRows(sessions, {
+          projectPath: entry.path,
+      showLastReplyDate: settings?.sidebarSessionTime === true,
+        }),
+      ];
       // Add "load more" button if there are hidden sessions
       if (hiddenCount > 0) {
         result.push(
@@ -1916,7 +2311,7 @@ export function Sidebar({
     return (
       <section
         key={entry.key}
-        className={`sidebar-session-group project-group ${entry.meta.archived ? "archived" : ""} ${dropProjectKey === entry.key ? "is-drop-target" : ""} ${draggingProjectKey === entry.key ? "is-dragging" : ""} ${dropIndicator?.key === entry.key ? (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before") : ""}`}
+        className={`sidebar-session-group project-group ${entry.meta.archived ? "archived" : ""} ${runIsLive ? "has-running-sessions" : ""} ${showRunRail ? "has-run-rail" : ""} ${collapsedProject ? "is-collapsed" : ""} ${dropProjectKey === entry.key ? "is-drop-target" : ""} ${draggingProjectKey === entry.key ? "is-dragging" : ""} ${dropIndicator?.key === entry.key ? (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before") : ""}`}
         aria-labelledby={projectId}
         data-sidebar-project-group={entry.key}
         data-current-workspace={entry.active ? "true" : undefined}
@@ -1934,6 +2329,7 @@ export function Sidebar({
           onProjectDropTargetDrop(event, entry);
         }}
       >
+        {showRunRail ? <ProjectRunRail summary={runSummary} /> : null}
         <div
           className="sidebar-session-group-header"
           onClick={(event) => {
@@ -2007,6 +2403,8 @@ export function Sidebar({
               <IconFolder size={13} aria-hidden />
             )}
             <span>{entry.name}</span>
+            {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
+            {showRunRail ? <ProjectRunCount summary={runSummary} /> : null}
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
           </TooltipButton>
           <span id={`${projectId}-path-description`} className="sr-only">
@@ -2054,7 +2452,7 @@ export function Sidebar({
         >
           <div className="sidebar-session-group-clip">
             <div className="sidebar-session-group-list">
-              {entry.sessions.length > 0 ? renderTimeGroupedSessions(visibleSessions) : (
+              {entry.sessions.length > 0 ? renderProjectSessions(visibleSessions) : (
                 <div className="sidebar-session-empty">{t("nav.noProjectSessions")}</div>
               )}
             </div>
@@ -2064,310 +2462,90 @@ export function Sidebar({
     );
   };
 
+  /**
+   * One panel renders whatever menu is open. The content builders above decide
+   * which rows exist, so this stays placement and nothing else.
+   */
   const renderFloatingMenu = () => {
-    if (
-      !menuPosition ||
-      typeof document === "undefined" ||
-      (!sessionMenu && !projectMenu && !sectionMenu && !sortOpen)
-    ) {
-      return null;
-    }
-    if (sectionMenu) {
-      const isSessions = sectionMenu === "sessions";
-      const action = isSessions ? "new-standalone-session" : "new-project";
-      const label = isSessions
-        ? t("nav.newTemporarySession")
-        : t("nav.newProject");
-      const Icon = isSessions ? IconNewSession : IconNewProject;
-      return portalToBody(
-        <div
-          ref={floatingMenuRef}
-          className="sidebar-row-menu sidebar-floating-menu sidebar-section-menu"
-          role="menu"
-          data-sidebar-section-menu={sectionMenu}
-          onKeyDown={onMenuKeyDown}
-          style={{
-            top: menuPosition.top,
-            left: menuPosition.left,
-          }}
-        >
-          <button
-            ref={menuFirstItemRef}
-            type="button"
-            role="menuitem"
-            data-action={action}
-            onClick={() => {
-              closeMenus(false);
-              if (isSessions) void createSession({ projectPath: null });
-              else void openProjectPicker();
-            }}
-          >
-            <Icon size={14} />
-            <span>{label}</span>
-          </button>
-        </div>,
-      );
-    }
-    if (sortOpen) {
-      return portalToBody(
-        <div
-          ref={floatingMenuRef}
-          className="sidebar-popover sidebar-sort-menu sidebar-floating-menu"
-          role="menu"
-          onKeyDown={onMenuKeyDown}
-          style={{
-            top: menuPosition.top,
-            left: menuPosition.left,
-          }}
-        >
-          <div className="sidebar-popover-title">
-            {t("nav.sortSessions", { defaultValue: "Sort sessions" })}
-          </div>
-          {(["recent", "oldest", "name", "created"] as const).map((value, index) => (
-            <button ref={index === 0 ? menuFirstItemRef : undefined} key={value} type="button" role="menuitemradio" aria-checked={displaySessionSort === value} className={displaySessionSort === value ? "selected" : ""} data-sort={value} onClick={() => setSort(value)}>
-              <span>{value === "recent" ? t("nav.sortRecent", { defaultValue: "Recently updated" }) : value === "oldest" ? t("nav.sortOldest", { defaultValue: "Oldest first" }) : value === "name" ? t("nav.sortName", { defaultValue: "Name" }) : t("nav.sortCreated", { defaultValue: "Created date" })}</span>
-              {displaySessionSort === value ? <span className="sidebar-sort-check">✓</span> : null}
-            </button>
-          ))}
-          <div className="sidebar-popover-divider" />
-          <button type="button" role="menuitemcheckbox" aria-checked={showArchived} data-action="toggle-show-archived" onClick={toggleShowArchived}>
-            <span>{showArchived ? t("nav.hideArchived", { defaultValue: "Hide archived" }) : t("nav.showArchived", { defaultValue: "Show archived" })}</span>
-            <span className={`sidebar-checkbox ${showArchived ? "checked" : ""}`}>{showArchived ? "✓" : ""}</span>
-          </button>
-        </div>,
-      );
-    }
+    if (!menuPosition || typeof document === "undefined") return null;
+    const position = { top: menuPosition.top, left: menuPosition.left };
     const session = sessionMenu
       ? sessions.find((item) => item.id === sessionMenu)
       : undefined;
     const entry = projectMenu
       ? projectEntries.find((item) => item.key === projectMenu)
       : undefined;
-    if (!session && !entry) return null;
-    return portalToBody(
-      <div
-        ref={floatingMenuRef}
-        className="sidebar-row-menu sidebar-floating-menu"
-        role="menu"
-        onKeyDown={onMenuKeyDown}
-        style={{
-          top: menuPosition.top,
-          left: menuPosition.left,
-        }}
-      >
-        {session ? (
-          selectedIds.size > 1 && selectedIds.has(session.id) ? (
-            <>
-              <button
-                ref={menuFirstItemRef}
-                type="button"
-                role="menuitem"
-                data-action="batch-archive"
-                onClick={() => void batchArchiveSessions()}
-              >
-                <IconArchive size={14} />
-                {t("nav.batchArchive", { defaultValue: "Archive {{count}} sessions", count: selectedIds.size })}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className={cx("danger", armedDelete === "batch" && "is-armed")}
-                data-action="batch-delete"
-                data-armed={armedDelete === "batch" ? "true" : undefined}
-                onClick={() => {
-                  if (armedDelete !== "batch") {
-                    setArmedDelete("batch");
-                    return;
-                  }
-                  setArmedDelete(null);
-                  void batchDeleteSessions();
-                }}
-              >
-                <IconTrash size={14} />
-                {armedDelete === "batch"
-                  ? t("nav.batchDeleteConfirm", { defaultValue: "Delete {{count}} sessions?", count: selectedIds.size })
-                  : t("nav.batchDelete", { defaultValue: "Delete {{count}} sessions", count: selectedIds.size })}
-              </button>
-            </>
-          ) : (
-          <>
-            {session.source !== "pi-native" ? (
-              <button
-                ref={menuFirstItemRef}
-                type="button"
-                role="menuitem"
-                data-action="rename-session"
-                onClick={() => {
+    if (sectionMenu) {
+      const isSessions = sectionMenu === "sessions";
+      return portalToBody(
+        <SidebarMenuPanel
+          menuRef={floatingMenuRef}
+          firstItemRef={menuFirstItemRef}
+          className="sidebar-section-menu"
+          position={position}
+          onKeyDown={onMenuKeyDown}
+          content={{
+            label: isSessions ? t("nav.newTemporarySession") : t("nav.newProject"),
+            items: [
+              sidebarMenuAction({
+                id: isSessions ? "new-standalone-session" : "new-project",
+                label: isSessions
+                  ? t("nav.newTemporarySession")
+                  : t("nav.newProject"),
+                icon: isSessions
+                  ? <IconNewSession size={14} />
+                  : <IconNewProject size={14} />,
+                onSelect: () => {
                   closeMenus(false);
-                  setRenameFor(session);
-                }}
-              >
-                <IconPencil size={14} />
-                {t("nav.renameTask", { defaultValue: "Rename task" })}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              data-action="toggle-session-pin"
-              onClick={() => toggleSessionPin(session)}
-            >
-              <IconPin size={14} />
-              {sessionPinned(session, sessionMeta[session.id])
-                ? t("nav.unpinTask", { defaultValue: "Unpin" })
-                : t("nav.pinTask", { defaultValue: "Pin" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              data-action="toggle-session-archive"
-              onClick={() => void archiveSession(session)}
-            >
-              {sessionArchived(session, sessionMeta[session.id]) ? (
-                <IconArchiveRestore size={14} />
-              ) : (
-                <IconArchive size={14} />
-              )}
-              {sessionArchived(session, sessionMeta[session.id])
-                ? t("nav.restoreTask", { defaultValue: "Restore" })
-                : t("nav.archiveTask", { defaultValue: "Archive" })}
-            </button>
-            {session.source !== "pi-native" && sessionAllows(session, "canEditMessages") ? (
-              <button
-                type="button"
-                role="menuitem"
-                data-action="fork-session"
-                disabled={Boolean(runningSessions[session.id])}
-                onClick={() => void forkSession(session)}
-              >
-                <IconBranch size={14} />
-                {t("nav.createBranch")}
-              </button>
-            ) : null}
-            <WorktreeSessionMenuItems
-              sessionId={session.id}
-              title={taskTitle(session.title)}
-              worktree={session.worktree}
-              running={Boolean(runningSessions[session.id])}
-              onDone={() => closeMenus(false)}
-            />
-            <button
-              type="button"
-              role="menuitem"
-              data-action="copy-session-link"
-              onClick={() => void copySessionLink(session)}
-            >
-              <IconCopy size={14} />
-              {t("nav.copySessionLink")}
-            </button>
-            {settings?.developerMode === true && !isRemoteSession(session) ? (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-action="copy-conversation-id"
-                  onClick={() => void copyConversationId(session)}
-                >
-                  <IconCopy size={14} />
-                  {t("nav.copyConversationId")}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-action="open-session-path"
-                  onClick={() => void openSessionPath(session)}
-                >
-                  <IconFolder size={14} />
-                  {t("nav.openSessionPath")}
-                </button>
-              </>
-            ) : null}
-            {session.source !== "pi-native" ? (
-              <button
-                type="button"
-                role="menuitem"
-                className={cx("danger", armedDelete === session.id && "is-armed")}
-                data-action="delete-session"
-                data-armed={armedDelete === session.id ? "true" : undefined}
-                onClick={() => requestDeleteSession(session)}
-              >
-                <IconX size={14} />
-                {armedDelete === session.id ? t("nav.deleteTaskConfirm", { defaultValue: "Delete?" }) : t("nav.deleteTask", { defaultValue: "Delete" })}
-                {armedDelete === session.id && session.worktree ? (
-                  <WorktreeDeleteLossNote sessionId={session.id} />
-                ) : null}
-              </button>
-            ) : null}
-          </>
-          )
-        ) : null}
-        {entry ? (
-          <>
-            <button
-              ref={menuFirstItemRef}
-              type="button"
-              role="menuitem"
-              data-action="open-project-folder"
-              onClick={() => void openProjectFolder(entry)}
-            >
-              <IconFolder size={14} />
-              {t("project.openFolder", { defaultValue: "Open folder" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              data-action="edit-project"
-              onClick={() => {
-                closeMenus(false);
-                setEditProjectFor(entry);
-              }}
-            >
-              <IconPencil size={14} />
-              {t("project.edit", { defaultValue: "Edit project" })}
-            </button>
-            <WorktreeProjectMenuItems
-              projectPath={entry.path}
-              projectName={entry.name}
-              onDone={() => closeMenus(false)}
-            />
-            <button
-              type="button"
-              role="menuitem"
-              data-action="toggle-project-pin"
-              onClick={() => toggleProjectPin(entry)}
-            >
-              <IconPin size={14} />
-              {entry.meta.pinned ? t("project.unpin") : t("project.pin")}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              data-action="toggle-project-archive"
-              onClick={() => void archiveProject(entry)}
-            >
-              {entry.meta.archived ? (
-                <IconArchiveRestore size={14} />
-              ) : (
-                <IconArchive size={14} />
-              )}
-              {entry.meta.archived
-                ? t("project.restore", { defaultValue: "Restore project" })
-                : t("project.archive", { defaultValue: "Archive project" })}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="danger"
-              data-action="delete-project"
-              onClick={() => requestDeleteProject(entry)}
-            >
-              <IconTrash size={14} />
-              {t("project.delete", { defaultValue: "Delete project" })}
-            </button>
-          </>
-        ) : null}
-      </div>,
-    );
+                  if (isSessions) void createSession({ projectPath: null });
+                  else void openProjectPicker();
+                },
+              }),
+            ],
+          }}
+        />,
+      );
+    }
+    if (sortOpen) {
+      return portalToBody(
+        <SidebarMenuPanel
+          menuRef={floatingMenuRef}
+          firstItemRef={menuFirstItemRef}
+          className="sidebar-sort-menu"
+          position={position}
+          onKeyDown={onMenuKeyDown}
+          content={sortMenuContent}
+        />,
+      );
+    }
+    if (session) {
+      return portalToBody(
+        <SidebarMenuPanel
+          menuRef={floatingMenuRef}
+          firstItemRef={menuFirstItemRef}
+          position={position}
+          onKeyDown={onMenuKeyDown}
+          content={
+            batchSelected
+              ? batchMenuContent(selectedIds.size)
+              : sessionMenuContent(session)
+          }
+        />,
+      );
+    }
+    if (entry) {
+      const content = projectMenuContent(entry);
+      return portalToBody(
+        <SidebarMenuPanel
+          menuRef={floatingMenuRef}
+          firstItemRef={menuFirstItemRef}
+          position={position}
+          onKeyDown={onMenuKeyDown}
+          content={content}
+        />,
+      );
+    }
+    return null;
   };
 
   return (
@@ -2565,7 +2743,10 @@ export function Sidebar({
             </section>
           )}
           <RemoteProjectGroups groups={remoteProjectGroups}
-            renderSessions={(sessions) => renderSessionRows(sessions, { temporary: false })} />
+            renderSessions={(sessions) => renderSessionRows(sessions, {
+              temporary: false,
+              showLastReplyDate: settings?.sidebarSessionTime === true,
+            })} />
         </div>
 
         <div className="sidebar-footer no-drag">

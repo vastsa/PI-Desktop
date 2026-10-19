@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Button, TooltipButton, cx, portalOverlay } from "../../components/ui";
 import { useBlockingOverlay } from "../../lib/blocking-overlay";
 import {
@@ -22,6 +22,8 @@ import {
   versionInstallable,
   versionWithdrawn,
 } from "./model";
+import { ReviewSummaryBlock } from "./presentation";
+import { PluginReviewsDrawer } from "./PluginReviewsDrawer";
 import type { PluginsPageModel } from "./usePluginsPage";
 
 function PluginDetailBlockingHost({ children }: { children: ReactNode }) {
@@ -46,7 +48,24 @@ export function PluginDetailSheet({
   busyId,
   queueInstall,
   setSelectedVersion,
+  reviewSummaries,
+  reviewsStatus,
+  reviewsId,
+  openReviews,
+  closeReviews,
 }: PluginsPageModel) {
+  const reviewSummary = detail ? reviewSummaries[detail.id] : undefined;
+  const reviewsOpen = selectedId !== null && reviewsId === selectedId;
+  /** The button that opened the drawer; focus returns here when it closes. */
+  const reviewsOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const wasReviewsOpen = useRef(false);
+  useEffect(() => {
+    if (wasReviewsOpen.current && !reviewsOpen) {
+      reviewsOpenerRef.current?.focus();
+    }
+    wasReviewsOpen.current = reviewsOpen;
+  }, [reviewsOpen]);
+
   return selectedId
     ? portalOverlay(
         <PluginDetailBlockingHost>
@@ -56,12 +75,17 @@ export function PluginDetailSheet({
             className="plugins-sheet-scrim"
             aria-label={t("plugins.closeDetail")}
             onClick={closeDetail}
+            inert={reviewsOpen}
           />
           <aside
             className="plugins-sheet"
             role="dialog"
             aria-modal="true"
             aria-label={t("plugins.detailTitle")}
+            /* The review drawer is the top layer while it covers this sheet:
+               the sheet stays mounted (and keeps its scroll position) but is
+               not reachable by pointer or keyboard until the drawer leaves. */
+            inert={reviewsOpen}
           >
             <header className="plugins-sheet-head">
               <span className="plugins-card-glyph is-large" aria-hidden>
@@ -279,6 +303,41 @@ export function PluginDetailSheet({
                     )}
                   </section>
 
+                  {/* Ratings and reviews, between permissions and versions:
+                      what other users said, then the release history it
+                      belongs to. Reviews themselves open in the drawer that
+                      covers this sheet. */}
+                  <section className="plugins-sheet-section">
+                    <h3 className="plugins-sheet-section-title">
+                      {t("plugins.reviews.summaryTitle")}
+                    </h3>
+                    {reviewSummary && reviewSummary.ratingCount > 0 ? (
+                      <ReviewSummaryBlock summary={reviewSummary} locale={locale} />
+                    ) : reviewSummary ? (
+                      <p className="plugins-sheet-desc">{t("plugins.reviews.empty")}</p>
+                    ) : reviewsStatus === "loading" ? (
+                      <p className="plugins-sheet-desc">{t("plugins.reviews.loading")}</p>
+                    ) : (
+                      <p className="plugins-sheet-desc">
+                        {t("plugins.reviews.unavailable")}
+                      </p>
+                    )}
+                    {/* The entry stays reachable even when the summary read
+                        failed: the drawer is where the list is retried, and
+                        it always carries the disabled composer plus the
+                        link out to the centre's own page. */}
+                    <div className="plugins-sheet-reviews-action">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        ref={reviewsOpenerRef}
+                        onClick={() => openReviews(detail.id)}
+                      >
+                        {t("plugins.reviews.viewAll")}
+                      </Button>
+                    </div>
+                  </section>
+
                   <section className="plugins-sheet-section">
                     <h3 className="plugins-sheet-section-title">
                       {t("plugins.versions")}
@@ -361,6 +420,13 @@ export function PluginDetailSheet({
               </>
             )}
           </aside>
+          {reviewsOpen && detail ? (
+            <PluginReviewsDrawer
+              pluginId={detail.id}
+              pluginName={detail.name}
+              onClose={closeReviews}
+            />
+          ) : null}
         </div>
         </PluginDetailBlockingHost>,
       )

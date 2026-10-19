@@ -1,16 +1,13 @@
 /**
  * A file the conversation already recognised is a file the user can act on.
  *
- * Opening it is one click, so the only destination left for the pointer path is
- * the file's own folder in the system file manager. Every surface that names a
- * file offers it — a turn's chip, an inline code span, a markdown link, a local
- * image — and all of them reveal through the same completion a click uses, so a
- * shorthand that resolved to nothing reports that instead of revealing a
- * lookalike file in another folder (ADR 0262/0263).
+ * HTML references have explicit open destinations in their context menu. Each
+ * destination goes through the same completion as a click, so a shorthand that
+ * resolves to nothing cannot open a different file (ADR 0262/0263).
  *
  * The destination half is asserted behaviorally: the real hooks run against a
- * recorded store and stubbed host replies, because the contract is the address
- * a reveal hands the host, not the shape of the code that builds it.
+ * recorded store and stubbed host replies, because the contract is the resolved
+ * address handed to each destination, not the shape of the menu.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -47,10 +44,10 @@ function loadModule(relative, imports) {
 }
 
 const calls = {
-  reveals: [],
   tabs: [],
   files: [],
   urls: [],
+  defaultBrowsers: [],
   toasts: [],
   resolved: [],
   menus: [],
@@ -60,7 +57,10 @@ const state = {
   sessions: [],
   workspace: { path: "C:/project" },
   activeSessionId: "session-1",
-  pluginViews: [{ pluginId: "pi.file-manager", viewId: "manager" }],
+  pluginViews: [
+    { pluginId: "pi.file-manager", viewId: "manager" },
+    { pluginId: "pi.browser", viewId: "browser" },
+  ],
   openFileInWorkPanel: (...args) => calls.files.push(args),
   openUrlInWorkPanel: (...args) => calls.urls.push(args),
   openWorkPanelTab: (tab) => calls.tabs.push(tab),
@@ -75,9 +75,6 @@ const useAppStore = Object.assign(
 );
 
 let nextMatch = null;
-let revealFails = false;
-
-
 let clipboardFails = false;
 const copied = [];
 
@@ -112,13 +109,11 @@ const previewTarget = loadModule("../src/hooks/use-preview-target.ts", {
   "../lib/api": {
     api: {
       listPluginViews: async () => state.pluginViews,
+      fsOpen: async (path, mimeType, sessionId) =>
+        calls.defaultBrowsers.push([path, mimeType, sessionId]),
       fsResolveRef: async (ref) => {
         calls.resolved.push(ref);
         return { match: nextMatch };
-      },
-      fsReveal: async (path) => {
-        if (revealFails) throw new Error("host refused to reveal");
-        calls.reveals.push(path);
       },
     },
   },
@@ -145,7 +140,16 @@ const { useChatFileMenu, useChatFileMenuItems } = loadModule(
     react: React,
     "react/jsx-runtime": jsxRuntime,
     "react-i18next": { useTranslation: translate },
-    "../components/icons": { IconCopy: () => null, IconFolderOpen: () => null },
+    "../components/icons": {
+      IconBrowser: () => null,
+      IconCopy: () => null,
+      IconExternal: () => null,
+      IconFolderOpen: () => null,
+      IconGlobe: () => null,
+    },
+    "../lib/chat-links": {
+      isHtmlFilePath: (path) => /\.html?$/i.test(path),
+    },
     "../components/ContextMenu": {
       useContextMenu: () => ({
         contextMenu: null,
@@ -163,7 +167,6 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 function reset(match) {
   Object.values(calls).forEach((list) => list.splice(0, list.length));
   nextMatch = match;
-  revealFails = false;
   clipboardFails = false;
 }
 
@@ -184,83 +187,46 @@ function projectMatch(overrides = {}) {
  * right-click would have offered. Both run inside a render, so no side effect
  * fires while React is rendering.
  */
-async function clickAndReveal(path) {
+async function openWithDestination(path, destination) {
   let open = null;
-  let items = null;
   function Harness() {
     open = previewTarget.useOpenChatFileRef();
-    items = useChatFileMenuItems()({ path });
     return null;
   }
   renderToStaticMarkup(React.createElement(Harness));
   assert.equal(typeof open, "function", "the hook returned a click handler");
-  const item = items.find((entry) => entry.id === "reveal-in-folder");
-  assert.ok(item, "every file reference offers its folder");
-  open(path);
-  await flush();
-  item.onSelect("");
+  open(path, undefined, undefined, { destination });
   await flush();
 }
 
-test("a project file is revealed at the address the click opens", async () => {
+test("the HTML menu exposes three open destinations as one submenu", () => {
   reset(projectMatch());
-  await clickAndReveal("src/dir/a.ts");
-  // Completion ran for both actions, so neither can act on a different file.
-  assert.deepEqual(calls.resolved, ["src/dir/a.ts", "src/dir/a.ts"]);
-  assert.equal(calls.tabs[0].location, "src/dir/a.ts");
-  assert.deepEqual(calls.reveals, ["src/dir/a.ts"]);
-  assert.deepEqual(calls.toasts, []);
-});
-
-test("a sibling folder file is revealed by absolute path, as it is opened", async () => {
-  reset(
-    projectMatch({
-      relativePath: "lib/only-here.ts",
-      absolutePath: "C:/project-second/lib/only-here.ts",
-      projectRoot: { primary: false },
-    }),
-  );
-  await clickAndReveal("lib/only-here.ts");
-  assert.equal(calls.tabs[0].location, "C:/project-second/lib/only-here.ts");
-  assert.deepEqual(calls.reveals, ["C:/project-second/lib/only-here.ts"]);
-});
-
-test("a scratch or attachment file is revealed by absolute path", async () => {
-  reset({
-    root: "scratch",
-    relativePath: "notes.md",
-    absolutePath: "C:/data/scratch/session-1/notes.md",
-    matchedBy: "exact-relative",
-  });
-  await clickAndReveal("notes.md");
-  assert.equal(calls.files[0][0], "C:/data/scratch/session-1/notes.md");
-  assert.deepEqual(calls.reveals, ["C:/data/scratch/session-1/notes.md"]);
-});
-
-test("a reference nothing answers reports itself and reveals nothing", async () => {
-  reset(null);
-  await clickAndReveal("missing-helper.js");
-  assert.deepEqual(calls.reveals, []);
-  assert.deepEqual(calls.files, []);
-  assert.deepEqual(calls.tabs, []);
+  let openFileMenu = null;
+  function Harness() {
+    openFileMenu = useChatFileMenu().openFileMenu;
+    return null;
+  }
+  renderToStaticMarkup(React.createElement(Harness));
+  openFileMenu({}, { path: "src/dir/a.html" });
+  const menu = calls.menus[0].items;
+  assert.deepEqual(menu.map((item) => item.id), [
+    "open-with",
+    "copy-full-path",
+    "copy-relative-path",
+  ]);
+  assert.equal(menu[0].label, "chat.openWith:");
   assert.deepEqual(
-    calls.toasts.map(([message]) => message),
-    ["chat.fileRefMissing:missing-helper.js", "chat.fileRefMissing:missing-helper.js"],
+    menu[0].submenu.map((item) => [item.id, item.label]),
+    [
+      ["open-with-file-manager", "chat.openWithFileManager:"],
+      ["open-with-built-in-browser", "chat.openWithBuiltInBrowser:"],
+      ["open-with-default-browser", "chat.openWithDefaultBrowser:"],
+    ],
   );
+  assert.equal(menu.some((item) => item.id === "reveal-in-folder"), false);
 });
 
-test("a refused reveal is reported instead of failing silently", async () => {
-  reset(projectMatch());
-  revealFails = true;
-  await clickAndReveal("src/dir/a.ts");
-  assert.deepEqual(calls.reveals, []);
-  assert.deepEqual(
-    calls.toasts.map(([message]) => message),
-    ["chat.fileRevealFailed:"],
-  );
-});
-
-test("the menu a reference opens carries the reveal and both copies", () => {
+test("non-HTML references keep copy actions without an open-with submenu", () => {
   reset(projectMatch());
   let openFileMenu = null;
   function Harness() {
@@ -269,16 +235,49 @@ test("the menu a reference opens carries the reveal and both copies", () => {
   }
   renderToStaticMarkup(React.createElement(Harness));
   openFileMenu({}, { path: "src/dir/a.ts" });
-  assert.deepEqual(
-    calls.menus.map((menu) => menu.items.map((item) => [item.id, item.label])),
-    [
-      [
-        ["reveal-in-folder", "chat.revealFileInFolder:"],
-        ["copy-full-path", "chat.copyFullPath:"],
-        ["copy-relative-path", "chat.copyRelativePath:"],
-      ],
-    ],
-  );
+  assert.deepEqual(calls.menus[0].items.map((item) => item.id), [
+    "copy-full-path",
+    "copy-relative-path",
+  ]);
+});
+
+test("the File Manager opens the resolved project or scratch path", async () => {
+  reset(projectMatch({ relativePath: "page.html", absolutePath: "C:/project/page.html" }));
+  await openWithDestination("page.html", "file-manager");
+  assert.deepEqual(calls.resolved, ["page.html"]);
+  assert.equal(calls.tabs[0].location, "page.html");
+
+  reset({
+    root: "scratch",
+    relativePath: "page.html",
+    absolutePath: "C:/data/scratch/session-1/page.html",
+    matchedBy: "exact-relative",
+  });
+  await openWithDestination("page.html", "file-manager");
+  assert.equal(calls.tabs[0].location, "C:/data/scratch/session-1/page.html");
+});
+
+test("HTML can open in the embedded or default browser at its resolved address", async () => {
+  reset(projectMatch({ relativePath: "page.html", absolutePath: "C:/project/page.html" }));
+  await openWithDestination("page.html", "built-in-browser");
+  assert.deepEqual(calls.urls, [["C:/project/page.html"]]);
+
+  await openWithDestination("page.html", "default-browser");
+  assert.deepEqual(calls.defaultBrowsers, [
+    ["C:/project/page.html", undefined, "session-1"],
+  ]);
+});
+
+test("an unresolved HTML reference is reported and opened nowhere", async () => {
+  reset(null);
+  await openWithDestination("missing.html", "built-in-browser");
+  assert.deepEqual(calls.tabs, []);
+  assert.deepEqual(calls.files, []);
+  assert.deepEqual(calls.urls, []);
+  assert.deepEqual(calls.defaultBrowsers, []);
+  assert.deepEqual(calls.toasts.map(([message]) => message), [
+    "chat.fileRefMissing:missing.html",
+  ]);
 });
 
 /** Run one copy item of the reference menu on the reference it names. */
@@ -406,35 +405,39 @@ test("every transcript surface that names a file opens that item", () => {
   );
 });
 
-test("a URL never reaches the reveal", () => {
+test("HTTP URLs keep their own menu instead of the file open submenu", () => {
   const menu = read("../src/hooks/use-chat-file-menu.tsx");
-  // The item is file-only by construction: it is built where the reference is a
-  // path, and an HTTP link keeps its own external/work-panel/copy menu.
-  assert.match(menu, /useRevealChatFileRef\(\)/);
-  assert.doesNotMatch(menu, /openHttpUrl|browserOpenExternal/);
-  // An HTTP link is not a file on disk, so it never grows this item; it keeps
-  // the menu it already has.
+  // The submenu only recognizes HTML paths, and an HTTP link keeps its own
+  // external/work-panel/copy menu.
+  assert.match(menu, /isHtmlFilePath\(path\)/);
+  assert.doesNotMatch(menu, /useRevealChatFileRef|reveal-in-folder/);
   assert.ok(markdown.includes('if (!/^https?:\\/\\//i.test(href)) {'));
 });
 
 test("the reference labels ship in the catalogs the menu reads", () => {
   const en = read("../../../packages/i18n/src/locales/en/index.ts");
   const zhCN = read("../../../packages/i18n/src/locales/zh-CN/index.ts");
-  assert.match(en, /revealFileInFolder: "Show in folder"/);
-  assert.match(en, /fileRevealFailed: "Could not show the file in its folder\."/);
+  assert.match(en, /openWith: "Open with"/);
+  assert.match(en, /openWithFileManager: "File Manager"/);
+  assert.match(en, /openWithBuiltInBrowser: "Built-in browser"/);
+  assert.match(en, /openWithDefaultBrowser: "Default browser"/);
+  assert.match(en, /defaultBrowserOpenFailed:/);
   assert.match(en, /copyFullPath: "Copy full path"/);
   assert.match(en, /copyRelativePath: "Copy relative path"/);
-  assert.match(zhCN, /revealFileInFolder: "在文件夹中显示"/);
-  assert.match(zhCN, /fileRevealFailed: "无法在文件夹中打开该文件。"/);
+  assert.match(zhCN, /openWith: "打开方式"/);
+  assert.match(zhCN, /openWithFileManager: "文件管理器"/);
+  assert.match(zhCN, /openWithBuiltInBrowser: "内置浏览器"/);
+  assert.match(zhCN, /openWithDefaultBrowser: "默认浏览器"/);
+  assert.match(zhCN, /defaultBrowserOpenFailed:/);
   assert.match(zhCN, /copyFullPath: "复制完整地址"/);
   assert.match(zhCN, /copyRelativePath: "复制相对地址"/);
 });
 
-test("remote workspace references retain copy actions but never offer local OS reveal", () => {
+test("remote workspace references retain copy actions but never offer local open actions", () => {
   const before = state.sessions;
   state.sessions = [{ id: state.activeSessionId, remoteWorkspace: { hostKey: "ssh", path: "/work/app" } }];
   let items;
-  function Harness() { items = useChatFileMenuItems()({ path: "README.md" }); return null; }
+  function Harness() { items = useChatFileMenuItems()({ path: "index.html" }); return null; }
   renderToStaticMarkup(React.createElement(Harness));
   assert.deepEqual(items.map(item => item.id), ["copy-full-path", "copy-relative-path"]);
   state.sessions = before;

@@ -97,6 +97,8 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 - 加载面板条目需要 `ui.panel`
 - 贡献工作面板视图需要 `ui.view`；它与 `ui.panel` 相互独立，
   因此插件可以只提供停靠视图而没有独立窗口
+- `ui.view` 也覆盖 `pi.ui.revealView`：在某个会话的工作面板里显示插件自己的视图；
+  跟随选中会话（`pi.session.getActive`、`session:activated`）不需要权限
 - 需要`agent.tool.register`来贡献agent工具
 - 当 `fs.write` 存在时，建议同时声明 `fs.read`
 - `manifest.fs.<mode>` 需要对应的 `fs.<mode>` 权限；没人能用的范围会导致校验失败，

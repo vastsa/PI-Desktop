@@ -415,6 +415,55 @@ export function SettingsPage() {
                 <FontSizeRow settings={settings} saveSettings={saveSettings} />
               </SettingsCard>
 
+              <SettingsCard title={t("settings.sidebar")}>
+                <SettingsRow
+                  title={t("settings.sidebarRunningIndicators")}
+                  description={t("settings.sidebarRunningIndicatorsDesc")}
+                >
+                  <SettingsToggle
+                    checked={settings.sidebarRunningIndicators === true}
+                    label={t("settings.sidebarRunningIndicators")}
+                    onChange={() => void saveSettings({
+                      sidebarRunningIndicators: settings.sidebarRunningIndicators !== true,
+                    })}
+                  />
+                </SettingsRow>
+                {/*
+                  The two sub-switches are gated by the master switch. They keep
+                  their stored value while disabled, so turning the master back
+                  on restores the previous choice instead of resetting it.
+                */}
+                <SettingsRow title={t("settings.sidebarRunningBadge")}>
+                  <SettingsToggle
+                    checked={settings.sidebarRunningBadge === true}
+                    label={t("settings.sidebarRunningBadge")}
+                    disabled={settings.sidebarRunningIndicators !== true}
+                    onChange={() => void saveSettings({
+                      sidebarRunningBadge: settings.sidebarRunningBadge !== true,
+                    })}
+                  />
+                </SettingsRow>
+                <SettingsRow title={t("settings.sidebarRunningRail")}>
+                  <SettingsToggle
+                    checked={settings.sidebarRunningRail === true}
+                    label={t("settings.sidebarRunningRail")}
+                    disabled={settings.sidebarRunningIndicators !== true}
+                    onChange={() => void saveSettings({
+                      sidebarRunningRail: settings.sidebarRunningRail !== true,
+                    })}
+                  />
+                </SettingsRow>
+                <SettingsRow title={t("settings.sidebarSessionTime")}>
+                  <SettingsToggle
+                    checked={settings.sidebarSessionTime === true}
+                    label={t("settings.sidebarSessionTime")}
+                    onChange={() => void saveSettings({
+                      sidebarSessionTime: settings.sidebarSessionTime !== true,
+                    })}
+                  />
+                </SettingsRow>
+              </SettingsCard>
+
               <NetworkProxySection settings={settings} saveSettings={saveSettings} />
 
               <StorageSettingsSection />

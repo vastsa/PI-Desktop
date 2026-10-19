@@ -1,6 +1,7 @@
 import { Button, cx } from "../../components/ui";
 import { IconCheck, IconSearch, IconShield } from "../../components/icons";
-import { PermissionChips } from "./presentation";
+import { PermissionChips, RatingChip } from "./presentation";
+import { ReviewTicker } from "./ReviewTicker";
 import {
   formatDate,
   monogram,
@@ -25,6 +26,8 @@ export function MarketplacePanel({
   openDetail,
   busyId,
   queueInstall,
+  reviewSummaries,
+  reviewTickers,
 }: PluginsPageModel) {
   return (
           <div
@@ -150,6 +153,16 @@ export function MarketplacePanel({
                                   </span>
                                 </>
                               ) : null}
+                              <span className="plugins-dot" aria-hidden>
+                                ·
+                              </span>
+                              <span>
+                                {installed
+                                  ? t("plugins.installedVersion", { version: installed.version })
+                                  : t("plugins.updatedOn", {
+                                      date: formatDate(item.updatedAt, locale),
+                                    })}
+                              </span>
                             </span>
                           </span>
                         </span>
@@ -157,13 +170,12 @@ export function MarketplacePanel({
                         <PermissionChips permissions={item.permissionSummary} />
                       </button>
                       <div className="plugins-card-foot">
-                        <span className="plugins-card-state">
-                          {installed
-                            ? t("plugins.installedVersion", { version: installed.version })
-                            : t("plugins.updatedOn", {
-                                date: formatDate(item.updatedAt, locale),
-                              })}
-                        </span>
+                        <RatingChip
+                          summary={reviewSummaries[item.id]}
+                          locale={locale}
+                          showDot={false}
+                        />
+                        <ReviewTicker ticker={reviewTickers[item.id]} />
                         {installed && !upgradable ? (
                           <span className="plugins-installed-mark">
                             <IconCheck size={13} />

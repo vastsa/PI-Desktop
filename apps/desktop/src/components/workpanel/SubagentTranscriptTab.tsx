@@ -220,7 +220,6 @@ function SubagentTranscriptSurface({ delegationId }: { delegationId: string }) {
             >
               <span className="composer-model-thinking-icon" aria-hidden="true"><IconBot size={14} /></span>
               <span className="composer-model-thinking-model">{delegateSettings.modelId || "—"}</span>
-              <span className="composer-model-thinking-dot" aria-hidden="true">·</span>
               <span className="composer-model-thinking-level">{delegateSettings.thinkingLevel || "—"}</span>
               <IconChevronDown size={12} aria-hidden="true" className="composer-model-thinking-chevron" />
             </button>

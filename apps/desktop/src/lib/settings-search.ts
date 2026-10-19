@@ -89,6 +89,11 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.networkRelaxedModeStrictDesc",
       "settings.preventScreenSleep",
       "settings.preventScreenSleepDesc",
+      "settings.sidebar",
+      "settings.sidebarRunningIndicators",
+      "settings.sidebarRunningIndicatorsDesc",
+      "settings.sidebarRunningBadge",
+      "settings.sidebarSessionTime",
     ],
   },
   {

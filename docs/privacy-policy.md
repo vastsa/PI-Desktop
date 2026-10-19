@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date: 2026-09-20**
+**Effective date: 2026-10-16**
 
 This Privacy Policy describes how PI-Desktop handles information when you use
 the PI-Desktop desktop application. PI-Desktop is a local-first, open-source
@@ -106,6 +106,15 @@ The value sent is the digest, not the machine code, and the machine code cannot
 be recovered from it. The service uses the identifier to de-duplicate and
 rate-limit a download, and it keeps counts for a device rather than the identity
 behind it. The two backup channels and a custom source do not send it.
+
+Viewing a plugin's public ratings and reviews also contacts the plugin center
+configured for the marketplace. The app sends the ids of the plugins currently
+shown to fetch their public rating summaries and, when a review list is opened
+or filtered, that plugin's id with the chosen sentiment, sort, and paging
+cursor. These are anonymous public reads: no account, sign-in, cookie, or
+device identifier is sent, and the desktop cannot write, vote on, or report a
+review. Writing one happens on the center's web page, opened in your browser
+from the review drawer.
 
 Links opened through the application are handled by the operating system or an
 external browser. Markdown written by a model may include remote images,

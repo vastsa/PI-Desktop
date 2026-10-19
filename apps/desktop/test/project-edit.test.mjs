@@ -29,7 +29,7 @@ const [
   ]);
 
 test("project rows expose an edit action in both project surfaces", () => {
-  assert.match(sidebarSource, /data-action="edit-project"/);
+  assert.match(sidebarSource, /id: "edit-project"/);
   assert.match(sidebarSource, /setEditProjectFor\(entry\)/);
   assert.match(sidebarSource, /ProjectEditDialog/);
   assert.match(projectsSource, /data-action="edit-project"/);

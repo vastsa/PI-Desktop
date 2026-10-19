@@ -16,7 +16,12 @@ import { parseProbe, probed, propsProbe, slotMounts, slotSsr } from "./helpers/s
 /** The toolbar's own controls below, by label. */
 // Live Voice's idle entry is conditional on the feature setting and therefore
 // is not a permanent host slot in this disabled-by-default fixture.
-const HOST_LEFT = ["chat.addFiles", "settings.mode", "chat.permissionMode"];
+// Every label-driven trigger states its control and its current value.
+const HOST_LEFT = [
+  "chat.addFiles",
+  "settings.mode: settings.modeAgent",
+  "chat.permissionMode",
+];
 const HOST_RIGHT = ["context", "chat.model: Model. chat.reasoningLevel: Off", "chat.send"];
 
 async function composer(t, toolbarProps = {}) {

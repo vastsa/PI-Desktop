@@ -220,6 +220,33 @@ the banner without changing the durable task notification inbox. Clicking a
 delivered plugin notification restores and focuses the main window, but never
 activates a session or creates a durable task notification.
 
+`pi.ui.revealView` shows one of the plugin's own `contributes.views` in the work
+panel of a session, which is the supported replacement for reaching into the
+host's own navigation:
+
+```ts
+pi.ui.revealView(input?: {
+  viewId?: string   // one of contributes.views; omittable when there is one
+  location?: string // the same opaque subject a view already receives
+  sessionId?: string // the session whose panel shows it; defaults to the active one
+}): Promise<void>
+```
+
+Requires `ui.view`, like the view itself. The host resolves the view and refuses
+a `viewId` that does not name exactly one declared view (`NOT_FOUND` when the
+plugin declares none or the name is unknown, `INVALID_ARGUMENT` when the plugin
+declares several and the call names none). `location` is capped at 8 KiB.
+`sessionId` is compared with the session the user is looking at: a session that
+is no longer the active one rejects with `INVALID_ARGUMENT` instead of opening a
+tab nobody is watching, and a call made with no active session rejects the same
+way. The tab belongs to the shell — the plugin names the view and the subject,
+the shell opens and focuses it — so the `location` still travels through
+`piViewOpen` / `view:open` and a live view is never reloaded.
+
+`pi.ui.openPanel()` opens a separate window, `pi.browser.reveal()` activates the
+Browser, and `pi.fs.openDefault` / `pi.fs.reveal` hand a file to the operating
+system; none of them is this.
+
 ### project (requires `project.create`)
 
 ```ts
@@ -264,6 +291,7 @@ pi.fs.readPreview(pathFromRoot: string): Promise<{
   size: number
 }>
 pi.fs.openDefault(pathFromRoot: string): Promise<void>
+pi.fs.openInBrowser(pathFromRoot: string): Promise<void>
 pi.fs.reveal(pathFromRoot: string): Promise<void>
 pi.fs.writeText(pathFromRoot: string, content: string): Promise<void>
 pi.fs.glob(pattern: string): Promise<string[]>
@@ -297,10 +325,20 @@ returns `text` (capped at 512 KiB), `image` (capped at 5 MiB, as a data URL),
 associated application. It uses the same `fs.read` root, symlink, protected-path,
 deny-list, and scope checks as `fs.readText`; directories are rejected. The host
 audits the operation. A path is root-relative by default, and an absolute path is
-accepted only by this action and `fs.reveal` (no other mode takes one) when it lies
+accepted only by `fs.openDefault`, `fs.openInBrowser`, and `fs.reveal` (no other mode takes one) when it lies
 inside a registered folder root of the open project — which then becomes the
 containment base for the request (ADR 0249 §5, ADR 0264). That is the shape a view
 uses to name a file in a project folder other than the primary one.
+
+`fs.openInBrowser` opens one existing `.html`, `.htm`, or `.xhtml` file in a new
+resource tab in the active local session's bundled work-panel Browser. It uses
+the same `fs.read` root, symlink, protected-path, deny-list, and scope checks as
+`fs.openDefault`; directories and other file types are rejected. An absolute
+path is accepted only when it lies inside a registered folder root of the open
+project, with the matched folder as the containment base. The Browser plugin
+must be enabled. This host-mediated preview does not grant `browser.cdp` or expose
+Browser actions or page contents to the caller. The Browser itself retains its
+existing local-file navigation policy (ADR 0328).
 
 `fs.reveal` reveals one existing readable file in the operating system's file
 manager and selects it when the platform supports that behavior. It uses the
@@ -504,6 +542,40 @@ session (D333 / D336). Calling this outside a tool execution fails with
 plugin's own tool is stripped from the tail. A compaction summary replaces
 pre-checkpoint history. Combined content is capped at 200k characters.
 
+### session follow (no extra permission)
+
+The selected session is what the user is looking at, and the host already shows
+it; following it needs no permission, the same way `workspace.get` reports the
+open folder.
+
+```ts
+pi.session.getActive(): Promise<PluginActiveSession | null>
+
+type PluginActiveSession = {
+  sessionId: string
+  projectPath: string | null   // working directory of the session's project
+  activeTurn: { turnId: string; startedAt: number } | null
+}
+```
+
+It takes no session id: the host reports the selection instead of letting a
+plugin address a session the user is not looking at. A plugin whose activation
+scope does not match the project on screen gets `PERMISSION_DENIED`, the same
+answer `pi.ui.revealView` and the view IPC give, so a project-scoped plugin never
+learns which session another project has open. `null` means home, the
+Settings page, or no chat session selected. `activeTurn` names the durable host
+turn that session is running, and is `null` while the session is idle, so a
+plugin does not have to infer a running task from the previous turn's end event
+or from draft changes. `startedAt` is the host clock in epoch ms at the moment
+that turn opened.
+
+A snapshot is a value, not a handle: the session can switch or finish between
+two calls, so a plugin compares `sessionId` and treats a mismatch as "this
+answer belongs to a session the user left". The `session:activated` event below
+delivers the same payload whenever the snapshot changes, which is what makes
+polling unnecessary. `session.getLlmContext` is a different capability: it is
+scoped to the plugin's own in-flight tool call and cannot address the selected
+session.
 ### session auto-title (requires `session.autoTitle`)
 
 This capability is separate from `session.read`: it never exposes a transcript
@@ -1215,10 +1287,17 @@ Delivered today:
   yet — 0.14.8 does not include it — so a plugin that depends on it must require
   the release that actually ships it rather than assume 0.14.7 or 0.14.8.
 
+- `session:activated` — payload is the `PluginActiveSession` object or `null`,
+  sent whenever that snapshot changes: the user selected another session (or
+  left the chat), the selected session's project changed, or its running turn
+  started or stopped. Delivery is fire-and-forget like every other event; the
+  snapshot in the payload is the answer, so a missed delivery is repaired by one
+  `pi.session.getActive()` call. Needs no permission, and the selected session's
+  turn id is the same identity `session:turnEnded` reports.
+
 A throwing handler is logged and does not affect other listeners or the plugin.
 
-Planned events:
-- `session:activated`
+Planned events: none.
 
 ## 6. Panel bridge API
 
@@ -1288,12 +1367,14 @@ The host-owned preload forwards only fixed channels to the plugin runtime:
 | `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
 | `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list` | `ui.theme` |
 | `models.list` | `models.list` |
-| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.writeText` | `fs.write` |
 | `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
 | `shell.openExternal` | `shell.openExternal` |
 | `net.fetch` | `net.fetch` |
+| `session.getActive` | None |
+| `ui.revealView` | `ui.view` |
 
 `plugin.setSettings`, `fs.remove`, and arbitrary Electron IPC are not exposed. A
 channel the host does not implement itself is forwarded to the plugin's
@@ -1320,6 +1401,10 @@ Delivered today:
   URL; this event delivers a later one.
 - `session:turnEnded` — the same payload as the plugin-process event in §5,
   sent when a host turn reaches a terminal state.
+- `session:activated` — the same payload as the plugin-process event in §5, sent
+  to docked views whenever the selected session, its project, or its running
+  turn changes. A detached `ui.panel` window is application-scoped and does not
+  belong to a session, so it is the one surface that never receives this event.
 
 ## 7. Call auditing
 
@@ -1329,6 +1414,7 @@ Any of the following calls must be logged for audit:
 - fs.stat, fs.readRange, fs.remove, fs.requestDirectory, and every refused fs call (with its path and
   `errorCode`), plus each consent answer and why it was asked (`scope` / `rate`)
 - fs.openDefault (with its root-relative path and whether the OS open succeeded)
+- fs.openInBrowser (with its root-relative path and whether the Browser open was accepted)
 - fs.reveal (with its root-relative path and whether the file manager reveal succeeded)
 - fs.readPreview (with its root-relative path and classified `kind`)
 - execute after agent.registerTool (including tools discovered from a plugin's
@@ -1342,6 +1428,8 @@ Any of the following calls must be logged for audit:
 - service start / stop / restart
 - models.list (returned row count)
 - session.getLlmContext (session id, message count, truncated flag — never transcript text)
+- session.getActive (the selected session's presence, never its transcript)
+- ui.revealView (view id, session id, whether a location was carried)
 - agent.complete (model key, sizes, usage — never prompt or completion text)
 - provider.oauth (plugin id, declared provider id, operation, result/error code — never credential contents)
 
@@ -1366,12 +1454,13 @@ Log fields:
 The desktop plugin runtime now implements the MVP host API surface used by local and marketplace plugins:
 
 - `app.*`, `plugin.*`, `commands.*`, `ui.*`, `workspace.*`
-- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
+- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.openInBrowser` / `fs.reveal` /
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`,
   bounded by `manifest.fs` (ADR 0088)
 - `agent.registerTool` / `unregisterTool` / `agent.complete`
 - `speech.registerAdapter` / `unregisterAdapter` (`speech.adapter.register`)
 - `models.list`, `session.getLlmContext`
+- `session.getActive` and the `session:activated` event (`ui.revealView` needs `ui.view`)
 - `onProviderOAuth` and `pi.providers.oauth.prompt` / `notify` (`provider.oauth`)
 - `clipboard.*`, `shell.openExternal`, `net.fetch`
 - `browser.*` (guest CDP; `browser.cdp`)

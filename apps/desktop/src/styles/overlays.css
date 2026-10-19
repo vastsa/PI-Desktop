@@ -842,3 +842,38 @@
     transform: translateY(0) scale(1);
   }
 }
+.lifecycle-confirmation-overlay {
+  z-index: 65;
+}
+
+.lifecycle-confirmation-dialog {
+  width: min(100%, 420px);
+}
+
+.lifecycle-confirmation-heading {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lifecycle-confirmation-heading h2 {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-heading);
+}
+
+.lifecycle-confirmation-heading p {
+  margin: 8px 0 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-body);
+}
+
+.lifecycle-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
