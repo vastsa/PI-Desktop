@@ -151,6 +151,7 @@ export function Composer({
       : EMPTY_QUEUED_PROMPTS,
   );
 
+  const [modeOpen, setModeOpen] = useState(false);
   const [permissionOpen, setPermissionOpen] = useState(false);
   const composerTransformInvalidateRef = useRef<() => void>(() => {});
   const composerShellRef = useRef<HTMLDivElement>(null);
@@ -415,6 +416,7 @@ export function Composer({
 
   useEffect(() => {
     if (!controlsBlocked) return;
+    setModeOpen(false);
     setPermissionOpen(false);
   }, [controlsBlocked]);
 
@@ -609,6 +611,8 @@ export function Composer({
             modelId={modelId}
             thinkingLevel={thinkingLevel}
             composerPermissionMode={composerPermissionMode}
+            modeOpen={modeOpen}
+            setModeOpen={setModeOpen}
             permissionOpen={permissionOpen}
             setPermissionOpen={setPermissionOpen}
             controlsBlocked={controlsBlocked}

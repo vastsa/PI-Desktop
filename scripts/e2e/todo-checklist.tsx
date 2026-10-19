@@ -65,6 +65,13 @@ window.todoChecklistProbe = async () => {
   assert(toggle()?.getAttribute("aria-expanded") === "false", "Dock starts collapsed");
   assert(toggle()?.querySelector("svg")?.classList.contains("lucide-chevron-up"),
     "Collapsed dock arrow points toward its upward expansion");
+  const toggleRect = toggle()!.getBoundingClientRect();
+  assert(toggleRect.width >= 36 && toggleRect.height >= 36,
+    `Expand/collapse button has a 36px minimum hit target (${toggleRect.width}x${toggleRect.height})`);
+  const arrowRect = toggle()!.querySelector("svg")!.getBoundingClientRect();
+  assert(Math.round(arrowRect.width) === 18 && Math.round(arrowRect.height) === 18,
+    `Expand/collapse icon is independently sized to 18px (${arrowRect.width}x${arrowRect.height})`);
+  checks.push("disclosure-hit-target-and-icon-sized-independently");
   // The closed disclosure must not reserve the list's inset: vertical padding on
   // the collapsing box held the `0fr` row open and left a blank band under it.
   assert(Math.round(box(".todo-dock-content").height) === 0,

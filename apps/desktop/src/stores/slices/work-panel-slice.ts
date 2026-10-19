@@ -21,6 +21,7 @@ import {
 import {
   WORK_PANEL_COMPACT_MIN_WIDTH,
   WORK_PANEL_DEFAULT_WIDTH,
+  WORK_PANEL_MIN_WIDTH,
 } from "../../lib/work-panel-resize";
 import type { AppState } from "../app-state";
 import type { StoreAccess } from "./types";
@@ -33,11 +34,10 @@ export function loadWorkPanelWidth(): number {
     if (!raw) return WORK_PANEL_DEFAULT_WIDTH;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const width = Number(parsed.width);
+    // Only the former sidebar-reopen path stored widths below the regular
+    // minimum; that width was lent to the sidebar, not chosen by the user.
     return Number.isFinite(width)
-      ? Math.max(
-          WORK_PANEL_COMPACT_MIN_WIDTH,
-          Math.round(width),
-        )
+      ? Math.max(WORK_PANEL_MIN_WIDTH, Math.round(width))
       : WORK_PANEL_DEFAULT_WIDTH;
   } catch {
     return WORK_PANEL_DEFAULT_WIDTH;
@@ -114,6 +114,7 @@ export function createWorkPanelSlice({
   | "collapseWorkPanel"
   | "resetWorkPanelContext"
   | "setWorkPanelWidth"
+  | "setWorkPanelYieldedWidth"
   | "openFileInWorkPanel"
   | "openUrlInWorkPanel"
   | "updateBrowserWorkPanelTab"
@@ -352,12 +353,19 @@ export function createWorkPanelSlice({
   setWorkPanelWidth: (width) => {
     const committedWidth = Math.round(width);
     set({
-      workPanelWidth: Math.max(
-        WORK_PANEL_COMPACT_MIN_WIDTH,
-        committedWidth,
-      ),
+      workPanelWidth: Math.max(WORK_PANEL_MIN_WIDTH, committedWidth),
+      // An explicit resize replaces any width lent to a reopened sidebar.
+      workPanelYieldedWidth: null,
     });
     saveWorkPanelWidth(get().workPanelWidth);
+  },
+  setWorkPanelYieldedWidth: (width) => {
+    const next =
+      width === null
+        ? null
+        : Math.max(WORK_PANEL_COMPACT_MIN_WIDTH, Math.round(width));
+    if (get().workPanelYieldedWidth === next) return;
+    set({ workPanelYieldedWidth: next });
   },
 
   openFileInWorkPanel: (path, mimeType, position) => {

@@ -368,13 +368,17 @@ test("hidden row actions stay out of the row's click path", () => {
   );
   assert.match(
     globalStyles,
-    /\.thread-item:focus-within \.thread-item-more,\s*\n\.thread-item-more:focus-visible\s*\{[^}]*pointer-events:\s*auto;/s,
+    /\.thread-item:hover \.thread-item-more,\s*\n\.thread-item:focus-within \.thread-item-more,[\s\S]*?\{[^}]*pointer-events:\s*auto;/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.thread-item-more:focus-visible\s*\{[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/s,
   );
   // Without hover there is no reveal, so a no-hover pointer gets the controls
   // visible and tappable instead of an invisible gutter.
   assert.match(
     globalStyles,
-    /@media \(hover: none\)\s*\{[\s\S]*?\.sidebar-row-actions \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
+    /@media \(hover: none\)\s*\{[\s\S]*?\.thread-item-meta \.thread-item-more,[\s\S]*?opacity:\s*1;\s*\n\s*pointer-events:\s*auto;/,
   );
   // The row itself stays clickable where the hidden control used to swallow
   // the click, and spelled-out controls never double-fire the row.

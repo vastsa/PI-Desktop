@@ -142,13 +142,15 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
   })()`);
   const sessionDateActions = (id) => cdp.evaluate(`(() => {
     const row = document.querySelector(${JSON.stringify(row(id))});
+    const meta = row?.querySelector('.thread-item-meta');
     const date = row?.querySelector('.thread-item-last-reply');
-    const separator = row?.querySelector('.thread-item-date-separator');
     const action = row?.querySelector('[data-action="session-menu"]');
     return {
       dateText: date?.textContent?.trim() ?? "",
-      dateDisplay: date ? getComputedStyle(date).display : "missing",
-      separatorDisplay: separator ? getComputedStyle(separator).display : "missing",
+      dateVisibility: date ? getComputedStyle(date).visibility : "missing",
+      dateOpacity: date ? Number.parseFloat(getComputedStyle(date).opacity) : -1,
+      sameSlot: Boolean(meta && date?.parentElement === meta && action?.parentElement === meta),
+      noDivider: !row?.querySelector('.thread-item-date-separator'),
       actionOpacity: action ? Number.parseFloat(getComputedStyle(action).opacity) : -1,
       actionPointerEvents: action ? getComputedStyle(action).pointerEvents : "missing",
     };
@@ -252,18 +254,19 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
       await hover(`${row(datedRowId)} .thread-item-main`);
       const dateOnHover = await sessionDateActions(datedRowId);
       check(
-        dateAtRest.dateText.length > 0 && dateAtRest.dateDisplay !== "none" &&
-          dateAtRest.separatorDisplay !== "none" && dateAtRest.actionOpacity === 0 &&
-          dateAtRest.actionPointerEvents === "none" && dateOnHover.dateDisplay === "none" &&
-          dateOnHover.separatorDisplay === "none" && dateOnHover.actionOpacity === 1 &&
+        dateAtRest.dateText.length > 0 && dateAtRest.dateVisibility === "visible" &&
+          dateAtRest.dateOpacity === 1 && dateAtRest.sameSlot && dateAtRest.noDivider &&
+          dateAtRest.actionOpacity === 0 &&
+          dateAtRest.actionPointerEvents === "none" && dateOnHover.dateVisibility === "hidden" &&
+          dateOnHover.dateOpacity === 0 && dateOnHover.sameSlot && dateOnHover.actionOpacity === 1 &&
           dateOnHover.actionPointerEvents === "auto",
-        `${theme} project session rows swap the resting date for actions on hover`,
+        `${theme} project session rows swap the resting date for actions in one slot on hover`,
         JSON.stringify({ dateAtRest, dateOnHover }),
       );
       await cdp.evaluate(`document.querySelector(${JSON.stringify(row(datedRowId) + " .thread-item-main")}).focus()`);
       const dateOnFocus = await sessionDateActions(datedRowId);
       check(
-        dateOnFocus.dateDisplay === "none" && dateOnFocus.actionOpacity === 1 &&
+        dateOnFocus.dateVisibility === "hidden" && dateOnFocus.actionOpacity === 1 &&
           dateOnFocus.actionPointerEvents === "auto",
         `${theme} keyboard focus reveals session actions in place of the date`,
         JSON.stringify(dateOnFocus),

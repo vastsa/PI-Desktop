@@ -5467,3 +5467,15 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 由 `apps/desktop/test/plugin-fs-scope.test.mjs` 与
   `apps/desktop/test/browser-preview-tool.test.mjs` 覆盖。E2E-153 的已打包文件管理器
   场景覆盖完整用户流程。见 ADR 0330 以及插件 API、权限、安全与组件规格。
+
+## 2026-10-17 —— Composer 模式控件改为打开菜单而非循环切换（D663）
+
+- Composer 左侧的 Agent/Plan/Goal 触发器仍只显示当前模式，固定宽度 96px
+  （已包含菜单箭头）；点击打开一个菜单，三行都是带选中标记的 radio 菜单项，
+  选中后关闭菜单并配置当前会话。
+- 放弃循环切换：到达目标模式需要多次点击，且始终看不到其他选项。曾实现“三个
+  常驻分段选项”，但每个状态约多占 70px 工具栏宽度，挤压相邻的权限控件。
+- 权限芯片保留原有的固定宽度菜单；打开任一菜单会关闭另一个。`nextMode` 已删除。
+  由 `apps/desktop/test/composer-mode-menu.test.mjs`、
+  `apps/desktop/test/composer-chip-descenders.test.mjs` 以及 composer 插槽与
+  思考等级契约覆盖。见 `04-ux/08-component-spec.md` §11 与 US-UI-73。

@@ -969,7 +969,7 @@ The composer renders only controls connected to the active pi session:
   Unknown models do not gain reasoning automatically. Changing provider clamps
   or resets the durable session value before the next turn.
 - The left-of-input Composer Agent/Plan/Goal chip is the sole active-session mode
-  control and cycles Agent → Plan → Goal → Agent. The Composer-right combined
+  control and opens a menu listing Agent, Plan, and Goal. The Composer-right combined
   chip owns model and reasoning changes; the top bar has no duplicate mode or
   model control. The combined Composer picker closes and is disabled while an active
   `pending` Plan or Goal approval exists;

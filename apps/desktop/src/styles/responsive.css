@@ -40,7 +40,6 @@
 }
 
 @container composer-stack (max-width: 560px) {
-  .composer-model-thinking-dot,
   .composer-model-thinking-level {
     display: none;
   }
@@ -64,6 +63,11 @@
     justify-content: center;
     gap: 0 !important;
     padding: 0 !important;
+  }
+
+  /* Collapsed to a glyph: the labels are gone, so the icon carries the trigger. */
+  .composer-model-thinking-icon {
+    display: inline-flex;
   }
 
   .composer-model-thinking-model,

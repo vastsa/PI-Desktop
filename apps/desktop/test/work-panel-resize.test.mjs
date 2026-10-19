@@ -16,6 +16,8 @@ import {
   workPanelResetWidth,
   workPanelWidthBounds,
   workPanelChatWidthFromPointer,
+  workPanelGestureMinimum,
+  workPanelRequestedWidth,
   workPanelWidthForSidebarReopen,
 } from "../src/lib/work-panel-resize.ts";
 
@@ -110,6 +112,75 @@ test("the compact width stays representable for the reopen path", () => {
     120,
   );
   assert.equal(clampWorkPanelWidth(0, WORK_PANEL_COMPACT_MIN_WIDTH), WORK_PANEL_COMPACT_MIN_WIDTH);
+});
+
+// The reported sequence: an 866px shell, a 275px sidebar and a 360px panel.
+const narrowShell = { containerWidth: 866, sidebarWidth: 275 };
+const panelLayout = (sidebarCollapsed, yieldedWidth, containerWidth = 866) =>
+  workPanelLayout({
+    ...narrowShell,
+    containerWidth,
+    sidebarCollapsed,
+    requestedPanelWidth: workPanelRequestedWidth({
+      ...narrowShell,
+      containerWidth,
+      sidebarCollapsed,
+      preferredWidth: 360,
+      yieldedWidth,
+    }),
+  });
+
+test("a narrow sidebar reopen only lends panel width", () => {
+  const lent = workPanelWidthForSidebarReopen({
+    ...narrowShell,
+    currentPanelWidth: 360,
+  });
+  assert.equal(lent, 131);
+
+  const reopened = panelLayout(false, lent);
+  assert.equal(reopened.panelWidth, 131);
+  assert.equal(reopened.mainWidth, MAIN_PANE_REOPEN_TARGET_WIDTH);
+  assert.equal(reopened.shouldCollapseSidebar, false);
+
+  // Collapsing the sidebar again ends the loan: the panel returns to its
+  // preferred width, and resizing keeps the regular minimum.
+  const collapsed = panelLayout(true, lent);
+  assert.equal(collapsed.panelWidth, 360);
+  assert.equal(workPanelGestureMinimum(collapsed.panelWidth), WORK_PANEL_MIN_WIDTH);
+});
+
+test("space returning to a reopened sidebar goes back to the panel first", () => {
+  assert.equal(panelLayout(false, 131, 1000).panelWidth, 265);
+  assert.equal(panelLayout(false, 131, 1000).mainWidth, MAIN_PANE_REOPEN_TARGET_WIDTH);
+  assert.equal(panelLayout(false, 131, 1200).panelWidth, 360);
+  assert.ok(panelLayout(false, 131, 1200).mainWidth > MAIN_PANE_REOPEN_TARGET_WIDTH);
+
+  // A narrower window keeps the lent width until it no longer fits beside
+  // the 450px floor; then the sidebar yields as usual.
+  const narrower = panelLayout(false, 131, 860);
+  assert.equal(narrower.panelWidth, 131);
+  assert.equal(narrower.shouldCollapseSidebar, false);
+  assert.equal(panelLayout(false, 131, 856).shouldCollapseSidebar, true);
+});
+
+test("without a loan the panel asks for its preferred width", () => {
+  assert.equal(
+    workPanelRequestedWidth({
+      ...narrowShell,
+      sidebarCollapsed: false,
+      preferredWidth: 360,
+      yieldedWidth: null,
+    }),
+    360,
+  );
+});
+
+test("a resize gesture never starts below its regular minimum or jumps", () => {
+  assert.equal(workPanelGestureMinimum(360), WORK_PANEL_MIN_WIDTH);
+  assert.equal(workPanelGestureMinimum(WORK_PANEL_MIN_WIDTH), WORK_PANEL_MIN_WIDTH);
+  // A panel shown narrower than the minimum cannot be dragged narrower.
+  assert.equal(workPanelGestureMinimum(131), 131);
+  assert.equal(workPanelGestureMinimum(0), WORK_PANEL_COMPACT_MIN_WIDTH);
 });
 
 test("a wide window lets the panel grow past the old fixed cap", () => {

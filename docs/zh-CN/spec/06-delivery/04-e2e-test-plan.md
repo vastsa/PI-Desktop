@@ -5712,7 +5712,7 @@ eleven-tool-round desktop paths are verified by
 **E2E-CHAT-session-todo-checklist：TodoWrite 到按会话显示的 TodoDock**
 
 - **前提：** 隔离的本地 Electron 配置、确定性的 Agent/Host fixture、两个 Desktop 会话，不使用真实 Provider 或付费 API。
-- **步骤：** 启动调用 `TodoWrite` 的多步骤 Agent 回合，观察 Composer 上方的 TodoDock，展开后切换会话并确认清单隔离。展开一个超过 dock 高度上限的清单，确认渲染全部条目、列表在 dock 内滚动而不撑高 Composer 栈；完成和取消条目，确认全部取消状态；清空清单后重载/重启 Host。发送乱序旧 `todos.changed` 事件，确认它不能覆盖新快照；再覆盖非法参数、Plan/Goal、委托和远程会话路径。
+- **步骤：** 启动调用 `TodoWrite` 的多步骤 Agent 回合，观察 Composer 上方的 TodoDock；确认右侧按钮至少为 36px 方形点击区域，箭头图标独立设为 18px，点击标题文本不会展开。点击向上箭头展开并确认箭头转向下方；切换会话并确认清单隔离。展开一个超过 dock 高度上限的清单，确认渲染全部条目、列表在 dock 内滚动而不撑高 Composer 栈；完成和取消条目，确认全部取消状态；清空清单后重载/重启 Host。发送乱序旧 `todos.changed` 事件，确认它不能覆盖新快照；再覆盖非法参数、Plan/Goal、委托和远程会话路径。
 - **预期：** 切换会话时收起、收起状态只占标题行高度、列表渲染全部条目并以自身为滚动容器、拒绝旧事件。展开后是纯文本清单，状态用字形标记而非带边框的方块；进行中的那一步文字带一道扫光，且任一时刻只有一处文字带扫光（收起时在标题行，展开时在对应行）。
 - **链接规格：** `03-runtime/03-tools-and-permissions.md`、`03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`、`04-ux/08-component-spec.md`、ADR 0312。
 - **验收：** C / E / F / Quality / Security。
@@ -6626,9 +6626,9 @@ eleven-tool-round desktop paths are verified by
 
 ### US-UI-73 Composer 模式选择器具有稳定的宽度
 - 以英语和中文打开空的主页和停靠的线程。
-- 通过Agent/Plan/Goal多次切换Composer模式芯片。
-- 期望模式芯片为最长的内置保持一个固定的宽度尺寸
-  标签（英文“Agent”/zh-CN“智能体”）；相邻的思维和
+- 打开 Composer 模式芯片，在 Agent/Plan/Goal 之间多次切换。
+- 期望芯片以带选中标记的菜单项列出三个模式、只显示当前模式，并为最长内置标签
+  （英文“Agent”/zh-CN“智能体”）加上箭头保留一个固定宽度；相邻的思考与
   权限控件、发送按钮和 Composer shell 不会移动或调整大小。
 - **链接规格**：`04-ux/08-component-spec.md` §11.3
 - **里程碑**：M5
@@ -8398,7 +8398,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **步骤**：
   1. 打开工作面板并请求用户的首选宽度。
   2. 将内部分隔线向 MainChat 左边缘拖动，包含指针预览阶段，然后释放。
-  3. 在布局收起左栏后手动重开左栏。
+  3. 在布局收起左栏后手动重开左栏。在 866px 视口中重复一次，此时重开会让面板窄于 244px；然后再次收起左栏，并朝面板方向拖动分隔线。
   4. 关闭工作面板并确认左栏恢复；再在手动收起左栏后重复一次。
   5. 用 `ArrowLeft`、`ArrowRight`、`Home`、`End` 重复调整分隔线。
   6. Navigate to the real Plugins and Scheduled routes with the
@@ -8412,7 +8412,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   ink. Hover does not change geometry; sidebar and New Task remain usable.
   Automated by `pnpm test:e2e:layout` using real route components and DOM/CDP
   interaction. This is renderer evidence, not native Windows/Linux hit-test proof.
-- **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
+- **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。重开借出的宽度不会被存储：已存储的首选宽度不变，再次收起左栏即恢复该宽度，分隔线拖动仍停在 244px。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
 - **在运行中的应用里实测的浮层覆盖**：在 Plugins 路由上打开一个插件模态框；模态遮罩是标题栏带内工作面板开关处的命中首选；标题栏带不是命中首选，因此不会绘制在模态遮罩之上；关闭模态框后路由保持干净。这四项命中由 `pnpm test:e2e:layout` 断言，属于渲染器 DOM/CDP 证据，不是原生命中测试证明。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md` §10、`04-ux/08-component-spec.md` §1 与 §5、`04-ux/09-interaction-patterns.md` §8、ADR 0238
 - **验收**：F（持久化）、品质
@@ -8498,14 +8498,16 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 #### E2E-LAYOUT-sidebar-row-states
 
-- **前提条件**：宿主预置项目、置顶和独立会话，存在当前工作区；应用使用隔离的数据与 profile。
+- **前提条件**：宿主预置项目、置顶和独立会话，启用侧边栏“会话时间”偏好，存在当前工作区；应用使用隔离的数据与 profile。
 - **步骤**：分别在深浅主题下选中项目会话，悬停项目标题、未选中和已选中会话；
+  确认项目会话日期静止可见，并在悬停和键盘焦点时于同一尾部位置切换为操作，日期左侧没有分隔线；验证七个日历日内显示相对天数，更早显示不含年份的月/日；
   检查失焦处理、拖拽目标样式、操作按钮悬停及 Tab/Shift+Tab 焦点；折叠后展开
   选中会话的分组，切换置顶与独立会话，打开设置再返回；开启减少动态效果，
   确认项目与会话行的悬停过渡均接近零时长。
 - **预期**：项目与会话共享整行悬停背景、圆角和过渡，标题按钮透明；选中背景
   只属于会话且优先于悬停。工作区仅通过圆点表达，折叠不会转移选中态。
   置顶和独立会话样式一致；焦点轮廓、独立操作按钮反馈和拖拽目标优先级保留。
+  项目会话日期默认可见且与操作共享尾部位置，悬停或聚焦后由操作替换，日期左侧无分隔线。
   失焦释放悬停而不清除选中；设置替换侧栏，返回后恢复会话与工作区上下文。
   渲染测试另覆盖没有选中会话、切换中的目标和非聊天页状态。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` §9.1c

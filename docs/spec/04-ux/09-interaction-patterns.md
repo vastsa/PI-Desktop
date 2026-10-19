@@ -297,10 +297,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   a stable path order until they are moved.
 - Each project group shows the ten most-recent rows in the active sort order
   by default; the remaining sessions fold behind a **Load N more…** control.
-  The expanded list remains flat. Each project session row shows its title and
-  localized last-reply age through seven calendar days, then a concrete date;
-  hover or keyboard focus replaces the date with the session actions. Expanded
-  state is per-group, for the current session only, and not persisted.
+  The expanded list remains flat. When Session time is enabled, each project
+  session row shows its title and localized last-reply age through seven
+  calendar days, then a month/day date; hover or keyboard focus replaces the
+  date with the session actions. Expanded state is per-group, for the current
+  session only, and not persisted.
 - Presentation changes are saved best-effort. Storage failure must not block
   project activation, session selection, or agent execution.
 
@@ -1210,8 +1211,11 @@ Work-panel and application-window resizing are implemented in MVP:
   occupies flex space, the shared budget continues to count the sidebar.
 - Reopening a sidebar the layout collapsed spends work-panel width first: the
   panel keeps its width while MainChat stays at or above 450px, and otherwise
-  the reopen targets 460px. Closing the panel restores only a sidebar the
-  layout collapsed; a manual collapse stays collapsed.
+  the reopen targets 460px. That width is only lent: the preferred panel width
+  stays stored, extra client width returns to the panel first, collapsing the
+  sidebar again restores the preferred width, and divider drags keep the 244px
+  minimum. Closing the panel restores only a sidebar the layout collapsed; a
+  manual collapse stays collapsed.
 - No panel action requests a positive native reservation: the preferred panel
   width is renderer-local, the native seam stays at zero, and native window
   edges resize only the fixed app window. Background-session artifacts never
@@ -1600,6 +1604,11 @@ Project drag/drop follows these patterns:
   and remain reachable through keyboard focus (`:focus-within` /
   `:focus-visible`) without a pointer. A spelled-out control never triggers the
   row or header underneath it as well.
+- When Session time is enabled, project session dates and the overflow action
+  share one trailing slot: the date is visible at rest, then yields that slot
+  to the action on hover or keyboard focus. Dates through seven calendar days
+  use a relative day label; older dates use the localized month and day without
+  a year. On devices without hover, the action stays available in that slot.
 - The hover card's own navigation controls are the only interactive surfaces
   inside the card; the row keeps receiving pointer events everywhere else on
   it.

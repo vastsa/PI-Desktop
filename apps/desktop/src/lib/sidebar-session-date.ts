@@ -24,9 +24,13 @@ export function formatSessionLastReplyDate(
     }
 
     return new Intl.DateTimeFormat(locale || undefined, {
-      dateStyle: "medium",
+      month: "short",
+      day: "numeric",
     }).format(date);
   } catch {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+    }).format(date);
   }
 }

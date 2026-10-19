@@ -406,11 +406,15 @@
   color: var(--ds-accent);
 }
 
-.sidebar-row-actions,
 .sidebar-menu-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+}
+
+.thread-item-meta {
+  position: relative;
   flex: 0 0 auto;
 }
 
@@ -432,6 +436,7 @@
 }
 
 .thread-item:hover .thread-item-more,
+.thread-item:focus-within .thread-item-more,
 .sidebar-session-group-header:hover .thread-item-more,
 .sidebar-session-group-header:focus-within .thread-item-more,
 .thread-item.active .thread-item-more:hover,
@@ -440,7 +445,6 @@
   pointer-events: auto;
 }
 
-.thread-item:focus-within .thread-item-more,
 .thread-item-more:focus-visible {
   opacity: 1;
   pointer-events: auto;
@@ -455,11 +459,16 @@
 /* Without hover there is nothing to reveal the row controls with, so a no-hover
  * pointer gets them visible and tappable outright. */
 @media (hover: none) {
-  .sidebar-row-actions .thread-item-more,
+  .thread-item-meta .thread-item-more,
   .sidebar-menu-wrap .thread-item-more,
   .sidebar-session-group-add {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .thread-item-meta .thread-item-last-reply {
+    opacity: 0;
+    visibility: hidden;
   }
 }
 

@@ -26,6 +26,7 @@ import { sidebarWidthBudget } from "../../lib/sidebar-resize";
 import { commitWorkPanelPresentation } from "../../lib/work-panel-presentation";
 import {
   MAIN_PANE_MIN_WIDTH,
+  workPanelRequestedWidth,
   workPanelWidthForSidebarReopen,
 } from "../../lib/work-panel-resize";
 import { browserPluginTab, browserPluginTabForReveal } from "../../lib/work-panel-tabs";
@@ -62,6 +63,7 @@ export function useAppShellRuntime() {
   const settings = useAppStore((s) => s.settings);
   const workPanelOpen = useAppStore((s) => s.workPanelOpen);
   const workPanelWidth = useAppStore((s) => s.workPanelWidth);
+  const workPanelYieldedWidth = useAppStore((s) => s.workPanelYieldedWidth);
   const pluginThemes = useAppStore((s) => s.pluginThemes);
   const refreshPluginThemes = useAppStore((s) => s.refreshPluginThemes);
   const plugins = useAppStore((s) => s.plugins);
@@ -87,6 +89,7 @@ export function useAppShellRuntime() {
   const sidebarPreferredWidthRef = useRef(sidebarWidth);
   const shellWidthRef = useRef(shellWidth);
   const workPanelWidthRef = useRef(workPanelWidth);
+  const workPanelYieldedWidthRef = useRef(workPanelYieldedWidth);
   const workPanelOpenRef = useRef(workPanelVisible);
   const workPanelMaximizedRef = useRef(false);
   const autoCollapsedSidebarRef = useRef(false);
@@ -94,6 +97,7 @@ export function useAppShellRuntime() {
   sidebarWidthRef.current = sidebarWidth;
   shellWidthRef.current = shellWidth;
   workPanelWidthRef.current = workPanelWidth;
+  workPanelYieldedWidthRef.current = workPanelYieldedWidth;
   workPanelOpenRef.current = workPanelVisible;
 
   // The shell is a fixed client area: the three-column budget needs its real
@@ -112,13 +116,22 @@ export function useAppShellRuntime() {
     observer.observe(shell);
     return () => observer.disconnect();
   }, []);
-  const resolveSidebarMax = () =>
-    sidebarWidthBudget({
-      containerWidth: appShellRef.current?.clientWidth || shellWidthRef.current,
+  const resolveSidebarMax = () => {
+    const containerWidth =
+      appShellRef.current?.clientWidth || shellWidthRef.current;
+    return sidebarWidthBudget({
+      containerWidth,
       workPanelOpen: workPanelOpenRef.current,
-      workPanelWidth: workPanelWidthRef.current,
+      workPanelWidth: workPanelRequestedWidth({
+        containerWidth,
+        sidebarWidth: sidebarWidthRef.current,
+        sidebarCollapsed: sidebarCollapsedRef.current,
+        preferredWidth: workPanelWidthRef.current,
+        yieldedWidth: workPanelYieldedWidthRef.current,
+      }),
       workPanelMaximized: workPanelMaximizedRef.current,
     });
+  };
   const handleSidebarWidthChange = useCallback((width: number) => {
     setSidebarWidth(clampSidebarWidth(width, resolveSidebarMax()));
   }, []);
@@ -135,7 +148,8 @@ export function useAppShellRuntime() {
   // Reopening prefers the right column: the work panel gives up width first so
   // MainChat keeps the width it already had, and only a would-be breach of the
   // 450px floor falls back to the 460px reopen target. The column comes back at
-  // the user's preferred width, which a collapsing drag never overwrites.
+  // the user's preferred width, which a collapsing drag never overwrites. The
+  // panel only lends that width: its own preferred width stays stored.
   const reopenSidebar = useCallback(() => {
     if (!sidebarCollapsedRef.current) return;
     const preferredWidth = clampSidebarWidth(sidebarPreferredWidthRef.current);
@@ -150,7 +164,11 @@ export function useAppShellRuntime() {
         sidebarWidth: preferredWidth,
         currentPanelWidth,
       });
-      useAppStore.getState().setWorkPanelWidth(nextPanelWidth);
+      useAppStore
+        .getState()
+        .setWorkPanelYieldedWidth(
+          nextPanelWidth < currentPanelWidth ? nextPanelWidth : null,
+        );
     }
     autoCollapsedSidebarRef.current = false;
     setSidebarWidth(preferredWidth);
@@ -175,6 +193,13 @@ export function useAppShellRuntime() {
     autoCollapsedSidebarRef.current = true;
     setSidebarCollapsed(true);
   }, []);
+  // Width the panel lent to a reopened sidebar returns once the sidebar has
+  // finished collapsing, whichever path collapsed it.
+  useEffect(() => {
+    if (sidebarCollapsed && !sidebarExiting) {
+      useAppStore.getState().setWorkPanelYieldedWidth(null);
+    }
+  }, [sidebarCollapsed, sidebarExiting]);
   const [presentedWorkPanelOpen, setPresentedWorkPanelOpen] = useState(false);
   const [workPanelMaximized, setWorkPanelMaximized] = useState(false);
   const [workPanelExiting, setWorkPanelExiting] = useState(false);
@@ -943,10 +968,19 @@ export function useAppShellRuntime() {
     : workPanelToggleLabel;
 
 
+  // What the panel asks of the shared budget, including a width it lent to a
+  // reopened sidebar; the stored preference may be wider.
+  const requestedWorkPanelWidth = workPanelRequestedWidth({
+    containerWidth: shellWidth,
+    sidebarWidth,
+    sidebarCollapsed: sidebarCollapsed && !sidebarExiting,
+    preferredWidth: workPanelWidth,
+    yieldedWidth: workPanelYieldedWidth,
+  });
   const sidebarWidthMax = sidebarWidthBudget({
     containerWidth: shellWidth,
     workPanelOpen: workPanelVisible || presentedWorkPanelOpen,
-    workPanelWidth,
+    workPanelWidth: requestedWorkPanelWidth,
     workPanelMaximized,
   });
 
@@ -972,7 +1006,7 @@ export function useAppShellRuntime() {
     autoCollapseSidebar,
     appShellRef,
     shellWidth,
-    workPanelWidth,
+    requestedWorkPanelWidth,
     runMenuCommand,
     handleSidebarAnimationEnd,
     presentedWorkPanelOpen,

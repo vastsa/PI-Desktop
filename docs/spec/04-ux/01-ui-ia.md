@@ -124,7 +124,8 @@ destination, chat as the home surface, tools and permissions inline.
   left takes space until MainChat reaches 450px, at which point the expanded
   sidebar yields immediately, and moving it right gives space back. A manual
   sidebar reopen spends work-panel width first and otherwise targets a 460px
-  MainChat width. The sole
+  MainChat width, without changing the stored panel width, which returns when
+  the sidebar collapses again. The sole
   panel-level control is the viewport-fixed toggle; each session retains its own runtime
   open state, tab set, active tab, and Browser resource in renderer memory.
   Selecting another session swaps the visible panel context without deleting

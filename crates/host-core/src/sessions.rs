@@ -363,7 +363,8 @@ const PLACEHOLDER_TITLES: [&str; 13] = [
 ];
 
 fn is_default_title(title: &str) -> bool {
-    PLACEHOLDER_TITLES.contains(&title.trim())
+    let t = title.trim();
+    PLACEHOLDER_TITLES.iter().any(|p| p.eq_ignore_ascii_case(t))
 }
 
 // ---- UiMessage ⇄ transcript record mapping -----------------------------------
@@ -4905,6 +4906,12 @@ mod tests {
             "Tarefa sem título",
             "Yeni görev",
             "New chat",
+            "new task",
+            "new chat",
+            "tarefa sem título",
+            "nova conversa",
+            "yeni görev",
+            "yeni sohbet",
         ] {
             let session =
                 create_session(&db, Some(placeholder.into()), None, None, None, None).unwrap();
