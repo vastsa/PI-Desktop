@@ -1334,19 +1334,30 @@ type McpOAuthLoginEvent = {
 
 ## 12c. 子代理 API (D202)
 
-用户拥有的子代理仅是全局 Markdown 文档：`~/.agents/subagents/<id>.md`。
+用户拥有的子代理是存放在全局的 Markdown 文档：`~/.agents/subagents/<id>.md`。
 没有项目级子代理目录。启用状态写在
-`<data>/agent-capabilities/subagents.json`，绝不写入 Markdown 文件。
+`<data>/agent-capabilities/subagents.json`，绝不写入 Markdown 文件。项目可见性
+单独存放在 `<data>/agent-capabilities/subagent-scopes.json`，以文档 id 为键。
+缺少条目时默认全局；作用范围状态损坏时查询直接失败，而不是把限定到项目的文档
+当成全局暴露。旧版本不识别作用范围。作用范围只保存在本机，云同步不会携带
+（见 [配置同步](22-config-sync.md)）。
 
 - `agents.list` → `{ subagents: UserSubagentRecord[] }`
-- `agents.active` → 已启用的全局文档
+- `agents.active(projectPath?)` → 作用范围匹配该项目的已启用文档
 - `agents.create(subagent)` — 重名返回 `SUBAGENT_INVALID`
 - `agents.update(id, subagent)`
 - `agents.read(id)` → `{ subagent, body }`
 - `agents.remove(id)`
 - `agents.setEnabled(id, enabled)`
+- `agents.setScope(id, scope)` → 更新后的记录
 - `agents.disabledBuiltins` → `{ disabled: string[] }`
 - `agents.setBuiltinEnabled(id, enabled)` → `{ id, enabled }`
+
+创建和更新接受 `scope: { mode: "global" | "projects", projects: string[] }`。
+创建时默认为全局；更新时省略 scope 会保留原值。项目模式匹配选中的路径及其
+子目录；无项目或空选择不匹配任何文档。全局模式可以保留项目选择以便以后复用。
+重命名保留作用范围和启用状态；删除会移除作用范围元数据，在应用外删除的文档会
+在下一次扫描时清除其条目。修改在下次加载工具目录时生效，不影响已在运行的子代理。
 
 `agents.create` 和 `agents.update` 接受的 `thinkingLevel` 可以是规范思考档位、
 `omit` 或空字符串。空字符串清除覆盖；`omit` 持久化为

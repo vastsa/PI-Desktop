@@ -1797,7 +1797,8 @@ Create/update accept `scope: { mode: "global" | "projects", projects: string[] }
 Create defaults to global; update preserves an omitted scope. Project mode
 matches selected paths and descendants; no project or an empty selection matches
 no documents. Global mode can retain project selections for later reuse. Rename
-preserves scope and enablement; deletion removes scope metadata. Changes apply
+preserves scope and enablement; deletion removes scope metadata, and a document
+deleted outside the app loses its entry on the next scan. Changes apply
 when the next prompt loads the catalog, not to delegates already running.
 
 The `thinkingLevel` field accepted by `agents.create` and `agents.update` may

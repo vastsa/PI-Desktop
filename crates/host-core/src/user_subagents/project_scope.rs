@@ -36,13 +36,31 @@ impl ProjectScopes {
                 scopes.remove(id);
             }
         }
+        self.write(&scopes)
+    }
+
+    /// Drop entries whose definition no longer exists. `remove` and `update`
+    /// clear their own entry; this covers a document deleted outside the app,
+    /// where the id would otherwise stay behind and a later document reusing
+    /// that id would inherit the old project scope.
+    pub fn retain(&self, ids: &std::collections::HashSet<String>) -> Result<()> {
+        let mut scopes = self.read()?;
+        let before = scopes.len();
+        scopes.retain(|id, _| ids.contains(id));
+        if scopes.len() == before {
+            return Ok(());
+        }
+        self.write(&scopes)
+    }
+
+    fn write(&self, scopes: &BTreeMap<String, ActivationScope>) -> Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
         let temporary = self
             .path
             .with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-        fs::write(&temporary, serde_json::to_vec_pretty(&scopes)?)?;
+        fs::write(&temporary, serde_json::to_vec_pretty(scopes)?)?;
         if let Err(error) = fs::rename(&temporary, &self.path) {
             let _ = fs::remove_file(&temporary);
             return Err(error).context("save subagent project scopes");

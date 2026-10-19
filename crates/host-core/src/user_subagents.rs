@@ -291,6 +291,7 @@ impl UserSubagentRegistry {
         let ids = records.iter().map(|record| record.id.clone()).collect();
         self.state
             .prune(SUBAGENT_KIND, CapabilityLevel::Global, None, &ids)?;
+        self.scopes.retain(&ids)?;
         records.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(records)
     }
@@ -865,6 +866,38 @@ mod tests {
             registry
                 .set_scope("renamed", ActivationScope::default())
                 .unwrap();
+            assert_eq!(registry.active_for(None).unwrap().len(), 1);
+        });
+    }
+
+    #[test]
+    fn scope_of_a_document_deleted_outside_the_app_does_not_carry_over() {
+        use crate::activation::ActivationMode;
+        use crate::agent_capabilities::test_support;
+        let data = tempdir().unwrap();
+        let agents = tempdir().unwrap();
+        test_support::with_global_agents(agents.path(), || {
+            let mut registry = UserSubagentRegistry::new(data.path());
+            registry
+                .create(UserSubagentInput {
+                    name: Some("reviewer".into()),
+                    description: Some("Review".into()),
+                    scope: Some(ActivationScope {
+                        mode: ActivationMode::Projects,
+                        projects: vec!["/project-a".into()],
+                    }),
+                    ..Default::default()
+                })
+                .unwrap();
+            let document = registry.find("reviewer").unwrap().unwrap().path;
+            std::fs::remove_file(&document).unwrap();
+            assert!(registry.list().unwrap().is_empty());
+            std::fs::write(
+                &document,
+                "---\nname: reviewer\ndescription: Recreated\n---\nBody.\n",
+            )
+            .unwrap();
+            assert_eq!(registry.active_for(Some("/project-b")).unwrap().len(), 1);
             assert_eq!(registry.active_for(None).unwrap().len(), 1);
         });
     }
