@@ -45,6 +45,22 @@
   margin-top: 0 !important;
 }
 
+/*
+  While a reply streams it is shown as the raw text instead of its rendered
+  form: re-rendering the tree on every reveal commit costs more as the reply
+  grows, and the syntax-colored spans of half-written code blocks are the
+  expensive part. Newlines have to survive, since the source carries Markdown
+  structure (headings, lists, fences) that has no rendered nodes yet.
+*/
+.assistant-streaming-text {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .prose-chat > :last-child {
   margin-bottom: 0 !important;
 }

@@ -25,7 +25,17 @@ const SmoothMessageBubble = memo(function SmoothMessageBubble({ message, streami
       className={`message-bubble assistant-turn-fragment${streaming ? " streaming" : ""}${showCursor ? " smooth-cursor" : ""}`}
       data-message-id={message.id}
     >
-      {displayContent ? <div className="prose-chat"><Markdown source={displayContent} streaming={streaming} /></div> : null}
+      {displayContent ? (
+        <div className="prose-chat">
+          {streaming
+            // While a reply streams the whole tree would be re-parsed and
+            // repainted on every reveal commit, and its cost grows with the
+            // reply — syntax-colored spans included. Show the raw text while it
+            // arrives and upgrade to the rendered form once it settles.
+            ? <p className="assistant-streaming-text">{displayContent}</p>
+            : <Markdown source={displayContent} />}
+        </div>
+      ) : null}
       {message.error ? <AssistantErrorMessage message={message} /> : null}
     </div>
   );

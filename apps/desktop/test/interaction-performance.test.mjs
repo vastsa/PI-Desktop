@@ -385,3 +385,29 @@ test("motion feedback is composited, bounded, and accessible", () => {
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.work-panel\.is-exiting[\s\S]*?animation-duration:\s*0\.01ms !important/,
   );
 });
+
+test("streaming growth cannot remeasure the minimap every frame", () => {
+  // The content ResizeObserver fires once per frame while a reply streams, and
+  // each remeasure reads every marker's box, so uncapped growth is an
+  // O(markers) synchronous layout at display rate on a long conversation.
+  const scheduleResize = minimap.slice(
+    minimap.indexOf("const scheduleResize"),
+    minimap.indexOf("// Initial offset computation"),
+  );
+  assert.match(minimap, /const RESIZE_RECOMPUTE_MIN_MS = \d+;/);
+  assert.match(scheduleResize, /elapsed < RESIZE_RECOMPUTE_MIN_MS/);
+  assert.match(scheduleResize, /lastRecomputeRef\.current = performance\.now\(\)/);
+  // The trailing run must still happen, or a reply that stops growing would
+  // leave every offset stale.
+  assert.match(scheduleResize, /resizeTimer = window\.setTimeout\(/);
+  assert.match(scheduleResize, /requestAnimationFrame\(runRecompute\)/);
+});
+
+test("the minimap clears its pending remeasure on unmount", () => {
+  const cleanup = minimap.slice(
+    minimap.indexOf("return () => {\n      el.removeEventListener"),
+    minimap.indexOf("}, [measureMagnifyCenters, scrollRef, updateActive, updateOverflow, recomputeOffsets])"),
+  );
+  assert.match(cleanup, /cancelAnimationFrame\(resizeRaf\)/);
+  assert.match(cleanup, /if \(resizeTimer\) clearTimeout\(resizeTimer\)/);
+});
