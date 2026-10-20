@@ -253,6 +253,13 @@ function buildApi() {
       requestNotificationPermission: () => call("ui.requestNotificationPermission"),
       showNativeNotification: (input) => call("ui.showNativeNotification", [input]),
     },
+    // One line into the session's composer placeholder (ADR 0332). The shell
+    // answers whether it went on screen, so a plugin never has to guess before
+    // spending another completion.
+    composer: {
+      suggest: (input) => call("composer.suggest", [input ?? {}]),
+      clearSuggestion: (input) => call("composer.clearSuggestion", [input ?? {}]),
+    },
     project: {
       create: (input) => call("project.create", [input ?? {}]),
     },

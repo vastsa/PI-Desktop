@@ -358,6 +358,7 @@ export const tr = {
     placeholderHint: "Komutlar için / · dosyalar için @ yazın",
     placeholderHomeHint: "Komutlar için / · dosyalar için @ yazın",
     placeholderShortcut: "Yeni satır için Shift+Enter · göndermek için Gönder",
+    suggestionHint: "Tab kabul · Esc yoksay",
     addFiles: "Dosya ekle",
     filesAttached: "Taslağa {{count}} öğe eklendi",
     filesPasted: "Yapıştırılan {{count}} dosya oturum klasörüne kaydedildi",
@@ -2394,6 +2395,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.prompt.inject": "Ajan yönergelerini ayarla",
       "agent.complete": "Modellerinizle tek seferlik tamamlatma çalıştır",
       "composer.transform": "Oluşturucudaki metni dönüştür",
+      "composer.suggest": "Oluşturucuda öneri sun",
       "agent.extension": "Ajanın içinde kod çalıştır",
       "renderer.extension": "Sohbet yuvalarında arayüz çiz",
       "provider.register": "Model listesine servis ekle",
@@ -2443,6 +2445,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.complete":
         "Model kotanızı tek seferlik bir tamamlatma için harcayabilir. Eklenti API anahtarlarınızı almaz.",
       "composer.transform": "Eklentinin Oluşturucu'da açıkça seçtiğiniz metni dönüştürmesine izin verir. Eklenti yalnızca taslağı ve seçili model anahtarını alır; konuşma geçmişini veya ekleri almaz.",
+      "composer.suggest": "Taslak boşken Oluşturucu yer tutucusunda yok sayılabilir tek bir satır göstermesine izin verir. Satır yalnızca Tab ile taslağa girer, eklenti onu kendi gönderemez ve yazmaya başlayınca kaybolur.",
       "agent.extension": "ExtensionAPI modüllerini ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalıştırır. Yalnızca güvendiğiniz kodu etkinleştirin.",
       "renderer.extension": "Bu eklentinin işleyici modülünü uygulama penceresine yükler; mesaj eylem çubukları, yanıt ek alanları, araç kartları, kod bloğu işleyicileri ve besteleyici kontrolleri gibi arayüz yuvası bileşenleri çizer. Modül PI-Desktop ile aynı belgede çalışır. Yalnızca güvendiğiniz kodu etkinleştirin.",
       "provider.register":

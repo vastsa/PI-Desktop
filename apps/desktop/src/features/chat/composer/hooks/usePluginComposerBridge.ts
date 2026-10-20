@@ -1,13 +1,16 @@
 /**
  * Lends this composer to the plugin draft bridge (`../plugins/draft-bridge.ts`)
- * while it is mounted, and tells the bridge after every render that changed
- * the draft, so plugin subscribers and the draft's generation follow it.
+ * and to the plugin suggestion slot (`../plugins/suggestion-bridge.ts`) while it
+ * is mounted, and tells both after every render that changed the draft, so
+ * plugin subscribers follow it, the draft's generation advances, and a
+ * suggestion about an empty draft ends the moment the draft stops being empty.
  */
 import { useEffect, useRef, type RefObject } from "react";
 import { api } from "../../../../lib/api";
 import { editorSelectionRange, readEditorValue } from "../editor";
 import type { ComposerFileReference } from "../model";
 import { composerDraftBridge, type ComposerDraftHandle } from "../plugins/draft-bridge";
+import { composerSuggestion } from "../plugins/suggestion-bridge";
 
 type BridgeSource = {
   ref: RefObject<HTMLDivElement | null>;
@@ -75,14 +78,20 @@ export function usePluginComposerBridge(source: BridgeSource): void {
     };
     handleRef.current = handle;
     const unregister = composerDraftBridge.register(handle);
+    // The suggestion slot needs the same handle: it reads the draft to decide
+    // whether an offer fits and writes it when the user takes one.
+    const unregisterSuggestion = composerSuggestion.register(handle);
     return () => {
       handleRef.current = null;
+      unregisterSuggestion();
       unregister();
     };
   }, [source.enabled]);
 
   const { value, fileReferences, draftKey, referenceSessionId, inputBlocked } = source;
   useEffect(() => {
-    if (handleRef.current) composerDraftBridge.publish(handleRef.current);
+    if (!handleRef.current) return;
+    composerDraftBridge.publish(handleRef.current);
+    composerSuggestion.publish(handleRef.current);
   }, [value, fileReferences, draftKey, referenceSessionId, inputBlocked]);
 }

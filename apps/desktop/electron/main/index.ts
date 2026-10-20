@@ -72,6 +72,7 @@ import { createSessionCoordination } from "./runtime/session-coordination";
 import { createScheduledRuntime } from "./runtime/scheduled";
 import { createDesktopServices } from "./services/desktop-services";
 import { createPluginServices } from "./services/plugin-services";
+import type { ComposerSuggestionAnswer } from "./services/composer-suggestion";
 import { wirePluginThemeRuntimeServices } from "./plugin-theme-services";
 import { createSessionCollaborationService } from "./services/session-collaboration";
 import {
@@ -637,8 +638,12 @@ const sessionCoordination = createSessionCoordination({
    * begins running is reported with the durable turn id instead of being
    * inferred from the previous turn's end.
    */
-  onTurnStarted: (sessionId: string, turnId: string) =>
-    pluginServices.pluginSession.noteTurnStarted(sessionId, turnId),
+  onTurnStarted: (sessionId: string, turnId: string) => {
+    pluginServices.pluginSession.noteTurnStarted(sessionId, turnId);
+    // A new turn owns the composer now, so a suggestion about the previous one
+    // stops being shown and stops being showable (ADR 0332).
+    pluginServices.composerSuggestion.noteTurnStarted(sessionId, turnId);
+  },
 });
 const {
   activeTurnUsages,
@@ -883,6 +888,9 @@ function registerIpc() {
     },
     /** The shell reports the session on screen; plugin surfaces read it. */
     setActivePluginSession: (next) => pluginServices.pluginSession.setActiveSession(next),
+    /** The shell answers a composer suggestion through the same invoke list. */
+    settleComposerSuggestion: (answer: ComposerSuggestionAnswer) =>
+      pluginServices.composerSuggestion.settle(answer),
     getPluginLauncherWindow: () => mainState.pluginLauncherWindow,
     togglePluginLauncher,
     safeOpenExternal,
@@ -1072,6 +1080,7 @@ registerShutdownHandlers({
   mcpOAuth,
   browserHost,
   pluginViews,
+  composerSuggestion: pluginServices.composerSuggestion,
   updater,
   logger,
   confirmQuitDialog,

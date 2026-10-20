@@ -343,6 +343,12 @@ export const IPC = {
      * `session:activated` snapshot is assembled from both (spec 07-plugins/03).
      */
     pluginSessionActive: "pi-desktop/plugin/session/active",
+    /**
+     * The shell's answer to one composer suggestion (`pi.composer.suggest`):
+     * whether it went on screen and, if not, why. The main process is waiting
+     * on this invoke, so a suggestion's caller learns what happened to it.
+     */
+    pluginComposerSuggestionResult: "pi-desktop/plugin/composer/suggestionResult",
     mcpList: "pi-desktop/mcp/list",
     mcpUpsert: "pi-desktop/mcp/upsert",
     mcpRemove: "pi-desktop/mcp/remove",
@@ -465,6 +471,13 @@ export const IPC = {
      * which session's panel takes the view.
      */
     pluginViewReveal: "pi-desktop/plugin/view/event/reveal",
+    /**
+     * One composer suggestion (`pi.composer.suggest`): an offer to show a
+     * plugin's line in the placeholder layer, or the shell's order to drop what
+     * it shows. The shell owns the composer, so it decides and answers over
+     * `pluginComposerSuggestionResult`.
+     */
+    pluginComposerSuggestion: "pi-desktop/plugin/composer/event/suggestion",
     windowMaximized: "pi-desktop/window/event/maximized",
     windowFullScreen: "pi-desktop/window/event/fullscreen",
     windowWorkPanelResize: "pi-desktop/window/event/workPanelResize",

@@ -28,6 +28,7 @@
 | `agent.tool.register` | 高 | 注册代理工具 | 安装时确认 | 工具执行情况单独审核 |
 | `agent.prompt.inject` | 高 | 注入系统提示符；激活 `contributes.skills` | 默认拒绝/强确认 | 容易导致行为劫持 |
 | `composer.transform` | 中等 | `contributes.composerTransforms` 与 `onComposerTransform` | 安装时确认 | 仅在用户主动执行 Composer 操作后运行。仅接收草稿和可选模型 key，不接收会话历史或单独的附件/文件引用元数据；输入、结果上限均为 100,000 字符并记入审计 |
+| `composer.suggest` | 中等 | `pi.composer.suggest` / `pi.composer.clearSuggestion` | 安装时确认 | 仅在草稿为空、且插件声明的轮次仍是当前轮次时，向当前可见会话的输入框占位符层写入一条可忽略的建议。用户按 Tab 采用、Esc 忽略；输入、发送、切换会话、新一轮开始、插件停止、页面重载或窗口关闭都会清除。插件既不能直接发送，也不读取草稿。文本折为单行并截断到 200 字符；存活时间默认 120 秒，上限 10 分钟。记入审计；无法展示时返回 `{ shown: false, reason }` 而不是抛错 |
 | `agent.extension` | 高 | 在 agent 进程内运行 `contributes.agentExtensions` 模块 | 显式确认；v1.1 仅限本地导入和开发插件 | 与 agent 自身工具同等权限；插件沙箱不适用（规格 16） |
 | `renderer.extension` | 高 | 在宿主渲染进程中执行 `manifest.renderer` 以挂载 UI 插槽；`rendererActions` 与 `rendererCallMethods` 决定该模块可以派发的动作与 `onRendererCall` 方法 | 显式确认；v1.1 仅限本地导入和开发插件，与 `agent.extension` 一致 | 模块与 PI-Desktop 同文档运行，因此插槽是契约而不是沙箱。组件只能派发经过审查的动作词表（`plugin.call`、`composer.insertText`、`composer.readDraft`、`composer.replaceDraft`、`attachments.add` / `list` / `remove`），最多 16 个；`plugin.call` 只能触达调用者自己插件的 `onRendererCall` 方法，最多 32 个。插件卸载时注册会被撤销；自绘弹窗位于插件自己打开的层中 |
 | `provider.register` | 高 | `contributes.providers` 成为原生 Provider 列表中的行，归插件所有并在每次加载时按 manifest 刷新 | 显式确认；v1.1 仅限本地导入和开发插件，与 `agent.extension` 一致 | 用户路径拒绝编辑该行（`PROVIDER_OWNED_BY_PLUGIN`）；API key 凭据仍存放在 Host secret store 的常规 provider 引用下 |
@@ -158,6 +159,7 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
 | `composer.transform` | Transform text in the Composer | 转换输入框中的文本 |
+| `composer.suggest` | Offer a suggestion in the Composer | 在输入框中给出建议 |
 | `speech.adapter.register` | Register a speech adapter | 注册语音适配器 |
 | `audio.capture.background` | Use the microphone in the background | 后台使用麦克风 |
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |

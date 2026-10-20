@@ -18320,3 +18320,29 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Milestone:** Maintenance.
 - **Status:** Automated fixture; record the tested head/base and execution
   result in the delivery report.
+
+#### E2E-1175: A plugin suggestion rides in the Composer placeholder and is taken with Tab
+
+- **Preconditions**: A plugin that declares `composer.suggest` is installed,
+  enabled, and granted the permission, and it offers one line on
+  `session:turnEnded` after its own completion.
+- **Steps:** 1) Run an Agent turn in a session and let it complete while that
+  session is on screen and its Composer is empty. 2) Observe the placeholder
+  layer. 3) Press Tab. 4) Repeat, then press Esc. 5) Repeat, then type one
+  character. 6) Repeat, then switch session before the offer arrives.
+- **Expected**: The suggestion appears in the placeholder layer of an empty
+  draft, brighter than the shell placeholder and on one line with an ellipsis,
+  with a `Tab` / `Esc` hint and one polite announcement. Tab writes the exact
+  text into the draft with the caret at the end and the input focused, keeping
+  any staged attachment; Esc drops it; a first character drops it; a missed
+  offer answers `{ shown: false, reason }` and shows nothing. No transcript row,
+  toast, or overlay appears, and the plugin's call is audited.
+- **Specs linked**: `07-plugins/03-plugin-api.md`,
+  `07-plugins/13-plugin-permissions-matrix.md`, ADR 0332.
+- **Acceptance**: A (Composer entry path), Security (permission-gated, never
+  sent by the plugin).
+- **Milestone**: M6+
+- **Status**: Unit/source-contract-covered by
+  `composer-suggestion-state.test.mjs`, `composer-suggestion-relay.test.mjs`,
+  and `plugin-composer-suggestion.test.mjs`; the rendered journey remains a
+  manual/Electron check when this surface changes.

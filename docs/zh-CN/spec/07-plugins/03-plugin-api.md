@@ -149,6 +149,62 @@ type PluginModule = {
 }
 ```
 
+### 输入框建议（`composer.suggest`）
+
+插件可以为用户当前正在查看的会话输入框提供一条短建议。草稿为空时它显示在占位符层，
+用户按 `Tab` 采用、按 `Esc` 忽略，开始输入也会让它消失。它不是消息、不是气泡，
+插件也无法替用户发送。
+
+```ts
+pi.composer.suggest(input: {
+  sessionId: string;  // 来自 session:turnEnded 的会话
+  turnId?: string;    // 这段文本对应的轮次；已被新轮次取代则拒绝
+  text: string;       // 单行；折行空白并截断到 200 字符
+  ttlMs?: number;     // 默认 120000；限制在 1000..600000
+}): Promise<{ shown: true } | {
+  shown: false;
+  reason:
+    | "session-not-visible" // 该会话不是当前显示的会话
+    | "draft-not-empty"     // 草稿里已有文本或附件
+    | "stale-turn"          // 该会话已经跑了更新的轮次
+    | "replaced"            // 更新的建议先占用了位置
+    | "unsupported";        // 没有窗口、没有输入框，或未及时答复
+}>
+
+pi.composer.clearSuggestion(input?: { sessionId?: string }): Promise<{ ok: true }>
+```
+
+两个调用都需要 `composer.suggest` 权限。无法展示不是错误：调用会返回
+`{ shown: false, reason }`，插件可以记录这次落空并决定是否再花一次补全预算。
+参数不合法（`sessionId` 为空、文本没有可见内容、`ttlMs` 不是数字）会像其他宿主 API 一样抛
+`INVALID_PARAMS`，没有授予权限则抛 `PERMISSION_DENIED`。
+
+宿主只在以下条件全部满足时显示建议，并在每次变化后重新检查：命名的会话正是当前显示的会话、
+草稿为空（无文本且无附件）、命名的轮次仍是该会话最新的轮次、有输入框处于可输入状态。
+每个会话同时最多一条建议；更新的建议会替换它，并把被替换的调用答复为 `replaced`。
+下列任一情况都会清除建议：任何草稿变化（输入、粘贴、附件、`composer.insertText`、
+`composer.replaceDraft`）、发送、切换会话、新一轮开始、插件卸载或被禁用、
+`pi.composer.clearSuggestion`、页面重载、窗口关闭，以及建议自身的存活时间到期。
+采用（`Tab`）会把文本写入草稿、光标置末，并保留已暂存的附件。
+
+调用会记录审计：插件 id、会话，以及是否显示成功。若插件用模型生成文本，还需单独声明该 API
+所需的权限，例如 `agent.complete` 与 `models.list`。
+
+```js
+pi.events.on("session:turnEnded", async (event) => {
+  if (event.reason !== "completed") return;
+  const active = await pi.session.getActive();
+  if (active?.sessionId !== event.sessionId) return;
+  const text = await writeNextLine(active); // 插件自己的模型请求
+  if (!text) return;
+  await pi.composer.suggest({
+    sessionId: event.sessionId,
+    turnId: event.turnId,
+    text,
+  });
+});
+```
+
 ### 语音（`speech.adapter.register`）
 ```ts
 pi.speech.registerAdapter(adapter: {

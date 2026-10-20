@@ -9,6 +9,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginPanelHost } from "../plugin-panel-host";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { PluginViewHost } from "../plugin-view-host";
+import type { ComposerSuggestionRelay } from "../services/composer-suggestion";
 import type { AppUpdaterController } from "../updater";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { McpControlServer } from "../mcp-control";
@@ -45,6 +46,8 @@ export type ShutdownDependencies = {
   mcpOAuth?: Pick<McpOAuthManager, "disposeAll">;
   browserHost: Pick<BrowserHost, "dispose">;
   pluginViews: Pick<PluginViewHost, "dispose">;
+  /** Composer suggestions still waiting for an answer at quit (ADR 0332). */
+  composerSuggestion?: Pick<ComposerSuggestionRelay, "dispose">;
   updater: Pick<AppUpdaterController, "dispose" | "isInstallingUpdate">;
   logger: Pick<Logger, "app">;
   confirmQuitDialog: () => Promise<boolean>;
@@ -70,6 +73,7 @@ export function registerShutdownHandlers({
   mcpOAuth,
   browserHost,
   pluginViews,
+  composerSuggestion,
   updater,
   logger,
   confirmQuitDialog,
@@ -213,6 +217,7 @@ export function registerShutdownHandlers({
       userMcp.disposeAll();
       mcpOAuth?.disposeAll();
       browserHost.dispose();
+      composerSuggestion?.dispose();
       inflightCheckpointer.dispose();
 
       try {

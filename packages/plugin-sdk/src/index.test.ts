@@ -663,6 +663,7 @@ describe("PLUGIN_PERMISSIONS", () => {
       "agent.prompt.inject",
       "agent.complete",
       "composer.transform",
+      "composer.suggest",
       "models.list",
       "project.create",
       "session.read",

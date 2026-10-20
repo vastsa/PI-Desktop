@@ -224,6 +224,39 @@
   }
 }
 
+/*
+ * A plugin suggestion (`pi.composer.suggest`, ADR 0332) rides in the same
+ * placeholder layer, so it can never cover a message. It reads brighter than
+ * the shell's own placeholder because it is text a person can take with Tab,
+ * not a hint about the box; the hint beside it stays quiet and never wraps.
+ * The layer is always one line with an ellipsis, which is why the text, not
+ * the hint, is what gets truncated on a narrow composer.
+ */
+.composer-placeholder-suggestion {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ds-text-primary);
+  /* The shared fade ends at the placeholder's own weight, not this one's. */
+  animation: none;
+}
+
+.composer-suggestion-text {
+  min-width: 0;
+  overflow: hidden;
+  /* 62% of primary ink: brighter than the shell placeholder's 42% at 0.72. */
+  opacity: 0.62;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-suggestion-hint {
+  flex: none;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
 .composer-mode-chip-face {
   display: inline-flex;
   min-width: 0;

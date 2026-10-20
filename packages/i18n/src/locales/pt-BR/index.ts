@@ -348,6 +348,7 @@ export const ptBR = {
     placeholderHint: "Digite / para comandos · @ para arquivos",
     placeholderHomeHint: "Digite / para comandos · @ para arquivos",
     placeholderShortcut: "Shift+Enter para inserir uma quebra de linha · Use Enviar para enviar",
+    suggestionHint: "Tab aceitar · Esc descartar",
     addFiles: "Adicionar arquivos",
     filesAttached: "{{count}} item(ns) adicionado(s) ao rascunho",
     filesPasted: "{{count}} arquivo(s) colado(s) salvo(s) na pasta temporária da sessão",
@@ -2349,6 +2350,7 @@ export const ptBR = {
       "agent.prompt.inject": "Alterar as instruções do agente",
       "agent.complete": "Executar uma conclusão avulsa com seus modelos",
       "composer.transform": "Transformar texto no Composer",
+      "composer.suggest": "Sugerir algo no Composer",
       "agent.extension": "Executar código dentro do agente",
       "renderer.extension": "Desenhar interface nos slots do chat",
       "provider.register": "Adicionar provedores à lista de modelos",
@@ -2391,6 +2393,7 @@ export const ptBR = {
       "agent.prompt.inject": "Pode alterar as instruções enviadas ao agente de IA.",
       "agent.complete": "Pode consumir sua cota de modelo para uma conclusão avulsa. O plugin nunca recebe suas chaves de API.",
       "composer.transform": "Permite que este plugin transforme o texto selecionado no Composer. Ele recebe o rascunho e a chave do modelo selecionado, mas não o histórico da conversa nem anexos.",
+      "composer.suggest": "Permite que este plugin mostre uma linha descartável no texto de exemplo do Composer enquanto o rascunho está vazio. Ela entra no rascunho apenas com Tab, o plugin nunca a envia sozinho e ela desaparece ao digitar.",
       "agent.extension": "Executa módulos da ExtensionAPI dentro do processo do agente, com o mesmo nível de acesso que as ferramentas do próprio agente. Ative somente código em que você confia.",
       "renderer.extension":
         "Carrega o módulo de renderização deste plugin na janela do aplicativo para desenhar componentes de slot (barras de ações de mensagens, extras de entrada, cartões de ferramentas, renderizadores de blocos de código, controles do compositor). O módulo é executado no mesmo documento do PI-Desktop. Ative somente código em que você confia.",

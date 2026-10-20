@@ -356,6 +356,7 @@ export const en = {
     placeholderHint: "Type / for commands · @ for files",
     placeholderHomeHint: "Type / for commands · @ for files",
     placeholderShortcut: "Shift+Enter for newline · Use Send to submit",
+    suggestionHint: "Tab to accept · Esc to ignore",
     addFiles: "Add files",
     filesAttached: "Added {{count}} item(s) to the draft",
     filesPasted: "Saved {{count}} pasted file(s) to the session scratch folder",
@@ -2404,6 +2405,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "agent.prompt.inject": "Adjust agent instructions",
       "agent.complete": "Run a one-shot completion with your models",
       "composer.transform": "Transform text in the Composer",
+      "composer.suggest": "Offer a suggestion in the Composer",
       "agent.extension": "Run code inside the agent",
       "renderer.extension": "Draw UI in chat slots",
       "provider.register": "Add providers to the model list",
@@ -2455,6 +2457,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
         "Can spend your model quota on a one-shot completion. The plugin never receives your API keys.",
       "composer.transform":
         "Lets this plugin transform text you explicitly select in the Composer. It receives the draft and selected model key, but no conversation history or attachments.",
+      "composer.suggest":
+        "Lets this plugin show one dismissible line in the Composer's placeholder while the draft is empty. The line enters the draft only when you press Tab, can never be sent by the plugin, and disappears as soon as you type.",
       "agent.extension": "Runs ExtensionAPI modules inside the agent process with the same access as the agent's own tools. Enable only code you trust.",
       "renderer.extension":
         "Loads this plugin's renderer module into the app window to draw UI slot components (message action bars, entry extras, tool cards, code-block renderers, composer controls). The module runs in the same document as PI-Desktop. Enable only code you trust.",

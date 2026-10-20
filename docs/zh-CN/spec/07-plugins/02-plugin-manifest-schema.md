@@ -323,6 +323,7 @@ type PluginPermission =
  | "agent.prompt.inject"
  | "agent.complete"
  | "composer.transform"
+| "composer.suggest"
  | "renderer.extension"
  | "provider.register"
  | "net.fetch"

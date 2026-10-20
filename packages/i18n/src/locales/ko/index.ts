@@ -358,6 +358,7 @@ export const ko = {
     placeholderHint: "명령은 / · 파일은 @ 입력",
     placeholderHomeHint: "명령은 / · 파일은 @ 입력",
     placeholderShortcut: "줄바꿈은 Shift+Enter · 보내기를 눌러 제출",
+    suggestionHint: "Tab 수락 · Esc 무시",
     addFiles: "파일 추가",
     filesAttached: "초안에 항목 {{count}}개 추가됨",
     filesPasted: "붙여넣은 파일 {{count}}개를 세션 임시 폴더에 저장함",
@@ -2400,6 +2401,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.prompt.inject": "에이전트 지침 조정",
       "agent.complete": "모델로 일회성 완성 실행",
       "composer.transform": "작성기의 텍스트 변환",
+      "composer.suggest": "작성기에 제안 표시",
       "agent.extension": "에이전트 안에서 코드 실행",
       "renderer.extension": "채팅 슬롯에 UI 그리기",
       "provider.register": "모델 목록에 프로바이더 추가",
@@ -2449,6 +2451,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.complete":
         "모델 할당량을 사용해 일회성 완성을 실행할 수 있습니다. 플러그인은 API 키를 받지 않습니다.",
       "composer.transform": "작성기에서 직접 선택한 텍스트를 변환하도록 허용합니다. 플러그인은 초안과 선택된 모델 키만 받으며 대화 기록이나 첨부 파일은 받지 않습니다.",
+      "composer.suggest": "초안이 비어 있는 동안 작성기 자리 표시자에 무시할 수 있는 한 줄을 표시하도록 허용합니다. Tab을 눌러야만 초안에 들어가며, 플러그인이 대신 전송할 수 없고 입력을 시작하면 사라집니다.",
       "agent.extension": "ExtensionAPI 모듈을 에이전트 프로세스 안에서 에이전트 자체 도구와 같은 권한으로 실행합니다. 신뢰하는 코드만 켜세요.",
       "renderer.extension": "이 플러그인의 렌더러 모듈을 앱 창에 로드하여 메시지 작업 표시줄, 응답 추가 영역, 도구 카드, 코드 블록 렌더러, 작성기 컨트롤 등 UI 슬롯 구성 요소를 그립니다. 모듈은 PI-Desktop과 같은 문서에서 실행됩니다. 신뢰하는 코드만 활성화하세요.",
       "provider.register":

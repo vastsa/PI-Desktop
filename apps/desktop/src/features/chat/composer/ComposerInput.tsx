@@ -11,6 +11,8 @@ import type {
 import { editorSelectionRange, readEditorValue } from "./editor";
 import { ComposerImagePreview } from "./ComposerImagePreview";
 import { ComposerImageHover } from "./ComposerImageHoverPreview";
+import { composerSuggestionKeyAction } from "./plugins/suggestion-keys";
+import type { ComposerSuggestionView } from "./hooks/useComposerSuggestion";
 import type { CompletionController } from "./hooks/useComposerCompletions";
 import type { ComposerImagePreviewController } from "./hooks/useComposerImagePreview";
 
@@ -25,6 +27,12 @@ export type ComposerInputProps = {
   enterToSend: boolean;
   runActive: boolean;
   composerAc: CompletionController;
+  /**
+   * The plugin suggestion on screen, if any (ADR 0332). It is drawn in the
+   * placeholder layer while the draft is empty, and `Tab` / `Esc` act on it only
+   * when nothing else claims those keys.
+   */
+  suggestion?: ComposerSuggestionView | null;
   onPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
   onAcceptCompletion: (index: number) => void;
   onSubmit: (steering?: boolean) => void;
@@ -57,6 +65,7 @@ export function ComposerInput({
   enterToSend,
   runActive,
   composerAc,
+  suggestion = null,
   onPaste,
   onAcceptCompletion,
   onSubmit,
@@ -150,6 +159,19 @@ export function ComposerInput({
                 return;
               }
             }
+            // A completion list owns `Tab` and the first `Escape`; the plugin
+            // suggestion only acts once neither claims the key.
+            const suggestionAction = composerSuggestionKeyAction(event, {
+              suggestion: suggestion !== null,
+              completionItems: composerAc.hasItems,
+              completionOpen: composerAc.open,
+            });
+            if (suggestionAction) {
+              event.preventDefault();
+              if (suggestionAction === "accept") suggestion?.accept();
+              else suggestion?.dismiss();
+              return;
+            }
             if (
               (event.key === "ArrowUp" || event.key === "ArrowDown") &&
               !event.shiftKey &&
@@ -171,13 +193,34 @@ export function ComposerInput({
             }
           }}
         />
+        {/* The plugin suggestion (`pi.composer.suggest`) rides in the
+          placeholder layer — never a bubble — and only while the draft is
+          empty, which is what makes Tab a plain "write this for me". */}
         {value.length === 0 ? (
-          <span
-            key={placeholderKey}
-            className="composer-placeholder"
-            aria-hidden="true"
-          >
-            {placeholderText}
+          suggestion ? (
+            <span
+              key={`suggestion-${suggestion.text}`}
+              className="composer-placeholder composer-placeholder-suggestion"
+              aria-hidden="true"
+            >
+              <span className="composer-suggestion-text">{suggestion.text}</span>
+              <span className="composer-suggestion-hint">{suggestion.hint}</span>
+            </span>
+          ) : (
+            <span
+              key={placeholderKey}
+              className="composer-placeholder"
+              aria-hidden="true"
+            >
+              {placeholderText}
+            </span>
+          )
+        ) : null}
+        {/* The visible line is decoration; the live region is what a screen
+          reader announces, once, without stealing focus. */}
+        {suggestion ? (
+          <span className="sr-only" role="status" aria-live="polite">
+            {suggestion.text}
           </span>
         ) : null}
       </div>

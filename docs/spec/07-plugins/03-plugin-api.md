@@ -177,6 +177,70 @@ separately declares the permissions required by that API, such as
 }
 ```
 
+### Composer suggestions (`composer.suggest`)
+
+A plugin may offer one short line for the Composer of the session the user is
+looking at. It is drawn in the placeholder layer while the draft is empty, the
+user takes it with `Tab` or drops it with `Esc`, and typing drops it too. It is
+never a message, never a bubble, and the plugin cannot send it.
+
+```ts
+pi.composer.suggest(input: {
+  sessionId: string;  // the session from session:turnEnded
+  turnId?: string;    // the turn the text answers; an overtaken turn is refused
+  text: string;       // one line; folded and cut at 200 characters
+  ttlMs?: number;     // default 120000; clamped to 1000..600000
+}): Promise<{ shown: true } | {
+  shown: false;
+  reason:
+    | "session-not-visible" // that session is not on screen
+    | "draft-not-empty"     // the user has text or an attachment in the draft
+    | "stale-turn"          // the session ran a newer turn
+    | "replaced"            // a newer suggestion took the slot first
+    | "unsupported";        // no window, no composer, or no answer in time
+}>
+
+pi.composer.clearSuggestion(input?: { sessionId?: string }): Promise<{ ok: true }>
+```
+
+Both calls need `composer.suggest`. A place that will not show the line is not
+an error: the call resolves `{ shown: false, reason }` so a plugin can log the
+miss and decide whether to spend another completion. Malformed input (an empty
+`sessionId`, text with nothing visible in it, a non-numeric `ttlMs`) throws
+`INVALID_PARAMS` like every other host API, and a missing grant throws
+`PERMISSION_DENIED`.
+
+The host shows a suggestion only when all of the following hold, and checks
+them again on every change: the named session is the one on screen, the draft
+is empty (no text and no attachment), the named turn is still the session's
+newest turn, and a composer is mounted and taking input. One suggestion exists
+per session; a newer offer replaces it and answers the superseded caller with
+`replaced`. The line is cleared by: any draft change (typing, pasting, an
+attachment, `composer.insertText`, `composer.replaceDraft`), a send, a session
+switch, a new turn starting, the plugin unloading or being disabled,
+`pi.composer.clearSuggestion`, a renderer reload, a window close, and the
+suggestion's own lifetime running out. Taking it (`Tab`) puts the text in the
+draft with the caret at the end and keeps any attachment already staged.
+
+The call is audited with the plugin id, the session, and whether the line was
+shown. A plugin that generates the text with a model also declares that API's
+permissions, such as `agent.complete` and `models.list`.
+
+```js
+pi.events.on("session:turnEnded", async (event) => {
+  if (event.reason !== "completed") return;
+  const active = await pi.session.getActive();
+  if (active?.sessionId !== event.sessionId) return;
+  const text = await writeNextLine(active); // the plugin's own model request
+  if (!text) return;
+  await pi.composer.suggest({
+    sessionId: event.sessionId,
+    turnId: event.turnId,
+    text,
+  });
+});
+```
+
 ### speech (`speech.adapter.register`)
 ```ts
 pi.speech.registerAdapter(adapter: {

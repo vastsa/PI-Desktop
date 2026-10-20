@@ -56,6 +56,7 @@ import type { ClipboardHistory } from "../clipboard-history";
 import type { TurnEndedPayload } from "../runtime/session-coordination";
 import type { HostProcess } from "../host-process";
 import { createPluginSessionContext } from "./plugin-session-context";
+import { createComposerSuggestionRelay } from "./composer-suggestion";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
 
@@ -637,6 +638,17 @@ export function createPluginServices({
     getActiveTurn,
     announce: broadcastSessionEvent,
   });
+  /**
+   * `pi.composer.suggest` (ADR 0332): the main process refuses a suggestion
+   * that names another session or an overtaken turn, and the shell answers
+   * whether the composer can take it. The composer owns its own state, so this
+   * only ever relays — nothing here writes the draft.
+   */
+  const composerSuggestion = createComposerSuggestionRelay({
+    sendToRenderer,
+    getActiveSession: () => pluginSession.snapshot(),
+    log: (message, data) => logger.app("plugin", "warn", message, { data }),
+  });
   const pluginViews = new PluginViewHost(({ pluginId, url }) => {
     logger.app("plugin", "warn", "plugin.api", {
       pluginId,
@@ -730,6 +742,15 @@ export function createPluginServices({
         ...(location ? { location } : {}),
       });
     },
+    /**
+     * `pi.composer.suggest`: the runtime already checked the permission and
+     * shaped the text, and this only relays the offer to the shell that owns the
+     * composer.
+     */
+    suggestComposer: (offer) => composerSuggestion.offer(offer),
+    /** `pi.composer.clearSuggestion`: drop this plugin's own line. */
+    clearComposerSuggestion: (pluginId, sessionId) =>
+      composerSuggestion.clearSuggestion(pluginId, sessionId),
     browser: {
       reveal: (sessionId) => browserHost.reveal(sessionId),
       navigate: (input, sessionId, tabId) => browserHost.navigate(input, sessionId, tabId),
@@ -748,6 +769,8 @@ export function createPluginServices({
     },
     onPluginUnload: (pluginId) => {
       if (pluginId === BROWSER_PLUGIN_ID) browserHost.disposeGuest();
+      // A stopped plugin loses its line in the composer with it.
+      composerSuggestion.clearPlugin(pluginId);
     },
   });
   const speech = createSpeechService({
@@ -768,6 +791,7 @@ export function createPluginServices({
     pluginViews,
     browserHost,
     pluginSession,
+    composerSuggestion,
     speech,
   };
 }

@@ -71,6 +71,13 @@ import {
   type PluginServiceContrib,
   type PluginSettingContrib,
   type PluginComposerTransformInput,
+  type PluginComposerSuggestInput,
+  type PluginComposerSuggestResult,
+  type PluginComposerClearSuggestionInput,
+  PLUGIN_COMPOSER_SUGGESTION_MAX_CHARS,
+  PLUGIN_COMPOSER_SUGGESTION_TTL_MS,
+  PLUGIN_COMPOSER_SUGGESTION_TTL_MIN_MS,
+  PLUGIN_COMPOSER_SUGGESTION_TTL_MAX_MS,
   type PluginSkillContrib,
   type PluginThemeVariableContrib,
 } from "@pi-desktop/plugin-sdk";
@@ -127,6 +134,10 @@ import {
   PROMPT_ENHANCEMENT_PLUGIN_ID,
   type LegacyPromptEnhancementSettings,
 } from "./plugin-prompt-enhancement-migration";
+import type {
+  ComposerSuggestionOffer,
+  ComposerSuggestionOutcome,
+} from "./services/composer-suggestion";
 
 export type RegisteredCommand = {
   id: string;
@@ -514,6 +525,14 @@ export type PluginHostServices = {
     sessionId: string;
     location: string | null;
   }) => Promise<void>;
+  /**
+   * `pi.composer.suggest`: hand one line to the shell that owns the composer.
+   * The runtime already checked the permission and shaped the text; the shell
+   * says whether it went on screen, because only it knows the draft.
+   */
+  suggestComposer?: (offer: ComposerSuggestionOffer) => Promise<ComposerSuggestionOutcome>;
+  /** `pi.composer.clearSuggestion`: drop this plugin's own line. */
+  clearComposerSuggestion?: (pluginId: string, sessionId?: string) => void;
   project?: {
     create: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
@@ -547,6 +566,8 @@ const HOST_API_ALLOWLIST = new Set([
   "plugin.setSettings",
   "plugin.getDataPath",
   "ui.revealView",
+  "composer.suggest",
+  "composer.clearSuggestion",
   "ui.openPanel",
   "ui.closePanel",
   "ui.showToast",
@@ -1030,6 +1051,34 @@ function normalizePluginSessionInput(
 ): Record<string, unknown> {
   validatePluginSessionPayload(input, kind);
   return { ...(input as Record<string, unknown>) };
+}
+
+/** Longest session or turn id a plugin may name, matching the host's own bound. */
+const MAX_SESSION_ID_CHARS = 128;
+
+/**
+ * One line of suggestion text, in the form the composer draws: line breaks and
+ * runs of whitespace fold to single spaces, and the result is cut at the SDK
+ * ceiling. Shaping rather than refusing is deliberate — a plugin that asked for
+ * a long or multi-line string still gets a usable suggestion instead of an
+ * error it cannot repair from inside a turn.
+ */
+function composerSuggestionText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const line = value.replace(/\s+/g, " ").trim();
+  return [...line].slice(0, PLUGIN_COMPOSER_SUGGESTION_MAX_CHARS).join("").trim();
+}
+
+/** The requested lifetime, clamped into the range the SDK publishes. */
+function composerSuggestionTtl(value: unknown): number {
+  if (value === undefined || value === null) return PLUGIN_COMPOSER_SUGGESTION_TTL_MS;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw apiError("INVALID_PARAMS", "ttlMs must be a number of milliseconds");
+  }
+  return Math.min(
+    Math.max(Math.round(value), PLUGIN_COMPOSER_SUGGESTION_TTL_MIN_MS),
+    PLUGIN_COMPOSER_SUGGESTION_TTL_MAX_MS,
+  );
 }
 
 /**
@@ -4565,6 +4614,84 @@ export class PluginRuntime {
       ts: Date.now(),
     });
   }
+  /**
+   * `pi.composer.suggest`: one line into the composer of the session the user
+   * is looking at (`composer.suggest`, ADR 0332).
+   *
+   * The plugin names the session and the turn its text answers. Nothing here
+   * can fail the plugin for a place that will not show it: the text is shaped
+   * rather than refused, and "not shown" comes back as a reason the plugin can
+   * log. What does throw is a broken call — no session id, no text left after
+   * shaping, a lifetime that is not a number — like every other host API.
+   */
+  private async suggestComposer(
+    loaded: LoadedPlugin,
+    input?: PluginComposerSuggestInput,
+  ): Promise<PluginComposerSuggestResult> {
+    this.assertPermission(loaded, "composer.suggest");
+    const raw = input && typeof input === "object" ? input : ({} as PluginComposerSuggestInput);
+    const sessionId = typeof raw.sessionId === "string" ? raw.sessionId.trim() : "";
+    if (!sessionId || sessionId.length > MAX_SESSION_ID_CHARS) {
+      throw apiError("INVALID_PARAMS", "sessionId must be a non-empty string");
+    }
+    const turnId = typeof raw.turnId === "string" ? raw.turnId.trim() : "";
+    if (turnId.length > MAX_SESSION_ID_CHARS) {
+      throw apiError("INVALID_PARAMS", "turnId must be at most 128 characters");
+    }
+    const text = composerSuggestionText(raw.text);
+    if (!text) throw apiError("INVALID_PARAMS", "text must contain at least one visible character");
+    const ttlMs = composerSuggestionTtl(raw.ttlMs);
+    // A plugin scoped to another project is not part of this conversation, so
+    // it does not get to write into the composer the user is looking at.
+    if (!this.services.isPluginActiveInProject?.(loaded.manifest.id)) {
+      return { shown: false, reason: "session-not-visible" };
+    }
+    if (!this.services.suggestComposer) {
+      throw apiError("UNSUPPORTED", "host api not available: composer.suggest");
+    }
+    const result = await this.services.suggestComposer({
+      pluginId: loaded.manifest.id,
+      sessionId,
+      ...(turnId ? { turnId } : {}),
+      text,
+      ttlMs,
+    });
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "composer.suggest",
+      ok: true,
+      sessionId,
+      shown: result.shown,
+      ...(result.shown ? {} : { reason: result.reason }),
+      ts: Date.now(),
+    });
+    return result;
+  }
+
+  /**
+   * `pi.composer.clearSuggestion`: drop the caller's own line. Nothing is shown
+   * when it is already gone, so the answer never depends on what the shell had.
+   */
+  private clearComposerSuggestion(
+    loaded: LoadedPlugin,
+    input?: PluginComposerClearSuggestionInput,
+  ): { ok: true } {
+    this.assertPermission(loaded, "composer.suggest");
+    const sessionId = typeof input?.sessionId === "string" ? input.sessionId.trim() : "";
+    if (sessionId.length > MAX_SESSION_ID_CHARS) {
+      throw apiError("INVALID_PARAMS", "sessionId must be at most 128 characters");
+    }
+    this.services.clearComposerSuggestion?.(loaded.manifest.id, sessionId || undefined);
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "composer.clearSuggestion",
+      ok: true,
+      sessionId: sessionId || null,
+      ts: Date.now(),
+    });
+    return { ok: true };
+  }
+
 
   private async readSessionContext(loaded: LoadedPlugin): Promise<PluginLlmContext> {
     this.assertPermission(loaded, "session.read");
@@ -5453,6 +5580,16 @@ export class PluginRuntime {
         /** Show one of this plugin's own views in a session's work panel. */
         revealView: async (input?: PluginRevealViewInput) =>
           this.revealWorkPanelView(loaded, input),
+      },
+      composer: {
+        /**
+         * One dismissible line in the placeholder layer of the composer the
+         * user is looking at (`composer.suggest`, ADR 0332).
+         */
+        suggest: async (input?: PluginComposerSuggestInput) =>
+          this.suggestComposer(loaded, input),
+        clearSuggestion: async (input?: PluginComposerClearSuggestionInput) =>
+          this.clearComposerSuggestion(loaded, input),
       },
       workspace: {
         get: async () => {

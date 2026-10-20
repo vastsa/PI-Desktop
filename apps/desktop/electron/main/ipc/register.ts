@@ -37,6 +37,7 @@ import { registerSpeechIpc } from "./speech-ipc";
 import { registerVoiceIpc } from "./voice-ipc";
 import { registerLiveVoiceIpc } from "./live-voice-ipc";
 import type { LiveCallService } from "../live-voice/call-service";
+import type { ComposerSuggestionAnswer } from "../services/composer-suggestion";
 import type { LiveVoiceWidget } from "../live-voice/widget-window";
 import type { IpcRegistrar } from "./types";
 import type { createTraySessions } from "../tray-sessions";
@@ -64,6 +65,8 @@ export type RegisterIpcDependencies = {
   setActivePluginSession: (
     next: { sessionId: string; projectPath: string | null } | null,
   ) => void;
+  /** The shell's answer to a composer suggestion it was offered (ADR 0332). */
+  settleComposerSuggestion: (answer: ComposerSuggestionAnswer) => boolean;
   activeUserSubagentDocuments: (...args: any[]) => Promise<any>;
   disabledBuiltinSubagents: () => Promise<string[]>;
   disabledBuiltinSkills: () => Promise<string[]>;
@@ -99,6 +102,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getNotificationViewingSessionId,
     setNotificationViewingSessionId,
     setActivePluginSession,
+    settleComposerSuggestion,
     getPluginLauncherWindow,
     togglePluginLauncher,
     safeOpenExternal,
@@ -503,8 +507,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getUpdaterLocale,
     getPluginPanelTheme,
     setActivePluginSession,
+    settleComposerSuggestion,
   });
-
   registerSpeechIpc({ registrar, speech });
 
   if (voiceService) {

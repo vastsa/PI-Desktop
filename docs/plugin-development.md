@@ -24,6 +24,7 @@ A plugin can contribute one or more of these capabilities:
 | Service | Resident work supervised by the host | `contributes.services`, `background.service` permission |
 | Message bus | Typed-by-convention events between plugins | `contributes.bus`, bus permissions |
 | Renderer slot | UI drawn inside the app's own window: composer controls, message action bars, blocks below a reply, tool cards, code-block renderers, corner layers | `renderer`, `renderer.extension` permission, `packages/plugin-sdk/src/renderer.ts` |
+| Composer suggestion | One dismissible line offered to the input box, taken with Tab | `pi.composer.suggest`, `composer.suggest` permission |
 
 Plugin entry code runs in a dedicated Node process. Panels run in sandboxed,
 context-isolated Electron windows with no Node integration. Calls from either
