@@ -254,10 +254,11 @@ permission gate and result envelope stay in host-core:
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`. `turnId` is
    the runtime turn identity, forwarded unchanged so the plugin tool context can
    be matched against the `session:turnEnded` event.
-3. Plan calls fail at the host policy step with `PLUGIN_DISABLED_IN_PLAN`; they
-   never reach Electron or the plugin runtime. Agent calls continue with
-   Electron main executing the registered plugin tool JS and answering via RPC
-   `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`.
+3. Plan calls for a tool without a `planSafeActions` list fail at the host policy
+   step with `PLUGIN_DISABLED_IN_PLAN`; they never reach Electron or the plugin
+   runtime. Agent calls continue with Electron main executing the registered
+   plugin tool JS and answering via RPC `plugins.resolveExecution`
+   `{ executionId, ok, content, errorCode? }`.
 4. host-core resolves the pending execution and returns a standard
    `ToolsExecuteResult` to the sidecar. Dispatch waits up to 150s
    (`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`, above both the 110s plugin tool budget

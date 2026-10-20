@@ -945,17 +945,18 @@ not inherit this exception.
 
 Before generic permission evaluation, host-core applies the mode policy:
 
-- Plan and Goal allow `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, and the
-  kind's submit tool (`SubmitPlan` / `SubmitGoal`) as applicable to the live
-  planning state.
-- Plan and Goal deny `Write`, `Edit`, every plugin tool, and unknown tools under
-  all permission modes and grants. The host reads the session's **durable** mode
-  for this check, so a sidecar claiming `agent` in `tools.execute` cannot widen
-  it, and the `*_IN_PLAN` error codes are shared by both kinds.
-- Plan and Goal `Bash` follows the resolved permission mode: `ask` and
-  `accept-edits`
-  emit `permissions.request`; `auto` executes without confirmation and may
-  mutate. The host re-resolves the effective shell ID/dialect and requires the
+- Plan and Goal admit a builtin unless the next bullet denies it. `Read`,
+  `Glob`, `Grep`, and `BrowserPreview` therefore reach the ordinary permission
+  path, and the kind's submit tool (`SubmitPlan` / `SubmitGoal`) is allowed as
+  applicable to the live planning state.
+- Plan and Goal deny `Write`, `Edit`, the other state-changing builtins, and a
+  plugin tool without `planSafeActions` under all permission modes and grants.
+  The host reads the session's **durable** mode for this check, so a sidecar
+  claiming `agent` in `tools.execute` cannot widen it, and the `*_IN_PLAN` error
+  codes are shared by both kinds.
+- Plan and Goal `Bash` takes a permission card under every resolved permission
+  mode: `ask`, `accept-edits`, and `auto` all emit `permissions.request`, and an
+  approved command may mutate. The host re-resolves the effective shell ID/dialect and requires the
   exact `expectedCommandShellId` and `expectedCommandShellDialect` before
   permission evaluation and again before spawn; it streams stdout/stderr
   separately. A configured shell may fall back to the first available platform
@@ -1328,8 +1329,8 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 9. Forking through a message excludes every later source row and rejects an
    unknown message without creating a child
 10. A forged `requestedMode` cannot authorize a tool against the durable mode;
-    Plan and Goal deny Write/Edit/plugin/unknown tools and apply permission
-    prompts to Bash according to `ask`/`accept-edits`/`auto`
+    Plan and Goal deny state-changing builtins and plugin tools without
+    `planSafeActions`, and ask for Bash in every permission mode
 11. SubmitPlan and SubmitGoal write exact Markdown bytes to a unique
     `.pi/plan/*.md` or `.pi/goal/*.md` file with
     hash/size and structured title/question fields; only matching

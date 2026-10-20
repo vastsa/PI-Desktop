@@ -90,11 +90,13 @@
 
 Plan 本身并不是工作区安全边界。主机核解决了
 每个 `tools.execute` 调用的持久会话模式并应用 Plan 矩阵
-在权限模式、授予、插件风险或 renderer/sidecar 状态之前。 Plan
-拒绝 Write/Edit/plugin/unknown 工具，而 BrowserPreview 是显式的
-只读 UI 检查异常（它打开随应用打包的 `pi.browser` chrome；原始
-CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：询问并
-接受编辑提示，自动运行而无需确认，并且可能会改变
+在权限模式、授予、插件风险或 renderer/sidecar 状态之前。 契约模式按效果而非
+能力划分：它拒绝会改变状态的内置工具与未声明 `planSafeActions` 的插件工具，
+其余名字一律按省略放行，因此没人分类过的内置工具会走到普通权限路径。一个自己
+写文件、派发工作、花费付费调用或访问网络的内置工具，在加入时就该进入拒绝清单。
+BrowserPreview 是显式的只读 UI 检查异常（它打开随应用打包的 `pi.browser`
+chrome；原始 CDP 插件工具在 Plan 中仍被拒绝）。 Bash 在 Plan 中仍然可用：
+每种权限模式（含 Auto）都弹出权限卡，批准后的命令可能会改变
 工作区或临时目录。用户界面必须说明这种权衡。 `SubmitPlan`
 在新的唯一 `<workspaceRoot>/.pi/plan/*.md` 中保留精确的 Markdown 字节
 通过 host-core 文件，验证根内工件路径，计算 SHA-256

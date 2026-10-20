@@ -97,10 +97,12 @@ retained-tail recovery, ADR 0061's model-window-derived budgets, and ADR 0061's
    the model requested `new_context` or the estimate reaches
    `floor(hardLimit * 0.9)`, matching the `should_roll_over` turn boundary.
    `hardLimit` remains the final request guard (D623). The name is synchronized
-   across `activeTools()`,
-   `isCoreTool()`, the contract-mode allowlists, and the host-core
-   no-confirmation allowlist (`crates/host-core/src/permissions.rs`), where it
-   replaces `"CompactContext"`.
+   across `activeTools()` and `isCoreTool()`.
+   *(Amended by ADR 0332: a contract mode keeps a deny list instead of an
+   allowlist, so `new_context` is no longer named in
+   `crates/host-core/src/permissions.rs`. It is admitted by falling through the
+   deny list, and `apps/desktop/test/context-compaction.test.mjs` asserts it
+   stays off that list.)*
 5. **Two-tier reminders, once each per window.** With
    `remaining = hardLimit - tokens`: tier one at
    `remaining <= clamp(hardLimit * 0.15, 8k, 32k)` states the remaining budget

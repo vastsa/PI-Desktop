@@ -378,6 +378,7 @@ Each ADR includes:
 | 0329 | [Isolate parallel sessions of one project in git worktrees](0329-session-worktree-isolation.md) | Accepted (Windows E2E pending) |
 | 0330 | [Open scoped HTML files in the work-panel Browser from plugins](0330-open-html-files-in-work-panel-browser-from-plugins.md) | Accepted |
 | 0331 | [Plugin session follow and host-owned work-panel reveal](0331-plugin-session-follow-and-work-panel-reveal.md) | Accepted |
+| 0332 | [Contract modes deny what is unsafe](0332-contract-modes-deny-what-is-unsafe.md) | Accepted (amends ADR 0052 §3, ADR 0053 §1, ADR 0211 §4) |
 | plugin-fetch-redirect-policy | [Host-enforced plugin fetch redirect policy](plugin-fetch-redirect-policy.md) | Accepted (implementation candidate for #1475) |
 
 | local-agent-remote-workspace-tools | [Local Agent and model requests for remote workspaces](local-agent-remote-workspace-tools.md) | Accepted for implementation |

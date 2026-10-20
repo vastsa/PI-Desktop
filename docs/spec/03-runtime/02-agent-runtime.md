@@ -671,7 +671,7 @@ with the kind to know which durable mode a session is in.
 
 `Agent / inactive` enters `Plan / planning` either when the user selects Plan
 while idle or when the Agent calls `EnterPlanMode`. In Plan, the Agent can
-inspect, use context controls, run Bash through the selected permission mode,
+inspect, use context controls, run Bash through its permission card,
 and call `SubmitPlan(title, markdown, question)`. Host-core preserves the
 submitted Markdown bytes in a new immutable
 `.pi/plan/<unique-name>.md` artifact, records its relative path/hash/size and
@@ -680,7 +680,7 @@ structured title/question in `plan_approvals`, and moves the live state to
 
 Plan/Goal requests retain Write/Edit declarations and, when subagents are
 configured, the Task/TaskWait/TaskList/TaskStop declarations. They are marked
-unavailable in the active mode. The execution allowlist remains unchanged:
+unavailable in the active mode. The contract-mode gate is enforced the same way:
 prohibited calls are blocked before extension call hooks and handlers, and a
 handler retained across a mode change rechecks that mode before executing.
 The model receives an ordinary error tool result with the original call id;

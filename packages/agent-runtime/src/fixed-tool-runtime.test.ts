@@ -44,7 +44,7 @@ async function wireFixture(calls: Call[], beforeReply?: () => Promise<void>) {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   } };
 }
-function runtimeFixture(history: UiMessage[] = [], tools = pluginTools, provider = flashProvider(), denied = false, mode: "agent" | "plan" = "agent") {
+function runtimeFixture(history: UiMessage[] = [], tools = pluginTools, provider = flashProvider(), denied = false, mode: "agent" | "plan" | "goal" = "agent") {
   const rows = structuredClone(history);
   const executed: string[] = [];
   const errors: unknown[] = [];
@@ -287,12 +287,35 @@ describe("explicit MCP selection", () => {
     } finally { await f.runtime.dispose(); await wire.close(); }
   });
 
-  it("cannot expose selected MCP tools in Plan mode", async () => {
-    const wire = await wireFixture([]);
-    const f = runtimeFixture([], selectedTools, flashProvider(), false, "plan");
+  it.each(["plan", "goal"] as const)("keeps large MCP catalogs discoverable without flooding %s requests", async (mode) => {
+    const tools = Array.from({ length: 129 }, (_, index) => ({
+      name: `mcp_large_tool_${index}`, description: "MCP probe",
+      parameters: { type: "object", properties: {}, required: [] },
+    }));
+    const wire = await wireFixture([
+      { name: "ToolSearch", args: { query: tools[0].name } },
+      { name: tools[0].name },
+    ]);
+    const f = runtimeFixture([], tools, flashProvider(), true, mode);
     try {
-      await expect(f.runtime.prompt({ text: "Read", mcpServerIds: ["chosen"] })).rejects.toMatchObject({ errorCode: "TOOL_DENIED" });
-      expect(wire.requests).toHaveLength(0);
+      await f.prompt();
+      expect(wire.requests[0].tools.length).toBeLessThanOrEqual(128);
+      expect(wire.requests[0].tools.map(tool => tool.function.name)).not.toContain(tools[1].name);
+      expect(f.executed).toEqual([tools[0].name]);
+      expect(f.rows.find(row => row.toolName === tools[0].name)).toMatchObject({ isError: true });
+    } finally { await f.runtime.dispose(); await wire.close(); }
+  });
+
+  it("offers selected MCP tools in Plan mode and still routes them through Host approval", async () => {
+    const wire = await wireFixture([{ name: selectedTools[0].name }]);
+    const f = runtimeFixture([], selectedTools, flashProvider(), true, "plan");
+    try {
+      await f.runtime.prompt({ text: "Read", mcpServerIds: ["chosen"] });
+      // The tool is reachable, so its approval card can be shown; the Host is
+      // still what decides, and it refused here.
+      expect(f.executed).toEqual([selectedTools[0].name]);
+      expect(f.rows.find(row => row.toolName === selectedTools[0].name)).toMatchObject({ isError: true });
+      expect(JSON.stringify(wire.requests.at(-1)?.messages)).toContain("Permission denied");
     } finally { await f.runtime.dispose(); await wire.close(); }
   });
 

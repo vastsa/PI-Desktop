@@ -139,8 +139,8 @@ does not turn temporary thread pressure into a host process exit.
 | `PERMISSION_REQUIRED` | no | waiting for user decision |
 | `WRITE_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Write |
 | `EDIT_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Edit |
-| `PLUGIN_DISABLED_IN_PLAN` | no | contract-mode hard-deny for every plugin tool |
-| `TOOL_DISABLED_IN_PLAN` | no | contract-mode hard-deny for an unknown/unlisted tool |
+| `PLUGIN_DISABLED_IN_PLAN` | no | contract-mode refusal of a plugin tool that declares no `planSafeActions` |
+| `TOOL_DISABLED_IN_PLAN` | no | contract-mode hard-deny for a builtin that changes state |
 | `PLAN_NOT_ACTIVE` | no | a submit tool ran while no contract was being negotiated |
 | `PLAN_KIND_MISMATCH` | no | `SubmitPlan` in Goal mode, or `SubmitGoal` in Plan mode |
 | `PLAN_APPROVAL_REQUIRED` | no | SubmitPlan/SubmitGoal is waiting for a separate approval |
@@ -530,9 +530,10 @@ Examples:
 
 1. Every IPC failure returns `AppError.code`
 2. No raw untyped string-only failures on main paths
-3. Plan/Goal hard-denies use explicit tool-specific codes; Bash is never denied
-   by either contract mode solely because of the operating mode and instead
-   follows permission policy
+3. Plan/Goal hard-denies use explicit tool-specific codes. Bash is not denied by
+   either contract mode because of the operating mode; it takes a permission card
+   in every permission mode, so the user still decides, and an approved command
+   runs
 4. Host numeric codes map to stable string codes
 5. Invalid shell settings, no-effective-shell/stale-pin, artifact-write,
    expiry, scheduled-rejection, and restart-interruption paths map to stable

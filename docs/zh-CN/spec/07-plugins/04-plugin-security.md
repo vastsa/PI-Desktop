@@ -211,11 +211,13 @@ CSS 无法脚本化，但它可能会产生误导：主题仍然是第三方代�
 
 Plan 是代理工具的附加主机策略边界：
 
-- Plan 中没有可见或可执行的插件工具；
-- 拒绝先于明显风险、declared/granted 权限、会话
-  grants，以及 `auto` 权限模式；
-- 直接伪造的 `tools.execute` 调用返回 `PLUGIN_DISABLED_IN_PLAN` 并且是
-  已审核；它不会转发到插件运行时；
+- 没有非空 `planSafeActions` 列表的插件工具在 Plan 中既不可见也不可执行；
+- 拒绝先于 manifest 风险、declared/granted 权限、会话授权，
+  以及 `auto` 权限模式；
+- 直接伪造的 `tools.execute` 调用返回 `PLUGIN_DISABLED_IN_PLAN` 并且被
+  审计；它不会转发到插件运行时；
+- 声明了该列表的工具会被放行，插件运行时在插件看到调用之前拒绝列表外的任何 `action`
+  （ADR 0211）；
 - 插件命令和面板仍可用作显式用户 UI 操作，
   但它们不能成为模型可调用的 Plan 工具或默默地改变 Plan
   状态。

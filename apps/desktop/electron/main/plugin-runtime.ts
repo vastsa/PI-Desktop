@@ -4015,11 +4015,17 @@ export class PluginRuntime {
           // Remote code the desktop cannot inspect; never silently auto-approved.
           risk: "medium",
           schema: tool.inputSchema,
-          execute: async (toolArgs, ctx) => this.mcpCalls.run(
-            ctx?.sessionId,
-            (signal) => client.callTool(tool.name, toolArgs, signal),
-            ctx?.signal,
-          ),
+          execute: async (toolArgs, ctx) => {
+            // MCP contributions cannot declare an enforced plan-safe action list.
+            if (ctx?.mode === "plan" || ctx?.mode === "goal") {
+              throw apiError("PERMISSION_DENIED", `plugin tool ${name} is not available in ${ctx.mode} mode`);
+            }
+            return this.mcpCalls.run(
+              ctx?.sessionId,
+              (signal) => client.callTool(tool.name, toolArgs, signal),
+              ctx?.signal,
+            );
+          },
         });
       }
     }

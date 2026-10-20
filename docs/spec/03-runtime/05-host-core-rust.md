@@ -112,8 +112,8 @@ notification.list
    explicit outside path is resolved only after host permission evaluation
 2. Host resolves the durable session mode; request-supplied mode is never
    authoritative
-3. Plan and Goal deny Write/Edit/plugin/unknown tools before permission evaluation
-4. Plan and Goal Bash follow the durable permission mode and may mutate under Auto
+3. Plan and Goal hard-deny state-changing builtins before permission evaluation
+4. Plan and Goal Bash always takes a permission card, Auto included
 5. Plan and Goal artifact bytes, path, hash, size, and approval/execution identity are
    host-authenticated
 6. Plan/Goal approval is host-authenticated, durable, and atomic before Agent entry
@@ -144,8 +144,8 @@ notification.list
    through the `session.endTurn` transaction; results already visible in the
    focused current chat and aborted turns create none
 6. a durable Plan or Goal session cannot authorize Write/Edit/plugin tools through
-   a conflicting request mode, and Plan/Goal Bash follows the resolved permission
-   mode
+   a conflicting request mode, and Plan/Goal Bash takes a permission card in every
+   permission mode
 7. SubmitPlan writes exact Markdown bytes to a new `.pi/plan/*.md` artifact and
    stores durable path/hash/size plus structured title/question in
    `plan_approvals`; approval is approve/reject-only, session/turn/version

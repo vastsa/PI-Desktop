@@ -1,10 +1,17 @@
+import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
-import { afterEach, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
 import { Type } from "typebox";
 import type { AgentEventEnvelope, Mode, UiMessage } from "@pi-desktop/shared";
 import { DesktopAgentRuntime } from "./runtime.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
-import { modeToolDenial, withModeExecutionGuard } from "./mode-tool-access.js";
+import {
+  CONTRACT_MODE_STATE_CHANGING,
+  contractModeWithholdsTool,
+  modeToolDenial,
+  withModeExecutionGuard,
+} from "./mode-tool-access.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -122,4 +129,44 @@ it("an old tool reference rechecks the current mode and resumes normal execution
   mode = "agent";
   await tool.execute("allowed", {});
   expect(calls).toBe(1);
+});
+
+/**
+ * The runtime and host-core answer "what does a contract mode refuse" from two
+ * languages, so the lists drift silently: the host would refuse a name the
+ * model still sees, or admit one the runtime hides. The names are the contract.
+ */
+describe("contract-mode state-changing list", () => {
+  it("matches the host list in permissions.rs", async () => {
+    const host = await readFile(
+      fileURLToPath(new URL("../../../crates/host-core/src/permissions.rs", import.meta.url)),
+      "utf8",
+    );
+    const block = host.match(/CONTRACT_MODE_STATE_CHANGING[^=]*=\s*\[([\s\S]*?)\];/);
+    expect(block, "host constant not found in permissions.rs").not.toBeNull();
+    const names = [...block![1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect([...CONTRACT_MODE_STATE_CHANGING].sort()).toEqual([...names].sort());
+  });
+
+  it("refuses a state-changing builtin and admits everything else", () => {
+    for (const name of CONTRACT_MODE_STATE_CHANGING) {
+      expect(contractModeWithholdsTool(name), name).toBe(true);
+    }
+    for (const name of [
+      "Read",
+      "Glob",
+      "Grep",
+      "BrowserPreview",
+      "Bash",
+      "asktool",
+      "new_context",
+      "ToolSearch",
+      "SubmitPlan",
+      "mcp_srv_tool",
+      "plugin_x_run",
+      "an_unclassified_builtin",
+    ]) {
+      expect(contractModeWithholdsTool(name), name).toBe(false);
+    }
+  });
 });

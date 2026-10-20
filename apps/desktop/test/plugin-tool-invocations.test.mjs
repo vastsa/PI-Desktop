@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { fork } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
@@ -74,12 +75,13 @@ const PLUGIN = `
   };
 `;
 
-async function fixture(t, onInvoke) {
+async function fixture(t, onInvoke, mcpServers = []) {
   const dir = mkdtempSync(join(tmpdir(), "pi-tool-invocations-"));
   const id = "demo.invocations";
-  const permissions = ["agent.tool.register", "browser.cdp", "desktop.control", "session.read"];
+  const permissions = ["agent.tool.register", "browser.cdp", "desktop.control", "session.read", ...(mcpServers.length ? ["mcp.server.remote"] : [])];
   writeFileSync(join(dir, "manifest.json"), JSON.stringify({
     schemaVersion: 1, id, name: id, version: "0.0.1", main: "main.js", permissions,
+    net: { domains: ["127.0.0.1"] }, contributes: { mcpServers },
   }));
   writeFileSync(join(dir, "main.js"), PLUGIN);
   const calls = [];
@@ -199,4 +201,35 @@ test("the tool deadline aborts child work and revokes its invocation", { timeout
   await rejected;
   t.mock.timers.reset();
   assert.equal(await runtime.invokePanelBridge(id, "probe.aborted", { sessionId: "a" }), true);
+});
+
+test("plugin-contributed MCP tools reject contract modes before calling the server", { timeout: 10000 }, async (t) => {
+  const calls = [];
+  const server = createServer(async (req, res) => {
+    if (req.method !== "POST") { res.writeHead(405).end(); return; }
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const message = JSON.parse(body);
+    if (message.id === undefined) { res.writeHead(202).end(); return; }
+    const result = message.method === "initialize"
+      ? { protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1" } }
+      : message.method === "tools/list"
+        ? { tools: [{ name: "mutate", inputSchema: { type: "object" } }] }
+        : (calls.push(message.params), { content: [{ type: "text", text: "called" }] });
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); }));
+  const { runtime } = await fixture(t, async () => ({}), [{
+    id: "fixture", transport: "http", url: `http://127.0.0.1:${server.address().port}/mcp`,
+  }]);
+  const tool = runtime.getTools().find((entry) => entry.name.endsWith("mutate"));
+  assert.ok(tool);
+  for (const mode of ["plan", "goal"]) {
+    await assert.rejects(tool.execute({}, { sessionId: "contract", mode }), { code: "PERMISSION_DENIED" });
+  }
+  assert.equal(calls.length, 0);
+  await tool.execute({}, { sessionId: "agent", mode: "agent" });
+  assert.equal(calls.length, 1);
 });

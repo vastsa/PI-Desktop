@@ -87,7 +87,7 @@ docs/spec/
 6. SQLite 仅由 Rust 拥有
 7. 默认模式=Agent；操作选择器 = Agent | Plan | Goal。 Plan 和 Goal
    是相同 Agent 的合约状态，并且不是严格的只读安全性
-   配置文件，因为 Bash 遵循所选的权限模式
+   配置文件，因为 Bash 在每种权限模式下都弹出权限卡
 8. SubmitPlan 将精确的 Markdown 字节写入新的主机拥有的
    `.pi/plan/*.md`神器； title/question 保持结构化
    `plan_approvals`，批准打开工件，仅限 approve/reject，并且

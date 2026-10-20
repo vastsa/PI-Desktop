@@ -2535,8 +2535,9 @@ identify the platform validation still needed.
   Click the same Composer chip to return to Agent. 4) Begin a turn and try to
   toggle mode mid-run or while a pending Plan approval is visible.
 - **Expected**: The Composer chip updates the active session `mode` (Plan and
-  Goal hard-deny Write/Edit and plugin tools while Bash follows the selected
-  permission mode; Agent allows its normal tools per permission settings). The
+  Goal hard-deny Write/Edit and refuse a plugin tool without `planSafeActions`,
+  while Bash takes a permission card in every permission mode; Agent allows its
+  normal tools per permission settings). The
   chip is disabled while a turn or active pending approval exists and re-enables
   after the session returns idle/planning. No top-bar mode control is rendered.
 - **Specs linked**: `04-ux/08-component-spec.md` (§2, §11),
@@ -3001,8 +3002,8 @@ identify the platform validation still needed.
 #### E2E-019c: Permission modes govern high-risk approval (D115/D132)
 
 - **Preconditions**: Agent mode; project open; global default `ask`.
-- **Steps**: 1) With a newly inherited session and global default Ask every time, open the composer menu — expect Ask every time to be selected with no global-default/inherit label — then ask the Agent to write a workspace file and expect a permission card. 2) Switch the session chip to Accept edits; repeat — expect no card for Write/Edit but still a card for Bash. 3) Switch to Auto — expect no card for Bash either. 4) Create another inherited session after setting the global default to Accept edits in Settings — expect the composer chip and menu selection to display Accept edits directly and Write/Edit to be auto-allowed. 5) Switch the session to Plan, then Goal, with Auto set — expect Write/Edit/plugin denied but Bash allowed without confirmation.
-- **Expected**: Effective mode = session override → global default → ask; Plan and Goal Write/Edit/plugin hard denies outrank every mode while their Bash follows the selected mode; the composer chip and menu always display the effective mode without default/inherit provenance.
+- **Steps**: 1) With a newly inherited session and global default Ask every time, open the composer menu — expect Ask every time to be selected with no global-default/inherit label — then ask the Agent to write a workspace file and expect a permission card. 2) Switch the session chip to Accept edits; repeat — expect no card for Write/Edit but still a card for Bash. 3) Switch to Auto — expect no card for Bash either. 4) Create another inherited session after setting the global default to Accept edits in Settings — expect the composer chip and menu selection to display Accept edits directly and Write/Edit to be auto-allowed. 5) Switch the session to Plan, then Goal, with Auto set — expect Write/Edit denied, a plugin tool without `planSafeActions` refused, and Bash still showing a permission card despite Auto.
+- **Expected**: Effective mode = session override → global default → ask; Plan and Goal Write/Edit hard denies outrank every mode, while Bash takes a card in every permission mode including Auto and an unclassifiable MCP tool does the same; the composer chip and menu always display the effective mode without default/inherit provenance.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md §6`, `03-runtime/04-data-storage.md`, `08-meta/decisions-log.md` (D115/D132)
 - **Acceptance**: E (permission modes resolve and enforce host-side)
 - **Milestone**: M5
@@ -3832,8 +3833,8 @@ window; opening a normal panel afterward must still work.
   the server's self-declared annotation. Allow-once covers only that call;
   allow-session suppresses further cards for the same `mcp_<serverId>_<tool>`
   name in that session only, and does not cover other tools of the server.
-  `auto` runs the tool without a card. Plan and Goal deny it even with a
-  session grant.
+  Agent's `auto` runs the tool without a card. Plan and Goal require approval
+  in every permission mode unless that exact tool has a session grant.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
   `05-security/01-security.md`, D640, ADR `mcp-tool-approval-risk`
 - **Acceptance**: E (tools & permissions) + Security
@@ -7454,21 +7455,28 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 #### E2E-105: Plan policy remains host-authoritative
 
 - **Preconditions**: A project-bound session is idle in Plan with BrowserPreview,
-  a plugin tool, and a forged `requestedMode = "agent"` fixture.
+  a plugin tool, an MCP tool, and a forged `requestedMode = "agent"` fixture.
 - **Steps**: 1) Inspect visible Plan tools. 2) Use Read/Glob/Grep and
-  BrowserPreview. 3) Attempt Write, Edit, plugin, and
-  unknown tools through the host with every permission mode. 4) Run Bash under
-  Ask, Accept edits, and Auto.
-- **Expected**: Plan denies Write/Edit/plugin/unknown tools regardless of the
-  forged mode, grants, or Auto; Bash follows the selected permission mode. The
-  runtime remains one pi Agent and all denials are audited.
+  BrowserPreview. 3) Attempt Write, Edit, a state-changing builtin, a plugin
+  tool without `planSafeActions`, and an MCP tool through the host with every
+  permission mode. 4) Run Bash under Ask, Accept edits, and Auto.
+- **Expected**: Plan denies Write/Edit and any state-changing builtin
+  regardless of the forged mode, grants, or Auto; a plugin tool without
+  `planSafeActions` is refused with `PLUGIN_DISABLED_IN_PLAN`; a builtin nobody
+  classified reaches the ordinary path and fails as `TOOL_NOT_FOUND`; an MCP tool and
+  Bash each show a permission card in **every** permission mode, Auto included,
+  and the approved call then runs. An exact-tool session grant suppresses repeat
+  prompts without authorizing other tools or sessions. The runtime remains one
+  pi Agent and all denials are audited.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/03-tools-and-permissions.md`, `03-runtime/05-host-core-rust.md`,
-  `03-runtime/06-host-rpc-protocol.md`, `05-security/01-security.md`, ADR 0053
+  `03-runtime/06-host-rpc-protocol.md`, `05-security/01-security.md`, ADR 0053,
+  ADR 0332
 - **Acceptance**: E (tools and permissions), Security
 - **Milestone**: M6
-- **Status**: Automated (passed 2026-08-04): `test:e2e:plan` plus host-core
-  permission/policy and agent-runtime tool-composition tests
+- **Status**: Automated: `test:e2e:plan` covers approval-before-execution and
+  session-grant reuse; host-core authorization tests and agent-runtime MCP
+  selection tests cover the permission and catalog boundaries.
 
 #### E2E-PLAN-WORKSPACE: Missing workspace does not strand a contract turn
 
@@ -9250,8 +9258,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `EnterGoalMode`, then `SubmitGoal(title, markdown, question)`. 2) Inspect the
   exact Markdown bytes in the new `.pi/goal/*.md` artifact and the matching
   `plan_approvals` row. 3) Confirm the shared approval card exposes only
-  Approve/Reject and that Goal denies Write/Edit/plugin tools while Bash follows
-  the selected permission mode. 4) Approve with Ask and observe the same Agent
+  Approve/Reject and that Goal denies Write/Edit and refuses a plugin tool without
+  `planSafeActions`, while Bash takes a permission card in every permission mode.
+  4) Approve with Ask and observe the same Agent
   resume in Agent mode. 5) Inspect the final response for criterion-by-criterion
   verification or an explicit boundary, then reload the session.
 - **Expected**: Goal uses the Plan approval pipeline without a second planner;

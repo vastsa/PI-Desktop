@@ -113,8 +113,8 @@ notification.list
    仅在主机权限评估后才能解析显式外部路径
 2、Host解析持久会话模式；请求提供模式永远不会
    权威的
-3. Plan 和 Goal 在权限评估之前拒绝 Write/Edit/plugin/unknown 工具
-4. Plan 和 Goal Bash 遵循持久权限模式，在 Auto 下可能会发生变异
+3. Plan 和 Goal 在权限评估之前硬拒绝会改变状态的内置工具
+4. Plan 和 Goal Bash 在每种权限模式下（含 Auto）都弹出权限卡
 5. Plan 和 Goal 工件字节、路径、散列、大小和 approval/execution 标识为
    主机验证
 6. Plan/Goal 批准在 Agent 条目之前经过主机验证、持久且原子
@@ -141,8 +141,7 @@ notification.list
    通过 `session.endTurn` 交易；结果已经可见
    集中当前的聊天和中止的回合不会创建任何内容
 6. 持久 Plan 或 Goal 会话无法通过以下方式授权 Write/Edit/plugin 工具：
-   冲突的请求模式，并且 Plan/Goal Bash 遵循已解析的权限
-   模式
+   冲突的请求模式，并且 Plan/Goal Bash 在每种权限模式下都弹出权限卡
 7. SubmitPlan 将精确的 Markdown 字节写入新的 `.pi/plan/*.md` 工件并
    将持久的 path/hash/size 和结构化的 title/question 存储在
    `plan_approvals`；批准为 approve/reject-only、session/turn/version

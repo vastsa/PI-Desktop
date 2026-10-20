@@ -12,6 +12,11 @@ ADR 0053 replaces this checkpoint with immutable unique host-written
 with no replay. The structured proposal/request-changes details below remain
 historical context for the superseded design.
 
+ADR 0332 amends §3 and the "Command-text classification to permit Bash in Plan"
+alternative below: a contract mode denies by what a call would do rather than by
+naming allowed tools, and `Bash` takes a permission card in every permission mode
+instead of being governed by the selected one.
+
 ## Context
 
 PI-Desktop's former product selector treated Chat and Agent as two tool
@@ -185,8 +190,9 @@ approval identity.
 ### Command-text classification to permit Bash in Plan
 
 Rejected because a general shell command cannot be proven read-only reliably.
-The existing permission mode is the explicit control; Plan's Write/Edit/plugin
-denials remain exact tool policy.
+*(Amended by ADR 0332: the rejection stands, and it is now why Bash takes a
+permission card in every permission mode rather than being auto-allowed under
+`auto`. Plan's denials are an effect classification, not an exact tool policy.)*
 
 ## Related docs
 

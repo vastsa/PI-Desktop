@@ -26,7 +26,9 @@ use crate::artifacts;
 use crate::audit;
 use crate::background_tasks;
 use crate::notifications;
-use crate::permissions::{PermissionDecision, PermissionEvaluationParams, PermissionManager};
+use crate::permissions::{
+    ContractAdmission, PermissionDecision, PermissionEvaluationParams, PermissionManager,
+};
 use crate::plans;
 use crate::plugin_sessions;
 use crate::plugin_usage;
@@ -4222,8 +4224,14 @@ async fn handle_request(
                     let error_code = if cancelled {
                         "TOOL_ABORTED"
                     } else if sessions::is_contract_mode(&durable_mode)
-                        && !PermissionManager::plan_mode_allows(&p.tool_name)
+                        && PermissionManager::contract_admission(
+                            &p.tool_name,
+                            p.plan_safe_actions.as_deref(),
+                        ) == ContractAdmission::Denied
                     {
+                        // A mode denial, not a card the user refused: `Bash` and
+                        // an unclassifiable MCP tool reach a card, so denying
+                        // one of those is an ordinary `TOOL_DENIED`.
                         match p.tool_name.as_str() {
                             "Write" => "WRITE_DISABLED_IN_PLAN",
                             "Edit" => "EDIT_DISABLED_IN_PLAN",
@@ -9800,7 +9808,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_authorization_uses_durable_mode_and_keeps_bash_permission_semantics() {
+    async fn plan_authorization_uses_durable_mode_and_gates_bash_behind_a_card() {
         let data_dir = tempfile::tempdir().unwrap();
         let project = data_dir.path().join("project");
         fs::create_dir_all(&project).unwrap();
@@ -9846,7 +9854,7 @@ mod tests {
                 "EDIT_DISABLED_IN_PLAN",
             ),
             ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
-            ("UnknownTool", json!({}), "TOOL_DISABLED_IN_PLAN"),
+            ("TodoWrite", json!({}), "TOOL_DISABLED_IN_PLAN"),
         ] {
             let result = handle_request(
                 state.clone(),
@@ -9866,50 +9874,40 @@ mod tests {
             assert_eq!(result["ok"], false);
         }
 
-        let bash = handle_request(
+        // Deny by effect (ADR 0332): a builtin nobody classified is not a
+        // contract-mode denial. It reaches the ordinary path, where the tool
+        // registry rejects the unregistered name.
+        let unclassified = handle_request(
             state.clone(),
             "tools.execute",
             json!({
                 "sessionId": session_id,
-                "toolCallId": "bash-auto",
-                "toolName": "Bash",
-                "args": { "command": plan_bash_command },
-                "expectedCommandShellId": command_shell_id,
-                "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),
+                "toolCallId": "unclassified-call",
+                "toolName": "UnknownTool",
+                "args": {},
                 "mode": "agent"
             }),
             tx.clone(),
         )
         .await
         .unwrap();
-        assert_eq!(bash["ok"], true);
-        assert_eq!(bash["content"]["stdout"], "plan-bash");
+        assert_eq!(unclassified["errorCode"], "TOOL_NOT_FOUND");
 
-        sessions::configure_session_with_thinking(
-            &state.lock().await.db,
-            &session_id,
-            "plan",
-            None,
-            None,
-            None,
-            Some("ask"),
-        )
-        .unwrap();
-        #[cfg(windows)]
-        let ask_bash_command = "[Console]::Out.Write('ask-bash')";
-        #[cfg(not(windows))]
-        let ask_bash_command = "printf ask-bash";
+        // Bash is gated, not parsed: a contract mode takes a card even under
+        // `auto`, because what a command does is decided by the shell that runs
+        // it and reading the string would be wrong in the permissive direction.
         let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();
         let pending_state = state.clone();
+        let pending_session = session_id.clone();
         let pending_task = tokio::spawn(async move {
             handle_request(
                 pending_state,
                 "tools.execute",
                 json!({
-                    "sessionId": session_id,
-                    "toolCallId": "bash-ask",
+                    "sessionId": pending_session,
+                    "toolCallId": "bash-auto",
                     "toolName": "Bash",
-                    "args": { "command": ask_bash_command },
+                    "args": { "command": plan_bash_command },
                     "expectedCommandShellId": command_shell_id,
                     "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),
                     "mode": "agent"
@@ -9923,15 +9921,53 @@ mod tests {
         assert_eq!(notification["method"], "permissions.request");
         let request_id = notification["params"]["requestId"].as_str().unwrap();
         handle_request(
-            state,
+            state.clone(),
             "permissions.resolve",
             json!({ "requestId": request_id, "decision": "allow-once" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let bash = pending_task.await.unwrap().unwrap();
+        assert_eq!(bash["ok"], true);
+        assert_eq!(bash["content"]["stdout"], "plan-bash");
+
+        // A card the user refuses is an ordinary denial, not a mode denial: the
+        // mode offered the call, the user declined it.
+        let (deny_tx, mut deny_rx) = mpsc::unbounded_channel();
+        let denied_state = state.clone();
+        let denied_session = session_id.clone();
+        let denied_task = tokio::spawn(async move {
+            handle_request(
+                denied_state,
+                "tools.execute",
+                json!({
+                    "sessionId": denied_session,
+                    "toolCallId": "bash-denied",
+                    "toolName": "Bash",
+                    "args": { "command": plan_bash_command },
+                    "expectedCommandShellId": command_shell_id,
+                    "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),
+                    "mode": "agent"
+                }),
+                deny_tx,
+            )
+            .await
+        });
+        let notification = deny_rx.recv().await.unwrap();
+        let notification: Value = serde_json::from_str(&notification).unwrap();
+        let request_id = notification["params"]["requestId"].as_str().unwrap();
+        handle_request(
+            state,
+            "permissions.resolve",
+            json!({ "requestId": request_id, "decision": "deny" }),
             tx,
         )
         .await
         .unwrap();
-        let pending_result = pending_task.await.unwrap().unwrap();
-        assert_eq!(pending_result["ok"], true);
+        let denied = denied_task.await.unwrap().unwrap();
+        assert_eq!(denied["errorCode"], "TOOL_DENIED");
+        assert_eq!(denied["ok"], false);
     }
 
     #[tokio::test]
@@ -9977,7 +10013,7 @@ mod tests {
                 "EDIT_DISABLED_IN_PLAN",
             ),
             ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
-            ("UnknownTool", json!({}), "TOOL_DISABLED_IN_PLAN"),
+            ("TodoWrite", json!({}), "TOOL_DISABLED_IN_PLAN"),
         ] {
             let result = handle_request(
                 state.clone(),
@@ -9998,28 +10034,64 @@ mod tests {
             assert_eq!(result["ok"], false);
         }
 
-        // Bash still follows the permission mode rather than the allowlist.
-        #[cfg(windows)]
-        let goal_bash_command = "[Console]::Out.Write('goal-bash')";
-        #[cfg(not(windows))]
-        let goal_bash_command = "printf goal-bash";
-        let command_shell_id = crate::tools::shell::default_shell_id();
-        let bash = handle_request(
+        // Deny by effect (ADR 0332): a builtin nobody classified is not a
+        // contract-mode denial. It reaches the ordinary path, where the tool
+        // registry rejects the unregistered name.
+        let unclassified = handle_request(
             state.clone(),
             "tools.execute",
             json!({
                 "sessionId": session_id,
-                "toolCallId": "goal-bash-auto",
-                "toolName": "Bash",
-                "args": { "command": goal_bash_command },
-                "expectedCommandShellId": command_shell_id,
-                "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),
+                "toolCallId": "goal-unclassified-call",
+                "toolName": "UnknownTool",
+                "args": {},
                 "mode": "agent"
             }),
             tx.clone(),
         )
         .await
         .unwrap();
+        assert_eq!(unclassified["errorCode"], "TOOL_NOT_FOUND");
+
+        // Bash takes a card here too, so the strongest permission mode cannot
+        // stand in for a decision about what the command will do.
+        #[cfg(windows)]
+        let goal_bash_command = "[Console]::Out.Write('goal-bash')";
+        #[cfg(not(windows))]
+        let goal_bash_command = "printf goal-bash";
+        let command_shell_id = crate::tools::shell::default_shell_id();
+        let (notify_tx, mut notify_rx) = mpsc::unbounded_channel();
+        let pending_state = state.clone();
+        let pending_task = tokio::spawn(async move {
+            handle_request(
+                pending_state,
+                "tools.execute",
+                json!({
+                    "sessionId": session_id,
+                    "toolCallId": "goal-bash-auto",
+                    "toolName": "Bash",
+                    "args": { "command": goal_bash_command },
+                    "expectedCommandShellId": command_shell_id,
+                    "expectedCommandShellDialect": crate::tools::shell::dialect_for_id(command_shell_id),
+                    "mode": "agent"
+                }),
+                notify_tx,
+            )
+            .await
+        });
+        let notification = notify_rx.recv().await.unwrap();
+        let notification: Value = serde_json::from_str(&notification).unwrap();
+        assert_eq!(notification["method"], "permissions.request");
+        let request_id = notification["params"]["requestId"].as_str().unwrap();
+        handle_request(
+            state,
+            "permissions.resolve",
+            json!({ "requestId": request_id, "decision": "allow-once" }),
+            tx,
+        )
+        .await
+        .unwrap();
+        let bash = pending_task.await.unwrap().unwrap();
         assert_eq!(bash["ok"], true);
         assert_eq!(bash["content"]["stdout"], "goal-bash");
     }

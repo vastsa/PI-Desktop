@@ -212,10 +212,10 @@ toast 加上 `pluginChanged` 到渲染器。
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`。`turnId` 是
    运行时回合身份，原样转发，以便插件工具上下文能与
    `session:turnEnded` 事件对应。
-3. Plan 调用在主机策略步骤失败并显示 `PLUGIN_DISABLED_IN_PLAN`；他们
-   永远不会达到 Electron 或插件运行时。 Agent 呼叫继续
-   Electron主要执行注册的插件工具JS并通过RPC应答
-   `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`。
+3. 对没有 `planSafeActions` 列表的 Plan 调用在主机策略步骤失败并显示
+   `PLUGIN_DISABLED_IN_PLAN`；它们永远不会达到 Electron 或插件运行时。
+   Agent 调用继续由 Electron main 执行注册的插件工具 JS，并通过 RPC
+   `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }` 应答。
 4. host-core 解析待执行并返回一个标准
    `ToolsExecuteResult` 到 sidecar。调度最多等待 150 秒
    （`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`，高于 110 秒的插件工具预算，也高于最宽的

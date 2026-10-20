@@ -509,7 +509,7 @@ Plan 和 Goal 是两种 **合约模式** (D198)。他们共用一个耐用的
 
 当用户选择 Plan 时，`Agent / inactive` 进入 `Plan / planning`
 空闲时或 Agent 调用 `EnterPlanMode` 时。在 Plan 中，Agent 可以
-检查、使用上下文控制、通过选定的权限模式运行 Bash，
+检查、使用上下文控制、经权限卡运行 Bash，
 并调用 `SubmitPlan(title, markdown, question)`。主机核心保留
 在新的不可变中提交 Markdown 字节
 `.pi/plan/<unique-name>.md` 工件，记录其相对 path/hash/size 和
