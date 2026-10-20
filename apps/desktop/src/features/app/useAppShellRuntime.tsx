@@ -16,7 +16,7 @@ import { installRendererApi } from "../../capture/renderer-api";
 import { StartupSplash } from "../../components/StartupSplash";
 import { api } from "../../lib/api";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
-import { playNotificationChime } from "../../lib/notification-sound";
+import { playNotificationChime, setNotificationSoundSettings } from "../../lib/notification-sound";
 import {
   clampSidebarWidth,
   loadSidebarWidth,
@@ -35,10 +35,10 @@ import {
   pluginWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import { useAppStore } from "../../stores/app-store";
+import { runLiveVoiceShortcut } from "../voice/live/live-voice-shortcuts";
 import { useSidebarTransition } from "./useSidebarTransition";
 import { useStartupWatchdog } from "./useStartupWatchdog";
 import { useTraySessions } from "./useTraySessions";
-import { runLiveVoiceShortcut } from "../voice/live/live-voice-shortcuts";
 
 const MODIFIER_ONLY_KEYS = new Set([
   "Alt",
@@ -606,6 +606,10 @@ export function useAppShellRuntime() {
       String(resolveFontScale(settings ?? {})),
     );
   }, [settings?.fontScale, settings?.fontSize]);
+
+  useEffect(() => {
+    setNotificationSoundSettings(settings?.notificationSound);
+  }, [settings?.notificationSound]);
 
   useEffect(() => {
     if (bootstrapStartedRef.current) return;
