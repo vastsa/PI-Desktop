@@ -66,6 +66,16 @@ export function providerServesSubagentDelegation(provider: SubagentProviderFacts
   );
 }
 
+/**
+ * Why an opt-in cannot reach the catalog yet.
+ *
+ * The rule is credential *presence*, not auth-kind identity: `hasSecret` is the
+ * host's own "this row holds a usable credential" flag (an API key or a vendor
+ * account), so an auth flow added later still counts here without teaching this
+ * page about it. Only the keyless local endpoint is named explicitly, because
+ * that is the one case where no credential is expected — which is why a row that
+ * reports no credential at all really is unusable, rather than a guess at why.
+ */
 function blockedReason(provider: SubagentProviderFacts): SubagentModelBlockedReason | undefined {
   if (!provider.enabled) return "provider-disabled";
   return providerServesSubagentDelegation(provider) ? undefined : "credential-missing";

@@ -106,6 +106,34 @@ test("an opt-in on a service that is off or has no credential stays visible and 
   assert.equal("blocked" in ready, false);
 });
 
+test("an unfamiliar auth kind is judged by the credential it holds, not by its name", () => {
+  // Review note on #1758: a future auth flow must not be labelled "no
+  // credential" merely because this page does not know its name. The rule reads
+  // credential presence, so a stored grant still counts.
+  const stored = subagentModelCandidates([
+    provider({
+      authKind: "device_code",
+      hasSecret: true,
+      hasOauth: false,
+      models: [binding("a")],
+    }),
+  ]);
+  assert.equal("blocked" in stored[0], false);
+
+  // Nothing stored: the runtime cannot obtain a key for it either, so the label
+  // states the missing credential instead of guessing at the flow.
+  const empty = subagentModelCandidates([
+    provider({
+      authKind: "device_code",
+      hasSecret: false,
+      hasOauth: false,
+      models: [binding("a")],
+    }),
+  ]);
+  assert.equal(empty[0].blocked, "credential-missing");
+  assert.equal(empty[0].editable, true);
+});
+
 test("a plugin-owned service is read-only because the RPC refuses it", () => {
   const [candidate] = subagentModelCandidates([
     provider({ ownerPluginId: "acme.catalogue", models: [binding("a", { availableForSubagents: true })] }),
