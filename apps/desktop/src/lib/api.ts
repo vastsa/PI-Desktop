@@ -158,11 +158,13 @@ import {
   defaultCommandShellForPlatform,
   IPC,
   isCommandShellId,
+  isQueuedPromptAnimation,
   normalizeLargePasteThreshold,
   normalizeMode,
   normalizeNetworkProxy,
   normalizeNetworkPolicy,
   resolveFontScale,
+  resolveQueuedPromptAnimation,
   normalizeChatContentMaxWidth,
   validateNetworkPolicy,
   validateNetworkProxy,
@@ -438,6 +440,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
       (settings as { largePasteThreshold?: unknown }).largePasteThreshold,
     ),
     fontScale: resolveFontScale(settings),
+    queuedPromptAnimation: resolveQueuedPromptAnimation(settings),
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
     ),
@@ -480,6 +483,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     updatePreference?: unknown;
     lastNotifiedUpdateVersion?: unknown;
     networkProxy?: unknown;
+    queuedPromptAnimation?: unknown;
     networkPolicy?: unknown;
   };
   if (
@@ -520,6 +524,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     typeof value.infiniteProviderRetry !== "boolean"
   ) {
     throw Object.assign(new Error("infiniteProviderRetry is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "queuedPromptAnimation") &&
+    !isQueuedPromptAnimation(value.queuedPromptAnimation)
+  ) {
+    throw Object.assign(new Error("queuedPromptAnimation is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }

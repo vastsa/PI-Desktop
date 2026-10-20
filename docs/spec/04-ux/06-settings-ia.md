@@ -299,6 +299,18 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   settings are edited on the Plugins page; the one-time migration of legacy
   prompt-enhancement preferences is specified in
   `04-ux/12-prompt-enhancement.md`.
+- **Queued message animation** uses a menu select with Off (default), Bubbles,
+  Glow, and Waterline. The choice is presentation only: it
+  layers motion on the promoted ("send now pending") queue row in the Composer
+  so a pending message stands out, and the row's accent bar itself never
+  moves. The global preference persists as `queuedPromptAnimation` in
+  host-owned settings; missing or unrecognized values use Off, which keeps
+  the static accent bar every existing install already has. The renderer
+  applies the resolved value as the root `data-queue-animation` attribute, so
+  a change takes effect without a reload, and every variant stands down under
+  `prefers-reduced-motion`. Settings search indexes the row, its description,
+  and all four option names. Animated decoration is clipped to the promoted
+  row's rounded bounds; the static accent and row shadow remain visible.
 - **Show thinking** is a toggle that persists as the optional `showThinking`
   boolean in host-owned settings. Off keeps the live thinking indicator visible
   and hides completed reasoning rows and excerpts; stored reasoning is retained
