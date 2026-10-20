@@ -687,6 +687,7 @@ export const ptBR = {
     output: "Saída",
     stop: "Parar",
     stopping: "Parando…",
+    dismiss: "Fechar",
   },
   planHistory: {
     pending: "Aguardando aprovação",

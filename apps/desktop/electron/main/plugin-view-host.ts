@@ -141,9 +141,10 @@ export class PluginViewHost {
    * are broadcast separately by `PluginPanelHost`; both surfaces share the
    * preload channel `pi-plugin-panel-event:<event>`.
    */
-  broadcast(event: string, payload: unknown): void {
+  broadcast(event: string, payload: unknown, filter?: (pluginId: string) => boolean): void {
     const channel = `pi-plugin-panel-event:${event}`;
     for (const entry of this.views.values()) {
+      if (filter && !filter(entry.pluginId)) continue;
       const wc = entry.view.webContents;
       if (wc.isDestroyed()) continue;
       try {

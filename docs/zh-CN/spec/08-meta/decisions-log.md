@@ -73,6 +73,7 @@
 | D020 | 自动更新 | **后MVP** |
 | D021 | 首次运行新手引导 | **内联清单（不是模式向导）** |
 | D022 | 本地遥测 | **仅在 MVP 中记录本地日志（无远程遥测）** |
+| D664 | 侧边栏运行活动默认值 | **未设置时，总开关和数量徽标默认开启，活动流光默认关闭。已保存的值优先生效。总开关仍控制两种提示；关闭总开关不会改写任一子开关偏好。不更改 schema 或执行迁移。** |
 
 
 ## C. 提供商和模型覆盖决策 (0.3.4)
@@ -385,7 +386,7 @@
 | D334 | 受约束的聊天内图片显示 | **修订桌面 `fs/read` 仅工作区条款：`fs/read`、`fs/reveal` 和 `fs/open` 共用 `resolveOpenablePath`（工作区、`<data_dir>/scratch/`、`<data_dir>/attachments/`，以及 `attachments/<sha256>` blob）。读取会 `realpath` 目标。** | 聊天需要内联图片，但不能把任意绝对路径交给渲染器。 |
 | D336 | 由宿主代发的插件补全与会话上下文 | **修订 D019：插件在授予 `session.read` 时可经 `pi.session.getLlmContext()` 读取进行中工具会话的面向模型转录，并在授予相应权限时经 `pi.agent.complete()` 跑一次性补全。见 ADR 0174。** | 插件需要第二意见补全，但不能自己拿提供商凭据。 |
 | D340 | 用户可配置的出站代理 | **设置 → 通用 → 网络把代理暴露为系统 / 直连 / 自定义。自定义接受 http/https/socks5 URL 和绕过列表，持久化为可选 `AppSettings.networkProxy`。Chromium `session.setProxy` 覆盖内置浏览器和 `net.fetch`；sidecar 经 undici dispatcher 应用。见 ADR 0177 与 E2E-190。** | Node fetch 忽略操作系统代理，Clash/V2Ray/SOCKS5 用户能浏览却不能调模型。 |
-| D342 | 从本地智能体存储导入模型配置 | **修订 D007：设置 → 导入仍不自动导入 `~/.pi`。显式模型配置卡片扫描 Claude Code、Codex、OpenCode、Pi 和 CC Switch 提供商行，列出不含密钥的草稿，并由 `modelConfig/importRun` 经 `providers.create` 复制 API 密钥。等价提供商（规范化 base URL + API 风格 + 同一凭据）被跳过。见 ADR 0179、ADR 0188 与 E2E-209。设置入口和会话导入 UI 后由 D645 / ADR 0319 修订：模型导入现位于模型页，设置页不再提供会话导入。** | 用户已经从这些存储导入会话，否则要在模型页重打同样的端点和密钥。 |
+| D342 | 从本地智能体存储导入模型配置 | **修订 D007：设置 → 导入仍不自动导入 `~/.pi`。显式模型配置卡片扫描 Claude Code、Codex、OpenCode、Pi 和 CC Switch 提供商行，列出不含密钥的草稿，并由 `modelConfig/importRun` 经 `providers.create` 复制 API 密钥。Pi 扫描还会读取 `~/.pi/agent/auth.json` 的 API 密钥，并与 Pi 缓存的 `models-store.json` 目录配对，使只存在于 auth.json 的提供商也能列出；两个文件都描述同一提供商时 `models.json` 仍为准。等价提供商（规范化 base URL + API 风格 + 同一凭据）被跳过。见 ADR 0179、ADR 0188 与 E2E-209。设置入口和会话导入 UI 后由 D645 / ADR 0319 修订：模型导入现位于模型页，设置页不再提供会话导入。** | 用户已经从这些存储导入会话，否则要在模型页重打同样的端点和密钥。 |
 | D351 | 模型配置导入保留不同凭据 | **修订 D342 / ADR 0179：导入提供商仅在规范化端点、API 风格和凭据都匹配时视为等价。同一端点不同 API 密钥创建独立提供商行，并仍可在 Composer 中选择。Electron main 经宿主密钥边界解析已有 API 密钥。见 ADR 0188 与 E2E-209。** | CC Switch 在同一网关端点存多个账户；仅按端点幂等会静默丢掉除第一个以外的配置。 |
 | D344 | 由主进程拥有的文件选择能力 | **修订 D197 / D334：Composer 原生文件和图片选择器把选中的绝对路径留在 Electron main，用短时、绑定发送者、一次性令牌保护。`composer/importFiles` 只接受该令牌和持久会话 id；渲染器从不提供源路径。MVP 文件选择器只提供常规文件。见 ADR 0181 与 E2E-102h。** | 渲染器 IPC 不是用户点击门禁：导入载荷接受任意绝对路径会变成本地文件外泄原语。 |
 | D314 | 已发布语言注册表与语言选择器 | **修订 D073：界面语言列在 `@pi-desktop/i18n`（`en`、`zh-CN`、`zh-TW`、`tr`）。本地名称永不翻译。设置 → 常规的语言是可搜索选择器（跟随系统 + 注册表），不再是三张预览卡。插件标签保持 `en` + `zh-CN` 契约；没有插件翻译的外壳语言使用英语回退；产品更新日志跟随每个已发布产品语言。见 ADR 0160、ADR 0182 与 E2E-091。** | 预览卡无法扩展到两种以上语言；注册表让添加语言无需重写外观卡即可发货。 |
@@ -5479,3 +5480,11 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
   由 `apps/desktop/test/composer-mode-menu.test.mjs`、
   `apps/desktop/test/composer-chip-descenders.test.mjs` 以及 composer 插槽与
   思考等级契约覆盖。见 `04-ux/08-component-spec.md` §11 与 US-UI-73。
+
+## 2026-10-18 —— 侧边栏运行活动默认只显示数量徽标（D664）
+
+- 三个可选侧边栏活动设置都缺失时，总开关和数量徽标默认开启，活动流光默认关闭。
+  已保存的值优先生效；总开关仍控制两种提示，但不会改写任一子开关的偏好。
+- 数量徽标保留运行状态的可发现性，同时避免动画轨道成为默认界面。不需要更改持久化
+  schema 或迁移。设置读取通过渲染层 API 规范化应用这些默认值。见
+  `04-ux/01-ui-ia.md`、`04-ux/06-settings-ia.md` 与 E2E-266。

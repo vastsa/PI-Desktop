@@ -11,6 +11,7 @@ import { PluginPanelHost } from "../plugin-panel-host";
 import type { PluginPanelTheme } from "../../shared/plugin-panel-chrome";
 import type { IpcRegistrar } from "./types";
 import { pluginProviderCatalogEntries } from "../plugin-provider-catalog";
+import { createSessionPushGate } from "../plugin-session-push-gate";
 
 export type PluginUiIpcDependencies = {
   registrar: IpcRegistrar;
@@ -22,6 +23,10 @@ export type PluginUiIpcDependencies = {
   currentWorkspacePath: () => string | null;
   getUpdaterLocale: () => string;
   getPluginPanelTheme: () => PluginPanelTheme;
+  /** The shell's selected session, reported on to the plugin surfaces. */
+  setActivePluginSession: (
+    next: { sessionId: string; projectPath: string | null } | null,
+  ) => void;
 };
 
 /** Register plugin panels, work-panel views, themes and services. */
@@ -35,10 +40,52 @@ export function registerPluginUiIpc({
   currentWorkspacePath,
   getUpdaterLocale,
   getPluginPanelTheme,
+  setActivePluginSession,
 }: PluginUiIpcDependencies): void {
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, fn);
   };
+  /**
+   * The newest selection the shell reported, so a slower invoke that lands
+   * after a newer one cannot restore a session the user already left.
+   */
+  const sessionPushGate = createSessionPushGate();
+  /**
+   * The session on screen, as the shell sees it.
+   *
+   * The renderer owns the selection and the project path; the main process owns
+   * turn identity, so this only records the half it does not already know and
+   * the snapshot is assembled from both (spec 07-plugins/03 §session).
+   *
+   * `seq` is the renderer's own counter: two switches can be in flight at once,
+   * and the one that was produced first must never win.
+   */
+  handle(
+    IPC.invoke.pluginSessionActive,
+    async (
+      payload:
+        | { sessionId?: string | null; projectPath?: string | null; seq?: number | null; bootId?: string | null }
+        | null,
+    ) => {
+      const seq = typeof payload?.seq === "number" ? payload.seq : 0;
+      const bootId = typeof payload?.bootId === "string" ? payload.bootId : null;
+      if (sessionPushGate({ seq, bootId }).ignored) {
+        return { ok: true, ignored: true };
+      }
+      const sessionId = typeof payload?.sessionId === "string" ? payload.sessionId.trim() : "";
+      if (!sessionId) {
+        setActivePluginSession(null);
+        return { ok: true };
+      }
+      if (sessionId.length > 128) {
+        throw new Error("INVALID_ARGUMENT: sessionId must be at most 128 characters");
+      }
+      const projectPath =
+        typeof payload?.projectPath === "string" ? payload.projectPath.trim() : "";
+      setActivePluginSession({ sessionId, projectPath: projectPath || null });
+      return { ok: true };
+    },
+  );
   handle(IPC.invoke.pluginOpenPanel, async (id: string) => {
     const loaded = plugins.getLoaded(id);
     if (!loaded) throw new Error("plugin not loaded");

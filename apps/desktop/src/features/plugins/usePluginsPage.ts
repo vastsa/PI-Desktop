@@ -8,6 +8,7 @@ import type {
   MarketPluginSummary,
   PluginPermissionReview,
   PluginReviewSummary,
+  PluginReviewTicker,
   PluginServiceStatus,
   PluginSummary,
   ProjectRecord,
@@ -96,6 +97,15 @@ export function usePluginsPage() {
    */
   const [reviewSummaries, setReviewSummaries] = useState<
     Record<string, PluginReviewSummary>
+  >({});
+  /**
+   * The center's selected review line per plugin, batched with the summaries.
+   * Kept separate because it is optional decoration: a center that predates
+   * the ticker route must leave the cards intact, not put them in an error
+   * state.
+   */
+  const [reviewTickers, setReviewTickers] = useState<
+    Record<string, PluginReviewTicker>
   >({});
   const [reviewsStatus, setReviewsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable"
@@ -324,6 +334,43 @@ export function usePluginsPage() {
           // never fabricated zeros.
           if (cancelled) return;
           setReviewsStatus("unavailable");
+        }
+      })();
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [plugins, market]);
+
+  /**
+   * The review line is decoration, so it has its own read and its own failure
+   * mode. A center without the ticker route (or a transient failure) leaves the
+   * map empty and the cards render exactly as they did before this feature.
+   */
+  useEffect(() => {
+    const ids = [
+      ...new Set([...plugins.map((plugin) => plugin.id), ...market.map((item) => item.id)]),
+    ];
+    if (!ids.length) {
+      setReviewTickers({});
+      return;
+    }
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const tickers = await api.marketReviewTickers(ids);
+          if (cancelled) return;
+          const next: Record<string, PluginReviewTicker> = {};
+          for (const id of ids) {
+            const ticker = tickers[id];
+            if (ticker && ticker.rows.length > 0) next[id] = ticker;
+          }
+          setReviewTickers(next);
+        } catch {
+          if (cancelled) return;
+          setReviewTickers({});
         }
       })();
     }, 200);
@@ -753,6 +800,7 @@ export function usePluginsPage() {
     settingsPlugin,
     setSettingsPlugin,
     reviewSummaries,
+    reviewTickers,
     reviewsStatus,
     reviewsId,
     openReviews,

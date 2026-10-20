@@ -1805,11 +1805,35 @@ migration is required.
 
 ## 12. Native Pi session authority (ADR 0254)
 
-Native Pi v3 sessions under the Pi agent session root are a second, explicitly
-source-discriminated transcript authority owned by the Node agent sidecar. They
-are never inserted into SQLite and never copied to the Desktop transcript
-directory. `session.list` merges their projections with Rust-owned
-Desktop summaries, and `session.get` routes by the opaque `native-pi:` id.
+Native Pi v3 sessions are a second, explicitly source-discriminated transcript
+authority owned by the Node agent sidecar. They are never inserted into SQLite
+and never copied to the Desktop transcript directory. `session.list` merges
+their projections with Rust-owned Desktop summaries, and `session.get` routes
+by the opaque `native-pi:` id.
+
+Discovery always walks the Pi agent session root recursively
+(`<agentDir>/sessions`, default `~/.pi/agent/sessions`). It also scans, without
+recursion, each `sessionDir` the pinned coding-agent `SettingsManager` resolves:
+an absolute or `~` value from global settings, and the merged global-plus-project
+setting for each known local project. Session files in a subdirectory of a
+configured `sessionDir` are ignored by that scan. A relative path resolves
+from that project's working directory, not from the Desktop process cwd.
+Remote project ids are skipped, and at most 500 local project paths are
+considered. A configured directory whose real path is the default root, or
+is inside it, is not scanned again. A file is listed only when its real
+path stays inside the default root or one of those directories. A symlink
+that escapes is omitted, and an in-directory symlink alias of a session
+file is not a second row. A nested file under a custom `sessionDir` is
+omitted when that directory is outside the default root. A `sessionDir` inside the default root is not scanned again, and
+the recursive default walk can still list nested JSONL there. Detail, prompt,
+and fork authorize a file against the default root, the session directories for
+the current project list, and any session directory that already admitted a
+file in this process, so a later empty project list does not revoke an open of
+a session that was already discovered. A child fork is still published beside
+its parent. A project Desktop
+has not yet recorded does not contribute a relative `sessionDir`. An absolute
+global `sessionDir` is scanned even when no project is known.
+
 Discovery deduplicates native files that share the same JSONL `header.id`,
 keeping the projection with the newest transcript `updatedAt`. The selected
 file retains its path-derived opaque session id; duplicate files are not

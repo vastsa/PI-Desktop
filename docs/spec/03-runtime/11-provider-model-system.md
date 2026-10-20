@@ -577,11 +577,14 @@ type ModelDescriptor = {
   and keep dialog actions outside the independently scrollable content
 - do not expose raw catalog compatibility internals or provider secrets
 - Settings → Models → Providers can scan and copy provider/model rows from
-  Claude Code, Codex, OpenCode, Pi, and CC Switch. The inline scan is explicit.
-  Stored API keys are copied into the host secret store; OAuth/subscription
-  grants are not. An equivalent provider (normalized URL + API style + same
-  credential) is skipped on re-import. Different credentials at one endpoint
-  remain independent providers. No protocol or schema version bump
+  Claude Code, Codex, OpenCode, Pi, and CC Switch. The Pi scan also reads
+  `auth.json` API keys and Pi's cached `models-store.json` catalog, so
+  providers connected through `pi /login` are listed even when `models.json`
+  has no block for them. The inline scan is explicit. Stored API keys are
+  copied into the host secret store; OAuth/subscription grants are not. An
+  equivalent provider (normalized URL + API style + same credential) is
+  skipped on re-import. Different credentials at one endpoint remain
+  independent providers. No protocol or schema version bump
   (D342 / ADR 0179 / ADR 0188 / D645).
 
 ### Model selector

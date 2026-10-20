@@ -99,6 +99,9 @@ plugin, so it carries three bounds the other modes do not:
 - `ui.panel` is required to load a panel entry
 - `ui.view` is required to contribute work panel views; it is independent of
   `ui.panel`, so a plugin may ship docked views without a detached window
+- `ui.view` also covers `pi.ui.revealView`, which shows one of the plugin's own
+  views in a session's work panel; following the selected session
+  (`pi.session.getActive`, `session:activated`) needs no permission
 - `agent.tool.register` is required to contribute agentTools
 - When `fs.write` is present, it is recommended to also declare `fs.read`
 - `manifest.fs.<mode>` requires the matching `fs.<mode>` permission; a scope

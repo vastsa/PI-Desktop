@@ -120,3 +120,24 @@ export type PluginReviewQuery = {
   sentiment?: "all" | "positive" | "neutral" | "negative";
   sort?: "newest" | "helpful";
 };
+
+/**
+ * One row of a marketplace card's review ticker.
+ *
+ * The center selects these; the client never re-ranks them. The body is a
+ * single quiet line on the card, not a full review surface.
+ */
+export type PluginReviewTickerRow = {
+  id: string;
+  authorName: string;
+  ratingHalfStars: number;
+  body: string;
+  helpfulCount: number;
+  createdAt: string;
+};
+
+/** The selected rows for one plugin, best first, at most ten. */
+export type PluginReviewTicker = {
+  pluginId: string;
+  rows: PluginReviewTickerRow[];
+};

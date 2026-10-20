@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.21.0-beta.3";
+export const APP_VERSION = "0.21.0-beta.4";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -337,6 +337,12 @@ export const IPC = {
     pluginViewClose: "pi-desktop/plugin/view/close",
     pluginViewSetBounds: "pi-desktop/plugin/view/setBounds",
     pluginViewSetVisible: "pi-desktop/plugin/view/setVisible",
+    /**
+     * The session the user is looking at, pushed by the renderer. The shell owns
+     * the selection; the main process owns turn identity, so the plugin
+     * `session:activated` snapshot is assembled from both (spec 07-plugins/03).
+     */
+    pluginSessionActive: "pi-desktop/plugin/session/active",
     mcpList: "pi-desktop/mcp/list",
     mcpUpsert: "pi-desktop/mcp/upsert",
     mcpRemove: "pi-desktop/mcp/remove",
@@ -384,6 +390,7 @@ export const IPC = {
     marketApplyUpdates: "pi-desktop/market/applyUpdates",
     marketCancelInstall: "pi-desktop/market/cancelInstall",
     marketReviewSummaries: "pi-desktop/market/reviewSummaries",
+    marketReviewTickers: "pi-desktop/market/reviewTickers",
     marketReviews: "pi-desktop/market/reviews",
     commandPaletteSearch: "pi-desktop/commandPalette/search",
     commandPaletteExecute: "pi-desktop/commandPalette/execute",
@@ -452,6 +459,12 @@ export const IPC = {
     browserState: "pi-desktop/browser/event/state",
     browserPreview: "pi-desktop/browser/event/preview",
     browserOpenFile: "pi-desktop/browser/event/openFile",
+    /**
+     * A plugin asked the shell to show one of its own work-panel views
+     * (`pi.ui.revealView`). The shell owns tabs, so it — not the plugin — decides
+     * which session's panel takes the view.
+     */
+    pluginViewReveal: "pi-desktop/plugin/view/event/reveal",
     windowMaximized: "pi-desktop/window/event/maximized",
     windowFullScreen: "pi-desktop/window/event/fullscreen",
     windowWorkPanelResize: "pi-desktop/window/event/workPanelResize",

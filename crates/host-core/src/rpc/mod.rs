@@ -5254,7 +5254,7 @@ async fn handle_request(
                 .map_err(|message| rpc_err(1002, message, "INVALID_PARAMS"))?;
             Ok(json!({ "ok": true }))
         }
-        "market.reviewSummaries" | "market.reviews" => {
+        "market.reviewSummaries" | "market.reviewTickers" | "market.reviews" => {
             plugin_reviews_rpc::handle(&state, method, params).await
         }
         "market.refresh" => {

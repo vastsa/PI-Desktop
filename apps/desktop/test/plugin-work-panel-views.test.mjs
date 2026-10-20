@@ -282,7 +282,8 @@ test("opening a different project refreshes the scope-filtered view list", () =>
 });
 
 test("host panel events reach docked views as well as detached windows", () => {
-  assert.match(viewHostSource, /broadcast\(event: string, payload: unknown\)/);
+  assert.match(viewHostSource, /broadcast\(event: string, payload: unknown(?:, filter\?:[^)]*)?\)/);
+  assert.match(viewHostSource, /if \(filter && !filter\(entry\.pluginId\)\) continue/);
   assert.match(viewHostSource, /pi-plugin-panel-event:\$\{event\}/);
   assert.match(mainSource, /function broadcastPluginPanelEvent/);
   assert.match(mainSource, /broadcastPluginPanelEvent\("appearance:changed"/);

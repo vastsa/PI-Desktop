@@ -91,6 +91,82 @@ function inside(root: string, candidate: string): boolean {
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
 }
 
+const MAX_NATIVE_PROJECT_PATHS = 500;
+
+function normalizeProjectPaths(paths: readonly string[] | undefined): string[] {
+  if (!paths) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of paths) {
+    if (typeof value !== "string") continue;
+    const path = value.trim();
+    if (!path || path.startsWith("remote-project:") || seen.has(path)) continue;
+    seen.add(path);
+    normalized.push(path);
+    if (normalized.length >= MAX_NATIVE_PROJECT_PATHS) break;
+  }
+  return normalized;
+}
+
+function warnSessionDirErrors(
+  cwd: string,
+  errors: ReadonlyArray<{ path?: string; scope: string; error: unknown }>,
+  seen: Set<string>,
+): void {
+  for (const entry of errors) {
+    const key = entry.path ?? `${cwd}\0${entry.scope}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    console.warn("[native-pi] sessionDir settings unreadable", key, entry.error);
+  }
+}
+
+function rawSessionDir(cwd: string, agentDir: string, seen: Set<string>): string | undefined {
+  try {
+    const manager = SettingsManager.create(cwd, agentDir);
+    warnSessionDirErrors(cwd, manager.drainErrors(), seen);
+    return manager.getSessionDir() || undefined;
+  } catch (error) {
+    const key = `throw\0${cwd}\0${agentDir}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      console.warn("[native-pi] sessionDir resolution failed", cwd, error);
+    }
+    return undefined;
+  }
+}
+
+/** Absolute `sessionDir` from global settings. Relative values stay project-scoped. */
+function globalAbsoluteSessionDir(agentDir: string, seen: Set<string>): string | undefined {
+  const raw = rawSessionDir(agentDir, agentDir, seen);
+  return raw && isAbsolute(raw) ? resolve(raw) : undefined;
+}
+
+/** Pi resolves a relative `sessionDir` from the project working directory. */
+function projectSessionDir(projectPath: string, agentDir: string, seen: Set<string>): string | undefined {
+  const raw = rawSessionDir(projectPath, agentDir, seen);
+  if (!raw) return undefined;
+  return isAbsolute(raw) ? resolve(raw) : resolve(projectPath, raw);
+}
+
+/**
+ * Custom session directories are flat. Pi writes `*.jsonl` in `sessionDir`
+ * itself and does not encode a cwd subdirectory, so session files in
+ * subdirectories of a configured sessionDir are ignored.
+ */
+function topLevelJsonl(dir: string): string[] {
+  try {
+    const files: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      // `isFile()` is false for a symlink, same as the default-root walk.
+      if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(join(dir, entry.name));
+    }
+    return files;
+  } catch {
+    return [];
+  }
+}
+
 function textContent(content: unknown): { text: string; thinking?: string } {
   if (typeof content === "string") return { text: content };
   if (!Array.isArray(content)) return { text: "" };
@@ -466,6 +542,8 @@ export class NativePiSessionService {
   private readonly opening = new Set<string>();
   private modelRuntime?: ModelRuntime;
   private readonly modelRuntimeFactory: () => Promise<ModelRuntime>;
+  /** Real directories that already admitted a file. Open and fork keep them after a later empty project list. */
+  private readonly admittedRoots: string[] = [];
 
   constructor(options: {
     agentDir?: string;
@@ -485,21 +563,79 @@ export class NativePiSessionService {
         }));
   }
 
-  async list(): Promise<SessionSummary[]> {
-    let root: string;
+  private configuredSessionDirs(projectPaths: readonly string[]): string[] {
+    const dirs: string[] = [];
+    const seen = new Set<string>();
+    const settingsErrors = new Set<string>();
+    const add = (dir: string | undefined) => {
+      if (!dir) return;
+      const resolved = resolve(dir);
+      if (seen.has(resolved)) return;
+      seen.add(resolved);
+      dirs.push(resolved);
+    };
+    add(globalAbsoluteSessionDir(this.agentDir, settingsErrors));
+    for (const projectPath of projectPaths) add(projectSessionDir(projectPath, this.agentDir, settingsErrors));
+    return dirs;
+  }
+
+  private sessionRoots(projectPaths: readonly string[] = []): string[] {
+    const roots: string[] = [];
+    const add = (dir: string) => {
+      try {
+        const real = realpathSync(dir);
+        if (!roots.includes(real)) roots.push(real);
+      } catch {
+        // A missing directory contributes no files and no containment root.
+      }
+    };
+    add(this.root);
+    for (const dir of this.configuredSessionDirs(projectPaths)) add(dir);
+    for (const dir of this.admittedRoots) add(dir);
+    return roots;
+  }
+
+  async list(options?: { projectPaths?: readonly string[] }): Promise<SessionSummary[]> {
+    // Kept local so two overlapping list() calls cannot swap each other's roots.
+    const projectPaths = normalizeProjectPaths(options?.projectPaths);
+    let defaultRoot: string | undefined;
     try {
-      root = realpathSync(this.root);
+      defaultRoot = realpathSync(this.root);
     } catch {
-      return [];
+      defaultRoot = undefined;
     }
+    const extraRoots: string[] = [];
+    for (const dir of this.configuredSessionDirs(projectPaths)) {
+      try {
+        const real = realpathSync(dir);
+        if (defaultRoot && (real === defaultRoot || inside(defaultRoot, real))) continue;
+        if (!extraRoots.includes(real)) extraRoots.push(real);
+      } catch {
+        // The configured directory does not exist yet.
+      }
+    }
+    if (!defaultRoot && extraRoots.length === 0) return [];
+    const allowed = [...(defaultRoot ? [defaultRoot] : []), ...extraRoots];
+    for (const root of allowed) {
+      if (!this.admittedRoots.includes(root)) this.admittedRoots.push(root);
+    }
+    const seenCandidates = new Set<string>();
+    const candidates = [
+      ...(defaultRoot ? walkJsonl(defaultRoot) : []),
+      ...extraRoots.flatMap((dir) => topLevelJsonl(dir)),
+    ].filter((candidate) => {
+      if (seenCandidates.has(candidate)) return false;
+      seenCandidates.add(candidate);
+      return true;
+    });
     const modelRuntime = await this.modelRuntimeFactory().catch(() => undefined);
     this.modelRuntime = modelRuntime;
     const trustStore = new ProjectTrustStore(this.agentDir);
     const summaries = await Promise.all(
-      walkJsonl(root).map(async (candidate) => {
+      candidates.map(async (candidate) => {
         try {
           const path = realpathSync(candidate);
-          if (!inside(root, path) || lstatSync(path).isSymbolicLink()) return undefined;
+          if (!allowed.some((root) => inside(root, path)) || lstatSync(path).isSymbolicLink()) return undefined;
           const snap = nativePiSnapshot(path);
           const entries = parseSessionEntries(snap.bytes.toString("utf8"));
           const header = entries.find((entry) => entry.type === "session") as any;
@@ -587,24 +723,31 @@ export class NativePiSessionService {
       const record = this.records.get(summary.id);
       if (!record) continue;
       if (seenNativeIds.has(record.nativeId)) {
-        this.records.delete(summary.id);
+        // Two directory names can resolve to one file and share this id.
+        // Deleting it would drop the winner while both rows stay listed.
+        if (!winnerIds.has(summary.id)) this.records.delete(summary.id);
         continue;
       }
       seenNativeIds.add(record.nativeId);
       winnerIds.add(summary.id);
     }
-    deduped.push(...summaries.filter((summary) => summary && winnerIds.has(summary.id)));
+    const emittedIds = new Set<string>();
+    deduped.push(...summaries.filter((summary) => {
+      if (!summary || !winnerIds.has(summary.id) || emittedIds.has(summary.id)) return false;
+      emittedIds.add(summary.id);
+      return true;
+    }));
     return deduped
       .filter((session): session is SessionSummary => Boolean(session))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  async search(query: string): Promise<SessionSearchPage> {
+  async search(query: string, options?: { projectPaths?: readonly string[] }): Promise<SessionSearchPage> {
     const normalized = query.trim();
     if (!normalized) return { hits: [], nextOffset: null };
     if (normalized.length > 500) throw new Error("query exceeds 500 characters");
 
-    const sessions = await this.list();
+    const sessions = await this.list(options);
     const hits: SessionSearchPage["hits"] = [];
     for (const session of sessions) {
       const record = this.records.get(session.id);
@@ -809,8 +952,8 @@ export class NativePiSessionService {
     let published: CompleteOwnedFile | undefined;
     try {
       const directory = realpathSync(dirname(record.path));
-      const root = realpathSync(this.root);
-      if (!inside(root, directory)) {
+      const roots = this.sessionRoots();
+      if (!roots.some((root) => inside(root, directory))) {
         throw Object.assign(new Error("Native Pi session path is outside the allowed root"), {
           errorCode: "PERMISSION_DENIED",
         });
@@ -904,7 +1047,7 @@ export class NativePiSessionService {
         throw new Error("Native Pi fork produced an invalid session file");
       }
       const resolvedChild = realpathSync(childPath);
-      if (resolvedChild !== childPath || !inside(root, resolvedChild)) {
+      if (resolvedChild !== childPath || !roots.some((root) => inside(root, resolvedChild))) {
         throw Object.assign(new Error("Native Pi fork path is outside the session root"), {
           errorCode: "PERMISSION_DENIED",
         });
@@ -1056,9 +1199,8 @@ export class NativePiSessionService {
     if (!record) {
       throw Object.assign(new Error("Native Pi session not found; refresh sessions and try again"), { errorCode: "NOT_FOUND" });
     }
-    const root = realpathSync(this.root);
     const path = realpathSync(record.path);
-    if (!inside(root, path) || lstatSync(path).isSymbolicLink()) {
+    if (!this.sessionRoots().some((root) => inside(root, path)) || lstatSync(path).isSymbolicLink()) {
       throw Object.assign(new Error("Native Pi session path is outside the allowed root"), { errorCode: "PERMISSION_DENIED" });
     }
     return { ...record, path };

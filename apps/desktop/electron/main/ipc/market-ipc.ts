@@ -113,6 +113,12 @@ export function registerMarketIpc({
     return host.call("market.reviewSummaries", { pluginIds });
   });
 
+  handle(IPC.invoke.marketReviewTickers, async (payload?: { pluginIds?: unknown }) => {
+    if (!host) throw new Error("host unavailable");
+    const pluginIds = Array.isArray(payload?.pluginIds) ? payload.pluginIds : [];
+    return host.call("market.reviewTickers", { pluginIds });
+  });
+
   handle(IPC.invoke.marketReviews, async (payload?: Partial<PluginReviewQuery>) => {
     if (!host) throw new Error("host unavailable");
     return host.call("market.reviews", { ...(payload ?? {}) });

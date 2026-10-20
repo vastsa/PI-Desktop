@@ -697,6 +697,7 @@ export const ko = {
     output: "출력",
     stop: "중지",
     stopping: "중지 중…",
+    dismiss: "닫기",
   },
   planHistory: {
     pending: "승인 대기",

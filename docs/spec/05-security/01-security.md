@@ -358,8 +358,11 @@ host-core. They do not change the loopback-only rule above.
 
 Native session paths remain sidecar-private. Renderer-visible ids are opaque
 hashes of canonical path plus verified header id. Every discovery/open resolves
-the real path below the configured Pi session root and revalidates header id and
-cwd; path traversal and symlink escape are rejected.
+the real path below an allowed Pi session root — the agent session directory,
+or a `sessionDir` resolved from global or project settings — and revalidates
+header id and cwd; path traversal and symlink escape are rejected. A relative
+`sessionDir` is resolved only for a known local project. Custom directories are
+not walked recursively.
 
 Writable continuation requires a mode-0600 cooperative PI-Desktop lease beside
 the session and full-byte identity checks before each SDK append. After an

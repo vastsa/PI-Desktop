@@ -113,7 +113,7 @@ test("extensions page draws no in-flow dividers", async () => {
   assert.doesNotMatch(pluginsCss, /\.plugins-menu-sep\s*\{[^}]*background/);
   assert.match(pluginsCss, /\.plugins-sheet-cta\s*\{[^}]*border-radius/);
   assert.doesNotMatch(pluginsCss, /\.plugins-sheet-section\s*\{[^}]*border/);
-  assert.match(pluginsCss, /\.plugins-card-foot\s*\{[^}]*padding:\s*2px 14px 12px/);
+  assert.match(pluginsCss, /\.plugins-card-foot\s*\{[^}]*padding:\s*8px 14px 12px/);
   assert.doesNotMatch(pluginsCss, /\.plugins-card-foot\s*\{[^}]*border/);
   assert.match(pluginsCss, /\.plugins-empty\s*\{[^}]*background:\s*var\(--plugins-tile\)/);
   assert.doesNotMatch(pluginsCss, /\.plugins-market-settings/);

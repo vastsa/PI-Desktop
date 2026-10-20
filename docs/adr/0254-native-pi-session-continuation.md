@@ -11,7 +11,7 @@ PI-Desktop historically imports Pi sessions by flattening them into Desktop-owne
 
 ## Decision
 
-1. The Node agent sidecar exposes a source-discriminated `pi-native` adapter. It discovers files below Pi's agent session directory, projects immutable byte snapshots through `SessionManager.inMemory`, and opens a persistent `SessionManager` only when a prompt is accepted.
+1. The Node agent sidecar exposes a source-discriminated `pi-native` adapter. It discovers files below Pi's agent session directory and below each `sessionDir` Pi resolves from settings (see the amendment below), projects immutable byte snapshots through `SessionManager.inMemory`, and opens a persistent `SessionManager` only when a prompt is accepted.
 2. Native identity is an opaque composite derived from canonical file path plus native header id. Paths never cross the preload boundary. Electron merges native summaries with Rust-owned Desktop summaries; Rust remains the exclusive SQLite and Desktop-transcript owner.
 3. Native continuation uses `createAgentSession` with Pi `ModelRuntime`, `SettingsManager`, `DefaultResourceLoader`, saved provider/model/thinking, and the original `SessionManager`. There is no Desktop provider fallback and no `UiMessage` reconstruction for model context.
 4. The first slice supports list, detail, refresh, text-only Agent prompt with no tools (`noTools: "all"`), stop, and renderer-local pin/archive. Built-in and extension model tools stay disabled until an explicit Desktop permission bridge is designed; this is not full Pi tool parity. Rename, delete, move, revision, Plan/Goal, queue, collaboration, attachment, and transcript rewrite operations are rejected; fork and side chat are added by the amendment below.
@@ -86,3 +86,32 @@ registration and tab; the child remains a native session in the sidebar and in
 title/project search, and reopens as an ordinary conversation. A send while a
 native turn is running fails before the Desktop queue with a visible message and
 a preserved draft; native sessions still cannot enqueue.
+
+## Amendment: configured sessionDir discovery (2026-10-18)
+
+Pi writes a session into `sessionDir` when that setting is present in global
+`~/.pi/agent/settings.json` or in `<cwd>/.pi/settings.json`. Desktop history
+must discover and open those files with the same resolution the CLI uses, in
+addition to the default agent session root (`<agentDir>/sessions`).
+
+- The default root stays a recursive scan, so sessions written before a custom
+  directory remain visible.
+- An absolute or `~` global `sessionDir` is scanned even when no project is
+  known. A relative value is resolved from each known local project working
+  directory, not from the Desktop process cwd. Remote project ids are ignored.
+  At most 500 local project paths are considered.
+- Custom directories are scanned non-recursively, matching Pi's flat `*.jsonl`
+  layout. Sessions in subdirectories of a configured `sessionDir` are ignored
+  by that flat scan. A file is admitted only when its real path stays inside
+  the default root or a resolved `sessionDir`. Symlink escapes are dropped.
+  An in-directory symlink is not a second copy of its target. A nested file
+  is omitted only when the custom directory is outside the default root; a
+  directory inside that root is not scanned again, and the recursive default
+  walk can still list nested JSONL there.
+- Detail, prompt, and fork authorize the file against the default root, the
+  session directories for the current project list, and any session directory
+  that already admitted a file. A later empty project list does not revoke
+  that directory. A fork still publishes the child beside its parent. Trust
+  and provider gates are unchanged and follow the session header cwd, not
+  which settings file pointed at the directory. Untrusted project resources
+  stay browseable and read-only. Ancestor trust counts as trusted.

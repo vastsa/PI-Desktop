@@ -23,7 +23,9 @@ fn migrate_v22_to_v23_tx(tx: &Transaction<'_>) -> Result<()> {
                  WHEN title IN ('', 'New task', 'New chat', '新建任务', '新对话',
                                 '新建任務', '新對話', '새 작업', '새 채팅',
                                 'Tarefa sem título', 'Nova conversa',
-                                'Yeni görev', 'Yeni sohbet') THEN 'default'
+                                'Yeni görev', 'Yeni sohbet', 'Neue Aufgabe',
+                                'Nouvelle tâche', 'Nueva tarea', 'Neuer Chat',
+                                'Nuevo chat', 'Nouvelle discussion') THEN 'default'
                  ELSE 'manual'
              END",
             [],

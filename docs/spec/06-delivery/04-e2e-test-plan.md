@@ -7850,6 +7850,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   fetched and refreshed; old responses cannot erase it. Each stream remains
   bounded to 256KiB and retains its final marker after exit. A Stop failure is
   visible without an unhandled rejection and the control remains retryable.
+  An ended task keeps its row only for a short grace window and can be closed
+  from the bar, so finished commands do not accumulate above the composer.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),
   `03-runtime/06-host-rpc-protocol.md` (§4)
 - **Acceptance criterion**: C, E, F
@@ -7861,7 +7863,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   exercises production React components in isolated Electron at 1280px, 700px,
   and 390px widths. Host tests cover exit-before-drain and shutdown under output
   lock contention. The full agent-to-Desktop journey and an 83-minute paced
-  100,000-line soak remain manual; the automated volume test is accelerated.)
+  100,000-line soak remain manual; the automated volume test is accelerated.
+  Renderer visibility (grace window, close action, pinned output preview) is
+  covered by `apps/desktop/test/background-tasks-bar-visibility.test.mjs` with a
+  controlled clock; the multi-second hand-off itself is not timed in Electron.)
 
 #### E2E-117: Agent/Plan/Goal UX and locales contain no Chat controls
 
@@ -10096,6 +10101,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
 | C / E / Security / Quality — Live Voice four-stage interaction | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
@@ -13841,17 +13847,21 @@ are withdrawn with ADR 0165.
 
 - **Preconditions**: At least one supported local config exists among
   `~/.claude/settings.json`, `~/.codex/config.toml` `[model_providers.*]`,
-  `~/.config/opencode/opencode.json`, `~/.pi/agent/models.json`, or
+  `~/.config/opencode/opencode.json`, `~/.pi/agent/models.json`,
+  `~/.pi/agent/auth.json` plus `~/.pi/agent/models-store.json`, or
   `~/.cc-switch/cc-switch.db`, including two API-key profiles with the same
-  endpoint and different keys, and optionally one OAuth-only vendor.
-  PI-Desktop may already have an equivalent provider.
+  endpoint and different keys, one auth-only Pi API-key provider, and
+  optionally one OAuth-only vendor. PI-Desktop may already have an equivalent
+  provider.
 - **Steps**:
   1. Open Settings → Models and expand **Import from other tools**. Confirm
      its scan explanation appears as inline text without a help icon, and the
      workbench remains idle until Scan is activated.
   2. Scan model configuration. Confirm source groups start expanded, rows
      show name, model count, host, and an API key / No API key badge, and no
-     secret value appears in the UI or scan IPC payload.
+     secret value appears in the UI or scan IPC payload. Confirm the
+     auth-only Pi provider appears in the Pi group with its cached model
+     count and an API key badge.
   3. Import the selected providers. Confirm both same-endpoint profiles appear
      as separate rows under Settings → Models and remain selectable in the
      Composer model menu. Re-import the same selection and confirm those
@@ -13862,10 +13872,12 @@ are withdrawn with ADR 0165.
   5. Confirm an OAuth-only source account is absent from the candidate
      list.
 - **Expected**: Explicit scan only (D007). Stored API keys land in the host
-  secret store. Only equivalent providers (normalized URL + API style + same
-  credential) skip; different credentials at one endpoint remain separate.
-  The expanded importer shows its scan explanation directly without a
-  question-mark control. No protocol or schema version bump.
+  secret store. Pi providers connected through `auth.json` are paired with
+  the cached `models-store.json` catalog; OAuth grants and `!command` keys
+  are not imported. Only equivalent providers (normalized URL + API style +
+  same credential) skip; different credentials at one endpoint remain
+  separate. The expanded importer shows its scan explanation directly
+  without a question-mark control. No protocol or schema version bump.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `04-ux/08-component-spec.md` §18.5, `03-runtime/01-ipc-protocol.md`,
   `03-runtime/11-provider-model-system.md`, ADR 0179, D342
@@ -16692,6 +16704,30 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Specs:** runtime §12; storage §12; ADR 0254.
 - **Status:** Source-regression covered; full Desktop journey Draft.
 
+### E2E-SESSION-native-pi-project-session-dir
+
+- **Preconditions:** A local project has `.pi/settings.json` with
+  `"sessionDir": ".pi/sessions"` and a valid native v3 JSONL in that directory.
+  The default Pi agent session root also contains a valid session. A nested
+  JSONL and a symlink that leaves `.pi/sessions` are present. A second fixture
+  sets an absolute global `sessionDir` and no project path. A third sets a
+  relative global `sessionDir`.
+- **Steps:** Refresh the session list, open the project-local session, and fork
+  it. Repeat list and open for the absolute global directory. Refresh the
+  relative global fixture once with no known project and once after that
+  project is known, including a remote project id in the known set.
+- **Expected:** The project-local session and the default-root session both
+  appear. The nested file and the escaping symlink do not. Opening the
+  project-local session returns its transcript. Fork publishes one new JSONL
+  beside the parent and does not rewrite the parent. The absolute global
+  directory is listed without a project path. The relative global directory is
+  listed only for the known local project. Remote project ids are ignored.
+  Untrusted project resources stay browseable and read-only.
+- **Specs:** runtime §12; storage §12; security §12; ADR 0254.
+- **Status:** Source-regression covered by
+  `packages/agent-runtime/src/native-pi-session.test.ts` (the project fixture
+  asserts `readOnlyReason: project-untrusted` and `canPrompt: false`) and
+  `apps/desktop/test/native-pi-sessions.test.mjs`; full Desktop journey Draft.
 
 ### E2E-SUBAGENT-ordered-model-fallback-preserves-work
 
@@ -18179,15 +18215,17 @@ host-created files. The full app's file-preview viewer is covered separately.
      remote host's project.
   4. Open Settings → General → Sidebar and turn off **Show running activity
      on projects**, then re-check the sidebar.
-  5. Turn the master switch back on, turn off **Count badge** only, and
-     re-check. Repeat with **Activity rail** only.
-  6. Enable the OS "reduce motion" setting and re-check the rail.
+  5. Turn the master switch back on and turn on **Activity rail**.
+  6. Turn off **Count badge** only and re-check; turn it back on.
+  7. Turn off **Activity rail** only and re-check; turn it back on.
+  8. Enable the OS "reduce motion" setting and re-check the rail.
 - **Expected**: A project with live work marks its header — the collapsed
-  header keeps showing the count badge and the activity rail, so the project
-  is identifiable without expanding it. Running and permission-waiting counts
-  are separate figures and never merge into one number. The remote host group
-  shows the same pair. The master switch removes both affordances at once and
-  leaves the two sub-switches disabled but retaining their stored value, so
+  header shows only the count badge by default; the activity rail is off.
+  Running and permission-waiting counts are separate figures and never merge
+  into one number. The remote host group shows the same default. Turning on the
+  activity rail displays it alongside the badge. The master switch removes
+  both affordances at once and leaves the two sub-switches disabled while
+  retaining their stored value, so
   re-enabling the master restores the previous choice. Each sub-switch hides
   only its own affordance. Under reduced motion both affordances stay visible
   with their animation removed. Settings persist across a renderer reload.
@@ -18196,9 +18234,72 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Acceptance**: The "is anything running under here?" answer is available
   from a collapsed project group, and each affordance can be switched off
   independently through a persisted setting.
+- **Status**: Draft. Existing unit coverage in
+  `apps/desktop/test/sidebar-project-runs.test.mjs` covers count
+  classification, master/sub-switch gating, both render call sites, and
+  theme-token and reduced-motion guarantees. It does not exercise settings
+  API default normalization or the full interaction; those remain manual
+  validation in a capable environment.
+
+### E2E-267: A plugin follows the selected session and opens its own view
+
+- **Preconditions**: A development plugin that declares one
+  `contributes.views` entry and holds `ui.view`, and whose command calls
+  `pi.session.getActive()`, subscribes to `pi.events.on("session:activated")`,
+  and then calls `pi.ui.revealView({ location: "src/App.tsx" })`. Two sessions
+  exist in different projects; one of them is running a turn.
+- **Steps**:
+  1. Select the idle session and run the plugin's command.
+  2. Switch to the other project's session and start a turn; re-check the
+     payload the plugin reported.
+  3. While that turn runs, run the plugin's command and inspect the work panel.
+  4. Switch to the first session, then run the plugin's command again from a
+     stale reference to the previous session id.
+  5. Disable the plugin and re-open the same work-panel tab.
+- **Expected**: `pi.session.getActive()` answers with the session on screen, its
+  project path, and `activeTurn: null` while it is idle. `session:activated`
+  arrives once per real change — a selection switch, a project change, and the
+  turn starting or finishing — and the running session reports the durable
+  `turnId` with its start time rather than an inferred one. `pi.ui.revealView`
+  opens the plugin's view as a work-panel tab of the active session and focuses
+  it, and the view receives `src/App.tsx` through `piViewOpen`/`view:open`
+  without being reloaded when it is already open. A call naming a session the
+  user left fails with `INVALID_ARGUMENT` and opens nothing. Revealing without
+  `ui.view` fails with `PERMISSION_DENIED`. With the plugin disabled the tab
+  reports the missing view instead of showing stale content.
+- **Specs linked**: `07-plugins/03-plugin-api.md` §ui, §session follow, §5
+  events, §6 panel bridge; ADR 0331.
+- **Acceptance**: A plugin can follow the selected session and show its own view
+  beside it without importing host internals, and a stale session can never be
+  revealed onto a panel the user is no longer looking at.
 - **Status**: Draft. Unit coverage in
-  `apps/desktop/test/sidebar-project-runs.test.mjs` covers the count
-  classification, the master/sub-switch gating, both render call sites, and
-  the theme-token and reduced-motion guarantees; the interactive sidebar
-  scenario remains a manual validation scenario run in a capable
-  environment.
+  `apps/desktop/test/plugin-session-follow.test.mjs` (snapshot assembly,
+  announcement deduplication, stale-turn and stale-session refusal,
+  `ui.view` gating, panel-bridge channel) and the wiring contract in
+  `apps/desktop/test/main-wiring-contract.test.mjs`; the interactive Electron
+  scenario remains a manual validation run.
+
+### E2E-PROVIDER-optional-client-certificate
+
+- **Preconditions:** The locked Electron 43 runtime, built workspace packages,
+  and an isolated profile. Only a local HTTPS fixture and local proxy are used;
+  trust is confined to the test process/session and fixture certificate.
+- **Steps:** Run `node scripts/e2e-provider-client-certificate.mjs`. Confirm the
+  original `net.fetch` aborts before HTTP. Probe the model list and connection
+  through the real metadata service; repeat with an invalid fixture key and an
+  authenticated custom HTTP proxy. Return a cross-origin redirect, then cancel
+  a pending response.
+- **Expected:** Valid credentials return the fixture model; invalid credentials
+  reach HTTP 401. The retry follows the proxy route, sends no client identity,
+  refuses cross-origin redirects and aborts with the original signal.
+- **Security coverage:** `provider-https-metadata.test.mjs` additionally checks
+  mandatory client authentication, untrusted server certificates, hostname
+  mismatch, compressed responses, and late-tunnel cleanup. The metadata policy
+  tests reject fallback on other TLS/network errors or HTTP failures.
+- **Specs linked:** `03-runtime/07-process-model.md`,
+  ADR `provider-metadata-client-certificate-retry`, issue #1676.
+- **Acceptance:** Recovery without an Electron major upgrade, TLS verification
+  bypass, direct proxy bypass, or change to persisted provider bindings.
+- **Milestone:** Maintenance.
+- **Status:** Automated fixture; record the tested head/base and execution
+  result in the delivery report.

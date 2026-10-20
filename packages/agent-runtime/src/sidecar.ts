@@ -62,6 +62,11 @@ async function getNativePiService() {
   return nativePiServiceFactory();
 }
 
+function nativeProjectPaths(params: { projectPaths?: unknown } | undefined): string[] {
+  const value = params?.projectPaths;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 const runtimes: RuntimeMap = new Map();
 const hostProxy = new ParentHostProxy();
 const testRuntimeIds = new WeakMap<DesktopAgentRuntime, string>();
@@ -396,11 +401,13 @@ async function handle(method: string, params: any): Promise<unknown> {
       return { ok: true, runtimes: runtimes.size };
     case "native.session.list": {
       const service = await getNativePiService();
-      return { sessions: await service.list() };
+      return { sessions: await service.list({ projectPaths: nativeProjectPaths(params) }) };
     }
     case "native.session.search": {
       const service = await getNativePiService();
-      return service.search(String(params.query ?? ""));
+      return service.search(String(params?.query ?? ""), {
+        projectPaths: nativeProjectPaths(params),
+      });
     }
     case "native.session.get": {
       const service = await getNativePiService();

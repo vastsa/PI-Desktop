@@ -96,3 +96,52 @@ test("automatic AI titles stay plugin-owned", () => {
   assert.doesNotMatch(store, /triggerAutoTitleSummarization/);
   assert.doesNotMatch(main, /IPC\.invoke\.sessionSummarizeTitle/);
 });
+
+test("the German, French and Spanish placeholders are recognized as default titles (#1755)", async (t) => {
+  // The renderer lowercases chat.untitledTask before persisting; the host
+  // list and this legacy set must recognize those forms or auto-titling
+  // never runs in those locales. nav.newChat resolves through the same
+  // two-sided comparison.
+  const locales = [
+    ["de", "Neue Aufgabe", "Neuer Chat"],
+    ["fr", "Nouvelle tâche", "Nouvelle discussion"],
+    ["es", "Nueva tarea", "Nuevo chat"],
+  ];
+  for (const [locale, untitled, newChat] of locales) {
+    assert.equal(
+      catalogs[locale].chat.untitledTask,
+      untitled,
+      `${locale} catalog must still own its untitledTask label`,
+    );
+    assert.equal(
+      catalogs[locale].nav.newChat,
+      newChat,
+      `${locale} catalog must still own its newChat label`,
+    );
+    assert.equal(isDefaultSessionTitle(untitled), true, `${locale} untitledTask`);
+    assert.equal(
+      isDefaultSessionTitle(untitled.toLowerCase()),
+      true,
+      `${locale} untitledTask lowercased`,
+    );
+    assert.equal(isDefaultSessionTitle(newChat), true, `${locale} newChat`);
+    assert.equal(
+      isDefaultSessionTitle(newChat.toLowerCase()),
+      true,
+      `${locale} newChat lowercased`,
+    );
+  }
+
+  // Host side stays in sync: both label families, stored lowercase, compared
+  // through to_lowercase so a non-ASCII uppercase letter cannot slip past.
+  assert.match(
+    host,
+    /"neue aufgabe",\s*\n\s*"nouvelle tâche",\s*\n\s*"nueva tarea",\s*\n\s*"neuer chat",\s*\n\s*"nuevo chat",\s*\n\s*"nouvelle discussion",/,
+    "PLACEHOLDER_TITLES must carry the German, French and Spanish labels for both keys",
+  );
+  assert.match(
+    host,
+    /to_lowercase\(\)/,
+    "is_default_title compares through to_lowercase",
+  );
+});
