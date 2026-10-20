@@ -50,7 +50,6 @@ export type ComposerSuggestionFilter = {
 };
 
 type Live = {
-  readonly handle: ComposerDraftHandle;
   readonly sessionId: string;
   readonly text: string;
   /** References the draft holds, staged attachments included. */
@@ -190,7 +189,6 @@ export class ComposerSuggestionBridge {
     const draft = handle?.read() ?? null;
     if (!handle || !draft) return null;
     return {
-      handle,
       sessionId: draft.sessionId,
       text: draft.text,
       referenceCount: draft.references.length,
