@@ -31,6 +31,13 @@ const POPOVER_SNAP = 24;
 const POPOVER_HEIGHT = 132;
 /* Hide the rail until content actually overflows one viewport. */
 const OVERFLOW_EPSILON_PX = 1;
+/**
+ * Minimum gap between two streaming-driven remeasurements. The ResizeObserver
+ * fires on every frame the transcript grows, and each remeasure reads every
+ * marker's box, so uncapped growth means an O(markers) synchronous layout per
+ * frame on a long conversation.
+ */
+const RESIZE_RECOMPUTE_MIN_MS = 150;
 const EARLIER_HISTORY_MARKER_ID = "__earlier-history__";
 
 export const ConversationMinimap = memo(function ConversationMinimap({
@@ -69,6 +76,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
   /* Guards to skip setState when value hasn't changed. */
   const activeIdRef = useRef<string | null>(null);
   const overflowsRef = useRef(false);
+  const lastRecomputeRef = useRef(0);
 
   const markers = useMemo(
     () => buildConversationMinimapMarkers(messages),
@@ -228,6 +236,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
     if (!el) return;
     let scrollRaf = 0;
     let resizeRaf = 0;
+    let resizeTimer = 0;
     const scheduleScroll = () => {
       cancelAnimationFrame(scrollRaf);
       scrollRaf = requestAnimationFrame(() => {
@@ -237,13 +246,30 @@ export const ConversationMinimap = memo(function ConversationMinimap({
     };
     const scheduleResize = () => {
       cancelAnimationFrame(resizeRaf);
-      resizeRaf = requestAnimationFrame(() => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      const runRecompute = () => {
         recomputeOffsets();
         updateActive();
         updateOverflow();
         // The rail's gap is marker-count dependent and its height follows the
         // composer, so dash centers move without the marker set changing.
         measureMagnifyCenters();
+        lastRecomputeRef.current = performance.now();
+      };
+      resizeRaf = requestAnimationFrame(() => {
+        // Streaming grows the transcript every frame, and a ResizeObserver on
+        // the content therefore fires every frame too. Recomputing then costs
+        // O(markers) layout reads at display rate; cap it to a few times a
+        // second and let the trailing run settle the last measurement.
+        const elapsed = performance.now() - lastRecomputeRef.current;
+        if (elapsed < RESIZE_RECOMPUTE_MIN_MS) {
+          resizeTimer = window.setTimeout(() => {
+            resizeTimer = 0;
+            resizeRaf = requestAnimationFrame(runRecompute);
+          }, RESIZE_RECOMPUTE_MIN_MS - elapsed);
+          return;
+        }
+        runRecompute();
       });
     };
     // Initial offset computation
@@ -263,6 +289,7 @@ export const ConversationMinimap = memo(function ConversationMinimap({
       ro?.disconnect();
       cancelAnimationFrame(scrollRaf);
       cancelAnimationFrame(resizeRaf);
+      if (resizeTimer) clearTimeout(resizeTimer);
       window.removeEventListener("resize", scheduleResize);
     };
   }, [measureMagnifyCenters, scrollRef, updateActive, updateOverflow, recomputeOffsets]);

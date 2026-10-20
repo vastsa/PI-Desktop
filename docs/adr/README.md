@@ -381,3 +381,4 @@ Each ADR includes:
 | plugin-fetch-redirect-policy | [Host-enforced plugin fetch redirect policy](plugin-fetch-redirect-policy.md) | Accepted (implementation candidate for #1475) |
 
 | local-agent-remote-workspace-tools | [Local Agent and model requests for remote workspaces](local-agent-remote-workspace-tools.md) | Accepted for implementation |
+| 0332 | [macOS paints an opaque native window surface](0332-macos-opaque-window-surface.md) | Accepted (D665; supersedes the macOS vibrancy window backing from D348; issue #1064) |

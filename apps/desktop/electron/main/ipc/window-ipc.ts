@@ -133,7 +133,6 @@ export function registerWindowIpc({
         errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
-    if (process.platform === "darwin") return { applied: false, theme };
     const mainWindow = getMainWindow();
     if (!mainWindow || mainWindow.isDestroyed()) {
       throw new Error("main window unavailable");

@@ -2,6 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { MAX_SMOOTH_TEXT_CODE_UNITS } from "../lib/render-content-limits";
 
 /**
+ * Minimum wall-clock gap between two reveal commits.
+ *
+ * The reveal needs enough frames to look like typing, not enough to redraw the
+ * whole Markdown subtree on every display refresh: each commit reconciles the
+ * streaming bubble and repaints it, and on macOS that repaints a window sized
+ * surface. 30 Hz still advances two characters a frame at the base rate, which
+ * reads as continuous, and halves the per-frame work during a reply.
+ */
+const REVEAL_FRAME_MS = 1000 / 30;
+
+/**
  * Progressively reveals `source` text at an adaptive rate.
  *
  * When `enabled` is false or `streaming` is false the full source is
@@ -55,8 +66,10 @@ export function useSmoothText(
       }
 
       const elapsed = now - lastFrameRef.current;
-      // Keep React and Markdown commits at or below 60 Hz on high-refresh screens.
-      if (elapsed < 1000 / 60) {
+      // Cap commits well below the display refresh: each one reconciles and
+      // repaints the whole streaming tree, so matching 120 Hz panels would buy
+      // nothing the eye can see.
+      if (elapsed < REVEAL_FRAME_MS) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }

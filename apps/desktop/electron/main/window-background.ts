@@ -35,7 +35,15 @@ export function mainWindowBackgroundOptions(
     }
     return { transparent: true, backgroundColor: "#00000000" };
   }
-  if (platform === "darwin") return {};
+  if (platform === "darwin") {
+    // An opaque native surface stops WindowServer from recompositing the
+    // window every frame while it stays visible; the vibrancy material
+    // behind a transparent surface did exactly that (issue #1064).
+    return {
+      transparent: false,
+      backgroundColor: toElectronBackgroundColor(color),
+    };
+  }
   return { backgroundColor: toElectronBackgroundColor(color) };
 }
 
@@ -47,8 +55,6 @@ export function applyMainWindowBackground(
   windows11NativeCorners = false,
   opaqueFallbackColor = color,
 ): boolean {
-  if (platform === "darwin") return false;
-
   const useOpaqueWindowsSurface = platform === "win32" && windows11NativeCorners;
   const electronColor = useOpaqueWindowsSurface
     ? toOpaqueElectronBackgroundColor(color, opaqueFallbackColor)

@@ -572,9 +572,6 @@ export function createApplicationLifecycle({
     }
     if (nativeTheme.themeSource === next) return;
     nativeTheme.themeSource = next;
-    if (process.platform === "darwin" && state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.setVibrancy("sidebar");
-    }
   }
 
   /**

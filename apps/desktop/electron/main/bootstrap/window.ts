@@ -196,10 +196,14 @@ export async function createWindow({
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
-          vibrancy: "sidebar" as const,
-          visualEffectState: "followWindow" as const,
-          transparent: true,
-          backgroundColor: "#00000000",
+          // An opaque native surface avoids continuous WindowServer
+          // recomposition while the Electron window is visible (issue #1064).
+          ...mainWindowBackgroundOptions(
+            process.platform,
+            initialWindowBackground,
+            windows11NativeCorners,
+            initialWindowBackground,
+          ),
         }
       : {
           frame: false,
