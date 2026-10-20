@@ -22,10 +22,16 @@ export type ComposerSuggestionView = {
 
 const subscribe = (listener: () => void) => composerSuggestion.subscribe(listener);
 const snapshot = () => composerSuggestion.get();
+/**
+ * There is no shell state to read while the app is rendered to a string, and
+ * React requires this third snapshot for exactly that pass: a suggestion is a
+ * live-window fact, so a server render starts with none.
+ */
+const serverSnapshot = (): null => null;
 
 export function useComposerSuggestion(): ComposerSuggestionView | null {
   const { t } = useTranslation();
-  const suggestion = useSyncExternalStore(subscribe, snapshot);
+  const suggestion = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
   const text = suggestion?.text ?? "";
   const hint = t("chat.suggestionHint");
   return useMemo(
