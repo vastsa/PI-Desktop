@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
+  fitSubagentChips,
   providerServesSubagentDelegation,
   selectedSubagentModels,
   subagentModelCandidates,
@@ -225,16 +226,47 @@ test("the page mounts the row and writes the flag through the provider, not a se
     join(here, "../src/components/settings/SubagentModelRow.tsx"),
     "utf8",
   );
-  // The list reuses the service model list's own parts: same row, same search
+  // The page keeps the row quiet: delegated names plus an entry point.
+  assert.match(row, /selectedSubagentModels\(candidates\)/);
+  assert.match(row, /settings\.subagentModelEdit/);
+  assert.doesNotMatch(row, /provider-chosen-list/);
+
+  const dialog = await readFile(
+    join(here, "../src/components/settings/SubagentModelsDialog.tsx"),
+    "utf8",
+  );
+  // The editor reuses the service model list's own parts: same row, same search
   // field, same Advanced button (which opens the editor that holds the opt-in),
   // same remove control. Adding never happens here.
-  assert.match(row, /selectedSubagentModels\(candidates\)/);
-  assert.match(row, /className="provider-chosen-list"/);
-  assert.match(row, /provider-chosen-row-head/);
-  assert.match(row, /settings\.searchChosenModels/);
-  assert.match(row, /settings\.advanced/);
-  assert.match(row, /onEdit\(candidate\.providerId\)/);
-  assert.match(row, /settings\.subagentModelRemove/);
-  assert.match(row, /settings\.subagentModelPluginManaged/);
-  assert.match(row, /settings\.subagentModelProviderDisabled/);
+  assert.match(dialog, /className="provider-chosen-list"/);
+  assert.match(dialog, /provider-chosen-row-head/);
+  assert.match(dialog, /settings\.searchChosenModels/);
+  assert.match(dialog, /settings\.advanced/);
+  assert.match(dialog, /onEdit\(candidate\.providerId\)/);
+  assert.match(dialog, /settings\.subagentModelRemove/);
+  assert.match(dialog, /settings\.subagentModelPluginManaged/);
+  assert.match(dialog, /settings\.subagentModelProviderDisabled/);
+});
+
+test("chips fill the line and reserve room for the +N chip", () => {
+  // All five fit: 60+5+60+5+60+5+60+5+60 = 320 within 400.
+  assert.deepEqual(
+    fitSubagentChips({ widths: [60, 60, 60, 60, 60], gap: 5, available: 400, moreWidth: 30 }),
+    { visible: 5, hidden: 0 },
+  );
+  // Three fit (190), but `+N` needs 30 more than the 210 available, so the
+  // last two collapse: two chips plus `+3`.
+  assert.deepEqual(
+    fitSubagentChips({ widths: [60, 60, 60, 60, 60], gap: 5, available: 210, moreWidth: 30 }),
+    { visible: 2, hidden: 3 },
+  );
+  // A row too narrow for even one chip still names one model.
+  assert.deepEqual(
+    fitSubagentChips({ widths: [60, 60], gap: 5, available: 40, moreWidth: 30 }),
+    { visible: 1, hidden: 1 },
+  );
+  assert.deepEqual(
+    fitSubagentChips({ widths: [], gap: 5, available: 100, moreWidth: 30 }),
+    { visible: 0, hidden: 0 },
+  );
 });

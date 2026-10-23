@@ -2009,6 +2009,8 @@ sklm: {
     subagentModels: "Subagent models",
     subagentModelsUnset: "No model is open to subagents yet",
     subagentModelAdd: "Add models from a service's model settings — Advanced → Available for AI delegation",
+    subagentModelEdit: "Edit",
+    subagentModelsMore: "+{{count}} more",
     subagentModelRemove: "Remove {{model}} from subagent models",
     subagentModelSelected: "Model available for delegation",
     subagentModelUnselected: "Model removed from delegation",

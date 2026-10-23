@@ -153,3 +153,46 @@ export function subagentModelOptInDraft(
       : model,
   );
 }
+
+/** How many chips fit on one line, and how many collapse into `+N`. */
+export type ChipFit = { visible: number; hidden: number };
+
+/**
+ * Fit chips into a bounded line, reserving room for the `+N` chip when not
+ * everything fits.
+ *
+ * Widths are measured by the caller (fonts and zoom decide them), so the rule
+ * itself stays pure and testable: fill in order, then give back trailing chips
+ * until `+N` fits beside them. One chip always survives, so a very narrow row
+ * still says what it is about instead of showing only `+6`.
+ */
+export function fitSubagentChips(input: {
+  widths: readonly number[];
+  gap: number;
+  available: number;
+  moreWidth: number;
+}): ChipFit {
+  const { widths, gap, available, moreWidth } = input;
+  if (widths.length === 0) return { visible: 0, hidden: 0 };
+
+  let used = 0;
+  let visible = 0;
+  for (let index = 0; index < widths.length; index += 1) {
+    const next = used + (index > 0 ? gap : 0) + widths[index];
+    if (next > available) break;
+    used = next;
+    visible += 1;
+  }
+  if (visible === widths.length) return { visible, hidden: 0 };
+
+  let hidden = widths.length - visible;
+  while (visible > 1 && used + gap + moreWidth > available) {
+    visible -= 1;
+    used -= widths[visible] + gap;
+    hidden += 1;
+  }
+  // A very narrow row still names one model; the container clips the overflow
+  // rather than showing a row that only says `+6`.
+  if (visible === 0) return { visible: 1, hidden: widths.length - 1 };
+  return { visible, hidden };
+}
