@@ -19,6 +19,14 @@ allows/disallows the parameter. Keep this provenance separate from catalog
 compatibility and apply it last, only when building a Chat Completions model.
 The setting does not turn reasoning on or override the selected thinking level.
 
+## Update (2026-10-23)
+
+The automatic default for official `deepseek.com` endpoints changed after this
+ADR landed: those rows now leave `supportsReasoningEffort` to pi-ai detection,
+so the selected level reaches the wire by default (D672, #1821). The explicit
+per-model override described here is unchanged and still takes precedence in
+both directions.
+
 Expose Auto / Send / Do not send in the existing per-model settings. Host
 normalization, configuration copying and synchronization preserve the value.
 Other APIs hide the setting and ignore it during request construction.
