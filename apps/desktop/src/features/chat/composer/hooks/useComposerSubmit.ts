@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { TFunction } from "i18next";
 import {
   serializeComposerFileReferences,
@@ -67,6 +68,10 @@ export function useComposerSubmit({
   recordHistory,
   draft,
 }: UseComposerSubmitOptions): ComposerSubmitController {
+  // One failure may restore its draft only while it is still the newest
+  // submit: a late rejection of an older send must never paint that older
+  // message, with its attachments, back into the composer (#1809).
+  const latestSubmitRef = useRef(0);
   const submit = async (steering = false) => {
     const rawText = draft.ref.current ? readEditorValue(draft.ref.current) : value;
     // An image chip keeps its place in the prompt: main resolves the `@path` it
@@ -178,6 +183,7 @@ export function useComposerSubmit({
       return;
     }
     draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);
+    const submitEpoch = ++latestSubmitRef.current;
     const accepted = steering
       ? await steerPrompt(inlineContent, submittedDraft)
       : await sendPrompt(
@@ -186,8 +192,9 @@ export function useComposerSubmit({
           activeSessionId ?? undefined,
           captureAcceptedSession,
         );
-    if (!accepted) draft.restoreDraftForKey(submittedDraftKey, submittedDraft);
-    else remember();
+    if (accepted) remember();
+    else if (submitEpoch === latestSubmitRef.current)
+      draft.restoreDraftForKey(submittedDraftKey, submittedDraft);
   };
 
   return { submit };
