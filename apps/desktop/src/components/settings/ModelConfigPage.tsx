@@ -38,6 +38,7 @@ import {
   type SubagentModelCandidate,
 } from "./subagent-delegation";
 import { SubagentModelRow } from "./SubagentModelRow";
+import { SubagentModelsDialog } from "./SubagentModelsDialog";
 import { OAuthLoginDialog } from "./OAuthLoginDialog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { ServiceList } from "./ServiceList";
@@ -117,6 +118,7 @@ export function ModelConfigPage() {
   const testingRows = useRowBusy();
   const [changingImageModel, setChangingImageModel] = useState(false);
   const [changingSubagentModel, setChangingSubagentModel] = useState(false);
+  const [subagentEditorOpen, setSubagentEditorOpen] = useState(false);
   const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -615,15 +617,28 @@ export function ModelConfigPage() {
 
       {subagentModels.length > 0 ? (
         <section className="settings-card-block">
-          <SubagentModelRow
-            candidates={subagentModels}
-            busy={changingSubagentModel}
-            onChange={(candidate, selected) =>
-              void setSubagentDelegation(candidate, selected)
-            }
-            onEdit={(providerId) => setSetupFor(providerId)}
-          />
+          <div className="settings-panel model-default-panel">
+            <SubagentModelRow
+              candidates={subagentModels}
+              onEdit={() => setSubagentEditorOpen(true)}
+            />
+          </div>
         </section>
+      ) : null}
+
+      {subagentEditorOpen ? (
+        <SubagentModelsDialog
+          candidates={subagentModels}
+          busy={changingSubagentModel}
+          onChange={(candidate, selected) =>
+            void setSubagentDelegation(candidate, selected)
+          }
+          onEdit={(providerId) => {
+            setSubagentEditorOpen(false);
+            setSetupFor(providerId);
+          }}
+          onClose={() => setSubagentEditorOpen(false)}
+        />
       ) : null}
 
       {setupFor !== null ? (

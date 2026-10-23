@@ -1878,6 +1878,8 @@ sklm: {
     "subagentModels": "Modèles de sous-agents",
     "subagentModelsUnset": "Aucun modèle ouvert aux sous-agents pour l'instant",
     "subagentModelAdd": "Ajoutez des modèles dans les réglages du service — Avancé → Disponible pour la délégation de l'IA",
+    "subagentModelEdit": "Modifier",
+    "subagentModelsMore": "+{{count}} de plus",
     "subagentModelRemove": "Retirer {{model}} des modèles de sous-agent",
     "subagentModelSelected": "Modèle disponible pour la délégation",
     "subagentModelUnselected": "Modèle retiré de la délégation",

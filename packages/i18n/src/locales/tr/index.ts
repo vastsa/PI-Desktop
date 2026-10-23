@@ -1888,6 +1888,8 @@ sklm: {
     subagentModels: "Alt ajan modelleri",
     subagentModelsUnset: "Henüz alt ajanlara açılmış model yok",
     subagentModelAdd: "Modelleri hizmetin model ayarlarından ekleyin — Gelişmiş → AI devri için kullanılabilir",
+    subagentModelEdit: "Düzenle",
+    subagentModelsMore: "+{{count}} tane daha",
     subagentModelRemove: "{{model}} öğesini alt ajan modellerinden çıkar",
     subagentModelSelected: "Model devretmeye açık",
     subagentModelUnselected: "Model devretme listesinden çıkarıldı",

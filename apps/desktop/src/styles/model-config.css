@@ -1925,22 +1925,72 @@
 /* --------------------------------------- subagent delegation model list */
 
 /*
-  The list reuses the service model list's own parts (`.provider-chosen-*`), so
-  a model row here looks and behaves like the row that produced it. Only the
-  furniture this surface adds is styled here.
+  The Models page carries one quiet line: the delegated model names and an Edit
+  action. The full list — search, limits, Advanced, remove — lives in the dialog
+  that Edit opens, reusing the service model list's own parts (`.provider-chosen-*`).
 */
-.model-subagent-panel {
+.model-subagent-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 60%;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.model-subagent-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
   border-radius: var(--radius-lg);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  white-space: nowrap;
+}
+
+.model-subagent-chip-more {
+  color: var(--ds-text-muted);
+}
+
+/* Off-screen twin used to measure chips at the current font and zoom. */
+.model-subagent-measure {
+  position: absolute;
+  display: inline-flex;
+  gap: 5px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.model-subagent-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 64px));
+  padding: 16px;
+}
+
+.model-subagent-panel {
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
   background: var(--ds-tile);
   padding: 4px 0 6px;
 }
 
-.model-subagent-hint {
-  margin: 0;
-  padding: 0 14px 6px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-body);
+.model-subagent-dialog .provider-chosen-list {
+  max-height: 420px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.model-subagent-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .model-subagent-provider {

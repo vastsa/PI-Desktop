@@ -1873,6 +1873,8 @@ sklm: {
     subagentModels: "子代理模型",
     subagentModelsUnset: "尚無可提供子代理呼叫的模型",
     subagentModelAdd: "在服務的模型設定裡新增：進階 → 可供 AI 自動調度",
+    subagentModelEdit: "編輯",
+    subagentModelsMore: "另有 {{count}} 個",
     subagentModelRemove: "將 {{model}} 從子代理模型移除",
     subagentModelSelected: "此模型可供 AI 調度",
     subagentModelUnselected: "此模型已從調度清單移除",

@@ -1878,6 +1878,8 @@ sklm: {
     "subagentModels": "Subagenten-Modelle",
     "subagentModelsUnset": "Noch kein Modell für Subagenten freigegeben",
     "subagentModelAdd": "Modelle in den Modelleinstellungen des Dienstes hinzufügen — Erweitert → Verfügbar für AI-Delegation",
+    "subagentModelEdit": "Bearbeiten",
+    "subagentModelsMore": "+{{count}} weitere",
     "subagentModelRemove": "{{model}} aus den Subagenten-Modellen entfernen",
     "subagentModelSelected": "Modell für Delegation verfügbar",
     "subagentModelUnselected": "Modell aus der Delegation entfernt",

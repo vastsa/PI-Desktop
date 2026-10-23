@@ -1848,6 +1848,8 @@ export const ptBR = {
     subagentModels: "Modelos de subagentes",
     subagentModelsUnset: "Nenhum modelo aberto para subagentes ainda",
     subagentModelAdd: "Adicione modelos nas configurações de modelos do serviço — Avançado → Disponível para delegação",
+    subagentModelEdit: "Editar",
+    subagentModelsMore: "+{{count}} mais",
     subagentModelRemove: "Remover {{model}} dos modelos de subagente",
     subagentModelSelected: "Modelo disponível para delegação",
     subagentModelUnselected: "Modelo removido da delegação",

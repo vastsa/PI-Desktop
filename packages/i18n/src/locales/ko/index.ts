@@ -1894,6 +1894,8 @@ sklm: {
     subagentModels: "서브에이전트 모델",
     subagentModelsUnset: "아직 서브에이전트에 열린 모델이 없습니다",
     subagentModelAdd: "서비스 모델 설정에서 추가하세요 — 고급 → AI 위임에 사용 가능",
+    subagentModelEdit: "편집",
+    subagentModelsMore: "외 {{count}}개",
     subagentModelRemove: "{{model}}을(를) 서브에이전트 모델에서 제거",
     subagentModelSelected: "위임에 사용할 수 있는 모델",
     subagentModelUnselected: "위임 목록에서 제거된 모델",
