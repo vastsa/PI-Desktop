@@ -576,3 +576,19 @@ test("selection revalidation cannot remove a restored range, but an explicit rew
   r.set({ messages: [message("tail", "edited")] });
   assert.equal(r.view(), undefined);
 });
+
+test("a bookmark inside the page being revalidated keeps that page instead of a narrower window", async () => {
+  // Returning to a retained session commits its page while `selectingSessionId`
+  // is still set and then swaps `messages` for the revalidated window. The
+  // bookmarked row is already in that page, so restoration must publish the page
+  // itself: reading a range around the anchor would both narrow the transcript
+  // and report `hasMoreAfter`, which paints the load-later affordance on a
+  // conversation nobody left.
+  const r = reader(async () => { throw new Error("unexpected read"); }, {
+    messages: [message("old"), message("tail")], selectingSessionId: "s",
+  });
+  assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), true);
+  assert.deepEqual(r.visible().map((row) => row.id), ["old", "tail"]);
+  assert.equal(r.view().restored, true);
+  assert.equal(r.view().hasMoreAfter, false);
+});

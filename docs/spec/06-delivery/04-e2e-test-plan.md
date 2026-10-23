@@ -6155,7 +6155,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   toast, or a blank chat area.
 - **Expected**: Only the visible pane and the two most recently visited ones are
   retained; visiting beyond that budget evicts the oldest pane. A warm return
-  paints the retained frame and offset immediately. Returning to an evicted
+  paints the retained frame and offset immediately. The returned pane keeps the
+  page that already holds its anchor, so a warm return never offers to load later
+  messages for rows that page already had. Returning to an evicted
   session restores the message and viewport offset recorded before eviction,
   including explicit expanded content, using a bounded historical read if the
   latest page no longer contains the anchor. If the anchor is already loaded but
