@@ -59,6 +59,9 @@ host-core 之前被解析为绝对路径。
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
+ ├── index/               # 可重建的工作区搜索缓存（仅 host-core）
+ │    ├── index.db        # root 元数据、文件元数据与 FTS5 文本
+ │    └── index.db.corrupt-<timestamp> # 完整性/架构失败后隔离的缓存
  ├── crash-dumps/         # local Crashpad minidumps (never uploaded; D602)
  ├── crash-dumps.json     # last-reported dump mtime (best-effort marker)
  ├── review-changes/<sessionId>/<snapshotId>/
@@ -77,6 +80,13 @@ host-core 之前被解析为绝对路径。
 内容存在于 `sessions/` 中，附件和工具输出超出限制
 [16-tool-result-limits](/zh-CN/spec/03-runtime/16-tool-result-limits) 存在于磁盘上，已引用
 由 path/hash 提供。
+
+`index/index.db` 刻意与 `pi.sqlite` 分离。它是可丢弃、可重建的优化缓存，
+永远不是文件系统事实来源。它只保存规范化 root/相对路径、文件大小与修改时间、
+生命周期/错误元数据，以及 FTS5 中的索引文本；不保存凭据、消息历史、项目实体记录或文件 hash。
+它被排除在应用备份、导出与同步之外；完整性检查失败或索引架构版本不受支持时，
+旧缓存会被隔离并创建新的空索引，且不会触碰 `pi.sqlite`。索引 RPC 只涉及生命周期
+（`status`/`rebuild`/`clear`）；任何工具都不读取该缓存。
 
 ### 2.0 消息拥有的评论快照 (ADR 0043)
 

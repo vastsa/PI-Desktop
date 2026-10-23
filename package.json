@@ -22,6 +22,7 @@
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:jev": "node --test apps/desktop/test/jev-api-key-check.test.mjs apps/desktop/test/jev-config.test.mjs apps/desktop/test/jev-settings-user-path.test.mjs apps/desktop/test/jev-service-setup-user-path.test.mjs apps/desktop/test/jev-session-launch.test.mjs && node packages/agent-runtime/node_modules/vitest/vitest.mjs run packages/agent-runtime/src/jev-classifier-tool.test.ts packages/agent-runtime/src/runtime.test.ts -t Jev --config packages/agent-runtime/vitest.config.ts",
+    "test:e2e:index": "node scripts/e2e-index.mjs",
     "test:e2e:storage": "node scripts/e2e-storage-settings.mjs && node scripts/e2e-storage-migration.mjs && node scripts/e2e-storage-bootstrap.mjs && node scripts/e2e-storage-directory.mjs && node scripts/e2e-storage-files.mjs && node scripts/e2e-storage-backup-lock.mjs",
     "test:e2e:asktool-card": "node scripts/e2e-asktool-card.mjs",
     "test:e2e:worktree-live": "node scripts/e2e-worktree-live.mjs",

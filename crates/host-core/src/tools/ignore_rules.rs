@@ -209,6 +209,47 @@ pub fn rg_args(ignore_root: &Path, scoped: bool) -> Vec<String> {
     args
 }
 
+// ---- P2-B workspace visible-set additions --------------------------------
+//
+// The index crawler reuses this module so the index visible set and the Grep
+// candidate walk stay structurally identical: both are configured by
+// [`configure_walker`], whose layers pair with [`rg_args`] on the rg side.
+
+/// Directory names that are tooling or scan metadata rather than workspace
+/// content. The index crawler prunes these before ingest in addition to the
+/// ignore layers above, so their bytes never reach the FTS store.
+pub const VENDOR_COMPONENTS: &[&str] = &[".git", ".pi-desktopignore", "node_modules", "target"];
+
+/// Build the shared visible-set walker for `root`.
+///
+/// `scoped` mirrors Grep's scoped search: when the caller names a path
+/// explicitly, parent ignore files are dropped so an explicitly named
+/// directory stays reachable. The index crawler always walks the whole root
+/// (`scoped == false`).
+pub fn visible_walker(root: &Path, scoped: bool) -> WalkBuilder {
+    let mut walker = WalkBuilder::new(root);
+    walker.hidden(false).git_ignore(true);
+    if scoped {
+        // Same as rg's --no-ignore-parent for a scoped search: an explicitly
+        // named directory stays reachable even when a parent directory
+        // ignores it.
+        walker.parents(false);
+    }
+    configure_walker(&mut walker, root, scoped);
+    walker
+}
+
+/// Whether a walked path sits under a [`VENDOR_COMPONENTS`] entry. Only
+/// applied to a whole-workspace (unscoped) search.
+pub fn is_vendor_path(root: &Path, path: &Path) -> bool {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    relative.components().any(|component| {
+        VENDOR_COMPONENTS
+            .iter()
+            .any(|vendor| component.as_os_str() == *vendor)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +299,86 @@ mod tests {
         let unscoped = rg_args(Path::new("/nonexistent"), false);
         assert!(unscoped.contains(&"!node_modules".to_string()));
         assert!(unscoped.contains(&"!*.log".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod vendor_visibility_tests {
+    use super::*;
+    use std::fs;
+
+    fn visible_from_walker(root: &Path, scoped: bool) -> Vec<String> {
+        let mut paths: Vec<String> = visible_walker(root, scoped)
+            .build()
+            .flatten()
+            .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
+            .map(|entry| entry.path().to_path_buf())
+            .filter(|path| scoped || !is_vendor_path(root, path))
+            .map(|path| {
+                path.strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        paths.sort();
+        paths
+    }
+
+    #[test]
+    fn vendor_and_custom_ignore_drop_from_whole_workspace_visibility() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("node_modules/pkg")).unwrap();
+        fs::create_dir_all(root.path().join(".git")).unwrap();
+        fs::write(root.path().join(".pi-desktopignore"), "private.txt\n").unwrap();
+        fs::write(root.path().join("keep.txt"), "keep\n").unwrap();
+        fs::write(root.path().join("private.txt"), "secret\n").unwrap();
+        fs::write(root.path().join("node_modules/pkg/a.js"), "x\n").unwrap();
+        fs::write(root.path().join(".git/config"), "[core]\n").unwrap();
+
+        assert_eq!(visible_from_walker(root.path(), false), vec!["keep.txt"]);
+    }
+
+    #[test]
+    fn explicitly_named_vendor_directory_stays_reachable() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("node_modules/pkg")).unwrap();
+        fs::write(root.path().join("node_modules/pkg/index.js"), "x\n").unwrap();
+
+        // Scoped: no vendor prune, so the named directory is visible.
+        assert_eq!(
+            visible_from_walker(&root.path().join("node_modules/pkg"), true),
+            vec!["index.js"]
+        );
+    }
+
+    #[test]
+    fn scoped_walk_drops_parent_ignore_files_like_the_rg_side() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join(".ignore"), "node_modules\n").unwrap();
+        fs::create_dir_all(root.path().join("node_modules/pkg")).unwrap();
+        fs::write(root.path().join("node_modules/pkg/index.js"), "x\n").unwrap();
+
+        // A scoped walk rooted below the ignore file must not honor it —
+        // the same contract rg gets via --no-ignore-parent — while the
+        // whole-workspace walk keeps filtering (only the ignore file itself
+        // stays visible; `node_modules/` is dropped).
+        assert_eq!(
+            visible_from_walker(&root.path().join("node_modules/pkg"), true),
+            vec!["index.js"]
+        );
+        assert_eq!(visible_from_walker(root.path(), false), vec![".ignore"]);
+    }
+
+    #[test]
+    fn root_pi_desktopignore_constrains_the_whole_scan() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("sub")).unwrap();
+        fs::write(root.path().join(".pi-desktopignore"), "*.log\n").unwrap();
+        fs::write(root.path().join("app.log"), "x\n").unwrap();
+        fs::write(root.path().join("sub/deep.log"), "x\n").unwrap();
+        fs::write(root.path().join("main.rs"), "x\n").unwrap();
+
+        assert_eq!(visible_from_walker(root.path(), false), vec!["main.rs"]);
     }
 }
