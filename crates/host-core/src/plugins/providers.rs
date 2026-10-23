@@ -185,6 +185,7 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                     .and_then(Value::as_bool),
                                 supports_documents: None,
                                 available_for_subagents: None,
+                                reasoning_effort: None,
                                 native_web_search: None,
                             })
                         })

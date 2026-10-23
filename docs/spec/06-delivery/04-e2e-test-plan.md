@@ -1735,7 +1735,9 @@ identify the platform validation still needed.
   Relay requests omit the generic OpenAI `reasoning_effort` field because
   relays were reported rejecting it (#1664). Official `api.deepseek.com`
   requests send `thinking: {type: "enabled"}` together with the selected
-  `reasoning_effort` (#1821).
+  `reasoning_effort` (#1821). A model whose binding sets `reasoningEffort:
+  "send"` sends the field even through a relay; `"omit"` drops it even on
+  the official endpoint.
   The request does not switch `thinkingFormat` to `"deepseek"` solely because
   the model id contains `"deepseek"`. Official `api.deepseek.com` rows keep
   URL-based DeepSeek `thinkingFormat` from pi-ai.

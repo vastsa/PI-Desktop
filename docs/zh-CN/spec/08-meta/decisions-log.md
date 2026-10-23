@@ -5562,3 +5562,16 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 不改变持久化格式或协议。由 `packages/shared/src/provider-presets.test.ts` 与
   `packages/agent-runtime/src/provider-binding.test.ts` 的请求抓取测试覆盖。见
   `03-runtime/11-provider-model-system.md` 与 E2E-005E。
+
+## 2026-10-23 — 按模型覆盖 reasoning_effort（D673）
+
+- D673 为模型绑定新增可选的 `reasoningEffort`（`send` | `omit`）。缺省沿用 D672 的自动
+  规则；显式值在所有自动 Completions compat 覆盖之后生效并优先于它们。
+- URL 规则无法区分需要 `reasoning_effort` 才能生效高强度思考的中转（#1821）和拒绝该字段的
+  中转（#1664）。配置网关的用户才是可靠来源，因此按模型选择，而不是再加一条启发式。
+- 作为 provider `config_json` 模型数组中的可选 camelCase 键持久化；旧行读作自动，host-core
+  丢弃未知值。无需迁移。由 `packages/agent-runtime/src/provider-binding.test.ts`、
+  `packages/agent-runtime/src/model-capabilities.test.ts`、
+  `packages/shared/src/provider-sync.test.ts` 与 `crates/host-core/src/providers/tests.rs`
+  覆盖。见 `03-runtime/11-provider-model-system.md`、`03-runtime/12-provider-config-schema.md`
+  与 E2E-005E。

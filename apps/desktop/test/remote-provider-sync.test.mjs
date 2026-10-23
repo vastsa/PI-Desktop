@@ -17,7 +17,7 @@ const originalCwd = process.cwd();
 before(() => process.chdir(process.env.PI_SCRATCH_DIR ?? tmpdir()));
 after(() => process.chdir(originalCwd));
 const KEY = "fixture-only-private-api-key";
-const model = (id) => ({ id, contextWindow: 160000, contextWindowSource: "user", maxTokens: 8000, maxTokensSource: "catalog", thinkingLevels: ["off", "high", "max"], defaultThinkingLevel: "max", thinkingProtocol: "adaptive", supportsImages: false, supportsDocuments: null, availableForSubagents: true, nativeWebSearch: true });
+const model = (id) => ({ id, contextWindow: 160000, contextWindowSource: "user", maxTokens: 8000, maxTokensSource: "catalog", thinkingLevels: ["off", "high", "max"], defaultThinkingLevel: "max", thinkingProtocol: "adaptive", reasoningEffort: "omit", supportsImages: false, supportsDocuments: null, availableForSubagents: true, nativeWebSearch: true });
 const provider = (id = "local") => ({
   id, name: "Network models", vendorKey: "custom", type: "openai_compatible", protocol: "openai_compatible", enabled: true,
   baseUrl: "https://models.example/v1", authKind: "api_key", hasSecret: true, models: [model("first"), model("chosen")],

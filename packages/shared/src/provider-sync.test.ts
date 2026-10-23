@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isSyncableProvider, parseProviderImportPayload, parseProviderImportSummary, PROVIDER_SYNC_MAX_PROVIDERS } from "./provider-sync.js";
 import type { ProviderPublic } from "./types/providers.js";
 
-const model = { id: "model/a", contextWindow: 120000, maxTokens: 8000, thinkingLevels: ["off", "high"] as const, defaultThinkingLevel: "high", thinkingProtocol: "adaptive", nativeWebSearch: true };
+const model = { id: "model/a", contextWindow: 120000, maxTokens: 8000, thinkingLevels: ["off", "high"] as const, defaultThinkingLevel: "high", thinkingProtocol: "adaptive", reasoningEffort: "send", nativeWebSearch: true };
 function payload() {
   return { version: 1, providers: [{ sourceId: "local-1", input: {
     name: "Custom", vendorKey: "custom", type: "openai_compatible", protocol: "openai_compatible",
@@ -42,7 +42,8 @@ describe("provider sync boundary", () => {
     { supportedThinkingLevels: ["secret-level"] }, { temperature: Number.NaN },
     { models: [{ ...model, contextWindow: -1 }] }, { models: [{ ...model, extra: "fixture-key" }] },
     { models: [{ ...model, thinkingLevels: ["not-a-level"] }] }, { models: [{ ...model, defaultThinkingLevel: "low" }] },
-    { models: [{ ...model, supportsDocuments: "yes" }] }, { defaultModelId: "missing" },
+    { models: [{ ...model, supportsDocuments: "yes" }] }, { models: [{ ...model, reasoningEffort: "auto" }] },
+    { defaultModelId: "missing" },
   ])("rejects malformed inputs without echoing diagnostics: %j", (patch) => {
     const value = payload();
     Object.assign(value.providers[0]!.input, patch);

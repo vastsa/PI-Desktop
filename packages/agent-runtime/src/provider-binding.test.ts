@@ -1682,6 +1682,35 @@ describe("DeepSeek Completions reasoning effort on the wire (#1821)", () => {
     );
     expect(relay.reasoning_effort).toBeUndefined();
   });
+
+  it("lets the model's explicit setting override the automatic rule both ways", async () => {
+    const relayProvider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "relay",
+      baseUrl: "https://gw.example.test/v1",
+      modelId: "deepseek-v4.1-flash",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "low", "high"],
+    };
+    const withMode = (
+      provider: RuntimeProviderConfig,
+      reasoningEffort: "send" | "omit",
+    ): RuntimeProviderConfig => ({
+      ...provider,
+      modelConfig: modelConfigWithBinding(genericModelConfig(provider.modelId), {
+        contextWindow: 128_000,
+        maxTokens: 8_192,
+        thinkingLevels: ["off", "low", "high"],
+        reasoningEffort,
+      }),
+    });
+
+    const sent = await captureFirstRequest(withMode(relayProvider, "send"), "high");
+    expect(sent.reasoning_effort).toBe("high");
+
+    const omitted = await captureFirstRequest(withMode(official, "omit"), "high");
+    expect(omitted.reasoning_effort).toBeUndefined();
+  });
 });
 
 describe("session affinity for the adapters' anonymous endpoints (#1634)", () => {

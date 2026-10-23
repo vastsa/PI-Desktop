@@ -8,6 +8,7 @@ pub(crate) const PROVIDER_SELECT: &str =
 pub(crate) const CANONICAL_THINKING_LEVELS: &[&str] =
     &["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const THINKING_PROTOCOLS: &[&str] = &["legacy", "adaptive"];
+const REASONING_EFFORT_MODES: &[&str] = &["send", "omit"];
 /// Recognised per-limit provenance markers. Anything else is dropped so a
 /// row always falls back to the documented rule instead of a third state no
 /// reader understands.
@@ -42,6 +43,11 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
                 .thinking_protocol
                 .as_deref()
                 .filter(|protocol| THINKING_PROTOCOLS.contains(protocol))
+                .map(str::to_string);
+            let reasoning_effort = binding
+                .reasoning_effort
+                .as_deref()
+                .filter(|mode| REASONING_EFFORT_MODES.contains(mode))
                 .map(str::to_string);
             let default_thinking_level = binding
                 .default_thinking_level
@@ -80,6 +86,7 @@ pub(crate) fn normalize_model_bindings(bindings: &[ModelBinding]) -> Vec<ModelBi
                 supports_images: binding.supports_images,
                 supports_documents: binding.supports_documents,
                 available_for_subagents: binding.available_for_subagents,
+                reasoning_effort,
                 native_web_search: binding.native_web_search,
             })
         })
@@ -103,6 +110,7 @@ fn legacy_model_binding(model_id: Option<String>) -> Vec<ModelBinding> {
                 supports_images: None,
                 supports_documents: None,
                 available_for_subagents: None,
+                reasoning_effort: None,
                 native_web_search: None,
             }]
         })
@@ -489,6 +497,7 @@ mod tests {
             supports_images: None,
             supports_documents: None,
             available_for_subagents: None,
+            reasoning_effort: None,
             native_web_search: None,
         }
     }

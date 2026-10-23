@@ -7,6 +7,7 @@ import type {
   ModelModalities,
   ModelProviderMetadata,
   ModelReasoningOption,
+  ReasoningEffortMode,
   SessionThinkingLevel,
   ThinkingProtocol,
   ThinkingLevel,
@@ -74,6 +75,11 @@ export type ModelConfig = {
    * when this is true.
    */
   webSearch?: boolean;
+  /**
+   * User override for the Chat Completions `reasoning_effort` field, copied
+   * from the model binding. Absent keeps the automatic endpoint rule.
+   */
+  reasoningEffort?: ReasoningEffortMode;
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
   /**

@@ -123,6 +123,11 @@ OpenAI 风格的 Copilot 线路 API 仍将令牌作为请求密钥签名；所�
 交给 pi-ai，按 DeepSeek 文档在 `thinking: {type: "enabled"}` 旁发送 `reasoning_effort`
 （low / high / max），使所选思考等级真正下发（#1821，D672）。
 
+模型绑定可用 `reasoningEffort` 固定 Chat Completions 字段：`send` 或 `omit`。缺省表示
+自动（上述端点规则）。显式选择在所有自动 compat 覆盖之后生效，可以为需要该字段的中转
+重新开启，也可以为拒绝它的网关去掉它。设置 → 模型仅对 Chat Completions 行显示该选择器；
+其他线协议忽略此值。
+
 当 Pi catalog 记录发布了推理 `effort` 选项且没有 `budget_tokens` 选项时
 （例如 Opus 4.7+、Opus 5.x、Fable），Anthropic Messages 请求会设置
 `forceAdaptiveThinking: true`。这些模型会以 HTTP 400 拒绝

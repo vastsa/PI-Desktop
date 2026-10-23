@@ -104,6 +104,15 @@ describe("main-supplied model capabilities", () => {
     expect(configured.contextWindow).toBe(1_000_000);
   });
 
+  it("carries the binding's reasoning_effort override and omits it when automatic (#1821)", () => {
+    const base = { contextWindow: 128_000, maxTokens: 8_192, thinkingLevels: ["high"] as ThinkingLevel[] };
+    expect(modelConfigWithBinding(knownModel(), { ...base, reasoningEffort: "send" }).reasoningEffort)
+      .toBe("send");
+    expect(modelConfigWithBinding(knownModel(), { ...base, reasoningEffort: "omit" }).reasoningEffort)
+      .toBe("omit");
+    expect(modelConfigWithBinding(knownModel(), base)).not.toHaveProperty("reasoningEffort");
+  });
+
   it("preserves a legacy stored context window without provenance", () => {
     const configured = modelConfigWithBinding(knownModel(), {
       contextWindow: 128_000,

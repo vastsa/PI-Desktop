@@ -7962,3 +7962,21 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `packages/shared/src/provider-presets.test.ts` and the captured-request test
   in `packages/agent-runtime/src/provider-binding.test.ts`. See
   `03-runtime/11-provider-model-system.md` and E2E-005E.
+
+## 2026-10-23 — Per-model reasoning_effort override (D673)
+
+- D673 adds an optional `reasoningEffort` (`send` | `omit`) to the model
+  binding. Absent keeps the automatic D672 rule; an explicit value is applied
+  after every automatic Completions compat overlay and wins over it.
+- The URL rule cannot tell a relay that needs `reasoning_effort` to honor
+  High thinking (#1821) from one that rejects the field (#1664). The user who
+  configured the gateway is the only reliable source, so the choice is per
+  model rather than a new heuristic.
+- Persisted as an optional camelCase key in the provider `config_json` model
+  array; old rows read as automatic, and host-core drops unknown values. No
+  migration. Covered by `packages/agent-runtime/src/provider-binding.test.ts`,
+  `packages/agent-runtime/src/model-capabilities.test.ts`,
+  `packages/shared/src/provider-sync.test.ts`, and
+  `crates/host-core/src/providers/tests.rs`. See
+  `03-runtime/11-provider-model-system.md`,
+  `03-runtime/12-provider-config-schema.md`, and E2E-005E.

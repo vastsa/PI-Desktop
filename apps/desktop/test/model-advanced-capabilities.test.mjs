@@ -58,6 +58,24 @@ test("advanced settings expose the model thinking protocol", () => {
   assert.match(pickerSource, /thinkingProtocol: id as ThinkingProtocol/);
 });
 
+test("Chat Completions models expose the reasoning_effort override (#1821)", () => {
+  // Only the Completions wire carries the field, so other formats hide it.
+  assert.match(
+    pickerSource,
+    /const reasoningEffortConfigurable = normalizeApiStyle\(apiStyle\) === "chat_completions"/,
+  );
+  assert.match(pickerSource, /\{reasoningEffortConfigurable \? \(/);
+  assert.match(pickerSource, /settings\.reasoningEffortAuto/);
+  assert.match(pickerSource, /settings\.reasoningEffortSend/);
+  assert.match(pickerSource, /settings\.reasoningEffortOmit/);
+  // Automatic is stored as absence, so the runtime rule keeps applying.
+  assert.match(pickerSource, /value=\{binding\.reasoningEffort \?\? "auto"\}/);
+  assert.match(
+    pickerSource,
+    /reasoningEffort:\s*id === "auto" \? undefined : \(id as ReasoningEffortMode\)/,
+  );
+});
+
 test("the capability checkboxes show and follow the published value", () => {
   assert.match(pickerSource, /settings\.imageInput/);
   assert.match(pickerSource, /settings\.documentInput/);

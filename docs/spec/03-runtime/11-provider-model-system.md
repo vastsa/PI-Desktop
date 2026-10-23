@@ -134,6 +134,13 @@ Official `deepseek.com` rows leave the flag to pi-ai, which sends
 DeepSeek documents, so the selected thinking level reaches the wire (#1821,
 D672). The overlay does not change `thinkingFormat`.
 
+A model binding may pin the Chat Completions field with `reasoningEffort`:
+`send` or `omit`. Absent means automatic (the endpoint rules above). The
+explicit choice is applied after every automatic compat overlay, so it can
+re-enable the field for a relay that needs it or drop it for a gateway that
+rejects it. Settings → Models shows the selector only for Chat Completions
+rows; other wire APIs ignore the value.
+
 Anthropic Messages requests set `forceAdaptiveThinking: true` when the
 models.dev record publishes a reasoning `effort` option and no
 `budget_tokens` option (for example Opus 4.7+, Opus 5.x, Fable). Those models

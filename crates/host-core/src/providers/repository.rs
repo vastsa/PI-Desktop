@@ -110,6 +110,7 @@ fn hydrate_dynamic_plugin_models(db: &Database, provider: &mut ProviderPublic) -
                     .then_some(true),
                 supports_documents: None,
                 available_for_subagents: None,
+                reasoning_effort: None,
                 native_web_search: None,
             }
         })

@@ -12,6 +12,12 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export const THINKING_PROTOCOLS = ["legacy", "adaptive"] as const;
 export type ThinkingProtocol = (typeof THINKING_PROTOCOLS)[number];
 /**
+ * Per-model override for the Chat Completions `reasoning_effort` field.
+ * Absent follows the automatic endpoint rule; `send` and `omit` pin it.
+ */
+export const REASONING_EFFORT_MODES = ["send", "omit"] as const;
+export type ReasoningEffortMode = (typeof REASONING_EFFORT_MODES)[number];
+/**
  * Session and subagent selector values. `omit` leaves the provider default
  * untouched and is not a catalog/binding capability.
  */
@@ -228,6 +234,13 @@ export type ModelBinding = {
   defaultThinkingLevel: SessionThinkingLevel | null;
   /** Provider request protocol used when thinking is enabled. */
   thinkingProtocol?: ThinkingProtocol;
+  /**
+   * Chat Completions only. Absent lets the runtime decide whether the
+   * endpoint accepts `reasoning_effort` (DeepSeek relays are suppressed,
+   * #1664); `send` / `omit` pin the field for gateways the rule misjudges
+   * (#1821). Other wire APIs ignore it.
+   */
+  reasoningEffort?: ReasoningEffortMode;
   /**
    * User override for image input. `null` or absent follows the published
    * models.dev capability. Once explicitly selected, either boolean is pinned

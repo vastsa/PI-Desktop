@@ -155,6 +155,10 @@ pub struct ModelBinding {
     /// Provider request protocol used when thinking is enabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_protocol: Option<String>,
+    /// Chat Completions `reasoning_effort` override: `send` or `omit`. None
+    /// keeps the runtime's automatic endpoint rule (#1821).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
     /// Attachment capability overrides. `None` follows the published catalog
     /// capability, so a models.dev correction still reaches a saved binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]

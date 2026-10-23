@@ -19,11 +19,13 @@ import {
   formatTokenCount,
   modelMatchesFilter,
   nativeWebSearchSupportedOn,
+  normalizeApiStyle,
   publishedThinkingLevels,
   resolveBindingDefaultThinkingLevel,
   sortThinkingLevels,
   type ModelBinding,
   type ModelInfo,
+  type ReasoningEffortMode,
   type SessionThinkingLevel,
   type ThinkingLevel,
   type ThinkingProtocol,
@@ -307,6 +309,8 @@ export function ModelSelectionPanes({
   // Use the same published endpoint routing as the runtime. A disabled control
   // means this connection is not integrated, not that the vendor cannot search.
   const nativeWebSearchWireCapable = nativeWebSearchSupportedOn(apiStyle, lookupContext?.baseUrl);
+  // `reasoning_effort` is a Chat Completions field; other wires ignore it.
+  const reasoningEffortConfigurable = normalizeApiStyle(apiStyle) === "chat_completions";
 
   /**
    * The chosen list narrows with the discovered list's rule plus the binding's
@@ -869,6 +873,30 @@ export function ModelSelectionPanes({
                               ]}
                             />
                           </div>
+                          {reasoningEffortConfigurable ? (
+                            <div className="provider-chosen-thinking-protocol">
+                              <span className="provider-chosen-thinking-label">
+                                {t("settings.reasoningEffortField")}
+                                <HelpIcon label={t("settings.reasoningEffortFieldHint")} />
+                              </span>
+                              <SettingsMenuSelect
+                                className="provider-chosen-thinking-select"
+                                label={t("settings.reasoningEffortField")}
+                                value={binding.reasoningEffort ?? "auto"}
+                                onChange={(id) =>
+                                  updateBinding(binding.id, {
+                                    reasoningEffort:
+                                      id === "auto" ? undefined : (id as ReasoningEffortMode),
+                                  })
+                                }
+                                options={[
+                                  { id: "auto", label: t("settings.reasoningEffortAuto") },
+                                  { id: "send", label: t("settings.reasoningEffortSend") },
+                                  { id: "omit", label: t("settings.reasoningEffortOmit") },
+                                ]}
+                              />
+                            </div>
+                          ) : null}
                           {bindingDefaultThinkingMenuLevels(enabledLevels).length > 1 ? (
                             <div className="provider-chosen-thinking-default">
                               <span className="provider-chosen-thinking-label">

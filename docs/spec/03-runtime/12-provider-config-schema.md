@@ -106,6 +106,10 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
             "enum": ["legacy", "adaptive"],
             "description": "Provider request protocol used when thinking is enabled; absent preserves legacy behavior."
           },
+          "reasoningEffort": {
+            "enum": ["send", "omit"],
+            "description": "Chat Completions reasoning_effort override; absent follows the automatic endpoint rule."
+          },
           "supportsImages": { "type": ["boolean", "null"] },
           "supportsDocuments": { "type": ["boolean", "null"] },
           "availableForSubagents": { "type": "boolean", "default": false }

@@ -252,6 +252,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     supports_images: Some(true),
                     supports_documents: None,
                     available_for_subagents: Some(true),
+                    reasoning_effort: Some("send".into()),
                     native_web_search: None,
                 },
                 ModelBinding {
@@ -267,6 +268,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     supports_images: None,
                     supports_documents: Some(false),
                     available_for_subagents: None,
+                    reasoning_effort: None,
                     native_web_search: None,
                 },
             ]),
@@ -318,6 +320,9 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
     assert_eq!(config["models"][1]["supportsDocuments"], false);
     assert!(config["models"][1].get("availableForSubagents").is_none());
     assert!(config["models"][1].get("supportsImages").is_none());
+    assert_eq!(config["models"][0]["reasoningEffort"], "send");
+    assert!(config["models"][1].get("reasoningEffort").is_none());
+    assert_eq!(provider.models[0].reasoning_effort.as_deref(), Some("send"));
     assert_eq!(provider.models[0].supports_images, Some(true));
     assert_eq!(provider.models[1].supports_documents, Some(false));
 
@@ -376,6 +381,7 @@ fn binding_with_alias(id: &str, alias: Option<&str>) -> ModelBinding {
         supports_images: None,
         supports_documents: None,
         available_for_subagents: None,
+        reasoning_effort: None,
         native_web_search: None,
     }
 }
@@ -408,6 +414,22 @@ fn normalize_model_bindings_preserves_known_thinking_protocols_only() {
     ]);
     assert_eq!(normalized[0].thinking_protocol.as_deref(), Some("adaptive"));
     assert_eq!(normalized[1].thinking_protocol, None);
+}
+
+#[test]
+fn normalize_model_bindings_preserves_known_reasoning_effort_modes_only() {
+    let normalized = normalize_model_bindings(&[
+        ModelBinding {
+            reasoning_effort: Some("omit".into()),
+            ..binding_with_alias("omit-model", None)
+        },
+        ModelBinding {
+            reasoning_effort: Some("auto".into()),
+            ..binding_with_alias("auto-model", None)
+        },
+    ]);
+    assert_eq!(normalized[0].reasoning_effort.as_deref(), Some("omit"));
+    assert_eq!(normalized[1].reasoning_effort, None);
 }
 
 #[test]
@@ -1559,6 +1581,7 @@ fn binding_with_limits(id: &str, context_window: u32, max_tokens: u32) -> ModelB
         supports_images: None,
         supports_documents: None,
         available_for_subagents: None,
+        reasoning_effort: None,
         native_web_search: None,
     }
 }

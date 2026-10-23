@@ -98,6 +98,7 @@ export function modelConfigWithBinding(
         | "maxTokens"
         | "thinkingLevels"
         | "thinkingProtocol"
+        | "reasoningEffort"
         | "supportsImages"
         | "supportsDocuments"
         | "nativeWebSearch"
@@ -185,6 +186,7 @@ export function modelConfigWithBinding(
     ...(Object.keys(thinkingLevelMap).length > 0 ? { thinkingLevelMap } : {}),
     ...modalityOverride(model, binding),
     ...(binding.nativeWebSearch === true ? { webSearch: true } : {}),
+    ...(binding.reasoningEffort ? { reasoningEffort: binding.reasoningEffort } : {}),
   };
 }
 

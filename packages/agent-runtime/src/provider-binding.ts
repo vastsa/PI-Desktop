@@ -419,6 +419,11 @@ export function buildProviderModel(
           ...(thinkingProtocolCompat ?? {}),
           ...(zhipuCompat ?? {}),
           ...(deepseekCompat ?? {}),
+          // The user's per-model choice wins over every automatic rule above
+          // (#1821); absent keeps pi-ai's endpoint detection.
+          ...(catalogModel.reasoningEffort
+            ? { supportsReasoningEffort: catalogModel.reasoningEffort === "send" }
+            : {}),
           supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
         }
       : binding.api === "anthropic-messages" &&
