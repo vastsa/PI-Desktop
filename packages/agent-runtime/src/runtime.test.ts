@@ -1851,8 +1851,8 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
-  // #1767: a blocking read-only host call must not keep the user turn open.
-  it("ends the turn when a stop lands while a read-only core tool is still running", async () => {
+  // #1767: preserve the upstream bounded runtime wait for Read.
+  it("ends the turn when a stop lands while a Read call is still running", async () => {
     let finishExecution!: (value: { ok: boolean; content: unknown }) => void;
     const execution = new Promise<{ ok: boolean; content: unknown }>((resolve) => {
       finishExecution = resolve;
@@ -1863,24 +1863,24 @@ describe("DesktopAgentRuntime configuration matching", () => {
           ? execution
           : method === "tools.abort"
             ? Promise.resolve({ ok: true, found: true })
-            : Promise.resolve({ ok: true, content: "done" }),
+            : Promise.resolve(undefined),
       ),
       onNotification: vi.fn(() => () => undefined),
     };
     const runtime = createRuntime({ host });
-    const grep = runtimeTool(runtime, "Grep");
+    const read = runtimeTool(runtime, "Read");
     const controller = new AbortController();
-    const pending = grep.execute("grep-stop", { query: "needle" }, controller.signal);
+    const pending = read.execute("read-stop", { path: "file.txt" }, controller.signal);
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     controller.abort();
 
-    // The Grep is still running in host-core; only this turn stops waiting.
+    // Read retains its upstream local-abandon policy; searches must settle.
     await expect(pending).rejects.toMatchObject({ errorCode: "TOOL_ABORTED" });
     expect(host.call).toHaveBeenCalledWith("tools.abort", {
       sessionId: "session-1",
-      toolCallId: "grep-stop",
-      toolName: "Grep",
+      toolCallId: "read-stop",
+      toolName: "Read",
     });
     // The orphaned call settling later must not resurface as an unhandled
     // rejection or a second tool result.
@@ -1927,22 +1927,22 @@ describe("DesktopAgentRuntime configuration matching", () => {
     }
   });
 
-  it("releases an in-flight tool when the stop lands without the tool signal firing", async () => {
+  it("releases an in-flight Read when the stop lands without the tool signal firing", async () => {
     const host = {
       call: vi.fn((method: string) =>
         method === "tools.execute"
           ? new Promise<never>(() => undefined)
-          : Promise.resolve({ ok: true, content: "abort requested" }),
+          : Promise.resolve(undefined),
       ),
       onNotification: vi.fn(() => () => undefined),
     };
     const runtime = createRuntime({ host });
-    const grep = runtimeTool(runtime, "Grep");
+    const read = runtimeTool(runtime, "Read");
     // A signal that never fires stands in for the field case: the stop reached
     // the runtime but not the tool, so the executor kept awaiting a host call
     // that would not return and the abort RPC never came back.
     const silent = new AbortController();
-    const pending = grep.execute("grep-silent", { query: "needle" }, silent.signal);
+    const pending = read.execute("read-silent", { path: "file.txt" }, silent.signal);
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     await runtime.abort();
@@ -1998,6 +1998,56 @@ describe("DesktopAgentRuntime configuration matching", () => {
     expect(settled).toBe(true);
     await runtime.dispose();
   });
+  for (const name of ["Grep", "Glob"]) {
+    it.each(["signal", "runtime"])(`forwards ${name} cancellation from %s and waits for actual host settlement`, async (stopSource) => {
+      let executionStarted!: () => void;
+      const started = new Promise<void>((resolve) => { executionStarted = resolve; });
+      let finishExecution!: (value: { ok: boolean; content: unknown; isError?: boolean }) => void;
+      const execution = new Promise<{ ok: boolean; content: unknown; isError?: boolean }>((resolve) => { finishExecution = resolve; });
+      const calls: Array<{ method: string; params: unknown }> = [];
+      const host = {
+        call: vi.fn((method: string, params: unknown) => {
+          calls.push({ method, params });
+          if (method === "tools.execute") { executionStarted(); return execution; }
+          if (method === "tools.abort") return Promise.resolve({ ok: true });
+          throw new Error(`Unexpected host call: ${method}`);
+        }),
+      };
+      const runtime = createRuntime({ host });
+      const controller = new AbortController();
+      const pending = runtimeTool(runtime, name).execute(
+        `${name.toLowerCase()}-stop`, name === "Grep" ? { pattern: "needle", path: "src" } : { pattern: "**/*.ts", path: "src" }, controller.signal,
+      );
+      let settled = false;
+      void pending.then(() => { settled = true; }, () => { settled = true; });
+      try {
+        await started;
+        if (stopSource === "signal") controller.abort();
+        else await runtime.abort();
+        const abortCall = calls.find((call) => call.method === "tools.abort");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const settledBeforeHost = settled;
+        finishExecution({ ok: false, isError: true, content: { code: "TOOL_ABORTED" } });
+        await expect(pending).resolves.toMatchObject({ isError: true, details: { code: "TOOL_ABORTED" } });
+        expect(abortCall).toEqual({ method: "tools.abort", params: { sessionId: "session-1", toolCallId: `${name.toLowerCase()}-stop`, toolName: name } });
+        expect(settledBeforeHost).toBe(false);
+      } finally {
+        finishExecution({ ok: false, content: { code: "TOOL_ABORTED" } });
+        await runtime.dispose();
+      }
+    });
+
+    it(`rejects a pre-aborted ${name} without starting a host search`, async () => {
+      const host = { call: vi.fn() };
+      const runtime = createRuntime({ host });
+      try {
+        await expect(runtimeTool(runtime, name).execute(
+          "never-start", { pattern: "needle" }, AbortSignal.abort(),
+        )).rejects.toMatchObject({ errorCode: "TOOL_ABORTED" });
+        expect(host.call).not.toHaveBeenCalled();
+      } finally { await runtime.dispose(); }
+    });
+  }
 });
 
 describe("DesktopAgentRuntime live activity", () => {

@@ -1935,19 +1935,19 @@ identify the platform validation still needed.
 
 - **Preconditions**: A session can produce both a deliberately delayed first
   token and a streaming response. A deterministic Host fixture can hold a
-  read-only `Grep` call and expose a pending `Write` approval.
+  `Read` call and expose a pending `Write` approval.
 - **Steps**: 1) Send ordinary text and click Stop immediately, including while
   the prompt is still being admitted. 2) Confirm the user row is undone and
   the text returns to the composer after that first Stop. 3) Send again, wait
   for partial output, then stop during the stream. 4) Immediately send a new
   prompt after Stop returns, without waiting for an idle delay. 5) Start a
-  read-only Grep that does not return, press Stop, then start another prompt.
+  Read that does not return, press Stop, then start another prompt.
   6) Start a Write that is waiting for permission, press Stop, then try to
   approve the stale request. 7) Observe the transcript, composer, and workspace.
 - **Expected**: The first Stop is honored even if prompt admission is still in
   progress; the unanswered send is undone and its draft restored. The
   streaming send stops with its partial response preserved and no draft
-  restoration or duplicate user turn. The read-only tool returns
+  restoration or duplicate user turn. Read returns
   `TOOL_ABORTED`, its late result is discarded, and the follow-up starts
   without `AGENT_BUSY`. Stopping the pending Write cancels its permission;
   approving the stale request fails and creates no file. A mutating operation
@@ -1961,6 +1961,33 @@ identify the platform validation still needed.
   `packages/agent-runtime/src/runtime.test.ts` and the pending-Write regression
   in `crates/host-core/src/rpc/mod.rs`; rendered Electron interaction remains
   a manual validation run.
+
+#### E2E-STOP-search-settlement: Search Stop releases real work before follow-up
+
+- **Preconditions**: Isolated synthetic workspace, permission state, and child
+  process fixtures; no real provider, user profile, or running Desktop.
+- **Steps**: Abort Grep/Glob before registration, during external-path approval,
+  traversal with no matching entries, giant-line reads, and tag processing.
+  Abort a quiet fake `rg` twice, then run another search. Exercise newline-free
+  stdout capping, normal exit 1, and broken-install fallback separately. Delay
+  optional Stop history recovery, switch sessions or complete a newer turn,
+  and inject abort/recovery failures. Cancel a remote search while its completion
+  is held by a deterministic relay fixture, then deliver the final result.
+- **Expected**: Cancelled searches return `TOOL_ABORTED`; permission requests and
+  registry entries are cleaned. Tool settlement waits for the blocking search
+  body and owned child exit/reap. Stop never becomes a successful fallback or a
+  fake idle state. Later searches/turns remain usable, while late history cannot
+  overwrite newer rows or structured drafts. Security, ignore, output, encoding,
+  and tag/provenance contracts remain intact. Remote completion stays routable
+  after cancellation; the relay cannot release admission before it arrives.
+- **Automated coverage**: `session-stop-settlement.test.mjs`,
+  `native-pi-sessions.test.mjs`, `session-message-input.test.mjs`,
+  `packages/agent-runtime/src/runtime.test.ts`, host-core
+  `search_cancellation_tests`, `tools::cancel::tests`, remote search settlement,
+  and hashline tag cancellation/encoding-boundary tests. These are local unit/integration
+  fixtures, not a live-provider E2E or CPU/temperature measurement.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md` §3.1,
+  `04-ux/09-interaction-patterns.md` §3
 
 #### E2E-171: Streaming reply survives quit, crash, and stop
 
@@ -6136,6 +6163,23 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Status**: Renderer regression automated by
   `node scripts/e2e-transcript-reading-position.mjs` (isolated React/Electron,
   fixture IPC); live UI scenario Draft.
+
+#### E2E-TRANSCRIPT-hidden-pane-work: Retained panes suspend invisible work
+
+- **Preconditions**: Isolated React/Electron transcript fixture with active
+  thinking/tools, assistant text, expanded disclosures, and nested scrolling.
+- **Steps**: Record visible clocks; hide the mounted pane, update stored text
+  and tool output, then reveal it. Repeat the transition and finally unmount.
+- **Expected**: Hidden panes schedule no recurring transcript clocks or
+  follow-scroll frames. They keep the same mounted output, nested scroll
+  positions, and manual disclosure choices. Reveal immediately catches up to
+  current stored content without later reverting to a deferred projection;
+  visible clocks resume and unmount clears timers/frames/observers.
+- **Status**: Automated by `node scripts/e2e-transcript-render.mjs` through
+  `scripts/e2e/transcript-hidden-pane.tsx`; no product main, provider, or user
+  profile is started. Synthetic timer/work counts are not thermal measurements.
+- **Specs linked**: `04-ux/09-interaction-patterns.md` §session navigation,
+  ADR 0137
 
 #### E2E-071h: Reopening a session while its response is streaming
 

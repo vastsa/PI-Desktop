@@ -71,7 +71,7 @@ export const SessionPane = memo(function SessionPane({
       aria-hidden={visible ? undefined : true}
       inert={visible ? undefined : true}
     >
-      <TranscriptDisclosureProvider sessionId={sessionId}>
+      <TranscriptDisclosureProvider sessionId={sessionId} visible={visible}>
         <ChatTranscript
           sessionId={sessionId}
           messages={transcript.messages}

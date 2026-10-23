@@ -145,11 +145,33 @@ pub(super) async fn execute_remote_tool(
     )
     .await;
     let timeout_ms = tools::effective_timeout_ms(&p.tool_name, p.timeout_ms).unwrap_or(120_000);
+    let response = async {
+        match tokio::time::timeout(
+            Duration::from_millis(timeout_ms.saturating_add(15_000)),
+            receiver,
+        )
+        .await
+        {
+            Ok(Ok(value)) => Ok(value),
+            _ => Err("TOOL_TIMEOUT"),
+        }
+    };
+    tokio::pin!(response);
     let outcome = tokio::select! {
-        outcome = tokio::time::timeout(Duration::from_millis(timeout_ms.saturating_add(15_000)), receiver) => match outcome {
-            Ok(Ok(value)) => Ok(value), _ => Err("TOOL_TIMEOUT"),
+        outcome = &mut response => outcome,
+        _ = wait_for_tool_cancellation(&mut cancellation) => {
+            if matches!(p.tool_name.as_str(), "Grep" | "Glob") {
+                // Retain relay/admission ownership until the cancellation-aware
+                // remote worker settles. The existing transport deadline still
+                // reports a timeout/disconnection rather than a false stop.
+                send_notification(tx, "tools.remoteAbort", json!({
+                    "sessionId": p.session_id, "toolCallId": p.tool_call_id,
+                }));
+                response.await
+            } else {
+                Err("TOOL_ABORTED")
+            }
         },
-        _ = wait_for_tool_cancellation(&mut cancellation) => Err("TOOL_ABORTED"),
     };
     state.lock().await.remote_execs.remove(&request_id);
     match outcome {
@@ -353,10 +375,19 @@ pub(super) async fn handle(
             session_id: &p.session_id,
             store: &hashline,
         }),
+        cancellation: cancellation.clone(),
     };
-    let mut result = tokio::select! {
-        result = tools::execute_tool_with_path_access(Some(&root),None,&p.tool_name,&p.args,options) => result,
-        _ = wait_for_tool_cancellation(&mut cancellation) => failure(&p,"TOOL_ABORTED","tool aborted",started),
+    let execute =
+        tools::execute_tool_with_path_access(Some(&root), None, &p.tool_name, &p.args, options);
+    let mut result = if matches!(p.tool_name.as_str(), "Grep" | "Glob") {
+        // Search owns cancellation and must settle its blocking body/child
+        // before the registry is cleared or another turn is admitted.
+        execute.await
+    } else {
+        tokio::select! {
+            result = execute => result,
+            _ = wait_for_tool_cancellation(&mut cancellation) => failure(&p,"TOOL_ABORTED","tool aborted",started),
+        }
     };
     result.tool_call_id = p.tool_call_id.clone();
     state

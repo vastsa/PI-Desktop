@@ -175,7 +175,7 @@ test("scroll input is attributed to the scroller that can consume it", () => {
 test("a nested owner holds its own position and passes the hold outward", () => {
   assert.match(
     followScroll,
-    /const followScrollNow = useCallback\(\(\) => \{\s*if \(restoreDisclosureAnchor\(\)\) return;\s*if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
+    /const followScrollNow = useCallback\(\(\) => \{\s*if \(!enabledRef\.current\) return;\s*if \(restoreDisclosureAnchor\(\)\) return;\s*if \(!pinnedRef\.current\) return;\s*cancelFollowScroll\(\);\s*scrollToBottom\(\);/,
   );
   assert.match(followScroll, /disclosureAnchorNotifier,/);
   assert.match(

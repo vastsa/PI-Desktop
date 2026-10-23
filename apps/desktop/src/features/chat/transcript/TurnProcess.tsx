@@ -98,11 +98,11 @@ export function TurnProcess({
   const [now, setNow] = useState(Date.now);
   const { startedAt, endedAt } = useMemo(() => turnProcessTiming(turnParts), [turnParts]);
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || !disclosure.workVisible) return;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [isActive]);
+  }, [isActive, disclosure.workVisible]);
   const scope = useMemo<DisclosureScopeValue>(
     () => ({ claim: disclosure.claim, visible: disclosure.open }),
     [disclosure.claim, disclosure.open],

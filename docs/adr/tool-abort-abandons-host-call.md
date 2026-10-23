@@ -35,10 +35,10 @@ Three facts constrain the fix:
 
 The runtime sends typed `tools.abort` requests for in-flight tools. Host-core
 registers cancellation before permission evaluation, so stopping a pending
-approval or queued tool prevents it from starting. Local `Read`, `Glob`, and
-`Grep` calls may end the runtime's wait immediately because they are read-only;
-the host also observes cancellation and discards their result. The blocking
-filesystem worker may continue until it returns, but it cannot mutate files.
+approval or queued tool prevents it from starting. Local `Read` calls retain
+their existing immediate local-abandon policy. `Glob` and `Grep` instead use
+cooperative host cancellation and await their blocking worker and any owned
+search process termination/reaping before the runtime settles.
 
 For `Bash` and `GenerateImages`, the runtime waits a bounded 10s grace window
 for the host to return output collected before process termination. For
@@ -46,10 +46,12 @@ mutating, MCP, and plugin calls, the runtime waits for the host result after
 requesting cancellation. A pending permission is cancelled; an operation that
 already started is not reported as stopped until its result arrives.
 
-Read-only and process-backed tools race their execution against cancellation.
-For a read-only local filesystem call, the Rust blocking worker may outlive the
-RPC, but its result is discarded. Mutating and desktop-dispatched tools are not
-locally abandoned while active.
+`Read` and process-backed tools race their execution against cancellation.
+For a local `Read`, the blocking worker may outlive the RPC and its result is
+discarded. Searches, mutations, and desktop-dispatched tools are not locally
+abandoned while active. A remote search sends cancellation but keeps its relay
+ownership until remote completion or the existing transport failure deadline;
+a timeout/disconnection is observable failure, not confirmed Stop settlement.
 
 The runtime also drives the tools from `abort()` itself, not only from the
 signal each tool was handed. `abort()` walks the in-flight tool calls and runs
@@ -63,11 +65,12 @@ alive minutes later.
 
 ## Consequences
 
-- A long-running read-only tool no longer holds the turn open after Stop, while
-  pending permission prompts and admission waits are cancelled at the host.
-- Local filesystem workers and already-started extension operations may still
-  consume resources until they return. Mutating and extension results remain
-  observable before the runtime reports the turn settled.
+- Search Stop interrupts traversal, chunked reads, tag processing, and quiet
+  `rg` processes instead of leaving background search work behind. The local
+  admission permit remains owned until worker/process cleanup completes.
+- `Read` workers and already-started extension operations may still consume
+  resources until they return. Mutating and extension results remain observable
+  before the runtime reports the turn settled.
 - A new turn uses distinct tool call ids. Typed abort records also prevent an
   early abort for one tool name from being inherited by another tool.
 - Progress output for an abandoned call stops at the moment of the stop.
@@ -80,6 +83,6 @@ alive minutes later.
 - **Only arm a grace timer on abort (no race for cancellable tools).** Simpler,
   but leaves every non-cancellable tool waiting the full window and still keeps
   the turn blocked for that window.
-- **Wait for host-core to grow cancellation for every tool.** Correct durable
-  fix, tracked separately; it cannot ship as a bug fix for a turn that is stuck
-  today.
+- **Wait for host-core to grow cancellation for every tool.** The search
+  implementation now cooperatively cancels its owned work. Broader interruption
+  of mutating and extension operations remains outside this change.

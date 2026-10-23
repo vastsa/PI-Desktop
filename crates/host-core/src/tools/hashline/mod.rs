@@ -19,6 +19,7 @@ pub use tag::{
 
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
+use std::io::Read;
 use std::path::Path;
 
 pub struct HashlineContext<'a> {
@@ -131,13 +132,29 @@ pub fn record_grep_file(
     canonical_path: &Path,
     display_path: &str,
     matched_lines: Option<&[u64]>,
-) -> Option<(String, String)> {
-    let bytes = std::fs::read(canonical_path).ok()?;
-    if looks_binary_bytes(&bytes) {
-        return None;
+    cancellation: &super::cancel::ToolCancellation,
+) -> Result<Option<(String, String)>, super::cancel::Cancelled> {
+    cancellation.check()?;
+    let Ok(mut reader) = std::fs::File::open(canonical_path) else {
+        return Ok(None);
+    };
+    let mut bytes = Vec::new();
+    let mut chunk = [0_u8; 64 * 1024];
+    loop {
+        cancellation.check()?;
+        match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(size) => bytes.extend_from_slice(&chunk[..size]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return Ok(None),
+        }
     }
-    let file = normalize_file(&bytes);
-    let tag = tag_of_lf_text(&file.text);
+    if tag::looks_binary_bytes_cancellable(&bytes, cancellation)? {
+        return Ok(None);
+    }
+    let file = tag::normalize_file_cancellable(&bytes, cancellation)?;
+    let tag = tag::tag_of_lf_text_cancellable(&file.text, cancellation)?;
+    cancellation.check()?;
     if let Some(ctx) = ctx {
         let seen = match matched_lines {
             Some(lines) => Some(lines.iter().map(|n| *n as u32).collect()),
@@ -151,7 +168,7 @@ pub fn record_grep_file(
             seen,
         );
     }
-    Some((display_path.to_string(), tag))
+    Ok(Some((display_path.to_string(), tag)))
 }
 
 pub fn attach_tags(mut out: Value, tags: Map<String, Value>) -> Value {

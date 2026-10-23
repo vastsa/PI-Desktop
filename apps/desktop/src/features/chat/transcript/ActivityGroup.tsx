@@ -2,7 +2,7 @@ import { SubagentStopButton } from "./SubagentStopButton";
 import { activityTimingInputs, cachedVisibleActivityItems } from "../../../lib/transcript-activity-summary";
 import { reuseReferences } from "../../../lib/transcript-summary";
 import { ActivityItems } from "./ActivityItems";
-import { DisclosureScope, disclosureKey } from "./disclosure";
+import { DisclosureScope, disclosureKey, useTranscriptVisibility } from "./disclosure";
 import { ProcessActivityGroup } from "./ProcessActivityGroup";
 import {
   memo,
@@ -203,6 +203,7 @@ export const ActivityGroup = memo(function ActivityGroup({
   turnDelegationStatuses,
   turnDelegationTimings,
 }: ActivityGroupProps) {
+  const visible = useTranscriptVisibility();
   const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
   const hideThinking = !showThinking;
   const displayMode = useAppStore((state) => resolveTranscriptDisplayMode(state.settings));
@@ -311,11 +312,11 @@ export const ActivityGroup = memo(function ActivityGroup({
   useEffect(() => {
     if (wasActiveRef.current && !live) setFinishedAt(Date.now());
     wasActiveRef.current = live;
-    if (!live) return;
+    if (!live || !visible) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [live]);
+  }, [live, visible]);
 
   const renderedItems = <ActivityItems
     items={items}
@@ -412,19 +413,21 @@ export const ActivityGroup = memo(function ActivityGroup({
 
 /** Keep the running turn visible when no more specific runtime phase is known. */
 export function WorkingIndicator({ startedAt }: { startedAt?: number } = {}) {
+  const visible = useTranscriptVisibility();
   const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);
   const startedAtRef = useRef(startedAt ?? Date.now());
 
   useEffect(() => {
-    startedAtRef.current = startedAt ?? Date.now();
+    if (!visible) return;
+    if (startedAt !== undefined) startedAtRef.current = startedAt;
     const updateElapsed = () => {
       setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
     };
     updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timer);
-  }, [startedAt]);
+  }, [startedAt, visible]);
 
   return (
     <div
@@ -449,6 +452,7 @@ export function WorkingIndicator({ startedAt }: { startedAt?: number } = {}) {
 }
 
 export function RunActivityIndicator({ activity }: { activity: AgentActivity }) {
+  const visible = useTranscriptVisibility();
   const { t } = useTranslation();
   const [now, setNow] = useState(Date.now);
   const retryErrorDetailsId = useId();
@@ -456,10 +460,11 @@ export function RunActivityIndicator({ activity }: { activity: AgentActivity }) 
   const retryPlateRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
+    if (!visible) return;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [activity.since]);
+  }, [activity.since, visible]);
 
   const elapsed = formatToolDuration(
     Math.max(0, Math.floor((now - activity.since) / 1000)),
@@ -476,7 +481,7 @@ export function RunActivityIndicator({ activity }: { activity: AgentActivity }) 
   // anchored 8px above the trigger, so its own bottom edge starts that room -
   // and let the remainder scroll.
   useEffect(() => {
-    if (!retryError) return;
+    if (!retryError || !visible) return;
     const reason = retryReasonRef.current;
     const plate = retryPlateRef.current;
     if (!reason || !plate) return;
@@ -525,7 +530,7 @@ export function RunActivityIndicator({ activity }: { activity: AgentActivity }) 
       scroller?.removeEventListener("scroll", measure);
       observer?.disconnect();
     };
-  }, [retryError]);
+  }, [retryError, visible]);
   const retryErrorSummary = retryError
     ? (() => {
         const key = `errors.${retryError.code}`;

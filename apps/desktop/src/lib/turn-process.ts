@@ -263,31 +263,40 @@ export function projectTurnProcess(entry: AssistantTurnEntry) {
   return { process, responses };
 }
 
+type TurnProcessTiming = Readonly<{
+  startedAt: number | undefined;
+  endedAt: number | undefined;
+}>;
+
+// Process chunks share the same immutable turn snapshot. Weak keys release
+// timing with that snapshot instead of retaining every historical/live revision.
+const timingByParts = new WeakMap<readonly AssistantTurnPart[], TurnProcessTiming>();
+
 /** Use recorded message/tool timing for history; elapsed live time is UI-only. */
-export function turnProcessTiming(parts: readonly AssistantTurnPart[]) {
-  const messages = parts.flatMap((part) =>
-    part.kind === "message" ? [part.message] : part.items.map((item) => item.message),
-  );
-  const starts = messages
-    .map((message) => Date.parse(message.createdAt))
-    .filter(Number.isFinite);
-  if (starts.length === 0) return { startedAt: undefined, endedAt: undefined };
-  const startedAt = Math.min(...starts);
-  const endedAt = Math.max(
+export function turnProcessTiming(parts: readonly AssistantTurnPart[]): TurnProcessTiming {
+  const cached = timingByParts.get(parts);
+  if (cached) return cached;
+  let startedAt: number | undefined;
+  let endedAt: number | undefined;
+  const include = (message: UiMessage) => {
+    const createdAt = Date.parse(message.createdAt);
+    if (!Number.isFinite(createdAt)) return;
+    startedAt = startedAt === undefined ? createdAt : Math.min(startedAt, createdAt);
+    const duration = message.role === "tool" ? message.toolDurationMs : message.responseDurationMs;
+    const recordedEnd = Date.parse(message.toolCompletedAt ?? "");
+    const end = Number.isFinite(recordedEnd)
+      ? recordedEnd
+      : createdAt + (typeof duration === "number" && Number.isFinite(duration) ? Math.max(0, duration) : 0);
+    endedAt = endedAt === undefined ? end : Math.max(endedAt, end);
+  };
+  for (const part of parts) {
+    if (part.kind === "message") include(part.message);
+    else for (const item of part.items) include(item.message);
+  }
+  const timing = Object.freeze({
     startedAt,
-    ...messages.map((message) => {
-      const createdAt = Date.parse(message.createdAt);
-      if (!Number.isFinite(createdAt)) return startedAt;
-      const duration =
-        message.role === "tool" ? message.toolDurationMs : message.responseDurationMs;
-      const recordedEnd = Date.parse(message.toolCompletedAt ?? "");
-      return Number.isFinite(recordedEnd)
-        ? recordedEnd
-        : createdAt +
-            (typeof duration === "number" && Number.isFinite(duration)
-              ? Math.max(0, duration)
-              : 0);
-    }),
-  );
-  return { startedAt, endedAt };
+    endedAt: startedAt === undefined ? undefined : Math.max(startedAt, endedAt ?? startedAt),
+  });
+  timingByParts.set(parts, timing);
+  return timing;
 }

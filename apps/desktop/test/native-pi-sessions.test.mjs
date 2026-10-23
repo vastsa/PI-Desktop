@@ -6,6 +6,7 @@ const agent = await read("../electron/main/ipc/agent-ipc.ts");
 
 const composer = await read("../src/components/Composer.tsx");
 const transcript = await read("../src/stores/slices/transcript-slice.ts");
+const stopSession = await read("../src/stores/runtime/stop-session.ts");
 const events = await read("../src/stores/slices/events-slice.ts");
 const sidecarDispatch = await read("../../../packages/agent-runtime/src/sidecar.ts");
 
@@ -14,9 +15,10 @@ test("native model readiness uses capability instead of Desktop secrets", () => 
 });
 
 test("native abort bypasses smart-stop rewrite and refreshes source detail", () => {
-  const abort = transcript.slice(transcript.indexOf("abort: async"));
-  const native = abort.slice(abort.indexOf('source === "pi-native"'), abort.indexOf("const submittedDraft"));
-  assert.match(native, /api\.abort\(sessionId\)/);
+  assert.match(transcript, /abort: createSessionStop\(/);
+  assert.match(stopSession, /const external = target\?\.source === "pi-native" \|\| isRemoteSession\(target\)/);
+  assert.match(stopSession, /await api\.abort\(sessionId\)/);
+  const native = stopSession.slice(stopSession.indexOf("if (external) {"), stopSession.indexOf("const state = get();", stopSession.indexOf("if (external) {")));
   assert.match(native, /api\.getSession/);
   assert.match(native, /return;/);
   assert.doesNotMatch(native, /replaceSessionMessages|resolveComposerSmartStop/);
@@ -99,7 +101,7 @@ test("durable user acknowledgement reconciles active, cached and background rows
 
 test("native smart-stop abort keeps one durable user row and never rewrites the source", async () => {
   const id = "native-pi:fixture";
-  const state = { activeSessionId: id, sessions: [{ id, source: "pi-native" }], messages: [user("optimistic-1")], retainedTranscripts: {}, runningSessions: { [id]: true }, isRunning: true };
+  const state = { activeSessionId: id, sessions: [{ id, source: "pi-native" }], messages: [user("optimistic-1")], retainedTranscripts: {}, runningSessions: { [id]: true }, isRunning: true, agentStatuses: {}, pendingPermissions: {}, pendingAsks: {} };
   const calls = [];
   const originalAbort = api.abort;
   const originalReplace = api.replaceSessionMessages;

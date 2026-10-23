@@ -123,10 +123,10 @@ tool-abort-abandons-host-call). Host-core registers cancellation before
 permission evaluation, so a pending approval or queued admission is cancelled
 instead of starting after Stop. `Bash` and `GenerateImages` use the existing
 process cancellation path; the runtime waits up to 10s for the host to return
-output collected before termination. Local `Read`, `Glob`, and `Grep` calls may
-end the runtime's wait immediately and return `TOOL_ABORTED`; their results are
-discarded. A blocking filesystem worker may continue until it returns, but
-these tools do not mutate the workspace. For a mutating, MCP, or plugin call
+output collected before termination. Local `Read` calls may end the runtime's
+wait immediately and discard their late result. `Grep` and `Glob` instead await
+cooperative host cancellation and owned worker/process cleanup (§3.1). For a
+mutating, MCP, or plugin call
 that has already started, the runtime waits for the host result before it
 settles the turn, so Stop cannot hide a write or extension action that is still
 running. Typed cancellation records include the tool name and cannot be
@@ -136,6 +136,35 @@ inherited by a different tool that reuses the call id.
 execution tool. It validates its structured request, observes cancellation,
 uses a bounded provider timeout, and returns typed classifier results; it has
 no filesystem path or host-core workspace permission surface.
+
+### 3.1 Search cancellation and settlement
+
+`Grep` and `Glob` forward the turn's abort signal to the existing per-call host
+cancellation registry. Registration precedes permission evaluation, including
+external-path approval. An abort queued before registration is consumed by that
+call; repeated abort requests share the same terminal outcome and cannot poison
+a later call.
+
+Traversal checks cancellation for every entry, even skipped directories,
+unmatched files, and walk errors. In-process Grep also checks between read chunks
+of a giant line and while reading, decoding, normalizing, and hashing tag input.
+Cancellation returns `TOOL_ABORTED`, never partial success or an unreadable-file
+fallback. Existing ignore/security rules, path permissions, output budgets,
+encoding, tags, and provenance remain unchanged.
+
+The system `rg` backend observes abort while reading stdout or waiting for a
+quiet child. Stop and the stdout cap terminate the owned process tree and await
+child reaping before the tool settles. Cancellation is terminal; a missing or
+broken `rg` may still use the normal in-process fallback, and exit 1 still means
+no matches. Process cleanup failures remain observable.
+
+Local and remote workspace runners await the cancellation-aware search body,
+including its blocking-pool join. They must not drop that future and release
+admission while filesystem or child-process work is still running. The remote
+relay keeps its response ownership after sending cancellation; an existing
+transport timeout or disconnect remains an explicit failure, not confirmation
+that remote work stopped. Follow-up turns after a successful Stop require
+actual backend settlement, not a renderer-only idle state or enlarged timeout.
 
 ## 4. Path Rules
 

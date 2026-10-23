@@ -21,11 +21,16 @@ use tokio::sync::{mpsc, watch};
 
 use crate::workspace::{resolve_tool_path_with_external, simple_canonicalize, ToolRoot};
 
+pub mod cancel;
 mod grep_rg;
 pub mod hashline;
 pub mod ignore_rules;
 pub mod shell;
 
+#[cfg(test)]
+mod search_cancellation_tests;
+
+use cancel::ToolCancellation;
 pub use hashline::{HashlineContext, HashlineStore};
 
 /// Ceiling on what the streaming capture retains per stream.
@@ -862,6 +867,7 @@ pub struct ToolExecutionOptions<'a> {
     pub bash_options: Option<BashExecutionOptions>,
     pub allow_external_paths: bool,
     pub hashline: Option<HashlineContext<'a>>,
+    pub cancellation: Option<watch::Receiver<bool>>,
 }
 
 pub fn validate_timeout_ms(timeout_ms: Option<u64>) -> Result<(), (String, String)> {
@@ -908,17 +914,24 @@ struct ScannedLine {
 /// that is precisely the file shape the agent hits most often.
 struct LineReader<R: BufRead> {
     reader: R,
+    cancellation: Option<ToolCancellation>,
 }
 
 impl LineReader<BufReader<File>> {
     fn open(path: &Path) -> std::io::Result<Self> {
         Ok(Self {
             reader: BufReader::with_capacity(64 * 1024, File::open(path)?),
+            cancellation: None,
         })
     }
 }
 
 impl<R: BufRead> LineReader<R> {
+    fn with_cancellation(mut self, cancellation: &ToolCancellation) -> Self {
+        self.cancellation = Some(cancellation.clone());
+        self
+    }
+
     /// Peek the buffered head of the stream and decide whether it is binary,
     /// without consuming anything. Cheaper than a second open, and it keeps
     /// Grep from matching lossy garbage inside object files.
@@ -952,6 +965,11 @@ impl<R: BufRead> LineReader<R> {
         let mut clipped = false;
         let mut saw_input = false;
         loop {
+            if let Some(cancellation) = &self.cancellation {
+                cancellation
+                    .check()
+                    .map_err(|error| io::Error::new(ErrorKind::Interrupted, error))?;
+            }
             let chunk = match self.reader.fill_buf() {
                 Ok(chunk) => chunk,
                 Err(error) if error.kind() == ErrorKind::Interrupted => continue,
@@ -1110,6 +1128,7 @@ pub async fn execute_tool_with_options(
             bash_options,
             allow_external_paths: false,
             hashline: None,
+            cancellation: None,
         },
     )
     .await
@@ -1124,6 +1143,7 @@ async fn run_file_tool(
     args: &Value,
     allow_external_paths: bool,
     hashline: Option<&HashlineContext<'_>>,
+    cancellation: ToolCancellation,
 ) -> Result<Value, hashline::ToolError> {
     let workspace = workspace.map(Path::to_path_buf);
     let scratch = scratch.map(Path::to_path_buf);
@@ -1144,12 +1164,31 @@ async fn run_file_tool(
         let (workspace, scratch, hashline) =
             (workspace.as_deref(), scratch.as_deref(), hashline.as_ref());
         let args = &args;
+        if matches!(tool_name.as_str(), "Grep" | "Glob") {
+            cancellation
+                .check()
+                .map_err(|error| hashline::ToolError::from(<(String, String)>::from(error)))?;
+        }
         match tool_name.as_str() {
             "Read" => tool_read(workspace, scratch, args, allow_external_paths, hashline)
                 .map_err(Into::into),
-            "Glob" => tool_glob(workspace, scratch, args, allow_external_paths).map_err(Into::into),
-            "Grep" => tool_grep(workspace, scratch, args, allow_external_paths, hashline)
-                .map_err(Into::into),
+            "Glob" => tool_glob(
+                workspace,
+                scratch,
+                args,
+                allow_external_paths,
+                &cancellation,
+            )
+            .map_err(Into::into),
+            "Grep" => tool_grep(
+                workspace,
+                scratch,
+                args,
+                allow_external_paths,
+                hashline,
+                &cancellation,
+            )
+            .map_err(Into::into),
             "Write" => tool_write(workspace, scratch, args, allow_external_paths, hashline)
                 .map_err(Into::into),
             // "Edit": the caller routes only these five file tools here.
@@ -1174,6 +1213,7 @@ pub async fn execute_tool_with_path_access(
         bash_options,
         allow_external_paths,
         hashline,
+        cancellation,
     } = options;
     let started = Instant::now();
     let timeout_ms = effective_timeout_ms(tool_name, requested_timeout_ms);
@@ -1204,6 +1244,7 @@ pub async fn execute_tool_with_path_access(
                 args,
                 allow_external_paths,
                 hashline.as_ref(),
+                ToolCancellation::from_receiver(cancellation),
             )
             .await
         }
@@ -1874,19 +1915,21 @@ fn candidate_files(
     scoped: bool,
     include: Option<&globset::GlobSet>,
     max_files: usize,
-) -> (Vec<PathBuf>, bool) {
+    cancellation: &ToolCancellation,
+) -> Result<(Vec<PathBuf>, bool), (String, String)> {
+    cancellation.check()?;
     if search_root.is_file() {
         if ignore_rules::is_sensitive_path(search_root) {
-            return (Vec::new(), false);
+            return Ok((Vec::new(), false));
         }
         let relative = search_root
             .file_name()
             .map(Path::new)
             .unwrap_or(search_root);
         if include.is_some_and(|set| !glob_matches(set, relative)) {
-            return (Vec::new(), false);
+            return Ok((Vec::new(), false));
         }
-        return (vec![search_root.to_path_buf()], false);
+        return Ok((vec![search_root.to_path_buf()], false));
     }
 
     let mut walker = WalkBuilder::new(search_root);
@@ -1897,7 +1940,11 @@ fn candidate_files(
     ignore_rules::configure_walker(&mut walker, ignore_root, scoped);
     let mut candidates: Vec<(PathBuf, SystemTime)> = Vec::new();
     let mut capped = false;
-    for entry in walker.build().flatten() {
+    let mut entries = walker.build();
+    loop {
+        cancellation.check()?;
+        let Some(entry) = entries.next() else { break };
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -1922,11 +1969,13 @@ fn candidate_files(
     // Most recently touched first: the file someone just edited is far more
     // likely to be the one the question is about than an alphabetically early
     // one, so a capped result keeps the useful half.
+    cancellation.check()?;
     candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    (
+    cancellation.check()?;
+    Ok((
         candidates.into_iter().map(|(path, _)| path).collect(),
         capped,
-    )
+    ))
 }
 
 fn tool_glob(
@@ -1934,6 +1983,7 @@ fn tool_glob(
     scratch: Option<&Path>,
     args: &Value,
     allow_external_paths: bool,
+    cancellation: &ToolCancellation,
 ) -> Result<Value, (String, String)> {
     let root = require_workspace(workspace)?;
     let pattern = args
@@ -1966,10 +2016,12 @@ fn tool_glob(
         scoped,
         Some(&set),
         GLOB_MAX_LIMIT * 8,
-    );
+        cancellation,
+    )?;
     let mut matches: Vec<String> = Vec::new();
     let mut bytes = 0_usize;
     for path in &files {
+        cancellation.check()?;
         if matches.len() >= limit {
             truncated = true;
             break;
@@ -1993,6 +2045,7 @@ fn tool_glob(
             "more files match; raise limit (max {GLOB_MAX_LIMIT}) or narrow pattern/path. Results are ordered by modification time, newest first"
         ));
     }
+    cancellation.check()?;
     Ok(out)
 }
 
@@ -2002,6 +2055,7 @@ fn tool_grep(
     args: &Value,
     allow_external_paths: bool,
     hashline: Option<&HashlineContext<'_>>,
+    cancellation: &ToolCancellation,
 ) -> Result<Value, (String, String)> {
     let root = require_workspace(workspace)?;
     let pattern = args
@@ -2077,15 +2131,17 @@ fn tool_grep(
         mode,
         case_insensitive,
         head_limit,
-    }) {
-        return Ok(mint_grep_tags(
+        cancellation,
+    })? {
+        return mint_grep_tags(
             root,
             scratch,
             allow_external_paths,
             mode,
             value,
             hashline,
-        ));
+            cancellation,
+        );
     }
 
     let (files, mut truncated) = candidate_files(
@@ -2094,7 +2150,8 @@ fn tool_grep(
         scoped,
         include.as_ref(),
         GREP_MAX_CANDIDATE_FILES,
-    );
+        cancellation,
+    )?;
 
     let mut hits: Vec<Value> = Vec::new();
     let mut counts: Vec<Value> = Vec::new();
@@ -2103,9 +2160,11 @@ fn tool_grep(
     let mut clipped_lines = 0_usize;
     let mut bytes = 0_usize;
     'files: for path in &files {
-        let Ok(mut reader) = LineReader::open(path) else {
+        cancellation.check()?;
+        let Ok(reader) = LineReader::open(path) else {
             continue;
         };
+        let mut reader = reader.with_cancellation(cancellation);
         // Skipped rather than lossily decoded: a regex over mangled bytes
         // produces hits nobody can act on.
         if reader.looks_binary() {
@@ -2114,9 +2173,19 @@ fn tool_grep(
         let shown = display_tool_path(root_kind, root, path);
         let mut line_no = 0_usize;
         let mut file_matches = 0_usize;
-        // A read error mid-file is treated as end of file: partial matches from
-        // what was readable beat dropping the file entirely.
-        while let Ok(Some(line)) = reader.next_line(MAX_LINE_CHARS) {
+        // Ordinary read errors retain readable matches; cancellation is terminal.
+        loop {
+            let line = match reader.next_line(MAX_LINE_CHARS) {
+                Ok(Some(line)) => line,
+                Err(error)
+                    if error
+                        .get_ref()
+                        .is_some_and(|cause| cause.is::<cancel::Cancelled>()) =>
+                {
+                    return Err(cancel::Cancelled.into());
+                }
+                _ => break,
+            };
             line_no += 1;
             if !re.is_match(&line.text) {
                 continue;
@@ -2158,7 +2227,7 @@ fn tool_grep(
         }
     }
 
-    Ok(mint_grep_tags(
+    mint_grep_tags(
         root,
         scratch,
         allow_external_paths,
@@ -2173,7 +2242,8 @@ fn tool_grep(
             truncated,
         ),
         hashline,
-    ))
+        cancellation,
+    )
 }
 
 pub(super) fn grep_output(
@@ -2228,8 +2298,10 @@ fn mint_grep_tags(
     mode: &str,
     out: Value,
     hashline: Option<&HashlineContext<'_>>,
-) -> Value {
+    cancellation: &ToolCancellation,
+) -> Result<Value, (String, String)> {
     use std::collections::BTreeMap;
+    cancellation.check()?;
     let mut per_file: BTreeMap<String, Option<Vec<u64>>> = BTreeMap::new();
     match mode {
         "content" => {
@@ -2270,6 +2342,7 @@ fn mint_grep_tags(
     }
     let mut tags = serde_json::Map::new();
     for (display, lines) in per_file {
+        cancellation.check()?;
         let Ok((resolved, _)) =
             resolve_tool_path_with_external(root, scratch, &display, allow_external_paths)
         else {
@@ -2277,12 +2350,13 @@ fn mint_grep_tags(
         };
         let matched = lines.as_deref();
         if let Some((path, tag)) =
-            hashline::record_grep_file(hashline, &resolved, &display, matched)
+            hashline::record_grep_file(hashline, &resolved, &display, matched, cancellation)?
         {
             tags.insert(path, json!(tag));
         }
     }
-    hashline::attach_tags(out, tags)
+    cancellation.check()?;
+    Ok(hashline::attach_tags(out, tags))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3963,6 +4037,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;
@@ -4122,6 +4197,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;
@@ -4145,6 +4221,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;
@@ -4168,6 +4245,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;
@@ -4195,6 +4273,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;
@@ -4222,6 +4301,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;
@@ -4243,6 +4323,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: true,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;

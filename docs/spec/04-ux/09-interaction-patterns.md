@@ -339,6 +339,13 @@ may be retained while exactly one workspace supplies the visible shell context.
   appended after the page, which would move the newest turn out of the mounted
   trailing window (D317 / D261 / D324). Live provenance is cleared only once
   that page already contains every live row.
+- Hidden retained panes pause elapsed-time clocks, streamed-text animation,
+  tool-output formatting, delegation projections, follow-scroll frames, and
+  transcript resize observation. Visibility is independent of folding: mounted
+  rows, nested scroll positions, reading bookmarks, and explicit disclosures
+  remain intact. Background events still update the session store. Revealing a
+  pane catches up to its latest stored text/output without a deferred-snapshot
+  rewind, then resumes visible work.
 - Switching to a session with no retained pane (cold) leaves the visible pane on
   its own session until the destination commits. Only a thin progress track and
   `aria-busy` mark the wait, the composer stays non-interactive so a prompt cannot
@@ -791,7 +798,8 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 3.2 Abort behavior
 
-1. Cancel the current agent turn immediately
+1. Request cancellation of the current agent turn immediately; await actual
+   backend settlement before clearing its running state or admitting a follow-up
 2. Cancel any pending permission request (per [03-permission-ux.md](03-permission-ux.md) §7)
 3. If no assistant text, thinking, or tool row has begun, remove the just-sent
    user row and restore its pre-serialization composer draft
@@ -801,13 +809,18 @@ may be retained while exactly one workspace supplies the visible shell context.
    with aborted status and restore no draft. Preserve the measured stream
    duration and use provider output usage when available; otherwise store a
    visibly estimated output count so the conversation still shows throughput
-6. Composer re-activates (unblocked)
-7. Abort is idempotent — pressing abort when already aborting does nothing
+6. Composer re-activates after confirmed backend settlement, before optional
+   history/draft recovery. Recovery failures remain visible but cannot leave a
+   settled turn marked running; an abort failure must not fabricate idle state
+7. Abort is idempotent — concurrent Stop actions share the pending operation.
+   Late history reads or cleanup cannot overwrite a newer turn, another
+   session's visible transcript, or a newly submitted structured draft
 
 ### 3.3 Abort UX
 
-- Abort button changes to "Aborting..." briefly (100ms), then disappears
-- No confirmation dialog for abort — it is always immediate
+- The abort action remains pending until backend settlement; there is no fixed
+  100ms completion guarantee and no optimistic idle transition
+- No confirmation dialog for abort — the cancellation request is immediate
 - A partial aborted message gets a muted "(aborted)" suffix. Only the
   unanswered smart-stop branch deletes its just-sent user row.
 

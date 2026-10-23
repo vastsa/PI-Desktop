@@ -611,3 +611,44 @@ test("settings writes validate the thinking preference without changing other pr
     /thinkingDisplayMode is invalid/,
   );
 });
+
+test("all process chunks share a linear timing pass over one immutable turn snapshot", () => {
+  let timestampReads = 0;
+  const count = 2_000;
+  const parts = Object.freeze(Array.from({ length: count }, (_, index) => ({
+    kind: "activity",
+    items: [Object.freeze({
+      kind: "tool",
+      message: Object.freeze({
+        ...tool(`timed-${index}`, index % 2 ? "Bash" : "Read", { toolDurationMs: 10 }),
+        get createdAt() {
+          timestampReads += 1;
+          return "2026-09-17T00:00:00.000Z";
+        },
+      }),
+    })],
+  })));
+  const segments = segmentTurnProcess(parts).filter((segment) => segment.kind === "process");
+  for (const _segment of segments) {
+    assert.deepEqual(turnProcessTiming(parts), {
+      startedAt: Date.parse("2026-09-17T00:00:00.000Z"),
+      endedAt: Date.parse("2026-09-17T00:00:00.000Z") + 10,
+    });
+  }
+  assert.ok(timestampReads <= count * 2, `one snapshot must be linear, read ${timestampReads} timestamps`);
+  const updated = [...parts, { kind: "message", message: message("later", "assistant", "done", {
+    createdAt: "2026-09-17T00:00:02.000Z", responseDurationMs: 50,
+  }) }];
+  assert.equal(turnProcessTiming(updated).endedAt, Date.parse("2026-09-17T00:00:02.050Z"));
+  assert.equal(turnProcessTiming(parts).endedAt, Date.parse("2026-09-17T00:00:00.010Z"));
+});
+
+test("timing accepts a giant activity without an argument-spread limit", () => {
+  const parts = [{
+    kind: "activity",
+    items: Array.from({ length: 150_000 }, (_, index) => ({
+      kind: "tool", message: tool(`large-${index}`, "Grep", { toolDurationMs: index }),
+    })),
+  }];
+  assert.equal(turnProcessTiming(parts).endedAt - turnProcessTiming(parts).startedAt, 149_999);
+});

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import type { AgentActivity, UiMessage } from "@pi-desktop/shared";
 import type { AssistantTurnPart } from "../../../lib/assistant-turns";
 import type { SubagentOutcome, SubagentTiming } from "../../../lib/subagent-topology";
@@ -8,18 +8,28 @@ import { useSmoothText } from "../../../hooks/useSmoothText";
 import { ActivityGroup } from "./ActivityGroup";
 import { AssistantErrorMessage } from "./shared";
 import { useRenderBlocks, type RenderBlock } from "./render-blocks";
+import { useTranscriptVisibility } from "./disclosure";
 
 /** Message bubble that optionally applies smooth text release. */
 const SmoothMessageBubble = memo(function SmoothMessageBubble({ message, streaming }: {
   message: UiMessage;
   streaming: boolean;
 }) {
+  const visible = useTranscriptVisibility();
   const smoothStreaming = useAppStore((s) => s.settings?.smoothStreaming !== false);
   const prefersReducedMotion = typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const enabled = smoothStreaming && !prefersReducedMotion;
-  const displayContent = useSmoothText(message.content || "", streaming, enabled);
-  const showCursor = streaming && enabled && Boolean(displayContent);
+  const source = useRef(message.content || "");
+  const lastDisplay = useRef(source.current);
+  const wasVisible = useRef(visible);
+  const revealed = visible && !wasVisible.current;
+  if (visible) source.current = message.content || "";
+  const smoothContent = useSmoothText(source.current, streaming, enabled && visible && !revealed);
+  if (visible) lastDisplay.current = smoothContent;
+  wasVisible.current = visible;
+  const displayContent = lastDisplay.current;
+  const showCursor = streaming && enabled && visible && Boolean(displayContent);
   return (
     <div
       className={`message-bubble assistant-turn-fragment${streaming ? " streaming" : ""}${showCursor ? " smooth-cursor" : ""}`}

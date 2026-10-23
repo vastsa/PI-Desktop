@@ -193,3 +193,36 @@ test("abort waits for prompt admission before dispatching to the sidecar", async
   assert.deepEqual(finishedTurns, [["target", "aborted", "TURN_ABORTED", { turnId: "turn-1" }]]);
   assert.deepEqual(calls.slice(0, 2), ["settings.get", "session.get"]);
 });
+
+test("duplicate Stop cannot leave an abort marker on the following turn", async () => {
+  const handlers = new Map();
+  const activeTurns = new Map([["target", "turn-1"]]);
+  const aborting = new Set();
+  const finalized = [];
+  let queue = Promise.resolve();
+  registerAgentIpc({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    getHost: () => null,
+    getSidecar: () => ({ call: async () => ({ ok: true, aborted: true }) }),
+    getAgentHostBridge: () => ({ markAborting: (id) => aborting.add(id) }),
+    logger: { app() {} }, agentExtensions: { cancelPrompts() {} }, cancelSessionTools() {},
+    activeTurns, approvedExecutionIdsBySession: new Map(), claimedExecutionSessions: new Map(),
+    acquireSessionOperation: async () => {
+      const previous = queue;
+      let release;
+      queue = new Promise((resolve) => { release = resolve; });
+      await previous;
+      return release;
+    },
+    lockAbortReason() {},
+    finishTurn: async (_id, reason, _code, options) => {
+      finalized.push([options.turnId, reason]);
+      activeTurns.delete("target");
+      aborting.delete("target");
+    },
+  });
+  const stop = handlers.get(IPC.invoke.agentAbort);
+  await Promise.all([stop({ sessionId: "target" }), stop({ sessionId: "target" })]);
+  assert.deepEqual(finalized, [["turn-1", "aborted"]]);
+  assert.equal(aborting.has("target"), false, "a Stop without an owning turn must not poison the next completion");
+});

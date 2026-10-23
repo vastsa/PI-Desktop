@@ -71,7 +71,7 @@ test("stream rendering avoids duplicate frame state and coalesces following", ()
   // commit that reveals it, or the reveal shows one empty frame (ADR 0137).
   assert.match(
     transcript,
-    /const renderedProjection =\s*readingWindow \|\| firstCommit \|\| paneRevealed \? projection : deferredProjection/,
+    /const renderedProjection =\s*readingWindow \|\| firstCommit \|\| paneRevealed \|\| revealedProjection\.current\s*\? projection : deferredProjection/,
   );
   assert.match(transcript, /getTranscriptProjection\(messages, compactions\)/);
   assert.match(transcript, /useDeferredValue\(projection\)/);
@@ -98,7 +98,8 @@ test("expanded live tool output stays local to the changed row", () => {
   assert.match(transcript, /function toolRowPropsEqual\(/);
   assert.match(transcript, /if \(previous.variant !== "topology"\) return true;/);
   assert.doesNotMatch(transcript, /autoOpenLatest/);
-  assert.match(transcript, /if \(variant !== "topology" && open && hasDetails && disclosure\.parentVisible/);
+  assert.match(transcript, /if \(variant !== "topology" && open && hasDetails && disclosure\.workVisible/);
+  assert.match(transcript, /workVisible: scope\.visible && paneVisible/);
   assert.match(transcript, /const blocks = variant !== "topology" && open && hasDetails \? presentation\.current\?\.blocks : null/);
 });
 

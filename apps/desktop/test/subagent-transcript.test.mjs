@@ -365,10 +365,10 @@ test("a delegate's rows scroll in place instead of growing the page (D271)", () 
 });
 
 test("an expanded delegate run follows the latest output while pinned (D302)", () => {
-  // Nested follow is a dedicated hook so the main transcript's history,
-  // veil, and pane-visibility machinery stay out of the run scroller.
+  // Nested follow keeps the main transcript's history and veil machinery out
+  // of the run scroller, while suspending work with the ambient visibility.
   assert.match(transcriptSource, /function SubagentRunFollow\(/);
-  assert.match(transcriptSource, /const \{[^}]*scrollRef,[^}]*\} = useFollowScroll\(\)/);
+  assert.match(transcriptSource, /const \{[^}]*scrollRef,[^}]*\} = useFollowScroll\(visible && scrollable\)/);
   assert.match(
     transcriptSource,
     /<SubagentRunFollow[\s\S]*?headingId=\{headingId\}[\s\S]*?items=\{run\.items\}/,

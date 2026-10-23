@@ -714,6 +714,10 @@ export const ThinkingRow = memo(function ThinkingRow({
   // reasoning rows and excerpts. The stored text is never removed, so turning
   // the preference back on restores the row.
   const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
+  const presentation = useRef<{ message: UiMessage; text: string } | null>(null);
+  if (!presentation.current || (disclosure.workVisible && presentation.current.message !== message)) {
+    presentation.current = { message, text: thinkingText(message) };
+  }
   if (!showThinking) {
     return isThinkingActive(message, streaming) ? (
       <div className="tool-row thinking thinking-compact" role="status">
@@ -726,7 +730,7 @@ export const ThinkingRow = memo(function ThinkingRow({
       </div>
     ) : null;
   }
-  const text = thinkingText(message);
+  const { text } = presentation.current;
   return (
     <div className={`tool-row thinking ${open ? "open" : ""}`}>
       <button

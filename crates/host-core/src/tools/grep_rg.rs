@@ -6,14 +6,18 @@
 //! Spawn failures and `rg` exit 2 fall back to the in-process searcher so a
 //! missing or broken install never changes the tool's public shape.
 
-use super::{clip_chars, display_tool_path, grep_output, BUDGET_SEARCH, MAX_LINE_CHARS};
+use super::{
+    cancel::ToolCancellation, clip_chars, display_tool_path, grep_output, ProcessOwnership,
+    BUDGET_SEARCH, MAX_LINE_CHARS,
+};
 use crate::workspace::ToolRoot;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::io::AsyncReadExt;
+use tokio::process::{Child, Command};
 
 /// Cap on `rg --json` stdout so a pathological tree cannot fill host memory
 /// before we apply the Grep result budget.
@@ -32,6 +36,7 @@ pub struct SystemGrep<'a> {
     pub mode: &'a str,
     pub case_insensitive: bool,
     pub head_limit: usize,
+    pub cancellation: &'a ToolCancellation,
 }
 
 #[cfg(test)]
@@ -60,9 +65,14 @@ impl Drop for TestRgGuard {
     }
 }
 
-pub fn try_system_rg(req: SystemGrep<'_>) -> Option<Value> {
-    let rg = resolve_rg()?;
-    grep_with_rg(&rg, req)
+pub fn try_system_rg(req: SystemGrep<'_>) -> Result<Option<Value>, (String, String)> {
+    req.cancellation.check()?;
+    let Some(rg) = resolve_rg() else {
+        return Ok(None);
+    };
+    // The caller remains on the blocking pool for filesystem work. Async
+    // pipe reads let cancellation wake a quiet child without a watcher thread.
+    tokio::runtime::Handle::current().block_on(grep_with_rg(&rg, req))
 }
 
 fn resolve_rg() -> Option<PathBuf> {
@@ -83,7 +93,7 @@ fn resolve_rg() -> Option<PathBuf> {
     }
 }
 
-fn grep_with_rg(rg: &Path, req: SystemGrep<'_>) -> Option<Value> {
+async fn grep_with_rg(rg: &Path, req: SystemGrep<'_>) -> Result<Option<Value>, (String, String)> {
     let mut args: Vec<String> = vec!["--json".into(), "--no-config".into(), "--hidden".into()];
     // Per-file cap: content never needs more than headLimit hits from one file.
     // count mode needs the real per-file total, so it is left unbounded.
@@ -112,48 +122,133 @@ fn grep_with_rg(rg: &Path, req: SystemGrep<'_>) -> Option<Value> {
     args.push("--".into());
     args.push(req.search_dir.to_string_lossy().into_owned());
 
-    let mut child = Command::new(rg)
+    req.cancellation.check()?;
+    let mut command = Command::new(rg);
+    command
         .args(&args)
-        // `--ignore-file` patterns are matched relative to the working
-        // directory, so anchor it at the ignore root.
+        // Anchor ignore patterns at the same root as the in-process walker.
         .current_dir(req.ignore_root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let stdout = child.stdout.take()?;
-    let mut reader = BufReader::with_capacity(64 * 1024, stdout);
-    let mut raw = String::new();
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(super::windows_tool_runner_creation_flags(
+        super::windows_breakaway_allowed(),
+    ));
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => return Ok(None),
+    };
+    let mut ownership = match ProcessOwnership::assign(&child) {
+        Ok(ownership) => ownership,
+        Err(error) => {
+            tracing::warn!(%error, "rg process ownership failed");
+            child.kill().await.map_err(rg_lifecycle_error)?;
+            return Ok(None);
+        }
+    };
+    let Some(mut stdout) = child.stdout.take() else {
+        stop_and_reap(&mut child, &mut ownership).await?;
+        return Ok(None);
+    };
+    let mut chunk = [0_u8; 64 * 1024];
+    let mut raw = Vec::new();
     let mut total = 0_usize;
     let mut capped = false;
     let mut parsed: BTreeMap<PathBuf, FileHits> = BTreeMap::new();
     loop {
-        raw.clear();
-        match reader.read_line(&mut raw) {
+        let read = tokio::select! {
+            biased;
+            _ = req.cancellation.cancelled() => {
+                stop_and_reap(&mut child, &mut ownership).await?;
+                return Err(super::cancel::Cancelled.into());
+            },
+            read = stdout.read(&mut chunk) => read,
+        };
+        let size = match read {
             Ok(0) => break,
-            Ok(n) => {
-                total = total.saturating_add(n);
-                if total > RG_STDOUT_CAP {
-                    capped = true;
-                    let _ = child.kill();
-                    break;
-                }
-                consume_rg_line(&raw, req.search_dir, &mut parsed);
-            }
+            Ok(size) => size,
             Err(_) => {
-                let _ = child.kill();
-                return None;
+                stop_and_reap(&mut child, &mut ownership).await?;
+                return Ok(None);
             }
+        };
+        total = total.saturating_add(size);
+        if total > RG_STDOUT_CAP {
+            capped = true;
+            stop_and_reap(&mut child, &mut ownership).await?;
+            break;
+        }
+        let mut scan_from = raw.len();
+        raw.extend_from_slice(&chunk[..size]);
+        let mut consumed = 0;
+        while let Some(newline) = raw[scan_from..].iter().position(|byte| *byte == b'\n') {
+            let end = scan_from + newline;
+            consume_rg_line(
+                &String::from_utf8_lossy(&raw[consumed..end]),
+                req.search_dir,
+                &mut parsed,
+            );
+            consumed = end + 1;
+            scan_from = consumed;
+        }
+        raw.drain(..consumed);
+    }
+    if !raw.is_empty() && !capped {
+        consume_rg_line(&String::from_utf8_lossy(&raw), req.search_dir, &mut parsed);
+    }
+    if !capped {
+        let status = tokio::select! {
+            biased;
+            _ = req.cancellation.cancelled() => {
+                stop_and_reap(&mut child, &mut ownership).await?;
+                return Err(super::cancel::Cancelled.into());
+            },
+            status = child.wait() => match status {
+                Ok(status) => status,
+                Err(error) => {
+                    stop_and_reap(&mut child, &mut ownership).await?;
+                    return Err(rg_lifecycle_error(error));
+                }
+            },
+        };
+        // 0 = matches, 1 = no matches. A broken rg still falls back; Stop does not.
+        if !status.success() && status.code() != Some(1) {
+            return Ok(None);
         }
     }
-    let status = child.wait().ok()?;
-    // 0 = matches, 1 = no matches. Anything else is an rg failure: fall back.
-    if !status.success() && status.code() != Some(1) {
-        return None;
-    }
+    req.cancellation.check()?;
+    Ok(Some(build_result(req, parsed, capped)?))
+}
 
-    Some(build_result(req, parsed, capped))
+fn rg_lifecycle_error(error: std::io::Error) -> (String, String) {
+    (
+        "INTERNAL".into(),
+        format!("rg process lifecycle failed: {error}"),
+    )
+}
+
+async fn stop_and_reap(
+    child: &mut Child,
+    ownership: &mut ProcessOwnership,
+) -> Result<(), (String, String)> {
+    let termination_error = child
+        .id()
+        .and_then(|pid| ownership.terminate_fail_closed(pid).err());
+    if termination_error.is_some() {
+        // Best-effort root kill after the ownership fallback, but do not hide
+        // a failure to terminate the complete process tree.
+        let _ = child.start_kill();
+    }
+    // Even after a termination error, reap before releasing tool admission.
+    child.wait().await.map_err(rg_lifecycle_error)?;
+    match termination_error {
+        Some(error) => Err(("INTERNAL".into(), format!("rg termination failed: {error}"))),
+        None => Ok(()),
+    }
 }
 
 struct FileHits {
@@ -218,9 +313,11 @@ fn build_result(
     req: SystemGrep<'_>,
     parsed: BTreeMap<PathBuf, FileHits>,
     stdout_capped: bool,
-) -> Value {
+) -> Result<Value, (String, String)> {
+    req.cancellation.check()?;
     let mut files: Vec<(PathBuf, FileHits)> = parsed.into_iter().collect();
     files.sort_by(|a, b| b.1.mtime.cmp(&a.1.mtime).then_with(|| a.0.cmp(&b.0)));
+    req.cancellation.check()?;
 
     let mut hits: Vec<Value> = Vec::new();
     let mut counts: Vec<Value> = Vec::new();
@@ -231,6 +328,7 @@ fn build_result(
     let mut truncated = stdout_capped;
 
     'files: for (path, file) in files {
+        req.cancellation.check()?;
         let shown = display_tool_path(req.root_kind, req.workspace_root, &path);
         let file_matches = file.lines.len();
         if file_matches == 0 {
@@ -239,6 +337,7 @@ fn build_result(
         match req.mode {
             "content" => {
                 for (line_no, text, clipped) in file.lines {
+                    req.cancellation.check()?;
                     if clipped {
                         clipped_lines += 1;
                     }
@@ -276,7 +375,8 @@ fn build_result(
         }
     }
 
-    grep_output(
+    req.cancellation.check()?;
+    Ok(grep_output(
         req.mode,
         hits,
         counts,
@@ -284,7 +384,7 @@ fn build_result(
         total_matches,
         clipped_lines,
         truncated,
-    )
+    ))
 }
 
 #[cfg(test)]

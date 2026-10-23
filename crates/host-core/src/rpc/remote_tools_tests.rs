@@ -386,3 +386,84 @@ async fn remote_projects_cannot_create_isolated_sessions() {
         .len();
     assert_eq!(before, after);
 }
+
+async fn assert_remote_search_waits_for_completion(tool_name: &str, args: Value) {
+    let (_dir, state, tx, mut rx) = fixture();
+    let (_path, id) = create(&state, &tx).await;
+    sessions::configure_session_with_thinking(
+        &state.lock().await.db,
+        &id,
+        "agent",
+        None,
+        None,
+        None,
+        Some("auto"),
+    )
+    .unwrap();
+    let pending_state = state.clone();
+    let pending_tx = tx.clone();
+    let pending_id = id.clone();
+    let name = tool_name.to_string();
+    let pending = tokio::spawn(async move {
+        handle_request(
+            pending_state,
+            "tools.execute",
+            json!({
+                "sessionId": pending_id, "toolCallId": "search-stop", "toolName": name,
+                "args": args, "mode": "agent",
+            }),
+            pending_tx,
+        )
+        .await
+    });
+    let dispatch: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(10), rx.recv())
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(dispatch["method"], "tools.remoteExecute");
+    // Drive the public host cancellation API directly, as shutdown does, so
+    // the abort notification below proves the relay observed cancellation.
+    assert_eq!(
+        state
+            .lock()
+            .await
+            .abort_or_queue_tool(&id, "search-stop", tool_name),
+        (true, false)
+    );
+    let abort: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(10), rx.recv())
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(abort["method"], "tools.remoteAbort");
+    // A completion remains routable after Stop. Returning before this result
+    // would release the local admission permit while the remote worker runs.
+    let complete = handle_request(state.clone(), "tools.remoteComplete", json!({
+        "requestId": dispatch["params"]["requestId"],
+        "result": { "ok": false, "errorCode": "TOOL_ABORTED", "content": { "code": "TOOL_ABORTED" } },
+    }), tx).await;
+    let result = pending.await.unwrap().unwrap();
+    assert!(
+        complete.is_ok(),
+        "Stop must retain ownership until remote settlement: {complete:?}"
+    );
+    assert_eq!(result["errorCode"], "TOOL_ABORTED");
+    let app = state.lock().await;
+    assert!(app.remote_execs.is_empty());
+    assert!(app.active_tool_cancellations.is_empty());
+}
+
+#[tokio::test]
+async fn remote_grep_stop_waits_for_remote_settlement() {
+    assert_remote_search_waits_for_completion("Grep", json!({ "pattern": "needle" })).await;
+}
+
+#[tokio::test]
+async fn remote_glob_stop_waits_for_remote_settlement() {
+    assert_remote_search_waits_for_completion("Glob", json!({ "pattern": "**/*.txt" })).await;
+}

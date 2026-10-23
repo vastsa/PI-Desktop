@@ -46,6 +46,7 @@ class DisclosureChoices {
 }
 
 const ChoicesContext = createContext<DisclosureChoices | null>(null);
+const PaneVisibilityContext = createContext(true);
 
 /*
  * A level's own visibility is a second gate beside the stored choice, so a
@@ -56,11 +57,24 @@ const ChoicesContext = createContext<DisclosureChoices | null>(null);
 export type { DisclosureScopeValue } from "./disclosure-scope";
 
 /** Explicit choices survive pane eviction, but never persist to the host. */
-export function TranscriptDisclosureProvider({ children, sessionId }: { children: ReactNode; sessionId?: string }) {
+export function TranscriptDisclosureProvider({ children, sessionId, visible = true }: {
+  children: ReactNode;
+  sessionId?: string;
+  visible?: boolean;
+}) {
+  const parentVisible = useContext(PaneVisibilityContext);
   const [choices] = useState(() => new DisclosureChoices(
     sessionId ? sessionReadingState(sessionId).disclosures : undefined,
   ));
-  return <ChoicesContext.Provider value={choices}>{children}</ChoicesContext.Provider>;
+  return <ChoicesContext.Provider value={choices}>
+    <PaneVisibilityContext.Provider value={parentVisible && visible}>{children}</PaneVisibilityContext.Provider>
+  </ChoicesContext.Provider>;
+}
+
+/** Mounted transcript descendants suspend work while their pane or scope is hidden. */
+export function useTranscriptVisibility() {
+  const paneVisible = useContext(PaneVisibilityContext);
+  return useContext(ScopeContext).visible && paneVisible;
 }
 
 export function disclosureKey(kind: string, ...ids: string[]) {
@@ -97,6 +111,7 @@ export function useAutomaticDisclosure(
       : automaticOpen
   );
   const scope = useContext(ScopeContext);
+  const paneVisible = useContext(PaneVisibilityContext);
   // A level below a collapsed parent renders nothing, whatever its own choice
   // says. The choice is left untouched so reopening the parent restores it.
   const open = requestedOpen && scope.visible;
@@ -151,6 +166,8 @@ export function useAutomaticDisclosure(
     // Kept for callers that read the parent's visibility directly; the scope
     // itself already folded it into `open`.
     parentVisible: scope.visible,
+    // Pane suspension is independent from the stored disclosure/open state.
+    workVisible: scope.visible && paneVisible,
     // Pointer selection and keyboard interaction establish ownership before
     // a streaming update can apply an automatic close.
     bodyEvents: { onPointerDownCapture: claim, onFocusCapture: claim },

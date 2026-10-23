@@ -1,23 +1,18 @@
 import i18n from "i18next";
-import { isRemoteSession, sessionAllows } from "../../lib/remote-session-safety";
+import { sessionAllows } from "../../lib/remote-session-safety";
 import type {
   UiMessage,
 } from "@pi-desktop/shared";
 import { isRenderableAttachment } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
-import { resolveComposerSmartStop } from "../../lib/composer-smart-stop";
-import {
-  clearSessionPermissions,
-  sessionPermissions,
-} from "../../lib/pending-permissions";
 import {
   mergeLiveSessionMessages,
 } from "../../lib/session-transcript";
 import { optimisticUserMessage } from "../../lib/session-transcript";
 import { withReviewChangeState } from "../../lib/workspace-review";
-import { settleStoppedAssistantMetrics } from "../../lib/context-usage";
 import type { AppState } from "../app-state";
 import type { SessionRuntime } from "../runtime/session-runtime";
+import { createSessionStop } from "../runtime/stop-session";
 import { prepareTranscriptAction } from "../runtime/transcript-action";
 import type { StoreAccess } from "./types";
 
@@ -464,141 +459,7 @@ export function createTranscriptSlice({
       }
     },
 
-    abort: async () => {
-      const stateBeforeAbort = get();
-      const sessionId = stateBeforeAbort.activeSessionId;
-      if (!sessionId) return;
-      const target = stateBeforeAbort.sessions.find((session) => session.id === sessionId);
-      if (!sessionAllows(target, "canStop")) return;
-      if (target?.source === "pi-native" || isRemoteSession(target)) {
-        await api.abort(sessionId);
-        runtime.submittedComposerDrafts.delete(sessionId);
-        // Bypass in-flight pre-abort detail reads; request settled source state.
-        const detail = await api.getSession(sessionId);
-        const messages = detail.session?.messages;
-        if (messages) runtime.cacheSessionTranscript(sessionId, messages);
-        set((current) => ({
-          runningSessions: { ...current.runningSessions, [sessionId]: false },
-          ...(messages ? { retainedTranscripts: { ...current.retainedTranscripts, [sessionId]: messages } } : {}),
-          ...(current.activeSessionId === sessionId ? { isRunning: false, ...(messages ? { messages } : {}) } : {}),
-        }));
-        return;
-      }
-      const submittedDraft = runtime.submittedComposerDrafts.get(sessionId);
-      const preserveSteering = stateBeforeAbort.messages
-        .slice(submittedDraft?.messageCountBeforeSend ?? 0)
-        .findLast((message) => message.role === "user")?.steering;
-      const stoppedAtMs = Date.now();
-      if (submittedDraft && !submittedDraft.abortResolution) {
-        submittedDraft.abortResolution = new Promise<boolean>((resolve) => {
-          submittedDraft.resolveAbort = resolve;
-        });
-      }
-      const pendingForSession = sessionPermissions(
-        stateBeforeAbort.pendingPermissions,
-        sessionId,
-      );
-      await Promise.allSettled([
-        api.abort(sessionId),
-        ...pendingForSession.map((permission) =>
-          api.resolvePermission({
-            requestId: permission.requestId,
-            decision: "deny",
-          }),
-        ),
-      ]);
-      set((current) => ({
-        pendingPermissions: clearSessionPermissions(
-          current.pendingPermissions,
-          sessionId,
-        ),
-      }));
-      const state = get();
-      if (state.activeSessionId !== sessionId) {
-        submittedDraft?.resolveAbort?.(false);
-        runtime.submittedComposerDrafts.delete(sessionId);
-        set((current) => ({
-          runningSessions: { ...current.runningSessions, [sessionId]: false },
-        }));
-        return;
-      }
-      const smartStop = preserveSteering
-        ? { kind: "settle" as const }
-        : resolveComposerSmartStop(state.messages, submittedDraft);
-      if (smartStop.kind === "restore") {
-        const fullMessages = await runtime.loadFullSessionMessages(sessionId);
-        if (!fullMessages || get().activeSessionId !== sessionId) {
-          submittedDraft?.resolveAbort?.(false);
-          runtime.submittedComposerDrafts.delete(sessionId);
-          return;
-        }
-        const merged = mergeLiveSessionMessages(fullMessages, get().messages);
-        const fullStop = resolveComposerSmartStop(merged, submittedDraft);
-        if (fullStop.kind === "restore") {
-          runtime.submittedComposerDrafts.delete(sessionId);
-          submittedDraft?.resolveAbort?.(true);
-          const fullWindow = { messageStart: 0, hasMoreBefore: false };
-          runtime.cacheSessionTranscript(sessionId, fullStop.kept, fullWindow);
-          set((current) => ({
-            messages: fullStop.kept,
-            sessionHistory: { ...current.sessionHistory, [sessionId]: fullWindow },
-            composerPrefill: { ...fullStop.draft, sessionId },
-            isRunning: false,
-            runningSessions: { ...current.runningSessions, [sessionId]: false },
-          }));
-          if (fullStop.kept.length < merged.length) {
-            try {
-              await api.replaceSessionMessages(sessionId, fullStop.kept);
-            } catch {
-              // Best effort — the local transcript already reflects the undo.
-            }
-          }
-          void flushPendingSessionConfiguration(sessionId);
-          return;
-        }
-        set((current) =>
-          current.activeSessionId === sessionId
-            ? {
-                messages: merged,
-                sessionHistory: {
-                  ...current.sessionHistory,
-                  [sessionId]: { messageStart: 0, hasMoreBefore: false },
-                },
-              }
-            : {},
-        );
-      }
-      submittedDraft?.resolveAbort?.(false);
-      runtime.submittedComposerDrafts.delete(sessionId);
-      const stoppedRows = (rows: UiMessage[]) =>
-        rows.map((message) => {
-          if (message.role === "assistant" && message.status === "streaming") {
-            return {
-              ...settleStoppedAssistantMetrics(message, stoppedAtMs),
-              status: "aborted" as const,
-            };
-          }
-          if (message.role === "tool" && message.toolStatus === "running") {
-            return {
-              ...message,
-              toolStatus: "error" as const,
-              status: "aborted" as const,
-              toolCompletedAt:
-                message.toolCompletedAt ?? new Date().toISOString(),
-            };
-          }
-          return message;
-        });
-      set((current) => ({
-        messages:
-          current.activeSessionId === sessionId
-            ? stoppedRows(current.messages)
-            : current.messages,
-        isRunning: false,
-        runningSessions: { ...current.runningSessions, [sessionId]: false },
-      }));
-      void flushPendingSessionConfiguration(sessionId);
-    },
+    abort: createSessionStop({ get, set, runtime, flushPendingSessionConfiguration }),
   };
 }
 

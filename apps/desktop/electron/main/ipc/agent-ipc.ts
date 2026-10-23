@@ -649,7 +649,9 @@ export function registerAgentIpc({
     const abortedTurnId = activeTurns.get(req.sessionId);
     if (req.turnId && abortedTurnId !== req.turnId) return { ok: false, aborted: false };
     logger.app("session", "info", "prompt aborted", { sessionId: req.sessionId });
-    agentHostBridge?.markAborting(req.sessionId);
+    // A duplicate Stop after settlement has no turn whose finalizer can clear
+    // this marker. Do not carry that cancellation into the next prompt.
+    if (abortedTurnId) agentHostBridge?.markAborting(req.sessionId);
     // Lock the abort reason before the first await: the cancel RPC can take a
     // while, and a terminal event arriving in that window must not settle the
     // turn as completed.

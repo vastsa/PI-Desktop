@@ -2,7 +2,36 @@
 //!
 //! `tag(text) = uppercase_hex_4(low_16_bits(SHA-256(normalize_for_hash(text))))`.
 
+use crate::tools::cancel::{Cancelled, ToolCancellation};
 use sha2::{Digest, Sha256};
+use std::convert::Infallible;
+
+const CHECK_CHUNK: usize = 64 * 1024;
+
+fn unchecked<T>(result: Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+fn text_chunks<E>(
+    text: &str,
+    check: &mut impl FnMut() -> Result<(), E>,
+    mut consume: impl FnMut(&str),
+) -> Result<(), E> {
+    let mut start = 0;
+    while start < text.len() {
+        check()?;
+        let mut end = (start + CHECK_CHUNK).min(text.len());
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        consume(&text[start..end]);
+        start = end;
+    }
+    check()
+}
 
 const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
 const UTF16LE_BOM: &[u8] = &[0xFF, 0xFE];
@@ -35,40 +64,108 @@ pub struct NormalizedFile {
     pub utf16: Option<bool>,
 }
 
-pub fn decode_bytes(bytes: &[u8]) -> (bool, String) {
+fn decode_bytes_checked<E>(
+    bytes: &[u8],
+    check: &mut impl FnMut() -> Result<(), E>,
+) -> Result<(bool, String), E> {
+    check()?;
     if bytes.starts_with(UTF16LE_BOM) || bytes.starts_with(UTF16BE_BOM) {
         let little_endian = bytes.starts_with(UTF16LE_BOM);
         let body = &bytes[2..];
-        let units = body.chunks_exact(2).map(|pair| {
+        let units = body.as_chunks::<2>().0.iter().map(|pair| {
             if little_endian {
                 u16::from_le_bytes([pair[0], pair[1]])
             } else {
                 u16::from_be_bytes([pair[0], pair[1]])
             }
         });
-        return (false, String::from_utf16_lossy(&units.collect::<Vec<_>>()));
+        let mut decoded = String::new();
+        for (index, character) in std::char::decode_utf16(units).enumerate() {
+            if index % (CHECK_CHUNK / 4) == 0 {
+                check()?;
+            }
+            decoded.push(character.unwrap_or(char::REPLACEMENT_CHARACTER));
+        }
+        check()?;
+        return Ok((false, decoded));
     }
     let bom = bytes.starts_with(UTF8_BOM);
     let rest = if bom { &bytes[3..] } else { bytes };
-    (bom, String::from_utf8_lossy(rest).into_owned())
+    let mut decoded = String::new();
+    let mut start = 0;
+    while start < rest.len() {
+        check()?;
+        let mut end = (start + CHECK_CHUNK).min(rest.len());
+        if end < rest.len() {
+            // Keep an incomplete UTF-8 suffix for the next chunk, including
+            // when an earlier invalid sequence requires lossy decoding.
+            for tail in end.saturating_sub(3).max(start)..end {
+                if std::str::from_utf8(&rest[tail..end])
+                    .is_err_and(|error| error.valid_up_to() == 0 && error.error_len().is_none())
+                {
+                    end = tail;
+                    break;
+                }
+            }
+        }
+        decoded.push_str(&String::from_utf8_lossy(&rest[start..end]));
+        start = end;
+    }
+    check()?;
+    Ok((bom, decoded))
 }
 
-pub fn detect_ending(text: &str) -> LineEnding {
-    let crlf = text.matches("\r\n").count();
-    let lf_only = text.matches('\n').count().saturating_sub(crlf);
-    if crlf > lf_only {
+fn detect_ending_checked<E>(
+    text: &str,
+    check: &mut impl FnMut() -> Result<(), E>,
+) -> Result<LineEnding, E> {
+    let (mut crlf, mut lf, mut previous_cr) = (0_usize, 0_usize, false);
+    text_chunks(text, check, |chunk| {
+        for byte in chunk.bytes() {
+            if byte == b'\n' {
+                lf += 1;
+                crlf += usize::from(previous_cr);
+            }
+            previous_cr = byte == b'\r';
+        }
+    })?;
+    Ok(if crlf > lf.saturating_sub(crlf) {
         LineEnding::Crlf
     } else {
         LineEnding::Lf
-    }
+    })
 }
 
-pub fn to_lf(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n")
+fn to_lf_checked<E>(text: &str, check: &mut impl FnMut() -> Result<(), E>) -> Result<String, E> {
+    let mut out = String::new();
+    let mut previous_cr = false;
+    text_chunks(text, check, |chunk| {
+        for character in chunk.chars() {
+            if !(previous_cr && character == '\n') {
+                out.push(if character == '\r' { '\n' } else { character });
+            }
+            previous_cr = character == '\r';
+        }
+    })?;
+    Ok(out)
 }
 
 pub fn normalize_file(bytes: &[u8]) -> NormalizedFile {
-    let (bom, decoded) = decode_bytes(bytes);
+    unchecked(normalize_file_checked(bytes, &mut || Ok(())))
+}
+
+pub(super) fn normalize_file_cancellable(
+    bytes: &[u8],
+    cancellation: &ToolCancellation,
+) -> Result<NormalizedFile, Cancelled> {
+    normalize_file_checked(bytes, &mut || cancellation.check())
+}
+
+fn normalize_file_checked<E>(
+    bytes: &[u8],
+    check: &mut impl FnMut() -> Result<(), E>,
+) -> Result<NormalizedFile, E> {
+    let (bom, decoded) = decode_bytes_checked(bytes, check)?;
     let utf16 = if bytes.starts_with(UTF16LE_BOM) {
         Some(true)
     } else if bytes.starts_with(UTF16BE_BOM) {
@@ -76,13 +173,13 @@ pub fn normalize_file(bytes: &[u8]) -> NormalizedFile {
     } else {
         None
     };
-    let ending = detect_ending(&decoded);
-    NormalizedFile {
-        text: to_lf(&decoded),
+    let ending = detect_ending_checked(&decoded, check)?;
+    Ok(NormalizedFile {
+        text: to_lf_checked(&decoded, check)?,
         ending,
         bom,
         utf16,
-    }
+    })
 }
 
 pub fn split_lines(text: &str) -> Vec<String> {
@@ -111,40 +208,64 @@ pub fn join_lines(lines: &[String], trailing_newline: bool) -> String {
     out
 }
 
-fn rtrim_hash_line(line: &str) -> &str {
-    line.trim_end_matches([' ', '\t', '\r'])
-}
-
 /// Hash input: each line with trailing `[ \t\r]` stripped, joined by LF.
 pub fn hash_input(lf_text: &str) -> String {
-    if lf_text.is_empty() {
-        return String::new();
-    }
-    let ends_with_nl = lf_text.ends_with('\n');
-    let mut out = String::with_capacity(lf_text.len());
-    for (i, line) in lf_text.split('\n').enumerate() {
-        if i > 0 {
-            out.push('\n');
+    unchecked(hash_input_checked(lf_text, &mut || Ok(())))
+}
+
+fn hash_input_checked<E>(
+    lf_text: &str,
+    check: &mut impl FnMut() -> Result<(), E>,
+) -> Result<String, E> {
+    let mut out = String::new();
+    let mut kept = 0;
+    text_chunks(lf_text, check, |chunk| {
+        for character in chunk.chars() {
+            if character == '\n' {
+                out.truncate(kept);
+                out.push('\n');
+                kept = out.len();
+            } else {
+                out.push(character);
+                if !matches!(character, ' ' | '\t' | '\r') {
+                    kept = out.len();
+                }
+            }
         }
-        out.push_str(rtrim_hash_line(line));
-    }
-    if !ends_with_nl && out.ends_with('\n') {
-        // split on a non-terminated string never yields a trailing empty
-        // piece, so this only fires for the empty-last-line case which
-        // already ended with `\n`. Keep the terminator from split.
-    }
-    let _ = ends_with_nl;
-    out
+    })?;
+    out.truncate(kept);
+    Ok(out)
 }
 
 pub fn tag_of_hash_input(hash_input: &str) -> String {
-    let digest = Sha256::digest(hash_input.as_bytes());
+    unchecked(tag_of_hash_input_checked(hash_input, &mut || Ok(())))
+}
+
+fn tag_of_hash_input_checked<E>(
+    hash_input: &str,
+    check: &mut impl FnMut() -> Result<(), E>,
+) -> Result<String, E> {
+    let mut hasher = Sha256::new();
+    for chunk in hash_input.as_bytes().chunks(CHECK_CHUNK) {
+        check()?;
+        hasher.update(chunk);
+    }
+    check()?;
+    let digest = hasher.finalize();
     let low = u16::from_be_bytes([digest[30], digest[31]]);
-    format!("{low:04X}")
+    Ok(format!("{low:04X}"))
 }
 
 pub fn tag_of_lf_text(lf_text: &str) -> String {
     tag_of_hash_input(&hash_input(lf_text))
+}
+
+pub(super) fn tag_of_lf_text_cancellable(
+    lf_text: &str,
+    cancellation: &ToolCancellation,
+) -> Result<String, Cancelled> {
+    let mut check = || cancellation.check();
+    tag_of_hash_input_checked(&hash_input_checked(lf_text, &mut check)?, &mut check)
 }
 
 pub fn encode_bytes(lf_text: &str, ending: LineEnding, bom: bool, utf16: Option<bool>) -> Vec<u8> {
@@ -177,28 +298,56 @@ pub fn encode_bytes(lf_text: &str, ending: LineEnding, bom: bool, utf16: Option<
 }
 
 pub fn looks_binary_bytes(bytes: &[u8]) -> bool {
+    unchecked(looks_binary_bytes_checked(bytes, &mut || Ok(())))
+}
+
+pub(super) fn looks_binary_bytes_cancellable(
+    bytes: &[u8],
+    cancellation: &ToolCancellation,
+) -> Result<bool, Cancelled> {
+    looks_binary_bytes_checked(bytes, &mut || cancellation.check())
+}
+
+fn looks_binary_bytes_checked<E>(
+    bytes: &[u8],
+    check: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    check()?;
     if bytes.starts_with(UTF16LE_BOM) || bytes.starts_with(UTF16BE_BOM) {
         let little_endian = bytes.starts_with(UTF16LE_BOM);
         let body = &bytes[2..];
-        return !body.len().is_multiple_of(2)
-            || std::char::decode_utf16(body.chunks_exact(2).map(|pair| {
+        if !body.len().is_multiple_of(2) {
+            return Ok(true);
+        }
+        for (index, character) in
+            std::char::decode_utf16(body.as_chunks::<2>().0.iter().map(|pair| {
                 if little_endian {
                     u16::from_le_bytes([pair[0], pair[1]])
                 } else {
                     u16::from_be_bytes([pair[0], pair[1]])
                 }
             }))
-            .any(|character| character.is_err() || character.is_ok_and(|c| c == '\0'));
+            .enumerate()
+        {
+            if index % (CHECK_CHUNK / 4) == 0 {
+                check()?;
+            }
+            if character.is_err() || character.is_ok_and(|c| c == '\0') {
+                return Ok(true);
+            }
+        }
+        check()?;
+        return Ok(false);
     }
     let sample = &bytes[..bytes.len().min(4096)];
     if sample.contains(&0) {
-        return true;
+        return Ok(true);
     }
     let non_printable = sample
         .iter()
         .filter(|byte| **byte < 9 || (**byte > 13 && **byte < 32))
         .count();
-    non_printable * 10 > sample.len() * 3
+    Ok(non_printable * 10 > sample.len() * 3)
 }
 
 pub fn section_header(path: &str, tag: &str) -> String {
@@ -306,5 +455,128 @@ mod tests {
             "fn main() {\n    println!(\"hi\");\n}\n"
         );
         assert_eq!(strip_write_markup("plain\ntext\n"), "plain\ntext\n");
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+
+    #[test]
+    fn every_large_tag_transformation_observes_cancellation() {
+        let text = "x \t\r\n".repeat(CHECK_CHUNK);
+        assert_eq!(
+            decode_bytes_checked(text.as_bytes(), &mut || ToolCancellation::cancel_after(0)
+                .check()),
+            Err(Cancelled)
+        );
+        let cancel = ToolCancellation::cancel_after(2);
+        assert_eq!(
+            normalize_file_cancellable(text.as_bytes(), &cancel),
+            Err(Cancelled)
+        );
+        let cancel = ToolCancellation::cancel_after(2);
+        assert_eq!(
+            detect_ending_checked(&text, &mut || cancel.check()),
+            Err(Cancelled)
+        );
+        let cancel = ToolCancellation::cancel_after(2);
+        assert_eq!(to_lf_checked(&text, &mut || cancel.check()), Err(Cancelled));
+        let cancel = ToolCancellation::cancel_after(2);
+        assert_eq!(
+            hash_input_checked(&text, &mut || cancel.check()),
+            Err(Cancelled)
+        );
+        let cancel = ToolCancellation::cancel_after(2);
+        assert_eq!(
+            tag_of_hash_input_checked(&text, &mut || cancel.check()),
+            Err(Cancelled)
+        );
+        let utf16 = encode_bytes(&text, LineEnding::Lf, false, Some(true));
+        let cancel = ToolCancellation::cancel_after(2);
+        assert_eq!(
+            looks_binary_bytes_cancellable(&utf16, &cancel),
+            Err(Cancelled)
+        );
+    }
+
+    #[test]
+    fn chunked_tags_match_the_original_algorithm_at_encoding_boundaries() {
+        for padding in CHECK_CHUNK - 4..CHECK_CHUNK + 4 {
+            let text = format!("{}é😀\r\nnext \t\rline\n  ", "x".repeat(padding));
+            let mut samples = vec![
+                text.as_bytes().to_vec(),
+                [UTF8_BOM, text.as_bytes()].concat(),
+            ];
+            let mut lossy = text.as_bytes().to_vec();
+            lossy.insert(4, 0xFF);
+            lossy.extend_from_slice(&[0xE2, 0x82]);
+            samples.push(lossy);
+            for little_endian in [true, false] {
+                samples.push(encode_bytes(
+                    &text,
+                    LineEnding::Lf,
+                    false,
+                    Some(little_endian),
+                ));
+            }
+            for bytes in samples {
+                let (bom, utf16, decoded) =
+                    if bytes.starts_with(UTF16LE_BOM) || bytes.starts_with(UTF16BE_BOM) {
+                        let little = bytes.starts_with(UTF16LE_BOM);
+                        let units: Vec<_> = bytes[2..]
+                            .as_chunks::<2>()
+                            .0
+                            .iter()
+                            .map(|p| {
+                                if little {
+                                    u16::from_le_bytes([p[0], p[1]])
+                                } else {
+                                    u16::from_be_bytes([p[0], p[1]])
+                                }
+                            })
+                            .collect();
+                        (false, Some(little), String::from_utf16_lossy(&units))
+                    } else {
+                        let bom = bytes.starts_with(UTF8_BOM);
+                        (
+                            bom,
+                            None,
+                            String::from_utf8_lossy(if bom { &bytes[3..] } else { &bytes })
+                                .into_owned(),
+                        )
+                    };
+                let crlf = decoded.matches("\r\n").count();
+                let ending = if crlf > decoded.matches('\n').count() - crlf {
+                    LineEnding::Crlf
+                } else {
+                    LineEnding::Lf
+                };
+                let normalized = decoded.replace("\r\n", "\n").replace('\r', "\n");
+                let file = normalize_file(&bytes);
+                assert!(
+                    file == NormalizedFile {
+                        text: normalized.clone(),
+                        ending,
+                        bom,
+                        utf16
+                    },
+                    "normalization changed at {padding}"
+                );
+                let hash_input = normalized
+                    .split('\n')
+                    .map(|line| line.trim_end_matches([' ', '\t', '\r']))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let digest = Sha256::digest(hash_input.as_bytes());
+                let expected = format!("{:04X}", u16::from_be_bytes([digest[30], digest[31]]));
+                assert_eq!(tag_of_lf_text(&file.text), expected);
+                assert_eq!(
+                    tag_of_lf_text_cancellable(&file.text, &ToolCancellation::from_receiver(None))
+                        .unwrap(),
+                    expected
+                );
+            }
+        }
     }
 }

@@ -56,8 +56,11 @@ test("tool rows render structured blocks instead of dumping JSON", async () => {
   assert.doesNotMatch(transcriptSource, /getToolSections|hasToolSections/);
   assert.doesNotMatch(permissionSource, /JSON\.stringify|formatToolValue/);
   assert.match(transcriptSource, /buildToolPresentation\(message, \{\n\s+hideSummaryArg: true,/);
-  // Formatting remains lazy and the cached blocks are read only while visible.
-  assert.match(transcriptSource, /if \(variant !== "topology" && open && hasDetails && disclosure\.parentVisible/);
+  // Formatting runs only for visible work; cached blocks stay mounted off screen.
+  assert.match(
+    transcriptSource,
+    /if \(variant !== "topology" && open && hasDetails && disclosure\.workVisible &&\s*\(presentation\.current\?\.message !== message \|\| presentation\.current\?\.nestedReport !== nestedReport\)\)/,
+  );
   assert.match(transcriptSource, /const blocks = variant !== "topology" && open && hasDetails \? presentation\.current\?\.blocks : null/);
   assert.match(transcriptSource, /<ToolChips chips=\{chips\} \/>/);
   assert.match(
@@ -432,31 +435,41 @@ test("user-message file chips reuse the composer chip node", () => {
 });
 
 test("stopping a turn undoes an unanswered prompt or settles the partial reply", async () => {
-  const storeSource = await readStoreSource();
-  assert.match(storeSource, /const submittedDraft = runtime\.submittedComposerDrafts\.get\(sessionId\)/);
-  assert.match(storeSource, /resolveComposerSmartStop\(state\.messages, submittedDraft\)/);
-  assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.fullStop\.draft, sessionId \}/);
-  assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(true\)/);
-  assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(false\)/);
-  assert.match(storeSource, /submittedComposerDrafts\.delete\(sessionId\)/);
-  assert.match(storeSource, /smartStop\.kind === "restore"/);
-  assert.match(storeSource, /status:\s*"aborted" as const/);
+  const [stopSource, transcriptSliceSource] = await Promise.all([
+    readFile(new URL("../src/stores/runtime/stop-session.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/stores/slices/transcript-slice.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(transcriptSliceSource, /import \{ createSessionStop \} from "\.\.\/runtime\/stop-session"/);
+  assert.match(
+    transcriptSliceSource,
+    /abort: createSessionStop\(\{ get, set, runtime, flushPendingSessionConfiguration \}\)/,
+  );
+  assert.match(stopSource, /const submittedDraft = runtime\.submittedComposerDrafts\.get\(sessionId\)/);
+  assert.match(stopSource, /await api\.abort\(sessionId\);\s*settle\(\);/);
+  assert.match(stopSource, /resolveComposerSmartStop\(state\.messages, submittedDraft\)/);
+  assert.match(stopSource, /composerPrefill:\s*\{ \.\.\.fullStop\.draft, sessionId \}/);
+  assert.match(stopSource, /submittedDraft\?\.resolveAbort\?\.\(restored\)/);
+  assert.match(stopSource, /finishDraft\(true\)/);
+  assert.match(stopSource, /finishDraft\(false\)/);
+  assert.match(stopSource, /submittedComposerDrafts\.delete\(sessionId\)/);
+  assert.match(stopSource, /smartStop\.kind === "restore"/);
+  assert.match(stopSource, /status:\s*"aborted" as const/);
   // The undo rewrite starts from the full durable transcript merged with the
   // live rows, never from the renderer's paged, display-capped window (D299).
   assert.match(
-    storeSource,
-    /const merged = mergeLiveSessionMessages\(fullMessages, get\(\)\.messages\)/,
+    stopSource,
+    /const merged = stoppedRows\(mergeLiveSessionMessages\(fullMessages, get\(\)\.messages\), stoppedAtMs\)/,
   );
-  assert.match(storeSource, /resolveComposerSmartStop\(merged, submittedDraft\)/);
+  assert.match(stopSource, /resolveComposerSmartStop\(merged, submittedDraft\)/);
   assert.match(
-    storeSource,
+    stopSource,
     /replaceSessionMessages\(sessionId,\s*fullStop\.kept\)/,
   );
   // Settling a partial reply is renderer-only: the runtime's aborted final row
   // (or its checkpoint) is the durable copy, and a rewrite from this snapshot
   // could delete it.
-  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*settled\)/);
-  assert.doesNotMatch(storeSource, /replaceSessionMessages\(sessionId,\s*smartStop\.kept\)/);
+  assert.doesNotMatch(stopSource, /replaceSessionMessages\(sessionId,\s*settled\)/);
+  assert.doesNotMatch(stopSource, /replaceSessionMessages\(sessionId,\s*smartStop\.kept\)/);
 });
 
 test("delete remains on user turns and is removed from assistant toolbar", async () => {

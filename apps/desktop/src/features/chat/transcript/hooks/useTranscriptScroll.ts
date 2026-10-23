@@ -500,12 +500,12 @@ export function useTranscriptScroll({
   useEffect(() => {
     const content = contentRef.current;
     const scroller = scrollRef.current;
-    if (!content || !scroller || typeof ResizeObserver === "undefined") return;
+    if (!paneVisible || !content || !scroller || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(followScrollNow);
     ro.observe(content, { box: "border-box" });
     ro.observe(scroller, { box: "border-box" });
     return () => ro.disconnect();
-  }, [followScrollNow]);
+  }, [followScrollNow, paneVisible]);
 
   // Defer one immutable projection, never messages and compaction boundaries
   // independently. First paint, reading, and pane reveal use the current source.
@@ -517,8 +517,16 @@ export function useTranscriptScroll({
     [messages, compactions],
   );
   const deferredProjection = useDeferredValue(projection);
+  const revealedProjection = useRef<typeof projection | null>(null);
+  if (paneRevealed) revealedProjection.current = projection;
+  if (deferredProjection === revealedProjection.current || deferredProjection === projection) {
+    revealedProjection.current = null;
+  }
+  // A reveal uses the latest source immediately. Layout commits must not
+  // rewind to the pre-reveal deferred snapshot before it catches up.
   const renderedProjection =
-    readingWindow || firstCommit || paneRevealed ? projection : deferredProjection;
+    readingWindow || firstCommit || paneRevealed || revealedProjection.current
+      ? projection : deferredProjection;
   const { entries, visible, history: allHistoryEntries } = renderedProjection;
   const tailEntry = entries.at(-1);
   // Published for `reachTop`, which is declared above this projection but only

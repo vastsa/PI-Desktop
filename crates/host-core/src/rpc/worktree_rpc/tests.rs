@@ -34,6 +34,7 @@ fn tool_options(
         bash_options: bash,
         allow_external_paths: false,
         hashline: None,
+        cancellation: None,
     }
 }
 

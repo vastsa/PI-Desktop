@@ -10,6 +10,9 @@ mod worktree_rpc;
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
 
+#[cfg(test)]
+mod search_cancellation_tests;
+
 use std::io::{self, BufRead, BufReader as StdBufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -4489,9 +4492,10 @@ async fn handle_request(
                             bash_options,
                             allow_external_paths: external_path_permission,
                             hashline: Some(hashline_ctx),
+                            cancellation: cancellation_receiver.clone(),
                         },
                     );
-                    if matches!(p.tool_name.as_str(), "Read" | "Glob" | "Grep") {
+                    if p.tool_name == "Read" {
                         let mut read_cancellation = cancellation_receiver.clone();
                         tokio::select! {
                             result = execute => result,
@@ -7481,6 +7485,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: false,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;
@@ -7501,6 +7506,7 @@ mod tests {
                 bash_options: None,
                 allow_external_paths: false,
                 hashline: None,
+                cancellation: None,
             },
         )
         .await;

@@ -13,9 +13,10 @@ const messagesCss = await readFile(
 
 test("streaming cursor remains steady throughout active streaming without flapping", () => {
   // Must not flap on/off between network chunks when buffer catches up with current source length
+  assert.match(assistantTurnPartsSource, /const visible = useTranscriptVisibility\(\);/);
   assert.match(
     assistantTurnPartsSource,
-    /const showCursor = streaming && enabled && Boolean\(displayContent\);/,
+    /const showCursor = streaming && enabled && visible && Boolean\(displayContent\);/,
   );
   assert.doesNotMatch(
     assistantTurnPartsSource,

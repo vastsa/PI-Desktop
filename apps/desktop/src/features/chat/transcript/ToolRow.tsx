@@ -21,7 +21,7 @@ import { useChatFileMenu } from "../../../hooks/use-chat-file-menu";
 import { ContextMenu } from "../../../components/ContextMenu";
 import { useFollowScroll } from "../../../hooks/use-follow-scroll";
 import { getToolPreviewTarget } from "../../../lib/chat-links";
-import { disclosureKey } from "./disclosure";
+import { disclosureKey, useTranscriptVisibility } from "./disclosure";
 import {
   formatToolDuration,
   getToolAction,
@@ -256,7 +256,7 @@ function HostToolRow({
     nestedReport: boolean | undefined;
     blocks: ReturnType<typeof buildToolPresentation>;
   } | null>(null);
-  if (variant !== "topology" && open && hasDetails && disclosure.parentVisible &&
+  if (variant !== "topology" && open && hasDetails && disclosure.workVisible &&
     (presentation.current?.message !== message || presentation.current?.nestedReport !== nestedReport)) {
     presentation.current = {
       message,
@@ -350,11 +350,11 @@ function HostToolRow({
       : "";
 
   useEffect(() => {
-    if (outcome !== "running") return;
+    if (outcome !== "running" || !disclosure.workVisible) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [outcome]);
+  }, [outcome, disclosure.workVisible]);
 
   // Auto-scroll the nested `.tool-row-content` containers to their bottom
   // while the tool is still running. These elements have `max-height: 260px`
@@ -363,7 +363,7 @@ function HostToolRow({
   // when the container is already near the bottom so a manual scroll-up by
   // the user is not overridden.
   useLayoutEffect(() => {
-    if (status !== "running" || !open) return;
+    if (status !== "running" || !open || !disclosure.workVisible) return;
     const body = disclosure.bodyRef.current;
     if (!body) return;
     const containers = body.querySelectorAll<HTMLElement>(".tool-row-content");
@@ -374,7 +374,7 @@ function HostToolRow({
         el.scrollTop = el.scrollHeight;
       }
     }
-  }, [status, open, message, disclosure.bodyRef]);
+  }, [status, open, message, disclosure.bodyRef, disclosure.workVisible]);
 
 
   const statusTone =
@@ -678,6 +678,9 @@ function SubagentRunFollow({
   scrollable?: boolean;
 }) {
   const { t } = useTranslation();
+  const visible = useTranscriptVisibility();
+  const displayedItems = useRef(items);
+  if (visible) displayedItems.current = items;
   const {
     scrollRef,
     contentRef,
@@ -686,12 +689,12 @@ function SubagentRunFollow({
     jumpToLatest,
     scheduleFollowScroll,
     disclosureAnchorNotifier,
-  } = useFollowScroll();
+  } = useFollowScroll(visible && scrollable);
 
   useLayoutEffect(() => {
-    if (!scrollable) return;
+    if (!scrollable || !visible) return;
     scheduleFollowScroll();
-  }, [items, scheduleFollowScroll, scrollable]);
+  }, [items, scheduleFollowScroll, scrollable, visible]);
 
   return (
     <DisclosureAnchorContext.Provider value={disclosureAnchorNotifier}>
@@ -710,7 +713,7 @@ function SubagentRunFollow({
           onScroll={scrollable ? handleScroll : undefined}
         >
           <div ref={contentRef}>
-            {items.map((item) =>
+            {displayedItems.current.map((item) =>
               item.kind === "tool" ? (
                 reviewChangeFromMessage(item.message) ? (
                   <ReviewChangeCard

@@ -15,7 +15,8 @@ const require = createRequire(
 );
 const { build } = require("esbuild");
 const { electronBinary } = resolveElectronBinary(root);
-const temp = await mkdtemp(join(tmpdir(), "pi-transcript-render-"));
+const hiddenPaneOnly = process.argv.includes("--hidden-pane-only");
+const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR || tmpdir(), "pi-transcript-render-"));
 try {
   await build({
     entryPoints: [join(root, "scripts/e2e/transcript-render.tsx")],
@@ -182,12 +183,14 @@ app.whenReady().then(async () => {
   });
 
   const phases = [
+    ["hiddenPane", "globalThis.transcriptHiddenPaneProbe()"],
     ["render", "globalThis.transcriptRenderProbe()"],
     ["runtimeSlot", "globalThis.transcriptRuntimeSlotProbe()"],
     ["smoothText", "globalThis.smoothTextThrottleProbe()"],
     ["longHistory", "globalThis.transcriptLongHistoryProbe()"],
   ];
-  const outcomes = { render: null, runtimeSlot: null, smoothText: null, longHistory: null };
+  if (${hiddenPaneOnly}) phases.splice(1);
+  const outcomes = Object.fromEntries(phases.map(([name]) => [name, null]));
   const phaseStatus = () => Object.fromEntries(Object.entries(outcomes).map(([name, value]) => [name, value ? value.ok === true : null]));
   const phaseErrors = () => Object.fromEntries(Object.entries(outcomes).filter(([, value]) => value && value.ok !== true).map(([name, value]) => [name, value.error]));
 
@@ -207,6 +210,11 @@ app.whenReady().then(async () => {
       outcomes[name] = await runPhase(name, expression);
       if (!outcomes[name] || outcomes[name].ok !== true) break;
     }
+    const hiddenPane = outcomes.hiddenPane && outcomes.hiddenPane.ok === true ? outcomes.hiddenPane.value : undefined;
+    if (${hiddenPaneOnly}) {
+      finish({ hiddenPane, phases: phaseStatus(), phaseErrors: phaseErrors(), ok: hiddenPane?.ok === true });
+      return;
+    }
     const render = outcomes.render && outcomes.render.ok === true ? outcomes.render.value : {};
     const runtimeSlot = outcomes.runtimeSlot && outcomes.runtimeSlot.ok === true ? outcomes.runtimeSlot.value : undefined;
     const smoothText = outcomes.smoothText && outcomes.smoothText.ok === true ? outcomes.smoothText.value : undefined;
@@ -216,9 +224,9 @@ app.whenReady().then(async () => {
       contextOverflowRecovery = await require(${JSON.stringify(join(root, "scripts/e2e/context-overflow-recovery.cjs"))})(window);
     }
     finish({
-      ...render, runtimeSlot, smoothText, longHistory, contextOverflowRecovery,
+      ...render, hiddenPane, runtimeSlot, smoothText, longHistory, contextOverflowRecovery,
       phases: phaseStatus(), phaseErrors: phaseErrors(),
-      ok: Boolean(render.ok && runtimeSlot?.ok && smoothText?.ok && longHistory?.ok && contextOverflowRecovery?.ok),
+      ok: Boolean(hiddenPane?.ok && render.ok && runtimeSlot?.ok && smoothText?.ok && longHistory?.ok && contextOverflowRecovery?.ok),
     });
   } catch (error) {
     finish({ ok: false, error: describe(error), phases: phaseStatus(), phaseErrors: phaseErrors() });
@@ -267,6 +275,8 @@ app.whenReady().then(async () => {
     true,
     `transcript scenario failed; phases=${JSON.stringify(result.phases)} phaseErrors=${JSON.stringify(result.phaseErrors)}`,
   );
+  assert.equal(result.hiddenPane?.ok, true, `hidden pane scenario failed: ${JSON.stringify(result.hiddenPane)}`);
+  if (!hiddenPaneOnly) {
   // The merged result above already carries the geometry snapshots; this turns
   // a failed scenario into a message that names the checks that failed.
   // check can be read from the scenario output alone.
@@ -290,6 +300,7 @@ app.whenReady().then(async () => {
     true,
     `context overflow recovery scenario failed: ${JSON.stringify(result.contextOverflowRecovery)}`,
   );
+  }
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

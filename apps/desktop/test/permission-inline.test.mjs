@@ -47,6 +47,7 @@ const eventsSource = readStoreModuleSync("slices/events-slice.ts");
 const interactionSource = readStoreModuleSync("slices/interaction-slice.ts");
 const transcriptSliceSource = readStoreModuleSync("slices/transcript-slice.ts");
 const sessionRuntimeSource = readStoreModuleSync("runtime/session-runtime.ts");
+const stopSessionSource = readStoreModuleSync("runtime/stop-session.ts");
 
 function permission(sessionId, requestId, extra = {}) {
   return {
@@ -308,14 +309,17 @@ test("background permission events update only session-scoped state", () => {
     /removePermission\([\s\S]*state\.pendingPermissions,[\s\S]*sessionId,[\s\S]*requestId/,
   );
   assert.match(storeSource, /removePermissionForToolCall\(/);
-  const abortStart = transcriptSliceSource.indexOf("abort: async");
-  const abortBlock = transcriptSliceSource.slice(abortStart);
-  assert.match(abortBlock, /Promise\.allSettled/);
-  assert.match(abortBlock, /decision: "deny"/);
+  assert.match(transcriptSliceSource, /import \{ createSessionStop \} from "\.\.\/runtime\/stop-session"/);
+  assert.match(
+    transcriptSliceSource,
+    /abort: createSessionStop\(\{ get, set, runtime, flushPendingSessionConfiguration \}\)/,
+  );
+  assert.match(stopSessionSource, /Promise\.allSettled/);
+  assert.match(stopSessionSource, /decision: "deny"/);
   // Every open request is denied: a queued delegate would otherwise keep its
   // tool call alive past the stop the user asked for.
-  assert.match(abortBlock, /sessionPermissions\(/);
-  assert.match(abortBlock, /clearSessionPermissions\(/);
+  assert.match(stopSessionSource, /sessionPermissions\(before\.pendingPermissions, sessionId\)\.map/);
+  assert.match(stopSessionSource, /clearSessionPermissions\(state\.pendingPermissions, sessionId\)/);
 });
 
 test("new navigation intents invalidate older asynchronous commits", async () => {

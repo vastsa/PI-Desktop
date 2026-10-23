@@ -1264,12 +1264,12 @@ const TOOL_PARAM_ALIASES: Record<string, Record<string, string>> = {
   Grep: { query: "pattern" },
 };
 const TOOL_OUTPUT_UPDATE_THROTTLE_MS = 100;
-const READ_ONLY_CORE_TOOLS = new Set(["Read", "Glob", "Grep"]);
+const LOCALLY_ABANDONABLE_CORE_TOOLS = new Set(["Read"]);
 /**
  * How long a stop request waits for a tool that host-core can actually
  * interrupt (`Bash`, `GenerateImages`) to hand back the output it collected
- * before the kill (#1767). Tools without host-side cancellation do not wait at
- * all: the runtime stops waiting the moment the signal fires.
+ * before the kill (#1767). Searches wait for cooperative host cancellation;
+ * mutating and extension calls also retain host settlement ownership.
  */
 const TOOL_ABORT_GRACE_MS = 10_000;
 const MAX_TOOL_PROGRESS_CHARS = 64 * 1024;
@@ -3490,12 +3490,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               scheduleProgress();
             })
           : undefined;
-        // Read-only core tools may be abandoned locally if host-core is still
-        // waiting on a blocking read/search. Mutating, MCP, and plugin calls
-        // must settle before the turn is reported stopped. Bash and image
-        // generation retain their host process-abort path and grace window.
+        // Read retains its existing local-abandon policy. Searches wait for
+        // cooperative cancellation and owned worker/process cleanup. Mutating,
+        // MCP, and plugin calls also settle before the turn is reported stopped.
+        // Bash and image generation retain their existing process-abort grace.
         const hostAbortsProcess = isBash || toolName === "GenerateImages";
-        const canAbandonWait = READ_ONLY_CORE_TOOLS.has(toolName);
+        const canAbandonWait = LOCALLY_ABANDONABLE_CORE_TOOLS.has(toolName);
         const abortedMarker = Symbol("tool-aborted");
         let resolveAborted: (marker: typeof abortedMarker) => void = () => undefined;
         const aborted = new Promise<typeof abortedMarker>((resolve) => {
@@ -3619,10 +3619,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 ? { delegationId: this.delegateWorktrees.get(toolCallId) }
                 : {}),
             });
-          // #1767: read-only host work must not keep the user-facing turn open
-          // indefinitely. Other tool classes deliberately wait for the Host
-          // result so a write or extension action cannot outlive a reported
-          // stop.
+          // Only Read and process-backed tools may release their local wait.
+          // Search, mutating, and extension calls retain actual host settlement
+          // ownership rather than reporting a stopped turn with work outstanding.
           const raced = await Promise.race([execution, aborted]);
           if (raced === abortedMarker) {
             stopped = true;

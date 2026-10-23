@@ -40,7 +40,10 @@ export type FollowScroll = {
  * hold also reaches the scroller this one is nested in, because growing these
  * rows grows that one's content as well.
  */
-export function useFollowScroll(): FollowScroll {
+export function useFollowScroll(enabled = true): FollowScroll {
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const initializedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -51,7 +54,7 @@ export function useFollowScroll(): FollowScroll {
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || !enabledRef.current) return;
     const targetTop = Math.max(0, el.scrollHeight - el.clientHeight);
     el.scrollTo({ top: targetTop, behavior });
     // Record the position the scroller actually reached, not the one that was
@@ -100,7 +103,7 @@ export function useFollowScroll(): FollowScroll {
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || !enabled) return;
     el.addEventListener("wheel", markScrollGesture, { passive: true });
     el.addEventListener("touchstart", markScrollGesture, { passive: true });
     el.addEventListener("touchmove", markScrollGesture, { passive: true });
@@ -113,24 +116,28 @@ export function useFollowScroll(): FollowScroll {
       el.removeEventListener("pointerdown", markScrollGesture);
       el.removeEventListener("keydown", markScrollGesture);
     };
-  }, [markScrollGesture]);
+  }, [enabled, markScrollGesture]);
 
   useLayoutEffect(() => {
-    releaseDisclosureAnchor();
     cancelFollowScroll();
-    pinnedRef.current = true;
-    setShowJump(false);
-    scrollToBottom();
-  }, [cancelFollowScroll, releaseDisclosureAnchor, scrollToBottom]);
+    if (!enabled) return;
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      releaseDisclosureAnchor();
+      pinnedRef.current = true;
+      setShowJump(false);
+    }
+    if (!restoreDisclosureAnchor() && pinnedRef.current) scrollToBottom();
+  }, [cancelFollowScroll, enabled, releaseDisclosureAnchor, restoreDisclosureAnchor, scrollToBottom]);
 
   const scheduleFollowScroll = useCallback(() => {
     // A queued follow frame must not move the title the reader just toggled:
     // the observer below already refuses to, and this path would undo it.
-    if (!pinnedRef.current || followFrameRef.current !== 0) return;
+    if (!enabledRef.current || !pinnedRef.current || followFrameRef.current !== 0) return;
     if (isDisclosureAnchorHeld()) return;
     followFrameRef.current = requestAnimationFrame(() => {
       followFrameRef.current = 0;
-      if (pinnedRef.current) scrollToBottom();
+      if (enabledRef.current && pinnedRef.current) scrollToBottom();
     });
   }, [isDisclosureAnchorHeld, scrollToBottom]);
 
@@ -140,6 +147,7 @@ export function useFollowScroll(): FollowScroll {
   // still while the dock's rows animate. (`useDisclosureAnchor` already passes
   // this hold outward to the scroller this one is nested in.)
   const followScrollNow = useCallback(() => {
+    if (!enabledRef.current) return;
     if (restoreDisclosureAnchor()) return;
     if (!pinnedRef.current) return;
     cancelFollowScroll();
@@ -151,7 +159,7 @@ export function useFollowScroll(): FollowScroll {
 
   const handleScroll = useCallback<UIEventHandler<HTMLDivElement>>(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || !enabledRef.current) return;
     const wasPinned = pinnedRef.current;
     // Real input is compared exactly; without it, sub-pixel slack keeps a
     // fractional device pixel ratio from reading as the user scrolling up.
@@ -185,12 +193,12 @@ export function useFollowScroll(): FollowScroll {
   useEffect(() => {
     const content = contentRef.current;
     const scroller = scrollRef.current;
-    if (!content || !scroller || typeof ResizeObserver === "undefined") return;
+    if (!enabled || !content || !scroller || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(followScrollNow);
     ro.observe(content, { box: "border-box" });
     ro.observe(scroller, { box: "border-box" });
     return () => ro.disconnect();
-  }, [followScrollNow]);
+  }, [enabled, followScrollNow]);
 
   const jumpToLatest = useCallback(() => {
     releaseDisclosureAnchor();
