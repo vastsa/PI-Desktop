@@ -615,15 +615,14 @@ export function ModelConfigPage() {
 
       {subagentModels.length > 0 ? (
         <section className="settings-card-block">
-          <div className="settings-panel model-default-panel">
-            <SubagentModelRow
-              candidates={subagentModels}
-              busy={changingSubagentModel}
-              onToggle={(candidate, selected) =>
-                void setSubagentDelegation(candidate, selected)
-              }
-            />
-          </div>
+          <SubagentModelRow
+            candidates={subagentModels}
+            busy={changingSubagentModel}
+            onChange={(candidate, selected) =>
+              void setSubagentDelegation(candidate, selected)
+            }
+            onEdit={(providerId) => setSetupFor(providerId)}
+          />
         </section>
       ) : null}
 

@@ -1,110 +1,126 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Checkbox } from "../ui";
-import { SettingsDisclosure } from "./SettingsDisclosure";
-import {
-  groupSubagentModels,
-  selectedSubagentModels,
-  type SubagentModelCandidate,
-} from "./subagent-delegation";
+import { formatTokenCount } from "@pi-desktop/shared";
+import { IconClose, IconSearch } from "../icons";
+import { TooltipButton } from "../ui";
+import { selectedSubagentModels, type SubagentModelCandidate } from "./subagent-delegation";
 
 /**
- * Which models the AI may pick when it delegates a run, and the editor for it.
+ * The models the AI may pick when it delegates, listed the way a service lists
+ * its added models — same search field, same row, same Advanced button, same
+ * remove control.
  *
- * The row sits next to the image-model row because both answer the same
- * question — "which models did I hand to the app for this job?" — and both read
- * their state from where the runtime reads it, so the summary can never claim a
- * model the delegation catalog does not contain. Editing stays behind the same
- * disclosure: the row is the answer, the list is how it changes.
+ * Only the opted-in models appear. Adding is not this page's job: a model joins
+ * the list by ticking **Available for AI delegation** in that model's own editor,
+ * which is exactly where Advanced goes. Both surfaces read and write
+ * `availableForSubagents` on the binding, so neither can drift from the other.
  */
 export function SubagentModelRow({
   candidates,
   busy = false,
-  onToggle,
+  onChange,
+  onEdit,
 }: {
   candidates: SubagentModelCandidate[];
   busy?: boolean;
-  onToggle: (candidate: SubagentModelCandidate, selected: boolean) => void;
+  onChange: (candidate: SubagentModelCandidate, selected: boolean) => void;
+  /** Opens the owning service's model editor, where the opt-in is ticked. */
+  onEdit: (providerId: string) => void;
 }) {
   const { t } = useTranslation();
+  const [query, setQuery] = useState("");
   const selected = selectedSubagentModels(candidates);
-  // Nothing configured yet: the page hides this row rather than offering an
-  // editor with no rows in it.
+  // Nothing configured yet: the page hides this row rather than showing a list
+  // that can neither be filled nor emptied.
   if (candidates.length === 0) return null;
-  const groups = groupSubagentModels(candidates);
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? selected.filter((candidate) =>
+        `${candidate.providerName} ${candidate.label}`.toLowerCase().includes(needle),
+      )
+    : selected;
+  const name = (candidate: SubagentModelCandidate) =>
+    `${candidate.providerName} · ${candidate.label}`;
 
   return (
-    <>
-      <div className="settings-row model-default-row model-subagent-row">
-        <div className="settings-row-copy model-default-copy">
-          <div className="settings-row-title model-default-label">
-            {t("settings.subagentModels")}
-          </div>
-          <div className="settings-row-detail model-default-value">
-            {selected.length > 0 ? (
-              selected.map((candidate) => (
-                <span
-                  key={`${candidate.providerId}:${candidate.modelId}`}
-                  className="model-subagent-chip"
-                >
-                  <span className="model-default-provider">{candidate.providerName}</span>
-                  <span className="model-default-sep" aria-hidden>
-                    ·
-                  </span>
-                  <span className="model-default-model font-mono">{candidate.label}</span>
-                </span>
-              ))
-            ) : (
-              <span className="model-default-empty" role="status">
-                {t("settings.subagentModelsUnset")}
-              </span>
-            )}
-          </div>
+    <div className="provider-chosen model-subagent-panel">
+      <div className="provider-chosen-head">
+        <h4 className="provider-chosen-title">{t("settings.subagentModels")}</h4>
+        <span className="provider-chosen-count">{selected.length}</span>
+        <div className="provider-chosen-search-wrap">
+          <IconSearch size={13} aria-hidden />
+          <input
+            className="provider-chosen-search"
+            value={query}
+            placeholder={t("settings.searchChosenModels")}
+            aria-label={t("settings.searchChosenModels")}
+            disabled={busy || selected.length === 0}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </div>
       </div>
-      <SettingsDisclosure className="model-subagent-editor" title={t("settings.subagentModelsEdit")}>
-        <p className="model-subagent-hint">{t("settings.subagentModelsHint")}</p>
-        <div className="model-subagent-options">
-          {groups.map((group) => (
-            <div
-              key={group.providerId}
-              className="model-subagent-group"
-              role="group"
-              aria-label={group.providerName}
+      <p className="model-subagent-hint">{t("settings.subagentModelAdd")}</p>
+      {selected.length === 0 ? (
+        <div className="provider-chosen-empty">{t("settings.subagentModelsUnset")}</div>
+      ) : visible.length === 0 ? (
+        <div className="provider-chosen-empty">{t("settings.noChosenModelMatches")}</div>
+      ) : (
+        <ul className="provider-chosen-list">
+          {visible.map((candidate) => (
+            <li
+              className="provider-chosen-row"
+              key={`${candidate.providerId}:${candidate.modelId}`}
             >
-              <div className="model-subagent-group-title">{group.providerName}</div>
-              {group.candidates.map((candidate) => (
-                <Checkbox
-                  key={`${candidate.providerId}:${candidate.modelId}`}
-                  className="model-subagent-option"
-                  checked={candidate.selected}
-                  disabled={busy || !candidate.editable}
-                  label={
-                    <>
-                      <span className="model-subagent-option-label font-mono">
-                        {candidate.label}
-                      </span>
-                      {!candidate.editable ? (
-                        <span className="model-subagent-option-note">
-                          {t("settings.subagentModelPluginManaged")}
-                        </span>
-                      ) : candidate.selected && candidate.blocked ? (
-                        <span className="model-subagent-option-note">
-                          {t(
-                            candidate.blocked === "provider-disabled"
-                              ? "settings.subagentModelProviderDisabled"
-                              : "settings.subagentModelCredentialMissing",
-                          )}
-                        </span>
-                      ) : null}
-                    </>
-                  }
-                  onChange={(event) => onToggle(candidate, event.target.checked)}
-                />
-              ))}
-            </div>
+              <div className="provider-chosen-row-head">
+                <span className="provider-chosen-row-id font-mono selectable">
+                  {candidate.label}
+                </span>
+                <span className="model-subagent-provider">{candidate.providerName}</span>
+                <span className="provider-chosen-row-limits">
+                  {formatTokenCount(candidate.contextWindow)} ·{" "}
+                  {formatTokenCount(candidate.maxTokens)}
+                </span>
+                {candidate.blocked ? (
+                  <span className="model-subagent-note">
+                    {t(
+                      candidate.blocked === "provider-disabled"
+                        ? "settings.subagentModelProviderDisabled"
+                        : "settings.subagentModelCredentialMissing",
+                    )}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  className="provider-chosen-advanced-toggle"
+                  onClick={() => onEdit(candidate.providerId)}
+                >
+                  {t("settings.advanced")}
+                </button>
+                {candidate.editable ? (
+                  <TooltipButton
+                    type="button"
+                    className="provider-chosen-remove"
+                    ariaLabel={t("settings.subagentModelRemove", { model: name(candidate) })}
+                    tooltip={t("settings.subagentModelRemove", { model: name(candidate) })}
+                    disabled={busy}
+                    onClick={() => onChange(candidate, false)}
+                  >
+                    <IconClose size={12} />
+                  </TooltipButton>
+                ) : (
+                  <span className="model-subagent-note">
+                    {t("settings.subagentModelPluginManaged")}
+                  </span>
+                )}
+              </div>
+            </li>
           ))}
-        </div>
-      </SettingsDisclosure>
-    </>
+        </ul>
+      )}
+    </div>
   );
 }

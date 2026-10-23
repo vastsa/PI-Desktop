@@ -15,7 +15,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const {
-  groupSubagentModels,
   providerServesSubagentDelegation,
   selectedSubagentModels,
   subagentModelCandidates,
@@ -68,9 +67,9 @@ test("every configured model is listed in service order with its opt-in state", 
     provider({ id: "p2", name: "Local", models: [binding("c", { availableForSubagents: true })] }),
   ];
   assert.deepEqual(subagentModelCandidates(providers), [
-    { providerId: "p1", providerName: "Anthropic", modelId: "a", label: "a", selected: true, editable: true },
-    { providerId: "p1", providerName: "Anthropic", modelId: "b", label: "b", selected: false, editable: true },
-    { providerId: "p2", providerName: "Local", modelId: "c", label: "c", selected: true, editable: true },
+    { providerId: "p1", providerName: "Anthropic", modelId: "a", label: "a", contextWindow: 128_000, maxTokens: 8_192, selected: true, editable: true },
+    { providerId: "p1", providerName: "Anthropic", modelId: "b", label: "b", contextWindow: 128_000, maxTokens: 8_192, selected: false, editable: true },
+    { providerId: "p2", providerName: "Local", modelId: "c", label: "c", contextWindow: 128_000, maxTokens: 8_192, selected: true, editable: true },
   ]);
 });
 
@@ -151,23 +150,27 @@ test("duplicate and blank ids never become two rows", () => {
   assert.equal(candidates[0].selected, true);
 });
 
-test("the section groups rows by service in the order the page renders", () => {
-  const candidates = subagentModelCandidates([
-    provider({ models: [binding("a"), binding("b")] }),
-    provider({ id: "p2", name: "Local", models: [binding("c")] }),
+test("the list carries the limits a service's own model row shows", () => {
+  const [candidate] = subagentModelCandidates([
+    provider({
+      models: [
+        binding("a", {
+          contextWindow: 1_000_000,
+          maxTokens: 128_000,
+          availableForSubagents: true,
+        }),
+      ],
+    }),
   ]);
+  assert.equal(candidate.contextWindow, 1_000_000);
+  assert.equal(candidate.maxTokens, 128_000);
+  assert.equal(candidate.selected, true);
   assert.deepEqual(
-    groupSubagentModels(candidates).map((group) => ({
-      providerName: group.providerName,
-      models: group.candidates.map((candidate) => candidate.modelId),
-    })),
-    [
-      { providerName: "Anthropic", models: ["a", "b"] },
-      { providerName: "Local", models: ["c"] },
-    ],
+    selectedSubagentModels([candidate]).map((entry) => entry.modelId),
+    ["a"],
   );
-  assert.deepEqual(selectedSubagentModels(candidates), []);
 });
+
 
 test("the write sets the opt-in and clears it by dropping the key", () => {
   const stored = [
@@ -222,8 +225,16 @@ test("the page mounts the row and writes the flag through the provider, not a se
     join(here, "../src/components/settings/SubagentModelRow.tsx"),
     "utf8",
   );
-  assert.match(row, /checked=\{candidate\.selected\}/);
-  assert.match(row, /disabled=\{busy \|\| !candidate\.editable\}/);
+  // The list reuses the service model list's own parts: same row, same search
+  // field, same Advanced button (which opens the editor that holds the opt-in),
+  // same remove control. Adding never happens here.
+  assert.match(row, /selectedSubagentModels\(candidates\)/);
+  assert.match(row, /className="provider-chosen-list"/);
+  assert.match(row, /provider-chosen-row-head/);
+  assert.match(row, /settings\.searchChosenModels/);
+  assert.match(row, /settings\.advanced/);
+  assert.match(row, /onEdit\(candidate\.providerId\)/);
+  assert.match(row, /settings\.subagentModelRemove/);
   assert.match(row, /settings\.subagentModelPluginManaged/);
   assert.match(row, /settings\.subagentModelProviderDisabled/);
 });
