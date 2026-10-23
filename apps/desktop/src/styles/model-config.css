@@ -1128,15 +1128,17 @@
 }
 
 .provider-chosen-thinking-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 4px 12px;
   min-width: 0;
 }
 
 .provider-chosen-thinking-head > .provider-chosen-thinking-label {
   min-width: 0;
+  white-space: nowrap;
 }
 
 .provider-chosen-thinking-label {
@@ -1161,9 +1163,12 @@
 
 .provider-chosen-thinking-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-self: end;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 6px 12px;
+  min-width: 0;
+  margin-left: auto;
 }
 
 .provider-chosen-thinking-default,
@@ -1171,6 +1176,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 /* The row body keeps its own compact field metric (28px inputs and selects), so
@@ -1860,17 +1866,8 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .provider-chosen-thinking-head {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
   .provider-chosen-thinking-head > .provider-chosen-thinking-label {
-    grid-column: 1 / -1;
-  }
-
-  .provider-chosen-thinking-controls {
-    grid-column: 1 / -1;
-    justify-self: end;
+    flex-basis: 100%;
   }
 
 }
