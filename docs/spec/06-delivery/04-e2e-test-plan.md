@@ -20248,20 +20248,25 @@ Scenario: E2E-REVIEW-ROUNDS (local desktop, implemented)
   delegate a task.
 - **Steps**:
   1. Open Settings → Models and read the **Subagent models** row at the bottom.
-  2. Open its disclosure, tick the second service's model, and re-read the row.
+  2. Open the second service's model editor from the row's Advanced action, tick
+     "Available for AI delegation", save, and re-read the list.
   3. Start a parent turn and inspect the delegation model summary the Task tool
      receives.
-  4. Return to the row, clear that model, and re-read the row.
-  5. Turn the second service off and re-open the disclosure.
+  4. Return to the row, remove that model with its × action, and re-read the
+     list.
+  5. Turn the second service off and re-read the list.
   6. Toggle "Available for AI delegation" in the first service's own model
      dialog and return to the Models page.
 - **Expected**: The row lists exactly the opted-in models as `provider · model`
-  and shows its empty-state line when none is opted in. Ticking a box writes
+- **Expected**: The row lists exactly the opted-in models as `provider · model`
+  and shows its empty-state line when none is opted in; a model joins the list
+  only through that editor's tick. Adding writes
   `availableForSubagents` on that service's binding and the next parent turn
-  lists the model in the delegation catalog; clearing it removes the model from
-  the catalog and leaves no `false` behind on the stored binding. A service that
-  is off or holds no credential keeps its opted-in rows visible and editable,
+  lists the model in the delegation catalog; removing it drops the model from the
+  catalog and leaves no `false` behind on the stored binding. A service that is
+  off or holds no credential keeps its listed models visible and removable,
   annotated with the reason they are idle, while its models stay out of the
+  catalog.
   catalog. The provider dialog and the row show the same flag in both
   directions, so neither surface can drift. A plugin-owned service row renders
   read-only. The row is hidden while no service has a configured model, and a

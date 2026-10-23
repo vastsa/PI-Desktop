@@ -423,7 +423,8 @@ for delegated work, not only `Task.model`: a `session/collaboration/spawn` `mode
 refused with `PERMISSION_DENIED`, while omitting the key, or naming the default model's own key, still inherits.
 
 The flag's editing surface is not tied to the provider dialog. Settings → Models
-lists every configured binding in one **Subagent models** row that reads the same
+lists the opted-in bindings in one **Subagent models** row — each row's Advanced
+action opens the service editor where the opt-in is ticked — and reads the same
 field and rewrites only the touched binding through `providers.update`
 (`apps/desktop/src/components/settings/subagent-delegation.ts`). That row stores
 no second selection, so the delegation catalog and the page cannot disagree, and

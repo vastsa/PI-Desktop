@@ -1922,68 +1922,35 @@
   .model-provider-row { transition: none; }
 }
 
-/* ------------------------------------------- subagent delegation list */
+/* --------------------------------------- subagent delegation model list */
 
 /*
-  One durable opt-in list across every service, edited in place. The summary row
-  on the Models page states today's answer; this tile is how it changes. The list
-  scrolls instead of growing the page, because a configured service can publish
-  dozens of models.
+  The list reuses the service model list's own parts (`.provider-chosen-*`), so
+  a model row here looks and behaves like the row that produced it. Only the
+  furniture this surface adds is styled here.
 */
-.model-subagent-chip {
-  display: inline-flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 7px;
-}
-
-.model-subagent-editor {
-  /* The summary's hover fill must not square off the tile's rounded corners. */
-  border-radius: var(--radius-md-plus);
+.model-subagent-panel {
+  border-radius: var(--radius-lg);
   background: var(--ds-tile);
-  overflow: hidden;
+  padding: 4px 0 6px;
 }
 
 .model-subagent-hint {
   margin: 0;
-  padding: 0 16px 10px;
+  padding: 0 14px 6px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
 }
 
-.model-subagent-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 320px;
-  padding: 0 16px 14px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.model-subagent-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.model-subagent-group-title {
+.model-subagent-provider {
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-wide);
   line-height: var(--leading-normal);
 }
 
-.model-subagent-option-label {
-  color: var(--ds-text-primary);
-  font-size: var(--text-sm);
-}
-
-/* A note rides beside the label: why a row is fixed, or why its opt-in is idle. */
-.model-subagent-option-note {
-  margin-left: 6px;
+.model-subagent-note {
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-wide);

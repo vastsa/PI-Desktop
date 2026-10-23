@@ -4,10 +4,10 @@
  * `ModelBinding.availableForSubagents` is the only source of truth for the
  * delegation catalog: the runtime builds that catalog from it at launch
  * (`packages/host-runtime/src/launch-resolver.ts`) and authorizes every
- * `Task.model` override against the same catalog. This page therefore edits
- * those flags themselves — one list across every configured service — instead
- * of keeping a second selection the runtime would have to merge, so what the
- * page shows is exactly what the AI may pick.
+ * `Task.model` override against the same catalog. This list therefore reads and
+ * clears that flag on the binding itself — the same field a service's model
+ * editor writes — so the page and the catalog cannot disagree, and a change made
+ * in either place is visible in both.
  *
  * The helpers stay free of runtime imports so the catalog rules can be tested
  * without the application bundle.
@@ -24,6 +24,9 @@ export type SubagentModelCandidate = {
   modelId: string;
   /** The alias the rest of Settings shows, else the wire id. */
   label: string;
+  /** The binding's limits, shown the way a service's model list shows them. */
+  contextWindow: number;
+  maxTokens: number;
   /** True when this binding carries the delegation opt-in. */
   selected: boolean;
   /**
@@ -34,12 +37,6 @@ export type SubagentModelCandidate = {
   editable: boolean;
   /** Set when the opt-in exists but the service cannot serve it yet. */
   blocked?: SubagentModelBlockedReason;
-};
-
-export type SubagentModelGroup = {
-  providerId: string;
-  providerName: string;
-  candidates: SubagentModelCandidate[];
 };
 
 /** The provider facts the delegation rules read; anything else is ignored. */
@@ -117,6 +114,8 @@ export function subagentModelCandidates(
         providerName: provider.name,
         modelId,
         label: modelLabel(binding),
+        contextWindow: binding.contextWindow,
+        maxTokens: binding.maxTokens,
         selected: binding.availableForSubagents === true,
         editable: !provider.ownerPluginId,
         ...(blocked ? { blocked } : {}),
@@ -131,25 +130,6 @@ export function selectedSubagentModels(
   candidates: readonly SubagentModelCandidate[],
 ): SubagentModelCandidate[] {
   return candidates.filter((candidate) => candidate.selected);
-}
-
-/** Group in service order so one service's models read as one block. */
-export function groupSubagentModels(
-  candidates: readonly SubagentModelCandidate[],
-): SubagentModelGroup[] {
-  const groups: SubagentModelGroup[] = [];
-  for (const candidate of candidates) {
-    const last = groups[groups.length - 1];
-    if (last && last.providerId === candidate.providerId) last.candidates.push(candidate);
-    else {
-      groups.push({
-        providerId: candidate.providerId,
-        providerName: candidate.providerName,
-        candidates: [candidate],
-      });
-    }
-  }
-  return groups;
 }
 
 /**

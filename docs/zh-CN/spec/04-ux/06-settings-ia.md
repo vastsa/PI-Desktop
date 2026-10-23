@@ -257,12 +257,13 @@ Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历�
     `Cmd/Ctrl + Shift + W` 呼出组合键已移除 —— 并且避开 `Cmd/Ctrl + W`，因为
     macOS 把它用于自己的关闭窗口命令；读取配置映射时，已存储的
     `closeWindow` / `summonWindow` 覆盖项会并入它（D438、D439）
-
-### 模型配置（`agent` 选项卡）
-- **Studio Hero**：提供商计数、就绪计数和当前默认 provider/model 摘要
-- **默认**卡：默认提供商/模型选择器。全局运行模式、命令 Shell
-  和回车发送由全局 AI 目的地负责。
-- **子代理模型**行（位于生图模型选择器之后）用 `provider · model` 列出带
+- **子代理模型**行（位于生图模型选择器之后）只列出带 `availableForSubagents` 选项的
+  模型 —— 即父 agent 看到的委托目录 —— 每条以 `provider · model` 呈现并带删除操作；
+  模型 —— 即父 agent 看到的委托目录 —— 每条以 `provider · model` 呈现，并带与服务
+  自身模型列表相同的“高级”和删除操作；一个都没有时显示空状态说明。“高级”打开该服务
+  的模型编辑器（勾选项就在那里），因此添加始终发生在模型编辑器里，而不是这一行。它读写
+  `ModelBinding.availableForSubagents`，不另存第二份选择；保存前重新读取该服务，只
+  没有任何服务配置模型时整行隐藏。
   `availableForSubagents` 选项的模型 —— 即父 agent 看到的委托目录；一个都没有时显示
   空状态说明。其折叠区按服务分组列出全部已配置绑定，每个模型一个复选框，因此不必逐个
   打开服务的模型对话框。它读写 `ModelBinding.availableForSubagents`，不另存第二份选择；
