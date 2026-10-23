@@ -86,7 +86,7 @@ app.whenReady().then(async()=>{
   try {
     const win=new BrowserWindow({show:false,useContentSize:true,width:900,height:720,webPreferences:{backgroundThrottling:false,sandbox:true,contextIsolation:true}});
     await win.loadFile(require('node:path').join(__dirname,'index.html'));
-    const probes=['pluginReviewsDrawerProbe','pluginReviewsStaleSummaryProbe','pluginReviewsUnavailableSummaryProbe','pluginReviewsBatchProbe','pluginReviewsNarrowDrawerProbe'];
+const probes=['pluginReviewsDrawerProbe','pluginReviewsStaleSummaryProbe','pluginReviewsUnavailableSummaryProbe','pluginReviewsZeroRatingProbe','pluginReviewsBatchProbe','pluginReviewsNarrowDrawerProbe'];
     let failed=false;
     for(const name of probes){
       // The narrow probe runs against a phone-sized viewport; everything else

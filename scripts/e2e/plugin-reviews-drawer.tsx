@@ -205,7 +205,7 @@ Object.assign(globalThis, {
       chip.getAttribute("aria-label") === "Rated 4.5 out of 5 from 3 ratings",
       `rating chip aria-label: ${chip.getAttribute("aria-label")}`,
     );
-    check(chip.textContent?.includes("4.5 (3)") === true, `rating chip text: ${chip.textContent}`);
+    check(chip.textContent?.includes("4.5") === true && !chip.textContent?.includes("(3)"), `rating chip text: ${chip.textContent}`);
 
     find(".plugins-card-hit").click();
     await settle(() => !!maybe(".plugins-sheet"), "detail sheet");
@@ -612,6 +612,119 @@ Object.assign(globalThis, {
     return "PASS: at a narrow viewport the drawer stays inside it with no horizontal overflow; filters, sort, close and the write link are all usable; the body scrolls and the composer stays pinned";
   },
 
+  // A summary the centre returned with no ratings reads a fixed 0.0 on the
+  // card, a rated summary keeps the average alone, and a card the centre never
+  // answered keeps no chip at all — an unknown rating must never read as zero.
+  // The footer review line also holds its slot: the centre's rows when there
+  // are any, a fixed placeholder when there are none.
+  pluginReviewsZeroRatingProbe: async () => {
+    step("zero:init");
+    await i18n.init({ lng: "en", resources: { en: { translation: en } } });
+    const ratedPlugin = { ...plugin, id: "rated.plugin", name: "Rated Plugin" };
+    const zeroPlugin = { ...plugin, id: "zero.plugin", name: "Zero Plugin" };
+    const silentPlugin = { ...plugin, id: "silent.plugin", name: "Silent Plugin" };
+    Object.assign(api, {
+      ...pageMocks(),
+      marketSearch: async () => ({ plugins: [ratedPlugin, zeroPlugin, silentPlugin] }),
+      marketReviewSummaries: async () => ({
+        "rated.plugin": { ...summary, pluginId: "rated.plugin" },
+        "zero.plugin": {
+          ...summary,
+          pluginId: "zero.plugin",
+          ratingAvg: 0,
+          ratingCount: 0,
+          ratingDist: [0, 0, 0, 0, 0],
+          positiveCount: 0,
+          neutralCount: 0,
+          negativeCount: 0,
+        },
+      }),
+      marketReviewTickers: async () => ({
+        "rated.plugin": {
+          pluginId: "rated.plugin",
+          rows: [
+            {
+              id: "ticker-1",
+              authorName: "Ada",
+              ratingHalfStars: 9,
+              body: "Rotates on the card",
+              helpfulCount: 2,
+              createdAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    });
+
+    usePluginBrowseState.setState({ tab: "market", query: "" });
+    step("zero:render");
+    const { container, root } = mountProbe();
+    // The shipping page root owns the container query; the probe's mount point
+    // stands in for it so the grid's fallback can be measured.
+    container.className = "plugins-page";
+    await settle(() => texts(".plugins-card-name").length === 3, "zero probe: three cards");
+    await settle(
+      () => !!cardByName("Rated Plugin").querySelector(".plugins-rating"),
+      "zero probe: rated chip",
+    );
+
+    const ratedChip = cardByName("Rated Plugin").querySelector(".plugins-rating");
+    check(
+      ratedChip?.getAttribute("aria-label") === "Rated 4.5 out of 5 from 3 ratings",
+      `zero probe: rated aria-label: ${ratedChip?.getAttribute("aria-label")}`,
+    );
+    check(
+      ratedChip?.textContent?.includes("4.5") === true &&
+        !ratedChip?.textContent?.includes("(3)"),
+      `zero probe: rated chip text: ${ratedChip?.textContent}`,
+    );
+
+    await settle(
+      () => !!cardByName("Zero Plugin").querySelector(".plugins-rating"),
+      "zero probe: zero-rating chip",
+    );
+    const zeroChip = cardByName("Zero Plugin").querySelector(".plugins-rating");
+    check(
+      zeroChip?.textContent?.trim() === "0.0",
+      `zero probe: zero-rating chip text: ${zeroChip?.textContent}`,
+    );
+    check(
+      cardByName("Silent Plugin").querySelector(".plugins-rating") === null,
+      "zero probe: a card the centre never answered rendered a zero rating",
+    );
+
+    check(
+      cardByName("Rated Plugin")
+        .querySelector(".plugins-card-review")
+        ?.textContent?.includes("Rotates on the card") === true,
+      `zero probe: review line: ${cardByName("Rated Plugin").querySelector(".plugins-card-review")?.textContent}`,
+    );
+    check(
+      cardByName("Silent Plugin")
+        .querySelector(".plugins-card-review.is-empty")
+        ?.textContent?.includes("No reviews yet") === true,
+      `zero probe: empty review line: ${cardByName("Silent Plugin").querySelector(".plugins-card-review")?.textContent}`,
+    );
+
+    // The fallback tracks the pane, not the window: with the window still wide,
+    // a 500px page container must collapse the grid to one column, and a 900px
+    // one must restore the pair.
+    const page = document.querySelector<HTMLElement>(".plugins-page");
+    const grid = document.querySelector<HTMLElement>(".plugins-card-grid");
+    check(!!page && !!grid, "zero probe: page container or grid missing");
+    const columns = () =>
+      getComputedStyle(grid!).gridTemplateColumns.split(" ").filter(Boolean).length;
+    page!.style.width = "900px";
+    check(columns() === 2, `zero probe: wide pane columns: ${columns()}`);
+    page!.style.width = "500px";
+    check(columns() === 1, `zero probe: narrow pane columns: ${columns()}`);
+    page!.style.width = "";
+
+    root.unmount();
+    container.remove();
+    return "PASS: a zero-rating summary reads 0.0 without a count, an unanswered card keeps no chip, and the footer review line rotates the centre's rows or names the empty state";
+  },
+
   pluginReviewsBatchProbe: async () => {
     step("batch:init");
     await i18n.init({ lng: "en", resources: { en: { translation: en } } });
@@ -670,7 +783,8 @@ Object.assign(globalThis, {
     );
     await settle(() => !!maybe(".plugins-rating"), "batch probe: fresh chip");
     check(
-      find(".plugins-rating").textContent?.includes("4.5 (3)") === true,
+      find(".plugins-rating").textContent?.includes("4.5") === true &&
+      !find(".plugins-rating").textContent?.includes("(3)"),
       `fresh chip text: ${find(".plugins-rating").textContent}`,
     );
     check(
@@ -689,7 +803,8 @@ Object.assign(globalThis, {
     // stays and the stale rating never appears on the visible card.
     check(!!maybe(".plugins-rating"), "fresh chip lost after the stale answer landed");
     check(
-      find(".plugins-rating").textContent?.includes("4.5 (3)") === true,
+      find(".plugins-rating").textContent?.includes("4.5") === true &&
+      !find(".plugins-rating").textContent?.includes("(3)"),
       "fresh chip changed after the stale answer landed",
     );
     check(

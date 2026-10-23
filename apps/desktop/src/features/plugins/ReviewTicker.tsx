@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { PluginReviewTicker } from "@pi-desktop/shared";
 
 /** How long one review line stays on screen before the next one fades in. */
@@ -13,6 +14,7 @@ const ADVANCE_MS = 6000;
  * asked for reduced motion sees the first row only.
  */
 export function ReviewTicker({ ticker }: { ticker?: PluginReviewTicker }) {
+  const { t } = useTranslation();
   const rows = ticker?.rows ?? [];
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -39,7 +41,14 @@ export function ReviewTicker({ ticker }: { ticker?: PluginReviewTicker }) {
     return () => window.clearInterval(handle);
   }, [paused, reducedMotion, rows.length]);
 
-  if (rows.length === 0) return null;
+  // No reviews yet: show a fixed placeholder line instead of collapsing the slot.
+  if (rows.length === 0) {
+    return (
+      <span className="plugins-card-review is-empty">
+        {t("plugins.reviews.tickerEmpty")}
+      </span>
+    );
+  }
   const row = rows[index] ?? rows[0];
 
   return (

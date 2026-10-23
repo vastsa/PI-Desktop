@@ -29,6 +29,11 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* Container query context for the cards below: the grid tracks the page
+     pane, not the window, so a narrow content area with a wide window still
+     collapses to one column. */
+  container-type: inline-size;
+  container-name: plugins-page;
 }
 
 /* The page header and segmented row form one quiet tool surface; air, not a
@@ -996,10 +1001,21 @@
   color: var(--ds-text-primary);
 }
 
+/* Two columns at full width (was auto-fill, which grew to three or more on
+   wide windows). The query is on the page container, not the viewport: below
+   560px of pane width two columns would put each card under the ~272px the old
+   layout already treated as too tight, so the grid collapses to one column
+   even while the window itself is wide. */
 .plugins-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+@container plugins-page (max-width: 560px) {
+  .plugins-card-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Marketplace cards are tiles too: tint at rest, lifted by shadow on hover. */
@@ -1168,6 +1184,12 @@
   flex: 0 0 1px;
   height: 9px;
   background: var(--ds-border-subtle);
+}
+
+/* Fixed "no reviews yet" placeholder: not a ticker line, so no fade and a
+   quieter, italic voice. */
+.plugins-card-review.is-empty {
+  font-style: italic;
 }
 
 .plugins-card-review-text {

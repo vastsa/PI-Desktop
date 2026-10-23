@@ -174,6 +174,7 @@ export function MarketplacePanel({
                           summary={reviewSummaries[item.id]}
                           locale={locale}
                           showDot={false}
+                          showZero
                         />
                         <ReviewTicker ticker={reviewTickers[item.id]} />
                         {installed && !upgradable ? (

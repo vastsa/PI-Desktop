@@ -581,6 +581,20 @@ direct labels and actions without explanatory paragraphs. Explanations remain
 where they help a decision — permission review, detail sheets, editors, and
 error states.
 
+Marketplace cards sit in a fixed two-column grid at full width
+(`repeat(2, minmax(0, 1fr))`, not auto-fill), falling back to a single column
+from the page container's own width (`@container plugins-page (max-width:
+560px)`) rather than the viewport, so a narrow pane in a wide window still
+collapses (D671). Each card's footer carries
+the rating chip, one rotating review line, and the install action: the review
+line cycles through the centre-selected rows every six seconds (pausing on
+hover or focus, and respecting reduced motion), and when the plugin has no
+reviews it reads a fixed localized "no reviews yet" placeholder instead of
+collapsing. The chip shows the one-decimal average alone — never the rating
+count — and a marketplace card whose summary reports no ratings reads a fixed
+0.0; a chip stays hidden only when the centre provides no summary at all, so
+an unavailable service never reads as a zero rating (D671).
+
 Marketplace cards render a monogram glyph rather than fetching `iconUrl`; the
 renderer performs no remote image loads (D169).
 
