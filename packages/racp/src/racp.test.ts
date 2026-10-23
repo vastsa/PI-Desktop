@@ -10,6 +10,30 @@ function envelope(sessionId: string, turnId: string, event: AgentEventEnvelope["
 
 const context = (requestId: string, idempotencyKey?: string) => ({ requestId, ...(idempotencyKey ? { idempotencyKey } : {}) });
 
+it("routes scoped plugin reads only for owners and supported Hosts", async () => {
+  const calls: unknown[] = [];
+  const h = await harness({ operations: { workspacePluginFiles: { async read(input) {
+    calls.push(input); return { kind: "text", content: "remote", size: 6, mtimeMs: 123 };
+  } } } });
+  const owner = await h.connect(OWNER_TOKEN);
+  const viewer = await h.connect(VIEWER_TOKEN);
+  const input = { path: "/repo", ref: "docs/a.md", operation: "preview", scope: ["docs/**"] };
+  try {
+    expect(owner.client.initialized?.capabilities.workspacePluginFiles).toBe(true);
+    expect(await owner.client.request("workspace/pluginFiles", input)).toMatchObject({ content: "remote" });
+    await expect(viewer.client.request("workspace/pluginFiles", input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    for (const params of [{ ...input, operation: "write" }, { ...input, scope: undefined }, { ...input, hostKey: "other" }]) {
+      await expect(owner.client.request("workspace/pluginFiles", params)).rejects.toMatchObject({ code: "INVALID_ARGUMENT" });
+    }
+    expect(calls).toEqual([input]);
+  } finally { await owner.client.close(); await viewer.client.close(); }
+  const old = await harness(); const connection = await old.connect(OWNER_TOKEN);
+  try {
+    expect(connection.client.initialized?.capabilities.workspacePluginFiles).toBe(false);
+    await expect(connection.client.request("workspace/pluginFiles", input)).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+  } finally { await connection.client.close(); }
+});
+
 describe("RACP-WS handshake and authentication", () => {
   it("negotiates protocol, capabilities, limits, and the Host identity", async () => {
     const h = await harness();

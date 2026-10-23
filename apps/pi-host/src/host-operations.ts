@@ -1,4 +1,5 @@
 import { createWorkspaceFiles } from "./workspace-files.js";
+import { createWorkspacePluginFiles } from "./plugin-workspace-files.js";
 import { createWorkspaceTools } from "./workspace-tools.js";
 import { readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -46,6 +47,8 @@ export type HostOperationsDeps = {
   revokeDevice?: (deviceId: string) => Promise<boolean>;
   /** Root the folder picker may not leave; defaults to the user's home directory. */
   browseRoot?: string;
+  /** Host credentials and persistence must never be exposed through plugin reads. */
+  dataDir?: string;
 };
 
 function requireHost(getHost: () => HostRpc | null): HostRpc {
@@ -256,6 +259,10 @@ export function createHostOperations(deps: HostOperationsDeps): Omit<RacpHostOpe
     workspace: createWorkspaceAccess(deps),
     workspaceTools: createWorkspaceTools(deps.getHost),
     workspaceFiles: createWorkspaceFiles(),
+    workspacePluginFiles: createWorkspacePluginFiles({
+      browseRoot: deps.browseRoot ?? homedir(),
+      protectedPaths: [deps.dataDir ?? join(homedir(), ".pi-desktop")],
+    }),
     ...(deps.revokeDevice ? { revokeDevice: deps.revokeDevice } : {}),
   };
 }

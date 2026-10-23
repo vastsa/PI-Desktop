@@ -639,6 +639,18 @@ Legacy remote-Agent operations above remain unchanged.
   local global defaults before remote root instructions. Nested traversal and
   remote global defaults are not supported by this operation.
 
+`workspace/pluginFiles` is a separate owner-only, read-only operation, advertised
+by optional capability `workspacePluginFiles`. It accepts only
+`{ path, operation: "list" | "preview", ref, scope: string[] }`; no Host key,
+write payload or external absolute `ref` is accepted. The Host checks its browse
+root, protected data, canonical containment, credential denials, and requested
+and canonical scope before delivery. Results are a closed `kind` union: `list`
+with root-relative entries, or `text`/`image`/`binary`/`tooLarge` with real size
+and `mtimeMs`. Text and images use the existing 512 KiB / 5 MiB preview caps.
+Desktop derives the remote root from its admitted project binding and rejects
+late results after a binding or connection lifecycle change. This operation
+does not widen `workspace/files` or grant remote mutation rights.
+
 `workspaceTools` and `workspaceFiles` are optional advertised capabilities; an
 older Host fails with CAPABILITY_UNAVAILABLE/METHOD_NOT_FOUND rather than
 falling back to the Desktop filesystem. Tools are not automatically replayed

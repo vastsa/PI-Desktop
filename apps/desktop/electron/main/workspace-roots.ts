@@ -119,6 +119,13 @@ export async function refreshProjectGroups(
  */
 export function pluginWorkspaceInfo(path: string | null): PluginWorkspaceInfo | null {
   if (!path) return null;
+  if (path.startsWith("remote-project:")) {
+    const group = groups?.find((candidate) => candidate.primaryPath === path);
+    if (group?.remote) return {
+      path, name: group.name, ...workspaceRootsFor(path),
+      remote: { path: group.remote.path, readOnly: true },
+    };
+  }
   const name = path.split(/[\\/]/).filter(Boolean).at(-1) || path;
   return { path, name, ...workspaceRootsFor(path) };
 }

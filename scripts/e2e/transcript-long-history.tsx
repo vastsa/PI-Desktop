@@ -276,8 +276,15 @@ export async function transcriptLongHistoryProbe() {
     scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
     await settled();
     const readingTop = scroller.scrollTop;
+    const readingHeight = scroller.scrollHeight;
     await stream(largest, " reader-stays");
-    assert(Math.abs(scroller.scrollTop - readingTop) < 2, "stream stole the reader's scroll position");
+    assert(Math.abs(scroller.scrollTop - readingTop) < 2,
+      `stream stole the reader's scroll position: ${JSON.stringify({
+        before: { top: readingTop, height: readingHeight },
+        after: { top: scroller.scrollTop, height: scroller.scrollHeight },
+        viewport: scroller.clientHeight,
+        reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      })}`);
 
     // Terminal re-key must replace exactly the provisional row, survive cache
     // reselection and expose fresh copy text through the real turn toolbar.

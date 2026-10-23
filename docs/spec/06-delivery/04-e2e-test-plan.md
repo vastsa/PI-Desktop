@@ -18656,6 +18656,31 @@ host-created files. The full app's file-preview viewer is covered separately.
   and `plugin-composer-suggestion.test.mjs`; the rendered journey remains a
   manual/Electron check when this surface changes.
 
+### E2E-REMOTE-FILE-MANAGER: Scoped remote plugin reads
+
+Run `node scripts/e2e-remote-file-manager.mjs` to validate the shipped copy in
+`apps/desktop/resources/plugins/pi.file-manager`. This is the release acceptance
+path: passing against a separate development plugin does not prove the bundled
+user path is repaired. The runner records the loaded directory in its output.
+An optional `<built-file-manager-directory>` argument selects the companion
+plugin's rebuilt `views/` or unpacked official PluginPack artifact for development
+validation only. Before accepting #1711, update the bundled release, its upstream
+tag/commit and per-file checksums, then rerun the default path on the updated PR
+integration candidate.
+`PI_FILE_MANAGER_QA_DIR` may point to an existing plugin `tests/electron`
+installation providing Playwright; `PI_ELECTRON_BINARY` selects an existing
+compatible Electron runtime. `PI_E2E_ARTIFACTS` optionally preserves screenshots.
+
+The isolated production plugin process and `file://` view use Desktop's actual
+SDK broker, durable-binding reader, loopback RACP transport and Host filesystem
+service. Only the fixture's project-record lookup and authentication bootstrap
+are supplied by the harness. Verify nested listings, text/image bytes, hidden
+credentials, read-only editor/save/menu controls, visible disconnect errors and
+refresh recovery, rejected late previews and ancestor opens after a project
+switch, and restored local editing/Browser/editor detection. No model, user
+profile or external SSH server participates. Real SSH transport and native
+Windows/Linux behavior require their separate platform acceptance.
+
 ### E2E-GENUI-inline-visualization-card: a visualization renders inline and stays sandboxed
 
 - **Preconditions**: The app is running with a local Agent session and the
