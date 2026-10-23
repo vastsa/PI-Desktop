@@ -250,14 +250,14 @@ test("send clears the composer before the round trip and restores a rejected dra
     /if \(!steering && !modelReady\) \{\s*showToast\(t\("errors\.MODEL_NOT_CONFIGURED"\), \{ variant: "error" \}\);\s*return;\s*\}/,
   );
   // Optimistic clear, restore on rejection. The clear must precede the await.
-  const clearAt = submit.indexOf("draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);\n    const submitEpoch = ++latestSubmitRef.current;\n    const accepted = steering");
+  const clearAt = submit.indexOf("draft.clearDraftForKey(submittedDraftKey, submittedDraftRevision, submittedDraft);\n    const submitEpoch = (latestSubmitEpochs.get(submittedDraftKey) ?? 0) + 1;\n    latestSubmitEpochs.set(submittedDraftKey, submitEpoch);\n    const accepted = steering");
   assert.ok(clearAt > 0, "draft must be cleared before awaiting sendPrompt");
   // Only the newest submit may restore: a late rejection of an older send
   // must not paint that older message over the composer (#1809).
-  assert.match(submit, /const submitEpoch = \+\+latestSubmitRef\.current;/);
+  assert.match(submit, /latestSubmitEpochs\.set\(submittedDraftKey, submitEpoch\);/);
   assert.match(
     submit,
-    /if \(accepted\) remember\(\);\s*else if \(submitEpoch === latestSubmitRef\.current\)\s*draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
+    /if \(accepted\) remember\(\);\s*else if \(latestSubmitEpochs\.get\(submittedDraftKey\) === submitEpoch\)\s*draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
   );
   assert.doesNotMatch(submit, /if \(!accepted\) draft\.restoreDraftForKey/);
   assert.doesNotMatch(submit, /if \(accepted\) draft\.clearDraftForKey\(submittedDraftKey, submittedDraftRevision, submittedDraft\);\s*\};/);
@@ -290,7 +290,7 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   );
   assert.match(
     submit,
-    /const submittedDraftRevision = draft\.draftRevision\(submittedDraftKey\);\s*const submittedDraft = draft\.draftSnapshot\(rawText\);[\s\S]*?draft\.clearDraftForKey\(submittedDraftKey, submittedDraftRevision, submittedDraft\);\s*const submitEpoch = \+\+latestSubmitRef\.current;\s*const accepted = steering\s*\?\s*await steerPrompt\(inlineContent, submittedDraft\)\s*:\s*await sendPrompt\(\s*inlineContent,\s*submittedDraft,\s*activeSessionId \?\? undefined,\s*captureAcceptedSession,\s*\);\s*if \(accepted\) remember\(\);\s*else if \(submitEpoch === latestSubmitRef\.current\)\s*draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
+    /const submittedDraftRevision = draft\.draftRevision\(submittedDraftKey\);\s*const submittedDraft = draft\.draftSnapshot\(rawText\);[\s\S]*?draft\.clearDraftForKey\(submittedDraftKey, submittedDraftRevision, submittedDraft\);\s*const submitEpoch = \(latestSubmitEpochs\.get\(submittedDraftKey\) \?\? 0\) \+ 1;\s*latestSubmitEpochs\.set\(submittedDraftKey, submitEpoch\);\s*const accepted = steering\s*\?\s*await steerPrompt\(inlineContent, submittedDraft\)\s*:\s*await sendPrompt\(\s*inlineContent,\s*submittedDraft,\s*activeSessionId \?\? undefined,\s*captureAcceptedSession,\s*\);\s*if \(accepted\) remember\(\);\s*else if \(latestSubmitEpochs\.get\(submittedDraftKey\) === submitEpoch\)\s*draft\.restoreDraftForKey\(submittedDraftKey, submittedDraft\);/,
   );
   assert.match(store, /draft\?: ComposerDraftSnapshot/);
   const sendPrompt = queueSlice.slice(
@@ -316,15 +316,15 @@ test("a late rejection of an older submit never restores its draft (#1809)", () 
   // The epoch is taken after the optimistic clear, so any submit that started
   // later — including one whose own clear emptied the slot again — invalidates
   // this failure's restore.
-  const epochAt = submit.indexOf("const submitEpoch = ++latestSubmitRef.current;");
+  const epochAt = submit.indexOf("const submitEpoch = (latestSubmitEpochs.get(submittedDraftKey) ?? 0) + 1;");
   const awaitAt = submit.indexOf("await steerPrompt(inlineContent, submittedDraft)");
-  const restoreAt = submit.indexOf("submitEpoch === latestSubmitRef.current");
+  const restoreAt = submit.indexOf("latestSubmitEpochs.get(submittedDraftKey) === submitEpoch");
   assert.ok(epochAt > 0, "submit epoch must be captured");
   assert.ok(awaitAt > epochAt, "epoch precedes the round trip");
   assert.ok(restoreAt > awaitAt, "the restore checks the epoch after the await");
   // The stale guard lives on the restore path only; a rejected newest submit
   // still gets its draft back, and history still records accepted sends.
-  assert.match(submit, /else if \(submitEpoch === latestSubmitRef\.current\)/);
+  assert.match(submit, /else if \(latestSubmitEpochs\.get\(submittedDraftKey\) === submitEpoch\)/);
   assert.doesNotMatch(submit, /if \(!accepted\)/);
 });
 
