@@ -12,7 +12,8 @@ JavaScript 包。上游包演进时，必须保持这一职责划分清晰。
 - `@earendil-works/pi-agent-core` 提供 Agent 循环，以及稳定的 agent、event、tool
   类型。Agent Runtime 自行维护桌面专用的上下文投影、压缩和 prompt 模板展开。
 - `@earendil-works/pi-ai` 提供提供商传输、认证、消息类型、请求重试和 token 估算。
-  Hosted search 请求与估算行为继续由 PI-Desktop 的 pi-ai 补丁和契约测试覆盖。
+  Hosted search 请求与估算行为，以及为 Fast 模式让 `streamSimple` 转发 `serviceTier`
+  （ADR 0334），继续由 PI-Desktop 的 pi-ai 补丁和契约测试覆盖。
 - Rust `host-core` 仍然是 SQLite 和权威持久会话状态的唯一所有者。Node sidecar
   通过现有 RPC 契约请求持久化检查点和工具结果。
 - `@earendil-works/pi-coding-agent` 是过渡期依赖。生产代码仅在原生 Pi 会话续接及

@@ -19,7 +19,8 @@ in `docs/project/pi-130-adoption.md`.
   prompt-template expansion, and session-context projection.
 - `@earendil-works/pi-ai` supplies provider transports, auth, message types,
   request retries, and token estimation. Hosted-search request and estimation
-  behavior remains covered by PI-Desktop's pi-ai patch and contract tests.
+  behavior, and forwarding `serviceTier` through `streamSimple` for Fast mode
+  (ADR 0334), remain covered by PI-Desktop's pi-ai patch and contract tests.
 - Rust `host-core` remains the sole owner of SQLite and authoritative durable
   session state. The Node sidecar asks it to persist checkpoints and tool
   outcomes through the existing RPC contract.

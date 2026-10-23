@@ -719,6 +719,20 @@ fn plugin_session_rpc_err(error: impl ToString) -> JsonRpcError {
     rpc_err(rpc_code, message, &code)
 }
 
+/// Optional session `/fast` switch (ADR 0334). Absent or null leaves the
+/// stored value; anything but a boolean is rejected rather than coerced.
+fn fast_mode_param(params: &Value) -> Result<Option<bool>, JsonRpcError> {
+    match params.get("fastMode") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(rpc_err(
+            1002,
+            "fastMode must be a boolean",
+            "INVALID_PARAMS",
+        )),
+    }
+}
+
 /// Parse the optional session thinking selector at the RPC boundary.  A
 /// missing/null value keeps the backwards-compatible default; present values
 /// must be strings from the host's allowlist rather than being silently
@@ -2573,6 +2587,7 @@ async fn handle_request(
         }
         "session.create" => {
             let thinking_level = thinking_level_param(&params)?;
+            let fast_mode = fast_mode_param(&params)?.unwrap_or(false);
             let permission_parent = permission_parent_param(&params)?;
             // ADR 0329: an isolated session gets its own git worktree.
             let isolated = params
@@ -2634,6 +2649,7 @@ async fn handle_request(
                         .map(str::to_string),
                     thinking_level,
                     permission_mode,
+                    fast_mode,
                 },
             )
             .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
@@ -2800,8 +2816,9 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "mode required", "INVALID_PARAMS"))?;
             let thinking_level = thinking_level_param(&params)?;
+            let fast_mode = fast_mode_param(&params)?;
             let st = state.lock().await;
-            let session = sessions::configure_session_with_thinking(
+            let session = sessions::configure_session_with_fast_mode(
                 &st.db,
                 id,
                 mode,
@@ -2809,6 +2826,7 @@ async fn handle_request(
                 params.get("modelId").and_then(|v| v.as_str()),
                 thinking_level.as_deref(),
                 params.get("permissionMode").and_then(|v| v.as_str()),
+                fast_mode,
             )
             .map_err(|e| {
                 let message = e.to_string();
@@ -6746,6 +6764,58 @@ mod tests {
             groups_after_delete["groups"][0]["primaryPath"],
             json!(remaining_canonical)
         );
+    }
+
+    /// ADR 0334: `fastMode` is an optional boolean on create and configure;
+    /// an absent value keeps the stored switch and a non-boolean is rejected.
+    #[tokio::test]
+    async fn session_fast_mode_rpc_is_optional_boolean_and_preserved() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let call = |method: &'static str, params: Value| {
+            handle_request(state.clone(), method, params, tx.clone())
+        };
+
+        let legacy = call("session.create", json!({ "mode": "agent" }))
+            .await
+            .unwrap();
+        assert_eq!(legacy["session"]["fastMode"], false);
+        let created = call(
+            "session.create",
+            json!({ "mode": "agent", "fastMode": true }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(created["session"]["fastMode"], true);
+        let id = created["session"]["id"].as_str().unwrap().to_string();
+
+        let kept = call(
+            "session.configure",
+            json!({ "id": id, "mode": "plan", "thinkingLevel": "high" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(kept["session"]["fastMode"], true);
+        let off = call(
+            "session.configure",
+            json!({ "id": id, "mode": "agent", "fastMode": false }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(off["session"]["fastMode"], false);
+
+        for method in ["session.create", "session.configure"] {
+            let error = call(
+                method,
+                json!({ "id": id, "mode": "agent", "fastMode": "yes" }),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
     }
 
     #[tokio::test]

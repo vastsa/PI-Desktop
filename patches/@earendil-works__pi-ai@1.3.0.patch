@@ -753,7 +753,7 @@ index 2ab985c7d..c48a104d7 100644
      const samplingParams = resolveSamplingParams(model, reasoningEffort ?? "off", options?.samplingParams);
      if (samplingParams) {
 diff --git a/dist/api/simple-options.js b/dist/api/simple-options.js
-index 4e36f350e..c817c2e4a 100644
+index 4e36f350e..fd9225e5e 100644
 --- a/dist/api/simple-options.js
 +++ b/dist/api/simple-options.js
 @@ -5,7 +5,7 @@ const MIN_MAX_TOKENS = 1;
@@ -765,6 +765,14 @@ index 4e36f350e..c817c2e4a 100644
      return Math.min(maxTokens, Math.max(MIN_MAX_TOKENS, available));
  }
  export function resolveSamplingParams(model, thinkingLevel, requestParams) {
+@@ -30,6 +30,7 @@ export function buildBaseOptions(model, context, options, apiKey) {
+         sessionId: options?.sessionId,
+         headers: options?.headers,
+         onPayload: options?.onPayload,
++        serviceTier: options?.serviceTier,
+         onResponse: options?.onResponse,
+         onProviderStreamEvent: options?.onProviderStreamEvent,
+         timeoutMs: options?.timeoutMs,
 diff --git a/dist/auth/oauth/anthropic.js b/dist/auth/oauth/anthropic.js
 index 0823512eb..713d38af6 100644
 --- a/dist/auth/oauth/anthropic.js
@@ -981,10 +989,19 @@ index 1443bb592..5fc062577 100644
 -{"openai-completions":{"chat:deepseek-flash":{"id":"deepseek-flash","name":"DeepSeek V4.1 Flash","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"thinkingLevelMap":{"minimal":null,"low":"low","medium":null,"high":"high","max":"max"},"input":["text","image"],"cost":{"input":0.3,"output":1.2,"cacheRead":0.006,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true},"inputLimits":{"images":{"resize":{"maxWidth":2000,"maxHeight":2000,"maxBytes":4718592,"jpegQuality":80}}},"type":"chat"},"chat:deepseek-v4-pro":{"id":"deepseek-v4-pro","name":"DeepSeek V4 Pro","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"input":["text"],"cost":{"input":1.32,"output":3.96,"cacheRead":0.044,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true,"supportsMidConvoSystemMessages":true},"thinkingLevelMap":{"minimal":null,"low":null,"medium":null,"high":"high","max":"max"},"type":"chat"}}}
 +{"openai-completions":{"chat:deepseek-flash":{"id":"deepseek-flash","name":"DeepSeek V4.1 Flash","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"thinkingLevelMap":{"minimal":null,"low":"low","medium":null,"high":"high","max":"max"},"input":["text","image"],"cost":{"input":0.3,"output":1.2,"cacheRead":0.006,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true,"supportsMidConvoSystemMessages":true},"inputLimits":{"images":{"resize":{"maxWidth":2000,"maxHeight":2000,"maxBytes":4718592,"jpegQuality":80}}},"type":"chat"},"chat:deepseek-v4-pro":{"id":"deepseek-v4-pro","name":"DeepSeek V4 Pro","api":"openai-completions","baseUrl":"https://api.deepseek.com","provider":"deepseek","reasoning":true,"input":["text"],"cost":{"input":1.32,"output":3.96,"cacheRead":0.044,"cacheWrite":0},"contextWindow":1000000,"maxTokens":384000,"compat":{"supportsStore":false,"supportsDeveloperRole":false,"maxTokensField":"max_tokens","requiresReasoningContentOnAssistantMessages":true,"thinkingFormat":"deepseek","supportsStrictMode":true,"supportsMidConvoSystemMessages":true},"thinkingLevelMap":{"minimal":null,"low":null,"medium":null,"high":"high","max":"max"},"type":"chat"}}}
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index 022faa196..efed3b8b0 100644
+index 022faa196..6295215ae 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
-@@ -276,6 +276,30 @@ export interface ToolCall {
+@@ -234,6 +234,8 @@ export interface SimpleStreamOptions extends StreamOptions {
+     };
+     /** Custom token budgets for thinking levels (token-based providers only) */
+     thinkingBudgets?: ThinkingBudgets;
++    /** OpenAI Responses service tier; adapters without the field ignore it. */
++    serviceTier?: "auto" | "default" | "flex" | "scale" | "priority";
+ }
+ export type StreamFunction<TApi extends Api = Api, TOptions extends StreamOptions = StreamOptions> = (model: Model<TApi>, context: TranscriptContext, options?: TOptions) => AssistantMessageEventStream;
+ export type ImagesFunction<TOptions extends ImagesOptions = ImagesOptions> = (model: ImageModel<ImageApi>, context: ImagesContext, options?: TOptions) => Promise<AssistantImages>;
+@@ -276,6 +278,30 @@ export interface ToolCall {
       */
      argumentsError?: string;
  }
@@ -1015,7 +1032,7 @@ index 022faa196..efed3b8b0 100644
  export interface Usage {
      input: number;
      output: number;
-@@ -361,7 +385,7 @@ export interface UserMessage {
+@@ -361,7 +387,7 @@ export interface UserMessage {
  }
  export interface AssistantMessage {
      role: "assistant";
@@ -1024,7 +1041,7 @@ index 022faa196..efed3b8b0 100644
      api: Api;
      provider: ProviderId;
      model: string;
-@@ -376,6 +400,8 @@ export interface AssistantMessage {
+@@ -376,6 +402,8 @@ export interface AssistantMessage {
      stopReason: StopReason;
      deferred?: DeferredHandle;
      errorMessage?: string;
@@ -1033,7 +1050,7 @@ index 022faa196..efed3b8b0 100644
      rawStopReason?: string;
      /**
       * Provider indication of whether the model explicitly ended its turn.
-@@ -611,6 +637,10 @@ export type AssistantMessageEvent = {
+@@ -611,6 +639,10 @@ export type AssistantMessageEvent = {
      contentIndex: number;
      toolCall: ToolCall;
      partial: AssistantMessage;
@@ -1044,7 +1061,7 @@ index 022faa196..efed3b8b0 100644
  } | {
      type: "done";
      reason: Extract<StopReason, "stop" | "length" | "toolUse" | "deferred">;
-@@ -642,6 +672,8 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
+@@ -642,6 +674,8 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
       */
      type?: "chat";
      reasoning: boolean;

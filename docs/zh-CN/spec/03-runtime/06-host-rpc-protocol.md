@@ -226,7 +226,8 @@ type ToolBudgetHealth = {
 ### 会议
 - `session.list`
 - `session.create` — 接受可选的 `thinkingLevel`； missing/null 默认值
-至 `off`。可选的 `isolated: true`（ADR 0329）同时要求 `projectPath`，并在返回前为新会话
+至 `off`。可选布尔值 `fastMode`（ADR 0334）保存会话的 `/fast` 开关；缺省/null 表示
+`false`，非布尔值返回 `INVALID_PARAMS`。可选的 `isolated: true`（ADR 0329）同时要求 `projectPath`，并在返回前为新会话
 创建专属 git worktree；无法创建时会话会被删除，调用以 `WORKTREE_*` 错误（§7）失败。
 - `session.fork` — accepts `sessionId`, an optional caller-provided display
   `title`, and optional `throughMessageId`; creates
@@ -252,7 +253,8 @@ type ToolBudgetHealth = {
   并且不更新 `updated_at`、转录内容或消息数。
 - `session.configure` — 以原子方式持久保存 `mode`、`providerId`、`modelId`，
   以及可选的 `thinkingLevel` 用于下一个 pi 回合； omitting/null
-  `thinkingLevel` 保留当前值；返回无效模式或级别
+  `thinkingLevel` 保留当前值；可选布尔值 `fastMode`（ADR 0334）遵循同一规则，
+  非布尔值返回 `INVALID_PARAMS`；返回无效模式或级别
   `INVALID_PARAMS`；模式为 `plan | goal | agent` 并更改任何会话
   仅在空闲且没有 pending/queued/running 时才允许配置
   Plan 或 Goal 记录

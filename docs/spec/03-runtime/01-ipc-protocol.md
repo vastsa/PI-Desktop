@@ -188,6 +188,8 @@ type SessionConfigureRequest = {
   providerId?: string;
   modelId?: string;
   thinkingLevel: SessionThinkingLevel;
+  /** Session `/fast` switch (ADR 0334); omitted keeps the stored value. */
+  fastMode?: boolean;
 };
 ```
 

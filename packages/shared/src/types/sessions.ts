@@ -57,6 +57,12 @@ export type SessionSummary = {
   thinkingLevel: SessionThinkingLevel;
   /** Per-session permission mode; `inherit` follows the global default (D115). */
   permissionMode: PermissionMode;
+  /**
+   * Session `/fast` switch (ADR 0334). Requests use the priority tier only
+   * when the selected model also allows it. Older hosts and remote sessions
+   * omit it, meaning off.
+   */
+  fastMode?: boolean;
   /** Effective capability for this session's exact provider/model pair. */
   supportsReasoning?: boolean;
   /** Effective image-input capability for this session's exact model. */

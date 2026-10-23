@@ -1,4 +1,4 @@
-# 04. 数据存储（架构 v23）
+# 04. 数据存储（架构 v25）
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
@@ -362,6 +362,8 @@ CREATE TABLE sessions (
                                           'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
+  fast_mode   INTEGER NOT NULL DEFAULT 0       -- ADR 0334: session /fast switch
+               CHECK (fast_mode IN (0, 1)),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
   deleted_at  INTEGER,                         -- plugin trash marker; null means active
   pinned      INTEGER NOT NULL DEFAULT 0,
@@ -1160,7 +1162,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 - JSON 列在热路径上盲读（按原样发送到渲染器）；
   任何过滤或求和的内容都是按规则提升的列。
 
-## 7. 版本控制、v7 重置和 v8 到 v23 迁移
+## 7. 版本控制、v7 重置和 v8 到 v25 迁移
 
 - `PRAGMA user_version` 保留模式权限；未来的结构性变化
   再次添加有序的 Rust 迁移 fns，每个都在一个事务中，并带有一个
@@ -1171,7 +1173,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   旧文件中的会话、提供程序和设置不会保留；
   存档仍保留以供手动恢复。所有 v7 之前的迁移代码
   （v1 `settings.sqlite` 导入，v2→v6 链）被删除。
-- 全新安装直接运行完整的 v23 DDL。
+- 全新安装直接运行完整的 v25 DDL。
 - **架构 v15 是增量的。** 它增加 `turn_queue` 表及其两个索引（D386 / ADR 0213），使 Host
   拥有的回合队列在重启后存活；不改动任何已有行，迁移前保留 `pi.sqlite.v14.bak`。
 - **架构 v16 是增量的。** 它增加会话协作 link 和投递表、生命周期索引，以及可为空的
@@ -1184,6 +1186,11 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   `default`；其余现有标题保持原样并归类为 `manual`。迁移前保留 v22 备份。
   v15→v16 会话协作步骤现在写入 `16`（它自己的版本）而不是最新的架构常量，
   因此 v15 文件可以在一次启动中走完两个步骤。
+- **架构 v24 是增量的。** 它为隔离会话增加 `worktrees` 登记表和
+  `projects.worktree_setup_command`（ADR 0329）。迁移前保留 v23 备份。
+- **架构 v25 是增量的。** 它增加 `sessions.fast_mode`（ADR 0334），即会话的 `/fast`
+  开关，所有已有会话默认为 `0`。fork 会复制该值；定时任务运行和委托子会话从 `0` 开始。
+  迁移前保留 v24 备份。
 - **架构 v7 首先到达 v8，然后使用受保护的路径。** v7→v8
   迁移之后是相同的受保护的 v8→v15 迁移；架构-v9 和
   schema-v10 数据库采用相同的受保护路径并接收精确的可读数据
