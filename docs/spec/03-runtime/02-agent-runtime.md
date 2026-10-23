@@ -916,8 +916,9 @@ core set rather than the on-demand catalog of §7.1:
   session model. The parent agent sees a model summary in the system prompt
   listing all models marked `availableForSubagents` in provider settings. The
   empty-catalog system summary, Task description and rejected-override error
-  point to Settings → Models → edit service/account → model Advanced →
-  "Available for AI delegation" → save, and require an exact catalog key
+  point to the **Subagent models** row on Settings → Models — or to the same flag
+  under Settings → Models → edit service/account → model Advanced → "Available
+  for AI delegation" → save — and require an exact catalog key
   rather than guessed provider/model keys. If
   the delegation catalog is empty, the prompt tells the model to omit `model`
   and use the definition pin, or inherit the session model when unpinned; an

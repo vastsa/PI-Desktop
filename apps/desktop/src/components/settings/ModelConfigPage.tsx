@@ -31,6 +31,13 @@ import {
 } from "./image-generation-default";
 import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-copy";
 import { ImageGenerationModelRow } from "./ImageGenerationModelRow";
+import {
+  subagentModelCandidates,
+  subagentModelOptInDraft,
+  type SubagentModelCandidate,
+} from "./subagent-delegation";
+import { SubagentModelRow } from "./SubagentModelRow";
+import { SubagentModelsDialog } from "./SubagentModelsDialog";
 import { OAuthLoginDialog } from "./OAuthLoginDialog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { ServiceList } from "./ServiceList";
@@ -106,6 +113,8 @@ export function ModelConfigPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [changingImageModel, setChangingImageModel] = useState(false);
+  const [changingSubagentModel, setChangingSubagentModel] = useState(false);
+  const [subagentEditorOpen, setSubagentEditorOpen] = useState(false);
   const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -144,6 +153,9 @@ export function ModelConfigPage() {
     ], null),
     [settings?.imageGenerationModels, settings?.imageGeneration, providers],
   );
+
+  // Every configured model the page can offer for delegation, in service order.
+  const subagentModels = useMemo(() => subagentModelCandidates(providers), [providers]);
   const providerReady = (provider: ProviderPublic) =>
     providerServesChatModels(provider, imageGenerationCandidates);
 
@@ -285,7 +297,51 @@ export function ModelConfigPage() {
         variant: "error",
       });
     } finally {
+
       setChangingImageModel(false);
+    }
+  };
+  /**
+   * Persist one delegation opt-in.
+   *
+   * The flag lives on the service's own model binding, so this is the same write
+   * the provider dialog performs. It must start from the stored service rather
+   * than this page's snapshot: `providers.update` replaces the whole model list,
+   * and a stale list would drop a model another window added in the meantime.
+   */
+  const setSubagentDelegation = async (
+    candidate: SubagentModelCandidate,
+    selected: boolean,
+  ) => {
+    setChangingSubagentModel(true);
+    try {
+      const { providers: stored } = await api.listProviders();
+      const provider = stored.find((entry) => entry.id === candidate.providerId);
+      // A plugin-owned row is refused by the RPC, and a model that disappeared
+      // from the stored bindings has no flag left to write.
+      const writable =
+        !!provider &&
+        !provider.ownerPluginId &&
+        provider.models.some((model) => model.id === candidate.modelId);
+      if (!provider || !writable) {
+        showToast(t("settings.subagentModelSaveFailed"), { variant: "error" });
+        return;
+      }
+      await api.updateProvider({
+        id: provider.id,
+        models: subagentModelOptInDraft(provider.models, candidate.modelId, selected),
+      });
+      await refreshProviders();
+      showToast(
+        t(selected ? "settings.subagentModelSelected" : "settings.subagentModelUnselected"),
+        { variant: "success" },
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    } finally {
+      setChangingSubagentModel(false);
     }
   };
 
@@ -553,6 +609,32 @@ export function ModelConfigPage() {
             />
           </div>
         </section>
+      ) : null}
+
+      {subagentModels.length > 0 ? (
+        <section className="settings-card-block">
+          <div className="settings-panel model-default-panel">
+            <SubagentModelRow
+              candidates={subagentModels}
+              onEdit={() => setSubagentEditorOpen(true)}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      {subagentEditorOpen ? (
+        <SubagentModelsDialog
+          candidates={subagentModels}
+          busy={changingSubagentModel}
+          onChange={(candidate, selected) =>
+            void setSubagentDelegation(candidate, selected)
+          }
+          onEdit={(providerId) => {
+            setSubagentEditorOpen(false);
+            setSetupFor(providerId);
+          }}
+          onClose={() => setSubagentEditorOpen(false)}
+        />
       ) : null}
 
       {setupFor !== null ? (

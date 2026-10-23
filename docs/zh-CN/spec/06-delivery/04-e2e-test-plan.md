@@ -5832,6 +5832,7 @@ eleven-tool-round desktop paths are verified by
 ## 8. 可追溯性矩阵
 | 验收 | 应用场景 |
 |---|---|
+| C / E / Quality — 模型页的子代理委托目录 | [E2E-268](#e2e-268模型页显示并编辑子代理委托目录) |
 | C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |
 | B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
@@ -9941,3 +9942,29 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **关联规格**：`04-ux/01-ui-ia.md` §3.2、`04-ux/06-settings-ia.md`（常规 → 侧边栏卡片）。
 - **验收**：项目折叠时仍能回答“这里是否有正在运行的工作”，且两种提示可从持久化设置独立控制。
 - **状态**：草稿。现有 `apps/desktop/test/sidebar-project-runs.test.mjs` 覆盖数量分类、总开关与子开关门控、两种渲染入口，以及主题令牌和减少动态效果保证；它不覆盖设置 API 缺省值规范化或完整交互，相关场景仍需在可用环境手动验证。
+
+### E2E-268：模型页显示并编辑子代理委托目录
+
+- **前提条件**：两个 AI 服务已配置、已启用并持有凭据，第一个有两个模型、第二个有一个；
+  仅其中一个模型勾选了“可供 AI 自动调度”。可委派任务的父 Agent 会话可用。
+- **步骤**：
+  1. 打开设置 → 模型，阅读底部的 **子代理模型** 行。
+  2. 用该行的“高级”打开第二个服务的模型编辑器，勾选“可供 AI 自动调度”并保存，再看这一行。
+  4. 回到该行用 × 移除该模型，再看这一行。
+  5. 关闭第二个服务，再看这一行。
+  6. 在第一个服务自己的模型对话框中切换“可供 AI 自动调度”，返回模型页。
+- **预期**：该行列出的正是已加入的模型（`provider · model`），一个都没有时显示空状态说明；
+  模型只能通过在该模型编辑器里勾选来加入。加入会把 `availableForSubagents` 写入该服务的
+  绑定，下一次父会话回合即可在委托目录中看到该模型；移除会把它从目录移出，且不在已存绑定上
+  留下 `false`。服务已关闭或缺少凭据时，已加入的模型仍然列出并可移除，并注明为何暂不生效，
+  同时其模型不进入目录。服务对话框与这一行双向显示同一开关，两个界面不会各说各话。插件拥有的
+  行只读。没有任何服务配置模型时整行隐藏；保存被拒绝时报告错误，而不是静默保留旧值。
+- **关联规格**：`03-runtime/02-agent-runtime.md` §5f、
+  `03-runtime/11-provider-model-system.md` §7、`04-ux/06-settings-ia.md`（模型配置）、
+  D278、ADR subagent-model-opt-in、issue #1736。
+- **验收**：C / E / Quality —— 父 agent 可挑选的委托目录能在模型页一处查看并修改，且不新增
+  第二份保存的选择；每一行都说明某个已勾选模型为何暂不生效。
+- **里程碑**：Post-MVP 模型配置。
+- **状态**：`apps/desktop/test/subagent-delegation.test.mjs` 有单元覆盖（候选构造、分组、
+  只读与受阻状态、以及精确的提供商写入）。交互式的“保存 → 下一回合目录”路径仍为草稿，
+  仅在明确请求且环境可用时运行。
