@@ -83,7 +83,7 @@
 | D023 | 提供商覆盖目标 | **全球市场覆盖**（不是一个很小的固定供应商列表） | 全球化+真实的编码工作流程 |
 | D024 | 覆盖策略 | **pi-ai 原生提供商 + 一流的 OpenAI 兼容 + 自定义提供商** | 无需重写每个 SDK 即可实现最大覆盖范围 |
 | D308 | 智谱 / Z.AI 命名端点预设 | **修订 D024 / ADR 0116：添加服务的「服务」下拉框提供四套 OpenAI 兼容智谱端点——国内/国际标准 API 以及 GLM Coding Plan——锁定已发布 URL，并写入 models.dev `vendorKey`（`zhipuai`、`zhipuai-coding-plan`、`zai`、`zai-coding-plan`）。不新增 apiStyle 或线路适配器。这些 URL 上的 Completions 请求使用 `thinkingFormat: "zai"` 与 `zaiToolStream: true`。自定义端点仍可用。** | 用户此前必须手填 BigModel / Z.AI 地址，且 `vendorKey: "custom"` 可能把 API 与 Coding Plan 目录配错。命名预设把覆盖范围留在现有 OpenAI 兼容路径上。见 ADR 0155 与 E2E-005D。 |
-| D389 | 聚合端点上回放 DeepSeek 的 reasoning_content | **修订 D024：当行的 `vendorKey`、Base URL、模型 ID 或目录 `family` 能识别为 DeepSeek 时，DeepSeek 系模型的 Completions 请求设置 `requiresReasoningContentOnAssistantMessages: true` 与 `supportsReasoningEffort: false`。该匹配不改 `thinkingFormat`。pi-ai 仍对官方 `deepseek.com` URL 做自动检测。** | DeepSeek 思考模式在任一条回放的 assistant 消息缺少 `reasoning_content`，或中转收到不支持的通用 `reasoning_effort` 字段时会 400。PI-Desktop 把 UUID 存成 `model.provider`，硅基流动、火山方舟和自定义网关永远匹配不上 pi-ai 的 `provider === "deepseek"` 判断。见 E2E-005E。 |
+| D389 | 聚合端点上回放 DeepSeek 的 reasoning_content | **修订 D024：当行的 `vendorKey`、Base URL、模型 ID 或目录 `family` 能识别为 DeepSeek 时，DeepSeek 系模型的 Completions 请求设置 `requiresReasoningContentOnAssistantMessages: true`（非 `deepseek.com` 时另设 `supportsReasoningEffort: false`；由 D672 修订）。该匹配不改 `thinkingFormat`。pi-ai 仍对官方 `deepseek.com` URL 做自动检测。** | DeepSeek 思考模式在任一条回放的 assistant 消息缺少 `reasoning_content`，或中转收到不支持的通用 `reasoning_effort` 字段时会 400。PI-Desktop 把 UUID 存成 `model.provider`，硅基流动、火山方舟和自定义网关永远匹配不上 pi-ai 的 `provider === "deepseek"` 判断。见 E2E-005E。 |
 | D424 | 压缩后保留 DeepSeek 推理 | **修订 D389 / ADR 0136：历史重建时恢复 thinkingSignature；把最近思考写入检查点 `details.retainedReasoning` 并在摘要后回放；非官方 DeepSeek Completions 行设置 `requiresNonEmptyReasoningReplay`，使 pi-ai 补丁使用文档化占位符而非 `""`。官方 deepseek.com 仍用空串回填。** | OpenCode / 第三方 DeepSeek V4.1 Flash 在压缩后回传空推理字段会 400（#296）。 |
 | D309 | 添加服务的常见路径是服务 + 密钥 | **修订 D308 / ADR 0116 / ADR 0155：新建添加服务对话框先只显示服务。命名端点（智谱 / Z.AI、OpenCode Go）随后显示服务 + API 密钥和主机摘要。自定义端点随后显示名称、Base URL 和 API 密钥。名称（命名行）与接口格式（自定义行）放在高级里。OpenCode Go 是服务选项。没有步进器或厂商卡片网格。** | 把名称、Base URL 和接口格式与服务叠在一起，让已知服务看起来像通用网关。常见路径应是选服务并粘贴密钥。见 ADR 0156 与 E2E-005 / E2E-005B / E2E-005D。 |
 | D310 | 自定义接口格式与密钥并排；服务列出 models.dev 主流厂商 | **修订 D309：自定义端点在常见路径上并排显示 API 密钥与接口格式。服务下拉框按国际 / 国内列出 models.dev 的主流厂商端点。命名服务的显示名称仍在高级里。** | 自定义网关需要在密钥旁选择格式；命名厂商应覆盖常用国内外 API。见 E2E-005。 |
@@ -5550,3 +5550,19 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - v1 不支持控件状态、后续消息、CDN、图标库和微调面板。
   见 ADR `gen-ui-inline-visualization`、`03-runtime/03-tools-and-permissions.md`
   §4b.1、`03-runtime/04-data-storage.md` 与 E2E-GENUI-inline-visualization-card。
+
+## 2026-10-23 — 官方 DeepSeek 端点恢复发送 reasoning_effort（D672）
+
+- D672 修订 D389：只有 Base URL 不是 `deepseek.com` 的 DeepSeek 系行设置
+  `supportsReasoningEffort: false`。官方行把该标志交给 pi-ai，由它在
+  `thinking: {type: "enabled"}` 旁发送 `reasoning_effort`。
+- DeepSeek 文档为 Chat Completions 提供 `reasoning_effort`（low / high / max）。强制关闭
+  后官方请求只剩思考开关，low、high、max 发出的请求完全相同（#1821）。#1664 针对的是
+  中转，中转默认仍然抑制。已在 `api.deepseek.com` 上验证：low、high、max 原样到达，
+  只发送 `thinking: {type: "enabled"}` 时仍返回 200。
+- 来自 D671 / #1846 的按模型 `supportsReasoningEffort` 覆盖在双向仍优先，拒绝该字段的
+  中转保持抑制。
+- 不改变持久化格式或协议。由 `packages/shared/src/provider-presets.test.ts`、
+  `packages/agent-runtime/src/provider-binding.test.ts` 的请求抓取测试，以及
+  `packages/agent-runtime/src/provider-reasoning-effort.test.ts` 的官方线路用例覆盖。见
+  `03-runtime/11-provider-model-system.md` 与 E2E-005E。

@@ -1616,6 +1616,74 @@ describe("DeepSeek-family relay reasoning replay (#296)", () => {
   });
 });
 
+describe("DeepSeek Completions reasoning effort on the wire (#1821)", () => {
+  const captureFirstRequest = async (
+    provider: RuntimeProviderConfig,
+    reasoning: "low" | "high" | undefined,
+  ): Promise<Record<string, unknown>> => {
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const model = buildProviderModel(provider);
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "hello", timestamp: 1 }],
+          tools: [],
+        },
+        { reasoning, fetch },
+      )
+      .result();
+    expect(requests).toHaveLength(1);
+    return requests[0];
+  };
+
+  const official: RuntimeProviderConfig = {
+    ...keyedProvider,
+    id: "deepseek-row",
+    vendorKey: "deepseek",
+    baseUrl: "https://api.deepseek.com",
+    modelId: "deepseek-flash",
+    supportsReasoning: true,
+    supportedThinkingLevels: ["off", "low", "high"],
+  };
+
+  it("sends the selected effort next to thinking on the official endpoint", async () => {
+    const high = await captureFirstRequest(official, "high");
+    expect(high.thinking).toEqual({ type: "enabled" });
+    expect(high.reasoning_effort).toBe("high");
+
+    const low = await captureFirstRequest(official, "low");
+    expect(low.reasoning_effort).toBe("low");
+
+    const off = await captureFirstRequest(official, undefined);
+    expect(off.thinking).toEqual({ type: "disabled" });
+    expect(off.reasoning_effort).toBeUndefined();
+  });
+
+  it("still omits reasoning_effort on a DeepSeek relay by default (#1664)", async () => {
+    const relay = await captureFirstRequest(
+      {
+        ...keyedProvider,
+        id: "relay",
+        baseUrl: "https://gw.example.test/v1",
+        modelId: "deepseek-v4.1-flash",
+        supportsReasoning: true,
+        supportedThinkingLevels: ["off", "low", "high"],
+      },
+      "high",
+    );
+    expect(relay.reasoning_effort).toBeUndefined();
+  });
+});
+
 describe("session affinity for the adapters' anonymous endpoints (#1634)", () => {
   const ownEndpoint = (
     overrides: Partial<RuntimeProviderConfig> = {},

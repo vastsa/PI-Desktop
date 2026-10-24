@@ -93,8 +93,33 @@ describe("DeepSeek reasoning replay", () => {
       deepseekRequestCompat({ baseUrl: "https://api.deepseek.com" }),
     ).toEqual({
       requiresReasoningContentOnAssistantMessages: true,
-      supportsReasoningEffort: false,
     });
+  });
+
+  it("keeps reasoning_effort on official endpoints and suppresses it on relays (#1821)", () => {
+    // Official DeepSeek Completions documents `reasoning_effort` (low/high/max)
+    // next to `thinking`; only relays were reported to reject it (#1664).
+    expect(
+      deepseekRequestCompat({ baseUrl: "https://api.deepseek.com/v1", modelId: "deepseek-flash" })
+        ?.supportsReasoningEffort,
+    ).toBeUndefined();
+    expect(
+      deepseekRequestCompat({ baseUrl: "https://gw.example.test/v1", modelId: "deepseek-v4.1-flash" })
+        ?.supportsReasoningEffort,
+    ).toBe(false);
+  });
+
+  it("does not treat a relay URL containing deepseek.com as an official host", () => {
+    for (const baseUrl of [
+      "https://api.deepseek.com.evil.test/v1",
+      "https://relay.example.test/v1/deepseek.com",
+    ]) {
+      expect(isOfficialDeepSeekEndpoint({ baseUrl })).toBe(false);
+      expect(deepseekRequestCompat({ baseUrl, modelId: "deepseek-v4.1-flash" })).toMatchObject({
+        supportsReasoningEffort: false,
+        requiresNonEmptyReasoningReplay: true,
+      });
+    }
   });
 
   it("matches aggregator and custom DeepSeek-family models without a deepseek.com URL", () => {

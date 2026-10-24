@@ -508,7 +508,14 @@ export function isDeepSeekReasoningReplay(input: {
 
 /** Official DeepSeek Completions hosts that still accept empty-string replay. */
 export function isOfficialDeepSeekEndpoint(input: { baseUrl?: string }): boolean {
-  return (input.baseUrl ?? "").toLowerCase().includes("deepseek.com");
+  const baseUrl = input.baseUrl?.trim();
+  if (!baseUrl) return false;
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === "deepseek.com" || hostname.endsWith(".deepseek.com");
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -522,8 +529,12 @@ export const DEEPSEEK_REASONING_REPLAY_PLACEHOLDER =
 
 export type DeepSeekRequestCompat = {
   requiresReasoningContentOnAssistantMessages: true;
-  /** DeepSeek endpoints reject the OpenAI-style `reasoning_effort` field. */
-  supportsReasoningEffort: false;
+  /**
+   * Relays reported rejecting the OpenAI-style `reasoning_effort` field
+   * (#1664), so it is suppressed off `deepseek.com`. Official endpoints
+   * document it next to `thinking` and keep pi-ai's detection (#1821).
+   */
+  supportsReasoningEffort?: false;
   /** When set, missing reasoning is filled with {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}. */
   requiresNonEmptyReasoningReplay?: true;
 };
@@ -537,10 +548,7 @@ export function deepseekRequestCompat(input: {
 }): DeepSeekRequestCompat | undefined {
   if (!isDeepSeekReasoningReplay(input)) return undefined;
   if (isOfficialDeepSeekEndpoint(input)) {
-    return {
-      requiresReasoningContentOnAssistantMessages: true,
-      supportsReasoningEffort: false,
-    };
+    return { requiresReasoningContentOnAssistantMessages: true };
   }
   return {
     requiresReasoningContentOnAssistantMessages: true,

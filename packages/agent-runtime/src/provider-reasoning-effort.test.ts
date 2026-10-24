@@ -81,9 +81,69 @@ describe("per-model Chat Completions reasoning effort override", () => {
     expect(bodies[0]).not.toHaveProperty("reasoning_effort");
   });
 
-  it.each([undefined, null, false, true])("keeps official DeepSeek auto protection with override %s", (override) => {
-    const provider = { ...providerFor("deepseek-v4.1-flash", override), vendorKey: "deepseek", baseUrl: "https://api.deepseek.com" };
-    expect(buildProviderModel(provider).compat).toMatchObject({ supportsReasoningEffort: override === true });
+  function officialProvider(override?: boolean | null): RuntimeProviderConfig {
+    const provider = {
+      ...providerFor("deepseek-v4.1-flash", override),
+      vendorKey: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+    };
+    return {
+      ...provider,
+      supportedThinkingLevels: ["off", "low", "high", "max"],
+      modelConfig: modelConfigWithBinding(genericModelConfig(provider.modelId), {
+        contextWindow: 128_000,
+        maxTokens: 8192,
+        thinkingLevels: ["off", "low", "high", "max"],
+        supportsReasoningEffort: override,
+      }),
+    };
+  }
+
+  async function captureOfficialBody(reasoning?: "low" | "high" | "max"): Promise<Record<string, unknown>> {
+    const provider = officialProvider(undefined);
+    const model = buildProviderModel(provider);
+    const bodies: Record<string, unknown>[] = [];
+    await createProviderModels(provider, model).streamSimple(model, {
+      messages: [{ role: "user", content: "hello", timestamp: 0 }],
+    }, {
+      ...(reasoning ? { reasoning } : {}),
+      fetch: async (input, init) => {
+        bodies.push(await new Request(input, init).json() as Record<string, unknown>);
+        const chunk = {
+          id: "fixture", object: "chat.completion.chunk", created: 0, model: provider.modelId,
+          choices: [{ index: 0, delta: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+        };
+        return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      },
+    }).result();
+    expect(bodies).toHaveLength(1);
+    return bodies[0];
+  }
+
+  it.each([undefined, null])("leaves official DeepSeek to pi-ai detection (override %s)", (override) => {
+    const compat = buildProviderModel(officialProvider(override)).compat ?? {};
+    expect(compat).not.toHaveProperty("supportsReasoningEffort");
+  });
+
+  it("keeps an explicit omit on official DeepSeek rows", () => {
+    expect(buildProviderModel(officialProvider(false)).compat).toMatchObject({ supportsReasoningEffort: false });
+  });
+
+  it("sends an explicit allow on official DeepSeek rows", () => {
+    expect(buildProviderModel(officialProvider(true)).compat).toMatchObject({ supportsReasoningEffort: true });
+  });
+
+  it.each(["low", "high", "max"] as const)("carries the %s level to the official DeepSeek wire", async (level) => {
+    const body = await captureOfficialBody(level);
+    expect(body.thinking).toEqual({ type: "enabled" });
+    expect(body.reasoning_effort).toBe(level);
+  });
+
+  it("sends only the thinking toggle for an official DeepSeek row at off", async () => {
+    const body = await captureOfficialBody();
+    expect(body).not.toHaveProperty("reasoning_effort");
   });
 
   it("does not mistake catalog compatibility for an explicit saved override", () => {
