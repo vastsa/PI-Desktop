@@ -61,7 +61,7 @@ test("the error shell reports a code and never echoes caller text", async () => 
 
 test("the guest runtime announces readiness and forwards only Escape", async () => {
   const { buildGenUiDocument } = await import("../electron/main/gen-ui-document.ts");
-  const html = buildGenUiDocument("<p>hi</p>", { kit: { css: "", runtime: "", vendorUrls: new Map() } });
+  const html = buildGenUiDocument("<p>hi</p>", { kit: { css: "", head: "", runtime: "", vendorUrls: new Map() } });
   const head = html.slice(0, html.indexOf("</head>"));
   assert.match(head, /const READY = "pi-genui:ready"/);
   assert.match(head, /parent\.postMessage\(\{ type: READY \}, "\*"\)/);

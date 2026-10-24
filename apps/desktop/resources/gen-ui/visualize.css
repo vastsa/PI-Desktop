@@ -1011,6 +1011,80 @@ svg {
   width: 100%;
 }
 
+/* Axes drawn by `viz.axes` (visualize-helpers.js). */
+.viz-axis {
+  color: var(--muted-foreground);
+  font-size: var(--font-size-small);
+}
+
+.viz-axis .domain,
+.viz-axis .tick line {
+  stroke: var(--border);
+}
+
+.viz-axis .tick text {
+  fill: var(--muted-foreground);
+}
+
+.viz-axis-title {
+  fill: var(--foreground);
+  font-size: var(--font-size-small);
+}
+
+.viz-gridlines .tick line {
+  stroke: var(--border);
+  stroke-opacity: 0.6;
+}
+
+/* Value labels, trend lines, and legends drawn by `viz.render`. */
+.viz-value {
+  fill: var(--foreground);
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.viz-trend {
+  stroke: var(--foreground);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.viz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-bottom: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--font-size-small);
+}
+
+.viz-legend[hidden] {
+  display: none;
+}
+
+.viz-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.viz-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.viz-legend-ramp {
+  width: 72px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--viz-series-1) 8%, transparent),
+    var(--viz-series-1)
+  );
+}
+
 /* Model-authored chart rules can otherwise stretch icons after these styles load. */
 
 

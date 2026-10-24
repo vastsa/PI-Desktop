@@ -18714,7 +18714,8 @@ host-created files. The full app's file-preview viewer is covered separately.
     card's original inline control state remains unchanged.
   - The remote session gets no visualization directory or skill.
 - **Coverage**: `pnpm test:e2e:gen-ui` runs the offline Electron card journey,
-  including real protocol responses, bundled assets, focus/guest Escape,
+  including real protocol responses, bundled assets, the preloaded `viz`
+  helpers (`viz.chart` sizing and a `viz.render` chart), focus/guest Escape,
   viewport release, and unsandboxed callers through a real isolated Host.
   Native directory, FIFO, and ABA regressions run in `visualizations/files`;
   `gen-ui-file-safety.test.mjs` validates the private Host-to-Main boundary.

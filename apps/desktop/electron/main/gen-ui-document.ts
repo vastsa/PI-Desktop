@@ -9,7 +9,12 @@ import {
   isGenUiErrorCode,
   type GenUiErrorCode,
 } from "@pi-desktop/shared";
-import { GEN_UI_ASSET_ORIGIN, type GenUiKit, rewriteGenUiVendorUrls } from "./gen-ui-kit";
+import {
+  GEN_UI_ASSET_ORIGIN,
+  type GenUiKit,
+  rewriteGenUiVendorUrls,
+  stripPreloadedGenUiScripts,
+} from "./gen-ui-kit";
 
 /**
  * Host shell around a model-written visualization fragment
@@ -231,7 +236,7 @@ ${body}
 
 export interface GenUiDocumentOptions {
   /** Kit stylesheet and runtime; see `gen-ui-kit.ts`. */
-  kit: Pick<GenUiKit, "css" | "runtime" | "vendorUrls">;
+  kit: Pick<GenUiKit, "css" | "head" | "runtime" | "vendorUrls">;
   /** Initial theme variables; filtered with `sanitizeGenUiThemeVars`. */
   themeVars?: Record<string, string>;
 }
@@ -253,8 +258,8 @@ export function buildGenUiDocument(fragment: string, options: GenUiDocumentOptio
   const { kit } = options;
   return shell(
     `${kit.css}\n${SHELL_CSS}`,
-    `${themeStyle(options.themeVars)}<script>${RUNTIME_SCRIPT}</script>`,
-    `${rewriteGenUiVendorUrls(fragment, kit.vendorUrls)}\n${kit.runtime}`,
+    `${themeStyle(options.themeVars)}<script>${RUNTIME_SCRIPT}</script>${kit.head}`,
+    `${rewriteGenUiVendorUrls(stripPreloadedGenUiScripts(fragment), kit.vendorUrls)}\n${kit.runtime}`,
   );
 }
 

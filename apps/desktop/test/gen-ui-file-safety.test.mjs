@@ -29,7 +29,7 @@ test("the protocol asks the native Host for identity only and enforces response 
   }));
   const result = await resolveGenUiRequest({
     method: "GET", url: "pi-genui://session/session/chart.html", readFragment,
-    loadKit: async () => ({ css: "", runtime: "", vendorUrls: new Map(), vendorFiles: new Map() }),
+    loadKit: async () => ({ css: "", head: "", runtime: "", vendorUrls: new Map(), vendorFiles: new Map() }),
   });
   assert.equal(result.ok, true);
   assert.match(result.document, /<p>chart<\/p>/);

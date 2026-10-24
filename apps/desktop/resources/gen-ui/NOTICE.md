@@ -26,6 +26,9 @@ Changes made for PI-Desktop:
   tweaks, calendar widget, standalone export, network-loaded map data, and the
   CDN allowlist were removed, and the text was condensed; the visualization
   directory, reference line, and sandbox rules describe PI-Desktop.
+- The skill's chart guidance was rewritten around PI-Desktop's own `viz`
+  helpers (`visualize-helpers.js`, not part of the upstream kit), and
+  `visualize.css` gained styles for their axes, legends, and value labels.
 - Bundled library URLs are served by the `pi-genui:` protocol from `vendor/`
   instead of being fetched.
 

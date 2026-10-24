@@ -91,14 +91,22 @@ test("shell wraps the fragment between the kit stylesheet/host runtime and the k
   // No remote script URL survives; bundled libraries load from pi-genui://assets.
   assert.doesNotMatch(html, /src="https:/);
   assert.match(html, /src="pi-genui:\/\/assets\/floating-ui-dom-1\.7\.4\.min\.js"/);
+  // D3 and the `viz` helpers are preloaded in <head>, D3 first, before the fragment.
+  const d3 = html.indexOf('<script src="pi-genui://assets/d3-7.9.0.min.js"></script>');
+  const helpers = html.indexOf("window.viz = Object.freeze(");
+  assert.ok(d3 > 0 && d3 < helpers && helpers < html.indexOf("</head>"));
+  assert.ok(helpers < fragment);
 });
 
-test("pinned library URLs in the fragment are rewritten to bundled copies; others are left to the CSP", () => {
+test("a fragment's pinned D3 tag is dropped (preloaded); other pinned URLs are rewritten; others are left to the CSP", () => {
   const html = buildGenUiDocument(
     `<script src="${D3_CDN}"></script><script src="https://cdn.jsdelivr.net/npm/d3@7.8.0/dist/d3.min.js"></script>`,
     { kit },
   );
-  assert.match(html, /<script src="pi-genui:\/\/assets\/d3-7\.9\.0\.min\.js"><\/script>/);
+  // Only the <head> preload remains, so the helpers' `d3` global is not replaced.
+  assert.equal(html.split("pi-genui://assets/d3-7.9.0.min.js").length - 1, 1);
+  assert.ok(html.indexOf("pi-genui://assets/d3-7.9.0.min.js") < html.indexOf("</head>"));
+  assert.doesNotMatch(html, /d3@7\.9\.0/);
   // An unpinned version stays remote and is blocked by script-src.
   assert.match(html, /d3@7\.8\.0/);
 });

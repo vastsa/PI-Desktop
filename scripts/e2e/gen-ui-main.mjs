@@ -85,6 +85,20 @@ async function run() {
     await host(`window.genUiProbe.mount(${JSON.stringify(message(0))});window.genUiProbe.waitLoaded(1)`);
     const inline = guests()[0];
     assert.equal(await inline.executeJavaScript("d3.version"), "7.9.0");
+    // The `viz` helpers are preloaded and draw a container-sized chart.
+    assert.equal(
+      await inline.executeJavaScript(
+        '(async()=>{const el=document.createElement("div");el.style.width="300px";document.body.append(el);viz.chart(el,({svg,width})=>svg.append("rect").attr("width",width),{label:"probe"});await Promise.resolve();return el.querySelector("svg").getAttribute("viewBox")})()',
+      ),
+      "0 0 300 240",
+    );
+    // A declarative `viz.render` spec draws marks, axes, and a legend.
+    assert.equal(
+      await inline.executeJavaScript(
+        '(async()=>{const el=document.createElement("div");el.style.width="400px";document.body.append(el);viz.render(el,{mark:"bar",data:[{k:"a",v:1,s:"x"},{k:"b",v:2,s:"y"}],x:"k",y:"v",color:"s",label:"probe"});await Promise.resolve();return [el.querySelectorAll("rect").length,el.querySelectorAll(".viz-axis").length>0,el.querySelectorAll(".viz-legend-item").length].join()})()',
+      ),
+      "2,true,2",
+    );
     assert.equal(await host('document.querySelector("iframe").getAttribute("sandbox")'), "allow-scripts");
     await inline.executeJavaScript('document.getElementById("slider").value="17";document.getElementById("slider").dispatchEvent(new Event("input",{bubbles:true}));');
     assert.equal(await inline.executeJavaScript("window.fixtureValue()"), "17");

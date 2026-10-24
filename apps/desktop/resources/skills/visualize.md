@@ -7,31 +7,38 @@ description: "Create interactive visualizations directly in the conversation. Us
 
 # Visualize
 
-- A request for a new standalone file, website, app page, component, or other
-  project change is not an in-conversation visualization, even when it
-  contains charts or interactive content. Build that in the project instead.
+- A request for a new standalone file, website, app page, component, or
+  project change is not an in-conversation visualization, even with charts.
+  Build it in the project.
 - Create a visual only when the user needs to see or explore it in the
   conversation and it materially improves the explanation.
-- Use a normal Markdown table when the user asks for a table. Use a fenced
-  Mermaid block when labeled nodes and edges fully explain a static structure.
-  Use a visualization for dynamics, motion, adjustable inputs, spatial layout,
-  and data worth hovering or filtering.
-- Work silently: no progress commentary while reading this skill or writing
-  the file. In the reply, describe only what the visual helps the user see or
-  decide. Never announce this skill, HTML, SVG, scripts, or local files.
+- Use a Markdown table when asked for a table; a fenced Mermaid block when
+  labeled nodes and edges explain a static structure. Visualize dynamics,
+  motion, adjustable inputs, spatial layout, and data worth hovering or
+  filtering.
+- Work silently: no progress commentary. In the reply, describe only what the
+  visual helps the user see or decide. Never announce this skill, HTML, SVG,
+  scripts, or local files.
 
 Read this file in full before authoring. Copy into every compaction summary:
 `Reload the full visualize skill before creating or updating a visualization.`
+
+## Hard rules
+
+- One `Write`, then the reply. Do not verify the fragment: no Bash or shell
+  command, no browser, no screenshot, no reading it back.
+- Do not open the kit, stylesheet, or helper source to look things up; the
+  classes and `viz` API you need are in this skill. Anything missing goes in
+  the reply, not in another tool call.
 
 ## Output contract
 
 ### File
 
-- Write `<title>.html` with a concise lowercase-hyphenated ASCII title into
-  the **visualization directory named in the system prompt**, using its
-  absolute path. Files must sit directly in that directory. If no
-  visualization directory is listed, or you cannot write files there,
-  inline visualizations are unavailable: answer without one.
+- Write `<title>.html` (concise lowercase-hyphenated ASCII) with its
+  absolute path into the **visualization directory named in the system
+  prompt**, directly in that directory. No directory listed, or not
+  writable: answer without a visual.
 - Never write inline fragments into the project or a temp directory.
 
 ### Fragment
@@ -40,14 +47,14 @@ Read this file in full before authoring. Copy into every compaction summary:
   `<body>`. The host supplies the document, the stylesheet below, and the
   runtime.
 - Write literal markup with real newlines, never an escaped string
-  (`<div class=\"card\">`, `\n`). Read the file back if unsure.
+  (`<div class=\"card\">`, `\n`).
 - Give the fragment root a unique ID and select it with
   `document.getElementById(...)`; never derive it from `document.currentScript`.
-- Keep it under 1 MB: aggregate, bin, downsample, or drop unused fields from
-  large inline datasets.
-- Check that the script has no undefined identifiers, every queried element
-  exists, and the primary interaction updates the visual. Review with the
-  Read tool; do not run shell commands to check the file.
+- Keep it under 1 MB: aggregate, bin, or downsample large datasets.
+- Write the file once, complete. Before writing, check that the script has
+  no undefined identifiers, every queried element exists, and the primary
+  interaction updates the visual. Do not read it back (see Hard rules); reply
+  right after the write succeeds.
 
 ### Reference in the reply
 
@@ -61,21 +68,16 @@ the reply, as plain text. The line looks like this (with real values):
   forward slashes (`C:/Users/...` on Windows).
 - Whenever you create or update a visualization, reference it again in that
   turn's final reply, even when editing an existing file.
-- Do not repeat the visual's data as a table; add at most one short
-  conclusion.
+- Do not repeat the data as a table; add at most one short conclusion.
 
 ### Sandbox
 
 - There is no network: `fetch`, XHR, WebSocket, remote scripts, fonts, images,
   and map data are all blocked and fail silently. Draw with inline SVG or
   `<canvas>`; embed small assets as `data:` URIs.
-- Bundled libraries are available offline through these exact URLs. Keep them
-  unchanged; any other URL or version is blocked:
-  - D3 7.9.0: `<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>`.
-    D3 is not preloaded: a fragment that calls `d3` must include this tag
-    before its own script.
-  - Floating UI is already loaded by the runtime for tooltips; do not load it
-    again.
+- D3 7.9.0 (`d3`) and the `viz` helpers below are preloaded; use them
+  directly and never add a `<script src>`. Floating UI is loaded by the
+  runtime for tooltips. Any other library is unavailable.
 - No popups, alerts, navigation, external links, form submission, cookies,
   or `localStorage`. Keep state in script variables; it resets when the card
   reloads.
@@ -101,14 +103,13 @@ the reply, as plain text. The line looks like this (with real values):
   values and labels in `--foreground` / `--muted-foreground`.
 - Keep grids and inactive structure thin (1–2px) and neutral. Never outline
   bars, progress tracks, or stacked segments.
-- For canvas or chart APIs that cannot read CSS variables, resolve them with
-  `getComputedStyle(document.documentElement).getPropertyValue(...)` and redraw
-  when the root's `style` attribute changes (`MutationObserver`).
+- Where CSS variables cannot be read (canvas), use `viz.color("--primary")`
+  inside a `viz.chart` draw function, which reruns on theme changes.
 - Type scales from `--font-size-base` (14px); `.text-small` is 12px. Never go
   below 11px, never set custom font sizes or line heights, and use only
   `var(--font-weight-normal)` and `var(--font-weight-medium)`. Use `.tabular-nums` on changing numbers.
-- Use at most one concise visible heading (`h1`–`h3`) for a self-contained
-  chart; do not restate the prompt.
+- Use at most one concise heading (`h1`–`h3`) per chart; do not restate the
+  prompt.
 
 ## Composition
 
@@ -121,8 +122,8 @@ Choose the smallest composition that fits.
 - **Explainer or simulation:** compact controls, one dominant visual, at most
   one single-line selected-state detail. For step-throughs, add only step
   controls and update one current visual.
-- **Graphs and plots:** use D3 for data-rich Cartesian or statistical plots
-  and handwritten SVG for simple, directly labeled values.
+- **Graphs and plots:** D3 with `viz` for data-rich plots; handwritten SVG
+  for a few directly labeled values.
 - **Dense categorical grid:** one compact selected-item summary, a grid with
   one readable identifier per cell, one small legend.
 - **Part-to-whole over time:** one stacked chart of category allocation per
@@ -146,15 +147,13 @@ Choose the smallest composition that fits.
   widths, horizontal overflow, internal scrolling, `position: fixed`, or
   viewport-height layouts. Use `.table-responsive` only when table columns
   cannot fit.
-- Size every SVG from its actual container: set its `viewBox` from the
-  container's measured width and redraw with `ResizeObserver`. Never scale
-  down a fixed-width `viewBox`; at narrow widths reduce ticks and annotations
-  instead.
+- Draw chart SVGs with `viz.chart` (below); never a fixed-width `viewBox`.
+  When `compact`, drop annotations.
 
 ## Utility classes
 
-Let the utilities own geometry, appearance, and interaction. Never restyle
-them: no custom sizes, spacing, borders, radii, shadows, or colors.
+Let the utilities own geometry, appearance, and interaction; never restyle
+them.
 
 - **Surfaces:** `.card` is the only card-like surface — use it for a necessary
   numeric summary, a selected-item summary, or a bounded interactive field.
@@ -189,25 +188,42 @@ them: no custom sizes, spacing, borders, radii, shadows, or colors.
 
 ## Charts
 
-- Give every axis a title with quantity and units, reserve at least 64px for
-  the y axis, and label important values directly. Add a legend only when
-  series cannot be labeled directly.
-- Derive padded domains from all observations (`d3.extent`); never hard-code
-  them. Keep marks inside the plot frame.
-- After drawing, keep tick, axis, and value labels from overlapping: leave
-  about 4px between labels, anchor edge labels inward, and drop optional
-  annotations first. At 360px show at most four x ticks.
-- Use one tooltip per chart, attached to real marks with `data-tooltip`
-  (label, value, units). Give isolated marks hit targets at least 32px across.
-- Animate transitions between chart states, not the initial appearance; never
-  loop motion, and honor `prefers-reduced-motion`.
-- Scope SVG styles to the chart's class.
+Preloaded `viz` helpers own sizing, redraw, axes, ticks, legends, tooltips,
+and label overlap; never write that code yourself. For a standard chart,
+describe it with `viz.render` instead of drawing it:
+
+```js
+const c = viz.render("sales", { mark: "line", data, label: "Sales by month",
+  x: { field: "month", title: "Month" }, y: { field: "sales", title: "Sales (k)" },
+  color: "region" });
+slider.oninput = () => c.update({ data: filter(slider.value) });
+```
+
+- `mark`: `bar` (horizontal when `y` is categorical; `stack: true`),
+  `line`, `area` (stacks with `color`), `point` (`size`, `trend: true`
+  regression line), `heatmap` (`x`, `y`, `value`), `arc` (donut: `theta`,
+  `color`). Channels: a field name or `{ field, title, format, domain }`;
+  types are inferred (numbers, ISO dates, categories). Optional `tooltip: (d) => text`, `height`.
+- `viz.regression(data, x, y)` → `{ slope, intercept, r }`.
+
+For custom visuals use `viz.chart(el, ({ svg, width, height, compact }) => {...}, { label })`,
+which redraws an emptied, container-sized SVG on width or theme change
+(and on `redraw()`); inside it `viz.plot(svg, width, height)` →
+`{ g, innerWidth, innerHeight }`, `viz.axes(g, { x, y, innerWidth, innerHeight, xLabel, yLabel })`,
+`viz.extent(data, accessor, { zero })`, `viz.series(i)`, `viz.duration(ms)`,
+`viz.pruneOverlaps(labels)`.
+
+- Title axes with quantity and units.
+- Custom marks get tooltips via `data-tooltip`; isolated marks need 32px
+  hit targets.
+- Animate only state transitions, with `viz.duration`; never loop motion.
+- Scope custom SVG styles to the chart's class.
 
 ## Accessibility
 
 - Use semantic HTML, keyboard-accessible controls, and concise labels.
-- Give every chart, SVG, and canvas a screen-reader summary (`<title>` /
-  `<desc>`, `aria-label`, or an `.sr-only` description).
+- Give every chart (`viz.chart` `label`), SVG, and canvas a screen-reader
+  summary (`aria-label` or an `.sr-only` description).
 - Use `aria-live="polite"` for dynamic results and `role="alert"` for
   validation errors; do not announce every hover or frame.
 - Keep essential content and actions available without hover, and keep

@@ -125,8 +125,14 @@ state is only a fallback for older messages.
    (`resources/gen-ui/visualize.css`, which defines the agent-facing tokens
    such as `--foreground` and `--viz-series-1` from MCP Apps-style
    `--color-*` host variables), a small host runtime that reports content
-   height and applies theme updates, the fragment, and then the kit runtime
-   (tooltips and tabs). Bundled libraries (D3 7.9.0, Floating UI 1.7.x) are
+   height and applies theme updates, the preloaded chart layer (bundled D3
+   7.9.0 and the `viz` helpers in `resources/gen-ui/visualize-helpers.js`,
+   which own container sizing, resize and theme redraw, axes, and label
+   overlap), the fragment, and then the kit runtime (tooltips and tabs).
+   Preloading keeps that boilerplate out of every model-written fragment, so
+   fragments are shorter and faster to generate; a fragment's own pinned D3
+   tag (written under the earlier skill) is dropped so it cannot replace the
+   `d3` global. Bundled libraries (D3 7.9.0, Floating UI 1.7.x) are
    referenced by their pinned CDN URLs; the shell rewrites exactly those URLs
    to `pi-genui://assets/<file>`, which serves only files listed in
    `resources/gen-ui/vendor/manifest.json`. The response carries the CSP and a deny-all

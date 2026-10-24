@@ -33,6 +33,10 @@ test("the skill only names tokens, classes, and libraries the bundled kit provid
   const css = readFileSync(join(desktopRoot, "resources/gen-ui/visualize.css"), "utf8");
   const kit = readFileSync(join(desktopRoot, "resources/gen-ui/visualize-kit.html"), "utf8");
   const manifest = JSON.parse(readFileSync(join(desktopRoot, "resources/gen-ui/vendor/manifest.json"), "utf8"));
+  const helpers = readFileSync(join(desktopRoot, "resources/gen-ui/visualize-helpers.js"), "utf8");
+  const exported = new Set(
+    helpers.match(/window\.viz = Object\.freeze\(\{([^}]*)\}\)/)?.[1].split(",").map((name) => name.trim()),
+  );
   // Theme tokens the skill tells the model to use are defined by the stylesheet.
   const tokens = new Set(body.match(/`--[a-z0-9-]+`/g)?.map((token) => token.slice(1, -1)));
   assert.ok(tokens.size > 20);
@@ -47,11 +51,16 @@ test("the skill only names tokens, classes, and libraries the bundled kit provid
   // Tabs and tooltips are wired by the kit runtime.
   assert.match(kit, /pi-desktop-visualization-tabs/);
   assert.match(kit, /closest\("\[data-tooltip\]"\)/);
-  // Every library URL in the skill is a bundled, pinned one.
+  // Every library URL the skill still names is a bundled, pinned one; D3 is
+  // preloaded by the kit, so the skill must not ask for a script tag.
   const bundled = new Set(manifest.resources.map((resource) => resource.url));
   const urls = body.match(/https:\/\/[^\s"'`<>]+/g) ?? [];
-  assert.ok(urls.length > 0);
   for (const url of urls) assert.ok(bundled.has(url), url);
+  assert.doesNotMatch(body, /<script src=/);
+  // Every `viz.*` helper the skill names exists in the preloaded helpers.
+  const helperNames = new Set(body.match(/viz\.[a-zA-Z]+/g)?.map((name) => name.slice(4)));
+  assert.ok(helperNames.size >= 6);
+  for (const name of helperNames) assert.ok(exported.has(name), `viz.${name}`);
   // Host APIs from the upstream kit that PI-Desktop does not provide.
   assert.doesNotMatch(body, /window\.zcode|widgetState|sendFollowUpMessage|openExternal|Tweak|lucide|viz-carousel|render\.py/);
 });

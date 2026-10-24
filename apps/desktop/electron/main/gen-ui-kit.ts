@@ -31,6 +31,12 @@ export interface GenUiKit {
   css: string;
   /** Runtime markup appended after the fragment. */
   runtime: string;
+  /**
+   * Markup loaded in `<head>` before the fragment: the bundled D3 and the
+   * `viz` chart helpers (`visualize-helpers.js`), so fragment scripts can use
+   * both without loading them.
+   */
+  head: string;
   /** Pinned CDN URL → `pi-genui://assets/<file>`. */
   vendorUrls: ReadonlyMap<string, string>;
   /** Bundled file name → absolute path; the only files `assets` serves. */
@@ -98,15 +104,45 @@ export function resolveGenUiKitDir(): string | null {
 /** Load the kit from `dir`. Throws when a file is missing or malformed. */
 export async function loadGenUiKit(dir: string): Promise<GenUiKit> {
   const vendorDir = join(dir, "vendor");
-  const [css, kitHtml, manifestJson] = await Promise.all([
+  const [css, kitHtml, helpers, manifestJson] = await Promise.all([
     readFile(join(dir, "visualize.css"), "utf8"),
     readFile(join(dir, "visualize-kit.html"), "utf8"),
+    readFile(join(dir, "visualize-helpers.js"), "utf8"),
     readFile(join(vendorDir, "manifest.json"), "utf8"),
   ]);
   const vendor = parseGenUiVendorManifest(manifestJson, vendorDir);
   return {
     css,
+    head: genUiKitHead(helpers, vendor.vendorUrls),
     runtime: rewriteGenUiVendorUrls(kitHtml.replace(KIT_FRAGMENT_MARKER, ""), vendor.vendorUrls),
     ...vendor,
   };
+}
+
+/** Pinned D3 URL the skill used to require in every fragment. */
+export const GEN_UI_D3_URL = "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js";
+
+/**
+ * `<head>` markup: the bundled D3, then the chart helpers that build on it.
+ * Throws when the manifest does not bundle D3, since the helpers need it.
+ * Pure.
+ */
+export function genUiKitHead(helpers: string, vendorUrls: ReadonlyMap<string, string>): string {
+  const d3 = vendorUrls.get(GEN_UI_D3_URL);
+  if (!d3) throw new Error("gen-ui kit manifest does not bundle D3");
+  if (/<\/script/i.test(helpers)) throw new Error("gen-ui helpers must not contain a closing script tag");
+  return `<script src="${d3}"></script><script>${helpers}</script>`;
+}
+
+/**
+ * Drop `<script src>` tags for D3 from a fragment: the shell already loads
+ * it in `<head>`, and a second copy would replace the `d3` global the helpers
+ * were built against. Older fragments written under the previous skill still
+ * include the tag. Pure.
+ */
+export function stripPreloadedGenUiScripts(fragment: string): string {
+  return fragment.replace(
+    /<script\b[^>]*\bsrc\s*=\s*["']https:\/\/cdn\.jsdelivr\.net\/npm\/d3@7\.9\.0\/dist\/d3\.min\.js["'][^>]*>\s*<\/script>/gi,
+    "",
+  );
 }

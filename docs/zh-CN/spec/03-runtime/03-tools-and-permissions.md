@@ -248,7 +248,8 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
   回合完成后渲染为内联卡片。渲染层由路径后缀推导出
   `pi-genui://session/<sessionId>/<file>`，从不把绝对路径发给 Main。Main 只提供当前
   数据目录下不超过 2 MB 的普通非符号链接片段，拒绝完整文档，并把片段包进带严格 CSP
-  （无网络、子框架、表单）的宿主外壳；框架为 `sandbox="allow-scripts"`。
+  （无网络、子框架、表单）的宿主外壳；框架为 `sandbox="allow-scripts"`。外壳在片段
+  之前预加载内置 D3 和 `viz` 图表辅助函数，并移除片段自带的固定版本 D3 标签。
 
 ## 4c。消息拥有的审核快照和回滚
 
