@@ -109,6 +109,19 @@ describe("DeepSeek reasoning replay", () => {
     ).toBe(false);
   });
 
+  it("does not treat a relay URL containing deepseek.com as an official host", () => {
+    for (const baseUrl of [
+      "https://api.deepseek.com.evil.test/v1",
+      "https://relay.example.test/v1/deepseek.com",
+    ]) {
+      expect(isOfficialDeepSeekEndpoint({ baseUrl })).toBe(false);
+      expect(deepseekRequestCompat({ baseUrl, modelId: "deepseek-v4.1-flash" })).toMatchObject({
+        supportsReasoningEffort: false,
+        requiresNonEmptyReasoningReplay: true,
+      });
+    }
+  });
+
   it("matches aggregator and custom DeepSeek-family models without a deepseek.com URL", () => {
     expect(
       deepseekRequestCompat({

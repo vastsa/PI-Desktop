@@ -508,7 +508,14 @@ export function isDeepSeekReasoningReplay(input: {
 
 /** Official DeepSeek Completions hosts that still accept empty-string replay. */
 export function isOfficialDeepSeekEndpoint(input: { baseUrl?: string }): boolean {
-  return (input.baseUrl ?? "").toLowerCase().includes("deepseek.com");
+  const baseUrl = input.baseUrl?.trim();
+  if (!baseUrl) return false;
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === "deepseek.com" || hostname.endsWith(".deepseek.com");
+  } catch {
+    return false;
+  }
 }
 
 /**
