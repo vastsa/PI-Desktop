@@ -501,6 +501,50 @@ describe("classifyAgentError", () => {
     });
   });
 
+  it("does not treat transport abort wording as a user Stop", () => {
+    // Socket and stream failures say "abort" without being a cancellation.
+    // They must stay retriable so provider retry runs and the UI does not
+    // show Stop.
+    expect(classifyAgentError(new Error("software caused connection abort"))).toMatchObject({
+      code: "NETWORK_ERROR",
+      retriable: true,
+      details: { networkCategory: "reset" },
+    });
+    expect(classifyAgentError(new Error("connection aborted"))).toMatchObject({
+      code: "NETWORK_ERROR",
+      retriable: true,
+      details: { networkCategory: "reset" },
+    });
+    expect(classifyAgentError(new Error("stream aborted"))).toMatchObject({
+      code: "STREAM_FAILED",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("provider aborted the stream"))).toMatchObject({
+      code: "STREAM_FAILED",
+      retriable: true,
+    });
+
+    expect(classifyAgentError("Request aborted")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+    expect(classifyAgentError("The operation was aborted")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+    expect(classifyAgentError("Turn aborted while compacting context")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+    const abortErr = Object.assign(new Error("The operation was aborted"), {
+      name: "AbortError",
+    });
+    expect(classifyAgentError(abortErr)).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+  });
+
   it("classifies a provider termination as a retryable stream failure", () => {
     expect(classifyAgentError("terminated")).toMatchObject({
       code: "STREAM_FAILED",
