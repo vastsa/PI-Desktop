@@ -42,6 +42,7 @@ globalThis.sessionReadingPositionProbe = async () => {
   const bridge = window.piDesktop;
   let firstARead = true;
   const aroundReads: string[] = [];
+  const forwardReads: number[] = [];
   const unexpected: string[] = [];
   window.piDesktop = {
     channels: IPC, platform: "win32", on: () => () => {},
@@ -61,6 +62,11 @@ globalThis.sessionReadingPositionProbe = async () => {
           assert(index >= 0, "missing anchor");
           start = Math.max(0, index - 20);
           end = Math.min(messages.length, index + 40);
+        } else if ("messageBefore" in input && typeof input.messageBefore === "number") {
+          const limit = "messageLimit" in input ? Number(input.messageLimit) : 100;
+          end = Math.min(input.messageBefore, messages.length);
+          start = Math.max(0, end - limit);
+          forwardReads.push(start);
         } else if (input.id === "real-A" && firstARead) {
           firstARead = false;
           start = 0;
@@ -126,6 +132,37 @@ globalThis.sessionReadingPositionProbe = async () => {
     assert(host.querySelectorAll("[data-session-pane]").length === 3, "pane count changed");
     assert(useAppStore.getState().messages[0]?.id === "real-m110", "restore changed canonical/live input");
     const restoredOffset = offset(id);
+    assert(!scroller().querySelector(".transcript-load-later"), "ordinary restoration must not expose manual paging");
+    const readsBefore = forwardReads.length;
+    const continuation = useAppStore.getState().transcriptViews["real-A"];
+    assert(continuation?.hasMoreAfter, "restore must leave a real gap to exercise continuation");
+    const end = continuation.messageEnd!;
+    const boundaryId = `real-m${end - 1}`;
+    const boundary = row(boundaryId)!;
+    scroller().dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 1000 }));
+    scroller().scrollTop = scroller().scrollHeight - scroller().clientHeight;
+    const boundaryOffset = boundary.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
+    scroller().dispatchEvent(new Event("scroll", { bubbles: true }));
+    await until(() => useAppStore.getState().transcriptViews["real-A"]?.hasMoreAfter === false && Boolean(row("real-m139")),
+      "scrolling continues restored history without a button");
+    assert(forwardReads.length > readsBefore, "continuation must perform a physical page read");
+    const continuedOffset = row(boundaryId)!.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
+    assert(Math.abs(continuedOffset - boundaryOffset) < 2,
+      `appending a continuation page moved the reading viewport: ${continuedOffset} vs ${boundaryOffset}`);
+    assert(row("real-m139"), "continuation did not reach the latest row");
+    assert(useAppStore.getState().messages[0]?.id === "real-m110", "continuation changed model input");
+    await useAppStore.getState().navigateTranscript({ sessionId: "real-A", messageId: id, query: "Message" });
+    await until(() => Boolean(scroller().querySelector(".transcript-load-later")), "explicit search keeps manual continuation");
+    const searchReads = forwardReads.length;
+    scroller().scrollTop = scroller().scrollHeight - scroller().clientHeight;
+    scroller().dispatchEvent(new Event("scroll", { bubbles: true }));
+    await frame();
+    await frame();
+    assert(forwardReads.length === searchReads, "search must not automatically load later pages");
+    const loadLater = scroller().querySelector<HTMLButtonElement>(".transcript-load-later")!;
+    flushSync(() => loadLater.click());
+    await until(() => useAppStore.getState().transcriptViews["real-A"]?.hasMoreAfter === false,
+      "explicit search can still load later pages manually");
     const jump = host.querySelector<HTMLButtonElement>('[data-visible="true"] .jump-latest-btn')!;
     flushSync(() => jump.click());
     await until(() => !useAppStore.getState().transcriptViews["real-A"] &&

@@ -10,6 +10,8 @@ export const enEntries: ChangelogEntry[] = [
       "Keep long-running Bash commands going after a turn ends, then review their output as background tasks.",
       "Run parallel conversations in a project with an isolated Git worktree for each session.",
       "Keep the Todo list docked beside the Composer and expand it when you need the full checklist.",
+      "See only the background tasks your current session started, and stop them by deleting the session that owns them.",
+      "Review the Todo list and background tasks in one dock above the Composer, with tabs, a new-task badge, and a single collapse.",
       "Follow the checklist step that is running: a light sweep crosses its text, and finished rows read as plain struck-through lines.",
       "See Bash commands and reasoning in separate transcript rows.",
       "See running activity in project headers, including collapsed groups, and choose the count badge and activity rail independently.",

@@ -193,6 +193,16 @@ export type AppSettings = {
    */
   smoothStreaming?: boolean;
   /**
+   * Render inline interactive visualizations in the transcript (ADR
+   * `gen-ui-inline-visualization`). Absent and false keep the feature off: the
+   * system prompt carries no visualization directory, the
+   * `pi-desktop/visualize` skill is withheld from the catalog and the `/` menu,
+   * and an existing `::visualize` reference line is hidden without loading a
+   * card. `true` opts in for local sessions; remote-host sessions stay without
+   * it because their tools write on the remote machine.
+   */
+  inlineVisualizations?: boolean;
+  /**
    * Prevent the display from sleeping while the app is running. Uses
    * Electron's `powerSaveBlocker` with `prevent-display-sleep` on all
    * platforms. Absent and false mean the system manages sleep normally.

@@ -50,7 +50,8 @@ app.whenReady().then(async () => {
     await window.loadFile(path.join(__dirname, "index.html"));
     const scrolling = await window.webContents.executeJavaScript("globalThis.transcriptReadingPositionProbe()");
     const session = scrolling.ok ? await window.webContents.executeJavaScript("globalThis.sessionReadingPositionProbe()") : null;
-    const result = { ok: scrolling.ok && session?.ok, scrolling, session };
+    const continuation = session?.ok ? await window.webContents.executeJavaScript("globalThis.transcriptContinuationProbe()") : null;
+    const result = { ok: scrolling.ok && session?.ok && continuation?.ok, scrolling, session, continuation };
     console.log("READING_POSITION_PROBE " + JSON.stringify(result));
     app.exit(result.ok ? 0 : 1);
   } catch (error) { console.error(error); app.exit(1); }
@@ -69,7 +70,7 @@ app.whenReady().then(async () => {
   assert(line, `No probe result (exit=${code}): ${output.slice(-4000)}`);
   const result = JSON.parse(line.slice("READING_POSITION_PROBE ".length));
   console.log(JSON.stringify(result));
-  assert.equal(code, 0, result.scrolling?.error ?? result.session?.error ?? output.slice(-4000));
+  assert.equal(code, 0, result.scrolling?.error ?? result.session?.error ?? result.continuation?.error ?? output.slice(-4000));
   assert.equal(result.ok, true);
 } finally {
   await rm(temp, { recursive: true, force: true });

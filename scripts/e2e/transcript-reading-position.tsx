@@ -1,4 +1,5 @@
 import "./session-reading-position";
+import "./transcript-continuation";
 import { useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";

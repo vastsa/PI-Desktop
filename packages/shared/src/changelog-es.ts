@@ -10,6 +10,8 @@ export const esEntries: ChangelogEntry[] = [
       "Los comandos Bash largos continúan como tareas en segundo plano cuando termina el turno, y puedes consultar su salida después.",
       "Las conversaciones paralelas de un proyecto se ejecutan en worktrees de Git independientes.",
       "Mantén la lista Todo junto al cuadro de composición y amplíala cuando necesites verla completa.",
+      "Solo se ven las tareas en segundo plano que inició la sesión actual, y al borrar la sesión sus tareas también se detienen.",
+      "La lista Todo y las tareas en segundo plano comparten un mismo panel sobre el cuadro de composición, con pestañas, un contador de tareas nuevas y un único control para contraer.",
       "Localiza el paso que se está ejecutando: una banda de luz recorre su texto, y las filas completadas quedan como texto tachado sin más.",
       "Los comandos Bash y el razonamiento aparecen en filas separadas de la conversación.",
       "Los encabezados de proyecto muestran la actividad en curso incluso al contraerlos; puedes configurar por separado el contador y la barra.",

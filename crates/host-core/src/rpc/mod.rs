@@ -784,7 +784,13 @@ fn permission_parent_param(params: &Value) -> Result<Option<String>, JsonRpcErro
 /// Drop the per-session files and caches that live outside SQLite. Shared by
 /// `session.delete` and `projects.remove` so removing a project cleans up
 /// exactly the same side data as deleting one session.
+///
+/// Background tasks belong here too: a deleted session must not leave its
+/// servers and watchers running, and this is the one place every deletion path
+/// already goes through. The stop is a signal only — the supervisor kills and
+/// reaps — so deletion neither blocks on a task settling nor fails with it.
 fn drop_session_side_data(st: &AppState, id: &str) {
+    st.background_tasks.stop_session_running(id);
     scratch::remove_session_dir(&st.data_dir, id);
     visualizations::remove_session_dir(&st.data_dir, id);
     review::remove_session(&st.data_dir, id);

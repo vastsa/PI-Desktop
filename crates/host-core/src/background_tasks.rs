@@ -23,9 +23,14 @@ use tokio::sync::{watch, Mutex};
 /// Keep the last 256KB per stream. A server that logs fast for hours must not
 /// grow host memory; a caller that needs earlier output re-runs the command.
 const RING_MAX_BYTES: usize = 256 * 1024;
-/// Upper bound on concurrently running background tasks. Each holds a process
-/// tree and two pipe readers; a runaway loop spawning servers must fail fast.
-pub(crate) const MAX_RUNNING_TASKS: usize = 32;
+/// Upper bound on concurrently running background tasks **per session**. Each
+/// task holds a process tree and two pipe readers, so a session that loops on
+/// spawning servers must fail fast instead of exhausting the host.
+pub(crate) const MAX_RUNNING_TASKS_PER_SESSION: usize = 10;
+/// Process-wide ceiling across every session. It exists only to keep many
+/// sessions from adding up to an exhausted host; it is not a per-session
+/// limit and its refusal is reported separately so the cause stays readable.
+pub(crate) const MAX_RUNNING_TASKS_TOTAL: usize = 64;
 /// Bounded set of finished tasks kept so the UI can show what just exited.
 const FINISHED_TASK_HISTORY: usize = 16;
 
@@ -141,12 +146,40 @@ impl BackgroundTaskRegistry {
     fn is_running(task: &BackgroundTask) -> bool {
         Self::snapshot(task).0 == BackgroundTaskState::Running
     }
-
     pub fn running_count(&self) -> usize {
         self.tasks
             .values()
             .filter(|task| Self::is_running(task))
             .count()
+    }
+
+    /// Running tasks owned by one session. This is the limit a user hits in
+    /// the UI, so the count is scoped rather than global.
+    pub fn running_count_for(&self, session_id: &str) -> usize {
+        self.tasks
+            .values()
+            .filter(|task| task.session_id == session_id && Self::is_running(task))
+            .count()
+    }
+
+    /// Stop signals for every running task of one session. Signal-only on
+    /// purpose: the supervisor kills and reaps, and no output lock is taken
+    /// here, so a caller holding the state mutex cannot deadlock against a
+    /// task that is mid-write. Idempotent — already-stopping tasks ignore it.
+    pub fn stop_session_running(&self, session_id: &str) -> usize {
+        let mut signalled = 0;
+        for task in self.tasks.values() {
+            if task.session_id != session_id || !Self::is_running(task) {
+                continue;
+            }
+            if *task.stop.borrow() {
+                continue;
+            }
+            if task.stop.send(true).is_ok() {
+                signalled += 1;
+            }
+        }
+        signalled
     }
 
     pub fn summaries(&self) -> Vec<BackgroundTaskSummary> {
@@ -193,13 +226,38 @@ pub(crate) async fn spawn_background_task_detached(
     let config = resolve_runner_config(command_shell_id, command, workspace, scratch)?;
     let runner = tools::spawn_tool_runner(&config).await?;
     let mut st = state.lock().await;
-    if st.background_tasks.running_count() >= MAX_RUNNING_TASKS {
+    // A task started for a session that no longer exists would belong to no
+    // visible container and outlive the thing it was started from, so refuse it
+    let session_alive = crate::sessions::session_exists(&st.db, session_id)
+        .map_err(|error| ("INTERNAL".to_string(), error.to_string()))?;
+    if !session_alive {
+        drop(runner);
+        return Err((
+            "TOOL_FAILED".into(),
+            "cannot start a background task for a session that no longer exists".into(),
+        ));
+    }
+    let running_here = st.background_tasks.running_count_for(session_id);
+    if running_here >= MAX_RUNNING_TASKS_PER_SESSION {
         // Runner dropped here kills its process tree (kill-on-drop / job close).
         drop(runner);
         return Err((
             "TOOL_FAILED".into(),
             format!(
-                "too many background tasks are running (limit {MAX_RUNNING_TASKS}); stop one first"
+                "this session already runs {running_here} background tasks \
+                 (limit {MAX_RUNNING_TASKS_PER_SESSION}); stop one first"
+            ),
+        ));
+    }
+    // The process-wide ceiling is a host safety net, not a session rule, so it
+    // reports itself separately instead of reading like the per-session limit.
+    if st.background_tasks.running_count() >= MAX_RUNNING_TASKS_TOTAL {
+        drop(runner);
+        return Err((
+            "TOOL_FAILED".into(),
+            format!(
+                "the host is already running its maximum of {MAX_RUNNING_TASKS_TOTAL} background tasks \
+                 across all sessions; stop one first"
             ),
         ));
     }
@@ -473,6 +531,14 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    /// A real session row, because a background spawn now refuses to start for
+    /// a session that no longer exists.
+    fn new_session(st: &crate::state::AppState) -> String {
+        crate::sessions::create_session(&st.db, Some("test".into()), None, None, None, None)
+            .unwrap()
+            .id
+    }
+
     #[tokio::test]
     async fn retains_output_when_the_process_exits_before_supervision_starts() {
         let dir = tempfile::tempdir().unwrap();
@@ -554,11 +620,15 @@ mod tests {
     async fn start_notifies_stop_settles_and_shutdown_reaps() {
         let dir = tempfile::tempdir().unwrap();
         let state = tokio::sync::Mutex::new(crate::state::AppState::open(dir.path()).unwrap());
+        let session_id = {
+            let st = state.lock().await;
+            new_session(&st)
+        };
 
         let before_start = change_counter();
         let id = spawn_background_task_detached(
             &state,
-            "session-1",
+            &session_id,
             "sleep 30",
             crate::tools::shell::default_shell_id(),
             dir.path(),
@@ -578,7 +648,7 @@ mod tests {
             assert_eq!(summaries[0].id, id);
             assert_eq!(summaries[0].state, BackgroundTaskState::Running);
             assert_eq!(summaries[0].command, "sleep 30");
-            assert_eq!(summaries[0].session_id, "session-1");
+            assert_eq!(summaries[0].session_id, session_id);
             assert_eq!(st.background_tasks.running_count(), 1);
         }
 
@@ -629,9 +699,13 @@ mod tests {
     async fn shutdown_stops_every_running_task() {
         let dir = tempfile::tempdir().unwrap();
         let state = tokio::sync::Mutex::new(crate::state::AppState::open(dir.path()).unwrap());
+        let session_id = {
+            let st = state.lock().await;
+            new_session(&st)
+        };
         spawn_background_task_detached(
             &state,
-            "session-1",
+            &session_id,
             "sleep 30",
             crate::tools::shell::default_shell_id(),
             dir.path(),
@@ -659,5 +733,158 @@ mod tests {
             settled.expect("shutdown stops the running task"),
             BackgroundTaskState::Stopped
         );
+    }
+
+    /// The limit is per session: one full session must not block another, and
+    /// the error must name the session dimension rather than a global cap.
+    #[tokio::test]
+    async fn the_running_limit_is_per_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = tokio::sync::Mutex::new(crate::state::AppState::open(dir.path()).unwrap());
+        let shell = crate::tools::shell::default_shell_id().to_string();
+        let (session_a, session_b) = {
+            let st = state.lock().await;
+            (new_session(&st), new_session(&st))
+        };
+
+        for _ in 0..MAX_RUNNING_TASKS_PER_SESSION {
+            spawn_background_task_detached(
+                &state,
+                &session_a,
+                "sleep 30",
+                &shell,
+                dir.path(),
+                None,
+            )
+            .await
+            .unwrap();
+        }
+
+        // The other session is untouched by A being full.
+        spawn_background_task_detached(&state, &session_b, "sleep 30", &shell, dir.path(), None)
+            .await
+            .expect("a full session must not block a different session");
+
+        let refused = spawn_background_task_detached(
+            &state,
+            &session_a,
+            "sleep 30",
+            &shell,
+            dir.path(),
+            None,
+        )
+        .await
+        .expect_err("the session limit must refuse one more");
+        assert_eq!(refused.0, "TOOL_FAILED");
+        assert!(
+            refused.1.contains("this session already runs"),
+            "the refusal must name the per-session limit, got: {}",
+            refused.1
+        );
+
+        {
+            let st = state.lock().await;
+            assert_eq!(
+                st.background_tasks.running_count_for(&session_a),
+                MAX_RUNNING_TASKS_PER_SESSION
+            );
+            assert_eq!(st.background_tasks.running_count_for(&session_b), 1);
+            // A refused spawn leaves no registry entry behind.
+            assert_eq!(
+                st.background_tasks.running_count(),
+                MAX_RUNNING_TASKS_PER_SESSION + 1
+            );
+            st.background_tasks.stop_session_running(&session_a);
+            st.background_tasks.stop_session_running(&session_b);
+        }
+    }
+
+    /// Deleting a session stops only that session's tasks; the signal must not
+    /// reach tasks another session owns.
+    #[tokio::test]
+    async fn stopping_a_session_spares_other_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = tokio::sync::Mutex::new(crate::state::AppState::open(dir.path()).unwrap());
+        let shell = crate::tools::shell::default_shell_id().to_string();
+        let (session_a, session_b) = {
+            let st = state.lock().await;
+            (new_session(&st), new_session(&st))
+        };
+
+        spawn_background_task_detached(&state, &session_a, "sleep 30", &shell, dir.path(), None)
+            .await
+            .unwrap();
+        spawn_background_task_detached(&state, &session_b, "sleep 30", &shell, dir.path(), None)
+            .await
+            .unwrap();
+
+        let signalled = {
+            let st = state.lock().await;
+            st.background_tasks.stop_session_running(&session_a)
+        };
+        assert_eq!(
+            signalled, 1,
+            "exactly the deleted session's task is signalled"
+        );
+
+        // A is stopping, B keeps running — the signal did not fan out.
+        let mut a_settled = false;
+        for _ in 0..100 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let st = state.lock().await;
+            if st.background_tasks.running_count_for(&session_a) == 0 {
+                a_settled = true;
+                assert_eq!(
+                    st.background_tasks.running_count_for(&session_b),
+                    1,
+                    "the other session's task must still be running"
+                );
+                break;
+            }
+        }
+        assert!(
+            a_settled,
+            "the deleted session's task reaches a terminal state"
+        );
+
+        {
+            let mut st = state.lock().await;
+            st.shutdown();
+        }
+    }
+
+    /// A task may not be started for a session that is already gone: it would
+    /// belong to no visible container and outlive its owner.
+    #[tokio::test]
+    async fn spawning_for_a_deleted_session_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = tokio::sync::Mutex::new(crate::state::AppState::open(dir.path()).unwrap());
+        let shell = crate::tools::shell::default_shell_id().to_string();
+        let session_id = {
+            let st = state.lock().await;
+            let id = new_session(&st);
+            crate::sessions::delete_session(&st.db, &id).unwrap();
+            id
+        };
+
+        let refused = spawn_background_task_detached(
+            &state,
+            &session_id,
+            "sleep 30",
+            &shell,
+            dir.path(),
+            None,
+        )
+        .await
+        .expect_err("a deleted session must not accept a background task");
+        assert_eq!(refused.0, "TOOL_FAILED");
+        assert!(
+            refused.1.contains("no longer exists"),
+            "the refusal must explain the missing session, got: {}",
+            refused.1
+        );
+
+        let st = state.lock().await;
+        assert_eq!(st.background_tasks.running_count(), 0);
     }
 }

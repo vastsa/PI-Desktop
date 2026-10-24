@@ -992,58 +992,294 @@
   }
 }
 
-/* Background tasks bar — chat-started commands detached from their turn. The
-   host owns the lifecycle; this surface only reports state and offers output /
-   stop. One bordered list of hairline-separated rows reads as a terminal
-   status block instead of a stack of input-like fields. */
-.background-tasks-bar {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  max-height: min(200px, 24vh);
-  margin: 0 0 8px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+/* Shared container for todo and background tasks (one header, one tablist).
+   The header keeps the tablist visible while collapsed, so collapsing hides
+   only the panels; the chevron and the title are separate controls because a
+   tab is a button and a button may not nest inside another. */
+.dock {
+  margin-bottom: 8px;
+  overflow: hidden;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--radius-md);
   background: var(--ds-bg-dock-raised);
 }
 
-.background-task {
+.dock-header {
   display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
   align-items: center;
   gap: 8px;
-  min-width: 0;
-  padding: 0;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
+  padding: 4px 8px 4px 6px;
+  color: var(--ds-text-primary);
 }
 
-/* The row body opens the log; the action buttons sit outside it in the same
-   flex line, so the clickable area is everything except the controls. */
-.background-task-main {
+.dock.is-expanded .dock-header {
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+/* The title region keeps "click the summary to collapse" discoverable without
+   wrapping the whole row in a button. */
+.dock-header-main {
   display: flex;
+  min-width: 0;
   flex: 1 1 auto;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 6px 10px;
+  gap: 10px;
+  padding: 4px 4px 4px 6px;
   border-radius: var(--radius-sm);
-  cursor: pointer;
+  color: inherit;
+  text-align: left;
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.background-task-main:focus-visible {
+.dock-header-main:hover {
+  background: var(--ds-bg-hover);
+}
+
+.dock-header-main:focus-visible {
   outline: 2px solid var(--ds-focus);
   outline-offset: -2px;
 }
 
-.background-task[data-expanded="true"] .background-task-main {
+.dock-header-symbol {
+  display: grid;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.dock-header-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+}
+
+.dock-header-text {
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.dock-header-current {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A live dot plus its count, so the collapsed header still answers "is
+   something running" without a second control row. */
+.dock-live {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dock-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-round);
+  background: var(--ds-success);
+  animation: dock-live-pulse 1.8s var(--motion-ease-standard) infinite;
+}
+
+@keyframes dock-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.dock-toggle.btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  color: var(--ds-text-muted);
+}
+
+.dock-toggle:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
+}
+
+/* The disclosure reuses the todo dock's grid-row technique: the clip layer
+   carries the collapse so nothing holds the closed row open. */
+.dock-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    grid-template-rows var(--motion-duration-normal) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.dock.is-expanded .dock-content {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.dock-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Inline tablist: lives in the header row and must never wrap. */
+.dock-tablist {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
+  width: fit-content;
+}
+
+.dock-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--radius-full);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tighter);
+  white-space: nowrap;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.dock-tab:hover {
+  color: var(--ds-text-primary);
+}
+
+.dock-tab.is-active {
+  background: var(--ds-raised);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-raised-shadow);
+}
+
+.dock-tab:focus-visible {
+  outline: 2px solid var(--ds-focus);
+  outline-offset: 1px;
+}
+
+/* The badge is the "new tasks" affordance that replaces auto-switching. */
+.dock-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--ds-text-primary);
+  color: var(--ds-bg-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-none);
+}
+
+.dock-panel {
+  max-height: min(200px, 24vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.dock-panel:focus-visible {
+  outline: 2px solid var(--ds-focus);
+  outline-offset: -2px;
+}
+
+.dock-panel[hidden] {
+  display: none;
+}
+
+/* A task row stacks vertically: the command band on top, an optional log below.
+   Keeping them as siblings stops an expanded log from redistributing the
+   command line and its action button. */
+.task-row {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.task-row + .task-row {
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.task-row:hover {
+  background: var(--ds-bg-hover);
+}
+
+/* The only horizontally laid out band, and it never wraps: a long command
+   ellipsizes instead of pushing the state/time metadata onto a second line. */
+.task-band {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The row body opens the log; the action button sits beside it, outside the
+   clickable area. */
+.task-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 10px 7px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.task-main:focus-visible {
+  outline: 2px solid var(--ds-focus);
+  outline-offset: -2px;
+}
+
+.task-row[data-expanded="true"] .task-main {
+  color: var(--ds-text-primary);
+}
+
+.task-row[data-expanded="true"] {
+  background: var(--ds-bg-hover);
 }
 
 .background-task-error {
@@ -1053,17 +1289,9 @@
   font-size: var(--text-sm);
 }
 
-.background-task + .background-task {
-  border-top: 1px solid var(--ds-border-subtle);
-}
-
-.background-task:hover {
-  background: var(--ds-bg-hover);
-}
-
 /* The dot carries the state so the command stays the only high-contrast text
    in the row; a running task breathes rather than spinning. */
-.background-task-state {
+.task-state {
   flex: 0 0 auto;
   width: 7px;
   height: 7px;
@@ -1071,12 +1299,12 @@
   background: var(--ds-text-faint);
 }
 
-.background-task[data-state="running"] .background-task-state {
+.task-row[data-state="running"] .task-state {
   background: var(--ds-success);
   animation: background-task-pulse 1.8s var(--motion-ease-standard) infinite;
 }
 
-.background-task[data-state="failed"] .background-task-state {
+.task-row[data-state="failed"] .task-state {
   background: var(--ds-warning);
 }
 
@@ -1090,7 +1318,7 @@
   }
 }
 
-.background-task-command {
+.task-command {
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -1100,7 +1328,7 @@
   white-space: nowrap;
 }
 
-.background-task-meta {
+.task-meta {
   flex: 0 0 auto;
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
@@ -1109,21 +1337,21 @@
   white-space: nowrap;
 }
 
-.background-tasks-bar .background-task-action {
+.dock-panel .task-action {
   flex: 0 0 auto;
+  margin-right: 4px;
   color: var(--ds-text-muted);
 }
 
-.background-tasks-bar .background-task-action:hover:not(:disabled) {
+.dock-panel .task-action:hover:not(:disabled) {
   color: var(--ds-text-primary);
 }
 
-.background-tasks-bar .background-task-action.is-stop:hover:not(:disabled) {
+.dock-panel .task-action.is-stop:hover:not(:disabled) {
   color: var(--ds-warning);
 }
 
-.background-task-output {
-  flex-basis: 100%;
+.task-output {
   max-height: 180px;
   margin: 0;
   padding: 8px 10px;
@@ -1136,4 +1364,43 @@
   line-height: var(--leading-body);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Narrow composer panes: the header cannot hold progress text, the current
+   step, a live count and the tablist at once. Drop the lowest-value copy rather
+   than crushing the tabs. */
+.dock {
+  container: dock / inline-size;
+}
+
+@container dock (max-width: 560px) {
+  .dock-header-current {
+    display: none;
+  }
+}
+
+@container dock (max-width: 470px) {
+  .dock-live-label {
+    display: none;
+  }
+
+  .dock-tab {
+    padding: 4px 8px;
+  }
+
+  .dock-toggle.btn {
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-content,
+  .dock-live-dot,
+  .task-row[data-state="running"] .task-state {
+    animation: none;
+    transition: none;
+  }
 }

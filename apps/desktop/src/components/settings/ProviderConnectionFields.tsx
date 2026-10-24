@@ -10,7 +10,8 @@
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { CatalogApiStyle } from "@pi-desktop/shared";
-import { Field, Input, SettingsToggle } from "../ui";
+import { Field, Input, TooltipButton } from "../ui";
+import { IconTrash } from "../icons";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 import { ServiceMonogram } from "./ServiceMonogram";
 import { endpointLabel } from "./service-catalog";
@@ -33,8 +34,8 @@ export type ProviderConnectionFieldsProps = {
   nameRef: RefObject<HTMLInputElement | null>;
   apiKey: string;
   onApiKeyChange: (value: string) => void;
-  noApiKeyRequired: boolean;
-  onNoApiKeyRequiredChange: (required: boolean) => void;
+  hasSavedApiKey?: boolean;
+  onClearApiKey?: () => void;
   name: string;
   onNameChange: (value: string) => void;
   baseUrl: string;
@@ -63,8 +64,8 @@ export function ProviderConnectionFields({
   nameRef,
   apiKey,
   onApiKeyChange,
-  noApiKeyRequired,
-  onNoApiKeyRequiredChange,
+  hasSavedApiKey = false,
+  onClearApiKey,
   name,
   onNameChange,
   baseUrl,
@@ -78,7 +79,9 @@ export function ProviderConnectionFields({
   requiresApiStyleChoice,
 }: ProviderConnectionFieldsProps) {
   const { t } = useTranslation();
-  const keyHint = editing ? t("settings.apiKeyKeepHint") : undefined;
+  const keyHint = custom && !hasSavedApiKey
+    ? t("settings.apiKeyOptionalHint")
+    : editing ? t("settings.apiKeyKeepHint") : undefined;
 
   return (
     <div className={named ? "provider-setup-fields is-named" : "provider-setup-fields is-custom"}>
@@ -171,33 +174,31 @@ export function ProviderConnectionFields({
           <div className="provider-setup-field-row provider-setup-custom-auth-row">
             <div className="provider-setup-key">
               <Field label={t("settings.apiKey")} hint={keyHint}>
-                <Input
-                  ref={apiKeyRef}
-                  type="password"
-                  value={apiKey}
-                  placeholder="sk-…"
-                  className="font-mono text-sm-plus"
-                  autoComplete="off"
-                  disabled={saving || noApiKeyRequired}
-                  onChange={(event) => onApiKeyChange(event.target.value)}
-                />
-              </Field>
-              <div className="provider-setup-no-api-key-option">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-text-secondary">
-                    {t("settings.noApiKeyRequired")}
-                  </span>
-                  <SettingsToggle
-                    checked={noApiKeyRequired}
-                    label={t("settings.noApiKeyRequired")}
+                <div className="provider-setup-key-control">
+                  <Input
+                    ref={apiKeyRef}
+                    type="password"
+                    value={apiKey}
+                    placeholder="sk-…"
+                    className="font-mono text-sm-plus"
+                    autoComplete="off"
                     disabled={saving}
-                    onChange={() => onNoApiKeyRequiredChange(!noApiKeyRequired)}
+                    onChange={(event) => onApiKeyChange(event.target.value)}
                   />
+                  {hasSavedApiKey && onClearApiKey ? (
+                    <TooltipButton
+                      type="button"
+                      className="icon-btn icon-btn-square"
+                      tooltip={t("settings.clearApiKey")}
+                      ariaLabel={t("settings.clearApiKey")}
+                      disabled={saving}
+                      onClick={onClearApiKey}
+                    >
+                      <IconTrash size={14} aria-hidden />
+                    </TooltipButton>
+                  ) : null}
                 </div>
-                <p className="text-xs text-text-muted">
-                  {t("settings.noApiKeyHint")}
-                </p>
-              </div>
+              </Field>
             </div>
             <Field
               label={t("settings.apiStyle")}

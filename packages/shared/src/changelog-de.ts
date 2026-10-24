@@ -10,6 +10,8 @@ export const deEntries: ChangelogEntry[] = [
       "Lange Bash-Befehle laufen nach dem Agenten-Turn als Hintergrundaufgaben weiter; ihre Ausgabe lässt sich später prüfen.",
       "Parallele Sitzungen eines Projekts laufen jeweils in einem eigenen Git-Worktree.",
       "Die Todo-Liste bleibt neben dem Composer angedockt und lässt sich bei Bedarf erweitern.",
+      "Es werden nur die Hintergrundaufgaben der aktuellen Sitzung angezeigt; beim Löschen der Sitzung werden ihre Aufgaben mitgestoppt.",
+      "Todo-Liste und Hintergrundaufgaben teilen sich ein Dock über dem Composer, mit Tabs, einem Zähler für neue Aufgaben und einem einzigen Einklappen.",
       "Der laufende Schritt der Checkliste ist auf einen Blick zu sehen: Ein Lichtstreifen wandert über seinen Text, erledigte Zeilen bleiben schlichter durchgestrichener Text.",
       "Bash-Befehle und Denkprozess erscheinen in getrennten Zeilen im Gespräch.",
       "Projektgruppen zeigen laufende Aktivitäten auch im eingeklappten Zustand; Zähler und Aktivitätsleiste lassen sich unabhängig einstellen.",

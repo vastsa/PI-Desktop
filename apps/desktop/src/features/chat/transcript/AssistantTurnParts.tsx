@@ -19,12 +19,14 @@ const SmoothMessageBubble = memo(function SmoothMessageBubble({ message, streami
   streaming: boolean;
 }) {
   const smoothStreaming = useAppStore((s) => s.settings?.smoothStreaming !== false);
+  // Opt-in feature: an absent setting keeps cards out of the transcript.
+  const inlineVisualizations = useAppStore((s) => s.settings?.inlineVisualizations === true);
   const prefersReducedMotion = typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const enabled = smoothStreaming && !prefersReducedMotion;
   const displayContent = useSmoothText(message.content || "", streaming, enabled);
   const showCursor = streaming && enabled && Boolean(displayContent);
-  const genUi = useGenUiSplit(displayContent, streaming);
+  const genUi = useGenUiSplit(displayContent, streaming, inlineVisualizations);
   // Cards load the pane session's own copy, never the session a path names.
   const sessionId = useSlotSessionId();
   const remote = useAppStore((s) =>

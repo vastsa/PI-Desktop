@@ -27,12 +27,17 @@ export function hideStreamingGenUiReference(content: string): string {
  * streaming reply may still be writing the line (or its file), and a card that
  * appears mid-stream would flash an "unavailable" state. Until then a trailing
  * reference line is hidden.
+ *
+ * With inline visualizations switched off, the reference lines are still
+ * stripped — a historical reply must not leak its absolute path as text — but
+ * no card is produced, so nothing is loaded from disk.
  */
-export function genUiSplitFor(content: string, streaming: boolean): GenUiSplit {
+export function genUiSplitFor(content: string, streaming: boolean, enabled = true): GenUiSplit {
   if (streaming) return { content: hideStreamingGenUiReference(content), references: EMPTY };
-  return splitGenUiReferences(content);
+  const split = splitGenUiReferences(content);
+  return enabled ? split : { content: split.content, references: EMPTY };
 }
 
-export function useGenUiSplit(content: string, streaming: boolean): GenUiSplit {
-  return useMemo(() => genUiSplitFor(content, streaming), [content, streaming]);
+export function useGenUiSplit(content: string, streaming: boolean, enabled = true): GenUiSplit {
+  return useMemo(() => genUiSplitFor(content, streaming, enabled), [content, streaming, enabled]);
 }

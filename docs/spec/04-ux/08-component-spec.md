@@ -123,6 +123,12 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   the message is already loaded but outside the mounted row window, first restore
   the saved absolute scroll offset; the bounded window can then grow as the user
   scrolls toward the anchor.
+  Restored ranges continue automatically near the visible lower boundary, in
+  bounded pages and without a Load later messages button. Appending a page must
+  preserve the viewport; hidden panes must not initiate continuation. Do not
+  merge a disjoint live tail across unread history. Once the range reaches the
+  tail, canonical updates and new live rows resume without prepending older
+  cached rows. Explicit search retains its separate manual paging behavior.
   Explicit disclosure choices and the mounted-window budget survive eviction;
   bookmarks do not persist across renderer/app restarts.
 - A pane renders the store's live `messages` while its session is the active one

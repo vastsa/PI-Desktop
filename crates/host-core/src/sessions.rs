@@ -1534,6 +1534,17 @@ pub fn session_summary(db: &Database, id: &str) -> Result<Option<SessionSummary>
     Ok(summary)
 }
 
+/// Whether a session row still exists. Used to refuse work that would otherwise
+/// outlive its owning session and become unreachable — a background task
+/// started after its session was deleted belongs to nobody.
+pub fn session_exists(db: &Database, id: &str) -> Result<bool> {
+    Ok(db.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
 /// Load a session detail with an optional renderer-facing message window.
 /// The uncapped default is intentionally retained for the sidecar and for
 /// mutation paths that need the canonical transcript. Renderer callers should

@@ -106,8 +106,6 @@ export function PluginProviderKeySetupForm({
           nameRef={nameRef}
           apiKey={apiKey}
           onApiKeyChange={setApiKey}
-          noApiKeyRequired={false}
-          onNoApiKeyRequiredChange={() => {}}
           name={provider.name}
           onNameChange={() => {}}
           baseUrl={provider.baseUrl ?? ""}

@@ -704,6 +704,15 @@ lifecycle invalidation, not a high-volume log transport. Clients fetch only the
 selected output preview. A terminal snapshot includes the final drained output,
 and shutdown signals every registered task even during a concurrent output read.
 
+`backgroundTasks.list` stays session-agnostic: it returns every task in the
+registry, each carrying its `sessionId`, and the renderer filters to the session
+on screen. Filtering is presentation, so the wire contract does not grow a
+session parameter and no consumer loses visibility of other sessions' work.
+Deleting a session signals its running tasks host-side; the deletion path does
+not wait for them to settle and does not fail when one cannot be killed.
+Removing a row in the UI is purely a view action and issues no RPC, so a removed
+task's output remains readable by id until the host's own retention drops it.
+
 ### Shells
 - `commandShells.list`
 - `settings.set` with a partial settings object; omitted fields are preserved,

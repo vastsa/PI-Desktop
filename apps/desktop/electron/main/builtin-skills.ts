@@ -131,6 +131,22 @@ export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
   );
 }
 
+/**
+ * Built-in ids this process must withhold: the host-owned activation state plus
+ * the inline-visualization switch, which owns the `visualize` skill.
+ *
+ * The switch is opt-in, so an absent or unreadable setting withholds the skill.
+ * Keeping this in one place means a launch, the `/` menu, and the on-demand
+ * `Skill` tool cannot disagree about whether the feature exists.
+ */
+export function effectiveDisabledBuiltinSkills(
+  disabled: readonly string[],
+  visualizations: boolean,
+): string[] {
+  if (visualizations || disabled.includes(VISUALIZE_SKILL_ID)) return [...disabled];
+  return [...disabled, VISUALIZE_SKILL_ID];
+}
+
 /** Refuse a stale on-demand load after a bundled skill has been switched off. */
 export async function assertBuiltinSkillEnabled(
   id: string,

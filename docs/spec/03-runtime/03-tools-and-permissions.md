@@ -298,8 +298,12 @@ visualization lives as long as its session:
 <data_dir>/visualizations/<sessionId>/
 ```
 
-- **Availability.** Local sessions only. A remote-workspace session gets no
-  directory, no prompt line, and no `pi-desktop/visualize` skill.
+- **Availability.** Local sessions only, and opt-in through
+  `AppSettings.inlineVisualizations` (absent and `false` mean off). While it is
+  off there is no directory, no prompt line, no `pi-desktop/visualize` skill in
+  the catalog, `/` menu, or `Skill` tool, and the renderer strips reference
+  lines without loading a card. A remote-workspace session gets none of it
+  either.
 - **Addressing.** Absolute paths only; the path is advertised in the system
   prompt next to the scratch directory. Relative paths never resolve here.
 - **Containment.** Scratch and visualization roots are checked before the
@@ -487,28 +491,61 @@ Host execution baseline:
 - `runInBackground: true` detaches the command from the turn: the call returns
   `backgroundTaskId` as soon as the shell starts, no timeout applies, and the
   process survives `tools.abort` and `agent.abort`. The host owns the process
-  tree, reports it through the composer's running-tasks bar, and stops it on
-  request or on app shutdown. At most 32 tasks run concurrently and each stream
-  keeps its last 256KB.
+  tree, reports it through the composer's shared container, and stops it on
+  request or on app shutdown. Each stream keeps its last 256KB.
+- **Background tasks belong to the session that started them.** The session id is
+  fixed at spawn and never changes: switching, renaming, archiving, or restoring
+  a session does not re-home its tasks. A session runs at most **10** concurrent
+  background tasks; the refusal names that per-session limit. A separate
+  process-wide ceiling guards the host against many sessions adding up, and it is
+  reported as its own condition so the two causes stay distinguishable. A spawn
+  is refused when the session no longer exists, so a task can never start in a
+  session that would not be able to show it.
 - Background output is drained before a terminal state is published, including
   output queued when the process exits or is stopped. UTF-8 characters split
   across pipe reads remain intact. Shutdown signals do not acquire output locks.
-- The task list keeps the existing Composer order: Todo, background commands,
-  Plan/Ask decisions, then the input. There is no configurable display priority.
-  The list scrolls within `min(200px, 24vh)` so additional tasks do not displace
-  the decision surfaces. Existing approval and Ask input gating is unchanged.
+- **Todo and background tasks share one container** in the Composer, above the
+  Plan/Ask decision surfaces and the input. The container has a single header
+  carrying the todo progress summary, the running-task count, the tab list, and
+  the disclosure control; collapsing hides only the panels, so the tabs stay
+  reachable while collapsed. Tabs appear only when both sides have content: with
+  one side populated, that panel renders on its own and the tab list is not
+  rendered at all, and a container with nothing to show renders nothing. The
+  panel scrolls within `min(200px, 24vh)` so additional rows do not displace the
+  decision surfaces. Existing approval and Ask input gating is unchanged.
+- **The displayed tab is per-session view state.** It remembers the user's own
+  choice; a tab the container picked on its own never overwrites that choice. A
+  remembered tab whose side has become empty falls back to the other side. The
+  container gates on an active session that allows local tools, the same
+  condition the todo dock already used.
+- **A newly started task never steals the tab.** While the tasks panel is not the
+  one on screen, new tasks raise a count badge on its tab; entering that tab
+  clears the badge. Clicking a tab while collapsed also expands the container,
+  because otherwise the click would appear to do nothing.
 - A finished background task is not permanent furniture. Its row lives for a
   10-second grace window after the renderer observed the task end, so the exit
-  code stays readable, then it leaves the bar. A task that had already finished
-  when the renderer first loaded is registry history and never appears. Closing
-  a finished row removes it immediately; an open output preview pins its row so
-  a log being read cannot vanish underneath it. Closing is a view action only —
-  the host keeps its bounded task history.
+  code stays readable, then it leaves the container. A task that had already
+  finished when the renderer first loaded is registry history and never appears.
+  An open output preview pins its row so a log being read cannot vanish
+  underneath it.
+- **Removal is a view action with a live-task guard.** Only a terminal task
+  (`exited`, `failed`, `stopped`) can be removed; a running task — including one
+  already sent a stop signal, which stays `running` until the supervisor settles
+  it — refuses removal in the state layer, not merely by hiding the control. The
+  host task, its output, and its id are untouched, so the record stays readable
+  by id until the host's own retention drops it. Removal is remembered per
+  session and is not persisted.
+- **Deleting a session stops its running background tasks.** Archiving does not:
+  archiving is a reversible marker, so killing its processes would be a
+  destructive side effect. Deletion signals stop and returns — the deletion does
+  not wait for a task to settle and does not fail when a task cannot be killed.
+  A deleted session's stopped tasks appear in no container, because the session
+  that would have showed them is gone.
 - Only one output preview is open at a time. While its task runs, the Renderer
   refreshes that preview at one-second intervals after the previous read settles;
   collapsed outputs are not fetched. The preview shows at most 8,000 stdout
   characters and 4,000 stderr characters. Late reads from a previous selection
-  are ignored. Read/stop failures are visible and stopping can be retried.
+  are ignored. Read/stop/remove failures are visible and stopping can be retried.
 
 Shell catalog (D190) exposes the stable IDs `windows-powershell`, `windows-pwsh`,
 `cmd`, `git-bash`, and `bash` where supported by the platform. The host persists

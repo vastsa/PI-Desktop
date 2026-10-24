@@ -10,6 +10,8 @@ export const trEntries: ChangelogEntry[] = [
       "Uzun Bash komutları tur bittikten sonra arka plan görevleri olarak çalışmaya devam eder; çıktıları daha sonra inceleyebilirsiniz.",
       "Aynı projedeki paralel konuşmalar birbirinden yalıtılmış Git worktree'lerinde çalışır.",
       "Todo listesini Composer'ın yanında sabit tutun, gerektiğinde tamamını açın.",
+      "Yalnızca geçerli oturumun başlattığı arka plan görevleri görünür; oturum silindiğinde görevleri de durdurulur.",
+      "Todo listesi ile arka plan görevleri Composer'ın üzerinde tek bir paneli paylaşır: sekmeler, yeni görev rozeti ve tek bir daraltma.",
       "Yürütülen adımı bir bakışta görün: metninin üzerinden bir ışık geçer, tamamlanan satırlar ise sade üstü çizili metin olarak kalır.",
       "Bash komutları ve akıl yürütme konuşmada ayrı satırlarda gösterilir.",
       "Daraltılmış gruplar dâhil, proje başlıklarında devam eden etkinliği görün; sayaç rozeti ve etkinlik şeridini ayrı ayrı ayarlayın.",

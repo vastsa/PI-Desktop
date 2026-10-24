@@ -393,11 +393,14 @@ Presets only prefill form defaults; they are not a closed world.
 | bedrock | bedrock | aws_sdk_default | no |
 | ollama | openai_compatible | none | yes |
 | lmstudio | openai_compatible | none | yes |
-| custom | openai_compatible | api_key_and_base_url by default; `none` when the endpoint needs no authentication | yes |
+| custom | openai_compatible | `api_key_and_base_url` with a supplied/saved key; `none` without a key | yes |
 
-The custom endpoint form keeps API-key authentication as its default and lets
-the user explicitly select `authKind: "none"` for endpoints that accept
-unauthenticated requests. Named cloud presets retain their declared auth kind.
+The custom endpoint form derives authentication from the effective API key,
+without a mode switch. An empty or whitespace-only input on a row without a
+saved key uses `authKind: "none"`; a supplied key uses API-key authentication.
+Editing with a blank input keeps the stored key. **Clear saved API key** stages
+its removal until Save; typing a replacement key instead keeps API-key auth.
+Named cloud presets retain their declared auth kind.
 
 ### Fixed API-style presets
 

@@ -29,12 +29,29 @@ test("references are split out only once the message is no longer streaming", as
 
 test("the assistant bubble renders split content and cards; Markdown stays gen-ui free", async () => {
   const bubble = await read("../src/features/chat/transcript/AssistantTurnParts.tsx");
-  assert.match(bubble, /const genUi = useGenUiSplit\(displayContent, streaming\);/);
+  // The feature is opt-in, so the bubble passes the setting into the split.
+  assert.match(bubble, /s\.settings\?\.inlineVisualizations === true/);
+  assert.match(bubble, /const genUi = useGenUiSplit\(displayContent, streaming, inlineVisualizations\);/);
   assert.match(bubble, /<Markdown source=\{genUi\.content\} streaming=\{streaming\} \/>/);
   assert.match(bubble, /<GenUiCards references=\{genUi\.references\} sessionId=\{sessionId\} remote=\{remote\} \/>/);
   assert.match(bubble, /const sessionId = useSlotSessionId\(\);/);
   const markdown = await read("../src/components/Markdown.tsx");
   assert.doesNotMatch(markdown, /gen-ui|genUi|GenUi/);
+});
+
+test("a switched-off feature strips reference lines without producing a card", async (t) => {
+  const ssr = await slotSsr(t);
+  const { genUiSplitFor } = await ssr.load("/src/features/chat/gen-ui/gen-ui-split.ts");
+
+  const off = genUiSplitFor(MESSAGE, false, false);
+  // No card is produced, so nothing is read from disk or framed.
+  assert.deepEqual(off.references, []);
+  // The absolute path must not leak into the transcript as text.
+  assert.equal(off.content, "Here is the chart.");
+  assert.doesNotMatch(off.content, /visualizations|chart\.html/);
+
+  // Streaming behaves the same way in either state.
+  assert.equal(genUiSplitFor(MESSAGE, true, false).content, "Here is the chart.");
 });
 
 test("the guest frame is sandboxed to scripts only with an opaque origin", async (t) => {

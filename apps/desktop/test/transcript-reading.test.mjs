@@ -576,3 +576,38 @@ test("selection revalidation cannot remove a restored range, but an explicit rew
   r.set({ messages: [message("tail", "edited")] });
   assert.equal(r.view(), undefined);
 });
+
+test("a restored range joins live output only after paging closes the gap", async () => {
+  const calls = [];
+  const canonical = [message("cached-before"), message("tail", "streaming")];
+  const r = reader(async (_id, options) => {
+    calls.push(options);
+    return calls.length === 1
+      ? page([message("old")], { messageStart: 20, messageEnd: 80 })
+      : page([message("tail", "persisted")], {
+          messageStart: 80, messageEnd: 100, hasMoreAfter: false,
+        });
+  }, { messages: canonical, runningSessions: { s: true } });
+  await r.restoreTranscriptReading("s", bookmark, new AbortController().signal);
+  assert.deepEqual(r.visible().map((row) => row.id), ["old"], "do not skip unloaded history");
+  await r.loadTranscriptPage("s", "after");
+  assert.equal(r.view().hasMoreAfter, false);
+  assert.deepEqual(r.visible().map((row) => row.id), ["old", "tail"], "do not prepend cached rows on continuation");
+  assert.equal(r.visible().at(-1).content, "streaming");
+  r.set({ messages: [message("cached-before"), message("tail", "complete"), message("new")], runningSessions: {} });
+  assert.deepEqual(r.visible().map((row) => row.id), ["old", "tail", "new"]);
+  assert.equal(r.visible().find((row) => row.id === "tail").content, "complete");
+  assert.equal(r.get().messages.some((row) => row.id === "old"), false, "reading must not populate model input");
+});
+
+test("a restored range already at the tail uses canonical updates without adding older cached rows", () => {
+  const restored = { ...transcriptViewFromSession(page([message("tail", "persisted")], {
+    messageStart: 90, messageEnd: 100, hasMoreAfter: false,
+  }).session), restored: true };
+  const live = [message("before"), message("tail", "latest"), message("next")];
+  assert.deepEqual(transcriptViewMessages(live, restored).map((row) => [row.id, row.content]),
+    [["tail", "latest"], ["next", "next"]]);
+  const search = { ...restored, focus: { ...target("tail"), requestId: 1 } };
+  assert.deepEqual(transcriptViewMessages(live, search).map((row) => [row.id, row.content]),
+    [["tail", "persisted"]], "explicit search keeps its selected snapshot");
+});

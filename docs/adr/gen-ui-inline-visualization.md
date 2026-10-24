@@ -77,14 +77,18 @@ export, and CDN guidance are removed from the adapted ZCode skill.
 
 ### Model guidance (agent runtime and Electron Main)
 
-The absolute directory path is advertised in the system prompt beside the
-scratch directory, and the `pi-desktop/visualize` skill is active by default
-(users can disable it like other built-in skills; a disabled skill also
-withholds the directory from the prompt). Remote-host sessions get
-neither the directory nor the skill (neither in the runtime nor in the `/`
-menu or a send-time `/skill:` mention): their tools write on the remote
-machine, which Electron Main cannot read. The card's "unavailable" state is only a
-fallback for older messages.
+Inline visualizations are opt-in: `AppSettings.inlineVisualizations` is absent
+and `false` by default, and only `true` enables them. While the switch is off
+the absolute directory path is not advertised in the system prompt, the
+`pi-desktop/visualize` skill is withheld from the catalog, the `/` menu, and the
+on-demand `Skill` tool, and the renderer hides existing reference lines without
+loading a card. With the switch on, the directory is advertised beside the
+scratch directory and the skill is active unless the user disables it like other
+built-in skills; a disabled skill also withholds the directory from the prompt.
+Remote-host sessions get neither the directory nor the skill (neither in the
+runtime nor in the `/` menu or a send-time `/skill:` mention): their tools write
+on the remote machine, which Electron Main cannot read. The card's "unavailable"
+state is only a fallback for older messages.
 
 ### Serving (Electron Main)
 
@@ -152,8 +156,11 @@ visualization cannot replace itself with a remote page outside its own CSP.
 ### Rendering (renderer)
 
 1. The assistant message bubble splits references out of the message content
-   before Markdown rendering and renders one card per reference. The shared
-   Markdown component is unchanged, so plugin READMEs, file previews, and tool
+   before Markdown rendering and renders one card per reference. With
+   `AppSettings.inlineVisualizations` off it still strips the reference lines —
+   a historical reply must not show its absolute path as text — but produces no
+   card, so nothing is read from disk or framed. The shared Markdown component
+   is unchanged, so plugin READMEs, file previews, and tool
    rows never show cards.
 2. The card is `<iframe sandbox="allow-scripts" loading="lazy">` without
    `allow-same-origin`; the guest has an opaque origin and cannot reach the

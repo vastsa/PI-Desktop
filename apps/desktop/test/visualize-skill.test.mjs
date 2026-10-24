@@ -10,6 +10,7 @@ const {
   assertBuiltinSkillEnabled,
   builtinSkillCatalog,
   builtinSkills,
+  effectiveDisabledBuiltinSkills,
   loadBuiltinSkillBody,
 } = await import("../electron/main/builtin-skills.ts");
 
@@ -69,6 +70,23 @@ test("users can disable the visualize skill like other built-ins", async () => {
     /disabled in Settings/,
   );
   await assertBuiltinSkillEnabled(VISUALIZE, async () => []);
+});
+
+test("the inline-visualization switch withholds the skill unless it is on", () => {
+  // The feature is opt-in: absent, false, or an unreadable setting all mean off.
+  assert.deepEqual(effectiveDisabledBuiltinSkills([], false), [VISUALIZE]);
+  assert.deepEqual(effectiveDisabledBuiltinSkills([], true), []);
+  // A stored toggle stays visible in the list, and either source wins.
+  assert.deepEqual(
+    effectiveDisabledBuiltinSkills(["pi-desktop/imagegen"], true),
+    ["pi-desktop/imagegen"],
+  );
+  assert.deepEqual(effectiveDisabledBuiltinSkills([VISUALIZE], true), [VISUALIZE]);
+  assert.deepEqual(effectiveDisabledBuiltinSkills([VISUALIZE], false), [VISUALIZE]);
+  // Withholding the skill is what keeps it out of the catalog.
+  const off = builtinSkills({ disabledIds: effectiveDisabledBuiltinSkills([], false) });
+  assert.ok(!off.some((skill) => skill.id === VISUALIZE));
+  assert.ok(off.some((skill) => skill.id === "pi-desktop/imagegen"));
 });
 
 test("the visualize skill file has well-formed front matter and stays compact", () => {

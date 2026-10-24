@@ -24,12 +24,17 @@ entitled to it.
 
 `ProviderSetupDialog` is a single form, not a wizard:
 
-- **Name**, **Base URL** and **API Key** are all on screen at once. An empty key
-  when editing means “keep the stored one”; `secretValue` is only sent when the
-  user typed something. Custom endpoints also offer an explicit **No API key
-  required** switch, defaulting off for new rows. When enabled, the key field is
-  disabled and cleared, and the row saves with `authKind: "none"` and no
-  secret. Named cloud services keep their existing authentication defaults.
+- **Name**, **Base URL** and **API Key** are all on screen at once. Custom
+  endpoint keys are optional, with no authentication-mode switch. An empty or
+  whitespace-only key on a row without a stored key saves `authKind: "none"`
+  without `secretValue`; a supplied key uses API-key authentication. Editing
+  with an empty key preserves the stored key. **Clear saved API key** is an
+  icon button beside the input on the same row, with a localized tooltip and
+  accessible name. It stages removal, keeps the input enabled, and stops
+  discovery from reusing that key;
+  Save applies the removal and no-auth mode unless a replacement key is typed.
+  Closing without saving changes no stored credential. Named cloud services
+  keep their existing authentication defaults.
 - The models section lists what the service returned. `useProviderModels`
   debounces edits by 600 ms, guards against out-of-order replies with a
   monotonic request sequence, and needs no API key so local and no-auth

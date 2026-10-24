@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { repositoryRoot, resolveElectronBinary } from "../../../scripts/e2e/boot.mjs";
@@ -63,7 +63,7 @@ window.piDesktop = {
       updatedProvider = {
         ...createdProvider,
         ...input,
-        hasSecret: Boolean(input.secretValue) || createdProvider.hasSecret,
+        hasSecret: input.authKind === "none" ? false : Boolean(input.secretValue) || createdProvider.hasSecret,
       };
       return { ok: true, data: { provider: updatedProvider } };
     }
@@ -101,6 +101,25 @@ const rootNode = createRoot(document.getElementById("root"));
 function mount(element) { flushSync(() => rootNode.render(element)); }
 
 window.customProviderNoApiKeyProbe = async () => {
+  const check = (condition, message) => { if (!condition) throw new Error(message); };
+  const button = (label) => [...document.querySelectorAll("button")]
+    .find((item) => item.getAttribute("aria-label") === label || item.textContent.trim() === label);
+  const keyField = () => document.querySelector('input[type="password"]');
+  const edit = (provider, key) => {
+    updateInput = null;
+    updatedProvider = null;
+    mount(React.createElement(ProviderSetupDialog, {
+      key,
+      provider,
+      onClose: () => mount(null),
+      onSaved: () => {},
+    }));
+  };
+  const saveEdit = async () => {
+    flushSync(() => button("Save provider").click());
+    await waitFor(() => updateInput && updatedProvider, "the provider edit was not saved");
+    return structuredClone(updateInput);
+  };
   mount(React.createElement(ProviderSetupDialog, {
     key: "new-provider",
     provider: null,
@@ -112,89 +131,132 @@ window.customProviderNoApiKeyProbe = async () => {
     "the custom endpoint service was not offered",
   );
   flushSync(() => customTile.click());
-
-  const noApiKeyToggle = await waitFor(
-    () => document.querySelector('[role="switch"][aria-label="No API key required"]'),
-    "the custom endpoint form did not offer its no-key option",
-  );
-  const noApiKeyDefaultsOff = noApiKeyToggle.getAttribute("aria-checked") === "false";
+  check(!document.querySelector('[role="switch"][aria-label="No API key required"]'),
+    "the obsolete no-key switch is still present");
+  check(keyField() && !keyField().disabled, "the optional API-key input is not enabled");
   const nameField = [...document.querySelectorAll("label")]
-    .find((label) => label.textContent.includes("Name"))
-    ?.querySelector("input");
+    .find((label) => label.textContent.includes("Name"))?.querySelector("input");
   const urlField = document.querySelector('input[type="url"]');
-  if (!nameField || !urlField) throw new Error("the custom endpoint identity fields were missing");
+  check(nameField && urlField, "the custom endpoint identity fields were missing");
   setValue(nameField, "No Auth Gateway");
   setValue(urlField, "https://no-auth.example.org/v1");
-
   const discoveryCall = await waitFor(
     () => calls.find((call) => call.channel === "pi-desktop/providers/listModels"
       && call.input.baseUrl === "https://no-auth.example.org/v1"),
     "the custom endpoint was not probed without an API key",
   );
-  const keyField = document.querySelector('input[type="password"]');
-  setValue(keyField, "temporary-api-key");
-  flushSync(() => noApiKeyToggle.click());
-  const keyFieldDisabled = keyField?.disabled === true;
-  const keyFieldCleared = keyField?.value === "";
-
   const modelField = document.querySelector('input[placeholder^="Enter a model ID"]');
-  if (!modelField) throw new Error("the custom model input was missing");
+  check(modelField, "the custom model input was missing");
   setValue(modelField, "no-auth-chat");
-  const addModelButton = [...document.querySelectorAll("button")]
-    .find((button) => button.textContent.trim() === "Add custom model");
-  if (!addModelButton) throw new Error("the custom model add action was missing");
-  flushSync(() => addModelButton.click());
+  flushSync(() => button("Add custom model").click());
   await waitFor(
     () => document.querySelector(".provider-chosen")?.innerText.includes("no-auth-chat"),
     "the model was not added to the custom provider",
   );
-
-  const saveButton = [...document.querySelectorAll("button")]
-    .find((button) => button.textContent.trim() === "Save provider");
-  if (!saveButton) throw new Error("the custom provider save action was missing");
-  flushSync(() => saveButton.click());
+  // A whitespace-only key has the same meaning as an empty key.
+  flushSync(() => setValue(keyField(), "   "));
+  flushSync(() => button("Save provider").click());
   await waitFor(() => savedCallback && createdProvider, "the custom provider was not saved");
-  const savedAsNoAuth = createdProvider.authKind === "none"
-    && !Object.hasOwn(createdProvider, "secretValue")
-    && createdProvider.models?.[0]?.id === "no-auth-chat";
+  const noAuthProvider = structuredClone(createdProvider);
+  check(noAuthProvider.authKind === "none" && !Object.hasOwn(noAuthProvider, "secretValue"),
+    "an empty API key did not automatically save as no-auth");
 
-  let updateSavedCallback = false;
-  mount(React.createElement(ProviderSetupDialog, {
-    key: "edit-provider",
-    provider: createdProvider,
-    onClose: () => mount(null),
-    onSaved: (provider) => {
-      updatedProvider = provider;
-      updateSavedCallback = true;
-    },
-  }));
-  const editNoApiKeyToggle = await waitFor(
-    () => document.querySelector('[role="switch"][aria-label="No API key required"]'),
-    "the saved no-key setting did not reopen",
+  edit(noAuthProvider, "edit-no-auth-unchanged");
+  const unchangedNoAuth = await saveEdit();
+  check(!Object.hasOwn(unchangedNoAuth, "authKind") && !Object.hasOwn(unchangedNoAuth, "secretValue"),
+    "reopening and saving a no-auth provider changed its authentication");
+
+  edit(noAuthProvider, "edit-no-auth-add-key");
+  check(!keyField().disabled, "a no-auth provider cannot accept an API key");
+  flushSync(() => setValue(keyField(), "  saved-api-key  "));
+  const keyedUpdate = await saveEdit();
+  check(keyedUpdate.authKind === "api_key_and_base_url" && keyedUpdate.secretValue === "saved-api-key",
+    "typing a key did not switch the no-auth provider to API-key authentication");
+  createdProvider = structuredClone(updatedProvider);
+  const keyedProvider = structuredClone(createdProvider);
+
+  edit(keyedProvider, "edit-keyed-keep-key");
+  const keepKeyUpdate = await saveEdit();
+  check(!Object.hasOwn(keepKeyUpdate, "authKind") && !Object.hasOwn(keepKeyUpdate, "secretValue"),
+    "an untouched empty input overwrote the saved key");
+
+  edit(keyedProvider, "edit-keyed-clear-and-cancel");
+  const clearButton = button("Clear saved API key");
+  check(clearButton, "the saved-key removal action was missing");
+  check(clearButton.textContent.trim() === "" && clearButton.querySelector('svg[aria-hidden="true"]'),
+    "the saved-key removal action is not an accessible icon-only button");
+  const inputRect = keyField().getBoundingClientRect();
+  const clearRect = clearButton.getBoundingClientRect();
+  check(clearRect.left >= inputRect.right && clearRect.top < inputRect.bottom
+    && clearRect.bottom > inputRect.top, "the clear icon is not beside the API-key input");
+  check(clearRect.width >= 24 && clearRect.height >= 24, "the clear icon target is too small");
+  flushSync(() => clearButton.click());
+  check(document.activeElement === keyField(), "clearing the key did not focus its input");
+  check(!updateInput, "clearing a key persisted before Save");
+  check(keyField().value === "" && !keyField().disabled, "clearing a saved key disabled the input");
+  const afterClear = calls.length;
+  const clearProbe = await waitFor(
+    () => calls.slice(afterClear).find((call) => call.channel === "pi-desktop/providers/listModels"
+      && call.input.baseUrl === keyedProvider.baseUrl && call.input.source !== "cache"),
+    "clearing the saved key did not refresh model discovery",
   );
-  const editOpenedAsNoAuth = editNoApiKeyToggle.getAttribute("aria-checked") === "true";
-  flushSync(() => editNoApiKeyToggle.click());
-  const editKeyField = document.querySelector('input[type="password"]');
-  const editKeyEnabled = editKeyField?.disabled === false;
-  setValue(editKeyField, "saved-api-key");
-  const updateButton = [...document.querySelectorAll("button")]
-    .find((button) => button.textContent.trim() === "Save provider");
-  if (!updateButton) throw new Error("the edited custom provider save action was missing");
-  flushSync(() => updateButton.click());
-  await waitFor(() => updateSavedCallback && updateInput, "the custom provider auth update was not saved");
+  check(!Object.hasOwn(clearProbe.input, "providerId") && !Object.hasOwn(clearProbe.input, "apiKey"),
+    "model discovery reused a saved key after it was cleared");
+  mount(null);
+  check(!updateInput, "closing the form after Clear changed the saved key");
+
+  edit(keyedProvider, "edit-keyed-clear-and-replace");
+  flushSync(() => button("Clear saved API key").click());
+  flushSync(() => setValue(keyField(), "replacement-api-key"));
+  const replacementUpdate = await saveEdit();
+  check(replacementUpdate.authKind !== "none" && replacementUpdate.secretValue === "replacement-api-key",
+    "a replacement key was discarded after Clear");
+
+  edit(keyedProvider, "edit-keyed-clear-and-save");
+  flushSync(() => button("Clear saved API key").click());
+  const clearedUpdate = await saveEdit();
+  check(clearedUpdate.authKind === "none" && !Object.hasOwn(clearedUpdate, "secretValue"),
+    "clearing and saving did not switch to no-auth");
+  check(updatedProvider.hasSecret === false, "the cleared provider is still marked as credentialed");
+
+  const missingKeyProvider = { ...keyedProvider, hasSecret: false };
+  edit(missingKeyProvider, "edit-keyed-missing-key");
+  const missingKeyUpdate = await saveEdit();
+  check(missingKeyUpdate.authKind === "none" && !Object.hasOwn(missingKeyUpdate, "secretValue"),
+    "an existing custom provider without a stored key did not become no-auth");
+
+  mount(React.createElement(ProviderSetupDialog, {
+    key: "new-keyed-provider",
+    provider: null,
+    initialDraft: {
+      name: "Key Gateway",
+      baseUrl: keyedProvider.baseUrl,
+      apiStyle: "chat_completions",
+      models: keyedProvider.models,
+    },
+    onClose: () => mount(null),
+    onSaved: () => {},
+  }));
+  flushSync(() => setValue(keyField(), "new-api-key"));
+  createdProvider = null;
+  flushSync(() => button("Save provider").click());
+  await waitFor(() => createdProvider, "the new keyed provider was not saved");
+  check(createdProvider.authKind === "api_key_and_base_url" && createdProvider.secretValue === "new-api-key",
+    "a new custom provider with an API key did not retain API-key authentication");
 
   return {
     discoveryOmittedApiKey: !Object.hasOwn(discoveryCall.input, "apiKey"),
-    noApiKeyDefaultsOff,
-    keyFieldDisabled: keyFieldDisabled,
-    keyFieldCleared: keyFieldCleared,
-    savedAuthKind: savedAsNoAuth ? "none" : createdProvider.authKind,
-    secretValueOmitted: savedAsNoAuth,
-    selectedModel: createdProvider.models?.[0]?.id,
-    editOpenedAsNoAuth,
-    editKeyEnabled,
-    updateAuthKind: updateInput.authKind,
-    updateStoredKey: updateInput.secretValue === "saved-api-key",
+    savedAuthKind: noAuthProvider.authKind,
+    selectedModel: noAuthProvider.models?.[0]?.id,
+    noAuthReopenPreserved: true,
+    typedKeyEnablesAuth: true,
+    blankEditPreservesKey: true,
+    clearDiscoveryOmitsStoredKey: true,
+    cancelledClearPreservesKey: true,
+    clearThenReplaceSavesKey: true,
+    clearThenSaveRemovesKey: true,
+    missingKeyBecomesNoAuth: true,
+    newKeyedProviderPreserved: true,
   };
 };
 `;
@@ -230,9 +292,15 @@ test("a custom endpoint can be saved and selected without an API key", {
       },
       nodePaths: [join(root, "apps/desktop/node_modules")],
     });
+    const styles = await Promise.all(
+      ["tokens", "base", "ui-kit", "settings", "composer", "providers", "model-config"].map(
+        (name) => readFile(join(root, "apps/desktop/src/styles/" + name + ".css"), "utf8"),
+      ),
+    );
+    await writeFile(join(temp, "style.css"), styles.join("\n").replace(/@theme(?: inline)?/g, ":root"));
     await writeFile(
       join(temp, "index.html"),
-      '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; style-src \'self\' \'unsafe-inline\'"><body><div id="root"></div><script type="module" src="renderer.js"></script>',
+      '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; style-src \'self\' \'unsafe-inline\'"><link rel="stylesheet" href="style.css"><body><div id="root"></div><script type="module" src="renderer.js"></script>',
     );
     await writeFile(
       join(temp, "main.cjs"),
@@ -281,16 +349,17 @@ app.whenReady().then(async () => {
     assert(line, output.slice(-6000));
     assert.deepEqual(JSON.parse(line.slice("CUSTOM_PROVIDER_NO_API_KEY_PROBE ".length)), {
       discoveryOmittedApiKey: true,
-      noApiKeyDefaultsOff: true,
-      keyFieldDisabled: true,
-      keyFieldCleared: true,
       savedAuthKind: "none",
-      secretValueOmitted: true,
       selectedModel: "no-auth-chat",
-      editOpenedAsNoAuth: true,
-      editKeyEnabled: true,
-      updateAuthKind: "api_key_and_base_url",
-      updateStoredKey: true,
+      noAuthReopenPreserved: true,
+      typedKeyEnablesAuth: true,
+      blankEditPreservesKey: true,
+      clearDiscoveryOmitsStoredKey: true,
+      cancelledClearPreservesKey: true,
+      clearThenReplaceSavesKey: true,
+      clearThenSaveRemovesKey: true,
+      missingKeyBecomesNoAuth: true,
+      newKeyedProviderPreserved: true,
     });
   } finally {
     await rm(temp, { recursive: true, force: true });

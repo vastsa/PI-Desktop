@@ -582,6 +582,20 @@ export function SettingsPage() {
                     onChange={() => void saveSettings({ smoothStreaming: !(settings.smoothStreaming !== false) })}
                   />
                 </SettingsRow>
+                <SettingsRow
+                  title={t("settings.inlineVisualizations")}
+                  description={t("settings.inlineVisualizationsDesc")}
+                >
+                  <SettingsToggle
+                    checked={settings.inlineVisualizations === true}
+                    label={t("settings.inlineVisualizations")}
+                    onChange={() =>
+                      void saveSettings({
+                        inlineVisualizations: settings.inlineVisualizations !== true,
+                      })
+                    }
+                  />
+                </SettingsRow>
                 <LargePasteThresholdRow
                   settings={settings}
                   saveSettings={saveSettings}

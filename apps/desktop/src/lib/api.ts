@@ -557,6 +557,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       errorCode: "INVALID_PARAMS",
     });
   }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "inlineVisualizations") &&
+    typeof value.inlineVisualizations !== "boolean"
+  ) {
+    throw Object.assign(new Error("inlineVisualizations is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
   for (const key of [
     "sidebarRunningIndicators",
     "sidebarRunningBadge",
