@@ -2392,8 +2392,8 @@ sklm: {
       listAria: "Reseñas",
     },
     "capabilities": {
-      "panel": "Panel",
-      "views": "Vistas del panel de trabajo",
+      "panel": "Ventana de panel independiente",
+      "views": "Vista lateral del panel",
       "commands": "Comandos",
       "tools": "Herramientas del agente",
       "agentExtension": "Extensión del agente",
