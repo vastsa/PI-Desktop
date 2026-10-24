@@ -9762,14 +9762,17 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      actions are absent, the default-app action is disabled, and editor choices
      remain available.
   5. Open a text file, edit it, and save. Confirm the file on disk changed and
-     the editor keeps the saved content. Change the same file outside the app,
-     edit and save again, and confirm the conflict is reported instead of the
-     external change being overwritten. Click the binary file and confirm it
-     reports as unsupported rather than printing replacement characters; open
-     the image, the CSV, and the Markdown file and confirm each gets its own
-     viewer. Switch the app to Simplified Chinese and confirm the tree, viewer,
-     and context menu are localized. Switch projects and confirm the tree
-     updates without waiting on a poll.
+     the editor keeps the saved content. In dark appearance, press `Ctrl/Cmd+F`
+     and confirm the find text, replace text, and action labels remain readable
+     against their themed fields and buttons; repeat after switching to light
+     appearance. Change the same file outside the app, edit and save again, and
+     confirm the conflict is reported instead of the external change being
+     overwritten. Click the binary file and confirm it reports as unsupported
+     rather than printing replacement characters; open the image, the CSV, and
+     the Markdown file and confirm each gets its own viewer. Switch the app to
+     Simplified Chinese and confirm the tree, viewer, and context menu are
+     localized. Switch projects and confirm the tree updates without waiting on
+     a poll.
   6. Click a project file path in the conversation. Confirm it opens in this
      view on that file — a chat click now prefers the file view over the host
      `file:` tab.
@@ -9794,15 +9797,19 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   ADR 0169, ADR 0241, ADR 0249, ADR 0263, ADR 0330
 - **Acceptance**: G (plugins), D (workspace), Security, Quality
 - **Milestone**: M6+
-- **Status**: Unit coverage in `apps/desktop/test/bundled-plugins.test.mjs`
-  (manifest contract, public-bridge-only page, vendored checksums),
-  `apps/desktop/test/plugin-fs-scope.test.mjs` (`fs.openDefault`,
-  `fs.openInBrowser`, and `fs.reveal` guards),
-  `apps/desktop/test/browser-preview-tool.test.mjs` (Browser resource-tab event
-  routing), `apps/desktop/test/plugin-work-panel-views.test.mjs` (docked-view
-  event broadcast), and host-core
-  `bundled_plugins_refresh_from_disk_but_keep_user_state`; the packaged journey
-  is Draft (run only in a capable environment when this surface changes)
+- **Status**: `pnpm test:e2e:file-manager-theme` loads the shipped plugin view
+  in Electron, opens a text file through a fixture public bridge, invokes
+  `Ctrl/Cmd+F`, and checks the rendered find/replace fields and actions in dark
+  and light appearances. `apps/desktop/test/bundled-plugins.test.mjs` also
+  covers the manifest contract, public-bridge-only page, vendored checksums,
+  and themed CodeMirror controls. `apps/desktop/test/plugin-fs-scope.test.mjs`
+  covers `fs.openDefault`, `fs.openInBrowser`, and `fs.reveal` guards;
+  `apps/desktop/test/browser-preview-tool.test.mjs` covers Browser resource-tab
+  event routing; `apps/desktop/test/plugin-work-panel-views.test.mjs` covers
+  docked-view event broadcast; and host-core covers
+  `bundled_plugins_refresh_from_disk_but_keep_user_state`. The remaining
+  packaged journey is Draft (run only in a capable environment when this
+  surface changes).
 
 #### E2E-PLUGIN-file-view-collapse-persists
 

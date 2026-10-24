@@ -12,11 +12,14 @@ every installation has a file view out of the box (ADR 0241).
 | Tag | `v0.5.2` |
 | Commit | `d36ebe9f7fb82ee71e87670b0a65403660b18a00` |
 | License | MIT (see `LICENSE`; upstream ships no license file) |
-| Marketplace | published to the plugin center at <https://plugins.aiuo.net/console/publish/upload>: `pi.file-manager` 0.5.2, audit passed, artifact `c8416b755e5624ad30110176caa512cd433fdf699ef32c7a2ba2df7f2df2b0f5` (1462096 bytes) |
+| Marketplace base | `pi.file-manager` 0.5.2, artifact `c8416b755e5624ad30110176caa512cd433fdf699ef32c7a2ba2df7f2df2b0f5` (1462096 bytes) |
+| Bundled version | `0.5.3-pi.1` — PI-Desktop hotfix rebuilt from the tagged source |
 
-The tag is pushed and the release is published, so a marketplace-installed 0.5.1
-is now offered 0.5.2 from the marketplace as well as from this bundled copy.
-Both paths ship the same bytes.
+The official marketplace now offers newer upstream releases. The bundled
+hotfix remains based on 0.5.2 so this maintenance PR does not pull unrelated
+features into the app. Its prerelease version is strictly above 0.5.2, so the
+app repairs an equal-version marketplace install, and below stable 0.5.3 and
+all 0.6+ releases, so a newer user-installed copy still wins `sync_builtin`.
 
 > The published `.piplug` contains the seven files a plugin installs from
 > (`manifest.json`, `main.js`, `README.md`, `CHANGELOG.md`, `.gitignore`,
@@ -26,9 +29,10 @@ Both paths ship the same bytes.
 > such a package as four blockers before it can be submitted — pack from a copy
 > of the tagged tree with `views-src/` removed instead.
 
-The files below are byte-identical to that commit, except for the one manifest
-field listed under local changes. Line endings are LF: the upstream commit
-stores LF, and this repository's `.gitattributes` keeps it that way.
+The files below record the unmodified 0.5.2 base. Local rebuilds and metadata
+changes are listed separately with their shipped hashes. Line endings are LF:
+the upstream commit stores LF, and this repository's `.gitattributes` keeps it
+that way.
 
 ## Upstream checksums (sha256)
 
@@ -45,13 +49,14 @@ directory carries the built view the plugin publishes, not its React source.
 
 ## Local changes
 
-Two, so a re-sync stays a copy:
+Three local changes, plus an upstream fix proposal, so a re-sync stays deliberate:
 
-- `manifest.json` gains `"license": "MIT"` (after `author`), making the vendored
-  copy 14191 bytes
-  (`ba8d60726a0227d7f5530addf885a9849949b86ca75d12786f23ecb82d10fe3e`). Every
-  shipped plugin carries its license, and the upstream manifest predates that
-  convention.
+- `manifest.json` gains `"license": "MIT"`, advances the local bundled version
+  to `0.5.3-pi.1`, and prepends the dark-search hotfix changelog. The shipped
+  copy is 14614 bytes
+  (`a54f196da16372ece0fe4b8def438bc94df6e0305fc91d03898efc6005c7a6c3`).
+  The prerelease suffix is intentional: host version ordering puts it above the
+  0.5.2 base but below stable 0.5.3 and every 0.6+ marketplace release.
 - `package.json` is **added**, containing `{"type": "commonjs"}`. It is not in
   the upstream release and not in the published `.piplug`. `main.js` is
   CommonJS, and `apps/desktop/package.json` declares `"type": "module"`, so in
@@ -62,6 +67,15 @@ Two, so a re-sync stays a copy:
   ancestor's `"module"`, which is why the marker cannot live one directory up.
   In a packaged app the file is inert, and deleting it only costs the developer
   experience, never a user.
+- `views/assets/index.js` is rebuilt from the tagged `views-src` after adding
+  theme-token styles for CodeMirror's `.cm-panel.cm-search` text fields and
+  buttons. CodeMirror otherwise applies its light defaults to those controls,
+  producing white text on white fields when the plugin follows the dark app
+  appearance. The local bundle is 1345983 bytes
+  (`26b7d0d47992d0c4dbe77cb47f13238a85fac1f027b47391daf20bf1e6471cf1`).
+- The same source fix is proposed against upstream `main` in
+  [Tioit-Wang/pi-desktop-plugin-file-manager#6](https://github.com/Tioit-Wang/pi-desktop-plugin-file-manager/pull/6),
+  where it can ship in a release newer than the marketplace's current 0.9.0.
 
 ## Re-syncing a newer release
 
@@ -72,13 +86,13 @@ Two, so a re-sync stays a copy:
    tag's copies, **as LF**: `git archive` applies the checkout's line-ending
    conversion, so extract the blobs from the working tree (or with
    `git cat-file blob`) instead of from an archive.
-3. Re-apply `"license": "MIT"` to `manifest.json`, and re-create
-   `package.json` — the marker is local and the tag does not carry it.
-4. Update `Origin`, the checksum table and the release section here, and the
-   commit hash `bundled-plugins.test.mjs` pins, then run
+3. Re-apply `"license": "MIT"` and the local hotfix version/changelog to
+   `manifest.json`, and re-create `package.json` — those are local additions.
+4. Update `Origin`, the base and shipped checksum records, and the commit hash
+   `bundled-plugins.test.mjs` pins, then run
    `node --test test/bundled-plugins.test.mjs` in `apps/desktop`.
-5. Leave the version in `manifest.json` untouched: it is the upstream version,
-   and the marketplace offers an update from it.
+5. If the upstream fix has shipped, replace this hotfix with that release and
+   return the manifest to the exact upstream stable version.
 
 ## What 0.5.2 adds
 

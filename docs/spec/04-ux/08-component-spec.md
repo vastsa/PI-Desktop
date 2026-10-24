@@ -1149,10 +1149,12 @@ entirely inside the plugin's isolated page:
 - Selecting a file replaces the tree with a focused viewer: syntax-highlighted
   editing with save, a Markdown preview toggle, image and audio/video viewing,
   CSV/TSV tables with paging and sorting, a JSON tree, and read-only SQLite
-  browsing with a SQL query box. Binaries report that they cannot be previewed
-  rather than being decoded, and every viewer names its own bound — 2 MiB for
-  text, 8 MiB for images, 24 MiB for media, none for databases, whose bytes stay
-  out of the page.
+  browsing with a SQL query box. The editor's CodeMirror find/replace fields
+  and buttons use the plugin theme surfaces and foreground in both light and
+  dark appearances. Binaries report that they cannot be previewed rather than
+  being decoded, and every viewer names its own bound — 2 MiB for text, 8 MiB
+  for images, 24 MiB for media, none for databases, whose bytes stay out of
+  the page.
 - Saving is atomic and refuses to overwrite a file that changed on disk since it
   was opened until the user confirms. Loading, read failures, unsupported
   binaries, oversized files, empty folders, and folders that fail to load each
