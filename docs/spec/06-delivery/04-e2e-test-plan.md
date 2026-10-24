@@ -8331,7 +8331,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `maxTurns: 2` next to a valid `description` and `tools`, a second document
   that spells the same key `max-turns: 2`, and a third that never mentions it.
 - **Steps**: 1) Open Settings → Subagents and confirm every row in the
-  Built-in and Global groups renders with its tool grant and that no
+  Built-in and Custom groups renders with its tool grant and that no
   turn-limit field exists anywhere in the page or the editor's Advanced
   disclosure. 2) Delegate to `legacy-worker` and let it make more than two
   tool-calling turns. 3) Read the document back through the settings API and
@@ -9246,12 +9246,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
       defaults (`explorer`, `code-reviewer`, `test-runner`, `fixer`,
       `ui-designer`) even when the user directory is empty, each with a
       Built-in badge, its tool grant, and an enablement switch, but no reveal
-      or delete. Confirm the Global group header carries the global level label
-      and item count, that create/edit/delete/reveal all work from the page
+      or delete. Confirm the Custom group header carries the Custom source
+      label, the `~/.agents/subagents` path, and item count, that
+      create/edit/delete/reveal all work from the page
       for user-owned rows, that leaving the output limit empty writes a
       definition with no `maxTokens`, and that an empty user
       directory still resolves `settings.subagentsEmpty` to localized
-      empty-state copy under the Global group rather than displaying a raw
+      empty-state copy under the Custom group rather than displaying a raw
       translation key. Open New subagent and confirm the
       Model field is a select of the same configured, runnable models as the
       Composer, grouped by provider, with an inherit-session option, not a
@@ -12393,7 +12394,7 @@ This test plan spec is accepted when:
      with localized names, `Task(<handle>)` copy, tool grants, a Built-in
      badge, **Copy as mine**, and an enablement switch in the on position.
      Confirm none of those rows has Reveal or Delete.
-  2. Confirm the Global group still shows localized `settings.subagentsEmpty`
+  2. Confirm the Custom group still shows localized `settings.subagentsEmpty`
      copy and the New subagent action.
   3. Switch `fixer` off from its Built-in row. Confirm the row dims with its
      switch off, the toast names it, nothing appears in `~/.agents/subagents`,
@@ -18442,6 +18443,35 @@ host-created files. The full app's file-preview viewer is covered separately.
 - Run `node scripts/e2e-subagent-stop.mjs`. Runtime tests additionally cover
   cross-session isolation and uncooperative cancellation remaining pending;
   `e2e-subagent-parent-error.mjs` covers explicit cancellation/resume semantics.
+
+### User subagent project scope (#1431)
+
+- Load choices from the durable project groups used by the sidebar, including
+  groups absent from the legacy single-folder project list. Selecting Projects
+  does not automatically select the current folder.
+- The list groups user subagents under **Custom** (`~/.agents/subagents`), not
+  a global level label; each row badge shows Everywhere or its project count.
+- Edit a disabled user subagent, select Projects, choose the current project A
+  and a second project B, then save. Reopen and verify the scope and that the
+  subagent remains disabled. Scope choices do not include Off; enablement stays
+  on the list row toggle. Project choices expand inline below the scope selector,
+  inside the scrolling editor rather than in a floating overlay.
+  Switch to Everywhere and back: selections survive. While Projects has no
+  folder selected, the editor warns that the subagent stays inactive.
+- Through real host RPC, verify a project-only definition is absent from other
+  projects and a projectless catalog, but present in the selected project and
+  its descendants. A sibling folder whose name contains multibyte characters
+  answers promptly and does not match. Global definitions remain available.
+  Verify the resulting runtime loader catalog, restart persistence, rename,
+  disable, and delete.
+- Sync two devices: a scoped definition arrives without its scope, and each
+  device keeps its own scope across later syncs.
+- Coverage: `apps/desktop/test/subagent-project-scope.test.mjs` (isolated Electron
+  settings interaction with IPC fixtures),
+  `scripts/e2e-subagent-project-scope.mjs` (real host and runtime loader; no model
+  or external provider), and the host-core test
+  `subagent_project_scope_stays_on_its_device` (two devices, local S3 fixture).
+  Builtin subagents and plugins keep their own activation and ignore these scopes.
 
 ## BOM-marked UTF-16 text tools
 
