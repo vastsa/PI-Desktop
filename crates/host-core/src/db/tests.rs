@@ -126,13 +126,18 @@ fn v18_database_migrates_session_thinking_omit() {
 fn v22_database_migrates_session_title_sources_without_losing_titles() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("pi.sqlite");
-    let (default_id, localized_id, manual_id) = {
+    let (default_id, lowercase_id, capitalized_id, manual_id) = {
         let db = Database::open(&path).unwrap();
         let default_session =
             crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
-        // A v22 install wrote the active locale's placeholder into the title.
-        let localized_session =
-            crate::sessions::create_session(&db, Some("새 작업".into()), None, None, None, None)
+        // A v22 install wrote the active locale's placeholder into the title,
+        // and the renderer lowercases `chat.untitledTask` before persisting it.
+        let lowercase_session =
+            crate::sessions::create_session(&db, Some("new task".into()), None, None, None, None)
+                .unwrap();
+        // CJK catalogs and pre-lowercase releases kept the catalog casing.
+        let capitalized_session =
+            crate::sessions::create_session(&db, Some("New task".into()), None, None, None, None)
                 .unwrap();
         let manual_session = crate::sessions::create_session(
             &db,
@@ -147,34 +152,150 @@ fn v22_database_migrates_session_title_sources_without_losing_titles() {
             .execute_batch("ALTER TABLE sessions DROP COLUMN title_source;")
             .unwrap();
         db.conn().pragma_update(None, "user_version", 22).unwrap();
-        (default_session.id, localized_session.id, manual_session.id)
+        (
+            default_session.id,
+            lowercase_session.id,
+            capitalized_session.id,
+            manual_session.id,
+        )
     };
 
     let db = Database::open(&path).unwrap();
     assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
     assert!(migration_backup_path(&path, 22).exists());
-    let sources: (String, String, String) = db
+    let sources: (String, String, String, String) = db
         .conn()
         .query_row(
             "SELECT
                 (SELECT title_source FROM sessions WHERE id = ?1),
                 (SELECT title_source FROM sessions WHERE id = ?2),
-                (SELECT title_source FROM sessions WHERE id = ?3)",
-            params![default_id, localized_id, manual_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                (SELECT title_source FROM sessions WHERE id = ?3),
+                (SELECT title_source FROM sessions WHERE id = ?4)",
+            params![default_id, lowercase_id, capitalized_id, manual_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .unwrap();
     assert_eq!(
         sources,
-        ("default".into(), "default".into(), "manual".into())
+        (
+            "default".into(),
+            "default".into(),
+            "default".into(),
+            "manual".into()
+        )
     );
+    let titles: (String, String) = db
+        .conn()
+        .query_row(
+            "SELECT
+                (SELECT title FROM sessions WHERE id = ?1),
+                (SELECT title FROM sessions WHERE id = ?2)",
+            params![lowercase_id, manual_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(titles.0, "new task");
+    assert_eq!(titles.1, "A title chosen by the user");
+}
+
+/// Verify that every shipped placeholder recognized by the runtime (both
+/// lowercased and catalog-cased accented variants) is mapped to `default`
+/// by the v22->v23 SQL migration.
+#[test]
+fn v22_migration_placeholder_list_covers_all_shipped_placeholders() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let catalog_cased = [
+        "New task",
+        "New chat",
+        "Tarefa sem título",
+        "Nova conversa",
+        "Yeni görev",
+        "Yeni sohbet",
+        "Neue Aufgabe",
+        "Nouvelle tâche",
+        "Nueva tarea",
+        "Neuer Chat",
+        "Nuevo chat",
+        "Nouvelle discussion",
+    ];
+
+    let session_ids = {
+        let db = Database::open(&path).unwrap();
+        let mut ids = Vec::new();
+        for placeholder in crate::sessions::PLACEHOLDER_TITLES
+            .into_iter()
+            .chain(catalog_cased)
+        {
+            let session = crate::sessions::create_session(
+                &db, Some(placeholder.into()), None, None, None, None,
+            )
+            .unwrap();
+            ids.push(session.id);
+        }
+        db.conn()
+            .execute_batch("ALTER TABLE sessions DROP COLUMN title_source;")
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 22).unwrap();
+        ids
+    };
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    let mut stmt = db
+        .conn()
+        .prepare("SELECT title_source FROM sessions WHERE id = ?1")
+        .unwrap();
+    for id in session_ids {
+        let source: String = stmt.query_row(params![id], |row| row.get(0)).unwrap();
+        assert_eq!(source, "default", "placeholder {placeholder:?} should be classified as default");
+    }
+}
+
+/// `rename_session` records every user-chosen title as `manual`, including one
+/// that happens to equal a placeholder. The stored row cannot tell that apart
+/// from a placeholder the renderer wrote.
+///
+/// An already-migrated v23 database containing a manual placeholder session
+/// (simulating a deliberate user rename) must keep that `manual` classification
+/// when upgrading to v24, and `derive_session_title` must continue to refuse it.
+#[test]
+fn manual_placeholder_title_is_never_overwritten_after_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        let session = crate::sessions::create_session(&db, None, None, None, None, None).unwrap();
+        // The user explicitly renamed the session to a placeholder title like "New task".
+        assert!(crate::sessions::rename_session(&db, &session.id, "New task").unwrap());
+        // Stamp as schema v23, simulating a database that already migrated past v22.
+        db.conn().pragma_update(None, "user_version", 23).unwrap();
+        session.id
+    };
+
+    // Reopen walks the real v23 -> v24 upgrade path.
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    let (title, source): (String, String) = db
+        .conn()
+        .query_row(
+            "SELECT title, title_source FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(source, "manual");
+    assert_eq!(title, "New task");
+
+    // The user-selected title must not be overwritten on the next prompt.
+    assert!(!crate::sessions::derive_session_title(&db, &session_id, "Fix the login").unwrap());
     assert_eq!(
-        crate::sessions::get_session(&db, &manual_id)
+        crate::sessions::get_session(&db, &session_id)
             .unwrap()
             .unwrap()
             .summary
             .title,
-        "A title chosen by the user"
+        "New task"
     );
 }
 

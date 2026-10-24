@@ -18,14 +18,21 @@ fn migrate_v22_to_v23_tx(tx: &Transaction<'_>) -> Result<()> {
         // other pre-existing title is treated as manual. The list mirrors
         // `sessions::PLACEHOLDER_TITLES` and covers the localized
         // `chat.untitledTask` / `nav.newChat` labels the renderer writes.
+        // Lowercasing and trimming align with runtime session creation and
+        // the lowercased titles the renderer persists, and also fold empty
+        // or whitespace-only titles to default. Shipped Latin-script
+        // placeholders have ASCII initial casing so SQLite's LOWER() folds
+        // them cleanly. Databases that already ran this migration stay
+        // `manual` because a deliberate manual rename to a placeholder is
+        // byte-identical and cannot be distinguished without provenance.
         tx.execute(
             "UPDATE sessions SET title_source = CASE
-                 WHEN title IN ('', 'New task', 'New chat', '新建任务', '新对话',
-                                '新建任務', '新對話', '새 작업', '새 채팅',
-                                'Tarefa sem título', 'Nova conversa',
-                                'Yeni görev', 'Yeni sohbet', 'Neue Aufgabe',
-                                'Nouvelle tâche', 'Nueva tarea', 'Neuer Chat',
-                                'Nuevo chat', 'Nouvelle discussion') THEN 'default'
+                 WHEN LOWER(TRIM(title)) IN ('', 'new task', 'new chat', '新建任务', '新对话',
+                                             '新建任務', '新對話', '새 작업', '새 채팅',
+                                             'tarefa sem título', 'nova conversa',
+                                             'yeni görev', 'yeni sohbet', 'neue aufgabe',
+                                             'nouvelle tâche', 'nueva tarea', 'neuer chat',
+                                             'nuevo chat', 'nouvelle discussion') THEN 'default'
                  ELSE 'manual'
              END",
             [],

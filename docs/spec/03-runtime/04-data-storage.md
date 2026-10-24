@@ -655,8 +655,14 @@ CREATE INDEX idx_session_import_origins_plugin
   first-prompt fallback, which host-core writes only while the stored title is
   still a recognized placeholder. A placeholder is recognized in every shipped
   locale, because the renderer writes its localized `chat.untitledTask` label
-  when it creates a session. The standalone title plugin can read
-  exact-title compare-and-set, so a manual rename wins a race.
+  when it creates a session; recognition trims and lowercases the stored title
+  against the placeholder set, so the migration, session creation, and the
+  plugin title path classify shipped placeholder forms the same way. Schema v23 matches
+  `LOWER(TRIM(title))` during migration; already-migrated databases keep their
+  `manual` rows because deliberate renames to placeholders cannot be
+  distinguished without provenance. The standalone title plugin can read
+  first-turn text only while `default`, and writes using exact-title
+  compare-and-set, so a manual rename wins a race.
 - Import binds every non-empty normalized `projectPath` to `project_id`;
   path-less imports remain `NULL`. Re-importing a deterministic session id
   creates neither another session nor another project row.

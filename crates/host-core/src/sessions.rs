@@ -350,7 +350,7 @@ pub struct SearchHit {
 /// Keep this in sync with the migration list in
 /// `db/session_title_source_migration.rs` and `LEGACY_DEFAULT_TITLES` in the
 /// renderer.
-const PLACEHOLDER_TITLES: [&str; 19] = [
+pub(crate) const PLACEHOLDER_TITLES: [&str; 19] = [
     "",
     "new task",
     "new chat",
