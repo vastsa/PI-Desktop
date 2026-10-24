@@ -122,6 +122,11 @@ globalThis.sessionReadingPositionProbe = async () => {
     await select("A");
     await until(() => Boolean(row(id)) && Math.abs(offset(id) - expectedOffset) < 2,
       "warm production pane preserves reading through revalidation");
+    // Revalidation must not narrow the retained page to a window around the
+    // bookmark: that window reports newer rows and paints the load-later
+    // affordance on a conversation the reader never left.
+    assert(!host.querySelector('[data-visible="true"] .transcript-load-later'),
+      "warm return must not offer to load later messages");
     for (const id of ["B", "C", "D", "E"]) await select(id);
     assert(!host.querySelector('[data-session-pane="real-A"]'), "A was not evicted");
     await select("A");
