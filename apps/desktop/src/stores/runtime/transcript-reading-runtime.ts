@@ -70,6 +70,8 @@ export function createTranscriptReadingRuntime({ get, set }: StoreAccess, read: 
       if (signal.aborted || get().activeSessionId !== sessionId || !position.messageId) return false;
       const previous = get().transcriptViews[sessionId];
       const range = currentView(sessionId);
+      // A user navigation already in flight always wins over automatic restore.
+      if (range.focus || range.loading) return false;
       if (range.messages.some((message) => message.id === position.messageId)) {
         // The page already holds the bookmark, so a bounded read around it would
         // only narrow the transcript. Re-selecting a retained session commits

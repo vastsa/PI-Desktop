@@ -627,3 +627,20 @@ test("a bookmark inside the page being revalidated keeps that page instead of a 
   assert.equal(r.view().restored, true);
   assert.equal(r.view().hasMoreAfter, false);
 });
+
+test("a saved anchor does not supersede in-flight navigation when both rows are loaded", async () => {
+  const focused = {
+    ...transcriptViewFromSession(page([message("old"), message("target")]).session, {
+      ...target("target"), requestId: 7,
+    }),
+    loading: "target",
+  };
+  const r = reader(async () => { throw new Error("automatic restore must not read"); }, {
+    messages: [message("old"), message("target")],
+    selectingSessionId: "s",
+    transcriptViews: { s: focused },
+  });
+
+  assert.equal(await r.restoreTranscriptReading("s", bookmark, new AbortController().signal), false);
+  assert.equal(r.view(), focused, "explicit navigation keeps ownership of the reading view");
+});
