@@ -51,6 +51,7 @@ import {
 import { TooltipButton } from "./ui";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { MarkdownTable } from "./MarkdownTable";
+import { MermaidSvgActions } from "./MermaidSvgActions";
 import { markdownTableData } from "../lib/markdown-table";
 import { PluginBlockRenderer } from "./PluginBlockRenderer";
 import { blockRendererCandidate } from "../lib/block-renderer";
@@ -354,6 +355,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
           <span>mermaid</span>
         </span>
         <div className="mermaid-block-actions">
+          <MermaidSvgActions svg={!error && !loading ? svg : ""} />
           {svg && !error ? (
             <TooltipButton
               type="button"

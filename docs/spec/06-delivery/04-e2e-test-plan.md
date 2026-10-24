@@ -7279,18 +7279,26 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      closing fence arrives.
   2. Scroll the completed diagram into view, toggle source, copy the source,
      and switch between light and dark themes.
-  3. Scroll upward so transcript follow is paused, then bring another completed
+  3. Copy SVG and export SVG; parse the clipboard text and downloaded file
+     as standalone SVG, verify the diagram labels, explicit dimensions and
+     resolved UI font, then repeat in a README preview. Deny clipboard access
+     and force download setup failure; verify localized error feedback.
+     Repeat while rendering and with invalid input: SVG actions stay disabled.
+     Switch diagrams/themes and confirm subsequent exports use the new SVG.
+  4. Scroll upward so transcript follow is paused, then bring another completed
      diagram near the viewport.
-  4. Render invalid and over-20,000-character Mermaid sources plus a payload
+  5. Render invalid and over-20,000-character Mermaid sources plus a payload
      attempting an HTML label, external image, link, or Mermaid config override.
-  5. Expand thinking content containing a `mermaid` fence.
+  6. Expand thinking content containing a `mermaid` fence.
 - **Expected**:
   - The partial stream remains a normal source code block; only the complete
     answer fence starts rendering, and only near the viewport. Ordinary code
     fences and thinking Mermaid fences retain their source presentation.
   - The diagram uses bounded card chrome, remains within the transcript width,
     switches theme without stale colors, and exposes keyboard-accessible
-    diagram/source and copy controls. Copy returns the original fence source.
+    diagram/source and copy controls. Source copy returns the original fence
+    source; SVG copy returns XML text and SVG export downloads `diagram.svg`.
+    Exported content retains the sanitization applied to the preview.
   - Diagram height changes keep a pinned transcript at the bottom but never
     resume follow after the user scrolls upward.
   - Invalid, oversized, or unsafe input cannot fail the assistant turn, execute
@@ -7300,7 +7308,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `04-ux/09-interaction-patterns.md` §2, `05-security/01-security.md` §2, D165
 - **Acceptance**: C (chat & stream), Security, Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`mermaid-rendering.test.mjs`); rendered security and
+- **Status**: Unit-covered (`mermaid-rendering.test.mjs`); README SVG copy/export,
+  theme/source updates, and error recovery covered in isolated Electron
+  (`mermaid-export-user-path.test.mjs`). Remaining rendered security and
   visual scenario Draft
 
 #### E2E-092: Packaged runtime is self-contained without duplicate dependencies
