@@ -13,6 +13,7 @@ import {
   statSync,
   unlinkSync,
   writeFileSync,
+  type Stats,
 } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, dirname } from "node:path";
@@ -58,6 +59,35 @@ export type NativePiReadOnlyReason =
   | "missing-trailing-newline"
   | "provider-unavailable"
   | "project-untrusted";
+
+/** Structural read-only inputs, shared by snapshot callers and the cached projection. */
+type NativeStructuralFacts = {
+  nonEmpty: boolean;
+  validJsonl: boolean;
+  trailingNewline: boolean;
+  validHeader: boolean;
+  headerVersion: unknown;
+  cwd: string;
+};
+
+/**
+ * Summary facts derived only from one session file's bytes.
+ * Valid exactly while (dev, ino, size, mtimeMs) still match, and safe to
+ * discard at any time: list() recomputes every live part itself.
+ */
+type NativeSessionProjection = NativeStructuralFacts & {
+  dev: number;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+  nativeId: string;
+  title: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  model?: { provider: string; modelId: string };
+  thinkingLevel: ThinkingLevel;
+};
 
 type NativeSessionRecord = {
   id: string;
@@ -544,6 +574,8 @@ export class NativePiSessionService {
   private readonly modelRuntimeFactory: () => Promise<ModelRuntime>;
   /** Real directories that already admitted a file. Open and fork keep them after a later empty project list. */
   private readonly admittedRoots: string[] = [];
+  /** File-identity keyed cache of list()-only summary facts; never holds live state. */
+  private readonly projections = new Map<string, NativeSessionProjection>();
 
   constructor(options: {
     agentDir?: string;
@@ -631,58 +663,58 @@ export class NativePiSessionService {
     const modelRuntime = await this.modelRuntimeFactory().catch(() => undefined);
     this.modelRuntime = modelRuntime;
     const trustStore = new ProjectTrustStore(this.agentDir);
+    const observed = new Set<string>();
     const summaries = await Promise.all(
       candidates.map(async (candidate) => {
         try {
           const path = realpathSync(candidate);
+          observed.add(path);
           if (!allowed.some((root) => inside(root, path)) || lstatSync(path).isSymbolicLink()) return undefined;
-          const snap = nativePiSnapshot(path);
-          const entries = parseSessionEntries(snap.bytes.toString("utf8"));
-          const header = entries.find((entry) => entry.type === "session") as any;
-          if (!header || typeof header.id !== "string") return undefined;
-          const manager = SessionManager.inMemory(header.cwd ?? "", undefined, entries);
-          const id = stableId(path, header.id);
-          const branch = manager.getBranch();
-          const messageCount = branch.filter((entry) => entry.type === "message").length;
-          const firstUser = branch.find((entry) => entry.type === "message" && (entry as SessionMessageEntry).message.role === "user") as SessionMessageEntry | undefined;
-          const context = manager.buildSessionContext();
-          const createdAt = typeof header.timestamp === "string" ? header.timestamp : new Date(statSync(path).birthtimeMs).toISOString();
-          const updatedAt = branch.at(-1)?.timestamp ?? createdAt;
-          const cwd = typeof header.cwd === "string" ? header.cwd : "";
-          this.records.set(id, { id, path, nativeId: header.id, cwd });
-          let reason = this.structuralReadOnlyReason(snap, header, cwd);
+          const projection = this.projectSession(path);
+          if (!projection) return undefined;
+          const { nativeId, cwd } = projection;
+          const id = stableId(path, nativeId);
+          this.records.set(id, { id, path, nativeId, cwd });
+          let reason = this.structuralReason(projection);
           if (!reason && hasTrustRequiringProjectResources(cwd) && trustStore.get(cwd) !== true) {
             reason = "project-untrusted";
           }
           if (
             !reason &&
-            (!context.model ||
-              !modelRuntime?.getModel(context.model.provider, context.model.modelId) ||
-              !modelRuntime.hasConfiguredAuth(context.model.provider))
+            (!projection.model ||
+              !modelRuntime?.getModel(projection.model.provider, projection.model.modelId) ||
+              !modelRuntime.hasConfiguredAuth(projection.model.provider))
           ) {
             reason = "provider-unavailable";
           }
-          if (!reason) reason = this.ownershipReadOnlyReason(id, path, snap);
+          if (!reason) reason = this.ownershipReadOnlyReason(id, path);
           return {
             id,
-            title: manager.getSessionName() ?? (firstUser ? textContent((firstUser.message as any).content).text.slice(0, 80) : header.id),
-            messageCount,
+            title: projection.title,
+            messageCount: projection.messageCount,
             ...(cwd && existsSync(cwd) ? { projectPath: cwd } : {}),
-            ...(context.model ? { providerId: context.model.provider, modelId: context.model.modelId } : {}),
+            ...(projection.model
+              ? { providerId: projection.model.provider, modelId: projection.model.modelId }
+              : {}),
             mode: "agent" as const,
-            thinkingLevel: thinkingLevel(context.thinkingLevel),
+            thinkingLevel: projection.thinkingLevel,
             permissionMode: "inherit" as const,
             source: "pi-native" as const,
             capabilities: { canPrompt: !reason, canStop: this.runtimes.get(id)?.isRunning ?? false, canRefresh: true },
             ...(reason ? { readOnlyReason: reason } : {}),
-            updatedAt,
-            createdAt,
+            updatedAt: projection.updatedAt,
+            createdAt: projection.createdAt,
           } as SessionSummary;
         } catch {
           return undefined;
         }
       }),
     );
+    // Drop projections for files this scan no longer sees, so the cache
+    // tracks the scan roots instead of growing for the service's lifetime.
+    for (const cachedPath of this.projections.keys()) {
+      if (!observed.has(cachedPath)) this.projections.delete(cachedPath);
+    }
     // A copied session file (backup, manual copy) under the scan root must
     // not become a second session: identity follows the header id, not the
     // path. Keep the newest write per native id and drop the stale copies
@@ -1183,14 +1215,20 @@ export class NativePiSessionService {
     this.runtimes.clear();
   }
 
-  private ownershipReadOnlyReason(id: string, path: string, snap: NativePiSnapshot): NativePiReadOnlyReason | undefined {
+  private ownershipReadOnlyReason(id: string, path: string, snap?: NativePiSnapshot): NativePiReadOnlyReason | undefined {
     const runtime = this.runtimes.get(id);
     if (runtime) {
       try { runtime.assertUnchanged(); }
       catch { return "changed-externally"; }
       return runtime.isRunning ? "busy" : undefined;
     }
-    return this.opening.has(id) || !NativePiSessionLease.canAcquire(path, snap) ? "busy" : undefined;
+    if (this.opening.has(id)) return "busy";
+    // A missing lock file already proves the lease is acquirable, so the list
+    // path no longer has to read and hash every session file for its rows.
+    // Only a present lock needs the snapshot, for the append-only reclaim
+    // check canAcquire() performs.
+    if (!existsSync(`${path}.pi-desktop.lock`)) return undefined;
+    return NativePiSessionLease.canAcquire(path, snap ?? nativePiSnapshot(path)) ? undefined : "busy";
   }
 
   private record(id: string): NativeSessionRecord {
@@ -1213,13 +1251,89 @@ export class NativePiSessionService {
   }
 
   private structuralReadOnlyReason(snap: NativePiSnapshot, header: any, cwd: string): NativePiReadOnlyReason | undefined {
-    if (!snap.bytes.length || !snap.validJsonl || !header || header.type !== "session") {
-      return "invalid-session";
-    }
-    if (header.version !== CURRENT_SESSION_VERSION) return "legacy-format";
-    if (snap.bytes.at(-1) !== 0x0a) return "missing-trailing-newline";
-    if (!cwd || !existsSync(cwd) || !statSync(cwd).isDirectory()) return "missing-cwd";
+    return this.structuralReason({
+      nonEmpty: snap.bytes.length > 0,
+      validJsonl: snap.validJsonl,
+      trailingNewline: snap.bytes.at(-1) === 0x0a,
+      validHeader: Boolean(header) && header.type === "session",
+      headerVersion: header?.version,
+      cwd,
+    });
+  }
+
+  // One implementation for both the snapshot paths (detail/open/fork) and the
+  // cached list projection, so the two orders of checks cannot drift apart.
+  private structuralReason(facts: NativeStructuralFacts): NativePiReadOnlyReason | undefined {
+    if (!facts.nonEmpty || !facts.validJsonl || !facts.validHeader) return "invalid-session";
+    if (facts.headerVersion !== CURRENT_SESSION_VERSION) return "legacy-format";
+    if (!facts.trailingNewline) return "missing-trailing-newline";
+    if (!facts.cwd || !existsSync(facts.cwd) || !statSync(facts.cwd).isDirectory()) return "missing-cwd";
     return undefined;
+  }
+
+  /**
+   * File-derived summary facts for one session file, reused only while the
+   * file identity (dev/ino/size/mtimeMs) is unchanged: an append, rotate or
+   * replace always re-parses. Nothing live is cached here — ownership, trust,
+   * provider availability and cwd existence are recomputed on every call.
+   * Every write path still hashes the full bytes through nativePiSnapshot(),
+   * so external rewrite detection is untouched.
+   */
+  private projectSession(path: string): NativeSessionProjection | undefined {
+    let stats: Stats;
+    try {
+      stats = statSync(path);
+    } catch {
+      this.projections.delete(path);
+      return undefined;
+    }
+    const cached = this.projections.get(path);
+    if (
+      cached &&
+      cached.dev === stats.dev &&
+      cached.ino === stats.ino &&
+      cached.size === stats.size &&
+      cached.mtimeMs === stats.mtimeMs
+    ) {
+      return cached;
+    }
+    const snap = nativePiSnapshot(path);
+    const entries = parseSessionEntries(snap.bytes.toString("utf8"));
+    const header = entries.find((entry) => entry.type === "session") as any;
+    if (!header || typeof header.id !== "string") {
+      this.projections.delete(path);
+      return undefined;
+    }
+    const manager = SessionManager.inMemory(header.cwd ?? "", undefined, entries);
+    const branch = manager.getBranch();
+    const firstUser = branch.find(
+      (entry) => entry.type === "message" && (entry as SessionMessageEntry).message.role === "user",
+    ) as SessionMessageEntry | undefined;
+    const context = manager.buildSessionContext();
+    const createdAt = typeof header.timestamp === "string" ? header.timestamp : new Date(stats.birthtimeMs).toISOString();
+    const projection: NativeSessionProjection = {
+      dev: snap.dev,
+      ino: snap.ino,
+      size: snap.size,
+      mtimeMs: snap.mtimeMs,
+      nonEmpty: snap.bytes.length > 0,
+      validJsonl: snap.validJsonl,
+      trailingNewline: snap.bytes.at(-1) === 0x0a,
+      validHeader: true,
+      headerVersion: header.version,
+      nativeId: header.id,
+      cwd: typeof header.cwd === "string" ? header.cwd : "",
+      title:
+        manager.getSessionName() ??
+        (firstUser ? textContent((firstUser.message as any).content).text.slice(0, 80) : header.id),
+      messageCount: branch.filter((entry) => entry.type === "message").length,
+      createdAt,
+      updatedAt: branch.at(-1)?.timestamp ?? createdAt,
+      ...(context.model ? { model: { provider: context.model.provider, modelId: context.model.modelId } } : {}),
+      thinkingLevel: thinkingLevel(context.thinkingLevel),
+    };
+    this.projections.set(path, projection);
+    return projection;
   }
 
   private async openRuntime(id: string, notify: NativePiRuntimeNotifier): Promise<NativePiRuntime> {

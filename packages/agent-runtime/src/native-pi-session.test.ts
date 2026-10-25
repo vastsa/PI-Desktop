@@ -1377,3 +1377,70 @@ describe("native settlement and reclaim boundaries", () => {
     expect((await service.list())[0].readOnlyReason).toBe("busy");
   });
 });
+
+describe("native session list projection cache", () => {
+  it("reuses one file projection until the file identity changes", async () => {
+    const f = fixture();
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    // inMemory() is the parse/project step list() performs per file, so its
+    // call count is the observable "did this row get re-derived" signal.
+    const inMemory = vi.spyOn(SessionManager, "inMemory");
+    try {
+      const first = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(1);
+
+      const second = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(1);
+      expect(second).toEqual(first);
+
+      writeFileSync(
+        f.file,
+        `${f.text}${JSON.stringify({
+          type: "message",
+          id: "later",
+          parentId: "future",
+          timestamp: "2026-09-14T00:00:10.000Z",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "later answer" }],
+            provider: "test-provider",
+            model: "test-model",
+            stopReason: "stop",
+            timestamp: 4,
+            usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          },
+        })}\n`,
+      );
+      const appended = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(2);
+      expect(appended[0].messageCount).toBe(first[0].messageCount + 1);
+      expect(appended[0].updatedAt).toBe("2026-09-14T00:00:10.000Z");
+    } finally {
+      inMemory.mockRestore();
+      service.disposeAll();
+    }
+  });
+
+  it("recomputes ownership so a live lease is still busy under a cached projection", async () => {
+    const f = await configuredFixture();
+    const service = new NativePiSessionService(f);
+    const [free] = await service.list();
+    expect(free.readOnlyReason).toBeUndefined();
+    expect(free.capabilities?.canPrompt).toBe(true);
+
+    const lease = acquireNativePiSessionLease(f.file);
+    try {
+      // The file bytes did not change, so the cached projection is reused;
+      // `busy` must still come from the live lease, never from that cache.
+      const [busy] = await service.list();
+      expect(busy.readOnlyReason).toBe("busy");
+      expect(busy.capabilities?.canPrompt).toBe(false);
+    } finally {
+      lease.release();
+    }
+
+    const [released] = await service.list();
+    expect(released.readOnlyReason).toBeUndefined();
+    expect(released.capabilities?.canPrompt).toBe(true);
+  });
+});
