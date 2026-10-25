@@ -65,10 +65,14 @@ test("mode selector reserves the longest localized label width", () => {
   );
 
   const block = styles.match(/\.composer-mode-chip\s*\{[^}]+\}/)?.[0] ?? "";
-  assert.match(block, /width:\s*96px;/);
-  assert.match(block, /min-width:\s*96px;/);
-  assert.match(block, /max-width:\s*96px;/);
-  assert.match(block, /flex:\s*0 0 96px;/);
+  // The reservation scales with the label's font (--font-scale), so the
+  // localized mode name stays complete at every appearance font size (#1866).
+  for (const prop of ["width", "min-width", "max-width", "flex"]) {
+    assert.match(
+      block,
+      new RegExp(`${prop.replace("-", "\\-")}:\\s*${prop === "flex" ? "0 0 " : ""}calc\\(96px \\* var\\(--font-scale, 1\\)\\);`),
+    );
+  }
   assert.match(styles, /\.composer-mode-chip-label\s*\{[\s\S]*?text-overflow:\s*ellipsis;/);
 });
 

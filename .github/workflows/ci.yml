@@ -184,3 +184,5 @@ jobs:
         env:
           DEBUG_E2E: "1"
         run: xvfb-run --auto-servernum pnpm test:e2e:trusted-extensions
+      - name: Run File Manager theme E2E
+        run: xvfb-run --auto-servernum pnpm test:e2e:file-manager-theme

@@ -96,7 +96,7 @@
     "test:e2e:plugin-import-deps": "node scripts/e2e-plugin-import-deps.mjs",
     "test:e2e:trusted-extensions": "node scripts/e2e-trusted-extensions.mjs",
     "test:e2e:plugin-ui-slots": "node scripts/e2e-plugin-ui-slots.mjs",
-    "test:e2e:file-manager-theme": "node --test apps/desktop/test/file-manager-theme-user-path.test.mjs",
+    "test:e2e:file-manager-theme": "node --test apps/desktop/test/file-manager-theme-user-path.e2e.mjs",
     "test:e2e:collaboration": "node scripts/e2e-session-collaboration.mjs",
     "test:e2e:session-completion": "node scripts/e2e-session-completion.mjs",
     "test:e2e:remote-host": "node scripts/e2e-remote-host.mjs",
