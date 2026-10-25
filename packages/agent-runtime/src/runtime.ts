@@ -1603,8 +1603,12 @@ export function toolResultFromUi(
   if (rawBlocks) {
     for (const b of rawBlocks) {
       if (!isRecord(b)) continue;
-      if (b.type === "text" && typeof b.text === "string") {
-        blocks.push({ type: "text", text: b.text });
+      // Same text rule as live execution: embedded MCP resources and resource
+      // links stay visible after a session restore. Binary resources have no
+      // text and stay out.
+      const blockText = hostContentBlockText(b);
+      if (blockText !== undefined) {
+        blocks.push({ type: "text", text: blockText });
       } else if (
         b.type === "image" &&
         typeof b.data === "string" &&
@@ -1618,8 +1622,9 @@ export function toolResultFromUi(
     // and image blocks so a restart does not flatten them into JSON (#1360).
     for (const b of raw) {
       if (!isRecord(b)) continue;
-      if (b.type === "text" && typeof b.text === "string") {
-        blocks.push({ type: "text", text: b.text });
+      const blockText = hostContentBlockText(b);
+      if (blockText !== undefined) {
+        blocks.push({ type: "text", text: blockText });
       } else if (
         b.type === "image" &&
         typeof b.data === "string" &&

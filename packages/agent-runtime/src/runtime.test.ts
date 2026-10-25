@@ -11919,6 +11919,132 @@ describe("toolResultFromUi image restoration (issue #1073)", () => {
     ]);
   });
 
+  // github-mcp-server `get_file_contents` persists the file body as an embedded
+  // text resource (and a resource link for large files). Restoring that row
+  // must keep the same text the live path shows.
+  const embeddedResource = {
+    type: "resource" as const,
+    resource: {
+      uri: "file://x.ts",
+      mimeType: "text/plain",
+      text: "export const answer = 42;\n",
+    },
+  };
+  const statusAndResourceBlocks = [
+    { type: "text" as const, text: "successfully downloaded text file (SHA: abc123)" },
+    {
+      type: "resource" as const,
+      resource: {
+        uri: "repo://acme/app/contents/src/index.ts",
+        mimeType: "text/plain",
+        text: "export const answer = 42;\n",
+      },
+    },
+    {
+      type: "resource_link" as const,
+      uri: "https://raw.githubusercontent.com/acme/app/main/big.json",
+      name: "big.json",
+    },
+    { type: "image" as const, data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+  ];
+
+  it.each([
+    ["MCP content property", { content: [embeddedResource] }],
+    ["plugin bare content-block array", [embeddedResource]],
+  ])(
+    "restores a text resource from a %s instead of the missing-result placeholder",
+    (_shape, toolResult) => {
+      const restored = toolResultFromUi(
+        {
+          id: "call-resource-only",
+          role: "tool",
+          content: "",
+          createdAt: new Date(timestamp).toISOString(),
+          toolCallId: "call-resource-only",
+          toolName: "get_file_contents",
+          toolResult,
+          toolStatus: "success",
+          isError: false,
+        },
+        timestamp,
+      );
+      expect(
+        restored.content.some(
+          (block) => block.type === "text" && block.text.includes("export const answer = 42"),
+        ),
+      ).toBe(true);
+      expect(
+        restored.content.every(
+          (block) => !(block.type === "text" && block.text === "[no tool result recorded]"),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    ["MCP content property", { content: statusAndResourceBlocks, isError: false }],
+    ["plugin bare content-block array", statusAndResourceBlocks],
+  ])(
+    "restores status text, resource body, resource link, and image from a %s",
+    (_shape, toolResult) => {
+      const restored = toolResultFromUi(
+        {
+          id: "call-resource-mix",
+          role: "tool",
+          content: "",
+          createdAt: new Date(timestamp).toISOString(),
+          toolCallId: "call-resource-mix",
+          toolName: "get_file_contents",
+          toolResult,
+          toolStatus: "success",
+          isError: false,
+        },
+        timestamp,
+      );
+      expect(restored.content).toEqual([
+        { type: "text", text: "successfully downloaded text file (SHA: abc123)" },
+        { type: "text", text: "export const answer = 42;\n" },
+        {
+          type: "text",
+          text: "[resource link] big.json: https://raw.githubusercontent.com/acme/app/main/big.json",
+        },
+        { type: "image", data: "cG5nLWJ5dGVz", mimeType: "image/png" },
+      ]);
+    },
+  );
+
+  it("ignores a binary MCP resource that has no text", () => {
+    const restored = toolResultFromUi(
+      {
+        id: "call-resource-blob",
+        role: "tool",
+        content: "",
+        createdAt: new Date(timestamp).toISOString(),
+        toolCallId: "call-resource-blob",
+        toolName: "get_file_contents",
+        toolResult: {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: "file:///a.bin",
+                mimeType: "application/octet-stream",
+                blob: "QkxPQi1CWVRFUw==",
+              },
+            },
+          ],
+        },
+        toolStatus: "success",
+        isError: false,
+      },
+      timestamp,
+    );
+    expect(restored.content).toEqual([
+      { type: "text", text: "[no tool result recorded]" },
+    ]);
+    expect(JSON.stringify(restored.content)).not.toContain("QkxPQi1CWVRFUw==");
+  });
+
   it.each([
     [
       "MCP content property",
