@@ -216,12 +216,16 @@
 }
 
 /* Keep the Agent/Plan/Goal trigger stable while its localized label changes.
-   The width covers the longest built-in label plus the menu caret. */
+   The width covers the longest built-in label plus the menu caret, and scales
+   with the label's font: the label multiplies --font-scale (--text-sm), so a
+   fixed 96px clipped it to "智…" at 115% (#1866). The icon and caret keep
+   their fixed pixel sizes, so the scaled width over-provisions slightly —
+   the slack lands on the label, which is where clipping actually happened. */
 .composer-mode-chip {
-  width: 96px;
-  min-width: 96px;
-  max-width: 96px;
-  flex: 0 0 96px;
+  width: calc(96px * var(--font-scale, 1));
+  min-width: calc(96px * var(--font-scale, 1));
+  max-width: calc(96px * var(--font-scale, 1));
+  flex: 0 0 calc(96px * var(--font-scale, 1));
   justify-content: space-between;
 }
 
