@@ -254,6 +254,17 @@ function pickNetworkCode(codes: readonly string[]): {
 }
 
 /**
+ * TLS handshake / certificate wording. Not an API-key rejection: stacks say
+ * "mutual TLS authentication failed" and "authentication handshake timed out"
+ * for the transport itself.
+ */
+function isTlsTransportText(text: string): boolean {
+  return /certificate|self[- ]signed|(?:^|[^a-z])(?:tls|ssl)(?:[^a-z]|$)|handshake/i.test(
+    text,
+  );
+}
+
+/**
  * Last resort when no errno survived: classify by wording. Order matters —
  * "proxy" outranks the transport wording it usually wraps.
  */
@@ -262,11 +273,7 @@ function networkCategoryFromText(text: string): NetworkFailureCategory {
   if (/getaddrinfo|ENOTFOUND|EAI_AGAIN|dns|name resolution/i.test(text)) {
     return "dns";
   }
-  if (
-    /certificate|self[- ]signed|(?:^|[^a-z])(?:tls|ssl)(?:[^a-z]|$)|EPROTO|handshake/i.test(
-      text,
-    )
-  ) {
+  if (isTlsTransportText(text) || /EPROTO/i.test(text)) {
     return "tls";
   }
   if (/timed?\s?out|timeout/i.test(text)) return "timeout";
@@ -393,6 +400,33 @@ export function networkFailureDiagnostics(
   return { category: network.category, fields: networkDetailFields(network) };
 }
 
+/**
+ * Credential rejection worded without an HTTP status.
+ *
+ * Bare "authentication" is not enough. Keep the API-key / unauthorized
+ * phrases, and keep "authentication" only beside an API key, bearer token,
+ * or credentials — or as a short provider phrase such as "authentication
+ * failed". Handshake, TLS/SSL, and certificate text is transport, so it
+ * never counts.
+ */
+const STATUSLESS_CREDENTIAL_PATTERN =
+  /invalid[ _]api[ _]key|api key not valid|unauthorized|permission denied/i;
+
+const AUTHENTICATION_WITH_CREDENTIAL_PATTERN =
+  /(?:api[-_ ]?key|credentials|bearer).{0,48}\bauthentication\b|\bauthentication\b.{0,48}(?:api[-_ ]?key|credentials|bearer)/i;
+
+const AUTHENTICATION_FAILURE_PATTERN =
+  /\bauthentication[_ ](?:failed|failure|error)\b/i;
+
+function isStatuslessCredentialFailure(message: string): boolean {
+  if (STATUSLESS_CREDENTIAL_PATTERN.test(message)) return true;
+  if (isTlsTransportText(message)) return false;
+  return (
+    AUTHENTICATION_WITH_CREDENTIAL_PATTERN.test(message) ||
+    AUTHENTICATION_FAILURE_PATTERN.test(message)
+  );
+}
+
 export function classifyAgentError(err: unknown): ClassifiedAgentError {
   const envelope = err !== null && typeof err === "object"
     ? err as Record<string, unknown> : undefined;
@@ -483,9 +517,15 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
   // "fetch failed" causes don't fall through to the generic bucket. The cause
   // chain is summarized as a coarse category plus the transport errno, so the
   // failing layer is identifiable without a user-visible code per layer.
+  // Handshake and certificate wording is the same kind of failure when no
+  // status is present, even if the text says "authentication".
   const network = describeNetworkFailure(err, rawMessage);
   const certificateFailure = isCertificateVerificationError(network.code);
-  if (hasNetworkCause(err, rawMessage) || (status === undefined && certificateFailure)) {
+  if (
+    hasNetworkCause(err, rawMessage) ||
+    (status === undefined &&
+      (certificateFailure || isTlsTransportText(rawMessage)))
+  ) {
     return result(
       "NETWORK_ERROR",
       !certificateFailure,
@@ -528,7 +568,7 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     return result("PROVIDER_ERROR", true);
   }
 
-  if (/invalid[ _]api[ _]key|api key not valid|unauthorized|authentication|permission denied/i.test(rawMessage)) {
+  if (isStatuslessCredentialFailure(rawMessage)) {
     return result("PROVIDER_UNAUTHORIZED", false);
   }
   if (RATE_LIMIT_PATTERN.test(rawMessage)) {

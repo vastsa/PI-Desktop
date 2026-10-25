@@ -235,6 +235,52 @@ describe("classifyAgentError", () => {
     });
   });
 
+  it("does not treat TLS authentication wording as an API-key rejection", () => {
+    expect(classifyAgentError(new Error("mutual TLS authentication failed")))
+      .toMatchObject({
+        code: "NETWORK_ERROR",
+        retriable: true,
+        details: { networkCategory: "tls" },
+      });
+
+    const handshake = classifyAgentError(
+      new Error("authentication handshake timed out"),
+    );
+    expect(handshake).not.toMatchObject({ code: "PROVIDER_UNAUTHORIZED" });
+    expect(handshake.retriable).toBe(true);
+    expect(["NETWORK_ERROR", "TIMEOUT"]).toContain(handshake.code);
+
+    expect(classifyAgentError(new Error("Invalid API key"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(new Error("unauthorized"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(new Error("permission denied"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+
+    // A real credential phrase still names the key or the credentials, and a
+    // certificate errno stays terminal even when the text says authentication.
+    expect(classifyAgentError(new Error("invalid authentication credentials")))
+      .toMatchObject({ code: "PROVIDER_UNAUTHORIZED", retriable: false });
+    expect(classifyAgentError(new Error("authentication failed"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("mutual TLS authentication failed"),
+      { code: "CERT_HAS_EXPIRED" },
+    ))).toMatchObject({
+      code: "NETWORK_ERROR",
+      retriable: false,
+      details: { networkCategory: "tls", networkCode: "CERT_HAS_EXPIRED" },
+    });
+  });
+
   it("classifies pi-ai '<status>: <body>' errorMessage strings", () => {
     expect(classifyAgentError('429: {"error":{"type":"rate_limit_error"}}'))
       .toMatchObject({ code: "PROVIDER_RATE_LIMITED", retriable: true });
