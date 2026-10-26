@@ -2394,8 +2394,8 @@ sklm: {
       listAria: "Bewertungen",
     },
     "capabilities": {
-      "panel": "Panel",
-      "views": "Arbeitsfensteransichten",
+      "panel": "Eigenständiges Panel-Fenster",
+      "views": "Seitliche Panel-Ansicht",
       "commands": "Befehle",
       "tools": "Agententools",
       "agentExtension": "Agent-Erweiterung",

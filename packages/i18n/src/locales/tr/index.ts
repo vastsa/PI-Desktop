@@ -2405,8 +2405,8 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       listAria: "Değerlendirmeler",
     },
     capabilities: {
-      panel: "Panel",
-      views: "Çalışma paneli görünümleri",
+      panel: "Bağımsız panel penceresi",
+      views: "Yan panel görünümü",
       commands: "Komutlar",
       tools: "Ajan araçları",
       agentExtension: "Ajan uzantısı",

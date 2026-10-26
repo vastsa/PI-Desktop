@@ -2415,8 +2415,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       listAria: "Reviews",
     },
     capabilities: {
-      panel: "Panel",
-      views: "Work panel views",
+      panel: "Standalone panel window",
+      views: "Side panel view",
       commands: "Commands",
       tools: "Agent tools",
       agentExtension: "Agent extension",
