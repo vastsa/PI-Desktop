@@ -945,11 +945,12 @@ sklm: {
     testConnection: "Bağlantıyı dene",
     noSecret: "Henüz API anahtarı yok",
     pluginProviderBadge: "Eklenti",
+    pluginProviderModelSettingsHint: "Model ayarları eklenti varsayılanlarından ayrı kaydedilir. Uç nokta ve kimlik doğrulama eklenti tarafından yönetilir.",
     pluginProviderBy: "{{plugin}} tarafından sağlanır",
     pluginProviderManaged:
-      "Bu servis, uç noktasını ve modellerini sağlayan “{{plugin}}” eklentisinden gelir. “Uzantılar” sayfasından açıp kapatabilirsiniz.",
+      "Bu servis “{{plugin}}” eklentisinden gelir. Model ayarları düzenlenebilir; uç nokta ve kimlik doğrulama eklenti tarafından yönetilir.",
     pluginProviderKey: "API anahtarı",
-    pluginProviderKeyHint: "PI-Desktop’ta saklanır ve çalışma zamanı tarafından kullanılır. Eklenti bu anahtarı asla almaz.",
+    pluginProviderKeyHint: "PI-Desktop’ta saklanır. Açık çıkarım izniyle bu sağlayıcının bağdaştırıcısı kendi istek anahtarını alabilir.",
     pluginProviderKeyRemove: "Anahtarı kaldır",
     pluginProviderKeySaved: "API anahtarı kaydedildi",
     pluginProviderKeyRemoved: "API anahtarı kaldırıldı",
@@ -1794,6 +1795,7 @@ sklm: {
     noProvidersDesc: "Başlamak için bir AI servisi ekleyin.",
     testing: "Deneniyor…",
     testOk: "Bağlantı iyi görünüyor",
+    testUnsupported: "Bu bağdaştırıcı güvenli ve ücretsiz bir bağlantı testi sunmuyor. Üretim isteği başlatılmadı.",
     testFailed: "Bağlantı denemesi başarısız",
     testFailedStatus: "Bağlantı denemesi başarısız ({{status}})",
     name: "Ad",
@@ -2456,6 +2458,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "renderer.extension": "Sohbet yuvalarında arayüz çiz",
       "provider.register": "Model listesine servis ekle",
       "provider.oauth": "Bir serviste OAuth ile oturum aç",
+      "provider.inference": "Seçili model isteklerini ve kimlik bilgilerini işle",
       "desktop.control": "Masaüstünü kontrol et",
       "models.list": "Kimliği doğrulanmış modelleri listele",
       "session.read": "Modele gönderilen geçerli konuşmayı oku",
@@ -2505,9 +2508,10 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.extension": "ExtensionAPI modüllerini ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalıştırır. Yalnızca güvendiğiniz kodu etkinleştirin.",
       "renderer.extension": "Bu eklentinin işleyici modülünü uygulama penceresine yükler; mesaj eylem çubukları, yanıt ek alanları, araç kartları, kod bloğu işleyicileri ve besteleyici kontrolleri gibi arayüz yuvası bileşenleri çizer. Modül PI-Desktop ile aynı belgede çalışır. Yalnızca güvendiğiniz kodu etkinleştirin.",
       "provider.register":
-        "Bu eklentinin tanımladığı servisleri Ayarlar’daki servis listesine ekler. Uç noktayı ve modelleri eklenti sağlar; API anahtarınız PI-Desktop’ta kalır.",
+        "Eklentinin sağlayıcılarını Ayarlar’a ekler. Yalnızca kayıt izni API anahtarını eklenti koduna vermez.",
       "provider.oauth":
         "Eklentinin, tanımladığı sağlayıcı için OAuth ile oturum açmasını ve token yenilemesini sağlar. PI-Desktop tokenları şifreler, ancak güvenilen geri çağrı bunları okuyabilir. Host üzerinden yapılan ağ erişimi için net.fetch ve tanımlı etki alanları gerekir; eklenti süreci işletim sistemi korumalı alanı değildir. Yalnızca güvendiğiniz koda verin.",
+      "provider.inference": "Seçili konuşmaları, araç şemalarını ve görselleri, yalnızca bu sağlayıcının istek anahtarı veya başlıklarıyla alır. Yenileme tokenı veya başka sağlayıcıların sırlarını almaz. Kod işletim sistemi korumalı alanında değildir; yalnızca güvendiğiniz koda izin verin.",
       "desktop.control":
         "Eklentinin incelenmiş PI-Desktop denetim kataloğunu çağırmasını sağlar. Yıkıcı işlemler yine confirm=true gerektirir; MCP bearer token eklentiye verilmez.",
       "models.list": "Oturum açtığınız modelleri görebilir. Anahtar almaz.",

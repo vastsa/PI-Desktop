@@ -31,10 +31,10 @@ Main risks:
 1. Plugin UI is isolated from the host UI DOM
 2. Plugins cannot directly require host modules
 3. The secret store is not open to general plugin APIs. Host-owned completions
-   (`agent.complete`) resolve credentials in Electron main and never pass keys,
-   refresh tokens, or `ModelAuth` to the plugin process. The high-risk
-   `provider.oauth` callback is the narrow exception: it can read only the
-   encrypted OAuth credential for its own declared provider contribution
+   resolve credentials in Electron main. Only explicitly authorized provider
+   callbacks receive their own credentials: `provider.oauth` handles its own
+   encrypted OAuth grant; `provider.inference` receives its own request key or
+   headers, never refresh tokens, peer secrets or general secret access.
 4. The plugin-private data directory is separate from the host core library
 5. Session transcripts from `session.getLlmContext` are a bounded projection of
    the in-flight tool session only (D336 / D019)
@@ -161,8 +161,9 @@ Plugins can access:
 
 Plugins cannot access:
 - Other plugins' data
-- Host secrets through a general-purpose API; `provider.oauth` grants access
-  only to the callback's own declared provider credential
+- Host secrets through a general-purpose API; `provider.oauth` and
+  `provider.inference` expose only the callback's own declared credentials,
+  with refresh tokens confined to the OAuth callback
 - The host's full session database (unless a controlled API exists in the future)
 
 ## 5.1 Inter-plugin message bus
@@ -208,6 +209,34 @@ credentials. Saving a key stores it through the Host's existing provider
 secret path; the Host discovers endpoint models after that explicit save, and
 the provider service receives the key when the user sends a request through
 the provider.
+
+### Global provider inference boundary
+
+`provider.inference` is a separate high-risk grant, required together with
+`provider.register` and an explicit versioned adapter declaration. Existing
+plugins do not gain transcript access by retaining a registration grant.
+The Host binds each invocation to the authorized session, provider, model and
+live plugin runtime generation. Main sessions and subagents share the binding
+rules; adapters cannot select another provider's credentials or invoke a
+general reverse-RPC proxy. Only the selected provider's request key/headers and
+bounded provider-specific OAuth `requestData` enter its authorized adapter.
+Routing data stays encrypted with OAuth credentials (JSON object, 16 KiB,
+depth 64), is never public configuration or Agent sidecar state, and shares
+the existing refresh singleflight. Disabled/unloaded/replaced owners cannot
+resolve it. Refresh tokens remain confined to the OAuth callback. The native
+Agent retains tool execution, permissions, delegation and persistence.
+
+Payloads are JSON/version/size checked at the process boundary; image MIME and
+file signatures are checked without accepting output URLs or paths. Pull-based
+streaming bounds buffering. Calls have capacity, timeout and lifetime limits;
+abort, session disposal, unload and crashes cancel pending work, and generation
+checks reject stale results. Custom inference is never automatically retried or
+silently routed to another paid provider. See [API limits](03-plugin-api.md#global-provider-inference-adapters).
+
+This is process isolation, not an OS sandbox. Plugin entry modules can use raw
+Node APIs; Host-mediated network operations still need their normal grants and
+domain allowlists. Users must trust adapter code with the selected model's
+conversation, tool schemas, image inputs and explicitly scoped credentials.
 
 ## 6. Path safety
 
@@ -575,3 +604,31 @@ Not enforced yet:
   user unchecking them at install
 - A `userSelected` root does not survive a restart, so a plugin has to ask again
   each session
+
+## Template accounts and safe error channels
+
+New provider templates and account-creation DTOs are closed/versioned. Rust
+alone binds ownership and credential references. Standard declarative OAuth
+uses public HTTPS endpoints, PKCE/state or bounded device polling, fixed token
+field mapping and existing network policies; registration never implies custom
+OAuth/inference execution. Sensitive template changes invalidate old secrets
+and discovery rather than forwarding credentials to another destination.
+
+Custom OAuth/inference exceptions and explicit stream error events use fixed
+Host diagnostics; plugin-controlled error text/codes are not logged or emitted
+as user/persisted errors. Host-observed cancellation/unload remains distinct.
+This is an error-channel boundary, not a Node sandbox: trusted code can still
+perform raw Node I/O. Prior audit artifacts remain historical reproductions,
+not current remediation proof. Account/source/runtime checks, cancellation and
+post-await checks prevent late deletion/unload results from reviving accounts.
+See [template contract and executable acceptance](17-provider-template-accounts.md).
+
+The loopback OAuth listener validates exactly one matching state and one
+nonempty code or error before accepting a callback. Invalid/duplicate callbacks
+receive 400 without consuming login; legitimate state-bound denial still ends it.
+The engine independently revalidates callback results after trusted I/O seams.
+Uninstall atomically persists all owned accounts disabled/cleanup-pending before
+registry/secret writes, attempts every row and both secret channels, and reports
+safe `INTERNAL` failure instead of false success. Persistent faults cannot be
+bypassed by reload/enable/OAuth completion; startup, retry and same-ID registration
+finish cleanup before reconciliation. Peer accounts and history remain untouched.

@@ -161,6 +161,9 @@ export type ImageProviderFacts = {
   /** True only once the vendor-account credential is actually stored. */
   hasOauth?: boolean;
   models?: readonly { id: string }[];
+  ownerPluginId?: string;
+  /** Host projection; runtime still rechecks the live declaration and grants. */
+  pluginModelOperations?: Record<string, ("chat" | "images")[]>;
 };
 
 /**
@@ -191,6 +194,11 @@ export function imageModelOfferedByProvider(
   modelId: string,
 ): boolean {
   if (!modelId) return false;
+  if (provider.ownerPluginId && provider.pluginModelOperations) {
+    return (provider.authKind !== "oauth" || provider.hasOauth === true) &&
+      (provider.models ?? []).some(model => model.id === modelId) &&
+      provider.pluginModelOperations[modelId]?.includes("images") === true;
+  }
   if (vendorAccountImageModelIds(provider).includes(modelId)) return true;
   if (provider.authKind === "oauth") return false;
   return (provider.models ?? []).some((model) => model.id === modelId);

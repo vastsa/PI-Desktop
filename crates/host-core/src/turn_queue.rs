@@ -532,7 +532,12 @@ mod tests {
         assert_eq!(entries[0].content, "existing");
         assert!(entries[0].user_message_id.is_none());
         assert!(entries[0].voice_origin.is_none());
-        assert_eq!(crate::db::SCHEMA_VERSION, 25);
+        assert_eq!(
+            db.conn()
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            crate::db::SCHEMA_VERSION
+        );
     }
 
     #[test]

@@ -103,17 +103,29 @@ export function jevServiceOption(translate: Translate): ServiceOption {
   };
 }
 
-/**
- * Resolve catalog declarations to their Host-owned provider rows. Rows with a
- * stored key are already configured and stay in the provider list rather than
- * being offered as a second add action.
- */
+/** Templates remain addable independently of their account rows; legacy entries resolve a singleton. */
 export function pluginProviderServiceOptions(
   declarations: readonly PluginProviderCatalogMeta[],
   providers: readonly ProviderPublic[],
 ): PluginProviderServiceOption[] {
   const rowsById = new Map(providers.map((provider) => [provider.id, provider]));
   return declarations.flatMap((declaration) => {
+    if (declaration.templateId) {
+      if (declaration.authKind !== "api_key" && declaration.authKind !== "none") return [];
+      const endpoint = endpointLabel(declaration.baseUrl ?? "");
+      return [{
+        id: declaration.providerId,
+        label: declaration.name ?? declaration.templateId,
+        endpoint: `${endpoint} · ${declaration.pluginName}`,
+        category: declaration.category.trim() || declaration.pluginName,
+        pluginName: declaration.pluginName,
+        description: declaration.description ?? "",
+        haystack: [declaration.name, declaration.templateId, declaration.baseUrl, declaration.category,
+          declaration.pluginName, declaration.description,
+          ...(declaration.models ?? []).map((model) => `${model.id} ${model.alias ?? ""}`),
+        ].join(" ").toLowerCase(),
+      }];
+    }
     const provider = rowsById.get(declaration.providerId);
     if (
       !provider ||

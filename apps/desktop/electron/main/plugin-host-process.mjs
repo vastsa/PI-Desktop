@@ -18,6 +18,8 @@
  *   parent -> child  { t: "event", event, ... }           push, no reply (bus.message, host events)
  *   child  -> parent { t: "log", level, message }         diagnostics, fire and forget
  */
+import { PluginProviderInferenceHost } from "@pi-desktop/plugin-sdk";
+let providerInference;
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
@@ -522,20 +524,33 @@ async function handleInit(message) {
 
   globalThis.pi = buildApi();
   pluginModule = await loadPluginModule(entry);
-  const oauthProviders = Array.isArray(manifest?.contributes?.providers)
-    ? manifest.contributes.providers.filter((provider) => provider?.authKind === "oauth")
-    : [];
+  const providerDeclarations = [...(manifest?.contributes?.providers ?? []), ...(manifest?.contributes?.providerTemplates ?? [])];
+  const oauthProviders = providerDeclarations.filter(provider => provider?.authKind === "oauth"
+    && (!provider.version || !provider.oauth?.flow || provider.oauth.flow === "custom"));
   if (oauthProviders.length > 0 && typeof pluginModule?.onProviderOAuth !== "function") {
     const error = new Error("OAuth providers require an onProviderOAuth hook");
     error.code = "PLUGIN_INVALID";
     throw error;
   }
+  providerInference = new PluginProviderInferenceHost(
+    pluginModule?.providerAdapters ?? {}, providerDeclarations,
+    () => log("warn", "provider inference iterator cleanup failed"),
+  );
   if (pluginModule?.onLoad) await pluginModule.onLoad();
   return { pluginId };
 }
 
 async function handleParentCall(method, payload, invocationId, callId) {
   switch (method) {
+    case "provider.inference.open":
+      return providerInference.open(payload.invocationId, payload.request, payload.credential);
+    case "provider.inference.next":
+      return providerInference.next(payload.invocationId);
+    case "provider.inference.close":
+      providerInference.close(payload.invocationId);
+      return { closed: true };
+    case "provider.inference.images":
+      return providerInference.images(payload.invocationId, payload.request, payload.credential);
     case "panel.invoke": {
       const invoke = pluginModule?.onPanelInvoke;
       if (typeof invoke !== "function") {
@@ -678,6 +693,7 @@ async function handleParentCall(method, payload, invocationId, callId) {
       return answer;
     }
     case "lifecycle.unload": {
+      providerInference?.dispose();
       for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");
       for (const [id, controller] of parentCallControllers) {
         controller.abort(toolAbortedError("Plugin unloaded"));

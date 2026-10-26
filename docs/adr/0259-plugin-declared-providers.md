@@ -5,6 +5,10 @@
 - Decision: D427
 - Related: ADR 0011, `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/13-plugin-permissions-matrix.md`, `03-runtime/04-data-storage.md`, `03-runtime/12-provider-config-schema.md`
 
+> Model-editing amendment: [Plugin provider user model preferences](plugin-provider-user-model-preferences.md)
+> supersedes the blanket update refusal and manifest-authoritative model/name
+> fields below. Plugin transport identity and lifecycle ownership remain intact.
+
 ## Context
 
 A plugin that integrates an LLM service has two surfaces today: an agent tool, or

@@ -5,12 +5,13 @@ import {
   type ImageGenerationBindings,
   modelMatchesFilter,
   modelWireIdsEqual,
+  providerModelSupportsChat,
   type ModelBinding,
   type ModelInfo,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 
-type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId">;
+type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId" | "ownerPluginId" | "pluginModelOperations">;
 
 /** UI identity is the complete wire id, not a catalog alias or a route suffix. */
 export function sameComposerModelId(left: string, right: string): boolean {
@@ -39,9 +40,11 @@ export function composerModelsForProvider(
   imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
   return configuredModelIds(provider).filter((modelId) =>
-    !isImageGenerationModel(imageGeneration, provider.id, modelId)
+    providerModelSupportsChat(provider, modelId)
+      && !isImageGenerationModel(imageGeneration, provider.id, modelId)
       && !(discovered ?? []).some((model) =>
-        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted"),
+        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted",
+      ),
   ).map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),

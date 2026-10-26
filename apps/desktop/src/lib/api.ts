@@ -882,6 +882,12 @@ export const api = {
     invoke<{ providers: ProviderPublic[] }>(IPC.invoke.providersList),
   createProvider: (input: ProviderCreateInput) =>
     invoke<{ provider: ProviderPublic }>(IPC.invoke.providersCreate, input),
+  createTemplateProvider: (input: {
+    pluginId: string;
+    templateId: string;
+    name?: string;
+    secretValue?: string;
+  }) => invoke<{ provider: ProviderPublic }>(IPC.invoke.providersCreateFromTemplate, input),
   updateProvider: (input: ProviderUpdateInput) =>
     invoke<{ provider: ProviderPublic | null }>(
       IPC.invoke.providersUpdate,

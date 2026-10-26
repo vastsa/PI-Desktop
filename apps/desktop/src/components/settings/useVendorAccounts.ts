@@ -126,10 +126,10 @@ export function useVendorAccounts() {
    * happens once, where StrictMode would run a mount effect twice and open two
    * browsers.
    */
-  const startLogin = (vendor: OAuthVendor) => {
+  const startLogin = (vendor: OAuthVendor, accountId?: string) => {
     setLogin({
       vendor,
-      session: beginOAuthLogin({ api, vendorId: vendor.vendorId }),
+      session: beginOAuthLogin({ api, vendorId: accountId ?? vendor.vendorId }),
     });
   };
 
@@ -190,7 +190,7 @@ export function useVendorAccounts() {
       }
       await Promise.all([loadVendors(), refreshProviders()]);
       showToast(
-        provider.ownerPluginId
+        provider.ownerPluginId && !provider.pluginTemplateId
           ? t("settings.vendorSignedOut", { vendor: vendorName })
           : t("settings.vendorAccountRemoved", { vendor: vendorName }),
         {

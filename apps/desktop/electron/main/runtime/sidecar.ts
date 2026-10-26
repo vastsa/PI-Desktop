@@ -1,3 +1,5 @@
+import { PluginProviderInferenceBroker } from "../plugin-provider-inference";
+import type { ProviderPublic } from "@pi-desktop/shared";
 import { IPC, type AgentEventEnvelope, type UiMessage } from "@pi-desktop/shared";
 import {
   findSubagentProviderSource,
@@ -185,6 +187,22 @@ export function createSidecarRuntime({
     }
   };
   const wireSidecar = (s: AgentSidecar) => {
+  const inference = new PluginProviderInferenceBroker({
+    plugins,
+    reportError: () => logger.app("plugin", "warn", "provider inference cleanup failed"),
+    credential: async providerId => {
+      if (!runtimeState.host) throw new Error("Host unavailable");
+      const { provider } = await runtimeState.host.call<{ provider: ProviderPublic }>("providers.get", { id: providerId });
+      if (!provider?.enabled || !provider.ownerPluginId) throw new Error("Plugin provider unavailable");
+      plugins.providerInferenceBinding(provider);
+      if (provider.authKind === "none") return undefined;
+      if (provider.authKind === OAUTH_AUTH_KIND) return vendorOAuth.resolvePluginInferenceCredential(providerId);
+      const secret = await runtimeState.host.call<{ value?: string }>("providers.getSecret", { id: providerId });
+      if (!secret.value) throw new Error("Plugin provider API key missing");
+      return { apiKey: secret.value, ...(provider.headers ? { headers: provider.headers } : {}) };
+    },
+  });
+  s.setProviderInferenceHandler(inference);
 
   s.onNotification((method, params) => {
     if (method === "native.agent.event") {
@@ -359,11 +377,12 @@ export function createSidecarRuntime({
     });
     void superviseRestart("sidecar");
   });
+  return inference;
   };
   const startSidecar = async (): Promise<void> => {
 
   const s = new AgentSidecar((text) => logger.child("agent", text));
-  wireSidecar(s);
+  const inference = wireSidecar(s);
   // The directory a session's file tools work in: its isolated worktree
   // (ADR 0329), resolved by host-core from its own registry, or its project.
   const sessionFileRoot = async (sessionId: string): Promise<string | null> => {
@@ -479,7 +498,7 @@ export function createSidecarRuntime({
   s.setVendorAuthResolver(async ({ providerId }) =>
     vendorOAuth.resolveAuth(providerId),
   );
-  s.setSubagentModelResolver(async (key: string) => {
+  s.setSubagentModelResolver(async (key: string, _sessionId: string) => {
     const slash = key.indexOf("/");
     if (slash < 1) throw new Error("invalid model key");
     const providerPart = key.slice(0, slash);
@@ -502,9 +521,10 @@ export function createSidecarRuntime({
       );
     }
 
-    const isVendorAccount = provider.authKind === OAUTH_AUTH_KIND;
+    const pluginInference = plugins.providerInferenceBinding?.(provider, "chat", modelId);
+    const isVendorAccount = !pluginInference && provider.authKind === OAUTH_AUTH_KIND;
     let apiKey = "";
-    if (!isVendorAccount && provider.authKind !== "none") {
+    if (!pluginInference && !isVendorAccount && provider.authKind !== "none") {
       const secret = await runtimeState.host!.call<{ value?: string }>(
         "providers.getSecret",
         { id: provider.id },
@@ -544,6 +564,7 @@ export function createSidecarRuntime({
 
     return {
       id: provider.id,
+      ...(pluginInference ? { pluginInference } : {}),
       name: provider.name,
       ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
       modelId,
@@ -561,6 +582,7 @@ export function createSidecarRuntime({
     dataDir,
     getHost: () => runtimeState.host,
     resolveAuth: providerId => vendorOAuth.resolveAuth(providerId),
+    resolveProviderImages: (provider, modelId) => inference.images(provider, modelId),
     resolveImageModel: async (provider, modelId) => {
       await modelsDevCatalog.ensureLoaded();
       return modelsDevCatalog.findModelOfType("image", {

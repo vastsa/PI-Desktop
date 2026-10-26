@@ -426,6 +426,8 @@ export function createProviderRetryStream(
   createStream: StreamFactory,
   controller: ProviderRetryController,
 ): AssistantMessageEventStream {
+  // Custom adapters own their vendor semantics. Never replay a potentially charged invocation.
+  if (model.api === "plugin-inference-v1") return createStream(options);
   // Keep the context in the signature: it prevents callers from accidentally
   // building a retry stream around a different request than the provider call.
   void context;

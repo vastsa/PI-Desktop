@@ -82,6 +82,7 @@
 - [06-release-runbook.md](/zh-CN/spec/06-delivery/06-release-runbook)
 - [plugin-reviews-test-plan.md](/zh-CN/spec/06-delivery/plugin-reviews-test-plan)
 - [07-remote-control-rollout.md](/zh-CN/spec/06-delivery/07-remote-control-rollout)
+- [provider-template-validation.md](/zh-CN/spec/06-delivery/provider-template-validation)
 
 ## 7. 插件
 - [README.md](/zh-CN/spec/07-plugins/README)
@@ -101,6 +102,7 @@
 - [14-plugin-roadmap.md](/zh-CN/spec/07-plugins/14-plugin-roadmap)
 - [15-plugin-center.md](/zh-CN/spec/07-plugins/15-plugin-center)
 - [16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions)
+- [17-provider-template-accounts.md](/zh-CN/spec/07-plugins/17-provider-template-accounts)
 
 ## 8. 元数据
 - [README.md](/zh-CN/spec/08-meta/README)

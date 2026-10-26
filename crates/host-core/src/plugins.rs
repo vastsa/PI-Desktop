@@ -24,12 +24,16 @@ pub mod marketplace;
 mod model;
 mod permissions;
 pub(crate) mod progress;
+pub(crate) mod provider_cleanup;
+mod provider_operations;
+pub(crate) mod provider_templates;
 mod provider_validation;
 mod providers;
 mod registry;
 mod renderer;
 mod resolve;
 pub(crate) mod reviews;
+mod template_validation;
 mod validation;
 
 pub use manifest::PluginManifest;
@@ -67,14 +71,19 @@ pub(crate) use marketplace::{
     latest_market_version,
 };
 pub(crate) use permissions::{derive_capabilities, derive_settings, permission_diff, sanitize_id};
+pub(crate) use provider_operations::plugin_model_operations;
 pub(crate) use provider_validation::validate_declared_provider_oauth;
 pub(crate) use providers::{
     declared_providers, is_known_api_style, is_known_auth_kind, owned_provider_ids,
-    plugin_provider_row_id, reconcile_all, reconcile_plugin, remove_plugin_providers,
-    set_plugin_providers_enabled, sync_plugin_providers, MAX_PLUGIN_PROVIDER_MODELS,
+    plugin_provider_row_id, plugin_provider_user_overrides, reconcile_all, reconcile_plugin,
+    remove_plugin_providers, set_plugin_provider_user_override, set_plugin_providers_enabled,
+    sync_plugin_providers, MAX_PLUGIN_PROVIDER_MODELS,
 };
 pub(crate) use renderer::validate_renderer;
 pub(crate) use validation::{is_local_package_url, package_host_allowed, validate_contributions};
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(test)]
+mod template_tests;

@@ -33,6 +33,7 @@ import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-co
 import { ImageGenerationModelRow } from "./ImageGenerationModelRow";
 import { OAuthLoginDialog } from "./OAuthLoginDialog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
+import { PluginProviderSettingsDialog } from "./PluginProviderSettingsDialog";
 import { ServiceList } from "./ServiceList";
 import { serviceRowKind } from "./service-row-status";
 import { useVendorAccounts } from "./useVendorAccounts";
@@ -352,6 +353,7 @@ export function ModelConfigPage() {
     try {
       const result = (await api.testProvider(provider.id)) as {
         ok?: boolean;
+        errorCode?: string;
         message?: string;
         status?: number;
       };
@@ -359,7 +361,7 @@ export function ModelConfigPage() {
         showToast(t("settings.testOk"), { variant: "success" });
       } else {
         showToast(
-          result?.message ||
+          result?.errorCode === "UNSUPPORTED" ? t("settings.testUnsupported") : result?.message ||
             (result?.status
               ? t("settings.testFailedStatus", { status: result.status })
               : t("settings.testFailed")),
@@ -476,7 +478,7 @@ export function ModelConfigPage() {
               isRowBusy={(id) => busyId === id || testingId === id || busyAccountId === id}
               testingId={testingId}
               onEdit={(provider) =>
-                serviceRowKind(provider) === "account"
+                serviceRowKind(provider) === "account" && !provider.ownerPluginId
                   ? setEditingAccountId(provider.id)
                   : setSetupFor(provider.id)
               }
@@ -555,7 +557,25 @@ export function ModelConfigPage() {
         </section>
       ) : null}
 
-      {setupFor !== null ? (
+      {setupFor !== null && editingProvider?.ownerPluginId && !pluginCatalogSetup ? (
+        <PluginProviderSettingsDialog
+          key={editingProvider.id}
+          provider={editingProvider}
+          imageModelIds={imageGenerationCandidates.filter((binding) => binding.providerId === editingProvider.id).map((binding) => binding.modelId)}
+          onClose={() => setSetupFor(null)}
+          onSaved={afterSaved}
+          onReauthenticate={editingProvider.pluginTemplateId && editingProvider.authKind === "oauth" ? () => {
+            const vendor = accountFor(editingProvider.id)?.vendor ?? {
+              vendorId: editingProvider.id,
+              name: editingProvider.name,
+              isSubscription: false,
+              accounts: [],
+            };
+            setSetupFor(null);
+            startLogin(vendor, editingProvider.id);
+          } : undefined}
+        />
+      ) : setupFor !== null ? (
         <ProviderSetupDialog
           key={setupFor}
           provider={editingProvider}

@@ -5,9 +5,11 @@
 
 > 目录：`docs/spec/07-plugins`
 
-插件作者应该从面向任务开始
-【从零到一的开发指南】(../../plugin-development.md)。文档在
-该目录定义了规范性合同和实施边界。
+插件作者应从面向任务的 [从零到一开发指南](../../plugin-development.md) 开始。
+本目录文档定义规范性契约与实现边界。
+
+提供商集成字段、回调、原生账号 RPC 与示例见
+[插件提供商 API 参考](/plugin-provider-api)。
 
 | 文件 | 描述 |
 |---|---|
@@ -27,6 +29,7 @@
 | [14-plugin-roadmap.md](/zh-CN/spec/07-plugins/14-plugin-roadmap) | 插件路线图 |
 | [15-plugin-center.md](/zh-CN/spec/07-plugins/15-plugin-center) | 插件中心（发布侧） |
 | [16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions) | 受信任扩展（sidecar 内扩展面） |
+| [17-provider-template-accounts.md](/zh-CN/spec/07-plugins/17-provider-template-accounts) | 可复用服务模板、原生账号、OAuth、生命周期与测试 fixture |
 
 ## 从契约回查代码
 

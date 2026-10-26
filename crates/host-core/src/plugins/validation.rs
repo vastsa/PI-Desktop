@@ -15,6 +15,7 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
     let Some(map) = contributes.as_object() else {
         bail!("PLUGIN_INVALID: contributes must be an object");
     };
+    super::template_validation::validate_templates(manifest)?;
 
     if let Some(settings) = map.get("settings") {
         let entries = array_of(settings, "contributes.settings")?;

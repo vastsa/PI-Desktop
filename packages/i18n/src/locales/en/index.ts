@@ -948,12 +948,13 @@ sklm: {
     testConnection: "Test connection",
     noSecret: "No API key yet",
     pluginProviderBadge: "Plugin",
+    pluginProviderModelSettingsHint: "Model settings are saved separately from plugin defaults. The plugin still controls the endpoint and authentication.",
     pluginProviderBy: "Provided by {{plugin}}",
     pluginProviderManaged:
-      "This provider comes from the plugin \"{{plugin}}\", which supplies its endpoint and models. Enable or disable it on the Plugins page.",
+      "This provider comes from the plugin \"{{plugin}}\". Model preferences are editable; its endpoint and authentication are plugin-managed.",
     pluginProviderKey: "API key",
     pluginProviderKeyHint:
-      "Stored in PI-Desktop and used by the runtime. The plugin never receives it.",
+      "Stored in PI-Desktop. With explicit inference permission, this provider's adapter can receive its request key.",
     pluginProviderKeyRemove: "Remove key",
     pluginProviderKeySaved: "API key saved",
     pluginProviderKeyRemoved: "API key removed",
@@ -1804,6 +1805,7 @@ sklm: {
     noProvidersDesc: "Add an AI provider to start.",
     testing: "Testing…",
     testOk: "Connection looks good",
+    testUnsupported: "This adapter has no safe, non-billable connection test. No generation was started.",
     testFailed: "Connection test failed",
     testFailedStatus: "Connection test failed ({{status}})",
     name: "Name",
@@ -2466,6 +2468,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "renderer.extension": "Draw UI in chat slots",
       "provider.register": "Add providers to the model list",
       "provider.oauth": "Sign in to a provider with OAuth",
+      "provider.inference": "Process selected model requests and credentials",
       "desktop.control": "Control the desktop",
       "models.list": "List authenticated models",
       "session.read": "Read the current conversation sent to the model",
@@ -2519,9 +2522,10 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "renderer.extension":
         "Loads this plugin's renderer module into the app window to draw UI slot components (message action bars, entry extras, tool cards, code-block renderers, composer controls). The module runs in the same document as PI-Desktop. Enable only code you trust.",
       "provider.register":
-        "Adds the providers this plugin defines to Settings' provider list. The plugin supplies the endpoint and models; your API key stays in PI-Desktop.",
+        "Adds this plugin's providers to Settings. Registration alone does not expose your API key to plugin code.",
       "provider.oauth":
         "Lets this plugin run OAuth login and refresh for its declared provider. PI-Desktop encrypts the tokens, but the trusted callback can read them. Host-mediated network access still requires net.fetch and declared domains; plugin entry code is not an OS sandbox, so grant this only to code you trust.",
+      "provider.inference": "Receives selected conversations, tool schemas and image input, plus only this provider's request key or headers. Never refresh tokens or other providers' secrets. Plugin code is not an OS sandbox; grant only to code you trust.",
       "desktop.control":
         "Lets the plugin invoke the reviewed PI-Desktop control catalog. Destructive operations still require confirm=true; the MCP bearer token is never exposed.",
       "models.list": "Can see which models you have signed in for. It does not receive keys.",

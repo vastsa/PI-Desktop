@@ -24,6 +24,90 @@
 - **Component coverage:** `provider-model-list-refresh.test.mjs` also renders
   the actual settings panes and verifies saved bindings remain editable.
 
+### E2E-PLUGIN-native-model-preferences
+
+- **Preconditions:** Dedicated request worktree based on current author upstream,
+  an isolated test profile, and fixture plugin providers using API-key, no-auth
+  and OAuth authentication. No production data or paid provider calls.
+- **Steps:** Open Settings → Models and open each plugin service. Change its
+  display name, model alias, context/output budget, thinking configuration and
+  delegation opt-in. Select an image model where supported. Cancel once, then
+  save and reopen. Refresh the plugin declaration; disable and re-enable it;
+  restart the Host and inspect the saved preferences. Save an empty model list,
+  refresh discovery, and confirm the empty selection remains. Disable only the
+  provider, reload its plugin, and verify the provider stays off. Attempt to
+  change transport identity and to delete the row through generic CRUD.
+- **Expected:** Native model controls work for all three credential kinds. A
+  cancelled draft makes no write. Explicit preferences, including an empty
+  selection, survive reconciliation and restart; untouched defaults follow the
+  declaration. Plugin disable forces the effective provider off without losing
+  the user's choice. Model-only edits never submit transport or credential
+  fields. Generic transport mutation/deletion is refused before secret writes;
+  a manifest endpoint/auth change invalidates old credentials. Uninstall clears
+  the row and its credentials. Image input and generation remain distinct.
+- **Specs:** `03-runtime/12-provider-config-schema.md`,
+  `07-plugins/02-plugin-manifest-schema.md`,
+  `adr/plugin-provider-user-model-preferences.md`.
+- **Acceptance:** B, F, G, Security.
+- **Milestone:** Post-MVP plugin provider integration.
+- **Status:** Automated renderer user path in
+  `apps/desktop/test/plugin-provider-settings-user-path.test.mjs`; Host persistence
+  and lifecycle coverage in plugin provider Rust tests. Full cross-process
+  adapter/session/image acceptance is tracked separately.
+
+### E2E-PLUGIN-global-provider-inference
+
+- **Preconditions:** Dedicated current-upstream worktree, isolated profile and
+  local plugin subprocess fixtures. Both provider grants are explicit; no paid
+  services, real credentials or attachment to a running user Desktop.
+- **Steps:** Select a plugin chat model and stream a main-session response;
+  request a native tool and continue from its result. Delegate to the model
+  through configured and on-demand subagents. Generate an image through an
+  image-capable adapter using the ordinary image tool. Try an image-only model
+  in chat, a missing grant, wrong owner/session/model/generation, malformed and
+  oversized outputs, cancellation, unload and late completion.
+- **Expected:** Native messages, tool results, usage and stop semantics survive
+  the plugin process boundary. Tools execute only through the native Agent.
+  Main/delegated requests use exact Host bindings; only the owning provider's
+  request credentials reach its adapter. Image output follows existing scratch
+  handling; URLs/paths and MIME/signature mismatches are refused. Unsupported
+  capabilities and unauthorized/stale invocations fail closed. Stop/dispose
+  cancels work; custom inference never silently retries or falls back.
+- **Specs:** `07-plugins/02-plugin-manifest-schema.md`, `03-plugin-api.md`,
+  `04-plugin-security.md`, `13-plugin-permissions-matrix.md`;
+  `adr/global-plugin-provider-inference.md`.
+- **Acceptance:** B, G, Security, Quality.
+- **Milestone:** Post-MVP plugin provider integration.
+- **Status:** Automated real plugin-subprocess integration in
+  `apps/desktop/test/plugin-provider-inference.test.mjs`, with SDK payload and
+  iterator lifecycle tests and Host reverse-RPC authorization tests. These do
+  not replace full Electron application acceptance; that suite remains pending.
+
+### E2E-PLUGIN-oauth-provider-inference
+
+- **Preconditions:** Offline OAuth plugin fixture with explicit registration,
+  OAuth and inference grants. An isolated temporary directory; no real accounts.
+- **Steps:** Start from the native vendor list, open the fixture authorization
+  URL, answer the Host prompt, store an expired grant with project routing data,
+  then run a main response, a delegated response and native image generation.
+  Refresh omits routing data; sign out and attempt credential resolution again.
+  In native model settings, edit OAuth model preferences and check chat-only
+  versus image-only controls and picker candidates.
+- **Expected:** One provider identity serves all paths; refreshed access retains
+  encrypted project metadata. Only the owning authorized adapter receives it.
+  Neither refresh tokens nor project data enter public rows, renderer events or
+  Agent sidecar configuration. Sign-out removes the grant. Native controls obey
+  manifest operation restrictions; image-only models never become chat defaults.
+- **Specs:** `07-plugins/03-plugin-api.md`, `07-plugins/04-plugin-security.md`,
+  `03-runtime/12-provider-config-schema.md`.
+- **Acceptance:** B, F, G, Security.
+- **Milestone:** Post-MVP plugin OAuth integration.
+- **Status:** Automated local subprocess integration in
+  `apps/desktop/test/plugin-provider-oauth-inference.test.mjs`, native editor
+  interaction in `plugin-provider-settings-user-path.test.mjs`, credential
+  lifecycle in `vendor-oauth-login.test.mjs`, and picker capability regression
+  in `plugin-provider-model-operations.test.mjs`. Live Antigravity service and
+  full-application Electron acceptance are not covered by these fixtures.
 
 ### E2E-PI-130-kernel-upgrade
 
@@ -10423,6 +10507,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| B / F / G / Security — Plugin model preferences | E2E-PLUGIN-native-model-preferences |
+| B / G / Security / Quality — Plugin inference | E2E-PLUGIN-global-provider-inference |
 | C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |
 | B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
@@ -17152,6 +17238,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 #### E2E-PLUGIN-provider-catalog-add-service: Select a plugin provider from its custom Add Service category
 
+- **Scope**: Legacy `contributes.providers` singleton behavior only. New reusable
+  templates use E2E-PLUGIN-template-native-accounts below.
 - **Preconditions**: A loaded plugin has `provider.register` and declares two
   API-key providers with a `baseUrl`, a localized `category`, and a short
   localized `description`; one provider has static models and the other has an
@@ -18838,3 +18926,68 @@ host-created files. The full app's file-preview viewer is covered separately.
   stubbed). Rust provider tests independently verify real SQLite persistence;
   `provider-reasoning-effort.test.ts` captures requests from the real pi-ai
   adapter with fixture SSE responses. No live gateway credentials are required.
+
+#### E2E-PLUGIN-template-native-accounts: Reusable integrations create independent native accounts
+
+- **Preconditions**: Isolated test profile and synthetic service only. Install
+  granted V1 key/no-auth/OAuth templates alongside official and legacy services.
+- **Steps**: Install → Add Service → add two accounts → edit each name/models/key
+  → refresh OAuth independently → run native chat/delegate/images where supported
+  → reauthenticate one account → remove it → add again from the same tile.
+  Cancel/fail a new login; disable/revoke/unload/remove a source while login,
+  refresh/chat/images are pending; remove/restore a template; uninstall/restart.
+  Upgrade schema24 with existing legacy credentials and explicit empty models.
+- **Expected**: Install adds no account; successful explicit setup creates UUIDs
+  with Host-owned versioned sources. Accounts never overwrite each other; reauth
+  creates no third row. Discovery failure retains the saved account. Pending
+  OAuth is unusable and cleaned after failure/cancel or startup recovery.
+  Disable/revoke retains data but stops work; template removal retains unavailable
+  accounts; uninstall removes owned secrets/accounts/discovery, not historical
+  conversations. Late callbacks/output cannot resurrect deleted accounts. Reject
+  forged ownership/secret refs/unknown fields and undeclared model operations.
+  Errors never contain synthetic token material. Unsupported probes do not
+  refresh/generate or claim success. Official and legacy paths stay unchanged.
+- **Evidence**: `apps/desktop/test/provider-template-user-path.test.mjs` exercises
+  native components in an isolated renderer. `provider-template-accounts` and
+  `provider-template-inference` use real plugin children/native executors;
+  `provider-template-declarative-account` uses public OAuth orchestration and
+  real loopback callback with a synthetic HTTPS boundary. OAuth engine, image
+  cancellation and connection tests cover protocol/lifecycle edges. Rust
+  template/plugin/RPC/migration suites verify actual storage separately.
+  External Host RPC boundaries in Node fixtures are fake: this is not a claimed
+  whole-application Electron/Rust or real Antigravity acceptance.
+- **Specs**: [V1 contract and runnable examples](../07-plugins/17-provider-template-accounts.md),
+  [ADR](../../adr/plugin-provider-template-accounts.md).
+- **Acceptance**: B, E, F, G, Security, Quality. Run from the request candidate,
+  record base revision and dirty-tree fingerprint; no real accounts/paid APIs,
+  running-user-app attachment or `verify:ui:*`.
+- **Actual Host extension**: `provider-template-native-host.e2e.mjs` starts the
+  candidate Rust Host against a temporary profile and a real plugin child. It
+  runs OAuth account creation/refresh, native chat/delegate/image execution,
+  preferences, delete/restart/uninstall and historical-session retention. It
+  does not start the full Desktop window or use an external provider.
+- **Security fault extension**: `provider-template-cleanup-host.e2e.mjs` uses the
+  rebuilt candidate Host and temporary encrypted store. Inject multiple secret
+  deletion faults; verify uninstall returns safe failure, all residual accounts
+  are disabled, other accounts are still erased, and reload/enable/restart cannot
+  revive them. Remove faults, retry same-ID registration and require fresh login.
+  Rust cleanup RPC tests additionally verify registry/intent-write faults and
+  peer/history preservation. OAuth engine tests send invalid/duplicate callbacks
+  before a valid callback: invalid requests return 400 without token exchange or
+  consuming login, while valid denial terminates and exchanges no token.
+
+### PR 1897 integration: discovery and template migration compatibility
+
+- **Candidate:** Current main plus plugin provider templates, tested only with
+  temporary databases, synthetic credentials and isolated Host processes.
+- **Upgrade paths:** Fresh v26; real v24 without either addition; main v25 with
+  discovery state; development v25 with template bindings but no discovery state.
+- **Expected:** Both structures exist at v26. Accounts, encrypted credentials,
+  saved model bindings/defaults, template identities and sessions remain intact.
+  Existing unlisted membership is not reset; missing discovery state initializes
+  discovered rows as published. Backups are readable and unchanged on reopen.
+- **Selection:** Composer excludes unlisted, non-chat plugin and image-generation
+  bindings together; republication restores only eligible configured chat models.
+- **Coverage:** Rust `db::` and `turn_queue::` suites, `composer-models.test.mjs`,
+  `plugin-provider-model-operations.test.mjs`, `e2e-model-discovery-state.mjs`,
+  and both `provider-template-*-host.e2e.mjs` isolated-process fixtures.

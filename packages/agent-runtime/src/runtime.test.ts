@@ -8527,7 +8527,7 @@ describe("DesktopAgentRuntime subagents", () => {
     });
     expect(result.details.error).toContain("not available for delegation");
     expect(subagentRuns.calls).toHaveLength(0);
-    expect(host.call).toHaveBeenCalledWith("provider.resolveSubagentModel", { key: "remote/remote-model" });
+    expect(host.call).toHaveBeenCalledWith("provider.resolveSubagentModel", { key: "remote/remote-model", sessionId: "session-1" });
     await taskTool(runtime).execute("own-pin", { agent: "reviewer", task: "Review." });
     expect(subagentRuns.calls[0].provider).toBe(remote);
     expect(taskTool(runtime).description).toContain("Default model: remote/remote-model");
@@ -8661,7 +8661,7 @@ describe("DesktopAgentRuntime subagents", () => {
       const denied = await taskTool(runtime).execute("revoked", { agent: "explorer", task: "Search.", model: "new/new-model" });
       expect(denied.details.error).toContain("not available for delegation");
       expect(subagentRuns.calls).toHaveLength(1);
-      expect(host.call).toHaveBeenLastCalledWith("provider.resolveSubagentModel", { key: "new/new-model" });
+      expect(host.call).toHaveBeenLastCalledWith("provider.resolveSubagentModel", { key: "new/new-model", sessionId: "session-1" });
     } finally { await runtime.dispose(); }
   });
 
@@ -10427,7 +10427,7 @@ describe("DesktopAgentRuntime subagents", () => {
       subagentRuns.deferred = false;
       try {
         await startTask(runtime, "task-2", { agent: "explorer", task: "Continue.", resume: "del-1" });
-        expect(host.call).toHaveBeenCalledWith("provider.resolveSubagentModel", { key: "dynamic/dynamic-model" });
+        expect(host.call).toHaveBeenCalledWith("provider.resolveSubagentModel", { key: "dynamic/dynamic-model", sessionId: "session-1" });
         expect(subagentRuns.calls[0].provider).toBe(allowed ? selected : provider);
       } finally { await runtime.dispose(); }
     });

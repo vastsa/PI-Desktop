@@ -31,6 +31,9 @@ const ErrorCodes = {
 export type RuntimeProvider = {
   id: string;
   name: string;
+  ownerPluginId?: string;
+  pluginTemplateId?: string;
+  pluginTemplateVersion?: 1;
   vendorKey?: string;
   baseUrl?: string;
   modelId?: string;

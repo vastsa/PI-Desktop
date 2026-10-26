@@ -31,6 +31,8 @@ import { ProviderConnectionFields } from "./ProviderConnectionFields";
 import { useProbeFeedback } from "./useProbeFeedback";
 import { ServiceChooser } from "./ServiceChooser";
 import { PluginProviderKeySetupForm } from "./PluginProviderKeySetupForm";
+import { ProviderTemplateSetupForm } from "./ProviderTemplateSetupForm";
+import { PluginProviderSettingsDialog } from "./PluginProviderSettingsDialog";
 import {
   CUSTOM_SERVICE,
   JEV_SERVICE,
@@ -146,7 +148,9 @@ export function ProviderSetupDialog({
   // A format the user picked by hand outranks every inference about this row.
   const [apiStyleTouched, setApiStyleTouched] = useState(false);
   const [choosing, setChoosing] = useState(false);
-  const chooserOpen = choosing || !service;
+  const [selectedTemplate, setSelectedTemplate] = useState<PluginProviderCatalogMeta | null>(null);
+  const [createdAccount, setCreatedAccount] = useState<ProviderPublic | null>(null);
+  const chooserOpen = !selectedTemplate && !createdAccount && (choosing || !service);
 
   useEffect(() => {
     if (editing || !chooserOpen) return;
@@ -255,6 +259,7 @@ export function ProviderSetupDialog({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (selectedTemplate || createdAccount) return;
       if (event.key !== "Escape" || saving) return;
       if (advancedOpen) {
         setAdvancedOpen(false);
@@ -269,7 +274,7 @@ export function ProviderSetupDialog({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [advancedOpen, choosing, onClose, saving, service]);
+  }, [advancedOpen, choosing, onClose, saving, service, selectedTemplate, createdAccount]);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const focusAfterServiceChange = (next: string) => {
@@ -583,7 +588,11 @@ export function ProviderSetupDialog({
         onPickSubscription={editing ? undefined : onPickSubscription}
         showClassifiers={!editing}
         pluginProviders={editing ? [] : pluginProviderOptions}
-        onPickPluginProvider={editing ? undefined : onPickPluginProvider}
+        onPickPluginProvider={editing ? undefined : (providerId, pluginName) => {
+          const template = pluginProviderCatalog.find((entry) => entry.providerId === providerId && entry.templateId);
+          if (template) setSelectedTemplate(template);
+          else onPickPluginProvider?.(providerId, pluginName);
+        }}
       />
     </>
   );
@@ -596,6 +605,17 @@ export function ProviderSetupDialog({
   const jevView = (
     <JevServiceForm onClose={onClose} onConfigured={() => onJevConfigured?.()} />
   );
+
+  if (createdAccount) {
+    return <PluginProviderSettingsDialog
+      key={createdAccount.id}
+      provider={createdAccount}
+      imageModelIds={[]}
+      initialModelSource="refresh"
+      onClose={onClose}
+      onSaved={async (saved, bindings, images) => { await onSaved(saved, bindings, images); }}
+    />;
+  }
 
   return portalOverlay(
     <OverlayBackdrop
@@ -613,7 +633,10 @@ export function ProviderSetupDialog({
         aria-labelledby="provider-setup-title"
         onClick={(event) => event.stopPropagation()}
       >
-        {chooserOpen ? chooserView : pluginCatalogSetup ? (
+        {selectedTemplate ? (
+          <ProviderTemplateSetupForm template={selectedTemplate} onClose={onClose}
+            onCreated={setCreatedAccount} onBusyChange={setSaving} />
+        ) : chooserOpen ? chooserView : pluginCatalogSetup ? (
           provider ? (
             <PluginProviderKeySetupForm
               provider={provider}

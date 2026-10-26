@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v25)
+# 04. Data Storage (Schema v26)
 
 ## 0. Ownership decision
 
@@ -1591,7 +1591,7 @@ truncating at a guessed position.
   Sessions, providers, and settings from the old file are not carried over;
   the archive remains for manual recovery. All pre-v7 migration code
   (v1 `settings.sqlite` import, v2→v6 chain) is deleted.
-- Fresh installs run the full v25 DDL directly.
+- Fresh installs run the full v26 DDL directly.
 - **Schema v7 first reaches v8, then uses the guarded path.** The v7→v8
   migration is followed by the same guarded v8→v15 migration; schema-v9 and
   schema-v10 databases take the same guarded path and receive an exact readable
@@ -1946,3 +1946,24 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+## Provider template bindings — schema 26
+
+The v25→v26 migration creates `provider_template_bindings` after a migration
+backup, then advances `PRAGMA user_version` transactionally. The v24→v25
+discovery migration remains first. Development v25 files with template bindings
+but no discovery column gain that column in the v26 transaction; existing
+bindings and discovery membership are preserved. Columns:
+`provider_id TEXT PRIMARY KEY REFERENCES providers(id) ON DELETE CASCADE`,
+`template_id TEXT NOT NULL`, `version INTEGER NOT NULL CHECK(version=1)`,
+`definition_json TEXT NOT NULL`. The owner remains `providers.owner_plugin_id`;
+the definition stores validated template metadata, never credentials.
+
+No existing provider is renamed or automatically adopted. Legacy and official
+accounts, encrypted secrets, model preferences and explicit empty selection
+remain intact. `config_json.pluginTemplate.pending` marks a new incomplete
+OAuth account; startup removes abandoned pending accounts with observable
+cleanup errors, not completed accounts that need reauthentication. Individual
+account deletion cascades the binding; uninstall deletes owned accounts/secrets
+but retains historical conversations. See
+[template account lifecycle](../07-plugins/17-provider-template-accounts.md).

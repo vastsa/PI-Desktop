@@ -648,3 +648,14 @@ The default conversation model has a separate **Image generation model** row bel
 it. Model Advanced can select that unique binding; provider form Save commits it,
 Cancel discards it, and replacing it leaves the conversation default unchanged.
 See [image generation and editing](21-image-generation.md) for the tool and batch contract.
+
+## Template-account catalog identity
+
+Plugin template chooser keys (`plugin-template:<pluginId>:<templateId>`) are
+not model/provider bindings. After explicit setup, models, discovery caches,
+refresh, aliases, limits, reasoning and delegation preferences are keyed by the
+generated native account ID. Explicit empty selection remains empty after
+reload. Directory entries remain available after adding accounts; unavailable
+sources stay unavailable in historic model references without deleting chats.
+Official entries can coexist with plugin equivalents, with visible attribution.
+See [template account contract](../07-plugins/17-provider-template-accounts.md).

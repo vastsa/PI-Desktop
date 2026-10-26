@@ -20,6 +20,9 @@ Each ADR includes:
 
 | ID | Title | Status |
 |---|---|---|
+| plugin-provider-template-accounts | [Plugin templates create independent native accounts](plugin-provider-template-accounts.md) | Accepted; supersedes ADR 0322 singleton-only directory rule |
+| plugin-provider-user-model-preferences | [Plugin provider user model preferences](plugin-provider-user-model-preferences.md) | Accepted; amends ADR 0259 |
+| global-plugin-provider-inference | [Global plugin provider inference](global-plugin-provider-inference.md) | Accepted |
 | browser-background-lifecycle | [Browser page execution outlives side-panel presentation](browser-background-lifecycle.md) | Accepted |
 | asktool-draft-survives-session-switch | [AskTool drafts survive a card remount](asktool-draft-survives-session-switch.md) | Accepted |
 | tool-abort-abandons-host-call | [A user stop ends the turn even when the running tool cannot be cancelled](tool-abort-abandons-host-call.md) | Accepted for implementation |

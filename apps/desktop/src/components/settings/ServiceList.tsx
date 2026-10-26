@@ -75,18 +75,16 @@ export function ServiceList({
     const kind = serviceRowKind(provider);
     const pluginOAuth = kind === "account" && !!provider.ownerPluginId;
     const items: CapabilityMenuItem[] = [];
-    // A plugin owns its row's fields and lifetime; only its key is the user's.
-    if (kind !== "plugin" && !pluginOAuth) {
-      items.push({
-        key: "edit",
-        label: t(kind === "account" ? "settings.editVendorAccount" : "settings.editProvider"),
-        icon: <IconPencil size={14} />,
-        onSelect: () => {
-          closeMenu(false);
-          onEdit(provider);
-        },
-      });
-    }
+    // Plugin lifetime and credentials stay separate from editable model preferences.
+    items.push({
+      key: "edit",
+      label: t(kind === "account" && !pluginOAuth ? "settings.editVendorAccount" : "settings.editProvider"),
+      icon: <IconPencil size={14} />,
+      onSelect: () => {
+        closeMenu(false);
+        onEdit(provider);
+      },
+    });
     items.push({
       key: "test",
       label: t("settings.testConnection"),
@@ -118,13 +116,13 @@ export function ServiceList({
         },
       });
     }
-    if (kind !== "plugin") {
+    if (kind !== "plugin" || provider.pluginTemplateId) {
       const isArmed = armed === provider.id;
       items.push({
         key: "remove",
         label: isArmed
           ? t("settings.capabilityRemoveConfirm")
-          : t(pluginOAuth
+          : t(pluginOAuth && !provider.pluginTemplateId
               ? "settings.vendorSignOut"
               : kind === "account" ? "settings.vendorRemoveAccount" : "settings.delete"),
         icon: <IconTrash size={14} />,
@@ -145,16 +143,8 @@ export function ServiceList({
   return (
     <ul className="model-provider-list" aria-busy={reorder.saving}>
       {reorder.providers.map((provider) => {
-        const kind = serviceRowKind(provider);
         const rowBusy = reorder.saving || isRowBusy(provider.id);
-        const onOpen =
-          kind === "account" && provider.ownerPluginId
-            ? undefined
-            : kind !== "plugin"
-            ? () => onEdit(provider)
-            : provider.authKind === "api_key"
-              ? () => toggleKeyEntry(provider)
-              : undefined;
+        const onOpen = () => onEdit(provider);
         return (
           <ServiceRow
             key={provider.id}

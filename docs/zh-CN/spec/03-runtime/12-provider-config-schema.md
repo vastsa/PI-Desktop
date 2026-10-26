@@ -112,14 +112,37 @@
 }
 ```
 
-插件通过 `contributes.providers` 声明的行带有 `ownerPluginId`（其行 id 为
-`plugin:<pluginId>:<declaredId>`），对模型解析、发现、连接测试和会话绑定而言
-它是一行普通 provider。用户路径对它只读：`providers.update` 与
-`providers.delete` 会以 `PROVIDER_OWNED_BY_PLUGIN` 错误拒绝。该声明在每次插件
-加载时从插件 manifest 重新读取，并对自己拥有的字段具有权威性，而已存储的
-`headers`、OAuth 账户标签以及用户填入的凭据都会保留。停用插件保留该行并将其
-关闭；卸载插件或移除该声明会删除该行及其两个凭据引用（ADR 0259，
-`07-plugins/02-plugin-manifest-schema.md` §5.4）。
+旧 `contributes.providers` 行带有 `ownerPluginId` 和稳定 ID
+`plugin:<pluginId>:<declaredId>`，使用普通提供商的模型解析、发现与会话路径。
+显式声明的自定义适配器通过 [版本化插件 API](../07-plugins/03-plugin-api.md#全局提供商推理适配器)
+为主会话、子代理与支持的图像操作提供推理；现有兼容提供商沿用普通传输和连接测试。
+
+设置允许编辑显示名、所选模型绑定与用户启用状态。显式偏好跨 manifest 刷新与插件重载保留，
+显式空选择不会被发现结果或默认模型填回。Host 将稀疏的显式 `name`、`enabled`
+与整表 `models` 写入现有可扩展配置边界 `config_json.pluginUserOverrides`，不为偏好另建 schema。
+有效模型绑定仍在 `config_json.models`。
+
+manifest 所有的适配器默认值与逐模型操作限制存于 Host 专用 `config_json.pluginAdapter`，
+不属于 `pluginUserOverrides`。只读 `ProviderPublic.pluginModelOperations` 投影有效已选模型能力，
+用户选择不能授予未声明 chat/images 操作。manifest 刷新替换这些元数据，移除适配器即移除元数据。
+OAuth 适配器的图像选择需要已认证账号与显式 `images` 能力，
+不依赖内置厂商 ID 或兼容 HTTP 图像 URL。
+提供商 OAuth `requestData` 与 OAuth 密钥一起加密，不存于公开配置或序列化至 Agent sidecar。
+
+插件继续拥有厂商、类型、协议、端点、认证及 API 风格。普通更新若改变这些传输字段，
+在写凭据前以 `PROVIDER_OWNED_BY_PLUGIN` 拒绝；旧客户端提交相等值仍可兼容。
+没有用户覆盖时，刷新声明继续提供默认值。禁用插件强制关闭有效行，再启用恢复用户记忆选择。
+Host 专用 `config_json.pluginEnabled` 生命周期标记防止通用 `enabled: true` 绕过插件禁用
+（`PLUGIN_DISABLED`）。声明端点、API 风格、协议或认证变更时，
+旧凭据、headers、OAuth 元数据与发现缓存失效，不能转发到新服务。
+卸载或删除旧声明清除行、覆盖值与两个凭据引用。
+`providers.delete` 拒绝旧单例插件行，但允许删除独立模板账号及其凭据和发现结果，
+且保留可复用入口。参见 [模型偏好 ADR](/adr/plugin-provider-user-model-preferences)。
+
+旧 OAuth 单例每项贡献只有一份凭据，自定义 OAuth 回调负责登录和刷新；
+退出只清密钥，禁用保留行，声明移除或卸载才删除行。
+模板账号则使用独立 UUID，明确按账号重新认证或删除。
+所有插件拥有的行和密钥都不进入可移植配置捕获；模板账号不会由 manifest 默认值隐式重建。
 
 `models[].alias` 是可选展示标签（ADR 0192）。`models[].id` 仍是发给提供商的
 身份，别名从不用于提供商或模型解析。host-core 会修剪别名、丢弃空白值，
@@ -540,3 +563,17 @@ Anthropic Messages 行仍使用 Anthropic 自己的形状。模型 ID 不参与�
 服务实际返回的原值。
 
 无效或带凭据的地址仍然不给建议，取消仍然不写入草稿。
+
+## 插件模板账号（schema 25）
+
+`contributes.providerTemplates` 将 `(ownerPluginId, pluginTemplateId)`
+与 Host 生成的提供商 UUID 分离。公开行可带 `pluginTemplateId` 与 `pluginTemplateVersion: 1`；
+普通创建／更新 DTO 不能指定所有权或密钥引用。
+`providers.createFromTemplate` 只接收插件／模板身份及可选名称、API key。
+Main 存入凭据后，通过 `providers.completeTemplateOAuth` 完成 OAuth。
+Schema25 增加 `provider_template_bindings`；保留现有行、凭据及显式空模型偏好，不做隐式转换。
+上述固定 `plugin:<pluginId>:<declaredId>` 和仅退出登录规则，
+只适用于旧 `contributes.providers`，不适用于模板账号。
+
+待登录清理、重新认证、来源失效、账号删除、撤权与卸载语义见
+[模板 schema、RPC 与生命周期](../07-plugins/17-provider-template-accounts.md)。官方提供商保持不变。

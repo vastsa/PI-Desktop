@@ -419,6 +419,67 @@ type PluginModelInfo = {
 只返回已启用且已认证的 provider 行（API key、OAuth 或 `authKind: "none"`）。不含密钥。
 `models.list` 也是面板桥通道，选择器页面可以自行填充。宿主传输不可用时返回空列表，不记警告（D080）。
 
+### 全局提供商推理适配器
+
+**必须显式授予 `provider.register` 与 `provider.inference`。**
+适配器接收所选模型的请求，包括对话内容、工具 schema，以及仅属于该提供商的请求凭据。
+只有注册权限并不能授权这些访问。插件入口在现有 utility 进程运行，不是操作系统安全沙箱；
+因此只能向可信代码授予权限。
+
+在提供商贡献中声明 `adapter: { version: 1, chat: true }`，
+然后从插件入口模块导出与 manifest 本地提供商 ID 对应的适配器：
+
+```ts
+import type { PluginProviderAdaptersV1 } from "@pi-desktop/plugin-sdk";
+
+// Local fixture for a contribution whose id is "echo"; no network or credentials.
+export const providerAdapters = {
+  echo: {
+    version: 1,
+    async *chat(request, { signal }) {
+      signal.throwIfAborted();
+      yield { type: "text", delta: `Selected model: ${request.modelId}` };
+      yield { type: "done", stopReason: "stop", usage: { input: 0, output: 0 } };
+    },
+  },
+} satisfies PluginProviderAdaptersV1;
+```
+
+SDK 导出 `PluginProviderAdapterV1`、聊天／图像请求与结果类型，以及
+`PluginProviderInferenceContextV1`。请求使用版本 1、插件本地 `providerId`
+与不变的线上 `modelId`。上下文提供 `signal`，可选提供
+`credential: { apiKey?, headers?, requestData? }`，绝不提供刷新令牌或密钥引用。
+不得记录凭据、路由元数据或消息正文。
+
+- `chat(request, context)` 返回 `AsyncIterable` 或其 Promise。
+  规范化的 system/user/assistant/tool-result 消息保留内容顺序、工具增删与重放签名。
+  事件依次为 `text`／`thinking` 增量、完整 `toolCall`，最终必须有
+  `done`（stop、length 或 toolUse，含 usage）或 `error`。没有终态事件即失败。
+  工具由原生 Agent 执行，不由适配器执行。
+- `images(request, context)` 返回 `{ images, usage? }`。
+  输入包含文本与可选 base64 参考图；输出必须是 base64 图像，
+  PNG/JPEG/WebP/GIF MIME 与文件签名必须一致，不接受 URL 或文件路径。
+  现有图像加载器与 scratch 输出处理仍是权威实现。
+- 模型可选 `operations` 限制 chat/images 能力，省略时继承声明。
+  `supportsImages` 仅表示图像输入，不表示生成；设置与子代理授权不能增加未声明操作。
+  Host 通过只读 `ProviderPublic.pluginModelOperations` 投影有效已选模型能力。
+  原生聊天排除仅图像模型；图像选择要求 `images`，插件 OAuth 账号也一样。
+  自定义图像适配器不要求兼容 HTTP 图像端点。
+- 主会话与预配置／按需子代理使用相同原生提供商身份。
+  Host 反向 RPC 严格绑定会话、提供商、模型与 runtime 代际。
+  取消、卸载、崩溃和释放使工作失效，迟到结果被拒绝。
+  适配器必须响应 `signal` 并释放迭代器。
+- 聊天使用拉取式背压。每个请求最多 16 MiB，每个事件最多 256 KiB，
+  每条流最多 32 MiB／32,768 个事件，插件活跃调用上限为 16，
+  单次调用超时 120 秒，调用总生命周期最多 10 分钟。
+  图像结果最多四张，每张最多 8 MiB，且受总载荷限额约束。
+- 自定义推理不自动重试或回退，以免模糊失败触发重复付费请求；失败必须可观测。
+
+未声明 `adapter` 的贡献继续使用现有兼容传输。
+会话作用域的可信扩展 Agent 不会升级为全局提供商。
+参见 [安全边界](04-plugin-security.md#全局提供商推理边界) 与
+[决策记录](/adr/global-plugin-provider-inference)。
+
 ### provider OAuth（需要 `provider.oauth`）
 
 OAuth provider 声明需要同时拥有 `provider.register` 和 `provider.oauth`、设置
@@ -439,6 +500,7 @@ type PluginProviderOAuthCredential = {
   expiresAt?: number       // Unix epoch milliseconds
   accountLabel?: string
   headers?: Record<string, string>
+  requestData?: Record<string, PluginProviderJson> // encrypted provider-specific routing metadata
 }
 
 type PluginProviderOAuthContext = { signal: AbortSignal }
@@ -448,9 +510,25 @@ onProviderOAuth(request, { signal }): Promise<PluginProviderOAuthCredential>
 
 登录时，用户授权后回调返回凭据。刷新时，宿主把当前凭据传给同一回调，回调返回更新后
 的凭据。宿主把凭据加密存于 provider 行对应的 OAuth secret 引用下，并串行执行刷新。
-回调只能访问自己的 provider 声明凭据。宿主按请求向 Agent Runtime 传递解析后的访问令牌；
-刷新令牌不会发给渲染进程或 Agent Runtime。每个 provider 声明只保存一个账号；退出登录会
-清除凭据，但保留 manifest 所有的 provider 行。
+回调只能访问自己贡献的凭据。兼容传输按请求接收解析后的访问令牌。
+自定义推理仅通过明确授权的适配器上下文接收访问令牌、headers 与可选路由元数据，
+不经 Agent sidecar 或 Renderer 传递；刷新令牌仅留在 OAuth 路径。
+旧单例每个贡献存一个账号，退出登录清除凭据但保留 manifest 所有的行。
+
+`requestData` 用于除访问令牌外还需要项目标识或区域的服务，必须是 JSON 对象，
+UTF-8 编码最多 16 KiB，嵌套深度最多 64。循环引用、非 JSON 值和非有限数在存储前被拒绝。
+它与凭据一起加密，不进入公开模型配置。刷新省略该字段会保留旧值，`{}` 则清空。
+普通 `resolveAuth` 仍只返回 key/header；推理访问校验已启用提供商、所属插件与当前 runtime 代际。
+
+Antigravity 风格集成组合 `authKind: "oauth"`、显式 `provider.oauth` 和
+`provider.inference` 授权、`onProviderOAuth`，以及匹配的
+`providerAdapters[contributionId]` chat/images 处理器。
+登录时把服务项目数据放入 `requestData`，推理时从上下文读取。
+原生模型编辑器、委派授权与图像模型选择器使用同一提供商身份。
+插件仍须实现真实服务的 OAuth 客户端、scopes 与请求响应协议；
+这些接口不代表拥有服务权益或已经验证真实 Antigravity 互通。
+可执行的离线登录 → 刷新 → 主会话／委派／图像 → 退出路径见
+`apps/desktop/test/plugin-provider-oauth-inference.test.mjs`。
 
 插件可以使用宿主提供的登录界面，不必自行打开窗口：
 
@@ -1262,3 +1340,14 @@ MCP 服务器由主机从清单中读取，因此插件无法添加
 
 所有高风险入口点都会断言声明+授予的权限并发出审核日志行。
 插件面板不再接收完整的 `pi` 对象；他们使用 `window.pluginBridge.invoke`。
+
+## 提供商模板账号
+
+`contributes.providerTemplates` 添加纯数据的可复用集成，不是插件代码的账号管理 API。
+Host 原生创建请求仅接受 `{pluginId, templateId, name?, secretValue?}`，
+由 Rust 生成身份与来源绑定。自定义 OAuth 请求可包含 Host 选定的 `accountId`；
+推理绑定在现有 runtime／会话／模型校验之外加入模板与账号身份。
+标准兼容 key／无认证传输，以及声明式公开客户端 PKCE／设备码 OAuth
+不需要自定义执行权限，也不把凭据交给插件回调。自定义回调仍需分别授权。
+原始异常与错误事件被归一化为 Host 控制的固定诊断。
+参见 [完整契约与示例](17-provider-template-accounts.md)。

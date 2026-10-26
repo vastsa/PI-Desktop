@@ -208,6 +208,8 @@ export function applyVisibleModelSelection(
 export type ModelSelectionPanesProps = {
   imageModelIds?: string[];
   onImageModelChange?: (id: string, selected: boolean) => void;
+  /** Optional Host capability projection; preferences cannot grant an operation. */
+  modelOperations?: Record<string, ("chat" | "images")[]>;
   discovery: ProviderModelsState & { canReload?: boolean };
   selection: ModelSelection;
   /** Heading of the discovered list: a service's models, or an account's. */
@@ -249,6 +251,7 @@ export function ModelSelectionPanes({
   imageModelIds,
   lookupContext,
   onImageModelChange,
+  modelOperations,
   customModelInputRef,
   autoPicked = false,
 }: ModelSelectionPanesProps) {
@@ -964,7 +967,7 @@ export function ModelSelectionPanes({
                             updateBinding(binding.id, { supportsDocuments: next })
                           }
                         />
-                        {onImageModelChange ? (
+                        {onImageModelChange && (!modelOperations || modelOperations[binding.id]?.includes("images") || imageModelSelected) ? (
                           <label className="provider-chosen-capability">
                             <input
                               type="checkbox"
@@ -993,6 +996,7 @@ export function ModelSelectionPanes({
                             <input
                               type="checkbox"
                               checked={binding.availableForSubagents ?? false}
+                              disabled={busy || !!modelOperations && !modelOperations[binding.id]?.includes("chat")}
                               onChange={(event) =>
                                 updateBinding(binding.id, {
                                   availableForSubagents:

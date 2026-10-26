@@ -329,7 +329,11 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     listRuntimeProviders,
     enrichProviderList,
     bindingForModel,
-    onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
+    onProviderInvalidated: (providerId) => {
+      getSidecar()?.invalidateProviderInference(providerId);
+      vendorOAuth.invalidatePluginAccount(providerId);
+      return liveCallService?.invalidateProvider(providerId);
+    },
   });
   registerJevIpc({ registrar, logger });
   registerWorktreeIpc({

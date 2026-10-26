@@ -1,3 +1,9 @@
+import { normalizeProviderTemplate, validateProviderTemplateSchema, type PluginProviderTemplateV1 } from "./provider-template.js";
+export { normalizeProviderTemplate, validateProviderTemplateOAuth, isProviderTemplateHttpsUrl } from "./provider-template.js";
+export type { PluginProviderTemplateV1, PluginProviderTemplateOAuthV1, NormalizedPluginProviderTemplate } from "./provider-template.js";
+export { PluginProviderInferenceHost } from "./provider-inference-host.js";
+import { validateProviderAdapterDeclaration, type PluginProviderAdapterDeclarationV1, type PluginProviderAdaptersV1, type PluginProviderJson } from "./provider-adapter.js";
+export * from "./provider-adapter.js";
 import { isValidBusTopic, isValidBusTopicPattern } from "./bus-topics.js";
 import {
   parseFsPolicy,
@@ -157,13 +163,15 @@ export type PluginManifest = {
     agentExtensions?: string[];
     /**
      * Providers this plugin adds to Settings' provider list. Requires the
-     * `provider.register` permission; each row is read-only for the user and
-     * refreshed from this manifest on every load. API-key providers are also
-     * offered in the Add Service chooser until the user stores a key. An
+     * `provider.register` permission. Transport identity is manifest-owned;
+     * explicit user model/name/enablement preferences survive refresh. API-key
+     * providers are offered in Add Service until the user stores a key. An
      * optional category groups those chooser entries; it is display metadata
      * and may be localized.
      */
     providers?: PluginProviderContrib[];
+    /** Versioned declarations; declarative OAuth is executed by the Host. */
+    providerTemplates?: PluginProviderTemplateV1[];
     settings?: PluginSettingContrib[];
     themes?: PluginThemeContrib[];
     /** A host-rendered, image-card theme selector in Settings → Extensions. */
@@ -601,6 +609,8 @@ export type PluginProviderOAuthCredential = {
   expiresAt?: number;
   accountLabel?: string;
   headers?: Record<string, string>;
+  /** Encrypted provider routing metadata, exposed only to its authorized inference adapter (16 KiB JSON object). */
+  requestData?: Record<string, PluginProviderJson>;
 };
 
 export type PluginProviderOAuthPrompt = {
@@ -627,6 +637,8 @@ export type PluginProviderOAuthRequest = {
   operation: "login" | "refresh";
   /** Plugin-local provider contribution id. */
   providerId: string;
+  /** Host account row identity; providerId remains the plugin-local contribution id. */
+  accountId?: string;
   /** Present during login; use it for Host-rendered prompts and progress. */
   loginId?: string;
   /** Present during refresh; never sent to the renderer or Agent Runtime. */
@@ -644,6 +656,8 @@ export const MAX_PLUGIN_PROVIDER_MODELS = 64;
 
 /** One model a contributed provider exposes to the model picker. */
 export type PluginProviderModelContrib = {
+  /** Optional operation restriction; image input (`supportsImages`) is independent. */
+  operations?: ("chat" | "images")[];
   /** Model id sent on the wire, 1..256 characters. */
   id: string;
   /** Label shown in the picker; the id when omitted. */
@@ -690,6 +704,8 @@ export type PluginProviderContrib = {
   authKind?: PluginProviderAuthKind;
   /** OAuth sign-in metadata; valid only when `authKind` is `oauth`. */
   oauth?: PluginProviderOAuthContrib;
+  /** Isolated custom inference; requires both provider.register and provider.inference. */
+  adapter?: PluginProviderAdapterDeclarationV1;
   /** Up to 64 models with unique ids. An empty list enables endpoint discovery after key setup. */
   models: PluginProviderModelContrib[];
 };
@@ -1529,6 +1545,8 @@ export type PluginHostApi = {
 };
 
 export type PluginModule = {
+  /** Versioned adapters keyed by manifest-local provider contribution id. */
+  providerAdapters?: PluginProviderAdaptersV1;
   onLoad?: () => Promise<void> | void;
   onUnload?: () => Promise<void> | void;
   /** Performs OAuth login or refresh for one `contributes.providers` entry. */
@@ -1583,6 +1601,7 @@ export const PLUGIN_PERMISSIONS = [
   "renderer.extension",
   "provider.register",
   "provider.oauth",
+  "provider.inference",
   "desktop.control",
   "models.list",
   "project.create",
@@ -1702,14 +1721,19 @@ export function validateManifest(raw: unknown): {
   }
   if (
     !contributesError &&
-    (m.contributes?.providers?.length ?? 0) > 0 &&
+    ((m.contributes?.providers?.length ?? 0) + (m.contributes?.providerTemplates?.length ?? 0)) > 0 &&
     !(m.permissions ?? []).includes("provider.register")
   ) {
     return { ok: false, error: "contributes.providers requires the provider.register permission" };
   }
+  if (!contributesError && [...(m.contributes?.providers ?? []), ...(m.contributes?.providerTemplates ?? [])].some(provider => provider.adapter !== undefined)
+    && !(m.permissions ?? []).includes("provider.inference")) {
+    return { ok: false, error: "Provider adapters require the provider.inference permission" };
+  }
   if (
     !contributesError &&
-    (m.contributes?.providers ?? []).some((provider) => provider?.authKind === "oauth") &&
+    ((m.contributes?.providers ?? []).some((provider) => provider?.authKind === "oauth") ||
+      (m.contributes?.providerTemplates ?? []).some(provider => provider.authKind === "oauth" && (provider.oauth?.flow ?? "custom") === "custom")) &&
     !(m.permissions ?? []).includes("provider.oauth")
   ) {
     return { ok: false, error: "OAuth providers require the provider.oauth permission" };
@@ -1962,8 +1986,15 @@ export function validateContributions(
     }
   }
 
-  const declaredProviders = contributes.providers ?? [];
-  if (!Array.isArray(declaredProviders)) return "contributes.providers must be an array";
+  const legacyProviders = contributes.providers ?? [];
+  if (!Array.isArray(legacyProviders)) return "contributes.providers must be an array";
+  const templates = contributes.providerTemplates === undefined ? [] : contributes.providerTemplates;
+  if (!Array.isArray(templates)) return "contributes.providerTemplates must be an array";
+  for (const template of templates) {
+    const error = validateProviderTemplateSchema(template);
+    if (error) return error;
+  }
+  const declaredProviders = [...legacyProviders, ...templates.map(normalizeProviderTemplate)];
   const providerIds = new Set<string>();
   for (const provider of declaredProviders) {
     if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
@@ -2022,6 +2053,9 @@ export function validateContributions(
       (typeof provider.vendorKey !== "string" || !provider.vendorKey.trim())
     ) {
       return `provider "${provider.id}" vendorKey must be a non-empty string`;
+    }
+    if (provider.adapter !== undefined && !validateProviderAdapterDeclaration(provider.adapter)) {
+      return `provider "${provider.id}" adapter must declare version 1 and chat and/or images`;
     }
     if (provider.baseUrl !== undefined) {
       if (typeof provider.baseUrl !== "string") {
@@ -2118,6 +2152,11 @@ export function validateContributions(
       }
       if (model.supportsImages !== undefined && typeof model.supportsImages !== "boolean") {
         return `provider "${provider.id}" model ${modelId} supportsImages must be a boolean`;
+      }
+      if (model.operations !== undefined && (!provider.adapter || !Array.isArray(model.operations)
+        || !model.operations.length || new Set(model.operations).size !== model.operations.length
+        || model.operations.some(operation => !["chat", "images"].includes(operation) || !provider.adapter?.[operation]))) {
+        return `provider "${provider.id}" model ${modelId} operations must restrict declared adapter capabilities`;
       }
       if (
         model.thinkingLevels !== undefined &&
@@ -2633,3 +2672,14 @@ export {
   type PluginAttachmentListPayload,
   type PluginDraftListener,
 } from "./renderer-composer.js";
+
+/** Parse one template with the same closed schema and model rules used at install. */
+export function parseProviderTemplate(value: unknown):
+  | { ok: true; template: PluginProviderTemplateV1 }
+  | { ok: false; error: string } {
+  const error = validateProviderTemplateSchema(value);
+  if (error) return { ok: false, error };
+  const template = value as PluginProviderTemplateV1;
+  const providerError = validateContributions({ providers: [normalizeProviderTemplate(template)] });
+  return providerError ? { ok: false, error: providerError } : { ok: true, template };
+}

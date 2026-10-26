@@ -688,7 +688,13 @@ fn config_sync_rpc_err(error: impl ToString) -> JsonRpcError {
 
 fn provider_rpc_err(error: impl ToString) -> JsonRpcError {
     let message = error.to_string();
-    for error_code in ["MODEL_ALIAS_TOO_LONG", "MODEL_BINDINGS_DEGRADED"] {
+    for error_code in [
+        "MODEL_ALIAS_TOO_LONG",
+        "MODEL_BINDINGS_DEGRADED",
+        "PROVIDER_TEMPLATE_INVALID",
+        "PROVIDER_TEMPLATE_UNAVAILABLE",
+        "PROVIDER_TEMPLATE_OAUTH_REQUIRED",
+    ] {
         if message.starts_with(&format!("{error_code}:")) {
             return rpc_err(1002, message, error_code);
         }
@@ -2531,6 +2537,43 @@ async fn handle_request(
                 ));
             }
             Ok(json!({ "ok": true }))
+        }
+        "providers.getTemplate" => {
+            let input: crate::plugins::provider_templates::TemplateLookup =
+                serde_json::from_value(params)
+                    .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let template = crate::plugins::provider_templates::get_template(&st.plugins, &input)
+                .map_err(provider_rpc_err)?;
+            Ok(json!({ "template": template }))
+        }
+        "providers.createFromTemplate" => {
+            let input: crate::plugins::provider_templates::CreateFromTemplate =
+                serde_json::from_value(params)
+                    .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let provider = crate::plugins::provider_templates::create_from_template(
+                &st.db,
+                &st.secrets,
+                &st.plugins,
+                input,
+            )
+            .map_err(provider_rpc_err)?;
+            Ok(json!({ "provider": provider }))
+        }
+        "providers.completeTemplateOAuth" => {
+            let input: crate::plugins::provider_templates::CompleteTemplateOAuth =
+                serde_json::from_value(params)
+                    .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let provider = crate::plugins::provider_templates::complete_oauth(
+                &st.db,
+                &st.secrets,
+                &st.plugins,
+                input,
+            )
+            .map_err(provider_rpc_err)?;
+            Ok(json!({ "provider": provider }))
         }
         "providers.create" => {
             let input: ProviderCreateInput = serde_json::from_value(params)
@@ -4967,16 +5010,14 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
             let mut st = state.lock().await;
-            let ok = st
-                .plugins
-                .uninstall(id)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            if ok {
-                if let Err(error) = crate::plugins::remove_plugin_providers(&st.db, &st.secrets, id)
-                {
-                    tracing::warn!(plugin = id, %error, "plugin provider removal failed");
-                }
-            }
+            let AppState {
+                db,
+                secrets,
+                plugins,
+                ..
+            } = &mut *st;
+            let ok = crate::plugins::provider_cleanup::uninstall(db, secrets, plugins, id)
+                .map_err(plugin_err)?;
             Ok(json!({ "ok": ok }))
         }
         "plugins.getPermissions" => {
@@ -5069,6 +5110,14 @@ async fn handle_request(
                 .plugins
                 .grant_permissions(id, permissions)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            crate::plugins::reconcile_plugin(
+                &st.db,
+                &st.secrets,
+                &st.plugins,
+                id,
+                plugin.as_ref().is_some_and(|p| p.enabled),
+            )
+            .map_err(provider_rpc_err)?;
             Ok(json!({ "plugin": plugin }))
         }
         "plugins.revokePermissions" => {
@@ -5086,6 +5135,14 @@ async fn handle_request(
                 .plugins
                 .revoke_permissions(id, permissions)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            crate::plugins::reconcile_plugin(
+                &st.db,
+                &st.secrets,
+                &st.plugins,
+                id,
+                plugin.as_ref().is_some_and(|p| p.enabled),
+            )
+            .map_err(provider_rpc_err)?;
             Ok(json!({ "plugin": plugin }))
         }
         "plugins.setAutoUpdate" => {
@@ -5566,6 +5623,9 @@ async fn handle_request(
         )),
     }
 }
+
+#[cfg(test)]
+mod provider_template_tests;
 
 #[cfg(test)]
 mod tests {

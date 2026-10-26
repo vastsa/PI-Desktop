@@ -26,6 +26,8 @@ export type ProviderPublic = {
   headers?: Record<string, string>;
   /** Per-model settings selected in the provider dialog. */
   models: ModelBinding[];
+  /** Host-projected adapter operations for selected models; not a user preference. */
+  pluginModelOperations?: Record<string, ("chat" | "images")[]>;
   /** @deprecated Use `models[0]?.id`; retained for older runtime consumers. */
   defaultModelId?: string;
   apiStyle?: string;
@@ -42,11 +44,13 @@ export type ProviderPublic = {
   temperature?: number;
   /**
    * Owning plugin id when the row came from `contributes.providers`. Absent for
-   * a row the user created. A plugin-owned row is read-only in Settings: the
-   * plugin refreshes it on every load, and `providers.update` /
-   * `providers.delete` refuse it.
+   * a row the user created. Model preferences and display name are editable;
+   * transport identity and deletion remain owned by the plugin lifecycle.
    */
   ownerPluginId?: string;
+  /** Host-owned source binding for independently created plugin accounts. */
+  pluginTemplateId?: string;
+  pluginTemplateVersion?: 1;
   createdAt: string;
   updatedAt: string;
 };

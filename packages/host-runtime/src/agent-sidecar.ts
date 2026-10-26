@@ -41,6 +41,12 @@ export type VendorAuthResolver = (input: {
   providerId: string;
 }) => Promise<unknown>;
 
+export type ProviderInferenceHandler = {
+  call: (params: Record<string, unknown>, authorizedBinding: unknown) => Promise<unknown>;
+  clear: (sessionId?: string) => void;
+  invalidateProvider?: (providerId: string) => void;
+};
+
 // The sidecar runs model-directed code paths; it must not be able to pull
 // secrets or mutate configuration through the parent proxy. Tight allowlist
 // of host methods the agent loop legitimately needs.
@@ -64,6 +70,7 @@ const HOST_PROXY_ALLOWED = new Set([
   "project.instructions.resolve",
   "provider.resolveAuth",
   "provider.resolveSubagentModel",
+  "provider.inference",
   "app.health",
   // Trusted extensions (D387): answered by the embedding host, plus the
   // session methods the ExtensionAPI reaches (spec 16 §10.1).
@@ -157,6 +164,8 @@ export class AgentSidecar {
   // ask for auth it is already using, and a session that never bound an OAuth
   // row can ask for nothing at all.
   private vendorAuthBindings = new Map<string, Set<string>>();
+  private providerInference: ProviderInferenceHandler | null = null;
+  private providerInferenceBindings = new Map<string, Map<string, unknown>>();
 
   constructor(options: AgentSidecarOptions) {
     const { launch, onStderr } = options;
@@ -200,6 +209,8 @@ export class AgentSidecar {
   private closeTransport(error: Error) {
     if (this.closed) return;
     this.closed = true;
+    this.providerInference?.clear();
+    this.providerInferenceBindings.clear();
     this.unsubscribeHost?.();
     this.unsubscribeHost = null;
     this.unsubscribeHostExit?.();
@@ -325,6 +336,42 @@ export class AgentSidecar {
     this.projectInstructionRoots.delete(sessionId.trim());
   }
 
+  setProviderInferenceHandler(handler: ProviderInferenceHandler): void {
+    this.providerInference?.clear();
+    this.providerInference = handler;
+  }
+
+  setProviderInferenceBindings(sessionId: string, bindings: ReadonlyArray<{ providerId: string; modelId: string; adapter: unknown }>): void {
+    this.providerInference?.clear(sessionId);
+    this.providerInferenceBindings.set(sessionId, new Map(bindings.map(binding => [JSON.stringify([binding.providerId, binding.modelId]), binding])));
+  }
+
+  invalidateProviderInference(providerId: string): void {
+    for (const bindings of this.providerInferenceBindings.values()) {
+      for (const [key, value] of bindings) {
+        if ((value as { providerId?: string }).providerId === providerId) bindings.delete(key);
+      }
+    }
+    this.providerInference?.invalidateProvider?.(providerId);
+  }
+
+  addProviderInferenceBinding(sessionId: string, binding: { providerId: string; modelId: string; adapter: unknown }): void {
+    const bindings = this.providerInferenceBindings.get(sessionId);
+    if (!bindings) throw new Error("Provider inference session not bound");
+    bindings.set(JSON.stringify([binding.providerId, binding.modelId]), binding);
+  }
+
+  private async invokeProviderInference(params: Record<string, unknown>): Promise<unknown> {
+    const sessionId = String(params.sessionId ?? "");
+    const bindings = this.providerInferenceBindings.get(sessionId);
+    const binding = bindings?.get(JSON.stringify([params.providerId, params.modelId]));
+    if (!binding || !this.providerInference) throw new Error("Provider inference model not bound to session");
+    const result = await this.providerInference.call(params, binding);
+    if (this.closed || this.providerInferenceBindings.get(sessionId) !== bindings
+      || bindings?.get(JSON.stringify([params.providerId, params.modelId])) !== binding) throw new Error("Provider inference binding changed");
+    return result;
+  }
+
   setVendorAuthResolver(resolver: VendorAuthResolver): void {
     this.vendorAuthResolver = resolver;
   }
@@ -355,12 +402,16 @@ export class AgentSidecar {
 
   clearVendorAuthBindings(sessionId: string): void {
     this.vendorAuthBindings.delete(sessionId.trim());
+    this.providerInference?.clear(sessionId);
+    this.providerInferenceBindings.delete(sessionId);
   }
 
   setHost(host: SidecarHostLink) {
     if (this.closed) return;
     if (this.host && this.host !== host) {
       for (const controller of this.localToolControllers.values()) controller.abort();
+      this.providerInference?.clear();
+      this.providerInferenceBindings.clear();
     }
     this.host = host;
     this.unsubscribeHost?.();
@@ -380,6 +431,8 @@ export class AgentSidecar {
       this.writeToChild(payload);
     });
     this.unsubscribeHostExit = host.onExit(() => {
+      this.providerInference?.clear();
+      this.providerInferenceBindings.clear();
       for (const controller of this.localToolControllers.values()) controller.abort();
       this.unsubscribeHost?.();
       this.unsubscribeHost = null;
@@ -419,11 +472,11 @@ export class AgentSidecar {
    * `availableForSubagents` gate on each model binding.
    */
   private subagentModelResolver:
-    | ((key: string) => Promise<unknown>)
+    | ((key: string, sessionId: string) => Promise<unknown>)
     | null = null;
 
   setSubagentModelResolver(
-    resolver: (key: string) => Promise<unknown>,
+    resolver: (key: string, sessionId: string) => Promise<unknown>,
   ): void {
     this.subagentModelResolver = resolver;
   }
@@ -441,7 +494,16 @@ export class AgentSidecar {
         { code: -32602 },
       );
     }
-    return this.subagentModelResolver(key);
+    const sessionId = String(params.sessionId ?? "");
+    const bindings = this.providerInferenceBindings.get(sessionId);
+    const result = await this.subagentModelResolver(key, sessionId);
+    if (result && typeof result === "object" && "pluginInference" in result && result.pluginInference) {
+      if (!bindings || this.closed || this.providerInferenceBindings.get(sessionId) !== bindings
+        || !("id" in result) || typeof result.id !== "string"
+        || !("modelId" in result) || typeof result.modelId !== "string") throw new Error("Provider inference session binding changed");
+      this.addProviderInferenceBinding(sessionId, { providerId: result.id, modelId: result.modelId, adapter: result.pluginInference });
+    }
+    return result;
   }
 
   private async onLine(line: string) {
@@ -501,6 +563,11 @@ export class AgentSidecar {
           this.writeToChild(
             JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
           );
+          return;
+        }
+        if (method === "provider.inference") {
+          const result = await this.invokeProviderInference(params);
+          this.writeToChild(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n");
           return;
         }
         if (method === "provider.resolveAuth") {

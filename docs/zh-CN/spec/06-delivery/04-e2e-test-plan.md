@@ -9,6 +9,60 @@
 
 ---
 
+### E2E-PLUGIN-native-model-preferences
+
+- **前提：** 基于当前作者上游的独立请求工作树、隔离测试 profile，
+  以及 API key、无认证与 OAuth 插件提供商 fixture；不使用生产数据或付费调用。
+- **步骤：** 打开设置 → 模型，分别编辑插件服务的显示名、模型别名、上下文／输出预算、
+  思考配置与委派授权；支持时选择图像模型。先取消一次，再保存重开。
+  刷新声明、禁用再启用插件、重启 Host，检查偏好；保存空模型列表后刷新发现，
+  确认仍为空。只禁用提供商再重载插件，确认仍关闭。尝试通过通用 CRUD 改传输身份或删行。
+- **预期：** 三种凭据类型都可使用原生模型控件。取消不写入；显式偏好及空选择跨协调与重启保留，
+  未修改默认值跟随声明。禁用插件强制关闭有效行但保留用户选择。
+  只改模型不得提交传输或凭据字段。通用传输修改／单例删除在写密钥前被拒绝；
+  manifest 端点／认证变更使旧凭据失效，卸载清除行与凭据。图像输入与生成保持区分。
+- **规格：** `03-runtime/12-provider-config-schema.md`、`07-plugins/02-plugin-manifest-schema.md`、
+  `adr/plugin-provider-user-model-preferences.md`。
+- **验收：** B、F、G、Security；**里程碑：** MVP 后插件提供商集成。
+- **状态：** `apps/desktop/test/plugin-provider-settings-user-path.test.mjs` 自动覆盖 Renderer 用户路径；
+  Rust 插件提供商测试覆盖 Host 持久化与生命周期。完整跨进程适配器／会话／图像验收另行追踪。
+
+### E2E-PLUGIN-global-provider-inference
+
+- **前提：** 当前上游的独立工作树、隔离 profile、本地插件子进程 fixture；
+  注册与推理两项权限均显式授权。不用付费服务、真实凭据，也不连接用户运行中的 Desktop。
+- **步骤：** 选插件聊天模型，流式生成主会话回复；请求原生工具，再使用工具结果继续。
+  通过预配置与按需子代理委派给该模型，并经普通图像工具调用支持图像的适配器。
+  覆盖聊天误选仅图像模型、缺失权限、错误所有者／会话／模型／代际、畸形或超限输出、
+  取消、卸载与迟到完成。
+- **预期：** 原生消息、工具结果、usage 与停止语义跨插件进程保留；工具仅由原生 Agent 执行。
+  主会话与委派请求使用准确 Host 绑定，适配器只收到所属提供商请求凭据。
+  图像输出沿用 scratch 处理，拒绝 URL、路径及 MIME／签名不符。
+  不支持、未授权或过期调用均拒绝；停止／释放取消工作，自定义推理不静默重试或回退。
+- **规格：** `07-plugins/02-plugin-manifest-schema.md`、`03-plugin-api.md`、
+  `04-plugin-security.md`、`13-plugin-permissions-matrix.md`、`adr/global-plugin-provider-inference.md`。
+- **验收：** B、G、Security、Quality；**里程碑：** MVP 后插件提供商集成。
+- **状态：** `apps/desktop/test/plugin-provider-inference.test.mjs` 覆盖真实插件子进程集成，
+  SDK 载荷／迭代器生命周期测试和 Host 反向 RPC 授权测试提供辅助覆盖。
+  这不替代完整 Electron 应用验收，后者仍待执行。
+
+### E2E-PLUGIN-oauth-provider-inference
+
+- **前提：** 离线 OAuth 插件 fixture，显式授予注册、OAuth、推理权限；隔离临时目录，无真实账号。
+- **步骤：** 从原生厂商列表打开授权 URL，回答 Host 提示，存入含项目路由数据的过期授权。
+  执行主回复、委派回复及原生图像生成。刷新时省略路由数据，退出后再次尝试解析凭据。
+  在原生设置中编辑 OAuth 模型偏好，检查仅聊天／仅图像控件和选择候选。
+- **预期：** 全部路径使用同一提供商身份；刷新保留加密项目元数据，仅所属已授权适配器收到它。
+  刷新令牌与项目数据不进入公开行、Renderer 事件或 Agent sidecar 配置。退出删除授权。
+  原生控件遵循 manifest 操作限制；仅图像模型不会成为聊天默认值。
+- **规格：** `07-plugins/03-plugin-api.md`、`07-plugins/04-plugin-security.md`、
+  `03-runtime/12-provider-config-schema.md`。
+- **验收：** B、F、G、Security；**里程碑：** MVP 后插件 OAuth 集成。
+- **状态：** `apps/desktop/test/plugin-provider-oauth-inference.test.mjs` 自动覆盖本地子进程集成，
+  `plugin-provider-settings-user-path.test.mjs` 覆盖原生编辑器，`vendor-oauth-login.test.mjs`
+  覆盖凭据生命周期，`plugin-provider-model-operations.test.mjs` 覆盖选择器能力回归。
+  不覆盖真实 Antigravity 服务或完整 Electron 应用验收。
+
 ### E2E-PI-130-kernel-upgrade
 
 - **Preconditions:** Pi 1.3.0 with migrated patches, isolated fixture state, and
@@ -5832,6 +5886,8 @@ eleven-tool-round desktop paths are verified by
 ## 8. 可追溯性矩阵
 | 验收 | 应用场景 |
 |---|---|
+| B / F / G / Security — 插件模型偏好 | E2E-PLUGIN-native-model-preferences |
+| B / G / Security / Quality — 插件推理 | E2E-PLUGIN-global-provider-inference |
 | C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |
 | B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
@@ -9959,3 +10015,49 @@ host-created files. The full app's file-preview viewer is covered separately.
   stubbed). Rust provider tests independently verify real SQLite persistence;
   `provider-reasoning-effort.test.ts` captures requests from the real pi-ai
   adapter with fixture SSE responses. No live gateway credentials are required.
+
+#### E2E-PLUGIN-template-native-accounts：可复用集成创建独立原生账号
+
+- **前提：** 隔离 profile 与合成服务；在官方及旧服务旁安装已授权的 V1 key／无认证／OAuth 模板。
+- **步骤：** 安装 → 添加服务 → 添加两个账号 → 分别编辑名称、模型、key → 独立刷新 OAuth
+  → 执行支持的原生聊天／委派／图像 → 重新认证一个账号 → 删除它 → 从同一入口再添加。
+  取消或失败一次新登录；在登录、刷新、聊天或图像进行中禁用、撤权、卸载 runtime 或移除来源；
+  移除再恢复模板；卸载／重启。使用含旧凭据与显式空模型的 schema24 执行升级。
+- **预期：** 安装不建账号，显式设置成功后生成 UUID 并绑定 Host 拥有的版本化来源。
+  账号不互相覆盖，重新认证不增加第三行；发现失败保留已保存账号。
+  待登录 OAuth 不可用，失败、取消或启动恢复后被清理。
+  禁用／撤权保留数据但停止工作；移除模板保留不可用账号；卸载删除自有密钥、账号与发现结果，
+  不删历史会话。迟到回调或输出不能复活已删账号。拒绝伪造所有权、密钥引用、未知字段及未声明操作。
+  错误不包含合成 token；不支持的探测不刷新、不生成、不假报成功。官方与旧路径保持不变。
+- **证据：** `apps/desktop/test/provider-template-user-path.test.mjs` 在隔离 Renderer 覆盖原生组件。
+  `provider-template-accounts` 与 `provider-template-inference` 使用真实插件子进程及原生执行器；
+  `provider-template-declarative-account` 通过公开 OAuth 编排、真实回环回调与合成 HTTPS 边界运行。
+  OAuth 引擎、图像取消和连接测试覆盖协议／生命周期边缘；Rust 模板、插件、RPC 与迁移套件
+  独立验证实际存储。Node fixture 的外部 Host RPC 边界为模拟，
+  不代表完整 Electron／Rust 应用或真实 Antigravity 验收。
+- **规格：** [V1 契约与可运行示例](../07-plugins/17-provider-template-accounts.md)、
+  [ADR](/adr/plugin-provider-template-accounts)。
+- **验收：** B、E、F、G、Security、Quality。从请求候选运行并记录基线版本与脏树指纹；
+  不使用真实账号、付费 API、用户运行中的应用或 `verify:ui:*`。
+- **真实 Host 扩展：** `provider-template-native-host.e2e.mjs` 使用临时 profile 启动候选 Rust Host
+  与真实插件子进程，覆盖 OAuth 建号／刷新、原生聊天／委派／图像、偏好、删除、重启、卸载及历史会话保留。
+  不启动完整 Desktop 窗口，不调用外部提供商。
+- **安全故障扩展：** `provider-template-cleanup-host.e2e.mjs` 使用重建候选 Host 与临时加密存储，
+  注入多个密钥删除故障，验证卸载返回安全失败、残留账号全部禁用、其他账号仍被清除，
+  重载／启用／重启不能复活它们。移除故障后重试同 ID 注册，必须重新登录。
+  Rust 清理 RPC 测试另覆盖注册信息／意图写入故障及其他账号和历史保留。
+  OAuth 引擎测试先发送非法／重复回调，再发送有效回调：非法请求返回 400，
+  不换令牌、不消耗登录；有效拒绝授权则终止流程且不换令牌。
+
+### PR 1897 集成：模型发现与模板迁移兼容
+
+- **候选环境**：最新 main 加插件提供商模板；仅使用临时数据库、合成凭据和隔离 Host。
+- **升级路径**：全新 v26；不含两项新结构的 v24；含发现字段的主线 v25；
+  含模板绑定表但缺少发现字段的开发版 v25。
+- **预期**：v26 同时包含两项结构，保留账号、加密凭据、模型绑定与默认值、模板身份和会话。
+  已下架状态不重置；只在补建发现字段时将发现记录初始化为已上架。备份可读且重开不改写。
+- **选择**：Composer 同时排除已下架模型、无聊天能力的插件模型和生图绑定；
+  重新上架只恢复符合条件的已配置聊天模型。
+- **覆盖**：Rust `db::`、`turn_queue::`，`composer-models.test.mjs`、
+  `plugin-provider-model-operations.test.mjs`、`e2e-model-discovery-state.mjs`，
+  以及两项 `provider-template-*-host.e2e.mjs` 隔离进程测试。

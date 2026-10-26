@@ -82,7 +82,7 @@ pub(crate) fn derive_capabilities(manifest: &PluginManifest) -> Vec<String> {
     if has("composerTransforms") {
         out.push("composerTransform".into());
     }
-    if has("providers") {
+    if has("providers") || has("providerTemplates") {
         out.push("providers".into());
     }
     if has("agentTools") {

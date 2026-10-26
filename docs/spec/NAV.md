@@ -79,6 +79,7 @@
 - [06-release-runbook.md](06-delivery/06-release-runbook.md)
 - [plugin-reviews-test-plan.md](06-delivery/plugin-reviews-test-plan.md)
 - [07-remote-control-rollout.md](06-delivery/07-remote-control-rollout.md)
+- [provider-template-validation.md](06-delivery/provider-template-validation.md)
 
 ## 7. Plugins
 - [README.md](07-plugins/README.md)
@@ -98,6 +99,7 @@
 - [14-plugin-roadmap.md](07-plugins/14-plugin-roadmap.md)
 - [15-plugin-center.md](07-plugins/15-plugin-center.md)
 - [16-trusted-extensions.md](07-plugins/16-trusted-extensions.md)
+- [17-provider-template-accounts.md](07-plugins/17-provider-template-accounts.md)
 
 ## 8. Meta
 - [README.md](08-meta/README.md)

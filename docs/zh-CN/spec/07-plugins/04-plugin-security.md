@@ -32,8 +32,9 @@
 ### 必须
 1.插件UI与宿主UI DOM隔离
 2. 插件不能直接请求主机模块
-3.秘密商店不对插件开放。宿主代发的补全（`agent.complete`）在 Electron main
-   解析凭据，从不把密钥、刷新令牌或 `ModelAuth` 交给插件进程
+3. 密钥存储不向通用插件 API 开放，宿主补全在 Electron main 解析凭据。
+   只有明确授权的提供商回调能收到自己的凭据：`provider.oauth` 处理自己的加密 OAuth 授权；
+   `provider.inference` 接收自己的请求 key 或 headers，绝不接收刷新令牌、其他账号密钥或通用密钥访问权。
 4.插件私有数据目录与主机核心库分离
 5. `session.getLlmContext` 的会话转录只是进行中工具会话的有界投影（D336 / D019）
 
@@ -104,7 +105,8 @@ CSS 无法脚本化，但它可能会产生误导：主题仍然是第三方代�
 
 插件无法访问：
 - 其他插件的数据
-- 主机秘密
+- 通过通用 API 读取宿主密钥；`provider.oauth` 与 `provider.inference` 仅暴露回调所属声明的凭据，
+  刷新令牌限定在 OAuth 回调中
 - 主机的完整会话数据库（除非将来存在受控的 API）
 
 ## 5. 1 插件间消息总线
@@ -125,6 +127,28 @@ CSS 无法脚本化，但它可能会产生误导：主题仍然是第三方代�
 
 将主题视为应用程序内的公共主题：任何可以声明匹配的插件
 模式并按住 `bus.subscribe` 就会看到它。不要在公交车上泄露秘密。
+
+### 全局提供商推理边界
+
+`provider.inference` 是独立高风险授权，必须同时有 `provider.register` 和显式版本化适配器声明。
+保留旧注册授权不会自动获得转录读取权。Host 将每次调用绑定到已授权会话、提供商、模型
+与当前插件 runtime 代际；主会话和子代理遵循同一规则。
+适配器不能选取其他提供商凭据，也不能调用通用反向 RPC 代理。
+只有所选提供商的请求 key／headers 及有界 OAuth `requestData` 会进入已授权适配器。
+路由数据与 OAuth 凭据一起加密（JSON 对象，16 KiB，深度 64），
+不进入公开配置或 Agent sidecar，且复用现有刷新 singleflight。
+所有者被禁用、卸载或替换后不能再解析它。刷新令牌仅留在 OAuth 回调。
+原生 Agent 仍负责工具执行、权限、委派与持久化。
+
+进程边界校验 JSON、版本和大小；图像检查 MIME 与文件签名，不接受输出 URL 或路径。
+拉取式流限制缓冲，调用有容量、超时与生命周期上限。
+中止、会话释放、卸载和崩溃取消待处理工作，代际检查拒绝过期结果。
+自定义推理不自动重试，也不静默转向其他付费提供商。
+参见 [API 限额](03-plugin-api.md#全局提供商推理适配器)。
+
+这是进程隔离，不是操作系统沙箱。插件入口可使用原生 Node API；
+经 Host 的网络操作仍需现有权限与域名白名单。
+用户必须信任适配器代码处理所选模型的对话、工具 schema、图像输入及明确限定的凭据。
 
 ## 6. 路径安全
 
@@ -423,3 +447,25 @@ transports. `error` refuses every 3xx with REDIRECT_DISALLOWED; `manual` returns
 it without contacting its target. Default follow retains per-hop egress checks.
 See [the source API contract](/spec/07-plugins/03-plugin-api#net) for capability
 detection, deadline semantics and compatibility. No mode expands network grants.
+
+## 模板账号与安全错误通道
+
+新提供商模板和账号创建 DTO 采用封闭、版本化契约；只有 Rust 绑定所有权与凭据引用。
+标准声明式 OAuth 使用公开 HTTPS 端点、PKCE／state 或有界设备轮询、固定令牌字段映射
+与现有网络策略。注册不隐含自定义 OAuth／推理执行权。
+敏感模板变更使旧密钥和发现结果失效，不把凭据转发到新目的地。
+
+自定义 OAuth／推理异常与显式流错误使用固定 Host 诊断；
+插件控制的错误文本／代码不会被记录或发出为用户错误、持久错误。
+Host 观察到的取消或卸载仍保持独立。这是错误通道边界，不是 Node 沙箱；
+可信代码仍可执行原生 Node I/O。历史审计材料是先前复现，不是当前修复证明。
+账号、来源与 runtime 校验、取消及 await 后复查防止迟到结果在删除或卸载后复活账号。
+参见 [模板契约与可执行验收](17-provider-template-accounts.md)。
+
+回环 OAuth 监听器在接受回调前，要求恰好一个匹配 state，以及一个非空 code 或 error。
+非法／重复回调返回 400 但不消耗登录；合法且 state 匹配的拒绝仍会终止登录。
+可信 I/O 返回后引擎独立复查结果。
+卸载在改动注册信息／密钥前，原子持久化全部自有账号的禁用与待清理状态；
+尝试每行与两个密钥通道，失败返回安全 `INTERNAL`，不假报成功。
+持续故障不能通过重载、启用或 OAuth 完成绕过；启动、重试和同 ID 注册须在协调前完成清理。
+其他账号与历史记录保持不变。

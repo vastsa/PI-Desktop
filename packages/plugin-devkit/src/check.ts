@@ -39,6 +39,7 @@ export const HIGH_RISK_PERMISSIONS = [
   "renderer.extension",
   "provider.register",
   "provider.oauth",
+  "provider.inference",
   "desktop.control",
   "project.create",
   "session.read",

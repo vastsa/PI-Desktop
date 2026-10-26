@@ -1,9 +1,14 @@
 # ADR 0322: Plugin providers appear in Add Service
 
-- Status: Accepted for implementation
+- Status: Accepted; singleton-only directory restriction superseded for new templates by [template accounts](plugin-provider-template-accounts.md)
 - Date: 2026-10-08
 - Decision: D650
 - Related: ADR 0259, ADR 0320, `07-plugins/02-plugin-manifest-schema.md`, `07-plugins/03-plugin-api.md`, `07-plugins/04-plugin-security.md`, `07-plugins/13-plugin-permissions-matrix.md`, `04-ux/06-settings-ia.md`
+
+The decisions below describe legacy `contributes.providers` only. New
+`contributes.providerTemplates` entries support API-key, no-auth and OAuth,
+remain reusable after adding an account, and create independent Host-owned
+accounts. The original rationale is retained as historical context.
 
 ## Context
 

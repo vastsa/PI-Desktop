@@ -42,6 +42,7 @@ test("runtime rejects an image binding retained by an existing conversation", as
       if (method === "providers.getSecret") return {};
       throw new Error(`Unexpected host call: ${method}`);
     } } },
+    plugins: { providerInferenceBinding: () => undefined },
     modelsDevCatalog: { configureAccount: () => {}, ensureLoaded: async () => {} },
   });
   await assert.rejects(

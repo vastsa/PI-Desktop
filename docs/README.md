@@ -30,6 +30,7 @@ pnpm docs:check
 - [Specification index](spec/README.md)
 - [ADR index](adr/README.md)
 - [Plugin development](plugin-development.md)
+- [Plugin provider API reference](plugin-provider-api.md)
 - [Visual verification](project/2026-08-13-docs-redesign-verification.md)
 
 The Chinese entry point mirrors the English reading paths and includes a

@@ -196,14 +196,14 @@ non-secret `accountLabel`, and a `connected` flag. The custom-provider dialog
 does not edit or delete OAuth rows; the Vendor accounts card calls
 `providers.delete` for the selected row.
 
-Plugin-owned OAuth rows use the same `authKind` and encrypted secret reference,
-but keep the manifest-owned row id `plugin:<pluginId>:<declaredId>`. The
-`provider.oauth` callback handles login and refresh for that row, and one
-credential is stored per declared provider contribution. Signing out deletes
-only its OAuth secret; the provider row remains until the plugin is disabled,
-uninstalled, or removes the declaration. Plugin-owned rows and their secrets
-are excluded from portable configuration capture because the plugin manifest
-recreates the row on the destination host.
+Legacy `contributes.providers` OAuth rows use the same `authKind` and encrypted
+secret reference, but keep `plugin:<pluginId>:<declaredId>`. Their custom OAuth
+callback handles one contribution credential; signing out clears only that
+secret. Disable retains the row; declaration removal/uninstall removes it.
+Template accounts instead have independent UUIDs and explicit per-account
+reauthentication/deletion. All plugin-owned rows/secrets are excluded from
+portable configuration capture; template accounts are not implicitly recreated
+from manifest defaults. See the template-account section below.
 
 `models` is the provider's selected model binding array. Each binding owns its
 context/output limits and explicit thinking configuration. Published catalog
@@ -325,17 +325,42 @@ headers per call; a saved custom header with the same name overrides the
 default.
 
 
-A row a plugin declared through `contributes.providers` carries
-`ownerPluginId` (its row id is `plugin:<pluginId>:<declaredId>`), and it is a
-normal provider row for model resolution, discovery, connection testing, and
-session binding. It is read-only for the user path: `providers.update` and
-`providers.delete` refuse it with a `PROVIDER_OWNED_BY_PLUGIN` error. The
-declaration is re-read from the plugin manifest on every plugin load and is
-authoritative for its own fields, while stored `headers`, the OAuth account
-label, and a credential the user entered are kept. Disabling the plugin keeps
-the row and turns it off; uninstalling it, or removing the declaration, deletes
-the row and both credential refs (ADR 0259,
-`07-plugins/02-plugin-manifest-schema.md` §5.4).
+A row declared through `contributes.providers` carries `ownerPluginId` and the
+stable id `plugin:<pluginId>:<declaredId>`. It uses the ordinary provider path
+for model resolution, discovery and sessions. An explicitly declared custom
+adapter supplies inference through the [versioned plugin API](../07-plugins/03-plugin-api.md#global-provider-inference-adapters)
+for main sessions, subagents and supported image operations; existing compatible
+providers retain their ordinary transport and connection tests.
+Settings permits editing its display name, selected model bindings and user
+enablement. Explicit preferences survive manifest refresh and plugin reload;
+an explicitly empty selection is not replaced by discovered or default models.
+The Host records sparse explicit `name`, `enabled` and whole-list `models` values
+in `config_json.pluginUserOverrides`, within the existing extensible config
+boundary (no schema migration). The effective bindings remain in `config_json.models`.
+
+Manifest-owned adapter defaults and per-model operation restrictions are stored
+in Host-only `config_json.pluginAdapter`, outside `pluginUserOverrides`.
+`ProviderPublic.pluginModelOperations` is a read-only projection for the effective
+selected models; user selection cannot grant undeclared chat/image operations.
+Manifest refresh replaces this metadata, and removing an adapter removes it.
+OAuth adapter image selection requires an authenticated account and explicit
+`images` capability, not a built-in vendor id or compatible HTTP image URL.
+Provider-specific OAuth `requestData` is encrypted in the OAuth secret, never
+stored in public provider configuration or serialized to the Agent sidecar.
+
+The plugin still owns vendor/type/protocol, endpoint, authentication and API
+style. Changed transport fields are refused before credential writes; equal
+values from older clients remain accepted. With no user override, refreshed
+declarations continue to supply defaults. Plugin disable always forces the
+effective row off; enabling the plugin restores the remembered user choice.
+The Host-only `config_json.pluginEnabled` lifecycle marker prevents generic
+`enabled: true` updates from bypassing plugin disable (`PLUGIN_DISABLED`).
+Changing the declared endpoint, API style, protocol or authentication invalidates
+old credentials, headers, OAuth metadata and cached discovery rather than
+forwarding them to a new service. Uninstall or declaration removal deletes the row, overrides and both
+credential refs. `providers.delete` refuses legacy singleton plugin rows, but
+allows independently created template accounts. See
+[plugin model preferences ADR](../../adr/plugin-provider-user-model-preferences.md).
 ### Copy a provider into an independent draft
 
 Model configuration offers **Copy** on ordinary non-OAuth provider rows. The
@@ -608,8 +633,8 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 - behavior: persist config; if secretValue present, write secret store and set
   `secretRef`; legacy thinking fields may remain in
   `config_json.compatibility` but do not affect runtime resolution
-- a plugin-owned row is refused with `PROVIDER_OWNED_BY_PLUGIN`; its declaration
-  is the only writer of its own fields (§2)
+- plugin-owned rows accept model/name/enablement preferences; changed
+  manifest-owned transport fields are refused with `PROVIDER_OWNED_BY_PLUGIN`
 - out: `ProviderPublic`
 
 ### `providers.delete`
@@ -619,8 +644,9 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
   refresh token. The renderer uses this same operation for removing one OAuth
   account, so deleting one row cannot remove another account with the same
   `vendorKey`
-- a plugin-owned row is refused with `PROVIDER_OWNED_BY_PLUGIN`; the owning
-  plugin's lifecycle removes it
+- A legacy singleton plugin row is refused with `PROVIDER_OWNED_BY_PLUGIN`;
+  template accounts can be individually removed, including their credentials
+  and discovery, without removing the reusable service entry.
 - out: `{ ok: true }`
 
 ### `providers.testConnection`
@@ -846,3 +872,20 @@ metadata only: a configured binding keeps the wire ID the service served.
 
 Invalid or credential-bearing URLs still give no advice, and Cancel still does
 not persist draft changes.
+
+## Plugin template accounts (schema 25)
+
+`contributes.providerTemplates` separates `(ownerPluginId, pluginTemplateId)`
+from the Host-generated provider UUID. Public rows optionally expose
+`pluginTemplateId` and `pluginTemplateVersion: 1`; ordinary create/update DTOs
+cannot set ownership or secret references. `providers.createFromTemplate`
+accepts only plugin/template identity and optional name/API key. Main completes
+OAuth through `providers.completeTemplateOAuth` after storing the credential.
+Schema25 adds `provider_template_bindings`; existing rows/credentials and
+explicit empty model preferences are preserved without implicit conversion.
+The fixed `plugin:<pluginId>:<declaredId>` and sign-out-only rules above apply
+only to legacy `contributes.providers`, not template-created accounts.
+
+See [template schema, RPCs and lifecycle](../07-plugins/17-provider-template-accounts.md)
+for pending cleanup, reauthentication, source invalidation, account deletion,
+permission revocation and uninstall semantics. Official providers are unchanged.

@@ -1,3 +1,4 @@
+import { withPluginProviderInference } from "./plugin-provider-inference.js";
 import { parseMcpServerIds, parseMcpToolNames } from "./mcp-tool-selection.js";
 /**
  * Node pi agent sidecar.
@@ -159,6 +160,7 @@ function withVendorAuth<T extends RuntimeProviderConfig>(
   sessionId: string,
   provider: T,
 ): T {
+  if (provider?.pluginInference) return withPluginProviderInference(sessionId, provider, hostProxy);
   if (provider?.authKind !== OAUTH_AUTH_KIND) return provider;
   return {
     ...provider,
@@ -216,7 +218,7 @@ async function runtimeFor(
     !provider?.modelId ||
     (!provider.apiKey &&
       provider.authKind !== "none" &&
-      provider.authKind !== OAUTH_AUTH_KIND)
+      provider.authKind !== OAUTH_AUTH_KIND && !provider.pluginInference)
   ) {
     throw Object.assign(new Error("model/provider not configured"), {
       rpcCode: -32000,

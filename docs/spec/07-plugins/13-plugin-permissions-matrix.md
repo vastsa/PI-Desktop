@@ -28,8 +28,9 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `composer.suggest` | medium | `pi.composer.suggest` / `pi.composer.clearSuggestion` | Confirm at install | Writes one dismissible line into the placeholder layer of the Composer for the session on screen, only while the draft is empty and only for the turn the plugin names. The user takes it with Tab, drops it with Esc, and typing, sending, a session switch, a new turn, the plugin stopping, a reload or a window close all end it. The plugin never sends it and never reads the draft. Text is folded to one line and cut at 200 characters; the lifetime defaults to 120 s and is capped at 10 minutes. Audited; a place that will not show it answers `{ shown: false, reason }` instead of throwing |
 | `agent.extension` | high | Run `contributes.agentExtensions` modules inside the agent process | Explicit confirmation; local imports and development plugins only in v1.1 | Same access as the agent's own tools; the plugin sandbox does not apply (spec 16) |
 | `renderer.extension` | high | `manifest.renderer` is evaluated inside the host renderer to mount UI slots; `rendererActions` and `rendererCallMethods` open the actions and `onRendererCall` methods that module may use | Explicit confirmation; local imports and development plugins only in v1.1, matching `agent.extension` | The module shares the host's own document, so a slot is a contract rather than a sandbox. A component may dispatch only the reviewed vocabulary (`plugin.call`, `composer.insertText`, `composer.readDraft`, `composer.replaceDraft`, `attachments.add` / `list` / `remove`), capped at 16, and `plugin.call` reaches only the calling plugin's own `onRendererCall` methods, capped at 32. Registrations are withdrawn when the plugin unloads; a self-drawn dialog lives in a layer the plugin opened itself |
-| `provider.register` | high | `contributes.providers` become rows in the native provider list, owned by the plugin and refreshed from the manifest on load; unconfigured API-key rows with an endpoint also appear in Add Service, grouped by optional `category` and with optional hover/focus `description` | Explicit confirmation; local imports and development plugins only in v1.1, matching `agent.extension` | The user path refuses edits to the row (`PROVIDER_OWNED_BY_PLUGIN`); Add Service saves the key through the existing Host secret path. Only loaded plugins with this grant contribute entries; the chooser does not expose secrets or run plugin code. An empty API-key model list discovers models after key save. |
-| `provider.oauth` | high | `onProviderOAuth`; host-rendered `pi.providers.oauth.prompt` / `notify` for a declared OAuth provider | Explicit confirmation | Required with `provider.register` for `authKind: "oauth"`. The callback can read and refresh only that contribution's encrypted credential. The Host keeps refresh tokens out of the renderer and Agent Runtime. Host-mediated callback egress still needs `net.fetch` and `manifest.net.domains`; plugin entry code itself is not an OS sandbox. One account is stored per provider contribution; sign out clears it |
+| `provider.register` | high | Legacy `contributes.providers` materialize singleton rows; V1 `providerTemplates` add reusable native-account entries | Explicit confirmation; local imports and development plugins only in v1.1, matching `agent.extension` | Host owns independent template accounts and secrets. Standard key/no-auth and declarative PKCE/device OAuth do not deliver keys to plugin code. Custom OAuth/inference require their separate grants. Legacy singleton deletion remains plugin-owned. |
+| `provider.oauth` | high | Custom `onProviderOAuth`; Host-rendered `pi.providers.oauth.prompt` / `notify` | Explicit confirmation | Required for legacy OAuth and custom template OAuth, not declarative PKCE/device templates. Callback receives only its Host-selected account credential for login/refresh. Refresh tokens never enter Renderer/Agent inference. Host-mediated egress requires `net.fetch`/declared domains; raw Node is trusted code, not an OS sandbox. |
+| `provider.inference` | high | Versioned `providerAdapters` chat/images callbacks for the calling plugin's declared providers | Explicit confirmation, together with `provider.register` | Receives the selected model's messages/tool schemas or image input and only its own request credentials. No refresh tokens, peer secrets or local tool execution. Bound to session/provider/model/runtime generation; unload cancels work. Utility-process isolation is not an OS sandbox. |
 | `net.fetch` | high | `net.fetch` | Deny by default | Confined to `manifest.net.domains`; an empty or malformed list means no egress (§2A) |
 | `net.websocket` | high | `pi.net.websocket.connect` / `send` / `close` (host-owned sockets; at most 4 per plugin, 1 MiB frames) | Deny by default | Confined to `manifest.net.domains` like `net.fetch`; a refused host never reaches the transport, and every socket is closed when the plugin unloads, is disabled, or crashes |
 | `net.anyHost` | high | Any host-owned egress path (`net.fetch`, `net.websocket`, panel session, remote HTTP MCP) | Confirm at install | Lifts the `manifest.net.domains` allowlist for user-typed endpoints (self-hosted servers); cloud metadata endpoints stay refused; nothing prompts at request time |
@@ -113,6 +114,8 @@ plugin, so it carries three bounds the other modes do not:
   (`themes`, `mcpServers`, `services`, `bus`); `skills` is the exception and is
   skipped at load time instead (see
   [02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §7)
+- A provider `adapter` declaration requires both `provider.register` and
+  `provider.inference`; an existing registration grant is not promoted silently.
 - Lifecycle and state events need no permission: `workspace:changed`,
   `session:modelChanged`, `session:turnEnded`, and `plugin:settingsChanged`
   arrive on the existing plugin event channel, and subscribing to an unknown
@@ -147,6 +150,7 @@ so "Modify the files it lists" is followed by the list.
 | `agent.prompt.inject` | Adjust agent instructions | 调整智能体指令 |
 | `agent.extension` | Run code inside the agent | 在 agent 内运行代码 |
 | `renderer.extension` | Draw UI in chat slots | 在聊天插槽绘制界面 |
+| `provider.inference` | Process selected model requests and use this provider's request credentials | 处理所选模型请求并使用该提供商的请求凭证 |
 | `net.fetch` | Access the network | 访问网络 |
 | `shell.openExternal` | Open external links | 打开外部链接 |
 | `ui.theme` | Provide a theme | 提供主题 |
@@ -220,3 +224,11 @@ visible workspace for a panel call (ADR 0266).
    interrupted past 50 removals in a rolling minute
 8. A plugin declaring only the legacy `fs.*.workspace` names loses write and
    delete reach, and the Plugins page says so
+
+### Template account grants
+
+Declarative template OAuth does not imply `provider.oauth`; that grant is only
+required for custom `onProviderOAuth` callbacks. `provider.inference` is still
+required for custom adapters and request/credential delivery. Revocation stops
+work while retaining accounts/secrets/preferences; uninstall removes owned
+accounts but not conversations. See [V1 contract](17-provider-template-accounts.md).

@@ -259,6 +259,7 @@ export const IPC = {
     providersList: "pi-desktop/providers/list",
     providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
+    providersCreateFromTemplate: "pi-desktop/providers/createFromTemplate",
     providersUpdate: "pi-desktop/providers/update",
     providersDelete: "pi-desktop/providers/delete",
     /**

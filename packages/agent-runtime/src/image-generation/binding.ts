@@ -1,4 +1,4 @@
-import type { ImageApi, ImageModel, Models } from "@earendil-works/pi-ai";
+import type { ImageApi, ImageModel, Models, ProviderImages } from "@earendil-works/pi-ai";
 import * as openrouterImages from "@earendil-works/pi-ai/api/openrouter-images";
 import { createAccountModels, type RuntimeProviderConfig } from "../provider-binding.js";
 import { CODEX_IMAGE_VENDOR_KEY } from "@pi-desktop/shared";
@@ -20,6 +20,7 @@ export type ImageEndpoint = {
   resolveAuth?: RuntimeProviderConfig["resolveAuth"];
   /** Effective typed model from the host's shared Pi account registry. */
   nativeModel?: ImageModel<ImageApi>;
+  customImages?: ProviderImages;
 };
 export type ImageBinding = { models: Models; model: ImageModel<ImageApi>; accountId?: string };
 
@@ -40,7 +41,7 @@ function isCodexImageEndpoint(endpoint: ImageEndpoint): boolean {
 export function createImageBinding(endpoint: ImageEndpoint, downloads: ImageDownloadOptions = {}): ImageBinding {
   const providerId = endpoint.vendorKey?.trim() || endpoint.providerId || "pi-desktop-images";
   const codexImages = isCodexImageEndpoint(endpoint);
-  const known = codexImages ? undefined : endpoint.nativeModel;
+  const known = codexImages || endpoint.customImages ? undefined : endpoint.nativeModel;
   if (known && (known.type !== "image" || known.id !== endpoint.modelId || known.api !== "openrouter-images" && known.api !== OPENAI_IMAGES_API))
     throw imageError("IMAGE_MODEL_UNAVAILABLE");
   const native = known?.api === "openrouter-images" || providerId === "openrouter";
@@ -49,7 +50,7 @@ export function createImageBinding(endpoint: ImageEndpoint, downloads: ImageDown
   const oauthImageApi = codexImages
     ? !!endpoint.resolveAuth
     : known?.api === "openrouter-images" && !!endpoint.resolveAuth;
-  if (endpoint.authKind === "oauth" && !oauthImageApi)
+  if (endpoint.authKind === "oauth" && !oauthImageApi && !endpoint.customImages)
     throw imageError("IMAGE_AUTH_UNSUPPORTED");
   const model: ImageModel<ImageApi> = {
     ...(known ?? {
@@ -58,7 +59,7 @@ export function createImageBinding(endpoint: ImageEndpoint, downloads: ImageDown
       cost: { input: NaN, output: NaN, cacheRead: NaN, cacheWrite: NaN },
     }),
     id: endpoint.modelId, provider: providerId,
-    api: native ? "openrouter-images" : OPENAI_IMAGES_API,
+    api: endpoint.customImages ? "plugin-images-v1" : native ? "openrouter-images" : OPENAI_IMAGES_API,
     baseUrl: codexImages ? codexImagesBaseUrl(endpoint.baseUrl) : endpoint.baseUrl,
     headers: endpoint.headers,
   };
@@ -70,9 +71,9 @@ export function createImageBinding(endpoint: ImageEndpoint, downloads: ImageDown
   }, {
     models: [model],
     images: {
-      [model.api]: native
+      [model.api]: endpoint.customImages ?? (native
         ? openrouterImages
-        : openAIImagesAdapter(downloads, codexImages ? "codex-json" : "multipart"),
+        : openAIImagesAdapter(downloads, codexImages ? "codex-json" : "multipart")),
     },
   });
   return { models, model, accountId: endpoint.providerId };

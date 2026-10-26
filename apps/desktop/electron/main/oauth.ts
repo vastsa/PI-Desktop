@@ -10,10 +10,12 @@
  *    `secret:provider:<providerRowId>:oauth` so an API key and a vendor account
  *    can coexist on one provider row;
  *  - a bridge from pi-ai's prompt/notify interaction to renderer events;
- *  - short-lived request auth (`ModelAuth`) for the agent sidecar.
+ *  - short-lived request auth (`ModelAuth`) for the agent sidecar;
+ *  - a scoped request credential, including encrypted routing data, for the
+ *    explicitly authorized plugin inference adapter only.
  *
- * Refresh tokens never leave the main process: callers get either a boolean, a
- * non-secret account label, or an already-resolved `ModelAuth`.
+ * Refresh tokens are confined to storage and the owning OAuth callback. Neither
+ * ordinary `ModelAuth` nor inference credentials include a refresh token.
  */
 
 import { randomUUID } from "node:crypto";
@@ -33,11 +35,13 @@ import type {
   Provider,
 } from "@earendil-works/pi-ai";
 import type {
+  PluginProviderInferenceContextV1,
   PluginProviderOAuthCredential,
   PluginProviderOAuthEvent,
   PluginProviderOAuthPrompt,
   PluginProviderOAuthRequest,
 } from "@pi-desktop/plugin-sdk";
+import { validateProviderRequestData } from "@pi-desktop/plugin-sdk";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import {
@@ -58,6 +62,8 @@ import {
   wireForLiveModel,
 } from "./vendor-live-models.ts";
 import type { ThinkingLevel } from "@pi-desktop/shared";
+import { pluginOAuthSourceMatches } from "./plugin-provider-source.ts";
+import { runProviderTemplateOAuth, type ProviderTemplateOAuthNetwork } from "./provider-template-oauth.ts";
 import {
   OAUTH_AUTH_KIND,
   type OAuthLoginEvent,
@@ -142,6 +148,8 @@ export type OAuthProviderRow = {
   name?: string;
   vendorKey?: string;
   ownerPluginId?: string;
+  pluginTemplateId?: string;
+  pluginTemplateVersion?: 1;
   authKind?: string;
   hasOauth?: boolean;
   oauthAccountLabel?: string;
@@ -158,6 +166,9 @@ export type PluginOAuthProvider = {
   runtimeId: string;
   contributionId: string;
   providerId: string;
+  templateId?: string;
+  pluginName?: string;
+  oauth?: import("@pi-desktop/plugin-sdk").PluginProviderTemplateOAuthV1;
   name: string;
   loginLabel?: string;
   isSubscription: boolean;
@@ -165,6 +176,7 @@ export type PluginOAuthProvider = {
 
 export type PluginOAuthBridge = {
   listOAuthProviders: () => PluginOAuthProvider[];
+  providerOAuthSignal?: (provider: PluginOAuthProvider) => AbortSignal;
   invokeProviderOAuth: (
     pluginId: string,
     contributionId: string,
@@ -211,6 +223,8 @@ export type VendorOAuthDeps = {
   newId?: () => string;
   /** Test seam. Defaults to the process fetch. */
   fetch?: typeof fetch;
+  /** External network seam for isolated declarative OAuth acceptance tests. */
+  providerTemplateNetwork?: ProviderTemplateOAuthNetwork;
 };
 
 /**
@@ -261,6 +275,8 @@ type PluginLoginSession = {
   controller: AbortController;
   tail: Promise<void>;
   cancelled: boolean;
+  templateId?: string;
+  createdRow?: boolean;
   finished?: Promise<void>;
 };
 
@@ -370,6 +386,10 @@ function normalizePluginCredential(raw: unknown): PluginProviderOAuthCredential 
     }
     result.headers = headers;
   }
+  if (value.requestData !== undefined) {
+    validateProviderRequestData(value.requestData);
+    result.requestData = JSON.parse(JSON.stringify(value.requestData));
+  }
   return result;
 }
 
@@ -427,24 +447,20 @@ export class VendorOAuth {
     const pluginBridge = this.deps.getPluginOAuthBridge?.();
     if (!pluginBridge) return vendors;
     for (const provider of pluginBridge.listOAuthProviders()) {
-      const row = rows.find(
-        (candidate) =>
-          candidate.id === provider.providerId &&
-          candidate.ownerPluginId === provider.pluginId &&
-          candidate.authKind === OAUTH_AUTH_KIND,
-      );
-      if (!row) continue;
-      const credential = row.hasOauth ? await this.readPluginCredential(row.id) : undefined;
+      const matchingRows = rows.filter(candidate => candidate.authKind === OAUTH_AUTH_KIND
+        && pluginOAuthSourceMatches(candidate, provider));
+      if (!provider.templateId && matchingRows.length === 0) continue;
+      const accounts = await Promise.all(matchingRows.map(async row => ({
+        providerId: row.id,
+        accountLabel: row.oauthAccountLabel || (row.hasOauth ? (await this.readPluginCredential(row.id))?.accountLabel : undefined),
+        connected: row.hasOauth === true,
+      })));
       vendors.push({
-        vendorId: row.id,
-        name: provider.name,
+        vendorId: provider.providerId,
+        name: provider.templateId ? `${provider.name} · ${provider.pluginName ?? provider.pluginId}` : provider.name,
         loginLabel: provider.loginLabel,
         isSubscription: provider.isSubscription,
-        accounts: [{
-          providerId: row.id,
-          accountLabel: credential?.accountLabel || undefined,
-          connected: row.hasOauth === true,
-        }],
+        accounts,
       });
     }
     return vendors;
@@ -456,19 +472,14 @@ export class VendorOAuth {
    * accounts instead of silently replacing the first one.
    */
   async start(vendorId: string): Promise<OAuthStartResult> {
-    const pluginProvider = this.deps
-      .getPluginOAuthBridge?.()
-      ?.listOAuthProviders()
-      .find((provider) => provider.providerId === vendorId);
-    if (pluginProvider) {
-      const row = (await this.rows()).find(
-        (candidate) =>
-          candidate.id === vendorId &&
-          candidate.ownerPluginId === pluginProvider.pluginId &&
-          candidate.authKind === OAUTH_AUTH_KIND,
-      );
-      if (!row) throw new Error(`unknown plugin OAuth provider: ${vendorId}`);
-      return this.startPluginLogin(pluginProvider);
+    const sources = this.deps.getPluginOAuthBridge?.()?.listOAuthProviders() ?? [];
+    const pluginProvider = sources.find(provider => provider.providerId === vendorId);
+    if (pluginProvider?.templateId) return this.startPluginLogin(pluginProvider);
+    const pluginRow = (await this.rows()).find(candidate => candidate.id === vendorId && candidate.ownerPluginId && candidate.authKind === OAUTH_AUTH_KIND);
+    if (pluginRow) {
+      const source = sources.find(candidate => pluginOAuthSourceMatches(pluginRow, candidate));
+      if (!source) throw new Error("plugin OAuth template is unavailable");
+      return this.startPluginLogin(source, pluginRow.id);
     }
     const models = await this.ensureCatalogModels();
     const provider = models.getProvider(vendorId);
@@ -511,15 +522,25 @@ export class VendorOAuth {
     return { loginId: session.loginId };
   }
 
-  private startPluginLogin(provider: PluginOAuthProvider): OAuthStartResult {
-    const superseded = [...this.pluginLogins.values()].filter(
-      (running) => running.providerId === provider.providerId,
-    );
+  private async startPluginLogin(provider: PluginOAuthProvider, accountId?: string): Promise<OAuthStartResult> {
+    let createdRow = false;
+    if (provider.templateId && !accountId) {
+      const result = await this.deps.call<{ provider: OAuthProviderRow }>("providers.createFromTemplate", {
+        pluginId: provider.pluginId, templateId: provider.templateId,
+      });
+      accountId = result.provider.id;
+      createdRow = true;
+    }
+    accountId ??= provider.providerId;
+    const superseded = [...this.pluginLogins.values()].filter(running => running.providerId === accountId);
     for (const running of superseded) this.cancelPluginLogin(running);
+    for (const running of superseded) await running.finished;
     const session: PluginLoginSession = {
       loginId: this.nextId(),
-      vendorId: provider.providerId,
-      providerId: provider.providerId,
+      vendorId: createdRow ? provider.providerId : accountId,
+      providerId: accountId,
+      createdRow,
+      templateId: provider.templateId,
       pluginId: provider.pluginId,
       contributionId: provider.contributionId,
       runtimeId: provider.runtimeId,
@@ -681,6 +702,14 @@ export class VendorOAuth {
     await session.tail;
   }
 
+  invalidatePluginAccount(providerId: string): void {
+    this.pluginRefreshControllers.get(providerId)?.abort(new Error("provider changed"));
+    for (const session of this.pluginLogins.values()) {
+      if (session.providerId === providerId) this.cancelPluginLogin(session);
+    }
+    this.invalidateAccountModels(providerId);
+  }
+
   /**
    * Delete one account's provider row and its provider-scoped OAuth secret.
    * Host-core owns the atomic cleanup of the row and both secret references.
@@ -696,11 +725,10 @@ export class VendorOAuth {
         (session) => session.providerId === providerId,
       );
       if (running) this.cancelPluginLogin(running);
-      await this.serialize(providerId, () =>
-        this.deps.call("secrets.delete", {
-          secretRef: secretRefForProviderOauth(providerId),
-        }),
-      );
+      if (running) await running.finished;
+      await this.serialize(providerId, () => row.pluginTemplateId
+        ? this.deps.call("providers.delete", { id: providerId })
+        : this.deps.call("secrets.delete", { secretRef: secretRefForProviderOauth(providerId) }));
       this.clearAccountModels(providerId);
       return;
     }
@@ -726,7 +754,11 @@ export class VendorOAuth {
   async resolveAuth(providerId: string): Promise<ModelAuth> {
     const row = (await this.rows()).find((candidate) => candidate.id === providerId);
     if (row?.ownerPluginId && row.authKind === OAUTH_AUTH_KIND) {
-      return this.resolvePluginAuth(row);
+      const credential = await this.resolvePluginCredential(row);
+      return {
+        apiKey: credential.accessToken,
+        ...(credential.headers ? { headers: credential.headers } : {}),
+      };
     }
     return this.withRowHeaders(providerId, async () => {
       const account = await this.accountForProvider(providerId);
@@ -735,6 +767,39 @@ export class VendorOAuth {
       if (!resolved) throw new Error(`vendor account not signed in: ${providerId}`);
       return resolved.auth;
     });
+  }
+
+  /** Main-only: the broker must authorize this provider's custom inference adapter before calling. */
+  async resolvePluginInferenceCredential(
+    providerId: string,
+  ): Promise<NonNullable<PluginProviderInferenceContextV1["credential"]>> {
+    const row = (await this.rows()).find((candidate) => candidate.id === providerId);
+    if (!row) throw new Error("plugin inference OAuth account is unavailable");
+    const provider = this.requirePluginInferenceOwner(row);
+    const credential = await this.resolvePluginCredential(row, provider);
+    const latest = (await this.rows()).find((candidate) => candidate.id === providerId);
+    this.requirePluginInferenceOwner(latest, provider);
+    return {
+      apiKey: credential.accessToken,
+      ...(credential.headers ? { headers: credential.headers } : {}),
+      ...(credential.requestData !== undefined ? { requestData: credential.requestData } : {}),
+    };
+  }
+
+  private requirePluginInferenceOwner(
+    row: OAuthProviderRow | undefined,
+    expected?: PluginOAuthProvider,
+  ): PluginOAuthProvider {
+    if (!row?.ownerPluginId || row.authKind !== OAUTH_AUTH_KIND || row.enabled === false || !row.hasOauth) {
+      throw new Error("plugin inference OAuth account is unavailable");
+    }
+    const provider = this.deps.getPluginOAuthBridge?.()?.listOAuthProviders()
+      .find(candidate => pluginOAuthSourceMatches(row, candidate));
+    if (!provider || (expected && (provider.pluginId !== expected.pluginId
+      || provider.runtimeId !== expected.runtimeId || provider.contributionId !== expected.contributionId))) {
+      throw new Error("plugin inference OAuth owner changed or is unavailable");
+    }
+    return provider;
   }
 
   /**
@@ -987,46 +1052,67 @@ export class VendorOAuth {
     }
   }
 
+  private async invokePluginOAuth(source: PluginOAuthProvider, request: PluginProviderOAuthRequest, signal: AbortSignal): Promise<unknown> {
+    const bridge = this.deps.getPluginOAuthBridge?.();
+    if (!bridge) throw new Error("provider OAuth is unavailable");
+    const ownerSignal = bridge.providerOAuthSignal?.(source);
+    const combined = ownerSignal ? AbortSignal.any([signal, ownerSignal]) : signal;
+    combined.throwIfAborted();
+    if (source.templateId && source.oauth?.flow && source.oauth.flow !== "custom") {
+      return runProviderTemplateOAuth(source.oauth, request, {
+        signal: combined,
+        network: this.deps.providerTemplateNetwork,
+        notify: event => request.loginId ? this.notifyPluginOAuth(source.pluginId, request.loginId, event) : undefined,
+        openExternal: url => request.loginId ? this.notifyPluginOAuth(source.pluginId, request.loginId, { kind: "authUrl", url }) : undefined,
+      });
+    }
+    return bridge.invokeProviderOAuth(source.pluginId, source.contributionId, request, combined, source.runtimeId);
+  }
+
+
   private async runPluginLogin(session: PluginLoginSession): Promise<void> {
     try {
       const bridge = this.deps.getPluginOAuthBridge?.();
       if (!bridge) throw new Error("provider OAuth is unavailable");
-      const raw = await bridge.invokeProviderOAuth(
-        session.pluginId,
-        session.contributionId,
+      const source = bridge.listOAuthProviders().find(candidate => candidate.pluginId === session.pluginId
+        && candidate.contributionId === session.contributionId && candidate.runtimeId === session.runtimeId);
+      if (!source) throw new Error("provider OAuth source is unavailable");
+      const raw = await this.invokePluginOAuth(source,
         {
           operation: "login",
           providerId: session.contributionId,
+          ...(session.templateId ? { accountId: session.providerId } : {}),
           loginId: session.loginId,
         },
         session.controller.signal,
-        session.runtimeId,
       );
       if (session.cancelled) throw new Error("login cancelled");
       const credential = normalizePluginCredential(raw);
       await this.serialize(session.providerId, async () => {
         const row = (await this.rows()).find((candidate) => candidate.id === session.providerId);
         const currentProvider = bridge.listOAuthProviders().find(
-          (candidate) => candidate.providerId === session.providerId,
+          candidate => row !== undefined && pluginOAuthSourceMatches(row, candidate),
         );
         if (
           session.cancelled ||
           currentProvider?.runtimeId !== session.runtimeId ||
           row?.ownerPluginId !== session.pluginId ||
           row.authKind !== OAUTH_AUTH_KIND ||
-          row.enabled === false
+          (row.enabled === false && !session.createdRow && !session.templateId)
         ) {
           throw new Error("plugin provider changed during OAuth sign-in");
         }
         await this.writePluginCredential(session.providerId, credential);
+        if (session.templateId) await this.deps.call("providers.completeTemplateOAuth", { id: session.providerId });
         const savedRow = (await this.rows()).find((candidate) => candidate.id === session.providerId);
         const savedProvider = this.deps.getPluginOAuthBridge?.()
           ?.listOAuthProviders()
-          .find((candidate) => candidate.providerId === session.providerId);
+          .find(candidate => savedRow !== undefined && pluginOAuthSourceMatches(savedRow, candidate));
         if (
+          session.cancelled || session.controller.signal.aborted ||
           savedRow?.ownerPluginId !== session.pluginId ||
           savedRow.authKind !== OAUTH_AUTH_KIND ||
-          savedRow.enabled === false ||
+          (savedRow.enabled === false && !session.templateId) ||
           savedProvider?.runtimeId !== session.runtimeId
         ) {
           await this.deps.call("secrets.delete", {
@@ -1042,6 +1128,10 @@ export class VendorOAuth {
         accountLabel: credential.accountLabel,
       });
     } catch {
+      if (session.createdRow) {
+        try { await this.deps.call("providers.delete", { id: session.providerId }); }
+        catch { this.log("error", "pending plugin account cleanup failed", { providerId: session.providerId }); }
+      }
       if (session.cancelled) {
         this.pushPluginEvent(session, { kind: "cancelled" });
       } else {
@@ -1089,34 +1179,42 @@ export class VendorOAuth {
     });
   }
 
-  private async resolvePluginAuth(row: OAuthProviderRow): Promise<ModelAuth> {
+  private async resolvePluginCredential(
+    row: OAuthProviderRow,
+    expectedProvider?: PluginOAuthProvider,
+  ): Promise<PluginProviderOAuthCredential> {
     if (!row.ownerPluginId || !row.hasOauth) {
       throw new Error(`plugin provider account not signed in: ${row.id}`);
     }
-    const credential = await this.serialize(row.id, async () => {
+    expectedProvider ??= this.requirePluginInferenceOwner(row);
+    return this.serialize(row.id, async () => {
+      if (expectedProvider) {
+        this.requirePluginInferenceOwner((await this.rows()).find(candidate => candidate.id === row.id), expectedProvider);
+      }
       let current = await this.readPluginCredential(row.id);
       if (!current) throw new Error(`plugin provider account not signed in: ${row.id}`);
+      if (expectedProvider) {
+        this.requirePluginInferenceOwner((await this.rows()).find(candidate => candidate.id === row.id), expectedProvider);
+      }
       if (current.expiresAt !== undefined && current.expiresAt <= Date.now() + 30_000) {
         if (!current.refreshToken) throw new Error(`plugin provider credential expired: ${row.id}`);
         const provider = this.deps.getPluginOAuthBridge?.()
           ?.listOAuthProviders()
-          .find((candidate) => candidate.providerId === row.id);
+          .find(candidate => pluginOAuthSourceMatches(row, candidate));
         const bridge = this.deps.getPluginOAuthBridge?.();
         if (!provider || !bridge) throw new Error(`plugin provider OAuth is unavailable: ${row.id}`);
         const refreshController = new AbortController();
         this.pluginRefreshControllers.set(row.id, refreshController);
         let rawRefreshed: unknown;
         try {
-          rawRefreshed = await bridge.invokeProviderOAuth(
-            provider.pluginId,
-            provider.contributionId,
+          rawRefreshed = await this.invokePluginOAuth(provider,
             {
               operation: "refresh",
               providerId: provider.contributionId,
+              ...(row.pluginTemplateId ? { accountId: row.id } : {}),
               credential: current,
             },
             refreshController.signal,
-            provider.runtimeId,
           );
         } finally {
           if (this.pluginRefreshControllers.get(row.id) === refreshController) {
@@ -1129,13 +1227,17 @@ export class VendorOAuth {
           ...(refreshed.refreshToken ? {} : { refreshToken: current.refreshToken }),
           ...(refreshed.accountLabel ? {} : current.accountLabel ? { accountLabel: current.accountLabel } : {}),
           ...(refreshed.headers ? {} : current.headers ? { headers: current.headers } : {}),
+          ...(refreshed.requestData !== undefined ? {} : current.requestData !== undefined ? { requestData: current.requestData } : {}),
         };
         const latest = (await this.rows()).find((candidate) => candidate.id === row.id);
+        const latestProvider = this.deps.getPluginOAuthBridge?.()?.listOAuthProviders()
+          .find(candidate => latest !== undefined && pluginOAuthSourceMatches(latest, candidate));
         if (
           !latest ||
           latest.ownerPluginId !== row.ownerPluginId ||
           latest.authKind !== OAUTH_AUTH_KIND ||
-          latest.enabled === false
+          latest.enabled === false ||
+          latestProvider?.runtimeId !== provider.runtimeId
         ) {
           throw new Error(`plugin provider changed during OAuth refresh: ${row.id}`);
         }
@@ -1143,12 +1245,13 @@ export class VendorOAuth {
         const savedRow = (await this.rows()).find((candidate) => candidate.id === row.id);
         const savedProvider = this.deps.getPluginOAuthBridge?.()
           ?.listOAuthProviders()
-          .find((candidate) => candidate.providerId === row.id);
+          .find(candidate => savedRow !== undefined && pluginOAuthSourceMatches(savedRow, candidate));
         if (
           !savedRow ||
           savedRow.ownerPluginId !== row.ownerPluginId ||
           savedRow.authKind !== OAUTH_AUTH_KIND ||
           savedRow.enabled === false ||
+          savedProvider?.pluginId !== row.ownerPluginId ||
           savedProvider?.runtimeId !== provider.runtimeId
         ) {
           await this.deps.call("secrets.delete", {
@@ -1159,10 +1262,6 @@ export class VendorOAuth {
       }
       return current;
     });
-    return {
-      apiKey: credential.accessToken,
-      ...(credential.headers ? { headers: credential.headers } : {}),
-    };
   }
 
   private async readPluginCredential(

@@ -306,11 +306,11 @@ test("model configuration lists AI services and vendor accounts together", () =>
   );
   assert.doesNotMatch(providersSource, /provider-config-hero/);
   assert.doesNotMatch(providersSource, /settings-section-subtitle/);
-  // An account row still lives and dies through the vendor-account editor and
-  // deleteOauthAccount, never through the provider CRUD.
+  // Official accounts keep their vendor editor; plugin accounts use the native
+  // plugin preferences editor. OAuth deletion still follows the account path.
   assert.match(
     providersSource,
-    /serviceRowKind\(provider\) === "account"\s*\?\s*setEditingAccountId\(provider\.id\)\s*:\s*setSetupFor\(provider\.id\)/,
+    /serviceRowKind\(provider\) === "account" && !provider\.ownerPluginId\s*\?\s*setEditingAccountId\(provider\.id\)\s*:\s*setSetupFor\(provider\.id\)/,
   );
   assert.match(
     providersSource,
@@ -346,18 +346,18 @@ test("a service row opens its editor and keeps only a switch and one menu", () =
   // presses on the row's own controls never open the editor.
   assert.match(serviceRowSource, /const OWN_CONTROLS = "button, input, select, textarea, a, label/);
   assert.match(serviceRowSource, /event\.target !== event\.currentTarget \|\| !onOpen \|\| busy/);
-  // An account has no enable switch; a plugin's switch belongs to the plugin.
-  assert.match(serviceRowSource, /kind !== "account" \? \(/);
-  assert.match(serviceRowSource, /disabled=\{busy \|\| kind === "plugin"\}/);
-  // Plugin-owned rows are not editable, including OAuth account rows; those
-  // rows still expose sign-out through the overflow menu.
+  // Official accounts have no switch. Plugin accounts retain a user preference
+  // independently from the Host-enforced plugin lifecycle and permission state.
+  assert.match(serviceRowSource, /kind !== "account" \|\| provider\.ownerPluginId \? \(/);
+  assert.match(serviceRowSource, /<SettingsToggle[\s\S]*?disabled=\{busy\}[\s\S]*?onChange=\{onToggleEnabled\}/);
+  // Every service can edit native preferences; only templates gain independent
+  // deletion. Legacy plugin OAuth still uses sign-out rather than row deletion.
   assert.match(serviceListSource, /const pluginOAuth = kind === "account" && !!provider\.ownerPluginId/);
-  assert.match(
-    serviceListSource,
-    /if \(kind !== "plugin" && !pluginOAuth\) \{\s*items\.push\(\{\s*key: "edit"/,
-  );
-  assert.match(serviceListSource, /t\(pluginOAuth\s*\?\s*"settings\.vendorSignOut"/);
-  assert.match(serviceListSource, /if \(kind !== "plugin"\) \{\s*const isArmed/);
+  assert.match(serviceListSource, /items\.push\(\{\s*key: "edit"/);
+  assert.match(serviceListSource, /const onOpen = \(\) => onEdit\(provider\)/);
+  assert.doesNotMatch(serviceListSource, /if \(kind !== "plugin" && !pluginOAuth\)/);
+  assert.match(serviceListSource, /t\(pluginOAuth && !provider\.pluginTemplateId\s*\?\s*"settings\.vendorSignOut"/);
+  assert.match(serviceListSource, /if \(kind !== "plugin" \|\| provider\.pluginTemplateId\) \{\s*const isArmed/);
   // Removal is confirmed inside the menu rather than by a second row button.
   assert.match(serviceListSource, /useArmedDelete\(\)/);
   assert.match(serviceListSource, /settings\.capabilityRemoveConfirm/);

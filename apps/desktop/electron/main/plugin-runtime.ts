@@ -1,3 +1,4 @@
+import { PLUGIN_INFERENCE_LIMITS, validateProviderInferenceRequest, type PluginProviderInferenceBindingV1 } from "@pi-desktop/plugin-sdk";
 import {
   readFileSync,
   existsSync,
@@ -11,6 +12,7 @@ import {
 import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { providerContribution, type PluginProviderSourceRow, type AccountInferenceBinding } from "./plugin-provider-source";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
@@ -842,6 +844,7 @@ type LoadedPlugin = {
   pending: Map<string, PendingCall>;
   nextCallId: number;
   disposing: boolean;
+  inferenceController: AbortController;
 };
 
 type PluginApiError = Error & { code?: string };
@@ -1827,15 +1830,21 @@ export class PluginRuntime {
   listOAuthProviders(): PluginOAuthProvider[] {
     const result: PluginOAuthProvider[] = [];
     for (const loaded of this.loaded.values()) {
-      if (!loaded.permissions.has("provider.oauth")) continue;
-      const providers = (loaded.manifest.contributes?.providers ?? []) as PluginProviderContrib[];
-      for (const provider of providers) {
+      if (!loaded.permissions.has("provider.register") || loaded.disposing) continue;
+      const providers = [
+        ...(loaded.manifest.contributes?.providers ?? []).map(provider => ({ provider, template: false })),
+        ...(loaded.manifest.contributes?.providerTemplates ?? []).map(provider => ({ provider, template: true })),
+      ];
+      for (const { provider, template } of providers) {
+        const declarative = template && provider.oauth && "flow" in provider.oauth && provider.oauth.flow !== "custom";
+        if (!declarative && !loaded.permissions.has("provider.oauth")) continue;
         if (provider.authKind !== "oauth") continue;
         result.push({
           pluginId: loaded.manifest.id,
           runtimeId: loaded.runtimeId,
           contributionId: provider.id,
-          providerId: `plugin:${loaded.manifest.id}:${provider.id}`,
+          providerId: `${template ? "plugin-template" : "plugin"}:${loaded.manifest.id}:${provider.id}`,
+          ...(template ? { templateId: provider.id, oauth: provider.oauth, pluginName: loaded.manifest.name } : {}),
           name: provider.name,
           loginLabel: provider.oauth?.loginLabel,
           isSubscription: provider.oauth?.isSubscription === true,
@@ -1843,6 +1852,61 @@ export class PluginRuntime {
       }
     }
     return result;
+  }
+
+  /** Resolve only explicit adapters on a loaded, granted owner; declarative rows keep native routing. */
+  providerInferenceBinding(row: PluginProviderSourceRow, operation?: "chat" | "images", modelId?: string): AccountInferenceBinding | undefined {
+    if (!row.ownerPluginId) return undefined;
+    const loaded = this.loaded.get(row.ownerPluginId);
+    if (!loaded || loaded.disposing) throw apiError("PLUGIN_UNLOADED", "provider owner is not loaded");
+    this.assertPermission(loaded, "provider.register");
+    const contribution = providerContribution(loaded.manifest, row);
+    if (!contribution) throw apiError("PERMISSION_DENIED", "provider owner declaration does not match");
+    if (!contribution.adapter) return undefined;
+    this.assertPermission(loaded, "provider.register");
+    this.assertPermission(loaded, "provider.inference");
+    if (operation && (!contribution.adapter[operation] || (modelId && contribution.models.find(model => model.id.trim().toLowerCase() === modelId.trim().toLowerCase())?.operations?.includes(operation) === false))) {
+      throw apiError("UNSUPPORTED", "provider model does not declare this inference operation");
+    }
+    return { pluginId: row.ownerPluginId, contributionId: contribution.id, runtimeId: loaded.runtimeId,
+      ...(row.pluginTemplateId ? { accountId: row.id, templateId: row.pluginTemplateId } : {}),
+      version: 1, chat: contribution.adapter.chat === true, images: contribution.adapter.images === true };
+  }
+
+  private inferenceSource(binding: AccountInferenceBinding): PluginProviderSourceRow {
+    return { id: binding.accountId ?? `plugin:${binding.pluginId}:${binding.contributionId}`,
+      ownerPluginId: binding.pluginId,
+      ...(binding.templateId ? { pluginTemplateId: binding.templateId, pluginTemplateVersion: 1 } : {}) };
+  }
+
+  providerInferenceSignal(binding: PluginProviderInferenceBindingV1): AbortSignal {
+    const loaded = this.loaded.get(binding.pluginId);
+    if (!loaded || loaded.disposing || loaded.runtimeId !== binding.runtimeId) throw apiError("PLUGIN_UNLOADED", "provider inference runtime changed");
+    return loaded.inferenceController.signal;
+  }
+
+  /** Internal host-only transport. Inference is never a plugin-callable host.proxy API. */
+  async invokeProviderInference(binding: AccountInferenceBinding, operation: "open" | "next" | "close" | "images", payload: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+    const current = this.providerInferenceBinding(this.inferenceSource(binding));
+    if (!current || current.runtimeId !== binding.runtimeId) throw apiError("PLUGIN_UNLOADED", "provider inference runtime changed");
+    const loaded = this.loaded.get(binding.pluginId)!;
+    if (operation === "open" || operation === "images") {
+      const kind = operation === "open" ? "chat" : "images";
+      validateProviderInferenceRequest(payload.request, kind);
+      const request = payload.request as { providerId: string; modelId: string };
+      if (request.providerId !== binding.contributionId) throw apiError("PERMISSION_DENIED", "provider inference owner mismatch");
+      this.providerInferenceBinding(this.inferenceSource(binding), kind, request.modelId);
+    }
+    const value = await this.sendToChild(loaded, { t: "call", method: `provider.inference.${operation}`, payload },
+      operation === "close" ? 5_000 : PLUGIN_INFERENCE_LIMITS.callTimeoutMs + 1_000, signal)
+      .catch(() => { throw apiError("PLUGIN_CALL_FAILED", "Provider inference failed"); });
+    if (this.loaded.get(binding.pluginId) !== loaded || loaded.disposing || signal?.aborted) {
+      throw apiError("PLUGIN_UNLOADED", "provider inference runtime changed or invocation cancelled");
+    }
+    if (operation === "next" && value && typeof value === "object" && "type" in value && value.type === "error") {
+      return { type: "error", message: "Provider inference failed" };
+    }
+    return value;
   }
 
   /** Invoke a declared provider's OAuth hook after rechecking its grant and owner. */
@@ -1861,7 +1925,7 @@ export class PluginRuntime {
       throw apiError("PLUGIN_UNLOADED", "provider OAuth plugin runtime changed");
     }
     this.assertPermission(loaded, "provider.oauth");
-    const providers = (loaded.manifest.contributes?.providers ?? []) as PluginProviderContrib[];
+    const providers = [...(loaded.manifest.contributes?.providers ?? []), ...(loaded.manifest.contributes?.providerTemplates ?? [])];
     const provider = providers.find((entry) => entry.id === contributionId);
     if (!provider || provider.authKind !== "oauth") {
       throw apiError("PERMISSION_DENIED", "provider OAuth contribution is not declared");
@@ -1904,11 +1968,24 @@ export class PluginRuntime {
         operation: request.operation,
         providerId: contributionId,
         ok: false,
-        errorCode: (error as { code?: string } | null | undefined)?.code ?? "PLUGIN_OAUTH_FAILED",
+        errorCode: "PLUGIN_OAUTH_FAILED",
         ts: Date.now(),
       });
-      throw error;
+      if (this.loaded.get(pluginId) !== loaded || loaded.disposing) {
+        throw apiError("PLUGIN_UNLOADED", "Provider OAuth owner is unavailable");
+      }
+      if (signal?.aborted) throw apiError("PLUGIN_TOOL_ABORTED", "Provider OAuth cancelled");
+      throw apiError("PLUGIN_OAUTH_FAILED", "Provider OAuth failed");
     }
+  }
+
+  providerOAuthSignal(provider: PluginOAuthProvider): AbortSignal {
+    const loaded = this.loaded.get(provider.pluginId);
+    if (!loaded || loaded.disposing || loaded.runtimeId !== provider.runtimeId
+      || !this.listOAuthProviders().some(entry => entry.providerId === provider.providerId)) {
+      throw apiError("PLUGIN_UNLOADED", "Provider OAuth owner is unavailable");
+    }
+    return loaded.inferenceController.signal;
   }
 
   /**
@@ -2166,6 +2243,7 @@ export class PluginRuntime {
       pending: new Map(),
       nextCallId: 1,
       disposing: false,
+      inferenceController: new AbortController(),
     };
     this.loaded.set(manifest.id, loaded);
 
@@ -2235,6 +2313,7 @@ export class PluginRuntime {
     const loaded = this.loaded.get(pluginId);
     if (loaded) {
       loaded.disposing = true;
+      loaded.inferenceController.abort(apiError("PLUGIN_UNLOADED", "provider inference plugin unloaded"));
       this.toolInvocations.cancelOwner(loaded, "Plugin unloaded");
       // An explicit stop ends supervision; a supervisor-driven reload keeps it.
       if (!this.restarting.has(pluginId)) this.cancelRestarts(pluginId);
@@ -2332,6 +2411,7 @@ export class PluginRuntime {
     // stopping must already be covered by the guard in `handleChildExit`.
     for (const loaded of loadedPlugins) {
       loaded.disposing = true;
+      loaded.inferenceController.abort(apiError("PLUGIN_UNLOADED", "application shutting down"));
       this.toolInvocations.cancelOwner(loaded, "Application shutting down");
       this.cancelRestarts(loaded.manifest.id);
     }
@@ -3290,6 +3370,7 @@ export class PluginRuntime {
 
   private handleChildExit(loaded: LoadedPlugin, code: number): void {
     this.toolInvocations.cancelOwner(loaded, "Plugin host process exited");
+    loaded.inferenceController.abort(apiError("PLUGIN_CRASHED", "provider inference plugin exited"));
     if (loaded.disposing) return;
     if (this.loaded.get(loaded.manifest.id) !== loaded) return;
     const pluginId = loaded.manifest.id;
@@ -4903,7 +4984,7 @@ export class PluginRuntime {
   }
 
   private assertHasOAuthProvider(loaded: LoadedPlugin): void {
-    const providers = (loaded.manifest.contributes?.providers ?? []) as PluginProviderContrib[];
+    const providers = [...(loaded.manifest.contributes?.providers ?? []), ...(loaded.manifest.contributes?.providerTemplates ?? [])];
     if (!providers.some((provider) => provider.authKind === "oauth")) {
       throw apiError("PERMISSION_DENIED", "provider OAuth requires a declared OAuth provider");
     }

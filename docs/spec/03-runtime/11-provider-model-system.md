@@ -799,3 +799,15 @@ exact origins and paths, never display names or model substrings.
 The resolved adapter remains authoritative for search extraction and replay.
 Unknown connection formats are described as not integrated by this app rather
 than unsupported by the vendor. See the provider configuration specification.
+
+## Plugin templates and independent accounts
+
+Reusable plugin templates extend native Add Service without replacing official
+integrations. Each explicit setup creates a Host-owned UUID account with its
+own names, model preferences, credentials, discovery and refresh. The chooser
+entry remains reusable. Legacy fixed-ID declarations remain compatible.
+Native chat, configured/on-demand subagents and image tools consume the same
+account/model bindings; declared and implemented operations bound capability.
+Image-only models cannot be selected for chat, and login alone does not prove
+inference or image support. Custom connection probes report unsupported rather
+than starting paid generation. See [contract and lifecycle](../07-plugins/17-provider-template-accounts.md).

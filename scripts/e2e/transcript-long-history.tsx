@@ -9,6 +9,7 @@ import { SubagentTranscriptTab } from "../../apps/desktop/src/components/workpan
 import { ChatTranscript } from "../../apps/desktop/src/features/chat/transcript/ChatTranscript";
 import { api } from "../../apps/desktop/src/lib/api";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
+import { waitForScrollLayout } from "./wait-for-scroll-layout";
 
 const createdAt = "2026-09-01T00:00:00.000Z";
 function assert(value: unknown, label: string): asserts value {
@@ -271,6 +272,9 @@ export async function transcriptLongHistoryProbe() {
     await stream(largest, " while-reading");
     assert(disclosure.getAttribute("aria-expanded") === expanded, "stream reset explicit disclosure state");
     const scroller = element(".thread-scroll");
+    // Minimap smooth navigation and disclosure transitions are still allowed
+    // to move the viewport. Finish those actions before measuring streaming.
+    await waitForScrollLayout(scroller, frame);
     scroller.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -200 }));
     scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight - 240);
     scroller.dispatchEvent(new Event("scroll", { bubbles: true }));

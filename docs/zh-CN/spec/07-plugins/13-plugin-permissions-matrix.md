@@ -31,8 +31,9 @@
 | `composer.suggest` | 中等 | `pi.composer.suggest` / `pi.composer.clearSuggestion` | 安装时确认 | 仅在草稿为空、且插件声明的轮次仍是当前轮次时，向当前可见会话的输入框占位符层写入一条可忽略的建议。用户按 Tab 采用、Esc 忽略；输入、发送、切换会话、新一轮开始、插件停止、页面重载或窗口关闭都会清除。插件既不能直接发送，也不读取草稿。文本折为单行并截断到 200 字符；存活时间默认 120 秒，上限 10 分钟。记入审计；无法展示时返回 `{ shown: false, reason }` 而不是抛错 |
 | `agent.extension` | 高 | 在 agent 进程内运行 `contributes.agentExtensions` 模块 | 显式确认；v1.1 仅限本地导入和开发插件 | 与 agent 自身工具同等权限；插件沙箱不适用（规格 16） |
 | `renderer.extension` | 高 | 在宿主渲染进程中执行 `manifest.renderer` 以挂载 UI 插槽；`rendererActions` 与 `rendererCallMethods` 决定该模块可以派发的动作与 `onRendererCall` 方法 | 显式确认；v1.1 仅限本地导入和开发插件，与 `agent.extension` 一致 | 模块与 PI-Desktop 同文档运行，因此插槽是契约而不是沙箱。组件只能派发经过审查的动作词表（`plugin.call`、`composer.insertText`、`composer.readDraft`、`composer.replaceDraft`、`attachments.add` / `list` / `remove`），最多 16 个；`plugin.call` 只能触达调用者自己插件的 `onRendererCall` 方法，最多 32 个。插件卸载时注册会被撤销；自绘弹窗位于插件自己打开的层中 |
-| `provider.register` | 高 | `contributes.providers` 成为原生 Provider 列表中的行，归插件所有并在每次加载时按 manifest 刷新 | 显式确认；v1.1 仅限本地导入和开发插件，与 `agent.extension` 一致 | 用户路径拒绝编辑该行（`PROVIDER_OWNED_BY_PLUGIN`）；API key 凭据仍存放在 Host secret store 的常规 provider 引用下 |
-| `provider.oauth` | 高 | 已声明 OAuth provider 的 `onProviderOAuth`；宿主渲染的 `pi.providers.oauth.prompt` / `notify` | 显式确认 | `authKind: "oauth"` 需要与 `provider.register` 一起授予。回调只能读取和刷新该 provider 声明自己的加密凭据。Host 会把刷新令牌隔离在渲染进程与 Agent Runtime 之外。宿主代发的网络请求仍需 `net.fetch` 和 `manifest.net.domains`；插件入口代码本身不是操作系统沙箱。每个 provider 声明只保存一个账号；退出登录会清除凭据 |
+| `provider.register` | 高 | 旧 `contributes.providers` 创建单例行；V1 `providerTemplates` 增加可复用原生账号入口 | 显式确认；v1.1 仅限本地导入和开发插件，与 `agent.extension` 一致 | Host 拥有独立模板账号及密钥。标准 key／无认证传输与声明式 PKCE／设备码 OAuth 不把密钥交给插件代码。自定义 OAuth／推理分别需要额外授权。旧单例仍由插件生命周期负责删除。 |
+| `provider.oauth` | 高 | 自定义 `onProviderOAuth`；宿主渲染的 `pi.providers.oauth.prompt` / `notify` | 显式确认 | 旧 OAuth 与自定义模板 OAuth 需要此权限，声明式 PKCE／设备码模板不需要。回调仅接收 Host 选定账号的登录／刷新凭据。刷新令牌不进入 Renderer／Agent 推理路径。宿主代发出网需 `net.fetch` 与声明的域名；原生 Node 属于可信代码，不是操作系统沙箱。 |
+| `provider.inference` | 高 | 调用插件为自己声明的提供商导出的版本化 `providerAdapters` chat/images 回调 | 与 `provider.register` 一起显式确认 | 接收所选模型的消息、工具 schema 或图像输入，以及自己的请求凭据；不接收刷新令牌、其他账号密钥，也不能执行本地工具。绑定会话、提供商、模型与 runtime 代际；卸载取消工作。utility 进程隔离不等于操作系统沙箱。 |
 | `net.fetch` | 高 | `net.fetch` | 默认拒绝 | 限定在 `manifest.net.domains` 之内；列表为空或非法即完全不放行出网（§2A） |
 | `net.websocket` | 高 | `pi.net.websocket.connect` / `send` / `close`（套接字由宿主持有；每个插件最多 4 个，帧封顶 1 MiB） | 默认拒绝 | 与 `net.fetch` 一样被限制在 `manifest.net.domains` 之内；被拒绝的主机永远到不了传输层，插件卸载、被禁用或崩溃时每个套接字都会被关闭 |
 | `net.anyHost` | 高 | 主机掌握的所有出网路径（`net.fetch`、`net.websocket`、面板 session、远程 HTTP MCP） | 安装时确认 | 对用户自填端点（自建服务器等）解除 `manifest.net.domains` 白名单；云元数据端点始终拒绝；请求时不再弹窗 |
@@ -110,6 +111,8 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
   （`themes`、`mcpServers`、`services`、`bus`）； `skills` 是例外，并且是
   相反，在加载时跳过（参见
   [02-plugin-manifest-schema.md](/zh-CN/spec/07-plugins/02-plugin-manifest-schema) §7)
+- 声明提供商 `adapter` 必须同时获得 `provider.register` 与 `provider.inference`；
+  现有注册授权不会被静默升级为推理授权。
 - 生命周期与状态事件不需要权限：`workspace:changed`、`session:modelChanged`、
   `session:turnEnded` 和 `plugin:settingsChanged` 走既有的插件事件通道，
   订阅未知的事件名也不会报错
@@ -139,6 +142,7 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 | `agent.prompt.inject` | 调整代理指令 | 调整智能体指令 |
 | `agent.extension` | 在 agent 内运行代码 | 在 agent 内运行代码 |
 | `renderer.extension` | Draw UI in chat slots | 在聊天插槽绘制界面 |
+| `provider.inference` | Process selected model requests and use this provider's request credentials | 处理所选模型请求并使用该提供商的请求凭证 |
 | `net.fetch` | 访问网络 | 访问网络 |
 | `shell.openExternal` | 打开外部链接 | 打开外部链接 |
 | `ui.theme` | 提供一个主题 | 提供主题 |
@@ -208,3 +212,10 @@ assertFsAccess(pluginId, mode, requestedPath, sessionId) {
 7. 删除进系统回收站、拒绝非空目录，并在滚动一分钟内超过 50 次后被打断
 8. 只声明旧权限名 `fs.*.workspace` 的插件会失去写入与删除的可达范围，
    插件页面会把这件事说出来
+
+### 模板账号授权
+
+声明式模板 OAuth 不隐含 `provider.oauth`；只有自定义 `onProviderOAuth` 回调才需要它。
+自定义适配器以及请求内容／凭据传递仍需 `provider.inference`。
+撤权停止工作但保留账号、密钥与偏好；卸载删除自有账号，不删除会话。
+参见 [V1 契约](17-provider-template-accounts.md)。

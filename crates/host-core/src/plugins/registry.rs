@@ -370,8 +370,7 @@ impl PluginManager {
         Ok(None)
     }
 
-    pub fn uninstall(&mut self, id: &str) -> Result<bool> {
-        let existing = self.get(id);
+    pub(crate) fn check_uninstall(&self, id: &str) -> Result<()> {
         // A bundled plugin is part of the application, so there is nothing to
         // remove and its files are not ours to delete. Disabling is the
         // supported way to turn one off (ADR 0104).
@@ -382,6 +381,12 @@ impl PluginManager {
         if self.bundled_ids.contains(id) {
             bail!("PLUGIN_INVALID: a bundled plugin cannot be uninstalled; disable it instead");
         }
+        Ok(())
+    }
+
+    pub fn uninstall(&mut self, id: &str) -> Result<bool> {
+        self.check_uninstall(id)?;
+        let existing = self.get(id);
         let before = self.runtime.len();
         self.runtime.retain(|p| p.id != id);
         self.save()?;

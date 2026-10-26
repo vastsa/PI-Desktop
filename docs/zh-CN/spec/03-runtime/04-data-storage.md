@@ -1,4 +1,4 @@
-# 04. 数据存储（架构 v23）
+# 04. 数据存储（架构 v26）
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
@@ -1421,3 +1421,20 @@ An unknown price is distinct from a known zero price; partial known costs remain
 on the individual operations. Late usage targets its captured turn and does not
 revive it or debit the currently active turn. Immediate nested parent and owning
 Task remain separate optional transcript/event fields.
+
+## 提供商模板绑定——schema 26
+
+v25→v26 迁移先创建备份，再创建 `provider_template_bindings`，
+并在事务中推进 `PRAGMA user_version`。v24 先完成模型发现 v25 迁移。
+只有模板表、没有发现字段的开发版 v25 在 v26 事务中补齐字段；
+已有模板绑定和上架/下架记录保持不变。列为：
+`provider_id TEXT PRIMARY KEY REFERENCES providers(id) ON DELETE CASCADE`、
+`template_id TEXT NOT NULL`、`version INTEGER NOT NULL CHECK(version=1)`、
+`definition_json TEXT NOT NULL`。所有者仍保存在 `providers.owner_plugin_id`；
+定义只保存已校验模板元数据，绝不保存凭据。
+
+现有提供商不更名，也不被自动接管。旧版与官方账号、加密密钥、模型偏好及显式空选择保持不变。
+`config_json.pluginTemplate.pending` 标记新建但未完成的 OAuth 账号；
+启动时清理遗留待登录账号并使清理错误可观测，不清理已经完成、只是需要重新认证的账号。
+删除单个账号会级联删除绑定；卸载删除自有账号与密钥，但保留历史对话。
+参见 [模板账号生命周期](../07-plugins/17-provider-template-accounts.md)。

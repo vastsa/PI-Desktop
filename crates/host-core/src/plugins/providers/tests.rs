@@ -100,9 +100,8 @@ fn a_new_database_carries_the_owner_column_at_the_current_schema_version() {
     // v17 added the owner column, v18 the turn-queue priority column,
     // v19 session omit, v21 the session Todo checklist, and v22 the
     // session-list index, v23 the session title source, and v24 the worktree
-    // registry; v25 adds model discovery state. A fresh database is stamped with the newest version, so the
-    // column set is the current one.
-    assert_eq!(SCHEMA_VERSION, 25);
+    // registry; v25 adds discovery state and v26 template bindings.
+    // A fresh database is stamped with the newest version.
     let version: i64 = db
         .conn()
         .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -454,6 +453,52 @@ fn a_user_row_is_never_adopted_or_removed() {
     );
 }
 
+fn plugin_update(id: &str) -> providers::ProviderUpdateInput {
+    providers::ProviderUpdateInput {
+        id: id.into(),
+        name: None,
+        vendor_key: None,
+        provider_type: None,
+        protocol: None,
+        base_url: None,
+        auth_kind: None,
+        models: None,
+        default_model_id: None,
+        secret_value: None,
+        api_style: None,
+        oauth_account_label: None,
+        headers: None,
+        supports_reasoning: None,
+        supported_thinking_levels: None,
+        context_window: None,
+        max_output_tokens: None,
+        temperature: None,
+        enabled: None,
+    }
+}
+
+#[test]
+fn plugin_identity_mutation_is_rejected_before_secret_write() {
+    let (_dir, db, secrets) = test_context();
+    let id = "plugin:demo.provider:demo";
+    sync_plugin_providers(
+        &db,
+        &secrets,
+        "demo.provider",
+        &declared_providers(&manifest()),
+        true,
+    )
+    .unwrap();
+    let mut update = plugin_update(id);
+    update.base_url = Some("https://attacker.example/".into());
+    update.secret_value = Some("must-not-be-written".into());
+    let error = providers::update_provider(&db, &secrets, update)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("PROVIDER_OWNED_BY_PLUGIN"));
+    assert!(!secrets.has(&crate::secrets::secret_ref_for_provider(id)));
+}
+
 #[test]
 fn the_user_path_refuses_a_plugin_owned_row() {
     let (_dir, db, secrets) = test_context();
@@ -464,36 +509,15 @@ fn the_user_path_refuses_a_plugin_owned_row() {
         .expect_err("the user path cannot delete a plugin row")
         .to_string();
     assert!(delete_error.contains("PROVIDER_OWNED_BY_PLUGIN"));
-    let update_error = providers::update_provider(
-        &db,
-        &secrets,
-        providers::ProviderUpdateInput {
-            id: id.into(),
-            name: Some("Renamed".into()),
-            vendor_key: None,
-            provider_type: None,
-            protocol: None,
-            base_url: None,
-            auth_kind: None,
-            models: None,
-            default_model_id: None,
-            secret_value: None,
-            api_style: None,
-            oauth_account_label: None,
-            headers: None,
-            supports_reasoning: None,
-            supported_thinking_levels: None,
-            context_window: None,
-            max_output_tokens: None,
-            temperature: None,
-            enabled: None,
-        },
-    )
-    .expect_err("the user path cannot edit a plugin row")
-    .to_string();
-    assert!(update_error.contains("PROVIDER_OWNED_BY_PLUGIN"));
+    let mut update = plugin_update(id);
+    update.name = Some("Renamed".into());
+    providers::update_provider(&db, &secrets, update).unwrap();
     let row = providers::get_provider(&db, &secrets, id).unwrap().unwrap();
-    assert_eq!(row.name, "Demo");
+    assert_eq!(row.name, "Renamed");
+    assert!(providers::delete_provider(&db, &secrets, id)
+        .unwrap_err()
+        .to_string()
+        .contains("PROVIDER_OWNED_BY_PLUGIN"));
 }
 
 #[test]
@@ -941,3 +965,5 @@ fn malformed_thinking_level_fields_are_rejected_by_manifest_validation() {
     write_plugin(&root, value);
     assert!(read_manifest_err(&root).contains("defaultThinkingLevel must be a string"));
 }
+
+mod user_preferences;

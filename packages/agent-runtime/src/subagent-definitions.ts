@@ -440,6 +440,7 @@ export async function resolveSubagentProviders(input: {
   definitions: readonly SubagentDefinition[];
   providers: readonly SubagentProviderSource[];
   getSecret: (providerId: string) => Promise<string | undefined>;
+  resolveInferenceBinding?: (provider: SubagentProviderSource, modelId: string) => RuntimeProviderConfig["pluginInference"];
   /** Per-model binding for a vendor-account row, resolved by Electron main. */
   resolveVendorBinding?: (
     provider: SubagentProviderSource,
@@ -479,8 +480,14 @@ export async function resolveSubagentProviders(input: {
       );
       continue;
     }
-    const isVendorAccount = provider.authKind === OAUTH_AUTH_KIND;
-    if (!isVendorAccount && !secrets.has(provider.id)) {
+    let pluginInference: RuntimeProviderConfig["pluginInference"];
+    try { pluginInference = input.resolveInferenceBinding?.(provider, pin.modelId); }
+    catch (error) {
+      diagnostics.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
+    const isVendorAccount = !pluginInference && provider.authKind === OAUTH_AUTH_KIND;
+    if (!pluginInference && !isVendorAccount && !secrets.has(provider.id)) {
       try {
         secrets.set(provider.id, await input.getSecret(provider.id));
       } catch {
@@ -488,7 +495,7 @@ export async function resolveSubagentProviders(input: {
       }
     }
     const apiKey = secrets.get(provider.id) ?? "";
-    if (!apiKey && !isVendorAccount && provider.authKind !== "none") {
+    if (!pluginInference && !apiKey && !isVendorAccount && provider.authKind !== "none") {
       diagnostics.push(`${name}: provider "${provider.name}" has no API key`);
       continue;
     }
@@ -522,6 +529,7 @@ export async function resolveSubagentProviders(input: {
     const apiStyle = binding?.apiStyle ?? provider.apiStyle;
     resolved[key] = {
       id: provider.id,
+      ...(pluginInference ? { pluginInference } : {}),
       name: provider.name,
       ...(provider.vendorKey ? { vendorKey: provider.vendorKey } : {}),
       ...(provider.headers ? { headers: { ...provider.headers } } : {}),

@@ -945,11 +945,12 @@ sklm: {
     testConnection: "연결 테스트",
     noSecret: "API 키가 아직 없음",
     pluginProviderBadge: "플러그인",
+    pluginProviderModelSettingsHint: "모델 설정은 플러그인 기본값과 별도로 저장됩니다. 엔드포인트와 인증 방식은 플러그인이 관리합니다.",
     pluginProviderBy: "{{plugin}} 제공",
     pluginProviderManaged:
-      "이 프로바이더는 플러그인 “{{plugin}}”에서 제공하며 엔드포인트와 모델도 함께 제공합니다. “확장 기능” 페이지에서 켜거나 끌 수 있습니다.",
+      "이 서비스는 “{{plugin}}” 플러그인이 제공합니다. 모델 설정은 편집할 수 있으며 엔드포인트와 인증은 플러그인이 관리합니다.",
     pluginProviderKey: "API 키",
-    pluginProviderKeyHint: "PI-Desktop에 저장되고 런타임에서 사용됩니다. 플러그인은 이 키를 받지 않습니다.",
+    pluginProviderKeyHint: "PI-Desktop에 저장됩니다. 추론 권한을 명시적으로 허용하면 이 제공자의 어댑터가 해당 요청 키를 받을 수 있습니다.",
     pluginProviderKeyRemove: "키 제거",
     pluginProviderKeySaved: "API 키가 저장됨",
     pluginProviderKeyRemoved: "API 키 제거됨",
@@ -1800,6 +1801,7 @@ sklm: {
     noProvidersDesc: "시작하려면 AI 프로바이더를 추가하세요.",
     testing: "테스트 중…",
     testOk: "연결 상태가 좋습니다",
+    testUnsupported: "이 어댑터는 안전한 무료 연결 테스트를 지원하지 않습니다. 생성 요청을 시작하지 않았습니다.",
     testFailed: "연결 테스트 실패",
     testFailedStatus: "연결 테스트 실패 ({{status}})",
     name: "이름",
@@ -2462,6 +2464,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "renderer.extension": "채팅 슬롯에 UI 그리기",
       "provider.register": "모델 목록에 프로바이더 추가",
       "provider.oauth": "OAuth로 프로바이더 로그인",
+      "provider.inference": "선택한 모델 요청과 자격 증명 처리",
       "desktop.control": "데스크톱 제어",
       "models.list": "인증된 모델 목록 표시",
       "session.read": "모델에 전송되는 현재 대화 읽기",
@@ -2511,9 +2514,10 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       "agent.extension": "ExtensionAPI 모듈을 에이전트 프로세스 안에서 에이전트 자체 도구와 같은 권한으로 실행합니다. 신뢰하는 코드만 켜세요.",
       "renderer.extension": "이 플러그인의 렌더러 모듈을 앱 창에 로드하여 메시지 작업 표시줄, 응답 추가 영역, 도구 카드, 코드 블록 렌더러, 작성기 컨트롤 등 UI 슬롯 구성 요소를 그립니다. 모듈은 PI-Desktop과 같은 문서에서 실행됩니다. 신뢰하는 코드만 활성화하세요.",
       "provider.register":
-        "이 플러그인이 정의한 프로바이더를 설정의 프로바이더 목록에 추가합니다. 플러그인은 엔드포인트와 모델을 제공하며, API 키는 PI-Desktop에 남습니다.",
+        "이 플러그인의 제공자를 설정에 추가합니다. 등록 권한만으로 API 키가 플러그인 코드에 전달되지는 않습니다.",
       "provider.oauth":
         "이 플러그인이 선언된 프로바이더의 OAuth 로그인과 토큰 갱신을 수행하도록 허용합니다. PI-Desktop은 토큰을 암호화하지만 신뢰하는 콜백은 토큰을 읽을 수 있습니다. 호스트가 중개하는 네트워크 접근에는 net.fetch와 선언된 도메인이 필요하며, 플러그인 프로세스는 운영체제 샌드박스가 아닙니다. 신뢰하는 코드에만 허용하세요.",
+      "provider.inference": "선택한 대화, 도구 스키마와 이미지 입력 및 이 제공자의 요청 키나 헤더만 받습니다. 갱신 토큰이나 다른 제공자의 비밀은 받지 않습니다. 플러그인 코드는 운영체제 샌드박스가 아니므로 신뢰하는 코드에만 허용하세요.",
       "desktop.control":
         "플러그인이 검토된 PI-Desktop 제어 카탈로그를 호출할 수 있습니다. 파괴적 작업에는 여전히 confirm=true가 필요하며 MCP bearer token은 노출되지 않습니다.",
       "models.list": "로그인한 모델을 볼 수 있지만 키는 받지 않습니다.",

@@ -60,6 +60,7 @@ pub(crate) struct DeclaredPluginProvider {
     pub api_style: String,
     pub auth_kind: String,
     pub models: Vec<ModelBinding>,
+    pub inference: Option<Value>,
 }
 
 /// The provider row id a declaration materializes as.
@@ -221,21 +222,82 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                     .map(str::to_string),
                 api_style,
                 auth_kind,
+                inference: super::provider_operations::declared_provider_operations(obj),
                 models,
             })
         })
         .collect()
 }
 
-/// Materialize a plugin's declared providers as rows owned by that plugin.
-///
-/// The declaration is authoritative for its own fields, so every load refreshes
-/// them; what the *user* or the plugin's login flow wrote — the OAuth account
-/// label, stored headers, and a default model that is still declared — is
-/// carried across. A declaration the manifest no longer makes is dropped
-/// together with both of its credential references, so a later re-declaration
-/// can never inherit a stale token. Rows belonging to another plugin are never
-/// touched.
+/// Explicit user-owned fields layered over a plugin provider declaration.
+#[derive(Default)]
+pub(crate) struct PluginProviderUserOverrides {
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub models: Option<Vec<ModelBinding>>,
+}
+
+pub(crate) fn plugin_provider_user_overrides(raw: &str) -> PluginProviderUserOverrides {
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return PluginProviderUserOverrides::default();
+    };
+    let Some(overrides) = value.get("pluginUserOverrides") else {
+        return PluginProviderUserOverrides::default();
+    };
+    PluginProviderUserOverrides {
+        name: overrides
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        enabled: overrides.get("enabled").and_then(Value::as_bool),
+        models: overrides
+            .get("models")
+            .and_then(|models| serde_json::from_value::<Vec<ModelBinding>>(models.clone()).ok()),
+    }
+}
+
+pub(crate) fn set_plugin_provider_user_override(
+    raw: &str,
+    key: &str,
+    value: Value,
+) -> Result<String> {
+    let mut config = serde_json::from_str::<Value>(raw).map_err(|_| {
+        anyhow::anyhow!("PROVIDER_CONFIG_INVALID: stored provider config is malformed")
+    })?;
+    if !config.is_object() {
+        bail!("PROVIDER_CONFIG_INVALID: stored provider config is not an object");
+    }
+    let overrides = config
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("PROVIDER_CONFIG_INVALID"))?
+        .entry("pluginUserOverrides")
+        .or_insert_with(|| serde_json::json!({}));
+    let overrides = overrides.as_object_mut().ok_or_else(|| {
+        anyhow::anyhow!("PROVIDER_CONFIG_INVALID: pluginUserOverrides is not an object")
+    })?;
+    overrides.insert(key.to_owned(), value);
+    Ok(serde_json::to_string(&config)?)
+}
+
+/// Host-only lifecycle state is separate from the user's enablement preference.
+fn config_with_plugin_lifecycle(
+    raw: &str,
+    enabled: bool,
+    reset_credentials: bool,
+) -> Result<String> {
+    let mut config: Value = serde_json::from_str(raw)?;
+    let object = config.as_object_mut().ok_or_else(|| {
+        anyhow::anyhow!("PROVIDER_CONFIG_INVALID: stored provider config is not an object")
+    })?;
+    object.insert("pluginEnabled".into(), Value::Bool(enabled));
+    if reset_credentials {
+        object.remove("headers");
+        object.remove("oauth");
+    }
+    Ok(serde_json::to_string(&config)?)
+}
+
+/// Legacy singleton reconciliation never adopts or removes template accounts.
 pub(crate) fn sync_plugin_providers(
     db: &Database,
     secrets: &SecretStore,
@@ -243,98 +305,141 @@ pub(crate) fn sync_plugin_providers(
     declared: &[DeclaredPluginProvider],
     enabled: bool,
 ) -> Result<usize> {
-    let now = now_ms();
-    let mut written = 0usize;
+    super::provider_cleanup::retry_pending(db, secrets, Some(plugin_id))?;
     for provider in declared {
-        let row_id = plugin_provider_row_id(plugin_id, &provider.id);
-        // A row already sitting on this id that another plugin — or the user —
-        // owns must fail loudly. The upsert's own guard would turn it into a
-        // silent no-op, and a provider that claims to be synced but is not is
-        // worse than a refused load.
-        match provider_owner_plugin(db, &row_id)? {
-            Some(owner) if owner == plugin_id => {}
-            Some(owner) => bail!(
-                "PLUGIN_INVALID: provider {row_id} is owned by plugin {owner}, not {plugin_id}"
-            ),
-            None if provider_row_exists(db, &row_id)? => bail!(
-                "PLUGIN_INVALID: provider {row_id} already exists and is not owned by {plugin_id}"
-            ),
-            None => {}
+        sync_provider_account(
+            db,
+            secrets,
+            plugin_id,
+            provider,
+            &plugin_provider_row_id(plugin_id, &provider.id),
+            enabled,
+            false,
+        )?;
+    }
+    let declared_rows: Vec<String> = declared
+        .iter()
+        .map(|provider| plugin_provider_row_id(plugin_id, &provider.id))
+        .collect();
+    for row_id in owned_provider_ids(db, plugin_id)? {
+        if !declared_rows.contains(&row_id)
+            && !super::provider_templates::is_template_account(db, &row_id)?
+        {
+            delete_provider_row(db, secrets, &row_id)?;
         }
-        let (existing_config, existing_secret_ref, existing_base_url, existing_api_style): (
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        ) = db
-            .conn()
-            .query_row(
-                "SELECT config_json, secret_ref, base_url, api_style FROM providers WHERE id = ?1",
-                params![row_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .optional()?
-            .unwrap_or((None, None, None, None));
-        let models = providers::normalize_model_bindings(&provider.models);
-        // A declaration that moves the endpoint abandons the answer the previous
-        // one produced: the cached rows carry no endpoint of their own, so the
-        // discovery cache is dropped and the next probe records the new answer.
-        let endpoint_changed = existing_config.is_some()
+    }
+    Ok(declared.len())
+}
+
+/// One shared transport/default reconciliation path for singleton and account rows.
+pub(super) fn sync_provider_account(
+    db: &Database,
+    secrets: &SecretStore,
+    plugin_id: &str,
+    provider: &DeclaredPluginProvider,
+    row_id: &str,
+    enabled: bool,
+    invalidate: bool,
+) -> Result<usize> {
+    super::provider_cleanup::ensure_available(db, row_id)?;
+    let now = now_ms();
+    // A row already sitting on this id that another plugin — or the user —
+    // owns must fail loudly. The upsert's own guard would turn it into a
+    // silent no-op, and a provider that claims to be synced but is not is
+    // worse than a refused load.
+    match provider_owner_plugin(db, row_id)? {
+        Some(owner) if owner == plugin_id => {}
+        Some(owner) => {
+            bail!("PLUGIN_INVALID: provider {row_id} is owned by plugin {owner}, not {plugin_id}")
+        }
+        None if provider_row_exists(db, row_id)? => bail!(
+            "PLUGIN_INVALID: provider {row_id} already exists and is not owned by {plugin_id}"
+        ),
+        None => {}
+    }
+    let (existing_config, existing_secret_ref, existing_base_url, existing_api_style, existing_protocol, existing_auth_kind): (
+            Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
+        ) = db.conn().query_row(
+            "SELECT config_json, secret_ref, base_url, api_style, protocol, auth_kind FROM providers WHERE id = ?1",
+            params![row_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        ).optional()?.unwrap_or((None, None, None, None, None, None));
+    let overrides = existing_config
+        .as_deref()
+        .map(plugin_provider_user_overrides)
+        .unwrap_or_default();
+    let models = overrides
+        .models
+        .clone()
+        .unwrap_or_else(|| providers::normalize_model_bindings(&provider.models));
+    let endpoint_changed = invalidate
+        || existing_config.is_some()
             && (existing_base_url.as_deref().unwrap_or("").trim()
                 != provider.base_url.as_deref().unwrap_or("").trim()
-                || existing_api_style.as_deref().unwrap_or("") != provider.api_style);
-        // A declaration that no longer names a model forgets that model's
-        // cached row, exactly as a user save does: the row would otherwise keep
-        // describing a model this provider stopped declaring. The row above is
-        // already known to be absent or owned by this plugin.
-        let removed_models = providers::config_model_bindings(
-            existing_config.as_deref().unwrap_or("{}"),
-            None,
-            &row_id,
-        )
-        .into_iter()
-        .filter(|binding| {
-            !models
-                .iter()
-                .any(|model| model.id.eq_ignore_ascii_case(&binding.id))
-        })
-        .map(|binding| binding.id)
-        .collect::<Vec<_>>();
-        providers::forget_cached_models(db, &row_id, &removed_models)?;
-        // The merge replaces only model bindings; headers and OAuth metadata
-        // are not this declaration's to drop.
-        let config = providers::config_with_model_bindings(
-            existing_config.as_deref().unwrap_or("{}"),
-            &models,
-        )?;
-        // A declaration that no longer asks for an API key keeps its credential
-        // only while it does: leaving the reference behind would keep the
-        // runtime signing requests with a key the endpoint stopped wanting.
-        let secret_ref = if provider.auth_kind == "api_key" {
-            existing_secret_ref
-        } else {
-            if existing_secret_ref.is_some() {
-                let api_key_ref = crate::secrets::secret_ref_for_provider(&row_id);
-                secrets.delete(&api_key_ref)?;
-                db.conn()
-                    .prepare_cached("DELETE FROM secrets_meta WHERE secret_ref = ?1")?
-                    .execute(params![api_key_ref])?;
-            }
-            None
-        };
-        if provider.auth_kind != "oauth" {
-            let oauth_ref = crate::secrets::secret_ref_for_provider_oauth(&row_id);
-            secrets.delete(&oauth_ref)?;
+                || existing_api_style.as_deref().unwrap_or("") != provider.api_style
+                || existing_protocol.as_deref().unwrap_or("")
+                    != protocol_for_api_style(&provider.api_style)
+                || existing_auth_kind.as_deref().unwrap_or("") != provider.auth_kind);
+    // Forget metadata for bindings removed from the effective selection.
+    let removed_models =
+        providers::config_model_bindings(existing_config.as_deref().unwrap_or("{}"), None, row_id)
+            .into_iter()
+            .filter(|binding| {
+                !models
+                    .iter()
+                    .any(|model| model.id.eq_ignore_ascii_case(&binding.id))
+            })
+            .map(|binding| binding.id)
+            .collect::<Vec<_>>();
+    providers::forget_cached_models(db, row_id, &removed_models)?;
+    // Preserve credentials only while their destination and auth remain unchanged.
+    let config =
+        providers::config_with_model_bindings(existing_config.as_deref().unwrap_or("{}"), &models)?;
+    let config = config_with_plugin_lifecycle(&config, enabled, endpoint_changed)?;
+    let config = super::provider_operations::config_with_provider_operations(
+        &config,
+        provider.inference.as_ref(),
+    )?;
+    // Credentials must never follow a declaration to a changed destination.
+    if endpoint_changed {
+        for credential_ref in [
+            crate::secrets::secret_ref_for_provider(row_id),
+            crate::secrets::secret_ref_for_provider_oauth(row_id),
+        ] {
+            secrets.delete(&credential_ref)?;
             db.conn()
                 .prepare_cached("DELETE FROM secrets_meta WHERE secret_ref = ?1")?
-                .execute(params![oauth_ref])?;
+                .execute(params![credential_ref])?;
         }
-        // The public projection derives the default from the first binding, so
-        // the declared order is the plugin's choice of default.
-        let default_model_id = models.first().map(|model| model.id.clone());
+    }
+
+    let secret_ref = if endpoint_changed {
+        None
+    } else if provider.auth_kind == "api_key" {
+        existing_secret_ref
+    } else {
+        if existing_secret_ref.is_some() {
+            let api_key_ref = crate::secrets::secret_ref_for_provider(row_id);
+            secrets.delete(&api_key_ref)?;
+            db.conn()
+                .prepare_cached("DELETE FROM secrets_meta WHERE secret_ref = ?1")?
+                .execute(params![api_key_ref])?;
+        }
+        None
+    };
+    if provider.auth_kind != "oauth" {
+        let oauth_ref = crate::secrets::secret_ref_for_provider_oauth(row_id);
+        secrets.delete(&oauth_ref)?;
         db.conn()
-            .prepare_cached(
-                "INSERT INTO providers (
+            .prepare_cached("DELETE FROM secrets_meta WHERE secret_ref = ?1")?
+            .execute(params![oauth_ref])?;
+    }
+    // The public projection derives the default from the first binding, so
+    // the declared order is the plugin's choice of default.
+    let default_model_id = models.first().map(|model| model.id.clone());
+    db.conn()
+        .prepare_cached(
+            "INSERT INTO providers (
                     id, name, vendor_key, type, protocol, enabled, base_url, auth_kind,
                     api_style, default_model_id, config_json, owner_plugin_id,
                     secret_ref, created_at, updated_at
@@ -354,39 +459,34 @@ pub(crate) fn sync_plugin_providers(
                     secret_ref = excluded.secret_ref,
                     updated_at = excluded.updated_at
                  WHERE providers.owner_plugin_id = excluded.owner_plugin_id",
-            )?
-            .execute(params![
-                row_id,
-                provider.name,
-                provider.vendor_key,
-                protocol_for_api_style(&provider.api_style),
-                if enabled { 1 } else { 0 },
-                provider.base_url,
-                provider.auth_kind,
-                provider.api_style,
-                default_model_id,
-                config,
-                plugin_id,
-                secret_ref,
-                now
-            ])?;
-        if endpoint_changed {
-            let declared_model_ids: Vec<String> =
-                models.iter().map(|model| model.id.clone()).collect();
-            providers::forget_missing_discovered_models(db, &row_id, &declared_model_ids)?;
-        }
-        written += 1;
+        )?
+        .execute(params![
+            row_id,
+            overrides.name.as_deref().unwrap_or(&provider.name),
+            provider.vendor_key,
+            protocol_for_api_style(&provider.api_style),
+            if enabled
+                && overrides.enabled.unwrap_or(true)
+                && !super::provider_templates::config_pending(&config)
+            {
+                1
+            } else {
+                0
+            },
+            provider.base_url,
+            provider.auth_kind,
+            provider.api_style,
+            default_model_id,
+            config,
+            plugin_id,
+            secret_ref,
+            now
+        ])?;
+    if endpoint_changed {
+        let declared_model_ids: Vec<String> = models.iter().map(|model| model.id.clone()).collect();
+        providers::forget_missing_discovered_models(db, row_id, &declared_model_ids)?;
     }
-    let declared_rows: Vec<String> = declared
-        .iter()
-        .map(|provider| plugin_provider_row_id(plugin_id, &provider.id))
-        .collect();
-    for row_id in owned_provider_ids(db, plugin_id)? {
-        if !declared_rows.contains(&row_id) {
-            delete_provider_row(db, secrets, &row_id)?;
-        }
-    }
-    Ok(written)
+    Ok(1)
 }
 
 /// Turn every row a plugin owns off, keeping the credential and the user's
@@ -396,14 +496,29 @@ pub(crate) fn set_plugin_providers_enabled(
     plugin_id: &str,
     enabled: bool,
 ) -> Result<usize> {
-    let changed = db
+    let mut stmt = db
         .conn()
-        .prepare_cached(
-            "UPDATE providers SET enabled = ?2, updated_at = ?3
-             WHERE owner_plugin_id = ?1",
-        )?
-        .execute(params![plugin_id, if enabled { 1 } else { 0 }, now_ms()])?;
-    Ok(changed)
+        .prepare_cached("SELECT id, config_json FROM providers WHERE owner_plugin_id = ?1")?;
+    let rows = stmt.query_map(params![plugin_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    for (id, config) in &rows {
+        let remembered = plugin_provider_user_overrides(config)
+            .enabled
+            .unwrap_or(true);
+        let enabled = enabled && !super::provider_cleanup::config_pending(config);
+        let config = config_with_plugin_lifecycle(config, enabled, false)?;
+        db.conn()
+            .prepare_cached("UPDATE providers SET enabled = ?2, updated_at = ?3, config_json = ?4 WHERE id = ?1")?
+            .execute(params![
+                id,
+                if enabled && remembered && !super::provider_templates::config_pending(&config) { 1 } else { 0 },
+                now_ms(),
+                config
+            ])?;
+    }
+    Ok(rows.len())
 }
 
 /// Every provider row id a plugin owns.
@@ -422,27 +537,7 @@ pub(crate) fn remove_plugin_providers(
     secrets: &SecretStore,
     plugin_id: &str,
 ) -> Result<usize> {
-    let ids = owned_provider_ids(db, plugin_id)?;
-    for id in &ids {
-        delete_provider_row(db, secrets, id)?;
-    }
-    Ok(ids.len())
-}
-
-/// What a registered plugin declares, or `None` when its declaration cannot be
-/// read — a moved checkout, an unmounted volume, a manifest that does not
-/// belong to this row.
-///
-/// The distinction matters: an unreadable declaration is *not* an empty one.
-/// Treating it as empty would delete the plugin's rows and the credential the
-/// user stored with them, so callers leave the rows untouched instead.
-fn declared_providers_for(
-    plugins: &PluginManager,
-    plugin_id: &str,
-) -> Result<Option<Vec<DeclaredPluginProvider>>> {
-    Ok(plugins
-        .manifest_for(plugin_id)?
-        .map(|manifest| declared_providers(&manifest)))
+    super::provider_cleanup::remove_plugin(db, secrets, plugin_id)
 }
 
 /// Bring the database in line with what one plugin declares.
@@ -456,10 +551,29 @@ pub(crate) fn reconcile_plugin(
     plugin_id: &str,
     enabled: bool,
 ) -> Result<usize> {
-    let Some(declared) = declared_providers_for(plugins, plugin_id)? else {
-        return Ok(0);
+    super::provider_cleanup::retry_pending(db, secrets, Some(plugin_id))?;
+    let manifest = match plugins.manifest_for(plugin_id) {
+        Ok(Some(manifest)) => manifest,
+        Ok(None) => {
+            super::provider_templates::pause_templates(db, plugin_id)?;
+            return Ok(0);
+        }
+        Err(error) => {
+            super::provider_templates::pause_templates(db, plugin_id)?;
+            return Err(error);
+        }
     };
-    sync_plugin_providers(db, secrets, plugin_id, &declared, enabled)
+    let count = sync_plugin_providers(
+        db,
+        secrets,
+        plugin_id,
+        &declared_providers(&manifest),
+        enabled,
+    )?;
+    Ok(count
+        + super::provider_templates::reconcile_templates(
+            db, secrets, plugins, plugin_id, &manifest, enabled,
+        )?)
 }
 
 /// The same reconciliation for every registered plugin, used once at startup so
@@ -469,20 +583,17 @@ pub(crate) fn reconcile_all(
     secrets: &SecretStore,
     plugins: &PluginManager,
 ) -> Result<usize> {
+    let mut cleanup_failed = super::provider_cleanup::retry_pending(db, secrets, None).is_err();
+    if super::provider_templates::cleanup_pending(db, secrets).is_err() {
+        tracing::warn!("pending template account cleanup failed");
+        cleanup_failed = true;
+    }
     let registered: Vec<String> = plugins.list().into_iter().map(|p| p.id).collect();
     let mut written = 0usize;
     for plugin in plugins.list() {
         // One unreadable plugin must not stop the others from being reconciled,
         // and must not stop the orphan sweep below from running.
-        let declared = match declared_providers_for(plugins, &plugin.id) {
-            Ok(Some(declared)) => declared,
-            Ok(None) => continue,
-            Err(error) => {
-                tracing::warn!(plugin = %plugin.id, %error, "plugin manifest unreadable; providers left as they are");
-                continue;
-            }
-        };
-        match sync_plugin_providers(db, secrets, &plugin.id, &declared, plugin.enabled) {
+        match reconcile_plugin(db, secrets, plugins, &plugin.id, plugin.enabled) {
             Ok(count) => written += count,
             Err(error) => {
                 tracing::warn!(plugin = %plugin.id, %error, "plugin provider sync failed");
@@ -494,7 +605,16 @@ pub(crate) fn reconcile_all(
     // account for. Its owner is no longer registered, so the row goes.
     for owner in orphaned_owner_plugin_ids(db, &registered)? {
         tracing::warn!(plugin = %owner, "removing provider rows of an unregistered plugin");
-        written += remove_plugin_providers(db, secrets, &owner)?;
+        match remove_plugin_providers(db, secrets, &owner) {
+            Ok(count) => written += count,
+            Err(_) => {
+                tracing::warn!(plugin=%owner, "orphan provider cleanup pending");
+                cleanup_failed = true;
+            }
+        }
+    }
+    if cleanup_failed {
+        bail!("Provider credential cleanup is pending; retry uninstall.");
     }
     Ok(written)
 }

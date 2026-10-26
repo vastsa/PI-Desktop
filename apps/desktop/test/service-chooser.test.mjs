@@ -26,7 +26,7 @@ const rule = (selector) => {
 
 test("a new service starts on a searchable chooser, not a closed menu (D625)", () => {
   assert.match(setupSource, /<ServiceChooser/);
-  assert.match(setupSource, /const chooserOpen = choosing \|\| !service/);
+  assert.match(setupSource, /const chooserOpen = !selectedTemplate && !createdAccount && \(choosing \|\| !service\)/);
   assert.match(setupSource, /chooserOpen \? chooserView : pluginCatalogSetup/);
   assert.doesNotMatch(setupSource, /<ServicePicker/);
   assert.doesNotMatch(setupSource, /<optgroup/);

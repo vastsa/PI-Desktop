@@ -550,6 +550,7 @@ export class SubagentRun {
 
   /** Continue the same agent at the failed request; never replay completed tools. */
   private useNextModel(): boolean {
+    if (this.provider.pluginInference) return false;
     // An aborted turn never continues, whether the signal flipped yet or the
     // cancel was only visible on the settled message.
     if (this.runSignal().aborted || this.turnAborted || !this.streamError || this.streamError.code === "TURN_ABORTED") return false;
@@ -624,6 +625,7 @@ export class SubagentRun {
     error: ReturnType<typeof classifyAgentError>,
     phase: "request" | "stream",
   ): number | undefined {
+    if (this.provider.pluginInference) return undefined;
     if (!error.retriable) return undefined;
     const infinite = this.opts.infiniteProviderRetry === true;
     if (error.code === "PROVIDER_RATE_LIMITED") {

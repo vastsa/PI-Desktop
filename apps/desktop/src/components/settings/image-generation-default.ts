@@ -42,7 +42,7 @@ export function imageGenerationBindingAvailable(
 ): boolean {
   if (!provider || !provider.enabled) return false;
   return (
-    !!provider.baseUrl &&
+    (!!provider.baseUrl || provider.pluginModelOperations?.[modelId]?.includes("images") === true) &&
     (provider.hasSecret || provider.hasOauth === true || provider.authKind === "none") &&
     // Mirror image-generation-service's availability guard exactly: the same
     // model offer, so a choice the row shows can never fail at send time.

@@ -157,6 +157,13 @@ export type PluginProviderCatalogMeta = {
   category: string;
   /** Optional one-sentence introduction, resolved for the active app locale. */
   description?: string;
+  /** Present for a reusable template; providerId is then a chooser key, not a row. */
+  templateId?: string;
+  name?: string;
+  authKind?: "api_key" | "none" | "oauth";
+  baseUrl?: string;
+  apiStyle?: string;
+  models?: import("./models.js").ModelBinding[];
 };
 
 /** A data-only scenic Settings destination rendered by the host React tree. */

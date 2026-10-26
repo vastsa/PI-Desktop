@@ -474,3 +474,16 @@ test("the settings row and the settings page compose one candidate list", async 
   assert.match(page, /imageGenerationPickerCandidates\(/);
   assert.match(page, /isImageGenerationPickerCandidate\(/);
 });
+
+test("plugin OAuth image defaults require explicit model operations, not a vendor allowlist", () => {
+  const account = provider("plugin:fixture.oauth:gateway", ["chat", "image"], {
+    authKind: "oauth", hasOauth: true, baseUrl: undefined, ownerPluginId: "fixture.oauth",
+    pluginModelOperations: { chat: ["chat"], image: ["images"] },
+  });
+  assert.equal(imageGenerationBindingAvailable(account, "image"), true);
+  assert.equal(imageGenerationBindingAvailable(account, "chat"), false);
+  assert.equal(imageGenerationBindingAvailable({ ...account, hasSecret: false, hasOauth: false }, "image"), false);
+  assert.equal(imageGenerationBindingAvailable({ ...account, pluginModelOperations: undefined }, "image"), false);
+  const selected = binding(account.id, "image");
+  assert.deepEqual(planImageGenerationDefaults({}, account.id, ["image"], [account]).imageGeneration, selected);
+});

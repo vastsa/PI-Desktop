@@ -178,6 +178,12 @@ export function registerProviderIpc({
     await modelsDevCatalog.ensureLoaded();
     return { ...result, provider: enrichProvider(result.provider) };
   });
+  handle(IPC.invoke.providersCreateFromTemplate, async (input: unknown) => {
+    if (!host) throw new Error("host unavailable");
+    const result = await host.call<{ provider: RuntimeProvider }>("providers.createFromTemplate", input);
+    await modelsDevCatalog.ensureLoaded();
+    return { ...result, provider: enrichProvider(result.provider) };
+  });
   handle(IPC.invoke.providersUpdate, async (input: unknown) => {
     if (!host) throw new Error("host unavailable");
     const providerId = input && typeof input === "object" && typeof (input as { id?: unknown }).id === "string"
@@ -229,8 +235,12 @@ export function registerProviderIpc({
         authKind?: string;
         apiStyle?: string;
         headers?: Record<string, string>;
+        pluginModelOperations?: Record<string, ("chat" | "images")[]>;
       };
     }>("providers.get", { id });
+    if (detail.provider?.pluginModelOperations !== undefined) {
+      return { ok: false, network: "skipped", errorCode: ErrorCodes.UNSUPPORTED };
+    }
     // A vendor account proves itself by resolving auth — refreshing the token
     // if it has expired — not by probing /models with a key it does not have.
     if (detail.provider?.authKind === OAUTH_AUTH_KIND) {
@@ -332,6 +342,7 @@ export function registerProviderIpc({
       throw new Error("providerId required");
     }
     await vendorOAuth.deleteAccount(providerId);
+    await onProviderInvalidated?.(providerId);
     return { ok: true };
   });
   handle(

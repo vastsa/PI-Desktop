@@ -2199,7 +2199,8 @@ fn v24_model_discovery_upgrade_preserves_rows_and_reopens() {
     let path = dir.path().join("pi.sqlite");
     {
         let db = Database::open(&path).unwrap();
-        db.conn().execute_batch("ALTER TABLE models DROP COLUMN discovery_state;
+        db.conn().execute_batch("DROP TABLE provider_template_bindings;
+            ALTER TABLE models DROP COLUMN discovery_state;
             INSERT INTO providers(id, name, type, protocol, auth_kind, config_json, created_at, updated_at)
             VALUES ('fixture', 'Fixture', 'openai_compatible', 'openai_compatible', 'none', '{}', 1, 1);
             INSERT INTO models(provider_id, model_id, display_name, source, updated_at)

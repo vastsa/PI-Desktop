@@ -58,6 +58,7 @@ export * from "./attachment-formats.js";
 export * from "./speech.js";
 export * from "./gen-ui.js";
 export * from "./image-generation.js";
+export * from "./provider-model-operations.js";
 export * from "./font-size.js";
 export * from "./chat-content-width.js";
 export * from "./racp.js";

@@ -184,6 +184,11 @@ fn apply_entity(
             let input: ProviderUpdateInput = serde_json::from_value(payload)?;
             providers::update_provider(&st.db, &st.secrets, input)?;
         } else {
+            // Stable sync identity is passed separately, never accepted by
+            // the closed public create DTO.
+            if let Some(object) = payload.as_object_mut() {
+                object.remove("id");
+            }
             let input: ProviderCreateInput = serde_json::from_value(payload)?;
             providers::create_provider_with_id(&st.db, &st.secrets, provider_id, input)?;
             if missing_portable_secret {

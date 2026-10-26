@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { createImageBinding, generateImageBatch, type ImageOperationMetadata } from "@pi-desktop/agent-runtime";
-import type { ImageApi, ImageModel } from "@earendil-works/pi-ai";
+import type { ImageApi, ImageModel, ProviderImages } from "@earendil-works/pi-ai";
 import type { VendorOAuth } from "../oauth";
 import {
   CODEX_IMAGE_VENDOR_KEY,
@@ -32,6 +32,7 @@ export function createImageGenerationTool(options: {
   allowFakeIp?: () => boolean;
   resolveAuth?: VendorOAuth["resolveAuth"];
   resolveImageModel?: (provider: ProviderPublic, modelId: string) => Promise<ImageModel<ImageApi> | undefined>;
+  resolveProviderImages?: (provider: ProviderPublic, modelId: string) => ProviderImages | undefined;
 }): LocalToolHandler {
   return async ({ sessionId, args, signal }) => {
     imageGenerationPrompts(args);
@@ -47,9 +48,10 @@ export function createImageGenerationTool(options: {
     const { provider } = await host.call<{ provider?: ProviderPublic }>("providers.get", {
       id: binding.providerId,
     });
+    const customImages = provider?.enabled ? options.resolveProviderImages?.(provider, binding.modelId) : undefined;
     if (
       !provider?.enabled ||
-      !provider.baseUrl ||
+      (!provider.baseUrl && !customImages) ||
       !imageModelOfferedByProvider(provider, binding.modelId)
     ) {
       return failure(
@@ -57,10 +59,10 @@ export function createImageGenerationTool(options: {
         "The configured image model is unavailable. Update Settings > Models > Image generation model.",
       );
     }
-    const { value } = provider.authKind === "oauth" || provider.authKind === "none"
+    const { value } = customImages || provider.authKind === "oauth" || provider.authKind === "none"
       ? { value: undefined }
       : await host.call<{ value?: string }>("providers.getSecret", { id: provider.id });
-    if (provider.authKind !== "none" && provider.authKind !== "oauth" && !value)
+    if (!customImages && provider.authKind !== "none" && provider.authKind !== "oauth" && !value)
       return failure("IMAGE_AUTH_FAILED", "The image provider needs an API key.");
     const downloadOptions = { allowFakeIp: options.allowFakeIp?.() === true };
     // A signed-in Codex account serves images on the vendor's Codex routes and
@@ -72,10 +74,11 @@ export function createImageGenerationTool(options: {
     let imageBinding;
     try {
       imageBinding = createImageBinding({
-        nativeModel: await options.resolveImageModel?.(provider, binding.modelId),
-        providerId: provider.id, vendorKey: provider.vendorKey, authKind: provider.authKind,
-        baseUrl: provider.baseUrl, modelId: binding.modelId, apiKey: value, headers,
-        ...(provider.authKind === "oauth" && options.resolveAuth
+        nativeModel: customImages ? undefined : await options.resolveImageModel?.(provider, binding.modelId),
+        customImages,
+        providerId: provider.id, vendorKey: provider.vendorKey, authKind: customImages ? "none" : provider.authKind,
+        baseUrl: provider.baseUrl ?? "https://plugin.invalid", modelId: binding.modelId, apiKey: value, headers,
+        ...(!customImages && provider.authKind === "oauth" && options.resolveAuth
           ? { resolveAuth: () => options.resolveAuth!(provider.id) } : {}),
       }, downloadOptions);
     } catch (error) {

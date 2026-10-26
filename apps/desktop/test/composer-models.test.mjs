@@ -425,3 +425,28 @@ test("unlisted configured models leave the menu without deleting bindings or cha
     { ...model("beta"), discoveryState: "unlisted" },
   ]), []);
 });
+
+test("Composer combines discovery membership, plugin operations and image bindings", () => {
+  const provider = {
+    id: "plugin-account", ownerPluginId: "fixture.plugin", defaultModelId: "removed",
+    models: ["chat", "removed", "image-only", "generation", "manual", "route/removed"].map(binding),
+    pluginModelOperations: {
+      chat: ["chat"], removed: ["chat"], "image-only": ["images"],
+      generation: ["chat", "images"], manual: ["chat"], "route/removed": ["chat"],
+    },
+  };
+  const before = structuredClone(provider);
+  const snapshot = [
+    { ...model("chat"), discoveryState: "published" },
+    { ...model("REMOVED"), discoveryState: "unlisted" },
+    { ...model("image-only"), discoveryState: "published" },
+    { ...model("generation"), discoveryState: "published" },
+  ];
+  const images = { providerId: provider.id, modelId: "GENERATION" };
+  assert.deepEqual(composerModelsForProvider(provider, snapshot, images).map(row => row.modelId),
+    ["chat", "manual", "route/removed"]);
+  snapshot[1].discoveryState = "published";
+  assert.deepEqual(composerModelsForProvider(provider, snapshot, images).map(row => row.modelId),
+    ["chat", "removed", "manual", "route/removed"]);
+  assert.deepEqual(provider, before);
+});

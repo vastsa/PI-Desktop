@@ -191,6 +191,7 @@ type PluginContributes = {
  skills?: Array<string | PluginSkillContrib>; // relative paths, or metadata overrides
  agentExtensions?: string[]; // ExtensionAPI modules run in the agent sidecar; needs `agent.extension` (spec 16)
 providers?: PluginProviderContrib[]; // Host-owned provider rows; needs `provider.register`; OAuth also needs `provider.oauth` (spec 13)
+providerTemplates?: PluginProviderTemplateV1[]; // Reusable native-account entries; see section 5.5
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
  scenicThemes?: PluginScenicThemesContrib;
@@ -338,6 +339,7 @@ type PluginProviderContrib = {
  apiStyle?: PluginProviderApiStyle; // wire style, default `chat_completions`
  authKind?: "api_key" | "none" | "oauth"; // default `api_key`
  oauth?: { loginLabel?: string; isSubscription?: boolean }; // only with `authKind: "oauth"`
+ adapter?: { version: 1; chat?: boolean; images?: boolean }; // needs `provider.inference`
  models: PluginProviderModelContrib[]; // 1..64 entries
 };
 
@@ -356,6 +358,7 @@ type PluginProviderModelContrib = {
  contextWindow?: number;
  maxTokens?: number;
  supportsImages?: boolean;
+ operations?: ("chat" | "images")[]; // adapter models only; absent inherits provider operations
  /** Canonical thinking levels offered by this model, in declaration order. */
  thinkingLevels?: string[];
  /** New sessions use this level when it is present in `thinkingLevels`. */
@@ -507,7 +510,7 @@ and `**` matches one or more trailing segments (final segment only).
 }
 ```
 
-## 5.4 providers — provider rows the plugin declares
+## 5.4 providers — legacy singleton provider rows
 
 `contributes.providers` declares provider rows that the Host materializes in
 the native provider list, owned by the plugin ([ADR 0259](../../adr/0259-plugin-declared-providers.md)). There is no per-plugin provider-count cap; the existing 50 MiB plugin package limit remains the outer size bound:
@@ -533,6 +536,15 @@ the native provider list, owned by the plugin ([ADR 0259](../../adr/0259-plugin-
   empty list is valid only for an API-key provider with `baseUrl`; after the
   user saves a key, the Host discovers and caches that endpoint's models and
   exposes the cached models for the plugin-owned row.
+- `adapter` optionally selects a versioned plugin-owned inference transport.
+  Version 1 requires at least one of `chat` / `images` to be true, both
+  `provider.register` and `provider.inference`, and a matching
+  `providerAdapters[provider.id]` module export. Models may restrict
+  `operations` to a non-empty subset of the adapter's declared operations.
+  Image-only models are not chat candidates. `supportsImages` describes image
+  input, not image generation. User preferences cannot grant undeclared operations.
+  Without `adapter`, existing compatible transports remain unchanged. See
+  [the inference API](03-plugin-api.md#global-provider-inference-adapters).
 
 `thinkingLevels` is optional. The Host trims entries, drops unknown canonical
 names, removes duplicates, and preserves the remaining declaration order. An
@@ -542,10 +554,14 @@ dropped and normal binding normalization selects the first available level.
 
 A non-empty `contributes.providers` needs the high-risk `provider.register`
 permission ([13-plugin-permissions-matrix.md](13-plugin-permissions-matrix.md)).
-The declaration is re-read on every plugin load and is authoritative for its own
-fields; disabling the plugin keeps the rows and turns them off, while dropping a
-declaration or uninstalling the plugin deletes the row with its stored
-credentials.
+The declaration is re-read on every plugin load and supplies transport identity
+and defaults. Explicit model, display-name and enablement preferences saved in
+native Settings take precedence and survive reload. Disabling the plugin forces
+its rows off without erasing those preferences; removing a declaration or
+uninstalling the plugin deletes the row and its stored credentials. A declared
+endpoint/protocol/authentication change invalidates old credentials, custom
+headers, OAuth metadata and cached discovery. See
+[plugin model preferences ADR](../../adr/plugin-provider-user-model-preferences.md).
 
 An API-key provider with a `baseUrl` appears in the Host's **Add Service**
 chooser while its plugin is loaded with `provider.register` and the provider has
@@ -568,6 +584,17 @@ network API. Plugin entry code is not an OS sandbox and can use raw Node APIs;
 grant the permission only to code you trust. See
 [03-plugin-api.md](03-plugin-api.md) and
 [13-plugin-permissions-matrix.md](13-plugin-permissions-matrix.md).
+
+## 5.5 providerTemplates — reusable native-account integrations
+
+`contributes.providerTemplates` uses closed `PluginProviderTemplateV1` objects
+with `version: 1`; template IDs are unique across both provider arrays. Installing
+a template adds only a chooser entry. Host generates independent account IDs on
+explicit native setup; the entry remains after adding/removing accounts.
+API-key, no-auth and OAuth templates are supported. Declarative PKCE/device
+OAuth needs registration, not custom OAuth execution permission; custom hooks
+and inference require their separate grants. Legacy section 5.4 stays unchanged.
+See [the complete V1 contract, example, bounds and lifecycle](17-provider-template-accounts.md).
 
 ## 6. activationEvents (optional metadata)
 
@@ -608,7 +635,7 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
    valid patterns (§5.1)
 12. A contribution that needs a permission fails validation when the permission
    is missing: `themes` → `ui.theme`, `views` → `ui.view`, `providers` →
-   `provider.register`, OAuth providers → `provider.oauth`, `composerTransforms` →
+   `provider.register` (also for templates), legacy/custom OAuth → `provider.oauth`, `composerTransforms` →
    `composer.transform`, stdio servers → `mcp.server.local`, remote servers →
    `mcp.server.remote`, `services` → `background.service`,
    `bus.publish` → `bus.publish`, `bus.subscribe` → `bus.subscribe`.

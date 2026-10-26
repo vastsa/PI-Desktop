@@ -374,13 +374,14 @@ export function createSessionLaunchRuntime({
     // Plugin-owned agents resolve credentials and transport inside the trusted
     // extension; the host never reads or injects a secret for them.
     const isExtensionAgent = Boolean(extensionAgentKey);
-    const isVendorAccount = !isExtensionAgent && provider.authKind === OAUTH_AUTH_KIND;
-    const secret = isExtensionAgent || isVendorAccount
+    const pluginInference = plugins.providerInferenceBinding?.(provider);
+    const isVendorAccount = !isExtensionAgent && !pluginInference && provider.authKind === OAUTH_AUTH_KIND;
+    const secret = isExtensionAgent || isVendorAccount || pluginInference
       ? { value: undefined }
       : await runtimeState.host!.call<{ value?: string }>("providers.getSecret", {
           id: provider.id,
         });
-    if (!secret.value && !isExtensionAgent && !isVendorAccount && provider.authKind !== "none") {
+    if (!pluginInference && !secret.value && !isExtensionAgent && !isVendorAccount && provider.authKind !== "none") {
       throw Object.assign(new Error("Provider API key missing"), {
         errorCode: ErrorCodes.PROVIDER_SECRET_MISSING,
       });
@@ -400,6 +401,7 @@ export function createSessionLaunchRuntime({
         errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
       });
     }
+    if (pluginInference) plugins.providerInferenceBinding(provider, "chat", modelId);
     if (isImageGenerationModel(
       imageGenerationBindings(settings.imageGenerationModels, settings.imageGeneration),
       provider.id,
@@ -576,6 +578,10 @@ export function createSessionLaunchRuntime({
     const subagentBindings = await resolveSubagentProviders({
       definitions: subagentCatalog.definitions,
       providers: providers.providers,
+      resolveInferenceBinding: (pinned, pinnedModelId) => {
+        const row = providers.providers.find(candidate => candidate.id === pinned.id);
+        return row ? plugins.providerInferenceBinding?.(row, "chat", pinnedModelId) : undefined;
+      },
       getSecret: async (id: string) =>
         (await runtimeState.host!.call<{ value?: string }>("providers.getSecret", { id })).value,
       resolveVendorBinding: (pinned, pinnedModelId) =>
@@ -613,6 +619,9 @@ export function createSessionLaunchRuntime({
       if (!row.enabled) continue;
       for (const binding of row.models ?? []) {
         if (!binding.availableForSubagents) continue;
+        let rowInference;
+        try { rowInference = plugins.providerInferenceBinding?.(row, "chat", binding.id); }
+        catch { continue; } // Image-only, unloaded, or ungranted adapters are not chat delegates.
         let key = `${row.vendorKey ?? row.name}/${binding.id}`;
         // Two provider rows can share a vendor alias. Opting in one row must
         // not authorize the credential-bearing pin resolved from another row.
@@ -623,9 +632,9 @@ export function createSessionLaunchRuntime({
           subagentModelKeys.push(key);
           continue; // already resolved, and independently opted in
         }
-        const isVendorAccount = row.authKind === OAUTH_AUTH_KIND;
+        const isVendorAccount = !rowInference && row.authKind === OAUTH_AUTH_KIND;
         let apiKey = "";
-        if (!isVendorAccount && row.authKind !== "none") {
+        if (!rowInference && !isVendorAccount && row.authKind !== "none") {
           try {
             apiKey =
               (
@@ -668,6 +677,7 @@ export function createSessionLaunchRuntime({
         const caps = effective.capabilities;
         subagentBindings.providers[key] = {
           id: row.id,
+          ...(rowInference ? { pluginInference: rowInference } : {}),
           name: row.name,
           ...(row.vendorKey ? { vendorKey: row.vendorKey } : {}),
           ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}),
@@ -694,6 +704,11 @@ export function createSessionLaunchRuntime({
         data: { diagnostics: subagentDiagnostics },
       });
     }
+    runtimeState.sidecar?.setProviderInferenceBindings?.(sessionId, [
+      ...(pluginInference ? [{ providerId: provider.id, modelId, adapter: pluginInference }] : []),
+      ...Object.values(subagentBindings.providers).flatMap(binding => binding.pluginInference
+        ? [{ providerId: binding.id, modelId: binding.modelId, adapter: binding.pluginInference }] : []),
+    ]);
     // Bind the vendor-account rows this turn is allowed to sign requests with:
     // the session's own provider plus any row a pinned subagent resolved to. The
     // sidecar may then ask main for request auth, but only for a row named here,
@@ -706,7 +721,7 @@ export function createSessionLaunchRuntime({
       ]
         .map((id) => providers.providers.find((row) => row.id === id))
         .flatMap((row) =>
-          row?.authKind === OAUTH_AUTH_KIND
+          row?.authKind === OAUTH_AUTH_KIND && !plugins.providerInferenceBinding?.(row)
             ? [{ providerId: row.id }]
             : [],
         ),
@@ -760,6 +775,7 @@ export function createSessionLaunchRuntime({
         projectMemory,
         provider: {
           id: provider.id,
+          ...(pluginInference ? { pluginInference } : {}),
           name: provider.name,
           vendorKey: provider.vendorKey,
           baseUrl,

@@ -525,6 +525,74 @@ provider fields. If discovery returns no models, the key remains saved and the
 user can retry from the provider's model controls. Provider count is not capped
 per plugin; the package's existing size limit bounds the manifest.
 
+### Global provider inference adapters
+
+**Requires explicit `provider.register` and `provider.inference` grants.** The
+adapter receives the selected model's request, including conversation content
+and tool schemas, and only that provider's request credentials. Registering a
+provider alone does not authorize this. Plugin entry code runs in the existing
+utility process, not an OS security sandbox; grant only to trusted code.
+
+Declare `adapter: { version: 1, chat: true }` on a provider contribution, then
+export a matching manifest-local provider id from the plugin entry module:
+
+```ts
+import type { PluginProviderAdaptersV1 } from "@pi-desktop/plugin-sdk";
+
+// Local fixture for a contribution whose id is "echo"; no network or credentials.
+export const providerAdapters = {
+  echo: {
+    version: 1,
+    async *chat(request, { signal }) {
+      signal.throwIfAborted();
+      yield { type: "text", delta: `Selected model: ${request.modelId}` };
+      yield { type: "done", stopReason: "stop", usage: { input: 0, output: 0 } };
+    },
+  },
+} satisfies PluginProviderAdaptersV1;
+```
+
+The SDK exports `PluginProviderAdapterV1`, chat/image request and result types,
+and `PluginProviderInferenceContextV1`. Requests use version 1 and plugin-local
+`providerId`, plus the unchanged wire `modelId`. Context supplies `signal` and
+optional `credential: { apiKey?, headers?, requestData? }`; it never supplies
+refresh tokens or secret references. Do not log credentials, routing metadata
+or message bodies.
+
+- `chat(request, context)` returns an `AsyncIterable` (or promise of one).
+  Canonical system/user/assistant/tool-result messages retain ordered content,
+  tool additions/removals and replay signatures. Events are ordered `text` or
+  `thinking` deltas, complete `toolCall` records, and terminal `done` (stop,
+  length or toolUse, with usage) or `error`. A stream ending without a terminal
+  event is a failure. The native Agent, not the adapter, executes tools.
+- `images(request, context)` returns `{ images, usage? }`. Inputs contain text
+  and optional base64 reference images; results contain base64 images with
+  PNG/JPEG/WebP/GIF MIME and matching file signature. URLs and file paths are
+  not accepted as output. Existing image loaders and scratch output handling
+  remain authoritative.
+- Optional model `operations` restricts chat/images capabilities; absent values
+  inherit the declaration. `supportsImages` means image input, not generation.
+  Settings selection and subagent opt-in cannot add undeclared operations.
+  The Host projects effective selected-model capabilities as read-only
+  `ProviderPublic.pluginModelOperations`. Native chat choices exclude image-only
+  models; image choices require `images`, including for plugin OAuth accounts.
+  Custom image adapters do not require a compatible HTTP image endpoint.
+- Main sessions and configured/on-demand subagents use the same native provider
+  identity. Host reverse RPC is narrowly bound to session/provider/model and
+  runtime generation. Cancellation, unload, crash and disposal invalidate work;
+  late results are refused. Adapters must honor `signal` and release iterators.
+- Chat uses pull-based backpressure. Limits are 16 MiB per request, 256 KiB per
+  event, 32 MiB / 32,768 events per stream, 16 active plugin invocations,
+  120 seconds per call, and a 10-minute invocation lifetime. Image results are
+  capped at four images, 8 MiB each, within the total payload limit.
+- Custom inference does not receive automatic provider retries or fallback:
+  failures stay observable rather than risking a duplicate paid request.
+
+Declarations without `adapter` retain their existing compatible transport.
+Session-scoped trusted-extension agents are not promoted to global providers.
+See [security](04-plugin-security.md#global-provider-inference-boundary) and
+[the decision record](../../adr/global-plugin-provider-inference.md).
+
 ### provider OAuth (requires `provider.oauth`)
 
 An OAuth provider contribution needs both `provider.register` and
@@ -545,6 +613,7 @@ type PluginProviderOAuthCredential = {
   expiresAt?: number       // Unix epoch milliseconds
   accountLabel?: string
   headers?: Record<string, string>
+  requestData?: Record<string, PluginProviderJson> // encrypted provider-specific routing metadata
 }
 
 type PluginProviderOAuthContext = { signal: AbortSignal }
@@ -556,10 +625,31 @@ During login, return the credential after the user authorizes it. During
 refresh, the host passes the current credential to the same callback; return the
 updated credential. The host encrypts it under the provider row's OAuth secret
 reference and serializes refreshes. A callback can access only its own
-contribution's credential. The host sends the resolved access token to the
-Agent Runtime per request; refresh tokens never reach the renderer or Agent
-Runtime. One account is stored for each provider contribution; sign out clears
-that credential while the manifest-owned provider row remains.
+contribution's credential. Compatible transports receive the resolved access
+token per request. Custom inference receives only the access token, headers and
+optional routing metadata through the explicitly granted adapter context, never
+through the Agent sidecar or renderer. Refresh tokens remain on the OAuth path.
+One account is stored for each provider contribution; sign out clears that
+credential while the manifest-owned provider row remains.
+
+`requestData` supports services needing a project identifier or region alongside
+their access token. It must be a JSON object, at most 16 KiB when UTF-8 encoded,
+with nesting at most 64; cycles, non-JSON values and nonfinite numbers are refused
+before storage. It is encrypted with the credential, not placed in public model
+configuration. A refresh that omits it preserves the previous value; `{}` clears
+it. Ordinary `resolveAuth` remains key/header-only. Inference access is checked
+against the enabled provider, owning plugin and current runtime generation.
+
+An Antigravity-style integration combines `authKind: "oauth"`, explicit
+`provider.oauth` and `provider.inference` grants, `onProviderOAuth`, and matching
+`providerAdapters[contributionId]` chat/images handlers. Return service-specific
+project data in `requestData` during login and consume it from the inference
+context. The native model editor, delegation opt-in and image-model picker then
+use that same provider identity. The plugin must implement the real service's
+OAuth client/scopes and request/response protocol; these interfaces do not imply
+service entitlement or verified live Antigravity interoperability. See the
+offline [OAuth integration fixture](../../../apps/desktop/test/plugin-provider-oauth-inference.test.mjs)
+for an executable login → refresh → main/delegate/image → logout path.
 
 The plugin can use host-owned login UI without opening its own window:
 
@@ -1588,3 +1678,16 @@ Renderer ES modules may import `react/jsx-runtime` or
 its runtimes alongside `react`, `react-dom`, and `react-dom/client`, before
 evaluating plugin entries. This keeps compiled JSX, hooks and context on the
 host React instance in production and development builds.
+
+## Provider template accounts
+
+`contributes.providerTemplates` adds data-only reusable integrations, not an
+account-management API for plugin code. The Host's native create request accepts
+only `{pluginId, templateId, name?, secretValue?}`; Rust generates identity and
+source binding. Custom OAuth requests optionally include Host-selected
+`accountId`; inference bindings include template/account identity in addition to
+existing runtime/session/model checks. Standard compatible key/no-auth and
+declarative public-client PKCE/device OAuth do not require custom execution
+grants or expose credentials to plugin callbacks. Custom callbacks still need
+their separate grants. Raw exceptions/error events are normalized to fixed
+Host-controlled diagnostics. See [complete contract and example](17-provider-template-accounts.md).

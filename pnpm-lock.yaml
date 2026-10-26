@@ -433,6 +433,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 1.3.0
         version: 1.3.0(patch_hash=5cb7070ec8e1695932e9968afa6828b36beb1face77418739d5cd01b2a07c371)(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(supports-color@7.2.0)(ws@8.21.1)(zod@4.4.3)
+      '@pi-desktop/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
       '@pi-desktop/shared':
         specifier: workspace:*
         version: link:../shared

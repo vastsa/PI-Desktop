@@ -1,4 +1,4 @@
-import type { PluginProviderCatalogMeta } from "@pi-desktop/shared";
+import { bindingForCustomModel, type PluginProviderCatalogMeta } from "@pi-desktop/shared";
 import {
   resolvePluginLocalizedString,
   type PluginManifest,
@@ -32,6 +32,25 @@ export function pluginProviderCatalogEntries(
         ...(provider.description
           ? { description: resolvePluginLocalizedString(provider.description, locale, "") }
           : {}),
+      });
+    }
+    for (const template of plugin.manifest.contributes?.providerTemplates ?? []) {
+      if (template.authKind === "oauth") continue;
+      entries.push({
+        pluginId: plugin.manifest.id,
+        providerId: `plugin-template:${plugin.manifest.id}:${template.id}`,
+        templateId: template.id,
+        pluginName: plugin.manifest.name,
+        name: template.name,
+        authKind: template.authKind ?? "api_key",
+        baseUrl: template.baseUrl,
+        apiStyle: template.apiStyle,
+        models: (template.models ?? []).map(model => ({ ...bindingForCustomModel(model.id),
+          ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+          ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
+        })),
+        category: resolvePluginLocalizedString(template.category, locale, plugin.manifest.name),
+        description: resolvePluginLocalizedString(template.description, locale, ""),
       });
     }
   }

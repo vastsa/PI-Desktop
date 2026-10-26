@@ -28,6 +28,9 @@ pub struct ProviderPublic {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub headers: Option<BTreeMap<String, String>>,
     pub models: Vec<ModelBinding>,
+    /// Host-projected operations for plugin adapter models; never user-writable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_model_operations: Option<BTreeMap<String, Vec<String>>>,
     /// Legacy default retained so older renderer/runtime clients can continue
     /// reading a provider while they migrate to `models`.
     pub default_model_id: Option<String>,
@@ -50,17 +53,20 @@ pub struct ProviderPublic {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
     /// Owning plugin id when the row came from `contributes.providers`
-    /// (ADR 0259). Absent for a row the user created. A plugin-owned row is
-    /// read-only in Settings: the plugin refreshes it on every load, and
-    /// `providers.update` / `providers.delete` refuse it.
+    /// (ADR 0259). Absent for a row the user created. Settings may edit user
+    /// preferences; transport identity and row deletion remain plugin-owned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_plugin_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_template_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_template_version: Option<u8>,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderCreateInput {
     pub name: String,
     pub vendor_key: Option<String>,
@@ -89,7 +95,7 @@ pub struct ProviderCreateInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderUpdateInput {
     pub id: String,
     pub name: Option<String>,

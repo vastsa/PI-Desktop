@@ -6,6 +6,9 @@ Plugin authors should start with the task-oriented
 [zero-to-one development guide](../../plugin-development.md). The documents in
 this directory define the normative contracts and implementation boundaries.
 
+For provider integration fields, callbacks, native-account RPCs and examples,
+see the [plugin provider API reference](../../plugin-provider-api.md).
+
 | Document | Description |
 |---|---|
 | [01-plugin-system.md](01-plugin-system.md) | Plugin system overview |
@@ -24,6 +27,7 @@ this directory define the normative contracts and implementation boundaries.
 | [14-plugin-roadmap.md](14-plugin-roadmap.md) | Plugin roadmap |
 | [15-plugin-center.md](15-plugin-center.md) | Plugin center (publishing side) |
 | [16-trusted-extensions.md](16-trusted-extensions.md) | Trusted extensions (in-sidecar extension surface) |
+| [17-provider-template-accounts.md](17-provider-template-accounts.md) | Reusable service templates, native accounts, OAuth, lifecycle and fixtures |
 
 ## Read the code behind the contract
 

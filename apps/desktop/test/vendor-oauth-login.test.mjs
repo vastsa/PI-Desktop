@@ -1403,3 +1403,172 @@ test("failed cleanup after a rejected login preserves the surviving account inst
   await h.oauth.listModels(rowId);
   assert.equal(attached.filter(account => account.id === rowId).length, 1);
 });
+
+function pluginRoutingHarness(invoke, options = {}) {
+  const provider = {
+    pluginId: "test.routing", runtimeId: "routing-runtime-1", contributionId: "gateway",
+    providerId: "plugin:test.routing:gateway", name: "Routing fixture", isSubscription: false,
+  };
+  let loaded = [provider];
+  const bridge = { listOAuthProviders: () => loaded, invokeProviderOAuth: invoke };
+  const h = harness({ ...options, getPluginOAuthBridge: () => bridge });
+  h.host.providers.set(provider.providerId, {
+    id: provider.providerId, ownerPluginId: provider.pluginId, authKind: "oauth", enabled: true,
+  });
+  return { ...h, provider, setLoaded: providers => { loaded = providers; },
+    secretRef: secretRefForProviderOauth(provider.providerId) };
+}
+
+test("plugin routing data persists only in its OAuth secret and inference credential", async () => {
+  const requestData = { projectId: "fixture-project", region: { name: "test", flags: [true, null, 2] } };
+  const h = pluginRoutingHarness(async () => ({
+    accessToken: "fixture-access", refreshToken: "fixture-refresh", accountLabel: "Fixture account",
+    headers: { "X-Fixture": "routing" }, requestData,
+  }));
+  const { providerId } = h.provider;
+  await h.oauth.start(providerId);
+  await waitFor(h.events, "done");
+  assert.deepEqual(JSON.parse(h.host.secrets.get(h.secretRef)).requestData, requestData);
+  assert.deepEqual(await h.oauth.resolveAuth(providerId), {
+    apiKey: "fixture-access", headers: { "X-Fixture": "routing" },
+  });
+  const expected = { apiKey: "fixture-access", headers: { "X-Fixture": "routing" }, requestData };
+  assert.deepEqual(await h.oauth.resolvePluginInferenceCredential(providerId), expected);
+  // A new main-process service reads the same persisted grant without a new login.
+  const restarted = new VendorOAuth({ call: h.host.call, emit: () => {}, openExternal: async () => {},
+    getPluginOAuthBridge: () => ({ listOAuthProviders: () => [h.provider], invokeProviderOAuth: async () => {
+      throw new Error("unexpired grant must not refresh");
+    } }),
+  });
+  assert.deepEqual(await restarted.resolvePluginInferenceCredential(providerId), expected);
+  const publicData = JSON.stringify({ events: h.events, vendors: await h.oauth.listVendors(),
+    rows: [...h.host.providers.values()] });
+  for (const field of ["requestData", "fixture-project", "fixture-access", "fixture-refresh"]) {
+    assert.equal(publicData.includes(field), false);
+  }
+  assert.deepEqual(h.host.calls.filter(call => call.method === "secrets.set").map(call => call.params.secretRef), [h.secretRef]);
+});
+
+test("ordinary and inference credential resolution share one refresh and preserve or clear routing data", async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let started;
+  const refreshStarted = new Promise(resolve => { started = resolve; });
+  let refreshes = 0;
+  const requestData = { projectId: "fixture-project" };
+  const h = pluginRoutingHarness(async (pluginId, contributionId, request, _signal, runtimeId) => {
+    assert.equal(pluginId, h.provider.pluginId);
+    assert.equal(contributionId, h.provider.contributionId);
+    assert.equal(runtimeId, h.provider.runtimeId);
+    assert.equal(request.operation, "refresh");
+    assert.deepEqual(request.credential.requestData, requestData);
+    refreshes++;
+    started();
+    await gate;
+    return { accessToken: "fixture-new-access", expiresAt: Date.now() + 3_600_000,
+      ...(refreshes === 2 ? { requestData: {} } : {}) };
+  });
+  h.host.secrets.set(h.secretRef, JSON.stringify({ accessToken: "fixture-old-access",
+    refreshToken: "fixture-refresh", expiresAt: 1, headers: { "X-Fixture": "own" }, requestData }));
+  const auth = h.oauth.resolveAuth(h.provider.providerId);
+  const inference = h.oauth.resolvePluginInferenceCredential(h.provider.providerId);
+  await refreshStarted;
+  release();
+  assert.deepEqual(await auth, { apiKey: "fixture-new-access", headers: { "X-Fixture": "own" } });
+  assert.deepEqual(await inference, { apiKey: "fixture-new-access", headers: { "X-Fixture": "own" }, requestData });
+  assert.equal(refreshes, 1);
+  const saved = JSON.parse(h.host.secrets.get(h.secretRef));
+  assert.deepEqual(saved.requestData, requestData);
+  assert.equal(saved.refreshToken, "fixture-refresh");
+  h.host.secrets.set(h.secretRef, JSON.stringify({ ...saved, expiresAt: 1 }));
+  assert.deepEqual((await h.oauth.resolvePluginInferenceCredential(h.provider.providerId)).requestData, {});
+  assert.deepEqual(JSON.parse(h.host.secrets.get(h.secretRef)).requestData, {});
+  assert.equal(refreshes, 2);
+});
+
+test("plugin inference credentials reject disabled, non-OAuth, foreign and unloaded owners before secret reads", async t => {
+  const cases = [
+    ["disabled", h => { h.host.providers.get(h.provider.providerId).enabled = false; }],
+    ["user row", h => { delete h.host.providers.get(h.provider.providerId).ownerPluginId; }],
+    ["API key", h => { h.host.providers.get(h.provider.providerId).authKind = "api_key"; }],
+    ["wrong owner", h => { h.host.providers.get(h.provider.providerId).ownerPluginId = "test.other"; }],
+    ["unloaded", h => h.setLoaded([])],
+    ["missing", h => h.host.providers.delete(h.provider.providerId)],
+  ];
+  for (const [name, mutate] of cases) await t.test(name, async () => {
+    const h = pluginRoutingHarness(async () => { throw new Error("must not invoke callback"); });
+    h.host.secrets.set(h.secretRef, JSON.stringify({ accessToken: "fixture-access", requestData: { projectId: "own" } }));
+    mutate(h);
+    await assert.rejects(h.oauth.resolvePluginInferenceCredential(h.provider.providerId));
+    assert.equal(h.host.calls.some(call => call.method.startsWith("secrets.")), false);
+  });
+});
+
+test("plugin inference credentials cannot escape after the loaded owner changes during a secret read", async () => {
+  let h;
+  h = pluginRoutingHarness(async () => { throw new Error("must not refresh"); }, {
+    call: async (method, params, call) => {
+      const result = await call(method, params);
+      if (method === "secrets.getForRuntime") h.setLoaded([{ ...h.provider, runtimeId: "replacement-runtime" }]);
+      return result;
+    },
+  });
+  h.host.secrets.set(h.secretRef, JSON.stringify({ accessToken: "fixture-access", requestData: { projectId: "own" } }));
+  await assert.rejects(h.oauth.resolvePluginInferenceCredential(h.provider.providerId), /unavailable|changed/);
+});
+
+function invalidPluginRoutingData() {
+  const cyclic = {}; cyclic.self = cyclic;
+  let deep = {};
+  for (let i = 0; i < 66; i++) deep = { nested: deep };
+  return [null, [], "project", { invalid: undefined }, { invalid: () => 1 }, { invalid: NaN },
+    { invalid: 1n }, { invalid: new Date(0) }, cyclic, deep, { projectId: "界".repeat(6000) }];
+}
+
+test("invalid plugin routing data is rejected before login or refresh secret writes", async t => {
+  for (const [index, requestData] of invalidPluginRoutingData().entries()) await t.test(`invalid metadata ${index}`, async () => {
+    const h = pluginRoutingHarness(async () => ({ accessToken: "fixture-new", requestData }));
+    await h.oauth.start(h.provider.providerId);
+    const event = await waitFor(h.events, "error");
+    assert.equal(event.code, "PLUGIN_OAUTH_FAILED");
+    assert.equal(h.host.secrets.has(h.secretRef), false);
+    assert.equal(h.host.calls.some(call => call.method === "secrets.set"), false);
+    const previous = JSON.stringify({ accessToken: "fixture-old", refreshToken: "fixture-refresh", expiresAt: 1,
+      requestData: { projectId: "previous" } });
+    h.host.secrets.set(h.secretRef, previous);
+    await assert.rejects(h.oauth.resolveAuth(h.provider.providerId));
+    await assert.rejects(h.oauth.resolvePluginInferenceCredential(h.provider.providerId));
+    assert.equal(h.host.secrets.get(h.secretRef), previous);
+    assert.equal(h.host.calls.some(call => call.method === "secrets.set"), false);
+  });
+});
+
+test("plugin routing credentials stay scoped to each provider, including a shared plugin owner", async () => {
+  const h = pluginRoutingHarness(async () => { throw new Error("must not refresh"); });
+  const other = { ...h.provider, contributionId: "other", providerId: "plugin:test.routing:other" };
+  h.setLoaded([h.provider, other]);
+  h.host.providers.set(other.providerId, { id: other.providerId, ownerPluginId: other.pluginId, authKind: "oauth", enabled: true });
+  for (const [providerId, projectId] of [[h.provider.providerId, "first-project"], [other.providerId, "second-project"]]) {
+    h.host.secrets.set(secretRefForProviderOauth(providerId), JSON.stringify({ accessToken: `fixture-${projectId}`,
+      refreshToken: "fixture-refresh", requestData: { projectId } }));
+  }
+  for (const [providerId, projectId] of [[h.provider.providerId, "first-project"], [other.providerId, "second-project"]]) {
+    assert.deepEqual(await h.oauth.resolvePluginInferenceCredential(providerId), {
+      apiKey: `fixture-${projectId}`, requestData: { projectId },
+    });
+    assert.deepEqual(await h.oauth.resolveAuth(providerId), { apiKey: `fixture-${projectId}` });
+  }
+});
+
+test("an unloaded plugin cannot persist refreshed routing metadata", async () => {
+  const h = pluginRoutingHarness(async () => {
+    h.setLoaded([]);
+    return { accessToken: "fixture-new", requestData: { projectId: "new-project" } };
+  });
+  const previous = JSON.stringify({ accessToken: "fixture-old", refreshToken: "fixture-refresh", expiresAt: 1,
+    requestData: { projectId: "previous" } });
+  h.host.secrets.set(h.secretRef, previous);
+  await assert.rejects(h.oauth.resolvePluginInferenceCredential(h.provider.providerId), /changed/);
+  assert.equal(h.host.secrets.get(h.secretRef), previous);
+  assert.equal(h.host.calls.some(call => call.method === "secrets.set"), false);
+});

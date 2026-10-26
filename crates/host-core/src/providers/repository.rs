@@ -34,6 +34,9 @@ pub(crate) fn provider_from_row(
             .first()
             .map(|binding| binding.id.clone())
             .or(legacy_model_id),
+        plugin_model_operations: row
+            .get::<_, Option<String>>(14)?
+            .and_then(|_| crate::plugins::plugin_model_operations(&config_raw, &models)),
         models,
         api_style: row.get(10)?,
         supports_reasoning: row
@@ -57,6 +60,8 @@ pub(crate) fn provider_from_row(
             .ok()
             .and_then(|raw| config_limit_f64(&raw, "temperature")),
         owner_plugin_id: row.get(14)?,
+        plugin_template_id: row.get(15)?,
+        plugin_template_version: row.get(16)?,
         created_at: ms_to_ts(row.get(12)?),
         updated_at: ms_to_ts(row.get(13)?),
     })
@@ -82,11 +87,21 @@ pub fn list_providers(
     Ok(providers)
 }
 
-/// An empty model declaration opts an API-key plugin provider into using the
-/// endpoint's cached discovery results. Static manifest models stay authoritative
-/// whenever the plugin declares at least one.
+/// Untouched empty plugin model declarations use cached discovery. Explicit
+/// user selections, including an empty list, remain authoritative.
 fn hydrate_dynamic_plugin_models(db: &Database, provider: &mut ProviderPublic) -> Result<()> {
     if provider.owner_plugin_id.is_none() || !provider.models.is_empty() {
+        return Ok(());
+    }
+    let config_raw: String = db.conn().query_row(
+        "SELECT config_json FROM providers WHERE id = ?1",
+        params![provider.id],
+        |row| row.get(0),
+    )?;
+    if crate::plugins::plugin_provider_user_overrides(&config_raw)
+        .models
+        .is_some()
+    {
         return Ok(());
     }
     provider.models = list_models(db, Some(&provider.id))?
@@ -300,6 +315,124 @@ pub(crate) fn create_provider_with_id(
     get_provider(db, secrets, id)?.ok_or_else(|| anyhow::anyhow!("provider missing after import"))
 }
 
+fn update_plugin_provider(
+    db: &Database,
+    secrets: &SecretStore,
+    current: &ProviderPublic,
+    input: ProviderUpdateInput,
+) -> Result<Option<ProviderPublic>> {
+    let same = |provided: Option<&str>, actual: &str| provided.is_none_or(|value| value == actual);
+    if !same(input.vendor_key.as_deref(), &current.vendor_key)
+        || !same(input.provider_type.as_deref(), &current.provider_type)
+        || !same(input.protocol.as_deref(), &current.protocol)
+        || !same(input.auth_kind.as_deref(), &current.auth_kind)
+        || !same(
+            input.api_style.as_deref(),
+            current.api_style.as_deref().unwrap_or(""),
+        )
+        || input
+            .base_url
+            .as_deref()
+            .is_some_and(|value| value.trim() != current.base_url.as_deref().unwrap_or("").trim())
+    {
+        bail!("PROVIDER_OWNED_BY_PLUGIN: manifest-owned provider identity cannot be changed");
+    }
+    if let Some(models) = input.models.as_deref() {
+        validate_model_aliases(models)?;
+    }
+    let raw_config: String = db.conn().query_row(
+        "SELECT config_json FROM providers WHERE id = ?1",
+        params![input.id],
+        |row| row.get(0),
+    )?;
+    crate::plugins::provider_cleanup::ensure_available(db, &input.id)?;
+    if current.plugin_template_id.is_some()
+        && input.enabled == Some(true)
+        && (crate::plugins::provider_templates::config_pending(&raw_config)
+            || (current.auth_kind == "oauth" && !current.has_oauth))
+    {
+        bail!("PROVIDER_TEMPLATE_OAUTH_REQUIRED: complete template OAuth before enabling");
+    }
+    if input.enabled == Some(true)
+        && serde_json::from_str::<serde_json::Value>(&raw_config)?
+            .get("pluginEnabled")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+    {
+        bail!("PLUGIN_DISABLED: enable the owning plugin before enabling its provider");
+    }
+    if input.models.is_some() {
+        ensure_model_bindings_update_safe(&raw_config)?;
+    }
+    let models = input
+        .models
+        .as_ref()
+        .map(|models| normalize_model_bindings(models));
+    let mut config = merge_provider_config_overrides(
+        &raw_config,
+        input.supports_reasoning,
+        input.supported_thinking_levels.clone().map(Some),
+        models.clone().map(Some),
+        &LimitOverrides {
+            context_window: input.context_window,
+            max_output_tokens: input.max_output_tokens,
+            temperature: input.temperature,
+        },
+    )?
+    .unwrap_or(raw_config);
+    if let Some(name) = input.name.as_deref() {
+        config = crate::plugins::set_plugin_provider_user_override(
+            &config,
+            "name",
+            serde_json::json!(name),
+        )?;
+    }
+    if let Some(enabled) = input.enabled {
+        config = crate::plugins::set_plugin_provider_user_override(
+            &config,
+            "enabled",
+            serde_json::json!(enabled),
+        )?;
+    }
+    if let Some(models) = models.as_ref() {
+        config = crate::plugins::set_plugin_provider_user_override(
+            &config,
+            "models",
+            serde_json::to_value(models)?,
+        )?;
+    }
+    if let Some(label) = input.oauth_account_label.as_deref() {
+        config = config_with_oauth_account_label(&config, label)?;
+    }
+    if let Some(headers) = input.headers.as_ref() {
+        config = config_with_headers(&config, headers)?;
+    }
+    let key_ref = secret_ref_for_provider(&input.id);
+    let mut secret_ref = (current.has_secret && !current.has_oauth).then(|| key_ref.clone());
+    if let Some(secret) = input
+        .secret_value
+        .as_ref()
+        .filter(|value| !value.is_empty())
+    {
+        let backend = secrets.set(&key_ref, secret)?;
+        upsert_secret_meta(db, &key_ref, &input.id, &backend)?;
+        secret_ref = Some(key_ref);
+    }
+    let model_id = models
+        .as_ref()
+        .and_then(|items| items.first().map(|item| item.id.clone()));
+    db.conn().prepare_cached("UPDATE providers SET name = COALESCE(?1, name), enabled = COALESCE(?2, enabled), default_model_id = CASE WHEN ?8 THEN ?3 ELSE COALESCE(?3, default_model_id) END, secret_ref = COALESCE(?4, secret_ref), config_json = ?5, updated_at = ?6 WHERE id = ?7")?
+        .execute(params![input.name, input.enabled.map(i64::from), model_id, secret_ref, config, now_ms(), input.id, models.is_some()])?;
+    if let Some(models) = models.as_ref() {
+        let ids = models
+            .iter()
+            .map(|model| model.id.clone())
+            .collect::<Vec<_>>();
+        forget_missing_discovered_models(db, &input.id, &ids)?;
+    }
+    get_provider(db, secrets, &current.id)
+}
+
 pub fn update_provider(
     db: &Database,
     secrets: &SecretStore,
@@ -308,13 +441,10 @@ pub fn update_provider(
     let Some(current) = get_provider(db, secrets, &input.id)? else {
         return Ok(None);
     };
-    // A plugin-declared row is refreshed from its manifest on every load, so a
-    // generic edit would be silently reverted. The plugin path owns it.
-    if let Some(owner) = current.owner_plugin_id.as_deref() {
-        bail!(
-            "PROVIDER_OWNED_BY_PLUGIN: provider {} belongs to plugin {owner}",
-            input.id
-        );
+    // Plugin-owned transport remains immutable; explicit user preferences are
+    // persisted separately so manifest reconciliation does not overwrite them.
+    if current.owner_plugin_id.is_some() {
+        return update_plugin_provider(db, secrets, &current, input);
     }
     // Validate before any side effect: a rejected alias must not replace the
     // stored secret.
@@ -484,7 +614,9 @@ pub fn update_provider(
 /// only its plugin (or the user disabling/uninstalling it) may remove it.
 pub fn delete_provider(db: &Database, secrets: &SecretStore, id: &str) -> Result<bool> {
     if let Some(owner) = provider_owner_plugin(db, id)? {
-        bail!("PROVIDER_OWNED_BY_PLUGIN: provider {id} belongs to plugin {owner}");
+        if !crate::plugins::provider_templates::is_template_account(db, id)? {
+            bail!("PROVIDER_OWNED_BY_PLUGIN: provider {id} belongs to plugin {owner}");
+        }
     }
     delete_provider_row(db, secrets, id)
 }
@@ -508,6 +640,7 @@ pub(crate) fn delete_provider_row(db: &Database, secrets: &SecretStore, id: &str
     // Both credential channels are provider-scoped, so deleting the row must
     // take the OAuth credential with it or a re-created provider could inherit
     // a stranger's refresh token.
+    let mut failed = false;
     for sref in [
         secret_ref_for_provider(id),
         secret_ref_for_provider_oauth(id),
@@ -515,10 +648,21 @@ pub(crate) fn delete_provider_row(db: &Database, secrets: &SecretStore, id: &str
         // A credential that outlives its row would be inherited by a row that a
         // later declaration recreates under the same id, so a failure here is
         // reported rather than swallowed.
-        secrets.delete(&sref)?;
-        db.conn()
-            .prepare_cached("DELETE FROM secrets_meta WHERE secret_ref = ?1")?
-            .execute(params![sref])?;
+        if secrets.delete(&sref).is_err() {
+            failed = true;
+            continue;
+        }
+        if db
+            .conn()
+            .prepare_cached("DELETE FROM secrets_meta WHERE secret_ref = ?1")
+            .and_then(|mut stmt| stmt.execute(params![sref]))
+            .is_err()
+        {
+            failed = true;
+        }
+    }
+    if failed {
+        bail!("Provider credential cleanup failed; retry removal.");
     }
     let n = db
         .conn()
@@ -547,6 +691,7 @@ pub fn set_provider_secret(
     if get_provider(db, secrets, id)?.is_none() {
         return Ok(None);
     }
+    crate::plugins::provider_cleanup::ensure_available(db, id)?;
     let api_key_ref = secret_ref_for_provider(id);
     let secret_value = secret_value.map(str::trim).map(fold_fullwidth);
     match secret_value.filter(|value| !value.is_empty()) {

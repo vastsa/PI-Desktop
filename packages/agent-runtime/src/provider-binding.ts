@@ -1,3 +1,5 @@
+import type { PluginProviderInferenceBindingV1 } from "@pi-desktop/plugin-sdk";
+import { pluginProviderStreams, PLUGIN_INFERENCE_API, type ProviderInferenceCall } from "./plugin-provider-inference.js";
 import { transcriptCompat } from "./transcript-compat.js";
 /**
  * Provider/model wiring shared by the session runtime and its subagents.
@@ -47,6 +49,9 @@ import type { ModelConfig } from "./thinking-level.js";
 
 export type RuntimeProviderConfig = {
   id: string;
+  pluginInference?: PluginProviderInferenceBindingV1;
+  /** Host reverse RPC attached in-process; never serialized or loaded from plugin code. */
+  invokeProviderInference?: ProviderInferenceCall;
   name: string;
   vendorKey?: string;
   baseUrl?: string;
@@ -208,6 +213,7 @@ export function apiBindingForStyle(apiStyle?: string): ApiBinding {
 
 /** The API key pi-ai signs requests with; no-auth uses a stripped placeholder. */
 export function providerRequestKey(provider: RuntimeProviderConfig): string {
+  if (provider.pluginInference) return "pi-desktop-plugin-inference";
   return provider.authKind === "none"
     ? NO_AUTH_REQUEST_KEY
     : provider.apiKey;
@@ -445,8 +451,8 @@ export function buildProviderModel(
   return {
     ...catalogModel,
     id: provider.modelId,
-    api: binding.api,
-    provider: provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id),
+    api: provider.pluginInference ? PLUGIN_INFERENCE_API : binding.api,
+    provider: provider.pluginInference || provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id),
     baseUrl,
     webSearch:
       resolveNativeWebSearch({
@@ -472,7 +478,7 @@ export function createAccountModels(
   operations: Pick<Parameters<typeof createProvider>[0], "models" | "api" | "images" | "classifiers">,
 ): Models {
   const models = createModels({ authContext: { env: async () => undefined, fileExists: async () => false } });
-  const providerId = provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id);
+  const providerId = provider.pluginInference || provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id);
   models.setProvider(createProvider({
     id: providerId,
     name: provider.name,
@@ -502,13 +508,13 @@ export function createProviderModels(
   const resolveAuth = provider.resolveAuth;
   return createAccountModels({
     ...provider,
-    resolveAuth: async () => resolveAuth
+    resolveAuth: async () => provider.pluginInference ? {} : resolveAuth
       ? copilotRequestAuth(provider, model.api, await resolveAuth())
       : { apiKey: providerRequestKey(provider) },
   }, {
     ...operations,
     models: [model, ...(operations?.models ?? [])],
-    api: apiBindingForProviderModel(provider).adapter(),
+    api: provider.pluginInference ? pluginProviderStreams({ ...provider, pluginInference: provider.pluginInference }) : apiBindingForProviderModel(provider).adapter(),
   });
 }
 /** Build a pi-ai model collection for a trusted extension-owned agent. */

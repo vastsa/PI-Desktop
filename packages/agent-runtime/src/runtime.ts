@@ -1,3 +1,4 @@
+import { withPluginProviderInference } from "./plugin-provider-inference.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
   RECOVERABLE_MUTATION_ERROR_CODES, mutationFailureKey, isPatchCommand,
@@ -2723,6 +2724,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       this.provider.apiKey === config.provider.apiKey &&
       this.provider.authKind === config.provider.authKind &&
       (this.provider.apiStyle ?? "") === (config.provider.apiStyle ?? "") &&
+      safeJson(this.provider.pluginInference ?? null) === safeJson(config.provider.pluginInference ?? null) &&
       providerHeadersEqual(this.provider.headers, config.provider.headers) &&
       this.provider.supportsReasoning === config.provider.supportsReasoning &&
       currentThinkingLevels === nextThinkingLevels &&
@@ -4391,14 +4393,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const cached = grants[key];
     if (cached) return cached;
     try {
-      const result = await (this.host as any).call(
+      const result = await this.host.call<unknown>(
         "provider.resolveSubagentModel",
-        { key },
+        { key, sessionId: this.sessionId },
       );
       // A late response cannot authorize work in a newer turn or after disposal.
       if (this.disposed || grants !== this.subagentOverrideProviders) return undefined;
       if (result && typeof result === "object" && "modelId" in result) {
-        const provider = result as RuntimeProviderConfig;
+        const provider = withPluginProviderInference(this.sessionId, result as RuntimeProviderConfig, this.host);
         const pinned = this.subagentProviders[key];
         if (pinned && pinned.id !== provider.id) {
           // Another account's opt-in must use its exact provider-id key.
@@ -4408,7 +4410,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // pi-ai can obtain short-lived credentials per request. The JSON-RPC
         // result does not carry the callback, so we attach one that calls
         // back to Electron main — the same pattern sidecar.ts uses at launch.
-        if (provider.authKind === OAUTH_AUTH_KIND) {
+        if (!provider.pluginInference && provider.authKind === OAUTH_AUTH_KIND) {
           provider.resolveAuth = () =>
             (this.host as any).call("provider.resolveAuth", {
               sessionId: this.sessionId,
@@ -6453,6 +6455,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     error: ReturnType<typeof classifyAgentError>,
     phase: "request" | "stream",
   ): number | undefined {
+    if (this.provider.pluginInference) return undefined;
     if (!error.retriable || error.details?.origin === "local") return undefined;
     const infinite = this.infiniteProviderRetry;
     if (error.code === "PROVIDER_RATE_LIMITED") {

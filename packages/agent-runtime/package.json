@@ -34,6 +34,7 @@
     "@earendil-works/pi-agent-core": "1.3.0",
     "@earendil-works/pi-ai": "1.3.0",
     "@earendil-works/pi-coding-agent": "1.3.0",
+    "@pi-desktop/plugin-sdk": "workspace:*",
     "@pi-desktop/shared": "workspace:*",
     "jiti": "2.7.0",
     "typebox": "1.3.27",
