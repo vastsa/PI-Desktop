@@ -2,6 +2,20 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-10-26",
+    highlights: [
+      "Çalışma paneli sekmesine sağ tıklayarak sekmeyi, diğer sekmeleri veya tümünü kapatın.",
+      "Aynı turda birbirinden bağımsız Read, Glob ve Grep araç çağrılarını paralel çalıştırın.",
+      "Oturumlar ve proje grupları daha hızlı açılır: dosya kimliğine göre önbelleğe alınan oturum özetleri.",
+      "Delegasyon istemi, oturumlar sonuçlandıkça sabit kalır; devam eden konuşmalar tutarlı biçimde yeniden oynatılır.",
+      "Geri yüklenen canlı turlar bitmiş görünmek yerine çalışıyor olarak kalır.",
+      "Model keşfi, kayıtlı bir modeli artık kompozörden sessizce kaldırmaz.",
+      "Reddedilen arka plan yazmaları ve harici açma istekleri sessiz bir hata yerine bildirilir.",
+      "Çökme sonrası yarım kalan satırdan sonra da transkript yazımı sürer; kenar çubuğu alt menüsü ekranda kalır.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

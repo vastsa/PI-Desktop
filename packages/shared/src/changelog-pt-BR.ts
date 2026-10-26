@@ -2,6 +2,20 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-10-26",
+    highlights: [
+      "Clique com o botão direito em uma aba do painel de trabalho para fechá-la, fechar as outras ou fechar todas.",
+      "Execute em paralelo chamadas independentes de Read, Glob e Grep no mesmo turno.",
+      "Conversas e grupos de projetos abrem mais rápido: os resumos de conversa são armazenados em cache pela identidade do arquivo.",
+      "O prompt de delegação permanece estável entre encerramentos, então conversas retomadas são reproduzidas de forma consistente.",
+      "Turnos ao vivo restaurados continuam aparecendo como em execução em vez de parecerem concluídos.",
+      "A descoberta de modelos não remove mais silenciosamente um modelo salvo do compositor.",
+      "Gravações em segundo plano e aberturas externas recusadas são informadas em vez de falharem em silêncio.",
+      "Após um encerramento inesperado que deixa uma linha incompleta, a escrita do registro continua e o submenu lateral permanece na tela.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

@@ -2,6 +2,20 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-10-26",
+    highlights: [
+      "Rechtsklick auf einen Tab des Arbeitsbereichs schließt ihn, die anderen oder alle Tabs.",
+      "Unabhängige Read-, Glob- und Grep-Aufrufe laufen innerhalb einer Runde parallel.",
+      "Sitzungen und Projektgruppen öffnen schneller: sitzungsbezogene Zusammenfassungen werden nach Dateiidentität zwischengespeichert.",
+      "Der Delegations-Prompt bleibt über Abschlüsse hinweg stabil, sodass fortgesetzte Gespräche einheitlich wiederholt werden.",
+      "Wiederhergestellte laufende Runden erscheinen weiterhin als laufend statt als beendet.",
+      "Die Modellerkennung entfernt ein gespeichertes Modell nicht mehr stillschweigend aus dem Composer.",
+      "Abgelehnte Hintergrundschreibvorgänge und externe Öffnungen werden gemeldet statt still zu scheitern.",
+      "Nach einem Absturz mit abgerissener Zeile schreibt das Transkript weiter; das Seitenleisten-Untermenü bleibt im Bild.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

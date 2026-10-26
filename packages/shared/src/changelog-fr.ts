@@ -2,6 +2,20 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-10-26",
+    highlights: [
+      "Un clic droit sur un onglet du panneau de travail permet de le fermer, de fermer les autres ou de tout fermer.",
+      "Les appels Read, Glob et Grep indépendants s’exécutent en parallèle au cours d’un même tour.",
+      "Les conversations et les groupes de projets s’ouvrent plus vite : les résumés de conversation sont mis en cache par identité de fichier.",
+      "Le prompt de délégation reste stable d’un aboutissement à l’autre, si bien que les conversations reprises sont rejouées de façon cohérente.",
+      "Les tours en cours restaurés restent affichés comme en cours au lieu de paraître terminés.",
+      "La découverte de modèles ne retire plus silencieusement un modèle enregistré du composeur.",
+      "Les écritures en arrière-plan et les ouvertures externes refusées sont signalées au lieu d’échouer en silence.",
+      "Après un plantage laissant une ligne tronquée, l’écriture du transcript reprend et le sous-menu latéral reste visible.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [

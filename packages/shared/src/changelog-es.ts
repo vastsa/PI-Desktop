@@ -2,6 +2,20 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-10-26",
+    highlights: [
+      "Haz clic derecho en una pestaña del panel de trabajo para cerrarla, cerrar las demás o cerrarlas todas.",
+      "Ejecuta en paralelo las llamadas independientes a Read, Glob y Grep dentro de un mismo turno.",
+      "Las conversaciones y los grupos de proyectos abren más rápido: las reseñas de conversación se guardan en caché por identidad de archivo.",
+      "El prompt de delegación se mantiene estable entre cierres, de modo que las conversaciones reanudadas se reproducen de forma coherente.",
+      "Los turnos en vivo restaurados siguen apareciendo en ejecución en lugar de darse por terminados.",
+      "El descubrimiento de modelos ya no retira en silencio un modelo guardado del compositor.",
+      "Las escrituras en segundo plano y las aperturas externas rechazadas se muestran en lugar de fallar en silencio.",
+      "Tras un cierre inesperado con una línea cortada, el registro sigue escribiendo y el submenú lateral permanece en pantalla.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
