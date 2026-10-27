@@ -46,6 +46,7 @@
     "test:e2e:renderer-responsiveness": "node scripts/e2e-renderer-responsiveness.mjs",
     "test:e2e:transcript-minimap-jump": "node scripts/e2e-transcript-minimap-jump.mjs",
     "test:e2e:copy-tex": "node scripts/e2e-copy-tex.mjs",
+    "test:e2e:radial-menu": "node scripts/e2e-radial-menu.mjs",
     "test:e2e:transcript-disclosure": "node scripts/e2e-transcript-disclosure-anchor.mjs",
     "test:e2e:images": "node scripts/e2e-image-generation.mjs && node scripts/e2e-image-generation-ui.mjs && node scripts/e2e-image-chat.mjs",
     "test:e2e:provider-client-certificate": "node --test scripts/e2e/wait-for-child-exit.test.mjs && node scripts/e2e-provider-client-certificate.mjs",

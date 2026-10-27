@@ -99,6 +99,19 @@ void app.whenReady().then(async () => {
     }
     assert.equal(requests, 0, "the original Electron 43 failure precedes HTTP");
     console.log(`baseline: Electron 43 net.fetch ${baselineOutcome.kind === "timeout" ? "stalled" : "failed"} before HTTP`);
+    // Linux Electron may leave a second client-certificate handshake pending.
+    // Reuse the observed failure so subsequent calls exercise the real metadata
+    // fallback without issuing another Chromium request to the fixture.
+    const primaryFailure = baselineOutcome.kind === "error"
+      ? baselineOutcome.error
+      : new Error("net::ERR_SSL_CLIENT_AUTH_CERT_NEEDED");
+    const fixtureOrigin = new URL(baseUrl).origin;
+    const electronFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const requestUrl = input instanceof Request ? input.url : String(input);
+      if (new URL(requestUrl).origin === fixtureOrigin) throw primaryFailure;
+      return electronFetch(input, init);
+    };
     const options = { baseUrl, apiKey: "fixture", signal: AbortSignal.timeout(8_000) };
     assert.deepEqual((await probeModelList(options)).models, [{ modelId: "fixture-model", displayName: "fixture-model" }]);
     assert.equal((await probeProviderEndpoint(options)).status, 200);
