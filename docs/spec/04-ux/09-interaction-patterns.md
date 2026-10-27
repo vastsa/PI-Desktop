@@ -851,7 +851,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   under a different permission mode stays queued for the next turn. Promoted
   rows retain Remove until delivery and show Waiting to send. Removal
   waits for Host acknowledgement; if delivery wins the race, report that the
-  message has already started and direct the user to Stop.
+  message has already started and direct the user to Stop. With the composer
+  empty, the steering shortcut in §3.5 promotes the first waiting row the same
+  way, so Send now never requires the pointer.
 - Without Send now, the next FIFO row starts automatically after the active
   turn completes, fails, or is aborted. A terminal event can arrive before
   persistence releases the session; finalization must wake the queue again
