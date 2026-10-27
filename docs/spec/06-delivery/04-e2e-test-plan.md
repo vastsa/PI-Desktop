@@ -8231,6 +8231,21 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `replace_messages_preserves_owning_turn_ids` covers the remaining rewrite
   callers. UI paging remains manual.
 
+- **Bounded-history regression (#1870)**: Regenerate an older prompt, then
+  continue until the root is outside the newest 100-message page. Complete
+  another turn while viewing that page, then repeat after switching to another
+  session. The archive must not append the older user root after the latest
+  answer in the active transcript, retained pane, or session cache. If the root
+  is loaded, its pager updates in place using its current message identity,
+  which can differ from the stable family key. A root removed during the
+  archive RPC stays absent. Previous variants remain available after restart.
+  Automated event-to-projection coverage:
+  `apps/desktop/test/regenerate-root-projection.test.mjs`.
+  `node scripts/e2e-regenerate-root.mjs` exercises the real Host process,
+  production main persistence and renderer projections with an isolated
+  3,484-message transcript, three follow-up turns, restart, and a revision
+  round trip. Set `PI_DESKTOP_HOST_BIN` to a host built from the candidate.
+
 #### E2E-246: Retrying a large session truncates without a whole-transcript RPC
 
 

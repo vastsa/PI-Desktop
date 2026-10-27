@@ -1,3 +1,5 @@
 # Unreleased changes
 
-No unreleased changes. See the in-app changelog for version 0.21.0.
+- Fixed an older regenerated prompt appearing after the latest reply when its
+  branch archive completed outside the loaded history window (#1870). Pager
+  acknowledgements now update existing rows without appending historical roots.
