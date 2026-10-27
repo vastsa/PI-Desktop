@@ -3199,6 +3199,8 @@ reasoning-level control.
   it does not request `agent/stop`. `TaskWait` yields without canceling delegates.
   Refused input or an input with a different effective permission mode retains
   its durable queue entry until the next turn. When idle it starts immediately.
+  With the composer empty, the steering shortcut promotes the first waiting row
+  the same way, skipping rows that are still saving or already promoted.
 - A pending queue row is locked until Host admission returns its durable id: move
   up/down, Send now, edit, and remove are disabled. All five tooltips explain
   that it is saving; Send now also displays the localized Saving label. Direct edit/remove actions leave the pending row and draft

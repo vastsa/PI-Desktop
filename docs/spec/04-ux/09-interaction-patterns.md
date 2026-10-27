@@ -865,6 +865,11 @@ may be retained while exactly one workspace supplies the visible shell context.
 - `Alt+Enter` submits the visible draft to the current turn immediately. On
   macOS this is `Option+Enter`. It works with Enter-to-send on or off and takes
   precedence over an open autocomplete menu. An idle composer sends normally.
+- With an empty composer the same shortcut sends the first waiting follow-up
+  now, exactly as that row's Send now action does, so a prompt queued during the
+  turn is not stranded above the composer. Rows still awaiting Host admission
+  and already promoted rows are skipped. A visible draft always takes
+  precedence over the queue, and a blocked composer promotes nothing.
 - `Shift+Enter` and `Alt+Shift+Enter` insert a newline. An Enter confirming an
   IME candidate (`isComposing` or key code 229) never sends or steers.
 - Steering appears as a user message in the current transcript, clears the

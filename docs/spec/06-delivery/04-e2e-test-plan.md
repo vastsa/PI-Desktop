@@ -2499,6 +2499,11 @@ identify the platform validation still needed.
   edit/remove the pending row, release admission, then edit/remove the durable
   row. Repeat with a captured file-reference draft. 12) Withhold a local Host
   queue-save request until its existing RPC deadline expires, then retry.
+  13) With an empty composer and two waiting rows, press the steering shortcut
+  (`⌥/Alt+Enter`): verify the first row is promoted, press it again to promote
+  the second, then repeat with only a saving row present. 14) Repeat with a
+  draft in the composer and confirm the shortcut steers the draft and leaves
+  both rows waiting.
 - **Expected**: The single submit slot contains exactly one button in every
   state: disabled Send while idle and empty, enabled Send while running with
   content (which queues the prompt), and Stop while running with an empty
@@ -2524,7 +2529,10 @@ identify the platform validation still needed.
   on Send now, and remain visible without restoring a second draft. Once acknowledged, remove deletes the durable row and edit restores
   exactly its captured draft; neither row reappears after refresh. A local Host
   admission timeout clears the pending row, reports the error, and restores
-  the rejected composer draft; retry can queue normally.
+  the rejected composer draft; retry can queue normally. With an empty composer
+  the steering shortcut promotes the first waiting row exactly as its Send now
+  action does, skipping rows that are saving or already promoted; with a draft
+  present it steers the draft and leaves the queue untouched.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md` (§5.6),
   `04-ux/08-component-spec.md` (§11),
   `04-ux/09-interaction-patterns.md` (§3.4), ADR 0118, ADR 0213, ADR 0265
@@ -2533,7 +2541,8 @@ identify the platform validation still needed.
 - **Status**: Source-level regression and deterministic desktop finalization /
   Agent Host integration covered (`queued-turn-finalization.test.mjs`);
   promotion, reorder, and edit contracts covered at source level
-  (`composer-send-state.test.mjs`); full UI scenario Draft
+  (`composer-send-state.test.mjs`); the empty-composer send-now shortcut is
+  covered by `composer-queued-send-now-shortcut.test.mjs`; full UI scenario Draft
 
 #### E2E-QUEUE-promote-orders-delivery-by-click: Two Send now clicks deliver in click order
 

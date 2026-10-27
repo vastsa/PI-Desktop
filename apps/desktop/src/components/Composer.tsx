@@ -448,6 +448,8 @@ export function Composer({
     t,
     sendPrompt,
     steerPrompt,
+    sendQueuedNow,
+    queuedPrompts,
     showToast,
     recordHistory: inputHistory.record,
     draft: {
