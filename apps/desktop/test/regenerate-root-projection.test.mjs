@@ -7,6 +7,8 @@ const { createEventPersistence } = await import("../electron/main/runtime/event-
 const { createSessionCoordination } = await import("../electron/main/runtime/session-coordination.ts");
 const { createSessionRuntime } = await import("../src/stores/runtime/session-runtime.ts");
 const { createEventsSlice } = await import("../src/stores/slices/events-slice.ts");
+const { createSessionSlice } = await import("../src/stores/slices/session-slice.ts");
+const { api } = await import("../src/lib/api.ts");
 
 const sessionId = "regenerated-session";
 const turnId = "latest-turn";
@@ -137,4 +139,30 @@ test("an ordinary user message_end still appends a newly delivered prompt", () =
   const message = { ...root, id: "new-user", createdAt: "2026-10-25T15:05:00.000Z" };
   f.get().handleAgentEvent({ sessionId, ts: 2, event: { type: "message_end", message } });
   assert.deepEqual(f.get().messages, [...tail, message]);
+});
+
+test("an archive acknowledgement leaves an unloaded background session available to prefetch", async () => {
+  const f = fixture({ active: false, includeRoot: false, evictCache: true });
+  f.set({ retainedTranscripts: {} });
+  const originalGetSession = api.getSession;
+  const reads = [];
+  api.getSession = async (id) => {
+    reads.push(id);
+    return { session: { id, messages: tail, messageCount: tail.length } };
+  };
+  try {
+    await completeTurn(f);
+    assert.deepEqual(f.warnings, []);
+    assert.equal(f.runtime.sessionTranscriptCache.has(sessionId), false);
+    assert.equal(f.runtime.liveSessionTranscripts.has(sessionId), false);
+    assert.deepEqual(f.get().retainedTranscripts, {});
+    assert.equal(f.get().messages, f.otherMessages);
+
+    const sessions = createSessionSlice({ get: f.get, set: f.set, runtime: f.runtime });
+    await sessions.prefetchSession(sessionId);
+    assert.deepEqual(reads, [sessionId]);
+    assert.deepEqual(f.runtime.sessionTranscriptCache.get(sessionId), tail);
+  } finally {
+    api.getSession = originalGetSession;
+  }
 });

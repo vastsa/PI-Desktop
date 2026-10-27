@@ -14,6 +14,8 @@ const { createSessionCoordination } = await import("../apps/desktop/electron/mai
 const { PersistenceOutbox } = await import("../apps/desktop/electron/main/persistence-outbox.ts");
 const { createSessionRuntime } = await import("../apps/desktop/src/stores/runtime/session-runtime.ts");
 const { createEventsSlice } = await import("../apps/desktop/src/stores/slices/events-slice.ts");
+const { createSessionSlice } = await import("../apps/desktop/src/stores/slices/session-slice.ts");
+const { api } = await import("../apps/desktop/src/lib/api.ts");
 
 const temp = await mkdtemp(join(tmpdir(), "pi-regenerate-root-"));
 const dataDir = join(temp, "data");
@@ -51,8 +53,13 @@ function renderer(sessionId, page, active) {
   return { ...access, runtime, otherMessages };
 }
 
-async function finishBranch(sessionId, page, active) {
+async function finishBranch(sessionId, page, active, unloaded = false) {
   const ui = renderer(sessionId, page, active);
+  if (unloaded) {
+    assert.equal(active, false);
+    ui.runtime.sessionTranscriptCache.delete(sessionId);
+    ui.set({ retainedTranscripts: {} });
+  }
   const { turnId } = await host.call("session.beginTurn", { sessionId });
   const activeTurns = new Map([[sessionId, turnId]]);
   const coordination = createSessionCoordination({
@@ -87,6 +94,27 @@ async function finishBranch(sessionId, page, active) {
   await persistence.flush();
   assert.deepEqual(warnings, []);
   assert.equal(emitted.length, 1, "the real host returned the historical root");
+  if (unloaded) {
+    assert.equal(ui.runtime.sessionTranscriptCache.has(sessionId), false);
+    assert.equal(ui.runtime.liveSessionTranscripts.has(sessionId), false);
+    assert.deepEqual(ui.get().retainedTranscripts, {});
+    assert.equal(ui.get().messages, ui.otherMessages);
+    const originalGetSession = api.getSession;
+    let reads = 0;
+    api.getSession = async (id, options) => {
+      reads++;
+      return host.call("session.get", { id, ...options });
+    };
+    try {
+      const sessions = createSessionSlice({ get: ui.get, set: ui.set, runtime: ui.runtime });
+      await sessions.prefetchSession(sessionId);
+      assert.equal(reads, 1);
+      assert.deepEqual(ui.runtime.sessionTranscriptCache.get(sessionId).map((row) => row.id), page.map((row) => row.id));
+    } finally {
+      api.getSession = originalGetSession;
+    }
+    return { ui, root: emitted[0].event.message };
+  }
   for (const rows of [ui.runtime.sessionTranscriptCache.get(sessionId), ui.get().retainedTranscripts[sessionId]]) {
     assert.deepEqual(rows.map((row) => row.id), page.map((row) => row.id));
     assert.equal(rows.at(-1).id, page.at(-1).id);
@@ -130,6 +158,7 @@ try {
     assert.equal(root.id, "rewritten-root");
     assert.equal(root.revisionRootId, family);
   }
+  await finishBranch(sessionId, firstPage.messages, false, true);
 
   // The exact arithmetic in #1870 is the normal live suffix length, not a
   // lookup that needs the old family key to remain in the messages table.
@@ -163,7 +192,7 @@ try {
   assert.deepEqual(records.map((row) => row.id), expectedIds);
   console.log(JSON.stringify({ scenario: "E2E-118 / #1870", totalMessages,
     rootPosition, branchMessageCount: revisions[1].messageCount, pageSize,
-    projectionCases: 4, followUpTurns: 3, restartAndRevisionRoundTrip: "passed",
+    projectionCases: 5, unloadedSessionPrefetch: "passed", followUpTurns: 3, restartAndRevisionRoundTrip: "passed",
     finalMessages: records.length, warnings: warnings.length }));
 } finally {
   await host.stop();

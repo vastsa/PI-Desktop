@@ -1199,6 +1199,8 @@ CREATE INDEX idx_message_revisions_root
   retained pane, and session cache. A root outside the current history window
   must not be appended after the latest reply. Archive completion is not a new
   user-message lifecycle event and does not change the loaded history boundary.
+  If no projection exists, the acknowledgement leaves the cache absent and
+  does not mark the session live, so later prefetch still loads durable history.
 - A branch keeps growing after its archive: later prompts append to it and an
   error-ended turn never reaches `agent_end`. So every operation that discards
   the live branch first writes it back over the revision it belongs to (D307):

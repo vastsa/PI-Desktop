@@ -8239,6 +8239,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   is loaded, its pager updates in place using its current message identity,
   which can differ from the stable family key. A root removed during the
   archive RPC stays absent. Previous variants remain available after restart.
+  With neither a cached nor retained background transcript, the acknowledgement
+  must leave the cache absent and allow the next prefetch to read the Host.
   Automated event-to-projection coverage:
   `apps/desktop/test/regenerate-root-projection.test.mjs`.
   `node scripts/e2e-regenerate-root.mjs` exercises the real Host process,
