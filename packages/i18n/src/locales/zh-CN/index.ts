@@ -856,6 +856,8 @@ export const zhCN = {
     imageModelSelected: "已设为生图模型",
     generatedImage: "生成图片 {{index}}",
     downloadGeneratedImage: "下载",
+    copyGeneratedImage: "复制图片",
+    downloadImage: "下载图片",
     revealGeneratedImage: "在文件夹中显示",
     imageRevealFailed: "无法在文件夹中显示图片。",
     imagePreviewUnavailable: "预览不可用，打开文件",

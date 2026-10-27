@@ -850,6 +850,8 @@ export const ptBR = {
     imageModelSelected: "Modelo de imagens selecionado",
     generatedImage: "Imagem gerada {{index}}",
     downloadGeneratedImage: "Baixar",
+    copyGeneratedImage: "Copiar imagem",
+    downloadImage: "Baixar imagem",
     revealGeneratedImage: "Mostrar na pasta",
     imageRevealFailed: "Não foi possível mostrar a imagem na pasta.",
     imagePreviewUnavailable: "Pré-visualização indisponível; abrir arquivo",

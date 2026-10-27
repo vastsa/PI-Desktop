@@ -14037,11 +14037,15 @@ are withdrawn with ADR 0165.
      outside-root path does not load file bytes.
   4. Confirm `fs/readImageDataUrl` with `ref: "/etc/passwd"` and
      `mimeType: "image/png"` returns `missing`, not a data URL.
+  5. Right-click the inline workspace image; choose Copy image, then
+     Download image.
 - **Expected**:
   - Contained image refs display inline within the 5MB cap.
   - Outside-root paths and mime spoofing of non-image extensions stay closed.
   - Clicking a resolved image chip opens the host `file:` tab, not the OS
     handler.
+  - Copy image places a PNG on the system clipboard; Download image saves
+    `pixel.png`. The file actions follow in the same menu.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/08-component-spec.md` §8.3, ADR 0172, `08-meta/decisions-log.md` (D334)
 - **Acceptance**: C (conversation & stream), D (workspace), Security, Quality
@@ -18010,12 +18014,12 @@ the latest destination. These assertions measure work counts, not device FPS.
 ### E2E-IMAGES-result-download
 
 - **Preconditions:** Agent conversation with two successful generated PNGs and a local image fixture.
-- **Steps:** Verify one selected card and two adjacent thumbnails, download the first result, select and download the second, inspect the narrow chat layout, open the selected image in the full-window viewer, navigate both directions, zoom in, close with Escape, and inspect Show in folder.
-- **Expected:** The selected card and download target follow thumbnail selection. The selected thumbnail has a light gray ring, and switching loaded images keeps the card and viewer image present with stable fit dimensions throughout. Rapid reverse navigation cancels a pending decode. Both downloaded PNGs match their saved bytes and have safe filenames. Chat and viewer thumbnails remain reachable at narrow widths; viewer selection, zoom and focus restoration work, and the selected image remains selected in chat. The originals remain available. The folder action uses the contained file reveal path.
+- **Steps:** Verify one selected card and two adjacent thumbnails, download the first result, select and download the second, inspect the narrow chat layout, open the selected image in the full-window viewer, navigate both directions, zoom in, copy the selected image from the viewer button, right-click the viewer image and choose Copy image, press Cmd/Ctrl+C, right-click a card image and choose Copy image, close with Escape, and inspect Show in folder.
+- **Expected:** The selected card and download target follow thumbnail selection. The selected thumbnail has a light gray ring, and switching loaded images keeps the card and viewer image present with stable fit dimensions throughout. Rapid reverse navigation cancels a pending decode. Both downloaded PNGs match their saved bytes and have safe filenames. Chat and viewer thumbnails remain reachable at narrow widths; viewer selection, zoom and focus restoration work, and the selected image remains selected in chat. Every copy path places a PNG on the system clipboard; the card shows a copied toast and the viewer shows an inline copied status. The image menu appears above the viewer, not behind it. The originals remain available. The folder action uses the contained file reveal path.
 - **Specs:** 03-runtime/21-image-generation.
 - **Acceptance:** Result actions and image browsing work without changing image storage or preview access.
 - **Milestone:** Post-MVP.
-- **Status:** Download and viewer interactions automated by `scripts/e2e-image-chat.mjs`; folder reveal uses the existing contained IPC path.
+- **Status:** Download and viewer interactions automated by `scripts/e2e-image-chat.mjs`; folder reveal uses the existing contained IPC path. Copy payload selection and PNG re-encoding are unit-tested in `apps/desktop/test/image-clipboard.test.mjs`, and the image menu in `apps/desktop/test/generated-image-context-menu.test.mjs`; the clipboard step itself is manual.
 
 #### E2E-CHAT-parenthesized-url: Complete URLs in user messages
 

@@ -395,14 +395,17 @@ test("every transcript surface that names a file opens that item", () => {
   // to that surface; `./` and `../` keep the markdown base beside the path.
   assert.match(markdown, /openFileMenu\(event, \{ path: text \?\? target\.path, baseDir \}\)/);
   assert.match(markdown, /openFileMenu\(event, \{ path: ref, baseDir \}\)/);
-  assert.match(markdown, /openFileMenu\(event, \{ path: localRef, baseDir \}\)/);
+  assert.match(markdown, /const fileTarget = localToolsAllowed && localRef \? \{ path: localRef, baseDir \} : null/);
+  assert.match(markdown, /openFileMenu\(event, fileTarget, copyItems\)/);
   assert.match(markdown, /onContextMenu=\{onLocalContextMenu\}/);
-  // A local image that cannot be shown inline keeps a chip, and both carry the
-  // menu only when local tools are allowed and the reference resolved to a file.
-  assert.match(
-    markdown,
-    /const onLocalContextMenu =\s*localToolsAllowed && localRef && openFileMenu/,
-  );
+  // A local image that cannot be shown inline keeps a chip. File actions need
+  // local tools and a resolved file; a loaded image also offers to copy the
+  // picture itself, listed before the file actions.
+  assert.match(markdown, /const copyItems: ContextMenuItem\[\] = dataUrl/);
+  assert.match(markdown, /id: "copy-image"/);
+  assert.match(markdown, /id: "download-image"/);
+  assert.match(markdown, /copyImageDataUrlToClipboard\(dataUrl\)/);
+  assert.match(markdown, /\.\.\.leadingItems,/);
 });
 
 test("HTTP URLs keep their own menu instead of the file open submenu", () => {
