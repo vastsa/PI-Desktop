@@ -3,6 +3,8 @@ import {
   SESSION_THINKING_LEVELS,
   defaultCommandShellForPlatform,
   isCommandShellId,
+  normalizeRadialMenuPreferences,
+  radialMenuWriteError,
   validateNetworkProxy,
   validateSpeechSettings,
   type CommandShellId,
@@ -166,7 +168,7 @@ export function createProviderCatalogRuntime({
   ): T & { defaultCommandShell: CommandShellId } => {
     const value = (
       settings && typeof settings === "object" ? settings : {}
-    ) as T & { defaultCommandShell?: unknown };
+    ) as T & { defaultCommandShell?: unknown; radialMenu?: unknown };
     return {
       ...(value as T),
       infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
@@ -180,6 +182,7 @@ export function createProviderCatalogRuntime({
         (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "fully-folded"
           ? (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode
           : "fully-folded",
+      radialMenu: normalizeRadialMenuPreferences(value.radialMenu),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),
@@ -200,6 +203,7 @@ export function createProviderCatalogRuntime({
       networkProxy?: unknown;
       macosWindowTranslucency?: unknown;
       transcriptDisplayMode?: unknown;
+      radialMenu?: unknown;
     };
     if (
       Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
@@ -248,6 +252,12 @@ export function createProviderCatalogRuntime({
       typeof value.macosWindowTranslucency !== "boolean"
     ) {
       throw Object.assign(new Error("macosWindowTranslucency is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    const radialMenuProblem = radialMenuWriteError(value.radialMenu);
+    if (radialMenuProblem) {
+      throw Object.assign(new Error(radialMenuProblem), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }
