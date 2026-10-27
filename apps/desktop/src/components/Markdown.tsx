@@ -70,6 +70,7 @@ import {
 import { useAppStore } from "../stores/app-store";
 import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url";
 import { copyImageDataUrlToClipboard } from "../lib/image-clipboard";
+import { imageDownloadName } from "../lib/image-download-name";
 import { absoluteImagePath, remarkLocalImagePaths } from "../lib/markdown-image-paths";
 import { remarkNormalizeWrappedMarkdownLinkDestinations } from "../lib/markdown-link-destinations";
 import { useOpenChatFileRef } from "../hooks/use-preview-target";
@@ -816,7 +817,7 @@ async function copyMarkdownImage(dataUrl: string, t: (key: string) => string) {
 function downloadMarkdownImage(dataUrl: string, reference: string) {
   const link = document.createElement("a");
   link.href = dataUrl;
-  link.download = reference.split(/[\\/]/).pop() || "image";
+  link.download = imageDownloadName(reference);
   link.click();
 }
 

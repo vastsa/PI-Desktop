@@ -13,7 +13,9 @@ export interface ImageClipboardTarget {
   writePng: (png: Blob) => Promise<void>;
 }
 
-const SUPPORTED_IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]*={0,2})$/;
+// `image/jpg` is not a registered type, but sources emit it often enough that
+// rejecting it would report a copy failure for an ordinary JPEG.
+const SUPPORTED_IMAGE_DATA_URL = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/]*={0,2})$/;
 
 /** Decode a supported base64 image data URL, or return null. */
 export function imageDataUrlToBlob(dataUrl: string): Blob | null {
@@ -27,7 +29,8 @@ export function imageDataUrlToBlob(dataUrl: string): Blob | null {
   }
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return new Blob([bytes], { type: match[1] });
+  const subtype = match[1] === "jpg" ? "jpeg" : match[1];
+  return new Blob([bytes], { type: `image/${subtype}` });
 }
 
 export async function copyImageDataUrlToClipboard(

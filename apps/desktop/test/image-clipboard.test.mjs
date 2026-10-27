@@ -63,3 +63,12 @@ test("clipboard write failures propagate to the caller", async () => {
     /denied/,
   );
 });
+
+test("the common image/jpg alias is accepted as JPEG", async () => {
+  const jpgAlias = `data:image/jpg;base64,${Buffer.from([0xff, 0xd8, 0xff]).toString("base64")}`;
+  assert.equal(imageDataUrlToBlob(jpgAlias)?.type, "image/jpeg");
+  const { calls, target } = recordingTarget();
+  await copyImageDataUrlToClipboard(jpgAlias, target);
+  assert.equal(calls.converted[0].type, "image/jpeg");
+  assert.equal(calls.written[0].type, "image/png");
+});
