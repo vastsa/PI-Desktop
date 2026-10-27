@@ -871,7 +871,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   now, exactly as that row's Send now action does, so a prompt queued during the
   turn is not stranded above the composer. Rows still awaiting Host admission
   and already promoted rows are skipped. A visible draft always takes
-  precedence over the queue, and a blocked composer promotes nothing.
+  precedence over the queue, and a blocked composer promotes nothing. Like the
+  row action, this does not depend on the session's steering capability: where
+  steering is unavailable the Host keeps the promoted row queued, so the
+  shortcut sends the next queued follow-up as soon as the turn ends.
 - `Shift+Enter` and `Alt+Shift+Enter` insert a newline. An Enter confirming an
   IME candidate (`isComposing` or key code 229) never sends or steers.
 - Steering appears as a user message in the current transcript, clears the
