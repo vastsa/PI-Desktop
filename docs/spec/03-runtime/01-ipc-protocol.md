@@ -2206,6 +2206,10 @@ through a source blip.
 
 ### fs/index
 
+Git listings are decoded as a continuous UTF-8 stream. File names, including
+non-ASCII characters split across process output chunks, retain their exact
+spelling in both the index and `fs/search` results.
+
 ```ts
 fs/index() -> { entries: FsIndexEntry[]; truncated: boolean }
 

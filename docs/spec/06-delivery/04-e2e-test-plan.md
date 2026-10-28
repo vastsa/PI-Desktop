@@ -9046,6 +9046,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     never overflows the menu.
   - The tooltip and accessible name retain the complete relative path so
     duplicate leaf names remain distinguishable.
+  - In a Git workspace containing accented, CJK, and emoji file names,
+    indexing and filtering retain each name exactly, including when Git's
+    stdout chunks split a UTF-8 character. Accepting the result names the
+    existing file, without replacement characters in its path.
   - Enter/Tab/click on a file replaces the `@` token with an inline chip that
     stays in the draft; that key does not send. File acceptance retains the
     original complete `entry.path` behind the chip; directory acceptance
@@ -9058,7 +9062,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Acceptance**: C (conversation & stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered
-  (`apps/desktop/test/composer-file-reference-display.test.mjs`); file-mode row
+  (`apps/desktop/test/composer-file-reference-display.test.mjs` and
+  `packages/host-runtime/src/fs-index-encoding.test.ts`); Unicode filtering and
+  file acceptance run in `composer-deep-file-search-user-path.test.mjs`; file-mode row
   layout covered by `scripts/e2e-composer-autocomplete.mjs`; full UI journey
   Draft (run only in a capable environment when this surface changes)
 
