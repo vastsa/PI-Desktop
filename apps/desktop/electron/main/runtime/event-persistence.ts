@@ -283,14 +283,16 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
         // RPC lock. The read-modify-write this replaced raced the append above
         // and wrote a stale transcript back over the final message.
         const saved = await runtimeState.host.call<{
-          saved?: { root?: any } | null
+          saved?: { root?: UiMessage } | null
         }>("session.saveActiveRevision", { sessionId: envelope.sessionId });
         const root = saved.saved?.root;
         if (!root) return;
+        // This acknowledges a pager stamp on an existing user row. A terminal
+        // message event would append an older root outside the loaded window.
         emitAgentEvent({
           sessionId: envelope.sessionId,
           ts: Date.now(),
-          event: { type: "message_end", message: root },
+          event: { type: "user_message_persisted", optimisticMessageId: root.id, message: root },
         } satisfies AgentEventEnvelope);
       } catch (error) {
         logger.app("persistence", "warn", "save active regenerate branch failed", {

@@ -1193,6 +1193,14 @@ CREATE INDEX idx_message_revisions_root
   tool line appended by the persistence outbox in the meantime survives. A
   whole-transcript rewrite from a snapshot taken outside the host lock would
   delete it (ADR 0060).
+- Electron acknowledges the stamped root with `user_message_persisted`, using
+  the root's current message `id` as `optimisticMessageId`. This updates the
+  pager only where that exact user row is already loaded: the active transcript,
+  retained pane, and session cache. A root outside the current history window
+  must not be appended after the latest reply. Archive completion is not a new
+  user-message lifecycle event and does not change the loaded history boundary.
+  If no projection exists, the acknowledgement leaves the cache absent and
+  does not mark the session live, so later prefetch still loads durable history.
 - A branch keeps growing after its archive: later prompts append to it and an
   error-ended turn never reaches `agent_end`. So every operation that discards
   the live branch first writes it back over the revision it belongs to (D307):

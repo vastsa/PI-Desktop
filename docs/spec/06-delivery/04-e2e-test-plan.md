@@ -5230,6 +5230,48 @@ window; opening a normal panel afterward must still work.
   `chat-context-menu-items.test.mjs`, `chat-context-menu-surface.test.mjs`);
   full UI scenario Draft
 
+#### E2E-CHAT-radial-background-menu: Radial menu on the empty transcript background
+
+- **Preconditions**: Settings → AI → Radial context menu is available. A
+  session has a completed user prompt, a completed assistant answer, and enough
+  history to scroll.
+- **Steps**: 1) With the switch off, right-click empty space below the last
+  turn and confirm the vertical conversation menu. 2) Turn the switch on and
+  right-click the same space; inspect the four sectors. 3) Move the pointer
+  through each sector and click Copy conversation. 4) Set Up to Copy last
+  answer and Right to Leave empty, then reopen the ring. 5) Click the hub
+  without moving, then reopen and press Escape; repeat with an outside click,
+  a scroll, and a window resize. 6) Reopen with Shift+F10, walk the sectors
+  with the arrow keys, and run one with Enter. 7) Restart the app, confirm the
+  switch and the four directions persist, then write an unknown action for one
+  direction into the settings file and confirm that direction resolves to its
+  default.
+- **Expected**: With the switch off the vertical menu opens unchanged. With it
+  on, a four-sector ring centred on the pointer replaces it and stays fully
+  inside the window near an edge. Each sector highlights under the pointer;
+  clicking runs that action, closes the ring, and shows the usual toast where
+  the action copies. A **Leave empty** direction renders a disabled sector and
+  runs nothing; Copy last answer is disabled until an answer exists.
+  Open browser reveals the work panel on a blank browser tab, the work panel
+  direction toggles — it reads Open work panel while the panel is collapsed and
+  Close work panel while it is open, and the second click closes it — and Open
+  project folder opens the session's project in the OS file manager and is
+  disabled for a session without one. A click on
+  the hub, an outside press, Escape, Tab, scroll, and resize all dismiss the
+  ring without running anything. Arrow keys move the highlight and Enter runs
+  the highlighted action. The switch and the four directions survive a restart,
+  and an unknown stored action falls back to that direction's default. Message
+  rows, links, file references, the sidebar, and the work panel keep their
+  vertical menus.
+- **Specs linked**: `04-ux/09-interaction-patterns.md` §1.11,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Chromium component check (`node scripts/e2e-radial-menu.mjs`:
+  sector labels, pointer highlight, click/hub/disabled/Escape paths, arrow-key
+  focus, and viewport clamping) plus unit coverage (`radial-menu.test.mjs`,
+  `settings-roundtrip.test.mjs`); full desktop journey Draft
+
 ### E2E-CHAT-delete-turn-preserves-other-live-outputs
 
 - **Preconditions**: A session has three completed turns. The renderer has
@@ -6738,6 +6780,23 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Specs linked**: `04-ux/07-ui-design-system.md` §8, `04-ux/02-i18n-english-first.md`, decisions-log D146 / D304 / D348
 - **Acceptance**: A (app startup), Quality
 - **Milestone**: M5
+
+#### E2E-SESSION-reopen-restores-running: Recreated windows retain live turn status
+
+- **Steps**: Start a Desktop turn in a session with an older completion
+  notification. Close and recreate its renderer while Main keeps the turn
+  alive. Inspect the sidebar and select the session before another agent event.
+  Repeat after the turn ends, and with a start/end event arriving during bootstrap.
+- **Expected**: Live tasks show running, and selecting one restores the running
+  composer state. Completed tasks stay idle. A delayed snapshot never overrides
+  a start/end event already received by the new renderer.
+- **Automation**: `node scripts/e2e-running-session-reopen.mjs` recreates real
+  Electron windows with the production bootstrap, Sidebar and selection flow,
+  using fixture backend responses. `session-list-runtime.test.mjs` checks the
+  Main snapshot; `session-running-bootstrap.test.mjs` covers event races and
+  responses from older hosts. The native macOS close gesture remains a manual check.
+- **Specs**: `03-runtime/01-ipc-protocol.md`, ADR 0090.
+
 #### E2E-099: Brand logo follows the active theme
 - **Status**: Draft
 - **Priority**: P3
@@ -8231,6 +8290,23 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `replace_messages_preserves_owning_turn_ids` covers the remaining rewrite
   callers. UI paging remains manual.
 
+- **Bounded-history regression (#1870)**: Regenerate an older prompt, then
+  continue until the root is outside the newest 100-message page. Complete
+  another turn while viewing that page, then repeat after switching to another
+  session. The archive must not append the older user root after the latest
+  answer in the active transcript, retained pane, or session cache. If the root
+  is loaded, its pager updates in place using its current message identity,
+  which can differ from the stable family key. A root removed during the
+  archive RPC stays absent. Previous variants remain available after restart.
+  With neither a cached nor retained background transcript, the acknowledgement
+  must leave the cache absent and allow the next prefetch to read the Host.
+  Automated event-to-projection coverage:
+  `apps/desktop/test/regenerate-root-projection.test.mjs`.
+  `node scripts/e2e-regenerate-root.mjs` exercises the real Host process,
+  production main persistence and renderer projections with an isolated
+  3,484-message transcript, three follow-up turns, restart, and a revision
+  round trip. Set `PI_DESKTOP_HOST_BIN` to a host built from the candidate.
+
 #### E2E-246: Retrying a large session truncates without a whole-transcript RPC
 
 
@@ -8970,6 +9046,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     never overflows the menu.
   - The tooltip and accessible name retain the complete relative path so
     duplicate leaf names remain distinguishable.
+  - In a Git workspace containing accented, CJK, and emoji file names,
+    indexing and filtering retain each name exactly, including when Git's
+    stdout chunks split a UTF-8 character. Accepting the result names the
+    existing file, without replacement characters in its path.
   - Enter/Tab/click on a file replaces the `@` token with an inline chip that
     stays in the draft; that key does not send. File acceptance retains the
     original complete `entry.path` behind the chip; directory acceptance
@@ -8982,7 +9062,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Acceptance**: C (conversation & stream), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered
-  (`apps/desktop/test/composer-file-reference-display.test.mjs`); file-mode row
+  (`apps/desktop/test/composer-file-reference-display.test.mjs` and
+  `packages/host-runtime/src/fs-index-encoding.test.ts`); Unicode filtering and
+  file acceptance run in `composer-deep-file-search-user-path.test.mjs`; file-mode row
   layout covered by `scripts/e2e-composer-autocomplete.mjs`; full UI journey
   Draft (run only in a capable environment when this surface changes)
 
@@ -18728,11 +18810,12 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Preconditions:** The locked Electron 43 runtime, built workspace packages,
   and an isolated profile. Only a local HTTPS fixture and local proxy are used;
   trust is confined to the test process/session and fixture certificate.
-- **Steps:** Run `node scripts/e2e-provider-client-certificate.mjs`. Confirm the
-  original `net.fetch` aborts before HTTP. Probe the model list and connection
-  through the real metadata service; repeat with an invalid fixture key and an
-  authenticated custom HTTP proxy. Return a cross-origin redirect, then cancel
-  a pending response.
+- **Steps:** Run `node scripts/e2e-provider-client-certificate.mjs`. Confirm one
+  real `net.fetch` fails or stalls before HTTP. Replay that isolated fixture
+  failure for subsequent probes to avoid a second Chromium TLS handshake, then
+  exercise model discovery and connection through the real metadata fallback;
+  repeat with an invalid fixture key and an authenticated custom HTTP proxy.
+  Return a cross-origin redirect, then cancel a pending response.
 - **Expected:** Valid credentials return the fixture model; invalid credentials
   reach HTTP 401. The retry follows the proxy route, sends no client identity,
   refuses cross-origin redirects and aborts with the original signal.
@@ -18773,6 +18856,38 @@ host-created files. The full app's file-preview viewer is covered separately.
   `composer-suggestion-state.test.mjs`, `composer-suggestion-relay.test.mjs`,
   and `plugin-composer-suggestion.test.mjs`; the rendered journey remains a
   manual/Electron check when this surface changes.
+
+### E2E-REMOTE-FILE-MANAGER: Scoped remote plugin reads
+
+Run `node scripts/e2e-remote-file-manager.mjs` to validate the shipped copy in
+`apps/desktop/resources/plugins/pi.file-manager`. This is the release acceptance
+path: passing against a separate development plugin does not prove the bundled
+user path is repaired. The runner records the loaded directory in its output.
+An optional `<built-file-manager-directory>` argument selects the companion
+plugin's rebuilt `views/` or unpacked official PluginPack artifact for development
+validation only. Before accepting #1711, update the bundled release, its upstream
+tag/commit and per-file checksums, then rerun the default path on the updated PR
+integration candidate.
+
+A development integration may exercise a Desktop hotfix in that actual bundled
+directory, with its immutable source commit, local patch and artifact checksums
+recorded honestly in `UPSTREAM.md`. A passing hotfix journey does not claim that
+the companion upstream release or the maintainer's final acceptance is complete.
+`PI_FILE_MANAGER_QA_DIR` may point to an existing plugin `tests/electron`
+installation providing Playwright; `PI_ELECTRON_BINARY` selects an existing
+compatible Electron runtime. `PI_E2E_ARTIFACTS` optionally preserves screenshots.
+
+The isolated production plugin process and `file://` view use Desktop's actual
+SDK broker, durable-binding reader, loopback RACP transport and Host filesystem
+service. Only the fixture's project-record lookup and authentication bootstrap
+are supplied by the harness. The remote fixture root is registered explicitly
+outside the Host folder picker's browse root. Verify nested listings,
+text/image bytes, hidden credentials, read-only editor/save/menu controls,
+visible disconnect errors and refresh recovery, rejected late previews and
+ancestor opens after a project switch, and restored local
+editing/Browser/editor detection. No model, user profile or external SSH server
+participates. Real SSH transport and native Windows/Linux behavior require
+their separate platform acceptance.
 
 ### E2E-GENUI-inline-visualization-card: a visualization renders inline and stays sandboxed
 

@@ -370,6 +370,9 @@ importers:
       '@pi-desktop/host-runtime':
         specifier: workspace:*
         version: link:../../packages/host-runtime
+      '@pi-desktop/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@pi-desktop/racp':
         specifier: workspace:*
         version: link:../../packages/racp

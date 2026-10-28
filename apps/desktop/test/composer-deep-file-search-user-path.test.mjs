@@ -51,6 +51,7 @@ const SAVE = "Assets/_Game/Scripts/Systems/Save/SaveSlots.cs";
 const STALE = "Assets/Stale/SaveFeature.cs";
 // Short enough to rank inside the bare @ menu if a searched row leaked into it.
 const SHORT = "a.cs";
+const UNICODE = "src/café-竞赛-🚀.ts";
 // The shallowest 8000 entries of a large tree; the deep scripts are not among them.
 const shallow = Array.from({ length: 8000 }, (_, index) => ({
   path: "Assets/Art/Group" + Math.floor(index / 300) + "/asset_" + index + ".png",
@@ -173,9 +174,15 @@ window.deepFileSearchProbe = async () => {
   await settle();
   check(noteShown(), "a failed search must keep the truncation note");
 
-  fileIndex = { entries: [{ path: "README.md", kind: "file" }], truncated: false };
+  fileIndex = { entries: ["README.md", UNICODE].map((path) => ({ path, kind: "file" })), truncated: false };
   useAppStore.setState({ workspace: { path: "/small", name: "small" } });
   await type("");
+  await type("@竞赛");
+  await until(() => rows().includes(UNICODE), "the Unicode file name was not preserved in the menu");
+  editor().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await settle();
+  check(draft.fileReferencesRef.current.some((reference) => reference.path === UNICODE),
+    "accepting the Unicode row changed the file reference");
   await type("@nothing");
   await new Promise((resolve) => setTimeout(resolve, 400));
   check(searches.length === 5, "a complete index must not search");
@@ -216,8 +223,10 @@ const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
+  // Hidden Windows windows need offscreen painting to advance animation frames.
   const win = new BrowserWindow({ show: false, width: 900, height: 700,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
+      offscreen: process.platform === "win32" } });
   win.webContents.on("console-message", (event) => console.error(event.message));
   try {
     await win.loadFile(path.join(__dirname, "index.html"));

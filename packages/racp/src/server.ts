@@ -180,6 +180,7 @@ export class RacpServer {
       terminal: Boolean(options.operations.terminal),
       workspaceTools: Boolean(options.operations.workspaceTools),
       workspaceFiles: Boolean(options.operations.workspaceFiles),
+      workspacePluginFiles: Boolean(options.operations.workspacePluginFiles),
       notifications: false,
       bindings: ["RACP-WS"],
     };

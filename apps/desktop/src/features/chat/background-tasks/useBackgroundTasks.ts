@@ -31,22 +31,22 @@ type Failure = "load" | "output" | "stop" | "remove";
 /**
  * Both sides of the container, described the way the tab rule expects.
  *
- * The hook reads the task side from the registry snapshot and takes the todo
- * side from its caller, which owns that read. Both the render rule and the
+ * The task side describes the rows the container can render, and the todo side
+ * comes from the caller, which owns that read. Both the render rule and the
  * badge rule consume this one description, so they cannot disagree about which
  * panel is on screen.
  */
 function sidesFor(
-  sessionTasks: readonly BackgroundTaskSummary[],
+  rows: readonly BackgroundTaskSummary[],
   todos: readonly SessionTodo[],
 ): DockSides {
   let runningTasks = 0;
-  for (const task of sessionTasks) {
+  for (const task of rows) {
     if (task.state === "running") runningTasks += 1;
   }
   return {
     hasTodo: todos.length > 0,
-    hasTasks: sessionTasks.length > 0,
+    hasTasks: rows.length > 0,
     runningTasks,
     inProgressTodos: todos.filter((todo) => todo.status === "in_progress").length,
   };
@@ -112,7 +112,9 @@ export function useBackgroundTasks(
           const seen = knownIds.current.get(currentSession) ?? new Set<string>();
           setDockView((current) => {
             const state = sessionDockState(current, currentSession);
-            const tasksVisible = tasksPanelVisible(state, sidesFor(sessionTasks, todosRef.current));
+            // The same description the render path uses: the rows the container
+            // can actually show decide whether its tasks panel is on screen.
+            const tasksVisible = tasksPanelVisible(state, sidesRef.current);
             const folded = observeSessionTasks(current, currentSession, sessionTasks, {
               knownIds: seen,
               tasksVisible,
@@ -154,11 +156,9 @@ export function useBackgroundTasks(
   }, []);
 
   // Only this session's tasks reach the container. A task from another session
-  // is not hidden because it ended: it simply belongs elsewhere.
-  // The poll loop outlives a render, so it reads the todo side through a ref
-  // rather than capturing one snapshot of the caller's list.
-  const todosRef = useRef(todos);
-  todosRef.current = todos;
+  // is not hidden because it ended: it simply belongs elsewhere. Registry
+  // history is kept out of the container by the visible-row rule below, not by
+  // dropping tasks from this list: removal and output reads still need them.
   const sessionTasks = useMemo(
     () => (sessionId ? allTasks.filter((task) => task.sessionId === sessionId) : []),
     [allTasks, sessionId],
@@ -281,14 +281,18 @@ export function useBackgroundTasks(
   }, []);
 
   const dock = sessionDockState(dockView, sessionId);
-  const sides = sidesFor(sessionTasks, todos);
+  // The tab and badge rules see the rows the container can render, so a task
+  // that already left it cannot decide which panel is on screen.
+  const sides = sidesFor(visibleTasks, todos);
   const activeTab: DockTab = resolveDockTabFor(dock, sides);
+  // The poll loop outlives a render, so it reads the container's description of
+  // itself through a ref rather than capturing one snapshot of it.
+  const sidesRef = useRef(sides);
+  sidesRef.current = sides;
 
   return {
-    /** Tasks belonging to the session on screen, after the grace window. */
+    /** The session's rows the container may render: live, in grace, or pinned. */
     tasks: visibleTasks,
-    /** Every task of this session, regardless of the grace window. */
-    sessionTasks,
     activeTab,
     openTasksTab,
     openTodoTab,

@@ -1,0 +1,27 @@
+--- a/views-src/src/styles/index.css
++++ b/views-src/src/styles/index.css
+@@ -193,1 +193,24 @@
++.cm-editor .cm-panel.cm-search .cm-textfield {
++  border: 1px solid var(--border-strong);
++  border-radius: 3px;
++  background: var(--surface);
++  color: var(--fg);
++  caret-color: var(--fg);
++}
++
++.cm-editor .cm-panel.cm-search .cm-textfield::placeholder {
++  color: var(--muted);
++}
++
++.cm-editor .cm-panel.cm-search .cm-button {
++  border: 1px solid var(--border-strong);
++  border-radius: 3px;
++  background: var(--surface-hover);
++  color: var(--fg);
++}
++
++.cm-editor .cm-panel.cm-search .cm-button:hover:not(:disabled) {
++  background: var(--surface-active);
++}
++
+ .cm-editor .cm-searchMatch {

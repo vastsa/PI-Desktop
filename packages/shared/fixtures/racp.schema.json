@@ -1,4 +1,176 @@
 {
+  "WorkspacePluginFilesRequest": {
+    "type": "object",
+    "required": [
+      "path",
+      "ref",
+      "operation",
+      "scope"
+    ],
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "ref": {
+        "type": "string",
+        "maxLength": 4096
+      },
+      "operation": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "list"
+          },
+          {
+            "type": "string",
+            "const": "preview"
+          }
+        ]
+      },
+      "scope": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": false
+  },
+  "WorkspacePluginFilesResult": {
+    "anyOf": [
+      {
+        "type": "object",
+        "required": [
+          "kind",
+          "entries"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "list"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "path",
+                "isDirectory"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "isDirectory": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "mtimeMs": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "kind",
+          "content",
+          "size",
+          "mtimeMs"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "text"
+          },
+          "content": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mtimeMs": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "kind",
+          "dataUrl",
+          "size",
+          "mtimeMs"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "image"
+          },
+          "dataUrl": {
+            "type": "string",
+            "pattern": "^data:image/[a-zA-Z0-9.+-]+;base64,"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mtimeMs": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "required": [
+          "kind",
+          "size",
+          "mtimeMs"
+        ],
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "binary"
+              },
+              {
+                "type": "string",
+                "const": "tooLarge"
+              }
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mtimeMs": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      }
+    ]
+  },
   "RequestContext": {
     "type": "object",
     "required": [
@@ -2048,6 +2220,9 @@
             "type": "boolean"
           },
           "workspaceFiles": {
+            "type": "boolean"
+          },
+          "workspacePluginFiles": {
             "type": "boolean"
           },
           "notifications": {

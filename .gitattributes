@@ -3,3 +3,6 @@
 # Generated diffs encode an empty context line as one significant space.
 # Keep other whitespace diagnostics enabled; source-file checks are unchanged.
 patches/*.patch whitespace=-blank-at-eol
+
+# Keep the vendored changelog byte-identical to its pinned upstream source.
+apps/desktop/resources/plugins/pi.file-manager/CHANGELOG.md whitespace=-blank-at-eol
