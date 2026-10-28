@@ -44,6 +44,17 @@ function resetTo(groups) {
   rememberProjectGroups(groups);
 }
 
+test("remote plugin metadata preserves the opaque identity and separates the display path", () => {
+  resetTo([{ ...group, id: "ssh-project", name: "Remote repository", primaryPath: "remote-project:ssh-project",
+    roots: [{ path: "remote-project:ssh-project", name: "Remote repository", position: 0 }],
+    remote: { hostKey: "private-host-key", path: "/home/user/repository" } }]);
+  const info = pluginWorkspaceInfo("remote-project:ssh-project");
+  assert.equal(info.path, "remote-project:ssh-project");
+  assert.equal(info.name, "Remote repository");
+  assert.deepEqual(info.remote, { path: "/home/user/repository", readOnly: true });
+  assert.equal(JSON.stringify(info).includes("private-host-key"), false);
+});
+
 test("a workspace inside a group reports every folder, primary first", () => {
   resetTo([group]);
   const payload = workspaceRootsFor("C:\\work\\alpha");

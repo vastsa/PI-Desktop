@@ -8,6 +8,7 @@ import {
   type RemoteHostConnectionStatus, type RemoteHostSyncProvidersRequest, type RemoteHostSyncProvidersResult, type SessionSummary,
   type CommandShellOption, isCommandShellOption,
   type WorkspaceFilesRequest,
+  type WorkspacePluginFilesRequest,
 } from "@pi-desktop/shared";
 import { wsClientTransport } from "@pi-desktop/racp";
 import type { HostRpcPort } from "@pi-desktop/agent-host";
@@ -70,6 +71,7 @@ export interface RemoteHostsBoot {
   abortWorkspaceTool(request: { hostKey: string; sessionId: string; toolCallId: string }): Promise<void>;
   workspaceCommandShell(hostKey: string): Promise<CommandShellOption>;
   workspaceFiles(hostKey: string, input: WorkspaceFilesRequest): Promise<unknown>;
+  workspacePluginFiles(hostKey: string, input: WorkspacePluginFilesRequest): Promise<unknown>;
   readonly registry: RemoteHostRegistry;
 }
 let activeRemoteHostsBoot: RemoteHostsBoot | null = null;
@@ -420,6 +422,14 @@ export function createRemoteHostsBoot(options: BootRemoteHostsOptions): RemoteHo
       const host = connectedHost(hostKey);
       if (!host) throw unavailable();
       const result = await host.adapter.client.request("workspace/files", input);
+      if (connectedHost(hostKey) !== host) throw unavailable();
+      return result;
+    },
+    async workspacePluginFiles(hostKey, input) {
+      await ensureReady(hostKey);
+      const host = connectedHost(hostKey);
+      if (!host) throw unavailable();
+      const result = await host.adapter.client.request("workspace/pluginFiles", input);
       if (connectedHost(hostKey) !== host) throw unavailable();
       return result;
     },

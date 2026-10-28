@@ -18,6 +18,8 @@ export type PluginFsRoot = "workspace" | "userSelected";
 export type PluginFsMode = "read" | "write" | "delete";
 
 export const PLUGIN_FS_MODES = ["read", "write", "delete"] as const;
+/** Maximum entries returned by one `pi.fs.list` call. */
+export const PLUGIN_FS_LIST_MAX_ENTRIES = 1000;
 
 export type PluginFsRule = {
   root: PluginFsRoot;

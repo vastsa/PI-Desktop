@@ -17,6 +17,8 @@ import {
   RacpInitializeResultSchema,
   RacpSessionSnapshotSchema,
   WorkspaceFilesRequestSchema,
+  WorkspacePluginFilesRequestSchema,
+  WorkspacePluginFilesResultSchema,
   allowedDecisionsAreCoherent,
   effectiveRemotePermissionMode,
   eventEnvelopeSequencingIsValid,
@@ -374,4 +376,20 @@ describe("SSH repository instruction file contract", () => {
     expect(Value.Check(WorkspaceFilesRequestSchema, { path: "/repo", operation: "instructions", globalHome: true })).toBe(false);
     expect(Value.Check(WorkspaceFilesRequestSchema, { path: "/repo", operation: "unknown" })).toBe(false);
   });
+});
+
+it("declares plugin file browsing as an owner-only read without changing workspace tools", () => {
+  expect(RACP_OPERATIONS["workspace/pluginFiles"]).toEqual({ role: "owner", profile: "remote-host", mutation: false });
+  expect(RACP_OPERATIONS["workspace/files"]).toEqual({ role: "owner", profile: "remote-host", mutation: false });
+});
+
+it("keeps the plugin file contract closed and requires real preview metadata", () => {
+  const input = { path: "/repo", ref: "docs/a.md", operation: "preview", scope: ["docs/**"] };
+  expect(Value.Check(WorkspacePluginFilesRequestSchema, input)).toBe(true);
+  for (const invalid of [{ ...input, operation: "write" }, { ...input, scope: undefined }, { ...input, hostKey: "other" }]) {
+    expect(Value.Check(WorkspacePluginFilesRequestSchema, invalid)).toBe(false);
+  }
+  expect(Value.Check(WorkspacePluginFilesResultSchema, { kind: "text", content: "ok", size: 2, mtimeMs: 123 })).toBe(true);
+  expect(Value.Check(WorkspacePluginFilesResultSchema, { kind: "text", size: 2, mtimeMs: 123 })).toBe(false);
+  expect(Value.Check(WorkspacePluginFilesResultSchema, { kind: "image", dataUrl: "https://untrusted/image", size: 2, mtimeMs: 123 })).toBe(false);
 });

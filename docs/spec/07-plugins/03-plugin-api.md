@@ -350,18 +350,19 @@ pi.fs.readRange(
   length: number,
   grantId?: string,
 ): Promise<{ bytes: Uint8Array; totalSize: number }>
-pi.fs.readPreview(pathFromRoot: string): Promise<{
+pi.fs.readPreview(pathFromRoot: string, options?: { workspacePath: string }): Promise<{
   kind: "text" | "image" | "binary" | "tooLarge"
   content?: string     // UTF-8 when kind is "text"
   dataUrl?: string     // data URL when kind is "image"
   size: number
+  mtimeMs?: number     // Remote previews include the Host's file timestamp.
 }>
 pi.fs.openDefault(pathFromRoot: string): Promise<void>
 pi.fs.openInBrowser(pathFromRoot: string): Promise<void>
 pi.fs.reveal(pathFromRoot: string): Promise<void>
 pi.fs.writeText(pathFromRoot: string, content: string): Promise<void>
 pi.fs.glob(pattern: string): Promise<string[]>
-pi.fs.list(pathFromRoot: string): Promise<Array<{
+pi.fs.list(pathFromRoot: string, options?: { workspacePath: string }): Promise<Array<{
   name: string;
   path: string;        // root-relative, usable directly with readText / list
   isDirectory: boolean;
@@ -386,6 +387,23 @@ SDK method.
 uses the same `fs.read` checks as `fs.readText`, rejects directories, and
 returns `text` (capped at 512 KiB), `image` (capped at 5 MiB, as a data URL),
 `binary`, or `tooLarge`. The plugin never receives an absolute path.
+
+For an SSH project, `workspace.get` preserves the opaque `remote-project:`
+identity and adds `remote: { path, readOnly: true }`; `remote.path` is a display
+path, never a local filesystem root. `fs.list` and `fs.readPreview` route these
+roots through the paired owner Host's optional `workspacePluginFiles`
+capability. The Host enforces canonical containment, protected paths, credential
+denials and the plugin's declared scope. The root must be below the Host's folder
+picker browse root or exactly match a canonical project root registered on that
+Host. Other filesystem channels remain local and reject opaque remote roots. A
+missing capability reports `HOST_VERSION_MISMATCH`; no request falls back to the
+Desktop filesystem.
+
+The optional `workspacePath` must equal the workspace identity captured by the
+view. A mismatch reports `WORKSPACE_CHANGED`. All reads capture their root
+before awaiting, including calls without this option, and discard results after
+a root change, remote binding replacement or plugin unload. See
+[the decision](/adr/plugin-remote-workspace-reads).
 
 `fs.openDefault` opens one existing file with the operating system's default
 associated application. It uses the same `fs.read` root, symlink, protected-path,
