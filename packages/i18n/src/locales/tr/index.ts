@@ -876,6 +876,8 @@ export const tr = {
     "imageModelSelected": "Seçili görsel modeli",
     "generatedImage": "Oluşturulan görsel {{index}}",
     "downloadGeneratedImage": "İndir",
+    "copyGeneratedImage": "Görseli kopyala",
+    "downloadImage": "Görseli indir",
     "revealGeneratedImage": "Klasörde göster",
     "imageRevealFailed": "Görsel klasörde gösterilemedi.",
     "imagePreviewUnavailable": "Önizleme yok; dosyayı aç",

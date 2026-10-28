@@ -867,6 +867,8 @@ export const fr = {
     "imageModelSelected": "Modèle d’images sélectionné",
     "generatedImage": "Image générée {{index}}",
     "downloadGeneratedImage": "Télécharger",
+    "copyGeneratedImage": "Copier l’image",
+    "downloadImage": "Télécharger l’image",
     "revealGeneratedImage": "Afficher dans le dossier",
     "imageRevealFailed": "Impossible d’afficher l’image dans son dossier.",
     "imagePreviewUnavailable": "Aperçu indisponible ; ouvrir le fichier",

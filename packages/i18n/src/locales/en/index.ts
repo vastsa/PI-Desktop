@@ -879,6 +879,8 @@ export const en = {
     imageModelSelected: "Selected image model",
     generatedImage: "Generated image {{index}}",
     downloadGeneratedImage: "Download",
+    copyGeneratedImage: "Copy image",
+    downloadImage: "Download image",
     revealGeneratedImage: "Show in folder",
     imageRevealFailed: "Could not show the image in its folder.",
     imagePreviewUnavailable: "Preview unavailable; open file",

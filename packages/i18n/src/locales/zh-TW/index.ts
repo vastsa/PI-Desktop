@@ -872,6 +872,8 @@ export const zhTW = {
     imageModelSelected: "已設為生圖模型",
     generatedImage: "生成圖片 {{index}}",
     downloadGeneratedImage: "下載",
+    copyGeneratedImage: "複製圖片",
+    downloadImage: "下載圖片",
     revealGeneratedImage: "在資料夾中顯示",
     imageRevealFailed: "無法在資料夾中顯示圖片。",
     imagePreviewUnavailable: "無法預覽，開啟檔案",
