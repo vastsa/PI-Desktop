@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { slotSsr } from "./helpers/slot-ssr.mjs";
 import {
   readComposerModule,
   readComposerSource,
@@ -54,22 +55,49 @@ test("next sendable queued prompt skips saving and already promoted rows", async
   );
 });
 
-test("the steer shortcut sends the first waiting follow-up when the composer is empty", async () => {
-  const submitHook = await readComposerModule("hooks/useComposerSubmit.ts");
+test("the composer submit path promotes a waiting row only for an empty steer", async (t) => {
+  const ssr = await slotSsr(t);
+  const { useComposerSubmit } = await ssr.load("/src/features/chat/composer/hooks/useComposerSubmit.ts");
+  const calls = [];
+  const waiting = queuedFixture({ id: "prompt-waiting" });
+  const queuedPrompts = [
+    queuedFixture({ id: "pending:1" }),
+    queuedFixture({ id: "prompt-promoted", priority: 0 }),
+    waiting,
+  ];
+  const makeSubmit = (overrides = {}) => useComposerSubmit({
+    value: "", draftKey: "session-a", activeSessionId: "session-a",
+    modelReady: true, sendBlocked: false, steeringAllowed: true,
+    invalidateComposerTransforms() {}, pasting: false, activeFileReferences: [],
+    t: (key) => key, showToast() {}, queuedPrompts,
+    sendPrompt: async (...args) => { calls.push(["prompt", ...args]); return true; },
+    steerPrompt: async (...args) => { calls.push(["steer", ...args]); return true; },
+    sendQueuedNow: async (id) => calls.push(["queued", id]),
+    draft: {
+      ref: { current: null }, draftRevision: () => 1,
+      draftSnapshot: (text) => ({ text, fileReferences: [] }),
+      clearDraftForKey: (...args) => calls.push(["clear", ...args]),
+      restoreDraftForKey: (...args) => calls.push(["restore", ...args]),
+    },
+    ...overrides,
+  });
 
-  const emptyDraftBranch =
-    submitHook.match(
-      /if \(!serializedContent\) \{[\s\S]*?\n {4}\}\n/,
-    )?.[0] ?? "";
-  assert.ok(emptyDraftBranch.length > 0, "empty draft branch not found");
-  // Steering only: a plain Enter on an empty composer stays inert, and a
-  // blocked composer must not promote anything.
-  assert.match(
-    emptyDraftBranch,
-    /steering && !sendBlocked \? nextSendableQueuedPrompt\(queuedPrompts\) : undefined/,
-  );
-  assert.match(emptyDraftBranch, /if \(waiting\) await sendQueuedNow\(waiting\.id\);/);
-  assert.doesNotMatch(emptyDraftBranch, /sendPrompt\(/);
+  await makeSubmit().submit(true);
+  assert.deepEqual(calls, [["queued", waiting.id]]);
+
+  calls.length = 0;
+  await makeSubmit().submit();
+  assert.deepEqual(calls, []);
+
+  calls.length = 0;
+  await makeSubmit({ sendBlocked: true }).submit(true);
+  assert.deepEqual(calls, []);
+
+  calls.length = 0;
+  await makeSubmit({ value: "draft text" }).submit(true);
+  assert.equal(calls[0]?.[0], "clear");
+  assert.equal(calls[1]?.[0], "steer");
+  assert.equal(calls.some((call) => call[0] === "queued"), false);
 });
 
 test("the composer hands the session queue and Send now to the submit hook", async () => {
