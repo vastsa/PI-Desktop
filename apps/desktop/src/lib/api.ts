@@ -726,7 +726,7 @@ export const api = {
     bootId?: string;
   }) => invoke<{ ok: boolean }>(IPC.invoke.pluginSessionActive, input),
   listSessions: () =>
-    invoke<{ sessions: SessionSummary[] }>(IPC.invoke.sessionList).then((result) => ({
+    invoke<{ sessions: SessionSummary[]; runningSessionIds?: string[] }>(IPC.invoke.sessionList).then((result) => ({
       ...result,
       sessions: result.sessions.map(normalizeSession),
     })),

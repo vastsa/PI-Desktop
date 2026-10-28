@@ -15,13 +15,48 @@
  * parallel except where the order matters.
  */
 
-/** Compare-equal spelling of a path: forward slashes, no `./` prefix. */
+/**
+ * Compare-equal lock key. Slashes are forward. `.` and empty segments drop,
+ * and `..` pops the previous segment when there is one to pop — otherwise the
+ * `..` stays, so a relative path that climbs past its root (`../x.ts`) is not
+ * eaten. A leading `/` and a Windows drive prefix stay. The result is
+ * lowercased.
+ *
+ * Delegate keys are `${worktreeKey}\0${path}` (`pathLockKey`). Only the path
+ * half is collapsed, so `..` cannot pop the worktree id out of the key.
+ * Lexical only: the lock takes its key synchronously, and the file may not
+ * exist yet.
+ */
 export function normalizeLockPath(path: unknown): string {
-  return String(path ?? "")
-    .replaceAll("\\", "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "")
-    .toLowerCase();
+  const raw = String(path ?? "").replaceAll("\\", "/");
+  const separator = raw.indexOf("\0");
+  if (separator >= 0) {
+    const namespace = raw.slice(0, separator);
+    const filePath = collapseLockPath(raw.slice(separator + 1));
+    return `${namespace}\0${filePath}`.toLowerCase();
+  }
+  return collapseLockPath(raw).toLowerCase();
+}
+
+function collapseLockPath(path: string): string {
+  const drive = /^[A-Za-z]:/.exec(path)?.[0] ?? "";
+  const body = drive ? path.slice(drive.length) : path;
+  const absolute = body.startsWith("/");
+  const stack: string[] = [];
+  for (const segment of body.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (stack.length > 0 && stack[stack.length - 1] !== "..") {
+        stack.pop();
+      } else if (!absolute) {
+        stack.push("..");
+      }
+      continue;
+    }
+    stack.push(segment);
+  }
+  const joined = stack.join("/");
+  return absolute ? `${drive}/${joined}` : `${drive}${joined}`;
 }
 
 type PathQueueEntry = {

@@ -11,6 +11,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 
 | 决策 | 说明 |
 |---|---|
+| [插件远程工作区读取](/adr/plugin-remote-workspace-reads) | 通过独立 owner-only 服务保留插件文件范围；只读预览和工作区切换隔离 |
 | [配置同步中的本机项目列表](/adr/device-local-project-lists-in-config-sync) | 移除 projects 类别，忽略旧项目实体，保留云端历史及项目级能力的本地映射 |
 | [ADR 0001：Electron 桌面壳](/adr/0001-use-electron) | 桌面窗口与平台能力的承载层 |
 | [ADR 0005：本地插件系统](/adr/0005-user-installable-plugin-system) | 用户安装插件的第一阶段边界 |

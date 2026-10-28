@@ -9952,6 +9952,29 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **验收**：项目折叠时仍能回答“这里是否有正在运行的工作”，且两种提示可从持久化设置独立控制。
 - **状态**：草稿。现有 `apps/desktop/test/sidebar-project-runs.test.mjs` 覆盖数量分类、总开关与子开关门控、两种渲染入口，以及主题令牌和减少动态效果保证；它不覆盖设置 API 缺省值规范化或完整交互，相关场景仍需在可用环境手动验证。
 
+
+### E2E-REMOTE-FILE-MANAGER：受限的插件远程读取
+
+运行 `node scripts/e2e-remote-file-manager.mjs`，验证实际内置的
+`apps/desktop/resources/plugins/pi.file-manager`。这是发布验收路径：单独的开发插件
+通过不代表内置插件已修复。脚本会输出实际加载的目录。
+可选参数 `<built-file-manager-directory>` 可选择配套插件重新构建的 `views/` 或官方
+PluginPack 产物的解包目录，仅用于开发验证。验收 #1711 前需更新内置正式版本、
+上游标签与提交及各文件校验值，再对更新后的 PR 集成候选运行默认路径。
+
+开发集成可在实际内置目录验证 Desktop 热修复，并在 `UPSTREAM.md` 中如实记录固定
+源码提交、本地补丁和产物校验值。热修复路径通过，不代表配套上游正式发布或维护者
+最终验收已经完成。
+`PI_FILE_MANAGER_QA_DIR` 可指向已有、提供 Playwright 的插件 `tests/electron` 环境；
+`PI_ELECTRON_BINARY` 选择兼容的已有 Electron；`PI_E2E_ARTIFACTS` 可保留截图。
+
+隔离的真实插件进程与生产 `file://` 视图经过 Desktop SDK 网关、持久绑定读取器、
+本机回环 RACP 传输和真实 Host 文件服务。仅项目记录查询和认证启动由夹具提供。
+远程夹具根会显式注册在 Host 文件夹选择器浏览根之外。检查嵌套目录、文本/图片、
+凭据隐藏、编辑器/保存/菜单只读、断线错误和刷新恢复，
+以及切换项目后拒绝延迟预览和祖先打开请求，并恢复本地编辑、Browser 和编辑器探测。
+不使用模型、用户 profile 或外部 SSH；真实 SSH 及 Windows/Linux 原生行为需另行平台验收。
+
 #### E2E-PROVIDER-reasoning-effort-override: Preserve an explicit gateway reasoning parameter
 
 - **Setup:** A custom Chat Completions provider with a DeepSeek-family model;

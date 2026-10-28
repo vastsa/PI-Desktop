@@ -259,12 +259,13 @@ export function createEventsSlice({
         const sessionId = envelope.sessionId;
         const reconcile = (messages: UiMessage[]) =>
           reconcilePersistedUserMessage(messages, event.optimisticMessageId, event.message);
+        const state = get();
+        const current = runtime.sessionTranscriptCache.get(sessionId) ??
+          state.retainedTranscripts[sessionId] ??
+          (state.activeSessionId === sessionId ? state.messages : undefined);
+        if (!current) return;
         runtime.liveSessionTranscripts.add(sessionId);
-        runtime.cacheSessionTranscript(sessionId, reconcile(
-          runtime.sessionTranscriptCache.get(sessionId) ??
-          get().retainedTranscripts[sessionId] ??
-          (get().activeSessionId === sessionId ? get().messages : []),
-        ));
+        runtime.cacheSessionTranscript(sessionId, reconcile(current));
         set((state) => ({
           ...(state.activeSessionId === sessionId ? { messages: reconcile(state.messages) } : {}),
           retainedTranscripts: state.retainedTranscripts[sessionId]

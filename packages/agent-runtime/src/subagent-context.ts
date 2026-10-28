@@ -51,6 +51,7 @@ import { createCompactionSummaryMessage, type CompactionSummaryMessage } from ".
 import type { CompactionSettings, Entry, MessageEntry } from "./pi-runtime-types.js";
 import type { UsageObserver } from "./request-usage.js";
 import { ESTIMATED_TEXT_CHARS_PER_TOKEN } from "./pi-runtime-estimates.js";
+import { pruneOrphanToolResults } from "./compaction-tail.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
 import {
   DEFAULT_MAX_TOKENS,
@@ -415,12 +416,16 @@ export function degradedDelegateMessages(
     suffix.unshift(message);
     tokens += cost;
   }
-  // Tool results are contiguous with the assistant that requested them, so a
-  // suffix cut can only start inside that pair on the result side. Dropping
-  // leading results keeps the pair rule intact: no result reaches a provider
-  // without its call, and no call without its results.
+  // A budget cut keeps a newest-first run, so it can only open on the result
+  // side of a pair. Dropping that leading prefix leaves no result whose call
+  // was too old to keep.
   while (suffix[0]?.role === "toolResult") suffix.shift();
-  return [...(brief ? [brief] : []), ...suffix];
+  // A skipped assistant is different: the walk continues, so kept messages can
+  // sit on both sides of its tool result. The call is gone and the result is
+  // not a prefix. Drop every result whose call is no longer in the suffix,
+  // with the same rule the retained tail uses. A tool call that stays on a
+  // retained assistant is left in place.
+  return [...(brief ? [brief] : []), ...pruneOrphanToolResults(suffix)];
 }
 
 /**

@@ -11,6 +11,13 @@ import { app, net, session } from "electron";
 import { applyNetworkProxy, disposeSystemProxyRelay } from "../../apps/desktop/electron/main/network-proxy";
 import { probeModelList, probeProviderEndpoint } from "../../apps/desktop/electron/main/model-discovery";
 
+// Assertions in server callbacks run outside the scenario's try/catch.
+// Report them instead of blocking CI in Electron's default error dialog.
+process.on("uncaughtException", (error) => {
+  console.error(error);
+  app.exit(1);
+});
+
 app.setPath("userData", process.argv[2]);
 app.commandLine.appendSwitch("ozone-platform", "headless");
 app.disableHardwareAcceleration();
@@ -113,29 +120,42 @@ void app.whenReady().then(async () => {
       return electronFetch(input, init);
     };
     const options = { baseUrl, apiKey: "fixture", signal: AbortSignal.timeout(8_000) };
+    console.log("client certificate probe: direct model list");
     assert.deepEqual((await probeModelList(options)).models, [{ modelId: "fixture-model", displayName: "fixture-model" }]);
+    console.log("client certificate probe: direct endpoint");
     assert.equal((await probeProviderEndpoint(options)).status, 200);
+    console.log("client certificate probe: unauthorized response");
     await assert.rejects(probeModelList({ ...options, apiKey: "wrong" }), { status: 401 });
+    console.log("client certificate probe: configure authenticated proxy");
     await applyNetworkProxy({ mode: "custom", url: `http://fixture:password@127.0.0.1:${proxyAddress.port}`, bypass: "<-loopback>" });
     const before = tunnels;
+    console.log("client certificate probe: authenticated proxy endpoint");
     assert.equal((await probeProviderEndpoint(options)).status, 200);
     assert.ok(tunnels > before, "the retry must use the configured authenticated proxy");
+    console.log("client certificate probe: configure localhost bypass");
     await applyNetworkProxy({ mode: "custom", url: `http://fixture:password@127.0.0.1:${proxyAddress.port}` });
     const beforeBypass = tunnels;
+    console.log("client certificate probe: localhost bypass endpoint");
     assert.equal((await probeProviderEndpoint(options)).status, 200);
     assert.equal(tunnels, beforeBypass, "localhost bypass must apply to both transports");
+    console.log("client certificate probe: restore direct proxy mode");
     await applyNetworkProxy({ mode: "direct" });
     mode = "redirect";
+    console.log("client certificate probe: cross-origin redirect refusal");
     await assert.rejects(probeModelList(options), /left the configured origin/);
     mode = "stall";
     const controller = new AbortController();
     const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+    console.log("client certificate probe: wait for cancellable request to reach HTTP");
     const pending = probeModelList({ ...options, signal: controller.signal });
     await started;
+    console.log("client certificate probe: cancel in-flight request");
     controller.abort();
     await assert.rejects(pending, { name: "AbortError" });
     console.log("provider client certificate E2E passed");
+    console.log("client certificate probe: dispose proxy relay");
     await disposeSystemProxyRelay();
+    console.log("client certificate probe: close fixture sockets and servers");
     for (const socket of sockets) socket.destroy();
     await Promise.all([new Promise<void>((resolve) => server.close(() => resolve())), new Promise<void>((resolve) => proxy.close(() => resolve()))]);
     app.exit(0);

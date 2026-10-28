@@ -2206,6 +2206,10 @@ through a source blip.
 
 ### fs/index
 
+Git listings are decoded as a continuous UTF-8 stream. File names, including
+non-ASCII characters split across process output chunks, retain their exact
+spelling in both the index and `fs/search` results.
+
 ```ts
 fs/index() -> { entries: FsIndexEntry[]; truncated: boolean }
 
@@ -2506,6 +2510,13 @@ startup failure is logged and does not prevent the desktop from launching.
 | `INTERNAL` | Uncategorized internal error |
 
 ## Native Pi session routing (ADR 0254)
+
+The Electron `pi-desktop/session/list` response also includes
+`runningSessionIds`, a snapshot of the Desktop turns still owned by Main after
+the list reads settle. A recreated renderer restores these running flags during
+bootstrap; start/end events already received by that renderer take precedence.
+An older response without this field remains valid. Historical completion
+notifications are not evidence that a currently active turn has finished.
 
 `pi-desktop/session/list` returns both Desktop and native summaries. Each summary
 may carry `source: "desktop" | "pi-native"`, capability flags, and a stable
