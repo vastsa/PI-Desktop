@@ -208,7 +208,13 @@ export function createRacpRemoteHostClient(
     async request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
       // Offline errors remain offline errors; capabilities belong to the live handshake.
       if (racp.state === "connected") {
-        if (method === "workspace/files") requireWorkspace("workspaceFiles");
+        if (method === "workspace/pluginFiles") {
+          if (!racp.initialized?.capabilities.workspacePluginFiles) {
+            throw Object.assign(new Error("Upgrade pi-host to a matching Desktop release with plugin file browsing support"), {
+              errorCode: ErrorCodes.HOST_VERSION_MISMATCH, retriable: false,
+            });
+          }
+        } else if (method === "workspace/files") requireWorkspace("workspaceFiles");
         else if (["workspace/toolExecute", "workspace/toolAbort", "workspace/toolShell"].includes(method)) {
           requireWorkspace("workspaceTools");
         }

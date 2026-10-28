@@ -180,6 +180,30 @@ export function assistantTurnMenuItems({
   return items;
 }
 
+/** Whether the current session has dialogue available to copy. */
+export function hasConversationToCopy({
+  sessionId,
+  hasMoreBefore,
+  hasMoreAfter,
+  messages,
+}: {
+  sessionId: string | undefined;
+  hasMoreBefore: boolean;
+  hasMoreAfter: boolean;
+  messages: readonly { role: string; content: string }[];
+}): boolean {
+  return (
+    Boolean(sessionId) &&
+    (hasMoreBefore ||
+      hasMoreAfter ||
+      messages.some(
+        (message) =>
+          (message.role === "user" || message.role === "assistant") &&
+          message.content.trim().length > 0,
+      ))
+  );
+}
+
 /**
  * The conversation background: the actions that need the whole thread, which no
  * single row can offer.

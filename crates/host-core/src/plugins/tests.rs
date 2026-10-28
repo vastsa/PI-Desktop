@@ -243,6 +243,18 @@ fn marketplace_uses_highest_semver_when_catalog_versions_are_unsorted() {
             compare_plugin_versions("0.5.3-pi.1", "0.6.0"),
             Ordering::Less
         );
+        assert_eq!(
+            compare_plugin_versions("0.9.1-pi.1", "0.9.0"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_plugin_versions("0.9.1-pi.1", "0.5.3-pi.1"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_plugin_versions("0.9.1-pi.1", "0.9.1"),
+            Ordering::Less
+        );
     });
 }
 
