@@ -1471,17 +1471,53 @@ function commandTimeoutMs(params: unknown): number {
   return timeoutMs;
 }
 
+/**
+ * A supplementary-plane character is one code point and two UTF-16 code units.
+ * The progress cap counts code units, so a point that does not fit is left out
+ * whole instead of being sliced through the middle of its surrogate pair.
+ */
+function takePrefixCodeUnits(text: string, budget: number): string {
+  let used = 0;
+  let end = 0;
+  for (const point of text) {
+    if (used + point.length > budget) break;
+    used += point.length;
+    end += point.length;
+  }
+  return text.slice(0, end);
+}
+
+function takeSuffixCodeUnits(text: string, budget: number): string {
+  let used = 0;
+  let start = text.length;
+  while (start > 0 && used < budget) {
+    const low = text.charCodeAt(start - 1);
+    const high = start >= 2 ? text.charCodeAt(start - 2) : 0;
+    const pair =
+      low >= 0xdc00 &&
+      low <= 0xdfff &&
+      high >= 0xd800 &&
+      high <= 0xdbff;
+    const size = pair ? 2 : 1;
+    if (used + size > budget) break;
+    used += size;
+    start -= size;
+  }
+  return text.slice(start);
+}
+
 function appendToolProgress(current: string, chunk: string): string {
   const combined = `${current}${chunk}`;
   if (combined.length <= MAX_TOOL_PROGRESS_CHARS) return combined;
-  const codePoints = Array.from(combined);
-  const marker = Array.from(TOOL_PROGRESS_TRUNCATION_MARKER);
-  const remaining = Math.max(0, MAX_TOOL_PROGRESS_CHARS - marker.length);
-  const head = Math.ceil(remaining * 0.6);
-  const tail = remaining - head;
-  return `${codePoints.slice(0, head).join("")}${TOOL_PROGRESS_TRUNCATION_MARKER}${
-    tail > 0 ? codePoints.slice(-tail).join("") : ""
-  }`;
+  const remaining = Math.max(
+    0,
+    MAX_TOOL_PROGRESS_CHARS - TOOL_PROGRESS_TRUNCATION_MARKER.length,
+  );
+  const headBudget = Math.ceil(remaining * 0.6);
+  const tailBudget = remaining - headBudget;
+  const head = takePrefixCodeUnits(combined, headBudget);
+  const tail = tailBudget > 0 ? takeSuffixCodeUnits(combined, tailBudget) : "";
+  return `${head}${TOOL_PROGRESS_TRUNCATION_MARKER}${tail}`;
 }
 
 /** Bound a checkpoint message's text, naming the cut the way pi's tail does. */

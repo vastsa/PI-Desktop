@@ -684,6 +684,38 @@ may be retained while exactly one workspace supplies the visible shell context.
   close buttons, and focus handling remain authoritative; native selection is
   not prevented and no pointer capture is added for dismissal.
 
+### 1.11 Transcript background radial menu (opt-in)
+
+- **Settings → AI → Radial context menu** carries one switch and four
+  direction pickers. The switch is off unless `AppSettings.radialMenu.enabled`
+  is true, so an upgrade keeps the vertical menu every earlier build shipped.
+- With the switch on, a right-click on the empty transcript background opens a
+  four-sector ring centred on the pointer instead of the vertical conversation
+  menu. Message rows, markdown links, file references, tool rows, the sidebar,
+  and the work panel keep their vertical menus.
+- The vocabulary is: copy conversation, select conversation text, copy the last
+  answer, scroll to top, jump to latest, open the built-in browser, toggle the work
+  panel (Open work panel, or Close work panel while it is open), open the
+  project folder, and **Leave empty**. A direction with no action
+  renders a disabled sector rather than reshaping the ring; an action the surface
+  cannot fill stays visible and disabled — copy last answer before any answer
+  text exists, and the three open actions on a remote session (open project
+  folder also before the session has a project path). There is no terminal
+  action: the work panel ships no terminal surface.
+- The sector under the pointer highlights; clicking it runs the action and
+  closes the ring. A click on the hub or outside closes without running.
+  Arrow keys move the highlight clockwise and counter-clockwise, Enter runs the
+  highlighted action, and Escape or Tab dismisses. Focus returns through the
+  same outside-press, scroll, resize, and blur listeners as `ContextMenu`.
+- Placement follows the shared floating-layer contract: a viewport-fixed portal
+  measured before reveal, clamped inside the window with the same 8px margin,
+  so a right-click near an edge moves the ring rather than clipping it.
+- An absent preference, a non-boolean `enabled`, or an unknown action resolves
+  per direction to the defaults (up: copy conversation, right: select
+  conversation text, down: jump to latest, left: scroll to top). Settings
+  writes naming an unknown action are rejected by both the renderer and
+  Electron Main.
+
 ## 2. Streaming message behavior
 
 ### 2.1 Token rendering

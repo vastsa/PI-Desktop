@@ -215,6 +215,7 @@ export function registerSessionIpc({
       : { sessions: [] as RuntimeSession[] };
     return {
       ...result,
+      runningSessionIds: [...activeTurns.keys()],
       sessions: [
         ...result.sessions.map((session) => ({
           ...enrichSession(session, providers, defaults),
