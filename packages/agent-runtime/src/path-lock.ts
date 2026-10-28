@@ -48,7 +48,7 @@ function collapseLockPath(path: string): string {
     if (segment === "..") {
       if (stack.length > 0 && stack[stack.length - 1] !== "..") {
         stack.pop();
-      } else {
+      } else if (!absolute) {
         stack.push("..");
       }
       continue;
