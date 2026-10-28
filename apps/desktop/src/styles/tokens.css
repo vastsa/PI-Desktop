@@ -144,6 +144,10 @@
   --ds-error: #ff6764;
   --ds-info: var(--gray-300);
   --ds-purple: #c27aff;
+  /* Two extra chart hues so a six-part composition stays legible; the
+     semantic four (success/warning/error/info) cannot separate six series. */
+  --ds-yellow: #e3b341;
+  --ds-blue: #78b7ff;
   --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
   --ds-shadow-model-menu: var(--ds-shadow-dialog);
   /* Codex --elevation-prominent (same stroke+lift in dark and light) */
@@ -285,6 +289,8 @@
   --ds-error: #e02e2a;
   --ds-info: #5d5d5d;
   --ds-purple: #7c3aed;
+  --ds-yellow: #9a6700;
+  --ds-blue: #196acb;
   --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.12);
   /* Preserve the opaque light model menu's existing stroke and lift. */
   --ds-shadow-model-menu:

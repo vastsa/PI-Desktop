@@ -5485,7 +5485,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcript-style.test.mjs`); full visual scenario Draft
 
-#### E2E-060d: Assistant meta chips, compact context summary, and retry action
+#### E2E-060d: Assistant meta chips, context insights dashboard, and retry action
 
 - **Preconditions**: A completed visual turn includes modelId and token usage
   across more than one assistant message; another completed assistant message
@@ -5500,16 +5500,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   into the popover and confirm it stays open, then dismiss it with Escape and
   with an outside pointer press. 3) Hover the composer
   toolbar inspector trigger, confirm the panel stays closed, then click it.
-  4) Inspect the remaining-token-plus-percentage heading, used/window counts,
-  unboxed turn/speed values, total session duration, and three timing rows for
+  4) Inspect the title bar (title, session title, close button), the
+  remaining-token-plus-percentage heading, and the dashboard cards below it:
+  context stats (turns, model requests, tool calls, compactions, speed), the
+  provider token donut with its legend and cache-hit rate, the timing donut
+  with total session duration and the three measured rows for
   network/provider wait, streamed model response (including thinking and
-  answer), and tool execution, each with its share of session duration. Confirm
-  overlapping top-level tool calls are counted once, nested delegate timings
-  are excluded, and one inline provider-usage summary plus one aggregate
-  tool-usage summary remain. There is no doubled heading rule or inner section
-  hairline. For a transcript with more than one loaded page, wait for earlier
-  timing metadata to finish loading and confirm the cumulative values include
-  it. 5) Scroll the transcript and resize the window while the
+  answer), and tool execution, current capacity with its used/window counts
+  and remaining figure, the request trend, the recorded-history browser, the
+  tool ranking, and the context events list. Switch Step/Turn and
+  Total/Delta on the trend and confirm the selected bar highlights and the
+  token card and browser follow it; select an older request from the browser
+  picker and confirm negative deltas still render. Type in the browser search
+  and confirm groups filter without changing the estimated totals, then expand
+  a group and read one record. Confirm overlapping top-level tool calls are
+  counted once, nested delegate timings are excluded, and the tool ranking
+  shows one `~` aggregate. For a transcript with more than one loaded page,
+  wait for earlier timing metadata to finish loading and confirm the
+  cumulative values include it. There is no doubled heading rule or inner
+  section hairline. 5) Scroll the transcript and resize the window while the
   panel is open. Toggle and resize the sidebar and work panel while the panel
   remains open. 6) Move the pointer away from the panel, then dismiss it by
   clicking the trigger again, clicking outside it, and pressing Escape from
@@ -5528,14 +5537,19 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   on pointer leave after a grace delay unless the trigger retains keyboard
   focus, on Escape, or on an outside press; it portals to the body, clamps to
   the conversation pane, and is absent on streaming turns.
-  The compact Context inspector appears in the composer
+  The Context inspector appears in the composer
   right toolbar, left of the model picker, once any usage exists, and always
   mirrors the newest usage-bearing assistant turn. The trigger shows the ring
   plus remaining-capacity percentage (no Context label) and low-space
-  warning/error states; click or keyboard activation toggles the same compact
-  summary while pointer hover alone never opens or closes it. An open panel
-  survives the pointer leaving it and closes on a second trigger activation,
-  an outside click, or Escape, which returns focus to the trigger. Session
+  warning/error states; click or keyboard activation toggles the insights
+  dashboard while pointer hover alone never opens or closes it. An open panel
+  survives the pointer leaving it, moves focus to its close button, and closes
+  on a second trigger activation, an outside click, Escape (which returns focus
+  to the trigger), or a session or account change. The dashboard's token and
+  timing cards describe the selected request, the trend and browser share that
+  selection, and the browser labels its contents as recorded history estimates
+  rather than the assembled request; counts, trend and ranking use loaded
+  parent history only and say so when it is partial. Session
   duration runs from session creation to the latest activity (or to now while
   running). Network request wait ends at the first model response event; model
   response includes streamed thinking and answer, and tool time excludes nested

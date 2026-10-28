@@ -10,6 +10,7 @@ import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import {
   formatCompactTokenCount,
+  type ContextCompactionMark,
   type MessageUsage,
   type UiMessage,
 } from "@pi-desktop/shared";
@@ -17,11 +18,8 @@ import { useAppStore } from "../stores/app-store";
 import { formatToolDuration } from "../lib/tool-display";
 import { TooltipButton } from "./ui";
 import {
-  aggregateToolTokenUsage,
-  calculateCacheRate,
   calculateContextUsage,
   calculateTokenRate,
-  contextOccupancyTokens,
   contextUsageView,
   resolveContextUsageDisplay,
 } from "../lib/context-usage";
@@ -30,9 +28,11 @@ import {
   type ContextInspectorPlacement,
 } from "../lib/context-inspector-position";
 import { useSessionTiming } from "../features/chat/context-usage/useSessionTiming";
+import { ContextUsageDashboard } from "../features/chat/context-usage/ContextUsageDashboard";
 
 const CONTEXT_RING_RADIUS = 9;
 const CONTEXT_RING_CIRCUMFERENCE = 2 * Math.PI * CONTEXT_RING_RADIUS;
+const EMPTY_COMPACTIONS: readonly ContextCompactionMark[] = [];
 
 export function ContextUsageInspector({
   usage,
@@ -53,11 +53,12 @@ export function ContextUsageInspector({
 }) {
   const { t } = useTranslation();
   const panelId = useId();
-  // The transcript shows one row per compaction; the inspector adds what those
-  // rows cannot — how much of the model context the newest summary occupies.
-  const compaction = useAppStore((state) =>
+  // The transcript shows one row per compaction; the dashboard adds what those
+  // rows cannot — how much of the model context each summary occupies and when
+  // the checkpoints land inside the trend.
+  const compactions = useAppStore((state) =>
     state.activeSessionId
-      ? state.sessionCompactions[state.activeSessionId]?.at(-1)
+      ? state.sessionCompactions[state.activeSessionId]
       : undefined,
   );
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -101,17 +102,9 @@ export function ContextUsageInspector({
     resolveContextUsageDisplay(state.settings?.contextUsageDisplay),
   );
   const display = contextUsageView(context, usageDisplay);
-  // Occupancy, turn total, and provider cache/input/output are the last
-  // model request. Summing every tool-loop call inflates cache read past
-  // the window (OpenCode last-message accounting).
-  const turnTotal = contextOccupancyTokens(usage);
   const throughput = calculateTokenRate(
     responseOutputTokens ?? turnUsage.outputTokens,
     responseDurationMs,
-  );
-  const cacheRate = calculateCacheRate(
-    usage.inputTokens,
-    usage.cacheReadTokens,
   );
   const formatTimingValue = (durationMs?: number, percent?: number) => {
     if (sessionTiming.historyStatus === "loading") return "…";
@@ -135,11 +128,6 @@ export function ContextUsageInspector({
     timingBreakdown?.toolCallMs,
     timingBreakdown?.toolCallPercent,
   );
-  const toolRows = aggregateToolTokenUsage(tools);
-  const toolTotal = toolRows.reduce(
-    (total, row) => total + row.totalTokens,
-    0,
-  );
   const level =
     context.remainingPercent <= 10
       ? "critical"
@@ -162,6 +150,22 @@ export function ContextUsageInspector({
     setOpen(false);
     setPopoverPosition(null);
   }, []);
+
+  // The dashboard describes one session. Switching leaves the open panel
+  // quoting a transcript it no longer owns, so it dismisses instead of
+  // reloading in place.
+  useEffect(() => {
+    closeInspector();
+  }, [sessionId, closeInspector]);
+
+  // Opening moves focus into the dialog so Escape and Tab act on the panel
+  // rather than the Composer behind it.
+  useEffect(() => {
+    if (!open || !popoverPosition) return;
+    popoverRef.current
+      ?.querySelector<HTMLButtonElement>(".context-inspector-close")
+      ?.focus({ preventScroll: true });
+  }, [open, popoverPosition]);
 
   // The panel is click-toggled rather than hover-opened: reading the token
   // breakdown takes long enough that a pointer leaving the trigger should not
@@ -222,13 +226,10 @@ export function ContextUsageInspector({
     const frame = window.requestAnimationFrame(updatePopoverPosition);
     return () => window.cancelAnimationFrame(frame);
   }, [
-    compaction,
+    compactions,
     context.usedTokens,
     contextWindow,
     open,
-    toolRows.length,
-    toolTotal,
-    turnTotal,
     throughput,
     updatePopoverPosition,
   ]);
@@ -299,7 +300,7 @@ export function ContextUsageInspector({
       className={`context-inspector-popover${popoverPosition ? " is-open" : ""}`}
       id={panelId}
       role="dialog"
-      aria-label={t("chat.usageContextLabel")}
+      aria-label={t("chat.insightsTitle")}
       style={
         popoverPosition
           ? {
@@ -310,6 +311,23 @@ export function ContextUsageInspector({
           : undefined
       }
     >
+      <header className="context-inspector-titlebar">
+        <div>
+          <strong>{t("chat.insightsTitle")}</strong>
+          <span>{session?.title}</span>
+        </div>
+        <button
+          type="button"
+          className="context-inspector-close"
+          aria-label={t("common.close")}
+          onClick={() => {
+            closeInspector();
+            triggerRef.current?.focus();
+          }}
+        >
+          ×
+        </button>
+      </header>
       <div className="context-inspector-heading">
         <strong className="context-inspector-heading-value">
           {display.display === "used"
@@ -324,133 +342,31 @@ export function ContextUsageInspector({
           {display.percent}%
         </strong>
       </div>
-      <div className="context-inspector-window">
-        <span>{t("chat.usageContextWindow")}</span>
-        <strong>
-          {t("chat.usageContextTokens", {
-            used: formatCompactTokenCount(context.usedTokens),
-            window: formatCompactTokenCount(contextWindow),
-          })}
-        </strong>
-        <span className="context-inspector-window-percent">
-          {context.usedPercent}%
-        </span>
-      </div>
-      <div className="context-inspector-kpis">
-        <div>
-          <span>{t("chat.usageTurnTotal")}</span>
-          <strong>{formatCompactTokenCount(turnTotal)}</strong>
-        </div>
-        <div>
-          <span>{t("chat.usageThroughputLabel")}</span>
-          <strong>
-            {throughput === undefined
-              ? t("chat.usageThroughputUnavailable")
-              : t(
-                  responseOutputEstimated
-                    ? "chat.usageThroughputEstimated"
-                    : "chat.usageThroughput",
-                  {
-                    count: formatCompactTokenCount(throughput),
-                  },
-                )}
-          </strong>
-        </div>
-      </div>
-      {sessionTiming.timing ? (
-        <div className="context-inspector-kpis">
-          <div>
-            <span>{t("chat.usageSessionTime")}</span>
-            <strong>
-              {formatToolDuration(sessionTiming.timing.elapsedMs / 1_000)}
-            </strong>
-          </div>
-        </div>
-      ) : null}
-      {sessionTiming.timing ? (
-        <div
-          className="context-inspector-summary"
-          aria-busy={sessionTiming.historyStatus === "loading"}
-        >
-          <div className="context-inspector-summary-row">
-            <strong title={t("chat.usageNetworkRequestHelp")}>
-              {t("chat.usageNetworkRequest")}
-            </strong>
-            <span className="context-inspector-summary-values">
-              {networkRequestValue}
-            </span>
-          </div>
-          <div className="context-inspector-summary-row">
-            <strong title={t("chat.usageModelResponseHelp")}>
-              {t("chat.usageModelResponse")}
-            </strong>
-            <span className="context-inspector-summary-values">
-              {modelResponseValue}
-            </span>
-          </div>
-          <div className="context-inspector-summary-row">
-            <strong title={t("chat.usageToolCallsHelp")}>
-              {t("chat.usageToolCalls")}
-            </strong>
-            <span className="context-inspector-summary-values">
-              {toolCallValue}
-            </span>
-          </div>
-        </div>
-      ) : null}
-      <div className="context-inspector-summary">
-        <div className="context-inspector-summary-row">
-          <strong>{t("chat.usageProviderUsage")}</strong>
-          <span className="context-inspector-summary-values">
-            <span>
-              {t("chat.usageInput")} {formatCompactTokenCount(usage.inputTokens)}
-            </span>
-            <span>
-              {t("chat.usageOutput")} {formatCompactTokenCount(usage.outputTokens)}
-            </span>
-            {usage.cacheReadTokens !== undefined ? (
-              <span>
-                {t("chat.usageCacheRead")} {formatCompactTokenCount(usage.cacheReadTokens)}
-              </span>
-            ) : null}
-            {cacheRate !== undefined ? (
-              <span>
-                {t("chat.usageCacheRate")} {cacheRate}%
-              </span>
-            ) : null}
-            {usage.cacheWriteTokens !== undefined ? (
-              <span>
-                {t("chat.usageCacheWrite")} {formatCompactTokenCount(usage.cacheWriteTokens)}
-              </span>
-            ) : null}
-            {usage.reasoningTokens !== undefined ? (
-              <span>
-                {t("chat.usageReasoning")} {formatCompactTokenCount(usage.reasoningTokens)}
-              </span>
-            ) : null}
-          </span>
-        </div>
-        <div className="context-inspector-summary-row">
-          <strong>{t("chat.usageTools")}</strong>
-          <span className="context-inspector-summary-values">
-            {toolRows.length > 0
-              ? t("chat.usageToolsSummary", {
-                  count: toolRows.length,
-                  calls: tools.length,
-                  tokens: formatCompactTokenCount(toolTotal),
-                })
-              : t("chat.usageNoTools")}
-          </span>
-        </div>
-      </div>
-      {compaction ? (
-        <div className="context-inspector-compaction">
-          <span>
-            {t("chat.usageCompaction", { times: compaction.generation })}
-          </span>
-          <strong title={compaction.summarized && !compaction.fallback && compaction.summary?.trim() ? compaction.summary : undefined}>~{formatCompactTokenCount(compaction.summaryTokens)}</strong>
-        </div>
-      ) : null}
+      <ContextUsageDashboard
+        key={sessionId}
+        usage={usage}
+        contextWindow={contextWindow}
+        messages={sessionMessages}
+        compactions={compactions ?? EMPTY_COMPACTIONS}
+        partial={sessionHistory?.hasMoreBefore === true}
+        timing={sessionTiming}
+        throughputLabel={
+          throughput === undefined
+            ? t("chat.usageThroughputUnavailable")
+            : t(
+                responseOutputEstimated
+                  ? "chat.usageThroughputEstimated"
+                  : "chat.usageThroughput",
+                { count: formatCompactTokenCount(throughput) },
+              )
+        }
+        timingValues={{
+          network: networkRequestValue,
+          model: modelResponseValue,
+          tools: toolCallValue,
+        }}
+        turnTools={tools}
+      />
     </div>
   ) : null;
 

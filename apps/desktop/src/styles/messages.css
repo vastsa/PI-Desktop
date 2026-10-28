@@ -1652,15 +1652,17 @@
   position: fixed;
   z-index: 60;
   display: flex;
-  width: min(376px, calc(100vw - 32px));
-  max-height: min(560px, calc(100vh - 32px));
+  /* Wide enough for the two-column insight cards; the placement clamp still
+     narrows it to whatever the conversation pane can afford. */
+  width: min(980px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
   flex-direction: column;
   gap: 0;
   overflow-y: auto;
   border: 1px solid var(--ds-border-default);
   border-radius: var(--radius-md-plus);
   background: var(--ds-bg-elevated-opaque);
-  padding: 16px;
+  padding: 0;
   color: var(--ds-text-primary);
   box-shadow: var(--ds-shadow-dialog);
   font-size: var(--text-xs);
@@ -1708,121 +1710,6 @@
   font-weight: var(--font-weight-semibold);
   line-height: var(--leading-none);
   font-variant-numeric: tabular-nums;
-}
-
-/* Sections inside the popover are set apart by space alone (D297). */
-.context-inspector-window,
-.context-inspector-kpis,
-.context-inspector-summary,
-.context-inspector-compaction {
-  margin-top: 14px;
-}
-
-.context-inspector-window {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
-}
-
-.context-inspector-window > span:first-child {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-}
-
-.context-inspector-window strong {
-  margin-left: auto;
-  color: var(--ds-text-primary);
-  font-weight: var(--font-weight-medium);
-  white-space: nowrap;
-}
-
-.context-inspector-window-percent {
-  color: var(--ds-text-muted);
-  white-space: nowrap;
-}
-
-.context-inspector-kpis {
-  display: flex;
-  flex-direction: column;
-}
-
-.context-inspector-kpis > div {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 2px 0;
-}
-
-.context-inspector-kpis span {
-  min-width: 0;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  white-space: nowrap;
-}
-
-.context-inspector-kpis strong {
-  color: var(--ds-text-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.context-inspector-summary {
-  display: flex;
-  flex-direction: column;
-}
-
-.context-inspector-summary-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 2px 0;
-}
-
-.context-inspector-summary-row > strong {
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-normal);
-  white-space: nowrap;
-}
-
-.context-inspector-summary-values {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 2px 10px;
-  color: var(--ds-text-primary);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.context-inspector-summary-values > span {
-  white-space: nowrap;
-}
-
-.context-inspector-compaction {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-
-.context-inspector-compaction strong {
-  color: var(--ds-text-secondary);
-  font-weight: var(--font-weight-medium);
 }
 
 /* One transcript row per compaction: a quiet centred label the eye can skip.

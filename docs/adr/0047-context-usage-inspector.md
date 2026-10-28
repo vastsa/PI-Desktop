@@ -3,7 +3,8 @@
 - Status: Accepted
 - Date: 2026-08-02
 - Amended by: D225 (click-toggled panel), D244 (compact summary presentation),
-  D347 (composer toolbar placement), and D355 (last-request occupancy)
+  D347 (composer toolbar placement), D355 (last-request occupancy), and D675
+  (insights dashboard body)
 - Related: [D103](../spec/08-meta/decisions-log.md) ·
   [D183](../spec/08-meta/decisions-log.md) ·
   [D184](../spec/08-meta/decisions-log.md) ·
