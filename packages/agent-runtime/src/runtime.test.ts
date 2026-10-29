@@ -1426,6 +1426,31 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("does not end the turn when a git pipeline that mentions apply keeps failing", async () => {
+    const host = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        isError: true,
+        errorCode: "TOOL_FAILED",
+        content: { exitCode: 1, stderr: "" },
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const args = { command: "git log --oneline | grep apply" };
+
+    for (const id of ["grep-apply-1", "grep-apply-2", "grep-apply-3"]) {
+      const result = await bash.execute(id, args);
+      expect(result.terminate).toBeUndefined();
+      await expect(agent.afterToolCall({ toolCall: { id } })).resolves.toEqual({
+        isError: true,
+      });
+    }
+
+    await runtime.dispose();
+  });
+
   it("spends one grace per recoverable Edit code before counting failures", async () => {
     const errorCodes = [
       "EDIT_TAG_MISMATCH",
