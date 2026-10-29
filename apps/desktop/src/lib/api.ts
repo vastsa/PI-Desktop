@@ -83,6 +83,7 @@ import type {
   ProjectWorkspace,
   ScheduledTask,
   ProviderCreateInput,
+  ProviderPlanQuotaResult,
   ProviderPublic,
   ProviderReorderInput,
   ProviderUpdateInput,
@@ -909,6 +910,9 @@ export const api = {
       input,
     ),
   testProvider: (id: string) => invoke(IPC.invoke.providersTest, id),
+  /** Subscription coding-plan usage (percent windows only; no secret returns). */
+  getProviderPlanQuota: (id: string) =>
+    invoke<ProviderPlanQuotaResult>(IPC.invoke.providersPlanQuota, id),
   /**
    * Discover models from the provider's own endpoint. Saved providers pass
    * providerId (stored secret is reused); the setup form may pass raw config

@@ -180,6 +180,64 @@ export type OAuthRespondInput = {
   value?: string;
 };
 
+/**
+ * One rolling usage window of a subscription coding plan (GLM Coding Plan,
+ * Kimi For Coding, MiniMax Token Plan, ChatGPT Codex, ...).
+ *
+ * The kind drives the renderer's localized label; the main process never
+ * ships display strings, so every locale renders the same payload.
+ */
+export type ProviderPlanQuotaWindowKind =
+  /** The vendor's primary rolling window (Zhipu unit=3, Codex 5h, MiniMax interval). */
+  | "5h"
+  /** The vendor's weekly window. */
+  | "weekly"
+  /** Zhipu monthly MCP call quota. */
+  | "mcp_monthly"
+  /** DeepSeek prepaid balance; `remainingLabel` carries the amount. */
+  | "balance"
+  /** GitHub-Copilot-shaped buckets kept for payload stability. */
+  | "premium"
+  | "chat"
+  | "completions"
+  | "billing"
+  /** A window whose length is only known at runtime; `windowSeconds` scales the label. */
+  | "hours"
+  | "days"
+  | "minutes"
+  | "months"
+  | "custom";
+
+export type ProviderPlanQuotaWindow = {
+  kind: ProviderPlanQuotaWindowKind;
+  /** Window length in seconds; present when the vendor states one (Codex, Kimi). */
+  windowSeconds?: number;
+  /** Consumed share of the window, 0-100. */
+  usedPercent: number;
+  /** Remaining share; defaults to `100 - usedPercent` when absent. */
+  remainingPercent?: number;
+  /** Vendor-formatted remaining value for non-percent quotas (e.g. "$4.20"). */
+  remainingLabel?: string;
+  /** False hides the progress bar for quotas that have no meaningful percent. */
+  showProgress?: boolean;
+  /** Epoch ms when the window resets; absent when the vendor does not say. */
+  resetAt?: number;
+};
+
+/** Result of the `providersPlanQuota` IPC call. Secrets never cross this boundary. */
+export type ProviderPlanQuotaResult = {
+  supported: boolean;
+  /** Localized by the renderer from the plan tier when the vendor reports one. */
+  planName?: string;
+  windows: ProviderPlanQuotaWindow[];
+  updatedAt: number;
+  /**
+   * Why the quota is unavailable. Diagnostic English wording from the vendor
+   * call; the renderer decides what, if anything, to show the user.
+   */
+  message?: string;
+};
+
 /** Move one provider relative to another; applies atomically to the current host list. */
 export type ProviderReorderInput = {
   id: string;
