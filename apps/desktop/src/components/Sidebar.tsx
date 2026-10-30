@@ -1,6 +1,6 @@
 import { IconClock } from "./icons";
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
-import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
+import { groupRemoteProjectSessions, type RemoteProjectGroup } from "../lib/remote-project-catalog";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import {
   useCallback,
@@ -123,6 +123,7 @@ import {
   IconPencil,
   IconSidebar,
   IconSettings,
+  IconSearch,
   IconStar,
   IconTrash,
   IconX,
@@ -347,6 +348,7 @@ export function Sidebar({
   const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ key: string; insertAfter: boolean } | null>(null);
   const [windowFocused, setWindowFocused] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuFirstItemRef = useRef<HTMLButtonElement | null>(null);
@@ -1064,6 +1066,55 @@ export function Sidebar({
     for (const s of temporarySessionHistory) ids.push(s.id);
     return ids;
   }, [pinnedSessions, projectEntries, pinnedSessionIds, temporarySessionHistory, remoteProjectGroups]);
+
+  // Search filtering: when the query is non-empty, only show projects and sessions
+  // whose name or title contains the query (case-insensitive).
+  const searchQueryLower = searchQuery.trim().toLowerCase();
+  const hasSearch = searchQueryLower.length > 0;
+  const sessionMatchesSearch = useCallback(
+    (session: SessionSummary) => !hasSearch || taskTitle(session.title).toLowerCase().includes(searchQueryLower),
+    [hasSearch, searchQueryLower, taskTitle],
+  );
+  const projectMatchesSearch = useCallback(
+    (name: string, path: string) => !hasSearch || name.toLowerCase().includes(searchQueryLower) || path.toLowerCase().includes(searchQueryLower),
+    [hasSearch, searchQueryLower],
+  );
+
+  const displayPinnedSessions = useMemo(
+    () => hasSearch ? pinnedSessions.filter(sessionMatchesSearch) : pinnedSessions,
+    [pinnedSessions, hasSearch, sessionMatchesSearch],
+  );
+
+  const displayProjectEntries = useMemo(() => {
+    if (!hasSearch) return projectEntries;
+    return projectEntries
+      .map((entry) => {
+        if (projectMatchesSearch(entry.name, entry.path)) {
+          return { ...entry, meta: { ...entry.meta, collapsed: false } };
+        }
+        const matchingSessions = entry.sessions.filter(sessionMatchesSearch);
+        if (matchingSessions.length === 0) return null;
+        return { ...entry, sessions: matchingSessions, meta: { ...entry.meta, collapsed: false } };
+      })
+      .filter((entry): entry is ProjectEntry => entry !== null);
+  }, [projectEntries, hasSearch, projectMatchesSearch, sessionMatchesSearch]);
+
+  const displayTemporarySessionHistory = useMemo(
+    () => hasSearch ? temporarySessionHistory.filter(sessionMatchesSearch) : temporarySessionHistory,
+    [temporarySessionHistory, hasSearch, sessionMatchesSearch],
+  );
+
+  const displayRemoteProjectGroups = useMemo(() => {
+    if (!hasSearch) return remoteProjectGroups;
+    return remoteProjectGroups
+      .map((group) => {
+        if (projectMatchesSearch(group.project.name, group.project.path)) return group;
+        const matchingSessions = group.sessions.filter(sessionMatchesSearch);
+        if (matchingSessions.length === 0) return null;
+        return { ...group, sessions: matchingSessions };
+      })
+      .filter((group): group is RemoteProjectGroup => group !== null);
+  }, [remoteProjectGroups, hasSearch, projectMatchesSearch, sessionMatchesSearch]);
 
   /** Handle multi-select click on a session row. Returns true if the click was consumed by multi-select. */
   const handleMultiSelectClick = (event: React.MouseEvent, sessionId: string): boolean => {
@@ -2587,7 +2638,29 @@ export function Sidebar({
 
       <div className="sidebar-body no-drag">
 
-        {pinnedSessions.length > 0 ? (
+        <div className="sidebar-search">
+          <IconSearch size={13} className="sidebar-search-icon" aria-hidden />
+          <input
+            type="text"
+            className="sidebar-search-input"
+            placeholder={t("nav.searchPlaceholder", { defaultValue: "Search projects and chats" })}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            aria-label={t("nav.search", { defaultValue: "Search" })}
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              className="sidebar-search-clear"
+              onClick={() => setSearchQuery("")}
+              aria-label={t("nav.clearSearch", { defaultValue: "Clear search" })}
+            >
+              <IconX size={12} />
+            </button>
+          ) : null}
+        </div>
+
+        {displayPinnedSessions.length > 0 ? (
           <section
             className="sidebar-pinned-sessions"
             aria-labelledby="sidebar-pinned-label"
@@ -2599,7 +2672,7 @@ export function Sidebar({
               </span>
             </div>
             <div className="sidebar-session-group-body pinned" onScroll={() => closeMenus(false)}>
-              {renderSessionRows(pinnedSessions, { global: true })}
+              {renderSessionRows(displayPinnedSessions, { global: true })}
             </div>
           </section>
         ) : null}
@@ -2675,9 +2748,9 @@ export function Sidebar({
               openSectionMenu("sessions", event.clientX, event.clientY);
             }}
           >
-            {temporarySessionHistory.length > 0 ? (
-              renderSessionRows(temporarySessionHistory, { temporary: true })
-            ) : temporarySessions.length === 0 ? (
+            {displayTemporarySessionHistory.length > 0 ? (
+              renderSessionRows(displayTemporarySessionHistory, { temporary: true })
+            ) : !hasSearch && temporarySessions.length === 0 ? (
               <div className="sidebar-session-empty">{t("nav.noTemporarySessions")}</div>
             ) : null}
           </div>
@@ -2732,7 +2805,9 @@ export function Sidebar({
           onDragLeave={onProjectsAreaDragLeave}
           onDrop={onProjectsAreaDrop}
         >
-          {projectEntries.length > 0 ? projectEntries.map(renderProjectGroup) : (
+          {displayProjectEntries.length > 0 ? displayProjectEntries.map(renderProjectGroup) : hasSearch ? (
+            <div className="sidebar-session-empty">{t("nav.noSearchResults", { defaultValue: "No results" })}</div>
+          ) : (
             <section className="sidebar-session-group" aria-labelledby="sidebar-project-group-label">
               <div className="sidebar-session-group-header">
                 <button type="button" id="sidebar-project-group-label" className="sidebar-session-group-title" onClick={() => void openProjectPicker()}>
@@ -2742,7 +2817,7 @@ export function Sidebar({
               </div>
             </section>
           )}
-          <RemoteProjectGroups groups={remoteProjectGroups}
+          <RemoteProjectGroups groups={displayRemoteProjectGroups}
             renderSessions={(sessions) => renderSessionRows(sessions, {
               temporary: false,
               showLastReplyDate: settings?.sidebarSessionTime === true,
