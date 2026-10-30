@@ -57,17 +57,67 @@ export async function mutationFailureKey(path: string, projectPath?: string): Pr
   }
 }
 
+/**
+ * Shell operators that begin another command. Every check runs on a segment
+ * after splitting on them: tokens behind a pipe, `&&`, `;`, or a newline
+ * belong to a different process, so `git log | grep apply` is not a patch and
+ * `kubectl apply` after `git pull` is not a git patch (#1985).
+ */
+const COMMAND_SEGMENTS = /(?:\|\||&&|[|;&])|\n/;
+
+/**
+ * Global git flags that consume the following token as their value; every
+ * other flag stands alone. This keeps `git -C repo apply` a patch while
+ * `git grep apply` (whose subcommand is `grep`) stays a search.
+ */
+const GIT_FLAGS_WITH_VALUE = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--super-prefix",
+]);
+
+/**
+ * Whether one command segment invokes `git apply`: `git` at the command
+ * position (optionally after a path prefix, an `env`/`command` wrapper, or
+ * leading `VAR=value` assignments), only git's own global flags between it
+ * and the subcommand, and `apply` as that subcommand.
+ */
+function segmentInvokesGitApply(segment: string): boolean {
+  const tokens = segment
+    .replace(/^\s*[({]+/, "")
+    .replace(/[)}\s]+$/, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  while (
+    tokens.length > 1 &&
+    (/^(?:env|command)$/.test(tokens[0]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0]))
+  ) {
+    tokens.shift();
+  }
+  if (!/^(?:\S+\/)?git$/.test(tokens[0] ?? "")) return false;
+  let index = 1;
+  while (index < tokens.length && tokens[index].startsWith("-")) {
+    if (GIT_FLAGS_WITH_VALUE.has(tokens[index])) index += 1;
+    index += 1;
+  }
+  return tokens[index] === "apply";
+}
+
 export function isPatchCommand(command: unknown): boolean {
   if (typeof command !== "string") return false;
-  return (
-    /(?:^|[;&|]\s*)(?:env\s+|command\s+)?(?:\S+\/)?apply_patch(?:\s|$)/m.test(
-      command,
-    ) ||
-    /\bgit(?:\s+\S+)*\s+apply(?:\s|$)/m.test(command) ||
-    /(?:^|[;&|]\s*)(?:env\s+|command\s+)?(?:\S+\/)?patch(?:\s|$)/m.test(
-      command,
-    )
-  );
+  return command.split(COMMAND_SEGMENTS).some((segment) => {
+    const head = segment.replace(/^\s+/, "");
+    if (
+      /^(?:env\s+|command\s+)?(?:\S+\/)?apply_patch(?:\s|$)/.test(head) ||
+      /^(?:env\s+|command\s+)?(?:\S+\/)?patch(?:\s|$)/.test(head)
+    ) {
+      return true;
+    }
+    return segmentInvokesGitApply(head);
+  });
 }
 
 export function mutationTerminationMessage(
