@@ -482,6 +482,8 @@ export const fr = {
     "usageThroughput": "{{count}} jetons/s",
     "usageThroughputEstimated": "≈ {{count}} jetons/s",
     "usageThroughputUnavailable": "—",
+    "usageLiveThroughput": "{{count}} jetons/s",
+    "usageLiveThroughputEstimated": "≈ {{count}} jetons/s",
     "usageSessionTime": "Durée totale de la session",
     "usageNetworkRequest": "Requête réseau",
     "usageNetworkRequestHelp": "Temps entre l’envoi de la requête au modèle et le premier événement de réponse, incluant l’attente réseau et côté fournisseur. Les anciens messages sans mesure distincte sont exclus.",

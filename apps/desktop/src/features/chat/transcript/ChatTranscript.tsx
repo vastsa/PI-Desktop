@@ -25,6 +25,8 @@ import {
   RunActivityIndicator,
   WorkingIndicator,
 } from "./ActivityGroup";
+import { useLiveTokenRate } from "./hooks/useLiveTokenRate";
+import { assistantTurnMessages } from "../../../lib/assistant-turns";
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
 import { collectLiveDelegationEntries } from "../../../lib/live-delegation-entries";
 import { reuseReadonlyMap } from "../../../lib/assistant-turns";
@@ -245,6 +247,24 @@ function TranscriptBody({
     showStatus &&
     planningState === "planning" &&
     !hasSpecializedActivity;
+
+  const streamingAssistant = useMemo(() => {
+    if (!transcriptRunning || tailEntry?.kind !== "assistant-turn") {
+      return undefined;
+    }
+    return [...assistantTurnMessages(tailEntry)]
+      .reverse()
+      .find((message) => message.status === "streaming");
+  }, [transcriptRunning, tailEntry]);
+
+  const liveTokenRate = useLiveTokenRate({
+    active: showStatus,
+    content: streamingAssistant?.content,
+    thinking: streamingAssistant?.thinking,
+    outputTokens:
+      streamingAssistant?.usage?.outputTokens ??
+      streamingAssistant?.responseOutputTokens,
+  });
 
   // The tail status lane is part of the layout for the whole running turn: the
   // indicators below mount and clear with the turn's phase, and a lane that
@@ -510,10 +530,15 @@ function TranscriptBody({
           {runtimeStatusLane ? (
             <div className="transcript-runtime-status">
               {showRunActivity && specializedActivity ? (
-                <RunActivityIndicator activity={specializedActivity} />
+                <RunActivityIndicator
+                  activity={specializedActivity}
+                  tokenRate={liveTokenRate}
+                />
               ) : null}
               {showPlanning ? <PlanningIndicator kind={planningKind} /> : null}
-              {showWorking ? <WorkingIndicator /> : null}
+              {showWorking ? (
+                <WorkingIndicator tokenRate={liveTokenRate} />
+              ) : null}
             </div>
           ) : null}
         </div>
