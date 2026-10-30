@@ -577,7 +577,7 @@ deletes per 60 seconds. P2/P3 methods are not present in protocol v11.
   with a warning, demotes later `in_progress` items to `pending`, and rejects
   more than 50 items or malformed values. The owner session and running turn
   come from the trusted transport fields, never from tool arguments.
-- TodoWrite is allowed only for an Agent session's own running turn. Plan/Goal,
+- TodoWrite is allowed only for an Agent/Goal session's own running turn. Plan,
   delegated, plugin, and MCP calls receive a tool result error and do not mutate
   storage. A successful replacement advances the session revision even when
   `todos` is empty and emits `todos.changed` after the transaction commits.
@@ -599,11 +599,54 @@ deletes per 60 seconds. P2/P3 methods are not present in protocol v11.
   `message.usage`. The user-facing dashboard is plugin `pi.token-insights`
   (D335 / ADR 0173), not a Settings destination.
 
-### Plan and Goal state and approvals
+### Autonomous Goal methods
 
-Both contract kinds share these methods; the optional `kind`
-(`plan | goal`, default `plan` so a pre-D198 sidecar still works) selects which
-contract is being negotiated.
+The trusted-host `goals` domain is independent of `plans`:
+
+- `goals.get` returns `{ goal }` for a session, or null when absent/removed. Goals
+  include host-backed elapsedSeconds and optional activeSinceMs for live display.
+- `goals.start` persists user-authorized objective, criteria and budget. User-owner
+  authority is enforced at TS ingress; this trusted RPC is not a model tool.
+  Omitted budget resolves settings.defaultGoalBudget in Rust, falling back to
+  maxTurns=20 with no token cap. Explicit maxTurns=null means unlimited; a
+  supplied budget missing maxTurns or containing invalid values is rejected.
+  The stored snapshot never follows subsequent settings changes.
+- `goals.control` takes session/goal identity, `expectedRevision` and action
+  pause/resume/cancel/edit/delete. budget is resume-only; objective is edit-only.
+  Edit requires stopped nonterminal work without an outstanding claim, clears old
+  criteria/report/audit and stays paused while preserving usage/budget/time.
+  Delete logically removes the current Goal, retains claims/chat/todos, persists
+  stop before abort and returns `{goal:null,goalId,revision}`. It never exposes an
+  older Goal as current. User-owner authority is enforced at ingress for all controls.
+- `goals.claimTurn` checks revision, state, budget and outstanding claim; returns
+  `{ goal, claimed }`. `goals.validateTurn` fences stale runtime work.
+- `goals.report` validates the bound model report; it cannot change scope/budget
+  or authorize work. Completed requires exactly all criteria met with evidence
+  plus audit={version:1, objective, items, remainingWork}. The objective must
+  equal the persisted original; unique nonempty requirement items must all be
+  met with nonempty evidence and remainingWork must be empty. Active/blocked
+  reports may carry incomplete audits. Legacy stored reports may omit audit;
+  new completion submissions may not. Structural failures do not mutate the
+  goal, permitting correction. This is not independently host-verified success.
+- `goals.settleTurn` accounts reported parent/delegate tokens idempotently before
+  runtime terminal delivery. Duplicate settlement does not add usage again.
+- `goals.changed` carries `{sessionId,goal}` after a committed change. Removal and
+  late settlement of removed work carry `{sessionId,goal:null,goalId,revision}`;
+  consumers use identity/revision tombstones to reject stale resurrection without
+  clearing a newer Goal. Null payloads without identity are absence, not proof of
+  a newer deletion.
+
+See [Goal lifecycle](10-session-state-machine.md#autonomous-goal-lifecycle) for
+six states, default 20 execution turns, soft token cap, pause/restart fences and
+owner-only start/resume. Shared wire types live in `types/goals.ts`.
+
+### Plan and legacy Goal state and approvals
+
+The optional `kind` (`plan | goal`, default `plan`) remains for existing records.
+New `plans.enter`/`plans.submit` with `kind = goal` fails with
+`PLAN_GOAL_ACTIVATION_DISABLED`. The method descriptions and approval payloads
+below preserve historical Goal compatibility; only Plan can create new approval
+artifacts. Goal read/resolve/execute remains unchanged, never autoauthorized.
 
 - `plans.enter` — accepts only the active Agent turn's `sessionId`, `turnId`,
   and `toolCallId` plus the `kind`; host-core performs the mode transition to
@@ -1010,13 +1053,12 @@ not inherit this exception.
 
 Before generic permission evaluation, host-core applies the mode policy:
 
-- Plan and Goal allow `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, and the
-  kind's submit tool (`SubmitPlan` / `SubmitGoal`) as applicable to the live
-  planning state.
-- Plan and Goal deny `Write`, `Edit`, every plugin tool, and unknown tools under
+- Plan allows Read/Glob/Grep/BrowserPreview/Bash, its planning controls, and
+  explicitly plan-safe plugin actions as applicable to the live state.
+- Plan denies `Write`, `Edit`, non-plan-safe plugin tools, and unknown tools under
   all permission modes and grants. The host reads the session's **durable** mode
   for this check, so a sidecar claiming `agent` in `tools.execute` cannot widen
-  it, and the `*_IN_PLAN` error codes are shared by both kinds.
+  it. Goal uses ordinary Agent permissions, not Plan's hard denies.
 - Plan and Goal `Bash` follows the resolved permission mode: `ask` and
   `accept-edits`
   emit `permissions.request`; `auto` executes without confirmation and may
@@ -1026,7 +1068,7 @@ Before generic permission evaluation, host-core applies the mode policy:
   separately. A configured shell may fall back to the first available platform
   shell before the turn pin is created, but execution never changes shell
   after the pin.
-- Agent applies the normal registered-tool and permission policy.
+- Agent and Goal apply normal registered-tool and permission policy.
 
 The visible tool list is not the security boundary; a forged RPC call is
 authorized by this host-side matrix.
@@ -1051,7 +1093,10 @@ type ToolsExecuteResult = {
 }
 ```
 
-### 5.1 Plan and Goal submission and approval contracts
+### 5.1 Plan and legacy Goal submission and approval contracts
+
+Goal payloads below describe existing approvals only. New Goal entry/submission
+is disabled; autonomous Goal uses the independent `goals` domain above.
 
 `SubmitPlan` and `SubmitGoal` are handled as host transitions before generic
 tool execution. The host preserves the exact Markdown bytes in a new unique
@@ -1393,9 +1438,10 @@ Tool outcomes (`TOOL_DENIED`, `TOOL_TIMEOUT`, `PATH_OUTSIDE_WORKSPACE`,
 9. Forking through a message excludes every later source row and rejects an
    unknown message without creating a child
 10. A forged `requestedMode` cannot authorize a tool against the durable mode;
-    Plan and Goal deny Write/Edit/plugin/unknown tools and apply permission
+    Plan denies Write/Edit/non-plan-safe plugin/unknown tools; Agent/Goal apply ordinary
+    permission policy. All modes apply permission
     prompts to Bash according to `ask`/`accept-edits`/`auto`
-11. SubmitPlan and SubmitGoal write exact Markdown bytes to a unique
+11. SubmitPlan and historical SubmitGoal preserve exact Markdown bytes in a unique
     `.pi/plan/*.md` or `.pi/goal/*.md` file with
     hash/size and structured title/question fields; only matching
     approve/reject responses can resolve the live `plan_approvals` row, and a

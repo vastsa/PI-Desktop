@@ -2908,7 +2908,10 @@ fields. It is never a JSON dump.
 
 ---
 
-## 10A. ContractApprovalCard (Plan / Goal)
+## 10A. ContractApprovalCard (Plan / legacy Goal)
+
+Goal references here describe persisted legacy approvals only. New autonomous
+goals use GoalSessionPanel / GoalStatusBar, described in section 11.5.
 
 ### 10A.1 Purpose
 
@@ -3018,9 +3021,9 @@ reasoning-level control.
   updates the chip immediately and does not start that pulse until the
   in-flight turn actually projects `planning`.
 - The permission chip remains visible in Agent, Plan, and Goal for a stable
-  toolbar rhythm. Agent and Plan expose the effective selectable permission;
-  Goal displays the localized Auto label as a disabled, non-opening chip while
-  the approval card remains the separate place for choosing execution policy.
+  toolbar rhythm. All modes expose effective selectable permission; Goal never
+  forces Auto. Plan and legacy Goal approvals retain their separate
+  approval-time execution policy.
   The permission menu stays 120px wide; its Chinese Composer short label for
   Accept edits is `允许编辑` / `允許編輯` so the option remains single-line
   beside its selection indicator.
@@ -3150,10 +3153,10 @@ reasoning-level control.
 | Running | textarea and mode/model × reasoning/permission controls remain editable for the next turn; the single submit slot shows Stop only with an empty draft | Send queues text or attachments; Stop when both are empty |
 | Context checkpoint | Same as Running until durable checkpoint completion; intermediate `turn_end` does not reactivate controls. A retained-tail fallback remains Running and shows a warning toast | Same single-slot Stop/Send behavior as Running |
 | Permission pending | textarea disabled (per [03-permission-ux.md](03-permission-ux.md) §7) | Send disabled; Stop remains active whenever the running empty-draft condition is met |
-| Plan / Goal / planning | textarea active while idle; contract badge and permission chip visible; mode chip pulses while the live turn projects `planning` | inspect, send, or submit a contract |
-| Plan / Goal / awaiting approval | approval surface shows only the title and artifact opener for the exact `.pi/<kind>/*.md` approval; draft is preserved read-only and composer controls remain blocked for that session | approve or reject |
+| Plan / planning | textarea active while idle; contract badge and permission chip visible; mode chip pulses while the live turn projects `planning` | inspect, send, or submit a contract |
+| Plan / legacy Goal / awaiting approval | approval surface shows only the title and artifact opener for the exact `.pi/<kind>/*.md` approval; draft is preserved read-only and composer controls remain blocked for that session | approve or reject |
 | Plan / queued or running | Agent badge remains selected; queue/running state is visible; draft and next-turn controls remain editable | Stop; Send queues the next prompt; no replay control |
-| Plan / Goal / planning after rejected, expired, or interrupted proposal | contract chip remains visible and editable | send a later prompt; submit a new contract; no execution action |
+| Plan / legacy Goal / planning after rejected, expired, or interrupted proposal | contract chip remains visible and editable | send a later prompt; submit a new contract; no execution action |
 | No workspace | textarea active, warning banner "No project — tools limited" | Send enabled |
 
 ### 11.5 Interactions
@@ -3377,17 +3380,53 @@ reasoning-level control.
 - The combined menu closes on outside mousedown or Escape. In a submenu,
   Up/Down moves the highlighted row, Enter selects from the model search/list,
   and Left returns to the root.
-- The permission chip remains visible beside the mode selector. Agent and Plan
-  show the effective Ask / Accept edits / Auto posture. Goal keeps the same
-  geometry but is fixed to the localized Auto label and cannot open a menu;
-  its approval card remains the separate place for choosing execution policy.
-  The control does not imply that Write/Edit/plugin tools are available.
-- Goal shares the Plan approval surface (D198). The bar reads its copy from the
-  proposal's `kind`, so a goal contract shows the matching approval label and
-  artifact opener while the layout and remembered permission split-button stay
-  identical. The bar sits in the transparent composer dock, so it paints
-  `--ds-bg-composer` with `--ds-shadow-composer` like queued prompt rows rather
-  than the in-flow `--ds-tile` wash.
+- All modes show the effective selectable Ask / Accept edits / Auto policy.
+  Goal uses ordinary Agent permissions, never a path/sandbox bypass.
+- Persisted legacy Goal approvals keep Plan's shared approval layout, kind-based
+  copy, artifact opener and remembered permission. They do not create autonomous
+  goals.
+- `GoalSessionPanel` renders no setup card before a goal exists. Existing goals
+  use a one-line `GoalStatusBar` attached to the input shell, not a standalone
+  task-style card: state, ellipsized objective, elapsed time and accessible
+  Edit / Pause or Resume / Delete / Details icon controls. A current Goal hides
+  TaskDock presentation only; underlying todos remain available to the AI and
+  reappear after deletion. Goal mode without a Goal does not hide tasks.
+- Default budgets live immediately below Default mode in Settings → AI: one
+  Goal budget row with Turns and Tokens inputs, matching Default mode height.
+  Finite caps are positive whole turns up to 10,000 and positive safe whole tokens;
+  every other input normalizes per dimension to Unlimited on blur/Enter. No helper,
+  validation, saving/saved text, switches or advanced row. Defaults stay 20/no token
+  cap. Failed saves restore persisted values and log a diagnostic. Host validation
+  and existing-goal budgets stay unchanged.
+- Goal details use a circle-with-three-dots icon (CircleEllipsis) and open a bounded,
+  accessible dialog outside the measured dock:
+  full objective, status/reason, usage, stored budget, progress, criteria and audit
+  evidence. Evidence is model-reported, not independently host-verified.
+- Pause/Resume stay directly accessible. Budget exhaustion opens an explicit
+  adjust-total-budget-and-resume dialog; finite caps must exceed usage, and
+  unlimited is permitted. Ordinary resume retains the goal budget. Dismissal
+  never changes the goal or starts work. A running claim must settle before
+  resume/budget changes. Closing a dialog and deleting a Goal are distinct actions.
+- Edit first pauses and waits for claim settlement; save stays paused, preserves
+  usage/budget/time and clears old criteria/report/audit for the new objective.
+  Delete confirmation removes only the current Goal, retaining chat/todo history.
+  Ordered goalId/revision tombstones fence delayed loads and notifications.
+- Remove confirmation has one bottom Close beside its confirmation action, with
+  no header Close. Escape/Close preserve the Goal and return focus safely.
+- Elapsed time uses host checkpoints plus an active timestamp, excludes paused
+  and offline time and does not reset on navigation. Legacy time is not invented;
+  an uncheckpointed hard-crash tail may be lost. Visible text uses compact
+  `00h00m00s`, with no spaces or translated unit characters in any language.
+- The bar remains in the Composer's measured stack for home and docked modes.
+  The header is inset 14px on each side and tucks behind the input without gaps;
+  the input retains its original complete rounded top edge as a visible divider.
+  No competing dock-height owner. Dialogs must not expand the dock or hide input.
+  Narrow views preserve state and controls while ellipsizing the objective.
+  Pending controls prevent duplicate actions; errors expose Reload. Dialogs
+  support Escape, focus containment and return, dark/light and keyboard access.
+- Switching away pauses an active Goal; switching back does not resume it.
+  Selecting Goal or editing settings alone never executes. Agent/Plan permission
+  selection and historical contract approval remain unchanged.
 
 ### 11.6 Accessibility
 

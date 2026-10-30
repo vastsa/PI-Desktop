@@ -9,7 +9,8 @@ export function retainModeToolDeclaration(name: string): boolean {
 }
 
 export function modeToolDenial(name: string, mode: Mode): string {
-  return `${name} is not allowed in ${mode} mode. No action was performed. Continue read-only inspection and planning with the permitted tools; implementation requires Agent mode or approval of the submitted plan or goal.`;
+  return `${name} is not allowed in ${mode} mode. No action was performed.` +
+    (mode === "plan" ? " Continue read-only inspection and planning; implementation requires Agent mode or approval of the submitted plan." : " Continue only the Host-authorized work with permitted tools.");
 }
 
 /**

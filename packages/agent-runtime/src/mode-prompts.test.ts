@@ -31,21 +31,18 @@ describe("mode-specific system prompts", () => {
     expect(prompt).toContain("Bash is available under the active permission policy");
   });
 
-  it("composes Goal instructions asking for a contract, not steps", () => {
+  it("composes Goal instructions for bounded authorized work, not approval", () => {
     const prompt = composeModeSystemPrompt("goal", "base instructions");
-
     expect(prompt).toContain("base instructions");
     expect(prompt).toContain(GOAL_MODE_SYSTEM_PROMPT);
-    expect(prompt).toContain("SubmitGoal");
+    expect(prompt).toContain("GetGoal");
+    expect(prompt).toContain("UpdateGoal");
     expect(prompt).toContain("acceptance criteria");
     expect(prompt).toContain("boundaries");
-    expect(prompt).toContain("Do not enumerate implementation steps");
-    expect(prompt).toContain("host writes a new .pi/goal artifact");
-    expect(prompt).toContain("follow the same one-SubmitGoal rule");
-    expect(prompt).toContain("pursue it autonomously");
-    expect(prompt).toContain("Do not use Write, Edit");
-    expect(prompt).toContain("Do not create, overwrite, delete, or otherwise mutate workspace files in Goal mode");
-    // Goal mode negotiates outcomes; the Plan contract must not leak into it.
+    expect(prompt).toContain("A normal final answer does not complete the goal");
+    expect(prompt).toContain("EnterGoalMode and SubmitGoal are unavailable");
+    expect(prompt).toContain("same operational tools as Agent mode");
+    expect(prompt).toContain("Never create scheduled tasks");
     expect(prompt).not.toContain("SubmitPlan");
     expect(prompt).not.toContain(PLAN_MODE_SYSTEM_PROMPT);
   });

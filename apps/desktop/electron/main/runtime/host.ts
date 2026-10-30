@@ -329,6 +329,8 @@ export function createHostRuntime({
           data: String(error),
         }),
       );
+    } else if (method === "goals.changed") {
+      sendToRenderer(IPC.event.goalsChanged, params);
     } else if (method === "plans.changed") {
       sendToRenderer(IPC.event.plansChanged, params);
     } else if (method === "todos.changed") {

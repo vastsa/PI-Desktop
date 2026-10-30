@@ -77,6 +77,8 @@ fn require_provider_reference(st: &AppState, value: &Value, context: &str) -> Re
 }
 
 pub(crate) fn validate_application_references(st: &AppState, payload: &Value) -> Result<()> {
+    crate::goals::validate_default_budget(payload)
+        .map_err(|_| anyhow::anyhow!("CONFIG_SYNC_INVALID: defaultGoalBudget is invalid"))?;
     for provider_key in ["defaultProviderId", "promptEnhancementProviderId"] {
         let Some(provider_id) = payload.get(provider_key).and_then(Value::as_str) else {
             continue;
@@ -106,6 +108,25 @@ pub(crate) fn validate_application_references(st: &AppState, payload: &Value) ->
     Ok(())
 }
 
+fn apply_application(st: &AppState, payload: &Value) -> Result<()> {
+    validate_application_references(st, payload)?;
+    let mut current = st.db.get_setting("app")?.unwrap_or_else(|| json!({}));
+    if let (Some(current), Some(incoming)) = (current.as_object_mut(), payload.as_object()) {
+        for field in domains::PORTABLE_APPLICATION_FIELDS {
+            if !incoming.contains_key(*field) {
+                current.remove(*field);
+            }
+        }
+        current.extend(
+            incoming
+                .iter()
+                .filter(|(name, _)| domains::PORTABLE_APPLICATION_FIELDS.contains(&name.as_str()))
+                .map(|(name, value)| (name.clone(), value.clone())),
+        );
+    }
+    st.db.set_setting("app", &current)
+}
+
 fn apply_entity(
     st: &mut AppState,
     config: &mut StoredConfig,
@@ -113,26 +134,7 @@ fn apply_entity(
     entity: &PortableEntity,
 ) -> Result<()> {
     if entity.domain == domains::DOMAIN_APPLICATION {
-        validate_application_references(st, &entity.payload)?;
-        let mut current = st.db.get_setting("app")?.unwrap_or_else(|| json!({}));
-        if let (Some(current), Some(incoming)) =
-            (current.as_object_mut(), entity.payload.as_object())
-        {
-            for field in domains::PORTABLE_APPLICATION_FIELDS {
-                if !incoming.contains_key(*field) {
-                    current.remove(*field);
-                }
-            }
-            current.extend(
-                incoming
-                    .iter()
-                    .filter(|(name, _)| {
-                        domains::PORTABLE_APPLICATION_FIELDS.contains(&name.as_str())
-                    })
-                    .map(|(name, value)| (name.clone(), value.clone())),
-            );
-        }
-        return st.db.set_setting("app", &current);
+        return apply_application(st, &entity.payload);
     }
     if entity.domain == domains::DOMAIN_PROVIDERS {
         let provider_id = entity
@@ -773,3 +775,7 @@ pub(crate) fn recover_import_journal(
         .unwrap_or_else(empty_manifest);
     apply_bundle_locked(st, config, key, base.as_ref(), &local_before, bundle)
 }
+
+#[cfg(test)]
+#[path = "goal_budget_tests.rs"]
+mod goal_budget_tests;

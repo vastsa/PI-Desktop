@@ -54,6 +54,8 @@ export type AppSettings = {
   /** App-owned real-time voice bindings; separate from local dictation. */
   liveVoice?: LiveVoiceSettings;
   defaultMode: Mode;
+  /** Budget snapshotted by the host for new goals only; absent uses 20 turns. */
+  defaultGoalBudget?: import("./goals.js").GoalBudget;
   /**
    * Keep retryable provider/network failures retrying until the request succeeds.
    * Absent and false use the bounded ten-retry policy.

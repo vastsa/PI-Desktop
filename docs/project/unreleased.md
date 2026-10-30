@@ -1,5 +1,15 @@
 # Unreleased changes
 
+- Refine autonomous Goal: one Goal budget row in Settings → AI with turn/token
+  inputs (non-cap values normalize to Unlimited on blur/Enter), compact height,
+  silent autosave and no helper/validation text, switches or advanced row. Inset
+  the Goal header behind Composer while retaining the original rounded input edge;
+  use `00h00m00s`, circle-ellipsis Details and one bottom Close in removal confirmation.
+  TaskDock is hidden without deleting AI todos; deletion restores it. Edit pauses first and stays paused after save;
+  deletion preserves chat/tasks and safe late settlement. New completion reports
+  require the current model's full-scope audit, not independent host proof.
+  Existing permissions, finite budgets, historical approvals and restart pause remain.
+
 - Fixed prompt cache misses after a conversation's agent runtime is rebuilt
   (#1972). Rebuilding happens after a restart or when the thinking level, mode,
   project rules, or model settings change. Assistant replies now keep the

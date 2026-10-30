@@ -1,3 +1,4 @@
+import { stopGoalOnModeExit } from "../../features/goals/stop-goal-on-mode-exit";
 import i18n from "i18next";
 import type {
   Mode,
@@ -815,7 +816,8 @@ export function createSessionSlice({
         }));
         return;
       }
-      if (!sessionAllows(get().sessions.find((session) => session.id === sessionId), "canConfigureModel")) return;
+      const currentSession = get().sessions.find((session) => session.id === sessionId);
+      if (!sessionAllows(currentSession, "canConfigureModel")) return;
       if (get().pendingPlans[sessionId]?.status === "pending") return;
       if (
         get().runningSessions[sessionId] ||
@@ -835,6 +837,7 @@ export function createSessionSlice({
               : session,
           ),
         }));
+        await stopGoalOnModeExit(api, currentSession, config.mode);
         return;
       }
       const payload = runtime.mergeSessionConfiguration(

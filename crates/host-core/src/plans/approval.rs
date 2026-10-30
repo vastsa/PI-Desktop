@@ -114,9 +114,17 @@ pub fn gate_session_configure(
               WHERE session_id = ?1 AND execution_state IN ('queued', 'running')
           ) OR EXISTS(
               SELECT 1 FROM turns
-              WHERE session_id = ?1 AND status = 'running'
+              WHERE session_id = ?1 AND status = 'running' AND NOT ?2
           )",
-        params![session_id],
+        params![
+            session_id,
+            current_mode == "goal"
+                && requested_mode != "goal"
+                && !provider_changes
+                && !model_changes
+                && !thinking_changes
+                && !permission_changes
+        ],
         |row| row.get(0),
     )?;
     if blocked {
@@ -143,6 +151,9 @@ impl PlanManager {
         let Some(kind) = normalize_kind(kind) else {
             return Err(plan_error("PLAN_INVALID_ARGUMENT"));
         };
+        if kind == KIND_GOAL {
+            return Err(plan_error("PLAN_GOAL_ACTIVATION_DISABLED"));
+        }
         let Some(mode) = sessions::session_mode(db, session_id)? else {
             return Err(plan_error("PLAN_SESSION_NOT_FOUND"));
         };
@@ -207,6 +218,9 @@ impl PlanManager {
         let Some(kind) = normalize_kind(kind) else {
             return Err(plan_error("PLAN_INVALID_ARGUMENT"));
         };
+        if kind == KIND_GOAL {
+            return Err(plan_error("PLAN_GOAL_ACTIVATION_DISABLED"));
+        }
         if markdown.len() > PLAN_MAX_MARKDOWN_BYTES {
             return Err(plan_error("PLAN_MARKDOWN_TOO_LARGE"));
         }

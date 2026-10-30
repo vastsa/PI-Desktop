@@ -35,7 +35,6 @@ function respond(res: ServerResponse, name?: string) {
 
 it.each([
   ["plan", "Edit"], ["plan", "Write"], ["plan", "Task"],
-  ["goal", "Edit"], ["goal", "Write"], ["goal", "Task"],
 ] as const)("%s declares %s but returns a paired denial before any host action", async (mode, name) => {
   const requests: Request[] = [];
   let firstReceived!: () => void;
@@ -107,19 +106,20 @@ it.each([
   expect(events.some((event) => event.event.type === "agent_end")).toBe(true);
 });
 
-it("an old tool reference rechecks the current mode and resumes normal execution only in Agent", async () => {
+it("an old tool reference rechecks the current mode and resumes normal execution in Agent and Goal", async () => {
   let mode: Mode = "agent";
   let calls = 0;
   const tool = withModeExecutionGuard({
     name: "Edit", label: "Edit", description: "Edit fixture", parameters: Type.Object({}),
     execute: async () => { calls++; return { content: [{ type: "text", text: "edited" }], details: {} }; },
-  }, () => mode === "agent" ? undefined : modeToolDenial("Edit", mode));
+  }, () => mode !== "plan" ? undefined : modeToolDenial("Edit", mode));
   mode = "plan";
   await expect(tool.execute("blocked", {})).rejects.toThrow("not allowed in plan");
-  mode = "goal";
-  await expect(tool.execute("blocked-goal", {})).rejects.toThrow("not allowed in goal");
   expect(calls).toBe(0);
+  mode = "goal";
+  await tool.execute("allowed-goal", {});
+  expect(calls).toBe(1);
   mode = "agent";
   await tool.execute("allowed", {});
-  expect(calls).toBe(1);
+  expect(calls).toBe(2);
 });

@@ -112,11 +112,13 @@ notification.list
    explicit outside path is resolved only after host permission evaluation
 2. Host resolves the durable session mode; request-supplied mode is never
    authoritative
-3. Plan and Goal deny Write/Edit/plugin/unknown tools before permission evaluation
+3. Plan denies Write/Edit/non-plan-safe plugin/unknown tools before permission
+   evaluation; Goal uses ordinary Agent policy without bypassing safety checks
 4. Plan and Goal Bash follow the durable permission mode and may mutate under Auto
-5. Plan and Goal artifact bytes, path, hash, size, and approval/execution identity are
+5. Plan and legacy Goal artifact bytes, path, hash, size, and approval/execution identity are
    host-authenticated
-6. Plan/Goal approval is host-authenticated, durable, and atomic before Agent entry
+6. Plan/legacy Goal approval is host-authenticated, durable, and atomic before Agent entry;
+   autonomous Goal instead uses user-owner admission and Rust revision-CAS claims
 7. Effective shell ID/dialect is checked before spawn; settings reject
    unavailable/wrong-platform IDs, and a persisted unavailable choice falls
    back only during catalog selection

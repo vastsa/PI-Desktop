@@ -1,3 +1,4 @@
+import type { GoalBudget, GoalChangedEvent, GoalControlRequest, GoalResult } from "@pi-desktop/shared";
 import { projectPlanHistory } from "./plan-history";
 import { guardRemoteInvocation } from "./remote-ipc-safety";
 import { isRemoteSession, safeSessionSummary } from "./remote-session-safety";
@@ -1153,6 +1154,15 @@ export const api = {
     invoke<AgentPromptResponse>(IPC.invoke.agentSteer, req),
   prompt: (req: AgentPromptRequest) =>
     invoke<AgentPromptResponse>(IPC.invoke.agentPrompt, req),
+  getGoal: (sessionId: string) => invoke<GoalResult>(IPC.invoke.goalsGet, { sessionId }),
+  startGoal: (req: AgentPromptRequest & { budget?: GoalBudget }) =>
+    invoke<AgentPromptResponse>(IPC.invoke.goalsStart, req),
+  controlGoal: (req: GoalControlRequest) => invoke<GoalResult>(IPC.invoke.goalsControl, req),
+  onGoalChanged: (listener: (event: GoalChangedEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.goalsChanged, (payload) =>
+      listener(payload as GoalChangedEvent));
+  },
   speechStatus: () => invoke<SpeechStatus>(IPC.invoke.speechGetStatus),
   speechTranscribe: (req: SpeechTranscribeRequest) =>
     invoke<{ text: string }>(IPC.invoke.speechTranscribe, req),

@@ -6,6 +6,7 @@ mod background_tasks;
 mod config_sync;
 mod data_relocation;
 mod db;
+mod goals;
 mod keyboard;
 mod mcp_servers;
 mod network_policy;

@@ -2,6 +2,8 @@ use super::*;
 
 fn capture_application(st: &AppState) -> Result<PortableEntity> {
     let mut settings = st.db.get_setting("app")?.unwrap_or_else(|| json!({}));
+    crate::goals::validate_default_budget(&settings)
+        .map_err(|_| anyhow::anyhow!("CONFIG_SYNC_INVALID: defaultGoalBudget is invalid"))?;
     if let Some(object) = settings.as_object_mut() {
         object.retain(|key, _| PORTABLE_APPLICATION_FIELDS.contains(&key.as_str()));
     }
