@@ -2265,8 +2265,18 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   DOMPurify SVG-profile pass precede insertion. Unsafe external/media elements,
   `foreignObject`, event-capable links, and URL attributes are removed. Invalid
   or oversized input falls back to a readable source view. The toolbar toggles
-  diagram/source and copies the original source; light/dark theme changes
-  re-render the SVG. Thinking prose deliberately keeps `mermaid` fences as
+  diagram/source and copies the original source. Once rendering succeeds,
+  **Copy diagram as SVG** writes a standalone SVG document as clipboard text,
+  and **Export diagram as SVG** downloads `diagram.svg` with the same bytes.
+  Both actions are disabled while rendering or when no valid SVG is available;
+  failures show localized feedback. Export preserves the sanitized SVG,
+  viewBox dimensions, and the preview's resolved fonts and colors. Variable-
+  dependent CSS rules, inline styles, and presentation attributes are frozen
+  from each rendered element's computed style, including nested fallbacks and
+  subtree overrides. Only the detached export is modified. Source view hides
+  but retains the SVG so copying there uses the same style context, without
+  rerunning Mermaid or requiring new host permissions. These actions also appear in host Markdown
+  file previews, including README files. Light/dark theme changes re-render the SVG. Thinking prose deliberately keeps `mermaid` fences as
   source code so a collapsed reasoning trace cannot start diagram layout.
 - **Syntax highlighting**: Shiki singleton with the JavaScript regex engine
   (no wasm), themes `one-light`/`one-dark-pro` following `data-theme`.

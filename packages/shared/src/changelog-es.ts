@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copia diagramas Mermaid como texto SVG o expórtalos como archivos SVG independientes, también desde las vistas previas de README.",
       "El motor Pi 1.3.0 mejora la validación de llamadas a herramientas y la reproducción segura del historial.",
       "Activa las visualizaciones en línea opcionales en Ajustes → IA para ver tarjetas interactivas aisladas dentro de las conversaciones.",
       "Las páginas del navegador de cada sesión siguen disponibles al ocultar el panel, cambiar de sesión o recargar la interfaz.",

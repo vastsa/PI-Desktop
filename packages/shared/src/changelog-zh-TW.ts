@@ -5,6 +5,7 @@ export const zhTWEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "在 README 預覽和聊天中，將 Mermaid 圖表複製為 SVG 文字或匯出為獨立的 SVG 檔案。",
       "升級至 Pi 1.3.0 引擎，改善工具呼叫驗證與歷史重播安全性。",
       "可在設定 → AI 中啟用行內視覺化，在對話中查看互動式沙箱卡片。",
       "工作面板隱藏、切換對話或介面重新載入後，對話瀏覽器頁面仍保持可用。",
