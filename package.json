@@ -27,6 +27,7 @@
     "test:e2e:worktree-live": "node scripts/e2e-worktree-live.mjs",
     "test:e2e:question-notification": "node scripts/e2e-question-notification.mjs",
     "test:e2e:scheduled": "node scripts/e2e-scheduled.mjs",
+    "test:e2e:scheduled-sidebar": "node --test apps/desktop/test/scheduled-sidebar-user-path.test.mjs",
     "test:e2e:keep-awake": "node scripts/e2e-keep-awake.mjs",
     "test:e2e:live-voice": "node scripts/e2e-live-voice.mjs",
     "test:e2e:rpc-unicode": "node scripts/e2e-rpc-unicode.mjs",

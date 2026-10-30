@@ -88,6 +88,12 @@
   `AppSettings.keepAwakeWhileRunning` 和 `AppSettings.preventScreenSleep`，
   切换立即生效、启动时恢复，关闭对应开关或退出应用时分别释放阻止器。
   手动睡眠和合盖遵循系统设置。
+- 侧边栏卡片中的**显示定时任务**保存为 `AppSettings.sidebarScheduledTasks`，
+  缺省或 false 均为关闭。只有开关打开且项目有绑定任务时，才显示该项目的任务
+  子目录，不会启用或执行任务。没有任务的项目不显示空目录。关闭会移除全部任务
+  目录并停止读取，不修改任务、结果或各目录独立保存的折叠状态。仅在开启时，
+  保留项目下的任务名参与侧栏搜索；开关关闭、无归属或所属项目已关闭的任务均
+  被排除，重新加载设置后仍遵守该选择。
 - **侧边栏**卡片：一个项目运行活动总开关
   (`AppSettings.sidebarRunningIndicators`) 与独立的**数量徽标**和**活动流光**开关
   (`sidebarRunningBadge`、`sidebarRunningRail`)。未设置时总开关和数量徽标默认开启，活动流光默认关闭；

@@ -198,6 +198,8 @@ export type AppState = {
   notifications: AppNotification[];
   unreadNotificationCount: number;
   page: "chat" | "scheduled" | "plugins" | "settings";
+  /** One-shot navigation intent; task and run selection stay in Scheduled. */
+  scheduledTaskRequest: { taskId: string } | null;
   /** Tab ids come from the shared settings index. */
   settingsTab: SettingsTabId;
   /** Pending row anchor (i18n key) to flash after landing on a settings tab. */
@@ -370,6 +372,7 @@ export type AppState = {
   handleAgentEvent: (envelope: AgentEventEnvelope) => void;
   handlePlansChanged: (event: PlanningStateEvent) => void;
   setPage: (page: AppState["page"], opts?: { record?: boolean }) => void;
+  openScheduledTask: (taskId: string) => void;
   setSettingsTab: (tab: AppState["settingsTab"]) => void;
   setSettingsAnchor: (key: string | null) => void;
   navBack: () => void;

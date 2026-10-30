@@ -44,14 +44,15 @@ export type ScheduledWorkspace = {
  */
 export function useScheduledWorkspace(
   onError: (message: string) => void,
+  initialTaskId?: string,
 ): ScheduledWorkspace {
   // Coming back from a run's conversation restores the same task and run.
-  const restored = peekScheduledReturn();
+  const restored = initialTaskId ? null : peekScheduledReturn();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [latestPerTaskRuns, setLatestPerTaskRuns] = useState<ScheduledTaskRun[]>([]);
   const [taskRuns, setTaskRuns] = useState<ScheduledTaskRun[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(restored?.taskId ?? null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId ?? restored?.taskId ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(restored?.runId ?? null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);

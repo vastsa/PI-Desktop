@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ScheduledTask } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
@@ -24,8 +24,16 @@ export function ScheduledPage() {
   const setPage = useAppStore((s) => s.setPage);
   const currentWorkspacePath = useAppStore((s) => s.workspace?.path ?? "");
   const providers = useAppStore((s) => s.providers);
+  const requestedTask = useAppStore((s) => s.scheduledTaskRequest);
   const [editor, setEditor] = useState<ScheduledTask | "new" | null>(null);
-  const workspace = useScheduledWorkspace((message) => showToast(message, { variant: "error" }));
+  const workspace = useScheduledWorkspace((message) => showToast(message, { variant: "error" }), requestedTask?.taskId);
+  useEffect(() => {
+    if (!requestedTask) return;
+    setEditor(null);
+    workspace.selectTask(requestedTask.taskId);
+    void workspace.refresh();
+    useAppStore.setState({ scheduledTaskRequest: null });
+  }, [requestedTask, workspace.selectTask, workspace.refresh]);
   const locale = i18n.resolvedLanguage ?? i18n.language;
   const { tasks, projects, selectedTask, selectedTaskId, runs, latestRuns, selectedRunId, busy, loaded, error } =
     workspace;

@@ -93,6 +93,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.sidebarRunningIndicatorsDesc",
       "settings.sidebarRunningBadge",
       "settings.sidebarSessionTime",
+      "settings.sidebarScheduledTasks",
       "settings.windowTranslucency",
       "settings.windowTranslucencyDesc",
       "settings.radialMenu",

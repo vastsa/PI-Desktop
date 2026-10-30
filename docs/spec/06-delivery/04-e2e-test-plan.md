@@ -19338,3 +19338,45 @@ their separate platform acceptance.
   event/result agreement, batch rejection and delegate restoration.
 - **Status**: Automated offline; native UI clicking and live providers are
   outside this fixture's coverage.
+
+
+### E2E-SCHEDULED-sidebar-task-shortcuts
+
+1. With `sidebarScheduledTasks` absent or false, verify the group is absent and
+   it performs no task-list reads. Enable Show scheduled tasks in General →
+   Sidebar and verify the boolean is saved through the normal settings path.
+2. Fail the first read and verify Retry without creating a task folder. Recover
+   with tasks bound to two projects, duplicate titles, paused tasks, one unbound
+   task and one closed-project task. Only retained projects with bound tasks
+   gain a Scheduled subfolder. Ordinary conversation rows remain direct children
+   and run transcripts stay absent. Empty projects gain no task folder.
+3. Fold one task folder, verify `aria-expanded`, `aria-hidden` and inert rows,
+   then remount. Its fold survives independently of other task folders and
+   project metadata. Fold its parent and verify scheduled activity remains on
+   the parent header under the existing running preferences.
+4. Open a paused task, switch to another task while Scheduled is open, and
+   revisit the same shortcut after a task-column selection. Verify the exact
+   detail and task-scoped history each time. Navigation never dispatches a run.
+5. Refresh after rename, creation, retargeting or deletion. Retargeted tasks
+   move to their new parent. Removing the last task removes its folder even
+   while the display setting stays on. Existing running settings gate the count
+   and rail. Disable during an in-flight read; completing it cannot restore any
+   folder. Re-read settings and verify the choice survives.
+6. With shortcuts off, searching a task name returns no task results and starts
+   no reads. With shortcuts on, fold a task folder and its parent, then search a
+   paused task name with mixed case and surrounding spaces. Only matching tasks
+   and their parent appear, expanded and keyboard reachable, with no false
+   No results message. Folding/reordering during search cannot modify saved
+   preferences. Searching starts no reads; clearing restores both folds.
+   Duplicate names retain distinct IDs; prompts and run transcripts never match.
+   A project-only match hides the task group; no matches shows No results.
+   Disable and reload settings, then verify task names are still excluded.
+7. Unbound and closed-project task names return No results in sidebar search.
+   Open an unbound task from the footer management page; it remains accessible
+   there without gaining a sidebar shortcut. Initial loading shows a status
+   notice without creating any task folder.
+
+Automated coverage: `node --test apps/desktop/test/scheduled-sidebar.test.mjs`
+and `pnpm test:e2e:scheduled-sidebar`. The latter uses real React, routing,
+settings controls and Sidebar in an isolated Electron window with synthetic IPC
+responses; it does not qualify Rust persistence, scheduling or model execution.

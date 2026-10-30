@@ -38,6 +38,7 @@ export function createInteractionSlice({
 }: InteractionSliceDependencies): Pick<
   AppState,
   | "setPage"
+  | "openScheduledTask"
   | "setSettingsTab"
   | "setSettingsAnchor"
   | "canNavBack"
@@ -84,6 +85,11 @@ export function createInteractionSlice({
           navIndex: nextStack.length - 1,
         };
       });
+    },
+
+    openScheduledTask: (taskId) => {
+      set({ scheduledTaskRequest: { taskId } });
+      get().setPage("scheduled");
     },
 
     setSettingsTab: (settingsTab) => {

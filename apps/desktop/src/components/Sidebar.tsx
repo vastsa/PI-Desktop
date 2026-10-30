@@ -1,6 +1,10 @@
 import { IconClock } from "./icons";
+import { ScheduledSidebarGroup } from "../features/scheduled/ScheduledSidebarGroup";
+import { useSidebarScheduledTasks } from "../features/scheduled/use-sidebar-scheduled-tasks";
+import { groupScheduledSidebarTasks, scheduledSidebarRunSummary } from "../features/scheduled/sidebar-scheduled-tasks";
+import { latestRunByTask } from "../features/scheduled/scheduled-runs";
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
-import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
+import { groupRemoteProjectSessions, type RemoteProjectGroup } from "../lib/remote-project-catalog";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import {
   useCallback,
@@ -15,7 +19,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { TooltipButton, cx } from "./ui";
+import { Button, Input, TooltipButton, cx } from "./ui";
 
 import { portalToBody } from "../lib/portal-visibility";
 import {
@@ -26,6 +30,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { formatSessionLastReplyDate } from "../lib/sidebar-session-date";
+import { matchesSidebarSearch } from "../lib/sidebar-search";
 import { SessionHoverCard } from "../features/sessions/SessionHoverCard";
 import { useSessionHoverCard } from "../features/sessions/useSessionHoverCard";
 import { isDefaultSessionTitle, useAppStore } from "../stores/app-store";
@@ -123,6 +128,7 @@ import {
   IconPencil,
   IconSidebar,
   IconSettings,
+  IconSearch,
   IconStar,
   IconTrash,
   IconX,
@@ -347,6 +353,10 @@ export function Sidebar({
   const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ key: string; insertAfter: boolean } | null>(null);
   const [windowFocused, setWindowFocused] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const scheduledTasksEnabled = settings?.sidebarScheduledTasks === true;
+  const scheduledTasks = useSidebarScheduledTasks(scheduledTasksEnabled, searchQuery);
+  const searchPlaceholder = t(scheduledTasksEnabled ? "nav.searchWithTasksPlaceholder" : "nav.searchPlaceholder");
 
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuFirstItemRef = useRef<HTMLButtonElement | null>(null);
@@ -1048,22 +1058,75 @@ export function Sidebar({
   const remoteProjectGroups = useMemo(() => groupRemoteProjectSessions(
     filtered.filter((session) => isRemoteSession(session) && !pinnedSessionIds.has(session.id)), compareSessions,
   ), [filtered, pinnedSessionIds, compareSessions]);
-  // Flat ordered list of every visible session id — used for Shift+click range selection.
+  // Search filtering: when the query is non-empty, only show projects and sessions
+  // whose name or title contains the query (case-insensitive).
+  const searchQueryLower = searchQuery.trim().toLowerCase();
+  const hasSearch = searchQueryLower.length > 0;
+  const sessionMatchesSearch = useCallback(
+    (session: SessionSummary) => matchesSidebarSearch(taskTitle(session.title), searchQueryLower),
+    [searchQueryLower, taskTitle],
+  );
+  const projectMatchesSearch = useCallback(
+    (name: string, path: string) => matchesSidebarSearch(name, searchQueryLower) || matchesSidebarSearch(path, searchQueryLower),
+    [searchQueryLower],
+  );
+
+  const displayPinnedSessions = useMemo(
+    () => hasSearch ? pinnedSessions.filter(sessionMatchesSearch) : pinnedSessions,
+    [pinnedSessions, hasSearch, sessionMatchesSearch],
+  );
+
+  const scheduledTasksByProject = useMemo(() => groupScheduledSidebarTasks(scheduledTasks.tasks), [scheduledTasks.tasks]);
+  const latestScheduledRuns = useMemo(() => latestRunByTask(scheduledTasks.runs), [scheduledTasks.runs]);
+
+  const displayProjectEntries = useMemo(() => {
+    if (!hasSearch) return projectEntries;
+    return projectEntries
+      .map((entry): ProjectEntry | null => {
+        if (projectMatchesSearch(entry.name, entry.path)) {
+          return { ...entry, meta: { ...entry.meta, collapsed: false } };
+        }
+        const matchingSessions = entry.sessions.filter(sessionMatchesSearch);
+        if (matchingSessions.length === 0 && !scheduledTasksByProject.has(entry.key)) return null;
+        return { ...entry, sessions: matchingSessions, meta: { ...entry.meta, collapsed: false } };
+      })
+      .filter((entry): entry is ProjectEntry => entry !== null);
+  }, [projectEntries, hasSearch, projectMatchesSearch, sessionMatchesSearch, scheduledTasksByProject]);
+
+  const displayTemporarySessionHistory = useMemo(
+    () => hasSearch ? temporarySessionHistory.filter(sessionMatchesSearch) : temporarySessionHistory,
+    [temporarySessionHistory, hasSearch, sessionMatchesSearch],
+  );
+
+  const displayRemoteProjectGroups = useMemo(() => {
+    if (!hasSearch) return remoteProjectGroups;
+    return remoteProjectGroups
+      .map((group) => {
+        if (projectMatchesSearch(group.project.label, group.project.hostLabel)) return group;
+        const matchingSessions = group.sessions.filter(sessionMatchesSearch);
+        if (matchingSessions.length === 0) return null;
+        return { ...group, sessions: matchingSessions };
+      })
+      .filter((group): group is RemoteProjectGroup => group !== null);
+  }, [remoteProjectGroups, hasSearch, projectMatchesSearch, sessionMatchesSearch]);
+
+  const showNoSearchResults = hasSearch
+    && displayPinnedSessions.length === 0 && displayProjectEntries.length === 0
+    && displayTemporarySessionHistory.length === 0 && displayRemoteProjectGroups.length === 0
+    && (!scheduledTasksEnabled || (scheduledTasks.loaded && !scheduledTasks.error));
+
+  // Range selection follows the filtered order, excluding hidden search results.
   const flatSessionOrder = useMemo(() => {
-    const ids: string[] = [];
-    // Pinned first (same order as rendered)
-    for (const s of pinnedSessions) ids.push(s.id);
-    // Then project sessions
-    for (const entry of projectEntries) {
-      for (const s of entry.sessions) {
-        if (!pinnedSessionIds.has(s.id)) ids.push(s.id);
+    const ids = displayPinnedSessions.map((session) => session.id);
+    for (const entry of displayProjectEntries) {
+      for (const session of entry.sessions) {
+        if (!pinnedSessionIds.has(session.id)) ids.push(session.id);
       }
     }
-    for (const group of remoteProjectGroups) for (const session of group.sessions) ids.push(session.id);
-    // Then temporary (standalone) sessions
-    for (const s of temporarySessionHistory) ids.push(s.id);
+    for (const group of displayRemoteProjectGroups) for (const session of group.sessions) ids.push(session.id);
+    for (const session of displayTemporarySessionHistory) ids.push(session.id);
     return ids;
-  }, [pinnedSessions, projectEntries, pinnedSessionIds, temporarySessionHistory, remoteProjectGroups]);
+  }, [displayPinnedSessions, displayProjectEntries, pinnedSessionIds, displayTemporarySessionHistory, displayRemoteProjectGroups]);
 
   /** Handle multi-select click on a session row. Returns true if the click was consumed by multi-select. */
   const handleMultiSelectClick = (event: React.MouseEvent, sessionId: string): boolean => {
@@ -1117,8 +1180,9 @@ export function Sidebar({
     return false;
   };
 
-  // Clear multi-select when sessions list changes (e.g. after batch delete)
-  const sessionIdSet = useMemo(() => new Set(sessions.map((s) => s.id)), [sessions]);
+  // Search must not retain hidden selections for batch actions.
+  const sessionIdSet = useMemo(() => new Set(hasSearch ? flatSessionOrder : sessions.map((s) => s.id)),
+    [hasSearch, flatSessionOrder, sessions]);
   useEffect(() => {
     if (selectedIds.size === 0) return;
     // Remove any selected ids that no longer exist
@@ -2264,6 +2328,7 @@ export function Sidebar({
     const collapsedProject = entry.meta.collapsed ?? projectCollapsed[entry.key] ?? false;
     const projectId = projectDomId(entry.key);
     const isMenuOpen = projectMenu === entry.key;
+    const projectTasks = scheduledTasksByProject.get(entry.key) ?? [];
 
     // Show the initial page by default; the remaining sessions stay folded
     // behind the Load more affordance.
@@ -2281,6 +2346,10 @@ export function Sidebar({
       runningSessions,
       pendingPermissions,
     );
+    const taskRunSummary = scheduledSidebarRunSummary(projectTasks, latestScheduledRuns, pendingPermissions);
+    runSummary.running += taskRunSummary.running;
+    runSummary.waiting += taskRunSummary.waiting;
+    runSummary.total += taskRunSummary.total;
     const runIsLive = projectRunSummaryIsLive(runSummary);
     const showRunBadge = runningAffordances.badge && runIsLive;
     const showRunRail = runningAffordances.rail && runIsLive;
@@ -2338,6 +2407,7 @@ export function Sidebar({
             // control still activates and toggles the group.
             const target = event.target as HTMLElement | null;
             if (target?.closest("button, [data-action]")) return;
+            if (hasSearch) return;
             void (async () => {
               if (!entry.active && !(await selectProject(entry.path))) return;
               setCollapsed(entry.path, !collapsedProject);
@@ -2370,14 +2440,16 @@ export function Sidebar({
             ariaLabel={entry.name}
             aria-describedby={`${projectId}-path-description`}
             aria-expanded={!collapsedProject}
+            aria-disabled={hasSearch}
             aria-controls={`${projectId}-sessions`}
             aria-keyshortcuts="ArrowUp ArrowDown"
             aria-grabbed={draggingProjectKey === entry.key}
             data-action="toggle-project-collapse"
             onDragStart={(event) => event.preventDefault()}
-            onPointerDown={(event) => beginProjectReorderPress(event, entry.key)}
-            onKeyDown={(event) => moveProjectWithKeyboard(event, entry.key)}
+            onPointerDown={(event) => { if (!hasSearch) beginProjectReorderPress(event, entry.key); }}
+            onKeyDown={(event) => { if (!hasSearch) moveProjectWithKeyboard(event, entry.key); }}
             onClick={() => {
+              if (hasSearch) return;
               if (suppressProjectTitleClickRef.current) {
                 suppressProjectTitleClickRef.current = false;
                 return;
@@ -2452,8 +2524,12 @@ export function Sidebar({
         >
           <div className="sidebar-session-group-clip">
             <div className="sidebar-session-group-list">
-              {entry.sessions.length > 0 ? renderProjectSessions(visibleSessions) : (
+              {entry.sessions.length > 0 ? renderProjectSessions(visibleSessions) : !hasSearch && projectTasks.length === 0 ? (
                 <div className="sidebar-session-empty">{t("nav.noProjectSessions")}</div>
+              ) : null}
+              {scheduledTasksEnabled && projectTasks.length > 0 && (
+                <ScheduledSidebarGroup tasks={projectTasks} latestRuns={latestScheduledRuns}
+                  searching={hasSearch} projectPath={entry.key} id={`${projectId}-scheduled`} />
               )}
             </div>
           </div>
@@ -2587,7 +2663,29 @@ export function Sidebar({
 
       <div className="sidebar-body no-drag">
 
-        {pinnedSessions.length > 0 ? (
+        <div className="sidebar-search">
+          <IconSearch size={13} className="sidebar-search-icon" aria-hidden />
+          <Input
+            type="text"
+            className="sidebar-search-input"
+            placeholder={searchPlaceholder}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            aria-label={searchPlaceholder}
+          />
+          {searchQuery ? (
+            <TooltipButton
+              type="button"
+              className="sidebar-search-clear"
+              onClick={() => setSearchQuery("")}
+              tooltip={t("nav.clearSearch")}
+            >
+              <IconX size={12} />
+            </TooltipButton>
+          ) : null}
+        </div>
+
+        {displayPinnedSessions.length > 0 ? (
           <section
             className="sidebar-pinned-sessions"
             aria-labelledby="sidebar-pinned-label"
@@ -2599,7 +2697,7 @@ export function Sidebar({
               </span>
             </div>
             <div className="sidebar-session-group-body pinned" onScroll={() => closeMenus(false)}>
-              {renderSessionRows(pinnedSessions, { global: true })}
+              {renderSessionRows(displayPinnedSessions, { global: true })}
             </div>
           </section>
         ) : null}
@@ -2675,9 +2773,9 @@ export function Sidebar({
               openSectionMenu("sessions", event.clientX, event.clientY);
             }}
           >
-            {temporarySessionHistory.length > 0 ? (
-              renderSessionRows(temporarySessionHistory, { temporary: true })
-            ) : temporarySessions.length === 0 ? (
+            {displayTemporarySessionHistory.length > 0 ? (
+              renderSessionRows(displayTemporarySessionHistory, { temporary: true })
+            ) : !hasSearch && temporarySessions.length === 0 ? (
               <div className="sidebar-session-empty">{t("nav.noTemporarySessions")}</div>
             ) : null}
           </div>
@@ -2732,7 +2830,14 @@ export function Sidebar({
           onDragLeave={onProjectsAreaDragLeave}
           onDrop={onProjectsAreaDrop}
         >
-          {projectEntries.length > 0 ? projectEntries.map(renderProjectGroup) : (
+          {scheduledTasksEnabled && (scheduledTasks.error || !scheduledTasks.loaded) && (
+            <div className="sidebar-session-empty sidebar-scheduled-status" data-sidebar-scheduled-status="tasks"
+              role={scheduledTasks.error ? "alert" : "status"}>
+              <span>{scheduledTasks.error || t("common.loading")}</span>
+              {scheduledTasks.error && <Button size="sm" variant="ghost" onClick={() => void scheduledTasks.refresh()}>{t("scheduled.retry")}</Button>}
+            </div>
+          )}
+          {displayProjectEntries.length > 0 ? displayProjectEntries.map(renderProjectGroup) : !hasSearch ? (
             <section className="sidebar-session-group" aria-labelledby="sidebar-project-group-label">
               <div className="sidebar-session-group-header">
                 <button type="button" id="sidebar-project-group-label" className="sidebar-session-group-title" onClick={() => void openProjectPicker()}>
@@ -2741,12 +2846,13 @@ export function Sidebar({
                 </button>
               </div>
             </section>
-          )}
-          <RemoteProjectGroups groups={remoteProjectGroups}
+          ) : null}
+          <RemoteProjectGroups groups={displayRemoteProjectGroups}
             renderSessions={(sessions) => renderSessionRows(sessions, {
               temporary: false,
               showLastReplyDate: settings?.sidebarSessionTime === true,
             })} />
+          {showNoSearchResults && <div className="sidebar-session-empty" role="status">{t("nav.noSearchResults")}</div>}
         </div>
 
         <div className="sidebar-footer no-drag">

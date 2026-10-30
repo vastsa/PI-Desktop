@@ -407,10 +407,41 @@ expanded sidebar shows a global `Pinned` section when pins exist, followed by
 path-less history under `Sessions` and retained project tabs under `Projects`; the
 collapsed state is an icon rail. Retained tabs are renderer presentation state,
 not additional host workspaces.
-The sidebar body is reserved for Pinned, Sessions, and Projects; the footer exposes the
+By default the sidebar body contains Pinned, Sessions, and Projects; the footer exposes the
 Plugins and Scheduled destinations beside Settings. Scheduled uses a clock
 action with a localized accessible name and active state. Projects is managed
 through Settings → Project archive.
+
+The optional `sidebarScheduledTasks` preference adds a Scheduled subfolder after
+the ordinary conversation rows inside each retained project. Both conditions
+are required: the preference is true and that project has explicitly bound
+tasks. Empty folders and a global Scheduled group are never rendered. Normalize
+the task's `workspacePath` with the sidebar's project-path rules to resolve its
+owner; missing bindings never inherit the current project. Unbound tasks and
+tasks under closed projects remain available in the existing management page.
+Each task ID has one shortcut, including paused tasks. Activation selects that
+task on the existing Scheduled route, also when already open, and dismisses an
+open task editor. Run transcripts stay excluded from ordinary lists and search.
+Folder folds are saved per normalized project path, separately from project
+metadata; folded rows are inert and hidden from accessibility. One sidebar read
+lifecycle refreshes tasks and newest runs every ten seconds and on focus.
+Loading and retryable errors appear as a status notice without creating task
+folders. Stale reads cannot restore disabled results. Disabling or unmounting
+stops reads and listeners. Existing running settings gate both the task-folder
+and parent-project indicators, including while either ancestor is folded.
+
+Sidebar search trims surrounding query whitespace and matches case-insensitive
+substrings in project names/paths, chat titles and remote project/host labels.
+It includes task names only when the display preference is true and their
+owning project is retained in the sidebar. Task prompts and run transcripts
+are excluded. Search filters loaded tasks locally without restarting reads.
+Task matches retain their owning project even when no conversation matches,
+and temporarily expand both ancestors without allowing fold/reorder actions
+to write saved preferences. Clearing search restores both folds. A task folder
+with no matching tasks is hidden. No results appears only when every visible
+section is empty and any enabled scheduled reads have completed without error;
+unbound and closed-project matches do not suppress it. Loading/retry remain
+visible while searching.
 
 Section-level create and sort controls stay visually quiet at rest and reveal
 when the owning Sessions or Projects toolbar is hovered or keyboard-focused.

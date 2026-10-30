@@ -20,6 +20,7 @@ Each ADR includes:
 
 | ID | Title | Status |
 |---|---|---|
+| optional-scheduled-sidebar | [Optional scheduled-task shortcuts in the sidebar](optional-scheduled-sidebar.md) | Implemented candidate |
 | append-only-review-state | [Append-only review state](append-only-review-state.md) | Implemented candidate |
 | lossless-tool-image-storage | [Lossless tool-image storage and bounded history mutations](lossless-tool-image-storage.md) | Implemented candidate |
 | plugin-remote-workspace-reads | [Plugin reads in remote workspaces](plugin-remote-workspace-reads.md) | Implemented candidate |

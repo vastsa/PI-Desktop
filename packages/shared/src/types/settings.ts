@@ -224,6 +224,8 @@ export type AppSettings = {
    * disabled, so a fresh install shows a clean sidebar until the user opts in.
    */
   sidebarSessionTime?: boolean;
+  /** Optional task shortcuts in the sidebar. Absent and false keep them hidden. */
+  sidebarScheduledTasks?: boolean;
   /** Voice input settings (D-voice-runtime). */
   voice?: VoiceInputSettings;
   /**
