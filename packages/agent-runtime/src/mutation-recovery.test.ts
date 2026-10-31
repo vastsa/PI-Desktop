@@ -86,4 +86,23 @@ describe("isPatchCommand", () => {
     expect(isPatchCommand("command patch -p1 < p.diff")).toBe(true);
     expect(isPatchCommand("cd x && patch -p1 < p.diff")).toBe(true);
   });
+
+  it("keeps quoted option values whole so real patch commands still count", () => {
+    // #2016 review: whitespace splitting ate a quoted option value's tail and
+    // mistook it for the subcommand, so these real patch commands fell out of
+    // the recovery budget entirely.
+    expect(isPatchCommand('git -C "/tmp/my project" apply p.diff')).toBe(true);
+    expect(isPatchCommand("git -C '/tmp/my project' apply p.diff")).toBe(true);
+    expect(isPatchCommand('git -c core.sshCommand="ssh -i /tmp/key" apply p.diff')).toBe(true);
+    expect(isPatchCommand("git -C /tmp/my\\ project apply p.diff")).toBe(true);
+    expect(isPatchCommand('env "git" apply p.diff')).toBe(true);
+  });
+
+  it("does not split on operators inside quotes", () => {
+    // The quoted `;` and `|` are argument text, not command boundaries: no
+    // patch process runs in either command.
+    expect(isPatchCommand('printf "%s" "hello; patch notes"')).toBe(false);
+    expect(isPatchCommand('echo "patch"; git log | grep apply')).toBe(false);
+    expect(isPatchCommand('git log --grep "a|b"')).toBe(false);
+  });
 });

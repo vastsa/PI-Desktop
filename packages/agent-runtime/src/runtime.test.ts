@@ -1426,6 +1426,36 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
+  it("terminates repeated failed shell patch recovery for quoted git arguments", async () => {
+    // #2016 review: a quoted option value (`-C "/tmp/my project"`) used to be
+    // split on whitespace, its tail mistaken for the subcommand, so these real
+    // patch failures bypassed the recovery budget entirely. The budget must
+    // still terminate at MAX_MUTATION_RECOVERY_FAILURES.
+    const host = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        isError: true,
+        errorCode: "TOOL_FAILED",
+        content: { exitCode: 128, stderr: "error: repository not found" },
+      }),
+    };
+    const runtime = createRuntime({ host });
+    const agent = (runtime as any).agent;
+    const bash = agent.state.tools.find((tool: any) => tool.name === "Bash");
+    const quotedArgs = {
+      command: 'git -C "/tmp/my project" apply --check /tmp/change.patch',
+    };
+
+    for (const [index, id] of ["quoted-patch-1", "quoted-patch-2", "quoted-patch-3"].entries()) {
+      const result = await bash.execute(id, quotedArgs);
+      const expected = index === 2 ? { isError: true, terminate: true } : { isError: true };
+      await expect(agent.afterToolCall({ toolCall: { id } })).resolves.toEqual(expected);
+      expect(result.terminate).toBe(index === 2 ? true : undefined);
+    }
+
+    await runtime.dispose();
+  });
+
   it("spends one grace per recoverable Edit code before counting failures", async () => {
     const errorCodes = [
       "EDIT_TAG_MISMATCH",

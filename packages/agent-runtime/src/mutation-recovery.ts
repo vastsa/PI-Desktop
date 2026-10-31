@@ -58,12 +58,114 @@ export async function mutationFailureKey(path: string, projectPath?: string): Pr
 }
 
 /**
- * Shell operators that begin another command. Every check runs on a segment
- * after splitting on them: tokens behind a pipe, `&&`, `;`, or a newline
- * belong to a different process, so `git log | grep apply` is not a patch and
- * `kubectl apply` after `git pull` is not a git patch (#1985).
+ * Split a command into segments at shell operators (`||`, `&&`, `|`, `;`, `&`,
+ * newline). Quote-aware: an operator inside a quoted span never splits, so
+ * `printf "%s" "hello; patch notes"` stays one segment and its quoted `patch`
+ * stays inert text. Every check runs on a segment after splitting: tokens
+ * behind a pipe, `&&`, `;`, or a newline belong to a different process, so
+ * `git log | grep apply` is not a patch and `kubectl apply` after `git pull`
+ * is not a git patch (#1985).
+ *
+ * This is best-effort segmentation for the recovery guard, not a shell
+ * parser: quotes and backslash escapes are modeled, shell grammar (command
+ * substitution, unmatched quotes, heredoc bodies) is not. The failure mode is
+ * deliberately asymmetric — a missed patch only skips recovery, so widening
+ * this into real shell parsing is never worth the false positives.
  */
-const COMMAND_SEGMENTS = /(?:\|\||&&|[|;&])|\n/;
+function splitCommandSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | null = null;
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]!;
+    if (quote) {
+      current += char;
+      // Inside double quotes a backslash escapes the next character; inside
+      // single quotes everything is literal until the closing quote.
+      if (quote === '"' && char === "\\" && index + 1 < command.length) {
+        current += command[++index]!;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === "\\") {
+      current += char;
+      if (index + 1 < command.length) current += command[++index]!;
+      continue;
+    }
+    if (char === "|" || char === ";" || char === "&" || char === "\n") {
+      if ((char === "|" || char === "&") && command[index + 1] === char) index += 1;
+      segments.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  segments.push(current);
+  return segments;
+}
+
+/**
+ * Shell-style tokens for one segment, quotes resolved the way the shell
+ * resolves them for the child process: a quoted span (single or double) is
+ * one argument regardless of the whitespace and operators it contains, and
+ * the quote characters themselves are not part of the argument. An unquoted
+ * backslash escapes the next character; inside double quotes only `\"` and
+ * `\\` are escapes. Same best-effort contract as the splitter above.
+ */
+function tokenizeSegment(segment: string): string[] {
+  const tokens: string[] = [];
+  let token = "";
+  let quote: '"' | "'" | null = null;
+  const endToken = () => {
+    if (token) tokens.push(token);
+    token = "";
+  };
+  for (let index = 0; index < segment.length; index += 1) {
+    const char = segment[index]!;
+    if (quote === "'") {
+      // A closing single quote ends the span; the quote itself is not part of
+      // the argument the shell hands over.
+      if (char === "'") quote = null;
+      else token += char;
+      continue;
+    }
+    if (quote === '"') {
+      if (
+        char === "\\" &&
+        index + 1 < segment.length &&
+        (segment[index + 1] === '"' || segment[index + 1] === "\\")
+      ) {
+        token += segment[++index]!;
+        continue;
+      }
+      if (char === '"') quote = null;
+      else token += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "\\") {
+      if (index + 1 < segment.length) token += segment[++index]!;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      endToken();
+      continue;
+    }
+    token += char;
+  }
+  endToken();
+  return tokens;
+}
 
 /**
  * Global git flags that consume the following token as their value; every
@@ -83,40 +185,54 @@ const GIT_FLAGS_WITH_VALUE = new Set([
  * Whether one command segment invokes `git apply`: `git` at the command
  * position (optionally after a path prefix, an `env`/`command` wrapper, or
  * leading `VAR=value` assignments), only git's own global flags between it
- * and the subcommand, and `apply` as that subcommand.
+ * and the subcommand, and `apply` as that subcommand. Tokens come from the
+ * quote-aware tokenizer, so an option value with spaces or quotes
+ * (`-C "/tmp/my project"`, `-c core.sshCommand="ssh -i /tmp/key"`) is
+ * consumed whole instead of leaving its tail to masquerade as the
+ * subcommand (#2016 review).
  */
 function segmentInvokesGitApply(segment: string): boolean {
-  const tokens = segment
-    .replace(/^\s*[({]+/, "")
-    .replace(/[)}\s]+$/, "")
-    .split(/\s+/)
-    .filter(Boolean);
+  const prepared = segment.replace(/^\s*[({]+/, "").replace(/[)}\s]+$/, "");
+  const candidates = tokenizeSegment(prepared);
   while (
-    tokens.length > 1 &&
-    (/^(?:env|command)$/.test(tokens[0]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0]))
+    candidates.length > 1 &&
+    (/^(?:env|command)$/.test(candidates[0]!) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(candidates[0]!))
   ) {
-    tokens.shift();
+    candidates.shift();
   }
-  if (!/^(?:\S+\/)?git$/.test(tokens[0] ?? "")) return false;
+  if (!/^(?:\S+\/)?git$/.test(candidates[0] ?? "")) return false;
   let index = 1;
-  while (index < tokens.length && tokens[index].startsWith("-")) {
-    if (GIT_FLAGS_WITH_VALUE.has(tokens[index])) index += 1;
+  while (index < candidates.length && candidates[index]!.startsWith("-")) {
+    if (GIT_FLAGS_WITH_VALUE.has(candidates[index]!)) index += 1;
     index += 1;
   }
-  return tokens[index] === "apply";
+  return candidates[index] === "apply";
+}
+
+/**
+ * Whether one command segment's own command word is `apply_patch` or `patch`
+ * (with the same optional `env`/`command` wrapper and path prefix the old
+ * head regex allowed). Token-based so a quoted command word counts and a
+ * quoted operator cannot smuggle one in.
+ */
+function segmentInvokesPatcher(tokens: readonly string[]): boolean {
+  let index = 0;
+  if (index < tokens.length && /^(?:env|command)$/.test(tokens[index]!)) index += 1;
+  const head = tokens[index] ?? "";
+  return (
+    head === "apply_patch" ||
+    head === "patch" ||
+    head.endsWith("/apply_patch") ||
+    head.endsWith("/patch")
+  );
 }
 
 export function isPatchCommand(command: unknown): boolean {
   if (typeof command !== "string") return false;
-  return command.split(COMMAND_SEGMENTS).some((segment) => {
-    const head = segment.replace(/^\s+/, "");
-    if (
-      /^(?:env\s+|command\s+)?(?:\S+\/)?apply_patch(?:\s|$)/.test(head) ||
-      /^(?:env\s+|command\s+)?(?:\S+\/)?patch(?:\s|$)/.test(head)
-    ) {
-      return true;
-    }
-    return segmentInvokesGitApply(head);
+  return splitCommandSegments(command).some((segment) => {
+    const prepared = segment.replace(/^\s*[({]+/, "").replace(/[)}\s]+$/, "");
+    const tokens = tokenizeSegment(prepared);
+    return segmentInvokesPatcher(tokens) || segmentInvokesGitApply(prepared);
   });
 }
 
