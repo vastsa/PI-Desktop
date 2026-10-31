@@ -884,6 +884,8 @@ export const ko = {
     "imageModelSelected": "선택된 이미지 모델",
     "generatedImage": "생성된 이미지 {{index}}",
     "downloadGeneratedImage": "다운로드",
+    "copyGeneratedImage": "이미지 복사",
+    "downloadImage": "이미지 다운로드",
     "revealGeneratedImage": "폴더에서 보기",
     "imageRevealFailed": "폴더에서 이미지를 표시할 수 없습니다.",
     "imagePreviewUnavailable": "미리보기 불가; 파일 열기",

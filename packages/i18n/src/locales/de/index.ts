@@ -875,6 +875,8 @@ export const de = {
     "imageModelSelected": "Ausgewähltes Bildmodell",
     "generatedImage": "Generiertes Bild {{index}}",
     "downloadGeneratedImage": "Herunterladen",
+    "copyGeneratedImage": "Bild kopieren",
+    "downloadImage": "Bild herunterladen",
     "revealGeneratedImage": "Im Ordner anzeigen",
     "imageRevealFailed": "Das Bild konnte nicht im Ordner angezeigt werden.",
     "imagePreviewUnavailable": "Vorschau nicht verfügbar; Datei öffnen",
