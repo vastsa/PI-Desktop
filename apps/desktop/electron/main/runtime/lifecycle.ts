@@ -277,6 +277,11 @@ export function createRuntimeLifecycle({
           }
         }
       }
+      // Renderer-side plugin surfaces — the Extensions page and every plugin
+      // `renderer` module — re-read the plugin list only when this event
+      // arrives, and the window has already fetched the list by now. Without it
+      // a restored plugin keeps no renderer UI until something else changes.
+      sendToRenderer(IPC.event.pluginChanged, { reason: "restore" });
     } catch (error) {
       logger.app("plugin", "error", "plugin list failed", {
         data: String(error),

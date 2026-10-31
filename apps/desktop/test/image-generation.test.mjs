@@ -105,12 +105,35 @@ test("edit inputs reject outside paths, traversal and non-image files", async (t
 });
 
 test("the default imagegen skill is discoverable and loads in an ordinary session", async () => {
-  const { builtinSkills, loadBuiltinSkillBody } = await import(
-    "../electron/main/builtin-skills.ts"
-  );
+  const {
+    assertBuiltinSkillEnabled,
+    builtinSkillCatalog,
+    builtinSkills,
+    loadBuiltinSkillBody,
+  } = await import("../electron/main/builtin-skills.ts");
+  const catalogIds = builtinSkillCatalog().map((skill) => skill.id);
+  assert.ok(catalogIds.includes("pi-desktop/imagegen"));
+  assert.ok(catalogIds.includes("pi-desktop/plugin-development"));
   const skills = builtinSkills({});
   assert.equal(skills.find((skill) => skill.id === "pi-desktop/imagegen")?.name, "imagegen");
   assert.ok(!skills.some((skill) => skill.id === "pi-desktop/plugin-development"));
+  const pluginSkills = builtinSkills({
+    workspacePath: "/repo",
+    pluginPaths: ["/repo/example-plugin"],
+    disabledIds: ["pi-desktop/imagegen"],
+  });
+  assert.ok(!pluginSkills.some((skill) => skill.id === "pi-desktop/imagegen"));
+  assert.ok(pluginSkills.some((skill) => skill.id === "pi-desktop/plugin-development"));
+  await assert.rejects(
+    assertBuiltinSkillEnabled("pi-desktop/imagegen", async () => ["pi-desktop/imagegen"]),
+    /disabled in Settings/,
+  );
+  let queriedActivation = false;
+  await assertBuiltinSkillEnabled("plugin/review", async () => {
+    queriedActivation = true;
+    return ["pi-desktop/imagegen"];
+  });
+  assert.equal(queriedActivation, false);
   const body = loadBuiltinSkillBody("pi-desktop/imagegen").body;
   assert.match(body, /GenerateImages/);
   assert.match(body, /previous result path/);

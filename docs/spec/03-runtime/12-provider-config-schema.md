@@ -393,7 +393,14 @@ Presets only prefill form defaults; they are not a closed world.
 | bedrock | bedrock | aws_sdk_default | no |
 | ollama | openai_compatible | none | yes |
 | lmstudio | openai_compatible | none | yes |
-| custom | openai_compatible | api_key_and_base_url | yes |
+| custom | openai_compatible | `api_key_and_base_url` with a supplied/saved key; `none` without a key | yes |
+
+The custom endpoint form derives authentication from the effective API key,
+without a mode switch. An empty or whitespace-only input on a row without a
+saved key uses `authKind: "none"`; a supplied key uses API-key authentication.
+Editing with a blank input keeps the stored key. **Clear saved API key** stages
+its removal until Save; typing a replacement key instead keeps API-key auth.
+Named cloud presets retain their declared auth kind.
 
 ### Fixed API-style presets
 
@@ -448,6 +455,17 @@ Step 5 Preview capabilities come from the bundled first-party models.dev
 record; no supplemental catalog or hard-coded limits are needed. The ordinary
 StepFun API and existing custom-provider rows retain their configuration.
 
+Its model list is asked differently from its chat route: this deployment
+publishes `GET /step_plan/v1/models` to `Authorization: Bearer`, so the preset
+declares `discoveryStyle: "openai_models"` — a declared model-list style, not
+one derived from `anthropic_messages`. Chat stays on Anthropic Messages while
+the model-list probe and the connection test both send a Bearer token.
+
+A declared style is a statement about the endpoint, not about one spelling of
+it: it holds for the base URL and for a URL pasted with an operation suffix
+(`/models`, `/messages`), which is stripped before resolution. Pasting back the
+address the settings dialog itself offered therefore keeps the same model-list
+authentication.
 
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
 `zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of
@@ -654,10 +672,21 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
   never overwrites an edit or delete made while it was in flight.
 
 ### `providers.cacheModels` (internal host RPC)
-- in: `{ providerId, models: DiscoveredModelInput[] }`
-- behavior: transactionally upsert successful live discovery into `models` as
-  `source='discovered'`; never overwrite `source='user'` rows and never delete
-  prior cache rows on a failed or partial refresh
+- in: `{ providerId, models: DiscoveredModelInput[], complete?: boolean }`
+- behavior: atomically upsert discovered rows with `discoveryState: "published"`.
+  Only an explicitly complete, nonempty, valid answer marks previously published
+  missing rows `"unlisted"`; missing configured rows are retained with that state,
+  while unconfigured discovered rows may be pruned. An omitted `complete` means
+  additive-only for backward compatibility. User-owned rows, bindings, defaults,
+  and conversation history are never rewritten by discovery.
+- failure/partial behavior: failed or empty responses cannot narrow the cache;
+  paginated, truncated, malformed-row, and larger-reported-total responses are
+  additive-only. The client does not claim to detect undisclosed truncation.
+- consumers: settings keep saved bindings editable; Composer excludes explicitly
+  unlisted rows from ordinary and recent choices. Manual ids never discovered
+  remain selectable. Reappearance restores publication; endpoint edits clear
+  previous publication evidence. Existing selections/defaults are not switched.
+  Unlisted means absent from the last complete list, not proven uncallable.
 - out: `{ cached: number, models: ModelCatalogItem[] }`
 - raw secrets and authorization headers are never part of this call
 
@@ -694,6 +723,11 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
    has no runtime effect
 11. Legacy `supportedThinkingLevels`, when present, must still validate as an
   array of canonical thinking levels but has no runtime effect
+
+User-created custom endpoints may use `authKind=none`. Updating an editable
+provider to this auth kind removes its API-key secret from the secret store and
+clears `secret_ref`; OAuth credentials use their separate lifecycle. The
+runtime sends no API-key or Authorization credential for a `none` provider.
 
 ## 11. Secret ref format
 
@@ -761,11 +795,13 @@ registry's `/api/paas/v4` sibling. The only generic extra path is `/v1` for an
 unknown OpenAI-compatible endpoint. Every published model-list shape is read —
 `data[].id`, Google's `models[].name`, and the `models[].slug` rows Zhipu's
 OpenAI Responses endpoint returns — so an endpoint that answers is never treated
-as empty. Connection testing reuses
-the same request builder, so "the model list loaded" and "the connection test
-passed" always describe the same URL, auth header and format. Anthropic-style
-endpoints that return 404 because they intentionally publish no model list may
-instead pass connection testing through a same-origin `OPTIONS /v1/messages`
+as empty. Connection testing reuses the same request builder, so "the model list
+loaded" and "the connection test passed" always describe the same URL, auth
+header and format — including a deployment whose model list authenticates
+differently from its chat route, where the endpoint's declared model-list style
+is what both surfaces use. Anthropic-style endpoints that return 404 because
+they intentionally publish no model list may instead pass connection testing
+through a same-origin `OPTIONS /v1/messages`
 route probe; this proves reachability without sending credentials or a billable
 model request, while model IDs remain manual.
 

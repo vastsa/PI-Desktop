@@ -21,6 +21,7 @@ export type ComposerIpcDependencies = {
     name: string;
     description?: string;
   }>>;
+  disabledBuiltinSkills?: () => Promise<string[]>;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   loadComposerTemplatesCached: (root: string | null) => Promise<Array<{
     name: string;
@@ -30,8 +31,16 @@ export type ComposerIpcDependencies = {
   }>>;
 };
 
+export type ComposerCommandOptions = {
+  /** The session runs on a remote host, so local-only builtin skills are left out. */
+  remote?: boolean;
+};
+
 export type ComposerCommandService = {
-  buildComposerCommands: (root: string | null) => Promise<ComposerCommand[]>;
+  buildComposerCommands: (
+    root: string | null,
+    options?: ComposerCommandOptions,
+  ) => Promise<ComposerCommand[]>;
 };
 
 export function createComposerCommandService({
@@ -40,15 +49,19 @@ export function createComposerCommandService({
   refreshUserMcp,
   agentExtensions,
   activeUserSkills,
+  disabledBuiltinSkills = async () => [],
   pluginActiveInProject,
   loadComposerTemplatesCached,
 }: Omit<ComposerIpcDependencies, "registrar" | "optionalWorkspaceRoot">): ComposerCommandService {
   const loadComposerSkillCommands = async (
     root: string | null,
+    remote: boolean,
   ): Promise<ComposerCommand[]> => {
     const builtins = builtinSkills({
       workspacePath: root,
+      remote,
       pluginPaths: plugins.listLoaded().map((loaded) => loaded.path),
+      disabledIds: await disabledBuiltinSkills(),
     });
     const pluginSkills = plugins
       .getSkills()
@@ -81,6 +94,7 @@ export function createComposerCommandService({
 
   const buildComposerCommands = async (
     root: string | null,
+    options: ComposerCommandOptions = {},
   ): Promise<ComposerCommand[]> => {
     await refreshUserMcp?.(root);
     await userMcp?.toolsForProject(root);
@@ -110,7 +124,7 @@ export function createComposerCommandService({
       description: command.description ?? command.extensionLabel,
       id: trustedExtensionCommandId(command.name),
     }));
-    const skillCommands = await loadComposerSkillCommands(root).catch(() => []);
+    const skillCommands = await loadComposerSkillCommands(root, options.remote === true).catch(() => []);
     const statuses = userMcp?.listStatuses() ?? [];
     const ready = new Set(statuses
       .filter((status) => status.state === "ready" && status.toolCount > 0)

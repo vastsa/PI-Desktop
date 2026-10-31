@@ -91,9 +91,9 @@ transcript replacement and regeneration.
 
 ## 3.1 Contributed theme CSS
 
-A theme contribution (`ui.theme`) is the one case where plugin-authored content
-runs inside the host renderer, so it crosses a sanitizer in the main process
-before it is ever sent to the UI:
+A theme contribution (`ui.theme`) sends CSS into the host renderer through a
+main-process sanitizer. The separate high-risk `renderer.extension` evaluates
+trusted plugin JavaScript in the host renderer and is not a sandbox:
 
 - Only CSS the browser applies is inspected: comment bodies and string literals
   are blanked first, with one space per masked character so any offset still
@@ -104,7 +104,7 @@ before it is ever sent to the UI:
   declared theme asset, a `url(` the parser cannot resolve, `javascript:`,
   `expression(`, and markup sequences (`<style`, `</style`, `<!--`); an empty
   sheet is refused too
-- Capped at 256KB per file, 8 themes per plugin
+- Capped at 256 KiB per file; no per-plugin theme-count cap
 - A theme may declare `assets` using whitelisted image/font extensions: either
   package-relative paths (resolved inside the plugin root; traversal and `node_modules`
   references are rejected) or absolute paths. The total is capped at 4MB.
@@ -118,7 +118,8 @@ before it is ever sent to the UI:
   `ui.window.appearance` and applies only while one of that plugin's themes is
   the selected one; leaving the theme restores the host background, because the
   appearance is derived from the live catalog rather than remembered. macOS
-  keeps `vibrancy` and its native corner behavior; Linux retains native corner
+  keeps native corners; its translucent vibrancy surface ignores the color,
+  while turning off Translucent window applies it to the opaque surface; Linux retains native corner
   behavior. Windows defaults to a 12 DIP corner request. On Windows 11 (build
   22000+), radius 0 requests square corners and positive values use the same
   system-rounded preference, while the OS chooses the actual radius; alpha
@@ -314,27 +315,29 @@ self-declared risk level. A server's catalog is registered whole — the count i
 bounded only by the protocol guards in §8.1 — while at most 8 servers per plugin
 are admitted.
 
-Plan is an additional host policy boundary for agent tools:
-
-- no plugin tool is visible or executable in Plan;
-- the deny precedes manifest risk, declared/granted permissions, session
-  grants, and the `auto` permission mode;
-- a direct forged `tools.execute` call returns `PLUGIN_DISABLED_IN_PLAN` and is
-  audited; it is not forwarded to the plugin runtime;
-- plugin commands and panels may remain usable as explicit user UI actions,
-  but they cannot become model-callable Plan tools or silently mutate Plan
-  state.
+Plugin tools are hidden and denied in Plan/Goal by default. A runtime tool
+registration may opt in with non-empty `planSafeActions`; only an `args.action`
+in that list may execute in those modes. The list is checked against the schema's
+action enum when present. Keep the manifest descriptor and runtime registration
+in sync: the runtime registration drives the executable tool. Risk `low`, session
+grants, and `auto` do not substitute for the declaration. Host policy and the
+plugin runner both check it; a disallowed runner action is `PERMISSION_DENIED`.
+The declaration is an author assertion of read-only behavior, not a side-effect
+sandbox (ADR 0211).
 
 ## 8. Network and external links
 
 - `net.fetch` is not granted by default
 - `openExternal` should confirm. The host parses the URL and opens only
   `http:`, `https:`, and `mailto:` (D330 / ADR 0168); other schemes fail with
-  `INVALID_ARGUMENT` and never reach `shell.openExternal`. `fs.openDefault` and
-  `fs.reveal` are separate: each accepts only an existing root-relative file
-  that already passes the plugin's `fs.read` policy. They are intended for
-  explicit file-view actions, not arbitrary URL or absolute-path opening;
-  `fs.reveal` only asks the OS file manager to select the file.
+  `INVALID_ARGUMENT` and never reach `shell.openExternal`. `fs.openDefault`,
+  `fs.openInBrowser`, and `fs.reveal` are separate: each accepts only an
+  existing file that already passes the plugin's `fs.read` policy. The Browser
+  action accepts HTML files only and opens a new work-panel resource tab; it
+  does not grant Browser CDP access. These APIs are intended for explicit
+  file-view actions, not arbitrary URL opening. The host-mediated file actions
+  also allow absolute paths under registered project roots; `fs.reveal` only
+  asks the OS file manager to select the file.
 - Plugins are forbidden from silently downloading and executing binaries (not done at all in MVP)
 
 ### 8.0 Egress allowlist
@@ -345,8 +348,14 @@ outbound path the host owns answers to it.
 
 - **Panel sessions.** `sandbox: true` removes Node, not the network, so a panel
   was previously a full browser that never consulted `net.fetch`. The session now
-  runs a `webRequest` filter, refuses every device permission, and denies
-  `window.open`, which would otherwise mint a window outside the filtered session
+  runs a `webRequest` filter, refuses every device permission except an
+  audio-only microphone request from a plugin granted `ui.microphone` (§8.2), and
+  denies `window.open`, which would otherwise mint a window outside the filtered
+  session. The session is one persisted partition per plugin
+  (`persist:pi-plugin-<pluginId>`), shared by its panel window and its docked
+  views, and both get the same filter. `file:`, `data:`, `blob:`, `devtools:`,
+  `chrome-extension:`, and the read-only theme-asset scheme are not network
+  requests and pass the filter
 - **`pi.net.fetch`.** Checks the allowlist and follows redirects by hand, because
   an allowed host that 30x-es to an undeclared one would carry the request out.
   The host's shared hop loop owns both default and injected single-hop
@@ -368,8 +377,10 @@ outbound path the host owns answers to it.
   instead of being buffered, and a send queue above 4 MiB is refused rather
   than grown. Frames are addressed to the owning plugin only.
 
-An absent, empty, or malformed list means no egress at all, and a bare `*` is
-refused at install so nobody declares their way out. This is what makes a
+An absent, empty, or malformed list means no egress at all, and a bare `*`
+fails `validateManifest()` so nobody declares their way out: `pi-plugin check`
+reports it and the host refuses to load the plugin. The host-core installer
+does not read `net.domains`, so such a package installs and then fails to load. This is what makes a
 generous `fs.read` scope affordable (§6).
 
 Still open, tracked separately: `agent.prompt.inject` (skill text can ask a
@@ -506,7 +517,8 @@ The host should be able to:
 9. An MCP server declared with an absolute `command` fails manifest validation;
    a non-loopback plain-HTTP URL is accepted only when its host is declared in
    `manifest.net.domains` and the UI shows the unencrypted-connection warning
-10. A low-risk or granted plugin tool still fails closed in Plan
+10. A plugin tool without plan-safe actions, or an action outside its list,
+    still fails closed in Plan/Goal regardless of risk or grants
 
 
 ## 11. Implementation status
@@ -557,7 +569,7 @@ present in the plugin API: the methods are gated by those permissions and an
 authorized call is refused with a coded `UNSUPPORTED` refusal that is audited,
 because this host has no device backend yet, so nothing reaches a device.
 `net.websocket` is implemented: connections are host-owned, allowlist-checked,
-bounded, and released with the plugin (§8.1).
+bounded, and released with the plugin (§8.0).
 
 Not enforced yet:
 
@@ -567,7 +579,9 @@ Not enforced yet:
   API it is supposed to use, not one that bypasses it (ADR 0008 D009)
 - CPU / memory limits
 - Signature verification (packages are only sha256-checked)
-- Declared manifest permissions are auto-granted at load time, subject to the
-  user unchecking them at install
+- Declared manifest permissions are granted as a whole. The install review has
+  no per-permission toggle, and the installer refuses a grant that leaves out
+  any declared permission (`PLUGIN_PERMISSION_DENIED: missing grant for
+  <permission>`); a load with no recorded grant takes the declared set
 - A `userSelected` root does not survive a restart, so a plugin has to ask again
   each session

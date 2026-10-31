@@ -1,12 +1,44 @@
 import { build } from "esbuild";
+import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 const outputDir = join(packageRoot, "dist-bundle");
+
+const resizeWorkerBanner = [
+  "import { createRequire as __piCreateRequire } from 'node:module';",
+  "import { fileURLToPath as __piFileURLToPath } from 'node:url';",
+  "import { dirname as __piDirname } from 'node:path';",
+  "const require = __piCreateRequire(import.meta.url);",
+  "const __dirname = __piDirname(__piFileURLToPath(import.meta.url));",
+].join(" ");
 const banner = "import { createRequire as __piCreateRequire } from 'node:module'; const require = __piCreateRequire(import.meta.url);";
+
+async function bundleImageResizeAssets(directory) {
+  const codingAgentEntry = fileURLToPath(
+    import.meta.resolve("@earendil-works/pi-coding-agent"),
+  );
+  const codingAgentRequire = createRequire(codingAgentEntry);
+  const photonEntry = codingAgentRequire.resolve("@silvia-odwyer/photon-node");
+  const chunksDirectory = join(directory, "chunks");
+  await mkdir(chunksDirectory, { recursive: true });
+  await build({
+    entryPoints: [join(dirname(codingAgentEntry), "utils/image-resize-worker.js")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    minify: true,
+    outfile: join(chunksDirectory, "image-resize-worker.js"),
+    banner: { js: resizeWorkerBanner },
+  });
+  await copyFile(
+    join(dirname(photonEntry), "photon_rs_bg.wasm"),
+    join(chunksDirectory, "photon_rs_bg.wasm"),
+  );
+}
 
 export async function writeBundlePackageManifest(directory) {
   await writeFile(
@@ -35,6 +67,8 @@ export async function bundleAgentRuntime(outputDir = join(packageRoot, "dist-bun
       define: { PI_BUNDLED_NODE: "true" },
       banner: { js: banner },
     });
+
+    await bundleImageResizeAssets(stagingDir);
     await writeBundlePackageManifest(stagingDir);
 
     try {

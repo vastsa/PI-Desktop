@@ -22,10 +22,22 @@ export type TurnEndedPayload = {
   reason: TurnEndReason;
 };
 
+export type TranscriptRewriteLease = {
+  commit: () => void;
+  rollback: () => AgentEventEnvelope[];
+};
+
 export type SessionCoordinationDependencies = {
   activeTurns: Map<string, string>;
   getMainWindow: () => BrowserWindow | null;
   getViewingSessionId: () => string | null;
+  /**
+   * Told the moment a turn opens, with the identity the host just made durable.
+   * Nothing else observes a turn start, so this is where a plugin surface learns
+   * that the selected session began running (spec 07-plugins/03 §session).
+   * Optional: coordination stays usable without any observer.
+   */
+  onTurnStarted?: (sessionId: string, turnId: string) => void;
 };
 
 /**
@@ -39,6 +51,7 @@ export function createSessionCoordination({
   activeTurns,
   getMainWindow,
   getViewingSessionId,
+  onTurnStarted,
 }: SessionCoordinationDependencies) {
   const sessionOperationTails = new Map<string, Promise<void>>();
   const turnSettlements = new Map<string, Set<() => void>>();
@@ -57,6 +70,102 @@ export function createSessionCoordination({
    * the frozen record already owns the turn.
    */
   const pendingAbortReasons = new Map<string, TurnEndReason>();
+  /** Turn identities remain until a transcript rewrite fences their late events. */
+  const startedTurnsBySession = new Map<string, Set<string>>();
+  const invalidatedTranscriptTurns = new Map<string, Set<string>>();
+  const rewrittenSessions = new Set<string>();
+  const transcriptRewriteFences = new Map<
+    string,
+    { turnIds: Set<string>; events: AgentEventEnvelope[]; forgotten: boolean }
+  >();
+
+  function recordTurnStart(sessionId: string, turnId: string): void {
+    const id = sessionId.trim();
+    const turn = turnId.trim();
+    if (!id || !turn) return;
+    const turns = startedTurnsBySession.get(id) ?? new Set<string>();
+    turns.add(turn);
+    startedTurnsBySession.set(id, turns);
+    try {
+      onTurnStarted?.(id, turn);
+    } catch {
+      // An observer must never fail the turn it was told about. Each plugin
+      // surface owns its delivery errors and logs them where it delivers.
+    }
+  }
+
+  function beginTranscriptRewrite(sessionId: string): TranscriptRewriteLease {
+    const id = sessionId.trim();
+    if (!id) throw new Error("sessionId is required for transcript rewrite");
+    if (transcriptRewriteFences.has(id)) {
+      throw new Error("a transcript rewrite is already active for this session");
+    }
+    const state = {
+      turnIds: new Set(startedTurnsBySession.get(id) ?? []),
+      events: [] as AgentEventEnvelope[],
+      forgotten: false,
+    };
+    transcriptRewriteFences.set(id, state);
+
+    const finish = (committed: boolean): AgentEventEnvelope[] => {
+      if (transcriptRewriteFences.get(id) !== state) return [];
+      transcriptRewriteFences.delete(id);
+      if (state.forgotten) {
+        clearTranscriptRewriteHistory(id);
+        return [];
+      }
+      if (!committed) return state.events;
+
+      const invalidated = invalidatedTranscriptTurns.get(id) ?? new Set<string>();
+      for (const turnId of state.turnIds) invalidated.add(turnId);
+      invalidatedTranscriptTurns.set(id, invalidated);
+      rewrittenSessions.add(id);
+      startedTurnsBySession.delete(id);
+      state.events.length = 0;
+      return [];
+    };
+
+    return {
+      commit: () => {
+        finish(true);
+      },
+      rollback: () => finish(false),
+    };
+  }
+
+  function deferTranscriptEvent(envelope: AgentEventEnvelope): boolean {
+    const state = transcriptRewriteFences.get(envelope.sessionId.trim());
+    if (!state) return false;
+    state.events.push(envelope);
+    return true;
+  }
+
+  function isStaleTranscriptEvent(
+    envelope: AgentEventEnvelope,
+    currentTurnId: string | undefined,
+  ): boolean {
+    const sessionId = envelope.sessionId.trim();
+    const turnId = envelope.turnId?.trim() || currentTurnId?.trim();
+    if (turnId && invalidatedTranscriptTurns.get(sessionId)?.has(turnId)) return true;
+    return rewrittenSessions.has(sessionId) && !turnId;
+  }
+
+  function forgetTranscriptRewriteHistory(sessionId: string): void {
+    const id = sessionId.trim();
+    if (!id) return;
+    const fence = transcriptRewriteFences.get(id);
+    if (fence) {
+      fence.forgotten = true;
+      return;
+    }
+    clearTranscriptRewriteHistory(id);
+  }
+
+  function clearTranscriptRewriteHistory(sessionId: string): void {
+    startedTurnsBySession.delete(sessionId);
+    invalidatedTranscriptTurns.delete(sessionId);
+    rewrittenSessions.delete(sessionId);
+  }
 
   async function acquireSessionOperation(sessionId: string): Promise<() => void> {
     const id = sessionId.trim();
@@ -253,6 +362,11 @@ export function createSessionCoordination({
     turnFinalizations,
     pendingAbortReasons,
     acquireSessionOperation,
+    recordTurnStart,
+    beginTranscriptRewrite,
+    deferTranscriptEvent,
+    isStaleTranscriptEvent,
+    forgetTranscriptRewriteHistory,
     addActiveTurnUsage,
     activeToolCallKey,
     planSubmissionTurnKey,

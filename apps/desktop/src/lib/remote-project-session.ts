@@ -2,6 +2,7 @@ import type { SessionSummary } from "@pi-desktop/shared";
 import { api } from "./api";
 import { isRemoteSession, safeSessionSummary } from "./remote-session-safety";
 import { sessionIsReusableEmpty } from "./session-create";
+import { isAutomationSession } from "./session-origin";
 import { sessionIsArchived } from "./sidebar-preferences";
 import type { SessionRuntime } from "../stores/runtime/session-runtime";
 import type { StoreAccess } from "../stores/slices/types";
@@ -26,7 +27,8 @@ export async function openRemoteProjectSession(
   const request = (async () => {
     const state = get();
     const latest = state.sessions.filter((session) =>
-      session.remoteHostKey === project.hostKey && session.remoteProjectId === project.projectId
+      !isAutomationSession(session)
+      && session.remoteHostKey === project.hostKey && session.remoteProjectId === project.projectId
       && !sessionIsArchived(session.id, state.sessionMeta),
     ).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
     if (latest && sessionIsReusableEmpty(latest, {

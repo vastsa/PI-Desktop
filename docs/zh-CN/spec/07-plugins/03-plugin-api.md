@@ -16,7 +16,7 @@
 在插件运行时内部，有一个全局可用：
 
 ```ts
-declare const pi: PiPluginHostApi;
+declare const pi: PluginHostApi;
 ```
 
 ## 3. API 概述（MVP）
@@ -34,9 +34,9 @@ pi.app.setTheme(themeId: "system" | "light" | "dark" | `plugin:${string}`): Prom
 
 ```ts
 type PluginAppearance = {
-  theme: string        // 原始偏好："light" | "dark" | "system" | "plugin:<pluginId>:<themeId>"
-  base: "light" | "dark" | "system"  // 该偏好解析出的调色板
-  locale: string       // 当前语言标签（例如 "en"、"zh-CN"）
+  theme: string        // raw preference: "light" | "dark" | "system" | "plugin:<pluginId>:<themeId>"
+  base: "light" | "dark" | "system"  // palette the preference resolves to
+  locale: string       // active language tag (e.g. "en", "zh-CN")
   pluginTheme: { id: string; base: "light" | "dark"; css: string } | null
 }
 ```
@@ -62,10 +62,10 @@ type PluginAppearance = {
 
 ```ts
 pi.themes.upsert(input: {
-  id: string;           // 本地 id，规则同 contributes.themes[].id
+  id: string;           // local id, same rules as contributes.themes[].id
   label: string;
   base: "light" | "dark";
-  css: string;          // 使用 sanitizeThemeCss 消毒
+  css: string;          // sanitized with sanitizeThemeCss
 }): Promise<void>
 
 pi.themes.remove(themeId: string): Promise<void>
@@ -81,8 +81,8 @@ pi.themes.list(): Promise<Array<{ id: string; themeId: string; label: string; ba
 ### 插件
 ```ts
 pi.plugin.getId(): string
-pi.plugin.getManifest(): PluginManifestV1
-pi.plugin.getSettings<T=Record<string, unknown>>(): Promise<T>
+pi.plugin.getManifest(): PluginManifest
+pi.plugin.getSettings(): Promise<Record<string, unknown>>
 pi.plugin.setSettings(partial: Record<string, unknown>): Promise<void>
 pi.plugin.getDataPath(): Promise<string> // plugin-private directory
 ```
@@ -90,7 +90,8 @@ pi.plugin.getDataPath(): Promise<string> // plugin-private directory
 插件页面会渲染 `contributes.settings` 中声明的字段，并将修改持久化到插件私有设置文件。
 支持生成字符串、数字、布尔、枚举、JSON 和 `shortcut` 控件。生成式 `title` /
 `description` / `enum[].label` 是作者语言纯字符串，宿主不会在这些字段上解析 locale
-map。需要本地化设置页的插件应贡献 `settingsDestinations` 并读取 `pi.app.getLocale`
+map。需要本地化设置页的插件使用自己的面板/视图并读取 `pi.app.getLocale`，
+主题设置通过数据型 `scenicThemes` 交给宿主渲染；`settingsDestinations` 不是已实现的公开贡献
 （ADR 0280）。快捷键仅属于插件域：只有在 PI-Desktop 窗口聚焦且插件激活范围匹配当前项目时，
 才会调用声明的命令；本版本不会注册操作系统全局快捷键。用户编辑后，主机会向插件发送
 `plugin:settingsChanged`，便于刷新内存中的配置。
@@ -107,6 +108,12 @@ pi.commands.register(def: {
 pi.commands.unregister(id: string): Promise<void>
 ```
 
+宿主按原值保存命令 ID，不会自动添加前缀。建议使用插件专属命名空间，避免 ID 冲突。
+插件可以更新自己注册的命令；若 ID 已由另一个已加载的插件占用，注册操作将以
+`CONFLICT` 错误拒绝。注销其他插件的命令将以 `PERMISSION_DENIED` 错误拒绝。
+注销不存在的 ID 会成功返回，不产生任何变更。禁用或卸载插件时，宿主会移除该插件的
+命令，并释放相应 ID。
+
 ### 输入框文本转换（`composer.transform`）
 
 插件可通过 `manifest.contributes.composerTransforms` 声明由用户主动触发的文本操作。
@@ -117,7 +124,7 @@ pi.commands.unregister(id: string): Promise<void>
 type PluginComposerTransformInput = {
   id: string;
   text: string;
-  modelKey?: string; // 当前 Composer 提供商/模型 key；不含凭据
+  modelKey?: string; // current Composer provider/model key; no credentials
 };
 
 type PluginModule = {
@@ -147,6 +154,62 @@ type PluginModule = {
     ]
   }
 }
+```
+
+### 输入框建议（`composer.suggest`）
+
+插件可以为用户当前正在查看的会话输入框提供一条短建议。草稿为空时它显示在占位符层，
+用户按 `Tab` 采用、按 `Esc` 忽略，开始输入也会让它消失。它不是消息、不是气泡，
+插件也无法替用户发送。
+
+```ts
+pi.composer.suggest(input: {
+  sessionId: string;  // the session from session:turnEnded
+  turnId?: string;    // the turn the text answers; an overtaken turn is refused
+  text: string;       // one line; folded and cut at 200 characters
+  ttlMs?: number;     // default 120000; clamped to 1000..600000
+}): Promise<{ shown: true } | {
+  shown: false;
+  reason:
+    | "session-not-visible" // that session is not on screen
+    | "draft-not-empty"     // the user has text or an attachment in the draft
+    | "stale-turn"          // the session ran a newer turn
+    | "replaced"            // a newer suggestion took the slot first
+    | "unsupported";        // no window, no composer, or no answer in time
+}>
+
+pi.composer.clearSuggestion(input?: { sessionId?: string }): Promise<{ ok: true }>
+```
+
+两个调用都需要 `composer.suggest` 权限。无法展示不是错误：调用会返回
+`{ shown: false, reason }`，插件可以记录这次落空并决定是否再花一次补全预算。
+参数不合法（`sessionId` 为空、文本没有可见内容、`ttlMs` 不是数字）会像其他宿主 API 一样抛
+`INVALID_PARAMS`，没有授予权限则抛 `PERMISSION_DENIED`。
+
+宿主只在以下条件全部满足时显示建议，并在每次变化后重新检查：命名的会话正是当前显示的会话、
+草稿为空（无文本且无附件）、命名的轮次仍是该会话最新的轮次、有输入框处于可输入状态。
+每个会话同时最多一条建议；更新的建议会替换它，并把被替换的调用答复为 `replaced`。
+下列任一情况都会清除建议：任何草稿变化（输入、粘贴、附件、`composer.insertText`、
+`composer.replaceDraft`）、发送、切换会话、新一轮开始、插件卸载或被禁用、
+`pi.composer.clearSuggestion`、页面重载、窗口关闭，以及建议自身的存活时间到期。
+采用（`Tab`）会把文本写入草稿、光标置末，并保留已暂存的附件。
+
+调用会记录审计：插件 id、会话，以及是否显示成功。若插件用模型生成文本，还需单独声明该 API
+所需的权限，例如 `agent.complete` 与 `models.list`。
+
+```js
+pi.events.on("session:turnEnded", async (event) => {
+  if (event.reason !== "completed") return;
+  const active = await pi.session.getActive();
+  if (active?.sessionId !== event.sessionId) return;
+  const text = await writeNextLine(active); // the plugin's own model request
+  if (!text) return;
+  await pi.composer.suggest({
+    sessionId: event.sessionId,
+    turnId: event.turnId,
+    text,
+  });
+});
 ```
 
 ### 语音（`speech.adapter.register`）
@@ -193,11 +256,11 @@ type PluginNotificationPermission = "granted" | "denied" | "unknown" | "unsuppor
 ### 项目（需要 `project.create`）
 
 ```ts
-pi.project.create(input: { path: string }): Promise<{
-  projectId: number
-  path: string
-  name: string
-}>
+pi.ui.revealView(input?: {
+  viewId?: string   // one of contributes.views; omittable when there is one
+  location?: string // the same opaque subject a view already receives
+  sessionId?: string // the session whose panel shows it; defaults to the active one
+}): Promise<void>
 ```
 
 该方法创建或复用宿主持久项目记录，但不会切换当前工作区。返回的
@@ -206,6 +269,28 @@ pi.project.create(input: { path: string }): Promise<{
 `project.create`；省略 `projectId` 的导入会保持未绑定，`projectPath` 只是历史来源
 元数据，本身不会创建项目。
 
+`pi.ui.revealView` 在某个会话的工作面板中显示插件自己的 `contributes.views`，
+这是替代插件直接读写宿主导航的受支持接口：
+
+```ts
+pi.project.create(input: { path: string }): Promise<{
+  projectId: number
+  path: string
+  name: string
+}>
+```
+
+和视图本身一样需要 `ui.view`。宿主解析视图并拒绝不能唯一对应一个已声明视图的
+`viewId`（没有声明任何视图、或名字未知为 `NOT_FOUND`；声明多个却未指名时为
+`INVALID_ARGUMENT`）；`location` 上限 8 KiB。`sessionId` 会与用户当前正在看的
+会话比较：已不是当前会话时以 `INVALID_ARGUMENT` 拒绝，而不是打开一个没人看的
+标签页；没有选中会话时同样拒绝。标签页属于外壳——插件给出视图与主体，由外壳
+打开并聚焦——因此 `location` 仍沿 `piViewOpen` / `view:open` 传递，已加载的视图
+不会被重载。
+
+`pi.ui.openPanel()` 打开独立窗口，`pi.browser.reveal()` 激活 Browser，
+`pi.fs.openDefault` / `pi.fs.reveal` 把文件交给操作系统；三者都不是它。
+
 ### 工作区/fs
 ```ts
 pi.workspace.get(): Promise<{
@@ -213,24 +298,37 @@ pi.workspace.get(): Promise<{
   name: string;
   projectId?: string;
   roots?: Array<{ path: string; name: string; primary: boolean }>;
+  remote?: { path: string; readOnly: true }; // 仅 SSH 项目，见下文
 } | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
-pi.fs.readPreview(pathFromRoot: string): Promise<{
+pi.fs.stat(pathFromRoot: string, grantId?: string): Promise<{
+  size: number;
+  mtimeMs: number;
+}>
+pi.fs.readRange(
+  pathFromRoot: string,
+  byteOffset: number,
+  length: number,
+  grantId?: string,
+): Promise<{ bytes: Uint8Array; totalSize: number }>
+pi.fs.readPreview(pathFromRoot: string, options?: { workspacePath: string }): Promise<{
   kind: "text" | "image" | "binary" | "tooLarge"
   content?: string     // UTF-8 when kind is "text"
   dataUrl?: string     // data URL when kind is "image"
   size: number
 }>
 pi.fs.openDefault(pathFromRoot: string): Promise<void>
+pi.fs.openInBrowser(pathFromRoot: string): Promise<void>
 pi.fs.reveal(pathFromRoot: string): Promise<void>
 pi.fs.writeText(pathFromRoot: string, content: string): Promise<void>
 pi.fs.glob(pattern: string): Promise<string[]>
-pi.fs.list(pathFromRoot: string): Promise<Array<{
+pi.fs.list(pathFromRoot: string, options?: { workspacePath: string }): Promise<Array<{
   name: string;
-  path: string;        // 相对 root，可直接用于 readText / list
+  path: string;        // root-relative, usable directly with readText / list
   isDirectory: boolean;
-  size?: number;       // 仅文件
+  size?: number;       // files only
+  mtimeMs?: number;    // files only; Unix epoch milliseconds
 }>>
 pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
@@ -245,6 +343,19 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 `fs.readPreview` 为一份已存在且可读取的文件做应用内预览分类。它与 `fs.readText`
 使用相同的 `fs.read` 检查，拒绝目录，并返回 `text`（上限 512 KiB）、`image`
 （上限 5 MiB，data URL）、`binary` 或 `tooLarge`。插件不会收到绝对路径。
+
+SSH 项目的 `workspace.get` 保留不透明的 `remote-project:` 身份，并新增
+`remote: { path, readOnly: true }`。`remote.path` 仅用于显示，不能交给本地文件系统。
+`fs.list` 与 `fs.readPreview` 经配对 owner Host 的可选 `workspacePluginFiles`
+能力读取；工作区根必须位于 Host 文件夹选择器的浏览根内，或精确匹配已在该 Host
+注册的规范项目根；Host 继续检查规范路径包含关系、受保护目录、凭据拒绝列表与插件
+声明的 scope。
+远程预览还返回真实 `mtimeMs`；其他文件通道仍限本地并明确拒绝远程身份。
+缺少能力返回 `HOST_VERSION_MISMATCH`，不会改读 Desktop 文件系统。
+
+可选 `workspacePath` 应为视图捕获的工作区身份，不匹配返回 `WORKSPACE_CHANGED`。
+包括未传新参数的旧调用在内，所有读取均在首次等待前捕获根；根、远程绑定或插件
+生命周期改变后丢弃过期结果。参见[决策](/adr/plugin-remote-workspace-reads)。
 
 `fs.openDefault` 使用操作系统默认关联应用打开一个已存在的文件。它与
 `fs.readText` 使用相同的 `fs.read` 根目录、符号链接、受保护路径、拒绝列表和范围检查；
@@ -279,24 +390,24 @@ pi.agent.registerTool(tool: {
  description: string
  risk: "low"|"medium"|"high"
  schema: unknown
+ planSafeActions?: readonly string[]
  execute: (args: unknown, ctx: ToolExecContext) => Promise<unknown>
 }): Promise<void>
 
 pi.agent.unregisterTool(name: string): Promise<void>
 ```
 
-注册的插件代理工具是仅代理的贡献。在 Plan 期间
-主机将它们从模型工具列表中过滤出来并拒绝直接执行
-`PLUGIN_DISABLED_IN_PLAN`，包括当明显风险为 `low` 时，用户
-具有 `allow-session` 授予，或者会话权限模式为 `auto`。一个
-成功的计划批准使相同的注册工具再次符合资格
-所选的 Agent 权限策略。
+插件工具默认在 Plan/Goal 中隐藏并拒绝。运行时工具注册可通过非空 `planSafeActions`
+显式加入，只有 `args.action` 位于该列表时才允许执行。有 schema action enum 时会校验取值。
+清单描述符应与运行时注册保持一致，真正执行的工具由运行时注册决定。
+`risk: "low"`、会话授权和 `auto` 不能代替该声明。宿主策略与插件执行器都会校验，
+执行器对越界 action 返回 `PERMISSION_DENIED`。该列表是作者的只读承诺，不是副作用沙盒（ADR 0211）。
 
 ```ts
 type ToolExecContext = {
  sessionId: string
  turnId?: string
- /** 本会话执行模型，`providerId/modelId`。这是配置，不是转录。 */
+ /** Executor model for this session, `providerId/modelId`. Configuration, not transcript. */
  modelKey?: string
  thinkingLevel?: ThinkingLevel
  signal?: AbortSignal
@@ -312,11 +423,14 @@ type ToolExecContext = {
 pi.models.list(): Promise<PluginModelInfo[]>
 
 type PluginModelInfo = {
-  key: string                 // `${providerId}/${modelId}` — 第一个斜杠切开
+  key: string                 // `${providerId}/${modelId}` — first slash splits
   providerId: string
   providerName: string
   modelId: string
   label: string
+  alias?: string
+  availableForSubagents?: boolean
+  isDefault?: boolean
   supportsReasoning: boolean
   thinkingLevels: ThinkingLevel[]
 }
@@ -334,15 +448,15 @@ provider 调用该回调：
 ```ts
 type PluginProviderOAuthRequest = {
   operation: "login" | "refresh"
-  providerId: string       // 插件本地 provider 声明 id
-  loginId?: string         // 仅登录时提供；传给 prompt/notify
-  credential?: PluginProviderOAuthCredential // 仅刷新时提供；属于该 provider 的凭据
+  providerId: string       // plugin-local contribution id
+  loginId?: string         // login only; pass to prompt/notify
+  credential?: PluginProviderOAuthCredential // refresh only; this provider's credential
 }
 
 type PluginProviderOAuthCredential = {
   accessToken: string
   refreshToken?: string
-  expiresAt?: number       // Unix epoch 毫秒
+  expiresAt?: number       // Unix epoch milliseconds
   accountLabel?: string
   headers?: Record<string, string>
 }
@@ -388,12 +502,55 @@ const code = await pi.providers.oauth.prompt(loginId, {
 ### session（需要 `session.read`）
 ```ts
 pi.session.getLlmContext(): Promise<PluginLlmContext>
+
+type PluginLlmMessage = {
+  role: "user" | "assistant" | "tool" | "system"
+  content: string
+  toolName?: string
+}
+
+type PluginLlmContext = {
+  sessionId: string
+  modelKey: string | null
+  thinkingLevel?: ThinkingLevel
+  messages: PluginLlmMessage[]
+  truncated: boolean
+}
 ```
 
 插件不能传入 session id。身份来自进行中的 `plugins.execute` 会话（D333 / D336）。
 在工具执行之外调用会以 `INVALID_ARGUMENT` 失败。子代理行会被省略。插件自己
 正在飞行的工具调用会从尾部剥掉。compaction 摘要替换检查点之前的历史。
 合计内容上限 200k 字符。
+
+### 会话跟随（不需要额外权限）
+
+选中会话就是用户正在看的东西，宿主本来就在显示它；跟随它不需要权限，
+与 `workspace.get` 报告当前打开的文件夹同理。
+
+```ts
+pi.session.getActive(): Promise<PluginActiveSession | null>
+
+type PluginActiveSession = {
+  sessionId: string
+  projectPath: string | null   // working directory of the session's project
+  activeTurn: { turnId: string; startedAt: number } | null
+}
+```
+
+它不接受 session id：宿主报告选中项，而不允许插件去寻址用户没在看的会话。若插件的
+激活范围与当前项目不匹配，调用以 `PERMISSION_DENIED` 拒绝——与 `pi.ui.revealView`
+和视图 IPC 的答案一致，因此按项目激活的插件不会得知另一个项目打开了哪个会话。
+`null` 表示首页、设置页，或没有选中任何聊天会话。`activeTurn` 是该会话正在跑的
+那个持久宿主回合，空闲时为 `null`，因此插件不必从上一回合的结束事件或草稿变化
+去推断「正在运行的任务」；`startedAt` 是宿主时钟（epoch 毫秒），取自该回合开始的
+时刻。
+
+快照是值而不是句柄：两次调用之间会话可能已经切换或结束，因此插件应比较
+`sessionId`，把不一致当作「这个答案属于用户已经离开的会话」。下面的
+`session:activated` 事件在快照变化时投递同一载荷，这才是无需轮询的原因。
+`session.getLlmContext` 是另一项能力：它限定在插件自己进行中的工具调用上，
+无法寻址选中会话。
 
 ### 会话自动标题（需要 `session.autoTitle`）
 
@@ -403,9 +560,9 @@ pi.session.getLlmContext(): Promise<PluginLlmContext>
 type PluginAutoTitleContext = {
   sessionId: string
   expectedTitle: string
-  userPrompt: string // 第一条用户消息，最多 1,000 个字符
-  assistantReply?: string // 第一条助手回复，最多 500 个字符
-  modelKey?: string // 来自会话配置的 providerId/modelId
+  userPrompt: string // first user message, at most 1,000 characters
+  assistantReply?: string // first assistant reply, at most 500 characters
+  modelKey?: string // providerId/modelId from the session configuration
 }
 
 pi.session.getAutoTitleContext(input: {
@@ -443,16 +600,16 @@ pi.session.import(input: {
   source: string
   externalId: string
   title: string
-  projectId?: number | null // 来自 pi.project.create；省略即未绑定
+  projectId?: number | null // explicit id from pi.project.create; omitted is unbound
   projectPath?: string | null
   modelId?: string | null
   providerId?: string | null
-  createdAt: string // RFC3339
+  createdAt: string // strict RFC3339
   updatedAt: string // >= createdAt
   messages: Array<{
     role: "user" | "assistant" | "tool"
     content: string
-    createdAt: string // 会话内单调递增
+    createdAt: string // monotonic within the session
     modelId?: string
     providerId?: string
     toolName?: string
@@ -512,12 +669,12 @@ SDK 的破坏性变更。
 
 ```ts
 pi.usage.listTurns(input?: {
-  fromMs?: number      // 含端点的窗口起点（epoch ms）；默认 toMs - 30 天
-  toMs?: number        // 含端点的窗口终点（epoch ms）；默认当前时间
+  fromMs?: number      // inclusive window start, epoch ms; default toMs - 30 days
+  toMs?: number        // inclusive window end, epoch ms; default now
   projectId?: number | null
   sessionId?: string
-  cursor?: string      // 上一次 nextCursor 返回的不透明分页游标
-  limit?: number       // 1..=500 行；默认 200
+  cursor?: string      // opaque page cursor from the previous nextCursor
+  limit?: number       // 1..=500 rows; default 200
 }): Promise<{
   turns: Array<{
     turnId: string; sessionId: string; sessionTitle: string | null
@@ -549,11 +706,12 @@ pi.usage.listTurns(input?: {
 type SessionCollaborationOperation =
   | "session/collaboration/spawn"
   | "session/collaboration/send"
+  | "session/collaboration/list"
   | "session/collaboration/status"
   | "session/collaboration/result"
   | "session/collaboration/cancel"
 
-// 所有调用均使用 pi.desktop.invoke({ operation, args: [input] })。
+// All calls use pi.desktop.invoke({ operation, args: [input] }).
 type SpawnInput = {
   task: string
   title?: string
@@ -568,6 +726,7 @@ type SendInput = {
   notifyOnCompletion?: boolean
   idempotencyKey?: string
 }
+type ListInput = {}
 type StatusInput = { sessionId: string }
 type ResultInput = { sessionId: string; messageId?: string; turnId?: string }
 type CancelInput = { sessionId: string; messageId?: string }
@@ -638,6 +797,7 @@ pi.shell.openExternal(url: string): Promise<void>
 
 ### browser（需要 `browser.cdp`）
 ```ts
+pi.browser.reveal(): Promise<void>
 pi.browser.navigate(input: { url?: string; path?: string }): Promise<BrowserState | null>
 pi.browser.action(input: { action: "back" | "forward" | "reload" | "stop" }): Promise<void>
 pi.browser.setBounds(hole: { x: number; y: number; width: number; height: number }): Promise<unknown>
@@ -662,6 +822,10 @@ pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 仅在 Browser 视图可见时可用。视图隐藏时调用会以 `UNAVAILABLE` 失败；应通过 `BrowserPreview`
 请求宿主显示 Browser 视图后再继续。
 
+截图（包括原始 `Page.captureScreenshot` CDP 调用）有 30 秒的宿主端期限。超时会以 `TIMEOUT` 失败，
+宿主会分离卡住的 CDP 会话并释放该页面的截图队列，使后续截图可以重新连接并继续。其他 CDP 方法
+沿用现有超时行为。
+
 `getHistory` 返回由主机明确记录的条目，按最新优先排列，文本和图片按捕获时间混排。
 通过 `writeText` 写入的内容，以及 Composer 用户主动粘贴事件提供的内容会被记录；主机
 不会在后台轮询或重新读取系统剪贴板。连续相同内容会合并并刷新时间戳。历史只保留在
@@ -671,6 +835,8 @@ pi.browser.cdp(input: { method: string; params?: unknown }): Promise<unknown>
 `navigate` 在当前主框架导航提交（含重定向）时返回，不等待慢图片或子框架。
 `browser:state` 立即报告加载状态，导航失败时可带 `loadError`。
 可选的 `sessionId`、`tabId` 标识宿主管理的工作面板目标；插件不能通过导航参数指定这些身份。
+拥有高风险 `browser.cdp` 权限后，`navigate` 可以通过绝对路径或 `file:` URL 打开任意已存在的本地文件。
+相对路径仍以工作区为根。本地文件页面可导航到其他已存在的本地文件；网页仍只能通过文件链接访问工作区内文件。
 
 ### 服务（需要 `background.service`）
 ```ts
@@ -919,11 +1085,18 @@ type PluginApiError = {
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
  | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
+ | string // 见下文
  message: string
 }
 ```
 
-所有 API 失败都会引发携带 `code` 的错误。
+所有 API 失败都会引发携带 `code` 的错误。上面列出的是常见取值，不是封闭枚举：宿主
+会原样转发出错层设置的 code，没有 code 的错误到达插件时为 `PLUGIN_API_FAILED`。
+桌面宿主目前还会抛出 `INVALID_PARAMS`（session、usage、project、desktop API 的
+输入校验；其他 API 用 `INVALID_ARGUMENT`）、`UNAVAILABLE`（浏览器等宿主服务缺失）、
+`PLUGIN_UNLOADED`（调用期间插件被卸载或重载）、`CONFLICT`（speech 协议已被占用）、
+`PROVIDER_ERROR`（speech 适配器返回空结果）、`WORKSPACE_CHANGED`、`OPEN_FAILED`、
+`REVEAL_FAILED` 和 `CONNECT_FAILED`。只对自己处理的 code 分支，其余按通用失败处理。
 
 ## 5. 事件（主机 -> 插件）
 
@@ -960,10 +1133,19 @@ pi.events.off(event, handler)
   也不会报错。目前尚无任何已发布宿主会发出该事件（0.14.8 也尚未包含），因此依赖它
   的插件必须按真正包含该事件的发布版本要求，而不能假定 0.14.7 或 0.14.8。
 
+- `session:activated` —— 载荷是 `PluginActiveSession` 对象或 `null`，在该快照变化时
+  发送：用户切到另一个会话（或离开聊天）、选中会话的项目变化、或它的运行回合开始
+  / 结束。投递与其它事件一样是即发即忘；载荷里的快照就是答案，漏掉一次只需调用
+  一次 `pi.session.getActive()` 补齐。不需要权限，且其中回合 id 与
+  `session:turnEnded` 报告的身份一致。
+
+- `net:websocket:open` / `net:websocket:message` / `net:websocket:close` /
+  `net:websocket:error` —— 只发给持有该 socket 的插件；见 §3 `net` 下的
+  `net.websocket`。
+
 抛出的处理程序会被记录下来，并且不会影响其他侦听器或插件。
 
-计划活动：
-- `session:activated`
+计划活动：无。
 
 ## 6. 面板桥 API
 
@@ -980,6 +1162,27 @@ window.pluginBridge.on(event, handler)
 视图 `location`：停靠视图没有窗口控制胶囊、没有拖拽带，其
 `--pi-plugin-titlebar-height` 为 `0px` 而非 `46px`。
 
+停靠视图同时跟随宿主的文字大小。它不是应用文档，无法继承渲染器的
+`--font-scale`，因此宿主把「外观 → 字体大小」（D343 / ADR 0180）乘以窗口缩放，
+作为该页面的缩放因子，并在每个新文档上重新应用。在该因子下，插件内的一个 CSS
+像素与应用内的一个 CSS 像素绘制成同样的 DIP，因此作者原有尺寸的文字与控件在任何
+设置下都与周围面板保持比例——既不需要重载，也不要求插件改用宿主设计令牌。
+视图作者能观察到的两个后果：页面像素是缩放后页面自己的像素，所以回传给「由宿主
+摆放原生内容」的 API（`pi.browser` 的 `browser.setBounds`）的矩形由宿主换算；
+把布局钉在固定窗口尺寸上的页面需要自行缩放这些值。独立 `ui.panel` 窗口与浮动
+挂件保持自己的基础尺寸：它们是独立窗口，而不是合成进应用内的表面。
+
+### 6.1 浮动挂件
+
+清单可以声明 `"ui": { "shape": "widget" }`。面板随后会以浮动挂件打开：同一个沙盒化、权限门控的页面，位于透明、无边框窗口中，没有 46px 拖拽带、没有控制胶囊，也没有矩形原生阴影。页面拥有自己的整个矩形，通常绘制一个比矩形更小的轮廓——例如一个圆形球体——因此宿主不得在该轮廓周围绘制边框。
+
+- `--pi-plugin-titlebar-height` 为 `0px`，并且无论页面声明什么 chrome 标记，旧式的附加顶部偏移也不会应用。
+- 放置方式会在页面脚本运行前发布为 `document.documentElement.dataset.piPluginPanelShape`：`panel`、`widget` 或 `view`。
+- 拖拽使用整窗拖拽映射：空白区域移动窗口，而标准控件（`button`、`input`、`a`、`[tabindex]`、……）以及每个标记了 `data-pi-plugin-no-drag` 的元素保持可点击。
+- 挂件没有胶囊，因此宿主在表面自己的上下文菜单后面提供一个等效菜单：关闭、最小化、始终置顶。插件仍然可以通过 `ui.closePanel()` 关闭自己的挂件。
+- `ui.width` / `ui.height` 会一直被尊重到 120×120（面板的最小尺寸仍为 360×280）。`ui.alwaysOnTop` 会把挂件固定在其他窗口之上，`ui.resizable` 对挂件默认为 `false`，对面板默认为 `true`。
+- 其他一切不变：相同的 preload、相同的 `pluginBridge` 通道、相同的权限门、相同的会话分区和出口策略。
+
 停靠视图还可以被指定一个要展示的对象。工作面板选项卡本来就携带的 `location`
 会投递给任何贡献视图——不再只限 `pi.browser`（它的地址栏保留自己的导航通道）：
 创建时它作为视图入口 URL 的 `piViewOpen` 查询参数传递，文档加载完成后则通过
@@ -988,29 +1191,31 @@ window.pluginBridge.on(event, handler)
 什么也不做。该载荷对主机是不透明的——每个插件自行决定 `location` 的含义——它
 不需要新权限，也不新增 SDK 方法。
 
-主机拥有的 preload 仅将固定通道转发到插件运行时：
+宿主验证来源后把调用转给插件运行时，先处理下表内置通道，再回退到 `onPanelInvoke`：
 
-| 频道 | 所需许可 |
+| 通道 | 所需权限 |
 |---|---|
-| `ui.showToast`、`ui.closePanel` | 没有超出加载的面板 |
+| `ui.showToast`, `ui.closePanel` | 已加载面板之外无需新增权限 |
 | `ui.notify` | `notify` |
-| `ui.getNotificationPermission`、`ui.requestNotificationPermission`、`ui.showNativeNotification` | `notify` |
-| `plugin.getSettings`、`workspace.get`、`app.getAppearance` | 无 |
-| `app.setTheme`、`themes.upsert`、`themes.remove`、`themes.list` | `ui.theme` |
+| `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | `notify` |
+| `plugin.getSettings`, `workspace.get`, `app.getAppearance` | 无 |
+| `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list`, `themes.setVariables` | `ui.theme` |
 | `models.list` | `models.list` |
-| `fs.readText`、`fs.readPreview`、`fs.openDefault`、`fs.reveal`、`fs.glob`、`fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list`, `fs.requestDirectory`, `fs.registerDropped` | `fs.read` |
 | `fs.writeText` | `fs.write` |
-| `clipboard.readText`、`clipboard.getHistory` | `clipboard.read` |
+| `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
 | `shell.openExternal` | `shell.openExternal` |
 | `net.fetch` | `net.fetch` |
+| `net.getCapabilities` | 无 |
+| `session.getActive` | 无 |
+| `ui.revealView` | `ui.view` |
 
 `plugin.setSettings`、`fs.remove` 和任意 Electron IPC 未暴露。主机自己
 没有实现的通道会被转发到插件的 `onPanelInvoke(channel, payload)`，
 因此插件可以自定义面板 ↔ 主进程通道；没有导出 `onPanelInvoke` 的插件
-会从自己的进程收到 `UNSUPPORTED`。主机支持的通道包括
-`skill.list`、`skill.read`、`skill.create`、`skill.update`、`skill.remove`
-和 `skill.setEnabled`。
+会从自己的进程收到 `UNSUPPORTED`。内置技能管理器使用的 `skill.list` / `read` /
+`create` / `update` / `remove` / `setEnabled` 是它自己的 `onPanelInvoke` 操作，不是通用宿主桥 API。
 
 ### 面板事件（主机 -> 面板）
 
@@ -1026,6 +1231,9 @@ window.pluginBridge.on(event, handler)
   已经从入口 URL 拿到它；这个事件投递的是之后的 location。
 - `session:turnEnded` —— 与 §5 的插件进程事件同一载荷，在宿主回合到达终止状态
   时发送。
+- `session:activated` —— 与 §5 的插件进程事件同一载荷，在选中会话、它的项目或它的
+  运行回合发生变化时发给停靠视图。独立 `ui.panel` 窗口属于应用级、不属于某个会话，
+  因此它是唯一不会收到该事件的表面。
 
 ## 7. 通话审计
 
@@ -1048,6 +1256,8 @@ window.pluginBridge.on(event, handler)
 - 服务启动/停止/重新启动
 - models.list（返回行数）
 - session.getLlmContext（会话 id、消息数、truncated 标志 —— 不含转录文本）
+- session.getActive（只记录选中会话的存在，不含转录）
+- ui.revealView（视图 id、会话 id、是否携带 location）
 - agent.complete（模型 key、体积、usage —— 不含提示或补全文本）
 - provider.oauth（插件 id、声明的 provider id、操作、结果/错误码——绝不记录凭据内容）
 
@@ -1060,12 +1270,11 @@ window.pluginBridge.on(event, handler)
 - status / retryAfter（仅 `net.fetch`：已完成调用的上游状态码，以及失败调用所
   声明的 `Retry-After` —— 绝不记录整个头部集合或响应体）
 
-## 8. 版本控制策略
+## 8. 版本策略
 
-- API 表面由 `apiVersion` 管理
-- MVP `apiVersion = 1`
-- 已弃用的 API 至少保留一个主要版本周期
-
+清单编写契约使用 `schemaVersion: 1`，当前注入 API 没有 `apiVersion` 属性或协商方法。
+新增能力优先保持兼容；检测可选方法，通过 `net.getCapabilities` 查询重定向能力，
+对旧宿主处理 `UNSUPPORTED`。SDK 类型与实际运行时分发定义可调用接口，文档中的规划名称不会自动成为 API。
 
 ## 9. 实施情况
 
@@ -1079,6 +1288,7 @@ window.pluginBridge.on(event, handler)
 - `speech.registerAdapter` / `unregisterAdapter`（`speech.adapter.register`）
 
 - `models.list`、`session.getLlmContext`
+- `session.getActive` 与 `session:activated` 事件（`ui.revealView` 需要 `ui.view`）
 - `onProviderOAuth` 和 `pi.providers.oauth.prompt` / `notify`（`provider.oauth`）
 - `clipboard.*`、`shell.openExternal`、`net.fetch`
 - `browser.*`（访客页 CDP；`browser.cdp`）

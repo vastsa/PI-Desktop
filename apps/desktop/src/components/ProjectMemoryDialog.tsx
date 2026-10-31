@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useBlockingOverlay } from "../lib/blocking-overlay";
 import type { ProjectMemory, ProjectMemoryEntry } from "@pi-desktop/shared";
 import { api } from "../lib/api";
-import { Button, Input, Textarea, TooltipButton } from "./ui";
+import { OverlayBackdrop, Button, Input, Textarea, TooltipButton } from "./ui";
 import { IconClose, IconPlus, IconSparkles, IconTrash } from "./icons";
 
 function newEntry(): ProjectMemoryEntry {
@@ -107,7 +107,7 @@ export function ProjectMemoryDialog({
 
   const dirty = memory !== null && !entriesEqual(entries, savedEntries);
   const dialog = (
-    <div
+    <OverlayBackdrop
       className="overlay project-instructions-dialog-overlay"
       role="presentation"
       onClick={() => {
@@ -221,7 +221,7 @@ export function ProjectMemoryDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </OverlayBackdrop>
   );
 
   return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);

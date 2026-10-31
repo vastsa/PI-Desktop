@@ -5,6 +5,34 @@ type RpcClient = {
 };
 
 const SEARCH_PAGE_SIZE = 30;
+const MAX_NATIVE_PROJECT_PATHS = 500;
+
+type NativeProjectHost = {
+  call(method: string, params?: unknown): Promise<unknown>;
+};
+
+/** Local project paths whose Pi `sessionDir` native discovery must honor. */
+export async function localNativeProjectPaths(host: NativeProjectHost): Promise<string[]> {
+  try {
+    const listed = (await host.call("projects.list")) as { projects?: Array<{ path?: unknown }> } | null;
+    const projects =
+      listed && typeof listed === "object" && Array.isArray(listed.projects) ? listed.projects : [];
+    const paths: string[] = [];
+    const seen = new Set<string>();
+    for (const project of projects) {
+      if (!project || typeof project.path !== "string") continue;
+      const path = project.path.trim();
+      if (!path || path.startsWith("remote-project:") || seen.has(path)) continue;
+      seen.add(path);
+      paths.push(path);
+      if (paths.length >= MAX_NATIVE_PROJECT_PATHS) break;
+    }
+    return paths;
+  } catch (error) {
+    console.warn("[session-search] projects.list failed; native sessionDir discovery skipped", error);
+    return [];
+  }
+}
 
 function compareHits(
   left: SessionSearchPage["hits"][number],
@@ -41,10 +69,12 @@ export async function searchSessionsAcrossSources(
   const offset = Number.isInteger(rawOffset) ? Math.max(0, rawOffset) : 0;
   const requiredHostRows = offset + SEARCH_PAGE_SIZE;
 
+  const projectPaths = await localNativeProjectPaths(host);
   const nativeSearch = sidecar
     ? sidecar
         .call<SessionSearchPage>("native.session.search", {
           query: Reflect.get(request, "query"),
+          projectPaths,
         })
         .catch(() => ({ hits: [], nextOffset: null }))
     : Promise.resolve<SessionSearchPage>({ hits: [], nextOffset: null });

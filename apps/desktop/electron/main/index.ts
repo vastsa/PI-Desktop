@@ -72,6 +72,7 @@ import { createSessionCoordination } from "./runtime/session-coordination";
 import { createScheduledRuntime } from "./runtime/scheduled";
 import { createDesktopServices } from "./services/desktop-services";
 import { createPluginServices } from "./services/plugin-services";
+import type { ComposerSuggestionAnswer } from "./services/composer-suggestion";
 import { wirePluginThemeRuntimeServices } from "./plugin-theme-services";
 import { createSessionCollaborationService } from "./services/session-collaboration";
 import {
@@ -304,6 +305,7 @@ let sessionLaunchRuntime: ReturnType<typeof createSessionLaunchRuntime> | null =
 const pluginServices = createPluginServices({
   dataDir,
   logger,
+  pluginActiveInProject,
   getMainWindow,
   getHost,
   sendToRenderer,
@@ -332,6 +334,14 @@ const pluginServices = createPluginServices({
       ) => Promise<any>
     )(...args);
   },
+  /**
+   * The live turn of one session, read through the one map that owns turn
+   * identity. Bound lazily because `activeTurns` is declared below, next to the
+   * coordination instance that reads it too.
+   */
+  getActiveTurn: (sessionId) => activeTurns.get(sessionId) ?? null,
+  /** The same scope lookup every plugin view IPC consults. */
+  isPluginActiveInProject: (pluginId) => pluginActiveInProject(pluginId, currentWorkspacePath()),
   vendorOAuth,
 });
 const {
@@ -385,6 +395,8 @@ const {
   activeUserSkills,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
+  disabledBuiltinSkills,
+  runtimeDisabledBuiltinSkills,
   loadUserSkillBody,
   resolveEffectiveCommandShell,
   resolveAgentRuntimeLaunch,
@@ -531,6 +543,7 @@ const {
   executeNativeMenuAction,
   dispatchNativeMenuAction,
   applyDeveloperMode,
+  applyMacosWindowTranslucency,
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
   disposePowerSaveBlockers,
@@ -553,10 +566,13 @@ closeBehaviorRuntime = createCloseBehaviorRuntime({
   dataDir,
   getLocale: () => mainState.updaterLocale,
   createTray,
+  logger,
 });
 const {
   applyCloseBehavior,
   confirmQuitDialog,
+  markLifecycleDialogRendererReady,
+  respondLifecycleDialog,
 } = closeBehaviorRuntime;
 
 const createdLauncher = createLauncher({
@@ -578,6 +594,8 @@ const {
 
 /** sessionId → open host turn id, for turn bookkeeping across agent events. */
 const activeTurns = new Map<string, string>();
+/** Host-verified completion turns whose first settled reply may be silent. */
+const completionNoticeTurns = new Set<string>();
 /** Plan submission turns end without a task-complete notification. */
 const planSubmissionTurnIds = new Set<string>();
 /** sessionId → host execution id for an approved plan currently dispatched. */
@@ -619,6 +637,17 @@ const sessionCoordination = createSessionCoordination({
   activeTurns,
   getMainWindow,
   getViewingSessionId: () => mainState.notificationViewingSessionId,
+  /**
+   * Plugin surfaces follow turn starts from here, so a selected session that
+   * begins running is reported with the durable turn id instead of being
+   * inferred from the previous turn's end.
+   */
+  onTurnStarted: (sessionId: string, turnId: string) => {
+    pluginServices.pluginSession.noteTurnStarted(sessionId, turnId);
+    // A new turn owns the composer now, so a suggestion about the previous one
+    // stops being shown and stops being showable (ADR 0333).
+    pluginServices.composerSuggestion.noteTurnStarted(sessionId, turnId);
+  },
 });
 const {
   activeTurnUsages,
@@ -626,6 +655,7 @@ const {
   addActiveTurnUsage,
   activeToolCallKey,
   planSubmissionTurnKey,
+  recordTurnStart,
   lockAbortReason,
   isTurnDispatchable,
   isSessionBusy,
@@ -703,6 +733,7 @@ const {
 const eventPersistence = createEventPersistence({
   runtimeState,
   steeringReplies,
+  completionNoticeTurns,
   activeTurns,
   activeToolCalls,
   activeToolCallKey,
@@ -717,6 +748,7 @@ const eventPersistence = createEventPersistence({
   logger,
   finishTurn,
   isStaleTerminalEvent,
+  transcriptRewrite: sessionCoordination,
   finishApprovedExecution,
   emitAgentEvent: (envelope) => emitAgentEvent(envelope),
 });
@@ -748,6 +780,9 @@ const sidecarRuntime = createSidecarRuntime({
   sessionProjects,
   loadUserSkillBody,
   activeUserSkills,
+  // Runtime consumers honor the inline-visualization switch; the Skills page
+  // keeps reading the raw host state above.
+  disabledBuiltinSkills: runtimeDisabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
 });
@@ -858,12 +893,18 @@ function registerIpc() {
     setNotificationViewingSessionId: (sessionId: string | null) => {
       mainState.notificationViewingSessionId = sessionId;
     },
+    /** The shell reports the session on screen; plugin surfaces read it. */
+    setActivePluginSession: (next) => pluginServices.pluginSession.setActiveSession(next),
+    /** The shell answers a composer suggestion through the same invoke list. */
+    settleComposerSuggestion: (answer: ComposerSuggestionAnswer) =>
+      pluginServices.composerSuggestion.settle(answer),
     getPluginLauncherWindow: () => mainState.pluginLauncherWindow,
     togglePluginLauncher,
     safeOpenExternal,
     updater,
     dataDir,
     activeTurns,
+    completionNoticeTurns,
     isTurnDispatchable,
     sessionProjects,
     persistenceOutbox,
@@ -873,6 +914,9 @@ function registerIpc() {
     sessionCapabilityContext,
     enrichSession,
     acquireSessionOperation,
+    beginTranscriptRewrite: eventPersistence.beginTranscriptRewrite,
+    forgetTranscriptRewriteHistory: sessionCoordination.forgetTranscriptRewriteHistory,
+    recordTurnStart,
     stripWinLongPrefix,
     normalizeSettings,
     validateSettingsWrite,
@@ -903,7 +947,10 @@ function registerIpc() {
     getWorkPanelChatWidthSetter: () => mainState.setWorkPanelChatWidthForWindow,
     applyCloseBehavior,
     getCloseBehavior: () => mainState.closeBehavior,
+    isMacosWindowTranslucent: () => mainState.macosWindowTranslucency,
     markMenuRendererReady,
+    markLifecycleDialogRendererReady,
+    respondLifecycleDialog,
     executeNativeMenuAction,
     scheduledRunsBySession,
     isQuitting: () => mainState.quitting,
@@ -929,7 +976,9 @@ function registerIpc() {
     refreshUserMcp,
     describeError,
     activeUserSubagentDocuments,
+    runtimeDisabledBuiltinSkills,
     disabledBuiltinSubagents,
+    disabledBuiltinSkills,
     pluginViews,
     pluginScopes,
     rememberPluginScopes,
@@ -1010,6 +1059,7 @@ registerApplicationStartup({
   planUiProbe,
   applyApplicationMenuSettings,
   applyDeveloperMode,
+  applyMacosWindowTranslucency,
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
   applyPluginLauncherShortcut,
@@ -1041,6 +1091,7 @@ registerShutdownHandlers({
   mcpOAuth,
   browserHost,
   pluginViews,
+  composerSuggestion: pluginServices.composerSuggestion,
   updater,
   logger,
   confirmQuitDialog,

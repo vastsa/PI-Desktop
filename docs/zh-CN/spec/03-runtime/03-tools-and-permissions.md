@@ -8,6 +8,67 @@
 
 ## 0. 冻结政策总结
 
+### 并行文件批次
+
+Read、Glob、Grep 是并行候选；只有 runtime 与实际本地 Host 协商文件批次协议版本 1
+成功后，Write、Edit 才加入并行候选。能力在一个 runtime/连接内固定，后台子代理也
+沿用它。旧 Host 和远程工作区保持 Write/Edit sequential，因此含写整批串行。
+sidecar 不查询本机文件系统来判断远程路径。
+
+仅含 Task 的批次保留扇出；Task 与任何文件工具混批仍整批串行。可写 Task 之后的
+读取或搜索等待委托落定；写只等待 Task 返回启动通知。Bash、TodoWrite、未知、插件、
+MCP 工具保留原有串行策略。只有选中的内建执行器接受原生预处理与批次绑定；同名
+动态工具仍为串行。
+
+符合条件的并行批次按源序校验参数、加载路径指令，再向 Host 登记每个文件调用。
+登记包含 session/delegation、新批次 ID、原始序号、调用 ID、工具名和规范参数；Host
+返回不透明的单次 ticket。登记不查询文件、不授予权限、不占执行容量。全部准备结束
+后，各执行器共用一次封存，再携带 ticket 提交 tools.execute。串行批次不登记不完整
+批次。改参、跨所有者使用、重放、封存前执行均失败。ticket 绑定异步执行上下文，
+不使用全局调用 ID 映射，避免父子代理同名 ID 相互覆盖。
+
+Host 保留现有模式和权限检查；只有已获授权的调用才通过 session/delegation 根和
+外部路径解析器识别资源。待审批调用不占活动租约或容量。较早调用身份未知且可能
+冲突时，同批后继保守等待；身份明确后只等待冲突前驱。前驱失败或拒绝不级联失败。
+不同批次或会话只保证资源互斥和排队公平，不虚构全局模型源顺序。
+
+| 工具 / 目标 | Host 资源声明 |
+|---|---|
+| 已存在常规文件 Read | 文件对象身份及解析地址共享 |
+| 已存在常规文件 Write / 普通 Edit | 文件对象身份及解析地址独占 |
+| Glob / Grep | Host 文件协调域共享 |
+| 目标不存在、身份未知、文件系统不支持 | 读取持共享域；写入持独占域 |
+| Edit MV / REM 或 CUT/PUT 命名寄存器 | 协调域独占 |
+| review 回滚 | 协调域独占，保留写后内容哈希校验 |
+
+Unix 对支持的本地文件系统使用已打开文件的 dev/ino；Windows 对本地磁盘使用卷标识
+和 FILE_ID_INFO。句柄在排队及活动期间保持有效。不同名称、不同根的硬链接/符号链接
+仍必须冲突。根决定权限和地址解析，不能把物理文件 ID 按根分区。basename、文件大小、
+词法路径、单独 realpath 都不能证明独立。全域含已授权外部路径。两侧都是共享时不冲突；
+一侧独占时，域声明与所有文件资源冲突，否则按相同对象身份或地址冲突。未知不退回
+“推定独立”。
+
+ToolBudget 一次授予全部资源和容量；等待前驱或资源不占槽位。后来的冲突调用不能
+越过等待中的独占者；同批较早源序调用可越过后到达的后继，避免队列与依赖图死锁。
+额度仍为总 16、读 8、写 2、每会话 4、每会话写 1；准入等待 30 秒仍返回 HOST_OVERLOADED。
+本地 audit/debug 记录总准入等待与初始原因 source_order、resource、capacity；不将它们
+宣称为互不重叠的分段耗时。
+
+拿到租约后在 review 快照前和实际 blocking 文件任务内重验身份与地址。绑定变化则
+失败，不落盘、不自动重放。命名空间变化和创建目标使用全域独占屏障。before 快照、
+执行、Hashline 更新、after 快照共用租约；后续 rollback 也获取租约，等待时不持 AppState
+锁。取消 RPC future 不会停止 spawn_blocking，实际任务持有 permit 到执行结束。
+未开始项可放弃；关闭批次不能释放活动磁盘任务。登记表限制为全局 512 调用、每批
+128 调用、参数总计 32 MiB；未使用元数据 15 分钟过期，已提交的审批等待和实际任务
+不靠 TTL 回收。
+
+支持新协议的路径由 Host 资源协调替代 sidecar PathMutex；legacy 路径保留原锁。
+权限、Hashline、变更恢复和结果语义保持。父子路径指令只更新各自提示词；pi 保持源序
+提交工具结果。租约只覆盖单个 Host 内接入的文件工具和回滚，任意外部写者、Bash、
+另一个 Host 进程不自动参与。
+
+参见 [有序准备 ADR](/adr/parallel-read-batches) 和 [Host 准入 ADR](/adr/host-file-batch-admission)。
+
 | 主题 | 决定 |
 |---|---|
 | 默认模式 | Agent |
@@ -22,7 +83,7 @@
 | Edit 契约 | 行锚定操作 + 整文件 `tag`；不再有 `old_string`/`new_string`（ADR 0087） |
 | 询问工具 | 交互式多问题工具；无有效期期限；跳过的答案变成空输出字段 |
 
-## 1. Goal
+## 1. 目标
 
 让代理完成工作，但默认情况下仍处于控制之下。
 
@@ -219,6 +280,38 @@ Electron 主要低于 `<data_dir>/scratch/<sessionId>/pasted/` 之前的
 - 会话 lookup/storage 错误使工具请求失败；它绝不能是
   被视为丢失的旧会话或重定向到选定的工作区。
 
+## 4b.1 会话可视化目录（D671）
+
+内联可视化（ADR `gen-ui-inline-visualization`）是模型写出、由转录区渲染的 HTML 片段。
+它们放在第三个由宿主拥有的根目录中，与 scratch 分开，这样 scratch 保留 7 天清理，
+而可视化与会话同生命周期：
+
+```text
+<data_dir>/visualizations/<sessionId>/
+```
+
+- **可用范围。** 仅本地会话，且默认关闭：需要用户开启设置项
+  `AppSettings.inlineVisualizations`（缺省与 `false` 都表示关闭）。关闭时没有该目录、
+  没有提示行，技能目录、`/` 菜单和 `Skill` 工具都不提供 `pi-desktop/visualize`，
+  渲染层只隐藏引用行、不加载卡片。远程工作区会话同样没有这些内容。
+- **寻址。** 只接受绝对路径；路径在系统提示中与 scratch 目录一起给出。相对路径
+  永远不会解析到这里。
+- **包含校验。** `resolve_tool_path` 依次检查工作区、scratch、可视化三个根目录，
+  使用相同的词法 + 符号链接防护。
+- **内容。** `Write`/`Edit` 只接受以 `.html` 结尾的单层文件名；该根目录下的其他目标
+  返回工具错误。允许 `Read`。
+- **权限。** 在该根目录内的 `Write`/`Edit` 与 scratch 条件相同，免确认自动允许。
+  Plan 和 Goal 不提供 Write/Edit，因此合约模式无法写入这里。结果带
+  `root: "visualization"`，不记为工件，也不做审核快照。
+- **生命周期。** 首次写入时延迟创建。随 `session.delete` 删除。启动清理只删除会话已
+  不存在的目录，从不按时间删除。
+- **渲染。** 代码块之外单独一行 `::visualize{"path":"<绝对路径>","title":"…"}` 会在
+  回合完成后渲染为内联卡片。渲染层由路径后缀推导出
+  `pi-genui://session/<sessionId>/<file>`，从不把绝对路径发给 Main。Main 只提供当前
+  数据目录下不超过 2 MB 的普通非符号链接片段，拒绝完整文档，并把片段包进带严格 CSP
+  （无网络、子框架、表单）的宿主外壳；框架为 `sandbox="allow-scripts"`。外壳在片段
+  之前预加载内置 D3 和 `viz` 图表辅助函数，并移除片段自带的固定版本 D3 标签。客户端运行时会把片段脚本的第一个未捕获错误报告给卡片；卡片保留框架，并以纯文本显示截断后的错误提示。对会话可视化目录下 `.html` 文件的成功 `Write`，结果里还会附带一次静态检查：内联脚本只编译不执行，传给 `viz.render`、`viz.chart`、`getElementById` 或 `querySelector("#…")` 的字面量元素 id 必须存在；发现问题会列出来，让模型用一次 `Edit` 修好。
+
 ## 4c。消息拥有的审核快照和回滚
 
 `Write` 和 `Edit` 是结构化审核边界。对于一个成功的
@@ -302,6 +395,38 @@ type ReviewChange = {
 `patch`）——返回带有错误专属恢复提示的终止工具结果，代理随后停止并报告准确的不匹配。
 不要手动编辑旧的 unified-diff 块头，也不要继续修复循环。
 
+## 4e. 隔离会话 worktree（ADR 0329）
+
+在 git 项目中以 `isolated: true` 创建的会话拥有专属 worktree，位于
+`<data_dir>/worktrees/<project-key>/<id>`，分支为 `pi-desktop/<id>`，从项目当前
+`HEAD` 创建（项目中未提交的改动不会被复制；`.worktreeinclude` 列出的 git 忽略文件会被
+复制，且不跟随链接）。对这类会话：
+
+- worktree 取代项目路径成为 §4–§5 所有规则的 `workspaceRoot`，文件工具、Bash 工作
+  目录、审阅快照和产物都在其中解析；绝不回退到主检出（worktree 丢失时返回
+  `WORKTREE_*` 错误）；
+- `AGENTS.md` 指令从 worktree 读取，而项目身份（记忆、技能、插件、MCP、子代理）仍以
+  项目路径为键；
+- Bash 获得 `PI_PORT`（41000–48999 中一个 10 端口块的首端口；只有整段 10 个端口都空闲时才分配该块）、
+  `PI_PROJECT_ROOT` 和 `PI_WORKTREE_ROOT`；
+- 可选的项目初始化命令在每个新 worktree 中运行一次，带同样的变量，使用用户的默认命令
+  shell（`defaultCommandShell`，未设置时用平台默认：Windows 上为 Windows PowerShell，
+  其他平台为 bash）。命令不会在方言之间转换，因此在 Windows 上必须使用 PowerShell 语法
+  （`$env:PI_PORT`；Windows PowerShell 5.1 用 `;` 而不是 `&&`），除非默认 shell 配置为
+  Git Bash 等 POSIX shell；
+- 宿主在 worktree 中运行的 git 命令禁用 hooks 和 fsmonitor，删除时绝不跟随链接越出
+  worktree；
+- 登记的 worktree 文件夹必须是真实目录：若它（或通往项目子目录的某一级目录）被替换为符号链接或
+  Windows junction，即视为缺失（`WORKTREE_MISSING`），不会被用作工具根目录、合并或同步；删除会话时
+  只删除链接本身，绝不删除其目标。
+
+宿主的工作区差异收集器会对其检查的所有仓库应用相同的 Git 加固措施，包括非隔离工作区。每次由宿主启动
+Git 命令都会禁用仓库配置的 hooks 和 `core.fsmonitor`，并移除可将 Git 重定向到其他仓库或注入命令级配置的环境变量。差异命令也会禁用外部 diff 和文本转换辅助程序。
+
+合并到项目是显式的用户操作（先预览，再携带预览令牌合并）：先把项目分支同步进
+worktree，项目只做快进，因此冲突留在 worktree 中。删除隔离会话即丢弃其 worktree
+和分支。
+
 ## 5. Bash 规则
 
 主机执行基线：
@@ -333,7 +458,7 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 2. Unix：众所周知的位置（`/bin/bash`、`/usr/bin/bash`、`/usr/local/bin/bash`、Homebrew），然后是 PATH
 3. Windows：来自 Git 的 Windows 的 `bash.exe` — 派生自 PATH 上的 `git`，然后是标准安装目录，然后是排除 `System32` 中的 WSL 启动器的 PATH
 
-- Unix 调用 `bash -lc`（登录 shell 为 Finder/Dock 启动保留配置文件路径）； Windows 使用 `CREATE_NO_WINDOW` 调用 `bash -c`
+- Unix 调用 `bash -lc`（登录 shell 为 Finder/Dock 启动保留配置文件路径）；Windows 使用 `CREATE_NO_WINDOW` 调用 `bash -c`。负责拥有命令树的隐藏 host-core runner 会使用 `CREATE_NO_WINDOW` 创建，并且仅当宿主所在的 job 授予 `JOB_OBJECT_LIMIT_BREAKAWAY_OK` 时才加上 `CREATE_BREAKAWAY_FROM_JOB`，然后被分配到自己的 kill-on-close Job Object 中。按宿主自身 job 的能力请求 breakaway，使启动器或策略 Job 不会成为 Desktop 进程的终止范围。当该 job 未授予 `JOB_OBJECT_LIMIT_BREAKAWAY_OK` 时，`CreateProcess` 会以 `ERROR_ACCESS_DENIED` 拒绝该 breakaway，因此不再带上该标志，runner 改以嵌套 job 的形式加入 host 拥有的 job；无论哪种情况，shell 本身都留在这个 host 拥有的 job 中，所以超时和中止仍会终止完整的命令树。
 - 在 Unix 上，Bash 工具另外探测用户的登录 shell 以获取其信息
   路径 — `$SHELL`（回退 `/bin/zsh` → `/bin/bash` → `/bin/sh`）
   `-lic 'printf %s "$PATH"'`，5 秒范围内，每个进程缓存 — 并注入它
@@ -345,6 +470,10 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - 安装程序中没有捆绑 bash：Windows 的 Git 是 Windows 的先决条件（无论如何，该应用程序都需要 git）
 - 解决失败返回稳定的 `SHELL_NOT_FOUND` 并提供安装指导
 - Windows PowerShell 和 cmd 使用其本机非交互式调用。
+- PowerShell 输出经过 PowerShell 自身的格式化器，因此对象（表格、列表、哈希表、
+  `Measure-Object` 结果）以控制台显示的形式交给 Agent，而不是类型名。原生命令
+  写入 stderr 的行会转发到 stderr，但本身不会使调用失败：调用报告原生命令的退出码。
+  其他 PowerShell 错误会使调用以退出码 1 失败。
 - PowerShell 7 先解析 `%ProgramFiles%\PowerShell\7`（宿主进程为 32 位时为
   `ProgramW6432`）下的 `pwsh.exe`，再回退到 PATH，覆盖机器级安装、Store、
   用户级与便携安装。它与 Windows PowerShell 5.1 共用同一调用契约，且从不被
@@ -353,6 +482,42 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
 - Git Bash 使用发现的 Git 来执行 Windows 可执行文件。
 - Unix Bash 使用经过批准的系统 Bash 条目。
 - 用户中止和超时在返回之前终止整个进程树。
+- `runInBackground: true` 让命令脱离本轮：shell 一启动就返回 `backgroundTaskId`，
+  不再套用超时，进程也不会被 `tools.abort` / `agent.abort` 终止。进程树归宿主
+  所有，通过输入框上方的共用容器展示，可由用户停止或随应用退出而结束。
+  每个输出流保留最后 256KB。
+- **后台任务归属启动它的会话。** 会话 ID 在启动时固定，之后不随切换、重命名、
+  归档或恢复而改变。单个会话最多同时运行 **10** 个后台任务，拒绝时会指明这是
+  每会话上限。另有一个进程级总量上限，仅用于防止多个会话叠加压垮宿主，并以
+  独立原因上报，使两种拒绝可区分。会话已不存在时启动会被拒绝，任务不会落在一个
+  无法展示它的会话里。
+- 后台任务先排空输出，再发布最终状态，保留跨管道读取边界的 UTF-8 字符；
+  退出和停止时已排队的输出不会丢失。关闭宿主时发送停止信号不依赖输出锁。
+- **Todo 与后台任务共用输入框上方的一个容器**，位于 Plan/Ask 决策面与输入框之上。
+  容器只有一个头部，承载待办进度摘要、运行中任务数、tab 列表与展开控件；折叠
+  只隐藏面板，因此折叠时 tab 仍可点击。仅当两侧都有内容时才出现 tabs：只有一侧
+  有内容时直接渲染该面板、不渲染 tab 列表；两侧都为空时容器不渲染。面板在
+  `min(200px, 24vh)` 内滚动，不随行数无限增高；审批和 Ask 对输入的既有约束不变。
+- **当前显示的 tab 是按会话记的视图状态。** 它记住用户自己的选择，容器自动选出的
+  tab 不会覆盖该选择；记忆的 tab 对应侧变空时回落到另一侧。容器沿用待办坞原有的
+  门控：需要存在 active 会话且允许本地工具。
+- **新启动的任务不抢焦点。** 当后台任务面板不是当前可见面板时，新任务只在其 tab 上
+  累加徽标；进入该 tab 即清零。折叠状态下点击 tab 会同时展开容器，否则点击看起来
+  没有效果。
+- 终止的后台任务不长期驻留：渲染层观察到任务结束后保留 10 秒宽限窗以便读取退出码，
+  随后离开容器。渲染层首次加载时已经结束的任务属于注册表历史，不再出现。正在查看的
+  输出预览会钉住其行，避免日志在阅读时消失。
+- **移除是视图动作，但对运行中任务有准入限制。** 只有终止态（`exited`、`failed`、
+  `stopped`）可移除；运行中任务——包括已发出停止信号、但在 supervisor 落定前仍是
+  `running` 的任务——在状态层就被拒绝，而不只是隐藏按钮。宿主侧任务、输出与 id
+  均不受影响，因此按 id 仍可读取，直到宿主自身的保留策略淘汰。移除记录按会话记忆，
+  不持久化。
+- **删除会话会停止它的运行中后台任务。** 归档不会：归档是可恢复的标记，杀掉进程属于
+  破坏性副作用。删除只发停止信号即返回——不等待任务落定，也不因任务杀不掉而失败。
+  已删除会话中被停止的任务不出现在任何容器里，因为原本展示它的会话已不存在。
+- 同时只展开一个输出预览；任务运行时，上次读取完成后每秒刷新一次，折叠的日志
+  不读取。预览最多展示 stdout 的 8,000 字符和 stderr 的 4,000 字符，忽略切换前
+  的过期响应。读取、停止或移除失败会显示错误，停止操作可以重试。
 
 初始拒绝名单（可扩展）：
 
@@ -550,6 +715,12 @@ sidecar 不附加覆盖，委托使用会话的有效权限模式；因此父会
 会话范围的 `allow-session` 拨款仍按 `toolName` 和每个会话进行：
 一名代表对 `Bash` 的批准适用于整个会议，包括
 家长和其他代表。
+
+在隔离会话（§4e）中，工具包含 `Write` 或 `Edit` 的子代理在自己的 worktree 中运行：
+先为会话的未提交编辑建立检查点，再从会话 worktree 分出分支；它的 `tools.execute`
+调用携带委派链 id `delegationId`，路径规则和 Bash 因此以该 worktree 为根。运行完成后
+用与“合并到项目”相同的算法合回；冲突、失败或停止时保留子代理分支，报告会提示父代理
+续跑处理。只读和仅 Bash 的子代理，以及非隔离会话的所有子代理，仍共享所属会话的根目录。
 
 ## 11. 插件工具
 

@@ -20,6 +20,44 @@ fn read_json(path: &Path) -> Value {
 }
 
 #[test]
+fn relocated_project_memory_remains_readable_through_the_repository() {
+    // Keep the synthetic profile for inspection; no user data is involved.
+    let temporary = tempfile::tempdir().unwrap().keep();
+    let source = temporary.join("old profile");
+    let destination = temporary.join("new profile");
+    let project = source.join("projects").join("saved project");
+    fs::create_dir_all(&project).unwrap();
+    let database = Database::open_in_dir(&source).unwrap();
+    database
+        .set_project_memory(&project.to_string_lossy(), "Keep project memory")
+        .unwrap();
+    drop(database);
+    copy_directory(&source, &destination);
+    // A picker can return different case from the canonical spelling stored by
+    // project repositories. Windows canonicalize also adds a verbatim prefix.
+    #[cfg(windows)]
+    let source = temporary.join("OLD PROFILE");
+    relocate(&source, &destination).unwrap();
+    let moved_project = destination.join("projects").join("saved project");
+    let database = Database::open_in_dir(&destination).unwrap();
+    assert_eq!(
+        database
+            .get_project_memory(&moved_project.to_string_lossy())
+            .unwrap()
+            .content,
+        "Keep project memory"
+    );
+    let stored: String = database
+        .conn()
+        .query_row("SELECT path FROM projects", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        stored,
+        crate::db::canonical_project_path(&moved_project.to_string_lossy()).unwrap()
+    );
+}
+
+#[test]
 fn relocates_a_real_copied_profile_without_recovery_or_changing_user_content() {
     let temporary = tempfile::tempdir().unwrap();
     let source = temporary.path().join("old");
@@ -158,7 +196,10 @@ fn relocates_a_real_copied_profile_without_recovery_or_changing_user_content() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(inside, destination.join("project").to_string_lossy());
+    assert_eq!(
+        inside,
+        crate::db::canonical_project_path(&destination.join("project").to_string_lossy()).unwrap()
+    );
     let outside: String = connection
         .query_row(
             "SELECT path FROM projects WHERE name='outside'",
@@ -190,7 +231,10 @@ fn relocates_a_real_copied_profile_without_recovery_or_changing_user_content() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(memory_key, destination.join("project").to_string_lossy());
+    assert_eq!(
+        memory_key,
+        crate::db::canonical_project_path(&destination.join("project").to_string_lossy()).unwrap()
+    );
     let group: String = connection
         .query_row(
             "SELECT value_json FROM kv WHERE ns='projectGroups'",
@@ -227,6 +271,7 @@ fn exact_path_boundaries_preserve_prose_prefix_neighbors_and_traversal() {
     let roots = Roots {
         source: temporary.path().join("old"),
         canonical_source: temporary.path().join("old"),
+        project_source: temporary.path().join("old"),
         destination: temporary.path().join("new"),
     };
     let inside = roots.source.join("nested/file");
@@ -388,4 +433,109 @@ fn refuses_colliding_project_capability_keys_without_losing_an_override() {
     let before = fs::read(&file).unwrap();
     assert!(relocate(&source, &destination).is_err());
     assert_eq!(fs::read(file).unwrap(), before);
+}
+
+#[test]
+fn encoded_tool_images_remain_lossless_in_all_relocated_file_kinds() {
+    use crate::transcripts::binary_storage::{decode, encode};
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("old");
+    let destination = temporary.path().join("new");
+    fs::create_dir_all(source.join("sessions")).unwrap();
+    let old = source
+        .join("scratch/screenshot.png")
+        .to_string_lossy()
+        .into_owned();
+    let new = destination
+        .join("scratch/screenshot.png")
+        .to_string_lossy()
+        .into_owned();
+    let image = json!({"type":"image","data":"YWJjLw==","mimeType":"image/png"});
+    let result =
+        json!({"content":[image.clone()],"details":{"content":[image],"path":old},"note":"last"});
+    let text =
+        serde_json::to_string_pretty(&result)
+            .unwrap()
+            .replacen("{", "{\n  \"note\":\"first\",", 1);
+    let record = json!({"type":"message","id":"m","role":"tool","blocks":[{"type":"tool_call","result":result,"text":text}],"createdAt":"2026-10-24T00:00:00Z"});
+    let ui = json!({"id":"m","role":"tool","content":text,"toolResult":result});
+    let line_files = [
+        ("sessions/s.jsonl", record.clone()),
+        (
+            "sessions/s.revisions.jsonl",
+            json!({"type":"revision","rootUserId":"u","revisionIndex":1,"messages":[record.clone()]}),
+        ),
+    ];
+    for (name, value) in &line_files {
+        fs::write(
+            source.join(name),
+            format!("{}\n", encode(value.clone()).unwrap()),
+        )
+        .unwrap();
+    }
+    fs::write(
+        source.join("sessions/s.inflight.json"),
+        encode(json!({"schema":1,"message":record}))
+            .unwrap()
+            .to_string(),
+    )
+    .unwrap();
+    let outbox =
+        json!([encode(json!({"key":"message:s:m","sessionId":"s","message":ui})).unwrap()]);
+    for name in [
+        "session-message-outbox.json",
+        "session-message-outbox.dead-letter.json",
+    ] {
+        fs::write(source.join(name), outbox.to_string()).unwrap();
+    }
+    copy_directory(&source, &destination);
+    relocate(&source, &destination).unwrap();
+    let expected_text = text.replace(
+        &serde_json::to_string(&old).unwrap(),
+        &serde_json::to_string(&new).unwrap(),
+    );
+    for name in [
+        "sessions/s.jsonl",
+        "sessions/s.revisions.jsonl",
+        "sessions/s.inflight.json",
+        "session-message-outbox.json",
+        "session-message-outbox.dead-letter.json",
+    ] {
+        let stored = fs::read_to_string(destination.join(name)).unwrap();
+        assert_eq!(
+            stored.matches("YWJjLw==").count(),
+            1,
+            "{name} must retain one physical image"
+        );
+        let raw: Value = serde_json::from_str(&stored).unwrap();
+        let decoded = decode(if raw.is_array() { raw[0].clone() } else { raw }).unwrap();
+        let (actual_result, actual_text) = if name.contains("outbox") {
+            (
+                &decoded["message"]["toolResult"],
+                &decoded["message"]["content"],
+            )
+        } else {
+            let message = if name.contains("revisions") {
+                &decoded["messages"][0]
+            } else if name.contains("inflight") {
+                &decoded["message"]
+            } else {
+                &decoded
+            };
+            (
+                &message["blocks"][0]["result"],
+                &message["blocks"][0]["text"],
+            )
+        };
+        assert_eq!(actual_result["details"]["path"], new, "{name}");
+        assert_eq!(actual_result["content"][0]["data"], "YWJjLw==");
+        assert_eq!(actual_text, &Value::String(expected_text.clone()), "{name}");
+        assert_eq!(
+            fs::read_to_string(source.join(name))
+                .unwrap()
+                .matches("YWJjLw==")
+                .count(),
+            1
+        );
+    }
 }

@@ -82,6 +82,54 @@ test("sending the first prompt derives a replaceable title instead of renaming",
   }
 });
 
+test("Send now promotes queued input without stopping the running session", async () => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)), configFile: false,
+    server: { middlewareMode: true, hmr: false, ws: false }, appType: "custom",
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  const previousWindow = globalThis.window;
+  try {
+    const { createQueueSlice } = await server.ssrLoadModule("/src/stores/slices/queue-slice.ts");
+    const invoked = [];
+    let entries = [];
+    globalThis.window = { piDesktop: { invoke: async (channel, payload) => {
+      invoked.push([channel, payload]);
+      if (channel === IPC.invoke.agentQueuePush) {
+        const entry = { ...payload, id: "queued-correction", position: 1, createdAt: "2026-10-13T00:00:00Z" };
+        entries = [entry];
+        return { ok: true, data: entry };
+      }
+      if (channel === IPC.invoke.agentQueuePrioritize) return { ok: true, data: { ok: true } };
+      if (channel === IPC.invoke.agentStop) return { ok: true, data: { requested: true } };
+      if (channel === IPC.invoke.agentQueueList) return { ok: true, data: { entries } };
+      throw new Error(`Unexpected IPC: ${channel}`);
+    } } };
+    let state = {
+      activeSessionId: "session-a", sessions: [{ id: "session-a", source: "desktop" }],
+      pendingPlans: {}, runningSessions: { "session-a": true }, queuedPrompts: {}, showToast: assert.fail,
+    };
+    const slice = createQueueSlice({
+      get: () => state,
+      set: (patch) => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
+      promptAttachmentsFromDraft: () => [],
+    });
+    Object.assign(state, slice);
+    assert.equal(await slice.sendPrompt("Correct the plan now."), true);
+    assert.equal(state.queuedPrompts["session-a"].length, 1);
+    assert.equal(invoked.some(([channel]) => channel === IPC.invoke.agentQueuePrioritize), false);
+    await slice.sendQueuedNow("queued-correction");
+    assert.equal(invoked.filter(([channel]) => channel === IPC.invoke.agentQueuePrioritize).length, 1);
+    assert.equal(invoked.some(([channel]) => channel === IPC.invoke.agentStop), false);
+    assert.equal(state.runningSessions["session-a"], true);
+    slice.applyQueueChanged({ sessionId: "session-a", entries: [] });
+    assert.deepEqual(state.queuedPrompts["session-a"] ?? [], []);
+  } finally {
+    globalThis.window = previousWindow;
+    await server.close();
+  }
+});
+
 test("pending queue actions stay locked until admission succeeds", async (t) => {
   const server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),

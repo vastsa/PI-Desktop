@@ -290,21 +290,12 @@ pub fn capability_dir(
     }
 }
 
+/// Storage spelling of a project path: forward slashes, no trailing separator.
+/// Delegates to `db::normalize_project_path` so capability records key on the
+/// same spelling the `projects` table stores — including the Windows
+/// extended-length prefix `canonicalize` answers with.
 pub fn normalize_project_path(path: &str) -> String {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    let mut normalized = trimmed.replace('\\', "/");
-    while normalized.len() > 1
-        && normalized.ends_with('/')
-        && !normalized
-            .strip_suffix('/')
-            .is_some_and(|prefix| prefix.ends_with(':'))
-    {
-        normalized.pop();
-    }
-    normalized
+    crate::db::normalize_project_path(path).unwrap_or_default()
 }
 
 fn same_path(a: &str, b: &str) -> bool {

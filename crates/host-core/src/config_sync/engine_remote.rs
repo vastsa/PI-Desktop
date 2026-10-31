@@ -178,7 +178,7 @@ pub(super) async fn read_remote_manifest(
         &config.vault_id,
         &ciphertext,
     )?;
-    let manifest: RevisionManifest =
+    let mut manifest: RevisionManifest =
         serde_json::from_slice(&plain).context("decode remote revision")?;
     if manifest.format != REVISION_FORMAT
         || manifest.version != 1
@@ -192,7 +192,9 @@ pub(super) async fn read_remote_manifest(
         validate_remote_id(parent, "revision")?;
     }
     for entity in &manifest.entities {
-        if domains::adapter_for(&entity.domain).is_none() {
+        // Retired project records remain readable in existing vault history,
+        // but are never merged or applied by this device.
+        if entity.domain != "projects" && domains::adapter_for(&entity.domain).is_none() {
             bail!(
                 "CONFIG_SYNC_UNSUPPORTED: remote domain {} is not supported",
                 entity.domain
@@ -229,6 +231,7 @@ pub(super) async fn read_remote_manifest(
     for object_id in resource_ids {
         validate_remote_id(&object_id, "object")?;
     }
+    domains::retain_supported_entities(&mut manifest);
     Ok(manifest)
 }
 

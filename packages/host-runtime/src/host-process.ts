@@ -302,10 +302,15 @@ export class HostProcess {
     const id = randomUUID();
     const timeoutMs = timeoutOverrideMs ?? rpcTimeoutMs(method, params);
     const payload = JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n";
-    if (Buffer.byteLength(payload, "utf8") > MAX_HOST_STDIN_LINE_BYTES) {
-      throw Object.assign(new Error("request line exceeds 64 MiB"), {
+    const requestBytes = Buffer.byteLength(payload, "utf8");
+    if (requestBytes > MAX_HOST_STDIN_LINE_BYTES) {
+      throw Object.assign(new Error(
+        "Local request line exceeds 64 MiB. This request was not sent. " +
+        "Use Fork from the session menu to preserve the history in a separate conversation.",
+      ), {
         errorCode: ErrorCodes.LIMIT_EXCEEDED,
         code: 1002,
+        data: { scope: "host-request", method, requestBytes, limitBytes: MAX_HOST_STDIN_LINE_BYTES },
       });
     }
     return new Promise<T>((resolve, reject) => {

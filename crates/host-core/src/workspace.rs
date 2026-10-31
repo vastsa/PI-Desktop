@@ -28,12 +28,16 @@ pub(crate) fn simple_canonicalize(path: &Path) -> std::io::Result<PathBuf> {
 pub struct WorkspaceState {
     pub path: Option<String>,
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<crate::db::RemoteWorkspace>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectWorkspace {
     pub path: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<crate::db::RemoteWorkspace>,
 }
 
 impl WorkspaceState {
@@ -42,8 +46,20 @@ impl WorkspaceState {
             (Some(path), Some(name)) => Some(ProjectWorkspace {
                 path: path.clone(),
                 name: name.clone(),
+                remote: self.remote.clone(),
             }),
             _ => None,
+        }
+    }
+
+    pub fn set_remote(&mut self, project: &crate::db::ProjectGroupRecord) -> ProjectWorkspace {
+        self.path = Some(project.primary_path.clone());
+        self.name = Some(project.name.clone());
+        self.remote = project.remote.clone();
+        ProjectWorkspace {
+            path: project.primary_path.clone(),
+            name: project.name.clone(),
+            remote: project.remote.clone(),
         }
     }
 
@@ -56,17 +72,20 @@ impl WorkspaceState {
             .unwrap_or("workspace")
             .to_string();
         let path_str = path.to_string_lossy().to_string();
+        self.remote = None;
         self.path = Some(path_str.clone());
         self.name = Some(name.clone());
         ProjectWorkspace {
             path: path_str,
             name,
+            remote: None,
         }
     }
 
     pub fn clear(&mut self) {
         self.path = None;
         self.name = None;
+        self.remote = None;
     }
 }
 
@@ -75,7 +94,73 @@ impl WorkspaceState {
 pub enum ToolRoot {
     Workspace,
     Scratch,
+    /// Per-session GenUI fragment directory (D671).
+    Visualization,
     External,
+}
+
+/// A host-owned directory a session may address by absolute path in addition
+/// to its workspace. Every contained root gets the same lexical + symlink
+/// containment defense as the workspace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainedRoot {
+    pub path: PathBuf,
+    pub kind: ToolRoot,
+}
+
+impl ContainedRoot {
+    /// Root identity is rechecked at authorization and execution, not cached
+    /// when the session starts. Scratch retains its existing D114 semantics.
+    pub fn allows_implicit_access(&self) -> bool {
+        self.kind != ToolRoot::Visualization
+            || crate::visualizations::validate_session_root(&self.path).is_ok()
+    }
+
+    fn lexically_contains(&self, input: &str) -> bool {
+        if self.kind == ToolRoot::Visualization {
+            crate::visualizations::contains_session_path(&self.path, input)
+        } else {
+            lexically_inside(&self.path, input)
+        }
+    }
+}
+
+/// Ordered contained roots checked before workspace fallback. The first root
+/// that claims a path must validate its current identity before granting access.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ContainedRoots {
+    roots: Vec<ContainedRoot>,
+}
+
+impl ContainedRoots {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Roots holding only the session scratch directory (D114), if any.
+    pub fn scratch_only(scratch: Option<&Path>) -> Self {
+        Self::new().with(ToolRoot::Scratch, scratch.map(Path::to_path_buf))
+    }
+
+    /// Append a root; `None` leaves the list unchanged.
+    pub fn with(mut self, kind: ToolRoot, path: Option<PathBuf>) -> Self {
+        if let Some(path) = path {
+            self.roots.push(ContainedRoot { path, kind });
+        }
+        self
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ContainedRoot> {
+        self.roots.iter()
+    }
+
+    /// First claimed root (absolute paths only), including visualization data
+    /// aliases. Claiming a root does not grant access: check its current validity.
+    pub fn lexical_root(&self, input: &str) -> Option<&ContainedRoot> {
+        self.roots
+            .iter()
+            .find(|root| root.lexically_contains(input))
+    }
 }
 
 /// Lexically resolve `.` / `..` components without touching the filesystem.
@@ -224,50 +309,64 @@ pub fn resolve_external_path(workspace_root: &Path, input: &str) -> Result<PathB
 }
 
 /// Resolve a tool path against the workspace root, falling back to the
-/// session scratch root (D114). Relative paths always resolve against the
-/// workspace; the scratch directory is addressed by absolute path only (the
-/// model learns it from the system prompt / `PI_SCRATCH_DIR`). Both roots get
-/// the same lexical + symlink containment defense.
+/// session's contained roots in order (scratch per D114, visualizations).
+/// Relative paths always resolve against the workspace; contained roots are
+/// addressed by absolute path only (the model learns them from the system
+/// prompt). Every root gets the same lexical + symlink containment defense.
 pub fn resolve_tool_path(
     workspace_root: &Path,
-    scratch_root: Option<&Path>,
+    roots: &ContainedRoots,
     input: &str,
 ) -> Result<(PathBuf, ToolRoot), String> {
+    // A contained root is more specific than the workspace: when a workspace
+    // happens to contain the data directory (for example `$HOME`), a path
+    // spelled inside a contained root must still resolve against that root so
+    // its own containment and write rules apply.
+    if let Some(root) = roots.lexical_root(input) {
+        return resolve_in_contained_root(root, input)
+            .map(|path| (path, root.kind))
+            .ok_or_else(|| "PATH_OUTSIDE_WORKSPACE".to_string());
+    }
     let workspace_err = match resolve_in_workspace(workspace_root, input) {
         Ok(path) => return Ok((path, ToolRoot::Workspace)),
         Err(e) => e,
     };
     if Path::new(input).is_absolute() {
-        if let Some(scratch) = scratch_root {
-            if let Ok(path) = resolve_in_workspace(scratch, input) {
-                return Ok((path, ToolRoot::Scratch));
-            }
-            // The model addresses scratch with the exact spelling we
-            // advertised, which may differ from the canonical one (macOS
-            // /var vs /private/var, /tmp vs /private/tmp). Rewrite a literal
-            // scratch-root prefix to a relative path and resolve that — the
-            // full containment defense still runs.
-            let candidate = normalize_lexical(Path::new(input));
-            if let Ok(rel) = candidate.strip_prefix(normalize_lexical(scratch)) {
-                if let Ok(path) = resolve_in_workspace(scratch, &rel.to_string_lossy()) {
-                    return Ok((path, ToolRoot::Scratch));
-                }
+        for root in roots.iter() {
+            if let Some(path) = resolve_in_contained_root(root, input) {
+                return Ok((path, root.kind));
             }
         }
     }
     Err(workspace_err)
 }
 
+fn resolve_in_contained_root(root: &ContainedRoot, input: &str) -> Option<PathBuf> {
+    if !root.allows_implicit_access() {
+        return None;
+    }
+    if let Ok(path) = resolve_in_workspace(&root.path, input) {
+        return Some(path);
+    }
+    // The model addresses a root with the exact spelling we advertised, which
+    // may differ from the canonical one (macOS /var vs /private/var, /tmp vs
+    // /private/tmp). Rewrite a literal root prefix to a relative path and
+    // resolve that — the full containment defense still runs.
+    let candidate = normalize_lexical(Path::new(input));
+    let rel = candidate.strip_prefix(normalize_lexical(&root.path)).ok()?;
+    resolve_in_workspace(&root.path, &rel.to_string_lossy()).ok()
+}
+
 /// Resolve a tool path after the host has granted explicit outside-workspace
-/// access for this call. Contained workspace and scratch paths keep their
+/// access for this call. Workspace and contained-root paths keep their
 /// normal roots; only an otherwise rejected path becomes `External`.
 pub fn resolve_tool_path_with_external(
     workspace_root: &Path,
-    scratch_root: Option<&Path>,
+    roots: &ContainedRoots,
     input: &str,
     allow_external: bool,
 ) -> Result<(PathBuf, ToolRoot), String> {
-    match resolve_tool_path(workspace_root, scratch_root, input) {
+    match resolve_tool_path(workspace_root, roots, input) {
         Ok(result) => Ok(result),
         Err(error) if allow_external && error == "PATH_OUTSIDE_WORKSPACE" => Ok((
             resolve_external_path(workspace_root, input)?,
@@ -294,6 +393,10 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    fn scratch_roots(scratch: &Path) -> ContainedRoots {
+        ContainedRoots::scratch_only(Some(scratch))
+    }
 
     #[test]
     fn blocks_escape() {
@@ -400,7 +503,8 @@ mod tests {
     fn tool_path_relative_resolves_to_workspace() {
         let ws = tempdir().unwrap();
         let scratch = tempdir().unwrap();
-        let (p, root) = resolve_tool_path(ws.path(), Some(scratch.path()), "notes.txt").unwrap();
+        let (p, root) =
+            resolve_tool_path(ws.path(), &scratch_roots(scratch.path()), "notes.txt").unwrap();
         assert_eq!(root, ToolRoot::Workspace);
         assert!(p.starts_with(simple_canonicalize(ws.path()).unwrap()));
     }
@@ -410,8 +514,12 @@ mod tests {
         let ws = tempdir().unwrap();
         let scratch = tempdir().unwrap();
         let input = scratch.path().join("tmp.json");
-        let (p, root) =
-            resolve_tool_path(ws.path(), Some(scratch.path()), input.to_str().unwrap()).unwrap();
+        let (p, root) = resolve_tool_path(
+            ws.path(),
+            &scratch_roots(scratch.path()),
+            input.to_str().unwrap(),
+        )
+        .unwrap();
         assert_eq!(root, ToolRoot::Scratch);
         assert!(p.starts_with(simple_canonicalize(scratch.path()).unwrap()));
     }
@@ -421,8 +529,12 @@ mod tests {
         let ws = tempdir().unwrap();
         let scratch = tempdir().unwrap();
         let input = scratch.path().join("a/../../evil.txt");
-        let err = resolve_tool_path(ws.path(), Some(scratch.path()), input.to_str().unwrap())
-            .unwrap_err();
+        let err = resolve_tool_path(
+            ws.path(),
+            &scratch_roots(scratch.path()),
+            input.to_str().unwrap(),
+        )
+        .unwrap_err();
         assert_eq!(err, "PATH_OUTSIDE_WORKSPACE");
     }
 
@@ -434,8 +546,12 @@ mod tests {
         let outside = tempdir().unwrap();
         std::os::unix::fs::symlink(outside.path(), scratch.path().join("link")).unwrap();
         let input = scratch.path().join("link/new.txt");
-        let err = resolve_tool_path(ws.path(), Some(scratch.path()), input.to_str().unwrap())
-            .unwrap_err();
+        let err = resolve_tool_path(
+            ws.path(),
+            &scratch_roots(scratch.path()),
+            input.to_str().unwrap(),
+        )
+        .unwrap_err();
         assert_eq!(err, "PATH_OUTSIDE_WORKSPACE");
     }
 
@@ -443,7 +559,8 @@ mod tests {
     fn tool_path_absolute_outside_both_roots_blocked() {
         let ws = tempdir().unwrap();
         let scratch = tempdir().unwrap();
-        let err = resolve_tool_path(ws.path(), Some(scratch.path()), "/etc/hosts").unwrap_err();
+        let err =
+            resolve_tool_path(ws.path(), &scratch_roots(scratch.path()), "/etc/hosts").unwrap_err();
         assert_eq!(err, "PATH_OUTSIDE_WORKSPACE");
     }
 
@@ -454,9 +571,13 @@ mod tests {
         let input = outside.path().join("outside.txt");
         fs::write(&input, "outside").unwrap();
 
-        let (resolved, root) =
-            resolve_tool_path_with_external(ws.path(), None, input.to_str().unwrap(), true)
-                .unwrap();
+        let (resolved, root) = resolve_tool_path_with_external(
+            ws.path(),
+            &ContainedRoots::new(),
+            input.to_str().unwrap(),
+            true,
+        )
+        .unwrap();
         assert_eq!(root, ToolRoot::External);
         assert_eq!(resolved, simple_canonicalize(&input).unwrap());
     }
@@ -471,10 +592,11 @@ mod tests {
 
         let input = "../outside.txt";
         assert_eq!(
-            resolve_tool_path(&ws, None, input).unwrap_err(),
+            resolve_tool_path(&ws, &ContainedRoots::new(), input).unwrap_err(),
             "PATH_OUTSIDE_WORKSPACE"
         );
-        let (resolved, root) = resolve_tool_path_with_external(&ws, None, input, true).unwrap();
+        let (resolved, root) =
+            resolve_tool_path_with_external(&ws, &ContainedRoots::new(), input, true).unwrap();
         assert_eq!(root, ToolRoot::External);
         assert_eq!(resolved, simple_canonicalize(&outside).unwrap());
     }

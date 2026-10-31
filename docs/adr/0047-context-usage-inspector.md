@@ -30,9 +30,11 @@ anchor, but providers do not expose exact per-tool allocation.
 3. Estimate each tool's argument and result footprint with the existing
    pi-agent-core token heuristic. Persist the estimate on the tool message,
    mark it as estimated in the UI, and never add it to the provider total.
-4. Carry `responseDurationMs` on assistant messages and `toolUsage` on tool
-   messages. Add `toolUsage` to `tool_end` as an optional event field so live,
-   persisted, and restored transcripts use the same values.
+4. Carry `responseDurationMs` on assistant messages for throughput, plus
+   `providerWaitMs` and `modelStreamDurationMs` for session timing. Carry
+   `toolUsage` and `toolDurationMs` on tool messages. Add `toolUsage` to
+   `tool_end` as an optional event field so live, persisted, and restored
+   transcripts use the same values.
 5. Preserve additive compatibility: missing fields use the renderer fallback
    estimate or omit throughput when no stream duration is available.
 6. Render the inspector panel through `document.body` as a fixed viewport
@@ -55,6 +57,9 @@ anchor, but providers do not expose exact per-tool allocation.
   footprint without opening logs, while repeated calls stay compact and
   auditable through their call counts.
 - Historical tool rows remain useful through a deterministic fallback estimate.
+- The session timing breakdown separates request-to-first-response wait from
+  streamed thinking/answer time and top-level tool execution. Overlapping
+  top-level tool calls count once; nested delegate timings are excluded.
 - Tool estimates are transparent but cannot claim billing precision.
 - The transcript protocol and storage shape gain optional fields, while the
   existing protocol version remains compatible.

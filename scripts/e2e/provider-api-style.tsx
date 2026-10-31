@@ -1,3 +1,4 @@
+import { verifyReasoningEffort } from "./provider-reasoning-effort";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
@@ -6,12 +7,14 @@ import { catalogs } from "@pi-desktop/i18n";
 import type { ProviderPublic, ProviderCreateInput, ProviderUpdateInput } from "@pi-desktop/shared";
 import { ProviderSetupDialog, type ProviderSetupDialogProps } from "../../apps/desktop/src/components/settings/ProviderSetupDialog";
 import { VendorAccountDialog, type VendorAccountForm } from "../../apps/desktop/src/components/settings/VendorAccountDialog";
+import { defaultModelOptions, providerServesChatModels } from "../../apps/desktop/src/components/settings/default-model";
+import { subagentModelChoices } from "../../apps/desktop/src/components/settings/subagent-models";
 import { API_STYLE_LABEL_KEYS, CUSTOM_PROVIDER_API_STYLES } from "../../apps/desktop/src/components/settings/provider-api-style";
 import { copyProviderConfiguration } from "../../apps/desktop/src/components/settings/provider-copy";
 import { CUSTOM_SERVICE } from "../../apps/desktop/src/components/settings/service-catalog";
 import { api } from "../../apps/desktop/src/lib/api";
 
-declare global { var providerApiStyleProbe: () => Promise<unknown>; }
+declare global { var providerApiStyleProbe: (reasoningOnly?: boolean) => Promise<unknown>; }
 const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const pause = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 /* Anchored menus mount, position and reveal on animation frames, so wait for a
@@ -32,23 +35,42 @@ const fixture = (apiStyle: string): ProviderPublic => ({
     thinkingLevels: ["off"], defaultThinkingLevel: "off" }],
 });
 
-globalThis.providerApiStyleProbe = async () => {
+globalThis.providerApiStyleProbe = async (reasoningOnly = false) => {
   const i18n = createInstance();
   await i18n.init({ lng: "en", resources: {
-    en: { translation: catalogs.en }, "zh-CN": { translation: catalogs["zh-CN"] },
+    en: { translation: catalogs.en }, "zh-CN": { translation: catalogs["zh-CN"] }, de: { translation: catalogs.de },
   }, interpolation: { escapeValue: false } });
   const creates: ProviderCreateInput[] = [];
   const updates: ProviderUpdateInput[] = [];
   const discoveries: Parameters<typeof api.listProviderModels>[0][] = [];
+  let savedProvider: ProviderPublic | undefined;
   // Only the API boundary is faked: render the production form/hooks and inspect
   // exact save payloads. This does not validate Host persistence or live OAuth.
   api.createProvider = async (input) => {
     creates.push(structuredClone(input));
-    return { provider: { ...fixture(input.apiStyle!), ...input, id: "copy" } };
+    const saved: ProviderPublic = {
+      ...fixture(input.apiStyle ?? "chat_completions"),
+      id: `created-${creates.length}`,
+      name: input.name,
+      vendorKey: input.vendorKey ?? "custom",
+      type: input.type ?? "openai_compatible",
+      protocol: input.protocol ?? "openai_compatible",
+      baseUrl: input.baseUrl,
+      authKind: input.authKind ?? "api_key_and_base_url",
+      hasSecret: Boolean(input.secretValue),
+      hasOauth: false,
+      models: input.models ?? [],
+    };
+    return { provider: saved };
   };
   api.updateProvider = async (input) => {
     updates.push(structuredClone(input));
-    return { provider: { ...fixture(input.apiStyle!), ...input } };
+    return { provider: {
+      ...fixture(input.apiStyle ?? "chat_completions"),
+      ...input,
+      authKind: input.authKind ?? "api_key_and_base_url",
+      hasSecret: input.authKind === "none" ? false : true,
+    } };
   };
   api.listProviderModels = async (input) => {
     discoveries.push(structuredClone(input));
@@ -57,6 +79,13 @@ globalThis.providerApiStyleProbe = async () => {
         modelId: "step-5-preview", displayName: "Step 5 Preview", providerId: "stepfun-fixture",
         source: "discovered", capabilities: ["text", "tools", "vision", "reasoning"],
         supportedThinkingLevels: ["low", "medium", "high"], contextWindow: 1000000, maxTokens: 65536,
+      }], source: "remote" };
+    }
+    if (input.baseUrl === "http://127.0.0.1:11434/v1") {
+      return { models: [{
+        modelId: "local-chat", displayName: "Local Chat", providerId: "",
+        source: "discovered", capabilities: ["text", "tools"],
+        contextWindow: 32768, maxTokens: 4096,
       }], source: "remote" };
     }
     return { models: [], source: "remote" };
@@ -70,7 +99,12 @@ globalThis.providerApiStyleProbe = async () => {
   let closes = 0;
   const render = (props: Partial<ProviderSetupDialogProps> = {}) => {
     flushSync(() => root.render(<I18nextProvider i18n={i18n}>
-      <ProviderSetupDialog key={++key} onClose={() => { closes++; }} onSaved={() => {}} {...props} />
+      <ProviderSetupDialog
+        key={++key}
+        onClose={() => { closes++; }}
+        onSaved={(provider) => { savedProvider = structuredClone(provider); }}
+        {...props}
+      />
     </I18nextProvider>));
     const advanced = document.querySelector<HTMLButtonElement>(".provider-chosen-advanced-toggle");
     if (advanced?.getAttribute("aria-expanded") === "false") flushSync(() => advanced.click());
@@ -80,11 +114,16 @@ globalThis.providerApiStyleProbe = async () => {
     flushSync(() => element!.click());
   };
   const button = (key: string) => [...document.querySelectorAll<HTMLButtonElement>("button")]
-    .find((element) => element.textContent?.trim() === i18n.t(key));
+    .find((element) => element.getAttribute("aria-label") === i18n.t(key)
+      || element.textContent?.trim() === i18n.t(key));
   const control = (key: string) => {
     const element = button(key);
     assert(element, `missing control ${key}`);
     return element;
+  };
+  const setValue = (input: HTMLInputElement, value: string) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   };
   /* A Field explains itself through the help icon's accessible name, so read the
      row's explanations from the affordance that carries them. */
@@ -177,8 +216,13 @@ globalThis.providerApiStyleProbe = async () => {
     await until(() => Boolean(searchInput()), "model capability settings");
   };
   try {
-    for (const locale of ["en", "zh-CN"]) {
+    for (const locale of (reasoningOnly ? ["en", "zh-CN", "de"] : ["en", "zh-CN"])) {
       await i18n.changeLanguage(locale);
+      if (reasoningOnly) {
+        await verifyReasoningEffort({ render, fixture, i18n, updates, click, control, until, frame });
+        results.push(`${locale}:reasoning-effort-auto-send-omit-save-reopen-protocol-switch`);
+        continue;
+      }
       render();
       const beforeStepfunCreate = creates.length;
       const beforeStepfunDiscovery = discoveries.length;
@@ -201,14 +245,19 @@ globalThis.providerApiStyleProbe = async () => {
       assert(discovery.baseUrl === "https://api.stepfun.com/step_plan/v1" &&
         discovery.apiStyle === "anthropic_messages" && discovery.apiKey === "stepfun-fixture-key",
         `${locale}: StepFun discovery used the wrong route or credentials`);
-      const stepfunCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+      const stepfunCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('.provider-models-row input[type="checkbox"]')]
         .find((input) => input.closest("label")?.textContent?.includes("step-5-preview"));
-      await until(() => Boolean(stepfunCheckbox()), "StepFun discovered model");
-      // Exercise explicit selection even when the recommendation preselected it.
-      if (stepfunCheckbox()!.checked) click(stepfunCheckbox());
+      await until(() => Boolean(stepfunCheckbox()?.checked && !stepfunCheckbox()!.disabled),
+        "StepFun recommendation selected");
+      // Wait for committed selection state between the two user interactions.
+      await frame();
       click(stepfunCheckbox());
-      assert(stepfunCheckbox()!.checked, `${locale}: StepFun model was not selected`);
-      await until(() => !control("settings.saveProvider").disabled, "StepFun save enabled");
+      await until(() => !stepfunCheckbox()?.checked && control("settings.saveProvider").disabled,
+        "StepFun model deselected");
+      await frame();
+      click(stepfunCheckbox());
+      await until(() => Boolean(stepfunCheckbox()?.checked) && !control("settings.saveProvider").disabled,
+        "StepFun model selected and save enabled");
       click(control("settings.saveProvider"));
       await until(() => creates.length === beforeStepfunCreate + 1, "StepFun saved");
       const savedStepfun = creates.at(-1)!;
@@ -237,6 +286,80 @@ globalThis.providerApiStyleProbe = async () => {
           `${locale}: new custom form offers the account format ${style}`);
       }
       await closeApiStyleMenu();
+      assert(!document.querySelector('[role="switch"]'),
+        `${locale}: custom endpoint still exposes a no-key switch`);
+      const identityInputs = [...document.querySelectorAll<HTMLInputElement>(
+        ".provider-setup-custom-identity-row input",
+      )];
+      assert(identityInputs.length === 2, `${locale}: custom identity fields are missing`);
+      setValue(identityInputs[0]!, "Local Ollama");
+      setValue(identityInputs[1]!, "http://127.0.0.1:11434/v1");
+      const optionalKeyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
+      assert(optionalKeyInput && !optionalKeyInput.disabled && optionalKeyInput.value === "",
+        `${locale}: optional API-key input is not available`);
+      assert(rowHints().includes(i18n.t("settings.apiKeyOptionalHint")),
+        `${locale}: optional API-key behavior was not explained`);
+      const beforeLocalDiscovery = discoveries.length;
+      await until(() => discoveries.length > beforeLocalDiscovery, "local no-auth discovery");
+      const localProbe = discoveries.at(-1)!;
+      assert(localProbe.baseUrl === "http://127.0.0.1:11434/v1" && !localProbe.apiKey,
+        `${locale}: local model discovery included an API key`);
+      await until(
+        () => Boolean(document.querySelector<HTMLInputElement>(".provider-models-row input")),
+        "local model discovery result",
+      );
+      const localModel = document.querySelector<HTMLInputElement>(".provider-models-row input");
+      assert(localModel, `${locale}: the local service model was not selectable`);
+      if (!localModel.checked) click(localModel);
+      await until(() => !control("settings.saveProvider").disabled, "no-auth provider save enabled");
+      const beforeLocalCreate = creates.length;
+      savedProvider = undefined;
+      click(control("settings.saveProvider"));
+      await until(() => creates.length === beforeLocalCreate + 1 && Boolean(savedProvider),
+        "no-auth provider saved");
+      const savedNoAuth = creates.at(-1)!;
+      assert(savedNoAuth.authKind === "none" && !("secretValue" in savedNoAuth),
+        `${locale}: no-auth selection did not persist without a secret`);
+      assert(savedProvider?.authKind === "none" && savedProvider.hasSecret === false,
+        `${locale}: saved provider is still marked as credentialed`);
+      assert(providerServesChatModels(savedProvider!),
+        `${locale}: saved no-auth provider is not eligible for the default model`);
+      assert(defaultModelOptions([savedProvider!]).some((option) => option.modelId === "local-chat"),
+        `${locale}: no-auth provider is missing from default-model options`);
+      assert(subagentModelChoices([savedProvider!]).some((option) => option.modelId === "local-chat"),
+        `${locale}: no-auth provider is missing from subagent model options`);
+      results.push(`${locale}:custom-endpoint-no-api-key-save-and-selection`);
+
+      const editableKeyProvider = {
+        ...fixture("chat_completions"),
+        id: `key-provider-${locale}`,
+        name: "Key-backed gateway",
+        baseUrl: "http://127.0.0.1:9000/v1",
+      };
+      render({ provider: editableKeyProvider });
+      assert(rowHints().includes(i18n.t("settings.apiKeyKeepHint")),
+        `${locale}: editing did not explain saved-key preservation`);
+      const beforeKeepUpdate = updates.length;
+      click(control("settings.saveProvider"));
+      await until(() => updates.length === beforeKeepUpdate + 1, "saved key preserved");
+      const keepUpdate = updates.at(-1)!;
+      assert(!("authKind" in keepUpdate) && !("secretValue" in keepUpdate),
+        `${locale}: blank edit changed the stored authentication`);
+      render({ provider: editableKeyProvider });
+      click(control("settings.clearApiKey"));
+      const clearedKeyInput = document.querySelector<HTMLInputElement>('input[type="password"]');
+      assert(clearedKeyInput && !clearedKeyInput.disabled && clearedKeyInput.value === "",
+        `${locale}: clearing a saved key disabled the input`);
+      assert(rowHints().includes(i18n.t("settings.apiKeyOptionalHint")),
+        `${locale}: clearing a saved key did not explain the no-key behavior`);
+      const beforeNoAuthUpdate = updates.length;
+      click(control("settings.saveProvider"));
+      await until(() => updates.length === beforeNoAuthUpdate + 1, "provider changed to no-auth");
+      const noAuthUpdate = updates.at(-1)!;
+      assert(noAuthUpdate.authKind === "none" && !("secretValue" in noAuthUpdate),
+        `${locale}: edit did not persist the no-auth mode without a replacement key`);
+      results.push(`${locale}:edit-provider-switches-to-no-api-key`);
+
       results.push(`${locale}:new-custom-options`);
 
       for (const style of ACCOUNT_ONLY_STYLES) {
@@ -281,12 +404,14 @@ globalThis.providerApiStyleProbe = async () => {
         assert(!control("settings.saveProvider").disabled, "supported copy is blocked");
         click(control("settings.saveProvider")); await pause();
         const created = creates.at(-1)!;
-        assert(created.apiStyle === "anthropic_messages" && created.authKind === "api_key_and_base_url",
-          "copy did not persist the explicitly chosen protocol");
+        assert(created.apiStyle === "anthropic_messages" && created.authKind === "none",
+          "copy did not persist the chosen protocol and automatic no-key authentication");
         assert(!created.secretValue && !("id" in created), "copy retained source identity or credential");
         assert(JSON.stringify(original) === before, "edit/copy mutated source object");
         results.push(`${locale}:${style}:edit-change-copy-cancel`);
       }
+      await verifyReasoningEffort({ render, fixture, i18n, updates, click, control, until, frame });
+      results.push(`${locale}:reasoning-effort-auto-send-omit-save-reopen-protocol-switch`);
       for (const [vendorKey, baseUrl, modelId] of [
         ["deepseek", "https://api.deepseek.com", "deepseek-v4-flash"],
         ["xai", "https://api.x.ai/v1", "grok-4.7"],

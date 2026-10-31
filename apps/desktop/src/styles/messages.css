@@ -12,13 +12,12 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 140px;
   /* Paint containment clips descendants to the padding box, which squared off
-     the deliberate bleed of the disclosure row chrome: the activity header
-     pulls its hover fill 3px past the column edge and a run row's head 4px, so
-     the icon can sit on the text's alignment line while the fill keeps its
-     padding, and the focus ring reaches 3.5px beyond its own box. 8px covers
-     the widest of them. .tool-activity-group clips the same chrome and carries
-     the same margin. */
-  overflow-clip-margin: 8px;
+     the deliberate bleed of the disclosure row chrome: both disclosure headers
+     pull their hover fill 4px past the column edge, and the two collapse-rail
+     controls occupy separate 14px lanes in the gutter. 34px covers the outer
+     lane. .tool-activity-group keeps its own clip for the subagent card
+     chrome. */
+  overflow-clip-margin: 34px;
 }
 
 .message-row.user {
@@ -219,6 +218,19 @@
 .asktool-question-body {
   display: block;
   min-width: 0;
+  /* Long prompts scroll here so header actions stay on screen (#1531).
+     Do not reserve a scrollbar gutter. */
+  max-height: min(208px, 24vh);
+  max-height: min(208px, 24dvh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior-y: contain;
+}
+
+.asktool-question-body:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
 }
 
 .asktool-options {
@@ -668,16 +680,16 @@
   color: var(--ds-text-secondary);
 }
 
-.tool-activity-label.running::after,
-.tool-row-name.running::after {
-  display: inline-block;
+/* The live marker is a real flex sibling of the label. A generated inline box
+   had to be aligned by hand and drifted off the row centre inside the label's
+   ellipsis box; as a flex item it is centred by the header's own alignment and
+   spaced by its gap. */
+.activity-marker {
+  flex: none;
   width: 4px;
   height: 4px;
-  margin-inline-start: 6px;
-  vertical-align: middle;
   border-radius: var(--radius-round);
   background: var(--ds-text-secondary);
-  content: "";
   animation: activity-marker-pulse 1s var(--motion-ease-standard) infinite;
 }
 
@@ -688,6 +700,63 @@
   }
   50% {
     opacity: 1;
+  }
+}
+
+.text-shimmer {
+  display: inline-grid;
+  min-width: 0;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.text-shimmer > span {
+  grid-area: 1 / 1;
+  white-space: pre;
+}
+.text-shimmer-base {
+  color: inherit;
+  opacity: 1;
+  transition: opacity 220ms ease-out;
+}
+.text-shimmer-peak {
+  color: transparent;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent calc(50% - 5.2ch),
+      var(--ds-text-primary) 50%,
+      transparent calc(50% + 5.2ch)
+    ),
+    linear-gradient(var(--ds-text-secondary), var(--ds-text-secondary));
+  background-size: 360% 100%, 100% 100%;
+  background-position: 100% 0, 0 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer-sweep 1.2s linear infinite;
+  opacity: 1;
+  transition: opacity 220ms ease-out;
+  will-change: background-position;
+}
+.text-shimmer[data-active="true"] .text-shimmer-base {
+  opacity: 0;
+}
+.text-shimmer[data-active="false"] .text-shimmer-peak {
+  animation: none;
+  opacity: 0;
+}
+@keyframes text-shimmer-sweep {
+  from { background-position: 100% 0, 0 0; }
+  to { background-position: 0 0, 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-shimmer-peak {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+  .text-shimmer-base {
+    opacity: 1 !important;
   }
 }
 
@@ -736,6 +805,38 @@
 .review-change-card.is-compact {
   width: 100%;
   margin: 0;
+}
+
+/* In the transcript the review card is the tool row itself: it claims the full
+   band, drops the transcript inset, and puts the diff body directly beneath the
+   only header. Header order follows the file-ledger row: mark, path, counts,
+   caret. The panel keeps its existing caret-first order. */
+.review-change-card.is-tool-row {
+  width: 100%;
+  margin: 3px 0;
+}
+
+.review-change-card.is-tool-row .review-change-card-mark {
+  order: 0;
+}
+
+.review-change-card.is-tool-row .review-change-card-path {
+  order: 1;
+}
+
+.review-change-card.is-tool-row .review-change-card-counts {
+  order: 2;
+}
+
+.review-change-card.is-tool-row .review-change-card-caret {
+  order: 3;
+  /* This is now the row's only disclosure affordance, so it keeps the
+     tool-row caret's resting visibility instead of the old card's hidden one. */
+  opacity: 0.65;
+}
+
+.review-change-card.is-tool-row .review-change-card-body {
+  margin-left: 0;
 }
 
 .review-change-card-header {
@@ -866,7 +967,8 @@
   padding-inline: 4px;
 }
 
-.review-change-rollback {
+.review-change-rollback,
+.review-change-copy {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -880,7 +982,8 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.review-change-rollback:hover:not(:disabled) {
+.review-change-rollback:hover:not(:disabled),
+.review-change-copy:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
@@ -888,6 +991,15 @@
 .review-change-rollback:disabled {
   cursor: wait;
   opacity: 0.65;
+}
+
+.review-change-copy:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.review-change-copy.copied {
+  color: var(--ds-success);
 }
 
 .review-change-state {
@@ -1252,6 +1364,210 @@
 .message-meta-chip.model {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Turn usage capsule: the completed turn's speed and total stay visible; the
+   composition and exact counts live in the hover/focus popover. */
+.turn-usage-capsule {
+  display: inline-flex;
+  min-height: 20px;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile);
+  padding: 0 8px;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.turn-usage-capsule:hover,
+.turn-usage-capsule[data-open="true"] {
+  background: var(--ds-tile-hover);
+  color: var(--ds-text-primary);
+  box-shadow: inset 0 0 0 1px var(--ds-border-subtle);
+}
+
+.turn-usage-capsule:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ds-text-primary) 44%, transparent);
+  outline-offset: 2px;
+}
+
+/* The bar is a flex row of proportional segments. Segment order matches the
+   popover rows: cache read, input, output, then cache write when present. */
+.turn-usage-bar {
+  display: flex;
+  width: 36px;
+  height: 4px;
+  flex: 0 0 36px;
+  gap: 1px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
+}
+
+.turn-usage-seg {
+  min-width: 1px;
+  flex-basis: 0;
+  border-radius: var(--radius-full);
+}
+
+.turn-usage-seg.cache {
+  background: color-mix(in oklab, var(--ds-text-primary) 24%, transparent);
+}
+
+.turn-usage-seg.input {
+  background: color-mix(in oklab, var(--ds-text-primary) 51%, transparent);
+}
+
+.turn-usage-seg.output {
+  background: color-mix(in oklab, var(--ds-text-primary) 86%, transparent);
+}
+
+.turn-usage-seg.write {
+  background: color-mix(in oklab, var(--ds-text-primary) 36%, transparent);
+}
+
+.turn-usage-separator {
+  color: var(--ds-text-faint);
+}
+
+.turn-usage-total {
+  color: var(--ds-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-usage-capsule:hover .turn-usage-total,
+.turn-usage-capsule[data-open="true"] .turn-usage-total {
+  color: var(--ds-text-secondary);
+}
+
+.turn-usage-popover {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  width: min(268px, calc(100vw - 32px));
+  flex-direction: column;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-bg-elevated-opaque);
+  padding: 12px;
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-dialog);
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  visibility: hidden;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out),
+    visibility 0s linear var(--motion-duration-fast);
+}
+
+.turn-usage-popover.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.turn-usage-popover-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.turn-usage-popover-title {
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
+}
+
+.turn-usage-popover-total {
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-compact);
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-usage-popover .turn-usage-bar {
+  width: 100%;
+  flex: 0 0 auto;
+  height: 4px;
+  gap: 2px;
+  margin: 11px 0 8px;
+}
+
+.turn-usage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+}
+
+.turn-usage-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 2px 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+}
+
+.turn-usage-row dt {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-weight: var(--font-weight-normal);
+}
+
+.turn-usage-row dd {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.turn-usage-popover-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-compact);
+}
+
+.turn-usage-popover-footer strong {
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-usage-capsule,
+  .turn-usage-popover {
+    transition: none;
+  }
 }
 
 .context-inspector {
@@ -1984,8 +2300,10 @@
   align-items: center;
   gap: 5px;
   border-radius: var(--radius-sm);
-  margin: 0 -3px;
-  padding: 2px 5px;
+  /* Same inline geometry as a tool row's header: the icon and label sit on the
+     prose edge, while the hover fill bleeds 4px into the gutter. */
+  margin: 0 -4px;
+  padding: 2px 4px;
   color: var(--ds-text-secondary);
   font-size: var(--text-sm-plus);
   text-align: left;
@@ -2021,13 +2339,29 @@
   white-space: nowrap;
 }
 
-/* Live tail while running: last thought line / current tool, single line. */
-.tool-activity-preview {
-  max-width: min(100%, var(--chat-prose-max-width, 720px));
-  margin: 1px 0 0 26px;
-  overflow: hidden;
-  color: var(--ds-text-muted);
+/*
+ * Issue counts are inline metadata in an activity-group header, never a second
+ * line of the row. The icon and its localized count stay on one centered line
+ * and truncate together when the band runs out of width.
+ */
+.activity-issue-count {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--ds-error);
   font-size: var(--text-xs-plus);
+  white-space: nowrap;
+}
+
+.activity-issue-count > svg {
+  flex: none;
+}
+
+.activity-issue-count > span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2107,10 +2441,6 @@
   overflow-wrap: anywhere;
   text-overflow: clip;
   white-space: normal;
-}
-
-.tool-activity-group.has-subagents .tool-activity-preview {
-  margin: -3px 38px 8px;
 }
 
 .tool-activity-group.has-subagents .tool-activity-body {
@@ -2552,6 +2882,11 @@
   padding: 2px 0;
 }
 
+/* Leaf commands sit one step below the turn and group titles. */
+.tool-row-head.is-run .tool-row-name {
+  font-size: var(--text-sm);
+}
+
 .tool-row-head.is-run .tool-row-header:hover {
   background: transparent;
 }
@@ -2824,6 +3159,30 @@
 .disclosure-collapse-rail:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--ds-accent) 58%, transparent);
   outline-offset: -2px;
+}
+
+/* The turn body carries no content indent, so its rail keeps the outer lane.
+   A grouped body indents its child rows by 12px, and its rail sits in that
+   gutter; expanding a group never puts two hit targets on the same pixels.
+   Tool-row detail rails keep their tighter inset. */
+.turn-process-body > .disclosure-collapse-rail {
+  left: -32px;
+  width: 14px;
+  min-width: 14px;
+}
+
+.process-activity-body > .disclosure-collapse-rail {
+  left: -12px;
+  width: 14px;
+  min-width: 14px;
+}
+
+/* Keep the visible bar next to the content while the hit target extends into
+   the gutter. */
+.turn-process-body > .disclosure-collapse-rail::before,
+.process-activity-body > .disclosure-collapse-rail::before {
+  right: 0;
+  left: auto;
 }
 
 /*
@@ -3337,6 +3696,53 @@
   min-width: 0;
 }
 
+/*
+ * The top-level fold is a hairline row, not a hover chip. Status, duration,
+ * tool count and the caret form one left-aligned run, so the disclosure
+ * indicator trails the metadata instead of being pushed to the far edge of the
+ * band. Hover only strengthens the ink; no background fill is involved.
+ */
+.turn-process > .tool-activity-header {
+  margin: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--ds-border-subtle);
+  padding: 4px 0 8px;
+}
+
+.turn-process > .tool-activity-header:hover {
+  background: transparent;
+  color: var(--ds-text-primary);
+}
+
+.turn-process > .tool-activity-header:hover .tool-activity-icon,
+.turn-process > .tool-activity-header:hover .tool-activity-label,
+.turn-process > .tool-activity-header:hover .turn-duration,
+.turn-process > .tool-activity-header:hover .tool-activity-count,
+.turn-process > .tool-activity-header:hover .tool-activity-caret {
+  color: var(--ds-text-primary);
+}
+
+.turn-process > .tool-activity-header:hover .turn-sep {
+  color: var(--ds-text-secondary);
+}
+
+.turn-process > .tool-activity-header > .tool-activity-caret {
+  margin-inline-start: 0;
+  opacity: 0.8;
+}
+
+.turn-duration {
+  flex: none;
+  color: var(--ds-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.turn-sep {
+  flex: none;
+  color: var(--ds-text-faint);
+}
+
 .turn-process.open > .tool-activity-header > .tool-activity-caret,
 .process-activity-group.open > .tool-activity-header > .tool-activity-caret {
   transform: rotate(90deg);
@@ -3344,7 +3750,11 @@
 
 .turn-process-body {
   position: relative;
-  padding-left: 18px;
+  /* The turn's process and its group headers share one left edge. A nested
+     group restores the released v0.20.1 hierarchy below that header: its body
+     indents child rows by 12px and keeps the group's collapse rail in the
+     gutter, so the transcript never becomes an indenting staircase. */
+  padding-left: 0;
 }
 
 .turn-process-body[hidden],
@@ -3363,6 +3773,18 @@
   margin-block: 6px;
 }
 
+/* The turn's own title is the strongest level; a nested group is smaller and
+   quieter, while leaf run rows keep tool-row secondary text. Its body adds the
+   released 12px indent below the group header. */
+.process-activity-group > .tool-activity-header {
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.process-activity-group > .tool-activity-header:hover {
+  color: var(--ds-text-primary);
+}
+
 .process-activity-body {
   position: relative;
   min-width: 0;
@@ -3370,6 +3792,8 @@
 
 .process-activity-group.grouped > .process-activity-body {
   margin-block: 3px 6px;
+  /* Child tool rows sit one 12px step inside the group header; the group's
+     collapse rail lives in that gutter. No further nesting level is added. */
   padding-inline-start: 12px;
 }
 
@@ -3382,15 +3806,6 @@
   align-items: center;
   gap: 8px;
   padding-block: 6px;
-}
-
-.turn-process-error {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  font-size: var(--text-xs-plus);
-  color: var(--ds-error);
 }
 
 /* Provider-hosted web search round. The row reuses the tool-row idiom; only

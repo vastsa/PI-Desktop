@@ -12,6 +12,7 @@
  * about to throw away.
  */
 import { RACP_WS_PATH, type RemoteHostSshMetadata } from "@pi-desktop/shared";
+import { ensureRemoteHostReady } from "./remote-host-supervisor.js";
 import {
   createSystemSshTransport,
   reserveLocalPort,
@@ -146,11 +147,13 @@ export function createSshTunnelManager(options: SshTunnelManagerOptions = {}): S
       const promise = (async () => {
         let forward: SshForward | undefined;
         try {
+          const ready = await ensureRemoteHostReady(transport, { version: ssh.version, expectedHostId: ssh.hostId });
+          assertActive();
           const localPort = await reservePort();
           assertActive();
-          forward = await transport.forward({ localPort, remoteHost: "127.0.0.1", remotePort: ssh.remotePort });
+          forward = await transport.forward({ localPort, remoteHost: ready.host === "::1" ? "[::1]" : ready.host, remotePort: ready.port });
           assertActive();
-          log("info", "ssh forward open", { hostKey, localPort: forward.localPort, remotePort: ssh.remotePort });
+          log("info", "ssh forward open", { hostKey, localPort: forward.localPort, remotePort: ready.port });
           return remember(hostKey, ssh, transport, forward);
         } catch (error) {
           try {

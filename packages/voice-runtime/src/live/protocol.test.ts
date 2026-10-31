@@ -5,6 +5,8 @@ import {
   geminiSetupMessage,
   geminiToolResponseMessage,
   geminiWorkFeedbackMessage,
+  geminiWorkToolDeclaration,
+  liveWorkToolDeclaration,
   LIVE_WORK_TOOL_NAME,
   parseLiveWorkArguments,
   parseCodexMessage,
@@ -76,7 +78,7 @@ describe("Live wire profiles", () => {
     expect(geminiSetupMessage({ modelId: "gemini-live", voice: "Kore", workProfile: { instructions: "work instructions", startupContext: "work scope" } })).toMatchObject({
       setup: {
         systemInstruction: { parts: [{ text: "work instructions\n\nwork scope" }] },
-        tools: [{ functionDeclarations: [{ name: LIVE_WORK_TOOL_NAME, parameters: { additionalProperties: false } }] }],
+        tools: [{ functionDeclarations: [{ name: LIVE_WORK_TOOL_NAME, parameters: { type: "object", required: ["instruction"] } }] }],
       },
     });
     const events = parseGeminiMessage({ serverContent: { modelTurn: { parts: [
@@ -112,6 +114,21 @@ describe("Live wire profiles", () => {
     expect(parseGeminiMessage({ serverContent: { modelTurn: { parts: [{ inlineData: { data: bytes } }] } } })).toEqual([
       { kind: "error", code: "LIVE_PROTOCOL_ERROR" },
     ]);
+  });
+
+  it("uses Gemini's Schema subset while retaining OpenAI's strict object schema", () => {
+    const tools = geminiWorkToolDeclaration();
+    expect(tools).toMatchObject({ functionDeclarations: [{
+      name: LIVE_WORK_TOOL_NAME,
+      parameters: {
+        type: "object",
+        properties: { instruction: { type: "string", description: expect.any(String) } },
+        required: ["instruction"],
+      },
+    }] });
+    expect(JSON.stringify(tools)).not.toContain("additionalProperties");
+    expect(liveWorkToolDeclaration()).toMatchObject({ parameters: { additionalProperties: false } });
+    expect(parseLiveWorkArguments({ instruction: "Run tests", extra: true })).toBeNull();
   });
 
   it("truncates realtime output at the played cursor after cancelling", () => {

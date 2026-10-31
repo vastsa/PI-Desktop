@@ -191,14 +191,21 @@
   display: flex;
   min-width: 0;
   max-width: 100%;
+  width: max-content;
   height: 32px;
-  flex: 1 1 auto;
+  /* Only the visible viewport excludes native dragging. Per-tab exclusions
+     escape the overflow clip when scrolled, blocking neighboring titlebars.
+     Keep unused header space outside this content-sized viewport draggable. */
+  flex: 0 1 auto;
   align-items: center;
   gap: 6px;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-inline: contain;
-  scroll-padding-inline: 2px;
+  /* Reserve the close button's width at the inline end so a scrolled-to tab
+     never lands with its sibling close button clipped by the overflow edge
+     (issue #1762). */
+  scroll-padding-inline: 2px 24px;
 }
 
 .work-panel-tab-strip::-webkit-scrollbar {
@@ -497,6 +504,7 @@
 .work-panel-launcher {
   display: flex;
   width: 100%;
+  min-height: 0;
   flex-direction: column;
   gap: 8px;
   padding: 14px 10px;
@@ -511,14 +519,19 @@
 
 .work-panel-launcher-list {
   display: flex;
+  min-height: 0;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
 }
 
 .work-panel-launcher-row {
   display: flex;
   min-width: 0;
   height: 40px;
+  /* Rows are flex items of the scrollable list: keep them at their full 40px
+     so a constrained list scrolls instead of compressing the click targets. */
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   padding: 0 10px;

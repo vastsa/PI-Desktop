@@ -26,6 +26,7 @@ pub fn run_cli() -> Result<bool> {
 struct Roots {
     source: PathBuf,
     canonical_source: PathBuf,
+    project_source: PathBuf,
     destination: PathBuf,
 }
 
@@ -40,6 +41,7 @@ impl Roots {
         let suffix = path
             .strip_prefix(&self.source)
             .or_else(|_| path.strip_prefix(&self.canonical_source))
+            .or_else(|_| path.strip_prefix(&self.project_source))
             .ok()?;
         Some(self.destination.join(suffix).to_string_lossy().into_owned())
     }
@@ -82,6 +84,31 @@ impl Roots {
             }
             _ => false,
         }
+    }
+
+    fn stored_record(&self, value: &mut Value) -> Result<bool> {
+        if value.get("binaryStorage").is_none() {
+            // Offline relocation must not upgrade a legacy profile's storage
+            // without its database version gate. Preserve the old plain form.
+            return Ok(self.structured(value));
+        }
+        let next = crate::transcripts::binary_storage::relocate(value.clone(), |record| {
+            self.structured(record)
+        })?;
+        let changed = next != *value;
+        *value = next;
+        Ok(changed)
+    }
+
+    fn stored_queue(&self, value: &mut Value) -> Result<bool> {
+        let Some(entries) = value.as_array_mut() else {
+            anyhow::bail!("invalid relocation persistence queue");
+        };
+        let mut changed = false;
+        for entry in entries {
+            changed |= self.stored_record(entry)?;
+        }
+        Ok(changed)
     }
 }
 
@@ -133,13 +160,20 @@ fn replace_file(path: &Path, write: impl FnOnce(&mut fs::File) -> Result<bool>) 
 }
 
 fn rewrite_json(path: &Path, rewrite: impl FnOnce(&mut Value) -> bool) -> Result<()> {
+    rewrite_json_checked(path, |value| Ok(rewrite(value)))
+}
+
+fn rewrite_json_checked(
+    path: &Path,
+    rewrite: impl FnOnce(&mut Value) -> Result<bool>,
+) -> Result<()> {
     if !regular_file(path)? {
         return Ok(());
     }
     let mut value: Value =
         serde_json::from_slice(&fs::read(path)?).context("parse relocation metadata")?;
     replace_file(path, |output| {
-        let changed = rewrite(&mut value);
+        let changed = rewrite(&mut value)?;
         if changed {
             serde_json::to_writer(output, &value)?;
         }
@@ -169,7 +203,7 @@ fn rewrite_transcript(path: &Path, roots: &Roots) -> Result<()> {
                 }
                 Err(error) => return Err(error).context("parse relocation transcript"),
             };
-            if roots.structured(&mut value) {
+            if roots.stored_record(&mut value)? {
                 serde_json::to_writer(&mut *output, &value)?;
                 if line.ends_with(b"\n") {
                     output.write_all(b"\n")?;
@@ -256,6 +290,12 @@ pub fn relocate(source: &Path, destination: &Path) -> Result<()> {
     }
     let roots = Roots {
         source: source.to_path_buf(),
+        // Project repositories strip Windows verbatim prefixes and normalize
+        // separators; retain that same canonical spelling when matching keys.
+        project_source: PathBuf::from(
+            crate::db::normalize_project_path(&canonical_source.to_string_lossy())
+                .context("normalize canonical relocation source")?,
+        ),
         canonical_source,
         destination: destination.to_path_buf(),
     };
@@ -270,16 +310,20 @@ pub fn relocate(source: &Path, destination: &Path) -> Result<()> {
                         .file_name()
                         .is_some_and(|name| name.to_string_lossy().ends_with(".inflight.json")) =>
                 {
-                    rewrite_json(&path, |value| roots.structured(value))?;
+                    rewrite_json_checked(&path, |value| roots.stored_record(value))?;
                 }
                 _ => {}
             }
         }
     }
-    rewrite_json(
-        &roots.destination.join("session-message-outbox.json"),
-        |value| roots.structured(value),
-    )?;
+    for file in [
+        "session-message-outbox.json",
+        "session-message-outbox.dead-letter.json",
+    ] {
+        rewrite_json_checked(&roots.destination.join(file), |value| {
+            roots.stored_queue(value)
+        })?;
+    }
     let capabilities = roots.destination.join("agent-capabilities");
     if regular_directory(&capabilities)? {
         for name in ["mcp", "skills", "subagents", "subagent-builtins"] {
@@ -336,6 +380,9 @@ fn relocate_database(roots: &Roots) -> Result<()> {
         ("artifacts", "path", false),
         ("turn_queue", "attachments_json", true),
         ("scheduled_tasks", "config_json", true),
+        // Isolated-session worktrees live under the data directory (ADR 0329);
+        // host-core repairs git's back-links on the next start.
+        ("worktrees", "path", false),
     ] {
         if !column_exists(&transaction, table, column)? {
             continue;
@@ -355,7 +402,13 @@ fn relocate_database(roots: &Roots) -> Result<()> {
                     serde_json::from_str(&text).context("parse relocation database metadata")?;
                 roots.structured(&mut value).then(|| value.to_string())
             } else {
-                roots.remap(&text)
+                roots.remap(&text).map(|path| {
+                    if table == "projects" {
+                        crate::db::canonical_project_path(&path).unwrap_or(path)
+                    } else {
+                        path
+                    }
+                })
             };
             if let Some(next) = next {
                 transaction.execute(
@@ -382,7 +435,10 @@ fn relocate_database(roots: &Roots) -> Result<()> {
         for (namespace, key, text) in rows {
             let next_key = if matches!(namespace.as_str(), "projectMemory" | "projectInstructions")
             {
-                roots.remap(&key).unwrap_or_else(|| key.clone())
+                roots
+                    .remap(&key)
+                    .map(|path| crate::db::canonical_project_path(&path).unwrap_or(path))
+                    .unwrap_or_else(|| key.clone())
             } else {
                 key.clone()
             };

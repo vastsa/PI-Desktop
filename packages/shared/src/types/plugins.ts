@@ -408,6 +408,8 @@ export type PluginWorkspaceInfo = {
   projectId?: string;
   /** Every registered folder of that group, primary first. */
   roots?: PluginWorkspaceRoot[];
+  /** Display metadata only: `path` above remains the opaque workspace identity. */
+  remote?: { path: string; readOnly: true };
 };
 
 /** One mirror an install tried, and what it answered. */

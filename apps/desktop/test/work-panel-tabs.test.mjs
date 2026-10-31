@@ -7,6 +7,8 @@ const {
   browserPluginTab,
   browserPluginTabForReveal,
   closeWorkPanelTabState,
+  closeAllWorkPanelTabsState,
+  closeOtherWorkPanelTabsState,
   createWorkPanelFileRequest,
   emptyWorkPanelContext,
   fileWorkPanelTab,
@@ -138,6 +140,25 @@ test("closing an inactive tab preserves selection and the last close empties sta
 
   assert.equal(inactiveClosed.activeTabId, "review");
   assert.deepEqual(empty, { tabs: [], activeTabId: null });
+});
+
+test("closing other tabs retains and activates the requested tab", () => {
+  const review = toolWorkPanelTab("review");
+  const file = fileWorkPanelTab("src/App.tsx");
+  const browser = browserPluginTab("https://example.com");
+  const state = { tabs: [review, file, browser], activeTabId: review.id };
+
+  const retained = closeOtherWorkPanelTabsState(state, browser.id);
+  assert.deepEqual(retained, { tabs: [browser], activeTabId: browser.id });
+  assert.equal(closeOtherWorkPanelTabsState(state, "missing"), state);
+});
+
+test("closing all tabs clears selection and is idempotent", () => {
+  const state = { tabs: [toolWorkPanelTab("review")], activeTabId: "review" };
+  const empty = closeAllWorkPanelTabsState(state);
+
+  assert.deepEqual(empty, { tabs: [], activeTabId: null });
+  assert.equal(closeAllWorkPanelTabsState(empty), empty);
 });
 
 test("activation ignores stale tab ids", () => {

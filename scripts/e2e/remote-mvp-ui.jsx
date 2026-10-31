@@ -3,9 +3,10 @@ import { createRoot } from "react-dom/client";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { IPC } from "@pi-desktop/shared";
-import { remoteEn } from "../../apps/desktop/src/locales/remote";
+import { remoteEn, remoteZh } from "../../apps/desktop/src/locales/remote";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 import { RemoteHostSessions } from "../../apps/desktop/src/components/settings/RemoteHostSessions";
+import { RemoteHostsPage } from "../../apps/desktop/src/components/settings/RemoteHostsPage";
 import { ChatSurface } from "../../apps/desktop/src/components/ChatSurface";
 import { catalogs } from "@pi-desktop/i18n";
 import { api } from "../../apps/desktop/src/lib/api";
@@ -28,8 +29,10 @@ window.piDesktop = {
   async invoke(channel, input) {
     calls.push({ channel, input });
     let data = {};
-    if (channel === IPC.invoke.remoteHostProjects) data = { projects: [] };
-    else if (channel === IPC.invoke.remoteHostSessions) data = { sessions: [] };
+    if (channel === IPC.invoke.remoteHostList) data = { hosts: [host] };
+    else if (channel === IPC.invoke.remoteHostPair) data = { host: { ...host, hostKey: "paired-fixture", label: input.label, url: input.url, transport: "direct" } };
+    else if (channel === IPC.invoke.remoteHostProjects) data = { projects: [] };
+    else if (channel === IPC.invoke.remoteHostSessions) data = { sessions: [session] };
     else if (channel === IPC.invoke.remoteHostSyncProviders) data = { imported: [{ sourceId: provider.id, providerId: "remote-provider" }], skipped: [], defaultSet: true };
     else if (channel === IPC.invoke.remoteHostRegisterProject) data = { project: { id: "project", label: "Project" } };
     else if (channel === IPC.invoke.remoteHostCreateSession) data = { session };
@@ -67,6 +70,34 @@ function type(node, value) {
   node.dispatchEvent(new Event("input", { bubbles: true }));
 }
 function emit(payload) { for (const listener of listeners.get(IPC.event.remoteInteractions) ?? []) listener(payload); }
+function waitForFocus(target, message) {
+  if (document.activeElement === target) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let frame = 0;
+    const cleanup = () => {
+      document.removeEventListener("focusin", check);
+      clearTimeout(timer);
+      if (frame) cancelAnimationFrame(frame);
+    };
+    const finishIfFocused = () => {
+      if (document.activeElement !== target) return false;
+      cleanup();
+      resolve();
+      return true;
+    };
+    const check = () => {
+      if (finishIfFocused()) return;
+      frame = requestAnimationFrame(check);
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      const active = document.activeElement;
+      reject(new Error(`${message}; active=${active?.outerHTML ?? "none"}; target=${target.outerHTML}; connected=${target.isConnected}; disabled=${target.disabled}`));
+    }, 5000);
+    document.addEventListener("focusin", check);
+    frame = requestAnimationFrame(check);
+  });
+}
 function Fixture() {
   const active = useAppStore(state => state.activeSessionId);
   const current = useAppStore(state => state.sessions.find(item => item.id === active));
@@ -74,27 +105,24 @@ function Fixture() {
 }
 
 globalThis.remoteMvpProbe = async () => {
-  await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", resources: { en: { remote: remoteEn, translation: catalogs.en } }, interpolation: { escapeValue: false } });
+  await i18n.use(initReactI18next).init({
+    lng: "en",
+    fallbackLng: "en",
+    resources: {
+      en: { remote: remoteEn, translation: catalogs.en },
+      "zh-CN": { remote: remoteZh, translation: catalogs["zh-CN"] },
+    },
+    interpolation: { escapeValue: false },
+  });
   useAppStore.setState({ sessions: [], activeSessionId: undefined, selectingSessionId: undefined, messages: [], retainedSessionIds: [], retainedTranscripts: {}, sessionHistory: {}, sessionMeta: {}, runningSessions: {}, pendingPlans: {}, pendingPermissions: {}, pendingAsks: {}, planningStates: {}, providers: [provider], workspace: { path: "/local/private", name: "Local only" }, activeProjectPath: "/local/private", page: "settings", settings: { defaultMode: "agent" } });
   const unsubscribe = subscribeRemoteInteractions();
   const root = createRoot(document.getElementById("root"));
   root.render(<Fixture />);
-  await until(() => button(remoteEn.sync) && !document.querySelector('[aria-busy="true"]'), "host inventory never loaded");
-  assert(button(remoteEn.sync).disabled, "sync must require selection and consent");
-  button(provider.name).click();
-  await until(() => !checkbox(remoteEn.consent).disabled, "consent never enabled");
-  assert(button(remoteEn.sync).disabled, "selection alone must not copy credentials");
-  checkbox(remoteEn.consent).click();
-  await until(() => !button(remoteEn.sync).disabled, "explicit consent did not enable sync");
-  button(remoteEn.sync).click();
-  await until(() => calls.some(call => call.channel === IPC.invoke.remoteHostSyncProviders) && !document.querySelector('[aria-busy="true"]'), "sync did not complete");
-  const sync = calls.find(call => call.channel === IPC.invoke.remoteHostSyncProviders).input;
-  assert(JSON.stringify(sync) === JSON.stringify({ hostKey: host.hostKey, providerIds: [provider.id], setDefault: true }), "only selected provider IDs cross renderer IPC");
-  assert(!checkbox(remoteEn.consent).checked, "consent must be cleared after sync");
-  type(input(remoteEn.path), "/srv/project");
-  await until(() => !button(remoteEn.create).disabled, "project input did not enable create");
-  button(remoteEn.create).click();
-  await until(() => document.querySelector(".chat-surface"), "created session did not open");
+  await until(() => button(`${session.title} · ${session.remoteWorkspaceLabel}`) && !document.querySelector('[aria-busy="true"]'), "history never loaded");
+  assert(!button(remoteEn.sync) && !button(remoteEn.create), "legacy history exposes remote model or project creation");
+  assert(!calls.some(call => call.channel === IPC.invoke.remoteHostProjects || call.channel === IPC.invoke.remoteHostSyncProviders), "history fetched project or model state");
+  button(`${session.title} · ${session.remoteWorkspaceLabel}`).click();
+  await until(() => document.querySelector(".chat-surface"), "existing session did not open");
   assert(useAppStore.getState().workspace.path === "/local/private", "remote selection changed local workspace");
   const editor = document.querySelector(".composer-input");
   editor.textContent = "Inspect remote project";
@@ -123,5 +151,95 @@ globalThis.remoteMvpProbe = async () => {
   assert(!calls.some(call => [IPC.invoke.projectActivate, IPC.invoke.sessionConfigure].includes(call.channel)), "remote UI called a local workspace/model operation");
   root.unmount(); unsubscribe();
   assert(listeners.size === 0, "component listeners leaked");
-  return { ok: true, scenarios: ["consent", "create/open", "send", "approve", "peer resolution", "reconnect without replay", "local isolation", "cleanup"] };
+
+  const settingsRoot = createRoot(document.getElementById("root"));
+  settingsRoot.render(<RemoteHostsPage />);
+  await until(() => document.querySelector(".settings-remote-host-list")?.getAttribute("aria-busy") === "false", "remote hosts did not load");
+  const addActions = document.querySelector(".settings-remote-host-add-actions");
+  const hostList = document.querySelector(".settings-remote-host-list");
+  const sshAction = document.getElementById("remote-host-add-ssh");
+  const pairAction = document.getElementById("remote-host-add-pair");
+  const dialog = () => document.querySelector('.settings-remote-host-add-dialog[role="dialog"]');
+  const sshPanel = () => dialog()?.querySelector("#remote-host-add-panel-ssh");
+  const pairPanel = () => dialog()?.querySelector("#remote-host-add-panel-pair");
+  const settingsLabels = () => catalogs[i18n.language === "zh-CN" ? "zh-CN" : "en"].settings.remoteHosts;
+  const inputFor = (panel, key) => [...(panel?.querySelectorAll("input") ?? [])]
+    .find(field => field.getAttribute("aria-label") === settingsLabels()[key]);
+  const cancelButton = panel => panel?.querySelector('.settings-remote-host-form-actions button[type="button"]');
+  assert(addActions && hostList && sshAction && pairAction && !dialog(), "Add actions or initial inventory state are missing");
+  assert(addActions.compareDocumentPosition(hostList) & Node.DOCUMENT_POSITION_FOLLOWING, "Add actions should precede the inventory");
+  assert(sshAction.getAttribute("aria-haspopup") === "dialog" && pairAction.getAttribute("aria-haspopup") === "dialog", "Add actions are not dialog triggers");
+
+  sshAction.click();
+  await until(() => dialog() && sshPanel() && !sshPanel().hidden, "SSH action did not open its dialog form");
+  assert(dialog().getAttribute("aria-modal") === "true", "SSH form is not modal");
+  await waitForFocus(inputFor(sshPanel(), "fieldLabel"), "SSH dialog did not focus its first field");
+  cancelButton(sshPanel()).click();
+  await until(() => !dialog(), "Cancel did not close the SSH dialog");
+  await waitForFocus(sshAction, "Closing SSH dialog did not restore trigger focus");
+
+  pairAction.click();
+  await until(() => dialog() && pairPanel() && !pairPanel().hidden, "Pair action did not open its dialog form");
+  assert(sshPanel().hidden, "SSH form remained exposed in the Pair dialog");
+  const pairLabel = () => inputFor(pairPanel(), "fieldLabel");
+  const pairUrl = () => inputFor(pairPanel(), "fieldUrl");
+  const pairToken = () => inputFor(pairPanel(), "fieldPairingToken");
+  assert(pairLabel() && pairUrl() && pairToken(), "Pair form fields are missing");
+  type(pairLabel(), "Fixture host");
+  type(pairUrl(), "ws://127.0.0.1:4000");
+  type(pairToken(), "ppt1.fixture-token");
+  pairPanel().querySelector('button[type="submit"]').click();
+  await until(() => !dialog() && calls.some(call => call.channel === IPC.invoke.remoteHostPair), "successful pairing did not close the dialog");
+  await waitForFocus(pairAction, "Pair success did not restore trigger focus");
+  await i18n.changeLanguage("zh-CN");
+  const localizedPairAction = catalogs["zh-CN"].settings.remoteHosts.addPair;
+  await until(
+    () => pairAction.textContent.trim() === localizedPairAction,
+    `Pair action did not localize in ${i18n.language}: ${pairAction.textContent.trim()}`,
+  );
+  assert(pairAction.getAttribute("aria-haspopup") === "dialog", "Pair action lost dialog semantics after locale change");
+
+  pairAction.click();
+  await until(() => dialog() && pairPanel() && !pairPanel().hidden, "Pair dialog did not reopen");
+  assert(pairLabel().value === "", "Successful pairing retained the previous draft");
+  type(pairLabel(), "Discarded draft");
+  cancelButton(pairPanel()).click();
+  await until(() => !dialog(), "Cancel did not close the Pair dialog");
+  pairAction.click();
+  await until(() => dialog() && pairPanel() && !pairPanel().hidden, "Pair dialog did not reopen after cancel");
+  assert(pairLabel().value === "", "Cancel retained the Pair draft");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await until(() => !dialog(), "Escape did not close the Pair dialog");
+  await waitForFocus(pairAction, "Escape did not restore Pair trigger focus");
+
+  const passwordModeAction = () => [...(sshPanel()?.querySelectorAll("button") ?? [])]
+    .find(action => action.textContent.trim() === settingsLabels().sshAuthPassword);
+  const sshPasswordInput = () => inputFor(sshPanel(), "sshPassword");
+  sshAction.click();
+  await until(() => dialog() && sshPanel() && !sshPanel().hidden, "SSH dialog did not reopen");
+  passwordModeAction().click();
+  await until(() => sshPasswordInput(), "SSH password field did not appear");
+  type(sshPasswordInput(), "temporary-fixture-password");
+  cancelButton(sshPanel()).click();
+  await until(() => !dialog(), "Cancel did not close the SSH password dialog");
+  sshAction.click();
+  await until(() => dialog() && sshPanel() && !sshPanel().hidden, "SSH password dialog did not reopen");
+  passwordModeAction().click();
+  await until(() => sshPasswordInput(), "SSH password field did not reopen");
+  assert(sshPasswordInput().value === "", "Cancel retained the SSH password draft");
+  type(sshPasswordInput(), "temporary-backdrop-password");
+  document.querySelector(".settings-remote-host-add-overlay").click();
+  await until(() => !dialog(), "Backdrop click did not close the dialog");
+  await waitForFocus(sshAction, "Backdrop dismissal did not restore SSH trigger focus");
+  sshAction.click();
+  await until(() => dialog() && sshPanel() && !sshPanel().hidden, "SSH dialog did not reopen after backdrop dismissal");
+  passwordModeAction().click();
+  await until(() => sshPasswordInput(), "SSH password field did not reopen after backdrop dismissal");
+  assert(sshPasswordInput().value === "", "Backdrop dismissal retained the SSH password draft");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await until(() => !dialog(), "Escape did not close the SSH dialog");
+  await waitForFocus(sshAction, "Final Escape did not restore SSH trigger focus");
+  settingsRoot.unmount();
+  assert(listeners.size === 0, "remote hosts page listeners leaked");
+  return { ok: true, scenarios: ["history without model transfer", "open", "send", "approve", "peer resolution", "reconnect without replay", "local isolation", "Add actions precede inventory", "SSH and Pair dialog flows", "success and cancel clear drafts", "Escape and backdrop dismissal", "focus restoration", "cleanup"] };
 };

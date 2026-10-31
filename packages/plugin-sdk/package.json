@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/plugin-sdk",
-  "version": "0.18.0-beta.6",
+  "version": "0.21.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +22,6 @@
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

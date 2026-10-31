@@ -14,7 +14,6 @@ export const CONFIG_SYNC_CATEGORIES = [
   "skills",
   "subagents",
   "instructions",
-  "projects",
   "plugins",
   "automation",
   "memory",

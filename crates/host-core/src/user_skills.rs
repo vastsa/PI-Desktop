@@ -26,6 +26,10 @@ pub const MAX_SKILL_PACKAGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_NAME_CHARS: usize = 120;
 const MAX_DESCRIPTION_CHARS: usize = 400;
 const SKILL_KIND: &str = "skills";
+/// Built-in skills have no scanned document, so their activation lives in a
+/// separate state file from user skills. The user-skill scan prunes missing
+/// documents and must not erase a built-in preference.
+const BUILTIN_SKILL_KIND: &str = "skill-builtins";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -109,6 +113,7 @@ impl ImportShape {
 
 pub struct UserSkillRegistry {
     state: CapabilityState,
+    builtins: CapabilityState,
 }
 
 /// Place a single skill file at `target`, either as a copy or a symlink.
@@ -196,6 +201,25 @@ fn clip(value: &str, max_chars: usize) -> String {
 
 fn valid_id(id: &str) -> bool {
     valid_capability_id(id, 64)
+}
+
+fn normalize_builtin_skill_id(id: &str) -> Result<String> {
+    let id = id.trim();
+    let valid_segment = |segment: &str| {
+        !segment.is_empty()
+            && segment.len() <= 64
+            && segment.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && segment
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    };
+    let Some((namespace, name)) = id.split_once('/') else {
+        bail!("SKILL_INVALID: invalid builtin skill id");
+    };
+    if id.len() > 129 || !valid_segment(namespace) || !valid_segment(name) {
+        bail!("SKILL_INVALID: invalid builtin skill id");
+    }
+    Ok(id.to_string())
 }
 
 fn render_document(name: &str, description: Option<&str>, body: &str) -> String {
@@ -738,7 +762,28 @@ impl UserSkillRegistry {
     pub fn new(data_dir: &Path) -> Self {
         Self {
             state: CapabilityState::new(data_dir, SKILL_KIND),
+            builtins: CapabilityState::new(data_dir, BUILTIN_SKILL_KIND),
         }
+    }
+
+    /// Built-in skill ids switched off by the user. They are global and default
+    /// to enabled; ids remain stored if a later release temporarily omits one.
+    pub fn disabled_builtins(&self) -> Vec<String> {
+        self.builtins
+            .disabled_ids(BUILTIN_SKILL_KIND, CapabilityLevel::Global)
+    }
+
+    /// Set one built-in skill's global activation state.
+    pub fn set_builtin_enabled(&mut self, id: &str, enabled: bool) -> Result<String> {
+        let id = normalize_builtin_skill_id(id)?;
+        self.builtins.set_enabled(
+            BUILTIN_SKILL_KIND,
+            CapabilityLevel::Global,
+            &id,
+            None,
+            enabled,
+        )?;
+        Ok(id)
     }
 
     fn scan_level(

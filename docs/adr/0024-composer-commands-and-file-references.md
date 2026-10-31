@@ -62,6 +62,9 @@ exported by the installed package and directly reusable.
    fallback, short TTL cache); `pi-desktop/composer/commands` returns the
    merged command list. Both fail soft without a workspace. These
    Electron-only channels do not change the host RPC protocol version.
+   *(Amended by D669: while that index is truncated, a typed query is also
+   answered from the full listing by the read-only `pi-desktop/fs/search`,
+   because the shallow-first cap leaves deep files of a large tree out.)*
 
 ## Alternatives considered
 

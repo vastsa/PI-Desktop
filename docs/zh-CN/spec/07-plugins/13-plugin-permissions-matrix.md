@@ -14,7 +14,7 @@
 | `ui.panel` | 低 | 打开插件面板 | 安装时授予 | 几乎所有 UI 插件都需要 |
 | `ui.view` | 低 | `contributes.views` 在工作面板中列出并可打开 | 安装时授予 | 与面板窗口同级隔离：沙箱页面、按插件划分的会话分区、`net.domains` 出口限制。按激活范围过滤 |
 | `ui.theme` | 低 | `contributes.themes` CSS 已在“设置”中加载并提供 | 安装时授予 | CSS 由主机清理；它无法编写脚本。已声明的 `assets` 通过主机的只读 `plugin-asset:` 协议提供 |
-| `ui.settings` | 低 | `contributes.settingsDestinations` 在“扩展”中添加沙盒设置项 | 安装时授予 | 仅在宿主“扩展”分组中呈现；使用与面板视图相同沙箱的隔离视图宿主（ADR 0261） |
+| `ui.settings` | 低 | `contributes.scenicThemes` 在“扩展”中添加沙盒设置项 | 安装时授予 | 仅在宿主“扩展”分组中呈现；使用与面板视图相同沙箱的隔离视图宿主（ADR 0261） |
 | `ui.window.appearance` | 低 | 该插件主题被选中时，用 `contributes.windowAppearance` 设置原生窗口背景 | 安装时授予 | 仅接受 `#rrggbb` / `#rrggbbaa`；按解析后的明暗生效，主题消失后回到宿主默认值。macOS 保持 vibrancy |
 | `clipboard.read` | 中等 | `clipboard.readText`、`clipboard.getHistory` | 首次使用时确认 | 可能会读取敏感信息和保留的剪贴板历史 |
 | `clipboard.write` | 中等 | `clipboard.writeText` | 首次使用时确认 | 防止剪贴板污染 |
@@ -28,6 +28,7 @@
 | `agent.tool.register` | 高 | 注册代理工具 | 安装时确认 | 工具执行情况单独审核 |
 | `agent.prompt.inject` | 高 | 注入系统提示符；激活 `contributes.skills` | 默认拒绝/强确认 | 容易导致行为劫持 |
 | `composer.transform` | 中等 | `contributes.composerTransforms` 与 `onComposerTransform` | 安装时确认 | 仅在用户主动执行 Composer 操作后运行。仅接收草稿和可选模型 key，不接收会话历史或单独的附件/文件引用元数据；输入、结果上限均为 100,000 字符并记入审计 |
+| `composer.suggest` | 中等 | `pi.composer.suggest` / `pi.composer.clearSuggestion` | 安装时确认 | 仅在草稿为空、且插件声明的轮次仍是当前轮次时，向当前可见会话的输入框占位符层写入一条可忽略的建议。用户按 Tab 采用、Esc 忽略；输入、发送、切换会话、新一轮开始、插件停止、页面重载或窗口关闭都会清除。插件既不能直接发送，也不读取草稿。文本折为单行并截断到 200 字符；存活时间默认 120 秒，上限 10 分钟。记入审计；无法展示时返回 `{ shown: false, reason }` 而不是抛错 |
 | `agent.extension` | 高 | 在 agent 进程内运行 `contributes.agentExtensions` 模块 | 显式确认；v1.1 仅限本地导入和开发插件 | 与 agent 自身工具同等权限；插件沙箱不适用（规格 16） |
 | `renderer.extension` | 高 | 在宿主渲染进程中执行 `manifest.renderer` 以挂载 UI 插槽；`rendererActions` 与 `rendererCallMethods` 决定该模块可以派发的动作与 `onRendererCall` 方法 | 显式确认；v1.1 仅限本地导入和开发插件，与 `agent.extension` 一致 | 模块与 PI-Desktop 同文档运行，因此插槽是契约而不是沙箱。组件只能派发经过审查的动作词表（`plugin.call`、`composer.insertText`、`composer.readDraft`、`composer.replaceDraft`、`attachments.add` / `list` / `remove`），最多 16 个；`plugin.call` 只能触达调用者自己插件的 `onRendererCall` 方法，最多 32 个。插件卸载时注册会被撤销；自绘弹窗位于插件自己打开的层中 |
 | `provider.register` | 高 | `contributes.providers` 成为原生 Provider 列表中的行，归插件所有并在每次加载时按 manifest 刷新 | 显式确认；v1.1 仅限本地导入和开发插件，与 `agent.extension` 一致 | 用户路径拒绝编辑该行（`PROVIDER_OWNED_BY_PLUGIN`）；API key 凭据仍存放在 Host secret store 的常规 provider 引用下 |
@@ -59,6 +60,12 @@
 | `agent.complete` | 高 | `pi.agent.complete` | 安装时确认 | 宿主代发一次性补全；消耗用户额度；`includeSessionContext` 还需要 `session.read` |
 | `speech.adapter.register` | 高 | `pi.speech.registerAdapter` / `unregisterAdapter` | 安装时确认 | 注册语音协议。handle 留在插件进程；HTTP 计划由宿主用绑定密钥代发且必须同 origin |
 
+「默认策略」一列是预期策略，当前宿主并未按权限逐项执行：安装与更新审核会列出全部
+声明的权限（更新新增的会标出），只要授权缺少任何一项声明的权限，安装器就会拒绝
+（`PLUGIN_PERMISSION_DENIED: missing grant for <permission>`）。首次使用时不会再次
+询问——`clipboard.*` 与 `shell.openExternal` 只检查已保存的授权。自动更新会跳过新增
+权限的更新（§5）。
+
 ## 2A. 权限是开关，manifest 承载范围
 
 有两种能力光靠一个权限名说不清楚：名字负责回答「插件能不能做」，
@@ -67,7 +74,7 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 
 | 字段 | 限定的范围 | 缺失或为空时 |
 |---|---|---|
-| `net.domains` | 主机掌握的每一条出网路径：面板 session、`pi.net.fetch`、远程 HTTP MCP 端点 | 完全不放行出网，无论 `net.fetch` 是否声明 |
+| `net.domains` | 主机掌握的每一条出网路径：面板 session、`pi.net.fetch`、`pi.net.websocket`、远程 HTTP MCP 端点 | 完全不放行出网，无论 `net.fetch` 是否声明 |
 | `fs.read` / `fs.write` / `fs.delete` | 该文件模式可以触碰哪些路径 | 没有常驻可达范围；每次访问都落到确认弹窗 |
 
 字段缺失时一律 fail closed，这正是它们可以省略的原因：manifest 什么都不说，
@@ -97,6 +104,8 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 - 加载面板条目需要 `ui.panel`
 - 贡献工作面板视图需要 `ui.view`；它与 `ui.panel` 相互独立，
   因此插件可以只提供停靠视图而没有独立窗口
+- `ui.view` 也覆盖 `pi.ui.revealView`：在某个会话的工作面板里显示插件自己的视图；
+  跟随选中会话（`pi.session.getActive`、`session:activated`）不需要权限
 - 需要`agent.tool.register`来贡献agent工具
 - 当 `fs.write` 存在时，建议同时声明 `fs.read`
 - `manifest.fs.<mode>` 需要对应的 `fs.<mode>` 权限；没人能用的范围会导致校验失败，
@@ -104,63 +113,75 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
 - `fs.requestDirectory`（`userSelected` root）由 `fs.read` 把关；在用户选中的目录里
   写入或删除仍然需要 `fs.write` / `fs.delete`
 - 缺少权限的贡献未通过清单验证
-  （`themes`、`mcpServers`、`services`、`bus`）； `skills` 是例外，并且是
-  相反，在加载时跳过（参见
+  （`themes`、`views`、`providers` 及 OAuth provider、`agentExtensions`、
+  `composerTransforms`、`globalShortcuts`、`windowAppearance`、`mcpServers`、
+  `services`、`bus`）；`skills` 是例外，在加载时跳过；缺少 `ui.settings` 和
+  `ui.theme` 的 `scenicThemes` 不会显示（参见
   [02-plugin-manifest-schema.md](/zh-CN/spec/07-plugins/02-plugin-manifest-schema) §7)
-- 生命周期与状态事件不需要权限：`workspace:changed`、`session:modelChanged`、
-  `session:turnEnded` 和 `plugin:settingsChanged` 走既有的插件事件通道，
+- 生命周期与状态事件不需要权限：`workspace:changed`、`appearance:changed`、
+  `session:modelChanged`、`session:turnEnded`、`session:activated` 和
+  `plugin:settingsChanged` 走既有的插件事件通道，
   订阅未知的事件名也不会报错
 
-## 3A。 Plan 操作状态规则
+## 3A. Plan 操作状态规则
 
-每个 `agentTools` 贡献都会在 Plan 中被拒绝，无论此矩阵的值如何
-风险或违约政策。 `agent.tool.register` 授权注册
-Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
-直接 Plan 调用并记录拒绝。仅插件工具符合资格
-在同一个 Agent 被批准进入 Agent 模式后。
+插件工具默认在 Plan/Goal 中隐藏并拒绝。运行时工具注册可通过非空 `planSafeActions`
+显式加入，只有 `args.action` 位于该列表时才允许执行。有 schema action enum 时会校验取值。
+清单描述符应与运行时注册保持一致，真正执行的工具由运行时注册决定。
+`risk: "low"`、会话授权和 `auto` 不能代替该声明。宿主策略与插件执行器都会校验，
+执行器对越界 action 返回 `PERMISSION_DENIED`。该列表是作者的只读承诺，不是副作用沙盒（ADR 0211）。
 
 ## 4. 权限显示副本
 
-英文是主要副本。 zh-CN 列保存本地化的示例字符串。
-文件权限从不单独展示：声明的范围会渲染在它旁边，
-所以「修改它列出的文件」后面紧跟着那份清单。
+下表文案取自 en 与 zh-CN 语言包（`packages/i18n/src/locales/`）中的
+`plugins.permissions.*`。安装与更新审核显示该标签，并在其下显示对应的
+`plugins.permissionHelp.*` 说明；插件页以标签 chip 显示。语言包没有条目时，
+标签回退为原始权限名。声明的文件范围显示在已安装插件行的「文件」一栏，
+所以「修改文件」后面紧跟着那份清单。
 
-| 许可 | 英文副本 | zh-CN 示例 |
+| 权限 | 英文文案 | zh-CN 文案 |
 |---|---|---|
-| `fs.read` | Read the files it lists | 读取它列出的文件 |
-| `clipboard.read` | Read the current clipboard and retained history | 读取当前剪贴板和保留的历史 |
-| `fs.write` | Modify the files it lists | 修改它列出的文件 |
-| `fs.delete` | Delete the files it lists, to the trash | 删除它列出的文件（进回收站） |
-| `notify` | 显示应用内和本机通知 | 显示应用内和系统通知 |
-| `agent.tool.register` | 为AI Agent提供可执行工具 | 向AI Agent提供可执行工具 |
-| `agent.prompt.inject` | 调整代理指令 | 调整智能体指令 |
-| `agent.extension` | 在 agent 内运行代码 | 在 agent 内运行代码 |
+| `fs.read` | Read files | 读取文件 |
+| `clipboard.read` | Read the clipboard and its history | 读取剪贴板及其历史 |
+| `fs.write` | Edit files | 修改文件 |
+| `fs.delete` | Delete files | 删除文件 |
+| `notify` | Show in-app and native notifications | 显示应用内和系统通知 |
+| `agent.tool.register` | Add tools for the agent | 为智能体添加工具 |
+| `agent.prompt.inject` | Adjust agent instructions | 调整智能体指令 |
+| `agent.extension` | Run code inside the agent | 在 agent 内运行代码 |
 | `renderer.extension` | Draw UI in chat slots | 在聊天插槽绘制界面 |
-| `net.fetch` | 访问网络 | 访问网络 |
-| `shell.openExternal` | 打开外部链接 | 打开外部链接 |
-| `ui.theme` | 提供一个主题 | 提供主题 |
-| `ui.settings` | Add a sandboxed Settings entry in Extensions | 在“扩展”中添加沙盒设置项 |
-| `ui.window.appearance` | 设置窗口背景 | 设置窗口背景 |
-| `mcp.server.local` | 运行本地 MCP 服务器 | 运行本地 MCP 服务 |
-| `mcp.server.remote` | 到达远程 MCP 服务器 | 连接远端 MCP 服务 |
-| `background.service` | 保持后台服务运行 | 保持后台服务运行 |
-| `bus.publish` | 向其他插件发送消息 | 向其他插件发送消息 |
-| `bus.subscribe` | 接收来自其他插件的消息 | 接收其他插件的消息 |
+| `net.fetch` | Use the network | 访问网络 |
+| `shell.openExternal` | Open external links | 打开外部链接 |
+| `ui.theme` | Provide a theme | 提供主题 |
+| `ui.window.appearance` | Customize window appearance | 自定义窗口外观 |
+| `mcp.server.local` | Run a local MCP server | 运行本地 MCP 服务 |
+| `mcp.server.remote` | Reach a remote MCP server | 连接远端 MCP 服务 |
+| `background.service` | Keep a background service running | 保持后台服务运行 |
+| `bus.publish` | Send messages to other plugins | 向其他插件发送消息 |
+| `bus.subscribe` | Receive messages from other plugins | 接收其他插件的消息 |
 | `browser.cdp` | Control the work-panel browser | 控制工作面板浏览器 |
 | `models.list` | List authenticated models | 列出已登录的模型 |
 | `session.read` | Read the current conversation sent to the model | 读取当前发给模型的对话 |
-| `session.import` | Import bounded session history into your declared sources | 导入受限的会话历史到已声明的数据源 |
-| `session.read.own` | Read sessions imported by this plugin | 读取此插件导入的会话 |
-| `session.update.own` | Rename sessions imported by this plugin | 重命名此插件导入的会话 |
-| `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
 | `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
 | `composer.transform` | Transform text in the Composer | 转换输入框中的文本 |
+| `composer.suggest` | Offer a suggestion in the Composer | 在输入框中给出建议 |
 | `speech.adapter.register` | Register a speech adapter | 注册语音适配器 |
 | `audio.capture.background` | Use the microphone in the background | 后台使用麦克风 |
 | `audio.playback.background` | Play audio in the background | 后台播放声音 |
 | `keyboard.globalShortcut` | Register system-wide shortcuts | 注册系统级快捷键 |
 | `net.websocket` | Open real-time connections | 建立实时双向连接 |
+| `ui.panel` | Show a plugin panel | 显示插件面板 |
+| `ui.microphone` | Use the microphone | 使用麦克风 |
+| `clipboard.write` | Write to the clipboard | 写入剪贴板 |
+| `provider.register` | Add providers to the model list | 将服务添加到模型列表 |
+| `provider.oauth` | Sign in to a provider with OAuth | 通过 OAuth 登录 Provider |
+| `desktop.control` | Control the desktop | 控制桌面操作 |
+| `net.anyHost` | Access any network address | 访问任意网络地址 |
+| `session.autoTitle` | Read first-turn title context and update automatic titles | 读取首轮标题上下文并更新自动标题 |
+
+以下权限目前没有语言包条目，显示为原始权限名：
+`ui.settings`、`session.import`、`session.read.own`、`session.update.own`、`session.delete.own`、`ui.view`、`project.create`。
 
 ## 5. 添加升级权限
 
@@ -183,9 +204,9 @@ assertPermission(pluginId, perm) {
 
 ```ts
 assertFsAccess(pluginId, mode, requestedPath, sessionId) {
- assertPermission(pluginId, `fs.${mode}`)              // 已声明且已授予
+ assertPermission(pluginId, `fs.${mode}`)              // declared AND granted
  full = realpathWithinRoot(root(pluginId, mode, sessionId), requestedPath)
- if (!full) throw NOT_FOUND | INVALID_ARGUMENT         // 先解析软链
+ if (!full) throw NOT_FOUND | INVALID_ARGUMENT         // symlinks resolved first
  if (isDenied(full) || isHostReserved(full)) throw ERROR_PERMISSION_DENIED
  if (!inScope(full, declaredScope(pluginId, mode))) await confirmWithUser(...)
 }

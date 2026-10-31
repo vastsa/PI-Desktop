@@ -409,6 +409,24 @@ export function closeWorkPanelTabState(
   };
 }
 
+export function closeOtherWorkPanelTabsState(
+  state: WorkPanelTabsState,
+  tabId: string,
+): WorkPanelTabsState {
+  const tab = state.tabs.find((item) => item.id === tabId);
+  if (!tab) return state;
+  if (state.tabs.length === 1 && state.activeTabId === tabId) return state;
+  return { tabs: [tab], activeTabId: tab.id };
+}
+
+export function closeAllWorkPanelTabsState(
+  state: WorkPanelTabsState,
+): WorkPanelTabsState {
+  return state.tabs.length === 0 && state.activeTabId === null
+    ? state
+    : { tabs: [], activeTabId: null };
+}
+
 /**
  * Display labels for the subagent tabs in strip order.
  *

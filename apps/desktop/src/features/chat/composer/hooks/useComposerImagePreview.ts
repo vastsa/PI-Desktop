@@ -52,7 +52,7 @@ export function useComposerImagePreview({
     };
     publish();
     for (const reference of images) {
-      void api.fsReadImageDataUrl(reference.path, reference.mimeType).then(
+      void api.fsReadImageDataUrl(reference.path, reference.mimeType, sessionId ?? undefined).then(
         (result) => {
           sources.set(reference.id, result.kind === "image" && result.dataUrl
             ? { status: "ready", src: result.dataUrl }

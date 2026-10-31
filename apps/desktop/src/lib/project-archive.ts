@@ -1,4 +1,5 @@
 import type { ProjectMeta } from "./sidebar-preferences.ts";
+import type { RemoteWorkspace } from "@pi-desktop/shared";
 import { normalizeProjectPath } from "./sidebar-preferences.ts";
 import { projectColor, type RecentProject } from "./recent-projects.ts";
 
@@ -34,6 +35,7 @@ export type ProjectIndexItem = RecentProject & {
 };
 
 export type DurableProjectGroup = {
+  remote?: RemoteWorkspace;
   id: string;
   name: string;
   primaryPath: string;
@@ -307,6 +309,7 @@ export function buildProjectIndex(args: {
     if (!key) return;
     const existing = byPath.get(key);
     byPath.set(key, {
+      ...(group.remote ? { remote: group.remote } : {}),
       path: group.primaryPath,
       name: group.name,
       openedAt: Math.max(existing?.openedAt ?? 0, openedAt),
@@ -344,6 +347,7 @@ export function buildProjectIndex(args: {
       color: existing?.color ?? project.color ?? projectColor(project.path),
       groupId: existing?.groupId ?? `legacy:${key}`,
       roots: existing?.roots ?? [{ path: project.path, name: project.name, position: 0 }],
+      ...(existing?.remote ? { remote: existing.remote } : {}),
       legacy: existing?.legacy ?? true,
     });
   }
@@ -366,6 +370,7 @@ export function buildProjectIndex(args: {
       color: existing?.color ?? projectColor(project.path),
       groupId: existing?.groupId ?? `legacy:${key}`,
       roots: existing?.roots ?? [{ path: project.path, name: project.name, position: 0 }],
+      ...(existing?.remote ? { remote: existing.remote } : {}),
       legacy: existing?.legacy ?? true,
     });
   }

@@ -25,7 +25,7 @@ function parseArgs(argv) {
 }
 
 const root = parseArgs(process.argv.slice(2));
-const targetVersion = "1.1.0";
+const targetVersion = "1.4.0";
 const entries = [
   {
     name: "@earendil-works/pi-agent-core",
@@ -95,7 +95,7 @@ if (
 for (const declarationPath of [
   "dist/index.d.ts",
   "dist/types.d.ts",
-  "dist/utils/assistant-message-frame.d.ts",
+  "dist/providers/compat-schema.d.ts",
   "dist/utils/estimate.d.ts",
   "dist/utils/hosted-search.d.ts",
   "dist/utils/local-request-error.d.ts",

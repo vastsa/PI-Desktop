@@ -39,7 +39,7 @@ async function probe(artifactDir: string) {
       panes.push(pane);
       return pane;
     },
-    isPluginLoaded: () => true, getFileRoot: async () => null, onState: () => {},
+    isPluginLoaded: () => true, getFileRoots: async () => [], onState: () => {},
   });
   try {
     await window.loadURL(`data:text/html,${encodeURIComponent(`<!doctype html>

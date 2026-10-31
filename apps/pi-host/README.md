@@ -10,32 +10,33 @@ Use a Desktop and Host bundle built from the same candidate.
 
 1. Open **Settings → Remote Hosts (Experimental)**. Developer mode is not required.
 2. Add an SSH host using your existing SSH key/configuration, or password where
-   supported. Bootstrap downloads the same-version platform bundle and verifies
-   the published checksum. The server needs Node and outbound release access.
-3. If the Host needs a model, open **Conversations / New conversation** on the
-   connected host. Select eligible model configurations and explicitly consent to copying their
-   API credentials to that host. Optionally set its default model. OAuth,
-   CLI/plugin providers and local-only endpoints are excluded. Direct URL pairing
-   does not offer credential copy.
-4. Return to Chat home and open **Create project → Remote**. Choose the connected
-   host, select an existing project, browse a directory, or enter an absolute
-   remote path. Creation opens an empty chat in the usual home layout (Agent
-   mode, Ask permissions). Project labels follow the remote directory name.
-5. Use the home project switcher or the sidebar's remote project group to reopen
-   it or start another chat. Chats stay bound to that host and project.
-6. Send text, approve/deny tools, answer questions, and inspect read-only Files /
-   Review. Remote paths never activate a local workspace. Reconnect recovers
-   subscriptions and pending requests without resending the turn.
+   supported. Remote download is preferred; only a classified download failure
+   permits one bounded, locally verified upload. New bundles include Node 22+
+   and do not require remote Node or outbound release access.
+3. Return to Chat home and open **Create project**. Choose the connected Host,
+   open the directory-selection dialog, and choose or enter the remote directory.
+   Name the project locally, exactly as for a local project.
+4. Use the ordinary project switcher, sidebar and archive. New chats are local
+   sessions bound to the remote workspace. Select any configured local model;
+   its credentials, model requests, project metadata and transcript stay locally.
+5. Send a message, approve tools locally, and inspect Files / Review. Read, Glob,
+   Grep, Write, Edit and Bash execute on the paired Host through the owner-only
+   workspace service. A disconnected Host produces an error and never falls back
+   to local filesystem execution. Reconnect never replays a mutation.
 
-The regular Composer and transcript are shared with local chats. The UI does not offer remote terminal, attachments, local model controls,
-message edits, Plan/Goal creation, desktop plugin/MCP relay or cross-host handoff.
-This is not full R2 acceptance.
+The local Agent and regular Composer are shared with local chats. Host-side model
+configuration, project registration and session creation are not prerequisites.
+Legacy remote-Agent histories still use their original backend. Trusted-extension
+model providers remain local; an extension workspace `pi.exec` needs a remote
+adapter and currently fails explicitly, while a local model helper can specify
+its local cwd. There is no interactive terminal UI (ADR 0108); local Agent Bash
+commands still run against the remote workspace. This is not full R2 acceptance.
 
 **Release prerequisite:** automatic SSH install uses published release assets.
 Building this branch does not update an existing release. Publish a matching
 platform Host bundle before distributing the automatic-install path. For local
 candidate testing, use the isolated acceptance commands below; do not point an
-old Host at a candidate Desktop and assume provider import is available.
+old Host at a candidate Desktop and assume workspace tool/file services are available.
 
 ## Build and validate a candidate
 
@@ -48,6 +49,7 @@ cargo build -p host-core --locked
 node apps/pi-host/scripts/bundle.mjs --host-core "$PWD/target/debug/pi-desktop-host-core" --out "$PWD/apps/pi-host/dist-bundle/candidate"
 PI_HOST_E2E_BUNDLE="$PWD/apps/pi-host/dist-bundle/candidate" node scripts/e2e-remote-mvp.mjs
 node scripts/e2e-remote-mvp-ui.mjs
+PI_HOST_CORE_BINARY="$PWD/target/debug/pi-desktop-host-core" node scripts/e2e-local-agent-remote-tools.mjs
 ```
 
 Set `--out <directory>` to place the Host bundle elsewhere, and use the actual
@@ -71,7 +73,17 @@ install a second dependency environment just to execute these tests.
   remains the separate gate for release download, SSH/password login and recovery
   on another machine. Tests require no production credentials or paid model calls.
 
-## Provider import operational behavior
+## Local-Agent workspace service
+
+The Host advertises additive `workspaceTools` / `workspaceFiles` capabilities.
+Only authenticated owners can use workspace/toolShell, workspace/toolExecute,
+workspace/toolAbort and workspace/files. The pure Rust runner enforces existing
+path containment and shell identity, with no Host provider, project or session
+creation. Active calls are owned by their originating connection and cancelled
+when it closes. Arguments/results are bounded to 1 MiB; operations are not
+replayed. Install a matching Host bundle before using this new workflow.
+
+## Legacy remote-Agent provider import operational behavior
 
 The UI sends only IDs to Main. Main sends a version-1 payload over SSH stdin to
 `node "$HOME/.pi-desktop/pi-host/current/pi-host.js" provider-import`. The CLI
@@ -95,12 +107,14 @@ See [remote architecture](../../docs/spec/02-architecture/05-remote-agent-contro
 
 ## Candidate notes (unreleased)
 
-- Experimental Remote Hosts is available without developer mode, with explicit
-  model copy, project/session entry, text chat, approvals and read-only files/diffs.
+- Experimental Remote Hosts is available without developer mode. New projects use
+  a local Agent and local models with remote workspace tools and files. Legacy
+  remote-Agent sessions preserve their explicit provider-import behavior.
 - Complete runtime packaging and bounded reconnect recovery avoid missing chunks,
   duplicate turns, stale approval cards and remote-to-local routing fallback.
-- No local data migration or database schema change. Existing local sessions and
-  provider configuration are preserved. Full R2 and publication are not implied.
+- Remote project bindings are additive local project metadata. Existing local
+  sessions and provider configuration are preserved. Full R2 and publication are
+  not implied.
 - An SSH bootstrap already downloading/installing has no mid-step cancellation
   interface yet. Closing prevents late registration and releases a returned forward,
   but does not undo or immediately interrupt an already-started remote installation.

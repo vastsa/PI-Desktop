@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  GEN_UI_DIRECTORY_NAME,
   ErrorCodes as SharedErrorCodes,
   isActiveInProject,
   isCommandShellCatalog,
@@ -29,7 +30,7 @@ import {
   visionFromModelConfig,
   type UserSubagentDocument,
 } from "@pi-desktop/agent-runtime";
-import { builtinSkills } from "../builtin-skills";
+import { builtinSkills, effectiveDisabledBuiltinSkills, VISUALIZE_SKILL_ID } from "../builtin-skills";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import {
   catalogModelConfigFor,
@@ -41,6 +42,8 @@ import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { RuntimeProvider } from "./provider-catalog";
 import type { LoadedSkillDocument } from "../skill-document";
+import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
+import { loadRemoteWorkspaceInstructions } from "../remote/remote-workspace-instructions.js";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -209,6 +212,53 @@ export function createSessionLaunchRuntime({
     }
   }
 
+  /** Built-in skill activation is host-owned and defaults on. */
+  async function disabledBuiltinSkills(): Promise<string[]> {
+    if (!runtimeState.host?.isAvailable()) {
+      throw new Error("host unavailable while reading built-in skill activation");
+    }
+    try {
+      const result = await runtimeState.host!.call<{ disabled: string[] }>(
+        "skills.disabledBuiltins",
+      );
+      return result.disabled ?? [];
+    } catch (error) {
+      if (!isHostUnavailable(error)) {
+        logger.app("plugin", "warn", "builtin skill state failed", {
+          data: String(error),
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Built-in ids this process treats as off for runtime consumers: the host's
+   * activation state plus the inline-visualization switch. The `/` menu and the
+   * on-demand `Skill` tool read this, so neither offers the `visualize` skill
+   * while the feature is off — and a switch takes effect without a relaunch.
+   */
+  async function runtimeDisabledBuiltinSkills(): Promise<string[]> {
+    const disabled = await disabledBuiltinSkills();
+    let visualizations = false;
+    if (runtimeState.host?.isAvailable()) {
+      try {
+        const settings = await runtimeState.host.call<{ inlineVisualizations?: boolean }>(
+          "settings.get",
+        );
+        visualizations = settings.inlineVisualizations === true;
+      } catch (error) {
+        // An unreadable switch keeps the feature off; it never turns it on.
+        if (!isHostUnavailable(error)) {
+          logger.app("plugin", "warn", "visualization switch failed", {
+            data: String(error),
+          });
+        }
+      }
+    }
+    return effectiveDisabledBuiltinSkills(disabled, visualizations);
+  }
+
   /**
    * Load one of the user's own skill documents by id, or `null` if there is no
    * such skill — so the caller can fall through to the plugin catalog.
@@ -251,6 +301,25 @@ export function createSessionLaunchRuntime({
     return catalog;
   }
 
+  /**
+   * The worktree root of an isolated session, resolved by host-core from its
+   * own registry; `undefined` for every other session. A missing worktree
+   * fails the launch instead of silently falling back to the main checkout.
+   */
+  async function isolatedWorkspaceRoot(
+    sessionId: string,
+    session: { worktree?: unknown } | null | undefined,
+  ): Promise<string | undefined> {
+    if (!session?.worktree) return undefined;
+    if (!runtimeState.host) throw new Error("host unavailable");
+    const result = await runtimeState.host.call<{ path?: string }>("worktree.location", {
+      sessionId,
+    });
+    const root = typeof result.path === "string" ? result.path.trim() : "";
+    if (!root) throw new Error("isolated worktree location unavailable");
+    return root;
+  }
+
   async function resolveAgentRuntimeLaunch(
     sessionId: string,
     session: any,
@@ -265,7 +334,12 @@ export function createSessionLaunchRuntime({
   ) {
     if (!runtimeState.host) throw new Error("host unavailable");
     await modelsDevCatalog.ensureLoaded();
-    const commandShell = (await resolveEffectiveCommandShell()).effective!;
+    const remoteWorkspace = session.remoteWorkspace as { hostKey: string; path: string } | undefined;
+    const remoteBoot = remoteWorkspace ? getActiveRemoteHostsBoot() : null;
+    if (remoteWorkspace && !remoteBoot) throw new Error("remote host unavailable");
+    const commandShell = remoteWorkspace
+      ? await remoteBoot!.workspaceCommandShell(remoteWorkspace.hostKey)
+      : (await resolveEffectiveCommandShell()).effective!;
     const providers = await runtimeState.host!.call<{ providers: RuntimeProvider[] }>(
       "providers.list",
       { includeDisabled: false },
@@ -374,10 +448,25 @@ export function createSessionLaunchRuntime({
       typeof session.projectPath === "string" && session.projectPath.trim()
         ? session.projectPath.trim()
         : undefined;
-    let projectInstructions = await loadInstructionChain(projectPath);
+    const localInstructionRoot = remoteWorkspace ? undefined : projectPath;
+    // ADR 0329: an isolated session reads and writes files in its worktree.
+    // `projectPath` stays the project identity (memory, skills, plugins, MCP,
+    // subagents, group context); only files follow `workspaceRoot`. Remote
+    // workspaces are never isolated.
+    const workspaceRoot = remoteWorkspace
+      ? undefined
+      : await isolatedWorkspaceRoot(sessionId, session);
+    let projectInstructions = await loadInstructionChain(
+      remoteWorkspace ? undefined : (workspaceRoot ?? projectPath),
+    );
+    if (remoteWorkspace) {
+      projectInstructions = await loadRemoteWorkspaceInstructions(
+        remoteBoot!.workspaceFiles, remoteWorkspace, projectInstructions,
+      );
+    }
     // pi-compatible SYSTEM.md / APPEND_SYSTEM.md (issue #542): resolved once
     // per launch; a change retires the runtime through the reuse match.
-    const customSystemPrompt = await loadCustomSystemPrompt(projectPath);
+    const customSystemPrompt = await loadCustomSystemPrompt(localInstructionRoot);
     let projectMemory: string | undefined;
     if (projectPath) {
       try {
@@ -389,7 +478,9 @@ export function createSessionLaunchRuntime({
           } | null;
         }>("project.group.context", { path: projectPath });
         const groupRoots = result.context?.roots ?? [];
-        const groupRootGuide = groupRoots.length > 1
+        // An isolated session's root is its worktree; the group's other roots
+        // are outside it and are not advertised (ADR 0329).
+        const groupRootGuide = !workspaceRoot && groupRoots.length > 1
           ? [
               `Primary root: ${groupRoots[0]?.path ?? projectPath}`,
               ...groupRoots.slice(1).map((root) => `Additional root: ${root.path}`),
@@ -445,10 +536,18 @@ export function createSessionLaunchRuntime({
     // skills come first so a plugin's entry reads as a refinement of them, and
     // the user's own skills come last so they win a name clash in the model's
     // reading order.
+    // The inline-visualization switch owns the `visualize` skill: with the
+    // feature off it is withheld here, which also drops the directory below.
+    const disabledSkillIds = effectiveDisabledBuiltinSkills(
+      await disabledBuiltinSkills(),
+      settings.inlineVisualizations === true,
+    );
     const pluginSkills = [
       ...builtinSkills({
         workspacePath: projectPath,
         pluginPaths: plugins.listLoaded().map((loaded) => loaded.path),
+        disabledIds: disabledSkillIds,
+        remote: Boolean(remoteWorkspace),
       }),
       ...plugins
         .getSkills()
@@ -469,7 +568,7 @@ export function createSessionLaunchRuntime({
     // pinned model is resolved here because credentials and the models.dev catalog
     // live on this side. The user's own definitions (D202) are scope-filtered like the
     // skills above; a delegate the model can see is one it will try to call.
-    const subagentCatalog = await loadSubagentDefinitions(projectPath, {
+    const subagentCatalog = await loadSubagentDefinitions(localInstructionRoot, {
       userDocuments: await activeUserSubagentDocuments(projectPath),
       // A switched-off builtin is dropped from what this prompt may delegate to.
       disabledBuiltins: await disabledBuiltinSubagents(),
@@ -635,17 +734,30 @@ export function createSessionLaunchRuntime({
       providerId: provider.id,
       modelId,
       projectPath,
+      workspaceRoot,
       sidecarParams: {
         sessionId,
         mode,
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        // The session `/fast` switch only reaches a model the user allowed it
+        // for in model settings (ADR 0334).
+        fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,
         ...(jevApiKey ? { jevApiKey } : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
+        // Remote-host tools write on that host; Main can only serve local files.
+        // The feature switch and a disabled visualize skill both withhold the
+        // directory, so the prompt never points the model at a skill it cannot
+        // load or at a card this build will not render.
+        ...(remoteWorkspace || disabledSkillIds.includes(VISUALIZE_SKILL_ID)
+          ? {}
+          : { visualizationsDir: join(dataDir, GEN_UI_DIRECTORY_NAME, sessionId) }),
         attachmentsDir: join(dataDir, "attachments"),
         projectPath,
+        ...(remoteWorkspace ? { remoteWorkspace } : {}),
+        ...(workspaceRoot ? { workspaceRoot } : {}),
         customSystemPrompt,
         projectInstructions,
         projectMemory,
@@ -716,6 +828,8 @@ export function createSessionLaunchRuntime({
     activeUserSkills,
     activeUserSubagentDocuments,
     disabledBuiltinSubagents,
+    disabledBuiltinSkills,
+    runtimeDisabledBuiltinSkills,
     loadUserSkillBody,
     resolveEffectiveCommandShell,
     resolveAgentRuntimeLaunch,

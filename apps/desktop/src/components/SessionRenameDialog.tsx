@@ -4,7 +4,7 @@ import { portalToBody } from "../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import { MAX_SESSION_TITLE_LENGTH } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
-import { TooltipButton } from "./ui";
+import { OverlayBackdrop, TooltipButton } from "./ui";
 import { Button } from "./ui";
 import { IconClose, IconPencil } from "./icons";
 
@@ -108,7 +108,7 @@ function RenameDialog({
   };
 
   const dialog = (
-    <div
+    <OverlayBackdrop
       className="overlay session-rename-dialog-overlay"
       role="presentation"
       onClick={(event) => {
@@ -179,7 +179,7 @@ function RenameDialog({
           </div>
         </form>
       </div>
-    </div>
+    </OverlayBackdrop>
   );
 
   return typeof document === "undefined"

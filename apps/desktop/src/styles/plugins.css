@@ -1,5 +1,5 @@
-/*
-  Plugins page — alerts, search and segmented filters, plugin rows and cards,
+﻿/*
+  Plugins page 鈥?alerts, search and segmented filters, plugin rows and cards,
   the detail sheet (permissions, versions, readme), and install/permission
   modals.
 */
@@ -11,8 +11,8 @@
    page renders correctly in both themes.
 
    The page draws no dividers (D296). In-flow structure is carried by three
-   tonal layers — the page, soft tiles mixed from the text colour, and the
-   raised pill of an active control — plus spacing. Hairlines, inset rings and
+   tonal layers 鈥?the page, soft tiles mixed from the text colour, and the
+   raised pill of an active control 鈥?plus spacing. Hairlines, inset rings and
    border-top/bottom rules are reserved for floating layers (menus, the detail
    sheet, dialogs, tooltips), where an edge is an elevation cue rather than a
    partition. */
@@ -277,21 +277,23 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Installed rows are soft tiles stacked with a small gap; the gap does the
-   work a hairline used to. Nothing clips, so row menus can overhang freely. */
+/* Installed plugins are cards in an auto-filling grid: every card is its own
+   soft tile, the gap does the work a hairline used to, and nothing clips so a
+   card's menu can overhang the tile below. `min(340px, 100%)` keeps the
+   computed column from overflowing a container narrower than one card. */
 .plugins-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+  gap: 12px;
   min-width: 0;
 }
 
 .plugins-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
-  border-radius: var(--radius-md-plus);
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
   background: var(--plugins-tile);
   transition: background var(--motion-duration-fast) var(--motion-ease-out);
 }
@@ -302,8 +304,11 @@
   background: var(--plugins-tile-hover);
 }
 
-.plugins-row:has(.plugins-row-details[open]) {
-  align-items: flex-start;
+.plugins-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .plugins-glyph {
@@ -381,6 +386,29 @@
 .plugins-dot {
   flex: 0 0 auto;
   color: var(--ds-text-faint);
+}
+
+/* Rating chip in a card's metadata line: star, average, rating count. It
+   renders nothing without a summary, so an unavailable centre reads as no
+   chip rather than a zero score. */
+.plugins-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plugins-rating > svg {
+  flex: 0 0 auto;
+  color: var(--ds-warning);
+}
+
+.plugins-rating-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* A plugin that failed to load keeps its own reason on the row: the row stays
@@ -605,13 +633,18 @@
   color: inherit;
 }
 
+/* The card's control rail: scope first, then the one call to action, then the
+   28px icon actions. It clusters at the card's left edge and wraps rather than
+   shrinking, so a narrow card grows a second line instead of clipping a
+   control. */
 .plugins-row-controls {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding-top: 0;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: auto;
+  min-width: 0;
 }
 
 /* Keep row actions visible so available operations are discoverable at rest. */
@@ -1069,39 +1102,97 @@
 }
 
 .plugins-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
+  display: block;
+  overflow: hidden;
   color: var(--ds-text-muted);
   font-size: var(--text-xs-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plugins-card-author {
+  display: inline-block;
+  max-width: 14ch;
   overflow: hidden;
   text-overflow: ellipsis;
+  vertical-align: bottom;
   white-space: nowrap;
-  max-width: 14ch;
 }
 
-/* Two clamped lines keep every card the same height without a min-height hack. */
+/* The description is the card's body: four quiet lines, never a teaser. */
 .plugins-card-desc {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
   overflow: hidden;
   color: var(--ds-text-secondary);
-  font-size: var(--text-sm-plus);
-  line-height: var(--leading-body);
+  font-size: var(--text-md-plus);
+  line-height: var(--leading-prose);
 }
 
 .plugins-card-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 2px 14px 12px;
+  gap: 8px;
+  padding: 8px 14px 12px;
+  background: color-mix(in oklab, var(--ds-text-primary) 3%, transparent);
+}
+
+/* The rating and the install action are fixed-size; the review line takes the
+   space that is left, so neither can be squeezed by a long quote. */
+.plugins-card-foot .plugins-rating {
+  flex: 0 0 auto;
+}
+
+.plugins-card-foot .btn,
+.plugins-card-foot .plugins-installed-mark {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.plugins-card-review {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  line-height: var(--leading-body);
+}
+
+.plugins-card-review::before {
+  content: "";
+  flex: 0 0 1px;
+  height: 9px;
+  background: var(--ds-border-subtle);
+}
+
+.plugins-card-review-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: plugins-review-fade var(--motion-duration-slow) var(--motion-ease-out);
+}
+
+@keyframes plugins-review-fade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugins-card-review-text {
+    animation: none;
+  }
 }
 
 .plugins-card-state {
@@ -1153,6 +1244,330 @@
   50% {
     opacity: 1;
   }
+}
+
+/* ---- Public ratings and reviews ----
+   Reads only: averages and review rows come from the plugin centre, and the
+   one write path is a link that opens the centre's page in the system
+   browser. Every surface here goes through --ds-* tokens. */
+
+/* Summary: the average on the left, the good / medium / bad split on the
+   right. Shared by the detail sheet and the review drawer. */
+.plugins-reviews-summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border-radius: var(--radius-md-plus);
+  padding: 12px 14px;
+  background: var(--plugins-tile);
+}
+
+.plugins-reviews-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.plugins-reviews-avg {
+  color: var(--ds-text-primary);
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-strong);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tighter);
+}
+
+.plugins-reviews-stars {
+  display: inline-flex;
+  color: var(--ds-warning);
+}
+
+.plugins-reviews-count {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  white-space: nowrap;
+}
+
+.plugins-reviews-dist {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugins-reviews-dist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+}
+
+.plugins-reviews-dist-label {
+  flex: 0 0 auto;
+  min-width: 58px;
+}
+
+.plugins-reviews-dist-bar {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 8%, transparent);
+  overflow: hidden;
+}
+
+.plugins-reviews-dist-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ds-text-faint);
+}
+
+.plugins-reviews-dist-row.is-positive .plugins-reviews-dist-fill {
+  background: var(--ds-success);
+}
+
+.plugins-reviews-dist-row.is-negative .plugins-reviews-dist-fill {
+  background: var(--ds-error);
+}
+
+.plugins-reviews-dist-count {
+  flex: 0 0 auto;
+  min-width: 18px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugins-sheet-reviews-action {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
+/* The drawer: a second dialog-level surface that covers the detail sheet
+   while the sheet keeps its mounted state and scroll position. */
+.plugins-reviews-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.plugins-reviews-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--ds-modal-veil);
+  animation: plugins-fade-in var(--motion-duration-fast) var(--motion-ease-out) both;
+}
+
+.plugins-reviews {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  height: 100%;
+  padding-top: var(--ds-toolbar-height);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: 0 0 0 0.5px var(--ds-border-default), -18px 0 48px rgba(0, 0, 0, 0.26);
+  animation: plugins-sheet-in var(--motion-duration-normal) var(--motion-ease-out) both;
+}
+
+.plugins-reviews-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 10px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.plugins-reviews-title {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-strong);
+  letter-spacing: var(--tracking-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugins-reviews-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 16px 16px;
+}
+
+.plugins-reviews-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugins-reviews-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.plugins-reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugins-review {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--plugins-tile);
+}
+
+.plugins-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plugins-review-author {
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugins-review-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs-plus);
+  font-variant-numeric: tabular-nums;
+}
+
+.plugins-review-rating > svg {
+  color: var(--ds-warning);
+}
+
+.plugins-review-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.plugins-review-body {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.plugins-reviews-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 2px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+}
+
+.plugins-reviews-state.is-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0;
+}
+
+.plugins-reviews-state-title {
+  margin: 0;
+}
+
+.plugins-reviews-state-detail {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  overflow-wrap: anywhere;
+}
+
+.plugins-reviews-more {
+  display: flex;
+  justify-content: center;
+}
+
+/* The composer stays inert 鈥?reviews are written on the centre 鈥?and its one
+   action is a real link there. */
+.plugins-reviews-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  background: var(--plugins-tile);
+}
+
+.plugins-reviews-composer-field {
+  width: 100%;
+  min-height: 54px;
+  resize: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  background: var(--ds-field-inset-bg);
+  color: var(--ds-text-muted);
+  font: inherit;
+  font-size: var(--text-sm-plus);
+}
+
+.plugins-reviews-write {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  border-radius: var(--radius-2xs);
+  padding: 4px 8px;
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-medium);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.plugins-reviews-write:hover {
+  background: var(--ds-bg-hover);
+}
+
+.plugins-reviews-write > svg {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
 }
 
 /* Detail sheet: a right-side overlay instead of a nested-border sidebar. */
@@ -1819,8 +2234,8 @@
   padding: 14px 18px 18px;
 }
 
-/* Manual install and update: one dialog follows the host's reports — the phase
-   it is in, the mirror being tried, the bytes that arrived — and ends either on
+/* Manual install and update: one dialog follows the host's reports 鈥?the phase
+   it is in, the mirror being tried, the bytes that arrived 鈥?and ends either on
    its own success or as a failure report naming the mirrors that were tried. */
 .plugins-install-modal {
   width: min(560px, 100%);
@@ -1986,3 +2401,4 @@
     transition: none;
   }
 }
+

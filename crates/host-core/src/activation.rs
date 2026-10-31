@@ -77,23 +77,11 @@ impl ActivationScope {
 }
 
 /// Storage spelling of a project path: forward slashes, no trailing separator.
-/// Mirrors `normalize_project_path` in `db.rs` so scope entries compare equal to
-/// the `projects` table.
+/// Delegates to `db::normalize_project_path` so scope entries compare equal to
+/// the `projects` table, including paths carrying the Windows extended-length
+/// prefix.
 pub fn normalize_project_path(path: &str) -> String {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    let mut normalized = trimmed.replace('\\', "/");
-    while normalized.len() > 1
-        && normalized.ends_with('/')
-        && !normalized
-            .strip_suffix('/')
-            .is_some_and(|prefix| prefix.ends_with(':'))
-    {
-        normalized.pop();
-    }
-    normalized
+    crate::db::normalize_project_path(path).unwrap_or_default()
 }
 
 /// Case-insensitive path comparison: macOS and Windows both hand us
@@ -180,5 +168,13 @@ mod tests {
     fn windows_drive_root_survives_normalization() {
         assert_eq!(normalize_project_path("C:\\"), "C:/");
         assert_eq!(normalize_project_path("C:\\work\\app\\"), "C:/work/app");
+    }
+
+    #[test]
+    fn windows_extended_length_scope_matches_plain_drive_path() {
+        let scope = projects(&[r"\\?\E:\work\app"]);
+
+        assert_eq!(normalize_project_path(r"\\?\E:\work\app"), "E:/work/app");
+        assert!(scope.matches(Some("E:/work/app/child")));
     }
 }

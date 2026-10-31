@@ -60,3 +60,11 @@ test('explicit protocols take precedence over matching endpoint presets', () => 
     assert.equal(copy.apiStyle,apiStyle);
   }
 });
+
+for (const supportsReasoningEffort of [true, false, null]) {
+  test(`copy preserves reasoning effort override ${supportsReasoningEffort}`, () => {
+    const original = source();
+    original.models[0].supportsReasoningEffort = supportsReasoningEffort;
+    assert.equal(copyProviderConfiguration(original, 'Copy').models[0].supportsReasoningEffort, supportsReasoningEffort);
+  });
+}

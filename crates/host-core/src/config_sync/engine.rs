@@ -266,7 +266,15 @@ fn default_categories() -> BTreeMap<String, bool> {
 
 fn selection(config: &StoredConfig) -> CategorySelection {
     let mut values = default_categories();
-    values.extend(config.categories.clone());
+    values.extend(
+        config
+            .categories
+            .iter()
+            .filter(|(domain, _)| {
+                domains::ALL_DOMAINS.contains(&domain.as_str()) || domain.as_str() == "credentials"
+            })
+            .map(|(domain, selected)| (domain.clone(), *selected)),
+    );
     values.insert("credentials".to_string(), config.include_secrets);
     values.insert(domains::DOMAIN_MEMORY.to_string(), config.include_memory);
     CategorySelection(values)
@@ -351,11 +359,14 @@ fn load_config(st: &AppState) -> Result<Option<StoredConfig>> {
     let Some(value) = st.db.kv_get(CONFIG_NS, CONFIG_KEY)? else {
         return Ok(None);
     };
-    let config: StoredConfig =
+    let mut config: StoredConfig =
         serde_json::from_value(value).context("decode config sync settings")?;
     if config.format != FORMAT || config.version != 1 {
         bail!("CONFIG_SYNC_UNSUPPORTED: unsupported local sync settings");
     }
+    config.categories.retain(|domain, _| {
+        domains::ALL_DOMAINS.contains(&domain.as_str()) || domain == "credentials"
+    });
     Ok(Some(config))
 }
 
@@ -806,7 +817,21 @@ fn load_base(st: &AppState, key: &VaultKey) -> Result<Option<RevisionManifest>> 
 }
 
 fn load_pending(st: &AppState, key: &VaultKey) -> Result<Option<PendingBundle>> {
-    load_encrypted(st, key, "local-pending", &local_path(st, "pending.bin")?)
+    let pending: Option<PendingBundle> =
+        load_encrypted(st, key, "local-pending", &local_path(st, "pending.bin")?)?;
+    Ok(pending.map(|mut bundle| {
+        domains::retain_supported_entities(&mut bundle.manifest);
+        if let Some(local) = &mut bundle.local_before {
+            domains::retain_supported_entities(local);
+        }
+        bundle
+            .approvals
+            .retain(|item| domains::adapter_for(&item.entity.domain).is_some());
+        bundle
+            .conflicts
+            .retain(|item| domains::adapter_for(&item.domain).is_some());
+        bundle
+    }))
 }
 
 fn store_pending(st: &AppState, key: &VaultKey, pending: &PendingBundle) -> Result<()> {
@@ -886,7 +911,7 @@ fn send_state_notification(tx: &mpsc::UnboundedSender<String>, st: &mut AppState
 mod tests {
     use super::*;
     use crate::config_sync::domains::{
-        DOMAIN_APPLICATION, DOMAIN_MCP, DOMAIN_PROJECTS, DOMAIN_PROVIDERS, DOMAIN_SKILLS,
+        DOMAIN_APPLICATION, DOMAIN_MCP, DOMAIN_PROVIDERS, DOMAIN_SKILLS,
     };
     use crate::mcp_servers::McpServerInput;
     use crate::user_skills::UserSkillInput;
@@ -1023,7 +1048,6 @@ mod tests {
                     "credentials": true,
                     "mcp": true,
                     "skills": true,
-                    "projects": true,
                 },
                 "includeSecrets": true,
                 "automaticSync": false,
@@ -1148,6 +1172,11 @@ mod tests {
         std::fs::create_dir_all(&project_b)?;
         let project_a = project_a.canonicalize()?;
         let project_b = project_b.canonicalize()?;
+        device_b
+            .lock()
+            .await
+            .db
+            .ensure_project(&project_b.to_string_lossy(), false)?;
 
         let provider_id = {
             let mut state = device_a.lock().await;
@@ -1233,7 +1262,7 @@ mod tests {
             );
             assert!(captured.contains(DOMAIN_MCP), "captured: {captured:?}");
             assert!(captured.contains(DOMAIN_SKILLS), "captured: {captured:?}");
-            assert!(captured.contains(DOMAIN_PROJECTS), "captured: {captured:?}");
+            assert!(!captured.contains("projects"), "captured: {captured:?}");
         }
 
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -1349,7 +1378,7 @@ mod tests {
         assert!(domains.contains(DOMAIN_PROVIDERS), "domains: {domains:?}");
         assert!(domains.contains(DOMAIN_MCP), "domains: {domains:?}");
         assert!(domains.contains(DOMAIN_SKILLS), "domains: {domains:?}");
-        assert!(domains.contains(DOMAIN_PROJECTS), "domains: {domains:?}");
+        assert!(!domains.contains("projects"), "domains: {domains:?}");
         let mapping_key = received
             .get("pendingApprovals")
             .and_then(Value::as_array)

@@ -61,21 +61,41 @@ test("the file view is a sandboxed page over the public bridge", () => {
   assert.match(view, /meta name="pi-plugin-chrome" content="v2"/);
 });
 
+test("the file manager search panel remains readable in both themes", () => {
+  assert.match(
+    viewBundle,
+    /\.cm-editor \.cm-panel\.cm-search \.cm-textfield\{[^}]*background:var\(--surface\);color:var\(--fg\);caret-color:var\(--fg\)/,
+  );
+  assert.match(
+    viewBundle,
+    /\.cm-editor \.cm-panel\.cm-search \.cm-button\{[^}]*background:var\(--surface-hover\);color:var\(--fg\)/,
+  );
+});
+
 test("the vendored copy stays traceable to its upstream release", () => {
   assert.match(upstream, /github\.com\/Tioit-Wang\/pi-desktop-plugin-file-manager/);
-  assert.match(upstream, /d36ebe9f7fb82ee71e87670b0a65403660b18a00/);
-  // The version the manifest carries and the tag the record names are the same
-  // release: a bump that skips the other one is a sync mistake.
+  assert.match(upstream, /92ccff9b7c1102d1664915c44ae1e5f3bb5c56a6/);
+  assert.match(upstream, /f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1/);
+  // The bundled hotfix is intentionally newer than its upstream base while
+  // remaining below the next stable upstream release.
   const tag = upstream.match(/`v(\d+\.\d+\.\d+)`/);
-  assert.ok(tag, "UPSTREAM.md must name the vendored tag");
-  assert.equal(manifest.version, tag[1]);
-  // Every file the vendored copy does not patch still hashes to the recorded
-  // value, so a silent edit cannot pass as the released artifact.
+  assert.ok(tag, "UPSTREAM.md must name the vendored base tag");
+  assert.equal(tag[1], "0.9.0");
+  assert.equal(manifest.version, "0.9.1-pi.1");
+  assert.match(upstream, /Not published; no marketplace artifact/);
+  // Every upstream or locally rebuilt file hashes to a recorded value, so a
+  // silent edit cannot pass as the released artifact or documented patch.
   for (const file of [
     "main.js",
+    "remote-workspace.js",
     "README.md",
+    "CHANGELOG.md",
     "views/index.html",
     "views/assets/index.js",
+    "views/assets/pdfjs-LICENSES.txt",
+    "manifest.json",
+    "LICENSE",
+    "package.json",
   ]) {
     const hash = createHash("sha256")
       .update(readFileSync(resolve(`${FILE_MANAGER}/${file}`)))

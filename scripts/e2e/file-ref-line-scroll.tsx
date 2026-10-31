@@ -110,7 +110,7 @@ void i18n
       root.render(
         <I18nextProvider i18n={i18n}>
           <div className="fixture-chat">
-            <LinkifiedText text={`Review ${targetPath}:${targetLine}:4.`} />
+            <LinkifiedText text={`Review ${targetPath}:${targetLine}-70.`} />
           </div>
           <div className="fixture-markdown">
             <Markdown source="[核查报告.md](核查报告.md)" renderDiagrams={false} />
@@ -178,7 +178,7 @@ void i18n
         pluginEnableCalls,
         fileManagerLocation: fileManagerTab?.location ?? null,
         selectedPath: document.querySelector(".file-viewer-path")?.textContent,
-        segments: splitChatText(`Review ${targetPath}:${targetLine}:4.`, "/workspace"),
+        segments: splitChatText(`Review ${targetPath}:${targetLine}-70.`, "/workspace"),
         resolveRefs,
         readPaths,
         request,

@@ -40,7 +40,7 @@ test("the first prompt becomes an immediate title, collapsed and capped", () => 
   assert.equal(promptFallbackSessionTitle("界".repeat(60), "New task"), "界".repeat(48));
 });
 
-test("the fallback only fires for a still-untitled local session", () => {
+test("the fallback only fires for a still-untitled session the owning host can title", () => {
   assert.equal(isDefaultSessionTitle(promptFallbackSessionTitle("Fix login", "New task")), false);
   assert.equal(isDefaultSessionTitle(untitledTaskTitle()), true);
   // A placeholder is recognized in every shipped locale, not just the active one.
@@ -55,10 +55,13 @@ test("the fallback only fires for a still-untitled local session", () => {
   }
   assert.match(queueSlice, /isDefaultSessionTitle\(current\?\.title\)/);
   assert.match(queueSlice, /current\?\.source !== "pi-native"/);
-  // A remote session derives on its own host, so the gate does not exclude it.
+  // A remote session derives on its own host through this same call — the
+  // backend router forwards it to the owning `pi-host` — so the gate must not
+  // exclude remote ids: doing so left every remote task unnamed.
+  assert.doesNotMatch(queueSlice, /!isRemoteSession\(/);
   assert.doesNotMatch(
     queueSlice,
-    /isDefaultSessionTitle\(current\?\.title\)[\s\S]{0,140}source !== "remote"/,
+    /isDefaultSessionTitle\(current\?\.title\)[\s\S]{0,200}source !== "remote"/,
   );
   assert.match(queueSlice, /api\s+\.deriveSessionTitle\(sessionId, nextTitle\)/);
   assert.match(queueSlice, /if \(!isDefaultSessionTitle\(nextTitle\)\)/);
@@ -92,4 +95,53 @@ test("automatic AI titles stay plugin-owned", () => {
   assert.doesNotMatch(api, /summarizeSessionTitle/);
   assert.doesNotMatch(store, /triggerAutoTitleSummarization/);
   assert.doesNotMatch(main, /IPC\.invoke\.sessionSummarizeTitle/);
+});
+
+test("the German, French and Spanish placeholders are recognized as default titles (#1755)", async (t) => {
+  // The renderer lowercases chat.untitledTask before persisting; the host
+  // list and this legacy set must recognize those forms or auto-titling
+  // never runs in those locales. nav.newChat resolves through the same
+  // two-sided comparison.
+  const locales = [
+    ["de", "Neue Aufgabe", "Neuer Chat"],
+    ["fr", "Nouvelle tâche", "Nouvelle discussion"],
+    ["es", "Nueva tarea", "Nuevo chat"],
+  ];
+  for (const [locale, untitled, newChat] of locales) {
+    assert.equal(
+      catalogs[locale].chat.untitledTask,
+      untitled,
+      `${locale} catalog must still own its untitledTask label`,
+    );
+    assert.equal(
+      catalogs[locale].nav.newChat,
+      newChat,
+      `${locale} catalog must still own its newChat label`,
+    );
+    assert.equal(isDefaultSessionTitle(untitled), true, `${locale} untitledTask`);
+    assert.equal(
+      isDefaultSessionTitle(untitled.toLowerCase()),
+      true,
+      `${locale} untitledTask lowercased`,
+    );
+    assert.equal(isDefaultSessionTitle(newChat), true, `${locale} newChat`);
+    assert.equal(
+      isDefaultSessionTitle(newChat.toLowerCase()),
+      true,
+      `${locale} newChat lowercased`,
+    );
+  }
+
+  // Host side stays in sync: both label families, stored lowercase, compared
+  // through to_lowercase so a non-ASCII uppercase letter cannot slip past.
+  assert.match(
+    host,
+    /"neue aufgabe",\s*\n\s*"nouvelle tâche",\s*\n\s*"nueva tarea",\s*\n\s*"neuer chat",\s*\n\s*"nuevo chat",\s*\n\s*"nouvelle discussion",/,
+    "PLACEHOLDER_TITLES must carry the German, French and Spanish labels for both keys",
+  );
+  assert.match(
+    host,
+    /to_lowercase\(\)/,
+    "is_default_title compares through to_lowercase",
+  );
 });

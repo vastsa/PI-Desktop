@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 export const PASSWORD = "portable-backup-password";
 export const MARKERS = ["S3 shared provider", "fixture-provider-secret", "S3 fixture instructions", "resource-first", "resource-updated", "fixture-mcp-secret"];
-const categories = Object.fromEntries(["application", "providers", "credentials", "mcp", "skills", "subagents", "instructions", "projects", "plugins", "automation"].map((name) => [name, true]));
+const categories = Object.fromEntries(["application", "providers", "credentials", "mcp", "skills", "subagents", "instructions", "plugins", "automation"].map((name) => [name, true]));
 export const rpc = (host, method, params = {}) => host.call(method, params, 120_000);
 const sync = (host) => rpc(host, "configSync.syncNow");
 const settings = (host) => rpc(host, "settings.get");
@@ -128,11 +128,23 @@ export async function runSyncJourney({ a, b, connection, store, step }) {
   await sync(a);
   assert.equal(await provider(b, shared.id), null, "unchanged opted-out receiver must accept deletion");
 
-  step("mapped-skill-approval-resource-update-and-deletion");
+  step("project-metadata-stays-local");
   const projectA = join(a.dataDir, "project-a");
   const projectB = join(b.dataDir, "project-b");
   await Promise.all([mkdir(projectA), mkdir(projectB)]);
-  await rpc(a, "projects.create", { path: projectA });
+  const { group: sourceGroup } = await rpc(a, "project.group.create", { name: "Device A workspace", folders: [projectA] });
+  const remoteProjectsBefore = await rpc(b, "projects.list");
+  const remoteGroupsBefore = await rpc(b, "project.groups.list");
+  await sync(a);
+  await approveAll(b, await sync(b));
+  assert.deepEqual(await rpc(b, "projects.list"), remoteProjectsBefore, "sync must not register source projects on another device");
+  assert.deepEqual(await rpc(b, "project.groups.list"), remoteGroupsBefore, "sync must not create source project groups");
+  // Workspace registration is a local user action, independent of sync mappings.
+  await rpc(b, "project.group.create", { name: "Device B workspace", folders: [projectB] });
+  const localGroups = await rpc(b, "project.groups.list");
+  await rpc(a, "project.group.rename", { groupId: sourceGroup.id, name: "Renamed Device A workspace" });
+
+  step("mapped-skill-approval-resource-update-and-deletion");
   const { skill } = await rpc(a, "skills.create", {
     id: "s3-resource-skill", name: "S3 resource skill", level: "project", projectPath: projectA,
     body: MARKERS[2], shape: "dir",
@@ -149,6 +161,7 @@ export async function runSyncJourney({ a, b, connection, store, step }) {
   assert.ok(imported.path.startsWith(projectB), "source machine path must not become destination");
   const destination = join(dirname(imported.path), "data.txt");
   assert.equal(await readFile(destination, "utf8"), MARKERS[3]);
+  assert.deepEqual(await rpc(b, "project.groups.list"), localGroups, "mapped capability import must preserve device-local group metadata");
   await writeFile(source, MARKERS[4]);
   await sync(a);
   await approveAll(b, await sync(b), projectB);

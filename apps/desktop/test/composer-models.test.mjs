@@ -408,3 +408,20 @@ test("trusted matches retain published capabilities and explicit empty bindings"
   assert.deepEqual(thinkingProviderForModel(provider, "route/model", [reasoning]).supportedThinkingLevels, ["low", "high"]);
   assert.equal(thinkingProviderForModel({ ...provider, models: [binding("route/model")] }, "route/model", [reasoning]).supportsReasoning, false);
 });
+
+test("unlisted configured models leave the menu without deleting bindings or changing the current default", () => {
+  const provider = { id: "relay", defaultModelId: "beta", models: [binding("alpha"), binding("beta"), binding("manual")] };
+  const original = structuredClone(provider);
+  const snapshot = [
+    { ...model("alpha"), discoveryState: "published" },
+    { ...model("BETA"), discoveryState: "unlisted" },
+  ];
+  assert.deepEqual(composerModelsForProvider(provider, snapshot).map(row => row.modelId), ["alpha", "manual"]);
+  assert.deepEqual(composerModelsForProvider(provider, JSON.parse(JSON.stringify(snapshot))).map(row => row.modelId), ["alpha", "manual"]);
+  assert.deepEqual(provider, original);
+  snapshot[1].discoveryState = "published";
+  assert.deepEqual(composerModelsForProvider(provider, snapshot).map(row => row.modelId), ["alpha", "beta", "manual"]);
+  assert.deepEqual(composerModelsForProvider({ id: "relay", defaultModelId: "beta" }, [
+    { ...model("beta"), discoveryState: "unlisted" },
+  ]), []);
+});

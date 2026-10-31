@@ -71,10 +71,14 @@ Three visible costs followed:
 6. A **cold switch** — no retained pane — keeps the currently visible pane
    showing its own session until the destination commits. Only the thin progress
    track marks the wait. The opacity dim is removed entirely.
-7. **Scroll retention is per pane.** A pane restores its own position when it
-   becomes visible again: a pane still pinned re-anchors to the bottom, a pane
-   the user had scrolled up in returns to that offset. First activation of a
-   session still settles at its newest turn.
+7. **DOM retention is per pane; reading retention is per session.** A pane
+   still pinned re-anchors to the bottom. Runtime bookmarks retain a message id,
+   viewport offset, window budget, and explicit disclosure choices independently
+   of pane eviction or project switches. A revisit restores that message, using
+   the existing bounded history read when necessary without search focus.
+   First visits still settle at the newest turn. Bookmarks hold no message
+   bodies or DOM and are released on session deletion or renderer/app restart.
+   Real input, explicit navigation, and a new turn cancel automatic restoration.
 8. The **first commit is per pane and local**. Because the component instance
    belongs to one session, "the first commit of this pane" is plain mount state;
    the cross-session hydration spacer, its rAF expansion, and its re-anchor are
@@ -122,9 +126,10 @@ are untouched; panes are a renderer-side presentation bound, not a second cache.
   expected to return to where the user left it. First activation is unchanged and
   still settles at the newest turn, and no pane may ever show another session's
   offset.
-- An evicted session behaves like a cold open. This is intentional and must stay
-  indistinguishable from a first visit rather than surfacing an error or an empty
-  frame.
+- An evicted session rebuilds a bounded pane but restores its runtime reading
+  bookmark. Only a first visit, a pinned bookmark, or a missing anchor opens at
+  latest. Small bookmark/disclosure records grow with visited sessions; mounted
+  transcripts and historical views remain bounded by the three-pane budget.
 
 ## Alternatives considered
 

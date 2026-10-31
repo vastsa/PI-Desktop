@@ -24,7 +24,9 @@ Required (all **implemented**):
   forwards only parsed `http:` / `https:` / `mailto:` URLs to the OS browser
   (`parseAllowedExternalUrl`, D330 / ADR 0168). `file:`, `javascript:`,
   `data:`, and custom URI schemes never reach `shell.openExternal`.
-  `will-navigate` blocks all non-dev-server navigations
+  `will-navigate` is enforced by each owning surface; the embedded Browser
+  permits HTTP(S), workspace file links, and local-file navigation initiated
+  from an already loaded local file, while other schemes remain blocked.
 - Every web contents Electron creates starts with a deny-all window-open
   handler and a blocked `<webview>` attach (`app.on("web-contents-created")`);
   the owning surface replaces the handler with its own policy, so a window
@@ -37,6 +39,24 @@ Required (all **implemented**):
   render, without a click. This is a deliberate readability trade-off: a
   reply can therefore reveal the user's IP to the host it names. Links never
   navigate in-app and always route through the external-open path.
+
+### Embedded Browser local files
+
+The embedded Browser can open any existing local file explicitly entered as an
+absolute path or `file:` URL. A loaded local file can navigate to other existing
+local files. A web page can still navigate to workspace files as before, but
+cannot use a file link to escape the workspace. This local-file browsing is
+covered by the high-risk `browser.cdp` capability; `BrowserPreview` and the
+sidecar's workspace file resolver remain restricted to the session workspace.
+
+Browser tool calls derive page identity from the trusted in-flight invocation,
+not plugin arguments or the currently visible page. Session-owned CDP works
+while hidden; unscoped plugin UI calls remain visibility-gated. Unknown or closed
+targets fail closed. Hidden guests are hosted by an invisible sandboxed backing
+window with no Node integration or elevated preload. Host-only focus emulation
+enables input without presenting or focusing a window or extending the raw CDP
+allowlist. Closing the last parked page releases the backing host. Cookie,
+storage, Target and network-interception methods remain denied.
 
 ### Content Security Policy
 
@@ -56,6 +76,14 @@ Required (all **implemented**):
   links, URL attributes, `foreignObject`, script, embedded media, and external
   image elements are removed before the SVG reaches the DOM. Invalid or
   oversized input fails closed to escaped source text.
+- Inline GenUI admits only `frame-src pi-genui:` in the parent. Its document
+  responses enforce `sandbox allow-scripts` in the CSP header, in addition to
+  the caller's opaque-origin iframe sandbox. Documents allow only bundled
+  scripts and inline styles; fetches, frames, forms, and remote assets are
+  blocked. The private Host reader pins native directory capabilities and
+  returns bounded bytes; Main never reopens model paths. See
+  [the GenUI ADR](../../adr/gen-ui-inline-visualization.md) for the explicit
+  WebRTC ICE residual channel and the remaining v1 limits.
 
 ### Future hardening (tracked, post-MVP)
 
@@ -347,8 +375,11 @@ host-core. They do not change the loopback-only rule above.
 
 Native session paths remain sidecar-private. Renderer-visible ids are opaque
 hashes of canonical path plus verified header id. Every discovery/open resolves
-the real path below the configured Pi session root and revalidates header id and
-cwd; path traversal and symlink escape are rejected.
+the real path below an allowed Pi session root — the agent session directory,
+or a `sessionDir` resolved from global or project settings — and revalidates
+header id and cwd; path traversal and symlink escape are rejected. A relative
+`sessionDir` is resolved only for a known local project. Custom directories are
+not walked recursively.
 
 Writable continuation requires a mode-0600 cooperative PI-Desktop lease beside
 the session and full-byte identity checks before each SDK append. After an

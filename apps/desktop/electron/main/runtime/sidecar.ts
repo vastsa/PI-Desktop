@@ -7,7 +7,10 @@ import {
   classifySidecarCrash,
   sidecarCrashErrorCode,
 } from "@pi-desktop/agent-runtime";
-import { loadBuiltinSkillBody } from "../builtin-skills";
+import {
+  assertBuiltinSkillEnabled,
+  loadBuiltinSkillBody,
+} from "../builtin-skills";
 import { createImageGenerationTool } from "../services/image-generation-service";
 import { registerPluginDevTools } from "../plugin-dev-tools";
 import { resolveLocalFile } from "../browser-view";
@@ -60,6 +63,7 @@ export type SidecarRuntimeDependencies = {
     projectPath: string | null,
   ) => Promise<LoadedSkillDocument | null>;
   activeUserSkills: (projectPath: string | undefined) => Promise<any[]>;
+  disabledBuiltinSkills: () => Promise<string[]>;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   currentNetworkProxy: () => any;
 };
@@ -90,6 +94,7 @@ export function createSidecarRuntime({
   sessionProjects,
   loadUserSkillBody,
   activeUserSkills,
+  disabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
 }: SidecarRuntimeDependencies): {
@@ -359,20 +364,40 @@ export function createSidecarRuntime({
 
   const s = new AgentSidecar((text) => logger.child("agent", text));
   wireSidecar(s);
-  s.setProjectInstructionResolver(async ({ projectPath, path }) => {
+  // The directory a session's file tools work in: its isolated worktree
+  // (ADR 0329), resolved by host-core from its own registry, or its project.
+  const sessionFileRoot = async (sessionId: string): Promise<string | null> => {
+    const host = runtimeState.host;
+    if (!host) return null;
+    const res = await host.call<{
+      session: { projectPath?: string; worktree?: unknown } | null;
+    }>("session.get", { id: sessionId });
+    if (res?.session?.worktree) {
+      const location = await host.call<{ path?: string }>("worktree.location", { sessionId });
+      return location.path?.trim() || null;
+    }
+    return res?.session?.projectPath?.trim() || null;
+  };
+  s.setProjectInstructionResolver(async ({ sessionId, projectPath, path }) => {
     // The root is registered by Electron main from the host-owned session
     // record. The sidecar can provide a target path, never an arbitrary root.
-    const instructions = await loadInstructionChain(projectPath, path);
+    const instructions = projectPath?.startsWith("remote-project:")
+      ? await loadInstructionChain(undefined) : await loadInstructionChain(projectPath, path);
     if (!projectPath || !runtimeState.host) return instructions;
+    // An isolated session registers its worktree as the root (ADR 0329); the
+    // group context stays keyed by the session's project, and the group's
+    // other roots are not advertised inside the worktree.
+    const project = sessionProjects.get(sessionId) ?? projectPath;
+    const isolated = project !== projectPath;
     try {
       const result = await runtimeState.host.call<{
         context?: {
           roots?: Array<{ path?: string }>;
           instructions?: string;
         } | null;
-      }>("project.group.context", { path: projectPath });
+      }>("project.group.context", { path: project });
       const roots = result.context?.roots ?? [];
-      const rootGuide = roots.length > 1
+      const rootGuide = !isolated && roots.length > 1
         ? [
             `Primary root: ${roots[0]?.path ?? projectPath}`,
             ...roots.slice(1).map((root) => `Additional root: ${root.path ?? ""}`),
@@ -554,30 +579,25 @@ export function createSidecarRuntime({
         content: "BrowserPreview: `path` is required.",
       };
     }
-    let root: string | null = null;
+    let roots: readonly string[];
     try {
-      const res = (await runtimeState.host?.call("session.get", { id: sessionId })) as
-        | { session: { projectPath?: string } | null }
-        | undefined;
-      root = res?.session?.projectPath?.trim() || null;
-    } catch {
-      root = null;
-    }
-    if (!root) {
+      roots = await browserHost.getFileRoots(sessionId);
+    } catch (error) {
       return {
         ok: false,
         isError: true,
-        content: "BrowserPreview: no workspace is open.",
+        content: `BrowserPreview: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    if (!resolveLocalFile(raw, root)) {
+    const file = roots.map((root) => resolveLocalFile(raw, root)).find((path) => path !== null);
+    if (!file) {
       return {
         ok: false,
         isError: true,
-        content: `BrowserPreview: "${raw}" does not resolve to an existing file inside the workspace.`,
+        content: `BrowserPreview: "${raw}" does not resolve to an existing file inside this session's project or scratch directory.`,
       };
     }
-    const preview = await browserHost.previewWorkspaceFile(sessionId, raw, root);
+    const preview = await browserHost.previewFile();
     if (!preview.ok) {
       return {
         ok: false,
@@ -585,13 +605,10 @@ export function createSidecarRuntime({
         content: preview.content,
       };
     }
-    sendToRenderer(IPC.event.browserPreview, {
-      sessionId,
-      path: raw,
-    });
+    await browserHost.openTab({ path: file }, sessionId);
     return {
       ok: true,
-      content: `Requested a new Browser tab for ${raw}. Once loaded, live reload updates the page when the file or sibling assets change.`,
+      content: `Opened a new Browser tab for ${raw}. Its page stays available in the background, and live reload updates it when the file or sibling assets change.`,
     };
   });
   // Plugin skills (D174): the model loads a declared skill document by id.
@@ -608,6 +625,7 @@ export function createSidecarRuntime({
     }
     const projectPath = sessionProjects.get(sessionId) ?? null;
     try {
+      await assertBuiltinSkillEnabled(id, disabledBuiltinSkills);
       // Bundled skills answer first; they are not owned by any plugin. A user
       // skill is looked up next, and only then a plugin's — the ids cannot
       // collide, since a plugin skill id always carries a `<pluginId>/` prefix.
@@ -642,10 +660,7 @@ export function createSidecarRuntime({
   registerPluginDevTools(s, {
     resolveWorkspace: async (sessionId) => {
       try {
-        const res = (await runtimeState.host?.call("session.get", { id: sessionId })) as
-          | { session: { projectPath?: string } | null }
-          | undefined;
-        return res?.session?.projectPath?.trim() || null;
+        return await sessionFileRoot(sessionId);
       } catch {
         return null;
       }

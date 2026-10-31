@@ -1,3 +1,4 @@
+import { OverlayBackdrop } from "./ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
@@ -86,6 +87,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   // Settings search mirrors the rail: developer-only destinations stay out of
   // the result list while developer mode is off.
   const developerMode = useAppStore((s) => s.settings?.developerMode === true);
+  const scheduledTasksEnabled = useAppStore((s) => s.settings?.scheduledTasksEnabled !== false);
 
   const query = useSessionSearchState((state) => state.query);
   const setQuery = useSessionSearchState((state) => state.setQuery);
@@ -205,8 +207,10 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const pageHits = useMemo<PageEntry[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return PAGE_ENTRIES.filter((entry) => t(entry.labelKey).toLowerCase().includes(q));
-  }, [query, t]);
+    return PAGE_ENTRIES.filter((entry) =>
+      (entry.page !== "scheduled" || scheduledTasksEnabled) &&
+      t(entry.labelKey).toLowerCase().includes(q));
+  }, [query, t, scheduledTasksEnabled]);
 
   const settingsHits = useMemo<SettingsSearchHit[]>(
     () =>
@@ -319,7 +323,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   };
 
   return (
-    <div className="search-overlay" onClick={onClose}>
+    <OverlayBackdrop className="search-overlay" onClick={onClose}>
       <div
         className="search-dialog"
         role="dialog"
@@ -527,6 +531,6 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           ) : null}
         </div>
       </div>
-    </div>
+    </OverlayBackdrop>
   );
 }

@@ -34,11 +34,46 @@
 }
 
 .thread-item-title {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   font-size: var(--text-md); /* session titles stay compact within the sidebar */
   line-height: var(--leading-row);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.thread-item-meta {
+  /* The action and date overlap in one slot; opacity keeps its width stable. */
+  display: grid;
+  width: max-content;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-items: end;
+}
+
+.thread-item-meta > * {
+  grid-area: 1 / 1;
+}
+
+.thread-item-last-reply {
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    visibility var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.thread-item:hover .thread-item-last-reply,
+.thread-item:focus-within .thread-item-last-reply {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.thread-item-meta.is-menu-open .thread-item-last-reply {
+  opacity: 0;
+  visibility: hidden;
 }
 
 .thread-item:hover,
@@ -191,8 +226,8 @@
   display: flex;
   flex-direction: column;
   /* One hairline between list rows: adjacent rounded row fills read as
-     separate rows instead of one block. A time-group header and the load-more
-     affordance are ordinary rows in that same rhythm. */
+     separate rows instead of one block. The load-more affordance follows the
+     same rhythm. */
   gap: 1px;
   overflow: hidden;
 }
@@ -235,18 +270,6 @@
 .sidebar-session-group-body.temporary {
   margin-left: 13px;
   padding-left: 9px;
-}
-
-.sidebar-time-group-header {
-  padding: 4px 6px 4px 20px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .sidebar-load-more {
@@ -333,3 +356,174 @@
 }
 
 
+
+/* ============================================================
+   Project-level running affordances: count badge + activity rail.
+
+   Both hang off the project group *header* rather than the session rows.
+   `.sidebar-session-group-body.project.collapsed` folds to `0fr` and is
+   `inert`, so a row-level status dot vanishes exactly when the question
+   "is anything running under here?" matters most; the header survives both
+   states.
+
+   Every colour resolves through a `--ds-*` surface token, so light, dark,
+   and contributed themes recolor them; nothing here pins a literal. Motion
+   is decorative only — the static shapes stay legible without it (see the
+   reduced-motion block at the end).
+   ============================================================ */
+
+.project-run-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.project-run-badge {
+  display: inline-flex;
+  height: 17px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-warning) 18%, transparent);
+  /* The figure stays neutral ink: the dot and the tint carry the meaning, so
+     the count keeps its contrast in every theme instead of riding on a
+     semantic colour that is tuned for a dot, not for 11px text. */
+  color: var(--ds-text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.project-run-badge.waiting {
+  background: color-mix(in oklab, var(--ds-purple) 18%, transparent);
+}
+
+.project-run-badge-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-round);
+  background: var(--ds-warning);
+  animation: project-run-breathe 1.6s ease-in-out infinite;
+}
+
+.project-run-badge.waiting .project-run-badge-dot {
+  background: var(--ds-purple);
+  animation: none;
+}
+
+/* A collapsed group is the case this badge exists for, so it keeps a
+   slightly stronger tint once the session rows are gone. */
+.project-group.is-collapsed .project-run-badge {
+  background: color-mix(in oklab, var(--ds-warning) 26%, transparent);
+}
+
+.project-group.is-collapsed .project-run-badge.waiting {
+  background: color-mix(in oklab, var(--ds-purple) 26%, transparent);
+}
+
+/*
+  The rail spans the group box, so it covers the opened session list and
+  shrinks to just the header when the group is collapsed — the same element
+  answers in both states without a special case.
+*/
+.project-run-rail {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 0;
+  width: 2px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-warning) 28%, transparent);
+  pointer-events: none;
+}
+
+.project-run-rail-pulse {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 55%;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in oklab, var(--ds-warning) 85%, transparent) 45%,
+    var(--ds-warning) 60%,
+    transparent 100%
+  );
+  animation: project-run-comet 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* The numeric readout that stands in for the badge when the badge is off. */
+.project-run-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.project-run-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ds-text-secondary);
+}
+
+.project-run-pip::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-round);
+  background: var(--ds-warning);
+  content: "";
+}
+
+.project-run-pip.waiting::before {
+  background: var(--ds-purple);
+}
+
+/* Two adjacent pips would otherwise read as one two-digit number. */
+.project-run-pip + .project-run-pip {
+  padding-left: 6px;
+  border-left: 1px solid var(--ds-border-default);
+}
+
+@keyframes project-run-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.82;
+    transform: scale(0.86);
+  }
+}
+
+@keyframes project-run-comet {
+  0% {
+    transform: translateY(-120%);
+  }
+  100% {
+    transform: translateY(200%);
+  }
+}
+
+/*
+  Motion is decoration, never the message: with the animation removed the
+  pulse stays parked at the top of the track as a solid bright segment, so
+  the rail still reads as "live" for users who prefer reduced motion.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .project-run-badge-dot,
+  .project-run-rail-pulse {
+    animation: none;
+  }
+}

@@ -8,7 +8,7 @@ import { genericModelConfig } from "./model-capabilities.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 import { PROVIDER_RATE_LIMIT_MAX_RETRIES, PROVIDER_TRANSIENT_MAX_RETRIES } from "./provider-retry.js";
 
-type Request = { model: string; messages: Array<{ role: string; content: unknown }>; reasoning_effort?: string };
+type Request = { model: string; messages: Array<{ role: string; content: unknown; tool_call_id?: string; tool_calls?: Array<{ id: string }> }>; reasoning_effort?: string };
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 
@@ -27,6 +27,7 @@ async function fixture(options: {
   fail?: string[];
   failureStatus?: Record<string, number>;
   editFirst?: boolean;
+  repeatToolRounds?: number;
   onRequest?: (request: Request) => void;
 } = {}) {
   const requests: Request[] = [];
@@ -41,7 +42,7 @@ async function fixture(options: {
     options.onRequest?.(request);
     const status = options.failureStatus?.[request.model]
       ?? ((options.fail ?? ["primary"]).includes(request.model) ? 404 : undefined);
-    if (options.editFirst && requests.length === 1) {
+    if (requests.length <= (options.repeatToolRounds ?? 0) || (options.editFirst && requests.length === 1)) {
       answer(res, request.model, true);
     } else if (status) {
       res.writeHead(status, { "content-type": "application/json", "retry-after": "0" });
@@ -80,6 +81,23 @@ async function fixture(options: {
 
 describe("subagent model fallback over real transport", () => {
   const chain = ["primary", "secondary", "third", "fourth", "unused"];
+
+  it("retains both real executions when a provider repeats the same tool id", async () => {
+    const f = await fixture({ fail: [], repeatToolRounds: 2 });
+    const result = await f.run();
+
+    expect(result.status).toBe("completed");
+    expect(f.edits()).toBe(2);
+    expect(f.requests).toHaveLength(3);
+    const final = f.requests[2]!.messages;
+    const calls = final.flatMap((message) => message.tool_calls ?? []);
+    const results = final.filter((message) => message.role === "tool");
+    expect(calls).toHaveLength(2);
+    expect(new Set(calls.map((call) => call.id)).size).toBe(2);
+    expect(results.map((message) => message.tool_call_id)).toEqual(calls.map((call) => call.id));
+    expect(results.every((message) => String(message.content).includes("Saved exactly once"))).toBe(true);
+    expect(result.toolCalls).toBe(2);
+  });
 
   it.each([0, 1, 2, 3])("succeeds after %i unavailable models and stops at the first working model", async (failedCount) => {
     const failedModels = chain.slice(0, failedCount);

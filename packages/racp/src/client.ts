@@ -139,22 +139,22 @@ export class RacpClient {
     this.setState("disconnected");
   }
 
-  request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
     const transport = this.transport;
     if (!transport || this.stateValue !== "connected") {
       return Promise.reject(new RacpError("HOST_DISCONNECTED", `not connected (${this.stateValue})`, { retriable: true }));
     }
-    return this.send<T>(transport, method, params);
+    return this.send<T>(transport, method, params, timeoutMs);
   }
 
-  private send<T>(transport: ClientTransport, method: string, params: unknown): Promise<T> {
+  private send<T>(transport: ClientTransport, method: string, params: unknown, timeoutMs?: number): Promise<T> {
     this.counter += 1;
     const id = `c${this.counter}`;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new RacpError("TIMEOUT", `${method} timed out`, { retriable: true }));
-      }, this.options.requestTimeoutMs ?? 15_000);
+      }, timeoutMs ?? this.options.requestTimeoutMs ?? 15_000);
       timer.unref?.();
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer, method });
       try {
@@ -305,6 +305,11 @@ export class RacpClient {
         this.transport = null;
         this.rejectPending(new RacpError("HOST_DISCONNECTED", "reconnect failed", { retriable: true }));
         transport?.close(1000, "reconnect failed");
+        const failure = toRacpError(error, "HOST_DISCONNECTED");
+        if (!failure.retriable) {
+          this.setState("error", failure);
+          return;
+        }
         this.setState("reconnecting");
       }
     }
@@ -330,6 +335,8 @@ export class RacpClient {
 
 function toRacpError(error: unknown, fallbackCode: string): RacpError {
   if (error instanceof RacpError) return error;
-  const code = (error as { errorCode?: string })?.errorCode ?? fallbackCode;
-  return new RacpError(code, error instanceof Error ? error.message : String(error), { retriable: true });
+  const fields = error && typeof error === "object" ? error as { errorCode?: string; retriable?: boolean } : undefined;
+  const code = fields?.errorCode ?? fallbackCode;
+  const retriable = fields?.retriable ?? !["HOST_AUTH_FAILED", "REMOTE_AUTH_FAILED", "HOST_VERSION_MISMATCH", "TOKEN_INVALID", "TOKEN_EXPIRED", "TOKEN_REVOKED"].includes(code);
+  return new RacpError(code, error instanceof Error ? error.message : String(error), { retriable });
 }

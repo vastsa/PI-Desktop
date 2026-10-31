@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -27,13 +27,13 @@ try {
   await writeFile(join(data, "cache/test.bin"), "disposable");
   const main = join(scratch, "main.mjs");
   await build({ stdin: { contents: `
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, dialog, session } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { prepareStorage } from './apps/desktop/electron/main/storage/bootstrap.ts';
 const scratch = process.env.STORAGE_E2E_ROOT;
 const anchor = join(scratch, 'old-browser');
-const data = join(scratch, 'old-data');
+const data = process.env.STORAGE_E2E_DATA ?? join(scratch, 'old-data');
 app.setPath('userData', anchor);
 let maintenance;
 app.on('browser-window-created', (_event, window) => { maintenance = window; });
@@ -69,6 +69,25 @@ if (process.env.STORAGE_E2E_MODE === 'seed') {
   await openState(null, 'main-local-state');
   await openState('persist:storage-e2e-plugin', 'plugin-local-state');
   originalExit(0);
+} else if (process.env.STORAGE_E2E_MODE.startsWith('recover-')) {
+  const mode = process.env.STORAGE_E2E_MODE;
+  dialog.showMessageBox = async (options) => {
+    result.recoveryDialog = options;
+    const response = mode === 'recover-create' ? 0 : mode === 'recover-select' ? 1 : 2;
+    return { response };
+  };
+  dialog.showOpenDialog = async (options) => {
+    result.recoveryPicker = options;
+    const selected = process.env.STORAGE_E2E_RECOVERY_ROOT;
+    return { canceled: !selected, filePaths: selected ? [selected] : [] };
+  };
+  const storage = await prepareStorage(data,false);
+  await app.whenReady();
+  result.roots = storage.preferences.roots;
+  result.sessionData = app.getPath('sessionData');
+  result.pointer = readFileSync(join(anchor, 'storage-location.json'), 'utf8');
+  writeFileSync(join(scratch,'result.json'),JSON.stringify(result));
+  originalExit(0);
 } else {
   const storage = await prepareStorage(data,false);
   await app.whenReady();
@@ -82,7 +101,7 @@ if (process.env.STORAGE_E2E_MODE === 'seed') {
 }
 })().catch((error) => { console.error(error); originalExit(1); });
 `, resolveDir: root, sourcefile: "storage-bootstrap-e2e.mjs", loader: "js" },
-    outfile: main, bundle: true, platform: "node", format: "esm", target: "node24", external: ["electron"],
+    outfile: main, bundle: true, platform: "node", format: "esm", target: "node24", external: ["electron", "original-fs"],
     alias: { "@pi-desktop/i18n": join(root, "packages/i18n/src/index.ts") },
     plugins: [{ name: "host-binary-location", setup(builder) {
       builder.onResolve({ filter: /host-process$/ }, () => ({ path: "host-binary", namespace: "host-binary" }));
@@ -90,10 +109,10 @@ if (process.env.STORAGE_E2E_MODE === 'seed') {
     } }],
   });
   const hostBinary = process.env.PI_DESKTOP_HOST_BIN ?? join(root, "target/debug/pi-desktop-host-core");
-  async function launch(mode) {
+  async function launch(mode, extraEnv = {}) {
     const resultPath = join(scratch, "result.json");
     await rm(resultPath, { force: true });
-    const env = { ...process.env, STORAGE_E2E_ROOT: scratch, STORAGE_E2E_MODE: mode, PI_DESKTOP_HOST_BIN: hostBinary };
+    const env = { ...process.env, STORAGE_E2E_ROOT: scratch, STORAGE_E2E_MODE: mode, PI_DESKTOP_HOST_BIN: hostBinary, ...extraEnv };
     delete env.ELECTRON_RUN_AS_NODE;
     const child = spawn(resolveElectronBinary(root).electronBinary, [main], { env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
@@ -140,5 +159,40 @@ if (process.env.STORAGE_E2E_MODE === 'seed') {
   await assert.rejects(readFile(join(data, "sessions/chat.jsonl")), { code: "ENOENT" });
   assert.deepEqual(JSON.parse(await readFile(pointer, "utf8")).backups, []);
   assert.equal((await launch("read")).sessionData, join(target, "browser"));
-  console.log("STORAGE_BOOTSTRAP " + JSON.stringify({ migration: true, progress: true, chromiumState: true, pluginState: true, safeCache: true, backupCleanup: true }));
+
+  const freshDefault = join(scratch, "missing-default-data");
+  await writeFile(pointer, JSON.stringify({ version: 1, roots: { data: freshDefault, browser: anchor }, backups: [] }));
+  const created = await launch("recover-create", { STORAGE_E2E_DATA: freshDefault });
+  assert.equal(created.roots.data, freshDefault);
+  assert.equal(created.recoveryDialog.buttons.length, 3);
+  assert.equal(JSON.parse(created.pointer).roots.data, freshDefault);
+  assert.equal((await stat(freshDefault)).isDirectory(), true);
+
+  const existing = join(scratch, "existing-recovery-root");
+  const existingData = join(existing, "data");
+  const existingBrowser = join(existing, "browser");
+  await Promise.all([mkdir(existingData, { recursive: true }), mkdir(existingBrowser, { recursive: true })]);
+  await writeFile(join(existingData, "pi.sqlite"), "existing-profile-database");
+  await writeFile(join(existingBrowser, "browser-state"), "existing-browser-profile");
+  const secondMissingDefault = join(scratch, "missing-default-adopt");
+  await writeFile(pointer, JSON.stringify({ version: 1, roots: { data: secondMissingDefault, browser: anchor }, backups: [] }));
+  const adopted = await launch("recover-select", {
+    STORAGE_E2E_DATA: secondMissingDefault,
+    STORAGE_E2E_RECOVERY_ROOT: existing,
+  });
+  assert.deepEqual(adopted.roots, { data: existingData, browser: existingBrowser });
+  assert.deepEqual(JSON.parse(adopted.pointer).roots, adopted.roots);
+  assert.equal(adopted.sessionData, existingBrowser);
+  assert.equal(await readFile(join(existingData, "pi.sqlite"), "utf8"), "existing-profile-database");
+  assert.equal(await readFile(join(existingBrowser, "browser-state"), "utf8"), "existing-browser-profile");
+
+  const cancelledDefault = join(scratch, "missing-default-cancel");
+  const previousPointer = JSON.stringify({ version: 1, roots: { data: cancelledDefault, browser: anchor }, backups: [] });
+  await writeFile(pointer, previousPointer);
+  const cancelled = await launch("recover-quit", { STORAGE_E2E_DATA: cancelledDefault });
+  assert.equal(cancelled.recoveryDialog.buttons.length, 3);
+  assert.equal(JSON.parse(cancelled.pointer).roots.data, cancelledDefault);
+  assert.deepEqual(await readFile(pointer, "utf8"), previousPointer);
+  await assert.rejects(stat(cancelledDefault), { code: "ENOENT" });
+  console.log("STORAGE_BOOTSTRAP " + JSON.stringify({ migration: true, progress: true, chromiumState: true, pluginState: true, safeCache: true, backupCleanup: true, defaultRecovery: true, existingRecovery: true, recoveryCancel: true }));
 } finally { await rm(scratch, { recursive: true, force: true }); }

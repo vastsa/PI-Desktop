@@ -93,7 +93,7 @@ if (values.help) {
 Default: build shared, agent-runtime, and the production sidecar bundle.
 --bundle: build the resolver module and run that explicit sidecar artifact.
 Evidence and isolated homes stay under PI_SCRATCH_DIR or mkdtemp(os.tmpdir()).
-Eight cases: next prompt, Read, instruction change, out-of-project instruction fallback, real Task/TaskWait, persisted restore, two invalid-history cases.
+Ten cases: malformed tool-call continuation (one or three failures), next prompt, Read, instruction change, out-of-project instruction fallback, real Task/TaskWait, persisted restore, two invalid-history cases.
 Files are retained for inspection; no automatic deletion and no dependency installation.
 Reviewed source, patches, and lock metadata are fingerprinted before the build and again
 when the run ends; any change between the two fails the run.`);

@@ -1,9 +1,14 @@
+use super::scheduled_settings::{enabled, require_enabled};
 use super::{json, plan_rpc_err, rpc_err, AppState, JsonRpcError, Value};
 use crate::{scheduled, sessions};
 
 #[cfg(test)]
 #[path = "scheduled_project_tests.rs"]
 mod project_tests;
+
+#[cfg(test)]
+#[path = "scheduled_settings_tests.rs"]
+mod settings_tests;
 
 pub(super) fn handle(st: &AppState, method: &str, params: Value) -> Result<Value, JsonRpcError> {
     handle_with_workspace_policy(
@@ -31,6 +36,12 @@ fn handle_with_workspace_policy(
     workspace: Option<String>,
     allow_workspace_override: bool,
 ) -> Result<Value, JsonRpcError> {
+    if matches!(
+        method,
+        "scheduled.create" | "scheduled.update" | "scheduled.delete" | "scheduled.run"
+    ) {
+        require_enabled(st)?;
+    }
     match method {
         "scheduled.list" => {
             let tasks = scheduled::list_tasks(&st.db)
@@ -192,6 +203,8 @@ fn handle_with_workspace_policy(
                     .permission_mode
                     .clone()
                     .or_else(|| automatic.then(|| "ask".into())),
+                // Unattended runs keep the default tier (ADR 0334).
+                fast_mode: false,
             };
             let uses_task_execution_settings = task.permission_mode.is_some()
                 || task.thinking_level.is_some()
@@ -247,6 +260,9 @@ fn handle_with_workspace_policy(
             }))
         }
         "scheduled.due" => {
+            if !enabled(st)? {
+                return Ok(json!({ "ids": [] }));
+            }
             let ids = scheduled::automation::due(&st.db, crate::db::now_ms())
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ids": ids }))

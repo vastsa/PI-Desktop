@@ -7,6 +7,12 @@
   `02-architecture/05-remote-agent-control.md` §5.2,
   `05-security/02-remote-control-security.md` §3.4,
   `06-delivery/07-remote-control-rollout.md` §2 R2b
+- Amendments: [ADR 0293](0293-ssh-password-authentication.md) permits secure SSH password handling; [ADR 0326](0326-verified-ssh-host-installation.md) supersedes the executable-upload prohibition, remote-only download prerequisite and daily bootstrap lifecycle below.
+
+This record describes the original bootstrap decision, not the current candidate
+installation contract. ADR 0326 permits a verified release upload only after
+`download-failed`, bundles matching Node, and separates daily startup from pairing.
+The historical constraints and alternatives below remain context for that amendment.
 
 ## Context
 

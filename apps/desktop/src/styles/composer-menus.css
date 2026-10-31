@@ -48,7 +48,8 @@
   position: relative;
 }
 
-.composer-permission-menu {
+.composer-permission-menu,
+.composer-mode-menu {
   position: fixed;
   top: 0;
   left: 0;
@@ -95,6 +96,7 @@
 }
 
 .composer-permission-menu.is-open,
+.composer-mode-menu.is-open,
 .composer-model-menu.is-open {
   opacity: 1;
   pointer-events: auto;
@@ -104,10 +106,10 @@
 .composer-model-thinking-menu {
   z-index: 60;
   /*
-    One label per row plus two capability icons: wide enough for that and no
-    wider, so the panel stays a menu rather than a second window.
+    Wide enough for a full model row plus six reasoning stops under the slider;
+    narrower values ellipsized the "medium" label into "medi…".
   */
-  width: min(280px, calc(100vw - 24px));
+  width: min(320px, calc(100vw - 24px));
 }
 
 .composer-model-thinking-menu.is-open {
@@ -116,11 +118,14 @@
 }
 
 .composer-model-thinking-chip {
-  max-width: min(280px, calc(100vw - 24px));
+  max-width: min(320px, calc(100vw - 24px));
   min-width: 0;
-  height: 26px !important;
-  padding: 0 8px !important;
-  gap: 4px !important;
+  /*
+    One quiet label, one badge, one caret. The model name is the only element
+    asking for attention; the reasoning level rides along as metadata.
+  */
+  padding: 0 6px 0 10px !important;
+  gap: 6px !important;
   border-radius: var(--radius-full) !important;
   color: var(--ds-text-secondary) !important;
   font-size: var(--text-sm);
@@ -142,14 +147,18 @@
   transform: none;
 }
 
+/*
+  The glyph belongs to the collapsed form only. At the 450px floor the chip
+  drops its labels and keeps this icon as the trigger; at full width the model
+  name already says what the control is, so the icon only added noise.
+*/
 .composer-model-thinking-icon {
-  display: inline-flex;
+  display: none;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  color: var(--ds-accent);
+  color: var(--ds-text-muted);
 }
-
 .composer-model-thinking-model,
 .composer-model-thinking-level {
   min-width: 0;
@@ -160,17 +169,43 @@
 
 .composer-model-thinking-model {
   max-width: 170px;
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
 }
 
+/*
+  The level badge is tonal rather than accented: it sits next to the name, so
+  it must read as metadata without competing with the primary ink.
+*/
 .composer-model-thinking-level {
-  max-width: 88px;
-  color: var(--ds-accent);
-  font-size: var(--text-sm);
+  flex: 0 0 auto;
+  display: inline-block;
+  max-width: 96px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-chip);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-compact);
 }
 
-.composer-model-thinking-dot {
+/* Fast mode stays visible at every width: it changes what each turn costs. */
+.composer-model-thinking-fast {
   flex: 0 0 auto;
-  color: var(--ds-text-muted);
+  display: inline-flex;
+  align-items: center;
+  color: var(--ds-text-secondary);
+}
+
+.composer-model-thinking-chevron {
+  flex: 0 0 auto;
+  color: var(--ds-text-faint);
+  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.composer-model-thinking-chip:hover .composer-model-thinking-chevron,
+.composer-model-thinking-chip.active .composer-model-thinking-chevron {
+  color: var(--ds-text-secondary);
 }
 
 .composer-model-thinking-menu .composer-menu-root {
@@ -533,18 +568,18 @@
 }
 
 /*
-  The full wire id is the identity, and it stays whole: a long route name wraps
-  instead of hiding the part that distinguishes two configured models. The id,
-  its friendly name and the badges share one line — id first, name next, badges
-  on the trailing edge — because the stacked column that preceded it pushed
-  every row's content into the left half of the menu and left the rest empty.
+  One row per model, and it stays one row: the friendly name takes the space it
+  needs up to the row's trailing markers (provider, capability icons, context
+  window), and anything longer than that is truncated with an ellipsis instead
+  of wrapping the row onto a second line. The full name and the wire id remain
+  reachable as the button's title, so identity is still one hover away.
 */
 .composer-model-option-main {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: 2px 8px;
 }
@@ -561,8 +596,9 @@
   flex: 0 1 auto;
   max-width: 100%;
   color: var(--ds-text-primary);
-  overflow-wrap: anywhere;
-  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A name the user set is a label of its own, and reads as one: the catalog name
@@ -577,12 +613,23 @@
 
 .composer-model-option-meta {
   display: flex;
-  flex: 0 0 auto;
-  /* Pinned to the row's trailing edge: the capability icons and the window are
-     what a row shows on the right. */
+  flex: 0 1 auto;
+  min-width: 0;
+  /* Pinned to the row's trailing edge: the provider, the capability icons and
+     the window are what a row shows on the right. The provider name gives way
+     first, so a long model name keeps its own space. */
   margin-left: auto;
   align-items: center;
   gap: 4px;
+}
+
+/* The provider trailing a row is supporting text on a shared line: it yields
+   width before the model name and never wraps the row. */
+.composer-model-option-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Capability markers are icons, not words: a row carries up to two of them, and
@@ -606,7 +653,7 @@
   border-radius: var(--radius-sm);
 }
 
-.composer-plus-item.active span:last-child {
+.composer-plus-item.active span:last-child:not(.composer-ac-path) {
   color: var(--ds-text-primary);
 }
 

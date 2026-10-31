@@ -3,6 +3,8 @@ import {
   SESSION_THINKING_LEVELS,
   defaultCommandShellForPlatform,
   isCommandShellId,
+  normalizeRadialMenuPreferences,
+  radialMenuWriteError,
   validateNetworkProxy,
   validateSpeechSettings,
   type CommandShellId,
@@ -166,14 +168,23 @@ export function createProviderCatalogRuntime({
   ): T & { defaultCommandShell: CommandShellId } => {
     const value = (
       settings && typeof settings === "object" ? settings : {}
-    ) as T & { defaultCommandShell?: unknown };
+    ) as T & { defaultCommandShell?: unknown; radialMenu?: unknown };
     return {
       ...(value as T),
       infiniteProviderRetry: (value as T & { infiniteProviderRetry?: unknown })
         .infiniteProviderRetry === true,
       keepAwakeWhileRunning: (value as T & { keepAwakeWhileRunning?: unknown })
         .keepAwakeWhileRunning === true,
+      scheduledTasksEnabled: (value as T & { scheduledTasksEnabled?: unknown })
+        .scheduledTasksEnabled !== false,
       jevEnabled: (value as T & { jevEnabled?: unknown }).jevEnabled === true,
+      transcriptDisplayMode:
+        (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "flat" ||
+        (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "command-first" ||
+        (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "fully-folded"
+          ? (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode
+          : "fully-folded",
+      radialMenu: normalizeRadialMenuPreferences(value.radialMenu),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),
@@ -188,10 +199,14 @@ export function createProviderCatalogRuntime({
       defaultCommandShell?: unknown;
       infiniteProviderRetry?: unknown;
       keepAwakeWhileRunning?: unknown;
+      scheduledTasksEnabled?: unknown;
       jevEnabled?: unknown;
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
       networkProxy?: unknown;
+      macosWindowTranslucency?: unknown;
+      transcriptDisplayMode?: unknown;
+      radialMenu?: unknown;
     };
     if (
       Object.prototype.hasOwnProperty.call(value, "defaultCommandShell") &&
@@ -218,10 +233,42 @@ export function createProviderCatalogRuntime({
       });
     }
     if (
+      Object.prototype.hasOwnProperty.call(value, "scheduledTasksEnabled") &&
+      typeof value.scheduledTasksEnabled !== "boolean"
+    ) {
+      throw Object.assign(new Error("scheduledTasksEnabled is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
       Object.prototype.hasOwnProperty.call(value, "jevEnabled") &&
       typeof value.jevEnabled !== "boolean"
     ) {
       throw Object.assign(new Error("jevEnabled is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "transcriptDisplayMode") &&
+      value.transcriptDisplayMode !== "flat" &&
+      value.transcriptDisplayMode !== "command-first" &&
+      value.transcriptDisplayMode !== "fully-folded"
+    ) {
+      throw Object.assign(new Error("transcriptDisplayMode is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "macosWindowTranslucency") &&
+      typeof value.macosWindowTranslucency !== "boolean"
+    ) {
+      throw Object.assign(new Error("macosWindowTranslucency is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    const radialMenuProblem = radialMenuWriteError(value.radialMenu);
+    if (radialMenuProblem) {
+      throw Object.assign(new Error(radialMenuProblem), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }

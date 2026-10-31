@@ -15,7 +15,7 @@ const { createProviderCatalogRuntime } = await import("../electron/main/runtime/
 const { bindingForCustomModel, formatTokenCount, IPC } = await import("@pi-desktop/shared");
 
 // Run the real IPC discovery and settings picker; mock only HTTP and host persistence.
-test("refresh removes revoked service rows and preserves configured chat bindings", async (t) => {
+test("refresh hides unlisted chat choices and preserves editable configured bindings", async (t) => {
   const row = {
     id: "relay", name: "Relay", vendorKey: "custom", enabled: true,
     authKind: "none", hasSecret: false, apiStyle: "chat_completions",
@@ -46,9 +46,14 @@ test("refresh removes revoked service rows and preserves configured chat binding
     getHost: () => ({ call: async (method, input) => {
       if (method === "providers.list") return { providers: [row] };
       if (method === "providers.get") return { provider: row };
+      if (method === "providers.listModels") return { models: cachedModels };
       if (method === "providers.cacheModels") {
-        cachedModels = input?.models ?? [];
-        return {};
+        const byId = new Map(cachedModels.map(model => [model.modelId, {
+          ...model, discoveryState: input.complete ? "unlisted" : model.discoveryState,
+        }]));
+        for (const model of input.models) byId.set(model.modelId, { ...model, discoveryState: "published" });
+        cachedModels = [...byId.values()];
+        return { models: cachedModels };
       }
       return {};
     } }),
@@ -128,8 +133,11 @@ test("refresh removes revoked service rows and preserves configured chat binding
   ]);
   assert.deepEqual(
     composerModelsForProvider(row, discovery.models).map((model) => model.modelId),
-    ["gpt-6-sol", "claude-sonnet-4-5", "gpt-6-astra", "new-model"],
+    ["gpt-6-sol", "new-model"],
   );
+  const hydrated = await handlers.get(IPC.invoke.providersListModels)({ providerId: row.id, source: "cache" });
+  assert.deepEqual(composerModelsForProvider(row, hydrated.models).map(model => model.modelId), ["gpt-6-sol", "new-model"]);
+  assert.equal(hydrated.models.find(model => model.modelId === "claude-sonnet-4-5").discoveryState, "unlisted");
   assert.equal(
     limitsFor(html, "provider-models-row-id", "provider-models-row-limits", "new-model"),
     "— · —",

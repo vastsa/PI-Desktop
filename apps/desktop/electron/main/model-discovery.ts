@@ -15,6 +15,8 @@
  * "Test connection" cannot drift into two different URL or auth rules.
  */
 
+import { fetchProviderMetadata } from "./provider-metadata-fetch.ts";
+
 import {
   discoveryProbeUrl,
   discoveryStyleForApiStyle,
@@ -24,6 +26,14 @@ import {
 export type DiscoveredModel = {
   modelId: string;
   displayName: string;
+  /**
+   * Capacity the service itself reported on its model-list row
+   * (`context_window` / `context_length` / `inputTokenLimit` / …). Endpoint-
+   * reported values outrank catalog enrichment; absent means the service
+   * stated nothing, so nothing is guessed.
+   */
+  contextWindow?: number;
+  maxTokens?: number;
 };
 
 export const DISCOVERY_TIMEOUT_MS = 10_000;
@@ -85,6 +95,42 @@ function dedupeSort(models: DiscoveredModel[]): DiscoveredModel[] {
 }
 
 /**
+ * The first positive safe integer a row of a model list states for a capacity,
+ * reading the OpenAI/Anthropic and Google/Gemini spellings side by side the
+ * way the service's own console does. Zero, fractional and missing values
+ * state nothing: an endpoint that omits a capacity is not evidence it is
+ * small, so nothing is guessed in its place.
+ */
+function firstPositiveInteger(row: Record<string, unknown> | null | undefined, keys: readonly string[]): number | undefined {
+  if (!row) return undefined;
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value;
+  }
+  return undefined;
+}
+
+/** Context capacity the service itself stated on the row, or nothing. */
+function reportedContextWindow(row: Record<string, unknown> | null): number | undefined {
+  return firstPositiveInteger(row, [
+    "context_window",
+    "context_length",
+    "inputTokenLimit",
+    "contextWindow",
+  ]);
+}
+
+/** Output capacity the service itself stated on the row, or nothing. */
+function reportedMaxTokens(row: Record<string, unknown> | null): number | undefined {
+  return firstPositiveInteger(row, [
+    "max_output_tokens",
+    "max_tokens",
+    "outputTokenLimit",
+    "maxTokens",
+  ]);
+}
+
+/**
  * Normalize a model-list response body. Pure.
  *
  * `style` is either a wire API style or a discovery style; both name the same
@@ -110,7 +156,16 @@ export function normalizeModelList(
           typeof item?.displayName === "string" && item.displayName
             ? item.displayName
             : modelId;
-        return [{ modelId, displayName }];
+        const contextWindow = reportedContextWindow(item);
+        const maxTokens = reportedMaxTokens(item);
+        return [
+          {
+            modelId,
+            displayName,
+            ...(contextWindow !== undefined ? { contextWindow } : {}),
+            ...(maxTokens !== undefined ? { maxTokens } : {}),
+          },
+        ];
       }),
     );
   }
@@ -132,7 +187,16 @@ export function normalizeModelList(
         typeof item?.display_name === "string" && item.display_name
           ? item.display_name
           : modelId;
-      return [{ modelId, displayName }];
+      const contextWindow = reportedContextWindow(item);
+      const maxTokens = reportedMaxTokens(item);
+      return [
+        {
+          modelId,
+          displayName,
+          ...(contextWindow !== undefined ? { contextWindow } : {}),
+          ...(maxTokens !== undefined ? { maxTokens } : {}),
+        },
+      ];
     }),
   );
 }
@@ -192,7 +256,28 @@ export function modelListRequest(opts: {
   };
 }
 
+/** A single page is authoritative only when it contains valid rows and no
+ * continuation marker. Unknown pagination is never guessed from row count. */
+export function modelListIsComplete(style: string | undefined, body: unknown): boolean {
+  const record = asRecord(body);
+  if (record && (record.has_more === true || record.hasMore === true
+    || record.nextPageToken || record.next_page_token || record.next_page
+    || record.next || record.partial === true || record.truncated === true
+    || asRecord(record.links)?.next || asRecord(record.pagination)?.next
+    || asRecord(record.pagination)?.has_more)) return false;
+  const rows = Array.isArray(body) ? body
+    : Array.isArray(record?.data) ? record.data
+    : Array.isArray(record?.models) ? record.models : [];
+  if (rows.length === 0) return false;
+  const total = record?.total ?? record?.total_count ?? asRecord(record?.pagination)?.total;
+  if (typeof total === "number" && total > rows.length) return false;
+  return rows.every((row) => normalizeModelList(style,
+    style === "google_models" || style === "google_generative_ai"
+      ? { models: [row] } : { data: [row] }).length === 1);
+}
+
 export type ModelListProbe = {
+  complete?: boolean;
   /** The URL that answered, after any same-origin redirect. */
   url: string;
   status: number;
@@ -218,7 +303,7 @@ async function probeAnthropicMessagesEndpoint(opts: {
   if (allowOrigin && originOf(requestUrl) !== allowOrigin) {
     throw new Error("message endpoint request refused: it left the configured origin");
   }
-  const response = await fetch(requestUrl, {
+  const response = await fetchProviderMetadata(requestUrl, {
     method: "OPTIONS",
     signal: opts.signal,
     redirect: "manual",
@@ -299,7 +384,7 @@ export async function probeModelList(opts: {
 
   let url = request.url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    const res = await fetch(url, {
+    const res = await fetchProviderMetadata(url, {
       headers: request.headers,
       signal: responseSignal,
       // Never let fetch carry the credential to another origin on its own.
@@ -322,13 +407,15 @@ export async function probeModelList(opts: {
         status: res.status,
       });
     }
+    const body: unknown = await res.json();
+    const style = opts.discoveryStyle ?? opts.apiStyle;
     return {
       url,
       status: res.status,
-      models: normalizeModelList(
-        opts.discoveryStyle ?? opts.apiStyle,
-        await res.json(),
-      ),
+      models: normalizeModelList(style, body),
+      complete: res.status !== 206
+        && !/rel="?next/i.test(res.headers.get("link") ?? "")
+        && modelListIsComplete(style, body),
     };
   }
   throw new Error("model list request followed too many redirects");

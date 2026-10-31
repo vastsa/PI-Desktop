@@ -17,13 +17,30 @@ export const PI_VENDOR_ALIASES: Record<string, string> = {
  * the configured wire ID is never rewritten, and identified providers remain
  * authoritative.
  */
-const publishers: Record<string, string> = {
+export const RELAY_FAMILY_PUBLISHERS: Record<string, string> = {
   claude: "anthropic", gpt: "openai", o1: "openai", o3: "openai", o4: "openai",
   gemini: "google", grok: "xai",
   // Open-weight families whose owner publishes the IDs a relay actually serves.
   mimo: "xiaomi", glm: "zai", deepseek: "deepseek",
   kimi: "moonshotai", minimax: "minimax",
+  qwen: "alibaba", hy: "tencent",
 };
+
+/**
+ * The publisher that owns the weights behind a served leaf, when the family
+ * names one. A generation number rides on the family token (`qwen3`,
+ * `hy4-preview`), so the token's letters name the owner; only trailing digits
+ * are stripped, and a token registered as-is always wins first, so `o1` stays
+ * OpenAI rather than collapsing to an unregistered `o`.
+ */
+export function relayFamilyPublisher(leafId: string): string | undefined {
+  const token = leafId.split(/[-.]/)[0] ?? "";
+  for (const candidate of [token, token.replace(/\d+$/, "")]) {
+    const publisher = RELAY_FAMILY_PUBLISHERS[candidate];
+    if (publisher) return publisher;
+  }
+  return undefined;
+}
 const leaf = (id: string) => id.toLowerCase().split("/").at(-1);
 // Only deployment-added environment/context labels are safe to remove as a
 // fallback. Model variants such as `thinking`, `preview`, and dated releases
@@ -59,7 +76,7 @@ export function relayChatMetadata(models: Models, id: string): Model<Api> | unde
     hits = findHits(lookupId);
   }
   if (!hits.length) return undefined;
-  const publisher = publishers[lookupId.split(/[-.]/)[0] ?? ""];
+  const publisher = RELAY_FAMILY_PUBLISHERS[lookupId.split(/[-.]/)[0] ?? ""];
   const official = hits.filter(model => model.provider === publisher);
   if (official.length === 1) return official[0];
   return hits.every(model => capabilities(model) === capabilities(hits[0])) ? hits[0] : undefined;

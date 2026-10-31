@@ -23,16 +23,14 @@
 ## 3. 命令模型
 
 ```ts
-type PaletteCommand = {
- id: string // e.g. builtin.session.new / plugin.demo.hello.open
+type CommandItem = {
+ id: string
  title: string
- keywords: string[]
  category?: string
- source: "builtin" | "plugin"
+ keywords?: string[]
+ source: "builtin" | "plugin" | "extension"
  pluginId?: string
- icon?: string
- enabled: boolean
- risk?: "low" | "medium" | "high"
+ extensionId?: string
 }
 ```
 
@@ -42,19 +40,16 @@ type PaletteCommand = {
  - 新建任务
  - 压缩对话上下文
  - 切换到 Agent / Plan / Goal
-2. 插件 `contributes.commands`
-3.后期：技能快捷键/市场搜索入口
+2. 已加载的 `pi.commands.register` 运行时命令，按项目激活范围过滤
+3. 受信任 Agent 扩展命令（`source: "extension"`）
+
+Composer `/` 目录独立，还包含技能和 MCP 条目，不是所有条目都进入全局命令搜索。
 
 ## 5. 搜索规则
 
-- 按标题/关键字/类别/插件名称匹配
-- 支持前缀和子串匹配
-- 支持中文关键词
-- 结果排序：
- 1.最近使用过
- 2. 精确前缀
- 3.内置优先级或用户权重（可配置）
- 4. 按字母顺序
+当前 `commandPaletteSearch` 将查询转为小写，在标题、分类、合并关键词中做子串匹配，
+中文作为文本参与匹配，空查询返回符合条件的列表。顺序为内置命令、已加载且符合项目范围的
+插件命令、受信任扩展命令。不提供命令专属的最近使用排序、前缀评分、可配置权重或插件名字段搜索。
 
 ## 6. 执行流程
 
@@ -117,4 +112,4 @@ Enter to run · Esc to close
 2.内置和插件命令可搜索
 3.执行插件命令成功
 4. 插件禁用后命令消失
-5.最近使用的订单生效
+5. 子串匹配与内置/插件/扩展顺序符合 `market-ipc.ts`

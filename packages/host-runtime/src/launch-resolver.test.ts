@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createHeadlessLaunchResolver, type HostProviderRecord } from "./launch-resolver.js";
@@ -68,7 +69,7 @@ describe("createHeadlessLaunchResolver", () => {
     expect(launch.projectPath).toBe("/work/project");
     expect(launch.sidecarParams.provider.apiKey).toBe("sk-test");
     expect(launch.sidecarParams.provider.modelConfig?.name).toBe("gpt-a");
-    expect(launch.sidecarParams.scratchDir).toBe("/data/scratch/s1");
+    expect(launch.sidecarParams.scratchDir).toBe(join("/data", "scratch", "s1"));
     expect(launch.sidecarParams.pluginSkills).toEqual([{ id: "review", name: "Review", description: "Review code" }]);
     expect(launch.sidecarParams.pluginTools).toEqual([]);
     expect(launch.sidecarParams.projectMemory).toBe("remember me");

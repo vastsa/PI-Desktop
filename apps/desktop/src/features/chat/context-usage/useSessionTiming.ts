@@ -6,27 +6,31 @@ import type {
 } from "@pi-desktop/shared";
 import { api } from "../../../lib/api";
 import {
+  calculateSessionTimingBreakdown,
   calculateSessionTiming,
-  loadEarlierModelResponseDuration,
+  loadEarlierSessionTiming,
+  type SessionTimingBreakdown,
   type SessionTiming,
+  type SessionTimingTotals,
 } from "../../../lib/session-timing";
 import type { SessionHistoryWindow } from "../../../stores/app-state";
 
 type HistoryLoadState = {
   key: string;
   status: "loading" | "ready" | "error";
-  durationMs: number;
+  totals?: SessionTimingTotals;
 };
 
 type CachedSessionTiming = {
   key: string;
-  durationMs: number;
+  totals: SessionTimingTotals;
 };
 
 const MAX_CACHED_SESSION_TIMINGS = 16;
 
 export type SessionTimingView = {
   timing?: SessionTiming;
+  breakdown?: SessionTimingBreakdown;
   historyStatus: "loading" | "ready" | "error";
 };
 
@@ -51,48 +55,8 @@ export function useSessionTiming({
   const hasMoreBefore = history?.hasMoreBefore === true;
   const historyKey = `${sessionId ?? ""}:${messageStart}:${session?.updatedAt ?? ""}`;
   const historyCache = useRef(new Map<string, CachedSessionTiming>());
-  const [retainedRequest, setRetainedRequest] = useState<
-    { sessionId: string; startedAt: number } | undefined
-  >();
   const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>();
   const [now, setNow] = useState(() => Date.now());
-
-  const streamingMessageStartedAt = [...messages]
-    .reverse()
-    .find(
-      (message) =>
-        message.role === "assistant" &&
-        !message.parentToolCallId &&
-        !message.nestedParentToolCallId &&
-        message.status === "streaming",
-    )?.createdAt;
-  const waitingRequestStartedAt =
-    modelRequestActivity?.phase === "waiting-model"
-      ? modelRequestActivity.since
-      : undefined;
-  useEffect(() => {
-    if (!isRunning || !sessionId) {
-      setRetainedRequest(undefined);
-    } else if (
-      typeof waitingRequestStartedAt === "number" &&
-      Number.isFinite(waitingRequestStartedAt)
-    ) {
-      setRetainedRequest({ sessionId, startedAt: waitingRequestStartedAt });
-    }
-  }, [isRunning, sessionId, waitingRequestStartedAt]);
-
-  const retainedRequestStartedAt =
-    sessionId && retainedRequest?.sessionId === sessionId
-      ? retainedRequest.startedAt
-      : undefined;
-  const currentRequestStartedAt =
-    waitingRequestStartedAt ??
-    (modelRequestActivity?.phase === "retrying"
-      ? retainedRequestStartedAt ?? modelRequestActivity.since
-      : undefined) ??
-    (streamingMessageStartedAt
-      ? retainedRequestStartedAt ?? Date.parse(streamingMessageStartedAt)
-      : undefined);
 
   useEffect(() => {
     if (!enabled) return;
@@ -111,14 +75,14 @@ export function useSessionTiming({
       setHistoryLoad({
         key: historyKey,
         status: "ready",
-        durationMs: cachedTiming.durationMs,
+        totals: cachedTiming.totals,
       });
       return;
     }
 
     const controller = new AbortController();
-    setHistoryLoad({ key: historyKey, status: "loading", durationMs: 0 });
-    void loadEarlierModelResponseDuration(
+    setHistoryLoad({ key: historyKey, status: "loading" });
+    void loadEarlierSessionTiming(
       messageStart,
       async (options) => {
         const result = await api.getSession(sessionId, options);
@@ -132,7 +96,7 @@ export function useSessionTiming({
       },
       controller.signal,
     ).then(
-      (durationMs) => {
+      (totals) => {
         if (controller.signal.aborted) return;
         if (
           !historyCache.current.has(sessionId) &&
@@ -141,12 +105,12 @@ export function useSessionTiming({
           const oldestSessionId = historyCache.current.keys().next().value;
           if (oldestSessionId) historyCache.current.delete(oldestSessionId);
         }
-        historyCache.current.set(sessionId, { key: historyKey, durationMs });
-        setHistoryLoad({ key: historyKey, status: "ready", durationMs });
+        historyCache.current.set(sessionId, { key: historyKey, totals });
+        setHistoryLoad({ key: historyKey, status: "ready", totals });
       },
       () => {
         if (controller.signal.aborted) return;
-        setHistoryLoad({ key: historyKey, status: "error", durationMs: 0 });
+        setHistoryLoad({ key: historyKey, status: "error" });
       },
     );
 
@@ -158,6 +122,10 @@ export function useSessionTiming({
     : historyLoad?.key === historyKey
       ? historyLoad.status
       : "loading";
+  const earlierTotals =
+    historyStatus === "ready" && historyLoad?.key === historyKey
+      ? historyLoad.totals
+      : undefined;
   const timing = enabled && session
     ? calculateSessionTiming({
         createdAt: session.createdAt,
@@ -165,13 +133,20 @@ export function useSessionTiming({
         isRunning,
         messages,
         now,
-        earlierModelResponseMs:
-          historyStatus === "ready" && historyLoad?.key === historyKey
-            ? historyLoad.durationMs
-            : 0,
-        activeModelRequestStartedAt: currentRequestStartedAt,
+        earlierModelResponseMs: earlierTotals?.modelResponseMs ?? 0,
+      })
+    : undefined;
+  const breakdown = timing
+    ? calculateSessionTimingBreakdown({
+        elapsedMs: timing.elapsedMs,
+        messages,
+        now,
+        ...(earlierTotals ? { earlierTotals } : {}),
+        ...(modelRequestActivity?.phase === "waiting-model"
+          ? { activeNetworkRequestStartedAt: modelRequestActivity.since }
+          : {}),
       })
     : undefined;
 
-  return { timing, historyStatus };
+  return { timing, breakdown, historyStatus };
 }

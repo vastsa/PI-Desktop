@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const patchDependencyCheck = join(here, "check-pi-dependencies.mjs");
 const patchCheck = join(here, "check-pi-patches.mjs");
 
-const TARGET = "1.1.0";
+const TARGET = "1.4.0";
 const PATCHED = [
   {
     name: "@earendil-works/pi-agent-core",
@@ -25,7 +25,7 @@ const PATCHED = [
       '+{"openai-completions":{"chat:deepseek-flash":{"baseUrl":"https://api.deepseek.com","compat":{"supportsMidConvoSystemMessages":true}}}}',
       "diff --git a/dist/index.d.ts b/dist/index.d.ts",
       "diff --git a/dist/types.d.ts b/dist/types.d.ts",
-      "diff --git a/dist/utils/assistant-message-frame.d.ts b/dist/utils/assistant-message-frame.d.ts",
+      "diff --git a/dist/providers/compat-schema.d.ts b/dist/providers/compat-schema.d.ts",
       "diff --git a/dist/utils/estimate.d.ts b/dist/utils/estimate.d.ts",
       "diff --git a/dist/utils/hosted-search.d.ts b/dist/utils/hosted-search.d.ts",
       "diff --git a/dist/utils/local-request-error.d.ts b/dist/utils/local-request-error.d.ts",
@@ -39,7 +39,6 @@ const PATCHED = [
   },
 ];
 const RELEASE_AGE_EXCLUDE = [
-  "chord",
   "pi-agent-core",
   "pi-ai",
   "pi-codemode",

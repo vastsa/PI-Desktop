@@ -43,7 +43,6 @@ const CATEGORY_KEYS: ConfigSyncCategory[] = [
   "skills",
   "subagents",
   "instructions",
-  "projects",
   "plugins",
   "automation",
   "memory",

@@ -112,6 +112,35 @@ test("the market list explains a policy refusal instead of a bare unreachable", 
   assert.match(panel, /queryError: skillMarketFailureDetail\(error\)/);
 });
 
+test("failed and partial skill catalog searches can be retried", () => {
+  assert.match(panel, /const \[catalogRetry, setCatalogRetry\] = useState\(0\)/);
+  assert.match(panel, /\[search, sources, catalogRetry\]/);
+  assert.match(panel, /const retryCatalog = \(\) => \{/);
+  assert.match(panel, /settings\.sklm\.retryCatalog/);
+  assert.match(panel, /setRemote\(\(current\) => \(\{ \.\.\.current, status: "loading" \}\)\)/);
+});
+
+test("a failed query keeps the last successful list with its timestamp", () => {
+  // Issue #1692 follow-up: a source failure used to drop the whole list back to
+  // built-in picks, discarding what the user was just looking at. The panel now
+  // keeps the last successful result and says when it was taken.
+  assert.match(panel, /useState<MarketSnapshot<MarketItem> \| null>\(null\)/);
+  assert.match(panel, /snapshotMatchesQuery\(snapshot, search\)/);
+  assert.match(panel, /setSnapshot\(\{ entries, at: Date\.now\(\), query \}\)/);
+  // The fallback list answers the current query only, and only while the
+  // query itself has nothing to show — an empty `ready` answer is real.
+  assert.match(
+    panel,
+    /const showingSnapshot =\s*\n\s*snapshotForQuery != null &&\s*\n\s*remote\.entries\.length === 0 &&\s*\n\s*\(remote\.status === "error" \|\| remote\.status === "loading"\)/,
+  );
+  assert.match(panel, /displayEntries\.filter\(matches\)/);
+  assert.match(panel, /settings\.sklm\.remoteStaleSnapshot/);
+  assert.match(panel, /snapshotTimeText\(\s*\n?\s*snapshotForQuery\.at/);
+  // An empty response must not overwrite the snapshot: that would pin the
+  // pane to an empty list after one successful-but-empty query.
+  assert.match(panel, /if \(entries\.length > 0\) \{\s*\n\s*setSnapshot\(/);
+});
+
 test("a resolver with no answer is explained as that, not as an address check", () => {
   // Issue #419, second round: one `policy` bucket meant a local resolver that
   // answered nothing produced the same sentence as an address the guard had
@@ -138,7 +167,8 @@ test("a resolver with no answer is explained as that, not as an address check", 
   assert.match(panel, /remote\.failureDetails\[name\]\?\.host/);
   // And the host reaches the state from the IPC result.
   assert.match(panel, /failureDetails: result\.failureDetails \?\? \{\}/);
-  assert.match(panel, /failureDetails: current\.failureDetails/);
+  // The retry loading state preserves the last host details until the request resolves.
+  assert.match(panel, /setRemote\(\(current\) => \(\{ \.\.\.current, status: "loading" \}\)\)/);
 });
 
 test("a proxy fake-IP gets its own copy and names the address it came from", () => {
@@ -182,12 +212,14 @@ test("every shipped locale carries the new skill market strings", async () => {
     "fakeIpHintPlain",
     "failureDetail",
     "retryPreview",
+    "retryCatalog",
     "remoteErrorPolicy",
     "remoteErrorUnresolved",
     "remoteErrorFakeIp",
     "remoteErrorQuery",
     "remotePartial",
     "failureSourceHost",
+    "remoteStaleSnapshot",
   ];
   for (const id of ids) {
     const locale = await readFile(

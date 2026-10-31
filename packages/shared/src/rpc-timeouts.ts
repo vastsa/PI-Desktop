@@ -56,6 +56,15 @@ export const AGENT_COMPACT_RPC_TIMEOUT_MS =
   COMMAND_RPC_BUFFER_MS;
 
 /**
+ * `worktree.delegate.create` / `.settle` (ADR 0329) checkpoint and merge in a
+ * session worktree: up to 5s waiting for the session to go quiet, up to
+ * `TOOL_QUEUE_WAIT_MS` for its write permit, then a handful of git commands,
+ * each bounded by host-core. Under the flat default the runtime gave up while
+ * the host was still merging and reported work as kept that had landed.
+ */
+export const WORKTREE_DELEGATE_RPC_TIMEOUT_MS = 10 * 60_000;
+
+/**
  * `configSync.syncNow` is a Host-owned multi-step operation. It has no
  * whole-request deadline: individual S3 requests retain their own bounds, and
  * navigating away from Settings only detaches the renderer from the request.
@@ -85,7 +94,10 @@ export function rpcTimeoutMs(
   _params: unknown,
 ): number | undefined {
   if (method === "agent.compact") return AGENT_COMPACT_RPC_TIMEOUT_MS;
+  if (method === "worktree.delegate.create" || method === "worktree.delegate.settle") {
+    return WORKTREE_DELEGATE_RPC_TIMEOUT_MS;
+  }
   if (method === "configSync.syncNow") return undefined;
-  if (method === "tools.execute") return undefined;
+  if (method === "tools.execute" || method === "tools.workspaceExecute") return undefined;
   return DEFAULT_RPC_TIMEOUT_MS;
 }

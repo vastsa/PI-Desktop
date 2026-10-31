@@ -136,6 +136,11 @@ export const ErrorCodes = {
   SUBAGENT_OUTPUT_TRUNCATED: "SUBAGENT_OUTPUT_TRUNCATED",
   WORKSPACE_REQUIRED: "WORKSPACE_REQUIRED",
   PATH_OUTSIDE_WORKSPACE: "PATH_OUTSIDE_WORKSPACE",
+  /**
+   * A write into the session visualization directory was not a direct-child
+   * `.html` fragment. Only fragments can be rendered as inline visualizations.
+   */
+  VISUALIZATION_HTML_ONLY: "VISUALIZATION_HTML_ONLY",
   TOOL_NOT_FOUND: "TOOL_NOT_FOUND",
   TOOL_DENIED: "TOOL_DENIED",
   TOOL_TIMEOUT: "TOOL_TIMEOUT",

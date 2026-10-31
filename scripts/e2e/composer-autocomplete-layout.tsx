@@ -28,9 +28,22 @@ const items: AutocompleteItem[] = [
   command("template", longDescription, { kind: "template", argumentHint: "<file>" }),
   command("very-long-command-".repeat(20), longDescription),
 ];
+// File mode: one short leaf name with a deep relative path — the path must
+// claim the remaining row width and truncate before the leaf name can — one
+// oversized leaf name, which must still truncate on its own, and one directory
+// row, whose leaf name keeps the trailing `/` while the path span stays the
+// raw `entry.path` (no trailing slash).
+const shortLeafPath = `src/components/chat/${"nested/".repeat(10)}Composer.tsx`;
+const oversizedLeafPath = `nested/${"long-file-name-".repeat(30)}.ts`;
+const dirEntryPath = "src/components/chat";
+const fileItems: AutocompleteItem[] = [
+  { kind: "path", entry: { path: shortLeafPath, kind: "file" }, match: { score: 1, ranges: [] } },
+  { kind: "path", entry: { path: oversizedLeafPath, kind: "file" }, match: { score: 1, ranges: [] } },
+  { kind: "path", entry: { path: dirEntryPath, kind: "dir" }, match: { score: 1, ranges: [] } },
+];
 function Fixture({ width, fileMode }: { width: number; fileMode: boolean }) {
   const anchorRef = useRef<HTMLTextAreaElement>(null);
-  const rows = fileMode ? [{ kind: "path", entry: { path: `nested/${"long-file-name-".repeat(30)}.ts`, kind: "file" }, match: { score: 1, ranges: [] } } as AutocompleteItem] : items;
+  const rows = fileMode ? fileItems : items;
   const ac: ReturnType<typeof useComposerAutocomplete> = {
     open: true, mode: fileMode ? "file" : "slash", query: "", items: rows,
     hasItems: true, highlight: 0, setHighlight: noop, truncated: false,
@@ -61,7 +74,9 @@ globalThis.autocompleteLayoutProbe = async (width, fileMode = false) => {
   const measurements = rows.map((row) => {
     const name = row.querySelector<HTMLElement>(".composer-ac-name")!;
     const desc = row.querySelector<HTMLElement>(".composer-ac-desc");
+    const path = row.querySelector<HTMLElement>(".composer-ac-path");
     return { name: name.textContent, nameWidth: name.clientWidth, nameContent: name.scrollWidth,
+      path: path?.textContent, pathWidth: path?.clientWidth, pathContent: path?.scrollWidth,
       descriptionWidth: desc?.clientWidth, descriptionContent: desc?.scrollWidth,
       rowWidth: row.clientWidth, rowContent: row.scrollWidth };
   });
@@ -74,9 +89,17 @@ globalThis.autocompleteLayoutProbe = async (width, fileMode = false) => {
     if (!fileMode && index < items.length - 1 && row.nameContent > row.nameWidth + 1) failures.push(`command ${row.name} is truncated`);
     if (!fileMode && [0, 1, 4, 5].includes(index) && !(row.descriptionContent! > row.descriptionWidth!)) failures.push(`long description ${index} is not truncated`);
   }
-  const oversizedName = measurements[fileMode ? 0 : measurements.length - 1];
+  if (fileMode) {
+    const shortLeaf = measurements[0];
+    if (shortLeaf.nameContent > shortLeaf.nameWidth + 1) failures.push("short file leaf name is truncated");
+    if (shortLeaf.path !== shortLeafPath) failures.push("file row lost the full relative path text");
+    if (!(shortLeaf.pathContent! > shortLeaf.pathWidth!)) failures.push("long relative path is not truncated");
+    const dirRow = measurements[2];
+    if (dirRow.name !== "chat/") failures.push("directory row lost the trailing slash on its leaf name");
+    if (dirRow.path !== dirEntryPath) failures.push("directory row path span is not the raw entry.path");
+  }
+  const oversizedName = measurements[fileMode ? 1 : measurements.length - 1];
   if (oversizedName.nameContent <= oversizedName.nameWidth) failures.push("oversized name no longer truncates");
-  if (fileMode && measurements[0].nameWidth < width - 70) failures.push("file name no longer uses available width");
   accepted = -1;
   rows[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
   if (accepted !== 0 || document.activeElement !== input) failures.push("acceptance lost row identity or input focus");

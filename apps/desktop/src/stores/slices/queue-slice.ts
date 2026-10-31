@@ -296,30 +296,14 @@ export function createQueueSlice({
           promptId,
         ),
       }));
-      let prioritized = false;
       try {
+        // The Host delivers promoted input into the active turn, or keeps it
+        // queued when that turn can no longer accept steering.
         await api.prioritizeQueuedPrompt(promptId);
-        prioritized = true;
-        // Send now keeps its graceful stop: the active turn reaches its
-        // boundary before the promoted row starts.
-        if (get().runningSessions[sessionId] &&
-            queuedPromptForSession(get().queuedPrompts, sessionId, promptId)) {
-          const result = await api.stop(sessionId);
-          if (!result.requested) {
-            await get().refreshQueuedPrompts(sessionId);
-            if (queuedPromptForSession(get().queuedPrompts, sessionId, promptId)) {
-              get().showToast(i18n.t("chat.queuedPromptStopFailed"), { variant: "info" });
-            }
-          }
-        }
       } catch (error) {
         await get().refreshQueuedPrompts(sessionId);
         const detail = error instanceof Error ? error.message : String(error);
-        const stillQueued = queuedPromptForSession(get().queuedPrompts, sessionId, promptId);
-        get().showToast(
-          prioritized && stillQueued ? `${i18n.t("chat.queuedPromptStopFailed")} ${detail}` : detail,
-          { variant: "error" },
-        );
+        get().showToast(detail, { variant: "error" });
       }
     },
 
@@ -449,13 +433,14 @@ export function createQueueSlice({
         // Keeps the session readable without any plugin: the owning host derives
         // a short title from this prompt but leaves it replaceable, so an
         // installed title plugin can still upgrade it after the first turn. A
-        // remote session derives on its own host, and the host refuses the write
-        // once the session was renamed. A native Pi session owns its title
-        // outside this host, so it keeps whatever that surface shows.
+        // remote session derives on its own host: the backend router forwards
+        // this same call to the owning `pi-host`, whose `session/deriveTitle`
+        // refuses the write once the session was renamed, so a remote session
+        // must not be excluded here. A native Pi session owns its title outside
+        // this host, so it keeps whatever that surface shows.
         if (
           isDefaultSessionTitle(current?.title) &&
           current?.source !== "pi-native"
-          && !isRemoteSession(current)
         ) {
           const nextTitle = promptFallbackSessionTitle(content, untitledTaskTitle());
           if (!isDefaultSessionTitle(nextTitle)) {

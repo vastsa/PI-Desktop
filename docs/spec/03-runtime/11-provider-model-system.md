@@ -85,6 +85,16 @@ rather than wrapped (issue #1072). Because those adapters never see the wrapper 
 transport cause: `Retry-After` falls back to the bounded backoff ladder, and
 the issue-234 transport diagnostics and rebuild do not fire for it.
 
+Session identity follows the endpoint's owner. On `openai-completions` and
+`anthropic-messages`, a row whose base URL host is not a published vendor host
+receives the session-affinity headers and, on Chat Completions, a
+`prompt_cache_key` body key. A custom `openai-responses` row keeps the
+adapter's existing session headers and cache key, and also receives the
+hyphenated `x-session-affinity` alias so a reverse proxy can route it after
+dropped underscore headers. A published vendor host and the OpenCode path
+keep their current request bytes (issue #1634;
+`03-runtime/02-agent-runtime.md` §6.3).
+
 When an OAuth vendor is rebuilt around a local provider-row id, runtime keeps
 the native pi-ai transport metadata instead of treating the row as a generic
 OpenAI endpoint. GitHub Copilot requests retain the pinned model's IDE identity
@@ -117,7 +127,18 @@ Non-official DeepSeek endpoints also set `requiresNonEmptyReasoningReplay` so
 missing reasoning is filled with a documented placeholder instead of `""`
 (OpenCode / third-party relays reject empty echoes after compaction; see
 ADR 0256 / #296). Official `deepseek.com` rows keep empty-string fill (#223).
-The overlay does not change `thinkingFormat`.
+Every replayed assistant row carries one reasoning field, named after the
+newest row with real reasoning; real reasoning under another name is moved to
+it, so only rows with no reasoning are filled, and a leading echo of the
+placeholder in stored thinking is neither shown nor replayed (D677, #1945).
+Relay rows set `supportsReasoningEffort: false` because DeepSeek-family relays
+were reported rejecting the generic OpenAI `reasoning_effort` field (#1664).
+Official `deepseek.com` rows leave the flag to pi-ai, which sends
+`reasoning_effort` (low / high / max) next to `thinking: {type: "enabled"}` as
+DeepSeek documents, so the selected thinking level reaches the wire (#1821,
+D672). An explicit per-model `supportsReasoningEffort` selection (`send` or
+`omit`) still overrides this automatic rule on either kind of row. The overlay
+does not change `thinkingFormat`.
 
 Anthropic Messages requests set `forceAdaptiveThinking: true` when the
 models.dev record publishes a reasoning `effort` option and no
@@ -339,6 +360,7 @@ type ModelBinding = {
   defaultThinkingLevel: SessionThinkingLevel | null
   thinkingProtocol?: "legacy" | "adaptive"
   availableForSubagents?: boolean // opt-in for AI-driven delegation
+  fastModeAllowed?: boolean // opt-in for the session /fast switch (ADR 0334)
 }
 
 type SelectedModelRef = {
@@ -370,6 +392,20 @@ runtime consumers. Conversation-level model switching and routing across the
 array remain future work. A legacy provider with only `defaultModelId` is
 materialized as one fallback binding on host read and upgraded to `models` on
 the next provider write.
+
+`ModelBinding.fastModeAllowed` (boolean, default false, ADR 0334): lets the
+session `/fast` switch request OpenAI's priority service tier
+(`service_tier: "priority"`) for this model. Model settings enable the checkbox
+only for Responses wires: `openai_codex_responses` (ChatGPT subscription; the
+tier spends plan limits faster) and `responses` (billed per token at the tier's
+higher price; a relay may ignore or rebill the field). The launcher sends
+`fastMode: true` to the sidecar only when the session switch is on and the
+stored binding allows it; the runtime adds the field to main-turn requests whose
+resolved wire is `openai-codex-responses` or `openai-responses`. Subagents,
+compaction, and one-shot requests keep the default tier. A trusted extension
+that moves the runtime to one of its own models clears the switch, because that
+model has no binding to opt in; the next launch re-applies it from the
+session's stored binding.
 
 `ModelBinding.availableForSubagents` (boolean, default false): opt-in flag that
 makes the model available for AI-driven subagent delegation. When enabled, the
@@ -476,6 +512,13 @@ same vendor key.
 
 ### Anthropic token endpoint rate limits
 
+Every token request sends pi-ai's own `User-Agent` (`pi (<platform> <release>;
+<arch>)`). Electron Main replaces the global `fetch` with `net.fetch`, whose
+default is Chromium's browser `User-Agent`; the token endpoint answers browser
+and `claude-code/` agents with a 429 `rate_limit_error` on every attempt, so
+without an explicit agent sign-in could never succeed (issue #1337). A custom
+`User-Agent` on the provider row still overrides it.
+
 The pinned pi-ai 1.1.0 patch gives Anthropic authorization-code exchange and
 refresh a shared, bounded token-request policy: retry only an explicit HTTP
 429, at most three total requests. Wait at least 1 s then 2 s, or longer when
@@ -558,11 +601,14 @@ type ModelDescriptor = {
   and keep dialog actions outside the independently scrollable content
 - do not expose raw catalog compatibility internals or provider secrets
 - Settings → Models → Providers can scan and copy provider/model rows from
-  Claude Code, Codex, OpenCode, Pi, and CC Switch. The inline scan is explicit.
-  Stored API keys are copied into the host secret store; OAuth/subscription
-  grants are not. An equivalent provider (normalized URL + API style + same
-  credential) is skipped on re-import. Different credentials at one endpoint
-  remain independent providers. No protocol or schema version bump
+  Claude Code, Codex, OpenCode, Pi, and CC Switch. The Pi scan also reads
+  `auth.json` API keys and Pi's cached `models-store.json` catalog, so
+  providers connected through `pi /login` are listed even when `models.json`
+  has no block for them. The inline scan is explicit. Stored API keys are
+  copied into the host secret store; OAuth/subscription grants are not. An
+  equivalent provider (normalized URL + API style + same credential) is
+  skipped on re-import. Different credentials at one endpoint remain
+  independent providers. No protocol or schema version bump
   (D342 / ADR 0179 / ADR 0188 / D645).
 
 ### Model selector
@@ -688,6 +734,13 @@ adapter instead of Chat Completions. Foreign catalog wire APIs (such as
 `google-generative-ai` or `anthropic-messages` matched on an OpenAI-compatible
 relay) do not replace the provider's configured wire style (issue #1310).
 Without a model-level pin the provider-wide style applies.
+
+The built-in OpenCode Go row is a documented exception for catalog entries that
+publish a distinct Anthropic Messages route. For a models.dev Claude entry whose
+`api` is `anthropic_messages` and whose `baseUrl` is the OpenCode Anthropic root,
+agent-runtime uses that catalog API/base URL pair and reaches `/v1/messages`.
+This exception is limited to the named OpenCode Go preset; custom endpoints and
+foreign relay matches continue to use their saved provider API and base URL.
 
 This is the **universal escape hatch** guaranteeing market coverage beyond native integrations.
 

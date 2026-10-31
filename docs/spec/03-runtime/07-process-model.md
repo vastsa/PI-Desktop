@@ -86,6 +86,17 @@ cannot carry userinfo (issue #490). host-core marketplace `curl` gets explicit
 proxy arguments and does **not** inherit proxy env, so workspace Bash cannot
 see proxy credentials. Direct mode bypasses the System relay. TLS certificate
 verification remains enabled on every route.
+
+Provider model-list and connection probes recover from Electron 43's exact
+`net::ERR_SSL_CLIENT_AUTH_CERT_NEEDED` failure with one Node HTTPS metadata
+attempt through the same authenticated relay and active Chromium proxy route.
+The retry supplies no client certificate, retains the original cancellation
+budget and manual redirect/origin checks, and validates the server certificate
+and hostname with default plus OS CA roots. Mandatory client authentication
+continues to fail. Other TLS errors, HTTP responses and cancelled requests do
+not trigger this retry; agent turns and plugin requests are unaffected. See
+[the metadata transport decision](../../adr/provider-metadata-client-certificate-retry.md).
+
 Marketplace curl diagnostics prefer UTF-8 and fall back to the active Windows
 ANSI code page before crossing the UTF-8 RPC boundary, so localized Schannel
 errors remain readable instead of becoming replacement characters.
@@ -183,6 +194,12 @@ renderer-facing status):
   missing sessions row is restored from the live transcript (or created as a
   stub) before those appends apply; deleting a session drops its outbox
   entries (D318).
+- Before replacing or activating a session transcript, Electron main fences
+  persistence callbacks for that session and drains appends already queued for
+  the old transcript. If the rewrite succeeds, events from turns that existed
+  before the fence are discarded, including callbacks delivered while the
+  rewrite was running. If the rewrite fails, callbacks buffered by the fence
+  are replayed against the unchanged transcript.
 - Host-core's stdin/stdout control path uses one dedicated OS thread per
   direction rather than Tokio's dynamic blocking pool. Transient pipe resource
   errors are retried; control-thread creation failures are surfaced as a boot

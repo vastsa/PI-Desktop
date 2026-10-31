@@ -33,6 +33,16 @@ the full payload had already crossed the process boundary.
 4. The uncapped default remains available to non-renderer callers, so model
    reconstruction and persistence semantics do not depend on UI pagination.
 
+The original implementation scanned the transcript sequentially to find a
+requested window. It now keeps a disposable per-session layout of physical
+message and compaction line offsets, with a versioned disk cache when the
+filesystem provides a reliable file identity. Appends extend the layout; an
+atomic transcript rewrite invalidates both cache layers. A cache is an
+optimization only: old or invalid formats rebuild from the JSONL source, and
+the bounded read can perform one full rebuild and retry after detecting an
+invalid indexed boundary. This does not change the JSONL format, SQLite schema,
+RPC contract or the bounded-window decision above.
+
 ## Alternatives considered
 
 - **Only virtualize the message list:** rejected because the expensive full

@@ -15,3 +15,14 @@ export function useChatSessionCapability(capability: keyof SessionCapabilities):
     );
   });
 }
+
+/** OS file-manager actions apply only to files owned by this computer. */
+export function useChatNativeFilesAllowed(): boolean {
+  const paneSessionId = useSlotSessionId();
+  return useAppStore((state) => {
+    const id = paneSessionId || state.activeSessionId;
+    const session = state.sessions.find((item) => item.id === id);
+    return sessionAllows(session ?? (id?.startsWith("remote:") ? { id } : undefined), "canUseLocalTools")
+      && !session?.remoteWorkspace && (id ? true : !state.workspace?.remote);
+  });
+}

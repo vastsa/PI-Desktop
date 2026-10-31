@@ -1,6 +1,14 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { isRemoteSession } from "../lib/remote-session-safety";
+import { normalizeProjectPath } from "../lib/sidebar-session-groups";
 import {
   KEYBOARD_SHORTCUTS,
+  MAX_SESSION_TITLE_LENGTH,
   keybindingDisplayParts,
   resolveKeybinding,
   type ShortcutPlatform,
@@ -13,6 +21,7 @@ import {
 } from "../features/scheduled/scheduled-return";
 import {
   IconChevronLeft,
+  IconFolder,
   IconSidebar,
   IconNewSession,
   IconSearch,
@@ -49,6 +58,9 @@ export function ConversationTopbar({
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspace = useAppStore((s) => s.workspace);
+  const projectMeta = useAppStore((s) => s.projectMeta);
+  const renameSession = useAppStore((s) => s.renameSession);
+  const showToast = useAppStore((s) => s.showToast);
   const keybindings = useAppStore((s) => s.settings?.keybindings);
   const navStack = useAppStore((s) => s.navStack);
   const navIndex = useAppStore((s) => s.navIndex);
@@ -91,6 +103,85 @@ export function ConversationTopbar({
   const activeSession = sessions.find((session) => session.id === activeSessionId);
 
   /*
+   * Inline rename. The editor is keyed by the session it belongs to, so a
+   * conversation switch can never commit one task's draft onto another; the
+   * effect below also drops the key so returning to the first session does not
+   * resurrect a closed editor.
+   */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  /* Set once an Enter/Escape/blur has resolved the draft; the next blur is the
+     same commit, not a second one. */
+  const renameSettledRef = useRef(false);
+
+  const remoteSession = isRemoteSession(activeSession);
+  /* Scheduled runs and remote transcripts are host-owned: their titles are not
+     editable from this desktop. */
+  const canRename = Boolean(
+    activeSession && !isRemoteSession(activeSession) && !activeSession.scheduledRun,
+  );
+  const editing = editingId !== null && editingId === activeSession?.id;
+
+  useEffect(() => {
+    setEditingId(null);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!editing) return;
+    /* The input only exists after this render; select-all must follow it. */
+    const frame = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editing]);
+
+  const beginRename = () => {
+    if (!canRename || !activeSession) return;
+    renameSettledRef.current = false;
+    setDraft(activeSession.title ?? "");
+    setEditingId(activeSession.id);
+  };
+
+  const cancelRename = () => {
+    if (!editing) return;
+    renameSettledRef.current = true;
+    setEditingId(null);
+  };
+
+  const commitRename = () => {
+    if (!editing || !activeSession || renameSettledRef.current) return;
+    renameSettledRef.current = true;
+    const sessionId = activeSession.id;
+    const previousTitle = activeSession.title;
+    const nextTitle = draft.trim();
+    setEditingId(null);
+    if (!nextTitle || nextTitle === previousTitle) return;
+    void renameSession(sessionId, nextTitle).catch((error) => {
+      showToast(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    });
+  };
+
+  const onRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    /* An IME owns Enter and Escape while a composition is in flight. */
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitRename();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      /* Escape belongs to the editor here, not to a window-level dismisser. */
+      event.stopPropagation();
+      cancelRename();
+    }
+  };
+
+  /*
    * A scheduled run's conversation is read from the Scheduled route, and the
    * session list keeps automation transcripts out, so this row is the way
    * back. The remembered origin is what restores the task and run exactly.
@@ -110,9 +201,28 @@ export function ConversationTopbar({
   const fullTaskTitle = isDefaultSessionTitle(activeSession?.title)
     ? t("chat.untitledTask")
     : activeSession?.title || t("chat.untitledTask");
-  const project = isRemoteSession(activeSession)
-    ? activeSession?.remoteWorkspaceLabel
-    : projectName(workspace?.path, workspace?.name);
+  /*
+   * The crumb names the project the conversation lives in, not the workspace
+   * the app happens to show: a task can be opened from a project other than
+   * the active one. A remote session carries its display-only label; a local
+   * one resolves its project path through the sidebar's naming preferences,
+   * and a temporary session keeps the plain title. Before the first prompt
+   * there is no session yet, so the active workspace names the draft.
+   */
+  const sessionProjectPath = remoteSession ? null : activeSession?.projectPath;
+  const projectKey = sessionProjectPath
+    ? normalizeProjectPath(sessionProjectPath)
+    : null;
+  const project = remoteSession
+    ? activeSession?.remoteWorkspaceLabel?.trim() || null
+    : projectKey
+      ? projectMeta[projectKey]?.name?.trim() || projectName(sessionProjectPath)
+      : activeSession
+        ? null
+        : projectName(workspace?.path, workspace?.name);
+  const breadcrumbTitle = project
+    ? `${project} · ${fullTaskTitle}`
+    : fullTaskTitle;
 
   return (
     <div
@@ -153,12 +263,60 @@ export function ConversationTopbar({
             <span className="ct-back-label">{t("nav.backToScheduled")}</span>
           </button>
         ) : null}
+        {/* The hover tooltip would otherwise keep advertising the old title
+            and the crumb while the title is an editor. */}
         <div
           className="ct-title-wrap"
-          title={project ? `${project} · ${fullTaskTitle}` : fullTaskTitle}
+          title={editing ? undefined : breadcrumbTitle}
         >
-          <span className="ct-title">{fullTaskTitle}</span>
-          {isRemoteSession(activeSession) && <span className="thread-item-source">{t("remote:remote")} · {activeSession?.remoteHostLabel}</span>}
+          {project ? (
+            <>
+              <span className="ct-project">
+                <IconFolder size={12} aria-hidden />
+                <span className="ct-project-name">{project}</span>
+              </span>
+              <span className="ct-sep" aria-hidden>
+                /
+              </span>
+            </>
+          ) : null}
+          {editing ? (
+            <input
+              ref={inputRef}
+              className="ct-title-input"
+              value={draft}
+              aria-label={t("session.renameLabel")}
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              onChange={(event) =>
+                setDraft(
+                  Array.from(event.target.value)
+                    .slice(0, MAX_SESSION_TITLE_LENGTH)
+                    .join(""),
+                )
+              }
+              onKeyDown={onRenameKeyDown}
+              onBlur={commitRename}
+            />
+          ) : (
+            <h1 className="ct-title">
+              {canRename ? (
+                <button
+                  type="button"
+                  className="ct-title-trigger"
+                  aria-label={t("session.renameAction", { title: fullTaskTitle })}
+                  onClick={beginRename}
+                >
+                  {fullTaskTitle}
+                </button>
+              ) : (
+                fullTaskTitle
+              )}
+            </h1>
+          )}
+          {remoteSession && <span className="thread-item-source">{t("remote:remote")} · {activeSession?.remoteHostLabel}</span>}
         </div>
       </div>
 

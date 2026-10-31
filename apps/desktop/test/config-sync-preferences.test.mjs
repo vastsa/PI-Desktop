@@ -94,3 +94,17 @@ test("history expires and connection or mode changes invalidate it immediately",
     assert.equal(preferences.hasFreshConfigSyncHistory(1000), false, field);
   }
 });
+
+test("legacy project selection is discarded on draft read and write", () => {
+  const store = fakeStorage();
+  store.setItem(preferences.CONFIG_SYNC_DRAFT_STORAGE_KEY, JSON.stringify({
+    ...connection, categories: { projects: true, providers: false, memory: true },
+  }));
+  assert.deepEqual(preferences.readConfigSyncDraft(store), {
+    ...connection, categories: { providers: false, memory: true },
+  });
+  preferences.writeConfigSyncDraft({ ...connection, categories: { projects: false, mcp: true } }, store);
+  const saved = JSON.parse(store.getItem(preferences.CONFIG_SYNC_DRAFT_STORAGE_KEY));
+  assert.deepEqual(saved.categories, { mcp: true });
+  assert.equal(Object.hasOwn(saved.categories, "projects"), false);
+});

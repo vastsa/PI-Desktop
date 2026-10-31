@@ -4,6 +4,7 @@ import i18n from "i18next";
 const localOnly = new Set<string>([
   IPC.invoke.sessionConfigure, IPC.invoke.sessionFork, IPC.invoke.sessionMoveProject,
   IPC.invoke.sessionReplaceMessages, IPC.invoke.sessionSaveRevision,
+  IPC.invoke.sessionDeleteMessage, IPC.invoke.sessionRetractPendingPrompt,
   IPC.invoke.sessionListRevisions, IPC.invoke.sessionActivateRevision,
   IPC.invoke.sessionGetScratchPath, IPC.invoke.sessionOpenScratchPath,
   IPC.invoke.agentSteer, IPC.invoke.agentQueuePush, IPC.invoke.agentQueueList,

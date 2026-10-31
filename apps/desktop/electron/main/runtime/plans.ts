@@ -453,6 +453,7 @@ async function dispatchApprovedPlan(rawExecution: unknown): Promise<void> {
     turnId = String(turn.turnId || "").trim();
     if (!turnId) throw new Error("execution turn was not created");
     activeTurns.set(execution.sessionId, turnId);
+    coordination.recordTurnStart(execution.sessionId, turnId);
     activeTurnUsages.delete(execution.sessionId);
     approvedExecutionIdsBySession.set(execution.sessionId, execution.id);
     approvedExecutionTurns.set(execution.id, {

@@ -153,6 +153,8 @@ window.configSyncProbe = async () => {
   check(input("region").value === "test-region", "collapsing advanced settings lost values");
   await expand("advancedTitle");
   await expand("categoriesTitle");
+  check(document.querySelectorAll(".settings-config-sync-category").length === 10, "scope must contain supported categories only");
+  check(!document.body.textContent.includes("Projects and folder mappings"), "removed project category still visible");
   await toggle("categoryProviders");
   check(![...document.querySelectorAll('input[type="checkbox"]')].find((node) => node.closest("label")?.textContent.trim() === label("categoryCredentials")).checked, "credentials opted in by default");
   await toggle("categoryCredentials");
@@ -177,6 +179,7 @@ window.configSyncProbe = async () => {
   await until(() => !button("test").disabled, "probe did not settle");
   const probe = last("configSyncTest");
   check(probe.mode === "backup" && probe.pathStyle === false && probe.automaticSync === false, "probe lost choices");
+  check(!Object.hasOwn(probe.categories, "projects"), "removed project category leaked into probe");
   check(probe.region === "test-region" && probe.categories.providers === false && probe.includeSecrets === false, "hidden advanced values or scope lost");
   check(probe.secretAccessKey === "test-secret" && probe.sessionToken === "test-token" && !('backupPassword' in probe), "probe credential contract");
   await click("enable");

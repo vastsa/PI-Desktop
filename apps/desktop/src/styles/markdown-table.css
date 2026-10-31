@@ -30,6 +30,16 @@
 }
 .markdown-table-preview-body { min-height: 0; overflow: auto; padding: 0 16px 16px; }
 .markdown-table-preview-body::-webkit-scrollbar-corner { background: transparent; }
+.dialog.markdown-table-preview .markdown-table-preview-body::-webkit-scrollbar-thumb {
+  /* Overflow controls stay discoverable while the pointer is on the dialog header. */
+  background: color-mix(in oklab, var(--ds-text-primary) 16%, transparent);
+  background-clip: content-box;
+}
+.dialog.markdown-table-preview .markdown-table-preview-body::-webkit-scrollbar-thumb:hover,
+.dialog.markdown-table-preview .markdown-table-preview-body::-webkit-scrollbar-thumb:active {
+  background: color-mix(in oklab, var(--ds-text-primary) 28%, transparent);
+  background-clip: content-box;
+}
 .markdown-table-preview-body.prose-chat .table-wrap { margin: 0; overflow: visible; }
 /* A reading preview keeps useful column widths and scrolls on small windows. */
 .markdown-table-preview-body.prose-chat .table-wrap table {

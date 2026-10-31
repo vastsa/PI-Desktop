@@ -25,7 +25,7 @@ export type LiveWireEvent =
   | { kind: "tool-candidate"; providerRequestId: string; toolName: string; arguments: unknown }
   | { kind: "tool-call-cancelled"; ids: string[] }
   | { kind: "closed"; code?: number }
-  | { kind: "error"; code: string };
+  | { kind: "error"; code: string; /** Main-only diagnostic; never publish to Renderer. */ reason?: string };
 
 export function parseCodexMessage(value: unknown): LiveWireEvent[] {
   const event = record(value);
@@ -402,7 +402,7 @@ export function parseRealtimeMessage(value: unknown, profile: "realtime-ga" | "r
   }
 }
 
-export function liveWorkToolDeclaration(): Record<string, unknown> {
+export function liveWorkToolDeclaration() {
   return {
     type: "function",
     name: LIVE_WORK_TOOL_NAME,
@@ -423,11 +423,14 @@ export function liveWorkToolDeclaration(): Record<string, unknown> {
 
 export function geminiWorkToolDeclaration(): Record<string, unknown> {
   const declaration = liveWorkToolDeclaration();
+  // Gemini's OpenAPI Schema subset rejects JSON Schema additionalProperties.
+  // Host argument validation remains strict for every adapter.
+  const { additionalProperties: _additionalProperties, ...parameters } = declaration.parameters;
   return {
     functionDeclarations: [{
       name: declaration.name,
       description: declaration.description,
-      parameters: declaration.parameters,
+      parameters,
     }],
   };
 }

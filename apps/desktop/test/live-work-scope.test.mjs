@@ -283,11 +283,28 @@ test("fresh live work catalog resolves Composer targets from all backends and re
   });
   t.after(() => server.close());
   const { listLiveWorkSessions, requireLiveWorkSession } = await server.ssrLoadModule("/electron/main/live-voice/live-work-backend-port.ts");
+  const sidecarCalls = [];
   const sessions = await listLiveWorkSessions({
-    getHost: () => ({ call: async () => ({ sessions: [{ id: "desktop-1", source: "desktop", title: "Desktop", projectId: "project-1", projectPath: "/work/demo" }] }) }),
-    getSidecar: () => ({ call: async () => ({ sessions: [{ id: "native-pi:1", title: "Native", capabilities: { canPrompt: true } }] }) }),
+    getHost: () => ({
+      call: async (method) => {
+        if (method === "projects.list") {
+          return { projects: [{ path: "/work/demo" }, { path: "  " }, { path: "remote-project:office" }] };
+        }
+        return { sessions: [{ id: "desktop-1", source: "desktop", title: "Desktop", projectId: "project-1", projectPath: "/work/demo" }] };
+      },
+    }),
+    getSidecar: () => ({
+      call: async (method, input) => {
+        sidecarCalls.push({ method, input });
+        return { sessions: [{ id: "native-pi:1", title: "Native", capabilities: { canPrompt: true } }] };
+      },
+    }),
     getRemoteHosts: () => ({ listSessions: async () => [{ id: "remote-1", title: "Remote", hostLabel: "Office", workspaceLabel: "repo", mode: "agent" }] }),
   });
+  assert.deepEqual(sidecarCalls, [{
+    method: "native.session.list",
+    input: { projectPaths: ["/work/demo"] },
+  }]);
 
   assert.equal(requireLiveWorkSession(sessions, "desktop-1").source, "desktop");
   assert.equal(requireLiveWorkSession(sessions, "desktop-1").projectId, "project-1");
@@ -299,4 +316,49 @@ test("fresh live work catalog resolves Composer targets from all backends and re
     errorCode: "LIVE_WORK_SESSION_UNAVAILABLE",
   });
   assert.throws(() => requireLiveWorkSession(sessions, "missing"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
+});
+
+test("live work attaches the desktop list before projects.list settles (#1732)", async (t) => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    server: { middlewareMode: true, hmr: false, ws: false },
+    appType: "custom",
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  t.after(() => server.close());
+  const { listLiveWorkSessions } = await server.ssrLoadModule("/electron/main/live-voice/live-work-backend-port.ts");
+  let releaseProjects;
+  const projectsGate = new Promise((resolve) => {
+    releaseProjects = resolve;
+  });
+  const rejections = [];
+  const onRejection = (error) => {
+    rejections.push(error);
+  };
+  process.on("unhandledRejection", onRejection);
+  try {
+    const pending = listLiveWorkSessions({
+      getHost: () => ({
+        call: async (method) => {
+          if (method === "projects.list") return projectsGate;
+          if (method === "session.list") throw new Error("session list failed");
+          return {};
+        },
+      }),
+      getSidecar: () => ({ call: async () => ({ sessions: [] }) }),
+      getRemoteHosts: () => ({ listSessions: async () => [] }),
+    }).then(
+      () => "resolved",
+      (error) => error,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(rejections.map((error) => error.message), []);
+    releaseProjects({ projects: [] });
+    const outcome = await pending;
+    assert.equal(outcome instanceof Error, true);
+    assert.match(outcome.message, /session list failed/);
+  } finally {
+    process.off("unhandledRejection", onRejection);
+  }
 });

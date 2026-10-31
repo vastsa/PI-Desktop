@@ -26,7 +26,7 @@ import type { Logger } from "../logger";
 import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginRuntime } from "../plugin-runtime";
 import { readSessionCollaboration } from "../services/session-collaboration";
-import { searchSessionsAcrossSources } from "../services/session-search";
+import { localNativeProjectPaths, searchSessionsAcrossSources } from "../services/session-search";
 import type { IpcRegistrar } from "./types";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts.js";
 
@@ -99,6 +99,11 @@ export type SessionIpcDependencies = {
   sessionCapabilityContext: () => Promise<{ providers: any; defaults: any }>;
   enrichSession: (session: any, providers: any, defaults: any) => any;
   acquireSessionOperation: (sessionId: string) => Promise<() => void>;
+  beginTranscriptRewrite: (sessionId: string) => {
+    commit: () => void;
+    rollback: () => void;
+  };
+  forgetTranscriptRewriteHistory: (sessionId: string) => void;
   stripWinLongPrefix: (path: string) => string;
 };
 
@@ -115,6 +120,8 @@ export function registerSessionIpc({
   sessionCapabilityContext,
   enrichSession,
   acquireSessionOperation,
+  beginTranscriptRewrite,
+  forgetTranscriptRewriteHistory,
   stripWinLongPrefix,
 }: SessionIpcDependencies): void {
   let host: HostProcess | null = null;
@@ -125,6 +132,62 @@ export function registerSessionIpc({
       sidecar = getSidecar();
       return fn(...args);
     });
+  };
+
+  /**
+   * The shared gate for transcript-rewrite entrances — replacement, bounded
+   * mutations and revision activation all rewrite the host-side transcript.
+   * Each entrance uses this boundary rather than remembering its own
+   * (#1612, #1613): refuse while a turn is running (consistent with fork and
+   * move), serialize overlapping operations per session, and drain the
+   * persistence outbox so writes queued before the rewrite land in the old
+   * transcript rather than replaying into the new one. The persistence fence
+   * also holds callbacks delivered after that drain: successful rewrites
+   * invalidate pre-rewrite turns, while failed rewrites replay their events.
+   * The sidecar runtime is dropped after the drain so the next prompt reseeds
+   * from the rewritten transcript instead of replaying the discarded branch
+   * in memory.
+   */
+  const runTranscriptRewrite = async <T>(
+    sessionId: string,
+    purpose: string,
+    currentHost: HostProcess,
+    run: () => Promise<T>,
+    options: { strictDrain?: boolean; didRewrite?: (result: T) => boolean } = {},
+  ): Promise<T> => {
+    rejectNativeMutation(sessionId, purpose);
+    const releaseSessionOperation = await acquireSessionOperation(sessionId);
+    let rewriteFence: ReturnType<typeof beginTranscriptRewrite> | undefined;
+    try {
+      if (activeTurns.has(sessionId)) {
+        throw Object.assign(
+          new Error("Cannot rewrite the transcript of a running session"),
+          { errorCode: ErrorCodes.AGENT_BUSY },
+        );
+      }
+      rewriteFence = beginTranscriptRewrite(sessionId);
+      if (options.strictDrain) {
+        await persistenceOutbox.prepareSessionMutation(sessionId, () => currentHost);
+      } else {
+        await persistenceOutbox.prepareSessionReplacement(sessionId, () => currentHost);
+      }
+      if (sidecar) {
+        sidecar.clearProjectInstructionRoot(sessionId);
+        sidecar.clearVendorAuthBindings(sessionId);
+        await sidecar
+          .call("agent.disposeSession", { sessionId })
+          .catch(() => undefined);
+      }
+      const result = await run();
+      if (options.didRewrite?.(result) === false) rewriteFence.rollback();
+      else rewriteFence.commit();
+      return result;
+    } catch (error) {
+      rewriteFence?.rollback();
+      throw error;
+    } finally {
+      releaseSessionOperation();
+    }
   };
 
   handle(IPC.invoke.sessionSearch, async (input) => {
@@ -146,15 +209,19 @@ export function registerSessionIpc({
   });
   handle(IPC.invoke.sessionList, async () => {
     if (!host) throw new Error("host unavailable");
-    const [result, native, { providers, defaults }] = await Promise.all([
+    const [projectPaths, result, { providers, defaults }] = await Promise.all([
+      localNativeProjectPaths(host),
       host.call<{ sessions: RuntimeSession[] }>("session.list"),
-      sidecar
-        ? sidecar.call<{ sessions: RuntimeSession[] }>("native.session.list").catch(() => ({ sessions: [] }))
-        : Promise.resolve({ sessions: [] }),
       sessionCapabilityContext(),
     ]);
+    const native = sidecar
+      ? await sidecar
+          .call<{ sessions: RuntimeSession[] }>("native.session.list", { projectPaths })
+          .catch(() => ({ sessions: [] as RuntimeSession[] }))
+      : { sessions: [] as RuntimeSession[] };
     return {
       ...result,
+      runningSessionIds: [...activeTurns.keys()],
       sessions: [
         ...result.sessions.map((session) => ({
           ...enrichSession(session, providers, defaults),
@@ -336,6 +403,7 @@ export function registerSessionIpc({
     if (!host) throw new Error("host unavailable");
     const res = await host.call("session.delete", { id });
     await persistenceOutbox.dropSession(id);
+    forgetTranscriptRewriteHistory(id);
     // Drop the session's pi-agent so a later session with the same id (or a
     // stale runtime) can't answer with this session's context.
     if (sidecar) {
@@ -440,20 +508,56 @@ export function registerSessionIpc({
       if (!host) throw new Error("host unavailable");
       const sessionId = String(input?.sessionId || "");
       if (!sessionId) throw new Error("sessionId required");
-      rejectNativeMutation(sessionId, "transcript replacement");
-      // Drop the live pi-agent so the next prompt reseeds from the truncated
-      // transcript instead of replaying the discarded branch in memory.
-      if (sidecar) {
-        sidecar.clearProjectInstructionRoot(sessionId);
-        sidecar.clearVendorAuthBindings(sessionId);
-        await sidecar
-          .call("agent.disposeSession", { sessionId })
-          .catch(() => undefined);
-      }
-      return host.call("session.replaceMessages", {
+      const currentHost = host;
+      return runTranscriptRewrite(
         sessionId,
-        messages: input.messages ?? [],
-      });
+        "transcript replacement",
+        currentHost,
+        () =>
+          currentHost.call("session.replaceMessages", {
+            sessionId,
+            messages: input.messages ?? [],
+          }),
+      );
+    },
+  );
+  handle(
+    IPC.invoke.sessionDeleteMessage,
+    async (input: { sessionId: string; messageId: string }) => {
+      if (!host) throw new Error("host unavailable");
+      const sessionId = String(input?.sessionId || "");
+      if (!sessionId) throw new Error("sessionId required");
+      const currentHost = host;
+      return runTranscriptRewrite(
+        sessionId,
+        "message deletion",
+        currentHost,
+        () => currentHost.call<{ deleted: boolean }>("session.deleteMessage", {
+          sessionId,
+          messageId: String(input?.messageId || ""),
+        }),
+        { strictDrain: true, didRewrite: (result) => result.deleted },
+      );
+    },
+  );
+  handle(
+    IPC.invoke.sessionRetractPendingPrompt,
+    async (input: { sessionId: string; userMessageId: string; turnId?: string }) => {
+      if (!host) throw new Error("host unavailable");
+      const sessionId = String(input?.sessionId || "");
+      if (!sessionId) throw new Error("sessionId required");
+      const currentHost = host;
+      return runTranscriptRewrite(
+        sessionId,
+        "pending prompt retraction",
+        currentHost,
+        () => currentHost.call<{ retracted: boolean }>("session.retractPendingPrompt", {
+          sessionId,
+          userMessageId: String(input?.userMessageId || ""),
+          ...(input?.turnId === undefined ? {} : { turnId: input.turnId }),
+        }),
+        { strictDrain: true, didRewrite: (result) => result.retracted },
+      );
     },
   );
   handle(
@@ -492,23 +596,27 @@ export function registerSessionIpc({
       rootUserId: string;
       revisionIndex: number;
       prefix?: unknown[];
+      requireCanonicalPrefix?: boolean;
     }) => {
       if (!host) throw new Error("host unavailable");
       const sessionId = String(input?.sessionId || "");
-      rejectNativeMutation(sessionId, "revision activation");
-      if (sidecar) {
-        sidecar.clearProjectInstructionRoot(sessionId);
-        sidecar.clearVendorAuthBindings(sessionId);
-        await sidecar
-          .call("agent.disposeSession", { sessionId })
-          .catch(() => undefined);
-      }
-      return host.call("session.activateRevision", {
+      if (!sessionId) throw new Error("sessionId required");
+      const currentHost = host;
+      return runTranscriptRewrite(
         sessionId,
-        rootUserId: String(input?.rootUserId || ""),
-        revisionIndex: Number(input?.revisionIndex || 0),
-        prefix: input?.prefix ?? [],
-      });
+        "revision activation",
+        currentHost,
+        () =>
+          currentHost.call("session.activateRevision", {
+            sessionId,
+            rootUserId: String(input?.rootUserId || ""),
+            revisionIndex: Number(input?.revisionIndex || 0),
+            ...(input?.requireCanonicalPrefix === true
+              ? { requireCanonicalPrefix: true }
+              : { prefix: input?.prefix ?? [] }),
+          }),
+        { strictDrain: input?.requireCanonicalPrefix === true },
+      );
     },
   );
   handle(IPC.invoke.sessionGetScratchPath, async (input: { sessionId: string }) => {
@@ -548,6 +656,7 @@ export function registerSessionIpc({
         modelId?: string;
         thinkingLevel?: SessionThinkingLevel;
         permissionMode?: "inherit" | "ask" | "accept-edits" | "auto";
+        fastMode?: boolean;
       },
     ) => {
       rejectNativeMutation(id, "configuration");

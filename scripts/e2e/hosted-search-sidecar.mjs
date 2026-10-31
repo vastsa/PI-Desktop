@@ -39,6 +39,8 @@ export class OfflineSidecar {
     this.sequence = 0;
     this.closed = false;
     this.stopping = false;
+    this.expectContextValidationError = false;
+    this.allowProviderRetries = false;
     child.on("error", (error) => this.fail(error));
     this.exit = new Promise((resolve) => child.once("close", (code, signal) => {
       this.closed = true;
@@ -113,13 +115,16 @@ export class OfflineSidecar {
     const envelope = frame.params;
     this.events.push(envelope);
     const event = envelope.event;
+    const expectedError = (error) => this.expectContextValidationError &&
+      error?.code === "INTERNAL" && error.retriable === false &&
+      error.details?.origin === "local" && error.details?.phase === "context-validation";
     if (event.type === "message_end") {
       const message = event.message;
       this.messages.set(message.id, message);
-      if (message.error) this.fail(new Error(`message error: ${JSON.stringify(message.error)}`));
+      if (message.error && !expectedError(message.error)) this.fail(new Error(`message error: ${JSON.stringify(message.error)}`));
     }
-    if (event.type === "error") this.fail(new Error(`agent error: ${JSON.stringify(event.error)}`));
-    if (event.type === "status" && event.status.activity?.phase === "retrying") {
+    if (event.type === "error" && !expectedError(event.error)) this.fail(new Error(`agent error: ${JSON.stringify(event.error)}`));
+    if (!this.allowProviderRetries && event.type === "status" && event.status.activity?.phase === "retrying") {
       this.fail(new Error(`unexpected retry: ${JSON.stringify(event.status.activity.error)}`));
     }
   }

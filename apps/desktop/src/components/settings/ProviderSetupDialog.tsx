@@ -23,7 +23,7 @@ import {
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
 import { pairsToRecord, recordToPairs } from "../extensions/KeyValueRows";
-import { Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
+import { OverlayBackdrop, Button, Field, HelpIcon, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
@@ -130,6 +130,7 @@ export function ProviderSetupDialog({
   const [name, setName] = useState(() => initialDraft?.name ?? initialName(provider));
   const [baseUrl, setBaseUrl] = useState(() => initialDraft?.baseUrl ?? initialBaseUrl(provider));
   const [apiKey, setApiKey] = useState("");
+  const [clearSavedApiKey, setClearSavedApiKey] = useState(false);
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() =>
     initialDraft?.apiStyle ?? normalizeApiStyle(provider?.apiStyle),
   );
@@ -172,6 +173,8 @@ export function ProviderSetupDialog({
   const namedPreset = NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service);
   const named = Boolean(namedPreset);
   const custom = service === CUSTOM_SERVICE;
+  const hasSavedApiKey = Boolean(provider?.hasSecret && provider.authKind !== "none" && !clearSavedApiKey);
+  const noApiKeyRequired = custom && !apiKey.trim() && !hasSavedApiKey;
   /** Jev never becomes a provider row, so it is a view of its own. */
   const jevService = service === JEV_SERVICE;
   const resolvedName = namedPreset ? name.trim() || namedPreset.name : name;
@@ -215,11 +218,11 @@ export function ProviderSetupDialog({
     discoveryActive,
     {
       baseUrl: requestBaseUrl,
-      apiKey,
+      apiKey: custom ? apiKey.trim() : apiKey,
       apiStyle: resolvedApiStyle,
       headers,
     },
-    provider,
+    custom && clearSavedApiKey ? null : provider,
   );
   // The probe's own answer is reported once as a toast instead of a status row
   // under the key, which held a line of the dialog open for as long as it stood.
@@ -352,6 +355,7 @@ export function ProviderSetupDialog({
   const save = async () => {
     const providerName = resolvedName.trim();
     const providerBaseUrl = normalizeBaseUrlInput(resolvedBaseUrl, resolvedApiStyle);
+    const secretValue = custom ? apiKey.trim() : apiKey;
     if (
       requiresApiStyleChoice ||
       !providerName ||
@@ -388,7 +392,10 @@ export function ProviderSetupDialog({
           models: persisted,
           apiStyle: resolvedApiStyle,
           headers,
-          ...(apiKey ? { secretValue: apiKey } : {}),
+          ...(custom && noApiKeyRequired !== (provider.authKind === "none")
+            ? { authKind: noApiKeyRequired ? "none" : "api_key_and_base_url" }
+            : {}),
+          ...(secretValue ? { secretValue } : {}),
         });
         await onSaved(result.provider ?? provider, persisted, imageModelIdsToSave);
       } else {
@@ -398,10 +405,10 @@ export function ProviderSetupDialog({
           type: "openai_compatible",
           protocol: "openai_compatible",
           baseUrl: providerBaseUrl,
-          authKind: "api_key_and_base_url",
+          authKind: custom && noApiKeyRequired ? "none" : "api_key_and_base_url",
           defaultModelId: persisted[0]?.id,
           models: persisted,
-          secretValue: apiKey || undefined,
+          ...(noApiKeyRequired ? {} : { secretValue: secretValue || undefined }),
           apiStyle: resolvedApiStyle,
           headers,
         });
@@ -507,6 +514,12 @@ export function ProviderSetupDialog({
             nameRef={nameRef}
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
+            hasSavedApiKey={hasSavedApiKey}
+            onClearApiKey={() => {
+              setClearSavedApiKey(true);
+              setApiKey("");
+              apiKeyRef.current?.focus();
+            }}
             name={name}
             onNameChange={setName}
             baseUrl={baseUrl}
@@ -585,7 +598,7 @@ export function ProviderSetupDialog({
   );
 
   return portalOverlay(
-    <div
+    <OverlayBackdrop
       className="overlay provider-setup-overlay"
       role="presentation"
       onClick={() => {
@@ -620,7 +633,7 @@ export function ProviderSetupDialog({
       </div>
 
       {advancedOpen && (named || custom) ? (
-        <div
+        <OverlayBackdrop
           className="overlay provider-advanced-overlay"
           role="presentation"
           onClick={(event) => {
@@ -657,8 +670,8 @@ export function ProviderSetupDialog({
               </div>
             </div>
           </div>
-        </div>
+        </OverlayBackdrop>
       ) : null}
-    </div>
+    </OverlayBackdrop>
   );
 }

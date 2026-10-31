@@ -10,6 +10,86 @@ fn test_context() -> (tempfile::TempDir, Database, SecretStore) {
 }
 
 #[test]
+fn switching_provider_to_no_auth_clears_its_api_key() {
+    let (_dir, db, secrets) = test_context();
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Custom gateway".into(),
+            vendor_key: Some("custom".into()),
+            provider_type: Some("openai_compatible".into()),
+            protocol: Some("openai_compatible".into()),
+            base_url: Some("http://127.0.0.1:11434/v1".into()),
+            auth_kind: Some("api_key_and_base_url".into()),
+            models: None,
+            default_model_id: Some("local-chat".into()),
+            secret_value: Some("fixture-api-key".into()),
+            api_style: Some("chat_completions".into()),
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+    let api_key_ref = secret_ref_for_provider(&provider.id);
+    assert!(provider.has_secret);
+    assert!(secrets.has(&api_key_ref));
+    let oauth_ref = secret_ref_for_provider_oauth(&provider.id);
+    secrets.set(&oauth_ref, "fixture-oauth-credential").unwrap();
+
+    let updated = update_provider(
+        &db,
+        &secrets,
+        ProviderUpdateInput {
+            id: provider.id.clone(),
+            name: None,
+            vendor_key: None,
+            provider_type: None,
+            protocol: None,
+            base_url: None,
+            auth_kind: Some("none".into()),
+            models: None,
+            default_model_id: None,
+            secret_value: None,
+            api_style: None,
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+            enabled: None,
+        },
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(updated.auth_kind, "none");
+    assert!(updated.has_secret);
+    assert!(updated.has_oauth);
+    assert!(!secrets.has(&api_key_ref));
+    assert_eq!(
+        secrets.get(&oauth_ref).unwrap().as_deref(),
+        Some("fixture-oauth-credential")
+    );
+    let stored_secret_ref: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT secret_ref FROM providers WHERE id = ?1",
+            params![provider.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored_secret_ref, None);
+}
+
+#[test]
 fn reasoning_override_roundtrips_and_preserves_provider_config() {
     let (_dir, db, secrets) = test_context();
     let provider = create_provider(
@@ -169,10 +249,12 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     thinking_levels: vec!["high".into(), "medium".into()],
                     default_thinking_level: Some("medium".into()),
                     thinking_protocol: Some("adaptive".into()),
+                    supports_reasoning_effort: None,
                     supports_images: Some(true),
                     supports_documents: None,
                     available_for_subagents: Some(true),
                     native_web_search: None,
+                    fast_mode_allowed: Some(true),
                 },
                 ModelBinding {
                     id: "plain-model".into(),
@@ -184,10 +266,12 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     thinking_levels: vec![],
                     default_thinking_level: None,
                     thinking_protocol: None,
+                    supports_reasoning_effort: None,
                     supports_images: None,
                     supports_documents: Some(false),
                     available_for_subagents: None,
                     native_web_search: None,
+                    fast_mode_allowed: None,
                 },
             ]),
             default_model_id: None,
@@ -215,6 +299,8 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
     assert_eq!(provider.models[1].default_thinking_level, None);
     assert_eq!(provider.models[0].available_for_subagents, Some(true));
     assert_eq!(provider.models[1].available_for_subagents, None);
+    assert_eq!(provider.models[0].fast_mode_allowed, Some(true));
+    assert_eq!(provider.models[1].fast_mode_allowed, None);
 
     let raw: String = db
         .conn()
@@ -238,6 +324,8 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
     assert_eq!(config["models"][1]["supportsDocuments"], false);
     assert!(config["models"][1].get("availableForSubagents").is_none());
     assert!(config["models"][1].get("supportsImages").is_none());
+    assert_eq!(config["models"][0]["fastModeAllowed"], true);
+    assert!(config["models"][1].get("fastModeAllowed").is_none());
     assert_eq!(provider.models[0].supports_images, Some(true));
     assert_eq!(provider.models[1].supports_documents, Some(false));
 
@@ -293,10 +381,12 @@ fn binding_with_alias(id: &str, alias: Option<&str>) -> ModelBinding {
         thinking_levels: Vec::new(),
         default_thinking_level: None,
         thinking_protocol: None,
+        supports_reasoning_effort: None,
         supports_images: None,
         supports_documents: None,
         available_for_subagents: None,
         native_web_search: None,
+        fast_mode_allowed: None,
     }
 }
 
@@ -865,6 +955,7 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
                 context_window: Some(128_000),
             },
         ],
+        true,
     )
     .unwrap();
     assert_eq!(changed, 2);
@@ -886,6 +977,7 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
                 context_window: None,
             },
         ],
+        true,
     )
     .unwrap();
 
@@ -968,6 +1060,7 @@ fn deleting_a_binding_and_saving_forgets_its_cached_parameters() {
                 context_window: Some(64_000),
             },
         ],
+        true,
     )
     .unwrap();
     assert_eq!(list_models(&db, Some(&provider.id)).unwrap().len(), 3);
@@ -1068,12 +1161,56 @@ fn a_probe_answer_forgets_models_it_no_longer_publishes() {
         &db,
         &provider.id,
         &answer(&["model-a", "model-b", "custom-model"]),
+        true,
     )
     .unwrap();
     assert_eq!(list_models(&db, Some(&provider.id)).unwrap().len(), 4);
 
+    let original_bindings = get_provider(&db, &secrets, &provider.id)
+        .unwrap()
+        .unwrap()
+        .models;
     // The endpoint stopped publishing model-b.
-    cache_discovered_models(&db, &provider.id, &answer(&["model-a"])).unwrap();
+    cache_discovered_models(&db, &provider.id, &answer(&["model-a"]), true).unwrap();
+
+    let states = serde_json::to_value(list_models(&db, Some(&provider.id)).unwrap()).unwrap();
+    let state = |id: &str| {
+        states
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["modelId"] == id)
+            .unwrap()["discoveryState"]
+            .clone()
+    };
+    assert_eq!(
+        state("custom-model"),
+        "unlisted",
+        "saved bindings need durable discovery state"
+    );
+    assert_eq!(state("model-a"), "published");
+    assert!(
+        state("pinned-model").is_null(),
+        "user-owned rows are not reconciled"
+    );
+    assert_eq!(
+        get_provider(&db, &secrets, &provider.id)
+            .unwrap()
+            .unwrap()
+            .models,
+        original_bindings
+    );
+    let reopened = Database::open(&db.data_dir().join("pi.sqlite")).unwrap();
+    assert_eq!(
+        serde_json::to_value(list_models(&reopened, Some(&provider.id)).unwrap()).unwrap(),
+        states
+    );
+    cache_discovered_models(&db, &provider.id, &[], true).unwrap();
+    assert_eq!(
+        serde_json::to_value(list_models(&db, Some(&provider.id)).unwrap()).unwrap(),
+        states,
+        "an empty answer must not invalidate the last successful snapshot"
+    );
 
     let mut cached: Vec<String> = list_models(&db, Some(&provider.id))
         .unwrap()
@@ -1085,6 +1222,34 @@ fn a_probe_answer_forgets_models_it_no_longer_publishes() {
         cached,
         vec!["custom-model", "model-a", "pinned-model"],
         "the unpublished model goes with the answer; the user's rows stay"
+    );
+    cache_discovered_models(&db, &provider.id, &answer(&["new-page"]), false).unwrap();
+    let rows = list_models(&db, Some(&provider.id)).unwrap();
+    assert_eq!(
+        rows.iter()
+            .find(|row| row.model_id == "model-a")
+            .unwrap()
+            .discovery_state
+            .as_deref(),
+        Some("published")
+    );
+    assert_eq!(
+        rows.iter()
+            .find(|row| row.model_id == "custom-model")
+            .unwrap()
+            .discovery_state
+            .as_deref(),
+        Some("unlisted")
+    );
+    cache_discovered_models(&db, &provider.id, &answer(&["custom-model"]), true).unwrap();
+    let rows = list_models(&db, Some(&provider.id)).unwrap();
+    assert_eq!(
+        rows.iter()
+            .find(|row| row.model_id == "custom-model")
+            .unwrap()
+            .discovery_state
+            .as_deref(),
+        Some("published")
     );
 }
 
@@ -1135,6 +1300,7 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
                 context_window: Some(32_000),
             },
         ],
+        true,
     )
     .unwrap();
     assert_eq!(list_models(&db, Some(&provider.id)).unwrap().len(), 2);
@@ -1175,6 +1341,29 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
         .map(|model| model.model_id)
         .collect();
     assert_eq!(cached, vec!["model-a"]);
+    let reset = list_models(&db, Some(&provider.id)).unwrap();
+    assert!(reset.iter().all(|model| model.discovery_state.is_none()));
+    cache_discovered_models(
+        &db,
+        &provider.id,
+        &[DiscoveredModelInput {
+            model_id: "new-endpoint-model".into(),
+            display_name: "New".into(),
+            capabilities: vec![],
+            context_window: None,
+        }],
+        true,
+    )
+    .unwrap();
+    let rows = list_models(&db, Some(&provider.id)).unwrap();
+    assert!(
+        rows.iter()
+            .find(|model| model.model_id == "model-a")
+            .unwrap()
+            .discovery_state
+            .is_none(),
+        "the new endpoint never published the old configured id"
+    );
 }
 
 #[test]
@@ -1476,10 +1665,12 @@ fn binding_with_limits(id: &str, context_window: u32, max_tokens: u32) -> ModelB
         thinking_levels: Vec::new(),
         default_thinking_level: None,
         thinking_protocol: None,
+        supports_reasoning_effort: None,
         supports_images: None,
         supports_documents: None,
         available_for_subagents: None,
         native_web_search: None,
+        fast_mode_allowed: None,
     }
 }
 
@@ -1897,4 +2088,41 @@ fn sync_payloads_keep_only_storable_headers() {
     // holding it behaves the same before and after this runs.
     let raw = BTreeMap::from([("x-cjk".to_string(), "星".to_string())]);
     assert!(storable_headers(&raw).is_empty());
+}
+
+#[test]
+fn reasoning_effort_override_survives_provider_create_update_and_read() {
+    let (_dir, db, secrets) = test_context();
+    let binding = serde_json::json!({
+        "id": "deepseek-v4.1-flash", "thinkingLevels": ["off", "high"],
+        "supportsReasoningEffort": true
+    });
+    let input: ProviderCreateInput = serde_json::from_value(serde_json::json!({
+        "name": "Reasoning gateway", "baseUrl": "https://gateway.example/v1",
+        "authKind": "none", "apiStyle": "chat_completions", "models": [binding]
+    }))
+    .unwrap();
+    let provider = create_provider(&db, &secrets, input).unwrap();
+    assert_eq!(
+        serde_json::to_value(&provider).unwrap()["models"][0]["supportsReasoningEffort"],
+        true
+    );
+    for value in [
+        serde_json::json!(false),
+        serde_json::Value::Null,
+        serde_json::json!(true),
+    ] {
+        let mut model = binding.clone();
+        model["supportsReasoningEffort"] = value.clone();
+        let input: ProviderUpdateInput = serde_json::from_value(serde_json::json!({
+            "id": provider.id, "models": [model]
+        }))
+        .unwrap();
+        update_provider(&db, &secrets, input).unwrap();
+        let loaded = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+        assert_eq!(
+            serde_json::to_value(loaded).unwrap()["models"][0]["supportsReasoningEffort"],
+            value
+        );
+    }
 }

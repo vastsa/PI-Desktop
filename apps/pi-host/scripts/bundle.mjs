@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 /**
- * Assemble the self-contained `pi-host` bundle for one Linux target:
+ * Assemble the self-contained `pi-host` bundle for one native POSIX target:
  *
  *   dist-bundle/pi-host-<version>-<platform>-<arch>/
  *     pi-host.js                 the CLI, esbuild-bundled with every workspace package
  *     agent-runtime/            the complete sidecar bundle (entry, chunks, manifest)
  *     bin/pi-desktop-host-core   the platform host-core binary
+ *     bin/node, bin/pi-host      matching Node runtime and launcher
  *     node_modules/node-pty      optional; terminals are disabled without it
  *     package.json               { type: module, version }
- *     install.sh                 copies the bundle under ~/.pi-desktop/pi-host/<version>
+ *     install.sh, SHA256SUMS     verified content-addressed installation
  *
- * Usage: node scripts/bundle.mjs [--host-core <path>] [--platform linux] [--arch x64|arm64] [--out <dir>]
+ * Usage: node scripts/bundle.mjs [--node <path>] [--host-core <path>] [--platform linux|darwin] [--arch x64|arm64] [--out <dir>]
  */
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync, chmodSync } from "node:fs";
@@ -19,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { copyAgentRuntimeBundle } from "./runtime-bundle.mjs";
 import { ensureDarwinSpawnHelperExecutable } from "./spawn-helper-permissions.mjs";
+import { writePackageManifest } from "./package-integrity.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = resolve(here, "..");
@@ -36,6 +38,18 @@ const hostCore = resolve(String(args["host-core"] ?? join(root, `target/release/
 const runtimeBundle = join(root, "packages/agent-runtime/dist-bundle");
 const out = resolve(String(args.out ?? join(app, "dist-bundle", `pi-host-${version}-${platform}-${arch}`)));
 
+// Probe the actual selected executable before removing or writing output. Native
+// addons and host-core are built on this runner, so cross-target labels are unsafe.
+const nodeRuntime = resolve(String(args.node ?? process.execPath));
+const runtime = JSON.parse(execFileSync(nodeRuntime, ["-p", "JSON.stringify({version:process.versions.node,platform:process.platform,arch:process.arch})"], {
+  encoding: "utf8", timeout: 10_000, env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: "" },
+}));
+if (!['linux', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)
+    || platform !== process.platform || arch !== process.arch
+    || runtime.platform !== platform || runtime.arch !== arch
+    || !/^\d+\./.test(runtime.version) || Number(runtime.version.split('.')[0]) < 22) {
+  throw new Error(`Node runtime >=22 and native platform/arch must match bundle target ${platform}/${arch}; got ${JSON.stringify(runtime)}`);
+}
 for (const [label, path] of [["host-core binary", hostCore], ["sidecar bundle", join(runtimeBundle, "sidecar.js")]]) {
   if (!existsSync(path)) {
     console.error(`${label} missing: ${path}`);
@@ -78,19 +92,16 @@ if (ptyPackageDir) {
 } else {
   console.warn("node-pty not installed; the bundle ships without terminals");
 }
-writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "pi-host", version, type: "module", bin: { "pi-host": "./pi-host.js" } }, null, 2)}\n`);
-writeFileSync(
-  join(out, "install.sh"),
-  `#!/bin/sh
-# Install this pi-host bundle under the user's home (D375 bootstrap).
+cpSync(nodeRuntime, join(out, "bin/node"));
+chmodSync(join(out, "bin/node"), 0o755);
+writeFileSync(join(out, "bin/pi-host"), `#!/bin/sh
 set -eu
-target="\${PI_HOST_INSTALL_DIR:-$HOME/.pi-desktop/pi-host}/${version}"
-mkdir -p "$target"
-cp -R "$(dirname "$0")"/. "$target"/
-chmod 755 "$target/bin/pi-desktop-host-core${exe}"
-ln -sfn "$target" "$(dirname "$target")/current"
-echo "PI_HOST_INSTALLED $target"
-`,
-);
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+exec "$here/node" "$here/../pi-host.js" "$@"
+`);
+chmodSync(join(out, "bin/pi-host"), 0o755);
+writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "pi-host", version, type: "module", bin: { "pi-host": "./bin/pi-host" } }, null, 2)}\n`);
+cpSync(join(here, "install.sh"), join(out, "install.sh"));
 chmodSync(join(out, "install.sh"), 0o755);
+writePackageManifest(out);
 console.log(`bundled ${out}`);

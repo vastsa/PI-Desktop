@@ -488,50 +488,6 @@ fn apply_entity(
         )?;
         return Ok(());
     }
-    if entity.domain == domains::DOMAIN_PROJECTS {
-        let Some(paths) = mapped_project_paths(config, &entity.payload)? else {
-            bail!("CONFIG_SYNC_MAPPING_REQUIRED: project folder is not mapped");
-        };
-        let logical_id = entity
-            .payload
-            .get("logicalId")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let is_group = logical_id.starts_with("project-group:")
-            || entity
-                .payload
-                .get("roots")
-                .and_then(Value::as_array)
-                .is_some_and(|roots| roots.len() > 1)
-            || paths.len() > 1;
-        if entity.deleted {
-            if is_group {
-                if let Some(group) = st.db.project_group_for_path(&paths[0])? {
-                    if !group.legacy {
-                        st.db.delete_project_group_record(&group.id)?;
-                    }
-                }
-            }
-        } else if is_group {
-            let name = entity
-                .payload
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("Imported project")
-                .to_string();
-            match st.db.project_group_for_path(&paths[0])? {
-                Some(group) if !group.legacy => {
-                    st.db.update_project_group(&group.id, &name, &paths)?;
-                }
-                _ => {
-                    st.db.create_project_group(&name, &paths)?;
-                }
-            }
-        } else {
-            st.db.ensure_project(&paths[0], false)?;
-        }
-        return Ok(());
-    }
     if entity.domain == domains::DOMAIN_PLUGINS {
         let plugin_id = entity
             .payload
@@ -602,9 +558,7 @@ fn retain_deferred_entity(bundle: &mut PendingBundle, entity: &PortableEntity, r
 
 fn apply_priority(domain: &str) -> u8 {
     match domain {
-        // Project roots and providers are prerequisites for scoped capability
-        // files and application-level model bindings.
-        domains::DOMAIN_PROJECTS => 10,
+        // Providers are prerequisites for application-level model bindings.
         domains::DOMAIN_PROVIDERS => 20,
         domains::DOMAIN_INSTRUCTIONS => 30,
         domains::DOMAIN_MCP

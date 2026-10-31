@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentEventEnvelope, SubagentDefinition } from "@pi-desktop/shared";
-import type { Message } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, type Message } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   composeSubagentSystemPrompt,
   MAX_SUBAGENT_REPORT_CHARS,
@@ -14,6 +15,7 @@ import {
 } from "./subagent.js";
 import type { RuntimeProviderConfig } from "./provider-binding.js";
 import { classifyAgentError } from "./agent-errors.js";
+import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 import {
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
   PROVIDER_TRANSIENT_MAX_RETRIES,
@@ -26,6 +28,64 @@ const RUN_STATUSES: SubagentRunStatus[] = [
   "failed",
   "timed_out",
 ];
+
+describe("delegate execution policy", () => {
+  it("keeps the upstream pi attribution disabled for delegated model requests", () => {
+    const { run } = createRun();
+    expect(run.agent.identity).toEqual(DESKTOP_AGENT_IDENTITY);
+  });
+
+  it.each(["Read", "Write", "Edit"])("preserves sequential policy for a same-name dynamic %s", (name) => {
+    const { run } = createRun({ tools: [{
+      name, label: "extension", description: "dynamic", parameters: Type.Object({}),
+      executionMode: "sequential", execute: async () => ({ content: [], details: {} }),
+    }] });
+    expect(run.agent.state.tools[0].executionMode).toBe("sequential");
+  });
+  it("runs file tools in parallel batches but fails closed for Bash and unknown tools", () => {
+    const { run } = createRun({ tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash", "plugin_unknown"].map((name) => ({
+      name, label: name, description: name, parameters: Type.Object({}),
+      executionMode: "parallel", execute: async () => ({ content: [], details: {} }),
+    })) });
+    expect(run.agent.toolExecution).toBe("parallel");
+    expect(run.agent.state.tools.map((tool: any) => [tool.name, tool.executionMode])).toEqual([
+      ["Read", "parallel"], ["Glob", "parallel"], ["Grep", "parallel"],
+      ["Write", "parallel"], ["Edit", "parallel"], ["Bash", "sequential"], ["plugin_unknown", "sequential"],
+    ]);
+    run.setSystemPrompt("child-only path rules");
+    expect(run.agent.state.systemPrompt).toBe("child-only path rules");
+  });
+  it("inherits the parent's mixed Task/read batch policy", () => {
+    const { run } = createRun({
+      tools: ["Read", "Glob", "Grep", "Task"].map((name) => ({
+        name, label: name, description: name, parameters: Type.Object({}),
+        executionMode: "parallel",
+        execute: async () => ({ content: [], details: {} }),
+      })),
+    });
+    const taskTool = run.agent.state.tools.find((tool: any) => tool.name === "Task");
+    const toolCall = (id: string, name: string) => ({
+      type: "toolCall", id, name, arguments: {},
+    });
+    // A delegate runs the same batch policy, so a nested Task mixed with a
+    // file read stays sequential there too.
+    run.agent.state.messages = [
+      ...run.agent.state.messages,
+      assistantMessage({ content: [toolCall("a", "Task"), toolCall("b", "Read")] }),
+    ];
+    expect(taskTool.executionMode).toBe("sequential");
+    run.agent.state.messages = [
+      ...run.agent.state.messages.slice(0, -1),
+      assistantMessage({ content: [toolCall("a", "Read"), toolCall("b", "Glob")] }),
+    ];
+    expect(taskTool.executionMode).toBe("parallel");
+    run.agent.state.messages = [
+      ...run.agent.state.messages.slice(0, -1),
+      assistantMessage({ content: [toolCall("a", "Task"), toolCall("b", "Task")] }),
+    ];
+    expect(taskTool.executionMode).toBe("parallel");
+  });
+});
 
 const provider: RuntimeProviderConfig = {
   id: "local",
@@ -142,15 +202,39 @@ describe("composeSubagentSystemPrompt", () => {
 });
 
 describe("SubagentRun event forwarding", () => {
+  it("resumes a malformed-call history without executing its old tools", async () => {
+    const { run } = createRun({ initialMessages: [assistantMessage({ content: [
+      { type: "text", text: "Retained findings." },
+      { type: "toolCall", id: "bad-call", name: "", arguments: {} },
+    ] })] as AgentMessage[] });
+    const requests: Message[][] = [];
+    run.agent.streamFunction = (_model: unknown, context: { messages: Message[] }) => {
+      requests.push(context.messages);
+      const message = assistantMessage({ content: [{ type: "text", text: "Finished the review." }], stopReason: "stop" });
+      const stream = createAssistantMessageEventStream();
+      queueMicrotask(() => {
+        stream.push({ type: "start", partial: message } as never);
+        stream.push({ type: "done", reason: "stop", message } as never);
+        stream.end(message as never);
+      });
+      return stream;
+    };
+    const result = await run.run();
+    expect(result.status).toBe("completed");
+    expect(requests).toHaveLength(1);
+    expect(JSON.stringify(requests)).toContain("Retained findings.");
+    expect(JSON.stringify(requests)).not.toContain("bad-call");
+  });
+
   it("keeps the no-pass selection out of the agent's canonical state", () => {
     const { run } = createRun({ thinkingLevel: "omit" });
 
     expect(run.agent.state.thinkingLevel).toBe("off");
     expect(run.agent.streamFunction.toString()).toContain(
-      "models.stream(omitThinkingModel, context, retryOptions)",
+      "models.stream(omitThinkingModel, requestContext, retryOptions)",
     );
   });
-  it("deduplicates repeated tool calls before a subagent request", () => {
+  it("retains completed same-id rounds in a resumed subagent request", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
       const { run } = createRun({
@@ -190,15 +274,15 @@ describe("SubagentRun event forwarding", () => {
           : [],
       );
 
-      expect(toolCalls.map((call) => call.id)).toEqual(["child-read"]);
-      expect(outgoing.filter((message) => message.role === "toolResult")).toHaveLength(1);
+      expect(toolCalls.map((call) => call.id)).toEqual(["child-read", "call_pi_repeat_1"]);
+      expect(outgoing.filter((message) => message.role === "toolResult")).toHaveLength(2);
       expect(
         outgoing.filter(
           (message) => message.role === "assistant" && message.content.length === 0,
         ),
       ).toHaveLength(0);
       expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join(""))
-        .toContain("session=session-1");
+        .toBe("");
     } finally {
       stderr.mockRestore();
     }
@@ -301,6 +385,17 @@ describe("SubagentRun event forwarding", () => {
 
     expect(events).toEqual([]);
     expect(run.turns).toBe(1);
+  });
+
+  it("hands each finished turn's assistant message to onTurnEnd", () => {
+    const onTurnEnd = vi.fn();
+    const { run, events } = createRun({ onTurnEnd });
+    const message = assistantMessage({ content: [] });
+
+    run.handleEvent({ type: "turn_end", message, toolResults: [] });
+
+    expect(onTurnEnd).toHaveBeenCalledExactlyOnceWith(message);
+    expect(events).toEqual([]);
   });
 });
 
@@ -1167,6 +1262,40 @@ describe("SubagentRun retries before fallback", () => {
     }
 
     expect(run.agent.state.messages).toEqual([user, toolUse, toolResult]);
+    expect(continued).toHaveBeenCalledOnce();
+  });
+
+  it("retries from a compacted transcript when the failed assistant is gone (issue #1768)", async () => {
+    const { run } = createRun();
+    const user = { role: "user", content: "task", timestamp: 1 };
+    const compactedTail = {
+      role: "compactionSummary",
+      content: "Earlier work was summarized.",
+      timestamp: 2,
+    };
+    const continued = vi.fn(async () => undefined);
+    run.agent = {
+      state: { ...run.agent.state, messages: [user, compactedTail] as any },
+      continue: continued,
+      waitForIdle: async () => {},
+    };
+    run.pendingProviderRetry = {
+      code: "STREAM_FAILED",
+      message: "stream terminated",
+      retriable: true,
+    };
+    run.providerTransientRetryAttempt = 1;
+
+    vi.useFakeTimers();
+    try {
+      const retry = run.retryPendingProviderFailure();
+      await vi.runAllTimersAsync();
+      await retry;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(run.agent.state.messages).toEqual([user, compactedTail]);
     expect(continued).toHaveBeenCalledOnce();
   });
 

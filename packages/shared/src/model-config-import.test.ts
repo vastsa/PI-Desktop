@@ -9,6 +9,7 @@ import {
   parseCodexModelConfig,
   parseJsonDocument,
   parseOpenCodeModelConfig,
+  parsePiAuthModelConfig,
   parsePiModelConfig,
   providerCreateInputFromDraft,
   publicModelConfigCandidate,
@@ -243,6 +244,113 @@ describe("parsePiModelConfig", () => {
       supportsImages: true,
       defaultThinkingLevel: "medium",
     });
+  });
+});
+
+describe("parsePiAuthModelConfig", () => {
+  it("pairs a stored API key with the provider's cached catalog", () => {
+    const { apiKeys, drafts } = parsePiAuthModelConfig(
+      { deepseek: { type: "api_key", key: "sk-deepseek" } },
+      {
+        deepseek: {
+          models: [
+            {
+              id: "deepseek-flash",
+              name: "DeepSeek V4.1 Flash",
+              api: "openai-completions",
+              baseUrl: "https://api.deepseek.com",
+              reasoning: true,
+              input: ["text", "image"],
+              contextWindow: 1000000,
+              maxTokens: 384000,
+            },
+            {
+              id: "deepseek-v4-pro",
+              api: "openai-completions",
+              baseUrl: "https://api.deepseek.com",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(apiKeys).toEqual({ deepseek: "sk-deepseek" });
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).toMatchObject({
+      source: "pi",
+      externalId: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiStyle: "chat_completions",
+      hasSecret: true,
+    });
+    expect(drafts[0].modelIds).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
+    expect(drafts[0].models[0]).toMatchObject({
+      id: "deepseek-flash",
+      contextWindow: 1000000,
+      maxTokens: 384000,
+      supportsImages: true,
+      defaultThinkingLevel: "medium",
+    });
+  });
+
+  it("skips OAuth grants and never stores a `!` command as a key", () => {
+    const { apiKeys, drafts } = parsePiAuthModelConfig(
+      {
+        codex: { type: "oauth", access: "oauth-access-token" },
+        command: { type: "api_key", key: "!security find-generic-password -w" },
+      },
+      {
+        codex: {
+          models: [
+            { id: "gpt-6-sol", api: "openai-codex-responses", baseUrl: "https://chatgpt.com/backend-api" },
+          ],
+        },
+        command: {
+          models: [
+            { id: "cmd-model", api: "openai-completions", baseUrl: "https://api.example.com" },
+          ],
+        },
+      },
+    );
+
+    expect(apiKeys).toEqual({});
+    expect(drafts.map((draft) => draft.externalId)).toEqual(["command"]);
+    expect(drafts[0].hasSecret).toBe(false);
+    expect(drafts[0].secretValue).toBeUndefined();
+  });
+
+  it("resolves an `env:` key and keeps one coherent endpoint group", () => {
+    const { apiKeys, drafts } = parsePiAuthModelConfig(
+      { mixed: { type: "api_key", key: "env:MIXED_KEY" } },
+      {
+        mixed: {
+          models: [
+            { id: "chat-a", api: "openai-completions", baseUrl: "https://api.example.com/v1" },
+            { id: "chat-b", api: "openai-completions", baseUrl: "https://api.example.com/v1" },
+            { id: "anthropic-a", api: "anthropic-messages", baseUrl: "https://api.example.com" },
+          ],
+        },
+      },
+      { MIXED_KEY: "sk-mixed" },
+    );
+
+    expect(apiKeys).toEqual({ mixed: "sk-mixed" });
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).toMatchObject({
+      baseUrl: "https://api.example.com/v1",
+      apiStyle: "chat_completions",
+    });
+    expect(drafts[0].modelIds).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("keeps the API key available when no cached catalog exists", () => {
+    const { apiKeys, drafts } = parsePiAuthModelConfig(
+      { custom: { type: "api_key", key: "sk-custom" } },
+      {},
+    );
+
+    expect(apiKeys).toEqual({ custom: "sk-custom" });
+    expect(drafts).toEqual([]);
   });
 });
 

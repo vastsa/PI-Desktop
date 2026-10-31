@@ -1,5 +1,123 @@
 import { setTimeout as delay } from "node:timers/promises";
 
+export async function checkSidebarProjectMenuPlacement({ cdp, check, waitFor }) {
+  const group = (key) => `[data-sidebar-project-group=${JSON.stringify(key)}]`;
+  const menuSelector = ".sidebar-row-menu.sidebar-floating-menu:not(.sidebar-section-menu)";
+  const measureMenu = () => cdp.evaluate(`(() => {
+    const menu = document.querySelector(${JSON.stringify(menuSelector)});
+    if (!menu) return null;
+    const rect = menu.getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom, viewportHeight: window.innerHeight };
+  })()`);
+  const point = async (selector) => {
+    let target;
+    await waitFor(async () => {
+      target = await cdp.evaluate(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        if (!element) return null;
+        element.scrollIntoView({ block: "nearest" });
+        const rect = element.getBoundingClientRect();
+        const x = Math.round(rect.left + rect.width / 2);
+        const y = Math.round(rect.top + rect.height / 2);
+        const hit = document.elementFromPoint(x, y);
+        return { x, y, hit: hit === element || element.contains(hit) };
+      })()`);
+      return target?.hit;
+    }, `bottom project menu target is hittable: ${selector}`);
+    return target;
+  };
+  const move = async (selector) => {
+    const target = await point(selector);
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: target.x, y: target.y,
+    });
+    return target;
+  };
+  const click = async (selector) => {
+    const target = await point(selector);
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mousePressed", x: target.x, y: target.y,
+      button: "left", buttons: 1, clickCount: 1,
+    });
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased", x: target.x, y: target.y,
+      button: "left", buttons: 0, clickCount: 1,
+    });
+  };
+  const assertAboveAnchor = (bounds, anchorY, label) => {
+    const gap = anchorY - bounds.bottom;
+    check(
+      bounds.top >= 8 && bounds.bottom <= bounds.viewportHeight - 8 && gap >= 3 && gap <= 5,
+      label,
+      JSON.stringify({ bounds, anchorY, gap }),
+    );
+  };
+  const pressEscape = async (label) => {
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27,
+    });
+    await cdp.send("Input.dispatchKeyEvent", {
+      type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27,
+    });
+    await waitFor(async () => !(await measureMenu()), label);
+  };
+
+  await cdp.evaluate("window.dispatchEvent(new Event('focus'))");
+  const projectKey = await cdp.evaluate(`(() => {
+    const scroller = document.querySelector(".sidebar-session-groups");
+    if (!scroller) return null;
+    scroller.scrollTop = scroller.scrollHeight;
+    const bounds = scroller.getBoundingClientRect();
+    const headers = [...scroller.querySelectorAll(".project-group > .sidebar-session-group-header")]
+      .filter((header) => {
+        const rect = header.getBoundingClientRect();
+        return rect.bottom > bounds.top && rect.top < bounds.bottom;
+      });
+    if (!headers.length) return null;
+    const header = headers.reduce((lowest, candidate) =>
+      candidate.getBoundingClientRect().bottom > lowest.getBoundingClientRect().bottom
+        ? candidate
+        : lowest,
+    );
+    if (!header) return null;
+    header.scrollIntoView({ block: "end" });
+    return header.closest(".project-group")?.getAttribute("data-sidebar-project-group") ?? null;
+  })()`);
+  if (!projectKey) throw new Error("Missing bottom project row");
+  const projectGroup = group(projectKey);
+  const projectHeader = `${projectGroup} .sidebar-session-group-header`;
+
+  const rightClickTarget = await point(projectHeader);
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved", x: rightClickTarget.x, y: rightClickTarget.y,
+  });
+  await cdp.evaluate(`(() => {
+    const target = document.elementFromPoint(${rightClickTarget.x}, ${rightClickTarget.y});
+    if (!target) throw new Error("Missing bottom project context target");
+    target.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true, cancelable: true, button: 2, buttons: 2,
+      clientX: ${rightClickTarget.x}, clientY: ${rightClickTarget.y},
+    }));
+  })()`);
+  const contextMenu = await waitFor(() => measureMenu(), "bottom project context menu opens");
+  assertAboveAnchor(contextMenu, rightClickTarget.y, "right-click menu stays beside the bottom project row");
+  await pressEscape("project context menu closes");
+
+  const trigger = `${projectGroup} .project-more`;
+  await move(projectHeader);
+  await waitFor(
+    () => cdp.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(trigger)})).pointerEvents === "auto"`),
+    "bottom project overflow button is revealed",
+  );
+  await click(trigger);
+  const overflowMenu = await waitFor(() => measureMenu(), "bottom project overflow menu opens");
+  const triggerTop = await cdp.evaluate(
+    `document.querySelector(${JSON.stringify(trigger)}).getBoundingClientRect().top`,
+  );
+  assertAboveAnchor(overflowMenu, triggerTop, "overflow menu stays beside the bottom project row");
+  await pressEscape("project overflow menu closes");
+}
+
 export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
   const group = (key) => `[data-sidebar-project-group=${JSON.stringify(key)}]`;
   const row = (id) => `[data-sidebar-session-row=${JSON.stringify(id)}]`;
@@ -20,6 +138,21 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
       focusVisible: element.matches(':focus-visible'), hovered: element.matches(':hover'),
       selected: element.classList.contains('active'),
       current: element.getAttribute('data-current-workspace'),
+    };
+  })()`);
+  const sessionDateActions = (id) => cdp.evaluate(`(() => {
+    const row = document.querySelector(${JSON.stringify(row(id))});
+    const meta = row?.querySelector('.thread-item-meta');
+    const date = row?.querySelector('.thread-item-last-reply');
+    const action = row?.querySelector('[data-action="session-menu"]');
+    return {
+      dateText: date?.textContent?.trim() ?? "",
+      dateVisibility: date ? getComputedStyle(date).visibility : "missing",
+      dateOpacity: date ? Number.parseFloat(getComputedStyle(date).opacity) : -1,
+      sameSlot: Boolean(meta && date?.parentElement === meta && action?.parentElement === meta),
+      noDivider: !row?.querySelector('.thread-item-date-separator'),
+      actionOpacity: action ? Number.parseFloat(getComputedStyle(action).opacity) : -1,
+      actionPointerEvents: action ? getComputedStyle(action).pointerEvents : "missing",
     };
   })()`);
   const point = async (selector) => {
@@ -114,6 +247,33 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
         `${theme} project and conversation hover share one row surface, never a nested title fill`,
         JSON.stringify({ groupHover, titleHover, rowHover }),
       );
+
+      const datedRowId = seed.alphaSessionIds.at(-1);
+      await move(600, 120);
+      const dateAtRest = await sessionDateActions(datedRowId);
+      await hover(`${row(datedRowId)} .thread-item-main`);
+      const dateOnHover = await sessionDateActions(datedRowId);
+      check(
+        dateAtRest.dateText.length > 0 && dateAtRest.dateVisibility === "visible" &&
+          dateAtRest.dateOpacity === 1 && dateAtRest.sameSlot && dateAtRest.noDivider &&
+          dateAtRest.actionOpacity === 0 &&
+          dateAtRest.actionPointerEvents === "none" && dateOnHover.dateVisibility === "hidden" &&
+          dateOnHover.dateOpacity === 0 && dateOnHover.sameSlot && dateOnHover.actionOpacity === 1 &&
+          dateOnHover.actionPointerEvents === "auto",
+        `${theme} project session rows swap the resting date for actions in one slot on hover`,
+        JSON.stringify({ dateAtRest, dateOnHover }),
+      );
+      await cdp.evaluate(`document.querySelector(${JSON.stringify(row(datedRowId) + " .thread-item-main")}).focus()`);
+      const dateOnFocus = await sessionDateActions(datedRowId);
+      check(
+        dateOnFocus.dateVisibility === "hidden" && dateOnFocus.actionOpacity === 1 &&
+          dateOnFocus.actionPointerEvents === "auto",
+        `${theme} keyboard focus reveals session actions in place of the date`,
+        JSON.stringify(dateOnFocus),
+      );
+      await cdp.evaluate("document.activeElement instanceof HTMLElement && document.activeElement.blur()");
+      await move(600, 120);
+
       await hover(`${row(id)} .thread-item-main`);
       const selectedHover = await paint(row(id));
       check(
@@ -124,7 +284,13 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
 
       await hover(title(seed.paths.alpha));
       await cdp.evaluate("window.dispatchEvent(new Event('blur'))");
-      await delay(180);
+      await waitFor(async () => {
+        const [headerPaint, selectedPaint] = await Promise.all([
+          paint(header(seed.paths.alpha)),
+          paint(row(id)),
+        ]);
+        return headerPaint.background === transparent && selectedPaint.background === selectedRest.background;
+      }, `${theme} window blur releases hover without clearing selection`);
       const blurredHeader = await paint(header(seed.paths.alpha));
       const blurredSelected = await paint(row(id));
       check(
@@ -214,6 +380,7 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
         `${theme} returning from settings restores conversation selection and independent workspace context`,
       );
     }
+    await checkSidebarProjectMenuPlacement({ cdp, check, waitFor });
     await cdp.send("Emulation.setEmulatedMedia", {
       features: [{ name: "prefers-reduced-motion", value: "reduce" }],
     });
@@ -223,6 +390,57 @@ export async function checkSidebarRowStates({ cdp, check, waitFor, seed }) {
       reducedHeader.duration <= 0.00001 && reducedRow.duration <= 0.00001,
       "reduced motion suppresses both project and conversation hover transitions",
       JSON.stringify({ reducedHeader, reducedRow }),
+    );
+
+    const historyGroup = group(seed.paths.history);
+    const historyBody = `${historyGroup} .sidebar-session-group-body`;
+    const historyLoadMore = `${historyGroup} .sidebar-load-more`;
+    const historyRowIds = () => cdp.evaluate(`
+      [...document.querySelectorAll(${JSON.stringify(`${historyGroup} [data-sidebar-session-row]`)})]
+        .map(element => element.getAttribute('data-sidebar-session-row'))
+    `);
+    const expectedInitialIds = seed.historySessionIds.slice(0, 10);
+    await waitFor(
+      async () =>
+        (await historyRowIds()).length === 10 &&
+        (await cdp.evaluate(`!!document.querySelector(${JSON.stringify(historyLoadMore)})`)),
+      "history project starts with ten sessions and a load-more control",
+    );
+    check(
+      JSON.stringify(await historyRowIds()) === JSON.stringify(expectedInitialIds),
+      "project history initially shows the ten most recent sessions",
+      JSON.stringify(await historyRowIds()),
+    );
+    await click(historyLoadMore);
+    await waitFor(
+      async () => (await historyRowIds()).length === 12,
+      "history project loads all twelve sessions",
+    );
+    check(
+      JSON.stringify(await historyRowIds()) === JSON.stringify(seed.historySessionIds),
+      "Load more reveals the remaining project sessions",
+      JSON.stringify(await historyRowIds()),
+    );
+    await click(title(seed.paths.history));
+    await waitFor(
+      () => cdp.evaluate(`document.querySelector(${JSON.stringify(historyBody)}).inert`),
+      "history project folds after loading more",
+    );
+    await click(title(seed.paths.history));
+    await waitFor(
+      async () =>
+        !(await cdp.evaluate(`document.querySelector(${JSON.stringify(historyBody)}).inert`)) &&
+        (await historyRowIds()).length === 10,
+      "history project reopens with its initial session page",
+    );
+    const resetLoadMoreText = await cdp.evaluate(
+      `document.querySelector(${JSON.stringify(historyLoadMore)})?.textContent.trim() ?? null`,
+    );
+    check(
+      (await historyRowIds()).join() === expectedInitialIds.join() &&
+        resetLoadMoreText?.includes("2"),
+      "folding a project resets its loaded history and restores the two-session remainder",
+      JSON.stringify({ rowIds: await historyRowIds(), loadMoreText: resetLoadMoreText }),
     );
   } finally {
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });

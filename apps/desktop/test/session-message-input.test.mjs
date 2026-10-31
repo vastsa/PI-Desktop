@@ -64,6 +64,7 @@ test("prompt IPC persists original session text, skips slash expansion and binds
   const calls = [];
   const events = [];
   const sidecarCalls = [];
+  const recordedTurns = [];
   const host = {
     async call(method, params) {
       calls.push({ method, params });
@@ -87,6 +88,7 @@ test("prompt IPC persists original session text, skips slash expansion and binds
     logger: { app() {} }, vendorOAuth: {}, agentExtensions: {}, cancelSessionTools() {},
     persistenceOutbox: {}, dataDir: "/unused-for-no-attachments",
     activeTurns: new Map(), activeTurnUsages: new Map(), approvedExecutionIdsBySession: new Map(), claimedExecutionSessions: new Map(),
+    recordTurnStart: (sessionId, turnId) => recordedTurns.push([sessionId, turnId]),
     resolveAgentRuntimeLaunch: async () => ({
       providerId: "provider", modelId: "model",
       sidecarParams: { sessionId: "target", provider: { modelConfig: { input: ["text"] } } },
@@ -107,6 +109,7 @@ test("prompt IPC persists original session text, skips slash expansion and binds
   assert.equal(row.command, undefined);
   assert.equal(sidecarCalls[0].params.content, message.content);
   assert.deepEqual(sidecarCalls[0].params.sessionMessage, origin);
+  assert.deepEqual(recordedTurns, [["target", "turn-1"]]);
   assert.equal(events.length, 2);
   assert.equal(released, true);
 });
@@ -137,8 +140,8 @@ test("abort waits for prompt admission before dispatching to the sidecar", async
     getHost: () => host,
     getSidecar: () => ({
       setProjectInstructionRoot() {},
-      async call(method) {
-        sidecarCalls.push(method);
+      async call(method, params) {
+        sidecarCalls.push({ method, params });
         if (method === "agent.prompt") {
           await promptGate;
           return { accepted: true, turnId: "turn-1" };
@@ -151,6 +154,7 @@ test("abort waits for prompt admission before dispatching to the sidecar", async
     logger: { app() {} }, vendorOAuth: {}, agentExtensions: { cancelPrompts() {} }, cancelSessionTools() {},
     persistenceOutbox: {}, dataDir: "/unused-for-no-attachments",
     activeTurns, activeTurnUsages: new Map(), approvedExecutionIdsBySession: new Map(), claimedExecutionSessions: new Map(),
+    recordTurnStart() {},
     resolveAgentRuntimeLaunch: async () => ({
       providerId: "provider", modelId: "model",
       sidecarParams: { sessionId: "target", provider: { modelConfig: { input: ["text"] } } },
@@ -180,7 +184,11 @@ test("abort waits for prompt admission before dispatching to the sidecar", async
   releasePrompt();
   await prompt;
   await abort;
-  assert.deepEqual(sidecarCalls, ["agent.prompt", "agent.abort"]);
+  assert.deepEqual(sidecarCalls.map((call) => call.method), ["agent.prompt", "agent.abort"]);
+  assert.deepEqual(sidecarCalls[1], {
+    method: "agent.abort",
+    params: { sessionId: "target", turnId: "turn-1" },
+  });
   assert.equal(activeTurns.get("target"), "turn-1");
   assert.deepEqual(finishedTurns, [["target", "aborted", "TURN_ABORTED", { turnId: "turn-1" }]]);
   assert.deepEqual(calls.slice(0, 2), ["settings.get", "session.get"]);

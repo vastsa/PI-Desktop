@@ -307,6 +307,21 @@
   opacity: 0.55;
 }
 
+.context-menu-item.has-submenu {
+  gap: 8px;
+}
+
+.context-menu-submenu-chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--ds-text-muted);
+}
+
+.context-menu-submenu {
+  z-index: 61;
+}
+
 .context-menu-item.danger {
   color: var(--ds-error);
 }
@@ -337,6 +352,135 @@
   height: 1px;
   margin: 5px 6px;
   background: var(--ds-border-subtle);
+}
+
+/* Radial context menu on the empty transcript background (opt-in through
+   Settings → General). It joins the same floating-layer family as
+   `.context-menu`: viewport-fixed, measured before reveal, clamped inside the
+   window, disc surface with a hairline edge and the composer shadow. The SVG
+   plate draws the four wedges, their hairline separators, the recessed hub,
+   and the active fill; the buttons on top carry icon, label, focus, and hit
+   target, so the ring reads without hovering and one highlight covers both
+   layers. */
+.radial-menu {
+  position: fixed;
+  z-index: 60; /* body-level menu layer, above pane stacking */
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-round);
+  background: var(--ds-bg-elevated-opaque, var(--ds-bg-primary));
+  box-shadow: var(--ds-shadow-composer);
+  color: var(--ds-text-primary);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transform: scale(0.9);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.radial-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radial-menu {
+    transition: none;
+    transform: none;
+  }
+}
+
+.radial-menu-plate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.radial-menu-wedge {
+  fill: transparent;
+  stroke: var(--ds-border-subtle);
+  stroke-width: 1;
+  transition: fill var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.radial-menu-wedge.is-active {
+  fill: var(--ds-bg-active);
+}
+
+.radial-menu-hub {
+  fill: var(--ds-bg-inset);
+  stroke: var(--ds-border-subtle);
+  stroke-width: 1;
+}
+
+.radial-menu-dot {
+  fill: var(--ds-text-faint);
+}
+
+.radial-menu-item {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+  padding: 4px;
+  color: var(--ds-text-secondary);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.radial-menu-item[data-active="true"] {
+  color: var(--ds-text-primary);
+  transform: translate(-50%, -50%) scale(1.04);
+}
+
+/* An action the conversation cannot fill keeps its direction visible instead of
+   collapsing the ring into three unrelated sectors. */
+.radial-menu-item:disabled {
+  color: var(--ds-text-faint);
+  cursor: not-allowed;
+}
+
+.radial-menu-item:disabled .radial-menu-icon {
+  color: var(--ds-text-faint);
+}
+
+/* Keyboard focus keeps the wedge fill as its indicator; the default ring would
+   draw a rectangle over the wedge. */
+.radial-menu-item:focus-visible {
+  outline: none;
+}
+
+.radial-menu-icon {
+  display: inline-flex;
+  color: var(--ds-text-secondary);
+  transition: color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.radial-menu-item[data-active="true"] .radial-menu-icon {
+  color: var(--ds-text-primary);
+}
+
+.radial-menu-label {
+  display: -webkit-box;
+  width: 100%;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
 }
 
 /* Shared labeled selections keep native input semantics, not platform paint. */

@@ -320,6 +320,8 @@ test("macOS release signing is required on tag pushes", () => {
   assert.doesNotMatch(signedBlock, /DEBUG: ".*electron-builder.*"/);
   assert.match(signedBlock, /PI_SIGNING_TIMEOUT_SECONDS: "1800"/);
   assert.match(signedBlock, /PI_SIGNING_STALL_SECONDS: "300"/);
+  assert.match(signedBlock, /PI_STAPLER_MAX_ATTEMPTS: "6"/);
+  assert.match(signedBlock, /PI_STAPLER_RETRY_DELAY_SECONDS: "10"/);
   assert.match(
     signedBlock,
     /node scripts\/macos-signing-watchdog\.mjs \\\n\s+--label "dist:mac-\$\{\{ matrix\.arch \}\}" \\\n\s+-- pnpm --filter @pi-desktop\/desktop run dist:mac/,

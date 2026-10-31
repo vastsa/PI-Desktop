@@ -29,7 +29,7 @@ const [
 ]);
 
 test("session rename is available from sidebar and project archive task rows", () => {
-  assert.match(sidebarSource, /data-action="rename-session"/);
+  assert.match(sidebarSource, /id: "rename-session"/);
   assert.match(sidebarSource, /setRenameFor\(session\)/);
   assert.match(projectsDetailSource, /projects-detail-task-rename/);
   assert.match(projectsDetailSource, /onRenameSession\(session\)/);

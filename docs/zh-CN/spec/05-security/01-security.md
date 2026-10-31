@@ -27,7 +27,8 @@
   `http:` / `https:` / `mailto:` URL 转给系统浏览器
   （`parseAllowedExternalUrl`，D330 / ADR 0168）。`file:`、`javascript:`、
   `data:` 和自定义 URI scheme 不会到达 `shell.openExternal`。
-  `will-navigate` 阻止所有非开发服务器导航
+  `will-navigate` 由各自的界面实施策略；内置浏览器允许 HTTP(S)、工作区内文件链接，
+  以及从已加载本地文件发起的本地文件导航，其他 scheme 仍会被阻止。
 - 预加载仅公开经过白名单检查的 ADR/../03-runtime/09-logging-and-observability.md 桥
   （`IPC_WHITELIST` 在 preload 和主侧均强制执行）
 
@@ -59,6 +60,13 @@
 [远程控制安全](/zh-CN/spec/05-security/02-remote-control-security) 和
 [远程 Agent Control 架构](/zh-CN/spec/02-architecture/05-remote-agent-control)。
 本地安全基线不会因为远程目标规格而开放新的监听器或权限通道。
+
+### 内置浏览器访问本地文件
+
+内置浏览器可通过绝对路径或 `file:` URL 打开机器上任意已存在的本地文件，
+本地文件页面也可导航到其他已存在的本地文件。网页仍只能打开工作区内的文件，
+不能借助文件链接越出工作区。该浏览能力属于高风险 `browser.cdp` 权限；
+`BrowserPreview` 与 sidecar 的工作区文件解析仍受会话工作区限制。
 
 ## 3. 秘密
 

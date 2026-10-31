@@ -1,3 +1,4 @@
+import { forgetTranscriptReadingState } from "../../lib/transcript-reading-position";
 import i18n from "i18next";
 import type { ProjectWorkspace } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -13,6 +14,7 @@ import {
 } from "../../lib/session-panes";
 import {
   clearSessionAsks,
+  dropSessionAskDrafts,
 } from "../../lib/pending-asks";
 import {
   clearSessionPermissions,
@@ -113,7 +115,7 @@ async function createNamedProjectGroup(
       if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
       const onboarding = await api.getOnboarding();
       if (!runtime.navigationIntentIsCurrent(intent)) return;
-      set({ createProjectDialogOpen: false, onboarding, page: "chat" });
+      set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat" });
       return;
     }
   }
@@ -130,7 +132,7 @@ async function createNamedProjectGroup(
   get().renameProject(groupPrimary, normalizedName);
   const onboarding = await api.getOnboarding();
   if (!runtime.navigationIntentIsCurrent(intent)) return;
-  set({ createProjectDialogOpen: false, onboarding, page: "chat" });
+  set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat" });
 }
 
 /**
@@ -150,6 +152,7 @@ function clearLocalSessionState(
   >,
   id: string,
 ): void {
+  forgetTranscriptReadingState(id);
   runtime.pendingSessionConfigurations.delete(id);
   runtime.sessionTranscriptCache.delete(id);
   runtime.sessionHistoryCache.delete(id);
@@ -172,6 +175,7 @@ function clearLocalSessionState(
       id,
     );
     const pendingAsks = clearSessionAsks(state.pendingAsks, id);
+    const askDrafts = dropSessionAskDrafts(state.askDrafts, state.pendingAsks, id);
     const latestTurnResults = withoutRecordKey(state.latestTurnResults, id);
     const planningStates = withoutRecordKey(state.planningStates, id);
     const pendingPlans = withoutRecordKey(state.pendingPlans, id);
@@ -200,6 +204,7 @@ function clearLocalSessionState(
       isRunning: state.activeSessionId === id ? false : state.isRunning,
       pendingPermissions,
       pendingAsks,
+      askDrafts,
       latestTurnResults,
       planningStates,
       pendingPlans,
@@ -234,6 +239,7 @@ export function createProjectSlice({
   | "openProject"
   | "closeProjectDialog"
   | "createProjectFromFolders"
+  | "createProjectFromRemote"
   | "createProjectFromGit"
   | "clearProject"
   | "deleteProject"
@@ -307,11 +313,16 @@ export function createProjectSlice({
         };
       });
       rememberProject({
+        ...(workspace.remote ? { remote: workspace.remote } : {}),
         path: workspace.path,
         name: workspace.name || workspace.path,
         branch: workspace.branch,
       });
-      persistCurrentSidebar(get);
+      if (projectIsArchived(workspace.path, get().projectMeta)) {
+        get().restoreProject(workspace.path);
+      } else {
+        persistCurrentSidebar(get);
+      }
       return workspace;
     },
 
@@ -383,17 +394,30 @@ export function createProjectSlice({
       });
     },
 
-    openProject: async () => {
-      set({ createProjectDialogOpen: true });
+    openProject: async (options) => {
+      set({ createProjectDialogOpen: true, createProjectDialogRemoteHostKey: options?.remoteHostKey });
     },
     closeProjectDialog: () => {
-      set({ createProjectDialogOpen: false });
+      set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined });
     },
     createProjectFromFolders: async ({ name, folders, primaryPath }) =>
       createNamedProjectGroup(
         { get, set, runtime },
         { name, folders, primaryPath },
       ),
+    createProjectFromRemote: async ({ name, hostKey, path }) => {
+      const normalizedName = normalizeProjectName(name);
+      if (!normalizedName) throw new Error(i18n.t("errors.projectNameLength"));
+      const intent = runtime.beginNavigationIntent();
+      const { group } = await api.createRemoteProjectGroup(normalizedName, hostKey, path);
+      if (!runtime.navigationIntentIsCurrent(intent)) return;
+      const workspace = await get().activateProject(group.primaryPath, { navigationIntent: intent });
+      if (!workspace || !runtime.navigationIntentIsCurrent(intent)) return;
+      get().renameProject(group.primaryPath, normalizedName);
+      const onboarding = await api.getOnboarding();
+      if (!runtime.navigationIntentIsCurrent(intent)) return;
+      set({ createProjectDialogOpen: false, createProjectDialogRemoteHostKey: undefined, onboarding, page: "chat" });
+    },
     createProjectFromGit: async ({ name, url, parentPath }) => {
       // Clone first, then create the project through the same group path, so a
       // checkout and a folder pick produce identical project semantics.

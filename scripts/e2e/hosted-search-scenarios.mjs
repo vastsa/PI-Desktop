@@ -70,6 +70,44 @@ export async function runScenarios(bundle, root, timeoutMs, report, loadInstruct
     report(result);
   };
 
+  for (const failures of [1, 3]) {
+    await run(`malformed-tool-continue-${failures}`, (body, requests) => {
+      assert.equal(body.input.some((item) => item.type === "function_call" && !item.name), false,
+        "a malformed call must not poison the next real provider request");
+      assert.ok(requests.length <= failures + 4, "unexpected automatic retry");
+      if (requests.length <= failures) return { tool: { name: "", args: {} } };
+      if (requests.length === failures + 1) {
+        return { tool: { name: "Read", args: { path: "nested/fixture.txt" } } };
+      }
+      assert.match(functionResult(body, "Read"), /OFFLINE_READ_RESULT/);
+      return { text: "CONTINUE_RECOVERED" };
+    }, async ({ provider, start, dir }) => {
+      const sidecar = await start();
+      const params = parameters(provider.baseUrl, dir, "malformed-tool");
+      sidecar.expectContextValidationError = true;
+      for (let attempt = 0; attempt < failures; attempt++) {
+        const events = await sidecar.prompt(params, "Continue the current task.");
+        const errors = events.filter(({ event }) => event.type === "error");
+        assert.equal(errors.length, 1, "each malformed response must settle with one local error");
+        assert.equal(errors[0].event.error.details.origin, "local");
+        assert.equal(errors[0].event.error.details.phase, "context-validation");
+        assert.equal(provider.requests.length, attempt + 1, "malformed output must not enter transport retry");
+      }
+      assert.equal(sidecar.hostCalls.filter((call) => call.method === "tools.execute").length, 0);
+      sidecar.expectContextValidationError = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const events = await sidecar.prompt(params, "Continue the current task.");
+        assert.equal(events.some(({ event }) => event.type === "error"), false);
+        assertText(sidecar, "CONTINUE_RECOVERED");
+      }
+      assert.equal(provider.requests.length, failures + 4);
+      assert.equal(sidecar.hostCalls.filter((call) => call.method === "tools.execute").length, 1,
+        "the corrected tool must execute once across three Continue prompts");
+      assert.equal(sidecar.hostCalls.filter((call) => call.method === "session.get").length, 1,
+        "Continue must recover the reused runtime without a restart");
+    });
+  }
+
   await run("search-next-prompt", (body, requests) => {
     if (requests.length === 1) return { search: true, text: "SEARCH_FINISHED" };
     assert.equal(requests.length, 2, "unexpected retry/extra parent request");

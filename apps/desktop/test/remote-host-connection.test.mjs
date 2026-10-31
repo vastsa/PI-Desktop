@@ -158,6 +158,38 @@ test("a session.archived event unregisters the backend and lets the id fall thro
   assert.equal(router.resolveBackend(IPC.invoke.sessionGet, [{ id: remoteId }]), null);
 });
 
+test("a confirmed remote session delete drops the row and refreshes the sidebar", async () => {
+  const { conn, router, client, events } = setup({
+    sessions: [makeSession("s1"), makeSession("s2")],
+  });
+  await conn.open();
+  const remoteId = makeRemoteSessionId(HOST_KEY, "s1");
+  assert.ok(router.resolveBackend(IPC.invoke.sessionGet, [{ id: remoteId }]));
+  const outcome = await router.route(IPC.invoke.sessionDelete, [remoteId]);
+  assert.deepEqual(outcome, { remote: true, value: { ok: true } });
+  assert.ok(
+    client.calls.some(
+      (entry) => entry.method === "session/delete" && entry.params.sessionId === "s1",
+    ),
+    "the host must receive the delete",
+  );
+  // The deleted session stops being routable, and its event stream is released.
+  assert.equal(router.resolveBackend(IPC.invoke.sessionGet, [{ id: remoteId }]), null);
+  const notice = events.find(
+    (event) =>
+      event.channel === IPC.event.sessionsChanged &&
+      event.payload.reason === "remote.session.deleted",
+  );
+  assert.ok(notice, "a confirmed delete must refresh the renderer's session list");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    client.calls.some(
+      (entry) => entry.method === "events/unsubscribe" && entry.params.subscriptionId === "sub-s1",
+    ),
+    "the deleted session's subscription must be released",
+  );
+});
+
 test("close detaches the listener and unregisters every session", async () => {
   const { conn, router, client } = setup({ sessions: [makeSession("s1"), makeSession("s2")] });
   await conn.open();

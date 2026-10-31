@@ -547,7 +547,9 @@ function InlineCode({
       onClick={() => {
         if (!localToolsAllowed) return;
         if (target.kind === "file") {
-          openFileRef(text ?? target.path, baseDir);
+          openFileRef(target.path, baseDir, undefined, {
+            line: target.line, column: target.column,
+          });
           return;
         }
         if (target.kind === "session") {

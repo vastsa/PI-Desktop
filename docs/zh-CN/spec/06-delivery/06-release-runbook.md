@@ -214,6 +214,8 @@ macOS ZIP 在安装包根目录包含 `PI-Desktop.app`。DMG 和 ZIP 都不附�
 
 标签构建和 `sign_macos: true`（手动运行的默认值）仅从 GitHub Actions 密钥接收 `CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 和 `APPLE_TEAM_ID`，通过 `CSC_NAME=XingYu Liu (DUV63RKYTW)`（裸通用名——electron-builder 拒绝 `Developer ID Application:` 前缀）固定证书，强制代码签名与 `notarytool` 公证 `PI-Desktop.app`。随后 DMG 会由 `scripts/notarize-and-staple-macos-release-dmg.sh` 单独提交到同一个服务，只有返回 `Accepted` 才允许装订票据。之后验证身份、代码签名完整性（含 `pi-desktop-host-core`）、Gatekeeper `Notarized Developer ID` 以及两份已装订票据，再进行任何工件上传。
 
+对于 app 票据，当设置 `PI_STAPLER_MAX_ATTEMPTS` 时，签名看门狗会注入临时 `xcrun` shim。它只重试确切的 `stapler staple` 操作，最多总计六次、间隔 10 秒；`notarytool` 和其他 `xcrun` 命令会原样透传。electron-notarize 仅会在 Apple 接受 app 提交后调用该命令。DMG 脚本会在其单独提交被接受后执行自己的有界重试。任一重试耗尽都会让作业失败；工件验证仍要求 app 和 DMG 都包含有效的装订票据。
+
 DMG、ZIP、NSIS、AppImage、deb、rpm、块图和更新程序提要输出已
 压缩或压缩不敏感。因此，工作流程会上传它们的
 发布作业之前压缩级别为零的临时操作工件
@@ -282,6 +284,7 @@ identityName=...` —— 之后直到该阶段结束都没有任何输出。这�
 | 逐文件签名 | `codesign --force --sign <identity> --timestamp --entitlements ... <file>` 串行执行，最深的文件优先，应用包最后签 | `DEBUG=electron-osx-sign*` 打印 `Signing... <file>` 与 `Executing... <file> codesign ...`；codesign shim 记录每次调用的耗时。若钥匙串拒绝把私钥交给被包裹的 `codesign`，可设置 `PI_SIGNING_NO_CODESIGN_SHIM=1` 在不使用 shim 的情况下运行该阶段 |
 | 静默重试 | 一轮签名失败后最多再重试三次，退避 5s/10s/15s，且没有任何日志行 | 看门狗汇总中的 `codesign-calls` 与 `failures` 行会暴露重复的整轮签名 |
 | 应用公证 | `@electron/notarize` 打包 zip、上传并等待 Apple 队列（`mac.notarize=true`） | `DEBUG=electron-notarize*` 打印 `zipping application to`、`attempting to upload file to Apple`、`notarization success`，随后 electron-builder 打印 `notarization successful` |
+| 应用票据装订 | `xcrun stapler staple` 附加已接受的 app 票据；看门狗只对这一确切命令最多重试六次，间隔 10 秒 | 看门狗标题显示 `stapler-shim=on`，并报告每次失败 |
 | DMG 公证 | DMG 有自己的签名，因此下一步会用 `xcrun notarytool submit --wait` 再提交一次 | 同一个看门狗让该等待过程可见并且有上限 |
 
 `scripts/macos-signing-watchdog.mjs` 包裹这两个长时间阶段。它给子进程的每一行加上
@@ -297,6 +300,8 @@ codesign 耗时 —— 调用次数、总耗时、p50、p95、最大值以及最
 | `PI_SIGNING_TIMEOUT_SECONDS` | 2400（CI：打包 1800，DMG 1200） | 被包裹阶段的硬上限：输出诊断、杀掉进程组，并以 124 退出而不是继续挂起 |
 | `PI_SIGNING_STALL_SECONDS` | 300 | 无 codesign 活动的静默持续这么长时间就触发一次诊断输出；阶段继续运行，因为等待 Apple 公证队列是合法等待 |
 | `PI_SIGNING_HEARTBEAT_SECONDS` | 60 | 子进程无输出时的心跳间隔 |
+| `PI_STAPLER_MAX_ATTEMPTS` | 未设置（不启用 stapler shim） | 为签名 app 打包设置后，`xcrun stapler staple` 最多执行六次 |
+| `PI_STAPLER_RETRY_DELAY_SECONDS` | 10 | app 装订失败后的间隔（最长 60 秒） |
 | `DEBUG` | `electron-osx-sign*,electron-notarize*` | 暴露遍历、逐文件签名与公证进度的命名空间 |
 
 `DEBUG` 只列出两个会自行清洗命令行的命名空间，因为 `electron-builder` 的命名空间在这里
@@ -333,7 +338,7 @@ override 作用于它。它的 `signApplication()` 对每个文件 `await` 一�
 
 | 工件 | 提交方 | 票据 |
 |---|---|---|
-| `PI-Desktop.app`（ZIP 内） | electron-builder `-c.mac.notarize=true` | 由 electron-builder 装订 |
+| `PI-Desktop.app`（ZIP 内） | electron-builder `-c.mac.notarize=true` | electron-builder 通过看门狗的有界 `xcrun stapler staple` 重试 shim 装订 |
 | `PI-Desktop-<version>-<arch>.dmg` | `scripts/notarize-and-staple-macos-release-dmg.sh`（`notarytool submit --wait`） | 同一脚本在 `status: Accepted` 后装订 |
 
 从未提交过的 DMG 没有票据，因此装订会失败并报 `Could not find base64 encoded ticket ... Error 65`。只有在 Apple 返回 `Accepted` 之后才允许重试装订。

@@ -29,6 +29,11 @@ const { app } = await import("electron");
 const { createEventPersistence } = await import("../electron/main/runtime/event-persistence.ts");
 const { PersistenceOutbox } = await import("../electron/main/persistence-outbox.ts");
 const { registerShutdownHandlers } = await import("../electron/main/bootstrap/shutdown.ts");
+const transcriptRewrite = {
+  beginTranscriptRewrite: () => ({ commit() {}, rollback: () => [] }),
+  deferTranscriptEvent: () => false,
+  isStaleTranscriptEvent: () => false,
+};
 
 for (const outcome of ["complete", "error", "unresponsive"]) {
 test(`quit settles a regenerated branch when the host is ${outcome}`, async (t) => {
@@ -66,12 +71,13 @@ test(`quit settles a regenerated branch when the host is ${outcome}`, async (t) 
     settleIf() {}, dispose() {},
   };
   const persistence = createEventPersistence({
-    runtimeState: { host }, steeringReplies: new Set(), activeTurns,
+    runtimeState: { host }, steeringReplies: new Set(), completionNoticeTurns: new Set(), activeTurns,
     activeToolCalls: new Map(), activeToolCallKey: (s, c) => `${s}:${c}`,
     approvedExecutionIdsBySession: new Map(), approvedExecutionTurns: new Map(),
     pendingExecutionFinishes: new Map(), planSubmissionTurnIds: new Set(),
     planSubmissionTurnKey: (s, turn) => `${s}:${turn}`,
     inflightCheckpointer: checkpoint, persistenceOutbox: outbox,
+    transcriptRewrite,
     addActiveTurnUsage() {}, logger,
     finishTurn: async () => { activeTurns.clear(); },
     isStaleTerminalEvent: () => false,
@@ -130,3 +136,87 @@ test(`quit settles a regenerated branch when the host is ${outcome}`, async (t) 
   assert.equal(hostDisposed, true);
 });
 }
+
+test("a repeated before-quit cannot bypass the pending renderer confirmation", async (t) => {
+  app.removeAllListeners();
+  const originalQuit = app.quit;
+  const probeKeys = [
+    "PI_DESKTOP_BOOT_PROBE",
+    "PI_DESKTOP_SUPERVISION_PROBE",
+    "PI_DESKTOP_CAPTURE",
+  ];
+  const originalProbeValues = probeKeys.map((key) => process.env[key]);
+  for (const key of probeKeys) delete process.env[key];
+  const confirmations = [];
+  let confirmationCount = 0;
+  const state = {
+    shutdownComplete: false,
+    shutdownPromise: null,
+    quitting: false,
+    quitConfirmed: false,
+    closeBehavior: "quit",
+    tray: null,
+    pluginLauncherAccelerator: null,
+    toggleWindowAccelerator: null,
+  };
+  const dispose = () => undefined;
+  app.quit = () => {
+    app.emit("before-quit", { preventDefault() {} });
+  };
+  registerShutdownHandlers({
+    hasSingleInstanceLock: true,
+    state,
+    getHost: () => null,
+    getSidecar: () => null,
+    getMcpControl: () => null,
+    activeTurns: new Map(),
+    persistenceOutbox: { flush: async () => {}, size: () => 0 },
+    inflightCheckpointer: { flushAll: async () => {}, dispose },
+    flushEventPersistence: async () => {},
+    pluginPanels: { closeAll: async () => {} },
+    plugins: { disposeAll: async () => {} },
+    userMcp: { disposeAll: dispose },
+    browserHost: { dispose },
+    pluginViews: { dispose: async () => {} },
+    updater: { dispose, isInstallingUpdate: () => false },
+    logger: { app() {} },
+    confirmQuitDialog: () => {
+      confirmationCount += 1;
+      return new Promise((resolve) => confirmations.push(resolve));
+    },
+    disposePowerSaveBlockers: dispose,
+  });
+  const requestQuit = () => {
+    let prevented = false;
+    app.emit("before-quit", { preventDefault() { prevented = true; } });
+    return prevented;
+  };
+  t.after(() => {
+    app.removeAllListeners();
+    app.quit = originalQuit;
+    for (let index = 0; index < probeKeys.length; index += 1) {
+      const value = originalProbeValues[index];
+      if (value === undefined) delete process.env[probeKeys[index]];
+      else process.env[probeKeys[index]] = value;
+    }
+  });
+
+  assert.equal(requestQuit(), true);
+  assert.equal(confirmationCount, 1);
+  assert.equal(requestQuit(), true);
+  assert.equal(confirmationCount, 1);
+  assert.equal(state.shutdownPromise, null);
+  assert.equal(state.quitting, false);
+
+  confirmations[0](false);
+  await Promise.resolve();
+  assert.equal(state.quitConfirmed, false);
+  assert.equal(requestQuit(), true);
+  assert.equal(confirmationCount, 2);
+
+  confirmations[1](true);
+  await Promise.resolve();
+  assert.ok(state.shutdownPromise);
+  await state.shutdownPromise;
+  assert.equal(state.shutdownComplete, true);
+});

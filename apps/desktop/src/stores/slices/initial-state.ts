@@ -36,6 +36,7 @@ export function createInitialState(): AppStateData {
     ),
     openProjectPaths: initialSidebarPreferences.openProjectPaths,
     createProjectDialogOpen: false,
+    createProjectDialogRemoteHostKey: undefined,
     activeProjectPath: undefined,
     projectMeta: initialSidebarPreferences.projectMeta,
     projectCollapsed: Object.fromEntries(
@@ -48,6 +49,7 @@ export function createInitialState(): AppStateData {
     activeWorkPanelTabId: null,
     workPanelContexts: {},
     workPanelWidth: initialWorkPanelWidth,
+    workPanelYieldedWidth: null,
     workPanelFileRequest: null,
     projectSort: initialSidebarPreferences.projectSort,
     messages: [],
@@ -70,6 +72,7 @@ export function createInitialState(): AppStateData {
     pluginViews: [],
     pendingPermissions: {},
     pendingAsks: {},
+    askDrafts: {},
     queuedPrompts: {},
     planningStates: {},
     pendingPlans: {},

@@ -20,6 +20,16 @@ const electron = `data:text/javascript,${encodeURIComponent(`
     getBounds() { return { ...this.bounds }; }
     setVisible(visible) { this.visible = visible; }
   }
+  export class BrowserWindow {
+    static instances = [];
+    contentView = new View();
+    destroyed = false;
+    constructor(options) { this.size = [options.width, options.height]; BrowserWindow.instances.push(this); }
+    getContentSize() { return this.size; }
+    setContentSize(width, height) { this.size = [width, height]; }
+    isDestroyed() { return this.destroyed; }
+    destroy() { this.destroyed = true; }
+  }
   export class WebContentsView extends View {
     static instances = [];
     constructor() {
@@ -28,6 +38,7 @@ const electron = `data:text/javascript,${encodeURIComponent(`
         id: WebContentsView.instances.length + 1,
         url: "", destroyed: false, viewport: { width: 0, height: 0 },
         captures: [],
+        layoutSize: { width: 800, height: 6000 },
         async loadURL(url) {
           this.emit("did-start-navigation", {}, url, false, true);
           this.url = url;
@@ -36,6 +47,9 @@ const electron = `data:text/javascript,${encodeURIComponent(`
         getURL() { return this.url; },
         getTitle: () => "fixture", isLoading: () => false,
         isDestroyed() { return this.destroyed; },
+        throttled: true,
+        getBackgroundThrottling() { return this.throttled; },
+        setBackgroundThrottling(value) { this.throttled = value; },
         close() {
           if (this.destroyed) throw new Error("guest already destroyed");
           this.destroyed = true;
@@ -52,7 +66,7 @@ const electron = `data:text/javascript,${encodeURIComponent(`
         detach() { this.attached = false; },
         async sendCommand(method, params) {
           if (method === "Page.getLayoutMetrics") {
-            return { cssContentSize: { width: wc.viewport.width, height: 6000 } };
+            return { cssContentSize: { ...wc.layoutSize } };
           }
           if (method !== "Page.captureScreenshot") return {};
           const savedViewport = { ...wc.viewport };
@@ -82,12 +96,12 @@ registerHooks({ resolve(specifier, context, next) {
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { BrowserHost } = await import("../electron/main/browser-host.ts");
 const { BrowserPane } = await import("../electron/main/browser-view.ts");
-const { WebContentsView } = await import("electron");
+const { WebContentsView, BrowserWindow } = await import("electron");
 
 async function harness(t) {
   const host = new BrowserHost({
     createPane: (onState, onOpenUrl) => new BrowserPane(onState, onOpenUrl),
-    isPluginLoaded: () => true, getFileRoot: async () => null, onState: () => {},
+    isPluginLoaded: () => true, getFileRoots: async () => [], onState: () => {},
   });
   const children = [];
   host.setWindow({ isDestroyed: () => false, contentView: {
@@ -100,7 +114,7 @@ async function harness(t) {
   const resize = (width, height) => host.setGuestHole("pi.browser", { x: 0, y: 0, width, height });
   resize(800, 500);
   host.setChromeSession("session", "first");
-  await host.navigate({ url: "https://fixture.invalid/first" }, "session");
+  await host.navigate({ url: "https://fixture.invalid/first" }, "session", "first");
   t.after(() => host.dispose());
   return { host, resize, children, view: WebContentsView.instances.at(-1), wc: WebContentsView.instances.at(-1).webContents };
 }
@@ -115,6 +129,28 @@ function paintedBounds(view) {
     height: Math.min(own.height, parent.height - own.y),
   };
 }
+
+test("full-page screenshot scales both dimensions to provider-safe limits", async (t) => {
+  const { host, wc } = await harness(t);
+  for (const [layoutSize, expectedScale] of [
+    [{ width: 800, height: 6000 }, 2048 / 6000],
+    [{ width: 4000, height: 6000 }, 1280 / 4000],
+  ]) {
+    wc.layoutSize = layoutSize;
+    const started = once(wc, "capture-start");
+    const capture = host.screenshot({ fullPage: true });
+    await started;
+    assert.deepEqual(wc.captures.at(-1).params.clip, {
+      x: 0,
+      y: 0,
+      width: layoutSize.width,
+      height: layoutSize.height,
+      scale: expectedScale,
+    });
+    wc.captures.at(-1).resolve();
+    await capture;
+  }
+});
 
 for (const raw of [false, true]) {
   test(`${raw ? "raw CDP" : "browser screenshot"} stays inside the relocated panel before capture finishes`, async (t) => {
@@ -172,6 +208,42 @@ test("a failed capture releases resizing and does not poison the next capture", 
   assert.equal((await next).data, "fixture-image");
 });
 
+for (const raw of [false, true]) {
+  test(`${raw ? "raw CDP" : "browser screenshot"} timeout releases the queue for the next capture`, async (t) => {
+    const { host, wc } = await harness(t);
+    const capture = () => raw
+      ? host.cdpCommand("Page.captureScreenshot", { format: "png" })
+      : host.screenshot();
+    const setTimeout = globalThis.setTimeout;
+    let expire;
+    globalThis.setTimeout = (callback, delay, ...args) => {
+      assert.equal(delay, 30_000);
+      expire = () => callback(...args);
+      return 1;
+    };
+    t.after(() => { globalThis.setTimeout = setTimeout; });
+    const failed = assert.rejects(
+      capture(),
+      (error) => {
+        assert.match(error.message, /browser screenshot timed out after 30000ms/);
+        assert.equal(error.code, "TIMEOUT");
+        return true;
+      },
+    );
+    await once(wc, "capture-start");
+    expire();
+
+    await failed;
+    assert.equal(wc.debugger.isAttached(), false, "detach the stalled CDP session");
+    wc.captures[0].reject(new Error("debugger detached"));
+    const nextStarted = once(wc, "capture-start");
+    const next = capture();
+    await nextStarted;
+    wc.captures[1].resolve();
+    assert.equal((await next).data, "fixture-image");
+  });
+}
+
 test("overlapping capture APIs serialize per page, not across sibling tabs", async (t) => {
   const { host, resize, wc } = await harness(t);
   const started = once(wc, "capture-start");
@@ -180,7 +252,7 @@ test("overlapping capture APIs serialize per page, not across sibling tabs", asy
   const nextStarted = once(wc, "capture-start");
   const next = host.cdpCommand("Page.captureScreenshot", { format: "png" });
   host.setChromeSession("session", "second");
-  await host.navigate({ url: "https://fixture.invalid/second" }, "session");
+  await host.navigate({ url: "https://fixture.invalid/second" }, "session", "second");
   const sibling = WebContentsView.instances.at(-1).webContents;
   const siblingStarted = once(sibling, "capture-start");
   const siblingShot = host.screenshot();
@@ -208,7 +280,7 @@ test("closing a tab rejects its queued capture without capturing a replacement",
   const queued = assert.rejects(host.screenshot(), /browser guest is not available/);
   host.closeTab("session", "first");
   host.setChromeSession("session", "replacement");
-  await host.navigate({ url: "https://fixture.invalid/replacement" }, "session");
+  await host.navigate({ url: "https://fixture.invalid/replacement" }, "session", "replacement");
   wc.captures[0].resolve();
   await first;
   await queued;
@@ -223,9 +295,9 @@ test("hiding and restoring a captured page keeps its presentation isolated from 
   const capture = host.screenshot();
   await started;
   host.setChromeSession("session", "second");
-  await host.navigate({ url: "https://fixture.invalid/second" }, "session");
+  await host.navigate({ url: "https://fixture.invalid/second" }, "session", "second");
   assert(!children.includes(surface));
-  assert.equal(surface.visible, false);
+  assert.equal(surface.parent.visible, true, "the page stays rendered in the hidden backing host");
   const relocated = { x: 960, y: 70, width: 530, height: 400 };
   host.setChromeSurface({ pluginId: "pi.browser", viewId: "browser", visible: true, bounds: relocated });
   host.setGuestHole("pi.browser", { x: 0, y: 0, width: 530, height: 400 });
@@ -248,7 +320,7 @@ test("a destroyed native guest can be resized, replaced and disposed safely", as
   wc.close();
   assert.equal(view.webContents, undefined, "Electron clears a destroyed guest handle");
   resize(930, 620);
-  await host.navigate({ url: "https://fixture.invalid/recreated" }, "session");
+  await host.navigate({ url: "https://fixture.invalid/recreated" }, "session", "first");
   const replacement = WebContentsView.instances.at(-1);
   assert.notEqual(replacement, view);
   assert(!children.includes(previousSurface));
@@ -270,4 +342,35 @@ test("capture completion after native guest destruction preserves the original c
   wc.captures[0].resolve();
   assert.equal((await capture).data, "fixture-image");
   host.dispose();
+});
+
+test("background backing windows stay hidden and release with the last parked page", async (t) => {
+  const { host, children, view, wc } = await harness(t);
+  host.setChromeSurface(null);
+  const backing = BrowserWindow.instances.at(-1);
+  assert.equal(backing.destroyed, false);
+  assert(backing.contentView.children.includes(view.parent));
+  assert.equal(children.length, 0, "hidden pages cannot cover the main window");
+  host.closeSession("session");
+  assert.equal(wc.destroyed, true);
+  assert.equal(backing.destroyed, true);
+  assert.equal(backing.contentView.children.length, 0);
+});
+
+test("page-local viewport work restores throttling and resizing on failure", async (t) => {
+  const { host, wc, resize } = await harness(t);
+  const paneSurface = WebContentsView.instances.at(-1).parent;
+  host.setChromeSurface(null);
+  const started = once(wc, "capture-start");
+  const failed = assert.rejects(host.screenshot({}, "session"), /fixture failure/);
+  await started;
+  assert.equal(wc.getBackgroundThrottling(), false);
+  wc.captures[0].reject(new Error("fixture failure"));
+  await failed;
+  assert.equal(wc.getBackgroundThrottling(), true);
+  assert.equal(paneSurface.parent.children.includes(paneSurface), true);
+  host.setChromeSurface({ pluginId: "pi.browser", viewId: "browser", visible: true,
+    bounds: { x: 0, y: 0, width: 1200, height: 900 } });
+  resize(920, 610);
+  assert.deepEqual(wc.viewport, { width: 920, height: 610 });
 });

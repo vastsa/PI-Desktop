@@ -76,73 +76,38 @@ test("packaged non-developer Settings exposes experimental Remote Hosts", () => 
   assert.ok(nav); assert.equal(nav.experimentalBadgeKey, "settings.remoteHosts.experimental");
 });
 
-test("host -> register absolute remote project -> create -> select real store conversation", async () => {
+test("legacy history opens through the regular store without project or model transfer", async () => {
   initialize();
-  const calls = bridge((channel, input) => {
-    if (channel === IPC.invoke.remoteHostProjects) return { projects: [] };
-    if (channel === IPC.invoke.remoteHostSessions) return { sessions: [] };
-    if (channel === IPC.invoke.remoteHostRegisterProject) { assert.equal(input.path, "/srv/project"); return { project: { id: "p1", label: "Remote project", archived: false } }; }
-    if (channel === IPC.invoke.remoteHostCreateSession) return { session: { ...session, projectPath: "/srv/project" } };
-    return defaultRead(channel);
-  });
+  const calls = bridge((channel) => channel === IPC.invoke.remoteHostSessions ? { sessions: [session] } : defaultRead(channel));
   const workflow = createRemoteHostWorkflow(host, selectRemote);
   await workflow.load();
-  await workflow.create({ projectId: "", path: "/srv/project", title: "Remote task" });
-  assert.equal(workflow.getSnapshot().error, null);
+  await workflow.open(workflow.getSnapshot().sessions[0]);
   assert.equal(useAppStore.getState().activeSessionId, session.id);
   assert.equal(useAppStore.getState().page, "chat");
   assert.equal(useAppStore.getState().workspace.path, "/local/private");
-  assert.equal(useAppStore.getState().sessions.find((item) => item.id === session.id).projectPath, undefined);
-  const create = calls.find((call) => call.channel === IPC.invoke.remoteHostCreateSession);
-  assert.deepEqual(create.input, { hostKey: host.hostKey, projectId: "p1", title: "Remote task", mode: "agent", permissionMode: "ask" });
-  assert.ok(calls.findIndex((call) => call.channel === IPC.invoke.remoteHostRegisterProject) < calls.indexOf(create));
-  assert.ok(!calls.some((call) => [IPC.invoke.projectActivate, IPC.invoke.projectClear, IPC.invoke.sessionConfigure].includes(call.channel)));
+  assert.ok(!calls.some((call) => [IPC.invoke.remoteHostProjects, IPC.invoke.remoteHostCreateSession,
+    IPC.invoke.remoteHostRegisterProject, IPC.invoke.remoteHostSyncProviders].includes(call.channel)));
   workflow.dispose();
 });
 
-test("existing project selection does not register and closing during registration never creates/selects", async () => {
+test("closing the historical conversation browser ignores a late inventory result", async () => {
   initialize();
-  const registration = deferred();
-  const selected = [];
-  const calls = bridge((channel) => {
-    if (channel === IPC.invoke.remoteHostProjects) return { projects: [{ id: "p1", label: "Remote", archived: false }] };
-    if (channel === IPC.invoke.remoteHostSessions) return { sessions: [session] };
-    if (channel === IPC.invoke.remoteHostRegisterProject) return registration.promise;
-    if (channel === IPC.invoke.remoteHostCreateSession) return { session };
-  });
-  const workflow = createRemoteHostWorkflow(host, async (value) => { selected.push(value); });
-  await workflow.load();
-  await workflow.create({ projectId: "p1", path: "", title: "" });
-  assert.equal(selected.length, 1);
-  assert.ok(!calls.some((call) => call.channel === IPC.invoke.remoteHostRegisterProject));
-  const pending = workflow.create({ projectId: "", path: "/other", title: "" });
-  workflow.dispose(); registration.resolve({ project: { id: "other", label: "Other", archived: false } });
-  await pending;
-  assert.equal(selected.length, 1);
-  assert.equal(calls.filter((call) => call.channel === IPC.invoke.remoteHostCreateSession).length, 1);
+  const pending = deferred();
+  bridge(() => pending.promise);
+  const workflow = createRemoteHostWorkflow(host, async () => assert.fail("late selection"));
+  const load = workflow.load();
+  workflow.dispose();
+  pending.resolve({ sessions: [session] });
+  await load;
+  assert.deepEqual(workflow.getSnapshot().sessions, []);
 });
 
-test("sync starts unselected, requires fresh consent, rejects OAuth/direct host and sends IDs only", async () => {
+test("historical conversation UI exposes no model-copy or remote-create controls", async () => {
   initialize();
-  const calls = bridge((channel) => channel === IPC.invoke.remoteHostSyncProviders
-    ? { imported: [{ sourceId: provider.id, providerId: "remote-provider" }], skipped: [], defaultSet: true } : {});
+  const calls = bridge(() => ({}));
   const html = await fixture.render("host", { host, onClose() {} });
-  assert.match(html, /API credentials will be copied/);
-  const checkboxes = [...html.matchAll(/<input[^>]*type="checkbox"[^>]*>/g)].map((match) => match[0]);
-  assert.equal(checkboxes.length, 2);
-  assert.ok(!checkboxes[0].includes('checked=""'), "consent must start unchecked");
-  const workflow = createRemoteHostWorkflow(host, async () => {});
-  await workflow.sync([provider], [], false, true);
-  await workflow.sync([provider], [provider.id], false, true);
-  await workflow.sync([{ ...provider, hasOauth: true }], [provider.id], true, true);
+  assert.doesNotMatch(html, /API credentials will be copied|type="checkbox"|Sync models|New conversation/);
   assert.equal(calls.length, 0);
-  await workflow.sync([provider], [provider.id], true, true);
-  assert.deepEqual(calls[0].input, { hostKey: host.hostKey, providerIds: [provider.id], setDefault: true });
-  assert.equal(workflow.getSnapshot().syncResult.defaultSet, true);
-  const direct = createRemoteHostWorkflow({ ...host, transport: "direct" }, async () => {});
-  await direct.sync([provider], [provider.id], true, true);
-  assert.equal(calls.length, 1);
-  workflow.dispose(); direct.dispose();
 });
 
 test("reconnect failure remains visible; retry reloads inventory without resending mutations", async () => {

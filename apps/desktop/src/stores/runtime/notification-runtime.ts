@@ -37,6 +37,7 @@ export function createInteractivePromptNotifier(
         variant: "info",
         duration: 8_000,
         sound: false,
+        sessionId,
       });
     }
     void api

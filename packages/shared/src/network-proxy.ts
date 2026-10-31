@@ -41,13 +41,24 @@ export const PROXY_ENV_KEYS = [
   "NODE_USE_ENV_PROXY",
 ] as const;
 
+/** Built-in fallback when entering Custom with nothing saved and no valid draft. */
+export const DEFAULT_CUSTOM_PROXY_URL = "socks5://127.0.0.1:1080";
+
 export type NetworkProxySettings = {
   mode: NetworkProxyMode;
-  /** Required when `mode` is `custom`. Canonical proxy URL. */
+  /**
+   * Canonical proxy URL. Required when `mode` is `custom`.
+   *
+   * System and Direct keep it too: `mode` decides what is in effect, and the
+   * URL the user configured is remembered so the Custom control restores their
+   * proxy instead of the built-in default (issue #1541). Nothing applies it
+   * while another mode is selected.
+   */
   url?: string;
   /**
    * Comma-separated bypass list. Absent uses
-   * {@link DEFAULT_NETWORK_PROXY_BYPASS} for custom mode.
+   * {@link DEFAULT_NETWORK_PROXY_BYPASS} for custom mode, and kept across
+   * modes like `url`.
    */
   bypass?: string;
 };
@@ -200,7 +211,15 @@ export function validateNetworkProxy(
 ): { ok: true; value: NetworkProxySettings } | { ok: false; error: string } {
   const settings = normalizeNetworkProxy(value);
   if (settings.mode !== "custom") {
+    // System and Direct keep the URL and bypass the user configured. `mode`
+    // decides what applies, and remembering those values is what lets the
+    // Custom control come back with their own proxy (issue #1541). A URL that
+    // cannot describe a proxy is dropped rather than refused: it is not what
+    // this write is about, and rejecting it would block the mode switch.
     const next: NetworkProxySettings = { mode: settings.mode };
+    const parsed = settings.url ? parseProxyUrl(settings.url) : null;
+    if (parsed?.ok) next.url = parsed.value.href;
+    if (settings.bypass?.trim()) next.bypass = settings.bypass.trim();
     return { ok: true, value: next };
   }
   const parsed = parseProxyUrl(settings.url ?? "");
@@ -211,6 +230,48 @@ export function validateNetworkProxy(
   };
   if (settings.bypass?.trim()) next.bypass = settings.bypass.trim();
   return { ok: true, value: next };
+}
+
+/**
+ * Build settings when leaving Custom. The input blur handler may still be
+ * saving when the mode control is clicked, so use the current drafts and keep
+ * the last valid URL if the draft is invalid.
+ */
+export function settingsForInactiveProxyMode(
+  mode: Exclude<NetworkProxyMode, "custom">,
+  saved: NetworkProxySettings,
+  urlDraft: string,
+  bypassDraft: string,
+): NetworkProxySettings {
+  const parsedUrl = parseProxyUrl(urlDraft);
+  const url = parsedUrl.ok ? parsedUrl.value.href : saved.url;
+  const effectiveBypass = bypassDraft.trim() || DEFAULT_NETWORK_PROXY_BYPASS;
+  const savedEffectiveBypass = saved.bypass ?? DEFAULT_NETWORK_PROXY_BYPASS;
+  const bypass =
+    effectiveBypass === savedEffectiveBypass ? saved.bypass : effectiveBypass;
+
+  return {
+    mode,
+    ...(url ? { url } : {}),
+    ...(bypass ? { bypass } : {}),
+  };
+}
+
+/**
+ * Resolve the Custom-mode URL when entering Custom. The URL draft may hold a
+ * stale value the user never fixed, or be empty: a valid draft wins, but an
+ * invalid one loses to the remembered `savedUrl` and only then falls back to
+ * the built-in default — otherwise switching modes erases the proxy the user
+ * configured (issue #1541's promise, broken in #1610). `fromDraft` is false
+ * exactly when the draft was discarded, so the caller can sync the input.
+ */
+export function resolveCustomProxyUrl(
+  urlDraft: string,
+  savedUrl: string | undefined,
+): { url: string; fromDraft: boolean } {
+  const parsed = parseProxyUrl(urlDraft);
+  if (parsed.ok) return { url: parsed.value.href, fromDraft: true };
+  return { url: savedUrl ?? DEFAULT_CUSTOM_PROXY_URL, fromDraft: false };
 }
 
 export type ChromiumProxyConfig =

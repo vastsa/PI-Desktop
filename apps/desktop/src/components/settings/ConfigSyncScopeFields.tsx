@@ -10,7 +10,6 @@ const CATEGORIES = [
   ["skills", "categorySkills"],
   ["subagents", "categorySubagents"],
   ["instructions", "categoryInstructions"],
-  ["projects", "categoryProjects"],
   ["plugins", "categoryPlugins"],
   ["automation", "categoryAutomation"],
   ["memory", "categoryMemory"],

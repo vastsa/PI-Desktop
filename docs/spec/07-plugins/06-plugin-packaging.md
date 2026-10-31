@@ -1,120 +1,103 @@
 # 06. Plugin Packaging
 
-## 1. Goals
+## 1. Formats and ownership
 
-Define how plugins are packaged, distributed, and installed, ensuring reproducibility across machines.
+Development loading references a local directory whose root contains
+`manifest.json`; it does not copy the source. Installed directories and
+marketplace packages are managed by Rust host-core. The desktop runtime loads
+an entry only after the install/load path has reviewed the manifest and grants.
 
-## 2. Package formats
+A distribution `.piplug` is a **store-only ZIP (compression method 0)**.
+The installer also reads store-only `.zip` input; a generic ZIP tool's deflated
+entries are rejected. Use `pi-plugin pack` or the Agent's `PluginPack`, never
+assume a renamed archive is compatible.
 
-### 2.1 Directory package (development/local)
-A plain directory containing `manifest.json`.
+## 2. Package contents
 
-### 2.2 Distribution package (recommended)
-Extension: `.piplug` (essentially a zip)
+The devkit writes the manifest at archive root. Include executable JavaScript,
+HTML/CSS, skills, renderer modules, and all referenced assets. The installer
+can discover a manifest at root or one directory below it, but the devkit's
+root layout is the supported authoring path.
 
-```text
-demo.hello-0.1.0.piplug
-└─ (zip)
- ├─ manifest.json
- ├─ main.js
- ├─ renderer/...
- ├─ skills/...
- ├─ themes/...
- └─ checksums.json # optional, in-package manifest
+There is no installer-managed dependency or TypeScript build for ordinary
+packages. Bundle runtime dependencies; `node_modules` never enters the package.
+Agent extension modules have their own TypeScript loader, and the explicit
+Import pi extension flow has bounded registry-only npm preparation; see
+[16-trusted-extensions.md](16-trusted-extensions.md). Neither exception makes
+ordinary package loading run arbitrary install scripts.
+
+## 3. Enforced bounds and exclusions
+
+| Surface | Current rule |
+|---|---|
+| Package content | At most 2,000 files and 50 MiB; marketplace download bytes are also bounded |
+| Filesystem paths | Reject traversal and symlinks; referenced entries must remain in the plugin root except the separately declared theme-asset route |
+| Always skipped by devkit walk | `.git` and `node_modules` directories |
+| Also excluded from devkit package | Root `dist/`, `.env`, `.env.*`, `.npmrc`, `*.pem`, `*.key` |
+| Credential exclusions | Warn with skipped paths; do not rely on exclusions as a secret scanner |
+| Archive encoding | Store-only entries in deterministic code-unit order; package SHA-256 is printed |
+
+`check` applies authoring/package checks, reports blocking errors and advisory
+warnings, and `pack` refuses errors. A successful check does not execute the
+entry, grant permissions, prove compatibility with every host, or pass a
+plugin-center review. Install and exercise the actual artifact before release.
+
+## 4. Integrity
+
+Marketplace installs require the catalog/resolve package SHA-256 and check
+announced size when supplied. A mismatch is `PLUGIN_INTEGRITY` and prevents
+installation. Local directory loading has no download digest.
+`checksums.json` is not a verified per-file integrity protocol in the current
+installer. It may be an ordinary bundled file, but provides no host trust gate.
+Signatures remain planned; a publisher badge is catalog metadata, not signing.
+
+## 5. Install and upgrade
+
+The host stages input under `plugins/cache/download`, validates archive safety
+and manifest references, computes the permission difference, writes the managed
+`plugins/installed/<id>` directory, persists the registry, and enables according
+to the chosen grants/options. Marketplace downloads reuse this installer.
+
+An existing id with a different version is reported as an upgrade; local
+installation does not itself require that version to be newer. Marketplace
+selection performs version comparison separately. Existing-version code is
+copied to `plugins/cache/backup/<id>/<version>` before replacement. Backup
+creation is not a promise of transactional rollback after every later I/O or
+runtime-load failure; do not advertise guaranteed automatic rollback.
+
+Upgrades retain the plugin id and private data. Added permissions require
+review; automatic update must not silently expand them. Refer to
+[08-plugin-signing-updates.md](08-plugin-signing-updates.md) for update policy.
+
+## 6. Uninstall
+
+The runtime first unloads the plugin and withdraws its contributions. Host-core
+removes the registry row, managed installed code, private data, and legacy
+per-plugin log file by default. A development source directory is retained.
+Bundled plugin ids cannot be uninstalled, including after a marketplace update;
+disable them instead. There is no implemented keep-data toggle or uninstall
+lifecycle callback.
+
+## 7. CLI and publisher handoff
+
+Run these commands from the PI-Desktop repository root after its normal setup:
+
+```bash
+pnpm pi-plugin check ../my-plugin
+pnpm pi-plugin pack ../my-plugin
+pnpm pi-plugin publish ../my-plugin --channel stable
 ```
 
-> During implementation, `.zip` may be supported first, but at the product level everything is identified as `.piplug`.
+`publish` creates a local `.piplug` and `.submission.json`; it does not upload.
+It records repository/ref/commit/path and artifact digest/size. It requires a
+git repository with `origin`, rejects credential-bearing remotes, and refuses
+a dirty tree unless `--allow-dirty` is explicit. Ignore `dist/` first because
+packing precedes that clean-tree check. A tag at HEAD is preferred; `--ref` is
+recorded but does not replace the recorded HEAD commit or make it reproducible.
+The plugin center independently resolves and verifies the source claim.
 
-## 3. In-package constraints
+## 8. Implementation evidence
 
-1. The root must contain `manifest.json`
-2. Absolute-path symlinks are not allowed
-3. Path traversal (`../`) is not allowed
-4. Default max size after extraction for a single package (recommended 50MB, configurable)
-5. Max file count (recommended 2000, configurable)
-
-## 4. checksums.json (optional but recommended)
-
-```json
-{
- "algorithm": "sha256",
- "files": {
- "manifest.json": "hex...",
- "main.js": "hex..."
- }
-}
-```
-
-The host can verify at install time.
-
-## 5. Install flow
-
-```text
-select package/dir
- → verify archive safety
- → extract to temp
- → validate manifest + files
- → permission review UX
- → move to installed/<id>
- → registry write
- → optional auto enable
-```
-
-On failure, clean up temp and leave no half-installed directory.
-
-## 6. Versioning and overwrite
-
-- Installing a new version with the same id: upgrade
-- Back up the old version to `cache/backup/<id>/<version>` before upgrade
-- Rollback on upgrade failure (P2)
-
-Semantics:
-- `install`: id does not exist
-- `upgrade`: id exists and version is newer
-- `reinstall`: force reinstall of the same version
-
-## 7. Uninstall and cleanup
-
-Delete:
-- `plugins/installed/<id>`
-- registry entry
-
-Optionally delete:
-- `plugins/data/<id>`
-- plugin logs
-
-## 8. Development packages
-
-Development loading does not go through `.piplug` packaging; instead:
-
-```text
-Load Development Plugin → choose directory → validate → register(source=dev)
-```
-
-## 9. Build recommendations (developers)
-
-Minimal spec:
-
-- Source can be TypeScript
-- Compile to directly loadable js/html/css before distribution
-- Do not rely on the host to run `npm install` for ordinary `.piplug` or development plugins (MVP does not pull dependencies at install time). The explicit Plugins → Import pi extension flow is the documented exception; its bounded npm behavior is defined in `16-trusted-extensions.md` §3.2.
-
-If a plugin needs third-party libraries:
-- Bundle them into the plugin directory yourself
-
-## 10. Acceptance
-
-1. Can install from a directory
-2. Can install from `.piplug` / `.zip` (per milestone during implementation)
-3. A bad package fails to install and leaves no residue
-4. After upgrade, the id stays the same and the new version takes effect
-
-
-## 11. Implementation status
-
-Implemented in host-core + desktop shell:
-
-1. Directory install via `plugins.installFromPath`
-2. `.piplug` / store-compressed zip install via `plugins.installFromPackage`
-3. Marketplace download installs reuse the same package installer
-4. Traversal / symlink / size / file-count guards are enforced before commit to `plugins/installed/<id>`
+- `packages/plugin-devkit/src/{check,walk,pack,publish,cli}.ts` and their tests
+- `crates/host-core/src/plugins/{install,manifest,validation,registry}.rs`
+- [Author release workflow](../../plugin-development.md#9-check-pack-and-install)

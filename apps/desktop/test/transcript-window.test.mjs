@@ -204,7 +204,7 @@ test("the transcript bounds mounted history and escalates at the top", () => {
   assert.match(transcript, /growTranscriptWindow/);
   assert.match(
     transcript,
-    /const \[windowSize, setWindowSize\] = useState\(TRANSCRIPT_WINDOW_MIN\)/,
+    /const \[windowSize, setWindowSize\] = useState\(savedReadingPosition\?\.windowSize \?\? TRANSCRIPT_WINDOW_MIN\)/,
   );
   // Reaching the top mounts more of what is loaded first, and only fetches an
   // older page once the window already covers it.
@@ -237,7 +237,7 @@ test("the window is owned per session pane, so no switch can inherit a budget", 
   // state, which is what makes it session-scoped. The reset effect that used to
   // unwind it on `sessionId` change must be gone: a pane that reset its own
   // window would throw away the history the user had already paged in.
-  assert.match(transcript, /const \[windowSize, setWindowSize\] = useState\(TRANSCRIPT_WINDOW_MIN\)/);
+  assert.match(transcript, /const \[windowSize, setWindowSize\] = useState\(savedReadingPosition\?\.windowSize \?\? TRANSCRIPT_WINDOW_MIN\)/);
   assert.doesNotMatch(
     transcript,
     /setWindowSize\(TRANSCRIPT_WINDOW_MIN\);\s*\}, \[sessionId\]\)/,

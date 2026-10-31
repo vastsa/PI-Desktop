@@ -187,7 +187,7 @@ test("rendered Markdown and file chips map source-only hits to their visible own
     });
     assert.match(panel, /data-message-id="child"/);
     const groupProps = { items: [{ kind: "tool", message: parent }], isActive: false };
-    const group = (target) =>
+    const group = (target, items = groupProps.items) =>
       renderToStaticMarkup(
         createElement(
           I18nextProvider,
@@ -195,13 +195,26 @@ test("rendered Markdown and file chips map source-only hits to their visible own
           createElement(
             TranscriptSearchContext.Provider,
             { value: target },
-            createElement(ActivityGroup, groupProps),
+            createElement(ActivityGroup, { ...groupProps, items }),
           ),
         ),
       );
-    assert.match(group(null), /class="tool-activity-header" aria-expanded="false"/);
+
+    // Task topology stays open by default so its delegation outcome remains
+    // visible; search also reveals a collapsed larger ordinary activity group.
+    assert.match(group(null), /class="tool-activity-header" aria-expanded="true"/);
+    const ordinaryItems = Array.from({ length: 5 }, (_, index) => ({
+      kind: "tool",
+      message: {
+        ...parent,
+        id: `ordinary-${index}`,
+        toolName: "Bash",
+        toolCallId: `ordinary-call-${index}`,
+      },
+    }));
+    assert.match(group(null, ordinaryItems), /class="tool-activity-header" aria-expanded="false"/);
     assert.match(
-      group({ ...focus, messageId: parent.id, query: "" }),
+      group({ ...focus, messageId: ordinaryItems[4].message.id, query: "" }, ordinaryItems),
       /class="tool-activity-header" aria-expanded="true"/,
     );
 

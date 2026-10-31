@@ -79,15 +79,20 @@ test("plugins page styles tier permission risk with semantic tokens", () => {
   assert.match(section, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
-// D296: installed rows are separate soft tiles stacked with a gap, not one
-// hairline-separated panel. Nothing clips, so the row overflow menu can overhang
-// the tile below. AnchoredMenu owns viewport clamping for rows near the bottom.
-test("plugins installed rows are stacked tiles that let row menus overhang", () => {
+// The installed list is an auto-filling grid of soft tile cards: the gap does
+// the work a hairline used to, `min(340px, 100%)` stops a column from
+// overflowing a container narrower than one card, and nothing clips so a
+// card's menu can overhang the tile below. AnchoredMenu owns viewport clamping
+// for cards near the bottom.
+test("installed plugins are cards in an auto-filling grid that lets menus overhang", () => {
   const section = pluginsSection(stylesSource);
 
-  assert.match(section, /\.plugins-list\s*\{[^}]*display:\s*flex[^}]*gap:\s*6px/);
+  assert.match(
+    section,
+    /\.plugins-list\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(340px,\s*100%\),\s*1fr\)\)/,
+  );
   assert.doesNotMatch(section, /\.plugins-list\s*\{[^}]*overflow:\s*hidden/);
-  assert.match(section, /\.plugins-row\s*\{[^}]*border-radius:\s*var\(--radius-md-plus\)[^}]*background:\s*var\(--plugins-tile\)/);
+  assert.match(section, /\.plugins-row\s*\{[^}]*border-radius:\s*var\(--radius-lg\)[^}]*background:\s*var\(--plugins-tile\)/);
   assert.doesNotMatch(section, /\.plugins-row \+ \.plugins-row/);
   assert.doesNotMatch(section, /\.plugins-row:(first|last)-child/);
   assert.match(section, /\.plugins-menu\s*\{[\s\S]*?position:\s*fixed;/);
@@ -108,30 +113,50 @@ test("extensions page draws no in-flow dividers", async () => {
   assert.doesNotMatch(pluginsCss, /\.plugins-menu-sep\s*\{[^}]*background/);
   assert.match(pluginsCss, /\.plugins-sheet-cta\s*\{[^}]*border-radius/);
   assert.doesNotMatch(pluginsCss, /\.plugins-sheet-section\s*\{[^}]*border/);
-  assert.match(pluginsCss, /\.plugins-card-foot\s*\{[^}]*padding:\s*2px 14px 12px/);
+  assert.match(pluginsCss, /\.plugins-card-foot\s*\{[^}]*padding:\s*8px 14px 12px/);
   assert.doesNotMatch(pluginsCss, /\.plugins-card-foot\s*\{[^}]*border/);
   assert.match(pluginsCss, /\.plugins-empty\s*\{[^}]*background:\s*var\(--plugins-tile\)/);
   assert.doesNotMatch(pluginsCss, /\.plugins-market-settings/);
 });
 
-test("installed rows default to a calm summary with accessible details", () => {
+test("installed cards default to a calm summary with accessible details", () => {
   const section = pluginsSection(stylesSource);
 
-  assert.match(section, /\.plugins-row\s*\{[^}]*align-items:\s*center[^}]*padding:\s*13px 16px/);
+  assert.match(section, /\.plugins-row\s*\{[^}]*flex-direction:\s*column[^}]*padding:\s*14px/);
   assert.match(section, /\.plugins-row-details\s*\{/);
   assert.match(section, /\.plugins-row-details-body\s*\{[^}]*background:\s*var\(--plugins-raised\)[^}]*box-shadow:\s*var\(--plugins-raised-shadow\)/);
   assert.match(section, /\.plugins-row-details-toggle:focus-visible\s*\{/);
   assert.match(section, /\.plugins-row-details\[open\] \.plugins-row-details-toggle > svg/);
 });
 
-test("installed row controls share one aligned rail and explain icon actions", () => {
+// The rail clusters at the card's left edge and wraps: compact scope first,
+// then the card's one call to action, then the icon actions. It never pushes
+// itself to the right edge, so a wrapped line still starts where the first
+// one does.
+test("installed card controls wrap from the card's left edge", () => {
   const section = pluginsSection(stylesSource);
 
-  assert.match(section, /\.plugins-row-controls\s*\{[\s\S]*?margin-left:\s*auto/);
+  assert.match(section, /\.plugins-row-controls\s*\{[\s\S]*?flex-wrap:\s*wrap/);
+  assert.doesNotMatch(section, /\.plugins-row-controls\s*\{[^}]*margin-left:\s*auto/);
   assert.match(section, /\.plugins-row-actions\s*\{[\s\S]*?opacity:\s*1/);
   assert.doesNotMatch(section, /\.plugins-row:hover \.plugins-row-actions/);
   assert.match(section, /\.plugins-icon-btn\s*\{[\s\S]*?position:\s*relative/);
-  assert.match(section, /\.plugins-icon-btn\s*\{/);
+  assert.match(section, /\.plugins-icon-btn\s*\{[\s\S]*?width:\s*28px[\s\S]*?height:\s*28px/);
+});
+
+// Ratings and reviews are reads whose surfaces go through tokens in both
+// themes: the chip rides a card's metadata line, and the drawer scrim is the
+// modal veil token rather than a literal, so it reads over either palette.
+test("review surfaces use design tokens in both themes", () => {
+  const section = pluginsSection(stylesSource);
+
+  assert.match(section, /\.plugins-rating\s*\{[^}]*font-variant-numeric:\s*tabular-nums/);
+  assert.match(section, /\.plugins-reviews-summary\s*\{[^}]*background:\s*var\(--plugins-tile\)/);
+  assert.match(section, /\.plugins-reviews-scrim\s*\{[^}]*background:\s*var\(--ds-modal-veil\)/);
+  assert.match(section, /\.plugins-reviews\s*\{[\s\S]*?padding-top:\s*var\(--ds-toolbar-height\)/);
+  assert.match(section, /\.plugins-reviews-composer-field\s*\{[^}]*background:\s*var\(--ds-field-inset-bg\)/);
+  assert.match(section, /\.plugins-reviews-write\s*\{/);
+  assert.match(stylesSource, /\.plugins-reviews,\s*\n\s*\.plugins-reviews-scrim,/);
 });
 
 // The 46px titlebar band floats over the destination pages on every platform: it

@@ -24,10 +24,12 @@ application. Electron Main is a thin IPC bridge; Agent Runtime owns no sync.
 
 ## 2. 便携域
 
-当前适配器集合覆盖应用偏好、用户所有的 providers、MCP 定义、用户 skills、全局 subagents、由应用管理的全局/项目指令与项目、插件安装意图、定时自动化任务以及可选的项目记忆。凭据默认需要明确选择。只有选中凭据类别时才会包含 provider API key 和 MCP 环境变量/headers；OAuth access/refresh token 与 cookies 永远不会导出。
+当前适配器集合覆盖应用偏好、用户所有的 providers、MCP 定义、用户 skills、全局 subagents、由应用管理的全局/项目指令、插件安装意图、定时自动化任务以及可选的项目记忆。凭据默认需要明确选择。只有选中凭据类别时才会包含 provider API key 和 MCP 环境变量/headers；OAuth access/refresh token 与 cookies 永远不会导出。
 指令适配器只读取固定的全局 `~/.pi/agent/AGENTS.md` 和每个已注册项目根目录的 `AGENTS.md`；不会扫描嵌套仓库或任意文件。导入的指令文件只有在明确选择其作用域、完成必要映射并获得审批后才会写入。
 指令文件没有单独的字节上限；其内容只受 Host 在上传与远程校验时统一的便携实体负载上限约束。
 目录形态的 skills 会将有界的同级资源作为已认证对象携带。Host 会校验 package path、symlink、冲突、文件数量和总大小后才写入已审批的资源：每个 package 最多 256 个资源、单个资源 2 MiB、整个 package 16 MiB；技能文档本身仍保持 128 KiB 上限，因为它可能进入 prompt。脚本按字节存储，导入时绝不执行。
+
+项目和项目组列表保留在本机。同步和备份均不采集或应用其名称、置顶、根目录列表和排序，也不提供 projects 类别。同步和恢复会忽略既有 vault 修订中的旧 `projects` 实体；不会因此删除本机项目或云端修订历史。项目级 MCP、skills、指令、记忆和自动化绑定仍通过本地文件夹映射受支持。需要本地 workspace 的功能由接收设备自行注册项目和项目组。
 
 项目和 workspace 绑定使用不透明的逻辑标识符表示。Host-core 为每个已注册的独立项目分配持久逻辑身份；项目组根目录的身份由组身份和有序根位置派生。设备映射把接收的逻辑 ID 覆盖到本地文件夹，因此不同绝对路径不会产生重复实体。
 传入的项目作用域可执行内容在本地文件夹映射和审批存在前保持暂存。加密的便携实体负载中不会写入本地路径。没有受支持适配器的插件数据会报告为不支持，而不会被声称为已同步。已审批的插件安装意图保存在 Host 所有的本地覆盖中；它不会拉取插件字节或权限授予。

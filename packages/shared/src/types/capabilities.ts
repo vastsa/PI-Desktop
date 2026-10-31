@@ -110,6 +110,8 @@ export type McpServerView = McpServerRecord & {
 };
 
 /** Progress of one MCP OAuth login attempt, pushed to the renderer. */
+export type McpOAuthLoginErrorCode = "MCP_OAUTH_DCR_UNAVAILABLE";
+
 export type McpOAuthLoginEvent = {
   loginId: string;
   serverId: string;
@@ -117,7 +119,7 @@ export type McpOAuthLoginEvent = {
   | { kind: "authUrl"; url: string; instructions?: string; opened: boolean }
   | { kind: "progress"; message: string }
   | { kind: "done"; status: McpServerStatus }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; errorCode?: McpOAuthLoginErrorCode }
   | { kind: "cancelled" }
 );
 
@@ -147,6 +149,14 @@ export type UserSkillRecord = {
   sizeBytes: number;
   createdAt: string;
   updatedAt: string;
+};
+
+/** A skill bundled with PI-Desktop and enabled globally by default. */
+export type BuiltinSkillRecord = {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
 };
 
 export type UserSkillInput = {

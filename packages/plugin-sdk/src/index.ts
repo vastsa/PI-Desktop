@@ -233,6 +233,76 @@ export type PluginComposerTransformInput = {
   modelKey?: string;
 };
 
+/**
+ * Longest suggestion text the host keeps, in characters. Longer text is cut;
+ * the composer draws it in one line with an ellipsis either way.
+ */
+export const PLUGIN_COMPOSER_SUGGESTION_MAX_CHARS = 200;
+/** Lifetime of one suggestion when `ttlMs` is omitted, in milliseconds. */
+export const PLUGIN_COMPOSER_SUGGESTION_TTL_MS = 120_000;
+/** Shortest and longest lifetime a caller may ask for, in milliseconds. */
+export const PLUGIN_COMPOSER_SUGGESTION_TTL_MIN_MS = 1_000;
+export const PLUGIN_COMPOSER_SUGGESTION_TTL_MAX_MS = 600_000;
+
+/**
+ * `pi.composer.suggest`: one dismissible line the composer shows in its
+ * placeholder layer while the draft is empty (`composer.suggest`).
+ *
+ * `sessionId` and `turnId` are the ones the plugin learned from
+ * `session:turnEnded`. The host shows the text only while that session is
+ * still the one on screen, no newer turn has started, and the draft is empty,
+ * so an answer that took a model request to produce cannot surface in a place
+ * the user already left. `text` is one line: the host folds line breaks and
+ * runs of whitespace into single spaces and cuts the result at
+ * `PLUGIN_COMPOSER_SUGGESTION_MAX_CHARS`. `ttlMs` defaults to
+ * `PLUGIN_COMPOSER_SUGGESTION_TTL_MS` and is clamped into
+ * `PLUGIN_COMPOSER_SUGGESTION_TTL_MIN_MS`..`PLUGIN_COMPOSER_SUGGESTION_TTL_MAX_MS`.
+ */
+export type PluginComposerSuggestInput = {
+  readonly sessionId: string;
+  /** The turn the suggestion belongs to; a older turn that already ran is stale. */
+  readonly turnId?: string;
+  readonly text: string;
+  readonly ttlMs?: number;
+};
+
+/**
+ * Why a suggestion is not on screen.
+ * - `session-not-visible`: that session is not the one the user is looking at.
+ * - `draft-not-empty`: the composer already holds text or an attachment.
+ * - `stale-turn`: the session has run a newer turn since `turnId`, so the
+ *   suggestion would arrive about a moment that is already over.
+ * - `replaced`: a newer suggestion took the slot before this one was answered.
+ * - `unsupported`: nothing could take it — no window, no composer mounted, or
+ *   the shell did not answer in time.
+ */
+export const PLUGIN_COMPOSER_SUGGESTION_REFUSALS = [
+  "session-not-visible",
+  "draft-not-empty",
+  "stale-turn",
+  "replaced",
+  "unsupported",
+] as const;
+
+export type PluginComposerSuggestionRefusal =
+  (typeof PLUGIN_COMPOSER_SUGGESTION_REFUSALS)[number];
+
+/**
+ * `pi.composer.suggest` answer. A place that will not show the text is not an
+ * error: `shown: false` and a `reason` let a plugin log the miss and decide
+ * whether to spend another completion. Only malformed input throws —
+ * `INVALID_PARAMS`, like every other host API.
+ */
+export type PluginComposerSuggestResult =
+  | { readonly shown: true }
+  | { readonly shown: false; readonly reason: PluginComposerSuggestionRefusal };
+
+/**
+ * `pi.composer.clearSuggestion`: drop this plugin's suggestion. `sessionId`
+ * defaults to the session the user is looking at.
+ */
+export type PluginComposerClearSuggestionInput = { readonly sessionId?: string };
+
 export type PluginSessionMessage =
   | { role: "user"; content: string; createdAt: string }
   | {
@@ -296,6 +366,25 @@ export type PluginProjectRecord = {
   projectId: number;
   path: string;
   name: string;
+};
+
+/** One registered folder; paths are metadata and do not grant filesystem access. */
+export type PluginWorkspaceRoot = {
+  path: string;
+  name: string;
+  primary: boolean;
+};
+
+/** One durable row in the host's projects table, including ungrouped projects. */
+export type PluginProjectInfo = {
+  /** Base-10 projects.id, without a prefix. Stable for the lifetime of the row;
+   * distinct from workspace.get().projectId, which identifies a project group. */
+  projectId: string;
+  name: string;
+  /** This row's workspace identity; remote-project: identities remain opaque. */
+  primaryPath: string;
+  /** Non-empty, primary first, followed by this primary's registered group roots. */
+  roots: PluginWorkspaceRoot[];
 };
 
 export type PluginSessionListItem = {
@@ -862,6 +951,49 @@ export type PluginLlmContext = {
   truncated: boolean;
 };
 
+/**
+ * The host turn one session is running right now (spec 07-plugins/03 §session).
+ *
+ * `turnId` is the durable identity the host opened for that turn, so a plugin
+ * can scope its own work by turn instead of guessing from the previous turn's
+ * end event or from draft changes. `startedAt` is the host's clock in epoch ms.
+ */
+export type PluginActiveTurn = {
+  readonly turnId: string;
+  readonly startedAt: number;
+};
+
+/**
+ * The session the user is looking at, as the host shows it.
+ *
+ * `projectPath` is the working directory of the session's project (`null` for a
+ * session without one). `activeTurn` is `null` while the session is idle. The
+ * snapshot is a value, not a handle: the session can change or stop between two
+ * calls, so a plugin must compare `sessionId` instead of assuming it held.
+ */
+export type PluginActiveSession = {
+  readonly sessionId: string;
+  readonly projectPath: string | null;
+  readonly activeTurn: PluginActiveTurn | null;
+};
+
+/** What `pi.ui.revealView` accepts: which of the plugin's views, showing what. */
+export type PluginRevealViewInput = {
+  /**
+   * One of the plugin's own `contributes.views`. Omitting it names the view only
+   * when the plugin contributes exactly one.
+   */
+  readonly viewId?: string;
+  /** Opaque subject for the view, the same value `piViewOpen` carries. */
+  readonly location?: string;
+  /**
+   * The session whose work panel should show the view. Omitting it means the
+   * session the user is looking at right now; naming a session that is no
+   * longer active is refused instead of opening a view on a stale panel.
+   */
+  readonly sessionId?: string;
+};
+
 export type PluginCompleteInput = {
   modelKey: string;
   thinkingLevel?: string;
@@ -1073,7 +1205,12 @@ export type PluginFsPreview = {
   /** Base64 data URL when kind is `"image"`. */
   dataUrl?: string;
   size: number;
+  /** Available for brokered remote previews. */
+  mtimeMs?: number;
 };
+
+/** Reject a file response if the workspace changed while a view was loading it. */
+export type PluginFsReadOptions = { workspacePath: string };
 
 /**
  * The appearance the host is currently showing. Mirrors `PluginAppearance` in
@@ -1145,6 +1282,24 @@ export type PluginHostApi = {
     registerAdapter: (adapter: PluginSpeechAdapter) => Promise<void>;
     unregisterAdapter: (protocol: string) => Promise<void>;
   };
+  /**
+   * The session's input box (`composer.suggest`). A plugin gets one
+   * dismissible line into the placeholder layer of a session whose draft is
+   * empty; the user takes it with Tab, drops it with Esc, and typing anything
+   * drops it too. Never a message, never a bubble, never a send.
+   */
+  composer: {
+    /**
+     * Offer one line for the composer of `sessionId`. Resolves
+     * `{ shown: false, reason }` instead of throwing when nothing will show
+     * it, so the answer is safe to log. The whole suggestion is cleared by
+     * the shell on: typing, pasting, an attachment, a send, a session switch,
+     * a new turn, this plugin unloading, a renderer reload, or a window close.
+     */
+    suggest: (input: PluginComposerSuggestInput) => Promise<PluginComposerSuggestResult>;
+    /** Drop this plugin's suggestion; nothing is shown when it is already gone. */
+    clearSuggestion: (input?: PluginComposerClearSuggestionInput) => Promise<{ ok: true }>;
+  };
   ui: {
     openPanel: (opts?: { title?: string }) => Promise<void>;
     closePanel: () => Promise<void>;
@@ -1155,6 +1310,17 @@ export type PluginHostApi = {
     showNativeNotification: (
       input: PluginNativeNotificationInput,
     ) => Promise<PluginNativeNotificationResult>;
+    /**
+     * Show one of this plugin's own `contributes.views` in the work panel of a
+     * session (`ui.view`). The view travels through the same `location` channel
+     * the tool launcher and chat file references use, and a live view receives
+     * it as a `view:open` push instead of a reload.
+     *
+     * Rejects with `INVALID_ARGUMENT` when no session is active, when the named
+     * `sessionId` is no longer the one the user is looking at, or when `viewId`
+     * does not name exactly one of the plugin's views.
+     */
+    revealView: (input?: PluginRevealViewInput) => Promise<void>;
   };
   project: {
     create: (input: { path: string }) => Promise<PluginProjectRecord>;
@@ -1167,7 +1333,12 @@ export type PluginHostApi = {
     };
   };
   workspace: {
-    get: () => Promise<{ path: string; name: string } | null>;
+    get: () => Promise<{ path: string; name: string; remote?: { path: string; readOnly: true } } | null>;
+  };
+  projects: {
+    /** Read-only durable projects, most recently opened first. No permission
+     * required; unavailable hosts return []. Never opens or switches a project. */
+    list: () => Promise<PluginProjectInfo[]>;
   };
   /** Reviewed host operations shared with the local MCP control plane. */
   desktop: {
@@ -1226,9 +1397,11 @@ export type PluginHostApi = {
      * a data URL; text is capped; binary and oversized files are reported
      * without dumping their bytes.
      */
-    readPreview: (pathFromRoot: string) => Promise<PluginFsPreview>;
+    readPreview: (pathFromRoot: string, options?: PluginFsReadOptions) => Promise<PluginFsPreview>;
     /** Open an existing readable file with the operating system's default app. */
     openDefault: (pathFromRoot: string) => Promise<void>;
+    /** Open an existing readable HTML file in the bundled work-panel Browser. */
+    openInBrowser: (pathFromRoot: string) => Promise<void>;
     /** Reveal an existing readable file in the operating system's file manager. */
     reveal: (pathFromRoot: string) => Promise<void>;
     writeText: (pathFromRoot: string, content: string) => Promise<void>;
@@ -1239,7 +1412,7 @@ export type PluginHostApi = {
      * are always listed so the tree stays navigable; files are filtered by the
      * declared read scope, and heavy or protected directories are skipped.
      */
-    list: (pathFromRoot: string) => Promise<PluginFsEntry[]>;
+    list: (pathFromRoot: string, options?: PluginFsReadOptions) => Promise<PluginFsEntry[]>;
     remove: (pathFromRoot: string) => Promise<void>;
     /**
      * Ask the user to point at a directory, which becomes the root for this
@@ -1258,6 +1431,15 @@ export type PluginHostApi = {
   };
   session: {
     getLlmContext: () => Promise<PluginLlmContext>;
+    /**
+     * The session the user is looking at, or `null` at home and while no chat
+     * session is selected. This is the snapshot the `session:activated` event
+     * carries, so a plugin that subscribes does not need to poll.
+     *
+     * It takes no session id: the host reports the selection instead of letting
+     * a plugin address a session the user is not looking at.
+     */
+    getActive: () => Promise<PluginActiveSession | null>;
     getAutoTitleContext: (input: { sessionId: string }) => Promise<PluginAutoTitleContext | null>;
     setAutoTitle: (input: {
       sessionId: string;
@@ -1419,6 +1601,10 @@ export const PLUGIN_PERMISSIONS = [
   "agent.prompt.inject",
   "agent.complete",
   "composer.transform",
+  // One dismissible line in the composer's placeholder layer. A grant here can
+  // put text into a draft the user may send, so it sits with the draft writer
+  // (`composer.transform`) rather than with the display-only grants.
+  "composer.suggest",
   "agent.extension",
   // Renderer slots (`docs/plugin-plan/ui/`): the entry module loads into the
   // host renderer's own document, so the surface it can touch is the
@@ -2399,6 +2585,7 @@ export {
   FS_DENY_DIR_SEGMENTS,
   FS_DENY_FILE_PATTERNS,
   LEGACY_FS_PERMISSIONS,
+  PLUGIN_FS_LIST_MAX_ENTRIES,
   PLUGIN_FS_MODES,
   type MatchFsGlobOptions,
   type PluginFsMode,

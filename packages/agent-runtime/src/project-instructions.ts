@@ -1,6 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import nodePath, { type PlatformPath, dirname, join, relative, resolve } from "node:path";
 
 const INSTRUCTION_FILE_NAMES = [
   "AGENTS.override.md",
@@ -28,8 +28,13 @@ export function globalInstructionPath(): string {
   return GLOBAL_INSTRUCTION_PATH;
 }
 
-function isWithinRoot(root: string, path: string): boolean {
-  return path === root || path.startsWith(`${root}${sep}`);
+export function isWithinRoot(
+  root: string,
+  candidate: string,
+  paths: Pick<PlatformPath, "sep"> = nodePath,
+): boolean {
+  const boundary = root.endsWith(paths.sep) ? root : `${root}${paths.sep}`;
+  return candidate === root || candidate.startsWith(boundary);
 }
 
 function normalizeStablePath(path: string): string {

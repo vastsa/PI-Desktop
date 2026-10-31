@@ -12,6 +12,7 @@ import {
   resolveContextUsageDisplay,
   resolveContextWindow,
   toolTokenUsage,
+  turnUsageBreakdown,
   usageTokenTotal,
   settleStoppedAssistantMetrics,
 } from "../src/lib/context-usage.ts";
@@ -216,6 +217,68 @@ test("occupancy sums last-request input, output, and cache, not reasoning twice"
   assert.equal(contextOccupancyTokens(usage), 97);
   assert.equal(calculateContextUsage(usage, 200).usedTokens, 97);
   assert.equal(usageTokenTotal(usage), 15);
+});
+
+test("turn usage breakdown returns zeros for an absent usage", () => {
+  assert.deepEqual(turnUsageBreakdown(undefined), {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+  });
+});
+
+test("turn usage breakdown sums the visual turn instead of the reported total", () => {
+  const breakdown = turnUsageBreakdown({
+    inputTokens: 3_214,
+    outputTokens: 1_824,
+    cacheReadTokens: 12_096,
+    totalTokens: 17_000,
+  });
+  assert.deepEqual(breakdown, {
+    inputTokens: 3_214,
+    outputTokens: 1_824,
+    cacheReadTokens: 12_096,
+    cacheWriteTokens: 0,
+    totalTokens: 17_134,
+  });
+});
+
+test("turn usage breakdown includes cache writes but never adds reasoning again", () => {
+  const breakdown = turnUsageBreakdown({
+    inputTokens: 100,
+    outputTokens: 50,
+    cacheReadTokens: 200,
+    cacheWriteTokens: 25,
+    reasoningTokens: 12,
+    totalTokens: 150,
+  });
+  // Reasoning is already inside output, and the provider total is ignored.
+  assert.deepEqual(breakdown, {
+    inputTokens: 100,
+    outputTokens: 50,
+    cacheReadTokens: 200,
+    cacheWriteTokens: 25,
+    totalTokens: 375,
+  });
+});
+
+test("turn usage breakdown normalizes negative and fractional values", () => {
+  const breakdown = turnUsageBreakdown({
+    inputTokens: -5,
+    outputTokens: 10.6,
+    cacheReadTokens: 2.4,
+    cacheWriteTokens: Number.NaN,
+    totalTokens: 999,
+  });
+  assert.deepEqual(breakdown, {
+    inputTokens: 0,
+    outputTokens: 11,
+    cacheReadTokens: 2,
+    cacheWriteTokens: 0,
+    totalTokens: 13,
+  });
 });
 
 test("generation throughput uses provider output and stream duration", () => {

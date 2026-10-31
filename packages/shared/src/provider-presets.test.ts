@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   NAMED_ENDPOINT_PRESETS,
+  addressesPublishedVendorHost,
   deepseekRequestCompat,
   DEEPSEEK_REASONING_REPLAY_PLACEHOLDER,
   isDeepSeekReasoningReplay,
@@ -9,6 +10,7 @@ import {
   matchNamedPreset,
   matchZhipuPreset,
   normalizeEndpointUrl,
+  withoutReasoningReplayPlaceholder,
   zhipuRequestCompat,
 } from "./provider-presets.js";
 
@@ -90,7 +92,35 @@ describe("DeepSeek reasoning replay", () => {
     );
     expect(
       deepseekRequestCompat({ baseUrl: "https://api.deepseek.com" }),
-    ).toEqual({ requiresReasoningContentOnAssistantMessages: true });
+    ).toEqual({
+      requiresReasoningContentOnAssistantMessages: true,
+    });
+  });
+
+  it("keeps reasoning_effort on official endpoints and suppresses it on relays (#1821)", () => {
+    // Official DeepSeek Completions documents `reasoning_effort` (low/high/max)
+    // next to `thinking`; only relays were reported to reject it (#1664).
+    expect(
+      deepseekRequestCompat({ baseUrl: "https://api.deepseek.com/v1", modelId: "deepseek-flash" })
+        ?.supportsReasoningEffort,
+    ).toBeUndefined();
+    expect(
+      deepseekRequestCompat({ baseUrl: "https://gw.example.test/v1", modelId: "deepseek-v4.1-flash" })
+        ?.supportsReasoningEffort,
+    ).toBe(false);
+  });
+
+  it("does not treat a relay URL containing deepseek.com as an official host", () => {
+    for (const baseUrl of [
+      "https://api.deepseek.com.evil.test/v1",
+      "https://relay.example.test/v1/deepseek.com",
+    ]) {
+      expect(isOfficialDeepSeekEndpoint({ baseUrl })).toBe(false);
+      expect(deepseekRequestCompat({ baseUrl, modelId: "deepseek-v4.1-flash" })).toMatchObject({
+        supportsReasoningEffort: false,
+        requiresNonEmptyReasoningReplay: true,
+      });
+    }
   });
 
   it("matches aggregator and custom DeepSeek-family models without a deepseek.com URL", () => {
@@ -102,6 +132,7 @@ describe("DeepSeek reasoning replay", () => {
       }),
     ).toEqual({
       requiresReasoningContentOnAssistantMessages: true,
+      supportsReasoningEffort: false,
       requiresNonEmptyReasoningReplay: true,
     });
     expect(DEEPSEEK_REASONING_REPLAY_PLACEHOLDER.length).toBeGreaterThan(0);
@@ -181,12 +212,15 @@ describe("named endpoint presets", () => {
     });
   });
 
-  it("keeps StepFun Plan on its subscription endpoint and catalog vendor", () => {
+  it("keeps StepFun Plan on its subscription endpoint, catalog vendor and model-list auth", () => {
     const expected = {
       id: "stepfun-plan",
       vendorKey: "stepfun-step-plan",
       baseUrl: "https://api.stepfun.com/step_plan/v1",
       apiStyle: "anthropic_messages",
+      /* Chat is Anthropic Messages; this deployment publishes its models the
+         OpenAI way, so the endpoint states that instead of it being derived. */
+      discoveryStyle: "openai_models",
     };
     expect(NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === expected.id)).toMatchObject(expected);
     expect(matchNamedPreset({ vendorKey: expected.vendorKey })).toMatchObject(expected);
@@ -282,5 +316,84 @@ describe("pi-ai built-in API-key services", () => {
     ]) {
       expect(matchNamedPreset({ vendorKey: id })?.apiStyle).toBe("chat_completions");
     }
+  });
+});
+
+describe("addressesPublishedVendorHost", () => {
+  it("matches the hosts the preset table publishes", () => {
+    for (const baseUrl of [
+      "https://api.openai.com/v1",
+      "https://api.anthropic.com",
+      "https://generativelanguage.googleapis.com/v1beta",
+      "https://api.deepseek.com",
+      "https://api.moonshot.cn/v1",
+      "https://openrouter.ai/api/v1",
+      "https://opencode.ai/zen/go/v1",
+      "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    ]) {
+      expect(addressesPublishedVendorHost(baseUrl)).toBe(true);
+    }
+  });
+
+  it("matches by host, not by the full canonical URL", () => {
+    // The preset records spell `https://api.deepseek.com` and
+    // `https://api.groq.com/openai/v1`; both paths below are still that host.
+    expect(addressesPublishedVendorHost("https://api.deepseek.com/v1")).toBe(true);
+    expect(addressesPublishedVendorHost("https://api.deepseek.com/beta")).toBe(true);
+    expect(addressesPublishedVendorHost("https://api.groq.com/v1")).toBe(true);
+    expect(addressesPublishedVendorHost("https://api.openai.com/v1/")).toBe(true);
+    expect(addressesPublishedVendorHost("https://API.OPENAI.COM/v1")).toBe(true);
+  });
+
+  it("leaves a self-hosted gateway, relay, or loopback to the user", () => {
+    for (const baseUrl of [
+      "https://gateway.example.com/v1",
+      "https://relay.example.com",
+      "http://127.0.0.1:11434/v1",
+      "https://llm.internal:8443/v1",
+    ]) {
+      expect(addressesPublishedVendorHost(baseUrl)).toBe(false);
+    }
+  });
+
+  it("does not accept a host that merely contains a vendor host", () => {
+    expect(addressesPublishedVendorHost("https://api.openai.com.evil.test/v1")).toBe(false);
+    expect(addressesPublishedVendorHost("https://openai.com/v1")).toBe(false);
+    expect(addressesPublishedVendorHost("https://api.anthropic.com.evil.test")).toBe(false);
+  });
+
+  it("is false for missing or malformed input", () => {
+    for (const baseUrl of [
+      undefined,
+      "",
+      "   ",
+      "not a url",
+      "://broken",
+      "http://",
+    ]) {
+      expect(addressesPublishedVendorHost(baseUrl)).toBe(false);
+    }
+  });
+});
+
+describe("withoutReasoningReplayPlaceholder", () => {
+  it("drops a leading echo of the replay placeholder (#1945)", () => {
+    expect(withoutReasoningReplayPlaceholder(DEEPSEEK_REASONING_REPLAY_PLACEHOLDER)).toBe("");
+    expect(
+      withoutReasoningReplayPlaceholder(`${DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}\nreal plan`),
+    ).toBe("real plan");
+    expect(
+      withoutReasoningReplayPlaceholder(
+        `${DEEPSEEK_REASONING_REPLAY_PLACEHOLDER} ${DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}real plan`,
+      ),
+    ).toBe("real plan");
+    // The model's observed rewrite of the echoed placeholder.
+    expect(withoutReasoningReplayPlaceholder("[reasoning retained for this turn] plan")).toBe("plan");
+  });
+
+  it("leaves real reasoning, including a later mention, unchanged", () => {
+    expect(withoutReasoningReplayPlaceholder("real plan")).toBe("real plan");
+    const mention = `the relay sent ${DEEPSEEK_REASONING_REPLAY_PLACEHOLDER} earlier`;
+    expect(withoutReasoningReplayPlaceholder(mention)).toBe(mention);
   });
 });

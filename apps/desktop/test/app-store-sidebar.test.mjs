@@ -18,6 +18,40 @@ const topbarSource = await readFile(
   "utf8",
 );
 
+test("opening an archived project restores its sidebar visibility", () => {
+  const activationBlock = projectSliceSource.match(
+    /activateProject: async[\s\S]*?openProjectPath:/,
+  )?.[0] ?? "";
+  const setProjectIndex = activationBlock.indexOf(
+    "await api.setProject(requestedPath)",
+  );
+  const navigationGuardIndex = activationBlock.indexOf(
+    "if (!runtime.navigationIntentIsCurrent(intent)) return null;",
+    setProjectIndex,
+  );
+  const restoreIndex = activationBlock.indexOf(
+    "get().restoreProject(workspace.path)",
+  );
+  const restoreBlock = projectSliceSource.match(
+    /restoreProject: \(path\) => \{[\s\S]*?persistCurrentSidebar\(get\);\s*\},/,
+  )?.[0] ?? "";
+
+  assert.ok(setProjectIndex >= 0, "activation must set the host project");
+  assert.ok(
+    navigationGuardIndex > setProjectIndex,
+    "stale activation must be ignored",
+  );
+  assert.ok(
+    restoreIndex > navigationGuardIndex,
+    "only a successful activation restores visibility",
+  );
+  assert.match(
+    activationBlock,
+    /if \(projectIsArchived\(workspace\.path, get\(\)\.projectMeta\)\)\s*\{\s*get\(\)\.restoreProject\(workspace\.path\);\s*\}/,
+  );
+  assert.match(restoreBlock, /archived:\s*false/);
+});
+
 test("project activation separates visible transcript state from background run state", () => {
   const activationBlock = storeSource.match(
     /activateProject: async[\s\S]*?openProjectPath:/,
@@ -87,6 +121,24 @@ test("project title toggles its conversation group without forcing it open", () 
   assert.match(projectTitleBlock, /setCollapsed\(entry\.path, !collapsedProject\)/);
   assert.doesNotMatch(projectTitleBlock, /setCollapsed\(entry\.path, false\)/);
   assert.doesNotMatch(sidebarSource, /className="project-collapse-toggle"/);
+});
+
+test("collapsing a project resets its expanded session history", () => {
+  const collapseBlock = sidebarSource.match(
+    /const setCollapsed = \(path: string, value: boolean\) => \{[\s\S]*?\n  \};/,
+  )?.[0] ?? "";
+
+  assert.match(
+    collapseBlock,
+    /if \(value\) \{[\s\S]*?setExpandedProjectSessions\([\s\S]*?updateProjectSessionExpansion\(previous, normalized, false\)/,
+  );
+  const loadMoreBlock = sidebarSource.match(
+    /const expandProjectSessions = \(projectKey: string\) => \{[\s\S]*?\n  \};/,
+  )?.[0] ?? "";
+  assert.match(
+    loadMoreBlock,
+    /updateProjectSessionExpansion\(previous, projectKey, true\)/,
+  );
 });
 
 test("global search stays on the conversation topbar, not the sidebar header", () => {

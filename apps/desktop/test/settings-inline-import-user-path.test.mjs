@@ -60,6 +60,13 @@ const project = {
 };
 const calls = [];
 let imported = false;
+const builtinSkill = {
+  id: "pi-desktop/imagegen",
+  name: "imagegen",
+  description: "Generate and edit images.",
+  enabled: true,
+};
+let builtinSkillSetCall;
 
 // Toast audio is optional feedback; this hidden fixture checks the visible
 // toast only and does not emit a sound during the automated UI run.
@@ -80,6 +87,14 @@ window.piDesktop = {
         break;
       case IPC.invoke.skillList:
         data = { skills: [] };
+        break;
+      case IPC.invoke.skillBuiltinList:
+        data = { builtins: [builtinSkill] };
+        break;
+      case IPC.invoke.skillBuiltinSetEnabled:
+        builtinSkillSetCall = { channel, input };
+        builtinSkill.enabled = input.enabled;
+        data = { id: input.id, enabled: input.enabled };
         break;
       case IPC.invoke.mcpList:
         data = {
@@ -150,6 +165,36 @@ async function waitFor(predicate, message) {
 }
 
 window.settingsInlineMcpImportProbe = async () => {
+  await waitFor(
+    () => [...document.querySelectorAll(".agent-capability-row .agent-capability-name")]
+      .find((node) => node.textContent.trim() === "imagegen"),
+    "Bundled imagegen skill did not appear in Settings",
+  );
+  const builtinRow = requireNode(
+    [...document.querySelectorAll(".agent-capability-row")]
+      .find((row) => row.querySelector(".agent-capability-name")?.textContent.trim() === "imagegen"),
+    "Bundled skill row is missing",
+  );
+  const builtinToggle = requireNode(
+    builtinRow.querySelector('[role="switch"]'),
+    "Bundled skill toggle is missing",
+  );
+  if (builtinToggle.getAttribute("aria-checked") !== "true") {
+    throw new Error("Bundled skill must be enabled by default");
+  }
+  flushSync(() => builtinToggle.click());
+  await waitFor(
+    () => builtinSkillSetCall && builtinToggle.getAttribute("aria-checked") === "false",
+    "Turning off the bundled skill did not update the setting",
+  );
+  if (!builtinRow.classList.contains("is-off")) {
+    throw new Error("Disabled bundled skill row did not show its off state");
+  }
+  const builtinToggleState = {
+    persisted: builtinSkillSetCall,
+    visibleOff: builtinRow.classList.contains("is-off"),
+  };
+
   await waitFor(() => buttonByLabel("MCP"), "MCP destination did not render");
   flushSync(() => requireNode(buttonByLabel("MCP"), "MCP navigation is missing").click());
   await waitFor(
@@ -234,6 +279,7 @@ window.settingsInlineMcpImportProbe = async () => {
   const visibleRow = [...document.querySelectorAll(".agent-capability-row")]
     .find((row) => row.querySelector(".agent-capability-name")?.textContent.trim() === candidate.label);
   return {
+    builtinToggleState,
     scanCountBeforeExplicitClick,
     scanCalls,
     runCall,
@@ -260,7 +306,7 @@ const urlAssets = {
   },
 };
 
-test("Settings MCP page imports a selected external server into the chosen project", {
+test("Settings disables a bundled skill and imports an external MCP server into a project", {
   timeout: 60_000,
   skip:
     process.platform === "linux" && !process.env.DISPLAY
@@ -284,6 +330,7 @@ test("Settings MCP page imports a selected external server into the chosen proje
       define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "true" },
       alias: {
         "@pi-desktop/i18n": join(root, "packages/i18n/src"),
+        "@pi-desktop/shared": join(root, "packages/shared/src"),
         react: join(root, "apps/desktop/node_modules/react"),
         "react-dom": join(root, "apps/desktop/node_modules/react-dom"),
         i18next: join(root, "apps/desktop/node_modules/i18next"),
@@ -353,6 +400,13 @@ app.whenReady().then(async () => {
     assert(resultLine, output);
     const result = JSON.parse(resultLine.slice("SETTINGS_INLINE_MCP_IMPORT ".length));
 
+    assert.deepEqual(result.builtinToggleState, {
+      persisted: {
+        channel: "pi-desktop/skill/builtin/setEnabled",
+        input: { id: "pi-desktop/imagegen", enabled: false },
+      },
+      visibleOff: true,
+    });
     assert.equal(result.scanCountBeforeExplicitClick, 0, "Expanding the inline panel must not scan");
     assert.equal(result.scanCalls.length, 2, "The explicit scan and post-import refresh should run");
     assert.deepEqual(result.scanCalls[0].input, {

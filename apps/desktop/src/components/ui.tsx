@@ -18,6 +18,8 @@ import {
 
 import { IconEye, IconEyeOff, IconHelp } from "./icons";
 
+export { OverlayBackdrop } from "./OverlayBackdrop";
+
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }

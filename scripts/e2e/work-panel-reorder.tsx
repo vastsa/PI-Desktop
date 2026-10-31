@@ -136,8 +136,12 @@ globalThis.workPanelReorderProbe = async () => {
       "empty tab-strip space blocks native window dragging",
     );
     assert(
-      [...panelHost.querySelectorAll(".work-panel-tab")].every((tab) => tab.classList.contains("no-drag")),
-      "tab interactions must remain outside native window dragging",
+      panelHost.querySelector(".work-panel-tab-strip")?.classList.contains("no-drag"),
+      "the visible tab viewport must keep tabs interactive",
+    );
+    assert(
+      [...panelHost.querySelectorAll(".work-panel-tab")].every((tab) => !tab.classList.contains("no-drag")),
+      "offscreen tabs must not subtract unclipped native drag rectangles",
     );
     assert(
       panelHost.querySelector(".work-panel-actions")?.classList.contains("no-drag"),

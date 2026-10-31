@@ -9,7 +9,10 @@
 The preset uses `https://api.stepfun.com/step_plan/v1` with **Anthropic
 Messages**. The runtime sends requests to `/step_plan/v1/messages`; it does
 not send subscription requests to the ordinary `/v1/messages` endpoint or
-append a second `/v1` segment. The API format remains editable in Advanced.
+append a second `/v1` segment. This deployment publishes its model list to
+`Authorization: Bearer` rather than the Anthropic `x-api-key`, so fetching the
+model list and testing the connection both authenticate with your API key as a
+Bearer token. The API format remains editable in Advanced.
 
 Model availability still comes from the endpoint. If model discovery is
 unavailable, add the exact model ID manually. Published limits, input

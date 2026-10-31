@@ -162,7 +162,7 @@ test("asktool card is a stepwise, non-expiring composer question surface", () =>
   assert.match(composerSource, /headAsk\(s\.pendingAsks/);
   assert.doesNotMatch(transcriptSource, /AskToolCard/);
   // Each retained pane subscribes to its own session's ask queue (ADR 0137).
-  assert.match(sessionPaneSource, /askPending=\{transcript\.historical \? false : askPending\}/);
+  assert.match(sessionPaneSource, /askPending=\{transcript\.liveTail \? askPending : false\}/);
   assert.match(sessionPaneSource, /headAsk\(state\.pendingAsks, sessionId\)/);
   assert.match(storeSource, /event\.type === "asktool_request"/);
   assert.match(askCardSource, /current\.multiSelect/);
@@ -173,6 +173,24 @@ test("asktool card is a stepwise, non-expiring composer question surface", () =>
   assert.match(messageStyleSource, /\.asktool-options[\s\S]*?overflow-y:\s*auto/);
   assert.match(messageStyleSource, /\.asktool-options[\s\S]*?max-height:\s*min\(208px,\s*24dvh\)/);
   assert.match(messageStyleSource, /\.asktool-options[\s\S]*?overscroll-behavior-y:\s*contain/);
+  // A long question prompt scrolls inside the question body. Header actions
+  // stay outside that scroller so Decline, Skip, and Next/Submit remain
+  // reachable (issue #1531). The cap matches the option list.
+  const questionBody = messageStyleSource.match(
+    /\n\.asktool-question-body \{([^}]*)\}/,
+  )?.[1];
+  assert.ok(questionBody);
+  assert.match(questionBody, /max-height:\s*min\(208px,\s*24vh\)/);
+  assert.match(questionBody, /max-height:\s*min\(208px,\s*24dvh\)/);
+  assert.match(questionBody, /overflow-x:\s*hidden/);
+  assert.match(questionBody, /overflow-y:\s*auto/);
+  assert.match(questionBody, /overscroll-behavior-y:\s*contain/);
+  assert.doesNotMatch(questionBody, /scrollbar-gutter/);
+  assert.match(questionBody, /overflow-wrap:\s*anywhere/);
+  assert.match(
+    askCardSource,
+    /className="asktool-card-header-actions"[\s\S]*className="asktool-question-body"/,
+  );
   // The card is a dock surface, not an in-flow tile: it paints the composer
   // plate with its shadow and its rows are inlaid on that plate (issue #360).
   assert.match(
@@ -191,6 +209,25 @@ test("asktool card is a stepwise, non-expiring composer question surface", () =>
   );
 });
 
+test("asktool question body opens at the top when the question index changes", () => {
+  // Next, Skip, and the step indicators only call setIndex. The question
+  // body is one scroller for the whole request, so a later long prompt keeps
+  // the previous scrollTop unless that body remounts with the index or the
+  // offset is cleared when index changes (#1531).
+  const bodyTag = askCardSource.match(
+    /<span\b[^>]*className="asktool-question-body"[^>]*>/,
+  )?.[0];
+  assert.ok(bodyTag);
+  const remountsOnIndex = /\bkey=\{index\}/.test(bodyTag);
+  const clearsScrollOnIndex =
+    /scrollTop\s*=\s*0/.test(askCardSource) &&
+    /\[\s*index\s*\]/.test(askCardSource);
+  assert.ok(
+    remountsOnIndex || clearsScrollOnIndex,
+    "question body keeps scrollTop across index changes",
+  );
+});
+
 test("permission approval stays pending until an explicit decision", () => {
   assert.doesNotMatch(cardSource, /setInterval|permissionSecondsLeft|role="timer"/);
   assert.doesNotMatch(eventsSource, /receivedAt/);
@@ -206,7 +243,7 @@ test("permission approval is an inline transcript card, never a global dialog", 
   assert.match(chatSurfaceSource, /headPermission\(state\.pendingPermissions/);
   assert.match(
     sessionPaneSource,
-    /pendingPermission=\{transcript\.historical \? undefined : pendingPermission\}/,
+    /pendingPermission=\{transcript\.liveTail \? pendingPermission : undefined\}/,
   );
   assert.match(
     sessionPaneSource,

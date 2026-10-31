@@ -1,11 +1,14 @@
 import {
   readStoreSource,
   readStoreModule,
+  readTranscriptModule,
   readTranscriptSource,
 } from "./helpers/source-contracts.mjs";
 import { readAppSource } from "./helpers/source-contracts.mjs";
+import { slotSsr } from "./helpers/slot-ssr.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createElement } from "react";
 import test from "node:test";
 import {
   reviewChangeFromMessage,
@@ -14,6 +17,7 @@ import {
 } from "../src/lib/workspace-review.ts";
 
 const transcriptSource = await readTranscriptSource();
+const activityItemsSource = await readTranscriptModule("ActivityItems.tsx");
 const cardSource = await readFile(
   new URL("../src/components/ReviewChangeCard.tsx", import.meta.url),
   "utf8",
@@ -159,12 +163,29 @@ test("failed and scratch tool rows cannot manufacture review evidence", () => {
   );
 });
 
-test("chat renders one message-owned card immediately after its tool row", () => {
+test("a review-backed edit renders only the two-level review row", () => {
   assert.equal(transcriptSource.includes("<WorkspaceChangesEntry />"), false);
   assert.equal(transcriptSource.includes("review-changes-entry"), false);
+  // ActivityItems chooses exactly one row: the review card carries the file
+  // header for a recorded change, otherwise the generic tool row renders.
+  assert.match(
+    activityItemsSource,
+    /if \(reviewChangeFromMessage\(item\.message\)\) \{\s*return <ReviewChangeCard[\s\S]*?asToolRow\s*\/>;\s*\}/,
+  );
+  assert.match(activityItemsSource, /<ToolRow\s+key=\{item\.message\.id\}/);
+  assert.doesNotMatch(
+    activityItemsSource,
+    /<ReviewChangeCard message=\{item\.message\} \/>/,
+  );
+  // The standalone-run and delegate surfaces make the same choice, so no
+  // review-backed edit can render both the tool header and the file header.
   assert.match(
     transcriptSource,
-    /<ToolRow message=\{item\.message\} \/>[\s\S]*<ReviewChangeCard message=\{item\.message\} \/>/,
+    /reviewChangeFromMessage\(segment\.item\.message\)[\s\S]*?asToolRow/,
+  );
+  assert.doesNotMatch(
+    transcriptSource,
+    /<ToolRow message=\{item\.message\} \/>[\s\S]*?<ReviewChangeCard message=\{item\.message\} \/>/,
   );
   assert.doesNotMatch(transcriptSource, /workspaceDiff|findWorkspaceChange/);
   assert.match(cardSource, /aria-expanded=\{open\}/);
@@ -180,6 +201,28 @@ test("chat renders one message-owned card immediately after its tool row", () =>
     /shouldOpenReviewArtifact|toolWorkPanelTab\("review"\)/,
   );
   assert.doesNotMatch(storeSource, /workspaceReviewSessions/);
+});
+
+test("a review-backed edit renders one file header and no tool header", async (t) => {
+  const ssr = await slotSsr(t);
+  const { ActivityItems } = await ssr.load(
+    "/src/features/chat/transcript/ActivityItems.tsx",
+  );
+  const html = ssr.render(
+    createElement(ActivityItems, {
+      items: [{ kind: "tool", message: message() }],
+      isActive: false,
+      live: false,
+      delegateItems: [],
+      delegationStatuses: new Map(),
+      delegationTimings: new Map(),
+      onUserInteraction: () => {},
+    }),
+    { sessionId: null },
+  );
+  assert.equal(html.match(/review-change-card-header/g)?.length, 1);
+  assert.match(html, /class="review-change-card is-tool-row/);
+  assert.doesNotMatch(html, /tool-row-header/);
 });
 
 test("rollback outcomes reach the toast instead of a second card row", () => {

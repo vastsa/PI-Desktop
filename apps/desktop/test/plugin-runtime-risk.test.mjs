@@ -39,6 +39,7 @@ test("plugin runtime exposes gated high-risk host APIs", () => {
     "fs.write",
     "fs.delete",
     "fs.openDefault",
+    "fs.openInBrowser",
     "fs.reveal",
     "net.fetch",
     "agent.complete",
@@ -186,8 +187,8 @@ test("marketplace detail pane renders readme changelog and versions", () => {
 test("marketplace blocks install for a version with no published package", () => {
   assert.match(pageSrc, /function versionInstallable\(/);
   assert.match(pageSrc, /const packagePending = item\.installable === false/);
-  assert.match(pageSrc, /disabled=\{busyId === item\.id \|\| packagePending\}/);
-  assert.match(pageSrc, /disabled=\{busyId === detail\.id \|\| detailPackagePending\}/);
+  assert.match(pageSrc, /disabled=\{isPluginBusy\(item\.id\) \|\| packagePending\}/);
+  assert.match(pageSrc, /disabled=\{isPluginBusy\(detail\.id\) \|\| detailPackagePending\}/);
   assert.match(pageSrc, /t\("plugins\.packagePending"\)/);
   assert.match(pageSrc, /t\("plugins\.packagePendingHint", \{/);
 

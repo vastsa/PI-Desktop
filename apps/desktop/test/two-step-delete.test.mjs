@@ -1,9 +1,6 @@
 /**
- * The session and project rows delete in two clicks: the first click arms the
- * menu item and relabels it, the second removes the row. The arm is the same
- * one the settings capability rows use (`hooks/use-armed-delete.ts`), and it
- * expires on its own so a row never stays one stray click away from a
- * permanent delete.
+ * Session rows use a two-click delete arm. Project rows use an explicit modal
+ * so dismissal can never be mistaken for confirmation.
  */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -84,36 +81,30 @@ test("the arm expires on its own and has a single owner", () => {
   assert.match(skillsPageSource, /useArmedDelete\(\)/);
 });
 
-test("the session and project rows share that arm", () => {
-  for (const [surface, source] of [
-    ["Sidebar", sidebarSource],
-    ["ProjectsPage", projectsSource],
-  ]) {
-    assert.match(
-      source,
-      /import \{ useArmedDelete \} from "\.\.\/hooks\/use-armed-delete"/,
-      surface,
-    );
-    assert.match(source, /const \{ armed: armedDelete, setArmed: setArmedDelete \} = useArmedDelete\(\)/);
-  }
+test("only session rows use the shared two-step delete arm", () => {
+  assert.match(
+    sidebarSource,
+    /import \{ useArmedDelete \} from "\.\.\/hooks\/use-armed-delete"/,
+  );
+  assert.match(
+    sidebarSource,
+    /const \{ armed: armedDelete, setArmed: setArmedDelete \} = useArmedDelete\(\)/,
+  );
+  assert.doesNotMatch(projectsSource, /useArmedDelete|armedDelete/);
+
+  const projectRequest = handlerBlock(sidebarSource, "requestDeleteProject");
+  assert.match(projectRequest, /setDeleteProjectFor\(entry\)/);
+  assert.doesNotMatch(projectRequest, /armedDelete|deleteProjectAction/);
 });
 
 test("the session menu deletes on the second click, not the first", () => {
-  assert.match(sidebarSource, /data-action="delete-session"/);
-  assert.match(sidebarSource, /onClick=\{\(\) => requestDeleteSession\(session\)\}/);
+  assert.match(sidebarSource, /id: "delete-session"/);
+  assert.match(sidebarSource, /onSelect: \(\) => requestDeleteSession\(session\),/);
   // The item shows which click it is on, for the pointer and for the tests.
-  assert.match(sidebarSource, /data-armed=\{armedDelete === session\.id \? "true" : undefined\}/);
   assert.match(
     sidebarSource,
-    /className=\{cx\("danger", armedDelete === session\.id && "is-armed"\)\}/,
+    /label:[\s\S]*?armedDelete === session\.id[\s\S]*?t\("nav\.deleteTaskConfirm", \{ defaultValue: "Delete\?" \}\)[\s\S]*?t\("nav\.deleteTask", \{ defaultValue: "Delete" \}\)/,
   );
-  assert.match(
-    sidebarSource,
-    /\{armedDelete === session\.id\s*\?\s*t\("nav\.deleteTaskConfirm", \{ defaultValue: "Delete\?" \}\)\s*:\s*t\("nav\.deleteTask", \{ defaultValue: "Delete" \}\)\}/,
-  );
-  // The session ids are the armed keys of the sidebar's session items, and the
-  // project items namespace theirs so the two menus can never share an arm.
-  assert.match(sidebarSource, /const projectDeleteKey = \(entry: ProjectEntry\) => `project:\$\{entry\.key\}`/);
 
   const request = handlerBlock(sidebarSource, "requestDeleteSession");
   assert.match(request, /if \(armedDelete !== session\.id\) \{/);
@@ -128,20 +119,20 @@ test("the session menu deletes on the second click, not the first", () => {
   assert.doesNotMatch(request, /closeMenus/);
 });
 
-test("both delete labels ship in every catalog and read the same", () => {
+test("the session delete label ships in every catalog", () => {
   for (const id of LOCALE_IDS) {
     const source = catalogs.get(id);
     const expected = CONFIRM_LABELS[id];
-    assert.equal(blockValue(catalogBlock(source, "nav", "sessionCollaboration"), "deleteTaskConfirm"), expected, id);
-    assert.equal(blockValue(catalogBlock(source, "project", "scheduled"), "deleteMenuConfirm"), expected, id);
+    assert.equal(
+      blockValue(catalogBlock(source, "nav", "sessionCollaboration"), "deleteTaskConfirm"),
+      expected,
+      id,
+    );
     if (id !== "en") {
       assert.notEqual(expected, CONFIRM_LABELS.en, `${id} is translated`);
     }
   }
 
-  // The armed label states the same action in the settings rows the pattern is
-  // copied from, so the two surfaces never disagree about what a second click
-  // does.
   assert.equal(
     blockValue(catalogBlock(catalogs.get("zh-CN"), "settings", "project"), "capabilityRemoveConfirm"),
     "再点一次删除",

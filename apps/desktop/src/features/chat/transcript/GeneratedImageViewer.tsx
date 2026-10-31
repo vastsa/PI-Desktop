@@ -1,4 +1,5 @@
-import { useChatSessionCapability } from "../../../hooks/use-chat-session-capability";
+import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
+import { useChatNativeFilesAllowed, useChatSessionCapability } from "../../../hooks/use-chat-session-capability";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { IconChevronLeft, IconChevronRight, IconClose, IconDownload, IconExternal, IconFolder, IconMinus, IconPlus } from "../../../components/icons";
@@ -20,6 +21,9 @@ export function GeneratedImageViewer({ images, selectedIndex, onSelect, onClose,
   focusReturnRef: RefObject<HTMLElement | null>;
 }) {
   const { t } = useTranslation();
+  const paneSessionId = useSlotSessionId();
+  const sessionId = useAppStore((state) => paneSessionId || state.activeSessionId);
+  const nativeFilesAllowed = useChatNativeFilesAllowed();
   const localToolsAllowed = useChatSessionCapability("canUseLocalTools");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -105,9 +109,9 @@ export function GeneratedImageViewer({ images, selectedIndex, onSelect, onClose,
     if (src) setManualZoom({ src, value: Math.min(4, Math.max(Math.min(0.1, fit), value)) });
   };
   const reveal = async () => {
-    if (!localToolsAllowed || !selected) return;
+    if (!localToolsAllowed || !nativeFilesAllowed || !selected) return;
     try {
-      await api.fsReveal(selected.path);
+      await api.fsReveal(selected.path, sessionId);
     } catch {
       useAppStore.getState().showToast(t("settings.imageRevealFailed"), { variant: "error" });
     }
@@ -133,7 +137,7 @@ export function GeneratedImageViewer({ images, selectedIndex, onSelect, onClose,
         <strong>{t("settings.generatedImage", { index: selected.index + 1 })}</strong>
         <div className="generated-image-viewer-header-actions">
           <TooltipButton type="button" onClick={() => { closeViewer(); void openFile(selected.path); }} tooltip={t("chat.previewFile")}><IconExternal size={18} /></TooltipButton>
-          <TooltipButton type="button" onClick={() => void reveal()} tooltip={t("settings.revealGeneratedImage")}><IconFolder size={18} /></TooltipButton>
+          {nativeFilesAllowed ? <TooltipButton type="button" onClick={() => void reveal()} tooltip={t("settings.revealGeneratedImage")}><IconFolder size={18} /></TooltipButton> : null}
           {src && downloadName ? <a href={src} download={downloadName} aria-label={t("settings.downloadGeneratedImage")} title={t("settings.downloadGeneratedImage")}><IconDownload size={18} /></a> : null}
         </div>
       </header>

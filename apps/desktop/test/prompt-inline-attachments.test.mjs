@@ -41,6 +41,28 @@ test("an image the draft named inline records that text and keeps its place", as
   assert.equal(appendPromptFallbackPaths(content, [prepared]), content);
 });
 
+test("an image past the pixel limit takes the path fallback instead of inline bytes", async (t) => {
+  const { data, path } = await fixture(t);
+  // A small, valid PNG header for a 780 x 14182 full-page screenshot (#1913).
+  const tall = Buffer.from(png);
+  tall.writeUInt32BE(780, 16);
+  tall.writeUInt32BE(14182, 20);
+  await writeFile(path, tall);
+  const attachment = { path, name: "pasted-a.png", kind: "image", mimeType: "image/png" };
+  const [prepared] = await preparePromptAttachments(
+    data,
+    sessionId,
+    undefined,
+    [attachment],
+    true,
+    "look at this",
+  );
+  assert.equal(prepared.message.kind, "image");
+  assert.match(prepared.message.ref, /^attachments\//);
+  assert.equal(prepared.inlineData, undefined);
+  assert.ok(appendPromptFallbackPaths("look at this", [prepared]).includes(prepared.fallbackPath));
+});
+
 test("an image the prompt does not name inline keeps the trailing position", async (t) => {
   const { data, path } = await fixture(t);
   const attachment = { path, name: "pasted-a.png", kind: "image", mimeType: "image/png" };

@@ -1,5 +1,13 @@
 # Nested Thinking and Tool Process Disclosure
 
+> **Archive note (2026-10-16).** This dated design is a historical proposal, kept
+> for context. Its `thinkingDisplayMode: detailed | compact` setting and single
+> whole-process container are superseded by D660 and the amended
+> [ADR turn-process-and-thinking-display](../../adr/turn-process-and-thinking-display.md):
+> the process is now segmented, Bash/run aliases stay outside every folded
+> container, and reasoning visibility is the independent boolean
+> `AppSettings.showThinking` with a legacy `thinkingDisplayMode` fallback.
+
 ## Status and scope
 
 - Status: Proposed for review; implementation is not authorized by this document.

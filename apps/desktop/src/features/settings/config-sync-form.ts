@@ -15,12 +15,16 @@ export type ConfigSyncForm = ConfigSyncConnection & {
 };
 
 export function selectionFromDraft(categories?: Partial<ConfigSyncCategorySelection>): ConfigSyncCategorySelection {
-  return {
+  const selection: ConfigSyncCategorySelection = {
     application: true, providers: true, credentials: false, mcp: true,
-    skills: true, subagents: true, instructions: true, projects: true,
+    skills: true, subagents: true, instructions: true,
     plugins: true, automation: true, memory: false,
-    ...categories,
   };
+  // Project selection from older drafts is no longer part of the portable contract.
+  for (const key of Object.keys(selection) as Array<keyof ConfigSyncCategorySelection>) {
+    if (typeof categories?.[key] === "boolean") selection[key] = categories[key];
+  }
+  return selection;
 }
 
 export function initialConfigSyncForm(draft: ConfigSyncDraft = {}): ConfigSyncForm {
@@ -44,7 +48,7 @@ export function draftFromState(next: ConfigSyncState): ConfigSyncDraft {
     endpoint: next.endpoint, region: next.region, bucket: next.bucket,
     prefix: next.prefix, accessKeyId: next.accessKeyId, pathStyle: next.pathStyle,
     mode: next.mode, automaticSync: next.automaticSync, deviceLabel: next.deviceLabel,
-    categories: { ...next.categories, credentials: next.includeSecrets, memory: next.includeMemory },
+    categories: selectionFromDraft({ ...next.categories, credentials: next.includeSecrets, memory: next.includeMemory }),
     saved: true,
   };
 }
@@ -54,7 +58,7 @@ export function draftFromForm(form: ConfigSyncForm, categories: ConfigSyncCatego
     endpoint: form.endpoint, region: form.region, bucket: form.bucket,
     prefix: form.prefix, accessKeyId: form.accessKeyId, pathStyle: form.pathStyle,
     mode: form.mode, automaticSync: form.automaticSync, deviceLabel: form.deviceLabel,
-    categories, saved: false,
+    categories: selectionFromDraft(categories), saved: false,
   };
 }
 
@@ -68,7 +72,7 @@ export function configSyncTestInput(form: ConfigSyncForm, categories: ConfigSync
     secretAccessKey: form.secretAccessKey || undefined,
     // A complete replacement must not accidentally reuse an old temporary token.
     sessionToken: form.clearSessionToken ? "" : form.sessionToken || (form.secretAccessKey ? "" : undefined),
-    categories, includeSecrets: categories.credentials, includeMemory: categories.memory,
+    categories: selectionFromDraft(categories), includeSecrets: categories.credentials, includeMemory: categories.memory,
   };
 }
 

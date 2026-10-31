@@ -47,3 +47,30 @@ test("saved choices hydrate without turning off opt-ins or turning on automatic 
   assert.equal(draft.categories.memory, true);
   assert.equal(draft.saved, true);
 });
+
+test("legacy project choices never enter the supported selection or request", () => {
+  const legacy = { ...selection, projects: true, providers: false };
+  const supported = selectionFromDraft(legacy);
+  assert.equal(Object.hasOwn(supported, "projects"), false);
+  assert.equal(supported.providers, false);
+  assert.equal(Object.keys(supported).length, 10);
+  const form = initialConfigSyncForm();
+  for (const value of [
+    draftFromState({ categories: legacy, includeSecrets: false, includeMemory: false }).categories,
+    draftFromForm(form, legacy).categories,
+    configSyncTestInput(form, legacy, "This device").categories,
+    configSyncConfigureInput(form, legacy, "This device").categories,
+  ]) {
+    assert.equal(Object.hasOwn(value, "projects"), false);
+    assert.equal(value.providers, false);
+  }
+});
+
+test("shared sync categories exclude projects while keeping scoped content", async () => {
+  const { CONFIG_SYNC_CATEGORIES } = await import("../../../packages/shared/src/types/config-sync.ts");
+  assert.equal(CONFIG_SYNC_CATEGORIES.includes("projects"), false);
+  for (const category of ["mcp", "skills", "instructions", "automation", "memory"]) {
+    assert.equal(CONFIG_SYNC_CATEGORIES.includes(category), true);
+  }
+  assert.deepEqual(Object.keys(selection).sort(), [...CONFIG_SYNC_CATEGORIES].sort());
+});

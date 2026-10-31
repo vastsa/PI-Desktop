@@ -18,7 +18,8 @@ export const MAIN_PANE_REOPEN_TARGET_WIDTH = MAIN_PANE_MIN_WIDTH + 10;
 /**
  * The regular panel minimum is a presentation affordance. The sidebar reopen
  * path may temporarily spend the whole right column to preserve MainChat, so
- * a positive compact width must remain representable in persisted state.
+ * a positive compact width must remain representable as a displayed width.
+ * It is never persisted: the preferred width keeps the regular minimum.
  */
 export const WORK_PANEL_COMPACT_MIN_WIDTH = 1;
 
@@ -44,6 +45,50 @@ export function clampWorkPanelWidth(
   min = WORK_PANEL_MIN_WIDTH,
 ) {
   return Math.max(workPanelWidthLimits(min).min, width);
+}
+
+/**
+ * Lower bound for a manual resize gesture. Gestures keep the regular minimum;
+ * a panel shown narrower than that, by a tight budget or a reopened sidebar,
+ * starts from its current width instead of jumping, and cannot shrink further.
+ */
+export function workPanelGestureMinimum(displayedWidth: number) {
+  return Math.min(
+    WORK_PANEL_MIN_WIDTH,
+    Math.max(WORK_PANEL_COMPACT_MIN_WIDTH, Math.round(displayedWidth)),
+  );
+}
+
+/**
+ * The width the panel asks of the three-column budget. A manual sidebar reopen
+ * lends part of the panel to the sidebar (see `workPanelWidthForSidebarReopen`)
+ * without changing the preferred width. While that sidebar stays expanded the
+ * panel keeps at least the lent width, and extra client width goes back to the
+ * panel first, up to the preferred width, so MainChat stays at its 460px
+ * reopen target. A collapsed sidebar ends the loan.
+ */
+export function workPanelRequestedWidth({
+  containerWidth,
+  sidebarWidth,
+  sidebarCollapsed,
+  preferredWidth,
+  yieldedWidth,
+}: {
+  containerWidth: number;
+  sidebarWidth: number;
+  sidebarCollapsed: boolean;
+  preferredWidth: number;
+  yieldedWidth: number | null;
+}) {
+  if (yieldedWidth === null || sidebarCollapsed) return preferredWidth;
+  const returned =
+    Math.round(containerWidth) -
+    Math.round(sidebarWidth) -
+    MAIN_PANE_REOPEN_TARGET_WIDTH;
+  return Math.max(
+    WORK_PANEL_COMPACT_MIN_WIDTH,
+    Math.min(preferredWidth, Math.max(Math.round(yieldedWidth), returned)),
+  );
 }
 
 /**

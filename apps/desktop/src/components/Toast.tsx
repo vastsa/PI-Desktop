@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type AnimationEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type AnimationEvent,
+  type CSSProperties,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type ToastItem, type ToastVariant } from "../stores/app-store";
@@ -9,7 +17,7 @@ import {
   IconInfo,
   IconTriangleAlert,
 } from "./icons";
-import { TooltipButton } from "./ui";
+import { Button, TooltipButton } from "./ui";
 import {
   playNotificationChime,
   shouldPlayToastSound,
@@ -25,8 +33,9 @@ const VARIANT_ICON: Record<ToastVariant, typeof IconInfo> = {
 function ToastCard({ item }: { item: ToastItem }) {
   const { t } = useTranslation();
   const dismissToast = useAppStore((s) => s.dismissToast);
+  const sessionId = item.sessionId;
   const [closing, setClosing] = useState(false);
-  // Hover pauses the auto-dismiss timer; remaining time survives re-hovers.
+  // Hover or keyboard focus pauses the auto-dismiss timer.
   const remainingRef = useRef(item.duration);
   const startedAtRef = useRef(0);
   const timerRef = useRef<number | null>(null);
@@ -41,7 +50,7 @@ function ToastCard({ item }: { item: ToastItem }) {
   }, []);
 
   const resumeTimer = useCallback(() => {
-    if (item.duration === 0 || closing) return;
+    if (item.duration === 0 || closing || timerRef.current !== null) return;
     startedAtRef.current = Date.now();
     timerRef.current = window.setTimeout(beginClose, Math.max(remainingRef.current, 0));
   }, [item.duration, closing, beginClose]);
@@ -56,18 +65,49 @@ function ToastCard({ item }: { item: ToastItem }) {
   };
 
   const Icon = VARIANT_ICON[item.variant];
+  const content = <>
+    <span className="toast-icon" aria-hidden>
+      <Icon size={16} />
+    </span>
+    <span className="toast-message selectable">{item.message}</span>
+  </>;
   return (
     <div
       className={`toast ${item.variant}${closing ? " closing" : ""}`}
       role={item.variant === "error" || item.variant === "warning" ? "alert" : "status"}
       onMouseEnter={pauseTimer}
-      onMouseLeave={resumeTimer}
+      onMouseLeave={(event) => {
+        if (!event.currentTarget.contains(document.activeElement)) resumeTimer();
+      }}
+      onFocusCapture={pauseTimer}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget) && !event.currentTarget.matches(":hover")) {
+          resumeTimer();
+        }
+      }}
       onAnimationEnd={onAnimationEnd}
     >
-      <span className="toast-icon" aria-hidden>
-        <Icon size={16} />
-      </span>
-      <span className="toast-message selectable">{item.message}</span>
+      {sessionId ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="toast-action"
+          onClick={(event) => {
+            // Dragging to copy the question is not a navigation gesture.
+            const selection = window.getSelection();
+            if (!selection?.isCollapsed && selection?.containsNode(event.currentTarget, true)) return;
+            void useAppStore.getState().selectSession(sessionId).then(() => {
+              dismissToast(item.id);
+            }).catch((error) => {
+              useAppStore.getState().showToast(error instanceof Error ? error.message : String(error), {
+                variant: "error",
+              });
+            });
+          }}
+        >
+          {content}
+        </Button>
+      ) : content}
       <TooltipButton
         type="button"
         className="toast-dismiss"
@@ -100,12 +140,70 @@ function useToastHost(): HTMLElement | null {
   }, []);
   return host;
 }
+type ToastViewportBounds = {
+  center: number;
+  width: number;
+};
+
+function useToastViewportBounds(
+  anchorElement?: HTMLElement | null,
+): ToastViewportBounds | null {
+  const [bounds, setBounds] = useState<ToastViewportBounds | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = anchorElement;
+    if (!anchor) {
+      setBounds(null);
+      return;
+    }
+    const update = () => {
+      const rect = anchor.getBoundingClientRect();
+      const next = { center: rect.left + rect.width / 2, width: rect.width };
+      setBounds((current) =>
+        current?.center === next.center && current.width === next.width ? current : next,
+      );
+    };
+    const observer = new ResizeObserver(update);
+    const layoutRoot = anchor.parentElement;
+    const observeLayout = () => {
+      observer.disconnect();
+      observer.observe(anchor);
+      for (const sibling of layoutRoot?.children ?? []) {
+        if (sibling !== anchor) observer.observe(sibling);
+      }
+      update();
+    };
+    const mutationObserver = new MutationObserver(observeLayout);
+    if (layoutRoot) mutationObserver.observe(layoutRoot, { childList: true });
+    observeLayout();
+    window.addEventListener("resize", update);
+    return () => {
+      mutationObserver.disconnect();
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorElement]);
+
+  return bounds;
+}
+
+type ToastHostProps = {
+  /** Optional viewport region whose top center owns the toast stack. */
+  anchorElement?: HTMLElement | null;
+};
 
 /** Global toast stack — mount once per shell, above dialogs (z-toast). */
-export function ToastHost() {
+export function ToastHost({ anchorElement }: ToastHostProps = {}) {
   const toasts = useAppStore((s) => s.toasts);
   const visibleToastIds = useRef<Set<number>>(new Set());
   const host = useToastHost();
+  const bounds = useToastViewportBounds(anchorElement);
+  const viewportStyle = bounds
+    ? ({
+        "--toast-viewport-center": `${bounds.center}px`,
+        "--toast-viewport-width": `${Math.max(0, bounds.width - 32)}px`,
+      } as CSSProperties)
+    : undefined;
 
   useEffect(() => {
     const nextVisibleIds = new Set<number>();
@@ -122,7 +220,7 @@ export function ToastHost() {
   // nothing rather than mounting the stack inside the shell it must outrank.
   if (!host) return null;
   return createPortal(
-    <div className="toast-viewport" aria-live="polite">
+    <div className="toast-viewport" aria-live="polite" style={viewportStyle}>
       {toasts.map((item) => (
         <ToastCard key={item.id} item={item} />
       ))}

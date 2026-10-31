@@ -66,7 +66,10 @@ test("create project dialog can create the project from a git checkout", () => {
 
 test("project creation creates one logical group with a primary workspace", () => {
   assert.match(store, /createProjectDialogOpen: boolean/);
-  assert.match(store, /openProject: async \(\) => \{\s*set\(\{ createProjectDialogOpen: true \}\)/);
+  assert.match(
+    store,
+    /openProject: async \(options\) => \{\s*set\(\{\s*createProjectDialogOpen: true,\s*createProjectDialogRemoteHostKey: options\?\.remoteHostKey\s*\}\)/,
+  );
   assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\)/);
   assert.match(store, /const orderedFolders = \[/);
   assert.match(store, /api\.createProjectGroup\(normalizedName, orderedFolders\)/);
@@ -77,7 +80,10 @@ test("project creation creates one logical group with a primary workspace", () =
   assert.match(store, /created\.group\.primaryPath/);
   assert.doesNotMatch(store, /for \(const path of orderedFolders\)/);
   assert.match(store, /get\(\)\.renameProject\(groupPrimary, normalizedName\)/);
-  assert.match(store, /set\(\{ createProjectDialogOpen: false, onboarding, page: "chat" \}\)/);
+  assert.match(
+    store,
+    /set\(\{\s*createProjectDialogOpen: false,\s*createProjectDialogRemoteHostKey: undefined,\s*onboarding,\s*page: "chat"\s*\}\)/,
+  );
   // Folder picks and git checkouts share one project creation semantic.
   assert.match(store, /async function createNamedProjectGroup\(/);
   assert.match(store, /createProjectFromFolders: async \(\{ name, folders, primaryPath \}\) =>\s*createNamedProjectGroup\(/);

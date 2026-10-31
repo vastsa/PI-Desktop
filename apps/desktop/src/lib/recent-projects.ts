@@ -1,4 +1,7 @@
+import type { RemoteWorkspace } from "@pi-desktop/shared";
+
 export type RecentProject = {
+  remote?: RemoteWorkspace;
   path: string;
   name: string;
   branch?: string;
@@ -38,6 +41,7 @@ export function loadRecentProjects(): RecentProject[] {
 }
 
 export function rememberProject(input: {
+  remote?: RemoteWorkspace;
   path: string;
   name: string;
   branch?: string | null;
@@ -45,6 +49,7 @@ export function rememberProject(input: {
   const list = loadRecentProjects().filter((p) => p.path !== input.path);
   const prev = loadRecentProjects().find((p) => p.path === input.path);
   list.unshift({
+    ...(input.remote ? { remote: input.remote } : {}),
     path: input.path,
     name: input.name,
     branch: input.branch || undefined,

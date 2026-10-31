@@ -96,20 +96,29 @@ test("plugin views reach the panel body and the empty state", () => {
   assert.doesNotMatch(panelSource, /openPluginView\(view\)/);
 });
 
-test("the native surface keeps its full bounds while the launcher is active", () => {
+test("the native surface stays visible while a plugin tab uses the native menu", () => {
   assert.match(panelSource, /blocked=\{\s*exiting \|\| panelBlocked \|\| blockingOverlayActive\s*\}/s);
+  assert.match(panelSource, /if \(activeTab\?\.kind === "plugin"\)\s*\{\s*openNativeTabMenu/);
+  assert.match(panelSource, /api\.openWorkPanelTabMenu\(/);
+  assert.doesNotMatch(panelSource, /tabContextMenu !== null/);
   assert.doesNotMatch(panelSource, /avoid: pluginSurface/);
   assert.doesNotMatch(panelSource, /menuOpen|work-panel-new-menu|placeWorkPanelMenu/);
   assert.doesNotMatch(viewTabSource, /occludedById/);
   assert.match(viewTabSource, /y: rect\.y/);
   assert.match(viewTabSource, /height: rect\.height/);
-  // Visibility and bounds are separate effects: only panel-wide blocking and
-  // lifecycle transitions hide the native page, so creating a New tab cannot
-  // alter the active surface's measured rectangle.
+  // Visibility and bounds are separate effects: blocking controls attachment,
+  // while renderer layout commits and element resizes keep the complete native
+  // rectangle current without changing the active tab.
   assert.match(
     viewTabSource,
-    /pluginViewSetVisible\(pluginId, viewId, !blocked, sessionId\)[\s\S]*pluginViewSetBounds/s,
+    /pluginViewSetVisible\(pluginId, viewId, !blocked, sessionId\)/,
   );
+  assert.match(
+    viewTabSource,
+    /useLayoutEffect\(\(\) => \{\s*reportBounds\(\);\s*\}\)/s,
+  );
+  assert.match(viewTabSource, /new ResizeObserver\(reportBounds\)/);
+  assert.match(viewTabSource, /void api\.pluginViewSetBounds\(\{/);
 });
 
 test("an unknown icon token degrades instead of rendering plugin markup", () => {
@@ -276,7 +285,8 @@ test("opening a different project refreshes the scope-filtered view list", () =>
 });
 
 test("host panel events reach docked views as well as detached windows", () => {
-  assert.match(viewHostSource, /broadcast\(event: string, payload: unknown\)/);
+  assert.match(viewHostSource, /broadcast\(event: string, payload: unknown(?:, filter\?:[^)]*)?\)/);
+  assert.match(viewHostSource, /if \(filter && !filter\(entry\.pluginId\)\) continue/);
   assert.match(viewHostSource, /pi-plugin-panel-event:\$\{event\}/);
   assert.match(mainSource, /function broadcastPluginPanelEvent/);
   assert.match(mainSource, /broadcastPluginPanelEvent\("appearance:changed"/);
@@ -284,4 +294,30 @@ test("host panel events reach docked views as well as detached windows", () => {
   assert.match(mainSource, /plugins\.broadcastEvent\("workspace:changed"/);
   assert.match(mainSource, /plugins\.broadcastEvent\("appearance:changed"/);
   assert.match(mainSource, /function setCurrentWorkspacePath/);
+});
+
+test("docked views follow the app's type scale and the window zoom", () => {
+  const lifecycleSource = readMainModuleSync("bootstrap/app-lifecycle.ts");
+  const browserHostSource = read("electron/main/browser-host.ts");
+  // A docked view is its own page, so the Appearance type scale has to be
+  // republished as that page's zoom: the settings path feeds it in, a live view
+  // is rescaled in place, and a window zoom re-asserts the composed factor.
+  assert.match(
+    lifecycleSource,
+    /pluginViews\.setFontScale\(resolveFontScale\(\{ fontScale: settings\?\.fontScale \}\)\)/,
+  );
+  assert.match(lifecycleSource, /function resyncDockedPluginZoom\(target: BrowserWindow\)/);
+  assert.match(lifecycleSource, /resyncDockedPluginZoom\(target\);/);
+  assert.match(viewHostSource, /setFontScale\(scale: number\): void/);
+  assert.match(viewHostSource, /wc\.setZoomFactor\(zoom\)/);
+  // Every fresh document re-applies it, so a reload or a navigation cannot
+  // leave a plugin page at its author size.
+  assert.match(viewHostSource, /wc\.on\("dom-ready", \(\) => this\.applyZoom\(wc, this\.viewZoom\(\)\)\)/);
+  // The browser guest is placed from chrome CSS pixels, so the surface carries
+  // the factor the chrome is painting at.
+  assert.match(viewHostSource, /scale: this\.viewZoom\(\)/);
+  assert.match(
+    browserHostSource,
+    /scaleGuestHole\(this\.hole, this\.chrome\.scale\)/,
+  );
 });

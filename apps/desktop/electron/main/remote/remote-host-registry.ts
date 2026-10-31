@@ -95,27 +95,98 @@ function fileNotFound(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "ENOENT";
 }
 
+/**
+ * What the last read of the registry file found. Writes may only proceed
+ * from `ok`, `absent`, and `corrupt` (after quarantine) — every other
+ * outcome means the on-disk records may exist but cannot be seen, and
+ * overwriting them would destroy pairing data the user cannot rebuild
+ * without re-pairing every host.
+ */
+type RegistryRead =
+  | { kind: "ok"; hosts: SerializedRecord[] }
+  | { kind: "absent" }
+  | { kind: "unreadable"; error: unknown }
+  | { kind: "corrupt"; error: unknown }
+  | { kind: "unsupportedVersion" };
+
 export function createRemoteHostRegistry(
   options: RemoteHostRegistryOptions,
 ): RemoteHostRegistry {
   const log = options.log ?? (() => undefined);
   const filePath = join(options.dataDir, options.fileName ?? "remote-hosts.json");
+  let mutationQueue: Promise<void> = Promise.resolve();
 
-  const readFileContents = async (): Promise<SerializedFile> => {
+  /** Keep each read-modify-write and quarantine transaction exclusive. */
+  const serializeMutation = <T>(mutation: () => Promise<T>): Promise<T> => {
+    const result = mutationQueue.then(mutation);
+    mutationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+
+  const readFileState = async (): Promise<RegistryRead> => {
+    let raw: string;
     try {
-      const raw = await readFile(filePath, "utf8");
-      const parsed = JSON.parse(raw) as Partial<SerializedFile>;
-      if (parsed.version !== CURRENT_VERSION || !Array.isArray(parsed.hosts)) {
-        log("warn", "remote-hosts.json shape rejected; treating as empty", { file: filePath });
-        return { version: CURRENT_VERSION, hosts: [] };
-      }
-      return { version: CURRENT_VERSION, hosts: parsed.hosts };
+      raw = await readFile(filePath, "utf8");
     } catch (error) {
-      if (fileNotFound(error)) return { version: CURRENT_VERSION, hosts: [] };
+      if (fileNotFound(error)) return { kind: "absent" };
       log("error", "remote-hosts.json read failed", { error: String(error) });
-      // A corrupt file must not delete records the user cannot see; the
-      // caller reads an empty list and any upsert would overwrite it.
-      return { version: CURRENT_VERSION, hosts: [] };
+      return { kind: "unreadable", error };
+    }
+    let parsed: Partial<SerializedFile>;
+    try {
+      parsed = JSON.parse(raw) as Partial<SerializedFile>;
+    } catch (error) {
+      log("error", "remote-hosts.json is corrupt", { file: filePath, error: String(error) });
+      return { kind: "corrupt", error };
+    }
+    if (parsed.version !== CURRENT_VERSION || !Array.isArray(parsed.hosts)) {
+      log("warn", "remote-hosts.json shape rejected", { file: filePath });
+      return { kind: "unsupportedVersion" };
+    }
+    return { kind: "ok", hosts: parsed.hosts };
+  };
+
+  /**
+   * The hosts a read-modify-write may start from. A corrupt file is
+   * quarantined (renamed aside, bytes preserved) so pairing stays available
+   * while the old records remain recoverable; a file that cannot be read or
+   * was written by a newer app version makes the write throw instead of
+   * silently replacing records the caller never saw.
+   */
+  const writableHosts = async (): Promise<SerializedRecord[]> => {
+    const state = await readFileState();
+    switch (state.kind) {
+      case "ok":
+        return state.hosts;
+      case "absent":
+        return [];
+      case "corrupt": {
+        const quarantine = `${filePath}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+        try {
+          await rename(filePath, quarantine);
+        } catch {
+          // The file cannot be moved aside, so it cannot be safely replaced.
+          throw Object.assign(
+            new Error("remote-hosts.json is corrupt and could not be quarantined; refusing to overwrite"),
+            { errorCode: "REMOTE_REGISTRY_UNWRITABLE" },
+          );
+        }
+        log("warn", "quarantined corrupt remote-hosts.json", { quarantine });
+        return [];
+      }
+      case "unreadable":
+        throw Object.assign(
+          new Error("remote-hosts.json could not be read; refusing to overwrite the paired-host records"),
+          { errorCode: "REMOTE_REGISTRY_UNWRITABLE" },
+        );
+      case "unsupportedVersion":
+        throw Object.assign(
+          new Error("remote-hosts.json was written by a newer app version; refusing to overwrite"),
+          { errorCode: "REMOTE_REGISTRY_VERSION_UNSUPPORTED" },
+        );
     }
   };
 
@@ -128,9 +199,12 @@ export function createRemoteHostRegistry(
 
   return {
     async list() {
-      const file = await readFileContents();
+      // Reads stay permissive: while the file is unreadable or unsupported
+      // the UI shows an empty list (as before), but nothing on disk changes.
+      const state = await readFileState();
+      const hosts = state.kind === "ok" ? state.hosts : [];
       const decoded: RemoteHostRecord[] = [];
-      for (const record of file.hosts) {
+      for (const record of hosts) {
         try {
           const buffer = Buffer.from(record.encryptedDeviceToken, "base64");
           const deviceToken = options.encryption.decryptString(buffer);
@@ -172,45 +246,49 @@ export function createRemoteHostRegistry(
       }
       return decoded;
     },
-    async upsert(record) {
-      if (!options.encryption.isAvailable()) {
-        throw Object.assign(new Error("safeStorage unavailable; refusing to write remote host token"), {
-          errorCode: "REMOTE_STORAGE_UNAVAILABLE",
-        });
-      }
-      const file = await readFileContents();
-      const ciphertext = options.encryption.encryptString(record.deviceToken).toString("base64");
-      const serialized: SerializedRecord = {
-        hostKey: record.hostKey,
-        label: record.label,
-        url: record.url,
-        encryptedDeviceToken: ciphertext,
-        ...(record.sshSecret
-          ? {
-              encryptedSshSecret: options.encryption
-                .encryptString(record.sshSecret)
-                .toString("base64"),
-            }
-          : {}),
-        ...(record.metadata ? { metadata: record.metadata } : {}),
-      };
-      const next = file.hosts.filter((existing) => existing.hostKey !== record.hostKey);
-      next.push(serialized);
-      await persist({ version: CURRENT_VERSION, hosts: next });
-    },
-    async remove(hostKey) {
-      const file = await readFileContents();
-      const next = file.hosts.filter((existing) => existing.hostKey !== hostKey);
-      if (next.length === file.hosts.length) return;
-      if (next.length === 0) {
-        try {
-          await unlink(filePath);
-        } catch (error) {
-          if (!fileNotFound(error)) log("warn", "remote-hosts.json unlink failed", { error: String(error) });
+    upsert(record) {
+      return serializeMutation(async () => {
+        if (!options.encryption.isAvailable()) {
+          throw Object.assign(new Error("safeStorage unavailable; refusing to write remote host token"), {
+            errorCode: "REMOTE_STORAGE_UNAVAILABLE",
+          });
         }
-        return;
-      }
-      await persist({ version: CURRENT_VERSION, hosts: next });
+        const hosts = await writableHosts();
+        const ciphertext = options.encryption.encryptString(record.deviceToken).toString("base64");
+        const serialized: SerializedRecord = {
+          hostKey: record.hostKey,
+          label: record.label,
+          url: record.url,
+          encryptedDeviceToken: ciphertext,
+          ...(record.sshSecret
+            ? {
+                encryptedSshSecret: options.encryption
+                  .encryptString(record.sshSecret)
+                  .toString("base64"),
+              }
+            : {}),
+          ...(record.metadata ? { metadata: record.metadata } : {}),
+        };
+        const next = hosts.filter((existing) => existing.hostKey !== record.hostKey);
+        next.push(serialized);
+        await persist({ version: CURRENT_VERSION, hosts: next });
+      });
+    },
+    remove(hostKey) {
+      return serializeMutation(async () => {
+        const hosts = await writableHosts();
+        const next = hosts.filter((existing) => existing.hostKey !== hostKey);
+        if (next.length === hosts.length) return;
+        if (next.length === 0) {
+          try {
+            await unlink(filePath);
+          } catch (error) {
+            if (!fileNotFound(error)) log("warn", "remote-hosts.json unlink failed", { error: String(error) });
+          }
+          return;
+        }
+        await persist({ version: CURRENT_VERSION, hosts: next });
+      });
     },
   };
 }
