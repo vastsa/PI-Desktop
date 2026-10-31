@@ -670,7 +670,10 @@ system while preserving their different data ownership:
   picker because it is global-only, keeping only search and its actions.
   The panel still uses two in-panel groups: **Built-in** (the five shipped
   definitions `explorer`, `code-reviewer`, `test-runner`, `fixer`, and
-  `ui-designer`) and **Global** (`~/.agents/subagents`, user-owned). An enabled
+  `ui-designer`) and **Custom** (`~/.agents/subagents`, user-owned). The Custom
+  header names where a definition comes from, not a level: a user subagent can
+  be limited to selected projects, so each user row's badge states its
+  activation scope (Everywhere or the project count) instead. An enabled
   user document of the same name shadows that builtin in the Task catalog, so
   the Built-in row is omitted while the user row remains. A disabled user
   document of the same name leaves the builtin in the catalog (and on the

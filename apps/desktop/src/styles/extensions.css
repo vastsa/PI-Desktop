@@ -937,6 +937,14 @@
   justify-content: flex-start;
 }
 
+.scope-inline-projects {
+  align-self: stretch;
+  margin-top: 6px;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+  overflow: hidden;
+}
+
 .ext-field-group > .scope-control .scope-warn {
   text-align: left;
 }
