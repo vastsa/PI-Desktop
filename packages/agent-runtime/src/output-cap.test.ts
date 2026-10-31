@@ -30,6 +30,69 @@ describe("estimateOutputCapInputTokens", () => {
     expect(estimateOutputCapInputTokens(context)).toBe(1000);
   });
 
+  it("counts Japanese kana at ~1 token per char, same as Han", () => {
+    const han = estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: "中".repeat(1000) }],
+    });
+    // 9-char hiragana/katakana phrase, sliced to the same 1000 chars as Han.
+    const kana = "こんにちはカタカナ".repeat(112).slice(0, 1000);
+    expect(kana).toHaveLength(1000);
+    // chars/4 baseline = 250; the 0.75/char correction brings this to 1000.
+    expect(
+      estimateOutputCapInputTokens({ messages: [{ role: "user", content: kana }] }),
+    ).toBe(han);
+  });
+
+  it("counts Korean Hangul at ~1 token per char, same as Han", () => {
+    const han = estimateOutputCapInputTokens({
+      messages: [{ role: "user", content: "中".repeat(1000) }],
+    });
+    const hangul = "안녕하세요".repeat(200);
+    expect(hangul).toHaveLength(1000);
+    expect(
+      estimateOutputCapInputTokens({
+        messages: [{ role: "user", content: hangul }],
+      }),
+    ).toBe(han);
+  });
+
+  it("counts Hangul jamo, katakana extensions, and compatibility ideographs like Han", () => {
+    const estimate = (content: string) =>
+      estimateOutputCapInputTokens({ messages: [{ role: "user", content }] });
+    const han = estimate("中".repeat(1000));
+    expect({
+      jamo: estimate("\u1100".repeat(1000)),
+      compatJamo: estimate("\u3131".repeat(1000)),
+      kanaExtension: estimate("\u31F0".repeat(1000)),
+      compatIdeograph: estimate("\uF900".repeat(1000)),
+    }).toEqual({
+      jamo: han,
+      compatJamo: han,
+      kanaExtension: han,
+      compatIdeograph: han,
+    });
+  });
+
+  it("does not count ASCII, Latin, or Cyrillic as CJK", () => {
+    const ascii = "a".repeat(1000);
+    const latin = "café".repeat(250);
+    const cyrillic = "я".repeat(1000);
+    expect(latin).toHaveLength(1000);
+    expect(cyrillic).toHaveLength(1000);
+    // chars/4 only. Counting é or я would add ceil(n * 0.75) on top of 250.
+    expect(
+      estimateOutputCapInputTokens({ messages: [{ role: "user", content: ascii }] }),
+    ).toBe(250);
+    expect(
+      estimateOutputCapInputTokens({ messages: [{ role: "user", content: latin }] }),
+    ).toBe(250);
+    expect(
+      estimateOutputCapInputTokens({
+        messages: [{ role: "user", content: cyrillic }],
+      }),
+    ).toBe(250);
+  });
+
   it("counts image blocks via the wire-format estimate", () => {
     const context: OutputCapContext = {
       messages: [
@@ -327,6 +390,42 @@ describe("clampOutputToContext", () => {
       LARGE_WINDOW_MODEL.contextWindow,
     );
     expect(clamped).toBeLessThan(92_709);
+  });
+
+  it("cuts the output budget for a Hangul-heavy session near the window edge", () => {
+    // Same shape as the Han case. A syllable is ~1 token; chars/4 alone would
+    // leave the requested output in place and let input + output pass the window.
+    const context: OutputCapContext = {
+      messages: [
+        { role: "user", content: "안녕하세요".repeat(40_000) },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "已" },
+            {
+              type: "toolCall",
+              name: "read_file",
+              arguments: JSON.stringify({ path: "/tmp/a.md" }),
+            },
+          ],
+        },
+      ],
+    };
+    const estimate = estimateOutputCapInputTokens(context);
+    const clamped = clampOutputToContext(LARGE_WINDOW_MODEL, context, 92_709);
+    expect(estimate).toBeGreaterThan(160_000);
+    // estimate (≥160k) + clamped + reserve (4096) must fit the 262144 window,
+    // with the budget cut to the context remainder.
+    expect(estimate + clamped + 4096).toBeLessThanOrEqual(
+      LARGE_WINDOW_MODEL.contextWindow,
+    );
+    expect(clamped).toBe(LARGE_WINDOW_MODEL.contextWindow - estimate - 4096);
+    expect(clamped).toBeLessThan(92_709);
+    // 200k syllables at ~1 token each, independent of the estimator. Returning
+    // the requested 92_709 would make this sum exceed the window.
+    expect(200_000 + clamped).toBeLessThanOrEqual(
+      LARGE_WINDOW_MODEL.contextWindow,
+    );
   });
 
   it("keeps the requested budget when the window is unknown", () => {

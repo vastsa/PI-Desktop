@@ -112,18 +112,34 @@ const OUTPUT_SAFETY_WINDOW_RATIO = 0.01;
 const CHARS_PER_TOKEN = 4;
 const ESTIMATED_CHARS_PER_IMAGE = 4800;
 
+// Han, Japanese kana, and Korean Hangul tokenize at ~1 token per character,
+// as do CJK punctuation and full-width forms. The chars/4 baseline charges
+// all of these 0.25.
 function countCjkChars(text: string): number {
   let count = 0;
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
     if (
+      // Hangul Jamo.
+      (code >= 0x1100 && code <= 0x11ff) ||
+      // CJK punctuation.
+      (code >= 0x3000 && code <= 0x303f) ||
+      // Hiragana and katakana.
+      (code >= 0x3040 && code <= 0x30ff) ||
+      // Hangul compatibility Jamo.
+      (code >= 0x3130 && code <= 0x318f) ||
+      // Katakana phonetic extensions.
+      (code >= 0x31f0 && code <= 0x31ff) ||
       // CJK Unified Ideographs + Extension A.
       (code >= 0x3400 && code <= 0x9fff) ||
+      // Hangul syllables.
+      (code >= 0xac00 && code <= 0xd7af) ||
+      // CJK compatibility ideographs.
+      (code >= 0xf900 && code <= 0xfaff) ||
+      // Full-width and half-width forms.
+      (code >= 0xff00 && code <= 0xffef) ||
       // CJK Extension B..F (historical/supplementary plane).
-      (code >= 0x20000 && code <= 0x2ebef) ||
-      // CJK punctuation and full-width forms.
-      (code >= 0x3000 && code <= 0x303f) ||
-      (code >= 0xff00 && code <= 0xffef)
+      (code >= 0x20000 && code <= 0x2ebef)
     ) {
       count += 1;
     }
