@@ -14,6 +14,7 @@ import type { BrowserHost } from "../browser-host";
 import type { HostProcess } from "../host-process";
 import type { Logger } from "../logger";
 import type { PluginViewHost } from "../plugin-view-host";
+import { detachPluginViewOnRendererReload } from "../plugin-view-navigation";
 import {
   baseWindowBounds,
   clampBoundsOriginToWorkArea,
@@ -22,6 +23,8 @@ import {
   displayWorkAreaKey,
   emptyWorkPanelReservationState,
   isWorkPanelOuterResizeEdge,
+  maximizedBoundsExceedWorkArea,
+  maximizedBoundsForWorkArea,
   planWorkPanelChatResize,
   planWorkPanelReservation,
   WORK_PANEL_MAX_WIDTH,
@@ -39,7 +42,11 @@ import {
   installWindows11CornerController,
   usesWindows11NativeCorners,
 } from "../window-native-corners";
-import { applyMainWindowBackground, mainWindowBackgroundOptions } from "../window-background";
+import {
+  applyMainWindowBackground,
+  macosWindowSurfaceOptions,
+  mainWindowBackgroundOptions,
+} from "../window-background";
 import { recoverRendererAfterGone } from "../renderer-recovery";
 
 function windowsIconPath(): string | undefined {
@@ -74,6 +81,13 @@ export type WindowLifecycleState = {
   tray: Tray | null;
   closeBehavior: CloseBehavior;
   developerMode: boolean;
+  /**
+   * macOS surface this process launched with: `true` keeps the vibrancy
+   * material behind a transparent window, `false` paints an opaque one. It is
+   * read once before the window is created and is not the live preference —
+   * `settings.macosWindowTranslucency` is.
+   */
+  macosWindowTranslucency: boolean;
   pluginLauncherWindow: BrowserWindow | null;
   host: HostProcess | null;
 };
@@ -194,10 +208,15 @@ export async function createWindow({
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
-          vibrancy: "sidebar" as const,
-          visualEffectState: "followWindow" as const,
-          transparent: true,
-          backgroundColor: "#00000000",
+          // The default opaque surface avoids continuous WindowServer
+          // recomposition while the Electron window is visible (issue #1064).
+          // `settings.macosWindowTranslucency` opts back into the vibrancy
+          // material, and it is only readable here: Electron fixes
+          // `transparent` when the window is created.
+          ...macosWindowSurfaceOptions(
+            windowState.macosWindowTranslucency,
+            initialWindowBackground,
+          ),
         }
       : {
           frame: false,
@@ -239,13 +258,19 @@ export async function createWindow({
       installWindowShape(window, DEFAULT_WINDOW_CORNER_RADIUS, screen);
     }
   }
-  applyMainWindowBackground(
-    window,
-    process.platform,
-    initialWindowBackground,
-    windows11NativeCorners,
-    initialWindowBackground,
-  );
+  // A translucent macOS window owns its transparent backing and the native
+  // vibrancy material; painting the host palette here would flatten the glass
+  // and quietly make the setting look broken. The opaque surface still takes
+  // the colour on every platform.
+  if (!(process.platform === "darwin" && windowState.macosWindowTranslucency)) {
+    applyMainWindowBackground(
+      window,
+      process.platform,
+      initialWindowBackground,
+      windows11NativeCorners,
+      initialWindowBackground,
+    );
+  }
   suppressLinuxFramelessSystemMenu(window);
   const initialBounds = window.getBounds();
   windowState.workPanelBaseBounds = restoredBounds
@@ -508,7 +533,7 @@ export async function createWindow({
   });
   let windowCloseAccepted = false;
   window.webContents.on("did-start-loading", () => {
-    browserHost.disposeGuest();
+    browserHost.detachPresentation();
     windowState.notificationViewingSessionId = null;
     if (windowState.mainWindow === window) resetMenuRendererReady(window);
   });
@@ -597,7 +622,7 @@ export async function createWindow({
   window.on("enter-full-screen", sendFullScreen);
   window.on("leave-full-screen", () => {
     sendFullScreen();
-    refitWindowToWorkArea();
+    refitWindowToWorkArea(true);
     scheduleWorkPanelReservation();
   });
   window.webContents.on("did-finish-load", sendFullScreen);
@@ -614,9 +639,20 @@ export async function createWindow({
   // area — e.g. a display-scale or accessibility "text size" change inflated a
   // persisted rect past the screen (issue #544). Fit them back inside so the
   // window never lands partly off-screen. macOS keeps its own restore behavior.
-  const refitWindowToWorkArea = () => {
+  // A `leave-full-screen` fires while the window may still report the stale
+  // maximize flag from the pre-fullscreen state (issue #1655). The refit must
+  // still run there, or the window keeps bounds sized for a display it is no
+  // longer on. Callers that legitimately sit on a maximized window (unmaximize,
+  // restore) keep the original bail-out.
+  const refitWindowToWorkArea = (ignoreMaximized = false) => {
     if (!isLiveWindow() || process.platform === "darwin") return;
-    if (window.isMaximized() || isWindowFullScreen(window) || window.isMinimized()) return;
+    if (
+      (window.isMaximized() && !ignoreMaximized) ||
+      isWindowFullScreen(window) ||
+      window.isMinimized()
+    ) {
+      return;
+    }
     const currentBounds = window.getBounds();
     const workArea = screen.getDisplayMatching(currentBounds).workArea;
     const minimum = clampMinimumSizeToWorkArea(
@@ -706,7 +742,11 @@ export async function createWindow({
     // A scale or text-size change shrinks the DIP work area in place; re-cap the
     // minimum so the OS never enforces one the display cannot show (issue #1175).
     // Keep the open work panel's reservation in the minimum; only cap it.
-    if (isLiveWindow() && !window.isFullScreen()) {
+    // `isWindowFullScreen` rather than `isFullScreen`: the borderless Win32
+    // fallback leaves Electron's own flag false while the window really is
+    // fullscreen, and resizing the minimum then fights the fullscreen state
+    // (issue #1655).
+    if (isLiveWindow() && !isWindowFullScreen(window)) {
       const minimum = clampMinimumSizeToWorkArea(
         { width: workPanelMinimumWindowWidth(), height: windowMinHeight },
         screen.getDisplayMatching(window.getBounds()).workArea,
@@ -721,6 +761,10 @@ export async function createWindow({
 
   browserHost.setWindow(window);
   pluginViews.setWindow(window);
+  detachPluginViewOnRendererReload(
+    window.webContents,
+    () => pluginViews.hideVisibleView(),
+  );
   window.on("closed", () => {
     screen.removeListener("display-metrics-changed", reconcileDisplayTopology);
     screen.removeListener("display-added", reconcileDisplayTopology);
@@ -861,8 +905,8 @@ export async function createWindow({
       // so the reservation replan below is treated as an OS-owned adjustment.
       windowState.workPanelUserMovePending = false;
       applyWorkPanelReservation();
-      // Brief pin only when actively recovering from a shelf.
-      if (shelved || electronTiny) {
+      // Only macOS runs the watchdog that releases this temporary recovery pin.
+      if (process.platform === "darwin" && (shelved || electronTiny)) {
         window.setAlwaysOnTop(true, "floating");
         pinUntil = Date.now() + 4000;
       } else {
@@ -905,6 +949,35 @@ export async function createWindow({
   window.on("show", () => ensureStableBounds(false));
   window.on("focus", () => ensureStableBounds(false));
   window.on("restore", () => ensureStableBounds(false));
+
+  // Windows restores a frameless maximized window to the full monitor rect
+  // instead of the work area, so the window covers the taskbar and reads as
+  // fullscreen (issue #1655). Re-apply the work-area-based maximized rect.
+  const reconcileRestoredMaximize = () => {
+    if (!isLiveWindow() || process.platform !== "win32") return;
+    if (
+      !window.isMaximized() ||
+      isWindowFullScreen(window) ||
+      window.isMinimized()
+    ) {
+      return;
+    }
+    const bounds = window.getBounds();
+    const workArea = screen.getDisplayMatching(bounds).workArea;
+    if (!maximizedBoundsExceedWorkArea(bounds, workArea)) return;
+    window.setBounds(maximizedBoundsForWorkArea(bounds, workArea));
+  };
+  // The OS finishes the restore after the event dispatch, overwriting a
+  // synchronous correction, so try now and again once the transition settles.
+  let restoredMaximizeTimer: NodeJS.Timeout | null = null;
+  window.on("restore", () => {
+    reconcileRestoredMaximize();
+    if (restoredMaximizeTimer) clearTimeout(restoredMaximizeTimer);
+    restoredMaximizeTimer = setTimeout(() => {
+      restoredMaximizeTimer = null;
+      reconcileRestoredMaximize();
+    }, windowBoundsSettleMs);
+  });
   window.on("resize", observeNativeWorkPanelResize);
   window.on("move", scheduleBoundsCheck);
   window.on("move", noteUserWindowMove);
@@ -1074,6 +1147,10 @@ export async function createWindow({
     if (workPanelSettleExpiryTimer) {
       clearTimeout(workPanelSettleExpiryTimer);
       workPanelSettleExpiryTimer = null;
+    }
+    if (restoredMaximizeTimer) {
+      clearTimeout(restoredMaximizeTimer);
+      restoredMaximizeTimer = null;
     }
     if (boundsWatchdog) clearInterval(boundsWatchdog);
   });
@@ -1334,6 +1411,39 @@ export async function createWindow({
             await new Promise((r) => setTimeout(r, 250));
             await windowState.mainWindow!.webContents.executeJavaScript(
               `void window.__PI_DESKTOP__?.seedReviewChanges?.(0)`,
+            );
+            await new Promise((r) => setTimeout(r, 250));
+            // Per-turn changed-files card (D674): relaxed rows for a few
+            // files, dense rows plus `+N more` for many.
+            const shootTurnChanges = async (files: number, name: string) => {
+              await windowState.mainWindow!.webContents.executeJavaScript(
+                `void window.__PI_DESKTOP__?.seedTurnChanges?.(${files})`,
+              );
+              await new Promise((r) => setTimeout(r, 450));
+              await windowState.mainWindow!.webContents.executeJavaScript(
+                `document.querySelector(".turn-changes-card")?.scrollIntoView({ block: "center" })`,
+              );
+              await new Promise((r) => setTimeout(r, 250));
+              await shot(name);
+            };
+            await shootTurnChanges(3, "pi-turn-changes");
+            await shootTurnChanges(15, "pi-turn-changes-dense");
+            await windowState.mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.setThemeAttr("dark")`,
+            );
+            await new Promise((r) => setTimeout(r, 350));
+            await shot("pi-turn-changes-dense-dark");
+            await windowState.mainWindow!.webContents.executeJavaScript(
+              `window.__PI_DESKTOP__?.setThemeAttr("light")`,
+            );
+            // A row click opens Review on that file with its change expanded.
+            await windowState.mainWindow!.webContents.executeJavaScript(
+              `document.querySelectorAll(".turn-changes-row")[1]?.click()`,
+            );
+            await new Promise((r) => setTimeout(r, 600));
+            await shot("pi-turn-changes-open-review");
+            await windowState.mainWindow!.webContents.executeJavaScript(
+              `void window.__PI_DESKTOP__?.seedTurnChanges?.(0)`,
             );
             await new Promise((r) => setTimeout(r, 250));
             // A run row keeps its command in the head and only its output in the
@@ -1604,6 +1714,61 @@ export async function createWindow({
             await windowState.mainWindow!.webContents.executeJavaScript(
               `void window.__PI_DESKTOP__?.seedTranscript?.(0)`,
             );
+            await new Promise((r) => setTimeout(r, 250));
+            // Radial menu scenes (D678): the opt-in ring on the transcript
+            // background, sector labels at rest, one sector hovered; light
+            // then dark.
+            await windowState.mainWindow!.webContents.executeJavaScript(`
+              void window.__PI_DESKTOP__?.seedTranscript?.(6);
+              window.__PI_DESKTOP__?.seedRadialMenu?.(true);
+            `);
+            await new Promise((r) => setTimeout(r, 500));
+            await setTheme("light");
+            const openRadialRing = async () => {
+              const opened = await windowState.mainWindow!.webContents.executeJavaScript(`(() => {
+                const scroller = document.querySelector(".thread-scroll");
+                if (!scroller) return false;
+                const rect = scroller.getBoundingClientRect();
+                scroller.dispatchEvent(new MouseEvent("contextmenu", {
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: rect.left + rect.width / 2,
+                  clientY: rect.top + rect.height - 150,
+                }));
+                return true;
+              })()`);
+              if (!opened) throw new Error("radial scene: transcript not found");
+              await new Promise((r) => setTimeout(r, 450));
+            };
+            const hoverRadialWedge = async (degrees: number) => {
+              await windowState.mainWindow!.webContents.executeJavaScript(`(() => {
+                const menu = document.querySelector(".radial-menu");
+                if (!menu) return false;
+                const rect = menu.getBoundingClientRect();
+                const radius = rect.width * 0.34;
+                const angle = ${(Math.PI / 180) * degrees};
+                menu.dispatchEvent(new PointerEvent("pointermove", {
+                  bubbles: true,
+                  clientX: rect.left + rect.width / 2 + Math.cos(angle) * radius,
+                  clientY: rect.top + rect.height / 2 + Math.sin(angle) * radius,
+                }));
+                return true;
+              })()`);
+              await new Promise((r) => setTimeout(r, 250));
+            };
+            await openRadialRing();
+            await hoverRadialWedge(90);
+            await shot("pi-radial");
+            await setTheme("dark");
+            await new Promise((r) => setTimeout(r, 250));
+            await hoverRadialWedge(0);
+            await shot("pi-radial-dark");
+            await windowState.mainWindow!.webContents.executeJavaScript(`
+              window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+              window.__PI_DESKTOP__?.seedRadialMenu?.(false);
+              void window.__PI_DESKTOP__?.seedTranscript?.(0);
+            `);
+            await setTheme("light");
             await new Promise((r) => setTimeout(r, 250));
             // Notification inbox: mixed status, long title, read state, 99+ badge,
             // both themes, then the responsive fixed-position popover.

@@ -29,6 +29,7 @@ mod providers;
 mod registry;
 mod renderer;
 mod resolve;
+pub(crate) mod reviews;
 mod validation;
 
 pub use manifest::PluginManifest;
@@ -76,4 +77,4 @@ pub(crate) use renderer::validate_renderer;
 pub(crate) use validation::{is_local_package_url, package_host_allowed, validate_contributions};
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

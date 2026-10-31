@@ -54,9 +54,7 @@ function harness({ ports = [41_001, 41_002, 41_003] } = {}) {
         exec: async () => {
           throw new Error("the tunnel never execs");
         },
-        execWithInput: async () => {
-          throw new Error("the tunnel never execs");
-        },
+        execWithInput: async () => ({ code: 0, stderr: "", stdout: `PI_HOST_READY ${JSON.stringify({ hostId: "host-1", host: "127.0.0.1", port: 45678, version: VERSION })}\n` }),
         async forward(options) {
           entry.forwards.push(options);
           if (entry.nextFailure) {
@@ -132,7 +130,7 @@ test("open reuses the forward for a host key instead of stacking tunnels", async
   assert.deepEqual(transports[0].forwards[0], {
     localPort: first.localPort,
     remoteHost: "127.0.0.1",
-    remotePort: SSH.remotePort,
+    remotePort: 45678,
   });
 });
 
@@ -229,6 +227,7 @@ test("close during forward creation disposes the late forward instead of caching
     reservePort: async () => 1234,
     buildTransport: () => ({
       forward: async () => { started.resolve(); await gate.promise; return forward; },
+      execWithInput: async () => ({ code: 0, stdout: `PI_HOST_READY ${JSON.stringify({ hostId: "h", host: "127.0.0.1", port: 1234, version: VERSION })}` }),
       dispose: () => { disposed++; },
     }),
   });
@@ -249,6 +248,7 @@ test("a failed open disposes its transport even when forward cleanup rejects", a
   const manager = createSshTunnelManager({
     reservePort: async () => 1234,
     buildTransport: () => ({
+      execWithInput: async () => ({ code: 0, stdout: `PI_HOST_READY ${JSON.stringify({ hostId: "h", host: "127.0.0.1", port: 1234, version: VERSION })}` }),
       forward: async () => ({ localPort: 1234, close: async () => { closes++; throw closeError; } }),
       dispose: () => { disposed++; },
     }),
@@ -258,4 +258,53 @@ test("a failed open disposes its transport even when forward cleanup rejects", a
   await manager.dispose();
   assert.equal(closes, 1);
   assert.equal(disposed, 1, "cleanup failure must not skip disposal of the SSH process");
+});
+
+test("supervision precedes reservation and cancellation never forwards a late ready", async () => {
+  const gate = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  let reserves = 0;
+  let forwards = 0;
+  let disposed = 0;
+  const manager = createSshTunnelManager({
+    reservePort: async () => { reserves++; return 1234; },
+    buildTransport: () => ({
+      execWithInput: async () => { started.resolve(); return gate.promise; },
+      forward: async () => { forwards++; return fakeForward(1234); },
+      dispose: () => { disposed++; },
+    }),
+  });
+  const opening = manager.open("k", SSH);
+  await started.promise;
+  assert.equal(reserves, 0);
+  await manager.close("k");
+  gate.resolve({ code: 0, stderr: "", stdout: `PI_HOST_READY ${JSON.stringify({ hostId: "host-1", host: "::1", port: 45678, version: VERSION })}` });
+  await assert.rejects(opening, { errorCode: "HOST_DISCONNECTED" });
+  assert.equal(reserves, 0);
+  assert.equal(forwards, 0);
+  assert.equal(disposed, 1);
+});
+
+test("invalid readiness prevents reservation and forwarding; IPv6 readiness uses bracketed SSH syntax", async () => {
+  for (const host of ["0.0.0.0", "::1"]) {
+    let reserves = 0;
+    const forwarded = [];
+    const manager = createSshTunnelManager({
+      reservePort: async () => { reserves++; return 1234; },
+      buildTransport: () => ({
+        execWithInput: async () => ({ code: 0, stdout: `PI_HOST_READY ${JSON.stringify({ hostId: "h", host, port: 45678, version: VERSION })}` }),
+        forward: async options => { forwarded.push(options); return fakeForward(1234); },
+        dispose: () => {},
+      }),
+    });
+    if (host === "0.0.0.0") {
+      await assert.rejects(manager.open("k", SSH), { errorCode: "HOST_BOOTSTRAP_FAILED" });
+      assert.equal(reserves, 0);
+      assert.deepEqual(forwarded, []);
+    } else {
+      await manager.open("k", SSH);
+      assert.deepEqual(forwarded, [{ localPort: 1234, remoteHost: "[::1]", remotePort: 45678 }]);
+    }
+    await manager.dispose();
+  }
 });

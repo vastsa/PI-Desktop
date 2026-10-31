@@ -75,6 +75,16 @@ test("Live Voice preparation and call recovery copy is localized in every shippe
   assert.match(english["liveVoice.enableDetail"], /switch sessions by voice/);
 });
 
+test("MCP OAuth no-DCR recovery guidance is localized in every shipped catalog", () => {
+  const key = "extensions.mcp.authDcrUnavailable";
+  for (const [id, catalog] of Object.entries(catalogs)) {
+    const value = flattenCatalog(catalog)[key];
+    assert.equal(typeof value, "string", `${id} ${key}`);
+    assert.notEqual(value.trim(), "", `${id} ${key}`);
+    if (id !== "en") assert.notEqual(value, english[key], `${id} ${key} must not fall back to English`);
+  }
+});
+
 test("canonical thinking levels are not translated catalog entries", () => {
   const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
   const effortKeys = [

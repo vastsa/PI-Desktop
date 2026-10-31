@@ -1,6 +1,6 @@
 # ADR: Remote projects in the shared Chat home workflow
 
-- Status: Accepted
+- Status: Superseded for new projects by [Local Agent remote workspace tools](local-agent-remote-workspace-tools.md)
 - Date: 2026-10-11
 - Related: ADR 0286, ADR 0292,
   [remote Agent Control](../spec/02-architecture/05-remote-agent-control.md)

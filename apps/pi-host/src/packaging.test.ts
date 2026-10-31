@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { copyAgentRuntimeBundle } from "../scripts/runtime-bundle.mjs";
 import { ensureDarwinSpawnHelperExecutable } from "../scripts/spawn-helper-permissions.mjs";
+import { writePackageManifest } from "../scripts/package-integrity.mjs";
 
 const scripts = fileURLToPath(new URL("../scripts/", import.meta.url));
 const require = createRequire(import.meta.url);
@@ -43,6 +44,7 @@ export async function probe() {
   write(join(runtime, "chunks/nested/suffix.js"), 'export const suffix = "-runtime";\n');
   write(join(runtime, "assets/fixture.txt"), "runtime asset\n");
   write(join(pty, "package.json"), JSON.stringify({ name: "node-pty", version: "1.1.0" }));
+  if (process.platform === "darwin") write(join(pty, `prebuilds/darwin-${process.arch}/spawn-helper`), "#!/bin/sh\nexit 0\n");
   symlinkSync(dirname(require.resolve("esbuild/package.json")), join(app, "node_modules/esbuild"), "junction");
   return { root, app, runtime, out, pty };
 }
@@ -58,7 +60,7 @@ function node(root: string, args: string[]) {
   });
 }
 
-function bundle(f: Fixture, platform = "linux") {
+function bundle(f: Fixture, platform: string = process.platform) {
   return node(f.root, [join(f.app, "scripts/bundle.mjs"), "--platform", platform, "--arch", process.arch, "--out", f.out]);
 }
 
@@ -99,7 +101,7 @@ describe("pi-host packaging", () => {
     expect(result.stderr).toMatch(/agent-runtime.*package\.json/s);
   });
 
-  it("packages Linux PTYs without a macOS spawn-helper", () => {
+  it.skipIf(process.platform !== "linux")("packages Linux PTYs without a macOS spawn-helper", () => {
     const f = fixture();
     write(join(f.pty, "build/Release/pty.node"), "fixture Linux native addon");
     const result = bundle(f, "linux");
@@ -108,7 +110,7 @@ describe("pi-host packaging", () => {
     expect(existsSync(join(f.out, "node_modules/node-pty/build/Release/spawn-helper"))).toBe(false);
   });
 
-  it.skipIf(process.platform === "win32").each([`prebuilds/darwin-${process.arch}`, "build/Release", "build/Debug"])("makes the Darwin spawn-helper executable in %s without changing the source", (nativeDir) => {
+  it.skipIf(process.platform !== "darwin").each([`prebuilds/darwin-${process.arch}`, "build/Release", "build/Debug"])("makes the Darwin spawn-helper executable in %s without changing the source", (nativeDir) => {
     const f = fixture();
     write(join(f.pty, nativeDir, "pty.node"), "fixture Darwin native addon");
     const sourceHelper = join(f.pty, nativeDir, "spawn-helper");
@@ -123,7 +125,7 @@ describe("pi-host packaging", () => {
     expect(executed.stdout).toBe("helper-ok");
   });
 
-  it("does not swallow a missing Darwin helper as an optional node-pty install", () => {
+  it.skipIf(process.platform !== "darwin")("does not swallow a missing Darwin helper as an optional node-pty install", () => {
     const f = fixture();
     write(join(f.pty, "build/Release/pty.node"), "fixture Darwin native addon");
     const result = bundle(f, "darwin");
@@ -139,6 +141,145 @@ describe("pi-host packaging", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain("node-pty not installed");
     expect(existsSync(join(f.out, "node_modules/node-pty"))).toBe(false);
+  });
+
+  it("ships the selected Node and launcher, not a system Node", () => {
+    const f = fixture();
+    const selected = join(f.root, "selected-node");
+    cpSync(process.execPath, selected);
+    chmodSync(selected, 0o755);
+    write(join(f.app, "src/cli.ts"), 'console.log(JSON.stringify({exec:process.execPath,args:process.argv.slice(2)}));');
+    const result = node(f.root, [join(f.app, "scripts/bundle.mjs"), "--node", selected, "--out", f.out]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(f.out, "bin/node")).equals(readFileSync(selected))).toBe(true);
+    const launched = spawnSync(join(f.out, "bin/pi-host"), ["hello world"], { env: { ...process.env, PATH: "/usr/bin:/bin", NODE_OPTIONS: "" }, encoding: "utf8" });
+    expect(launched.status, launched.stderr).toBe(0);
+    expect(JSON.parse(launched.stdout)).toEqual({ exec: join(f.out, "bin/node"), args: ["hello world"] });
+  });
+
+  it.each(["old", "wrong-platform", "wrong-arch", "missing"])("rejects %s Node before destroying existing output", (kind) => {
+    const f = fixture();
+    write(join(f.out, "keep"), "old output");
+    const selected = join(f.root, "bad-node");
+    const metadata = { version: kind === "old" ? "20.0.0" : "24.0.0", platform: kind === "wrong-platform" ? "other" : process.platform, arch: kind === "wrong-arch" ? "other" : process.arch };
+    if (kind !== "missing") {
+      write(selected, `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(metadata)}'\n`);
+      chmodSync(selected, 0o755);
+    }
+    const result = node(f.root, [join(f.app, "scripts/bundle.mjs"), "--node", selected, "--out", f.out]);
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(f.out, "keep"), "utf8")).toBe("old output");
+  });
+
+  it("refuses fake cross-target labels before output writes", () => {
+    const f = fixture();
+    write(join(f.out, "keep"), "old output");
+    const result = bundle(f, process.platform === "linux" ? "darwin" : "linux");
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(f.out, "keep"), "utf8")).toBe("old output");
+  });
+
+  it("installs verified contents, atomically switches current, and reuses immutable versions", () => {
+    const f = fixture();
+    expect(bundle(f).status).toBe(0);
+    const root = join(f.root, "installed with spaces");
+    const install = () => spawnSync("/bin/sh", [join(f.out, "install.sh")], { env: { ...process.env, PI_HOST_INSTALL_DIR: root }, encoding: "utf8" });
+    const first = install();
+    expect(first.status, first.stderr).toBe(0);
+    const original = readlinkSync(join(root, "current"));
+    expect(original).toMatch(/sha256-[a-f0-9]{64}$/);
+    expect(statSync(original).mode & 0o777).toBe(0o700);
+    for (const file of ["bin/node", "bin/pi-host", "bin/pi-desktop-host-core", "pi-host.js", "agent-runtime/assets/fixture.txt", "SHA256SUMS"]) {
+      expect(readFileSync(join(original, file)).equals(readFileSync(join(f.out, file)))).toBe(true);
+    }
+    const before = statSync(join(original, "bin/node"));
+    expect(install().status).toBe(0);
+    expect(readlinkSync(join(root, "current"))).toBe(original);
+    expect(statSync(join(original, "bin/node")).ino).toBe(before.ino);
+    write(join(f.out, "pi-host.js"), 'console.log("updated CLI");');
+    const failed = install();
+    expect(failed.status).not.toBe(0);
+    expect(readlinkSync(join(root, "current"))).toBe(original);
+    expect(readFileSync(join(original, "pi-host.js"), "utf8")).toContain("fixture CLI");
+    writePackageManifest(f.out);
+    expect(install().status).toBe(0);
+    const updated = readlinkSync(join(root, "current"));
+    expect(updated).not.toBe(original);
+    expect(readFileSync(join(original, "pi-host.js"), "utf8")).toContain("fixture CLI");
+    const launched = spawnSync(join(root, "current/bin/node"), [join(root, "current/pi-host.js")], { encoding: "utf8" });
+    expect(launched.status, launched.stderr).toBe(0);
+    expect(launched.stdout.trim()).toBe("updated CLI");
+    expect(readdirSync(root).filter((name) => name.startsWith(".stage") || name === ".install-lock")).toEqual([]);
+  });
+
+
+  it("verifies in place without creating installation state and rejects altered files", () => {
+    const f = fixture();
+    expect(bundle(f).status).toBe(0);
+    const root = join(f.root, "must-not-exist");
+    const verify = () => spawnSync("/bin/sh", [join(f.out, "install.sh"), "--verify"], { env: { ...process.env, PI_HOST_INSTALL_DIR: root }, encoding: "utf8" });
+    const before = statSync(join(f.out, "bin/node"));
+    const result = verify();
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(root)).toBe(false);
+    expect(statSync(join(f.out, "bin/node")).ino).toBe(before.ino);
+    write(join(f.out, "pi-host.js"), "tampered");
+    expect(verify().status).not.toBe(0);
+    expect(existsSync(root)).toBe(false);
+  });
+
+  it("uses real shasum when sha256sum and system Node are unavailable", () => {
+    const f = fixture();
+    expect(bundle(f).status).toBe(0);
+    const path = join(f.root, "shell-tools");
+    mkdirSync(path);
+    for (const tool of ["shasum", "uname", ...(process.platform === "linux" ? ["flock"] : []), "dirname", "mkdir", "mktemp", "cp", "awk", "find", "wc", "tr", "mv", "ln", "rm", "cmp"]) {
+      const found = spawnSync("/bin/sh", ["-c", `command -v ${tool}`], { encoding: "utf8" });
+      expect(found.status, tool).toBe(0);
+      symlinkSync(found.stdout.trim(), join(path, tool));
+    }
+    const root = join(f.root, "installed");
+    const install = () => spawnSync("/bin/sh", [join(f.out, "install.sh")], { env: { ...process.env, PATH: path, PI_HOST_INSTALL_DIR: root }, encoding: "utf8" });
+    const result = install();
+    expect(result.status, result.stderr).toBe(0);
+    const original = readlinkSync(join(root, "current"));
+    // An already published damaged version must never be silently repaired in place.
+    write(join(original, "pi-host.js"), "damaged installed file");
+    expect(install().status).not.toBe(0);
+    expect(readlinkSync(join(root, "current"))).toBe(original);
+    expect(readFileSync(join(original, "pi-host.js"), "utf8")).toBe("damaged installed file");
+  });
+
+  it("preserves a non-symlink current directory on publication failure", () => {
+    const f = fixture();
+    expect(bundle(f).status).toBe(0);
+    const root = join(f.root, "installed");
+    write(join(root, "current/keep"), "old current");
+    const result = spawnSync("/bin/sh", [join(f.out, "install.sh")], { env: { ...process.env, PI_HOST_INSTALL_DIR: root }, encoding: "utf8" });
+    expect(result.status).not.toBe(0);
+    expect(statSync(join(root, "current")).isDirectory()).toBe(true);
+    expect(readFileSync(join(root, "current/keep"), "utf8")).toBe("old current");
+    expect(readdirSync(root).filter((name) => name.startsWith(".stage") || name === ".install-lock")).toEqual([]);
+  });
+  it.each(["traversal", "duplicate", "extra", "symlink", "missing", "corrupt-node"])("refuses %s package and preserves old current", (kind) => {
+    const f = fixture();
+    expect(bundle(f).status).toBe(0);
+    const root = join(f.root, "installed");
+    const old = join(root, "old-version");
+    write(join(old, "keep"), "unchanged");
+    symlinkSync(old, join(root, "current"));
+    const manifest = join(f.out, "SHA256SUMS");
+    if (kind === "traversal") write(manifest, `${"0".repeat(64)}  ../outside\n`);
+    if (kind === "duplicate") write(manifest, readFileSync(manifest, "utf8") + readFileSync(manifest, "utf8").split("\n")[0] + "\n");
+    if (kind === "extra") write(join(f.out, "extra"), "unexpected");
+    if (kind === "missing") rmSync(join(f.out, "pi-host.js"));
+    if (kind === "corrupt-node") write(join(f.out, "bin/node"), "corrupt runtime");
+    if (kind === "symlink") { rmSync(join(f.out, "pi-host.js")); symlinkSync(join(old, "keep"), join(f.out, "pi-host.js")); }
+    const result = spawnSync("/bin/sh", [join(f.out, "install.sh")], { env: { ...process.env, PI_HOST_INSTALL_DIR: root }, encoding: "utf8" });
+    expect(result.status).not.toBe(0);
+    expect(readlinkSync(join(root, "current"))).toBe(old);
+    expect(readFileSync(join(old, "keep"), "utf8")).toBe("unchanged");
+    expect(readdirSync(root).filter((name) => name !== ".install.lock").sort()).toEqual(["current", "old-version"]);
   });
 });
 

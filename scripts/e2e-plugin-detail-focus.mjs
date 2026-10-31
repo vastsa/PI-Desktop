@@ -17,6 +17,8 @@ await require("esbuild").build({
   entryPoints: [join(root, "scripts/e2e/plugin-detail-focus.tsx")],
   outfile: join(temp, "renderer.js"), bundle: true, platform: "browser", format: "iife",
   loader: { ".css": "empty" }, jsx: "automatic", define: { "process.env.NODE_ENV": '"production"' },
+  // `render-diagnostics.ts` reads `import.meta.env`; the iife probe does not.
+  logOverride: { "empty-import-meta": "silent" },
   alias: { react: join(desktop, "node_modules/react"), "react-dom": join(desktop, "node_modules/react-dom") },
   nodePaths: [join(desktop, "node_modules")],
 });

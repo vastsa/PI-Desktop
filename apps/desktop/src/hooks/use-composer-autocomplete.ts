@@ -16,6 +16,7 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../lib/api";
 import {
+  commandsForSession,
   fetchComposerCommands,
   prewarmComposerCommands,
   readComposerCommandsCache,
@@ -24,13 +25,16 @@ import { useAppStore } from "../stores/app-store";
 
 /**
  * Composer autocomplete state machine (D123–D125): trigger detection over
- * draft+cursor, lazily fetched command/file sources, local fuzzy filtering,
- * and insert-on-accept. IME freezing and key routing live in the Composer;
+ * draft+cursor, lazily fetched command/file sources, local fuzzy filtering
+ * (with a main-process search past a truncated file index, D669), and
+ * insert-on-accept. IME freezing and key routing live in the Composer;
  * this hook only refuses to update while `composing` is true.
  */
 
 const MAX_FILE_ITEMS = 50;
 const SOURCE_TTL_MS = 10_000;
+/** Typing pause before a query searches past a truncated file index. */
+const FILE_SEARCH_DEBOUNCE_MS = 150;
 
 export type AutocompleteItem =
   | { kind: "command"; command: ComposerCommand; match: FuzzyMatch }
@@ -102,9 +106,13 @@ function filterCommands(
 
 function filterFiles(entries: FsIndexEntry[], query: string): AutocompleteItem[] {
   const matched: Array<{ entry: FsIndexEntry; match: FuzzyMatch }> = [];
+  // Rows found by the main-process search may repeat index entries.
+  const seen = new Set<string>();
   for (const entry of entries) {
     const match = fuzzyMatchPath(query, entry.path, entry.kind);
-    if (match) matched.push({ entry, match });
+    if (!match || seen.has(entry.path)) continue;
+    seen.add(entry.path);
+    matched.push({ entry, match });
   }
   // The index can hold thousands of entries while the menu shows at most
   // MAX_FILE_ITEMS, so only the bounded top slice is ever ordered.
@@ -133,6 +141,14 @@ export type ComposerCommandResolution =
  * names, and unknown names stay on the prompt path. Reuses the menu's TTL cache
  * when warm, so a warm cache keeps resolving through a source blip.
  */
+/**
+ * Whether the active session runs against a remote host workspace. The menu
+ * and the send-time resolver share this so they offer the same commands.
+ */
+function activeSessionHasRemoteWorkspace(state: ReturnType<typeof useAppStore.getState>): boolean {
+  return Boolean(state.sessions.find((session) => session.id === state.activeSessionId)?.remoteWorkspace);
+}
+
 export async function resolveComposerCommand(
   name: string,
 ): Promise<ComposerCommandResolution> {
@@ -150,7 +166,9 @@ export async function resolveComposerCommand(
       };
     }
   }
-  const command = commands.find((c) => c.name === name);
+  const command = commandsForSession(commands, {
+    remote: activeSessionHasRemoteWorkspace(useAppStore.getState()),
+  }).find((c) => c.name === name);
   return command ? { status: "resolved", command } : { status: "unknown" };
 }
 
@@ -165,11 +183,18 @@ export function useComposerAutocomplete({
   composing: boolean;
   enabled: boolean;
 }) {
+  const sessionId = useAppStore((s) => s.activeSessionId);
+  const remoteSession = useAppStore(activeSessionHasRemoteWorkspace);
   const workspaceKey = useAppStore((s) => s.workspace?.path ?? "");
   const hasWorkspace = workspaceKey !== "";
   const ready = useAppStore((s) => s.ready);
   const [commands, setCommands] = useState<ComposerCommand[] | null>(null);
   const [files, setFiles] = useState<{
+    entries: FsIndexEntry[];
+    truncated: boolean;
+  } | null>(null);
+  const [found, setFound] = useState<{
+    scope: string;
     entries: FsIndexEntry[];
     truncated: boolean;
   } | null>(null);
@@ -232,7 +257,7 @@ export function useComposerAutocomplete({
     }
     let cancelled = false;
     void api
-      .fsIndex()
+      .fsIndex(sessionId)
       .then((res) => {
         filesCache = {
           key: workspaceKey,
@@ -248,7 +273,42 @@ export function useComposerAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace]);
+  }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace, sessionId]);
+
+  // A truncated index keeps only the shallowest entries, so a deep file of a
+  // large tree matches nothing in it. Once typing pauses, the query also
+  // searches the main process's full listing (D669); the answer belongs to
+  // this `@` token and its rows merge with the index's.
+  const fileQuery =
+    trigger?.mode === "file" && !dismissed && files?.truncated ? trigger.query : "";
+  const searchScope = `${sessionId ?? ""}\n${workspaceKey}\n${triggerKey ?? ""}`;
+  useEffect(() => {
+    if (!fileQuery) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void api
+        .fsSearch(sessionId, fileQuery)
+        .then((res) => {
+          if (!cancelled) setFound({ scope: searchScope, ...res });
+        })
+        .catch(() => {
+          // The index's rows still answer; the truncation note stays.
+          if (!cancelled) setFound({ scope: searchScope, entries: [], truncated: true });
+        });
+    }, FILE_SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [fileQuery, searchScope, sessionId]);
+  // A later `@` at the same offset is a new token and must not inherit rows.
+  useEffect(() => {
+    if (!triggerKey) setFound(null);
+  }, [triggerKey]);
+  // A bare `@` lists the index alone; searched rows belong to a typed query.
+  const foundHere = fileQuery !== "" && found?.scope === searchScope ? found : null;
+  const fileTruncated =
+    (files?.truncated ?? false) && (!fileQuery || !foundHere || foundHere.truncated);
 
   // Warm the `/` source once bootstrap settles, so the first slash of a session
   // does not wait for a cold host round trip (#1543). Waiting for `ready` keeps
@@ -262,10 +322,20 @@ export function useComposerAutocomplete({
   const items = useMemo<AutocompleteItem[]>(() => {
     if (!trigger || dismissed) return [];
     if (trigger.mode === "slash") {
-      return commands ? filterCommands(commands, trigger.query, trigger.tokenStart > 0) : [];
+      return commands
+        ? filterCommands(
+            commandsForSession(commands, { remote: remoteSession }),
+            trigger.query,
+            trigger.tokenStart > 0,
+          )
+        : [];
     }
-    return files ? filterFiles(files.entries, trigger.query) : [];
-  }, [trigger, dismissed, commands, files]);
+    if (!files) return [];
+    return filterFiles(
+      foundHere ? [...foundHere.entries, ...files.entries] : files.entries,
+      trigger.query,
+    );
+  }, [trigger, dismissed, commands, remoteSession, files, foundHere]);
 
   // New query or mode restarts keyboard navigation at the top hit.
   const itemsKey = trigger ? `${trigger.mode}:${trigger.query}` : "";
@@ -321,7 +391,7 @@ export function useComposerAutocomplete({
     hasItems: open && items.length > 0,
     highlight,
     setHighlight,
-    truncated: open && trigger?.mode === "file" ? (files?.truncated ?? false) : false,
+    truncated: open && trigger?.mode === "file" ? fileTruncated : false,
     noWorkspace: open && trigger?.mode === "file" && !hasWorkspace,
     close,
     accept,

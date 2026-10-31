@@ -6,7 +6,13 @@ description: Configure recurring local agent tasks and review their results.
 # Scheduled tasks
 
 Open the clock in the sidebar footer, or search for **Scheduled** with
-Ctrl/Cmd+K. Create a task with a name, prompt and cadence:
+Ctrl/Cmd+K.
+
+Scheduled tasks are enabled by default. Turn them off or back on in
+**Settings → General → Scheduled tasks**. Turning the switch off hides the
+clock and Scheduled search entry, disables the AI task tools, and prevents new
+runs. Existing tasks and history stay saved, and an already-running task can
+finish. Search still finds the settings switch while the feature is off.
 
 New tasks start in Manual. Choose a recurring cadence to enable automation.
 
@@ -45,6 +51,8 @@ scheduler or cron-expression support is installed.
 Scheduled tasks now execute while the desktop is running, with hourly intervals and time/weekday
 configuration, per-task project/permission/model choices, editing, pause/resume, a visible clock entry and run history.
 Existing data stays readable; old cadence-only records do not start automatically.
+The default-on Scheduled tasks switch in General settings now lets you turn
+the feature off without deleting task definitions or run history.
 
 ## Manage tasks in a conversation
 

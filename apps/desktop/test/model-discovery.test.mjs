@@ -177,3 +177,15 @@ test("optional custom headers are attached to discovery requests", () => {
   });
   assert.equal(google.headers["User-Agent"], undefined);
 });
+
+test("only valid nonempty complete model responses can reconcile missing ids", async () => {
+  const { modelListIsComplete } = await import("../electron/main/model-discovery.ts");
+  const data = [{ id: "alpha" }];
+  assert.equal(modelListIsComplete("openai_models", { data }), true);
+  assert.equal(modelListIsComplete("google_models", { models: [{ name: "models/alpha" }] }), true);
+  for (const body of [ { data: [] }, { data: [...data, {}] }, { data, has_more: true },
+    { data, nextPageToken: "page-2" }, { data, links: { next: "/models?page=2" } },
+    { models: [{ name: "models/alpha" }], nextPageToken: "page-2" } ]) {
+    assert.equal(modelListIsComplete("openai_models", body), false);
+  }
+});

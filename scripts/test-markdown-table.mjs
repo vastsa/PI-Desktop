@@ -13,7 +13,7 @@ await build({
   entryPoints: [join(root, "apps/desktop/test/fixtures/markdown-table.jsx")],
   outfile: join(temp, "fixture.js"), bundle: true, format: "esm", platform: "browser", jsx: "automatic",
   define: { "import.meta.env.DEV": "false", "process.env.NODE_ENV": '"production"' },
-  loader: { ".css": "empty" },
+  loader: { ".woff2": "file", ".woff": "file", ".ttf": "file" },
 });
 const renderer = join(root, "apps/desktop/out/renderer");
 const appHtml = await readFile(join(renderer, "index.html"), "utf8");
@@ -22,7 +22,7 @@ if (!csp) throw new Error("Desktop renderer Content-Security-Policy is missing")
 const styles = [...appHtml.matchAll(/href="([^" ]+\.css)"/g)].map((match) => match[1]);
 if (!styles.length) throw new Error("Build the Desktop renderer before running the table test");
 await cp(join(renderer, "assets"), join(temp, "assets"), { recursive: true });
-await writeFile(join(temp, "index.html"), `<!doctype html><html><head><meta charset="utf-8">${csp}${styles.map((path) => `<link rel="stylesheet" href="${path}">`).join("")}</head><body><div id="root"></div><script type="module" src="./fixture.js"></script></body></html>`);
+await writeFile(join(temp, "index.html"), `<!doctype html><html><head><meta charset="utf-8">${csp}${styles.map((path) => `<link rel="stylesheet" href="${path}">`).join("")}<link rel="stylesheet" href="./fixture.css"></head><body><div id="root"></div><script type="module" src="./fixture.js"></script></body></html>`);
 const env = { ...process.env, PI_TABLE_TEST_DIR: temp };
 delete env.ELECTRON_RUN_AS_NODE;
 const electron = process.env.PI_TABLE_ELECTRON ?? resolveElectronBinary(root).electronBinary;

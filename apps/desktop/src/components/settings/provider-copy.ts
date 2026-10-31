@@ -43,10 +43,13 @@ export function copyProviderConfiguration(provider: ProviderPublic, name: string
       ...(model.thinkingProtocol !== undefined
         ? { thinkingProtocol: model.thinkingProtocol }
         : {}),
+      ...(model.supportsReasoningEffort !== undefined
+        ? { supportsReasoningEffort: model.supportsReasoningEffort } : {}),
       ...(model.supportsImages !== undefined ? { supportsImages: model.supportsImages } : {}),
       ...(model.supportsDocuments !== undefined ? { supportsDocuments: model.supportsDocuments } : {}),
       ...(model.availableForSubagents !== undefined ? { availableForSubagents: model.availableForSubagents } : {}),
       ...(model.nativeWebSearch !== undefined ? { nativeWebSearch: model.nativeWebSearch } : {}),
+      ...(model.fastModeAllowed !== undefined ? { fastModeAllowed: model.fastModeAllowed } : {}),
     })),
   };
 }

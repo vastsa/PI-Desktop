@@ -522,3 +522,41 @@ test("capability badges include every declared plugin capability", () => {
     "bus",
   ]);
 });
+
+test("the session:activated scope filter derives from the announced session's project", async (t) => {
+  const { sessionEventScopeFilter, SESSION_SCOPED_EVENTS } = await import(
+    "../electron/main/plugin-session-scope.ts"
+  );
+  const sessionProjects = new Map([["s-a", "/work/a"]]);
+  const activeInProject = (pluginId, projectPath) =>
+    projectPath === "/work/a" && pluginId === "demo.in-scope";
+
+  // A selection event produces a filter that keys on the announced session's
+  // project: the in-scope plugin passes, another project's plugin does not.
+  const filter = sessionEventScopeFilter(
+    "session:activated",
+    "s-a",
+    sessionProjects,
+    activeInProject,
+  );
+  assert.equal(typeof filter, "function");
+  assert.equal(filter("demo.in-scope"), true);
+  assert.equal(filter("demo.out-of-scope"), false);
+
+  // A session without a project checks against null, not against whatever
+  // the map happens to hold for another session.
+  const noProject = sessionEventScopeFilter(
+    "session:activated",
+    "s-global",
+    sessionProjects,
+    activeInProject,
+  );
+  assert.equal(noProject("demo.in-scope"), false, "null project is passed through, not the map's value");
+
+  // Other session events fan out unconditionally.
+  assert.equal(
+    sessionEventScopeFilter("session:turnEnded", "s-a", sessionProjects, activeInProject),
+    undefined,
+  );
+  assert.ok(SESSION_SCOPED_EVENTS.has("session:activated"));
+});

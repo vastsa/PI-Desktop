@@ -1,0 +1,134 @@
+/* Inline generative UI visualizations (ADR gen-ui-inline-visualization). */
+.gen-ui-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.gen-ui-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md);
+  background: var(--ds-tool-row-bg);
+}
+
+.gen-ui-header {
+  display: flex;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 2px 12px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+}
+
+.gen-ui-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gen-ui-action {
+  flex: 0 0 auto;
+}
+
+.gen-ui-body {
+  min-width: 0;
+}
+
+.gen-ui-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color-scheme: normal;
+}
+
+.gen-ui-placeholder {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-muted);
+}
+
+.gen-ui-card.is-unavailable {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm-plus);
+}
+
+.gen-ui-unavailable-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.gen-ui-unavailable-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gen-ui-unavailable-text .gen-ui-title {
+  color: var(--ds-text-secondary);
+}
+
+.gen-ui-unavailable-reason {
+  font-size: var(--text-xs);
+}
+
+.gen-ui-script-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  color: var(--ds-error);
+  font-size: var(--text-sm-plus);
+}
+
+.gen-ui-script-error-message {
+  overflow-wrap: anywhere;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-xs);
+}
+
+.gen-ui-dialog {
+  display: flex;
+  width: min(100%, 1100px);
+  height: min(86vh, 900px);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.gen-ui-dialog-body {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.gen-ui-dialog-body .gen-ui-frame {
+  height: 100%;
+}
+
+/* Focus guards around the expanded dialog; see GenUiDialog. */
+.gen-ui-focus-guard {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}

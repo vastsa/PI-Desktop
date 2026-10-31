@@ -9,6 +9,7 @@ import {
   type ComponentType,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useBlockingOverlayActive } from "../../lib/blocking-overlay";
@@ -25,10 +26,16 @@ import {
   toolWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import type { PluginViewMeta } from "@pi-desktop/shared";
+import { api } from "../../lib/api";
 import { pluginViewIcon, pluginViewInitial } from "../../lib/plugin-view-icons";
 import { useAppStore } from "../../stores/app-store";
 import type { WorkPanelTab } from "../../stores/app-store";
 import { cx } from "../ui";
+import {
+  ContextMenu,
+  useContextMenu,
+  type ContextMenuItem,
+} from "../ContextMenu";
 import { TooltipButton } from "../ui";
 import type { IconProps } from "../icons";
 import {
@@ -48,9 +55,10 @@ import { SubagentTranscriptTab } from "./SubagentTranscriptTab";
 import {
   MAIN_PANE_MIN_WIDTH,
   WORK_PANEL_COMPACT_MIN_WIDTH,
-  WORK_PANEL_MIN_WIDTH,
   clampWorkPanelWidth,
+  workPanelGestureMinimum,
   workPanelLayout,
+  workPanelRequestedWidth,
   workPanelResetWidth,
   workPanelWidthBounds,
 } from "../../lib/work-panel-resize";
@@ -205,16 +213,24 @@ function LocalWorkPanel({
 }) {
   const { t } = useTranslation();
   const blockingOverlayActive = useBlockingOverlayActive();
+  const {
+    contextMenu: tabContextMenu,
+    openContextMenu: openTabContextMenu,
+    closeContextMenu: closeTabContextMenu,
+  } = useContextMenu();
   const rawTabs = useAppStore((s) => s.workPanelTabs);
   const tabs = rawTabs.filter(isKnownWorkPanelTab);
   const activeTabId = useAppStore((s) => s.activeWorkPanelTabId);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const pluginViews = useAppStore((s) => s.pluginViews);
   const width = useAppStore((s) => s.workPanelWidth);
+  const yieldedWidth = useAppStore((s) => s.workPanelYieldedWidth);
   const activateTab = useAppStore((s) => s.activateWorkPanelTab);
   const reorderTabs = useAppStore((s) => s.reorderWorkPanelTabs);
   const closeTab = useAppStore((s) => s.closeWorkPanelTab);
   const openWorkPanelTab = useAppStore((s) => s.openWorkPanelTab);
+  const closeOtherTabs = useAppStore((s) => s.closeOtherWorkPanelTabs);
+  const closeAllTabs = useAppStore((s) => s.closeAllWorkPanelTabs);
   const openNewWorkPanelTab = useAppStore((s) => s.openNewWorkPanelTab);
   const replaceWorkPanelTab = useAppStore((s) => s.replaceWorkPanelTab);
   const setWidth = useAppStore((s) => s.setWorkPanelWidth);
@@ -223,6 +239,7 @@ function LocalWorkPanel({
   const tabSignature = JSON.stringify(
     tabs.map(({ id, kind, resource, location }) => [id, kind, resource, location]),
   );
+
   // Subagent tabs may share an agent name; repeats gain a 1-based `#n`
   // suffix in strip order so the row stays unambiguous. The base label
   // already falls back to panel.tabs.subagent when no name was captured.
@@ -241,7 +258,9 @@ function LocalWorkPanel({
   const tabReorderState = useRef<WorkPanelTabReorderState | null>(null);
   const tabStripRef = useRef<HTMLDivElement | null>(null);
   const suppressedTabClickPointerIdsRef = useRef<Set<number>>(new Set());
+  const tabWrapperRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const tabCloseButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const newTabButtonRef = useRef<HTMLButtonElement | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{
@@ -251,11 +270,6 @@ function LocalWorkPanel({
   const [nativeSurfaceReadyForExit, setNativeSurfaceReadyForExit] =
     useState(false);
 
-  const requestedPanelWidth = panelDragWidth ?? width;
-  const panelMinimum =
-    requestedPanelWidth < WORK_PANEL_MIN_WIDTH
-      ? WORK_PANEL_COMPACT_MIN_WIDTH
-      : WORK_PANEL_MIN_WIDTH;
   // The first render can precede ResizeObserver's first notification. Use a
   // conservative shell estimate for that frame; the measured width takes over
   // before a user can interact with the divider.
@@ -263,9 +277,20 @@ function LocalWorkPanel({
   const budgetWidth =
     containerWidth > 0
       ? containerWidth
-      : requestedPanelWidth +
+      : (panelDragWidth ?? width) +
         (sidebarOccupiesBudget ? sidebarWidth : 0) +
         MAIN_PANE_MIN_WIDTH;
+  // A drag preview is an explicit width; otherwise the panel asks for its
+  // preferred width, or the width it lent to a manually reopened sidebar.
+  const requestedPanelWidth =
+    panelDragWidth ??
+    workPanelRequestedWidth({
+      containerWidth: budgetWidth,
+      sidebarWidth,
+      sidebarCollapsed: !sidebarOccupiesBudget,
+      preferredWidth: width,
+      yieldedWidth,
+    });
   const layout = workPanelLayout({
     containerWidth: budgetWidth,
     sidebarWidth,
@@ -274,6 +299,7 @@ function LocalWorkPanel({
     maximized,
   });
   const renderPanelWidth = layout.panelWidth;
+  const panelMinimum = workPanelGestureMinimum(renderPanelWidth);
   const isResizing = panelDragWidth !== null;
 
   useLayoutEffect(() => {
@@ -301,13 +327,56 @@ function LocalWorkPanel({
     setNativeSurfaceReadyForExit(true);
   }, [exiting]);
 
+  /**
+   * Reveal one tab's full box — the wrapper, not the button alone. The close
+   * control is a 24px sibling inside that wrapper, so scrolling only the button
+   * leaves the close control clipped by the strip's overflow edge (issue
+   * #1762). The button is the fallback for a tab rendered without a wrapper.
+   */
+  const revealTab = useCallback((tabId: string) => {
+    tabWrapperRefs.current[tabId]?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+    tabButtonRefs.current[tabId]?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+    tabCloseButtonRefs.current[tabId]?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, []);
+
   useLayoutEffect(() => {
     if (!activeTabId) return;
+    // Inline rather than a helper call: `work-panel.test.mjs` pins this effect
+    // body as the contract for "wrapper, then button, then close control".
+    tabWrapperRefs.current[activeTabId]?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
     tabButtonRefs.current[activeTabId]?.scrollIntoView({
       block: "nearest",
       inline: "nearest",
     });
+    tabCloseButtonRefs.current[activeTabId]?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
   }, [activeTabId, tabs.length]);
+
+  // A narrowed panel clips a tab that was fully visible a moment ago, and
+  // neither `activeTabId` nor `tabs.length` changes when only the width does —
+  // so the reveal above would not re-run and the close control would stay
+  // clipped after a resize (issue #1762). Observe the strip itself.
+  useLayoutEffect(() => {
+    const strip = tabStripRef.current;
+    if (!strip || !activeTabId || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => revealTab(activeTabId));
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [activeTabId, revealTab]);
 
   const finishTabReorder = useCallback(() => {
     const state = tabReorderState.current;
@@ -590,6 +659,61 @@ function LocalWorkPanel({
     },
     [closeTab, tabs],
   );
+  const closeOtherTabsAndFocus = useCallback(
+    (tabId: string) => {
+      closeOtherTabs(tabId);
+      requestAnimationFrame(() => tabButtonRefs.current[tabId]?.focus());
+    },
+    [closeOtherTabs],
+  );
+  const closeAllTabsAndFocus = useCallback(() => {
+    closeAllTabs();
+    requestAnimationFrame(() => newTabButtonRef.current?.focus());
+  }, [closeAllTabs]);
+  const openNativeTabMenu = useCallback(
+    (
+      event: ReactMouseEvent<HTMLDivElement>,
+      tabId: string,
+      label: string,
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const sessionId = activeSessionId;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const point =
+        event.clientX === 0 && event.clientY === 0
+          ? { x: rect.left + Math.min(24, rect.width / 2), y: rect.top + Math.min(24, rect.height / 2) }
+          : { x: event.clientX, y: event.clientY };
+      void api.openWorkPanelTabMenu({
+        closeTabLabel: t("panel.closeTab", { name: label }),
+        closeOtherTabsLabel: t("panel.closeOtherTabs"),
+        closeAllTabsLabel: t("panel.closeAllTabs"),
+        canCloseOthers: tabs.length > 1,
+        x: point.x,
+        y: point.y,
+      }).then((action) => {
+        if (!action || !sessionId) return;
+        const current = useAppStore.getState();
+        if (
+          current.activeSessionId !== sessionId ||
+          !current.workPanelTabs.some((tab) => tab.id === tabId)
+        ) return;
+        if (action === "closeTab") closeTabAndFocus(tabId);
+        else if (action === "closeOtherTabs") closeOtherTabsAndFocus(tabId);
+        else closeAllTabsAndFocus();
+      }).catch((error) => {
+        useAppStore.getState().showToast(String(error), { variant: "error" });
+      });
+    },
+    [
+      activeSessionId,
+      closeAllTabsAndFocus,
+      closeOtherTabsAndFocus,
+      closeTabAndFocus,
+      t,
+      tabs.length,
+    ],
+  );
   const onTabKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLButtonElement>, tabId: string) => {
       const index = tabs.findIndex((tab) => tab.id === tabId);
@@ -731,7 +855,11 @@ function LocalWorkPanel({
       else if (event.key === "End") nextWidth = maximum;
       if (nextWidth === null) return;
       event.preventDefault();
-      setWidth(clampWorkPanelWidth(nextWidth, minimum));
+      const committedWidth = clampWorkPanelWidth(nextWidth, minimum);
+      // A key that cannot move the separator commits nothing, so it neither
+      // rewrites the preferred width nor ends a width lent to the sidebar.
+      if (committedWidth === renderPanelWidth) return;
+      setWidth(committedWidth);
     },
     [finishPanelResize, layout.maxPanelWidth, maximized, panelMinimum, renderPanelWidth, setWidth],
   );
@@ -837,6 +965,9 @@ function LocalWorkPanel({
                       : TAB_ICONS[tab.kind];
                   return (
                     <div
+                      ref={(node) => {
+                        tabWrapperRefs.current[tab.id] = node;
+                      }}
                       className={cx(
                         "work-panel-tab",
                         selected && "active",
@@ -845,6 +976,41 @@ function LocalWorkPanel({
                           (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before"),
                       )}
                       data-work-panel-tab-id={tab.id}
+                      // A partly visible inactive tab reveals its close
+                      // control on hover (`.work-panel-tab:hover
+                      // .work-panel-tab-close`, styles/work-panel.css:314) —
+                      // revealing opacity is not enough when the control sits
+                      // outside the strip, so bring the whole box in first.
+                      onPointerEnter={() => revealTab(tab.id)}
+                      onContextMenu={(event) => {
+                        if (activeTab?.kind === "plugin") {
+                          openNativeTabMenu(event, tab.id, label);
+                          return;
+                        }
+                        const items: ContextMenuItem[] = [
+                          {
+                            id: "close-tab",
+                            label: t("panel.closeTab", { name: label }),
+                            onSelect: () => closeTabAndFocus(tab.id),
+                          },
+                          {
+                            id: "close-other-tabs",
+                            label: t("panel.closeOtherTabs"),
+                            disabled: tabs.length <= 1,
+                            separatorBefore: true,
+                            onSelect: () => closeOtherTabsAndFocus(tab.id),
+                          },
+                          {
+                            id: "close-all-tabs",
+                            label: t("panel.closeAllTabs"),
+                            onSelect: closeAllTabsAndFocus,
+                          },
+                        ];
+                        openTabContextMenu(event, {
+                          label: t("panel.tabsLabel"),
+                          items,
+                        });
+                      }}
                       key={tab.id}
                     >
                       <button
@@ -876,6 +1042,9 @@ function LocalWorkPanel({
                       </button>
                       <button
                         type="button"
+                        ref={(node) => {
+                          tabCloseButtonRefs.current[tab.id] = node;
+                        }}
                         className="work-panel-tab-close"
                         aria-label={t("panel.closeTab", { name: label })}
                         title={t("panel.closeTab", { name: label })}
@@ -1018,6 +1187,7 @@ function LocalWorkPanel({
           )}
         </div>
       </div>
+      <ContextMenu state={tabContextMenu} onClose={closeTabContextMenu} />
     </aside>
   );
 }

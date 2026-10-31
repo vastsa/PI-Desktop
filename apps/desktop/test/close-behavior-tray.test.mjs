@@ -157,3 +157,15 @@ test("macOS tray keeps the native status item instead of mouse-enter tracking", 
   );
   assert.equal((body.match(/on\("mouse-enter"/g) || []).length, 1);
 });
+
+test("lifecycle dialog responses stay bound to the ready main renderer", async () => {
+  const brokerSource = await readMainModule("bootstrap/lifecycle-dialog.ts");
+  const windowIpcSource = await readMainModule("ipc/window-ipc.ts");
+  assert.match(brokerSource, /LIFECYCLE_DIALOG_TIMEOUT_MS = 10_000/);
+  assert.match(brokerSource, /request\.windowId !== senderWindowId/);
+  assert.match(brokerSource, /request\.dismiss\(request\.requestId\)/);
+  assert.match(
+    windowIpcSource,
+    /IPC\.invoke\.lifecycleDialogRespond[\s\S]*?registrar\.assertMainWindowSender\(event\)[\s\S]*?respondLifecycleDialog\(event\.sender\.id, value\.requestId/,
+  );
+});

@@ -186,13 +186,13 @@
 .toast-viewport {
   position: fixed;
   top: 16px;
-  left: 50%;
+  left: var(--toast-viewport-center, 50%);
   z-index: 50; /* z-toast */
   display: flex;
   flex-direction: column-reverse;
   align-items: center;
   gap: 8px;
-  width: min(360px, calc(100vw - 32px));
+  width: min(360px, var(--toast-viewport-width, calc(100vw - 32px)));
   transform: translateX(-50%);
   pointer-events: none;
 }
@@ -557,6 +557,27 @@
   overflow-wrap: anywhere;
 }
 
+.toast-action.btn {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+}
+
+.toast-action.btn:hover:not(:disabled) {
+  background: transparent;
+}
+
+.toast-action:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 3px;
+}
+
 .toast-dismiss {
   display: inline-flex;
   flex: 0 0 auto;
@@ -695,8 +716,7 @@
     animation: none;
   }
   .working-indicator-mark > span,
-  .tool-row-name.running::after,
-  .tool-activity-label.running::after {
+  .activity-marker {
     animation: none;
     opacity: 0.7;
   }
@@ -820,4 +840,39 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+.lifecycle-confirmation-overlay {
+  z-index: 65;
+}
+
+.lifecycle-confirmation-dialog {
+  width: min(100%, 420px);
+}
+
+.lifecycle-confirmation-heading {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lifecycle-confirmation-heading h2 {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-heading);
+}
+
+.lifecycle-confirmation-heading p {
+  margin: 8px 0 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-body);
+}
+
+.lifecycle-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
 }

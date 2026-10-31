@@ -18,8 +18,8 @@ expect against the shipped host contract:
 3. **Hard cap of 8 themes per plugin** (`MAX_THEMES_PER_PLUGIN`), which blocks
    an unlimited user-authored library.
 4. **Sidebar paint is color-only.** `--ds-bg-sidebar` feeds `color-mix` glass
-   tint, borders, and macOS vibrancy. Putting `linear-gradient()` in that token
-   breaks those consumers, so sidebar gradients cannot be a supported feature.
+   tint and borders. Putting `linear-gradient()` in that token breaks those
+   consumers, so sidebar gradients cannot be a supported feature.
 
 ## Decision
 
@@ -58,7 +58,8 @@ pi.themes.list()
 - `--ds-bg-sidebar` stays a **color**.
 - New optional `--ds-bg-sidebar-image` holds a CSS `<image>` (`none` by default).
 - `.sidebar` / `.sidebar-rail` use `background-color` + `background-image`.
-- macOS vibrancy stacks the image layer **under** the glass sheen gradients.
+- macOS stacks the image layer **under** the glass sheen gradients over the
+  opaque window surface (ADR 0332 superseded the vibrancy plate).
 
 ## Consequences
 

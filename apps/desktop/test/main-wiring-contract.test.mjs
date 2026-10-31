@@ -185,33 +185,97 @@ test("the IPC registrar passes every required agent IPC dependency", () => {
   );
 });
 
-test("browser state reaches every plugin surface", () => {
+test("browser metadata stays separate from the selected plugin presentation", () => {
   const services = read("services/plugin-services.ts");
-  const state = braceBody(
+  const metadata = braceBody(
     services,
     services.indexOf("{", services.indexOf("const emitBrowserState")),
   );
-  // The renderer plus both plugin surfaces: dropping one of them is silent,
-  // because each surface simply stops updating.
-  assert.match(state, /sendToRenderer\(IPC\.event\.browserState, state\)/);
-  assert.match(state, /pluginPanels\.broadcast\("browser:state", state\)/);
-  assert.match(state, /pluginViews\.broadcast\("browser:state", state\)/);
+  const presentation = braceBody(
+    services,
+    services.indexOf("{", services.indexOf("const emitBrowserPresentationState")),
+  );
+  assert.match(metadata, /sendToRenderer\(IPC\.event\.browserState, state\)/);
+  assert.doesNotMatch(metadata, /\.broadcast\("browser:state"/);
+  assert.match(presentation, /pluginPanels\.broadcast\("browser:state", state\)/);
+  assert.match(presentation, /pluginViews\.broadcast\("browser:state", state\)/);
+  assert.match(services, /onState: emitBrowserState/);
+  assert.match(services, /onPresentationState: emitBrowserPresentationState/);
 });
 
 test("a finished turn is announced to every plugin surface", () => {
   const services = read("services/plugin-services.ts");
+  const fanOut = braceBody(
+    services,
+    services.indexOf("{", services.indexOf("const broadcastSessionEvent")),
+  );
+  assert.match(fanOut, /plugins\.broadcastEvent\(event, \[payload\], scopeFilter\)/);
+  assert.match(fanOut, /pluginPanels\.broadcast\(event, payload\)/);
+  assert.match(fanOut, /pluginViews\.broadcast\(event, payload, scopeFilter\)/);
+  // Each surface owns its failure: one unreachable plugin process, panel or
+  // view must not suppress the other two.
+  assert.equal(
+    (fanOut.match(/\} catch \(/g) ?? []).length,
+    3,
+    "every plugin surface must isolate its own delivery",
+  );
+  // The turn-end event still takes that fan-out; it only adds the snapshot.
   const announce = braceBody(
     services,
     services.indexOf("{", services.indexOf("const announceTurnEnded")),
   );
-  assert.match(announce, /plugins\.broadcastEvent\("session:turnEnded", \[payload\]\)/);
-  assert.match(announce, /pluginPanels\.broadcast\("session:turnEnded", payload\)/);
-  assert.match(announce, /pluginViews\.broadcast\("session:turnEnded", payload\)/);
-  // Each surface owns its failure: one unreachable plugin process, panel or
-  // view must not suppress the other two.
-  assert.equal(
-    (announce.match(/\} catch \(/g) ?? []).length,
-    3,
-    "every plugin surface must isolate its own delivery",
+  assert.match(announce, /broadcastSessionEvent\("session:turnEnded", payload\)/);
+});
+
+test("the selected session is announced to every plugin surface", () => {
+  const services = read("services/plugin-services.ts");
+  const context = read("services/plugin-session-context.ts");
+  // The snapshot is announced from the one module that owns it, and reaches the
+  // same three surfaces as a finished turn.
+  assert.match(context, /announce\("session:activated", next\)/);
+  assert.match(services, /plugins\.broadcastEvent\(event, \[payload\], scopeFilter\)/);
+  assert.match(services, /pluginPanels\.broadcast\(event, payload\)/);
+  assert.match(services, /pluginViews\.broadcast\(event, payload, scopeFilter\)/);
+  // Turn identity and start time come from the host, never from the renderer.
+  assert.match(
+    services,
+    /const pluginSession = createPluginSessionContext\(\{\n    getActiveTurn,/,
   );
+  assert.match(services, /pluginSession\.noteTurnEnded\(payload\.sessionId, payload\.turnId\)/);
+  const root = read("index.ts");
+  assert.match(root, /onTurnStarted: \(sessionId: string, turnId: string\)/);
+  assert.match(root, /pluginServices\.pluginSession\.noteTurnStarted\(sessionId, turnId\)/);
+});
+
+test("session activation derives one project filter for process and docked-view delivery", () => {
+  const services = read("services/plugin-services.ts");
+  const fanOut = braceBody(
+    services,
+    services.indexOf("{", services.indexOf("const broadcastSessionEvent")),
+  );
+  assert.match(
+    fanOut,
+    /sessionEventScopeFilter\(\s*event,\s*sessionId,\s*sessionProjects,\s*pluginActiveInProject,\s*\)/,
+  );
+  assert.match(fanOut, /plugins\.broadcastEvent\(event, \[payload\], scopeFilter\)/);
+  assert.match(fanOut, /pluginViews\.broadcast\(event, payload, scopeFilter\)/);
+  assert.match(
+    fanOut,
+    /if \(!SESSION_SCOPED_EVENTS\.has\(event\)\) \{[\s\S]*?pluginPanels\.broadcast\(event, payload\)/,
+    "selection events stay out of detached app-scoped panels",
+  );
+});
+
+test("the shell publishes its selection and opens a revealed view", () => {
+  const shell = readFileSync(
+    join(here, "..", "src", "features", "app", "useAppShellRuntime.tsx"),
+    "utf8",
+  );
+  assert.match(shell, /api\s*\.setPluginActiveSession\(/);
+  const reveal = braceBody(
+    shell,
+    shell.indexOf("{", shell.indexOf("api.onPluginViewReveal(")),
+  );
+  assert.match(reveal, /openWorkPanelTabForSession\(event\.sessionId/);
+  assert.match(reveal, /pluginWorkPanelTab\(event\.pluginId, event\.viewId\)/);
 });

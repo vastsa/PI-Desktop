@@ -76,6 +76,29 @@ describe("RACP-WS over a loopback socket", () => {
     }
   });
 
+  it("stops reconnecting after a real WebSocket upgrade rejects a revoked device", async () => {
+    const h = await harness();
+    const binding = await bindRacpWebSocket({ server: h.server, authenticator: h.authenticator, port: 0, log: () => undefined });
+    const factory = wsClientTransport({ url: `ws://127.0.0.1:${binding.address.port}/v1/racp/ws`, token: OWNER_TOKEN });
+    let attempts = 0;
+    let drop!: () => void;
+    let failed!: () => void;
+    const ended = new Promise<void>(resolve => { failed = resolve; });
+    const client = new RacpClient({
+      transport: async () => { attempts++; const transport = await factory(); drop = () => transport.close(); return transport; },
+      client: { name: "test", version: "1" }, reconnect: { enabled: true, maxAttempts: 3 }, sleep: async () => undefined,
+      onStateChange: state => { if (state === "error") failed(); },
+    });
+    try {
+      await client.connect();
+      await h.store.revokeDevice("dev_owner", "2026-09-18T00:00:00.000Z");
+      drop();
+      await ended;
+      expect(attempts).toBe(2);
+      expect(client.state).toBe("error");
+    } finally { await client.close(); await binding.close(); }
+  });
+
   it("refuses to bind a non-loopback address and plain ws to a non-loopback host", async () => {
     const h = await harness();
     await expect(bindRacpWebSocket({ server: h.server, authenticator: h.authenticator, host: "0.0.0.0", port: 0, log: () => undefined })).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });

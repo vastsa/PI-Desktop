@@ -21,7 +21,8 @@ import { useChatFileMenu } from "../../../hooks/use-chat-file-menu";
 import { ContextMenu } from "../../../components/ContextMenu";
 import { ImageHoverCard, type ImageHoverAnchor } from "../../../components/ImageHoverCard";
 import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
-import { isThinkingActive, resolveThinkingDisplayMode } from "../../../lib/turn-process";
+import { isThinkingActive } from "../../../lib/turn-process";
+import { resolveShowThinking } from "../../../lib/thinking-visibility";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { disclosureKey, useAutomaticDisclosure } from "./disclosure";
 export { useAutomaticDisclosure } from "./disclosure";
@@ -31,7 +32,10 @@ import { useVerifiedChatText } from "../../../hooks/use-verified-chat-text";
 import { isHtmlFilePath } from "../../../lib/chat-links";
 import type { SourcePositionProps } from "../../../lib/markdown-source";
 import type { ToolAction } from "../../../lib/tool-display";
-import { calculateTokenRate } from "../../../lib/context-usage";
+import {
+  calculateTokenRate,
+  turnUsageBreakdown,
+} from "../../../lib/context-usage";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown, useCopy } from "../../../components/Markdown";
 import {
@@ -60,6 +64,8 @@ import {
   IconX,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
+import { TextShimmer } from "./TextShimmer";
+import { TurnUsageCapsule } from "./TurnUsageCapsule";
 
 /**
  * Legacy message navigation reveals the row it names, at message precision.
@@ -157,19 +163,25 @@ export function MessageMeta({
   usage,
   responseDurationMs,
   responseOutputTokens,
+  responseOutputEstimated,
 }: {
   modelId?: string;
   usage?: MessageUsage;
   responseDurationMs?: number;
   responseOutputTokens?: number;
+  responseOutputEstimated?: boolean;
 }) {
   const { t } = useTranslation();
   const throughput = calculateTokenRate(
     responseOutputTokens ?? usage?.outputTokens ?? 0,
     responseDurationMs,
   );
+  // Completed turns with usage replace the legacy estimated-throughput chip
+  // with the full turn capsule; only usage-less turns keep the estimate.
+  const showTurnUsage =
+    usage !== undefined && turnUsageBreakdown(usage).totalTokens > 0;
   const showThroughput = !usage && throughput !== undefined;
-  if (!modelId && !showThroughput) {
+  if (!modelId && !showThroughput && !showTurnUsage) {
     return null;
   }
   return (
@@ -178,6 +190,13 @@ export function MessageMeta({
         <span className="message-meta-chip model" title={modelId}>
           {modelId}
         </span>
+      ) : null}
+      {usage && showTurnUsage ? (
+        <TurnUsageCapsule
+          usage={usage}
+          throughput={throughput}
+          estimated={responseOutputEstimated}
+        />
       ) : null}
       {showThroughput ? (
         <span className="message-meta-chip throughput">
@@ -691,23 +710,23 @@ export const ThinkingRow = memo(function ThinkingRow({
     onUserInteraction?.();
     collapseDisclosure();
   }, [collapseDisclosure, onUserInteraction]);
-  const compact = useAppStore(
-    (state) => resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode) === "compact",
-  );
-  if (compact) {
+  // `Show thinking` off keeps the live indicator but suppresses completed
+  // reasoning rows and excerpts. The stored text is never removed, so turning
+  // the preference back on restores the row.
+  const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
+  if (!showThinking) {
     return isThinkingActive(message, streaming) ? (
       <div className="tool-row thinking thinking-compact" role="status">
         <span className="tool-row-icon" aria-hidden>
           <IconSparkles size={15} />
         </span>
-        <span className="tool-row-name running">
-          {t("chat.thinking", { defaultValue: "Thinking" })}
+        <span className="tool-row-name">
+          <TextShimmer text={t("chat.thinking", { defaultValue: "Thinking" })} />
         </span>
       </div>
     ) : null;
   }
   const text = thinkingText(message);
-  const summary = text.replace(/\s+/g, " ").trim();
   return (
     <div className={`tool-row thinking ${open ? "open" : ""}`}>
       <button
@@ -721,10 +740,12 @@ export const ThinkingRow = memo(function ThinkingRow({
         <span className="tool-row-icon">
           <IconSparkles size={15} aria-hidden />
         </span>
-        <span className={`tool-row-name ${streaming ? "running" : ""}`}>
-          {t("chat.thinking", { defaultValue: "Thinking" })}
+        <span className="tool-row-name">
+          <TextShimmer
+            text={t("chat.thinking", { defaultValue: "Thinking" })}
+            active={streaming && !open}
+          />
         </span>
-        <span className="tool-row-summary">{summary}</span>
         <span className="tool-row-caret" aria-hidden>
           <IconChevronRight size={12} />
         </span>

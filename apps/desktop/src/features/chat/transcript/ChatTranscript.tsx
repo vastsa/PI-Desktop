@@ -1,12 +1,22 @@
-import { memo, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { PlanningState, UiMessage } from "@pi-desktop/shared";
+import type { PlanningState, RadialMenuAction, UiMessage } from "@pi-desktop/shared";
 import { proposalKindForMode } from "@pi-desktop/shared";
 import { ConversationMinimap } from "../../../components/ConversationMinimap";
+import { RadialMenu, type RadialMenuSlot } from "../../../components/RadialMenu";
 import { PermissionCard } from "../../../components/PermissionCard";
 import { TooltipButton } from "../../../components/ui";
 import { TurnOutcomeCard } from "../../../components/TurnOutcomeCard";
-import { IconArrowDown } from "../../../components/icons";
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconBrowser,
+  IconChat,
+  IconCopy,
+  IconFolder,
+  IconPanel,
+  IconTextSelect,
+} from "../../../components/icons";
 import { useAppStore } from "../../../stores/app-store";
 import type { PendingPermission } from "../../../lib/pending-permissions";
 import { TRANSCRIPT_SKELETON_ROWS } from "../../../lib/transcript-settle";
@@ -16,8 +26,13 @@ import {
   WorkingIndicator,
 } from "./ActivityGroup";
 import { TranscriptHistory, TranscriptTail } from "./AssistantTurn";
+import { collectLiveDelegationEntries } from "../../../lib/live-delegation-entries";
+import { reuseReadonlyMap } from "../../../lib/assistant-turns";
+import { liveHistoryTurnId } from "../../../lib/turn-process";
 import { useTranscriptScroll } from "./hooks/useTranscriptScroll";
+import { useTranscriptContinuation } from "../../../hooks/use-transcript-continuation";
 import type { TranscriptSearchTarget } from "../../../lib/transcript-reading";
+import type { RestoreTranscriptReading } from "../../../hooks/use-transcript-reading-position";
 import { TranscriptSearchContext } from "../../../lib/transcript-search-context";
 import { DisclosureAnchorContext } from "../../../lib/disclosure-anchor-context";
 import { api } from "../../../lib/api";
@@ -28,7 +43,14 @@ import {
   useChatTextActions,
   useTranscriptMenu,
 } from "./TranscriptMenu";
-import { conversationMenuItems } from "./menu-items";
+import { conversationMenuItems, hasConversationToCopy } from "./menu-items";
+import { browserPluginTab } from "../../../lib/work-panel-tabs";
+import { isRemoteSession } from "../../../lib/remote-session-safety";
+import {
+  RADIAL_MENU_ACTION_LABEL_KEYS,
+  RADIAL_MENU_DIRECTIONS,
+  resolveRadialMenu,
+} from "../../../lib/radial-menu";
 import { SlotSessionProvider } from "../../../plugins/renderer-slots/use-slots";
 
 type ChatTranscriptProps = {
@@ -50,6 +72,9 @@ type ChatTranscriptProps = {
   paneVisible?: boolean;
   searchTarget?: TranscriptSearchTarget | null;
   readingWindow?: boolean;
+  /** The displayed range includes this session's canonical live tail. */
+  liveTail?: boolean;
+  onRestoreReading?: RestoreTranscriptReading;
   hasMoreAfter?: boolean;
   onLoadNewer?: () => Promise<void>;
   onReturnToLatest?: () => void;
@@ -84,6 +109,8 @@ function TranscriptBody({
   paneVisible = true,
   searchTarget = null,
   readingWindow = false,
+  liveTail = !readingWindow,
+  onRestoreReading,
   hasMoreAfter = false,
   onLoadNewer,
   onReturnToLatest,
@@ -93,7 +120,27 @@ function TranscriptBody({
   const openTranscriptMenu = useTranscriptMenu();
   const { copyText, selectText } = useChatTextActions();
   const showToast = useAppStore((state) => state.showToast);
-  const transcriptRunning = isRunning && !readingWindow;
+  const radialMenu = resolveRadialMenu(
+    useAppStore((state) => state.settings),
+  );
+  const sessionSummary = useAppStore((state) =>
+    sessionId
+      ? state.sessions.find((session) => session.id === sessionId)
+      : undefined,
+  );
+  const openWorkPanelTab = useAppStore((state) => state.openWorkPanelTab);
+  const openWorkPanel = useAppStore((state) => state.openWorkPanel);
+  const collapseWorkPanel = useAppStore((state) => state.collapseWorkPanel);
+  const workPanelOpen = useAppStore((state) => state.workPanelOpen);
+  /*
+    The ring is a second presentation of the background menu, not a second
+    menu: it opens at the pointer and keeps the same conversation-level actions.
+  */
+  const [radialPoint, setRadialPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const transcriptRunning = isRunning && liveTail;
   const latestTurnResult = useAppStore((state) =>
     sessionId ? state.latestTurnResults[sessionId] : undefined,
   );
@@ -142,7 +189,8 @@ function TranscriptBody({
     compactions,
     hasMoreBefore,
     onLoadOlder,
-    isRunning: transcriptRunning,
+    // Rejoining live output is not a new turn: keep the reader's scroll owner.
+    isRunning: isRunning && !readingWindow,
     pendingPermission,
     askPending,
     approvalPending,
@@ -150,9 +198,35 @@ function TranscriptBody({
     paneVisible,
     searchTarget,
     readingWindow,
+    onRestoreReading,
+  });
+
+  const continuationCursor = useAppStore((state) =>
+    sessionId ? state.transcriptViews[sessionId]?.messageEnd : undefined,
+  );
+  const automaticContinuation = readingWindow && !searchTarget;
+  useTranscriptContinuation({
+    scrollRef, contentRef, messages, onLoadNewer,
+    enabled: automaticContinuation && hasMoreAfter && paneVisible && !veilCovering,
+    cursor: continuationCursor,
+    loading: navigationLoading,
   });
 
   const specializedActivity = agentActivity;
+  const rawLiveDelegations = useMemo(
+    () => collectLiveDelegationEntries(historyEntries, tailEntry, transcriptRunning),
+    [historyEntries, tailEntry, transcriptRunning],
+  );
+  const liveDelegationsRef = useRef(rawLiveDelegations);
+  const liveDelegations = reuseReadonlyMap(liveDelegationsRef.current, rawLiveDelegations);
+  liveDelegationsRef.current = liveDelegations;
+  // The running turn is not always the tail entry: a steering message or a
+  // system row can render after it, and the history list defaults every entry
+  // to inactive. Row state identifies the live turn instead (#1949).
+  const liveTurnId = useMemo(
+    () => (transcriptRunning ? liveHistoryTurnId(historyEntries, tailEntry) : undefined),
+    [historyEntries, tailEntry, transcriptRunning],
+  );
   const hasSpecializedActivity = specializedActivity !== undefined;
   // Existing output does not mean the turn has finished: a text stream can
   // pause, and completed tool rows can outlive their activity. Keep one tail
@@ -200,14 +274,144 @@ function TranscriptBody({
     }
   };
 
+  /*
+    Both copy predicates are read only where a menu is built: the background
+    menu on right-click and the ring when it opens. Computing them on every
+    transcript update would read every historical body for a disabled or
+    unopened menu.
+  */
+  const canCopyConversation = () => hasConversationToCopy({
+    sessionId,
+    hasMoreBefore,
+    hasMoreAfter,
+    messages,
+  });
+
+  /*
+    The newest settled answer, for the ring's optional copy slot. Read lazily:
+    the ring builds its items only when it opens, so an unopened or disabled
+    ring must not scan historical message bodies on every transcript update.
+  */
+  const findLastAnswer = (): string => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role === "assistant" && message.content.trim()) {
+        return message.content;
+      }
+    }
+    return "";
+  };
+
+  /*
+    One slot per direction, in ring order. An action the conversation cannot
+    fill (no answer yet, or the `none` placeholder) keeps its sector disabled
+    so the geometry does not depend on message state.
+  */
+  const buildRadialMenuItems = (): RadialMenuSlot[] => {
+    const copyable = canCopyConversation();
+    return RADIAL_MENU_DIRECTIONS.map((direction) => {
+      const action: RadialMenuAction = radialMenu.slots[direction];
+      const id = `${direction}:${action}`;
+      const label = t(RADIAL_MENU_ACTION_LABEL_KEYS[action]);
+      switch (action) {
+        case "copy-conversation":
+          return {
+            id,
+            label,
+            icon: <IconCopy size={16} />,
+            disabled: !copyable,
+            onSelect: () => void copyConversation(),
+          };
+        case "select-conversation":
+          return {
+            id,
+            label,
+            icon: <IconTextSelect size={16} />,
+            onSelect: () => selectText(contentRef.current),
+          };
+        case "copy-last-answer": {
+          const lastAnswer = findLastAnswer();
+          return {
+            id,
+            label,
+            icon: <IconChat size={16} />,
+            disabled: !lastAnswer,
+            onSelect: () => void copyText(lastAnswer),
+          };
+        }
+        case "scroll-top":
+          return {
+            id,
+            label,
+            icon: <IconArrowUp size={16} />,
+            onSelect: () => scrollRef.current?.scrollTo({ top: 0 }),
+          };
+        case "scroll-bottom":
+          return {
+            id,
+            label,
+            icon: <IconArrowDown size={16} />,
+            onSelect: () => {
+              onReturnToLatest?.();
+              jumpToLatest();
+            },
+          };
+        case "open-browser":
+          return {
+            id,
+            label,
+            icon: <IconBrowser size={16} />,
+            disabled: !sessionId || isRemoteSession(sessionSummary),
+            onSelect: () => openWorkPanelTab(browserPluginTab()),
+          };
+        case "open-work-panel":
+          // One direction, two directions of travel: an open panel offers the
+          // way back instead of a second no-op Open.
+          return {
+            id,
+            label: workPanelOpen
+              ? t("chat.radialMenuCloseWorkPanel")
+              : label,
+            icon: <IconPanel size={16} />,
+            disabled: !sessionId || isRemoteSession(sessionSummary),
+            onSelect: () => (workPanelOpen ? collapseWorkPanel() : openWorkPanel()),
+          };
+        case "open-project-folder": {
+          const path = sessionSummary?.projectPath;
+          return {
+            id,
+            label,
+            icon: <IconFolder size={16} />,
+            disabled: !path || isRemoteSession(sessionSummary),
+            onSelect: () => {
+              if (!path) return;
+              void api.openProjectFolder(path).catch((error: unknown) => {
+                showToast(
+                  error instanceof Error ? error.message : String(error),
+                  { variant: "error" },
+                );
+              });
+            },
+          };
+        }
+        default:
+          return { id, label, icon: <IconChat size={16} />, disabled: true, onSelect: () => {} };
+      }
+    });
+  };
+
   const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (radialMenu.enabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      setRadialPoint({ x: event.clientX, y: event.clientY });
+      return;
+    }
     openTranscriptMenu(event, {
       label: t("chat.conversationMenu"),
       items: conversationMenuItems({
         t,
-        canCopy: Boolean(sessionId) && (hasMoreBefore || hasMoreAfter || messages.some(
-          (message) => (message.role === "user" || message.role === "assistant") && message.content.trim(),
-        )),
+        canCopy: canCopyConversation(),
         onCopyConversation: () => void copyConversation(),
         scrollRef,
         contentRef,
@@ -271,7 +475,7 @@ function TranscriptBody({
             // view, which is exactly the jitter this avoids.
             <div className="transcript-hydration-spacer" aria-hidden />
           ) : null}
-          <TranscriptHistory entries={historyEntries} isRunning={isRunning} />
+          <TranscriptHistory entries={historyEntries} isRunning={isRunning} liveDelegations={liveDelegations} liveTurnId={liveTurnId} />
           {tailEntry ? (
             <TranscriptTail
               entry={tailEntry}
@@ -280,7 +484,7 @@ function TranscriptBody({
               runtimeActivity={specializedActivity}
             />
           ) : null}
-          {hasMoreAfter ? (
+          {hasMoreAfter && !automaticContinuation ? (
             <button
               type="button"
               className="transcript-load-later"
@@ -290,7 +494,7 @@ function TranscriptBody({
               {t("chat.loadLaterMessages")}
             </button>
           ) : null}
-          {!readingWindow ? (
+          {liveTail ? (
             <TurnOutcomeCard
               messages={messages}
               result={latestTurnResult}
@@ -361,6 +565,14 @@ function TranscriptBody({
         </TooltipButton>
       ) : null}
     </div>
+    {radialPoint ? (
+      <RadialMenu
+        point={radialPoint}
+        items={buildRadialMenuItems()}
+        label={t("chat.conversationMenu")}
+        onClose={() => setRadialPoint(null)}
+      />
+    ) : null}
     </SlotSessionProvider>
     </DisclosureAnchorContext.Provider>
     </TranscriptSearchContext.Provider>

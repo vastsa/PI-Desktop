@@ -58,7 +58,7 @@ continue to distinguish interruption from successful completion.
 
 ## Consequences
 
-Schema 24 adds a receipt table after backing up schema 23. Existing messages,
+Schema 28 adds a receipt table after backing up schema 27. Existing messages,
 queue entries, task inputs, default behavior, and plugin sending calls remain
 unchanged. No renderer or plugin mutation endpoint is added. Headless embeddings
 without a Stop/transcript-flush receiver do not enable this channel.

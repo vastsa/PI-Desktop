@@ -26,8 +26,11 @@ export function sshMetadataOf(record: RemoteHostRecord): RemoteHostSshMetadata |
   if (port === null && candidate.port !== undefined) return null;
   const remotePort = safeSshPort(candidate.remotePort);
   if (remotePort === null) return null;
+  const hostId = candidate.hostId;
+  if (hostId !== undefined && (typeof hostId !== "string" || !hostId.trim() || hostId.length > 256 || /[\u0000-\u001f]/.test(hostId))) return null;
   return {
     host, remotePort,
+    ...(hostId !== undefined ? { hostId } : {}),
     ...(port !== null ? { port } : {}),
     ...(user !== null ? { user } : {}),
     ...(identityFile !== null ? { identityFile } : {}),

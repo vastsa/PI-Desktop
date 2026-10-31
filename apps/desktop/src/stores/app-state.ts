@@ -32,6 +32,7 @@ import type {
 } from "@pi-desktop/shared";
 import type { SettingsTabId } from "../lib/settings-search";
 import type { TranscriptSearchTarget, TranscriptView } from "../lib/transcript-reading";
+import type { TranscriptReadingPosition } from "../lib/transcript-reading-position";
 import type {
   ProjectMeta,
   ProjectSort,
@@ -39,7 +40,7 @@ import type {
   SessionSort,
 } from "../lib/sidebar-preferences";
 import type { PermissionQueues } from "../lib/pending-permissions";
-import type { AskQueues } from "../lib/pending-asks";
+import type { AskDraft, AskDrafts, AskQueues } from "../lib/pending-asks";
 import type {
   QueuedPromptDirection,
   QueuedPrompts,
@@ -63,6 +64,8 @@ export type ToastItem = {
   duration: number;
   /** Notification chime is enabled by default. */
   sound: boolean;
+  /** Optional conversation opened when the user activates the toast. */
+  sessionId?: string;
 };
 
 export type ToastOptions = {
@@ -71,6 +74,8 @@ export type ToastOptions = {
   duration?: number;
   /** Suppress the default soft chime when another notification surface already played it. */
   sound?: boolean;
+  /** Make the toast message an explicit conversation-navigation action. */
+  sessionId?: string;
 };
 
 export type AgentTurnResult = {
@@ -99,13 +104,18 @@ export type RefreshSessionsOptions = {
   revealImportedProjects?: boolean;
 };
 
-/** Toolbar selections retained on the unpersisted new-task draft. */
+/**
+ * Toolbar selections retained on the unpersisted new-task draft. An absent
+ * field keeps the default the new session would otherwise start with.
+ */
 export type DraftSessionConfiguration = {
-  mode: Mode;
-  thinkingLevel: SessionThinkingLevel;
+  mode?: Mode;
+  thinkingLevel?: SessionThinkingLevel;
   providerId?: string;
   modelId?: string;
   permissionMode?: PermissionMode;
+  /** Session `/fast` switch carried into the created session (ADR 0334). */
+  fastMode?: boolean;
 };
 
 
@@ -122,6 +132,7 @@ export type AppState = {
   openProjects: ProjectWorkspace[];
   openProjectPaths: string[];
   createProjectDialogOpen: boolean;
+  createProjectDialogRemoteHostKey?: string;
   activeProjectPath?: string;
   projectMeta: Record<string, ProjectMeta>;
   /** Kept as a flat map for lightweight consumers (Sidebar). */
@@ -170,6 +181,8 @@ export type AppState = {
   pendingPermissions: PermissionQueues;
   /** Inline asktool requests, queued per session without an expiry. */
   pendingAsks: AskQueues;
+  /** In-progress AskTool answers keyed by requestId, so a remount keeps them. */
+  askDrafts: AskDrafts;
   /** Renderer-owned, in-memory prompt queue, isolated by session. */
   queuedPrompts: QueuedPrompts;
   /** Planning state is durable per session, including sessions outside view. */
@@ -201,13 +214,19 @@ export type AppState = {
   refreshSessions: (options?: RefreshSessionsOptions) => Promise<void>;
   prefetchSession: (id: string) => Promise<void>;
   navigateTranscript: (target: Omit<TranscriptSearchTarget, "requestId">) => Promise<void>;
+  restoreTranscriptReading: (sessionId: string, position: TranscriptReadingPosition, signal: AbortSignal) => Promise<boolean>;
   loadTranscriptPage: (sessionId: string, direction: "before" | "after") => Promise<void>;
   returnToLatestTranscript: (sessionId: string) => void;
   selectSession: (
     id: string,
     opts?: { record?: boolean } & NavigationOptions,
   ) => Promise<void>;
-  newSession: (options?: { projectPath?: string | null; remoteProject?: RemoteProjectTarget }) => Promise<void>;
+  newSession: (options?: {
+    projectPath?: string | null;
+    remoteProject?: RemoteProjectTarget;
+    /** Create an isolated session in its own git worktree (ADR 0329). */
+    isolated?: boolean;
+  }) => Promise<void>;
   forkSession: (id: string) => Promise<void>;
   forkAssistantMessage: (messageId: string) => Promise<void>;
   configureActiveSession: (config: {
@@ -216,6 +235,7 @@ export type AppState = {
     modelId?: string;
     thinkingLevel: SessionThinkingLevel;
     permissionMode?: PermissionMode;
+    fastMode?: boolean;
   }) => Promise<void>;
   /** Returns true once accepted unless concurrent smart Stop restores it. */
   sendPrompt: (
@@ -261,8 +281,13 @@ export type AppState = {
     snapshotId: string,
   ) => Promise<ReviewRollbackResult | null>;
   abort: () => Promise<void>;
-  openProject: () => Promise<void>;
+  openProject: (options?: { remoteHostKey?: string }) => Promise<void>;
   closeProjectDialog: () => void;
+  createProjectFromRemote: (input: {
+    name: string;
+    hostKey: string;
+    path: string;
+  }) => Promise<void>;
   createProjectFromFolders: (input: {
     name: string;
     folders: string[];
@@ -360,6 +385,10 @@ export type AppState = {
     sessionId: string,
     resolution: AskToolResolution,
   ) => Promise<void>;
+  /** Persist one question card's in-progress answers by requestId. */
+  setAskDraft: (requestId: string, draft: AskDraft) => void;
+  /** Forget a request's draft once it is resolved or dismissed. */
+  dropAskDraft: (requestId: string) => void;
   resolvePlan: (resolution: PlanResolveRequest) => Promise<PlanResolutionResult>;
   showToast: (message: string, options?: ToastOptions) => void;
   dismissToast: (id: number) => void;
@@ -370,7 +399,13 @@ export type AppState = {
   activeWorkPanelTabId: string | null;
   /** Runtime-only work panel state owned by each conversation. */
   workPanelContexts: Record<string, WorkPanelContext>;
+  /** The user's preferred panel width; persisted, never below the regular minimum. */
   workPanelWidth: number;
+  /**
+   * Runtime-only width a manual sidebar reopen lends to the sidebar. It ends
+   * when the sidebar collapses or the user resizes the panel.
+   */
+  workPanelYieldedWidth: number | null;
   /** Chat-initiated "preview this file" request consumed by the files viewer. */
   workPanelFileRequest: {
     path: string;
@@ -398,10 +433,13 @@ export type AppState = {
     insertAfter: boolean,
   ) => void;
   closeWorkPanelTab: (tabId: string) => void;
+  closeOtherWorkPanelTabs: (tabId: string) => void;
+  closeAllWorkPanelTabs: () => void;
   collapseWorkPanel: () => void;
   /** Hide the visible panel while retaining its session-owned context. */
   resetWorkPanelContext: () => void;
   setWorkPanelWidth: (width: number) => void;
+  setWorkPanelYieldedWidth: (width: number | null) => void;
   openFileInWorkPanel: (
     path: string,
     mimeType?: string,
@@ -409,6 +447,7 @@ export type AppState = {
   ) => void;
   openUrlInWorkPanel: (url: string) => void;
   updateBrowserWorkPanelTab: (state: BrowserState) => void;
+  restoreBrowserWorkPanelTabs: (sessionId: string, pages: BrowserState[]) => void;
 };
 
 export type AppStateData = {

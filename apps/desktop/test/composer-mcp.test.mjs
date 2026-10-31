@@ -49,7 +49,7 @@ test("selection uses stable encoded IDs even when labels match", async () => {
   assert.equal(expandMcpInvocation("/mcp:docs template text", [{ name: "mcp:docs", kind: "template" }]), null);
 });
 
-function promptFixture(commandService, projectPath = "/repo") {
+function promptFixture(commandService, projectPath = "/repo", remoteWorkspace) {
   const handlers = new Map();
   const calls = [];
   const sidecarCalls = [];
@@ -57,7 +57,7 @@ function promptFixture(commandService, projectPath = "/repo") {
   const host = { async call(method, params) {
     calls.push({ method, params });
     if (method === "settings.get") return {};
-    if (method === "session.get") return { session: { id: "target", projectPath, messages: [] } };
+    if (method === "session.get") return { session: { id: "target", projectPath, remoteWorkspace, messages: [] } };
     if (method === "session.beginTurn") return { turnId: "turn-1" };
     if (method === "session.appendMessage") return {};
     assert.fail(`unexpected RPC ${method}`);
@@ -67,7 +67,7 @@ function promptFixture(commandService, projectPath = "/repo") {
     getHost: () => host,
     getSidecar: () => ({ setProjectInstructionRoot() {}, async call(method, params) {
       sidecarCalls.push({ method, params });
-      if (method === "agent.steeringContext") return { projectPath, supportsVision: false };
+      if (method === "agent.steeringContext") return { projectPath, remoteWorkspace, supportsVision: false };
       return { accepted: true, turnId: "turn-1" };
     } }),
     getAgentHostBridge: () => null,
@@ -75,6 +75,7 @@ function promptFixture(commandService, projectPath = "/repo") {
     logger: { app() {} }, vendorOAuth: {}, agentExtensions: {}, cancelSessionTools() {},
     persistenceOutbox: {}, dataDir: "/unused-for-no-attachments",
     activeTurns: new Map(), activeTurnUsages: new Map(), approvedExecutionIdsBySession: new Map(), claimedExecutionSessions: new Map(),
+    recordTurnStart() {},
     resolveAgentRuntimeLaunch: async () => ({
       projectPath, providerId: "provider", modelId: "model",
       sidecarParams: { sessionId: "target", provider: { modelConfig: { input: ["text"] } } },
@@ -264,4 +265,24 @@ test("cold composer discovery connects enabled MCP servers before the first prom
     await fixture.prompt("/mcp:docs:search find API docs");
     assert.deepEqual(fixture.sidecarCalls[0].params.mcpToolNames, ["mcp_docs_search"]);
   } finally { runtime.disposeAll(); }
+});
+
+test("remote workspace prompt and steering never resolve commands from the same local path", async () => {
+  const catalog = service([record("docs")], [ready("docs")]);
+  const selected = (await catalog.buildComposerCommands(null)).find(c => c.kind === "mcp");
+  const roots = [];
+  const fixture = promptFixture({ buildComposerCommands: async root => {
+    roots.push(root);
+    return catalog.buildComposerCommands(root);
+  } }, "/remote/workspace", { hostKey: "ssh", path: "/remote/workspace" });
+  await fixture.prompt(`/${selected.name} inspect`);
+  await fixture.steer(`/${selected.name} inspect again`);
+  assert.deepEqual(roots, [null, null]);
+});
+
+test("remote sessions do not offer or expand the local-only visualize skill", async () => {
+  const catalog = service([], []);
+  const skillIds = (commands) => commands.flatMap((c) => c.kind === "skill" ? [c.skillId] : []);
+  assert.ok(skillIds(await catalog.buildComposerCommands(null)).includes("pi-desktop/visualize"));
+  assert.ok(!skillIds(await catalog.buildComposerCommands(null, { remote: true })).includes("pi-desktop/visualize"));
 });

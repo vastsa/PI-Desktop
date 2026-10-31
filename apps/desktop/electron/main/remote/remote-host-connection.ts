@@ -90,6 +90,13 @@ export function createRemoteHostConnection(options: RemoteHostConnectionOptions)
         bridge.restoreSnapshot(snapshot);
         background(ensure(snapshot.session.id));
       },
+      onSessionDeleted(hostSessionId: string) {
+        // The Host publishes no delete event, so the confirmed delete is the
+        // only signal that the row must leave every list on this desktop.
+        unregister(hostSessionId);
+        background(enqueue(() => subscriptions.remove(hostSessionId)));
+        emit(IPC.event.sessionsChanged, { reason: "remote.session.deleted" });
+      },
     });
     const subscriptions = createRemoteSubscriptions({ client, alive, handle: event => bridge.handle(event),
       recover: id => background(recover(id)), log: (message, error) => log("warn", message, error),

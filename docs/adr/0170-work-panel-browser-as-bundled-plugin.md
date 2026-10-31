@@ -37,11 +37,12 @@ guest.
    network-interception methods are refused. No DevTools websocket is exposed.
 5. **Host `BrowserPreview` remains a thin facade** (Plan/subagent name
    stability). It errors if `pi.browser` is disabled; otherwise it loads the
-   workspace file into the guest and reveals the plugin view. The bundled
-   Browser agent tool calls `pi.browser.reveal()` before page operations; the
-   host opens the originating session's existing Browser tab and waits for its
-   view to become visible. Background sessions never take focus. Plugin CDP
-   stays Agent-only (`plugin_*`).
+   workspace file into a session-owned guest and requests its side-panel tab.
+   [Background browser pages](browser-background-lifecycle.md) supersedes the
+   visible-before-operation requirement: the bundled tool uses a trusted
+   session connection without calling `reveal()` before every operation.
+   Explicit `reveal()` remains a presentation API. Background work never
+   takes focus; existing Plan/Goal action restrictions remain intact.
 6. The original singleton guest decision is superseded by
    [Retain a host-owned browser page per resource tab](retained-browser-pages-per-tab.md).
    BrowserHost now retains one page per session/tab while plugin chrome remains
@@ -56,8 +57,9 @@ superseded: the panel's launchable surfaces are plugin views.
 
 - Disabling `pi.browser` removes the launcher row, agent CDP, and guest. URL
   chips fall back to `openExternal`. `BrowserPreview` fails closed.
-- Third-party plugins with `browser.cdp` address the current browser page;
-  bounds remain clamped to the active browser chrome.
+- Tools with `browser.cdp` address their invoking session's connected page;
+  unscoped plugin UI calls still require the current visible Browser view.
+  Bounds remain clamped to the active browser chrome.
 - Plan still sees `BrowserPreview`. The Browser plugin tool is also visible in Plan/Goal for the four `planSafeActions` (`navigate`, `snapshot`, `screenshot`, `console`); click/fill/evaluate/cdp stay Agent-only (ADR 0211).
 
 ## Alternatives considered

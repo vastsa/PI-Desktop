@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-02
+- Amended: 2026-10-22
 - Related: [03-tools-and-permissions](../spec/03-runtime/03-tools-and-permissions.md) ·
   [04-data-storage](../spec/03-runtime/04-data-storage.md) ·
   [06-host-rpc-protocol](../spec/03-runtime/06-host-rpc-protocol.md) ·
@@ -31,10 +32,12 @@ that produced it rather than to a mutable repository snapshot.
    record contains the snapshot id, message/tool id, relative path, operation,
    added/modified/deleted status, addition/deletion counts, expandable hunks,
    active/rolled-back state, and whether rollback is reversible.
-2. The renderer derives `InlineReviewCard` and the Review panel's chronological
+2. The renderer derives `ReviewChangeCard` and the Review panel's chronological
    history from persisted tool messages only. It never refreshes or matches a
-   current Git diff. A card stays immediately after its owning tool row and
-   remains visible after commit, workspace switching, and restart.
+   current Git diff. In the transcript a review-backed `Write`/`Edit` renders as
+   one tool-level row: the file header and its diff body, with no second generic
+   tool header above it. It remains visible after commit, workspace switching,
+   and restart.
 3. `review.rollback({sessionId, snapshotId})` is a host-owned operation. Before
    writing, host-core verifies that the current file hash equals the post-tool
    hash recorded in the snapshot. A mismatch returns `conflict` and leaves the

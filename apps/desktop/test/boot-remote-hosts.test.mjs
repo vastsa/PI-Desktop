@@ -45,6 +45,7 @@ function fakeAdapter(options = {}) {
   let state = "disconnected";
   return {
     requests,
+    setState: next => { state = next; },
     state: () => state,
     async connect() {
       if (options.connectRejects) throw options.connectRejects;
@@ -58,14 +59,13 @@ function fakeAdapter(options = {}) {
       for (const listener of listeners) listener(envelope);
     },
     client: {
-      request: async (method, params) => {
-        requests.push({ method, params });
-        if (method === "session/list") {
-          return { sessions: options.sessions ?? [] };
-        }
+      request: async (method, params, timeoutMs) => {
+        requests.push({ method, params, ...(timeoutMs ? { timeoutMs } : {}) });
+        if (options.request && (method.startsWith("workspace/") || method.startsWith("project/"))) return options.request(method, params);
+        if (method === "session/list") return { sessions: options.sessions ?? [] };
         if (method === "events/subscribe") return { subscriptionId: `sub-${params.sessionId ?? "host"}`, starting: { epoch: "e1", sequence: 1 }, replayComplete: true };
         if (method === "session/attach") {
-          const session = options.sessions.find((row) => row.id === params.sessionId);
+          const session = options.sessions.find(row => row.id === params.sessionId);
           return { session, snapshot: { session, items: [], activeItems: [], pendingApprovals: [], pendingInputs: [], queuedTurns: [], hasMoreHistory: false, cursor: { epoch: "e1", sequence: 0 }, revision: 1, generatedAt: session.updatedAt } };
         }
         return { ok: true };
@@ -77,7 +77,6 @@ function fakeAdapter(options = {}) {
     },
   };
 }
-
 function makeSession(id) {
   return {
     id,
@@ -92,6 +91,32 @@ function makeSession(id) {
     updatedAt: "2026-09-18T10:00:00.000Z",
   };
 }
+
+test("remote host summaries expose live connection lifecycle states", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const started = Promise.withResolvers();
+  const connected = Promise.withResolvers();
+  const adapter = fakeAdapter();
+  adapter.connect = () => { adapter.setState("connecting"); started.resolve(); return connected.promise.then(() => adapter.setState("connected")); };
+  const boot = createRemoteHostsBoot({ dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(),
+    emit: () => {}, clientInfo: { name: "test", version: "1" }, buildAdapter: () => adapter });
+  try {
+    await boot.registry.upsert({ hostKey: "stateful", label: "Stateful", url: "wss://stateful", deviceToken: "t" });
+    const opening = boot.open();
+    await started.promise;
+    assert.equal((await boot.list())[0].status, "connecting");
+    connected.resolve();
+    await opening;
+    assert.deepEqual(await boot.list().then(([host]) => ({ connected: host.connected, status: host.status })), { connected: true, status: "connected" });
+    adapter.setState("reconnecting");
+    assert.equal((await boot.list())[0].status, "reconnecting");
+    adapter.setState("error");
+    const needsAction = (await boot.list())[0];
+    assert.equal(needsAction.connected, false);
+    assert.equal(needsAction.status, "action-required");
+    await boot.removeHost("stateful");
+  } finally { await boot.closeAll(); await cleanup(); }
+});
 
 test("open on an empty registry is a no-op: nothing registers, closeAll clean", async () => {
   const { dir, cleanup } = await tmpDir();
@@ -255,7 +280,10 @@ test("closeAll disposes a pending SSH forward before draining host operations", 
   let adapters = 0;
   const tunnels = createSshTunnelManager({
     reservePort: async () => 1234,
-    buildTransport: () => ({ forward: () => { started.resolve(); return forwarding.promise; }, dispose: () => { disposed++; } }),
+    buildTransport: () => ({
+      execWithInput: async () => ({ stdout: 'PI_HOST_READY {"hostId":"fixture","host":"127.0.0.1","port":1234,"version":"0.15.0"}', stderr: "", code: 0 }),
+      forward: () => { started.resolve(); return forwarding.promise; }, dispose: () => { disposed++; },
+    }),
   });
   const boot = createRemoteHostsBoot({
     dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(), emit: () => undefined,
@@ -352,4 +380,117 @@ test("bootstrapHost closes its unadopted outcome when shutdown rejects its queue
   assert.ok(result.error);
   assert.equal(adoptions, 0);
   assert.equal(forwardCloses, 1, "a queued action rejected before entry still owns its bootstrap outcome");
+});
+
+test("workspace execution keeps model configuration local and extends only the tool deadline", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const adapter = fakeAdapter({ request: async () => ({ ok: true, content: "remote result" }) });
+  const boot = createRemoteHostsBoot({ dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(),
+    emit: () => {}, clientInfo: { name: "test", version: "1" }, buildAdapter: () => adapter });
+  try {
+    await boot.addHost({ hostKey: "ssh", label: "SSH", url: "wss://fixture", deviceToken: "fixture-only" });
+    const request = { hostKey: "ssh", path: "/workspace", sessionId: "local", turnId: "turn", toolCallId: "read", toolName: "Read", args: { path: "README.md" }, timeoutMs: 30_000 };
+    assert.deepEqual(await boot.executeWorkspaceTool(request), { ok: true, content: "remote result" });
+    const call = adapter.requests.find(row => row.method === "workspace/toolExecute");
+    assert.equal(call.params.hostKey, undefined);
+    assert.equal(call.timeoutMs, 45_000);
+    assert.equal(call.params.sessionId, "local");
+    assert.ok(!adapter.requests.some(row => /provider|session\/create|project\/register/.test(row.method)));
+    await assert.rejects(boot.executeWorkspaceTool({ ...request, path: "relative" }), { errorCode: "INVALID_ARGUMENT" });
+    await assert.rejects(boot.executeWorkspaceTool({ ...request, toolName: "Plugin" }), { errorCode: "INVALID_ARGUMENT" });
+    await assert.rejects(boot.executeWorkspaceTool({ ...request, timeoutMs: 0 }), { errorCode: "INVALID_ARGUMENT" });
+  } finally { await boot.closeAll(); await cleanup(); }
+});
+
+test("failed workspace execution cancels once and never replays a side effect", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const adapter = fakeAdapter({ request: async (method) => {
+    if (method === "workspace/toolExecute") throw Object.assign(new Error("disconnected"), { errorCode: "HOST_DISCONNECTED" });
+    return { ok: true };
+  } });
+  const boot = createRemoteHostsBoot({ dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(),
+    emit: () => {}, clientInfo: { name: "test", version: "1" }, buildAdapter: () => adapter });
+  try {
+    await boot.addHost({ hostKey: "ssh", label: "SSH", url: "wss://fixture", deviceToken: "fixture-only" });
+    await assert.rejects(boot.executeWorkspaceTool({ hostKey: "ssh", path: "/workspace", sessionId: "local", turnId: "turn", toolCallId: "write", toolName: "Write", args: { path: "out", content: "new" } }), { errorCode: "REMOTE_MUTATION_OUTCOME_UNKNOWN", retriable: false });
+    assert.equal(adapter.requests.filter(row => row.method === "workspace/toolExecute").length, 1);
+    assert.equal(adapter.requests.filter(row => row.method === "workspace/toolAbort").length, 1);
+  } finally { await boot.closeAll(); await cleanup(); }
+});
+
+test("offline project browsing restores one connection shared by concurrent user entries", async () => {
+  const { dir, cleanup } = await tmpDir();
+  let builds = 0;
+  const adapter = fakeAdapter({ request: async (method, params) => {
+    if (method === "project/browse") return { path: params.path ?? "/remote", entries: [] };
+    if (method === "workspace/files") return { files: [] };
+    throw new Error(`unexpected method ${method}`);
+  } });
+  const boot = createRemoteHostsBoot({
+    dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(), emit: () => undefined,
+    clientInfo: { name: "test", version: "0.15.0" }, buildAdapter: () => { builds++; return adapter; },
+  });
+  try {
+    await boot.registry.upsert({ hostKey: "offline", label: "Offline", url: "wss://offline", deviceToken: "t" });
+    assert.equal((await boot.list())[0].connected, false);
+    const [browse, files, ready] = await Promise.all([
+      boot.browseProjects("offline", "/remote/repo"),
+      boot.workspaceFiles("offline", { operation: "list", root: "/remote/repo" }),
+      boot.ensureReady("offline"),
+    ]);
+    assert.equal(browse.path, "/remote/repo");
+    assert.deepEqual(files, { files: [] });
+    assert.equal(ready.connected, true);
+    assert.equal(builds, 1);
+    assert.equal((await boot.list())[0].connected, true);
+    await boot.ensureReady("offline");
+    assert.equal(builds, 1, "ready connection must not restart");
+    await boot.closeAll();
+    await assert.rejects(boot.ensureReady("offline"), { errorCode: "AGENT_UNAVAILABLE" });
+    assert.equal(builds, 1);
+  } finally { await boot.closeAll(); await cleanup(); }
+});
+
+test("concurrent readiness failures share one attempt and allow a later explicit retry", async () => {
+  const { dir, cleanup } = await tmpDir();
+  let builds = 0;
+  const failure = Object.assign(new Error("revoked"), { errorCode: "HOST_AUTH_FAILED", retriable: false });
+  const boot = createRemoteHostsBoot({ dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(),
+    emit: () => {}, clientInfo: { name: "test", version: "1" },
+    buildAdapter: () => { builds++; return fakeAdapter({ connectRejects: failure }); } });
+  try {
+    await boot.registry.upsert({ hostKey: "offline", label: "Offline", url: "wss://offline", deviceToken: "t" });
+    const results = await Promise.allSettled([boot.ensureReady("offline"), boot.browseProjects("offline"),
+      boot.workspaceFiles("offline", { operation: "list", root: "/repo" })]);
+    assert.ok(results.every(result => result.status === "rejected" && result.reason === failure));
+    assert.equal(builds, 1);
+    assert.equal((await boot.list())[0].status, "action-required");
+    await assert.rejects(boot.ensureReady("offline"), { errorCode: "HOST_AUTH_FAILED" });
+    assert.equal(builds, 2);
+    assert.equal((await boot.list())[0].status, "action-required", "auth failure remains visible after the adapter is closed");
+    await boot.removeHost("offline");
+    await assert.rejects(boot.ensureReady("offline"), { errorCode: "AGENT_UNAVAILABLE" });
+    assert.equal(builds, 2);
+  } finally { await boot.closeAll(); await cleanup(); }
+});
+
+test("shutdown cancels shared readiness and fences every concurrent waiter", async () => {
+  const { dir, cleanup } = await tmpDir();
+  const connecting = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  let builds = 0;
+  const adapter = fakeAdapter();
+  adapter.connect = () => { started.resolve(); return connecting.promise; };
+  adapter.close = async () => { connecting.reject(new Error("closed")); };
+  const boot = createRemoteHostsBoot({ dataDir: dir, encryption: reversibleEncryption(), router: createBackendRouter(),
+    emit: () => {}, clientInfo: { name: "test", version: "1" }, buildAdapter: () => { builds++; return adapter; } });
+  try {
+    await boot.registry.upsert({ hostKey: "offline", label: "Offline", url: "wss://offline", deviceToken: "t" });
+    const waiters = Promise.allSettled([boot.ensureReady("offline"), boot.ensureReady("offline")]);
+    await started.promise;
+    await boot.closeAll();
+    assert.ok((await waiters).every(result => result.status === "rejected"));
+    assert.equal(builds, 1);
+    assert.equal((await boot.list())[0].connected, false);
+  } finally { await boot.closeAll(); await cleanup(); }
 });

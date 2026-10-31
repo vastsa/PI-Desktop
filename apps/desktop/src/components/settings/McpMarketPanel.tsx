@@ -5,12 +5,12 @@ import {
   allowInsecureUserEndpoints,
   BUILTIN_MCP_CATALOG,
   DEFAULT_MARKET_SOURCE,
-  GLOBAL_SCOPE,
   isSafeMarketSourceUrl,
   mergeRegistryEntries,
   resolveCatalogEntry,
   sanitizeMarketSources,
   validateMcpCatalogFile,
+  type AgentCapabilityLevel,
   type MarketSource,
   type McpCatalogCategory,
   type McpCatalogEntry,
@@ -30,6 +30,11 @@ import {
   IconX,
 } from "../icons";
 import { Field, Input, TooltipButton, cx } from "../ui";
+import {
+  snapshotMatchesQuery,
+  snapshotTimeText,
+  type MarketSnapshot,
+} from "../../lib/market-snapshot";
 
 const CATEGORIES: readonly McpCatalogCategory[] = [
   "devtools",
@@ -97,15 +102,19 @@ function loadSources(allowInsecureHttp = false): MarketSource[] {
  * of its own, and the exact command is on screen before anything is saved.
  */
 export function McpMarketPanel({
+  level,
+  projectPath,
   installedIds,
   onBack,
   onInstalled,
 }: {
+  level: AgentCapabilityLevel;
+  projectPath?: string;
   installedIds: readonly string[];
   onBack: () => void;
   onInstalled: (id: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"all" | McpCatalogCategory>("all");
@@ -115,6 +124,14 @@ export function McpMarketPanel({
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [remote, setRemote] = useState<RemoteState>(REMOTE_IDLE);
+  const [catalogRetry, setCatalogRetry] = useState(0);
+  /**
+   * The last successful search for this panel, kept so a later failure can
+   * still show the list the user just had (issue #1692) instead of dropping
+   * to built-in picks only. It answers one query only: a snapshot taken for
+   * a different search must not stand in for the one on screen.
+   */
+  const [snapshot, setSnapshot] = useState<MarketSnapshot<MarketItem> | null>(null);
   const [sources, setSources] = useState<MarketSource[]>(loadSources);
   // Whether a plaintext hop to a user-supplied source is allowed, from the
   // stored `networkPolicy`. The panel validates its persisted list with the same
@@ -169,6 +186,12 @@ export function McpMarketPanel({
             exhausted: result.exhausted ?? true,
             loadingMore: false,
           });
+          // The list the user was just shown is what a later failure falls
+          // back to. An empty answer is not a list, and keeping it would pin
+          // the pane to a stale snapshot after one success.
+          if (entries.length > 0) {
+            setSnapshot({ entries, at: Date.now(), query: search.trim() });
+          }
         })
         .catch(() => {
           if (!cancelled && generation === requestGeneration.current) {
@@ -180,7 +203,11 @@ export function McpMarketPanel({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [search, sources]);
+  }, [search, sources, catalogRetry]);
+  const retryCatalog = () => {
+    setRemote((current) => ({ ...current, status: "loading", loadingMore: false }));
+    setCatalogRetry((current) => current + 1);
+  };
   const loadMore = async () => {
     if (remote.loadingMore) return;
     const generation = requestGeneration.current;
@@ -199,6 +226,9 @@ export function McpMarketPanel({
         exhausted: result.exhausted ?? true,
         loadingMore: false,
       });
+      if (entries.length > 0) {
+        setSnapshot({ entries, at: Date.now(), query: query.trim() });
+      }
     } catch {
       if (generation === requestGeneration.current) {
         setRemote((current) => ({ ...current, loadingMore: false }));
@@ -210,9 +240,21 @@ export function McpMarketPanel({
     id ? sources.find((source) => source.id === id)?.name : undefined;
 
 
+  /**
+   * The last successful list stands in only while the current query has
+   * nothing of its own to show — a failure, or the retry that follows one.
+   * A snapshot taken for another query never answers this one, and a `ready`
+   * result with no entries is a real (empty) answer, not a failure to cover.
+   */
+  const snapshotForQuery = snapshotMatchesQuery(snapshot, search) ? snapshot : null;
+  const showingSnapshot =
+    snapshotForQuery != null &&
+    remote.entries.length === 0 &&
+    (remote.status === "error" || remote.status === "loading");
+  const displayEntries = showingSnapshot && snapshotForQuery ? snapshotForQuery.entries : remote.entries;
   const remoteIds = useMemo(
-    () => new Set(remote.entries.map((entry) => entry.id)),
-    [remote.entries],
+    () => new Set(displayEntries.map((entry) => entry.id)),
+    [displayEntries],
   );
 
   const visible = useMemo(() => {
@@ -226,9 +268,9 @@ export function McpMarketPanel({
     };
     return mergeRegistryEntries(
       servers.filter(matches),
-      remote.entries.filter(matches),
+      displayEntries.filter(matches),
     ) as MarketItem[];
-  }, [remote.entries, search, category]);
+  }, [displayEntries, search, category]);
 
   const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -248,10 +290,18 @@ export function McpMarketPanel({
 
   const install = async () => {
     if (!installFor || saving) return;
+    if (level === "project" && !projectPath) {
+      showToast(t("settings.selectProjectFirst"), { variant: "error" });
+      return;
+    }
     setSaving(true);
     try {
       const input = resolveCatalogEntry(installFor, values);
-      await api.upsertMcpServer({ ...input, level: "global", scope: GLOBAL_SCOPE });
+      await api.upsertMcpServer({
+        ...input,
+        level,
+        ...(level === "project" ? { projectPath } : {}),
+      });
       showToast(t("settings.mcpMarket.installSuccess", { name: installFor.name }), {
         variant: "success",
       });
@@ -585,15 +635,57 @@ export function McpMarketPanel({
       </div>
 
       {remote.status === "loading" ? (
-        <p className="mcpm-status" role="status">
-          {t("settings.mcpMarket.remoteLoading")}
-        </p>
+        <>
+          <p className="mcpm-status" role="status">
+            {t("settings.mcpMarket.remoteLoading")}
+          </p>
+          {showingSnapshot && snapshotForQuery ? (
+            <p className="mcpm-status is-snapshot">
+              {t("settings.mcpMarket.remoteStaleSnapshot", {
+                time: snapshotTimeText(
+                  snapshotForQuery.at,
+                  i18n.resolvedLanguage ?? i18n.language,
+                ),
+              })}
+            </p>
+          ) : null}
+        </>
       ) : null}
       {remote.status === "error" ? (
-        <p className="mcpm-status is-error" role="status">
-          {t("settings.mcpMarket.remoteError")}
-          {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
-        </p>
+        <>
+          <p className="mcpm-status is-error" role="status">
+            {t("settings.mcpMarket.remoteError")}
+            {remote.failed.length ? ` (${remote.failed.join(", ")})` : ""}
+          </p>
+          {showingSnapshot && snapshotForQuery ? (
+            <p className="mcpm-status is-snapshot">
+              {t("settings.mcpMarket.remoteStaleSnapshot", {
+                time: snapshotTimeText(
+                  snapshotForQuery.at,
+                  i18n.resolvedLanguage ?? i18n.language,
+                ),
+              })}
+            </p>
+          ) : null}
+          <button type="button" className="mcpm-install is-ghost" onClick={retryCatalog}>
+            {t("settings.mcpMarket.retry")}
+          </button>
+        </>
+      ) : null}
+      {remote.status === "ready" && remote.failed.length ? (
+        <>
+          <p className="mcpm-status">
+            {t("settings.mcpMarket.remotePartial", { names: remote.failed.join(", ") })}
+          </p>
+          <button
+            type="button"
+            className="mcpm-install is-ghost"
+            disabled={remote.loadingMore}
+            onClick={retryCatalog}
+          >
+            {t("settings.mcpMarket.retry")}
+          </button>
+        </>
       ) : null}
 
       <div className="mcpm-list" role="list">

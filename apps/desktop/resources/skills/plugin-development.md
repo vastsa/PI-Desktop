@@ -5,7 +5,8 @@ description: the user is writing, checking, packaging or debugging a PI-Desktop 
 
 You are working inside a PI-Desktop plugin. Use the `PluginScaffold`, `PluginCheck` and
 `PluginPack` tools instead of hand-rolling files or shell commands — they enforce the same
-rules the installer does, so anything they accept will install.
+authoring and package-safety rules. A clean check is preparation, not proof of
+runtime compatibility, permission grants, successful loading, or marketplace approval.
 
 ## Development loop
 
@@ -34,16 +35,17 @@ Templates: `panel-basic` (a webview panel), `agent-tool-basic` (a tool the agent
   "ui": { "panel": "renderer/index.html" },
   "contributes": {
     "commands": [{ "id": "my-plugin.hello", "title": "Say hello" }],
-    "agentTools": [{ "name": "echo_text", "description": "Echo the input" }],
-    "skills": ["skills/my-plugin.md"],
-    "settings": [{ "key": "greeting", "type": "string", "default": "Hello" }]
+    "settings": [{ "key": "greeting", "title": "Greeting", "type": "string", "default": "Hello" }]
   }
 }
 ```
 
 `schemaVersion`, `id`, `name`, `version` and `main` are required. `id` must match
-`[a-zA-Z0-9][a-zA-Z0-9._-]*`; prefix personal plugins with `local.`. Every path is relative to
-the plugin directory and may not escape it.
+`^[a-z0-9]+(\.[a-z0-9_-]+)+$`; prefix personal plugins with `local.`. Entry, view, and skill paths are relative to the plugin directory and may not
+escape it; declared theme assets have a separately validated external-path route.
+`activationEvents` is metadata, not a lazy-loading scheduler. `engines.piDesktop`
+does not replace testing on the oldest supported host. Export callbacks from the
+entry module; there is no `entrypoints` manifest dispatcher.
 
 ## Entry point
 
@@ -69,9 +71,13 @@ async function onUnload() {
 module.exports = { onLoad, onUnload };
 ```
 
-`onLoad` must finish within 15s, other hooks within 5s, agent tools within 110s. An
+Module evaluation plus `onLoad` has 15s; `onUnload` has 5s (1.5s on quit); agent
+tools and Composer transforms have 110s. An
 uncaught error during load rolls the whole load back and leaves the plugin in `load_error`.
-Only `onLoad` and `onUnload` are fired today.
+Only `onLoad` and `onUnload` are lifecycle hooks today. `onPanelInvoke`,
+`onRendererCall`, `onComposerTransform`, and `onProviderOAuth` are separate
+operation callbacks; `onInstall`, `onEnable`, `onDisable`, and `onUninstall`
+are not called.
 
 ## Panel UI
 
@@ -79,8 +85,10 @@ PI-Desktop hosts every panel in a frameless window. The host reserves exactly a
 transparent 46px drag band and renders only a minimal fixed capsule in the
 top-right with minimize, maximize/restore, and close controls. The panel title,
 toolbar, background, and every other visible surface belong to the plugin.
-Normal-flow content is offset automatically, so do not add another 46px top
-padding. The drag band is not clickable outside the capsule; development
+New pages declare `<meta name="pi-plugin-chrome" content="v2">` and apply
+`var(--pi-plugin-titlebar-height, 0px)` as page-owned top spacing once. Pages
+without the marker retain the legacy additive offset; do not add another 46px
+spacer there. Widgets and docked views use 0px. The drag band is not clickable outside the capsule; development
 panels show a reminder for this constraint.
 
 For `position: fixed` or `position: sticky` top UI, use the host variable rather
@@ -104,10 +112,16 @@ Account for the same 46px value in viewport-height calculations:
 The panel receives `window.pluginBridge`, not `pi`. Use the fixed bridge channels such as
 `ui.showToast`, `ui.closePanel`, `ui.getNotificationPermission`,
 `ui.requestNotificationPermission`, `ui.showNativeNotification`, `plugin.getSettings`,
-`workspace.get`, `fs.readText`, `fs.stat`, `fs.readRange`, `fs.writeText`, `fs.glob`, `clipboard.readText`,
-`clipboard.getHistory`, `clipboard.writeText`, `shell.openExternal`, and `net.fetch`.
-Arbitrary Electron IPC and
-general custom panel RPC are not exposed.
+`workspace.get`, `session.getActive`, `ui.revealView`, `fs.readText`, `fs.stat`,
+`fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`,
+`fs.list`, `fs.requestDirectory`, `fs.writeText`, `fs.glob`, `clipboard.readText`,
+`clipboard.getHistory`, `clipboard.writeText`, `shell.openExternal`, `app.getAppearance`, `app.setTheme`, `themes.*`,
+`models.list`, `net.getCapabilities`, and `net.fetch`. The bridge does not expose
+`plugin.setSettings`, `fs.remove`, `agent.complete`, or general process APIs.
+Unknown channels are forwarded to this plugin's `onPanelInvoke(channel, payload)`;
+validate their payloads yourself. Arbitrary Electron IPC is not exposed.
+Read `app.getAppearance` through the bridge for locale and react to
+`appearance:changed`; plugin-owned UI must localize itself.
 
 ## Renderer slots
 
@@ -158,12 +172,27 @@ Every permission is declared in the manifest and granted at install time; an und
 fails at runtime. Ask for the least you need — the plugins page shows the risk tier to the
 user.
 
-- High risk: `net.fetch`, `fs.write`, `fs.delete`, `agent.prompt.inject`,
-  `agent.tool.register`, `agent.complete`, `renderer.extension`, `session.read`,
-  `mcp.server.local`, `mcp.server.remote`
-- Medium: `fs.read`, `clipboard.read`, `clipboard.write`, `shell.openExternal`,
-  `background.service`, `bus.publish`, `bus.subscribe`, `models.list`, `usage.read`
-- Low: `ui.panel`, `ui.theme`, `notify` (Toast and best-effort native notifications)
+Use the complete matrix in `docs/spec/07-plugins/13-plugin-permissions-matrix.md`
+when working in the host repository. Major gates include:
+
+- `ui.panel` / `ui.view` for isolated pages; `renderer.extension` for trusted code
+  in the host document; `agent.extension` for trusted code in the Agent sidecar.
+- `agent.tool.register` for runtime tool registration; `agent.prompt.inject` for
+  skill catalogs/bodies; `agent.complete` for quota-spending one-shot completions.
+- `models.list`, `usage.read`, `session.read`, and the separate ownership-scoped
+  `session.import`, `session.read.own`, `session.update.own`, `session.delete.own`.
+- `provider.register` for manifest providers, `provider.oauth` for OAuth callbacks,
+  `composer.transform` for draft transformations, `composer.suggest` for one
+  dismissible placeholder line; these do not implicitly grant transcript reads.
+- `ui.theme` for CSS/runtime themes/typed variables; `ui.settings` plus `ui.theme`
+  for data-only `scenicThemes`; `ui.window.appearance` for native appearance.
+- `net.fetch` / `net.websocket` for host egress, and separately reviewed
+  `net.anyHost` if user-entered endpoints cannot be declared beforehand.
+- `keyboard.globalShortcut` for host-owned system shortcuts; local `shortcut`
+  settings remain application-scoped.
+- `desktop.control`, `browser.cdp`, `project.create`, and `session.autoTitle` for
+  their separate reviewed host operations. Dangerous desktop operations need
+  `confirm: true` plus the user's host-owned native confirmation.
 
 ### File and network range
 
@@ -188,7 +217,8 @@ broadly but leak nothing". `manifest.fs` says which paths each file mode may tou
   manifest validation.
 - An absent or empty declaration grants nothing. A file access outside the scope reaches the
   user as a native confirmation (allow once / allow this session / deny); an empty
-  `net.domains` means no egress at all, whatever `net.fetch` says.
+  `net.domains` means no egress unless the user separately grants `net.anyHost`.
+  That exception still refuses cloud metadata and grants no API permission itself.
 - Credentials are refused whatever the manifest says: `.env*`, `.ssh/`, `.aws/`, `.git/`,
   `*.pem`, and the app's own data directory. Symlinks are resolved first, so a link out of the
   workspace does not get through.
@@ -214,10 +244,68 @@ notification permission query. Native plugin notifications do not enter the
 durable task notification inbox. Clicking a delivered notification restores and
 focuses the main window but does not activate a session.
 
-Supported host API groups are `app`, `plugin`, `commands`, `ui`, `workspace`, `fs`, `agent`,
-`services`, `bus`, `clipboard`, `shell`, `net`, and `events`. There is no host archive,
-arbitrary process, or network-server API. Skills, themes, and MCP servers are declarative
-manifest contributions rather than runtime registration APIs.
+Host API groups are `app`, `themes`, `plugin`, `commands`, `speech`, `composer`,
+`ui`, `project`, `providers.oauth`, `workspace`, `desktop`, `audio`, `keyboard`,
+`fs`, `agent`, `models`, `session`, `usage`, `services`, `bus`, `clipboard`,
+`shell`, `browser`, `net`, and `events`. This is not the panel API or the renderer
+API. There is no host archive, arbitrary process, or network-server API.
+Skills, MCP servers, and providers are manifest-owned; themes additionally have
+`pi.themes.upsert` / `remove` / `list` / `setVariables` runtime APIs.
+
+## Tool, session, and async boundaries
+
+Register tools in `onLoad` with the same descriptor as `contributes.agentTools`.
+Tools are deferred behind `ToolSearch`. Plan/Goal hides and denies them by
+default; opt in only read-only `action` values through `planSafeActions` on the
+runtime registration. The runner checks `args.action` before execution. A low
+risk label, session grant, or auto mode does not replace the allowlist.
+Use the tool context's `signal`, `sessionId`, and `turnId`; cancel side work and
+never replace the invoking session with whichever session is visible.
+
+`pi.session.getActive()` and `session:activated` expose the selected session
+snapshot without transcript access. Recheck session identity after an await.
+`session:turnEnded` carries `{ sessionId, turnId, reason }`, once per settled
+host turn to live listeners, without replay; late tools can still be running.
+`pi.ui.revealView` needs `ui.view` and may reveal only your own declared view
+for the session still on screen. Subscribe/unsubscribe with matching handlers.
+
+`pi.session.getLlmContext()` and `includeSessionContext` completions need
+`session.read` and an active invocation of this plugin's Agent tool. A service,
+Composer callback, or selected-session snapshot does not grant this context.
+`pi.models.list()` returns ready model keys without secrets. `pi.agent.complete`
+uses the user's model, no tools, a 90s budget and eight calls per rolling minute.
+Handle timeout/rate-limit/provider failures without infinite retries.
+
+Imported sessions need declared `sessionSources`; operations are scoped to the
+calling plugin. Historical project/model strings do not bind a live session;
+use an explicit `projectId` with `project.create` when needed. Auto titles use
+bounded first-turn context and compare-and-set `expectedTitle`; manual names win.
+
+## Composer, providers, and real-time capabilities
+
+`contributes.composerTransforms` invokes `onComposerTransform({ id, text,
+modelKey? })` only after the user's action. Return a string (100,000-character
+input/output cap). The host handles file-reference preservation, stale drafts,
+session changes, and undo. No history or attachment payload is supplied.
+`pi.composer.suggest({ sessionId, turnId?, text, ttlMs? })` needs
+`composer.suggest`: one folded line, 200 characters, 120s default, 1..600s TTL.
+It appears only for an empty visible Composer; Tab accepts, Esc dismisses. Normal
+refusals are `{ shown: false, reason }`; it never sends a message. Prefer the
+triggering turn-ended event's `turnId` to protect against late completions.
+
+Providers are manifest-owned native rows. API-key providers can use Add Service;
+empty models require `baseUrl` and discover after key save. OAuth needs both
+provider grants and `onProviderOAuth(request, { signal })` for login/refresh.
+Use host prompt/notify helpers; only this provider's refresh callback receives
+its existing credential. Never log or copy it into settings or bus messages.
+
+`pi.keyboard` registers at most eight own-command global shortcuts; inspect
+`registered`/`error` instead of assuming a conflict throws. `pi.net.websocket`
+provides four host-owned sockets, 1 MiB frames, 4 MiB queued sends, with per-socket
+`net:websocket:*` events and unload cleanup. `ui.microphone` is panel audio only.
+All ten background `pi.audio.*` methods exist but have no device backend:
+authorized calls still return/throw `UNSUPPORTED`. Speech adapters use the
+separate `speech.adapter.register` gate.
 
 Prefer these host APIs over raw Node file or network APIs. The permission gateway covers the
 host API surface; the separate Node plugin process is not yet an operating-system capability
@@ -254,5 +342,14 @@ bus payloads.
 
 A `.piplug` is a **store-only (uncompressed) zip** — the installer rejects deflated entries.
 Always produce one with `PluginPack`, never with `zip` or `tar`. `.git`, `node_modules` and
-`dist` are excluded automatically; the package must stay under 2000 files and 50 MB, and may
+`dist` and credential files (`.env`, `.env.*`, `.npmrc`, `*.pem`, `*.key`) are
+excluded automatically; the package must stay under 2000 files and 50 MB, and may
 not contain symlinks.
+
+
+`pi-plugin publish` in the repository CLI prepares a local `.submission.json`
+and `.piplug`; it does not upload. Ignore `dist/` before its clean-worktree check.
+Publish through the official plugin center (`plugins.aiuo.net`); the distribution
+mirror does not host plugin source. Full author guide: `docs/plugin-development.md`
+and its Chinese mirror. Do not treat draft pages under `docs/plugin-plan` as
+implemented SDK exports.

@@ -1,9 +1,11 @@
 /** Shared public types grouped by the owning application domain. */
+import type { RemoteWorkspace } from "./workspace.js";
 import type { Mode } from "./common.js";
 import type { SessionThinkingLevel, ThinkingLevel } from "./models.js";
 import type { PermissionMode } from "./permissions.js";
 import type { UiMessage } from "./messages.js";
 import type { PlanHistoryEntry, PlanningState } from "./plans.js";
+import type { SessionWorktreeSummary } from "./worktree.js";
 
 /**
  * Which authority owns a session's transcript.
@@ -32,6 +34,7 @@ export type SessionCapabilities = {
 };
 
 export type SessionSummary = {
+  remoteWorkspace?: RemoteWorkspace;
   id: string;
   /** Transcript authority. Omitted by older hosts and normalized to `desktop`. */
   source?: SessionSource;
@@ -54,6 +57,12 @@ export type SessionSummary = {
   thinkingLevel: SessionThinkingLevel;
   /** Per-session permission mode; `inherit` follows the global default (D115). */
   permissionMode: PermissionMode;
+  /**
+   * Session `/fast` switch (ADR 0334). Requests use the priority tier only
+   * when the selected model also allows it. Older hosts and remote sessions
+   * omit it, meaning off.
+   */
+  fastMode?: boolean;
   /** Effective capability for this session's exact provider/model pair. */
   supportsReasoning?: boolean;
   /** Effective image-input capability for this session's exact model. */
@@ -66,6 +75,11 @@ export type SessionSummary = {
    * Older hosts omit it, so `undefined` means an ordinary conversation.
    */
   scheduledRun?: boolean;
+  /**
+   * Present only for an isolated session (ADR 0329): its tools run in its own
+   * git worktree. Older hosts and ordinary sessions omit it.
+   */
+  worktree?: SessionWorktreeSummary;
   updatedAt: string;
   createdAt: string;
 };
@@ -122,6 +136,12 @@ export type ContextCompactionStatus = {
   generation: number;
   /** Estimated tokens the summary itself occupies in the model context. */
   summaryTokens: number;
+  /**
+   * Estimated tokens of the whole next request right after this checkpoint
+   * was installed. The composer shows it until a newer request reports
+   * provider usage (#2015). Absent on checkpoints written before it existed.
+   */
+  contextTokens?: number;
 };
 
 /**

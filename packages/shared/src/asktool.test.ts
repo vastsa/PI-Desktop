@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatAskToolOutput, type AskToolQuestion } from "./types.js";
+import {
+  formatAskToolOutput,
+  isAskToolQuestionWithinLimit,
+  MAX_ASK_TOOL_QUESTION_CHARS,
+  type AskToolQuestion,
+} from "./types.js";
 
 describe("asktool output", () => {
   const questions: AskToolQuestion[] = [
@@ -24,5 +29,12 @@ describe("asktool output", () => {
     expect(formatAskToolOutput(questions, [null, ["Desktop"]])).toBe(
       "Preferred color?：\n---\nWhich platforms?：Desktop",
     );
+  });
+
+  it("limits questions to 300 Unicode characters", () => {
+    expect(isAskToolQuestionWithinLimit("q".repeat(MAX_ASK_TOOL_QUESTION_CHARS))).toBe(true);
+    expect(isAskToolQuestionWithinLimit("q".repeat(MAX_ASK_TOOL_QUESTION_CHARS + 1))).toBe(false);
+    expect(isAskToolQuestionWithinLimit("🧭".repeat(MAX_ASK_TOOL_QUESTION_CHARS))).toBe(true);
+    expect(isAskToolQuestionWithinLimit("🧭".repeat(MAX_ASK_TOOL_QUESTION_CHARS + 1))).toBe(false);
   });
 });

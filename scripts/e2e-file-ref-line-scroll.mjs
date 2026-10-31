@@ -90,7 +90,7 @@ app.whenReady().then(async () => {
   assert.deepEqual(result.resolveRefs, ["src/scroll-target.txt", "核查报告.md", "src/scroll-target.txt"]);
   assert.deepEqual(result.readPaths, ["src/scroll-target.txt"]);
   assert.equal(result.selectedPath, "src/scroll-target.txt");
-  assert.deepEqual(result.request, { path: "src/scroll-target.txt", seq: 1, line: 65, column: 4 });
+  assert.deepEqual(result.request, { path: "src/scroll-target.txt", seq: 1, line: 65 });
   assert.deepEqual(result.scrollCall, { line: "65", block: "center" });
   assert.ok(result.scrollTop > 0, "host file viewer did not scroll away from the top");
   assert.equal(result.targetLineVisible, true, "requested line is outside the visible viewer area");

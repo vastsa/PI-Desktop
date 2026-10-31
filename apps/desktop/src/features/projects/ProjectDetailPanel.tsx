@@ -69,9 +69,9 @@ export function ProjectDetailPanel({
           aria-label={t("project.foldersLabel")}
         >
           {project.roots.map((root) => (
-            <span className="projects-detail-root" key={root.path} title={root.path}>
+            <span className="projects-detail-root" key={root.path} title={project.remote?.path ?? root.path}>
               <IconFolder size={12} aria-hidden />
-              <span>{shortenPath(root.path)}</span>
+              <span>{shortenPath(project.remote?.path ?? root.path)}</span>
             </span>
           ))}
         </div>

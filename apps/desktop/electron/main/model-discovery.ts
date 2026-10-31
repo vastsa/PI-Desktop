@@ -15,6 +15,8 @@
  * "Test connection" cannot drift into two different URL or auth rules.
  */
 
+import { fetchProviderMetadata } from "./provider-metadata-fetch.ts";
+
 import {
   discoveryProbeUrl,
   discoveryStyleForApiStyle,
@@ -254,7 +256,28 @@ export function modelListRequest(opts: {
   };
 }
 
+/** A single page is authoritative only when it contains valid rows and no
+ * continuation marker. Unknown pagination is never guessed from row count. */
+export function modelListIsComplete(style: string | undefined, body: unknown): boolean {
+  const record = asRecord(body);
+  if (record && (record.has_more === true || record.hasMore === true
+    || record.nextPageToken || record.next_page_token || record.next_page
+    || record.next || record.partial === true || record.truncated === true
+    || asRecord(record.links)?.next || asRecord(record.pagination)?.next
+    || asRecord(record.pagination)?.has_more)) return false;
+  const rows = Array.isArray(body) ? body
+    : Array.isArray(record?.data) ? record.data
+    : Array.isArray(record?.models) ? record.models : [];
+  if (rows.length === 0) return false;
+  const total = record?.total ?? record?.total_count ?? asRecord(record?.pagination)?.total;
+  if (typeof total === "number" && total > rows.length) return false;
+  return rows.every((row) => normalizeModelList(style,
+    style === "google_models" || style === "google_generative_ai"
+      ? { models: [row] } : { data: [row] }).length === 1);
+}
+
 export type ModelListProbe = {
+  complete?: boolean;
   /** The URL that answered, after any same-origin redirect. */
   url: string;
   status: number;
@@ -280,7 +303,7 @@ async function probeAnthropicMessagesEndpoint(opts: {
   if (allowOrigin && originOf(requestUrl) !== allowOrigin) {
     throw new Error("message endpoint request refused: it left the configured origin");
   }
-  const response = await fetch(requestUrl, {
+  const response = await fetchProviderMetadata(requestUrl, {
     method: "OPTIONS",
     signal: opts.signal,
     redirect: "manual",
@@ -361,7 +384,7 @@ export async function probeModelList(opts: {
 
   let url = request.url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    const res = await fetch(url, {
+    const res = await fetchProviderMetadata(url, {
       headers: request.headers,
       signal: responseSignal,
       // Never let fetch carry the credential to another origin on its own.
@@ -384,13 +407,15 @@ export async function probeModelList(opts: {
         status: res.status,
       });
     }
+    const body: unknown = await res.json();
+    const style = opts.discoveryStyle ?? opts.apiStyle;
     return {
       url,
       status: res.status,
-      models: normalizeModelList(
-        opts.discoveryStyle ?? opts.apiStyle,
-        await res.json(),
-      ),
+      models: normalizeModelList(style, body),
+      complete: res.status !== 206
+        && !/rel="?next/i.test(res.headers.get("link") ?? "")
+        && modelListIsComplete(style, body),
     };
   }
   throw new Error("model list request followed too many redirects");

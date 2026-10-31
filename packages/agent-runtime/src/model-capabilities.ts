@@ -98,6 +98,7 @@ export function modelConfigWithBinding(
         | "maxTokens"
         | "thinkingLevels"
         | "thinkingProtocol"
+        | "supportsReasoningEffort"
         | "supportsImages"
         | "supportsDocuments"
         | "nativeWebSearch"
@@ -178,6 +179,7 @@ export function modelConfigWithBinding(
       ? model.reasoning || enabledThinkingLevels.some((level) => level !== "off")
       : enabledThinkingLevels.some((level) => level !== "off"),
     supportedThinkingLevels: enabledThinkingLevels,
+    supportsReasoningEffort: binding.supportsReasoningEffort,
     ...(binding.thinkingProtocol
       ? { thinkingProtocol: binding.thinkingProtocol }
       : {}),

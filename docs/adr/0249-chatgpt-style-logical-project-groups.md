@@ -39,9 +39,10 @@ policy.
    group membership never grants arbitrary external filesystem access.
 6. The project overflow action is named **Edit project**. The editor can change
    the group name and adjust its root list through the additive
-   `project.group.update` capability. The primary root remains first and cannot
-   be removed. An additional root can be detached even when it has chats; those
-   chats remain available under the detached path as a standalone project.
+   `project.group.update` capability, which also promotes any registered root to
+   the primary root when the caller names it. The primary root remains first and
+   cannot be removed. An additional root can be detached even when it has chats;
+   those chats remain available under the detached path as a standalone project.
    Future chats use that project's path-scoped context, while the group's shared
    instructions and memory remain with the original group.
 7. Group creation, editing, shared instruction editing, and shared memory editing

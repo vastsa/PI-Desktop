@@ -103,6 +103,59 @@ export const RacpRequestContextSchema = Type.Object({
 });
 export type RacpRequestContext = Static<typeof RacpRequestContextSchema>;
 
+export const WorkspaceFilesRequestSchema = Type.Object({
+  path: Type.String({ minLength: 1, maxLength: 4096 }),
+  operation: Type.Union([Type.Literal("list"), Type.Literal("read"), Type.Literal("index"), Type.Literal("resolve"), Type.Literal("image"), Type.Literal("diff"), Type.Literal("instructions")]),
+  ref: Type.Optional(Type.String({ maxLength: 4096 })),
+  mimeType: Type.Optional(Type.String({ maxLength: 256 })),
+}, { additionalProperties: false });
+export type WorkspaceFilesRequest = Static<typeof WorkspaceFilesRequestSchema>;
+
+/** Plugin reads carry the admitted read scope; no remote write operation exists. */
+export const WorkspacePluginFilesRequestSchema = Type.Object({
+  path: Type.String({ minLength: 1, maxLength: 4096 }),
+  ref: Type.String({ maxLength: 4096 }),
+  operation: Type.Union([Type.Literal("list"), Type.Literal("preview")]),
+  scope: Type.Array(Type.String()),
+}, { additionalProperties: false });
+export type WorkspacePluginFilesRequest = Static<typeof WorkspacePluginFilesRequestSchema>;
+
+const PluginFileEntrySchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  path: Type.String({ minLength: 1 }),
+  isDirectory: Type.Boolean(),
+  size: Type.Optional(Type.Integer({ minimum: 0 })),
+  mtimeMs: Type.Optional(Type.Number()),
+}, { additionalProperties: false });
+const PluginPreviewMetadata = { size: Type.Integer({ minimum: 0 }), mtimeMs: Type.Number() };
+export const WorkspacePluginFilesResultSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("list"), entries: Type.Array(PluginFileEntrySchema) }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal("text"), content: Type.String(), ...PluginPreviewMetadata }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Literal("image"), dataUrl: Type.String({ pattern: "^data:image/[a-zA-Z0-9.+-]+;base64," }), ...PluginPreviewMetadata }, { additionalProperties: false }),
+  Type.Object({ kind: Type.Union([Type.Literal("binary"), Type.Literal("tooLarge")]), ...PluginPreviewMetadata }, { additionalProperties: false }),
+]);
+export type WorkspacePluginFilesResult = Static<typeof WorkspacePluginFilesResultSchema>;
+
+/** Narrow owner-only tool service; model configuration and credentials never cross it. */
+export const WorkspaceToolExecuteSchema = Type.Object({
+  path: Type.String({ minLength: 1, maxLength: 4096 }),
+  sessionId: Type.String({ minLength: 1, maxLength: 256 }),
+  turnId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolName: Type.Union([Type.Literal("Read"), Type.Literal("Glob"), Type.Literal("Grep"), Type.Literal("Write"), Type.Literal("Edit"), Type.Literal("Bash")]),
+  args: Type.Record(Type.String(), Type.Unknown()),
+  timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 21_600_000 })),
+  expectedCommandShellId: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+  expectedCommandShellDialect: Type.Optional(Type.Union([Type.Literal("posix"), Type.Literal("powershell"), Type.Literal("cmd")])),
+}, { additionalProperties: false });
+export type WorkspaceToolExecute = Static<typeof WorkspaceToolExecuteSchema>;
+export const WorkspaceToolAbortSchema = Type.Object({
+  sessionId: Type.String({ minLength: 1, maxLength: 256 }),
+  toolCallId: Type.String({ minLength: 1, maxLength: 256 }),
+}, { additionalProperties: false });
+export type WorkspaceToolAbort = Static<typeof WorkspaceToolAbortSchema>;
+export type WorkspaceToolResult = { ok: boolean; content: unknown; isError?: boolean; errorCode?: string; toolCallId?: string };
+
 // ---------------------------------------------------------------------------
 // Canonical resources (spec §5)
 // ---------------------------------------------------------------------------
@@ -422,6 +475,9 @@ export const RacpServerCapabilitiesSchema = Type.Object({
   remoteHostProfile: Type.Boolean(),
   toolRelay: Type.Boolean(),
   terminal: Type.Boolean(),
+  workspaceTools: Type.Optional(Type.Boolean()),
+  workspaceFiles: Type.Optional(Type.Boolean()),
+  workspacePluginFiles: Type.Optional(Type.Boolean()),
   notifications: Type.Boolean(),
   bindings: Type.Array(Type.Union([Type.Literal("RACP-WS"), Type.Literal("RACP-HTTP"), Type.Literal("RACP-GRPC")])),
 });
@@ -559,6 +615,11 @@ export const RACP_OPERATIONS = {
   "workspace/list": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/read": { role: "viewer", profile: "remote-host", mutation: false },
   "workspace/diff": { role: "viewer", profile: "remote-host", mutation: false },
+  "workspace/toolExecute": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/toolAbort": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/toolShell": { role: "owner", profile: "remote-host", mutation: false },
+  "workspace/files": { role: "owner", profile: "remote-host", mutation: false },
+  "workspace/pluginFiles": { role: "owner", profile: "remote-host", mutation: false },
   "terminal/open": { role: "controller", profile: "remote-host", mutation: true },
   "terminal/input": { role: "controller", profile: "remote-host", mutation: true },
   "terminal/resize": { role: "controller", profile: "remote-host", mutation: true },
@@ -837,6 +898,8 @@ export function racpErrorIsRegistered(code: RacpErrorCode): boolean {
 // ---------------------------------------------------------------------------
 
 export const RACP_SCHEMAS = {
+  WorkspacePluginFilesRequest: WorkspacePluginFilesRequestSchema,
+  WorkspacePluginFilesResult: WorkspacePluginFilesResultSchema,
   RequestContext: RacpRequestContextSchema,
   Session: RacpSessionSchema,
   Turn: RacpTurnSchema,

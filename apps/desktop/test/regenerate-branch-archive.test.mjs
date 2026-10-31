@@ -47,7 +47,14 @@ test("the host owns the branch root search and the pager stamp", () => {
   // survives; a full rewrite from a stale snapshot would delete it.
   assert.match(host, /transcripts::update_message\(db\.data_dir\(\), session_id, &record\)/);
   assert.match(transcripts, /pub fn update_message\(/);
-  assert.match(transcripts, /fs::read_to_string\(&path\)/);
+  // The re-read may decode lossily (a crash can tear the tail), but it must
+  // still read the file it is about to rewrite rather than trust a snapshot.
+  const updateMessage = transcripts.slice(
+    transcripts.indexOf("pub fn update_message("),
+    transcripts.indexOf("pub fn append_revision("),
+  );
+  assert.ok(updateMessage.length > 0, "update_message body is bounded");
+  assert.match(updateMessage, /fs::read\(&path\)/);
 });
 
 test("a transcript rewrite keeps each message's owning turn", () => {

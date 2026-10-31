@@ -77,11 +77,12 @@ PluginManager
 
 附带的 `pluginChanged` 事件带有 `reason`，以便渲染器可以决定
 重新获取的内容：`install`、`loadDev`、`enable`、`disable`、`uninstall`、`crash`、
-`service`、`market.install`、`market.applyUpdates`。 `service` 在每个
+`service`、`restore`、`market.install`、`market.applyUpdates`。 `service` 在每个
 监管过渡是其中最便宜的——只需要服务列表
-重新加载。
+重新加载。`restore` 在启动恢复把已启用的插件加载完之后发出一次，
+让早于它取过清单的界面仍能看到这些插件。
 
-## 4. 1 事件（主机→插件进程）
+## 4.1 事件（主机→插件进程）
 
 代理还将单向帧推送到插件的 `utilityProcess`：
 
@@ -100,12 +101,14 @@ PluginManager
 
 ### 注册
 - 密钥必须是唯一的
-- 插件命令共享前缀：`plugin.<pluginId>.<commandId>`
+- 命令 ID 按原值保存；`plugin.<pluginId>.<commandId>` 是命名约定，宿主不会强制添加该前缀。
+  注册其他插件已占用的命令 ID 时，宿主返回 `CONFLICT` 错误；注销其他插件的命令时，
+  宿主返回 `PERMISSION_DENIED` 错误。插件仍可更新自己的命令，也可注销不存在的 ID。
 - 插件工具前缀策略：`plugin_<pluginIdSafe>_<toolName>`（在实现中修复）
 
 ### 查询
 - 命令面板仅查询已启用+加载成功的贡献
-- Agent 查看已注册的工具；无论风险如何，Plan 均不会收到任何插件工具
+- Agent 可使用已注册工具；Plan/Goal 仅暴露运行时 `planSafeActions` 非空的工具，执行前再次校验 `args.action`
   或授予状态
 
 ### 注销
@@ -211,10 +214,9 @@ toast 加上 `pluginChanged` 到渲染器。
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`。`turnId` 是
    运行时回合身份，原样转发，以便插件工具上下文能与
    `session:turnEnded` 事件对应。
-3. Plan 调用在主机策略步骤失败并显示 `PLUGIN_DISABLED_IN_PLAN`；他们
-   永远不会达到 Electron 或插件运行时。 Agent 呼叫继续
-   Electron主要执行注册的插件工具JS并通过RPC应答
-   `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`。
+3. Plan/Goal 未声明 `planSafeActions` 时在宿主策略门拒绝；已允许的调用携带模式和操作列表，
+   桌面插件执行器在进入插件代码前拒绝缺失或未列出的 `args.action`。Agent 使用正常权限流程。
+   Electron 通过 `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }` 返回。
 4. host-core 解析待执行并返回一个标准
    `ToolsExecuteResult` 到 sidecar。调度最多等待 150 秒
    （`DESKTOP_TOOL_DISPATCH_TIMEOUT_MS`，高于 110 秒的插件工具预算，也高于最宽的

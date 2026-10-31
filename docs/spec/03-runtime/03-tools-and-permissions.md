@@ -5,6 +5,95 @@
 
 ## 0. Frozen policy summary
 
+### Parallel file batches
+
+Read, Glob and Grep are parallel candidates. Write and Edit join them only
+when the runtime negotiates version 1 of the actual local Host file-batch
+protocol. Capability is fixed for that runtime/connection, including background
+delegates. Legacy Hosts and remote workspaces retain Write/Edit as sequential,
+so pi serializes any batch containing a write. No sidecar filesystem lookup is
+used to classify a remote path.
+
+Task-only fan-out is unchanged. Task mixed with any file tool remains a whole-
+batch sequential boundary. Reads/searches ordered after a writable Task wait
+for the delegate to settle; writes only wait for the Task call to return its
+started notice. Bash, TodoWrite, unknown, plugin and MCP tools keep their
+existing sequential policy. Only the selected builtin executor receives native
+preparation and file-batch bindings; same-name dynamic tools remain sequential.
+
+For an eligible parallel batch, preparation validates arguments and loads path
+instructions in source order, then registers each file call with Host. A record
+contains session/delegation, a fresh batch ID, the original ordinal, tool call
+ID, tool name and normalized arguments. Host returns an opaque, single-use
+ticket. Registration performs no file lookup, grants no permission and takes
+no execution capacity. After preparation finishes, executors share one batch
+seal operation before submitting `tools.execute` with their ticket. Sequential
+batches do not register a partial batch. Tickets are bound to the exact call;
+changed arguments, cross-owner use, replay and execution before sealing fail.
+They are carried in asynchronous execution context, not a global call-ID map,
+so independent delegates cannot overwrite each other's bindings.
+
+Host first applies the existing mode and permission checks. Only approved calls
+resolve trusted file resources through the session/delegation tool root and
+existing external-path resolver. A pending approval holds neither an active
+lease nor capacity. Until a potentially conflicting earlier call is classified
+or terminal, a later same-batch call waits conservatively. Once both identities
+are known, only conflicting predecessors enforce source order; predecessor
+failure or denial does not cascade. There is no model source order across
+independent batches/sessions, only active resource exclusion and queue fairness.
+
+| Tool / target | Host resource declaration |
+|---|---|
+| Existing regular-file Read | shared object identity and resolved address |
+| Existing regular-file Write / ordinary Edit | exclusive object identity and resolved address |
+| Glob / Grep | shared across the Host file coordination domain |
+| Missing target, unknown identity, unsupported filesystem | shared domain for a read; exclusive domain for a write |
+| Edit MV / REM or a named CUT/PUT register | exclusive domain |
+| Review rollback | exclusive domain, with the existing post-tool hash guard |
+
+Unix identities use dev/ino from an open file on a supported local filesystem;
+Windows uses volume serial plus FILE_ID_INFO on a local disk. The handle stays
+alive while the identity is queued or active. Hard links and symbolic links
+must conflict even with different basenames or roots. Roots determine permission
+and address resolution, not separate namespaces for physical file IDs. File
+names, file size, lexical keys and realpath alone cannot prove independence.
+The global domain includes approved external paths. Two shared declarations do
+not conflict. A domain declaration conflicts with every exclusive declaration;
+otherwise equal object identities or resolved addresses conflict when either
+side is exclusive. Unknown identity never falls back to presumed independence.
+
+ToolBudget grants all resources and execution capacity together. Waiting for a
+predecessor/resource does not occupy a capacity slot. Later conflicting calls
+cannot bypass an exclusive resource waiter; an earlier source-order call can
+bypass a later waiter from its own batch to avoid a queue/DAG deadlock. Existing
+limits remain: 16 total, 8 reads, 2 writes, 4 per session, 1 write per session.
+The bounded admission wait still returns HOST_OVERLOADED after 30 seconds.
+Audit/debug diagnostics record total admission wait and its initial reason
+(source_order, resource or capacity); these are not disjoint duration segments.
+
+Identity/address is revalidated under the granted lease before review snapshots
+and in the actual blocking file task. A changed binding fails without writing
+or automatic replay. Namespace changes and missing-target writes use an
+exclusive domain fence. Snapshot, execution, Hashline state and final review
+snapshot share the lease; later rollback also acquires it without holding the
+AppState mutex while waiting. Cancelling an RPC future does not stop
+spawn_blocking: the blocking task retains the permit until its body ends.
+Unstarted calls are abandoned; a batch close cannot release active disk work.
+Registry limits are 512 calls globally, 128 per batch and 32 MiB of retained
+arguments. Unused metadata expires after 15 minutes; submitted/running calls
+are not expired through a pending permission decision or disk operation.
+
+Host resources replace sidecar PathMutex around calls on the supported path;
+the legacy path retains its original locking. Existing permission, Hashline,
+mutation-recovery and model result semantics remain in force. Parent/delegate
+path instructions still mutate only their own prompt. pi submits tool results
+in source order, irrespective of completion order. The guarantee covers file
+tools and rollback coordinated by one Host process; arbitrary external writers,
+Bash and another Host instance are not participants in this lease protocol.
+
+See [ordered preparation](../../adr/parallel-read-batches.md) and
+[Host file admission](../../adr/host-file-batch-admission.md).
+
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
@@ -117,6 +206,22 @@ the renderer response without an expiry, and returns a bounded structured tool
 result. Options may be plain strings or `{ label, description? }` objects; the
 selected label remains the answer value. Stopping the turn resolves outstanding
 questions as skipped.
+
+A stop sends a typed `tools.abort` request for each in-flight call (ADR
+tool-abort-abandons-host-call). Host-core registers cancellation before
+permission evaluation, so a pending approval or queued admission is cancelled
+instead of starting after Stop. `Bash` and `GenerateImages` use the existing
+process cancellation path; the runtime waits up to 10s for the host to return
+output collected before termination. Local `Read`, `Glob`, and `Grep` calls may
+end the runtime's wait immediately and return `TOOL_ABORTED`; their results are
+discarded. This local stop does not wait for the `tools.abort` acknowledgement;
+late success or failure of either Host request cannot affect a subsequent turn.
+A blocking filesystem worker may continue until it returns, but
+these tools do not mutate the workspace. For a mutating, MCP, or plugin call
+that has already started, the runtime waits for the host result before it
+settles the turn, so Stop cannot hide a write or extension action that is still
+running. Typed cancellation records include the tool name and cannot be
+inherited by a different tool that reuses the call id.
 
 `JevClassify` is an external provider operation rather than a workspace
 execution tool. It validates its structured request, observes cancellation,
@@ -273,6 +378,65 @@ as binary content.
 - A session lookup/storage error fails the tool request; it must never be
   treated as a missing legacy session or redirected to the selected workspace.
 
+## 4b.1 Session visualization directory (D671)
+
+Inline visualizations (ADR `gen-ui-inline-visualization`) are HTML fragments the
+model writes for the transcript to render. They live in a third host-owned
+root, separate from scratch so that scratch keeps its 7-day sweep while a
+visualization lives as long as its session:
+
+```text
+<data_dir>/visualizations/<sessionId>/
+```
+
+- **Availability.** Local sessions only, and opt-in through
+  `AppSettings.inlineVisualizations` (absent and `false` mean off). While it is
+  off there is no directory, no prompt line, no `pi-desktop/visualize` skill in
+  the catalog, `/` menu, or `Skill` tool, and the renderer strips reference
+  lines without loading a card. A remote-workspace session gets none of it
+  either.
+- **Addressing.** Absolute paths only; the path is advertised in the system
+  prompt next to the scratch directory. Relative paths never resolve here.
+- **Containment.** Scratch and visualization roots are checked before the
+  workspace, so a data directory inside a workspace remains controlled.
+  The visualization base and session must be real directories, never
+  symlink/junction redirects; canonical data-directory aliases are supported.
+- **Content.** `Write`/`Edit` accept only a single-component file name ending in
+  `.html`; anything else in this root fails with a tool error. `Read` is
+  allowed.
+- **Permissions.** `Write`/`Edit` inside the root auto-allow without a card,
+  under the same conditions as scratch. Plan and Goal expose no Write/Edit, so
+  contract modes cannot write here. Results carry `root: "visualization"`, are
+  not recorded as artifacts, and are not review-snapshotted.
+- **Lifecycle.** Created lazily on the first write. Deleted with
+  `session.delete`. The startup sweep removes only safe session directories
+  whose session no longer exists; it never expires live cards by age or
+  traverses a redirected visualization base.
+- **Rendering.** A standalone `::visualize{"path":"<absolute path>","title":"…"}`
+  line outside code blocks renders as an inline card after the turn completes.
+  The renderer derives `pi-genui://session/<sessionId>/<file>` from the path
+  suffix and never sends the absolute path to Main. Host Core reads only regular
+  non-symlink fragments up to 2 MB using pinned native directory capabilities.
+  Main validates the private byte response, rejects full documents, and wraps
+  the fragment in a host shell with a strict CSP. The shell preloads the
+  bundled D3 and the `viz` chart helpers before the fragment and drops a
+  fragment's own pinned D3 tag. The guest runtime reports the first uncaught
+  fragment script error to the card, which keeps the frame and shows a notice
+  with the bounded message as plain text. A successful `Write` of an `.html`
+  file directly in the session's visualization directory also gets a static
+  check in its result: inline scripts are compiled without running, and
+  literal element ids passed to `viz.render`, `viz.chart`, `getElementById`,
+  or `querySelector("#…")` must exist; problems are listed so the model can fix
+  them with one `Edit`.
+  Both the iframe and the response CSP header enforce `sandbox allow-scripts`,
+  so omitting the caller's sandbox cannot enable cross-session DOM reads.
+  Unix uses relative `openat` and a nonblocking leaf; Windows uses relative
+  `NtCreateFile` directory handles, rejects reparse entries, and keeps share
+  restrictions as an additional defense. Attribute-only junction mutation or
+  directory replacement/restoration cannot redirect serving to another session.
+  Fetches, frames, forms, and remote assets are blocked. WebRTC ICE remains
+  the explicitly documented v1 residual channel (see the ADR).
+
 ## 4c. Message-owned review snapshots and rollback
 
 `Write` and `Edit` are the structured review boundary. For a successful
@@ -364,6 +528,50 @@ Serialization also protects the snapshot store, which both producers and `Edit`
 mutate: without the per-session permit, a concurrent record could land between a
 validation and its write.
 
+## 4e. Isolated session worktrees (ADR 0329)
+
+A session created with `isolated: true` in a git project owns a dedicated
+worktree at `<data_dir>/worktrees/<project-key>/<id>` on branch
+`pi-desktop/<id>`, created from the project's current `HEAD` (uncommitted
+project changes are not copied; git-ignored files listed in
+`.worktreeinclude` are, without following links). For such a session:
+
+- the worktree replaces the project path as `workspaceRoot` for every rule in
+  §4–§5, so file tools, Bash's working directory, review snapshots, and
+  artifacts resolve inside it; it never falls back to the main checkout
+  (a missing worktree fails with a `WORKTREE_*` error);
+- `AGENTS.md` instructions are read from the worktree, while project identity
+  (memory, skills, plugins, MCP, subagents) stays keyed to the project path;
+- Bash receives `PI_PORT` (first port of a 10-port block in 41000–48999; a
+  block is assigned only when all ten ports are free), `PI_PROJECT_ROOT`, and
+  `PI_WORKTREE_ROOT`;
+- the optional per-project setup command runs once in each new worktree, with
+  the same variables, in the user's default command shell
+  (`defaultCommandShell`, otherwise the platform default: Windows PowerShell on
+  Windows, bash elsewhere). It is not translated between dialects, so on
+  Windows it must use PowerShell syntax (`$env:PI_PORT`, `;` rather than
+  `&&` on Windows PowerShell 5.1) unless a POSIX shell such as Git Bash is
+  the configured default;
+- git hooks and fsmonitor are disabled for host-run git commands in the
+  worktree, and removal never follows links out of it;
+- the registered worktree folder must be a real directory: if it (or a
+  directory down to the project subdirectory) was replaced by a symbolic
+  link or a Windows junction, it is treated as missing (`WORKTREE_MISSING`)
+  and is never used as a tool root, merged, or synced, and deleting the
+  session removes only the link, never its target.
+
+The host's workspace diff collector applies the same Git hardening to every
+repository it inspects, including non-isolated workspaces. Each host-started
+Git command disables repository-configured hooks and `core.fsmonitor`, and
+removes environment variables that can redirect Git to another repository or
+inject command-scope configuration. Diff invocations also disable external diff
+and text-conversion helpers.
+
+Merging into the project is an explicit user action (preview, then merge with
+the preview token); it syncs the project branch into the worktree and only
+fast-forwards the project, so conflicts stay in the worktree. Deleting an
+isolated session discards its worktree and branch.
+
 ## 5. Bash Rules
 
 Host execution baseline:
@@ -380,6 +588,69 @@ Host execution baseline:
 - A command that exits non-zero returns `ok: false`, `isError: true`, and
   `errorCode: TOOL_FAILED` while preserving its `exitCode`, stdout, and stderr
   in `content` so the agent can diagnose the command without blindly retrying.
+- `runInBackground: true` detaches the command from the turn: the call returns
+  `backgroundTaskId` as soon as the shell starts, no timeout applies, and the
+  process survives `tools.abort` and `agent.abort`. The host owns the process
+  tree, reports it through the composer's shared container, and stops it on
+  request or on app shutdown. Each stream keeps its last 256KB.
+- On Windows, descendant cleanup samples the current FILETIME before the
+  process snapshot. A process created after Host startup but before that
+  snapshot remains eligible for cleanup; Host creation time is not a snapshot
+  watermark. Recycled PID, handle identity, child-first ordering and observable
+  cleanup-error safeguards remain.
+- **Background tasks belong to the session that started them.** The session id is
+  fixed at spawn and never changes: switching, renaming, archiving, or restoring
+  a session does not re-home its tasks. A session runs at most **10** concurrent
+  background tasks; the refusal names that per-session limit. A separate
+  process-wide ceiling guards the host against many sessions adding up, and it is
+  reported as its own condition so the two causes stay distinguishable. A spawn
+  is refused when the session no longer exists, so a task can never start in a
+  session that would not be able to show it.
+- Background output is drained before a terminal state is published, including
+  output queued when the process exits or is stopped. UTF-8 characters split
+  across pipe reads remain intact. Shutdown signals do not acquire output locks.
+- **Todo and background tasks share one container** in the Composer, above the
+  Plan/Ask decision surfaces and the input. The container has a single header
+  carrying the todo progress summary, the running-task count, the tab list, and
+  the disclosure control; collapsing hides only the panels, so the tabs stay
+  reachable while collapsed. Tabs appear only when both sides have content: with
+  one side populated, that panel renders on its own and the tab list is not
+  rendered at all, and a container with nothing to show renders nothing. The
+  panel scrolls within `min(200px, 24vh)` so additional rows do not displace the
+  decision surfaces. Existing approval and Ask input gating is unchanged.
+- **The displayed tab is per-session view state.** It remembers the user's own
+  choice; a tab the container picked on its own never overwrites that choice. A
+  remembered tab whose side has become empty falls back to the other side. The
+  container gates on an active session that allows local tools, the same
+  condition the todo dock already used.
+- **A newly started task never steals the tab.** While the tasks panel is not the
+  one on screen, new tasks raise a count badge on its tab; entering that tab
+  clears the badge. Clicking a tab while collapsed also expands the container,
+  because otherwise the click would appear to do nothing.
+- A finished background task is not permanent furniture. Its row lives for a
+  10-second grace window after the renderer observed the task end, so the exit
+  code stays readable, then it leaves the container. A task that had already
+  finished when the renderer first loaded is registry history and never appears.
+  An open output preview pins its row so a log being read cannot vanish
+  underneath it.
+- **Removal is a view action with a live-task guard.** Only a terminal task
+  (`exited`, `failed`, `stopped`) can be removed; a running task — including one
+  already sent a stop signal, which stays `running` until the supervisor settles
+  it — refuses removal in the state layer, not merely by hiding the control. The
+  host task, its output, and its id are untouched, so the record stays readable
+  by id until the host's own retention drops it. Removal is remembered per
+  session and is not persisted.
+- **Deleting a session stops its running background tasks.** Archiving does not:
+  archiving is a reversible marker, so killing its processes would be a
+  destructive side effect. Deletion signals stop and returns — the deletion does
+  not wait for a task to settle and does not fail when a task cannot be killed.
+  A deleted session's stopped tasks appear in no container, because the session
+  that would have showed them is gone.
+- Only one output preview is open at a time. While its task runs, the Renderer
+  refreshes that preview at one-second intervals after the previous read settles;
+  collapsed outputs are not fetched. The preview shows at most 8,000 stdout
+  characters and 4,000 stderr characters. Late reads from a previous selection
+  are ignored. Read/stop/remove failures are visible and stopping can be retried.
 
 Shell catalog (D190) exposes the stable IDs `windows-powershell`, `windows-pwsh`,
 `cmd`, `git-bash`, and `bash` where supported by the platform. The host persists
@@ -396,7 +667,7 @@ or executable path hash is accepted as shell identity.
 2. Unix: well-known locations (`/bin/bash`, `/usr/bin/bash`, `/usr/local/bin/bash`, Homebrew), then PATH
 3. Windows: `bash.exe` from Git for Windows — derived from the `git` on PATH, then standard install dirs, then PATH excluding the WSL launcher in `System32`
 
-- Unix invokes `bash -lc` (login shell keeps profile PATH for Finder/Dock launches); Windows invokes `bash -c` with `CREATE_NO_WINDOW`
+- Unix invokes `bash -lc` (login shell keeps profile PATH for Finder/Dock launches); Windows invokes `bash -c` with `CREATE_NO_WINDOW`. The hidden host-core runner that owns the command tree is created with `CREATE_NO_WINDOW` and, only when the job that contains the host grants `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, with `CREATE_BREAKAWAY_FROM_JOB`; it is then assigned to its own kill-on-close Job Object. Requesting the breakaway from the host's own job keeps a launcher or policy Job around the Desktop process from becoming the runner's termination scope. When that job withholds `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, the flag is omitted and the runner joins the host-owned job as a nested job, because `CreateProcess` fails with `ERROR_ACCESS_DENIED` for a breakaway the job forbids; the shell itself stays inside the host-owned job either way, so timeout and abort still terminate the complete command tree.
 - On Unix, the Bash tool additionally probes the user's login shell for its
   PATH — `$SHELL` (fallback `/bin/zsh` → `/bin/bash` → `/bin/sh`) with
   `-lic 'printf %s "$PATH"'`, 5s-bounded, cached per process — and injects it
@@ -410,6 +681,12 @@ or executable path hash is accepted as shell identity.
 - No bash bundled in the installer: Git for Windows is the Windows prerequisite (the app requires git anyway)
 - Resolution failure returns stable `SHELL_NOT_FOUND` with install guidance
 - Windows PowerShell and cmd use their native non-interactive invocation.
+- PowerShell output passes through PowerShell's own formatter, so objects
+  (tables, lists, hashtables, `Measure-Object` results) reach the agent as a
+  console shows them, not as type names. Stderr lines from native commands are
+  forwarded to stderr and do not fail the call by themselves: the call reports
+  the native exit code. Any other PowerShell error fails the call with exit
+  code 1.
 - PowerShell 7 resolves `pwsh.exe` from `%ProgramFiles%\PowerShell\7` (or
   `ProgramW6432` when the host process is 32-bit), then PATH, which covers
   machine-scope, Store, user-scope, and portable installs. The PATH probe
@@ -638,6 +915,16 @@ card can say which delegate wants the call (see `04-ux/03-permission-ux.md`
 Session-scoped `allow-session` grants are still per `toolName` and per session:
 one delegate's approval of `Bash` applies to the whole session, including the
 parent and other delegates.
+
+Inside an isolated session (§4e), a delegate whose tools include `Write` or
+`Edit` runs in its own worktree, branched from the session worktree after the
+session's pending edits are checkpointed; its `tools.execute` calls carry the
+delegation chain id as `delegationId`, which re-roots path rules and Bash to
+that worktree. A completed run is merged back with the same algorithm as
+"Merge into project"; a conflict, failure, or stop keeps the delegate branch
+and the report tells the parent to resume it. Read-only and Bash-only
+delegates, and every delegate of a non-isolated session, share the owning
+session's root unchanged.
 
 ## 11. Plugin Tools
 

@@ -54,13 +54,12 @@ Current repo example:
 
 ## 4. SDK and devkit
 
-`@pi-desktop/plugin-sdk` is imported by plugin code itself and stays
-dependency-free and Node-free. It provides:
-- manifest types
-- permission enums
-- API types (`PiPluginHostApi`)
-- manifest validation function
-- test helper (mock host)
+`@pi-desktop/plugin-sdk` is a private workspace package, not a runtime that
+plugins must install. It has a `typebox` dependency, uses no Node host APIs,
+and provides `PluginManifest`, `PluginHostApi`, `PluginModule`, renderer types,
+permission/constants, and pure validators. It does not export a mock-host
+factory. The host injects `pi`; runtime plugin bundles need no SDK import just
+to access it. Use your own external-edge fakes to test plugin code.
 
 The SDK's clipboard surface includes `pi.clipboard.getHistory()`, which
 returns bounded, newest-first text and image entries through the existing
@@ -70,7 +69,7 @@ clipboard-history features instead of polling `readText()` and maintaining a
 second store.
 
 `@pi-desktop/plugin-devkit` is tooling, not runtime, and may use Node. It owns
-`scaffold` / `check` / `pack` and the `pi-plugin` CLI. All three developer
+`scaffold` / `check` / `pack` / `publish` and the `pi-plugin` CLI. All three developer
 surfaces (CLI, agent tools, plugins page) call it, so a rule enforced once holds
 everywhere.
 
@@ -89,20 +88,22 @@ pnpm --filter @pi-desktop/plugin-devkit... build
 pnpm pi-plugin init full-demo /tmp/my-plugin
 
 # validate manifest and package contents
-pnpm pi-plugin check .
+pnpm pi-plugin check /tmp/my-plugin
 
 # pack
-pnpm pi-plugin pack .
+pnpm pi-plugin pack /tmp/my-plugin
 
 # outputs dist/demo.hello-0.1.0.piplug
 
 # pack and pin the version to the commit that produced it
-pnpm pi-plugin publish .
+pnpm pi-plugin publish /tmp/my-plugin
 
 # also writes dist/demo.hello-0.1.0.submission.json
 ```
 
-`publish` is for distributing through the plugin center. It packs, then records
+`publish` prepares a local submission file for the plugin center; it performs
+no upload or remote publication. Ignore `dist/` in the plugin repository so
+packing does not dirty it before the clean-tree check. It packs, then records
 the canonical repository URL, the tag or commit ref, the resolved commit, and
 the plugin subdirectory alongside the package checksum, so the artifact and the
 source it claims to come from describe one moment. It refuses a dirty worktree
@@ -110,8 +111,10 @@ and a git remote carrying credentials, and warns when no tag points at HEAD.
 The center re-resolves everything itself; a submission is a claim to be checked.
 See [15-plugin-center.md](15-plugin-center.md).
 
-`check` reproduces every rule the installer enforces, so `check` passing implies
-install will pass. It reports errors — a missing or unparseable `manifest.json`,
+`check` runs authoring and package-safety checks before packing. Passing is
+necessary preparation, not proof that loading, host-version compatibility,
+permission grants, provider access, or plugin-center review will succeed. The
+Rust installer and runtime remain independent enforcement layers. It reports errors — a missing or unparseable `manifest.json`,
 missing `main` / `ui.panel` / `manifest.renderer` / skill files, a skill path escaping the plugin
 directory, an unknown permission, a symlink, more than 2000 files, more than
 50 MB — and warnings, which do not block: high-risk permissions (every
@@ -121,7 +124,7 @@ declared but never used by the code, `contributes.skills` without
 `agent.prompt.inject` (the skills would be inert), and an empty `contributes`.
 
 `pack` writes `dist/<id>-<version>.piplug`, skipping `.git` and `node_modules`
-exactly as the installer's copy does, and prints the sha256. It runs `check`
+and root `dist/`, omits credential files with warnings, and prints the sha256. It runs `check`
 first and refuses to pack a plugin with errors. **Entries are stored
 uncompressed (method 0)**: the installer accepts nothing else, so a `.piplug`
 must never be built with `zip` or another shell tool.

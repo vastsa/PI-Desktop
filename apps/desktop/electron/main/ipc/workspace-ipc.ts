@@ -11,11 +11,15 @@ import {
   type FsChatRefProjectRoot,
   type FsChatRefResolveResult,
   type ProjectGroupRecord,
+  type RemoteWorkspace,
+  type WorkspaceFilesRequest,
 } from "@pi-desktop/shared";
 import {
   loadComposerTemplates,
   type ComposerTemplate,
 } from "@pi-desktop/agent-runtime";
+import { remoteWorkspaceForFiles } from "../remote/workspace-file-scope";
+import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
 import { cloneGitRepository } from "../git-clone";
 import {
   importComposerFiles,
@@ -36,7 +40,8 @@ import {
 } from "@pi-desktop/host-runtime";
 import { openableMp4Path } from "../open-attachment-video";
 import { isChatRefOutsideRoots, resolveChatFileRef } from "../chat-ref-resolve";
-import { getWorkspaceFileIndex } from "../fs-index";
+import { rebaseWorktreeRef, type WorktreeRefContext } from "../worktree-ref";
+import { getWorkspaceFileIndex, searchWorkspaceFiles } from "../fs-index";
 import {
   projectFolderPaths,
   refreshProjectGroups,
@@ -174,7 +179,7 @@ export function registerWorkspaceIpc({
         errorCode: ErrorCodes.INVALID_ARGUMENT,
       });
     }
-    const projectPath = resolve(requestedPath);
+    const projectPath = requestedPath.startsWith("remote-project:") ? requestedPath : resolve(requestedPath);
     const listed = (await host.call("projects.list")) as {
       projects?: Array<{ path?: string }>;
     };
@@ -218,6 +223,22 @@ export function registerWorkspaceIpc({
       }
     }
     return { workspace: await withGitBranch(res.workspace) };
+  });
+  handle(IPC.invoke.projectGroupCreateRemote, async (input: { name?: unknown; hostKey?: unknown; path?: unknown } = {}) => {
+    if (!host) throw new Error("host unavailable");
+    const name = typeof input.name === "string" ? input.name.trim() : "";
+    const hostKey = typeof input.hostKey === "string" ? input.hostKey.trim() : "";
+    const path = typeof input.path === "string" ? input.path.trim() : "";
+    if (!name || Array.from(name).length > 80 || !hostKey || hostKey.length > 200 || hostKey.includes(":")
+      || !path.startsWith("/") || path.length > 4096 || /[\u0000-\u001f]/.test(hostKey + path)) {
+      throw Object.assign(new Error("invalid remote project"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+    }
+    const boot = getActiveRemoteHostsBoot();
+    if (!boot) throw new Error("remote hosts unavailable");
+    const directory = await boot.browseProjects(hostKey, path);
+    const created = await host.call("project.group.createRemote", { name, remote: { hostKey, path: directory.path } });
+    void refreshProjectGroups(host);
+    return created;
   });
   handle(IPC.invoke.projectList, async () => {
     if (!host) throw new Error("host unavailable");
@@ -269,17 +290,33 @@ export function registerWorkspaceIpc({
   );
   handle(
     IPC.invoke.projectGroupUpdate,
-    async (input: { groupId?: unknown; name?: unknown; folders?: unknown } = {}) => {
+    async (input: {
+      groupId?: unknown;
+      name?: unknown;
+      folders?: unknown;
+      primary?: unknown;
+    } = {}) => {
       if (!host) throw new Error("host unavailable");
       const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
       const name = typeof input.name === "string" ? input.name.trim() : "";
       const folders = Array.isArray(input.folders)
         ? input.folders.filter((path): path is string => typeof path === "string")
         : [];
+      const primary = typeof input.primary === "string" ? input.primary.trim() : "";
       if (!groupId || !name || folders.length === 0) {
         throw Object.assign(new Error("project group id, name and folders required"), {
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
+      }
+      if (folders.every((path) => path.startsWith("remote-project:"))) {
+        const result = await host.call("project.group.update", {
+          groupId,
+          name,
+          folders,
+          ...(primary ? { primary } : {}),
+        });
+        void refreshProjectGroups(host);
+        return result;
       }
       const safeFolders = [
         ...new Set(
@@ -289,8 +326,14 @@ export function registerWorkspaceIpc({
             .map((path) => resolve(path)),
         ),
       ];
-      if (safeFolders.some((path) => !existsSync(path) || !statSync(path).isDirectory())) {
-        throw Object.assign(new Error("project group folders must be directories"), {
+      // No blanket existence pre-check here: the host validates the submitted
+      // roots (folders new to the group must exist on disk) while roots the
+      // group already owns may have been renamed or unmounted externally and
+      // must stay editable so the group can be healed (#1869).
+      // The promoted primary must be one of the folders this call keeps.
+      const safePrimary = primary ? resolve(primary) : "";
+      if (safePrimary && !safeFolders.includes(safePrimary)) {
+        throw Object.assign(new Error("project group primary must be one of its folders"), {
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
@@ -298,6 +341,7 @@ export function registerWorkspaceIpc({
         groupId,
         name,
         folders: safeFolders,
+        ...(safePrimary ? { primary: safePrimary } : {}),
       });
       void refreshProjectGroups(host);
       return updated;
@@ -371,7 +415,7 @@ export function registerWorkspaceIpc({
     const listed = (await host.call("projects.list")) as {
       projects?: Array<{ path?: string }>;
     };
-    const projectPath = resolve(requestedPath);
+    const projectPath = requestedPath.startsWith("remote-project:") ? requestedPath : resolve(requestedPath);
     const known = (listed.projects ?? []).some((project) => {
       const candidate = String(project?.path ?? "").trim();
       return candidate && resolve(candidate) === projectPath;
@@ -458,10 +502,10 @@ export function registerWorkspaceIpc({
   );
   handle(IPC.invoke.projectSet, async (path: string) => {
     if (!host) throw new Error("host unavailable");
-    setCurrentWorkspacePath(path);
     const res = (await host.call("workspace.set", { path })) as {
       workspace: { path: string; name: string } | null;
     };
+    setCurrentWorkspacePath(res.workspace?.path ?? null);
     return { workspace: await withGitBranch(res.workspace) };
   });
   handle(IPC.invoke.projectClear, async () => {
@@ -480,13 +524,13 @@ export function registerWorkspaceIpc({
     if (!host) throw new Error("host unavailable");
     // Deletion only touches host records, so a project whose folder was moved
     // or deleted on disk stays deletable: deliberately no existence check.
-    const projectPath = resolve(requestedPath);
+    const projectPath = requestedPath.startsWith("remote-project:") ? requestedPath : resolve(requestedPath);
     const result = (await host.call("projects.remove", {
       path: projectPath,
     })) as { removed?: boolean; sessionsRemoved?: number };
     const removed = Boolean(result?.removed);
     const workspacePath = currentWorkspacePath();
-    if (removed && workspacePath && resolve(workspacePath) === projectPath) {
+    if (removed && workspacePath && (workspacePath.startsWith("remote-project:") ? workspacePath : resolve(workspacePath)) === projectPath) {
       // Leaving the host bound to a deleted project would re-create it on boot.
       setCurrentWorkspacePath(null);
       await host.call("workspace.clear");
@@ -620,7 +664,18 @@ export function registerWorkspaceIpc({
     },
   );
 
-  handle(IPC.invoke.workspaceDiff, async () => {
+  const remoteFileWorkspace = (sessionId?: string) => remoteWorkspaceForFiles(getHost, sessionId);
+  const readRemoteFiles = (remote: RemoteWorkspace, operation: WorkspaceFilesRequest["operation"], ref?: string, mimeType?: string) => {
+    const boot = getActiveRemoteHostsBoot();
+    if (!boot) throw new Error("remote hosts unavailable");
+    return boot.workspaceFiles(remote.hostKey, { path: remote.path, operation, ...(ref ? { ref } : {}), ...(mimeType ? { mimeType } : {}) });
+  };
+  const localFileStores = [join(dataDir, "scratch"), join(dataDir, "attachments")];
+  const isLocalStoredFile = async (ref: string) => isAttachmentBlobRef(ref) || !!(await resolveRealOpenablePath(ref, null, localFileStores));
+
+  handle(IPC.invoke.workspaceDiff, async (input: { sessionId?: string } = {}) => {
+    const remote = await remoteFileWorkspace(input.sessionId);
+    if (remote) return readRemoteFiles(remote, "diff");
     if (!host) throw new Error("host unavailable");
     const res = (await host.call("workspace.get")) as {
       workspace: { path: string } | null;
@@ -713,22 +768,68 @@ export function registerWorkspaceIpc({
     return browserHost.getState();
   });
 
-  const requireWorkspaceRoot = async () => {
-    if (!host) throw new Error("host unavailable");
-    const res = (await host.call("workspace.get")) as {
-      workspace: { path: string } | null;
-    };
-    const root = res.workspace?.path;
-    if (!root) {
-      throw Object.assign(new Error("workspace required"), {
-        errorCode: ErrorCodes.INVALID_ARGUMENT,
-      });
-    }
-    return root;
+  handle(IPC.invoke.browserGetPages, async (input: { sessionId?: string } = {}) => {
+    const sessionId = String(input.sessionId ?? "").trim();
+    if (!sessionId) return [];
+    return browserHost.getPages(sessionId);
+  });
+
+  type WorkspaceRootInfo = {
+    root: string;
+    /** Present only for an isolated session's worktree checkout. */
+    worktree?: string;
+    /** The parent checkout a worktree session's project identity points at. */
+    parent?: string;
   };
 
-  handle(IPC.invoke.fsList, async (input: { path?: string } = {}) => {
-    const root = await requireWorkspaceRoot();
+  const workspaceRootInfo = async (
+    sessionId?: string,
+  ): Promise<WorkspaceRootInfo> => {
+    const owner = getHost();
+    if (!owner) throw new Error("host unavailable");
+    let root: string | undefined;
+    let worktree: string | undefined;
+    let parent: string | undefined;
+    if (sessionId) {
+      const { session } = await owner.call<{ session?: { projectPath?: string; worktree?: unknown } }>(
+        "session.get", { id: sessionId, messageLimit: 1 },
+      );
+      const projectPath = session?.projectPath?.trim();
+      if (session?.worktree) {
+        // Chat references and source reads must see the same files as the
+        // session's tools, not a same-named file in the parent checkout.
+        worktree =
+          (await owner.call<{ path?: string }>("worktree.location", { sessionId })).path?.trim() ||
+          undefined;
+        root = worktree;
+        // A reference captured from this checkout rebases onto the worktree
+        // (issue #1747); the opaque remote identity is never a local parent.
+        parent =
+          projectPath && !projectPath.startsWith("remote-project:")
+            ? projectPath
+            : undefined;
+      } else {
+        root = projectPath;
+      }
+    } else {
+      root = (await owner.call<{ workspace?: { path: string } }>("workspace.get")).workspace?.path;
+    }
+    if (getHost() !== owner) throw Object.assign(new Error("host replaced"), { errorCode: ErrorCodes.HOST_UNAVAILABLE });
+    if (!root) throw Object.assign(new Error("workspace required"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+    return {
+      root,
+      ...(worktree ? { worktree } : {}),
+      ...(parent ? { parent } : {}),
+    };
+  };
+
+  const requireWorkspaceRoot = async (sessionId?: string) =>
+    (await workspaceRootInfo(sessionId)).root;
+
+  handle(IPC.invoke.fsList, async (input: { path?: string; sessionId?: string } = {}) => {
+    const remote = await remoteFileWorkspace(input.sessionId);
+    if (remote) return readRemoteFiles(remote, "list", input.path);
+    const root = await requireWorkspaceRoot(input.sessionId);
     return { entries: await listDir(root, String(input.path ?? "")) };
   });
 
@@ -806,9 +907,9 @@ export function registerWorkspaceIpc({
     return [{ path: workspaceRoot, name, primary: true }];
   };
 
-  const optionalWorkspaceRoot = async (): Promise<string | null> => {
+  const optionalWorkspaceRoot = async (sessionId?: string): Promise<string | null> => {
     try {
-      return await requireWorkspaceRoot();
+      return await requireWorkspaceRoot(sessionId);
     } catch {
       return null;
     }
@@ -816,11 +917,16 @@ export function registerWorkspaceIpc({
 
   handle(
     IPC.invoke.fsRead,
-    async (input: { path?: string; mimeType?: string } = {}) => {
+    async (input: { path?: string; mimeType?: string; sessionId?: string } = {}) => {
       const requested = String(input.path ?? "").trim();
+      if (await isLocalStoredFile(requested)) return readOpenableFile(requested, null, localFileStores, input.mimeType);
+      const remote = await remoteFileWorkspace(input.sessionId);
+      if (remote) {
+        return readRemoteFiles(remote, "read", requested, input.mimeType);
+      }
       let workspaceRoot: string | null = null;
       try {
-        workspaceRoot = await requireWorkspaceRoot();
+        workspaceRoot = await requireWorkspaceRoot(input.sessionId);
       } catch (error) {
         if (!isAbsolute(requested) && !isAttachmentBlobRef(requested)) {
           throw error;
@@ -837,8 +943,14 @@ export function registerWorkspaceIpc({
 
   handle(
     IPC.invoke.fsReadImageDataUrl,
-    async (input: { ref?: string; mimeType?: string } = {}) => {
-      const workspaceRoot = await optionalWorkspaceRoot();
+    async (input: { ref?: string; mimeType?: string; sessionId?: string } = {}) => {
+      const ref = String(input.ref ?? "").trim();
+      if (await isLocalStoredFile(ref)) return readOpenableImage(ref, null, localFileStores, input.mimeType);
+      const remote = await remoteFileWorkspace(input.sessionId);
+      if (remote) {
+        return readRemoteFiles(remote, "image", ref, input.mimeType);
+      }
+      const workspaceRoot = await optionalWorkspaceRoot(input.sessionId);
       const requested = String(input.ref ?? "").trim();
       return readOpenableImage(
         requested,
@@ -849,11 +961,13 @@ export function registerWorkspaceIpc({
     },
   );
 
-  handle(IPC.invoke.fsReveal, async (input: { path?: string } = {}) => {
+  handle(IPC.invoke.fsReveal, async (input: { path?: string; sessionId?: string } = {}) => {
+    const remote = await remoteFileWorkspace(input.sessionId);
+    if (remote && !(await isLocalStoredFile(String(input.path ?? "")))) throw Object.assign(new Error("remote paths cannot be revealed on this computer"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
     const requested = String(input.path ?? "").trim();
     let workspaceRoot: string | null = null;
     try {
-      workspaceRoot = await requireWorkspaceRoot();
+      workspaceRoot = await requireWorkspaceRoot(input.sessionId);
     } catch (error) {
       if (!isAbsolute(requested) && !isAttachmentBlobRef(requested)) {
         throw error;
@@ -873,8 +987,10 @@ export function registerWorkspaceIpc({
     return { ok: true };
   });
 
-  handle(IPC.invoke.fsOpen, async (input: { path?: string; mimeType?: string } = {}) => {
-    const workspaceRoot = await optionalWorkspaceRoot();
+  handle(IPC.invoke.fsOpen, async (input: { path?: string; mimeType?: string; sessionId?: string } = {}) => {
+    const remote = await remoteFileWorkspace(input.sessionId);
+    if (remote && !(await isLocalStoredFile(String(input.path ?? "")))) throw Object.assign(new Error("remote paths cannot be opened on this computer"), { errorCode: ErrorCodes.INVALID_ARGUMENT });
+    const workspaceRoot = await optionalWorkspaceRoot(input.sessionId);
     const requested = String(input.path ?? "").trim();
     const target = await resolveRealOpenablePath(
       requested,
@@ -897,10 +1013,21 @@ export function registerWorkspaceIpc({
     return { ok: true };
   });
 
-  handle(IPC.invoke.fsIndex, async () => {
-    const root = await optionalWorkspaceRoot();
+  handle(IPC.invoke.fsIndex, async (input: { sessionId?: string } = {}) => {
+    const remote = await remoteFileWorkspace(input.sessionId);
+    if (remote) return readRemoteFiles(remote, "index");
+    const root = await optionalWorkspaceRoot(input.sessionId);
     if (!root) return { entries: [], truncated: false };
     return getWorkspaceFileIndex(root);
+  });
+
+  handle(IPC.invoke.fsSearch, async (input: { sessionId?: string; query?: string } = {}) => {
+    // The remote file protocol has no search operation, so a remote session
+    // keeps answering from its truncated snapshot.
+    if (await remoteFileWorkspace(input.sessionId)) return { entries: [], truncated: true };
+    const root = await optionalWorkspaceRoot(input.sessionId);
+    if (!root) return { entries: [], truncated: false };
+    return searchWorkspaceFiles(root, String(input.query ?? ""));
   });
 
   /**
@@ -916,9 +1043,29 @@ export function registerWorkspaceIpc({
     async (
       input: { ref?: string; sessionId?: string } = {},
     ): Promise<FsChatRefResolveResult> => {
-      const ref = String(input.ref ?? "").trim();
-      if (!ref) return { match: null };
-      const workspaceRoot = await optionalWorkspaceRoot();
+      const rawRef = String(input.ref ?? "").trim();
+      if (!rawRef) return { match: null };
+      const remote = await remoteFileWorkspace(input.sessionId);
+      if (remote && !(await isLocalStoredFile(rawRef))) return await readRemoteFiles(remote, "resolve", rawRef) as FsChatRefResolveResult;
+      // A reference captured from the parent checkout names the same relative
+      // file the session's worktree holds; resolve the branch copy instead of
+      // rejecting the path as outside the isolated roots (issue #1747).
+      let rootInfo: WorkspaceRootInfo | undefined;
+      try {
+        rootInfo = await workspaceRootInfo(input.sessionId);
+      } catch {
+        rootInfo = undefined;
+      }
+      const ref = await rebaseWorktreeRef(
+        rawRef,
+        rootInfo?.worktree && rootInfo.parent
+          ? ({
+              worktree: rootInfo.worktree,
+              parent: rootInfo.parent,
+            } satisfies WorktreeRefContext)
+          : null,
+      );
+      const workspaceRoot = rootInfo?.root ?? null;
       const roots = {
         project: projectRootsFor(workspaceRoot),
         scratch: await sessionScratchRoot(input.sessionId),

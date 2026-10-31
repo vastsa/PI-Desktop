@@ -14,7 +14,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-use crate::workspace::{self, ToolRoot};
+use crate::workspace::{self, ContainedRoots, ToolRoot};
 
 const REVIEW_DIR: &str = "review-changes";
 const MAX_SNAPSHOT_BYTES: u64 = 16 * 1024 * 1024;
@@ -217,7 +217,7 @@ pub fn prepare_change(
     session_id: &str,
     message_id: &str,
     workspace_root: Option<&Path>,
-    scratch_root: Option<&Path>,
+    roots: &ContainedRoots,
     tool_name: &str,
     args: &Value,
 ) -> Result<Option<PendingChange>> {
@@ -230,7 +230,7 @@ pub fn prepare_change(
     let Some(input) = args.get("path").and_then(Value::as_str) else {
         return Ok(None);
     };
-    let Ok((resolved, root_kind)) = workspace::resolve_tool_path(root, scratch_root, input) else {
+    let Ok((resolved, root_kind)) = workspace::resolve_tool_path(root, roots, input) else {
         return Ok(None);
     };
     if root_kind != ToolRoot::Workspace {
@@ -614,7 +614,7 @@ mod tests {
             session,
             message,
             Some(workspace_root),
-            None,
+            &ContainedRoots::new(),
             "Edit",
             &json!({ "path": path }),
         )

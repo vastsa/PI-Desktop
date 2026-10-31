@@ -59,27 +59,27 @@ with `mode: "crash"`, and a chart whose first line is `crash` or `tall`
 Covered by `apps/desktop/test/plugin-ui-slots-lab.test.mjs` and the Electron
 E2E.
 
-## Planned examples
+## Templates and additional examples
 
-- `panel-basic`
-- `agent-tool-basic`
-- `skill-pack`
-- `marketplace-mock-publisher`
+`panel-basic`, `agent-tool-basic`, `skill-pack`, and `full-demo` are implemented
+in `packages/plugin-devkit/src/templates.ts`; generate them with the app or
+`pi-plugin init` rather than looking for separate example folders.
 
-## Official marketplace repository
+`roundtable` demonstrates model catalog/one-shot completion and an agent tool.
+`fetch-redirect` is a local-only network-policy probe, not a marketplace package.
+Load repository examples with **Load development plugin** and inspect their
+manifest grants before exercising them. Source maps and the complete SDK method
+inventory are in the [development guide](../../docs/plugin-development.md).
 
-Published plugins live in [`vastsa/pi-desktop-plugins`](https://github.com/vastsa/pi-desktop-plugins).
+## Distribution
 
-Local examples here remain useful for development loading (`Load dev plugin`).
-Marketplace installs should come from that repository's `catalog.json` + `packages/*.piplug`.
-
-
-## Practical template
-
-Prefer the official warehouse template:
-
-- https://github.com/vastsa/pi-desktop-plugins/tree/main/plugins/demo.workspace-summary
-- Contribution guide: https://github.com/vastsa/pi-desktop-plugins/blob/main/CONTRIBUTING.md
+The official catalog is the plugin center's
+[`catalog.json`](https://plugins.aiuo.net/catalog.json). Plugin sources remain
+in publisher-owned repositories. The
+[GitHub distribution mirror](https://github.com/AIUO-Net/pi-desktop-plugins)
+contains distribution artifacts/catalog data, not the source warehouse or a
+mandatory plugin template. `pi-plugin publish` prepares local submission files;
+it does not upload. See the guide's release workflow before publishing.
 
 ## Fetch redirect probe
 

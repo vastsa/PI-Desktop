@@ -81,10 +81,11 @@ PluginManager
 
 The shipped `pluginChanged` event carries a `reason` so the renderer can decide
 what to refetch: `install`, `loadDev`, `enable`, `disable`, `uninstall`, `crash`,
-`service`, `market.install`, `market.applyUpdates`, `themes` (runtime
+`service`, `restore`, `market.install`, `market.applyUpdates`, `themes` (runtime
 `themes.upsert` / `themes.remove`). `service` fires on every
 supervision transition and is the cheapest of them — only the service list needs
-a reload.
+a reload. `restore` fires once when startup recovery has loaded the enabled
+plugins, so a surface that listed them earlier still sees them.
 
 `settingsChanged` (`pi-desktop/app/event/settingsChanged`) carries a settings
 patch when the **host** writes app settings outside the renderer path — today
@@ -113,13 +114,17 @@ handler is logged, never fatal. This is the same channel that finally makes
 
 ### Registration
 - key must be unique
-- Plugin commands share the prefix: `plugin.<pluginId>.<commandId>`
+- Command IDs are preserved as supplied; `plugin.<pluginId>.<commandId>` is
+  a naming convention, not an enforced prefix. The host rejects registration
+  of another plugin's command ID with `CONFLICT` and rejects removal of
+  another plugin's command with `PERMISSION_DENIED`. Same-owner updates and
+  unregistering an absent ID remain valid.
 - Plugin tool prefix policy: `plugin_<pluginIdSafe>_<toolName>` (fixed in the implementation)
 
 ### Query
 - The command palette only queries contributions that are enabled + loaded successfully
-- Agent sees registered tools; Plan receives no plugin tools regardless of risk
-  or grant state
+- Agent sees registered tools; Plan/Goal sees only tools with non-empty
+  runtime `planSafeActions`, and execution rechecks `args.action` against them
 
 ### Deregistration
 - Remove everything on disable/unload/uninstall, including stopping resident
@@ -202,7 +207,7 @@ Panel bridge file channels are permission-gated as follows:
 
 | Channel | Required permission |
 |---|---|
-| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.registerDropped` | `fs.read` plus a real drop gesture |
 | `fs.writeText` | `fs.write` |
 
@@ -253,9 +258,10 @@ permission gate and result envelope stay in host-core:
    `{ executionId, sessionId, toolCallId, toolName, args, turnId }`. `turnId` is
    the runtime turn identity, forwarded unchanged so the plugin tool context can
    be matched against the `session:turnEnded` event.
-3. Plan calls fail at the host policy step with `PLUGIN_DISABLED_IN_PLAN`; they
-   never reach Electron or the plugin runtime. Agent calls continue with
-   Electron main executing the registered plugin tool JS and answering via RPC
+3. Plan/Goal calls without `planSafeActions` fail at the host policy gate.
+   Admitted calls carry mode and the allowed actions; the desktop plugin runner
+   rejects missing or unlisted `args.action` before plugin code. Agent calls
+   use the normal permission flow. Electron answers through RPC
    `plugins.resolveExecution` `{ executionId, ok, content, errorCode? }`.
 4. host-core resolves the pending execution and returns a standard
    `ToolsExecuteResult` to the sidecar. Dispatch waits up to 150s

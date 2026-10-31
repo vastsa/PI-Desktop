@@ -22,9 +22,17 @@
  * `web_search_call` from another model) no longer inflates the estimate while
  * same-model search history keeps counting. A caller that has no target model
  * passes none and keeps the conservative block-protocol estimate.
+ *
+ * Instruction history is charged the way the adapter sends it as well: see
+ * `requestTranscript`.
  */
 
-import type { Api } from "@earendil-works/pi-ai";
+import {
+  resolveTranscript,
+  type Api,
+  type Model,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import {
   hostedSearchReplayProjection,
   type HostedSearchReplayOptions,
@@ -104,18 +112,34 @@ const OUTPUT_SAFETY_WINDOW_RATIO = 0.01;
 const CHARS_PER_TOKEN = 4;
 const ESTIMATED_CHARS_PER_IMAGE = 4800;
 
+// Han, Japanese kana, and Korean Hangul tokenize at ~1 token per character,
+// as do CJK punctuation and full-width forms. The chars/4 baseline charges
+// all of these 0.25.
 function countCjkChars(text: string): number {
   let count = 0;
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
     if (
+      // Hangul Jamo.
+      (code >= 0x1100 && code <= 0x11ff) ||
+      // CJK punctuation.
+      (code >= 0x3000 && code <= 0x303f) ||
+      // Hiragana and katakana.
+      (code >= 0x3040 && code <= 0x30ff) ||
+      // Hangul compatibility Jamo.
+      (code >= 0x3130 && code <= 0x318f) ||
+      // Katakana phonetic extensions.
+      (code >= 0x31f0 && code <= 0x31ff) ||
       // CJK Unified Ideographs + Extension A.
       (code >= 0x3400 && code <= 0x9fff) ||
+      // Hangul syllables.
+      (code >= 0xac00 && code <= 0xd7af) ||
+      // CJK compatibility ideographs.
+      (code >= 0xf900 && code <= 0xfaff) ||
+      // Full-width and half-width forms.
+      (code >= 0xff00 && code <= 0xffef) ||
       // CJK Extension B..F (historical/supplementary plane).
-      (code >= 0x20000 && code <= 0x2ebef) ||
-      // CJK punctuation and full-width forms.
-      (code >= 0x3000 && code <= 0x303f) ||
-      (code >= 0xff00 && code <= 0xffef)
+      (code >= 0x20000 && code <= 0x2ebef)
     ) {
       count += 1;
     }
@@ -164,7 +188,11 @@ function estimateMessageTokens(
     ) {
       const payload = stringifyForEstimate(b.arguments ?? b.input);
       chars += b.name.length + payload.length;
-      cjkChars += countCjkChars(b.name);
+      // JSON.stringify leaves Han unescaped, so the payload the chars/4
+      // baseline measured is the same string the correction has to see.
+      // A \uXXXX form would already be ASCII in that string; decoding it
+      // would charge the character twice.
+      cjkChars += countCjkChars(b.name) + countCjkChars(payload);
     } else if (b.type === "hostedSearch") {
       // 与适配器共用回放投影；搜索结果不是图片，也不是普通工具参数。
       // 投影会校验结构，失败必须保留为本地错误，不能按零成本继续请求。
@@ -249,6 +277,27 @@ export function estimateOutputCapInputTokens(
   }
   // CJK chars are ~1 token each; the chars/4 baseline charged them 0.25.
   return baseline + Math.ceil(cjkChars * 0.75);
+}
+
+/**
+ * The transcript the adapter puts on the wire. Unless the model declares
+ * mid-conversation system support, every adapter folds the later system
+ * messages into one leading message holding the current instructions and
+ * tools. Estimating the unfolded history charges each superseded instruction
+ * snapshot again: a long session with a large instruction section then
+ * starves the output budget to the provider's floor while the request itself
+ * is far from the window.
+ */
+export function requestTranscript(
+  model: Pick<Model<Api>, "compat">,
+  context: TranscriptContext,
+): TranscriptContext {
+  const compat = model.compat;
+  const midConversation =
+    compat !== undefined &&
+    "supportsMidConvoSystemMessages" in compat &&
+    compat.supportsMidConvoSystemMessages === true;
+  return resolveTranscript(context, midConversation);
 }
 
 /**

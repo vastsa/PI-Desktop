@@ -1,10 +1,10 @@
 use super::*;
 
 pub(super) fn migrate(conn: &Connection, path: &Path) -> Result<()> {
-    create_migration_backup(conn, path, 23)?;
+    create_migration_backup(conn, path, 27)?;
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(crate::session_collaboration::CURRENT_TURN_SCHEMA)?;
-    tx.pragma_update(None, "user_version", 24)?;
+    tx.pragma_update(None, "user_version", 28i64)?;
     tx.commit()
         .context("commit current-turn collaboration migration")?;
     Ok(())

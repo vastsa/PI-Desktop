@@ -22,6 +22,7 @@ let settings = {
   language: "en",
   enterToSend: true,
   developerMode: false,
+  networkProxy: { mode: "custom", url: "socks5://10.0.0.8:1080" },
 };
 let updateState = {
   mode: "in-app",
@@ -91,6 +92,7 @@ await i18n.use(initReactI18next).init({
   resources: {
     en: { translation: flattenCatalog(catalogs.en) },
     "pt-BR": { translation: flattenCatalog(catalogs["pt-BR"]) },
+    "zh-CN": { translation: flattenCatalog(catalogs["zh-CN"]) },
   },
   interpolation: { escapeValue: false },
 });
@@ -186,10 +188,11 @@ async function exerciseUpdatePreference() {
   const trigger = () => document.querySelector('button[aria-label="Update behavior"]');
   assert(trigger() instanceof HTMLButtonElement, "Update behavior selector must render");
   assert(trigger().textContent?.includes("Automatic"), "Installed package defaults to Automatic");
+  const updateActionLabels = [...document.querySelectorAll(".about-update-actions button")]
+    .map((button) => button.textContent?.trim() ?? "");
   assert(
-    [...document.querySelectorAll(".update-settings-actions button")]
-      .some((button) => button.textContent?.includes("Check for updates")),
-    "Automatic mode keeps the existing update check action",
+    updateActionLabels.some((label) => label.includes("Check for updates")),
+    `Automatic mode keeps the existing update check action: ${updateActionLabels.join(", ")}`,
   );
 
   async function choosePreference(label, value) {
@@ -210,7 +213,7 @@ async function exerciseUpdatePreference() {
   await choosePreference("Manual", "manual");
   assert(trigger().textContent?.includes("Manual"), "Manual must become the selected value");
   assert(
-    [...document.querySelectorAll(".update-settings-actions button")]
+    [...document.querySelectorAll(".about-update-actions button")]
       .some((button) => button.textContent?.includes("View release")),
     "Manual mode must offer the release page for an available version",
   );
@@ -259,6 +262,40 @@ async function exerciseBrazilianPortuguese() {
   assert(selectedLabel?.textContent?.trim() === "Português (Brasil)", "Picker must show the selected native name");
   return { locale: i18n.language, language: settings.language, label: selectedLabel.textContent.trim() };
 }
+async function exerciseProxyDraftRestoration() {
+  await select("General");
+  const urlInput = () => document.querySelector('input[aria-label="Proxy URL"]');
+  const input = urlInput();
+  assert(input instanceof HTMLInputElement, "Custom proxy URL field must render");
+  const rememberedUrl = settings.networkProxy.url;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  assert(setter, "Proxy URL input must expose its value setter");
+  setter.call(input, "not-a-proxy");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await settle();
+  urlInput().blur();
+  await settle();
+  assert(settings.networkProxy.url === rememberedUrl, "An invalid draft must not overwrite the saved proxy");
+
+  const chooseMode = async (label) => {
+    const group = document.querySelector('.settings-segment[aria-label="Proxy"]');
+    assert(group, "Proxy mode control must render");
+    const option = [...group.querySelectorAll('[role="radio"]')]
+      .find((candidate) => candidate.textContent?.trim() === label);
+    assert(option instanceof HTMLButtonElement, `Missing proxy mode: ${label}`);
+    flushSync(() => option.click());
+    await settle();
+  };
+
+  await chooseMode("System");
+  assert(settings.networkProxy.mode === "system", "System mode must persist");
+  assert(settings.networkProxy.url === rememberedUrl, "System mode must retain the remembered proxy");
+  await chooseMode("Custom");
+  assert(settings.networkProxy.mode === "custom", "Custom mode must persist on re-entry");
+  assert(urlInput()?.value === rememberedUrl, "Re-entering Custom must restore the remembered URL");
+  assert(settings.networkProxy.url === rememberedUrl, "Re-entry must not replace the saved URL with the default");
+  return { proxyMode: settings.networkProxy.mode, proxyUrl: settings.networkProxy.url };
+}
 window.settingsScrollProbe = async () => {
   await settle();
   assert(
@@ -266,6 +303,7 @@ window.settingsScrollProbe = async () => {
     "Mounting Settings must move focus to its search control",
   );
   const checks = [];
+  checks.push(await exerciseProxyDraftRestoration());
   await checkCloudSyncVisibility();
   for (const theme of ["light", "dark"]) {
     document.documentElement.dataset.theme = theme;
@@ -339,4 +377,47 @@ window.settingsScrollProbe = async () => {
   checks.push(await exerciseUpdatePreference());
   checks.push(await exerciseBrazilianPortuguese());
   return { ok: true, checks };
+};
+
+window.settingsSegmentProbe = async (language, fontScale) => {
+  settings = { ...settings, language };
+  flushSync(() => useAppStore.setState({ settings, settingsTab: "ai" }));
+  await i18n.changeLanguage(language);
+  document.documentElement.style.setProperty("--font-scale", String(fontScale));
+  await settle();
+
+  const group = [...document.querySelectorAll('[role="radiogroup"]')]
+    .find((node) => node.getAttribute("aria-label") === i18n.t("settings.transcriptDisplayMode"));
+  assert(group, "Transcript display selector must render in AI settings");
+  const row = group.closest(".settings-row");
+  const copy = row.querySelector(".settings-row-copy");
+  const buttons = [...group.querySelectorAll('[role="radio"]')];
+  assert(buttons.length === 3, "All transcript display choices must be visible");
+  for (const button of buttons) {
+    const text = document.createRange();
+    text.selectNodeContents(button);
+    const lines = new Set([...text.getClientRects()].map((rect) => Math.round(rect.top)));
+    assert(lines.size === 1, `${language}/${innerWidth}/${fontScale}: ${button.textContent} must stay on one line`);
+    assert(button.scrollWidth <= button.clientWidth + 1, "Option text must not be clipped");
+  }
+  const bounds = group.getBoundingClientRect();
+  const rowBounds = row.getBoundingClientRect();
+  assert(bounds.left >= rowBounds.left && bounds.right <= rowBounds.right + 1,
+    "Transcript display control must stay inside its row");
+  assert(row.scrollWidth <= row.clientWidth + 1, "The row must not overflow horizontally");
+  assert(copy.clientWidth > 0 && copy.scrollWidth <= copy.clientWidth + 1,
+    "The setting title and help control must retain their space");
+  if (innerWidth >= 1440) {
+    assert(bounds.width > 240, "Long labels must grow beyond the old 240px control cap");
+    assert(bounds.top < copy.getBoundingClientRect().bottom, "Wide rows must retain the inline title/control layout");
+  }
+
+  for (const [index, value] of ["flat", "command-first", "fully-folded"].entries()) {
+    flushSync(() => buttons[index].click());
+    await settle();
+    assert(settings.transcriptDisplayMode === value, "The selected display mode must persist through settings IPC");
+    assert(buttons[index].getAttribute("aria-checked") === "true", "The saved display mode must be visibly selected");
+  }
+  return { language, fontScale, width: innerWidth, controlWidth: bounds.width,
+    optionRows: new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))).size };
 };

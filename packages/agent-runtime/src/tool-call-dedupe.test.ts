@@ -150,6 +150,58 @@ describe("dedupeToolCallMessages", () => {
     expect(dedupeToolCallMessages(messages).messages).toBe(messages);
   });
 
+  it("keeps independently completed calls when a provider reuses an id", () => {
+    const messages = [
+      assistantMessage([toolCall("call-1")]),
+      toolResult("call-1", "first execution"),
+      assistantMessage([toolCall("call-1")]),
+      toolResult("call-1", "second execution"),
+      assistantMessage([toolCall("call-1")]),
+      toolResult("call-1", "third execution"),
+    ];
+    const original = structuredClone(messages);
+
+    const drop = dedupeToolCallMessages(messages);
+
+    expect(drop.droppedCount).toBe(0);
+    expect(drop.messages).toHaveLength(6);
+    const ids = callIds(drop.messages);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[0]).toBe("call-1");
+    expect(resultIds(drop.messages)).toEqual(ids);
+    expect(drop.messages.filter((message) => message.role === "toolResult")
+      .map((message) => message.content)).toEqual([
+        [text("first execution")], [text("second execution")], [text("third execution")],
+      ]);
+    expect(messages).toEqual(original);
+    expect(dedupeToolCallMessages(messages)).toEqual(drop);
+  });
+
+  it("still drops replayed snapshots and results within each reused-id round", () => {
+    const first = assistantMessage([toolCall("call-1|item-1")]);
+    const second = assistantMessage([toolCall("call-1|item-2")]);
+    const drop = dedupeToolCallMessages([
+      first, first, toolResult("call-1|item-1"), toolResult("call-1|item-1"),
+      second, second, toolResult("call-1|item-2"), toolResult("call-1|item-2"),
+    ]);
+
+    expect(drop.droppedCount).toBe(4);
+    expect(drop.droppedMessages).toBe(2);
+    expect(drop.messages).toHaveLength(4);
+    const ids = callIds(drop.messages);
+    expect(new Set(ids.map((id) => id.split("|")[0])).size).toBe(2);
+    expect(resultIds(drop.messages)).toEqual(ids);
+  });
+
+  it("aligns a composite result even when no duplicate was dropped", () => {
+    const messages = [assistantMessage([toolCall("call-1|item-1")]), toolResult("call-1|other")];
+    const drop = dedupeToolCallMessages(messages);
+
+    expect(drop.droppedCount).toBe(0);
+    expect(resultIds(drop.messages)).toEqual(["call-1|item-1"]);
+    expect(resultIds(messages)).toEqual(["call-1|other"]);
+  });
+
   it("reports the wire ids and how many messages it removed", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     try {

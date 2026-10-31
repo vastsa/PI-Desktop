@@ -1,11 +1,16 @@
 import { readStoreModule } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { register } from "node:module";
 import test from "node:test";
-import {
+
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+
+const {
   EMPTY_SESSION_WINDOW,
   sessionIsReusableEmpty,
-} from "../src/lib/session-create.ts";
+} = await import("../src/lib/session-create.ts");
+const { createSessionRuntime } = await import("../src/stores/runtime/session-runtime.ts");
 
 const sessionSlice = await readStoreModule("slices/session-slice.ts");
 const sessionCoordination = await readStoreModule("runtime/session-coordination.ts");
@@ -26,6 +31,83 @@ test("an empty latest session is reusable only when the renderer agrees", () => 
     }),
     true,
   );
+});
+
+test("isolated sessions are never reused for a new task (ADR 0329)", () => {
+  const empty = { messageCount: 0 };
+  const emptyIsolated = { messageCount: 0, worktree: { branch: "pi-desktop/a", status: "active" } };
+  assert.equal(sessionIsReusableEmpty(emptyIsolated), false, "ordinary + must not pick an isolated session");
+  assert.equal(sessionIsReusableEmpty(emptyIsolated, { isolated: true }), false);
+  assert.equal(sessionIsReusableEmpty(empty, { isolated: true }), false, "isolation always creates a worktree");
+  assert.equal(sessionIsReusableEmpty(empty, { isolated: false }), true);
+});
+
+test("automation and scheduled sessions are never reused for a new task (#1684)", () => {
+  const empty = { messageCount: 0 };
+  const emptyScheduled = { messageCount: 0, scheduledRun: true };
+  assert.equal(
+    sessionIsReusableEmpty(emptyScheduled),
+    false,
+    "an empty scheduled run session must never be reused for a new task",
+  );
+  assert.equal(
+    sessionIsReusableEmpty({ messageCount: 0, scheduledRun: false }),
+    true,
+    "an ordinary session with scheduledRun: false is reusable when empty",
+  );
+  assert.equal(sessionIsReusableEmpty(empty), true);
+});
+
+test("latestSessionInScope excludes automation sessions so empty scheduled runs are not reused (#1684)", () => {
+  const runtime = createSessionRuntime({ get: () => ({}), set: () => {} });
+  const scheduledEmpty = {
+    id: "session-scheduled",
+    projectPath: "/workspace/project",
+    messageCount: 0,
+    scheduledRun: true,
+    updatedAt: "2026-10-15T12:00:00Z",
+  };
+  const userEmpty = {
+    id: "session-user-empty",
+    projectPath: "/workspace/project",
+    messageCount: 0,
+    scheduledRun: false,
+    updatedAt: "2026-10-15T11:00:00Z",
+  };
+  const userNonEmpty = {
+    id: "session-user-nonempty",
+    projectPath: "/workspace/project",
+    messageCount: 3,
+    scheduledRun: false,
+    updatedAt: "2026-10-15T10:00:00Z",
+  };
+
+  // Case 1: The most recent session is an empty scheduled run, but an older empty user session exists.
+  // The user empty session must be selected as the latest in scope.
+  const candidate1 = runtime.latestSessionInScope(
+    [scheduledEmpty, userEmpty, userNonEmpty],
+    "/workspace/project",
+    {},
+  );
+  assert.equal(candidate1?.id, "session-user-empty");
+
+  // Case 2: The only session in scope is an empty scheduled run.
+  // latestSessionInScope must return undefined so a new session is created.
+  const candidate2 = runtime.latestSessionInScope(
+    [scheduledEmpty],
+    "/workspace/project",
+    {},
+  );
+  assert.equal(candidate2, undefined);
+
+  // Case 3: The most recent session is an empty scheduled run, followed by a non-empty user session.
+  // latestSessionInScope must return the user session (which is not empty, causing newSession to create a fresh one).
+  const candidate3 = runtime.latestSessionInScope(
+    [scheduledEmpty, userNonEmpty],
+    "/workspace/project",
+    {},
+  );
+  assert.equal(candidate3?.id, "session-user-nonempty");
 });
 
 test("empty sessions have a whole, already-known transcript window", () => {

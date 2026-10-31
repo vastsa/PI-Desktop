@@ -26,8 +26,8 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
   通过 `Skill` 工具按需加载主体 ✅ (ADR 0039, D174)
 - 统一命名空间和审计 ✅
 - 每个插件设置 API 和生成式设置 UI 已实现。UI 支持字符串、数字、布尔、枚举、JSON
-  字段与插件域命令快捷键；操作系统全局插件快捷键暂不在范围内。
-  已实施
+  字段与插件域命令快捷键。系统级绑定已通过 `keyboard.globalShortcut`、
+  `contributes.globalShortcuts` 与 `pi.keyboard` 独立实现。
 - 插件日志面板仍在计划中；运行时审计日志的存在没有专用的
   插件日志表面
 
@@ -61,6 +61,18 @@ Local plugins usable → developer-friendly → marketplace distribution → sig
 - 主题插件 ✅ — 插件提供 CSS 文件 (D175)
 - 企业私人资源（仍在计划中）
 - 市场评论/质量评分（可选，仍在计划中）
+
+### 当前新增能力
+
+- 渲染器插槽与审定的草稿/附件分发（`renderer.extension`）
+- 清单 Provider、Add Service 分类、宿主 OAuth 登录
+- 带撤销的输入框转换与可忽略的输入框建议
+- 插件会话导入、读取、重命名、删除及比较更新的自动标题
+- 已完成轮次用量、模型目录、宿主持有的单次补全
+- 当前会话快照与工作面板视图展示
+- 运行时主题、类型化变量与数据型主题设置卡片
+- 有界 WebSocket 与宿主系统快捷键
+- 后台音频仍返回 `UNSUPPORTED`，尚无设备后端
 
 ### R7 — Agent 扩展（v1.1 ✅，D387 / D388）
 - v1：Agent sidecar 中的 ExtensionAPI 适配层；工具、命令、生命周期与 provider hooks、

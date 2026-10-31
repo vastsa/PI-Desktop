@@ -31,6 +31,53 @@ function ownerTransport({ server, authenticator }) {
   };
 }
 
+test("new workspace pairing rejects an old Host immediately and closes the connection", async () => {
+  const h = await harness();
+  const adapter = createRacpRemoteHostClient({
+    transport: ownerTransport(h), clientInfo: { name: "test", version: "1" },
+    requireWorkspace: true,
+  });
+  try {
+    await assert.rejects(adapter.connect(), error => error.errorCode === "HOST_VERSION_MISMATCH"
+      && /upgrade/i.test(error.message));
+    assert.equal(adapter.state(), "disconnected");
+  } finally { await adapter.close(); }
+});
+
+test("legacy Agent remains usable but unsupported workspace calls fail before dispatch", async () => {
+  const h = await harness();
+  const adapter = createRacpRemoteHostClient({
+    transport: ownerTransport(h), clientInfo: { name: "test", version: "1" },
+  });
+  try {
+    await adapter.connect();
+    assert.ok(Array.isArray((await adapter.client.request("session/list")).sessions));
+    for (const method of ["workspace/toolShell", "workspace/toolExecute", "workspace/toolAbort", "workspace/files", "workspace/pluginFiles"]) {
+      await assert.rejects(adapter.client.request(method, {}), error => error.errorCode === "HOST_VERSION_MISMATCH"
+        && /upgrade/i.test(error.message));
+    }
+    assert.equal(adapter.state(), "connected");
+  } finally { await adapter.close(); }
+});
+
+test("new workspace connection requires both capabilities and executes the real RACP path", async () => {
+  const tools = { shell: async () => ({ id: "bash" }), execute: async () => ({ ok: true, content: "remote" }),
+    abort: async () => {}, disconnect: async () => {} };
+  const incomplete = await harness({ operations: { workspaceTools: tools } });
+  const refused = createRacpRemoteHostClient({ transport: ownerTransport(incomplete),
+    clientInfo: { name: "test", version: "1" }, requireWorkspace: true });
+  try { await assert.rejects(refused.connect(), error => error.errorCode === "HOST_VERSION_MISMATCH"); }
+  finally { await refused.close(); }
+  const h = await harness({ operations: { workspaceTools: tools,
+    workspaceFiles: { read: async () => ({ content: "README" }) } } });
+  const adapter = createRacpRemoteHostClient({ transport: ownerTransport(h),
+    clientInfo: { name: "test", version: "1" }, requireWorkspace: true });
+  try {
+    await adapter.connect();
+    assert.deepEqual(await adapter.client.request("workspace/toolShell", {}), { shell: { id: "bash" } });
+  } finally { await adapter.close(); }
+});
+
 test("adapter connects, request delegates to RacpClient, close is clean", async () => {
   const h = await harness();
   const adapter = createRacpRemoteHostClient({
@@ -157,4 +204,19 @@ test("adapter exposes detachable reconnect, state, and subscription-closed liste
   detach();
   await adapter.close();
   assert.deepEqual(states, ["connecting", "connected"]);
+});
+
+test("identity mismatch never advertises a usable Host or dispatches requests", async () => {
+  const h = await harness();
+  const states = [];
+  const adapter = createRacpRemoteHostClient({
+    transport: ownerTransport(h), clientInfo: { name: "test", version: "1" },
+    expectedHostId: "different-installation", onStateChange: state => states.push(state),
+  });
+  try {
+    await assert.rejects(adapter.connect(), error => error.errorCode === "HOST_AUTH_FAILED" && error.retriable === false);
+    assert.equal(adapter.state(), "disconnected");
+    assert.ok(!states.includes("connected"));
+    await assert.rejects(adapter.client.request("session/list"));
+  } finally { await adapter.close(); }
 });

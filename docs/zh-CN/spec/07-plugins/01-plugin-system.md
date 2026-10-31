@@ -15,11 +15,11 @@
 - 用户 MCP 工具使用前缀 `mcp_<serverId>_<toolName>`，与 D015 不相交
   插件命名空间 (D193)
 
-Plan 策略：插件代理工具、注册工具的插件技能以及任何
-未知的插件贡献在 Plan 中不可见或可执行。这否认
-在通用插件权限评估之前由 host-core 强制执行，并且不能
-可以被低风险清单、会话授权或 `auto` 绕过。插件工具
-在批准的 Plan → Agent 转换后，对同一 Agent 仍然可用。
+插件工具默认在 Plan/Goal 中隐藏并拒绝。运行时工具注册可通过非空 `planSafeActions`
+显式加入，只有 `args.action` 位于该列表时才允许执行。有 schema action enum 时会校验取值。
+清单描述符应与运行时注册保持一致，真正执行的工具由运行时注册决定。
+`risk: "low"`、会话授权和 `auto` 不能代替该声明。宿主策略与插件执行器都会校验，
+执行器对越界 action 返回 `PERMISSION_DENIED`。该列表是作者的只读承诺，不是副作用沙盒（ADR 0211）。
 
 ## 1. 目标
 
@@ -51,7 +51,7 @@ Plan 策略：插件代理工具、注册工具的插件技能以及任何
  - 会话命令
  - 设置
 - 高风险能力必须经过权限框架
-- 插件默认无法直接获取任意Node/Electron权限
+- 宿主 API 需要声明与授权；插件主进程的原始 Node 代码仍以用户权限运行，隔离面板没有 Node 集成
 
 ## 3. 插件可以做什么
 
@@ -87,8 +87,7 @@ Plan 策略：插件代理工具、注册工具的插件技能以及任何
 my-plugin/
 ├── manifest.json # required
 ├── package.json # optional (if it carries build artifacts / dependency metadata)
-├── main.js # plugin runtime extension entry (restricted API)
-├── preload.js # optional, plugin panel bridge
+├── main.js # plugin entry; host injects the brokered pi API
 ├── renderer/ # plugin UI (static assets)
 │ ├── index.html
 │ └── assets/
@@ -102,7 +101,7 @@ my-plugin/
 ### 安装位置
 
 ```text
-~/.pi-desktop/plugins/
+<dataRoot>/plugins/
  ├── installed/
  │ └── <plugin-id>/
  ├── disabled/
@@ -161,6 +160,8 @@ my-plugin/
  ]
  },
  "permissions": [
+ "ui.panel",
+ "agent.prompt.inject",
  "clipboard.read",
  "clipboard.write",
  "notify",
@@ -174,10 +175,6 @@ my-plugin/
  },
  "engines": {
  "piDesktop": ">=0.1.0"
- },
- "entrypoints": {
- "onLoad": "main.js#onLoad",
- "onUnload": "main.js#onUnload"
  }
 }
 ```
@@ -202,13 +199,13 @@ Host Main (PI-Desktop)
  └─ Plugin Panel (Renderer iframe/webview)
 ```
 
-### 6. 1 主机主
+### 6.1 主机主
 - 安装/卸载/启用/禁用
 - 验证清单
 - 权限管理
 - 路由命令和工具调用
 
-### 6. 2 插件运行时（受限）
+### 6.2 插件运行时（受限）
 插件逻辑在受限环境中运行；它不等同于完整的 Electron 主要权限。
 
 **今天实施（ADR 0008）：**每个插件的主模块都在自己的中运行
@@ -220,7 +217,7 @@ Host Main (PI-Desktop)
 仍然开放：插件进程内的功能沙箱（原始 Node 内置
 可以到达）和 CPU/memory 限制。
 
-### 6. 3 插件面板用户界面
+### 6.3 插件面板用户界面
 - 在专用的沙盒 `BrowserWindow` 中加载插件页面，并为每个插件使用隔离的会话分区
 - 新建面板的初始页面加载完成前保持窗口隐藏，等待上限为 15 秒；若仍未完成，
   宿主销毁隐藏窗口，并以 `PANEL_LOAD_TIMEOUT` 拒绝打开请求。若页面加载自行失败，
@@ -294,8 +291,7 @@ Host Main (PI-Desktop)
 
 技能以声明方式贡献（`contributes.skills` + `agent.prompt.inject`），
 不由插件调用：主机将目录放在系统提示符中，并且
-模型通过内置的 `Skill` 工具 (D174) 加载主体。有计划，没有
-目前曝光：`pi.agent.appendSystemHint(text)`。
+模型通过内置 `Skill` 工具 (D174) 按需加载正文；没有命令式 `appendSystemHint` 宿主 API。
 
 ### 后台服务（需要 `background.service`）
 - `pi.services.register({ id, start, stop? })`
@@ -374,7 +370,7 @@ Electron 主进程通知 API 并共享清单 `notify`
 3、用户可以在插件管理页面撤销权限；重新加载是
    正在运行的插件需要观察更改的授权集
 
-未实施每次调用确认和直接 Node 访问的任何策略。
+越界文件访问和危险桌面操作使用宿主原生确认，原始 Node API 仍没有操作系统能力沙盒。
 
 ## 9. 命令面板
 
@@ -468,8 +464,7 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
 - 错误
 - 开发加载
 
-### 12. 1 激活范围控制
-### 12. 1 激活范围控制
+### 12.1 激活范围控制
 
 一个控制器可用于所有三种类型 (D192)。这是一个三段轨道有序
 通过扩大影响范围 - **关闭 → 这些项目 → 无处不在** - 如此扩大和
@@ -486,7 +481,7 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
 - 具有空列表的项目范围扩展会发出警告，而不是默默执行
   什么也没有。
 
-### 12. 2 设置 > 智能体中的 MCP 管理
+### 12.2 设置 > 智能体中的 MCP 管理
 
 - MCP 页面使用全局和选中项目的独立栏，根目录为 `~/.agents/servers` 和
   `<project>/.agents/servers`。
@@ -518,7 +513,7 @@ MCP、技能和子代理由设置 > 智能体下的三个独立页面管理，�
   credential does not hide a subsequent authentication failure. Manual OAuth
   authorization remains available from the HTTP server menu.
 
-### 12. 3 设置 > 智能体中的技能管理
+### 12.3 设置 > 智能体中的技能管理
 
 - 技能页面使用 `~/.agents/skills` 和 `<project>/.agents/skills` 下的全局/项目栏。
 - 每栏只有一个原生单文件“导入”操作；主机会物理复制文件并扫描 frontmatter。

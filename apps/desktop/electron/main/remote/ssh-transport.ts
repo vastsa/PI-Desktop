@@ -24,6 +24,8 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer, connect } from "node:net";
+import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import { ErrorCodes } from "@pi-desktop/shared";
 import { redactBootstrapOutput } from "./pi-host-bootstrap-script.js";
 import { createSshAskpass, type SshAskpassMaterial } from "./ssh-askpass.js";
@@ -63,6 +65,10 @@ export interface SshTransport {
     command: string,
     input: string,
     options?: { timeoutMs?: number; maxOutputBytes?: number },
+  ): Promise<SshExecResult>;
+  /** Stream a verified local artifact over SSH without buffering it in memory. */
+  execWithFile?(
+    command: string, path: string, options?: { timeoutMs?: number; maxOutputBytes?: number },
   ): Promise<SshExecResult>;
   /** Forward a loopback port on this machine to a loopback port on the remote. */
   forward(options: {
@@ -238,6 +244,7 @@ function runCommand(
   args: string[],
   options: {
     input?: string;
+    inputFile?: string;
     timeoutMs: number;
     maxOutputBytes?: number;
     /** Full environment for the child; defaults to the app's own. */
@@ -316,7 +323,18 @@ function runCommand(
     // A child that exits early closes the pipe under us; swallowing the write
     // error keeps it from surfacing as an unhandled stream error.
     child.stdin.on("error", () => undefined);
-    if (options.input !== undefined) child.stdin.end(options.input);
+    if (options.inputFile !== undefined) {
+      const source = createReadStream(options.inputFile);
+      child.once("close", () => source.destroy());
+      void pipeline(source, child.stdin).catch((error: NodeJS.ErrnoException) => {
+        // SSH's exit status owns early pipe closure; local read failures do not.
+        if (settled || error.code === "EPIPE" || error.code === "ERR_STREAM_PREMATURE_CLOSE") return;
+        settled = true;
+        clearTimeout(timer);
+        child.kill("SIGKILL");
+        rejectRun(fail("SSH artifact upload failed", ErrorCodes.HOST_BOOTSTRAP_FAILED));
+      });
+    } else if (options.input !== undefined) child.stdin.end(options.input);
     else child.stdin.end();
   });
 }
@@ -373,6 +391,7 @@ export function createSystemSshTransport(
     input: string | undefined,
     timeoutMs: number,
     maxOutputBytes?: number,
+    inputFile?: string,
   ): Promise<SshExecResult> => {
     // The caller selects the program; bootstrap explicitly requests `sh -s`.
     // Data sent on stdin must never be interpreted as a shell script implicitly.
@@ -382,6 +401,7 @@ export function createSystemSshTransport(
     try {
       result = await runCommand(binary, args, {
         input,
+        inputFile,
         timeoutMs,
         maxOutputBytes,
         env,
@@ -421,6 +441,8 @@ export function createSystemSshTransport(
       execOnce(command, undefined, execOptions?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS),
     execWithInput: (command, input, execOptions) =>
       execOnce(command, input, execOptions?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS, execOptions?.maxOutputBytes),
+    execWithFile: (command, path, execOptions) =>
+      execOnce(command, undefined, execOptions?.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS, execOptions?.maxOutputBytes, path),
     async forward({ localPort, remoteHost, remotePort, timeoutMs }) {
       const env = await acquireEnv();
       const args = [

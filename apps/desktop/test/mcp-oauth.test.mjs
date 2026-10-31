@@ -90,11 +90,16 @@ function createMockFetch(options = {}) {
     }
 
     if (url.pathname === "/.well-known/oauth-authorization-server") {
+      // A server that expects a pre-registered client advertises no
+      // registration endpoint (#1782).
+      const registration = options.withoutRegistration
+        ? {}
+        : { registration_endpoint: "https://notion.test/register" };
       return new Response(JSON.stringify({
         issuer: "https://notion.test",
         authorization_endpoint: "https://notion.test/authorize",
         token_endpoint: "https://notion.test/token",
-        registration_endpoint: "https://notion.test/register",
+        ...registration,
         code_challenge_methods_supported: ["S256"],
         response_types_supported: ["code"],
       }), {
@@ -983,4 +988,42 @@ test("McpOAuthManager: onAuthorized receives the server record", async (t) => {
   await waitUntil(() => authorized);
   assert.equal(authorized.serverId, record.id);
   assert.equal(authorized.record, record);
+});
+
+test("McpOAuthManager: a server without DCR fails loudly instead of opening a dead client_id (#1782)", async (t) => {
+  const host = fakeHost();
+  const { mockFetch } = createMockFetch({ withoutRegistration: true });
+  const { mockCreateServer } = createMockServerFactory();
+  const opened = [];
+  const events = [];
+  const manager = new McpOAuthManager({
+    call: host.call,
+    fetchImpl: mockFetch,
+    openExternal: async (url) => {
+      opened.push(url);
+    },
+    createServer: mockCreateServer,
+    emit: (event) => events.push(event),
+  });
+  t.after(() => manager.disposeAll());
+
+  await assert.rejects(
+    () => manager.startLogin("no-dcr-test", "https://notion.test/mcp"),
+    (error) => {
+      // The message has to name the missing capability and both real ways
+      // forward; a bare "failed" leaves the user where the 404 did.
+      assert.match(error.message, /Dynamic Client Registration/);
+      assert.match(error.message, /client id/);
+      assert.equal(error.errorCode, "MCP_OAUTH_DCR_UNAVAILABLE");
+      assert.doesNotMatch(error.message, /https:\/\/notion\.test\/authorize/);
+      return true;
+    },
+  );
+
+  // The whole point: no browser tab, so no dead authorization page. Before
+  // this change the app opened `?client_id=pi-desktop` and the user saw a 404.
+  assert.deepEqual(opened, [], "no authorization URL may be opened without a usable client id");
+  assert.ok(events.some((event) =>
+    event.kind === "error" && event.errorCode === "MCP_OAUTH_DCR_UNAVAILABLE",
+  ));
 });

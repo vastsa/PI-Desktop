@@ -84,6 +84,13 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 `onResponse`，这样的行不上报捕获到的 HTTP 状态与传输原因：`Retry-After`
 退回有界退避阶梯，issue-234 的传输诊断与重建对它不生效。
 
+会话身份跟随端点归谁所有。在 `openai-completions` 与 `anthropic-messages` 上，
+base URL 主机不属于任何已发布厂商主机的行会带上会话亲和标头，并在 Chat
+Completions 上带上 `prompt_cache_key` 请求体键。自建 `openai-responses` 行保留适配器
+原有的会话标头与缓存键，并额外带上连字符形式的 `x-session-affinity`，这样反向代理丢掉
+下划线标头后仍可按会话路由。属于已发布厂商主机的行以及 OpenCode 线路保持原有出网字节
+（issue #1634；`03-runtime/02-agent-runtime.md` §6.3）。
+
 当 OAuth 厂商围绕本地 provider 行 id 重建运行时模型时，运行时仍保留 pi-ai
 原生传输元数据，不会把该行当作普通 OpenAI 端点。GitHub Copilot 请求会保留
 固定 pin 模型的 IDE 身份标头，包括 `Editor-Version`、`Editor-Plugin-Version`
@@ -110,8 +117,14 @@ OpenAI 风格的 Copilot 线路 API 仍将令牌作为请求密钥签名；所�
 存成 `model.provider`，因此聚合网关与自定义端点会在无思考内容的助手回合漏掉
 `reasoning_content`。非官方 DeepSeek 端点还会设置 `requiresNonEmptyReasoningReplay`，
 用文档化的非空占位符而不是 `""` 填补缺失推理（OpenCode / 第三方中转在压缩后拒绝空回传；
-见 ADR 0256 / #296）。官方 `deepseek.com` 行仍使用空串回填（#223）。该覆盖不改
-`thinkingFormat`。
+见 ADR 0256 / #296）。官方 `deepseek.com` 行仍使用空串回填（#223）。每条回放的 assistant
+行只带一个推理字段，字段名取最新一条带真实推理的行；其他字段名下的真实推理会被移过去，
+因此只有没有推理的行才会被填充，已存储思考开头回显的占位符也不会被显示或回放（D677，#1945）。该覆盖不改
+`thinkingFormat`。中转行设置 `supportsReasoningEffort: false`，因为有 DeepSeek 系中转
+被报告拒绝通用 OpenAI 的 `reasoning_effort` 字段（#1664）。官方 `deepseek.com` 行把该标志
+交给 pi-ai，按 DeepSeek 文档在 `thinking: {type: "enabled"}` 旁发送 `reasoning_effort`
+（low / high / max），使所选思考等级真正下发（#1821，D672）。模型绑定上显式选择的
+`supportsReasoningEffort`（`send` 或 `omit`）在两类行上都仍优先于该自动规则。
 
 当 Pi catalog 记录发布了推理 `effort` 选项且没有 `budget_tokens` 选项时
 （例如 Opus 4.7+、Opus 5.x、Fable），Anthropic Messages 请求会设置
@@ -287,6 +300,7 @@ type ModelBinding = {
   thinkingLevels: ThinkingLevel[]
   defaultThinkingLevel: SessionThinkingLevel | null
   availableForSubagents?: boolean // opt-in for AI-driven delegation
+  fastModeAllowed?: boolean // opt-in for the session /fast switch (ADR 0334)
 }
 
 type SelectedModelRef = {
@@ -314,6 +328,16 @@ type ThinkingLevel =
 当前对话以及旧版运行时消费方的有效模型。对话级别的模型切换与跨数组路由仍属
 后续工作。只有 `defaultModelId` 的旧版提供商，在主机读取时会被具体化为一条
 回退 binding，并在下一次提供商写入时升级为 `models`。
+
+`ModelBinding.fastModeAllowed`（布尔值，默认 false，ADR 0334）：允许会话的 `/fast`
+开关为该模型请求 OpenAI 优先服务档位（`service_tier: "priority"`）。模型设置只在
+Responses 协议上启用该勾选框：`openai_codex_responses`（ChatGPT 订阅，优先档位会更快
+消耗订阅额度）和 `responses`（按优先档位更高的 token 单价计费；中转服务可能忽略或
+另行计费）。只有当会话开关打开且保存的 binding 允许时，启动器才向 sidecar 发送
+`fastMode: true`；运行时只在解析后的协议为 `openai-codex-responses` 或
+`openai-responses` 的主回合请求中加入该字段。子代理、压缩和一次性请求保持默认档位。
+可信扩展把运行时切换到它自己的模型时会清除该开关，因为该模型没有可供选择加入的
+binding；下一次启动会按会话保存的 binding 重新应用。
 
 `ModelBinding.availableForSubagents`（布尔值，默认 false）：这是一个选择加入
 的标志，让该模型可用于 AI 驱动的子代理委托。启用后，该模型会出现在注入父
@@ -584,6 +608,8 @@ UI 可能会显示层级提示，但默认情况下不得硬阻止未知模型�
 这是**通用逃生舱**，保证超出原生集成之外的市场覆盖范围。
 
 目录条目还可以额外固定模型级 wire API（例如 `api: "openai-responses"`）。当该 API 与 provider 的协议族兼容时，它优先于 provider 级 `apiStyle`（因此 `opencode_go` 下的 responses-only 模型会走 Responses adapter 而非 Chat Completions）。外部 catalog 的异构 wire API（例如 relay 端点上匹配到的 `google-generative-ai` 或 `anthropic-messages`）不会覆盖 OpenAI-compatible provider 配置的 wire style（issue #1310）；没有模型级固定时保持 provider 级风格不变。
+
+对于内置 OpenCode Go 行，目录条目若明确发布独立的 Anthropic Messages 路由，则有一个文档化例外：models.dev 的 Claude 条目同时声明 `api: "anthropic_messages"` 和 OpenCode Anthropic 根 `baseUrl` 时，agent-runtime 使用这组目录 API 与地址，最终访问 `/v1/messages`。该例外只适用于命名的 OpenCode Go 预设；自定义端点和外部 relay 匹配到的目录记录仍使用保存的 provider API 与 Base URL。
 
 ### 16.1 Responses 流终止（pi-ai 补丁）
 

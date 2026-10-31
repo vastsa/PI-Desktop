@@ -97,13 +97,13 @@ test("a dropped compositionend cannot leave the composer composing forever (#929
   );
   assert.match(
     handler,
-    /if \(!\(event\.nativeEvent as InputEvent\)\.isComposing\) onSettledInput\(\);/,
+    /if \(!native\.isComposing\) onSettledInput\(\);/,
     "a settled input must clear the composing flag",
   );
   // It has to run before the draft update, so the very same input is judged
   // against a cleared flag rather than the stale one.
   assert.ok(
-    handler.indexOf("onSettledInput()") < handler.indexOf("onInput(source, start)"),
+    handler.indexOf("onSettledInput()") < handler.indexOf("onInput(source, start, native.isComposing)"),
     "the recovery must precede the draft update",
   );
 });

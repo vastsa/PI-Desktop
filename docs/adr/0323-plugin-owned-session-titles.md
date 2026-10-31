@@ -57,10 +57,9 @@ model-composed title moves to the plugin.
 - The new permission allows the plugin to see bounded excerpts from any
   active default-titled Desktop session. It does not expose attachments, tools,
   later messages, or a general transcript-read method.
-- Schema v23 classifies existing default placeholders as `default` and other
-  existing titles as `manual`, preserving user-chosen titles during migration.
-- Existing sessions that still hold a known placeholder title receive the
-  first-prompt fallback on their next prompt, exactly like a new session.
+- Schema v23 leaves pre-existing v22 titles as `legacy` to protect deliberate
+  renames from automatic replacement; newly created sessions receive `default`
+  or `manual` as appropriate.
 
 ## Alternatives considered
 

@@ -40,24 +40,32 @@ work-panel tab already carries was honoured by main for `pi.browser` only.
      first, the session scratch store second, the attachment store last** — and
      the first root that answers wins, so the project is searched to exhaustion
      before the scratch store is considered;
-   - inside one root, an exact path beats a shorthand; among shorthands the
-     longest matching tail wins, then the shallowest path, so `src/dir/a.ts`
-     beats a second `dir/a.ts` buried deeper;
+   - inside one root, an exact path beats a shorthand; a shorthand resolves
+     only when its complete supplied suffix uniquely identifies one safe file.
+     It never degrades to a shorter suffix, and ambiguous matches resolve to
+     nothing;
    - the files panel's ignore set applies, so a dependency tree is never
      searched;
    - a reference that matches nothing opens **nothing** and reports itself. No
      empty panel, no blank browser page.
 2. **The destination follows where the reference resolved.** A project file
-   opens in the `pi.file-manager` view, except a `path:line` reference, which
-   opens in the host's read-only `file:` tab so the requested source line can
+   opens in the `pi.file-manager` view, except a positioned reference (`:line`,
+   `:line:column`, `:line-range` or `#Lline[-Lend]`), which opens in the host's
+   read-only `file:` tab so the requested source line can
    be brought into view. The bundled view accepts opaque path locations and has
    no line-navigation contract; this keeps the path unchanged and uses the
    host viewer's existing scroll support. A file in the session scratch or
    attachment store opens in the
    host `file:` tab, because it lives outside that view's project root — see
-   point 4. A workspace `.html` / `.htm` file still opens in the side browser
+   point 4. An unpositioned `.html` / `.htm` file in any folder of the
+   session's project group or its own scratch directory opens in the side browser
    (ADR 0163), for an agent reply and a user chip alike: it is a page to run,
-   not a file to read. A direct user click on a project file actively ensures
+   not a file to read. Main resolves browser roots from the owning session,
+   never a different visible project's root. The resolved absolute path is
+   carried through navigation, and realpath containment still applies.
+   Positioned HTML references retain the source viewer. A disabled browser
+   reports an error instead of silently dropping a click or enabling itself.
+   A direct user click on a project file actively ensures
    the bundled file view is running: an off plugin is enabled, and an enabled
    plugin with no contributed view is reloaded before the tab opens. This click
    is explicit intent to use the bundled view. The host does not restore a

@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
+import { useRowBusy } from "../../hooks/use-row-busy";
 import { usePluginBrowseState } from "./browse-state";
 import type {
   MarketPluginDetail,
   MarketPluginSummary,
   PluginPermissionReview,
+  PluginReviewSummary,
+  PluginReviewTicker,
   PluginServiceStatus,
   PluginSummary,
   ProjectRecord,
@@ -33,6 +36,7 @@ import {
   type PluginInstallJob,
   type PluginInstallRequest,
 } from "./install-progress";
+import { nextSummaryMap } from "./reviews";
 
 export function usePluginsPage() {
   const { t, i18n } = useTranslation();
@@ -51,7 +55,10 @@ export function usePluginsPage() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [market, setMarket] = useState<MarketPluginSummary[]>([]);
   const [marketLoading, setMarketLoading] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // One busy key per plugin row: the first request to settle must not re-arm
+  // a row that is still in flight, and a busy row does not lock the others
+  // (the same contract the capability pages pin).
+  const rowBusy = useRowBusy();
   const [installJob, setInstallJob] = useState<PluginInstallJob | null>(null);
   /**
    * The job, and the reading a transfer speed is measured against, are mirrored
@@ -85,6 +92,30 @@ export function usePluginsPage() {
   const [services, setServices] = useState<PluginServiceStatus[]>([]);
   const [selectedVersion, setSelectedVersion] = useState("");
   const [settingsPlugin, setSettingsPlugin] = useState<PluginSummary | null>(null);
+  /**
+   * Public rating summaries for every installed and marketplace plugin id.
+   * Batched so the installed tab can show a rating without a marketplace
+   * refresh, and kept as a map because it is a read that never holds anything
+   * else on the page back. `reviewsStatus` is `unavailable` — never zeros —
+   * when the centre cannot answer.
+   */
+  const [reviewSummaries, setReviewSummaries] = useState<
+    Record<string, PluginReviewSummary>
+  >({});
+  /**
+   * The center's selected review line per plugin, batched with the summaries.
+   * Kept separate because it is optional decoration: a center that predates
+   * the ticker route must leave the cards intact, not put them in an error
+   * state.
+   */
+  const [reviewTickers, setReviewTickers] = useState<
+    Record<string, PluginReviewTicker>
+  >({});
+  const [reviewsStatus, setReviewsStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable"
+  >("idle");
+  /** The plugin whose public review drawer is open over its detail sheet. */
+  const [reviewsId, setReviewsId] = useState<string | null>(null);
 
   /**
    * The install dialog is the top layer while it is open: the permission review
@@ -167,10 +198,15 @@ export function usePluginsPage() {
     if (focused instanceof HTMLElement && focused.matches(".plugins-card-hit")) {
       focused.blur();
     }
+    // The review drawer only ever covers this sheet, so it leaves with it.
+    setReviewsId(null);
     setSelectedId(null);
     setDetail(null);
     setSelectedVersion("");
   };
+
+  const openReviews = (id: string) => setReviewsId(id);
+  const closeReviews = () => setReviewsId(null);
 
   // Every scope control offers the same folder list, so it is fetched once here
   // and handed down rather than re-queried per row.
@@ -215,16 +251,16 @@ export function usePluginsPage() {
   }, [locale]);
 
   // Escape closes the detail sheet, but only while it owns the top layer: the
-  // permission dialog and the install dialog in front of it handle their own
-  // dismissal.
+  // permission dialog, the install dialog, and the review drawer in front of
+  // it handle their own dismissal.
   useEffect(() => {
-    if (!selectedId || pendingInstall || installDialogOpen) return;
+    if (!selectedId || pendingInstall || installDialogOpen || reviewsId) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeDetail();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, pendingInstall, installDialogOpen]);
+  }, [selectedId, pendingInstall, installDialogOpen, reviewsId]);
 
   useEffect(() => {
     if (!pendingInstall) return;
@@ -270,6 +306,84 @@ export function usePluginsPage() {
     return api.onPluginChanged(refresh);
   }, []);
 
+  /**
+   * Public rating summaries are one batched read for every id either tab can
+   * show, debounced so a marketplace search that also refreshes the installed
+   * list still asks once. The installed tab therefore reads the same map
+   * without waiting for a marketplace refresh, and a centre that predates the
+   * review API fails this read alone — install and update never depend on it.
+   */
+  useEffect(() => {
+    const ids = [
+      ...new Set([...plugins.map((plugin) => plugin.id), ...market.map((item) => item.id)]),
+    ];
+    if (!ids.length) {
+      setReviewsStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      setReviewsStatus("loading");
+      void (async () => {
+        try {
+          const summaries = await api.marketReviewSummaries(ids);
+          if (cancelled) return;
+          // A success answers every id just requested, so it replaces the map
+          // for them: the centre omits ids it no longer serves, and a rating
+          // that stopped existing must stop rendering (see nextSummaryMap).
+          setReviewSummaries(nextSummaryMap(ids, summaries));
+          setReviewsStatus("ready");
+        } catch {
+          // Unsupported or unreachable service: an explicit unavailable state,
+          // never fabricated zeros.
+          if (cancelled) return;
+          setReviewsStatus("unavailable");
+        }
+      })();
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [plugins, market]);
+
+  /**
+   * The review line is decoration, so it has its own read and its own failure
+   * mode. A center without the ticker route (or a transient failure) leaves the
+   * map empty and the cards render exactly as they did before this feature.
+   */
+  useEffect(() => {
+    const ids = [
+      ...new Set([...plugins.map((plugin) => plugin.id), ...market.map((item) => item.id)]),
+    ];
+    if (!ids.length) {
+      setReviewTickers({});
+      return;
+    }
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const tickers = await api.marketReviewTickers(ids);
+          if (cancelled) return;
+          const next: Record<string, PluginReviewTicker> = {};
+          for (const id of ids) {
+            const ticker = tickers[id];
+            if (ticker && ticker.rows.length > 0) next[id] = ticker;
+          }
+          setReviewTickers(next);
+        } catch {
+          if (cancelled) return;
+          setReviewTickers({});
+        }
+      })();
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [plugins, market]);
+
   const servicesByPlugin = useMemo(() => {
     const map = new Map<string, PluginServiceStatus[]>();
     for (const status of services) {
@@ -280,8 +394,7 @@ export function usePluginsPage() {
     return map;
   }, [services]);
 
-  const installedById = useMemo(() => {
-    const map = new Map<string, PluginSummary>();
+  const installedById = useMemo(() => {    const map = new Map<string, PluginSummary>();
     for (const plugin of plugins) map.set(plugin.id, plugin);
     return map;
   }, [plugins]);
@@ -386,6 +499,7 @@ export function usePluginsPage() {
 
   const reloadPlugin = (id: string) =>
     run(async () => {
+      if (!rowBusy.begin(id)) return;
       setReloadingId(id);
       try {
         const result = await api.reloadPlugin(id);
@@ -398,6 +512,7 @@ export function usePluginsPage() {
         await refreshPlugins();
         showToast(t("plugins.reloadDone"), { variant: "success" });
       } finally {
+        rowBusy.end(id);
         setReloadingId(null);
       }
     });
@@ -467,7 +582,7 @@ export function usePluginsPage() {
   const confirmReview = async () => {
     const review = pendingReview;
     if (!review) return;
-    setBusyId(review.id);
+    if (!rowBusy.begin(review.id)) return;
     try {
       if (review.kind === "reload") {
         await api.confirmReloadPlugin({
@@ -488,7 +603,7 @@ export function usePluginsPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(review.id);
     }
   };
 
@@ -536,11 +651,11 @@ export function usePluginsPage() {
    * first step is visible, and the request's own answer is what ends it.
    */
   const runInstall = async (request: PluginInstallRequest) => {
+    if (!rowBusy.begin(request.id)) return;
     installSampleRef.current = null;
     const job = newInstallJob(request);
     installJobRef.current = job;
     setInstallJob(job);
-    setBusyId(request.id);
     try {
       await api.marketInstall({
         id: request.id,
@@ -579,7 +694,7 @@ export function usePluginsPage() {
       // be reported where the user is looking.
       if (!shown) showToast(message, { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(request.id);
     }
   };
 
@@ -669,7 +784,7 @@ export function usePluginsPage() {
     setCategory,
     market,
     marketLoading,
-    busyId,
+    isPluginBusy: rowBusy.isBusy,
     reloadingId,
     pendingInstall,
     setPendingInstall,
@@ -690,6 +805,12 @@ export function usePluginsPage() {
     setSelectedVersion,
     settingsPlugin,
     setSettingsPlugin,
+    reviewSummaries,
+    reviewTickers,
+    reviewsStatus,
+    reviewsId,
+    openReviews,
+    closeReviews,
     refreshMarket,
     openDetail,
     closeDetail,

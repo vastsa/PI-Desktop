@@ -5,7 +5,7 @@
 export async function withGitBranch<T extends { path?: string; name?: string } | null | undefined>(
   workspace: T,
 ): Promise<T> {
-  if (!workspace || !workspace.path) return workspace;
+  if (!workspace || !workspace.path || workspace.path.startsWith("remote-project:")) return workspace;
   try {
     const { readFile } = await import("node:fs/promises");
     const { join } = await import("node:path");

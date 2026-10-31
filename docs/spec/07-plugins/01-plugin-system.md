@@ -12,11 +12,15 @@
 - user MCP tools use the prefix `mcp_<serverId>_<toolName>`, disjoint from D015's
   plugin namespace (D193)
 
-Plan policy: plugin agent tools, plugin skills that register tools, and any
-unknown plugin contribution are not visible or executable in Plan. This deny
-is enforced by host-core before generic plugin permission evaluation and cannot
-be bypassed by a low-risk manifest, a session grant, or `auto`. Plugin tools
-remain available to the same Agent after an approved Plan → Agent transition.
+Plugin tools are hidden and denied in Plan/Goal by default. A runtime tool
+registration may opt in with non-empty `planSafeActions`; only an `args.action`
+in that list may execute in those modes. The list is checked against the schema's
+action enum when present. Keep the manifest descriptor and runtime registration
+in sync: the runtime registration drives the executable tool. Risk `low`, session
+grants, and `auto` do not substitute for the declaration. Host policy and the
+plugin runner both check it; a disallowed runner action is `PERMISSION_DENIED`.
+The declaration is an author assertion of read-only behavior, not a side-effect
+sandbox (ADR 0211).
 
 ## 1. Goals
 
@@ -48,7 +52,8 @@ In one sentence:
  - Session commands
  - Settings
 - High-risk capabilities must go through the permission framework
-- Plugins cannot directly obtain arbitrary Node/Electron privileges by default
+- Brokered host APIs require declared grants; raw Node code in the plugin process
+  is trusted user-privileged code, while isolated panels have no Node integration
 
 ## 3. What plugins can do
 
@@ -84,8 +89,7 @@ Each plugin is a directory:
 my-plugin/
 ├── manifest.json # required
 ├── package.json # optional (if it carries build artifacts / dependency metadata)
-├── main.js # plugin runtime extension entry (restricted API)
-├── preload.js # optional, plugin panel bridge
+├── main.js # plugin entry; host injects the brokered pi API
 ├── renderer/ # plugin UI (static assets)
 │ ├── index.html
 │ └── assets/
@@ -99,7 +103,7 @@ my-plugin/
 ### Install location
 
 ```text
-~/.pi-desktop/plugins/
+<dataRoot>/plugins/
  ├── installed/
  │ └── <plugin-id>/
  ├── disabled/
@@ -158,6 +162,8 @@ Developer mode can load a local path directly, without copying it into `installe
  ]
  },
  "permissions": [
+ "ui.panel",
+ "agent.prompt.inject",
  "clipboard.read",
  "clipboard.write",
  "notify",
@@ -171,10 +177,6 @@ Developer mode can load a local path directly, without copying it into `installe
  },
  "engines": {
  "piDesktop": ">=0.1.0"
- },
- "entrypoints": {
- "onLoad": "main.js#onLoad",
- "onUnload": "main.js#onUnload"
  }
 }
 ```
@@ -205,14 +207,16 @@ Host Main (PI-Desktop)
 - Authorization management
 - Route command and tool calls
 
-### 6.2 Plugin Runtime (restricted)
-Plugin logic runs in a restricted environment; it is not equivalent to full Electron main privileges.
+### 6.2 Plugin Runtime (separate process)
+The plugin has no live Electron Main objects. Its `pi.*` calls are brokered,
+but raw Node built-ins run with the user account's privileges; process isolation
+is not an OS capability sandbox.
 
 **Implemented today (ADR 0008):** each plugin's main module runs in its own
 `utilityProcess` (`electron/main/plugin-host-process.mjs`) and reaches the host
 only through JSON RPC to the broker in `electron/main/plugin-runtime.ts`, which
 enforces the API allowlist and the permission gateway. Plugin code never gets a
-host object and cannot `require` host modules.
+host object. Importing private host modules is not a supported plugin contract.
 
 Still open: capability sandboxing inside the plugin process (raw Node built-ins
 are reachable there) and CPU/memory limits.
@@ -271,7 +275,8 @@ are reachable there) and CPU/memory limits.
 
 ## 7. Host API (callable by plugins)
 
-Namespace: `pi.plugin.*`
+Injected global: `pi`; `plugin` is one namespace within it. The complete method
+index is in the [development guide](../../plugin-development.md#13-complete-sdk-surface-and-source-map).
 
 ### Basics
 - `pi.app.getVersion()`
@@ -281,15 +286,20 @@ Namespace: `pi.plugin.*`
 - `pi.commands.register(command)`
 - `pi.ui.openPanel(options?)`
 - `pi.ui.showToast(message)`
-- `pi.ui.notify(title, body)`
+- `pi.ui.notify({ title, body })`
 - `pi.ui.getNotificationPermission()`
 - `pi.ui.requestNotificationPermission()`
 - `pi.ui.showNativeNotification({ title, body? })`
 
-### Workspace (requires permission)
+### Workspace metadata and scoped files
+
+Metadata reads need no permission; file operations require their declared grants.
+
 - `pi.workspace.get()`
+- `pi.projects.list()` — read-only durable project metadata, including ungrouped rows
 - `pi.fs.readText(path)`
 - `pi.fs.openDefault(path)` // open the selected file with the OS-associated app
+- `pi.fs.openInBrowser(path)` // open an HTML file in the work-panel Browser
 - `pi.fs.reveal(path)` // show the selected file in the OS file manager
 - `pi.fs.writeText(path, content)` // high risk
 - `pi.fs.glob(pattern)`
@@ -309,8 +319,8 @@ Namespace: `pi.plugin.*`
 
 Skills are contributed declaratively (`contributes.skills` + `agent.prompt.inject`),
 not invoked by the plugin: the host puts the catalog in the system prompt and the
-model loads a body through the built-in `Skill` tool (D174). Planned, not
-currently exposed: `pi.agent.appendSystemHint(text)`. When the body is loaded,
+model loads a body through the built-in `Skill` tool (D174). There is no
+imperative `appendSystemHint` host API. When the body is loaded,
 the tool result also identifies the `SKILL.md` location and the directory to use
 when resolving relative references; the catalog remains metadata-only.
 
@@ -392,7 +402,8 @@ load and are downgraded to the minimum safe equivalent (ADR 0088).
 3. Users can revoke permissions on the plugin management page; a reload is
    required for a running plugin to observe the changed grant set
 
-Per-call confirmation and any policy for direct Node access are not implemented.
+Out-of-scope filesystem calls and dangerous desktop-control operations use
+host-owned per-call consent. Raw Node API access has no OS capability sandbox.
 
 ## 9. Command palette
 
@@ -486,7 +497,6 @@ Status indicators:
 - error
 - dev-loaded
 
-### 12.1 The activation-scope control
 ### 12.1 The activation-scope control
 
 One control serves all three kinds (D192). It is a three-segment track ordered

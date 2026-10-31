@@ -39,7 +39,9 @@ export function composerModelsForProvider(
   imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
   return configuredModelIds(provider).filter((modelId) =>
-    !isImageGenerationModel(imageGeneration, provider.id, modelId),
+    !isImageGenerationModel(imageGeneration, provider.id, modelId)
+      && !(discovered ?? []).some((model) =>
+        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted"),
   ).map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),

@@ -141,13 +141,14 @@ export function ComposerAutocomplete({
     return (
       <button
         {...commonProps}
-        aria-label={`${displayName} — ${item.entry.path}`}
+        aria-label={item.entry.path}
         title={item.entry.path}
       >
         <span className="composer-ac-icon">
           {isDir ? <IconFolder size={14} /> : <IconFileText size={14} />}
         </span>
         <span className="composer-ac-name">{displayName}</span>
+        <span className="composer-ac-path">{item.entry.path}</span>
       </button>
     );
   };

@@ -31,6 +31,7 @@ app.whenReady().then(async () => {
     await wait('document.hasFocus()');
     await evaluate('Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})))');
     const point = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw Error('Missing control'); el.scrollIntoView({block:'center'}); const r = el.getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()`);
+    await wait(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const hit = document.elementFromPoint(${point.x}, ${point.y}); return el && hit && (el === hit || el.contains(hit)); })()`);
     win.webContents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...point });
     win.webContents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...point });
   };
@@ -44,7 +45,7 @@ app.whenReady().then(async () => {
   check("production Markdown renders one toolbar per table", await evaluate('document.querySelectorAll(".markdown-table-actions").length === 2'));
   await click('.markdown-table button[aria-label="Copy table as Markdown"]');
   await wait('window.tableFixture.toast()?.message === "Table copied"');
-  check("copy preserves this table's inline Markdown and alignment", clipboard.readText() === '| **Product** | Note |\n| :--- | ---: |\n| Pi | 你好, world |\n| ZCode | say "hi"<br>again |');
+  check("copy preserves this table's inline Markdown and alignment", clipboard.readText().replaceAll("\r\n", "\n") === '| **Product** | Note |\n| :--- | ---: |\n| Pi | 你好, world |\n| ZCode | say "hi"<br>again |');
   const downloaded = new Promise((resolve, reject) => {
     win.webContents.session.once("will-download", (_event, item) => {
       item.setSavePath(join(dir, "table.csv"));
@@ -85,6 +86,9 @@ app.whenReady().then(async () => {
     check(`${theme} narrow preview stays within viewport`, await evaluate('(() => { const r = document.querySelector("[role=dialog]").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })()'));
     check(`${theme} long table scrolls inside the preview`, await evaluate('(() => { const body = document.querySelector(".markdown-table-preview-body"); return body.scrollHeight > body.clientHeight && getComputedStyle(body).overflowY === "auto"; })()'));
     check(`${theme} narrow preview scrolls horizontally instead of crushing columns`, await evaluate('(() => { const body = document.querySelector(".markdown-table-preview-body"); const header = document.querySelector("[role=dialog] th"); const range = document.createRange(); range.selectNodeContents(header); return body.scrollWidth > body.clientWidth && range.getClientRects().length === 1; })()'));
+    const headerPoint = await evaluate('(() => { const r = document.querySelector(".markdown-table-preview-head").getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()');
+    win.webContents.sendInputEvent({ type: "mouseMove", ...headerPoint });
+    check(`${theme} overflowing scrollbars stay visible outside the scroll area`, await evaluate('(() => { const body = document.querySelector(".markdown-table-preview-body"); const thumb = getComputedStyle(body, "::-webkit-scrollbar-thumb"); return !body.matches(":hover") && thumb.backgroundColor !== "rgba(0, 0, 0, 0)" && thumb.backgroundColor !== "transparent"; })()'));
     check(`${theme} sticky header is opaque`, await evaluate('(() => { const canvas = document.createElement("canvas"); const context = canvas.getContext("2d"); context.fillStyle = getComputedStyle(document.querySelector("[role=dialog] th")).backgroundColor; context.fillRect(0, 0, 1, 1); return context.getImageData(0, 0, 1, 1).data[3] === 255; })()'));
     await evaluate('document.querySelector(".markdown-table-preview-body").scrollTop = 150');
     check(`${theme} header stays visible while scrolling`, await evaluate('(() => { const body = document.querySelector(".markdown-table-preview-body").getBoundingClientRect(); const head = document.querySelector("[role=dialog] th").getBoundingClientRect(); return Math.abs(body.top - head.top) < 2; })()'));
@@ -96,7 +100,7 @@ app.whenReady().then(async () => {
   // Restore the viewport after narrow-layout checks so earlier feedback
   // cannot cover the toolbar and intercept the error-path clicks.
   win.setContentSize(1100, 800);
-  await wait('innerWidth === 1100 && innerHeight === 800');
+  await wait('innerWidth >= 1000 && innerHeight >= 700');
   await evaluate('Object.defineProperty(navigator, "clipboard", {configurable:true,value:{writeText:async()=>{throw Error("denied")}}})');
   await click('button[aria-label="复制表格为 Markdown"]');
   await wait('window.tableFixture.toast()?.message === "无法复制表格"');

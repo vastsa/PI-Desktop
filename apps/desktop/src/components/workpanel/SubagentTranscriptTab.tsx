@@ -12,6 +12,7 @@ import { Textarea, TooltipButton } from "../ui";
 import { DisclosureAnchorContext } from "../../lib/disclosure-anchor-context";
 import { TranscriptDisclosureProvider } from "../../features/chat/transcript/disclosure";
 import { buildSubagentTranscript } from "../../lib/subagent-transcript";
+import { reviewChangeFromMessage } from "../../lib/workspace-review";
 import {
   AssistantErrorMessage,
   ThinkingRow,
@@ -152,10 +153,15 @@ function SubagentTranscriptSurface({ delegationId }: { delegationId: string }) {
                   </div>
                   {turn.rows.map((row) =>
                     row.kind === "tool" ? (
-                      <Fragment key={row.message.id}>
-                        <ToolRow message={row.message} />
-                        <ReviewChangeCard message={row.message} />
-                      </Fragment>
+                      reviewChangeFromMessage(row.message) ? (
+                        <ReviewChangeCard
+                          key={row.message.id}
+                          message={row.message}
+                          asToolRow
+                        />
+                      ) : (
+                        <ToolRow key={row.message.id} message={row.message} />
+                      )
                     ) : row.kind === "thinking" ? (
                       <ThinkingRow
                         key={`thinking-${row.message.id}`}
@@ -220,7 +226,6 @@ function SubagentTranscriptSurface({ delegationId }: { delegationId: string }) {
             >
               <span className="composer-model-thinking-icon" aria-hidden="true"><IconBot size={14} /></span>
               <span className="composer-model-thinking-model">{delegateSettings.modelId || "—"}</span>
-              <span className="composer-model-thinking-dot" aria-hidden="true">·</span>
               <span className="composer-model-thinking-level">{delegateSettings.thinkingLevel || "—"}</span>
               <IconChevronDown size={12} aria-hidden="true" className="composer-model-thinking-chevron" />
             </button>

@@ -1,4 +1,5 @@
 import { IPC, ErrorCodes, trustedExtensionCommandId, trustedExtensionCommandName } from "@pi-desktop/shared";
+import type { PluginReviewQuery } from "@pi-desktop/shared";
 import { builtinPaletteItems } from "../builtin-commands";
 import type { AgentExtensionBridge } from "../agent-extensions";
 import type { HostProcess } from "../host-process";
@@ -101,6 +102,26 @@ export function registerMarketIpc({
     // download can be interrupted, and the surface says so rather than
     // assuming the click did something.
     return host.call<{ cancelled: boolean; id: string }>("market.cancelInstall", payload);
+  });
+
+  // Public reviews are read anonymously through the host: the renderer names
+  // plugin ids or one query, and host-core owns the trusted center origin,
+  // the bounds, and the error mapping. Nothing here authenticates or mutates.
+  handle(IPC.invoke.marketReviewSummaries, async (payload?: { pluginIds?: unknown }) => {
+    if (!host) throw new Error("host unavailable");
+    const pluginIds = Array.isArray(payload?.pluginIds) ? payload.pluginIds : [];
+    return host.call("market.reviewSummaries", { pluginIds });
+  });
+
+  handle(IPC.invoke.marketReviewTickers, async (payload?: { pluginIds?: unknown }) => {
+    if (!host) throw new Error("host unavailable");
+    const pluginIds = Array.isArray(payload?.pluginIds) ? payload.pluginIds : [];
+    return host.call("market.reviewTickers", { pluginIds });
+  });
+
+  handle(IPC.invoke.marketReviews, async (payload?: Partial<PluginReviewQuery>) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("market.reviews", { ...(payload ?? {}) });
   });
 
   handle(IPC.invoke.commandPaletteSearch, async (query: string) => {

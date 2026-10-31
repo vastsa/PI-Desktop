@@ -104,9 +104,10 @@ test("the combined chip and menu meet the compact accessible visual contract", (
   assert.match(composerSource, /event\.key === "Escape"/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?position:\s*fixed;/);
   assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?top:\s*0;/);
-  assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(280px,\s*calc\(100vw - 24px\)\)/);
-  assert.match(composerSource, /className="composer-model-thinking-icon"[\s\S]*?<IconBot size=\{14\} \/>/);
-  assert.doesNotMatch(stylesSource, /\.composer-model-thinking-icon\.is-off/);
+  assert.match(stylesSource, /\.composer-model-thinking-menu\s*\{[\s\S]*?width:\s*min\(320px,\s*calc\(100vw - 24px\)\)/);
+  // The glyph is the collapsed-only form of the trigger: at full width the
+  // model name already identifies the control.
+  assert.match(stylesSource, /\.composer-model-thinking-icon\s*\{[\s\S]*?display:\s*none;/);
   assert.match(stylesSource, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
@@ -157,29 +158,35 @@ test("reasoning projection uses the selected exact catalog row and binding", asy
   assert.match(source, /sameComposerModelId\(candidate\.id, modelId\)/);
 });
 
-test("a model row spends the panel's width instead of stacking at its left edge", () => {
-  // The label and the capability icons share one line, with the icons pinned to
-  // the trailing edge: stacking them in a column left the right half of the
-  // menu empty next to every row.
+test("a model row stays on one line and truncates a name that outgrows it", () => {
+  // The label and the row's trailing markers (provider, capability icons,
+  // context window) share one line, with the markers pinned to the trailing
+  // edge. The row never wraps: a name longer than the space left for it is
+  // truncated with an ellipsis, and its wire id stays the row's title.
   assert.match(
     stylesSource,
     /\.composer-model-option-main\s*\{[^}]*flex-direction:\s*row;/,
   );
   assert.match(
     stylesSource,
-    /\.composer-model-option-main\s*\{[^}]*flex-wrap:\s*wrap;/,
+    /\.composer-model-option-main\s*\{[^}]*flex-wrap:\s*nowrap;/,
   );
   assert.match(
     stylesSource,
     /\.composer-model-option-meta\s*\{[^}]*margin-left:\s*auto;/,
   );
-  // One label per row, and a long name wraps in full rather than truncating.
-  assert.doesNotMatch(stylesSource, /\.composer-model-full-id/);
-  assert.doesNotMatch(stylesSource, /\.composer-model-display-name/);
   assert.match(
     stylesSource,
-    /\.composer-model-label\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*white-space:\s*normal;/,
+    /\.composer-model-label\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/,
   );
+  // The provider trailing a row yields width before the model name, so a long
+  // name keeps its own space on the shared line.
+  assert.match(
+    stylesSource,
+    /\.composer-model-option-meta\s*\{[^}]*flex:\s*0 1 auto;/,
+  );
+  assert.doesNotMatch(stylesSource, /\.composer-model-full-id/);
+  assert.doesNotMatch(stylesSource, /\.composer-model-display-name/);
 });
 
 test("an alias is told apart from the catalog name, and capabilities are icons", () => {

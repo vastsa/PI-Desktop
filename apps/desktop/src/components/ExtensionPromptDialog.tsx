@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import { useBlockingOverlay } from "../lib/blocking-overlay";
 import { useHostSafetySurface } from "../lib/host-safety-layer";
 import { useAppStore } from "../stores/app-store";
-import { Button, TooltipButton } from "./ui";
+import { OverlayBackdrop, Button, TooltipButton } from "./ui";
 import { IconClose, IconPlug } from "./icons";
 
 /**
@@ -121,7 +121,7 @@ function ExtensionPromptDialog({
       : "";
 
   const dialog = (
-    <div
+    <OverlayBackdrop
       className="overlay session-rename-dialog-overlay extension-prompt-overlay"
       role="presentation"
       onClick={(event) => {
@@ -206,7 +206,7 @@ function ExtensionPromptDialog({
           </div>
         </form>
       </div>
-    </div>
+    </OverlayBackdrop>
   );
   return createPortal(dialog, document.body);
 }

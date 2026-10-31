@@ -48,7 +48,7 @@ const { register } = await import("node:module");
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { IPC, isImageGenerationModel, imageGenerationBindings } = await import("@pi-desktop/shared");
 const { registerAgentIpc } = await import("../electron/main/ipc/agent-ipc.ts");
-const { searchSessionsAcrossSources } = await import("../electron/main/services/session-search.ts");
+const { localNativeProjectPaths, searchSessionsAcrossSources } = await import("../electron/main/services/session-search.ts");
 const { createEventsSlice } = await import("../src/stores/slices/events-slice.ts");
 const { createTranscriptSlice } = await import("../src/stores/slices/transcript-slice.ts");
 const { api } = await import("../src/lib/api.ts");
@@ -226,7 +226,7 @@ function forkHarness({ host, sidecar, activeTurns = new Map() }) {
     "@pi-desktop/shared": sharedForIpc,
     "../importers": { convertSession() {}, scanAllSources() {}, scanModelConfigs() {} },
     "../services/session-collaboration": { readSessionCollaboration() {} },
-    "../services/session-search": { searchSessionsAcrossSources },
+    "../services/session-search": { localNativeProjectPaths, searchSessionsAcrossSources },
     "../bootstrap/remote-hosts.js": { getActiveRemoteHostsBoot: () => null },
   });
   registerSessionIpc({
@@ -246,6 +246,7 @@ function forkHarness({ host, sidecar, activeTurns = new Map() }) {
   });
   return {
     handle: handlers.get(IPC.invoke.sessionFork),
+    list: handlers.get(IPC.invoke.sessionList),
     search: handlers.get(IPC.invoke.sessionSearch),
     hostCalls,
     sidecarCalls,
@@ -267,6 +268,9 @@ test("global session search merges native sidecar hits with Desktop results", as
     host: (calls) => ({
       call: async (method, input) => {
         calls.push({ method, input });
+        if (method === "projects.list") {
+          return { projects: [{ path: "/work/demo" }, { path: "remote-project:office" }] };
+        }
         return { hits: [desktopHit], nextOffset: null };
       },
     }),
@@ -279,11 +283,133 @@ test("global session search merges native sidecar hits with Desktop results", as
   });
   const result = await search({ query: "side chat", offset: 0 });
   assert.deepEqual(result.hits.map((hit) => hit.session.id), ["native-pi:child", "desktop-session"]);
-  assert.deepEqual(sidecarCalls, [{ method: "native.session.search", input: { query: "side chat" } }]);
-  assert.deepEqual(hostCalls, [{
-    method: "search.sessions",
-    input: { query: "side chat", offset: 0, limit: 30 },
+  assert.deepEqual(sidecarCalls, [{
+    method: "native.session.search",
+    input: { query: "side chat", projectPaths: ["/work/demo"] },
   }]);
+  assert.deepEqual(hostCalls, [
+    { method: "projects.list", input: undefined },
+    { method: "search.sessions", input: { query: "side chat", offset: 0, limit: 30 } },
+  ]);
+});
+
+test("session list forwards local project paths to native discovery (#1732)", async () => {
+  const { list, hostCalls, sidecarCalls } = forkHarness({
+    host: (calls) => ({
+      call: async (method, input) => {
+        calls.push({ method, input });
+        if (method === "projects.list") {
+          return {
+            projects: [
+              { path: "/work/demo" },
+              { path: "/work/demo" },
+              { path: "remote-project:office" },
+              { path: "  " },
+            ],
+          };
+        }
+        if (method === "session.list") {
+          return { sessions: [{ id: "desktop-1", updatedAt: "2026-09-14T00:00:01.000Z" }] };
+        }
+        return {};
+      },
+    }),
+    sidecar: (calls) => ({
+      call: async (method, input) => {
+        calls.push({ method, input });
+        return {
+          sessions: [{ id: "native-pi:1", updatedAt: "2026-09-14T00:00:02.000Z", source: "pi-native" }],
+        };
+      },
+    }),
+  });
+  const result = await list();
+  assert.deepEqual(result.sessions.map((session) => session.id), ["native-pi:1", "desktop-1"]);
+  assert.deepEqual(sidecarCalls, [{
+    method: "native.session.list",
+    input: { projectPaths: ["/work/demo"] },
+  }]);
+  assert.deepEqual(hostCalls.map((call) => call.method), ["projects.list", "session.list"]);
+});
+
+test("a failed projects.list keeps Desktop sessions and logs the skip (#1732)", async () => {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+  try {
+    const { list, sidecarCalls } = forkHarness({
+      host: () => ({
+        call: async (method) => {
+          if (method === "projects.list") throw new Error("index down");
+          if (method === "session.list") {
+            return { sessions: [{ id: "desktop-1", updatedAt: "2026-09-14T00:00:01.000Z" }] };
+          }
+          return {};
+        },
+      }),
+      sidecar: (calls) => ({
+        call: async (method, input) => {
+          calls.push({ method, input });
+          return { sessions: [] };
+        },
+      }),
+    });
+    const result = await list();
+    assert.deepEqual(result.sessions.map((session) => session.id), ["desktop-1"]);
+    assert.deepEqual(sidecarCalls, [{
+      method: "native.session.list",
+      input: { projectPaths: [] },
+    }]);
+    assert.ok(
+      warnings.some((args) => String(args[0]).includes("projects.list failed")),
+      "expected a projects.list warning",
+    );
+  } finally {
+    console.warn = original;
+  }
+});
+
+test("session list attaches host handlers before projects.list settles (#1732)", async () => {
+  let releaseProjects;
+  const projectsGate = new Promise((resolve) => {
+    releaseProjects = resolve;
+  });
+  const rejections = [];
+  const onRejection = (error) => {
+    rejections.push(error);
+  };
+  process.on("unhandledRejection", onRejection);
+  try {
+    const { list } = forkHarness({
+      host: () => ({
+        call: async (method) => {
+          if (method === "projects.list") return projectsGate;
+          if (method === "session.list") throw new Error("session list failed");
+          return {};
+        },
+      }),
+      sidecar: (calls) => ({
+        call: async (method, input) => {
+          calls.push({ method, input });
+          return { sessions: [] };
+        },
+      }),
+    });
+    const pending = list().then(
+      () => "resolved",
+      (error) => error,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(rejections.map((error) => error.message), []);
+    releaseProjects({ projects: [] });
+    const outcome = await pending;
+    assert.equal(outcome instanceof Error, true);
+    assert.match(outcome.message, /session list failed/);
+  } finally {
+    process.off("unhandledRejection", onRejection);
+  }
 });
 
 test("native fork routes to the sidecar and never to the Desktop host", async () => {

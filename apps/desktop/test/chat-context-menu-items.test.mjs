@@ -38,6 +38,7 @@ const {
   userMessageMenuItems,
   assistantTurnMenuItems,
   conversationMenuItems,
+  hasConversationToCopy,
 } = loadMenuItems();
 
 const ids = (items) => items.map((item) => item.id);
@@ -201,4 +202,26 @@ test("copy conversation ignores a live selection", () => {
   });
   items.find((item) => item.id === "copy-conversation").onSelect("this line");
   assert.deepEqual(copied, [{ text: "You:\nHi", selection: undefined }]);
+});
+test("conversation copy requires a session and dialogue or unloaded history", () => {
+  const empty = {
+    sessionId: "session-1",
+    hasMoreBefore: false,
+    hasMoreAfter: false,
+    messages: [],
+  };
+  assert.equal(hasConversationToCopy(empty), false);
+  assert.equal(
+    hasConversationToCopy({ ...empty, sessionId: undefined, messages: [{ role: "user", content: "hello" }] }),
+    false,
+  );
+  assert.equal(
+    hasConversationToCopy({ ...empty, messages: [{ role: "tool", content: "output" }] }),
+    false,
+  );
+  assert.equal(
+    hasConversationToCopy({ ...empty, messages: [{ role: "user", content: " hello " }] }),
+    true,
+  );
+  assert.equal(hasConversationToCopy({ ...empty, hasMoreBefore: true }), true);
 });

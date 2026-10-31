@@ -13,6 +13,7 @@ import {
   statSync,
   unlinkSync,
   writeFileSync,
+  type Stats,
 } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, dirname } from "node:path";
@@ -59,6 +60,35 @@ export type NativePiReadOnlyReason =
   | "provider-unavailable"
   | "project-untrusted";
 
+/** Structural read-only inputs, shared by snapshot callers and the cached projection. */
+type NativeStructuralFacts = {
+  nonEmpty: boolean;
+  validJsonl: boolean;
+  trailingNewline: boolean;
+  validHeader: boolean;
+  headerVersion: unknown;
+  cwd: string;
+};
+
+/**
+ * Summary facts derived only from one session file's bytes.
+ * Valid exactly while (dev, ino, size, mtimeMs) still match, and safe to
+ * discard at any time: list() recomputes every live part itself.
+ */
+type NativeSessionProjection = NativeStructuralFacts & {
+  dev: number;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+  nativeId: string;
+  title: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  model?: { provider: string; modelId: string };
+  thinkingLevel: ThinkingLevel;
+};
+
 type NativeSessionRecord = {
   id: string;
   path: string;
@@ -89,6 +119,82 @@ function stableId(path: string, nativeId: string): string {
 function inside(root: string, candidate: string): boolean {
   const child = relative(root, candidate);
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+}
+
+const MAX_NATIVE_PROJECT_PATHS = 500;
+
+function normalizeProjectPaths(paths: readonly string[] | undefined): string[] {
+  if (!paths) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of paths) {
+    if (typeof value !== "string") continue;
+    const path = value.trim();
+    if (!path || path.startsWith("remote-project:") || seen.has(path)) continue;
+    seen.add(path);
+    normalized.push(path);
+    if (normalized.length >= MAX_NATIVE_PROJECT_PATHS) break;
+  }
+  return normalized;
+}
+
+function warnSessionDirErrors(
+  cwd: string,
+  errors: ReadonlyArray<{ path?: string; scope: string; error: unknown }>,
+  seen: Set<string>,
+): void {
+  for (const entry of errors) {
+    const key = entry.path ?? `${cwd}\0${entry.scope}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    console.warn("[native-pi] sessionDir settings unreadable", key, entry.error);
+  }
+}
+
+function rawSessionDir(cwd: string, agentDir: string, seen: Set<string>): string | undefined {
+  try {
+    const manager = SettingsManager.create(cwd, agentDir);
+    warnSessionDirErrors(cwd, manager.drainErrors(), seen);
+    return manager.getSessionDir() || undefined;
+  } catch (error) {
+    const key = `throw\0${cwd}\0${agentDir}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      console.warn("[native-pi] sessionDir resolution failed", cwd, error);
+    }
+    return undefined;
+  }
+}
+
+/** Absolute `sessionDir` from global settings. Relative values stay project-scoped. */
+function globalAbsoluteSessionDir(agentDir: string, seen: Set<string>): string | undefined {
+  const raw = rawSessionDir(agentDir, agentDir, seen);
+  return raw && isAbsolute(raw) ? resolve(raw) : undefined;
+}
+
+/** Pi resolves a relative `sessionDir` from the project working directory. */
+function projectSessionDir(projectPath: string, agentDir: string, seen: Set<string>): string | undefined {
+  const raw = rawSessionDir(projectPath, agentDir, seen);
+  if (!raw) return undefined;
+  return isAbsolute(raw) ? resolve(raw) : resolve(projectPath, raw);
+}
+
+/**
+ * Custom session directories are flat. Pi writes `*.jsonl` in `sessionDir`
+ * itself and does not encode a cwd subdirectory, so session files in
+ * subdirectories of a configured sessionDir are ignored.
+ */
+function topLevelJsonl(dir: string): string[] {
+  try {
+    const files: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      // `isFile()` is false for a symlink, same as the default-root walk.
+      if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(join(dir, entry.name));
+    }
+    return files;
+  } catch {
+    return [];
+  }
 }
 
 function textContent(content: unknown): { text: string; thinking?: string } {
@@ -466,6 +572,10 @@ export class NativePiSessionService {
   private readonly opening = new Set<string>();
   private modelRuntime?: ModelRuntime;
   private readonly modelRuntimeFactory: () => Promise<ModelRuntime>;
+  /** Real directories that already admitted a file. Open and fork keep them after a later empty project list. */
+  private readonly admittedRoots: string[] = [];
+  /** File-identity keyed cache of list()-only summary facts; never holds live state. */
+  private readonly projections = new Map<string, NativeSessionProjection>();
 
   constructor(options: {
     agentDir?: string;
@@ -485,68 +595,126 @@ export class NativePiSessionService {
         }));
   }
 
-  async list(): Promise<SessionSummary[]> {
-    let root: string;
+  private configuredSessionDirs(projectPaths: readonly string[]): string[] {
+    const dirs: string[] = [];
+    const seen = new Set<string>();
+    const settingsErrors = new Set<string>();
+    const add = (dir: string | undefined) => {
+      if (!dir) return;
+      const resolved = resolve(dir);
+      if (seen.has(resolved)) return;
+      seen.add(resolved);
+      dirs.push(resolved);
+    };
+    add(globalAbsoluteSessionDir(this.agentDir, settingsErrors));
+    for (const projectPath of projectPaths) add(projectSessionDir(projectPath, this.agentDir, settingsErrors));
+    return dirs;
+  }
+
+  private sessionRoots(projectPaths: readonly string[] = []): string[] {
+    const roots: string[] = [];
+    const add = (dir: string) => {
+      try {
+        const real = realpathSync(dir);
+        if (!roots.includes(real)) roots.push(real);
+      } catch {
+        // A missing directory contributes no files and no containment root.
+      }
+    };
+    add(this.root);
+    for (const dir of this.configuredSessionDirs(projectPaths)) add(dir);
+    for (const dir of this.admittedRoots) add(dir);
+    return roots;
+  }
+
+  async list(options?: { projectPaths?: readonly string[] }): Promise<SessionSummary[]> {
+    // Kept local so two overlapping list() calls cannot swap each other's roots.
+    const projectPaths = normalizeProjectPaths(options?.projectPaths);
+    let defaultRoot: string | undefined;
     try {
-      root = realpathSync(this.root);
+      defaultRoot = realpathSync(this.root);
     } catch {
-      return [];
+      defaultRoot = undefined;
     }
+    const extraRoots: string[] = [];
+    for (const dir of this.configuredSessionDirs(projectPaths)) {
+      try {
+        const real = realpathSync(dir);
+        if (defaultRoot && (real === defaultRoot || inside(defaultRoot, real))) continue;
+        if (!extraRoots.includes(real)) extraRoots.push(real);
+      } catch {
+        // The configured directory does not exist yet.
+      }
+    }
+    if (!defaultRoot && extraRoots.length === 0) return [];
+    const allowed = [...(defaultRoot ? [defaultRoot] : []), ...extraRoots];
+    for (const root of allowed) {
+      if (!this.admittedRoots.includes(root)) this.admittedRoots.push(root);
+    }
+    const seenCandidates = new Set<string>();
+    const candidates = [
+      ...(defaultRoot ? walkJsonl(defaultRoot) : []),
+      ...extraRoots.flatMap((dir) => topLevelJsonl(dir)),
+    ].filter((candidate) => {
+      if (seenCandidates.has(candidate)) return false;
+      seenCandidates.add(candidate);
+      return true;
+    });
     const modelRuntime = await this.modelRuntimeFactory().catch(() => undefined);
     this.modelRuntime = modelRuntime;
     const trustStore = new ProjectTrustStore(this.agentDir);
+    const observed = new Set<string>();
     const summaries = await Promise.all(
-      walkJsonl(root).map(async (candidate) => {
+      candidates.map(async (candidate) => {
         try {
           const path = realpathSync(candidate);
-          if (!inside(root, path) || lstatSync(path).isSymbolicLink()) return undefined;
-          const snap = nativePiSnapshot(path);
-          const entries = parseSessionEntries(snap.bytes.toString("utf8"));
-          const header = entries.find((entry) => entry.type === "session") as any;
-          if (!header || typeof header.id !== "string") return undefined;
-          const manager = SessionManager.inMemory(header.cwd ?? "", undefined, entries);
-          const id = stableId(path, header.id);
-          const branch = manager.getBranch();
-          const messageCount = branch.filter((entry) => entry.type === "message").length;
-          const firstUser = branch.find((entry) => entry.type === "message" && (entry as SessionMessageEntry).message.role === "user") as SessionMessageEntry | undefined;
-          const context = manager.buildSessionContext();
-          const createdAt = typeof header.timestamp === "string" ? header.timestamp : new Date(statSync(path).birthtimeMs).toISOString();
-          const updatedAt = branch.at(-1)?.timestamp ?? createdAt;
-          const cwd = typeof header.cwd === "string" ? header.cwd : "";
-          this.records.set(id, { id, path, nativeId: header.id, cwd });
-          let reason = this.structuralReadOnlyReason(snap, header, cwd);
+          observed.add(path);
+          if (!allowed.some((root) => inside(root, path)) || lstatSync(path).isSymbolicLink()) return undefined;
+          const projection = this.projectSession(path);
+          if (!projection) return undefined;
+          const { nativeId, cwd } = projection;
+          const id = stableId(path, nativeId);
+          this.records.set(id, { id, path, nativeId, cwd });
+          let reason = this.structuralReason(projection);
           if (!reason && hasTrustRequiringProjectResources(cwd) && trustStore.get(cwd) !== true) {
             reason = "project-untrusted";
           }
           if (
             !reason &&
-            (!context.model ||
-              !modelRuntime?.getModel(context.model.provider, context.model.modelId) ||
-              !modelRuntime.hasConfiguredAuth(context.model.provider))
+            (!projection.model ||
+              !modelRuntime?.getModel(projection.model.provider, projection.model.modelId) ||
+              !modelRuntime.hasConfiguredAuth(projection.model.provider))
           ) {
             reason = "provider-unavailable";
           }
-          if (!reason) reason = this.ownershipReadOnlyReason(id, path, snap);
+          if (!reason) reason = this.ownershipReadOnlyReason(id, path);
           return {
             id,
-            title: manager.getSessionName() ?? (firstUser ? textContent((firstUser.message as any).content).text.slice(0, 80) : header.id),
-            messageCount,
+            title: projection.title,
+            messageCount: projection.messageCount,
             ...(cwd && existsSync(cwd) ? { projectPath: cwd } : {}),
-            ...(context.model ? { providerId: context.model.provider, modelId: context.model.modelId } : {}),
+            ...(projection.model
+              ? { providerId: projection.model.provider, modelId: projection.model.modelId }
+              : {}),
             mode: "agent" as const,
-            thinkingLevel: thinkingLevel(context.thinkingLevel),
+            thinkingLevel: projection.thinkingLevel,
             permissionMode: "inherit" as const,
             source: "pi-native" as const,
             capabilities: { canPrompt: !reason, canStop: this.runtimes.get(id)?.isRunning ?? false, canRefresh: true },
             ...(reason ? { readOnlyReason: reason } : {}),
-            updatedAt,
-            createdAt,
+            updatedAt: projection.updatedAt,
+            createdAt: projection.createdAt,
           } as SessionSummary;
         } catch {
           return undefined;
         }
       }),
     );
+    // Drop projections for files this scan no longer sees, so the cache
+    // tracks the scan roots instead of growing for the service's lifetime.
+    for (const cachedPath of this.projections.keys()) {
+      if (!observed.has(cachedPath)) this.projections.delete(cachedPath);
+    }
     // A copied session file (backup, manual copy) under the scan root must
     // not become a second session: identity follows the header id, not the
     // path. Keep the newest write per native id and drop the stale copies
@@ -587,24 +755,31 @@ export class NativePiSessionService {
       const record = this.records.get(summary.id);
       if (!record) continue;
       if (seenNativeIds.has(record.nativeId)) {
-        this.records.delete(summary.id);
+        // Two directory names can resolve to one file and share this id.
+        // Deleting it would drop the winner while both rows stay listed.
+        if (!winnerIds.has(summary.id)) this.records.delete(summary.id);
         continue;
       }
       seenNativeIds.add(record.nativeId);
       winnerIds.add(summary.id);
     }
-    deduped.push(...summaries.filter((summary) => summary && winnerIds.has(summary.id)));
+    const emittedIds = new Set<string>();
+    deduped.push(...summaries.filter((summary) => {
+      if (!summary || !winnerIds.has(summary.id) || emittedIds.has(summary.id)) return false;
+      emittedIds.add(summary.id);
+      return true;
+    }));
     return deduped
       .filter((session): session is SessionSummary => Boolean(session))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  async search(query: string): Promise<SessionSearchPage> {
+  async search(query: string, options?: { projectPaths?: readonly string[] }): Promise<SessionSearchPage> {
     const normalized = query.trim();
     if (!normalized) return { hits: [], nextOffset: null };
     if (normalized.length > 500) throw new Error("query exceeds 500 characters");
 
-    const sessions = await this.list();
+    const sessions = await this.list(options);
     const hits: SessionSearchPage["hits"] = [];
     for (const session of sessions) {
       const record = this.records.get(session.id);
@@ -809,8 +984,8 @@ export class NativePiSessionService {
     let published: CompleteOwnedFile | undefined;
     try {
       const directory = realpathSync(dirname(record.path));
-      const root = realpathSync(this.root);
-      if (!inside(root, directory)) {
+      const roots = this.sessionRoots();
+      if (!roots.some((root) => inside(root, directory))) {
         throw Object.assign(new Error("Native Pi session path is outside the allowed root"), {
           errorCode: "PERMISSION_DENIED",
         });
@@ -904,7 +1079,7 @@ export class NativePiSessionService {
         throw new Error("Native Pi fork produced an invalid session file");
       }
       const resolvedChild = realpathSync(childPath);
-      if (resolvedChild !== childPath || !inside(root, resolvedChild)) {
+      if (resolvedChild !== childPath || !roots.some((root) => inside(root, resolvedChild))) {
         throw Object.assign(new Error("Native Pi fork path is outside the session root"), {
           errorCode: "PERMISSION_DENIED",
         });
@@ -1040,14 +1215,20 @@ export class NativePiSessionService {
     this.runtimes.clear();
   }
 
-  private ownershipReadOnlyReason(id: string, path: string, snap: NativePiSnapshot): NativePiReadOnlyReason | undefined {
+  private ownershipReadOnlyReason(id: string, path: string, snap?: NativePiSnapshot): NativePiReadOnlyReason | undefined {
     const runtime = this.runtimes.get(id);
     if (runtime) {
       try { runtime.assertUnchanged(); }
       catch { return "changed-externally"; }
       return runtime.isRunning ? "busy" : undefined;
     }
-    return this.opening.has(id) || !NativePiSessionLease.canAcquire(path, snap) ? "busy" : undefined;
+    if (this.opening.has(id)) return "busy";
+    // A missing lock file already proves the lease is acquirable, so the list
+    // path no longer has to read and hash every session file for its rows.
+    // Only a present lock needs the snapshot, for the append-only reclaim
+    // check canAcquire() performs.
+    if (!existsSync(`${path}.pi-desktop.lock`)) return undefined;
+    return NativePiSessionLease.canAcquire(path, snap ?? nativePiSnapshot(path)) ? undefined : "busy";
   }
 
   private record(id: string): NativeSessionRecord {
@@ -1056,9 +1237,8 @@ export class NativePiSessionService {
     if (!record) {
       throw Object.assign(new Error("Native Pi session not found; refresh sessions and try again"), { errorCode: "NOT_FOUND" });
     }
-    const root = realpathSync(this.root);
     const path = realpathSync(record.path);
-    if (!inside(root, path) || lstatSync(path).isSymbolicLink()) {
+    if (!this.sessionRoots().some((root) => inside(root, path)) || lstatSync(path).isSymbolicLink()) {
       throw Object.assign(new Error("Native Pi session path is outside the allowed root"), { errorCode: "PERMISSION_DENIED" });
     }
     return { ...record, path };
@@ -1071,13 +1251,89 @@ export class NativePiSessionService {
   }
 
   private structuralReadOnlyReason(snap: NativePiSnapshot, header: any, cwd: string): NativePiReadOnlyReason | undefined {
-    if (!snap.bytes.length || !snap.validJsonl || !header || header.type !== "session") {
-      return "invalid-session";
-    }
-    if (header.version !== CURRENT_SESSION_VERSION) return "legacy-format";
-    if (snap.bytes.at(-1) !== 0x0a) return "missing-trailing-newline";
-    if (!cwd || !existsSync(cwd) || !statSync(cwd).isDirectory()) return "missing-cwd";
+    return this.structuralReason({
+      nonEmpty: snap.bytes.length > 0,
+      validJsonl: snap.validJsonl,
+      trailingNewline: snap.bytes.at(-1) === 0x0a,
+      validHeader: Boolean(header) && header.type === "session",
+      headerVersion: header?.version,
+      cwd,
+    });
+  }
+
+  // One implementation for both the snapshot paths (detail/open/fork) and the
+  // cached list projection, so the two orders of checks cannot drift apart.
+  private structuralReason(facts: NativeStructuralFacts): NativePiReadOnlyReason | undefined {
+    if (!facts.nonEmpty || !facts.validJsonl || !facts.validHeader) return "invalid-session";
+    if (facts.headerVersion !== CURRENT_SESSION_VERSION) return "legacy-format";
+    if (!facts.trailingNewline) return "missing-trailing-newline";
+    if (!facts.cwd || !existsSync(facts.cwd) || !statSync(facts.cwd).isDirectory()) return "missing-cwd";
     return undefined;
+  }
+
+  /**
+   * File-derived summary facts for one session file, reused only while the
+   * file identity (dev/ino/size/mtimeMs) is unchanged: an append, rotate or
+   * replace always re-parses. Nothing live is cached here — ownership, trust,
+   * provider availability and cwd existence are recomputed on every call.
+   * Every write path still hashes the full bytes through nativePiSnapshot(),
+   * so external rewrite detection is untouched.
+   */
+  private projectSession(path: string): NativeSessionProjection | undefined {
+    let stats: Stats;
+    try {
+      stats = statSync(path);
+    } catch {
+      this.projections.delete(path);
+      return undefined;
+    }
+    const cached = this.projections.get(path);
+    if (
+      cached &&
+      cached.dev === stats.dev &&
+      cached.ino === stats.ino &&
+      cached.size === stats.size &&
+      cached.mtimeMs === stats.mtimeMs
+    ) {
+      return cached;
+    }
+    const snap = nativePiSnapshot(path);
+    const entries = parseSessionEntries(snap.bytes.toString("utf8"));
+    const header = entries.find((entry) => entry.type === "session") as any;
+    if (!header || typeof header.id !== "string") {
+      this.projections.delete(path);
+      return undefined;
+    }
+    const manager = SessionManager.inMemory(header.cwd ?? "", undefined, entries);
+    const branch = manager.getBranch();
+    const firstUser = branch.find(
+      (entry) => entry.type === "message" && (entry as SessionMessageEntry).message.role === "user",
+    ) as SessionMessageEntry | undefined;
+    const context = manager.buildSessionContext();
+    const createdAt = typeof header.timestamp === "string" ? header.timestamp : new Date(stats.birthtimeMs).toISOString();
+    const projection: NativeSessionProjection = {
+      dev: snap.dev,
+      ino: snap.ino,
+      size: snap.size,
+      mtimeMs: snap.mtimeMs,
+      nonEmpty: snap.bytes.length > 0,
+      validJsonl: snap.validJsonl,
+      trailingNewline: snap.bytes.at(-1) === 0x0a,
+      validHeader: true,
+      headerVersion: header.version,
+      nativeId: header.id,
+      cwd: typeof header.cwd === "string" ? header.cwd : "",
+      title:
+        manager.getSessionName() ??
+        (firstUser ? textContent((firstUser.message as any).content).text.slice(0, 80) : header.id),
+      messageCount: branch.filter((entry) => entry.type === "message").length,
+      createdAt,
+      updatedAt: branch.at(-1)?.timestamp ?? createdAt,
+      ...(context.model ? { model: { provider: context.model.provider, modelId: context.model.modelId } } : {}),
+      thinkingLevel: thinkingLevel(context.thinkingLevel),
+    };
+    this.projections.set(path, projection);
+    return projection;
   }
 
   private async openRuntime(id: string, notify: NativePiRuntimeNotifier): Promise<NativePiRuntime> {

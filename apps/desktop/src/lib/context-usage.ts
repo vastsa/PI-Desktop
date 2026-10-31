@@ -1,4 +1,5 @@
 import {
+  contextOccupancyTokens,
   effectiveContextWindow,
   modelWireIdsEqual,
   type ContextUsageDisplay,
@@ -9,6 +10,8 @@ import {
   type ToolTokenUsage,
   type UiMessage,
 } from "@pi-desktop/shared";
+
+export { contextOccupancyTokens };
 
 export const DEFAULT_CONTEXT_WINDOW = 128_000;
 
@@ -24,22 +27,41 @@ export function usageTokenTotal(usage: MessageUsage): number {
   return positiveTokenCount(usage.inputTokens) + positiveTokenCount(usage.outputTokens);
 }
 
+export type TurnUsageBreakdown = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+};
+
 /**
- * Occupancy of one model request: `input + output + cache.read + cache.write`
- * on that request. `output` already carries the reasoning tokens — Chat
- * Completions reports `completion_tokens` including `reasoning_tokens`,
- * Responses reports `output_tokens` including `reasoning_tokens`, and Google
- * reports `candidatesTokenCount + thoughtsTokenCount` — so `reasoningTokens`
- * is a subset and must not be added again. Cache reads from earlier tool-loop
- * calls are not occupancy.
+ * Token composition of one visual turn, built from the `usage` that
+ * `getAssistantTurnSummary` already aggregated across the turn's assistant
+ * messages.
+ *
+ * `totalTokens` is deliberately the sum of the four buckets and never the
+ * provider-reported `usage.totalTokens`, which can be rounded or omit cache
+ * buckets. Reasoning tokens are already part of `outputTokens`, so they are
+ * never added again. Subagent spend stays out: only the parent messages'
+ * usage is aggregated here, consistent with ADR 0171.
+ *
+ * This is a turn aggregate, unlike the composer context inspector, which
+ * describes only the newest model request (D355 / ADR 0193).
  */
-export function contextOccupancyTokens(usage: MessageUsage): number {
-  const occupancy =
-    positiveTokenCount(usage.inputTokens) +
-    positiveTokenCount(usage.outputTokens) +
-    positiveTokenCount(usage.cacheReadTokens) +
-    positiveTokenCount(usage.cacheWriteTokens);
-  return occupancy > 0 ? occupancy : usageTokenTotal(usage);
+export function turnUsageBreakdown(usage?: MessageUsage): TurnUsageBreakdown {
+  const inputTokens = positiveTokenCount(usage?.inputTokens);
+  const outputTokens = positiveTokenCount(usage?.outputTokens);
+  const cacheReadTokens = positiveTokenCount(usage?.cacheReadTokens);
+  const cacheWriteTokens = positiveTokenCount(usage?.cacheWriteTokens);
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    totalTokens:
+      inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
+  };
 }
 
 export function latestMessageUsage(messages: UiMessage[]): MessageUsage | undefined {
@@ -139,6 +161,25 @@ export function calculateContextUsage(
     usedPercent,
     remainingPercent: 100 - usedPercent,
   };
+}
+
+/**
+ * Context occupancy for the composer ring. After a compaction and before the
+ * next request reports usage, the checkpoint's estimate replaces the last
+ * request's figure, which no longer describes the context (#2015).
+ */
+export function composerContextUsage(inspector: {
+  usage: MessageUsage;
+  contextWindow: number;
+  compactedContextTokens?: number;
+}): ContextUsage {
+  const tokens = inspector.compactedContextTokens;
+  return calculateContextUsage(
+    tokens !== undefined
+      ? { inputTokens: tokens, outputTokens: 0, totalTokens: tokens }
+      : inspector.usage,
+    inspector.contextWindow,
+  );
 }
 
 /**

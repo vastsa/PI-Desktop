@@ -81,7 +81,7 @@ function electronProbe() {
       window.showInactive();
       const handle = window.getNativeWindowHandle();
       const hwnd = (handle.length === 8 ? handle.readBigUInt64LE() : BigInt(handle.readUInt32LE())).toString();
-      for (const stage of ["overflow-end", "switch-back", "overflow-start", "keyboard-reorder", "one-tab", "no-tabs"]) {
+      for (const stage of ["active-close", "overflow-end", "switch-back", "overflow-start", "keyboard-reorder", "one-tab", "no-tabs"]) {
         const points = await window.webContents.executeJavaScript("globalThis.workPanelDragProbe(" + JSON.stringify(stage) + ")");
         await window.webContents.capturePage();
         const scale = await window.webContents.executeJavaScript("devicePixelRatio");

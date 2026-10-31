@@ -36,6 +36,7 @@ export type DiscoveryAttempt = {
 };
 
 export type DiscoveryProbeOutcome = {
+  complete: boolean;
   models: DiscoveredModel[];
   /** The base URL that answered: what the row should store and display. */
   effectiveBaseUrl: string;
@@ -136,6 +137,7 @@ export async function probeDiscoveryCandidates(
       return {
         outcome: {
           models: result.models,
+          complete: result.complete === true,
           effectiveBaseUrl: candidate.baseUrl,
           discoveryStyle: candidate.discoveryStyle,
           ...(candidate.apiStyleHint ? { apiStyleHint: candidate.apiStyleHint } : {}),

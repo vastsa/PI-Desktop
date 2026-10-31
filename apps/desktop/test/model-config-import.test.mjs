@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const { scanModelConfigs } = await import("../electron/main/importers/model-config.ts");
+const { publicModelConfigCandidate } = await import("@pi-desktop/shared");
 
 test("scanModelConfigs reads Claude Code, OpenCode, Codex, and Pi stores", async () => {
   const home = await mkdtemp(join(tmpdir(), "pi-model-import-"));
@@ -221,4 +222,143 @@ test("scanModelConfigs keeps the pi native config authoritative when a cc-switch
   assert.equal(piDrafts[0].name, "opencode-go");
   assert.equal(piDrafts[0].modelIds.length, 10);
   assert.ok(piDrafts[0].modelIds.includes("m10"));
+});
+
+// Regression: Settings → Models only read models.json, so providers connected
+// through `pi /login` (auth.json only) never appeared in the Pi group. The scan
+// now pairs auth.json API keys with Pi's cached catalog and fills keys that
+// models.json references through an unresolved environment variable.
+test("scanModelConfigs imports Pi auth-only providers and fills unresolved model keys", async () => {
+  const home = await mkdtemp(join(tmpdir(), "pi-agent-auth-import-"));
+  const agentDir = join(home, ".pi", "agent");
+  await mkdir(agentDir, { recursive: true });
+
+  await writeFile(
+    join(agentDir, "models.json"),
+    JSON.stringify({
+      providers: {
+        custom: {
+          baseUrl: "https://custom.example/v1",
+          api: "openai-completions",
+          apiKey: "env:CUSTOM_KEY",
+          models: [{ id: "custom-model" }],
+        },
+      },
+    }),
+  );
+  await writeFile(
+    join(agentDir, "auth.json"),
+    JSON.stringify({
+      custom: { type: "api_key", key: "sk-custom-auth" },
+      deepseek: { type: "api_key", key: "sk-deepseek" },
+      command: { type: "api_key", key: "!security find-generic-password" },
+      codex: { type: "oauth", access: "oauth-access" },
+    }),
+  );
+  await writeFile(
+    join(agentDir, "models-store.json"),
+    JSON.stringify({
+      deepseek: {
+        models: [
+          {
+            id: "deepseek-flash",
+            api: "openai-completions",
+            baseUrl: "https://api.deepseek.com",
+            reasoning: true,
+            contextWindow: 1000000,
+            maxTokens: 384000,
+          },
+        ],
+      },
+      codex: {
+        models: [
+          {
+            id: "gpt-6-sol",
+            api: "openai-codex-responses",
+            baseUrl: "https://chatgpt.com/backend-api",
+          },
+        ],
+      },
+    }),
+  );
+
+  const drafts = await scanModelConfigs({ homeDir: home, env: {} });
+  const piDrafts = drafts.filter((draft) => draft.source === "pi");
+  assert.deepEqual(
+    piDrafts.map((draft) => draft.externalId).sort(),
+    ["custom", "deepseek"],
+  );
+  assert.equal(piDrafts.find((draft) => draft.externalId === "custom")?.secretValue, "sk-custom-auth");
+  assert.equal(piDrafts.find((draft) => draft.externalId === "deepseek")?.secretValue, "sk-deepseek");
+  assert.ok(!piDrafts.some((draft) => draft.externalId === "codex"));
+  assert.ok(!piDrafts.some((draft) => draft.externalId === "command"));
+  assert.ok(
+    !JSON.stringify(piDrafts.map((draft) => publicModelConfigCandidate(draft))).includes(
+      "sk-custom-auth",
+    ),
+  );
+  assert.ok(
+    !JSON.stringify(piDrafts.map((draft) => publicModelConfigCandidate(draft))).includes(
+      "sk-deepseek",
+    ),
+  );
+});
+
+// Regression: readPi originally used `promise ?? fallbackPromise`, which never
+// awaited the left side and therefore never read the documented ~/.pi fallback.
+test("scanModelConfigs reads Pi fallback files directly under ~/.pi", async () => {
+  const home = await mkdtemp(join(tmpdir(), "pi-fallback-import-"));
+  const configDir = join(home, ".pi");
+  await mkdir(configDir, { recursive: true });
+
+  await writeFile(
+    join(configDir, "models.json"),
+    JSON.stringify({
+      providers: {
+        legacy: {
+          baseUrl: "https://legacy.example/v1",
+          api: "openai-completions",
+          apiKey: "env:LEGACY_KEY",
+          models: [{ id: "legacy-model" }],
+        },
+      },
+    }),
+  );
+  await writeFile(
+    join(configDir, "auth.json"),
+    JSON.stringify({
+      legacy: { type: "api_key", key: "sk-legacy" },
+      "auth-only": { type: "api_key", key: "sk-auth-only" },
+    }),
+  );
+  await writeFile(
+    join(configDir, "models-store.json"),
+    JSON.stringify({
+      "auth-only": {
+        models: [
+          {
+            id: "auth-model",
+            api: "openai-completions",
+            baseUrl: "https://auth.example/v1",
+          },
+        ],
+      },
+    }),
+  );
+
+  const drafts = (await scanModelConfigs({ homeDir: home, env: {} })).filter(
+    (draft) => draft.source === "pi",
+  );
+  assert.deepEqual(
+    drafts.map((draft) => draft.externalId).sort(),
+    ["auth-only", "legacy"],
+  );
+  assert.equal(
+    drafts.find((draft) => draft.externalId === "legacy")?.secretValue,
+    "sk-legacy",
+  );
+  assert.equal(
+    drafts.find((draft) => draft.externalId === "auth-only")?.secretValue,
+    "sk-auth-only",
+  );
 });

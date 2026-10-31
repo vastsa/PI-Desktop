@@ -19,7 +19,7 @@ import { TooltipButton } from "./ui";
 import {
   aggregateToolTokenUsage,
   calculateCacheRate,
-  calculateContextUsage,
+  composerContextUsage,
   calculateTokenRate,
   contextOccupancyTokens,
   contextUsageView,
@@ -42,6 +42,7 @@ export function ContextUsageInspector({
   responseDurationMs,
   responseOutputTokens,
   responseOutputEstimated = false,
+  compactedContextTokens,
 }: {
   usage: MessageUsage;
   turnUsage: MessageUsage;
@@ -50,6 +51,7 @@ export function ContextUsageInspector({
   responseDurationMs?: number;
   responseOutputTokens?: number;
   responseOutputEstimated?: boolean;
+  compactedContextTokens?: number;
 }) {
   const { t } = useTranslation();
   const panelId = useId();
@@ -94,7 +96,11 @@ export function ContextUsageInspector({
     isRunning: isSessionRunning,
     modelRequestActivity,
   });
-  const context = calculateContextUsage(usage, contextWindow);
+  const context = composerContextUsage({
+    usage,
+    contextWindow,
+    compactedContextTokens,
+  });
   // The display preference flips the leading figure only; capacity colors
   // still follow remaining space so the warning state keeps one meaning.
   const usageDisplay = useAppStore((state) =>
@@ -113,20 +119,28 @@ export function ContextUsageInspector({
     usage.inputTokens,
     usage.cacheReadTokens,
   );
-  const modelResponseDuration = formatToolDuration(
-    (sessionTiming.timing?.modelResponseMs ?? 0) / 1_000,
+  const formatTimingValue = (durationMs?: number, percent?: number) => {
+    if (sessionTiming.historyStatus === "loading") return "…";
+    if (sessionTiming.historyStatus === "error" || durationMs === undefined) {
+      return t("chat.usageTimingUnavailable");
+    }
+    return `${formatToolDuration(durationMs / 1_000)}${
+      percent === undefined ? "" : ` · ${percent}%`
+    }`;
+  };
+  const timingBreakdown = sessionTiming.breakdown;
+  const networkRequestValue = formatTimingValue(
+    timingBreakdown?.networkRequestMs,
+    timingBreakdown?.networkRequestPercent,
   );
-  const modelResponsePercent = sessionTiming.timing?.modelResponsePercent;
-  const modelResponseValue =
-    sessionTiming.historyStatus === "loading"
-      ? "…"
-      : sessionTiming.historyStatus === "error"
-        ? t("chat.usageTimingUnavailable")
-        : `${modelResponseDuration}${
-            modelResponsePercent === undefined
-              ? ""
-              : ` · ${modelResponsePercent}%`
-          }`;
+  const modelResponseValue = formatTimingValue(
+    timingBreakdown?.modelResponseMs,
+    timingBreakdown?.modelResponsePercent,
+  );
+  const toolCallValue = formatTimingValue(
+    timingBreakdown?.toolCallMs,
+    timingBreakdown?.toolCallPercent,
+  );
   const toolRows = aggregateToolTokenUsage(tools);
   const toolTotal = toolRows.reduce(
     (total, row) => total + row.totalTokens,
@@ -350,19 +364,43 @@ export function ContextUsageInspector({
         </div>
       </div>
       {sessionTiming.timing ? (
-        <div
-          className="context-inspector-kpis"
-          aria-busy={sessionTiming.historyStatus === "loading"}
-        >
+        <div className="context-inspector-kpis">
           <div>
             <span>{t("chat.usageSessionTime")}</span>
             <strong>
               {formatToolDuration(sessionTiming.timing.elapsedMs / 1_000)}
             </strong>
           </div>
-          <div>
-            <span>{t("chat.usageModelResponse")}</span>
-            <strong>{modelResponseValue}</strong>
+        </div>
+      ) : null}
+      {sessionTiming.timing ? (
+        <div
+          className="context-inspector-summary"
+          aria-busy={sessionTiming.historyStatus === "loading"}
+        >
+          <div className="context-inspector-summary-row">
+            <strong title={t("chat.usageNetworkRequestHelp")}>
+              {t("chat.usageNetworkRequest")}
+            </strong>
+            <span className="context-inspector-summary-values">
+              {networkRequestValue}
+            </span>
+          </div>
+          <div className="context-inspector-summary-row">
+            <strong title={t("chat.usageModelResponseHelp")}>
+              {t("chat.usageModelResponse")}
+            </strong>
+            <span className="context-inspector-summary-values">
+              {modelResponseValue}
+            </span>
+          </div>
+          <div className="context-inspector-summary-row">
+            <strong title={t("chat.usageToolCallsHelp")}>
+              {t("chat.usageToolCalls")}
+            </strong>
+            <span className="context-inspector-summary-values">
+              {toolCallValue}
+            </span>
           </div>
         </div>
       ) : null}

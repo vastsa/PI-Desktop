@@ -8,7 +8,14 @@ sidecar.setHost({
   async call<T>() { return { session: { messages: [] } } as T; },
   onNotification: () => () => {}, onExit: () => () => {},
 });
-let trust: { systemCount: number; systemIncluded: boolean; extraIncluded: boolean } | undefined;
+let trust:
+  | {
+      systemCount: number;
+      usableSystemCount: number;
+      systemIncluded: boolean;
+      extraIncluded: boolean;
+    }
+  | undefined;
 const events: AgentEventEnvelope[] = [];
 const ended = Promise.withResolvers<void>();
 sidecar.onNotification((method, params) => {
@@ -32,7 +39,10 @@ try {
     },
   });
   await ended.promise;
-  assert.ok(trust?.systemIncluded, "sidecar must include OS-trusted roots");
+  assert.ok(
+    trust?.systemIncluded,
+    "sidecar must include every non-expired OS-trusted root",
+  );
   assert.ok(trust?.extraIncluded, "inherited extra CA must remain trusted");
   const messages = events.flatMap(({ event }) => event.type === "message_end" ? [event.message] : []);
   const expected = process.argv[4];

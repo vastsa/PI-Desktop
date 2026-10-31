@@ -1,24 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  AssistantMessageFrameEncoder,
+  type AssistantMessage,
+  type AssistantMessageEvent,
   type AssistantMessageEventStream,
-  type AssistantMessageFrame,
   type Model,
 } from "@earendil-works/pi-ai";
 import { stream as streamAnthropic } from "@earendil-works/pi-ai/api/anthropic-messages";
 import { stream as streamOpenAIResponses } from "@earendil-works/pi-ai/api/openai-responses";
 
-// A gateway that re-serializes provider events with `omitempty` (Go) or drops
-// `undefined` (JS) sends a delta event whose string field is simply absent
-// instead of `""`. Issue #883: the assistant message frame encoder read
-// `.length` off that missing field, threw a bare TypeError, and the runtime
-// reported it as a retriable provider failure that then reproduced on every
-// later turn of the session — a fork inherited it and a new session was clean.
-//
-// These tests drive the real stream decoders with a stubbed transport and feed
-// every event through the real frame encoder, because that pair is where the
-// failure lived. They guard `patches/@earendil-works__pi-ai@0.87.1.patch`; if
-// the patch is dropped, they fail again.
+// Exercise real provider stream decoders with omitted empty string fields.
+// Pi 1.3 removed the experimental frame codec; Desktop consumes the stream
+// events and final message directly. Keep the decoder regression coverage
+// without recreating the removed codec or depending on its private behavior.
 
 const context = {
   messages: [
@@ -70,25 +63,29 @@ function fetchReturning(body: string): typeof fetch {
 type Outcome = {
   error: Error | undefined;
   eventTypes: string[];
-  frames: AssistantMessageFrame[];
+  frames: AssistantMessageEvent[];
+  message?: AssistantMessage;
 };
 
-/** Decode the stub body and run every decoder event through the frame encoder. */
+/** Decode the fixture and capture the stream events and final message. */
 async function drive(stream: AssistantMessageEventStream): Promise<Outcome> {
-  const encoder = new AssistantMessageFrameEncoder();
   const eventTypes: string[] = [];
-  const frames: AssistantMessageFrame[] = [];
+  const frames: AssistantMessageEvent[] = [];
   try {
     for await (const event of stream) {
+      if (event.type === "text_delta" || event.type === "thinking_delta" || event.type === "toolcall_delta") {
+        expect(typeof event.delta).toBe("string");
+      }
       eventTypes.push(event.type);
-      const frame = encoder.encode(event);
-      if (frame !== undefined) frames.push(frame);
+      frames.push(structuredClone(event));
     }
-    await stream.result();
+    const message = await stream.result();
+    expect(message.stopReason).not.toBe("error");
+    expect(JSON.stringify(message.content)).not.toContain("undefined");
+    return { error: undefined, eventTypes, frames, message };
   } catch (error) {
     return { error: error as Error, eventTypes, frames };
   }
-  return { error: undefined, eventTypes, frames };
 }
 
 const anthropic = <T extends { type: string }>(events: readonly T[]) =>
@@ -107,18 +104,18 @@ const responses = <T extends { type: string }>(events: readonly T[]) =>
     }),
   );
 
-/** Every delta a persisted frame claims, in order. */
-function frameDeltas(frames: AssistantMessageFrame[]): string[] {
+/** Nonempty decoder deltas, in delivery order. */
+function frameDeltas(frames: AssistantMessageEvent[]): string[] {
   return frames.flatMap((frame) =>
     frame.type === "text_delta" ||
     frame.type === "thinking_delta" ||
     frame.type === "toolcall_delta"
-      ? [frame.delta]
+      ? typeof frame.delta === "string" && frame.delta.length > 0 ? [frame.delta] : []
       : [],
   );
 }
 
-function settledText(frames: AssistantMessageFrame[]): string | undefined {
+function settledText(frames: AssistantMessageEvent[]): string | undefined {
   for (const frame of frames) {
     if (frame.type === "text_end") return frame.content;
   }
@@ -211,8 +208,7 @@ describe("provider stream frames with an omitted empty string field (issue #883)
       ]);
 
       expect(outcome.error).toBeUndefined();
-      // The decoder still emitted the delta event; the encoder skipped it rather
-      // than reading `.length` off `undefined`.
+      // An omitted provider field must not corrupt the final message.
       expect(outcome.eventTypes).toContain("text_delta");
       expect(frameDeltas(outcome.frames)).toEqual([]);
       // The dropped field can only have been the empty string, so the settled

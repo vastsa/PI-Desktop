@@ -13,17 +13,16 @@ allowBuilds:
   # binary; its from-source install script was never approved and is not needed.
   koffi: false
 # pnpm records exact-version exclusions for the current, explicitly requested
-# Pi 1.1.0 release while it is inside the minimum release age window. Keep these
+# Pi 1.4.0 release while it is inside the minimum release age window. Keep these
 # entries exact; do not widen them to package names or ranges.
 minimumReleaseAgeExclude:
-  - '@earendil-works/chord@1.1.0'
-  - '@earendil-works/pi-agent-core@1.1.0'
-  - '@earendil-works/pi-ai@1.1.0'
-  - '@earendil-works/pi-codemode@1.1.0'
-  - '@earendil-works/pi-coding-agent@1.1.0'
-  - '@earendil-works/pi-mcp@1.1.0'
-  - '@earendil-works/pi-telemetry@1.1.0'
-  - '@earendil-works/pi-tui@1.1.0'
+  - '@earendil-works/pi-agent-core@1.4.0'
+  - '@earendil-works/pi-ai@1.4.0'
+  - '@earendil-works/pi-codemode@1.4.0'
+  - '@earendil-works/pi-coding-agent@1.4.0'
+  - '@earendil-works/pi-mcp@1.4.0'
+  - '@earendil-works/pi-telemetry@1.4.0'
+  - '@earendil-works/pi-tui@1.4.0'
 # Advisory fixes for transitives whose parents still resolve the vulnerable
 # version. Drop each one once its parent ships a release that resolves the
 # patched version on its own.
@@ -33,15 +32,21 @@ overrides:
   # lightningcss 1.33.0.
   '@tailwindcss/node>lightningcss': 1.33.0
   # Used by build tooling and the bundled Pi coding-agent runtime via minimatch.
-  brace-expansion@1: '>=1.1.17 <2' # GHSA via minimatch@3
-  brace-expansion@2: '>=2.1.4 <3' # GHSA via @electron/universal, jake
+  brace-expansion@1: '>=1.1.21 <2' # GHSA via minimatch@3
+  brace-expansion@2: '>=2.1.7 <3' # GHSA via @electron/universal, jake
   brace-expansion@5: '>=5.0.12 <6' # GHSA via app-builder-lib and pi-coding-agent
   # Ships in the app. mermaid allows ^3.3.3 but resolves its own copy, so the
   # renderer would load an unpatched sanitizer next to our patched one.
-  dompurify@3: '>=3.4.13 <4' # detached-subtree XSS, via mermaid
-  fast-uri@3: '>=3.1.5 <4' # GHSA via ajv@8
+  dompurify@3: '>=3.4.17 <4' # renderer SVG sanitizer, including Mermaid
+  fast-uri@3: '>=3.1.8 <4' # GHSA via ajv@8
+  '@xmldom/xmldom@0.8': '>=0.8.15 <0.9' # GHSA via plist in electron-builder
+  '@xmldom/xmldom@0.9': '>=0.9.12 <0.10' # GHSA via plist in electron-builder
+  http-cache-semantics@4: '>=4.3.0 <5' # GHSA via @electron/get
   js-yaml@4: '>=4.3.2 <5' # CVE-2026-59870 via electron-updater and electron-builder
-  undici@6: '>=6.28.0 <7' # GHSA via node-gyp@12
+  source-map-js@1: '>=1.2.2 <2' # GHSA via Vite/PostCSS and Vitest
+  undici@6: '>=6.28.1 <7' # GHSA via node-gyp@12 and pi-ai peer
+  undici@7: '>=7.29.1 <8' # GHSA via Electron's @electron/get
+  vue@3: '>=3.5.42 <4' # GHSA via the VitePress docs site
   # Docs site only. vitepress 1.6.4 asks for vite ^5.4.14 and no vite 5 is
   # patched — the fixes for all four advisories (server.fs.deny bypass, esbuild
   # dev-server CORS, optimized-deps `.map` traversal, launch-editor UNC) land in
@@ -53,9 +58,9 @@ overrides:
 # every range to its floor — silently downgrading dependencies instead of
 # refreshing them. Pin the intent: `pnpm update` means "newest within range".
 patchedDependencies:
-  '@earendil-works/pi-agent-core@1.1.0': patches/@earendil-works__pi-agent-core@1.1.0.patch
-  '@earendil-works/pi-ai@1.1.0': patches/@earendil-works__pi-ai@1.1.0.patch
-  '@earendil-works/pi-coding-agent@1.1.0': patches/@earendil-works__pi-coding-agent@1.1.0.patch
+  '@earendil-works/pi-agent-core@1.4.0': patches/@earendil-works__pi-agent-core@1.4.0.patch
+  '@earendil-works/pi-ai@1.4.0': patches/@earendil-works__pi-ai@1.4.0.patch
+  '@earendil-works/pi-coding-agent@1.4.0': patches/@earendil-works__pi-coding-agent@1.4.0.patch
 resolutionMode: highest
 # shamefully-hoist also lives in .npmrc, but pnpm 12 applies it only from
 # here; without it public hoisting is empty and examples/ plugins cannot

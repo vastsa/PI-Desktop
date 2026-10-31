@@ -8,7 +8,8 @@
  * the user-visible paths: the new header action order, select → next →
  * submit, skip → submit, decline-all, and a custom answer.
  *
- * Scenario: E2E-ASKTOOL-compact-card-interaction. It also pins the compact
+ * Scenario: E2E-ASKTOOL-compact-card-interaction and
+ * E2E-ASKTOOL-draft-survives-session-switch. It also pins the compact
  * question block: a multi-paragraph question body stays one stacked text
  * column rather than lining its blocks up in a row.
  */
@@ -17,6 +18,7 @@ import { flushSync } from "react-dom";
 import i18n from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
+import { MAX_ASK_TOOL_QUESTION_CHARS } from "../../packages/shared/src/types/agent";
 import { AskToolCard } from "../../apps/desktop/src/components/AskToolCard";
 import { api } from "../../apps/desktop/src/lib/api";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
@@ -94,6 +96,11 @@ const LONG_QUESTIONS: FixtureQuestion[] = [
     options: [{ label: "Submit", description: "Finish the request" }],
   },
 ];
+
+const MAX_LENGTH_QUESTION: FixtureQuestion = {
+  question: "q".repeat(MAX_ASK_TOOL_QUESTION_CHARS),
+  options: [{ label: "continue", description: "Proceed with the selected choice." }],
+};
 
 export async function asktoolCardProbe() {
   await i18n.init({ lng: "en", resources: { en: { translation: en } } });
@@ -367,6 +374,58 @@ export async function asktoolCardProbe() {
     assert(
       element<HTMLElement>(".asktool-question-body").scrollTop === 0,
       "the next long question starts at the top",
+    );
+
+    // Flow G: the maximum permitted prompt remains visible and answerable.
+    mount("ask-max-length", [MAX_LENGTH_QUESTION]);
+    await until(() => options().length === 1, "maximum-length question mounts");
+    const maxLengthQuestion = "q".repeat(MAX_ASK_TOOL_QUESTION_CHARS);
+    assert(
+      questionText().endsWith(maxLengthQuestion),
+      "the card displays the complete 300-character question",
+    );
+    flushSync(() => options()[0]!.click());
+    flushSync(() => headerButtons().primary.click());
+    await until(() => resolutions.length === 5, "maximum-length question resolves");
+    assert(
+      JSON.stringify(resolutions[4]!.answers) === JSON.stringify([["continue"]]),
+      "the maximum-length question remains answerable",
+    );
+
+    // Flow H: the draft survives an unmount/remount with the same requestId —
+    // switching sessions in the real app unmounts the card the same way.
+    const persisted = mount("ask-persist");
+    await until(() => options().length > 0, "persist flow mounts");
+    flushSync(() => options()[1]!.click()); // select "beta" on question 1
+    flushSync(() => headerButtons().primary.click()); // next -> question 2
+    await until(
+      () => questionText().includes("Allow rollback?"),
+      "persist flow advances to question 2",
+    );
+    flushSync(() => root.render(null)); // unmount (session switched away)
+    flushSync(() =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <AskToolCard key={persisted.requestId} request={persisted} />
+        </I18nextProvider>,
+      ),
+    );
+    await until(() => options().length > 0, "persist flow remounts");
+    assert(
+      questionText().includes("Allow rollback?"),
+      "the remounted card resumes on the question the user left",
+    );
+    const indicators = [
+      ...host.querySelectorAll<HTMLButtonElement>(".asktool-indicator"),
+    ];
+    flushSync(() => indicators[0]!.click());
+    await until(
+      () => questionText().includes("Which upgrade path?"),
+      "the indicator returns to question 1",
+    );
+    assert(
+      options()[1]!.classList.contains("selected"),
+      "the answer selected before the remount is still selected",
     );
 
     assert(errors.length === 0, `render errors: ${errors.map(String)}`);

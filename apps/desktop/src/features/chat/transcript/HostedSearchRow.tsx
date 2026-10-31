@@ -104,6 +104,7 @@ export const HostedSearchRow = memo(function HostedSearchRow({
         >
           {name}
         </span>
+        {searching ? <span className="activity-marker" aria-hidden /> : null}
         {summary ? <span className="tool-row-summary">{summary}</span> : null}
         {expandable ? (
           <span className="tool-row-caret" aria-hidden>

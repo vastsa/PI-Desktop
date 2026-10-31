@@ -140,7 +140,7 @@ test("the index row carries identity and the selected row is its own card header
   assert.match(projectsIndexSource, /projects-glyph/);
   assert.match(projectsIndexSource, /projects-name-text/);
   assert.match(projectsIndexSource, /projects-name-path/);
-  assert.match(projectsIndexSource, /shortenPath\(project\.path\)/);
+  assert.match(projectsIndexSource, /shortenPath\(project\.remote\?\.path \?\? project\.path\)/);
   // Detail reads right to left, capped by a disclosure indicator that turns
   // down once the row owns an open card.
   assert.match(projectsIndexSource, /projects-row-meta/);

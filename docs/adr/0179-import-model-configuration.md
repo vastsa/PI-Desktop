@@ -1,7 +1,8 @@
 # ADR 0179: Import model configuration from local agent stores
 
 - Status: Accepted for model import semantics; original Settings placement
-  superseded by ADR 0319 / D645
+  superseded by ADR 0319 / D645 (amended 2026-10-18: Pi auth.json and cached
+  catalog)
 - Date: 2026-09-08
 - Deciders: PI-Desktop core
 - Related: D007, D342, ADR 0012,
@@ -41,7 +42,12 @@ credentials. Copying refresh tokens would be the wrong security boundary.
    - Codex: `~/.codex/config.toml` `[model_providers.<id>]`
    - OpenCode: `~/.config/opencode/opencode.json` `provider` map plus
      `~/.local/share/opencode/auth.json` API keys
-   - Pi: `~/.pi/agent/models.json` (fallback `~/.pi/models.json`)
+   - Pi: `~/.pi/agent/models.json` (fallback `~/.pi/models.json`).
+     Providers connected through Pi's `~/.pi/agent/auth.json` API keys (fallback
+     `~/.pi/auth.json`) are paired with Pi's cached
+     `~/.pi/agent/models-store.json` (fallback `~/.pi/models-store.json`) so an
+     auth-only provider still gets its endpoint, model list, and limits. When
+     both files describe one provider, `models.json` stays authoritative.
    - CC Switch: `~/.cc-switch/cc-switch.db` `providers` table (legacy
      `config.json`). Each row's `settings_config` is converted by app type.
      Empty official seeds and OAuth-only rows are omitted. A live Claude /
@@ -58,9 +64,11 @@ credentials. Copying refresh tokens would be the wrong security boundary.
    `Authorization: Bearer` header is copied into the host secret store.
    Placeholder values (`YOUR_API_KEY`, `${VAR}`) are treated as missing.
    A pi `apiKey` or auth header written as a `!<shell command>` is never
-   executed or stored; that provider is imported without a secret.
-   OAuth auth.json entries and Codex `requires_openai_auth` tables without
-   a key are omitted or imported without a secret.
+   executed or stored; that provider is imported without a secret. Pi
+   `auth.json` entries of type `oauth` are skipped entirely; plain
+   `type: "api_key"` entries are copied. An unresolved `env:` / `$VAR`
+   reference in `models.json` is filled from the matching `auth.json` key
+   before import.
 
 5. **Idempotence.** A candidate whose normalized base URL, API style, and
    credential match an existing provider is skipped. Different credentials
@@ -87,3 +95,13 @@ credentials. Copying refresh tokens would be the wrong security boundary.
   row. Skip is safer; the user can edit the Models page.
 - Renderer-side `providers.create` with the key in the IPC payload: the
   scan cache already exists for sessions; keep secrets off the renderer.
+
+## Amendment — 2026-10-18: discover Pi auth-only providers
+
+Settings → Models only scanned `models.json`, so providers connected through
+`pi /login` (for example DeepSeek or a Z.AI coding plan) never appeared in the
+Pi group. The explicit scan now reads `auth.json` API keys and pairs them with
+the catalog Pi already cached in `models-store.json`. OAuth/subscription grants
+still stay in Pi, `!command` values are never executed or stored, and a
+`models.json` provider remains authoritative when both files describe it.
+

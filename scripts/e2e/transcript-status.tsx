@@ -106,7 +106,7 @@ export async function transcriptStatusProbe() {
   const noStatus = (label: string) =>
     check(!host.querySelector(".transcript-runtime-status > *"), label);
   try {
-    for (const mode of ["detailed", "compact"] as const) {
+    for (const mode of [true, false] as const) {
       flushSync(() =>
         useAppStore.setState({
           settings: {
@@ -114,7 +114,7 @@ export async function transcriptStatusProbe() {
             theme: "light",
             enterToSend: true,
             onboardingDismissed: true,
-            thinkingDisplayMode: mode,
+            showThinking: mode,
           },
           agentStatuses: {},
           pendingPlans: {},

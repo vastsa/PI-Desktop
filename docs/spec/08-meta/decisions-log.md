@@ -50,6 +50,10 @@ This log freezes previously open questions into concrete decisions.
 | D654 | Keep the deterministic first-prompt session title in the core | **Amend D652 / ADR 0323: a session whose stored title is still a recognized placeholder derives a whitespace-collapsed 48-character fallback from the first prompt, written through the host RPC and IPC `session/deriveTitle`. Host-core applies it only while the title is still a placeholder with the `default` source, and the derived text keeps that source, so an installed title plugin may still replace it and only a manual rename opts out. No model call, no new permission, no schema or protocol version change; `updated_at`, transcript content, and message count stay unchanged. See `03-runtime/01-ipc-protocol.md`, `03-runtime/02-agent-runtime.md`, `03-runtime/06-host-rpc-protocol.md`, `03-runtime/04-data-storage.md`, `04-ux/08-component-spec.md`, and E2E-021a.** | Removing every automatic write left an untouched session showing a placeholder until a plugin ran, so offline readability depended on installing optional software. |
 | D655 | Cloud sync opens in packaged builds as Experimental | **Amend D649: remove the packaged-build visibility gate from Settings `sync` and restore its `Experimental` badge on the rail row and page title. Cloud sync and Remote Hosts are both available in packaged and development builds with Experimental badges. The S3 sync behavior, protocol, Host schema, and persisted data are unchanged. See `04-ux/06-settings-ia.md`, `03-runtime/22-config-sync.md`, and E2E-CONFIG-SYNC-s3-portable-configuration.** | The existing encrypted backup is useful to packaged-build users; the Experimental badge communicates its current maturity without keeping the feature hidden. |
 | D656 | Quarantine appends the host keeps refusing instead of stalling the outbox | **Amend ADR 0041 / D318 / D444 / D597: an append whose `session.appendMessage` or `session.recordUsage` call fails with an error the outbox cannot classify as a duplicate message id, a `PERMISSION_DENIED:` poison row, or a foreign-key orphan is retried on a bounded backoff (5s, doubling to a 60s cap) instead of ending the flush. The fifth consecutive failure on that head moves it into an application-owned dead-letter file, `session-message-outbox.dead-letter.json`, with its payload, session id, quarantine timestamp, and host error; only the newest 256 quarantined appends are kept, and the oldest is discarded with a warn. The flush then continues with the next entry, so one refused append can no longer hold the FIFO head, fill the 1024-entry cap, or fail every session's writes. Quarantined appends are never replayed automatically, and `session.delete` drops that session's quarantined appends too. No protocol version, storage schema, or queued-outbox format change.** | A `stream did not contain valid UTF-8` append stayed at the FIFO head for 14.8 hours while `session.persistence.outbox.is.full` fired 5990 times, so every session's appends failed until restart. Only three error classes had a drain, and every other error was treated as transient forever (#1560). |
+| D657 | Let the embedded Browser open local files outside the workspace | **Amend ADR 0170: an explicit absolute path or `file:` URL may load any existing regular local file, and a local-file page may navigate to other existing local files. Relative inputs remain workspace-rooted; HTTP(S) pages retain only the prior in-workspace file-link allowance. Missing files, directories, and remote file authorities remain blocked. `BrowserPreview` and the sidecar keep their workspace-rooted resolver. The public `pi.browser.navigate` API follows this policy under the high-risk `browser.cdp` permission. See ADR 0328, E2E-059, `04-ux/08-component-spec.md`, and `05-security/01-security.md`.** | Users need to inspect local HTML outside a project, while workspace-scoped agent file tools and remote-page navigation must retain their existing boundary (#1627). |
+| D659 | Reopen archived projects in the sidebar | **Amend D093 / D455: successful explicit project activation clears the normalized path's renderer-local archived flag and persists it, so Open from Project archive, reopening the same folder through Add project, and opening a project session reveal the project in the home sidebar. Selecting a row for inspection and ordinary session refreshes do not alter archive state. No host/project/session storage or protocol change. See ADR 0294, E2E-264, and issue #1653.** | Reopening a project changed the active workspace but left its path-keyed archived presentation flag set, hiding it from the sidebar after the user explicitly reopened it. |
+| D661 | Segmented turn process and independent thinking preference *(amended by D668)* | **Supersede the `Detailed` / `Compact` display-mode behavior and the single whole-process disclosure recorded by D633 / D651 and the `turn-process-and-thinking-display` ADR: a turn renders as chronological collapsible process segments, Bash and run aliases stay outside every folded container (the turn-level process disclosure and any ordinary activity group) and remain visible even when every group is collapsed, and process/group folding defaults are independent of the thinking preference. The preference is the optional boolean `AppSettings.showThinking`; absent or non-boolean values fall back to the legacy `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows), which is retained only for persisted-settings compatibility. `showThinking` joins the portable application fields so it synchronizes like the legacy field; no other host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | One flat container left long tool/search runs hard to scan and forced reasoning visibility and process folding into the same two-valued switch; an independent boolean plus always-visible Bash rows keeps shell-heavy turns readable without hiding the answer. |
+| D662 | Open scoped HTML files in the work-panel Browser from plugins | **Add `pi.fs.openInBrowser(pathFromRoot)` under `fs.read`. The host applies the plugin's normal read containment, protected-path, credential deny-list, declared scope, and registered project-folder checks; only existing `.html`, `.htm`, and `.xhtml` files qualify. After validation, Main asks the renderer to create a Browser resource tab for the active local session. The Browser plugin must be enabled. This grants no `browser.cdp`, changes no BrowserPreview or local-file navigation policy, and adds no host-core protocol or persisted-state change. See ADR 0330, `07-plugins/03-plugin-api.md`, `07-plugins/13-plugin-permissions-matrix.md`, `04-ux/08-component-spec.md`, and E2E-153.** | The File Manager needs an in-app HTML preview, while granting its plugin `browser.cdp` would also expose unrelated page inspection and control. |
 
 ## B. Secondary implementation defaults
 
@@ -67,6 +71,7 @@ This log freezes previously open questions into concrete decisions.
 | D020 | Auto-update | **Post-MVP** |
 | D021 | First-run onboarding | **Inline checklist (not modal wizard)** |
 | D022 | Local telemetry | **Local logs only in MVP (no remote telemetry)** |
+| D664 | Sidebar running activity defaults | **When unset, the master and Count badge resolve on while Activity rail resolves off. Explicit saved values remain authoritative. The master continues gating both affordances; turning it off does not rewrite either child preference. No schema or migration change.** |
 
 
 ## C. Provider & model coverage decisions (0.3.4)
@@ -76,7 +81,7 @@ This log freezes previously open questions into concrete decisions.
 | D023 | Provider coverage goal | **Universal market coverage** (not a tiny fixed vendor list) | Globalization + real coding workflows |
 | D024 | Coverage strategy | **pi-ai native providers + first-class OpenAI-compatible + custom providers** | Maximum reach without rewriting every SDK |
 | D308 | Zhipu / Z.AI named endpoint presets | **Amend D024 / ADR 0116: the add-provider Service select offers four OpenAI-compatible Zhipu endpoints — China and international standard API plus GLM Coding Plan — with locked published URLs and models.dev `vendorKey`s (`zhipuai`, `zhipuai-coding-plan`, `zai`, `zai-coding-plan`). No new apiStyle or wire adapter. Completions requests on those URLs use `thinkingFormat: "zai"` and `zaiToolStream: true`. Custom endpoint remains available.** | Users had to know which BigModel / Z.AI URL to paste, and `vendorKey: "custom"` could catalog-match the wrong API vs Coding Plan record. Named presets keep coverage on the existing OpenAI-compatible path. See ADR 0155 and E2E-005D. |
-| D389 | DeepSeek reasoning_content replay on aggregators | **Amend D024: Completions requests for DeepSeek-family models set `requiresReasoningContentOnAssistantMessages: true` when the row `vendorKey`, base URL, model id, or catalog `family` identifies DeepSeek. Do not change `thinkingFormat` for that match. pi-ai still auto-detects official `deepseek.com` URLs.** | DeepSeek thinking mode 400s if any replayed assistant message omits `reasoning_content`. PI-Desktop stores a UUID as `model.provider`, so SiliconFlow, Volcengine, and custom gateways never match pi-ai's `provider === "deepseek"` check. See E2E-005E. |
+| D389 | DeepSeek reasoning_content replay on aggregators | **Amend D024: Completions requests for DeepSeek-family models set `requiresReasoningContentOnAssistantMessages: true` (and, off `deepseek.com`, `supportsReasoningEffort: false`; amended by D672) when the row `vendorKey`, base URL, model id, or catalog `family` identifies DeepSeek. Do not change `thinkingFormat` for that match. pi-ai still auto-detects official `deepseek.com` URLs.** | DeepSeek thinking mode 400s if any replayed assistant message omits `reasoning_content` or if a relay receives the unsupported generic `reasoning_effort` field. PI-Desktop stores a UUID as `model.provider`, so SiliconFlow, Volcengine, and custom gateways never match pi-ai's `provider === "deepseek"` check. See E2E-005E. |
 | D424 | DeepSeek reasoning across compaction | **Amend D389 / ADR 0136: restore thinkingSignature on history rebuild; store recent thinking in checkpoint `details.retainedReasoning` and replay after the summary; non-official DeepSeek Completions rows set `requiresNonEmptyReasoningReplay` so the pi-ai patch uses a documented placeholder instead of `""`. Official deepseek.com keeps empty-string fill.** | OpenCode / third-party DeepSeek V4.1 Flash 400s after compaction when empty reasoning is echoed (#296). |
 | D309 | Add-provider common path is Service + key | **Amend D308 / ADR 0116 / ADR 0155: a new add-provider dialog starts with only Service. Named endpoints (Zhipu / Z.AI, OpenCode Go) then show Service + API key and a host summary. Custom endpoint then shows Name, Base URL, and API key. Name (named) and API format (custom) stay in Advanced. OpenCode Go is a Service option. No stepper or vendor-card grid.** | Stacking Name, Base URL, and API format next to Service made a known service look like a generic gateway. The common path should be pick a service and paste a key. See ADR 0156 and E2E-005 / E2E-005B / E2E-005D. |
 | D310 | Custom API format stays beside the key; Service lists top models.dev vendors | **Amend D309 / ADR 0155 / ADR 0156: Custom endpoint shows Name + Base URL, then API key beside API format on the common path. Named Service options expand to models.dev-backed international and China first-party endpoints (OpenAI, Anthropic, Google, OpenRouter, Groq, xAI, Mistral, Together, Fireworks, OpenCode Go, Z.AI, DeepSeek, Qwen, Moonshot, Zhipu, SiliconFlow, Volcengine, MiniMax Anthropic Messages, MiniMax OpenAI-compatible, Kimi For Coding), each with a published URL and wire style. Named display names stay in Advanced.** | Custom gateways need the format next to the key, while named vendors should cover the usual domestic and international APIs without a closed allowlist. See E2E-005 / E2E-005B / E2E-005D. |
@@ -327,6 +332,14 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D602 | Crash dumps stay in the data directory | **Electron's Crashpad reporter starts local-only (`uploadToServer: false`) before `ready`. Dumps live under `<data_dir>/crash-dumps`, not the default Electron `userData` crashDumps path, so a `PI_DESKTOP_DATA_DIR` profile does not share dumps. The next lock-holding launch writes one `diagnostics` line for dumps newer than `crash-dumps.json`, classified by Crashpad `ptype`: `error` if any new dump is the browser/main process, `warn` for recovered renderer/GPU/utility crashes. Host-core and sidecar crashes stay on the supervisor path. No upload, no IPC, no schema change.** | A crash left a minidump nobody read. Crashpad also records recovered renderer crashes, so a next-launch `error` that said the previous run died was a lie; and dumps outside the data directory escaped `PI_DESKTOP_DATA_DIR` isolation. |
 | D619 | A copied formula is its TeX source | **Renderer only: a copy whose selection covers rendered math writes `text/plain` from the MathML `annotation` — `$…$` inline, `$$…$$` on its own lines, the delimiters `lib/latex-math.ts` normalizes `\(…\)` and `\[…\]` to, each run widened past any run inside the formula as a code span's fence is — instead of the two trees KaTeX paints. A cut that lands inside a formula grows to the whole formula. Only the formulas are rewritten: the reduced clone is read back through `Selection.toString()`, the serializer a copy itself runs, so prose, lists, tables and code blocks sharing the selection keep the platform's own reading — `user-select: none` chrome left behind included, which `innerText` would have written out. A selection with no formula in it, and a copy raised where the selection does not live, are left to the platform entirely. One flavour is written, `text/plain`: taking the event over drops the platform's `text/html` too and none is written back, because the reduced clone is app markup that would carry the `user-select: none` chrome the text reading drops, and because carrying the rendering instead would paste every formula twice — KaTeX's stylesheet is the only thing hiding the MathML tree and no stylesheet travels on the clipboard. One document `copy` listener owned by the shell, and the transcript's right-click Copy reads the same selection through the same module.** | A formula pasted as its glyphs, once per rendered tree, so it could not be carried into a LaTeX document or another Markdown editor (issue #414). ADR 0268 removed quoting on the grounds that the OS clipboard was the substitute; the clipboard had to actually carry the source. |
 | D620 | pi-ai built-in API-key services are named presets | **Add fifteen named endpoint presets — Ant Ling, Baseten, Cerebras, Hugging Face, Meta (`responses`), MiniMax (International), Moonshot AI (International), NVIDIA, OpenCode Zen, Vercel AI Gateway, Qwen Token Plan (`alibaba-token-plan`), Qwen Token Plan (China), Xiaomi Token Plan (China / Europe / Singapore) — to `NAMED_ENDPOINT_PRESETS`, each at its published host, with the pi-ai provider id kept as an alias wherever the models.dev key differs. Eight built-in providers remain exceptions with a recorded reason: Amazon Bedrock, Azure OpenAI, Cloudflare AI Gateway, Cloudflare Workers AI, Google Vertex AI (account- or region-scoped URLs), GitHub Copilot and OpenAI Codex (vendor-account rows), and Radius (`pi_messages` is account-only here). `packages/agent-runtime/src/pi-ai-provider-sync.test.ts` fails on a pi-ai upgrade that leaves a provider neither covered nor excepted. No protocol, storage, or IPC change.** | Every other pi-ai capability was already reachable, but the API-key half of the service catalog was hand-maintained and had drifted from the library's own provider list (ADR 0307). |
+| D668 | One process disclosure per turn, with three transcript display modes | **Amend D661 / the `turn-process-and-thinking-display` ADR. A turn renders exactly one top-level process disclosure holding every pre-answer row; the answer stays outside it. `AppSettings.transcriptDisplayMode` selects the layout: `flat` renders no nested activity groups, `command-first` renders `Bash`/run rows as standalone rows beside activity groups, and `fully-folded` (the default for absent or invalid values) keeps commands inside their groups and lets only ordinary assistant progress text split them. The mode is read while rendering, so switching repaints immediately - the projection cache is keyed by messages and compactions only. The disclosure header reports failed / stopped / running / finished with precedence in that order and never echoes the current item, and the disclosure shares one left edge with the levels it reveals. `transcriptDisplayMode` joins the portable application fields; `keepCommandsExpanded` is deprecated, retained only for persisted-settings compatibility, and no longer exposed or read for rendering. No host protocol, persistence schema, permission, or plugin contract change. See the amended ADR, `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and E2E-CHAT-turn-process-and-thinking-display.** | Chronological segmentation split one turn into several sibling disclosures above the answer, and the boolean command-folding preference could only express two layouts; a three-mode setting covers flat, command-first, and the released grouped view without changing what a tool received or stored. |
+| D669 | `@` queries search past a truncated file index | **Amend D124: while the 8000-entry `fs/index` snapshot is truncated, a non-empty `@` query is also searched over the root's full listing through the read-only Electron channel `pi-desktop/fs/search` once typing pauses, and its best 50 rows merge with the local matches. A complete index never searches. Remote sessions keep their snapshot. No host RPC, storage, or schema change.** | The shallowest-8000-entry index left a script several folders down matching no query at all, even though the truncation note invited the reader to refine it (issue #1781). |
+| D671 | Inline generative UI visualizations | **Amend D114: local sessions get a second host-owned contained root `<data_dir>/visualizations/<sessionId>/` for `.html` fragments only (Read/Write/Edit, auto-allowed like scratch, never in remote or contract sessions). A standalone `::visualize{"path","title"}` reply line renders the fragment inline through a sandboxed `pi-genui://session/<sid>/<file>` iframe (`sandbox="allow-scripts"`, strict CSP, no network). Builtin skill `pi-desktop/visualize`. No schema change.** | Interactive explanations need an embedded page; ADR gen-ui-inline-visualization. |
+| D674 | Per-turn changed-files summary under a finished reply | **A completed reply whose turn recorded workspace review changes renders one read-only `TurnChangesCard` below its answer and above `entryExtra`, built only from that turn's message-owned `details.review` records (no new capture, IPC, or persistence). Rows merge edits per path (`D` if the turn ends by deleting, else `A` if any edit created the file, else `M`; counts summed; rolled-back files stay listed and struck through). Up to four files use relaxed rows, more use dense rows, and rows past 12 fold into `+N more`. Clicking a row opens Review on that file's recorded changes; the per-call review rows and the Review tab are unchanged.** | Issue #1891, design 10 (adaptive density): the per-call review rows answer "what did this call change", and Review answers it for the whole session, but nothing answered "what did this turn change" without counting rows. |
+| D675 | Inline images are admitted by pixel size as well as bytes | **Amend D361: an image whose PNG/JPEG/GIF/WebP header reports a longest edge above `MAX_INLINE_IMAGE_EDGE_PX` (8000) is never inlined. Host Read refuses it with `TOOL_FAILED`; prompt attachments and restored history take the existing `@path` fallback; and the runtime's last provider view replaces any such image block (user or tool result) with a text notice naming its size. The probe reads headers only (no decoder); unknown dimensions keep the byte-only rule. No protocol, schema, or persisted-format change.** | Issue #1913: a 1.89 MB, 780 x 14182 full-page screenshot passed every byte check, the provider rejected it with a non-retriable 400, and replay made every later request in that session fail. Dropping is deterministic for the same bytes, so the request prefix and prompt caching stay stable; resampling would need an image decoder and is deferred. |
+| D676 | A completed turn the reader followed ends at its prompt | **Amend the stream-completion rule: when a turn completes while the transcript is visible and still following the stream, the renderer scrolls that turn's newest user message to 16px below the titlebar band the transcript reserves at its top (smooth unless reduced motion), releases follow mode, and shows jump-to-latest. Nothing moves when the prompt is already in view, the reply failed or was aborted, the pane is hidden or in a reading window, a disclosure position is held, or a new run starts before the move. Renderer only; no setting, IPC, or persistence change.** | Issue #1889: after a long reply the reader sat at its last line and had to scroll back up to find where it began. |
+| D677 | DeepSeek reasoning replay uses one field per row and never covers real reasoning | **Amend ADR 0256 decision 3: the pi-ai fill pass takes the reasoning field from the newest assistant row that has real reasoning, normalizes every assistant row to that single field (moving real reasoning from another field name, deleting the others), and fills the placeholder only on rows with no reasoning. History rebuild and the thinking panel drop a leading echo of the placeholder (`withoutReasoningReplayPlaceholder`); stored text is not rewritten. No schema, IPC, or setting change.** | Issue #1945: rebuilt rows are stamped `reasoning_content` while a relay streams `reasoning_text`; the fill pass picked `reasoning_content` and wrote the placeholder over the live row's real reasoning, the model echoed it as its own thinking (13.6% of assistant rows in affected sessions), and the echo was persisted and replayed. |
+| D678 | Radial context menu rebuilt and moved to General | **The opt-in transcript radial menu gets at-rest icon-and-label sectors (the hover-only hub label is gone), one filled highlight for the active sector with no focus rectangle, a recessed hub carrying the click-point dot, a 248 px disc with hairline separators and the composer shadow, and shared motion tokens for hover and reveal. A right-press started while the ring is open runs the sector it is released on; releasing in the hub dismisses without running; the release trailing the opening right-click is inert. The settings card moves from the AI tab to General after Sidebar and the settings-search index follows. Action vocabulary, per-direction defaults, `AppSettings.radialMenu`, persistence, and IPC are unchanged.** | The icon-only ring could not be read without hovering every sector, the sector fill and button background painted two highlights over one target, and the ring's switch sat in the AI tab although the surface is a transcript-interaction preference. |
 
 
 ## M0. Model catalog decisions
@@ -380,7 +393,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D334 | Contained in-chat image display | **Amend the desktop `fs/read` workspace-only clause: `fs/read`, `fs/reveal`, and `fs/open` share `resolveOpenablePath` (workspace, `<data_dir>/scratch/`, `<data_dir>/attachments/`, plus `attachments/<sha256>` blobs). Reads `realpath` the target. Add renderer-only `fs/readImageDataUrl` that returns a bounded image data URL or `missing` / `notImage` / `tooLarge` and never non-image bytes. A known image extension wins over client `mimeType`; extension-less blobs accept only the `IMAGE_MIME` allowlist. Chat thumbnails and local Markdown images load through that channel; click opens the host files viewer. Not a plugin API. See ADR 0172 and E2E-187.** | History attachments are extension-less data-root blobs the renderer origin cannot load; an unbounded absolute-path read would leak arbitrary files. |
 | D336 | Host-owned plugin completions and session context | **Amend D019: plugins may read the in-flight tool session's model-facing transcript through `pi.session.getLlmContext()` when `session.read` is granted, and may run a one-shot completion through `pi.agent.complete()` when `agent.complete` is granted. `pi.models.list()` lists ready provider/model rows (`models.list`). Credentials never leave Electron main. `includeSessionContext` requires both complete permissions and an in-flight tool session; plugins cannot pass a session id. Completions are rate-braked (8/60s) and size-capped. `session:modelChanged` is pushed after `session.configure`. The bundled first-party Advisor UX is temporarily not shipped; the public APIs remain available to explicitly installed plugins. No protocol/schema bump. See ADR 0174 and E2E-188 / E2E-189.** | Second-opinion tools need the user's models and the current LLM context without holding secrets or calling providers from plugin code. |
 | D340 | User-configurable outbound proxy | **Settings → General → Network exposes Proxy as System / Direct / Custom. Custom accepts http/https/socks5 URLs and a bypass list, persisted as optional `AppSettings.networkProxy`. Chromium `session.setProxy` covers the in-app browser and `net.fetch`; the agent sidecar applies an undici dispatcher (SOCKS5 CONNECT or HTTP ProxyAgent) via `sidecar.configure`; host-core marketplace curl uses `--proxy` from the stored blob and does not inherit proxy env (workspace Bash stays clean). OAuth still uses the system browser. No protocol or schema version bump. See ADR 0177 and E2E-190.** | Node fetch ignores the OS proxy, so Clash/V2Ray/SOCKS5 users could browse but not call models. One settings control should own app-owned HTTP. |
-| D342 | Import model configuration from local agent stores | **Amend D007: Settings → Import still never auto-imports `~/.pi` (or any other tool). An explicit Model configuration card scans Claude Code, Codex, OpenCode, Pi, and CC Switch (`~/.cc-switch/cc-switch.db`, fallback `config.json`) provider rows, lists drafts without secrets, and `modelConfig/importRun` copies API keys through `providers.create`. A live tool file that matches a CC Switch endpoint and credential is not listed twice. OAuth/subscription tokens stay in the source app. Equivalent providers (normalized base URL + API style + same credential) are skipped; different credentials at one endpoint remain independent rows (ADR 0188). If no global default model exists, the first newly created provider becomes it. Electron IPC only; no host protocol or schema version bump. See ADR 0179, ADR 0188, and E2E-209. The Settings placement and session-import UI were superseded by D645 / ADR 0319: model import now lives on Models, and Settings has no session-import UI.** | Users already import sessions from those stores and otherwise retype the same endpoints and keys on the Models page. |
+| D342 | Import model configuration from local agent stores | **Amend D007: Settings → Import still never auto-imports `~/.pi` (or any other tool). An explicit Model configuration card scans Claude Code, Codex, OpenCode, Pi, and CC Switch (`~/.cc-switch/cc-switch.db`, fallback `config.json`) provider rows, lists drafts without secrets, and `modelConfig/importRun` copies API keys through `providers.create`. The Pi scan also reads `~/.pi/agent/auth.json` API keys and pairs them with Pi's cached `models-store.json` catalog so auth-only providers are listed; `models.json` stays authoritative when both describe a provider. A live tool file that matches a CC Switch endpoint and credential is not listed twice. OAuth/subscription tokens stay in the source app. Equivalent providers (normalized base URL + API style + same credential) are skipped; different credentials at one endpoint remain independent rows (ADR 0188). If no global default model exists, the first newly created provider becomes it. Electron IPC only; no host protocol or schema version bump. See ADR 0179, ADR 0188, and E2E-209. The Settings placement and session-import UI were superseded by D645 / ADR 0319: model import now lives on Models, and Settings has no session-import UI.** | Users already import sessions from those stores and otherwise retype the same endpoints and keys on the Models page. |
 | D351 | Preserve distinct credentials during model configuration import | **Amend D342 / ADR 0179: an imported provider is equivalent only when normalized endpoint, API style, and credential all match. Same-endpoint profiles with different API keys create independent provider rows and remain selectable in Composer. Electron main resolves existing API keys through the host secret boundary; secrets never reach the renderer, logs, or provider metadata. The live-file-versus-CC-Switch scan uses the same credential-aware rule. No host protocol or storage schema version bump. See ADR 0188 and E2E-209.** | CC Switch stores multiple accounts at one gateway endpoint; endpoint-only idempotence silently dropped all but the first profile during import. |
 | D344 | Main-owned picker capabilities | **Amend D197 / D334: composer native file and image pickers keep selected absolute paths in Electron main behind a short-lived, sender-bound, one-shot token. `composer/importFiles` accepts only that token and a durable session id; the renderer never supplies source paths. The MVP file picker offers regular files only, so unsupported directory selection and its misleading UI copy are removed. Main retains realpath, regular-file, session-scratch, and size-limit validation. See ADR 0181 and E2E-102h.** | Renderer IPC is not a user-click gate: accepting arbitrary absolute paths in the import payload creates a local file exfiltration primitive. Folder import needs separate bounded traversal and symlink semantics. |
 | D314 | Shipped locale registry and language picker | **Amend D073: UI locales are listed in `@pi-desktop/i18n` (`en`, `zh-CN`, `zh-TW`, `tr`). Native names stay untranslated. Settings → General language is a searchable picker (Auto + registry), not three preview cards. Plugin labels keep their `en` + `zh-CN` contract with English fallback for shell locales without a plugin translation; the product changelog follows every shipped product locale. See ADR 0160, ADR 0182, and E2E-091.** | Preview cards cannot scale past two languages; a registry lets additional locales ship without rewriting the Appearance card. |
@@ -409,8 +422,8 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D343 | Custom global UI type scale | **Settings → General → Appearance gains a Font size row under Font. Starbucks-style cup presets (Tall / Grande / Venti / Trenta) plus a percentage slider persist as optional `AppSettings.fontScale` (`1` = product ramp, absent = 1, range 0.8–1.5 in 0.025 steps). The renderer sets `--font-scale` on the root; every `--text-*` token and `--leading-row` is `calc(<product px> * var(--font-scale))`, and shared Lucide wrappers size glyphs with the same multiplier, so body, chrome, headings, code, and icons stay in proportion without a reload. The UI never asks for a px value. Window Zoom In/Out/Reset stays independent. An unreleased leftover `fontSize` px field migrates as `px / 14` when `fontScale` is absent. No host protocol or storage schema version bump.** | The `--text-*` ramp is a frozen set of relative sizes; a single multiplier scales every step at once. Window zoom still scales layout. A reading-only px field would leave two type sizes in one window and force the user to pick a number that only matches `--text-base` (ADR 0180). |
 | D232 | Custom global UI font | *(amended by D598)* **Settings → Basics → Appearance gains a searchable Font picker (trigger previews the current family). Selections persist as `AppSettings.fontFamily`, a CSS stack; absent means the built-in `--font-sans` token stack, and the renderer applies the stack by overriding `--font-sans` on the root element without a reload. Four bundled families — Geist, Inter, Noto Sans SC, LXGW WenKai — ship locally as woff2 under the SIL OFL 1.1 with license texts; every custom stack appends a CJK fallback tier and the mono stack is unchanged. Installed system families are enumerated by Electron main using platform tooling only (macOS: `osascript` JXA bridging the CoreText query `CTFontManagerCopyAvailableFontFamilyNames` — the same API dbx's `font_kit::all_families()` calls — with `system_profiler` as a slow fallback; Windows: PowerShell; Linux: `fc-list`), deduplicated/sorted/filtered and cached 60 s, exposed through the additive allowlisted channel `pi-desktop/app/systemFonts`; host protocol v9 and storage schema v10 are unchanged.** | Users want a Codex/dbx-style global font preference, but the sandboxed renderer cannot enumerate OS fonts and the host RPC should stay unchanged for a renderer-only preference. Bundling OFL-licensed families keeps every offered font commercially safe and offline, while the fast CoreText path returns the canonical CSS family names (e.g. PingFang SC) in tens of milliseconds and the 60 s cache bounds repeated enumeration (ADR 0083). |
 | D598 | The app ships no fonts | **Amend D232 / ADR 0083: every bundled family is removed. `apps/desktop/src/assets/fonts/` (the four `woff2` files and their OFL license texts), `apps/desktop/src/styles/fonts.css`, and the `@import "./fonts.css";` line in `styles/globals.css` are deleted, and `BUNDLED_FONTS`, the `BundledFont` type, `FontOption.license`, the picker's license badge, and `settings.fontBundled` in all eight locale catalogs go with them. The picker keeps System default (persisted as the empty string) followed by installed system families, enumerated exactly as before through the allowlisted `pi-desktop/app/systemFonts` channel, and a stored stack that matches no option still appears first under Saved (`custom`). Every generated stack now appends the system-only CJK tier `"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif` with no bundled family in front of it. A previously stored bundled stack (e.g. `"Geist", "PingFang SC", …`) is preserved byte for byte, shows under Saved, and renders through that tier. No protocol version, schema version, or storage migration change.** | Four OFL faces duplicated coverage every target OS already provides, cost about 15.7 MiB of `woff2` in `out/renderer` (7.6 MiB LXGW WenKai plus 7.4 MiB Noto Sans SC), and carried font-file notice obligations for four options beside the list the OS already installs. See ADR 0298, E2E-126, and E2E-092. |
-| D230 | User-configurable close behavior with close-to-tray | **Windows/Linux close behavior is a persisted preference stored by Electron main in `<data>/close-behavior.json`. `ask` is the transient unset state: the first close shows a native modal (Cancel / Close to tray / Quit); picking one persists it forever, Cancel keeps the window open and unset. Only `tray` and `quit` are ever settable — Settings -> General renders a two-option radio segment (Close to tray / Quit app) for Windows/Linux only, and `pi-desktop/window/closeBehavior/set` rejects `ask`, so a choice can be switched but never reverted to prompting. `tray` hides the window under the resident D216 tray icon (click restores, menu shows or quits); switching to `quit` leaves that icon in place, because minimize-to-tray still needs it. Close interception runs for every non-macOS close that is not already an approved quit; `quitting` and macOS closes fall through, a `quit` close calls `app.quit()` itself, and `window-all-closed` stays silent only under `tray`, so the boot probe and explicit quits are unaffected and a resident tray never keeps a `quit` session alive. `closeBehavior/set` also fails with `INVALID_ARGUMENT` on macOS. The bounds watchdog skips minimized and hidden windows so a tray-hidden window is never force-restored. macOS keeps the native Dock lifecycle (D216, ADR 0078, ADR 0090).** | Minimizing already hides the window into the D216 tray; the gap was close: it quit outright on Windows/Linux. A fixed close-to-tray would surprise users who expect exit, so the choice is asked once, remembered, and revisitable in Settings — matching how Codex-style shells keep long-running sessions alive without taking over the close button. |
-| D363 | Explicit quit confirms before shutdown | **Amend D230 / D216: Cmd+Q, the application-menu Quit item, and the tray Quit item show one native warning (Cancel / Quit). Cancel leaves the app running and allows a later quit to prompt again. Confirm runs the ordered `before-quit` shutdown. A window-close path that already chose Quit in the D230 dialog sets `quitConfirmed` and does not ask again. Boot, supervision, and capture probes skip the dialog, and so does the quit an in-app update performs: `autoUpdater.quitAndInstall()` spawns the platform installer before `app.quit()`, and that installer aborts once the app outlives its wait window, so the update restart must reach the ordered shutdown without a prompt. No IPC, storage, or host-protocol change. See E2E-204.** | An explicit quit tears down host-core, the sidecar, and in-flight work; a one-step confirm prevents an accidental Cmd+Q or tray Quit from doing that, without re-prompting a user who already chose Quit on the close-behavior dialog. |
+| D230 | User-configurable close behavior with close-to-tray | **Windows/Linux close behavior is a persisted preference stored by Electron main in `<data>/close-behavior.json`. `ask` is the transient unset state: the first close shows a themed in-app modal (Cancel / Close to tray / Quit), with a native fallback when the renderer is unavailable; picking one persists it forever, Cancel keeps the window open and unset. Only `tray` and `quit` are ever settable — Settings -> General renders a two-option radio segment (Close to tray / Quit app) for Windows/Linux only, and `pi-desktop/window/closeBehavior/set` rejects `ask`, so a choice can be switched but never reverted to prompting. `tray` hides the window under the resident D216 tray icon (click restores, menu shows or quits); switching to `quit` leaves that icon in place, because minimize-to-tray still needs it. Close interception runs for every non-macOS close that is not already an approved quit; `quitting` and macOS closes fall through, a `quit` close calls `app.quit()` itself, and `window-all-closed` stays silent only under `tray`, so the boot probe and explicit quits are unaffected and a resident tray never keeps a `quit` session alive. `closeBehavior/set` also fails with `INVALID_ARGUMENT` on macOS. The bounds watchdog skips minimized and hidden windows so a tray-hidden window is never force-restored. macOS keeps the native Dock lifecycle (D216, ADR 0078, ADR 0090).** | Minimizing already hides the window into the D216 tray; the gap was close: it quit outright on Windows/Linux. A fixed close-to-tray would surprise users who expect exit, so the choice is asked once, remembered, and revisitable in Settings — matching how Codex-style shells keep long-running sessions alive without taking over the close button. |
+| D363 | Explicit quit confirms before shutdown | **Amend D230 / D216: Cmd+Q, the application-menu Quit item, and the tray Quit item show one themed in-app confirmation (Cancel / Quit), restoring a tray-hidden main window first and using a native fallback when the renderer is unavailable. Cancel leaves the app running and allows a later quit to prompt again. Confirm runs the ordered `before-quit` shutdown. A window-close path that already chose Quit in the D230 dialog sets `quitConfirmed` and does not ask again. Boot, supervision, and capture probes skip the dialog, and so does the quit an in-app update performs: `autoUpdater.quitAndInstall()` spawns the platform installer before `app.quit()`, and that installer aborts once the app outlives its wait window, so the update restart must reach the ordered shutdown without a prompt. Additive lifecycle-dialog IPC only; no storage or host-protocol change. See E2E-204.** | An explicit quit tears down host-core, the sidecar, and in-flight work; a one-step confirm prevents an accidental Cmd+Q or tray Quit from doing that, without re-prompting a user who already chose Quit on the close-behavior dialog. |
 | D252 | Windows taskbar preserves native minimize/restore | *(Explicit renderer/menu minimize clauses superseded by D256 / ADR 0123)* **Amend D216 / ADR 0078: when the focused Windows main window is toggled from its taskbar button, Electron lets the native `minimize` transition complete instead of hiding the window. The taskbar entry remains available and the next taskbar click restores/focuses it. Explicit renderer/menu minimize actions still hide to the resident tray; macOS/Linux native minimize remains tray-resident. No IPC, storage, host protocol, or background-work changes.** | D216's unconditional `window.hide()` handled the taskbar-originated Windows `minimize` event as a tray hide, unexpectedly removing the taskbar entry and leaving the user with only the tray restore path. |
 | D236 | One desktop instance per data directory | **Electron main takes `app.requestSingleInstanceLock()` during module evaluation — after `app.setName`, because the lock lives under the name-derived `userData` path, and before the logger, the persistence outbox, or any other data-directory access. A launch that does not take the lock calls `app.quit()` and boots nothing: the readiness and `before-quit` handlers both return early, so it creates no window, tray, child process, or log line inside the running instance's data directory. The lock holder answers `second-instance` by restoring and focusing its main window through the same path as the tray's Show action, which recreates a window that was closed or hidden into the tray. The lock is requested only when `PI_DESKTOP_DATA_DIR` is unset, so E2E harnesses, the capture rig, and deliberate side-by-side profiles keep the current start-anytime behavior. No IPC channel, host protocol, or storage schema changes.** | A second launch booted a complete second app: another host-core over the single-writer `pi.sqlite` (D002), another outbox and log tree in the same directory, another tray, launcher-chord registration, and updater, leaving two shells divergent over one database. Relaunching the app is a request to see the one already running, and scoping the lock to the installation keeps isolated-data-directory runs launchable (ADR 0094). |
 | D367 | Host-owned plugin session import and ownership API | **`pi.session` gains `import`, `importBatch`, `list`, `get`, `listMessages`, `rename`, and `delete`; `contributes.sessionSources` is required for every source; host-core generates ids and scopes every operation to `(pluginId, source, externalId)` ownership; imports never activate project/provider/model bindings. Schema v14 adds `session_import_origins` and `sessions.deleted_at`; protocol v11 is unchanged. Trash keeps the transcript for owner-only purge.** | External-history plugins need durable import/read/update/delete, and the in-flight `session.getLlmContext` and core `session.import` boundaries are not safe plugin ownership boundaries (ADR 0200, E2E-214 / E2E-215) |
@@ -483,6 +496,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 | D152 | Direct runtime stream rendering | **Assistant content renders each runtime stream chunk directly through the incremental Markdown block cache. The renderer does not add a requestAnimationFrame typewriter state loop. KaTeX's Vite-inlined fonts remain local-only assets and are admitted by the narrow `font-src 'self' data:` CSP directive.** | The duplicate animation loop could trip React's nested-update guard during sustained streams, while the previous CSP blocked bundled math fonts and produced console errors. |
 | D153 | Reasoning sessions default to maximum thinking | *(superseded by D303)* **A newly created session whose inherited default model supports reasoning starts at the highest canonical entry in that model's pi-published `supportedThinkingLevels`. Non-reasoning models and missing capability metadata start at `off`; existing sessions retain their durable choice. This refines D096 without adding a provider override.** | Reasoning-capable models should use their strongest available effort by default while preserving explicit per-session choices and pi-ai's model authority. |
 | D264 | Composer typing avoids full sorts and redundant DOM writes | **The `@` file menu picks its visible rows with a bounded top-K selection over the match list instead of sorting every match; the selection returns exactly the row set and order a full sort produced, and the small, kind-grouped command list keeps its full sort. Composer auto-resize and `--composer-dock-height` publication are idempotent: an unchanged height performs no DOM write and no document-wide style invalidation, and the `height: auto` measurement probe is taken only when the box may need to shrink. Growth through seven rows, internal scrolling past the seventh, and contraction on delete or submit are unchanged. Draft file-reference state and the cursor keep their identity and value when a keystroke changes neither, so the draft-cache serialization effect and autocomplete trigger detection stop re-running per keystroke. No IPC, storage, host-protocol, or schema change.** | With a large workspace and the `@` menu open, every keystroke paid a full sort over the whole 8000-entry file index to show 50 rows, plus a forced synchronous reflow from the measurement probe, while a fresh `fileReferences` array identity per keystroke re-ran the draft-cache serialization effect. The cost was typing latency, not correctness; ordering equivalence with the full sort is covered by unit tests. |
+| D660 | Composer file menu rows always show the full relative path | **Amend the `@` file-completion row presentation of D124 (specs `04-ux/08-component-spec.md` §11.8, `04-ux/09-interaction-patterns.md` §8a.1, E2E-102a): every row renders the leaf name — directories keep the trailing `/` — followed by the entry's complete workspace-relative path in a de-emphasized mono span that carries the raw `entry.path` without a trailing slash. The span takes the row's remaining width and ellipsizes before the leaf name can, and no row overflows the menu. The tooltip keeps the complete relative path and the accessible name becomes the path alone, because the visible row already includes the leaf name. D209/D362 chip rendering, completion, insertion, and serialization are unchanged; no earlier decision owned the old leaf-only row wording, so no entry is marked amended.** | Duplicate leaf names in different directories were indistinguishable until hover, and the relative location — often the actual intent of an `@` reference — was invisible in the persistent row. |
 
 
 ## T. Release delivery decisions
@@ -5921,6 +5935,7 @@ that was sitting at the bottom — including after the turn had finished.
 
 ## 2026-09-17 — Session and project rows delete on the second click (D441)
 
+- **Amended 2026-10-09**: Project menus now open `ProjectDeleteDialog` immediately, including for idle projects; the project-menu Close action is removed in favor of reversible Archive. Only the dialog's explicit confirm action deletes; X, Cancel, Escape, and backdrop clicks dismiss without changes. Session deletion retains the two-click arm. This supersedes the idle-project shortcut recorded below.
 - The sidebar's session item and both project menus (sidebar and Projects index)
   removed the row on the first click of Delete. Every other destructive row
   action — the settings provider rows, vendor accounts, and the capability
@@ -7640,3 +7655,449 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   restart, dead-letter cap, session delete) and
   E2E-SESSION-outbox-unclassifiable-failure-does-not-stall-the-queue. See ADR
   0041, `03-runtime/04-data-storage.md`, and `03-runtime/06-host-rpc-protocol.md`.
+
+## 2026-10-13 — Open local files in the embedded Browser (D657)
+
+- D657 amends ADR 0170: explicit absolute paths and `file:` URLs can open any
+  existing regular local file, and local-file pages can follow links to other
+  local files. Relative paths remain workspace-rooted. HTTP(S) pages cannot
+  navigate outside the workspace through a file link.
+- The public `pi.browser.navigate` API follows the same policy under its
+  existing high-risk `browser.cdp` permission. `BrowserPreview` and the sidecar
+  retain workspace-rooted validation.
+- Covered by `apps/desktop/test/browser-pane-navigation.test.mjs`,
+  `apps/desktop/test/browser-local-file-feedback.test.mjs`, and E2E-059. See
+  ADR 0328, `04-ux/08-component-spec.md`, `07-plugins/03-plugin-api.md`, and
+  `05-security/01-security.md`.
+
+## 2026-10-13 — Session identity on endpoints the adapters leave anonymous (D658)
+
+- Agent-runtime stamps a per-session identity onto requests bound for an endpoint
+  the user pointed at themselves — a provider row whose base URL host is not a
+  published vendor host — on the `openai-completions`, `anthropic-messages`,
+  and `openai-responses` wire APIs. On Completions and Anthropic, the built model gains
+  `compat.sendSessionAffinityHeaders` with
+  `sessionAffinityFormat: "openai"`, so the adapter writes `x-session-affinity`
+  and `x-client-request-id` beside `session_id`, and a Chat Completions payload
+  that carries no `prompt_cache_key` gains the session id as one, clamped to the
+  adapter's 64-character limit. A row's own `compat` still wins, and the key is
+  added on a copy after every other payload hook.
+- A custom Responses row keeps its existing `session_id`, `x-client-request-id`,
+  and cache key, and also gets the stable `x-session-affinity` alias so reverse
+  proxies that discard underscore headers can route the session.
+- Identity reaches session turns, subagent turns, context-compaction summaries,
+  and plugin one-shots handed a session id. A published vendor host (matched by
+  host against `NAMED_ENDPOINT_PRESETS`), the OpenCode path's own
+  `x-opencode-session`, and the Responses adapters' existing behavior on
+  published vendor hosts keep their current request bytes, so no vendor's
+  published caching semantics move; a caller with no session id gains no body
+  key or `x-session-affinity` header.
+- Covered by `packages/agent-runtime/src/session-affinity.test.ts` and
+  E2E-PROVIDER-custom-endpoint-session-identity. See issue #1634,
+  `03-runtime/02-agent-runtime.md` §6.3, and
+  `03-runtime/11-provider-model-system.md`.
+
+## 2026-10-14 — Composer file menu rows always show the full relative path (D660)
+
+- D660 amends the `@` file-completion row contract in
+  `04-ux/08-component-spec.md` §11.8, `04-ux/09-interaction-patterns.md` §8a.1,
+  and E2E-102a: each row persists the leaf name (directories keep the trailing
+  `/`) followed by the entry's complete workspace-relative path in a
+  de-emphasized mono span that renders the raw `entry.path` without a trailing
+  slash. The span takes the row's remaining width and ellipsizes before the
+  leaf name can, so a short leaf name never truncates and no row overflows the
+  menu.
+- The tooltip still carries the complete relative path, and the accessible
+  name becomes the path alone — the visible row already includes the leaf
+  name, so the old `leaf — path` label would have read it twice.
+- Reference chips (D209/D362, ADR 0024/ADR 0070), completion, insertion, and
+  serialization are unchanged, and no earlier decision owned the old
+  leaf-only row wording, so no entry is marked amended.
+- Covered by `apps/desktop/test/composer-file-reference-display.test.mjs` and
+  the file-mode fixture of `scripts/e2e-composer-autocomplete.mjs`. See
+  `04-ux/08-component-spec.md` and `04-ux/09-interaction-patterns.md`.
+
+## 2026-10-16 — Segmented turn process and independent thinking preference (D661)
+
+- D661 supersedes the `Detailed` / `Compact` display-mode behavior and the single
+  whole-process disclosure recorded by D633 / D651 and the
+  `turn-process-and-thinking-display` ADR. A turn now renders as chronological
+  collapsible process segments; the trailing answer, assistant errors, stopped
+  trailing text, and pending action surfaces stay outside them.
+- Bash and run aliases render as standalone rows outside every folded container —
+  neither the turn-level process disclosure nor an ordinary activity group — and
+  stay visible even when every group is collapsed. Adjacent Bash rows remain
+  separate, and a Bash row's detail stays closed until the user opens it.
+- Group folding defaults are unified and independent of the thinking preference:
+  the active group opens and closes on completion only if untouched, other
+  completed groups start closed, and an untouched active group with a recorded
+  failed or denied tool stays open through later recovery.
+- The preference is the optional boolean `AppSettings.showThinking`. When false,
+  the live thinking indicator stays visible while completed thinking rows and
+  excerpts are hidden and empty thinking-only containers are omitted; the stored
+  reasoning is retained. Absent or non-boolean values fall back to the legacy
+  `thinkingDisplayMode` field (`compact` hides, `detailed`/unknown/absent shows),
+  which is retained only for persisted-settings compatibility and is no longer
+  exposed in the UI.
+- `showThinking` joins the portable application fields so it synchronizes like the
+  legacy field; no other host protocol, persistence schema, permission, or plugin
+  contract change. Covered by `apps/desktop/test/thinking-visibility.test.mjs` and
+  the i18n catalog tests. See the amended ADR, `04-ux/06-settings-ia.md`,
+  `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-16 — Open scoped HTML files in the work-panel Browser from plugins (D662)
+
+- Add `pi.fs.openInBrowser(pathFromRoot)` under `fs.read`. Main applies the
+  plugin's ordinary filesystem read gates, including project-group roots, and
+  accepts existing HTML files only. Each call is audited.
+- After validation, Main sends a dedicated event; the renderer opens the file
+  in a Browser resource tab for the active local session. The Browser plugin
+  must be enabled. This action does not grant CDP or expose Browser controls.
+- Covered by `apps/desktop/test/plugin-fs-scope.test.mjs` and
+  `apps/desktop/test/browser-preview-tool.test.mjs`. The packaged File Manager
+  scenario in E2E-153 covers the complete user path. See ADR 0330 and the
+  plugin API, permission, security, and component specs.
+
+## 2026-10-17 — Composer mode control opens a menu instead of cycling (D663)
+
+- The Composer-left Agent/Plan/Goal trigger keeps naming only the committed
+  mode, at a fixed 96px that now includes its caret; clicking it opens one menu
+  whose three rows are radio menu items with the committed mode checked.
+  Choosing a row closes the menu and configures the active session.
+- Cycling was replaced because reaching a specific mode took repeated clicks
+  and never showed the alternatives. A row of three always-visible segmented
+  options was implemented and dropped: it needed roughly 70px more toolbar
+  width per extra state and crowded the approval control beside it.
+- The approval chip keeps its existing fixed-width menu, and opening either
+  menu closes the other. `nextMode` is removed. Covered by
+  `apps/desktop/test/composer-mode-menu.test.mjs`,
+  `apps/desktop/test/composer-chip-descenders.test.mjs`, and the composer
+  slots and thinking contracts. See `04-ux/08-component-spec.md` §11 and
+  US-UI-73.
+
+## 2026-10-18 — Default sidebar running activity to the count badge (D664)
+
+- When the three optional sidebar activity settings are absent, the master and
+  Count badge resolve on while Activity rail resolves off. Explicitly saved
+  values remain authoritative, and the master still gates both affordances
+  without rewriting either child preference.
+- The count keeps live work discoverable without making the animated rail a
+  default. Settings reads apply these defaults through renderer API
+  normalization; no persisted schema or migration change is required. See
+  `04-ux/01-ui-ia.md`, `04-ux/06-settings-ia.md`, and E2E-266.
+
+## 2026-10-16 — macOS paints an opaque native window surface (D665)
+
+- D665 supersedes the macOS `vibrancy: "sidebar"` + `transparent: true` window
+  backing from D348. A vibrancy material behind a transparent surface is
+  recomposited by WindowServer every frame the window stays dirty, which held an
+  idle focused window near 40% GPU on Apple Silicon (issue #1064). macOS now
+  paints the opaque background the other platforms already use, keeping the
+  `hiddenInset` titlebar, the inset traffic-light position, and the renderer's
+  sidebar tint and sheen.
+- The `window.setBackgroundColor` IPC no longer returns early on darwin, so a
+  granted `windowAppearance.backgroundColor` plugin theme is applied on macOS
+  like every other platform (ADR 0248): a theme change repaints the native
+  surface instead of being skipped. Native corner behavior is unchanged.
+- The bounded-animation contract that bounded idle indicators under #1064 stays
+  in force; only its stated rationale changes, because a dirty window is
+  recomposited on every platform. See ADR 0332, ADR 0248, ADR 0260,
+  `04-ux/08-component-spec.md`, `04-ux/07-ui-design-system.md`, and
+  `07-plugins/13-plugin-permissions-matrix.md`.
+- Covered by `apps/desktop/test/macos-opaque-window-surface.test.mjs`,
+  `apps/desktop/test/window-background.test.mjs`,
+  `apps/desktop/test/window-background-theme.test.mjs`, and
+  `apps/desktop/test/idle-status-animations.test.mjs`.
+
+## 2026-10-20 — macOS translucency is a window setting (D666, amended by D667)
+
+- D666 amends D665 / ADR 0332: the macOS main window still paints an opaque
+  native surface by default, and `AppSettings.macosWindowTranslucency` lets a
+  user opt back into the `sidebar` vibrancy material behind a transparent
+  backing. `macosWindowSurfaceOptions(translucent, color)` is the single surface
+  declaration; `mainWindowBackgroundOptions("darwin", color)` keeps the opaque
+  result so a platform-only caller never gets the material.
+- Electron fixes `transparent` when a window is created, so the preference is
+  read before `new BrowserWindow` and a change applies on the next launch. The
+  darwin-only Settings → General → Appearance row persists the choice and shows
+  a restart hint while it differs from the surface this process was created
+  with; no runtime window mutation, renderer reload, or relaunch is performed.
+- While the window is translucent, `window.setBackgroundColor` leaves the
+  surface to the material, so a plugin theme's
+  `windowAppearance.backgroundColor` is applied only on the opaque surface. The
+  renderer tint and sheen are unchanged in both modes, and no persisted-format
+  migration is required (D667 changed the absent-value meaning to translucent).
+- Covered by `apps/desktop/test/macos-window-translucency.test.mjs`,
+  `apps/desktop/test/macos-opaque-window-surface.test.mjs`, and
+  `apps/desktop/test/window-background.test.mjs`. See ADR 0332,
+  `04-ux/08-component-spec.md`, and `04-ux/07-ui-design-system.md`.
+
+## 2026-10-20 — macOS translucency stays the default (D667)
+
+- D667 amends D665 / D666 and ADR 0332: the macOS main window ships
+  **translucent** again — `vibrancy: "sidebar"`, `visualEffectState:
+  "followWindow"`, and a transparent `#00000000` backing — and
+  `AppSettings.macosWindowTranslucency` is the opt-out. Absent and `true` mean
+  the shipped material; only `false` paints the opaque surface that leaves
+  WindowServer's per-frame recomposition path (#1064). The store itself defaults
+  to translucent, so a boot that cannot read settings still paints the expected
+  window.
+- A translucent window owns its pixels: the post-creation
+  `applyMainWindowBackground` call now skips macOS windows created translucent,
+  in addition to the already-guarded `window.setBackgroundColor` and theme paths.
+  Without that guard the window was created with the material and then had an
+  opaque host colour painted over it, so the switch looked inert after a restart.
+  `window/control` `getState` keeps reporting the surface the process actually
+  created, which keeps the Settings restart hint honest.
+- No persisted migration: an absent value now means translucent, which restores
+  the pre-D665 appearance for every existing install, and an explicit `false`
+  keeps the opaque choice a user already made. See ADR 0332, ADR 0248,
+  `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`, and
+  `apps/desktop/test/macos-window-translucency.test.mjs`.
+
+## 2026-10-21 — One process disclosure per turn, with three transcript display modes (D668)
+
+- D668 amends D661 / the `turn-process-and-thinking-display` ADR: a turn now
+  renders exactly one top-level process disclosure containing every pre-answer
+  row. No run row is a sibling of that disclosure; the trailing answer, assistant
+  errors, stopped trailing text, and pending action surfaces stay outside it.
+- `AppSettings.transcriptDisplayMode` selects the layout. `flat` renders no
+  nested activity groups and lists rows in transcript order. `command-first`
+  keeps the groups but lifts `Bash`/run rows into standalone rows, with a normal
+  progress message or a command ending a group. `fully-folded`, the default for
+  absent or invalid values, keeps run rows inside their groups and lets only
+  ordinary assistant progress text split them. The mode is read while rendering,
+  so switching repaints immediately.
+- With `showThinking` on, Thinking rows default expanded in `flat` and
+  `command-first`; `fully-folded` keeps the released exception where only the
+  last active row opens while it is live. With the preference off, no completed
+  reasoning row renders and only a live whole-run TextShimmer `Thinking`
+  indicator remains while reasoning streams.
+- `keepCommandsExpanded` is deprecated and retained only for persisted-settings
+  compatibility; it is no longer exposed or read for rendering. The disclosure
+  header, left edge, and pane-owned disclosure memory are unchanged.
+- Covered by `apps/desktop/test/turn-process.test.mjs`,
+  `apps/desktop/test/transcript-display-modes-ui.test.mjs`,
+  `apps/desktop/test/transcript-display-mode-settings.test.mjs`, and
+  `apps/desktop/test/settings-roundtrip.test.mjs`. See the amended ADR,
+  `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-19 — `@` queries search past a truncated file index (D669)
+
+- The `fs/index` snapshot keeps the shallowest 8000 entries, and the menu
+  fuzzy-filtered only that snapshot. In a large tree — a Unity project, where
+  every asset has a `.meta` sibling — scripts several folders deep were never
+  in it, so no query could reach them even though the truncation footnote
+  invited refining the query (issue #1781).
+- While the snapshot is truncated, a non-empty query is now also sent to
+  `fs/search` after a 150 ms typing pause. Main ranks it with the renderer's
+  scorer over the listing it already built for the index (`git ls-files`), or
+  over a deeper ignore-set walk (at most 200,000 entries or two seconds) when
+  the index came from the walk, and returns the best 50 rows. The menu merges
+  them with its local matches; an answer for an earlier query is dropped.
+- A complete index never searches, so small projects behave as before. The
+  footnote stays while the list may be incomplete. Remote sessions keep their
+  snapshot because the remote file protocol has no search operation. Bundling
+  a native lister (ripgrep, bfs) was not needed: git already lists the whole
+  repository, and searching 60,000 paths takes a few milliseconds.
+- Covered by `packages/host-runtime/src/fs-index.test.ts` and
+  `apps/desktop/test/composer-deep-file-search-user-path.test.mjs`. See
+  `03-runtime/01-ipc-protocol.md` §13c, `04-ux/08-component-spec.md` §11.8,
+  and E2E-COMPOSER-deep-file-mentions.
+
+## 2026-10-22 — Keep small activity groups and reasoning visible after settlement (D670)
+
+- D670 amends D661 / D668 and ADR `turn-process-and-thinking-display`: an
+  ordinary activity group stays open while active; after completion, groups with
+  at most four visible items remain open, larger ordinary groups start closed,
+  and Task topology groups remain open. The whole-turn process still closes on
+  completion by default.
+- With `showThinking` on, all visible Thinking rows default expanded in Flat,
+  Commands first, and Fully folded. Tool, search, and run-row payloads remain
+  collapsed until the user opens them. Explicit disclosure choices remain
+  authoritative; there is no protocol or persistence change.
+- Issue #1806 reproduced the group and reasoning collapse at turn settlement.
+  `pnpm test:e2e:transcript` covers active-to-completed groups, reasoning rows,
+  and closed payloads. See `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md`, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-22 — Inline generative UI visualizations (D671)
+
+- Models explain dynamic systems, tunable parameters, and spatial relations
+  better with a small interactive page than with prose or Mermaid, but the
+  transcript renders Markdown only.
+- Local sessions get `<data_dir>/visualizations/<sessionId>/`, a second
+  contained root next to scratch (D114). Write/Edit accept only `.html`
+  fragments there, without a permission prompt; the directory is removed with
+  its session and orphan directories are swept at startup, never by age.
+  Remote-workspace and contract sessions get neither the root nor the skill.
+- A standalone `::visualize{"path":"…","title":"…"}` line outside code blocks
+  becomes an inline card once the turn completes. Main serves the fragment
+  through `pi-genui://session/<sessionId>/<file>` inside a host shell with a
+  strict CSP (no network, no frames, no forms) and a sandboxed iframe
+  (`allow-scripts` only); the URL is derived from the path suffix, so data-dir
+  relocation does not break old references. Cards always load from the
+  owning session; forks copy the fragments they reference. Theme and height
+  travel by `postMessage`. WebRTC ICE is not blocked by Chromium yet and is a
+  documented residual risk.
+- The shell embeds a stylesheet and tooltip/tab runtime adapted from ZCode's
+  Apache-2.0 visualize kit, plus offline D3 7.9.0 and Floating UI served from
+  `pi-genui://assets` (pinned CDN URLs are rewritten; any other remote URL is
+  blocked). The skill is a condensed adaptation of ZCode's.
+- v1 has no widget state, follow-up messages, CDN access, icons, or tweak
+  panel.
+  See ADR `gen-ui-inline-visualization`, `03-runtime/03-tools-and-permissions.md`
+  §4b.1, `03-runtime/04-data-storage.md`, and E2E-GENUI-inline-visualization-card.
+
+## 2026-10-23 — Official DeepSeek endpoints send reasoning_effort again (D672)
+
+- D672 amends D389: only DeepSeek-family rows whose base URL is not
+  `deepseek.com` set `supportsReasoningEffort: false`. Official rows leave the
+  flag to pi-ai, which sends `reasoning_effort` next to
+  `thinking: {type: "enabled"}`.
+- DeepSeek documents `reasoning_effort` (low / high / max) for Chat
+  Completions. With the flag forced off, official requests carried only the
+  thinking toggle, so low, high, and max produced the same request (#1821).
+  The #1664 report concerned relays, which keep the suppression by default.
+  Verified against `api.deepseek.com`: low, high, and max arrive as sent and
+  the endpoint still returns 200 for `thinking: {type: "enabled"}` alone.
+- The per-model `supportsReasoningEffort` override from D671 / #1846 still wins
+  in both directions, and relays that reject the field keep the suppression.
+- No persisted format or protocol change. Covered by
+  `packages/shared/src/provider-presets.test.ts`, the captured-request test in
+  `packages/agent-runtime/src/provider-binding.test.ts`, and the official-wire
+  cases in `packages/agent-runtime/src/provider-reasoning-effort.test.ts`. See
+  `03-runtime/11-provider-model-system.md` and E2E-005E.
+
+## 2026-10-24 — Automatic transcript folding is deterministic (D673)
+
+- D673 amends the turn-process disclosure policy: every ordinary group of a turn
+  stays open while that turn is active, instead of folding as soon as it stops
+  owning the live segment. After the turn settles, groups with at most four
+  visible items, Task topology groups, and groups that still render a Thinking
+  row stay open; larger groups of plain tool rows start closed. Visible
+  reasoning is reader-requested content, so `Show thinking` is no longer
+  undermined by folding the group around it.
+- Disclosure ownership is split in two. An explicit header/rail choice belongs to
+  its own level and never pins an ancestor; a press, focus or selection is a
+  transient reading hold that defers an automatic close until the reader leaves.
+  Previously a pointer press or a nested toggle recorded the enclosing levels'
+  current state as permanent choices, which disabled automatic folding for the
+  rest of the pane's life and could pin a level closed. Search reveals still keep
+  their revealed ancestor path open.
+- The activity-group issue counter is one inline non-wrapping chip
+  (`activity-issue-count`), replacing the unstyled `turn-process-error` span that
+  wrapped its icon and localized count onto separate lines in narrow bands. The
+  top-level turn header still carries no issue count.
+- No persisted format or protocol change. Covered by
+  `apps/desktop/test/activity-group-folding.test.mjs` and the automatic-folding
+  scenario inside `pnpm test:e2e:transcript`. See ADR
+  `turn-process-and-thinking-display`, `04-ux/08-component-spec.md` §9,
+  `04-ux/09-interaction-patterns.md` §4.2, and
+  E2E-CHAT-turn-process-and-thinking-display.
+
+## 2026-10-28 — Per-turn changed-files summary (D674)
+
+- D674 adds a read-only `TurnChangesCard` under every completed reply whose
+  turn recorded at least one workspace review change (issue #1891, design 10).
+  It mounts with the reply plugin slots, so it never appears while streaming or
+  after a failed turn, and `entryExtra` blocks stay beneath it.
+- The card reads only the turn's message-owned `details.review` records through
+  `reviewChangeFromMessage`; no capture, IPC, persistence, or host-core change.
+  Rows merge edits per path: `D` when the turn ends by deleting the file, else
+  `A` when any edit created it, else `M`; counts add up; a file whose every edit
+  was rolled back stays listed and struck through.
+- Adaptive density: up to four files use relaxed 25px rows; more switch to dense
+  21px rows with a directory count; rows past 12 fold into `+N more` with a link
+  to Review. The card is one `--ds-tile` surface with no border (D297).
+- Clicking a row opens the originating session's Review tab, scrolls to that
+  file's first recorded change, and expands it, through a transient renderer
+  focus request (`lib/review-focus-request.ts`) rather than app-store state.
+  The per-call review rows and the Review tab otherwise keep their behavior.
+- Covered by `apps/desktop/test/turn-changes-card.test.mjs`. See
+  `04-ux/08-component-spec.md` §4.4 and E2E-CHAT-turn-changed-files-summary.
+
+## 2026-10-28 — Pixel-size image admission (D675)
+
+- D675 adds a header-only pixel-size probe (`packages/shared/src/image-dimensions.ts`,
+  mirrored in `crates/host-core/src/tools/image_dimensions.rs`) for PNG, JPEG,
+  GIF, and WebP. An image whose longest edge exceeds 8000 px is not inlined
+  (issue #1913).
+- Host Read refuses such a file with `TOOL_FAILED` and a message naming its
+  size, so it never enters history. Prompt attachments and restored history
+  keep the image ref and send the existing `@path` fallback instead of bytes.
+- `convertToLlm` replaces any remaining oversized image block (older sessions,
+  plugin or MCP results) with `[Image omitted: WxH px exceeds the 8000 px
+  longest-edge limit for model input.]`, which recovers a session that already
+  fails every request. The same bytes always produce the same notice, so
+  prompt caching is unaffected.
+- Images whose dimensions cannot be read keep the previous byte-only rule.
+  Resampling an oversized image instead of dropping it needs a decoder and is
+  not part of this change.
+- Covered by `packages/shared/src/image-dimensions.test.ts`,
+  `packages/agent-runtime/src/image-admission.test.ts`,
+  `packages/agent-runtime/src/attachment-history.test.ts`,
+  `apps/desktop/test/prompt-inline-attachments.test.mjs`, and host-core
+  `tools::image_dimensions` / `read_refuses_images_past_the_pixel_limit` tests.
+
+## 2026-10-28 — Completed turns end at their prompt (D676)
+
+- D676 replaces "stream completion keeps a following reader at the bottom":
+  when a followed turn completes, its prompt scrolls to the top of the
+  viewport and jump-to-latest appears (issue #1889). A reader who scrolled
+  away keeps their position.
+- The move waits for the reply's final status, runs one frame after the
+  settled reply lays out, and is skipped for failed or aborted turns, a prompt
+  already in view, a hidden pane or reading window, a held disclosure
+  position, and a queued follow-up that starts first.
+- Logic lives in `apps/desktop/src/lib/turn-completion-scroll.ts` and the
+  `useTurnCompletionScroll` hook beside `useTranscriptScroll`. Covered by
+  `apps/desktop/test/turn-completion-scroll.test.mjs` and
+  `pnpm test:e2e:transcript-turn-completion`
+  (E2E-CHAT-completed-turn-scrolls-to-prompt).
+
+## 2026-10-28 — One DeepSeek reasoning field per replayed row (D677)
+
+- D677 amends ADR 0256 decision 3 (issue #1945). The pi-ai fill pass in
+  `patches/@earendil-works__pi-ai@1.3.0.patch` picks the reasoning field of the
+  newest assistant row with real reasoning instead of the first field in a
+  fixed list, and normalizes every assistant row to it. Real reasoning stored
+  under another field name moves there; the other fields are removed, so a
+  row never carries two (relays reject duplicate reasoning fields).
+- The placeholder now fills only rows with no reasoning at all, so a live row
+  with real reasoning is never sent the placeholder in the field the model
+  reads.
+- `withoutReasoningReplayPlaceholder` (shared) drops a leading echo of the
+  placeholder, and its observed `[reasoning retained for this turn]` rewrite,
+  from stored thinking in session and delegate history rebuild and in
+  `messageThinking`, which feeds the thinking panel. Existing transcripts are
+  not rewritten; the echo simply stops being shown or replayed.
+- Not changed: strict relays still receive the non-empty placeholder for rows
+  with no reasoning (#296), and official DeepSeek keeps `""`.
+- Covered by `reasoning-content-backfill.test.ts`, `runtime.test.ts`,
+  `provider-presets.test.ts`, and `apps/desktop/test/assistant-turns.test.mjs`.
+  See E2E-005E.
+
+## 2026-10-29 — Radial context menu rebuilt and moved to General (D678)
+
+- D678 reworks the opt-in transcript radial menu. Every sector shows its
+  action's icon and label at rest, so the ring reads without hovering; the
+  active sector fills as a single highlight (no button background, no focus
+  rectangle); the hub is a recessed well with the click-point dot; the disc
+  shrinks from 320 to 248 px with hairline separators and the composer shadow;
+  and hover and reveal motion follow the shared motion tokens.
+- The standard marking gesture joins click and keyboard: a right-press that
+  starts while the ring is open runs the sector it is released on, releasing
+  in the hub dismisses without running, and the release trailing the
+  right-click that opened the ring is inert.
+- The settings card moves from the AI tab to General (after Sidebar) with its
+  settings-search index; the action vocabulary, per-direction defaults,
+  `AppSettings.radialMenu` shape, persistence, and IPC are unchanged.
+- Covered by `apps/desktop/test/radial-menu.test.mjs`, the Chromium component
+  check `pnpm test:e2e:radial-menu`, and capture scenes `pi-radial` /
+  `pi-radial-dark`. See `04-ux/09-interaction-patterns.md` §1.11 and
+  E2E-CHAT-radial-background-menu.

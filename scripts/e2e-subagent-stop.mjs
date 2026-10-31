@@ -30,6 +30,12 @@ const server = createServer(async (req, res) => {
     const label = input.includes("Fixture worker A") ? "A" : input.includes("Fixture worker B") ? "B" : null;
     res.writeHead(200, { "content-type": "text/event-stream" });
     const delta = (value, finish = null) => res.write(`data: ${JSON.stringify({ id: `fixture-${++sequence}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: value, finish_reason: finish }] })}\n\n`);
+    if (input.includes("Continue immediately after Stop")) {
+      delta({ role: "assistant", content: "Follow-up completed after Stop." });
+      delta({}, "stop");
+      res.end("data: [DONE]\n\n");
+      return;
+    }
     if (label) {
       workers.set(label, res);
       res.on("close", () => { if (workers.get(label) === res) workers.delete(label); });
@@ -68,6 +74,24 @@ async function until(check, message = "condition") {
   }
   throw new Error(`Timed out: ${message}\n${output.slice(-2500)}`);
 }
+async function terminateChildTree(processHandle) {
+  if (!processHandle || processHandle.exitCode !== null) return;
+  const exited = new Promise(resolve => processHandle.once("exit", resolve));
+  const signalTree = signal => {
+    try {
+      if (process.platform === "win32") processHandle.kill(signal);
+      else process.kill(-processHandle.pid, signal);
+    } catch {
+      processHandle.kill(signal);
+    }
+  };
+  signalTree("SIGTERM");
+  const timeout = setTimeout(() => {
+    if (processHandle.exitCode === null) signalTree("SIGKILL");
+  }, 5_000);
+  await exited;
+  clearTimeout(timeout);
+}
 async function connect(port, type) {
   const target = await until(async () => {
     try { return (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(target => target.type === type && (type !== "page" || target.url.includes("/out/renderer/index.html") && !target.url.includes("surface="))); }
@@ -100,7 +124,7 @@ async function connect(port, type) {
 const ports = [await freePort(), await freePort()];
 const env = { ...process.env, HOME: join(scratch, "home"), PI_DESKTOP_DATA_DIR: join(scratch, "data"), PI_DESKTOP_HOST_BIN: resolveHostBinary(), PI_DESKTOP_PLAN_UI_PROBE: "1", PI_DESKTOP_TEST_API_KEY: "local-fixture", PI_DESKTOP_TEST_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`, PI_DESKTOP_TEST_MODEL: "deepseek-flash", ELECTRON_RENDERER_URL: "", PI_DESKTOP_START_MAXIMIZED: "0" };
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(resolveElectronBinary(root).electronBinary, [`--remote-debugging-port=${ports[0]}`, `--inspect=${ports[1]}`, `--user-data-dir=${join(scratch, "profile")}`, "."], { cwd: join(root, "apps/desktop"), env, stdio: ["ignore", "pipe", "pipe"] });
+const child = spawn(resolveElectronBinary(root).electronBinary, [`--remote-debugging-port=${ports[0]}`, `--inspect=${ports[1]}`, `--user-data-dir=${join(scratch, "profile")}`, "."], { cwd: join(root, "apps/desktop"), env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
 let output = "";
 child.stdout.on("data", chunk => { output += chunk; });
 child.stderr.on("data", chunk => { output += chunk; });
@@ -164,6 +188,28 @@ try {
   }, "terminal statuses persisted");
   console.log("PASS Desktop card/detail stop, session stop-all, parent isolation, partial output, persistence and invalid selection");
   await invoke("agentAbort", { sessionId: setup.sessionId });
+  const followUp = await invoke("agentPrompt", {
+    sessionId: setup.sessionId,
+    content: "Continue immediately after Stop.",
+  });
+  assert.equal(followUp.ok, true, "a follow-up prompt is accepted as soon as Stop returns");
+  await until(
+    () => requests.some(request => JSON.stringify(request.messages).includes("Continue immediately after Stop")),
+    "follow-up reaches the local provider without AGENT_BUSY",
+  );
+  let followUpState;
+  await until(async () => {
+    const session = await invoke("sessionGet", { id: setup.sessionId });
+    const status = await invoke("agentGetStatus", setup.sessionId);
+    const responsePersisted = session.data.session.messages.some(
+      message => message.role === "assistant" && String(message.content ?? "").includes("Follow-up completed after Stop."),
+    );
+    followUpState = { status: status.data.status, responsePersisted };
+    return status.data.status?.isRunning === false && responsePersisted;
+  }, "follow-up turn completes and persists").catch(error => {
+    throw new Error(`${error.message}\nLast follow-up state: ${JSON.stringify(followUpState)}`);
+  });
+  console.log("PASS same-session follow-up starts immediately after Stop returns");
   if (show) {
     const demo = await invoke("sessionCreate", { title: "子智能体停止演示 · 本地模拟模型", mode: "agent", providerId: setup.providerId, modelId: setup.modelId, projectPath: workspace });
     const demoId = demo.data.session.id;
@@ -181,7 +227,7 @@ try {
   }
 } finally {
   main?.ws.close(); page?.ws.close();
-  child.kill("SIGTERM");
+  await terminateChildTree(child);
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
   if (!show) await rm(scratch, { recursive: true, force: true });

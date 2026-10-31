@@ -136,9 +136,16 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(messagesStyles, /\.working-indicator-mark > span\s*\{[\s\S]*?animation:\s*working-indicator-dot\s+1s/);
   assert.doesNotMatch(proseStyles, /\.working-indicator\s*\{|\.shimmer-text\s*\{/);
   assert.doesNotMatch(messagesStyles, /\.shimmer-text\s*\{|animation:\s*shimmer\b/);
+  // The live marker is a real flex sibling of the label, so the header's
+  // alignment centres it; the old generated inline box drifted off centre.
+  assert.match(transcript, /<span className="activity-marker" aria-hidden \/>/);
   assert.match(
     messagesStyles,
-    /\.tool-activity-label\.running::after,\s*\.tool-row-name\.running::after\s*\{[\s\S]*?animation:\s*activity-marker-pulse\s+1s/,
+    /\.activity-marker \{[\s\S]*?flex:\s*none;[\s\S]*?animation:\s*activity-marker-pulse\s+1s/,
+  );
+  assert.doesNotMatch(
+    messagesStyles,
+    /\.(tool-activity-label|tool-row-name)\.running::after/,
   );
   assert.doesNotMatch(
     en,

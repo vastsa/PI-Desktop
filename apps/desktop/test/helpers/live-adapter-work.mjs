@@ -28,7 +28,7 @@ export class FixtureLiveSocket extends EventEmitter {
   }
 
   receive(value) { this.emit("message", typeof value === "string" ? value : JSON.stringify(value)); }
-  close() { this.readyState = 3; this.emit("close", 1000); }
+  close(code = 1000, reason = "") { this.readyState = 3; this.emit("close", code, Buffer.from(reason)); }
   terminate() { this.terminated = true; this.close(); }
   settleReceipt(error) { this.receiptCallbacks.shift()?.(error); }
 

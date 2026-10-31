@@ -20,9 +20,40 @@ export const MAX_PATCH_BYTES = 200 * 1024;
 
 type RunResult = { code: number; stdout: string; stderr: string };
 
+const NULL_HOOKS_PATH = process.platform === "win32" ? "NUL" : "/dev/null";
+
+const REDIRECT_ENV = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_COUNT",
+] as const;
+
 function runGit(cwd: string, args: string[]): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn("git", args, { cwd, env: process.env });
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      GIT_OPTIONAL_LOCKS: "0",
+    };
+    for (const name of REDIRECT_ENV) delete env[name];
+
+    const child = spawn(
+      "git",
+      [
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        `core.hooksPath=${NULL_HOOKS_PATH}`,
+        ...args,
+      ],
+      { cwd, env },
+    );
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += String(d)));
@@ -238,6 +269,7 @@ export async function collectWorkspaceDiff(cwd: string): Promise<WorkspaceDiff> 
     base,
     "--no-color",
     "--no-ext-diff",
+    "--no-textconv",
     "-M",
     "--unified=3",
   ]);
@@ -255,6 +287,7 @@ export async function collectWorkspaceDiff(cwd: string): Promise<WorkspaceDiff> 
       "diff",
       "--no-color",
       "--no-ext-diff",
+      "--no-textconv",
       "--unified=3",
       "--no-index",
       "--",

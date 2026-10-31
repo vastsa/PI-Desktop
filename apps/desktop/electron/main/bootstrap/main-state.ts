@@ -79,6 +79,12 @@ export class MainProcessState {
   closePromptOpen = false;
   quitConfirmed = false;
   developerMode = false;
+  /**
+   * Translucency is the shipped macOS surface, so a boot that never reads
+   * settings (host unavailable) still paints the window the user expects. The
+   * preference can only turn it off.
+   */
+  macosWindowTranslucency = true;
 
   updaterLocale = "en";
   pluginPanelTheme: PluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -248,6 +254,12 @@ export class MainProcessState {
       },
       set developerMode(value) {
         self.developerMode = value;
+      },
+      get macosWindowTranslucency() {
+        return self.macosWindowTranslucency;
+      },
+      set macosWindowTranslucency(value) {
+        self.macosWindowTranslucency = value;
       },
       get pluginLauncherWindow() {
         return self.pluginLauncherWindow;

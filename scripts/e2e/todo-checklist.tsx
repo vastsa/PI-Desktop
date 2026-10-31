@@ -37,7 +37,8 @@ async function mount(sessionId: string) {
   await frame();
 }
 const dock = () => document.querySelector(".todo-dock");
-const header = () => document.querySelector<HTMLButtonElement>(".todo-dock-header");
+const header = () => document.querySelector<HTMLElement>(".todo-dock-header");
+const toggle = () => document.querySelector<HTMLButtonElement>(".todo-dock-toggle");
 const box = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
 const collapsedGap = () => Math.round(box(".todo-dock").height - box(".todo-dock-header").height);
 const dockGeometry = () => `dock ${box(".todo-dock").height}px, header ${box(".todo-dock-header").height}px, `
@@ -61,7 +62,16 @@ window.todoChecklistProbe = async () => {
 
   const original = await write(first, items(10, "Task"));
   await until(() => header()?.textContent?.includes("Task 1") === true, "Committed host notification must reach TodoDock");
-  assert(header()?.getAttribute("aria-expanded") === "false", "Dock starts collapsed");
+  assert(toggle()?.getAttribute("aria-expanded") === "false", "Dock starts collapsed");
+  assert(toggle()?.querySelector("svg")?.classList.contains("lucide-chevron-up"),
+    "Collapsed dock arrow points toward its upward expansion");
+  const toggleRect = toggle()!.getBoundingClientRect();
+  assert(toggleRect.width >= 36 && toggleRect.height >= 36,
+    `Expand/collapse button has a 36px minimum hit target (${toggleRect.width}x${toggleRect.height})`);
+  const arrowRect = toggle()!.querySelector("svg")!.getBoundingClientRect();
+  assert(Math.round(arrowRect.width) === 18 && Math.round(arrowRect.height) === 18,
+    `Expand/collapse icon is independently sized to 18px (${arrowRect.width}x${arrowRect.height})`);
+  checks.push("disclosure-hit-target-and-icon-sized-independently");
   // The closed disclosure must not reserve the list's inset: vertical padding on
   // the collapsing box held the `0fr` row open and left a blank band under it.
   assert(Math.round(box(".todo-dock-content").height) === 0,
@@ -71,7 +81,13 @@ window.todoChecklistProbe = async () => {
   assert(collapsedGap() === 2, `Collapsed dock must be the header plus its borders (${dockGeometry()})`);
   checks.push("collapsed-dock-reserves-no-blank-height");
   flushSync(() => header()!.click());
-  await until(() => header()?.getAttribute("aria-expanded") === "true", "Click must expand dock");
+  await frame();
+  assert(toggle()?.getAttribute("aria-expanded") === "false", "Clicking the header text does not expand dock");
+  flushSync(() => toggle()!.click());
+  await until(() => toggle()?.getAttribute("aria-expanded") === "true", "Clicking the arrow expands dock");
+  assert(toggle()?.querySelector("svg")?.classList.contains("lucide-chevron-down"),
+    "Expanded dock arrow points toward its downward collapse");
+  checks.push("header-text-no-op-button-only-toggle-arrow-direction");
   // The expanded dock lists every row and scrolls inside its own box (#1319).
   assert(document.querySelectorAll(".todo-dock-row").length === 10, "Expanded list renders every row");
   const list = document.querySelector<HTMLElement>(".todo-dock-list")!;
@@ -102,7 +118,7 @@ window.todoChecklistProbe = async () => {
   await write(second, items(1, "Other"));
   await mount(second);
   await until(() => header()?.textContent?.includes("Other 1") === true, "Session switch must show its own checklist");
-  assert(header()?.getAttribute("aria-expanded") === "false", "Session switch collapses dock");
+  assert(toggle()?.getAttribute("aria-expanded") === "false", "Session switch collapses dock");
   // Closing after the switch must retract the list completely, not just fade it;
   // the transition's end state is the sync point, so no arbitrary delay is used.
   await until(() => collapsedGap() === 2,
@@ -119,6 +135,14 @@ window.todoChecklistProbe = async () => {
   ]);
   await until(() => snapshot(first)?.revision === finished.revision, "Completion must reach store");
   assert(header()?.textContent?.includes("1/1"), "Cancelled items are excluded from progress denominator");
+  flushSync(() => toggle()!.click());
+  await until(() => toggle()?.getAttribute("aria-expanded") === "true", "Finished checklist expands");
+  const completedText = [...document.querySelectorAll<HTMLElement>(".todo-dock-row-completed .todo-dock-row-content")]
+    .find((element) => element.textContent === "Done");
+  assert(completedText, "Completed task text is rendered");
+  assert(getComputedStyle(completedText).textDecorationLine.includes("line-through"),
+    "Completed task text is crossed out");
+  checks.push("completed-task-strikethrough");
   await action("event", original);
   await frame();
   assert(snapshot(first)?.revision === finished.revision, "Stale event cannot replace newer snapshot");

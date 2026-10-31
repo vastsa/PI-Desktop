@@ -169,6 +169,65 @@ describe("reasoning_content backfill for non-catalogue DeepSeek models", () => {
     ]);
   });
 
+  it("moves real reasoning to the newest row's field instead of filling the placeholder (#1945)", () => {
+    // A rebuilt row is stamped reasoning_content while the relay streams the
+    // live row's reasoning as reasoning_text. Filling reasoning_content on the
+    // live row put the placeholder in the field the model reads, and the model
+    // echoed it as its own reasoning.
+    const compat = {
+      ...baseCompat,
+      requiresNonEmptyReasoningReplay: true,
+    };
+    const reasoning = assistantParams(
+      [
+        user("first"),
+        assistant([
+          { type: "thinking", thinking: "rebuilt plan", thinkingSignature: "reasoning_content" },
+          { type: "text", text: "old answer" },
+        ]),
+        user("second"),
+        assistant([
+          { type: "thinking", thinking: "live plan", thinkingSignature: "reasoning_text" },
+          { type: "text", text: "new answer" },
+        ]),
+      ],
+      compat,
+    );
+    expect(reasoning).toEqual([
+      { reasoning_content: undefined, reasoning_text: "rebuilt plan" },
+      { reasoning_content: undefined, reasoning_text: "live plan" },
+    ]);
+  });
+
+  it("keeps one reasoning field per row and fills only rows with no reasoning (#1945)", () => {
+    const compat = {
+      ...baseCompat,
+      requiresNonEmptyReasoningReplay: true,
+    };
+    const reasoning = assistantParams(
+      [
+        user("first"),
+        assistant([{ type: "text", text: "no thinking" }]),
+        user("second"),
+        assistant([
+          { type: "thinking", thinking: "rebuilt plan", thinkingSignature: "reasoning_content" },
+          { type: "text", text: "old answer" },
+        ]),
+        user("third"),
+        assistant([
+          { type: "thinking", thinking: "live plan", thinkingSignature: "reasoning_text" },
+          { type: "text", text: "new answer" },
+        ]),
+      ],
+      compat,
+    );
+    expect(reasoning).toEqual([
+      { reasoning_content: undefined, reasoning_text: DEEPSEEK_REASONING_REPLAY_PLACEHOLDER },
+      { reasoning_content: undefined, reasoning_text: "rebuilt plan" },
+      { reasoning_content: undefined, reasoning_text: "live plan" },
+    ]);
+  });
+
   it("restores thinking without a live signature when history rebuild stamps reasoning_content", () => {
     // #296 — historyToEntries must set thinkingSignature so this path is used
     const reasoning = assistantParams([

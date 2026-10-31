@@ -97,6 +97,36 @@ test("Windows Markdown file links survive parsing and sanitization without chang
   assertMarkdownLinkClick(encodedSlashMarkup, "D:/person/dir name/报告.js");
 });
 
+test("positioned HTML references preserve source navigation through Markdown sanitization", () => {
+  for (const source of [
+    "Source: animation.html:12:3",
+    "`animation.html:12:3`",
+    "[Source](animation.html:12:3)",
+    "[Source](<D:/person/animation.html:12:3>)",
+  ]) {
+    const markup = renderSanitizedMarkdown(source);
+    const href = markup.match(/<a href="([^"]+)"/)?.[1];
+    assert.ok(href, source);
+    const calls = [];
+    handleMarkdownFileLinkClick({ preventDefault() {} }, href, "D:/person", undefined,
+      (...args) => calls.push(args));
+    assert.deepEqual(calls, [[source.includes("D:/person") ? "D:/person/animation.html" : "animation.html",
+      undefined, undefined, { line: 12, column: 3 }]], source);
+  }
+});
+
+test("file URL links survive sanitization only as references for main-process resolution", () => {
+  for (const [url, path] of [
+    ["file:///C:/scratch/animation.html", "C:/scratch/animation.html"],
+    ["file:///tmp/my%20animation.html", "/tmp/my animation.html"],
+    ["file:///C:/scratch/%E9%B9%88%E9%B9%95.html", "C:/scratch/鹈鹕.html"],
+  ]) {
+    const markup = renderSanitizedMarkdown("[Open animation](<" + url + ">)");
+    assertMarkdownLinkClick(markup, path);
+    assert.doesNotMatch(markup, /href="file:/i);
+  }
+});
+
 test("Markdown link normalization leaves web, relative, automatic, and unsafe links alone", () => {
   const httpMarkup = renderSanitizedMarkdown("[web](https://example.com/a%20b)");
   assert.match(httpMarkup, /href="https:\/\/example\.com\/a%20b"/);
@@ -111,7 +141,8 @@ test("Markdown link normalization leaves web, relative, automatic, and unsafe li
   for (const destination of [
     "javascript:alert%281%29",
     "data:text/html,unsafe",
-    "file:///C:/secret.txt",
+    "file://other-host/secret.txt",
+    "file:///tmp/page.html?redirect=1",
     "ms-msdt:/diagnostics",
     "custom:payload",
   ]) {
@@ -124,6 +155,9 @@ test("parseFileRef accepts pathy tokens and strips line refs", () => {
   assert.equal(parseFileRef("apps/desktop/src/App.tsx"), "apps/desktop/src/App.tsx");
   assert.equal(parseFileRef("src/main.rs:42"), "src/main.rs");
   assert.equal(parseFileRef("src/main.rs:42:7"), "src/main.rs");
+  assert.equal(parseFileRef("src/main.rs:42-44"), "src/main.rs");
+  assert.equal(parseFileRef("src/main.rs#L42"), "src/main.rs");
+  assert.equal(parseFileRef("src/main.rs#L42-L44"), "src/main.rs");
   assert.equal(parseFileRef("./scripts/build.sh"), "./scripts/build.sh");
   assert.equal(parseFileRef("/abs/path/file.ts"), "/abs/path/file.ts");
   assert.equal(parseFileRef("docs/Makefile"), "docs/Makefile");
@@ -848,13 +882,27 @@ test("URL link creation is capped per conversion without changing source text", 
   );
 });
 
-test("parseFileRefPosition keeps :line[:col] that parseFileRef strips", () => {
+test("parseFileRefPosition handles line, column, range, and GitHub anchors", () => {
   assert.deepEqual(parseFileRefPosition("src/main.rs:42"), { line: 42 });
   assert.deepEqual(parseFileRefPosition("src/main.rs:42:7"), { line: 42, column: 7 });
+  assert.deepEqual(parseFileRefPosition("src/main.rs:42-44"), { line: 42 });
+  assert.deepEqual(parseFileRefPosition("src/main.rs#L42"), { line: 42 });
+  assert.deepEqual(parseFileRefPosition("src/main.rs#L42-L44"), { line: 42 });
   assert.deepEqual(parseFileRefPosition("src/main.rs:42."), { line: 42 });
   assert.deepEqual(parseFileRefPosition("src/main.rs:42:7,"), { line: 42, column: 7 });
   assert.equal(parseFileRefPosition("src/main.rs"), null);
   assert.equal(parseFileRefPosition("src/main.rs:0"), null);
+  assert.equal(parseFileRefPosition("src/main.rs:42-41"), null);
+});
+
+test("splitChatText preserves common line-reference formats as positioned file chips", () => {
+  for (const [suffix, line] of [[":42-44", 42], ["#L43", 43], ["#L44-L48", 44]]) {
+    const source = `See src/main.rs${suffix}.`;
+    const segments = splitChatText(source, ROOT);
+    const target = segments.find((segment) => segment.kind === "target");
+    assert.deepEqual(target?.target, { kind: "file", path: "src/main.rs", line }, source);
+    assert.equal(segments.map((segment) => segment.text).join(""), source);
+  }
 });
 
 test("resolvePreviewTarget carries line/col on file chips (#681)", () => {
@@ -868,6 +916,16 @@ test("resolvePreviewTarget carries line/col on file chips (#681)", () => {
     path: "src/a.ts",
     line: 42,
     column: 7,
+  });
+  assert.deepEqual(resolvePreviewTarget("src/a.ts:42-48", ROOT), {
+    kind: "file",
+    path: "src/a.ts",
+    line: 42,
+  });
+  assert.deepEqual(resolvePreviewTarget("src/a.ts#L43-L48", ROOT), {
+    kind: "file",
+    path: "src/a.ts",
+    line: 43,
   });
   assert.deepEqual(resolvePreviewTarget("src/a.ts:42:7.", ROOT), {
     kind: "file",

@@ -638,7 +638,8 @@ export class LiveCallService {
         if (event.code === "LIVE_EXECUTION_NOT_CONNECTED") {
           slot.notice = { code: event.code, retriable: false };
           this.publish(slot);
-        } else void this.failAndCleanup(slot, liveError(event.code), "protocol");
+        } else void this.failAndCleanup(slot,
+          Object.assign(new Error(event.reason ?? event.code), { errorCode: event.code }), "protocol");
         return;
       case "turn-complete":
         slot.assistantSpeaking = false;

@@ -247,6 +247,7 @@ export async function startPiHost(config: PiHostConfig, options: { log?: HostLog
       getHost,
       runtime,
       browseRoot: config.browseRoot,
+      dataDir: config.dataDir,
       disposeSession: async (sessionId) => {
         const sidecar = getSidecar();
         if (!sidecar) return;

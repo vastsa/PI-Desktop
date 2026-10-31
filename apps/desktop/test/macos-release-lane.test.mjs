@@ -24,6 +24,7 @@ const LANE_SCRIPTS = [
   "verify-macos-release.sh",
   "macos-signing-watchdog.mjs",
   "macos-codesign-shim.sh",
+  "macos-stapler-retry-shim.sh",
   "macos-bundle-inventory.mjs",
 ];
 const SIGNING_IDENTITY = "Developer ID Application: XingYu Liu (DUV63RKYTW)";
@@ -118,6 +119,11 @@ test(
     assert.ok(builderCall, "the lane invokes electron-builder");
     assert.match(builderCall, /--mac --(?:arm64|x64)/);
     assert.match(builderCall, /--publish never/);
+    assert.match(
+      await readFile(join(repoRoot, "scripts", "release-macos.sh"), "utf8"),
+      /PI_STAPLER_MAX_ATTEMPTS="\$\{PI_STAPLER_MAX_ATTEMPTS:-6\}"/,
+      "the local signed lane enables the same bounded app stapling retries",
+    );
     assert.match(builderCall, /-c\.mac\.identity=XingYu Liu \(DUV63RKYTW\)/);
     assert.match(builderCall, /-c\.mac\.forceCodeSigning=true/);
     assert.match(builderCall, /-c\.mac\.notarize=true/);

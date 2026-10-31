@@ -99,7 +99,7 @@ function assistantToolCallIds(messages: AgentMessage[]): Set<string> {
  * their tool calls with them, and a provider rejects a result whose call is
  * missing — so the tail cannot keep a result the window no longer explains.
  */
-function pruneOrphanToolResults(messages: AgentMessage[]): AgentMessage[] {
+export function pruneOrphanToolResults(messages: AgentMessage[]): AgentMessage[] {
   const owned = assistantToolCallIds(messages);
   return messages.filter(
     (message) =>

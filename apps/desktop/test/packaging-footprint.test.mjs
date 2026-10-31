@@ -203,6 +203,12 @@ test("packaging keeps only shipped locales and excludes non-runtime artifacts", 
       from: "resources/skills",
       to: "skills",
     },
+    // The inline visualization kit (stylesheet, runtime, pinned libraries)
+    // is read from disk by the pi-genui: protocol handler.
+    {
+      from: "resources/gen-ui",
+      to: "gen-ui",
+    },
     // Bundled first-party plugins, for the same reason: host-core reads their
     // manifests from disk and the views are loaded as file:// pages (ADR 0105).
     {

@@ -98,7 +98,7 @@ test("sidebar sessions drag onto project groups without a menu fallback", () => 
   assert.match(sidebar, /dropProjectKey === entry\.key \? "is-drop-target" : ""/);
   assert.doesNotMatch(sidebar, /data-action="move-session-to-project"/);
   assert.doesNotMatch(sidebar, /nav\.moveToProject/);
-  assert.match(sidebar, /disabled=\{Boolean\(runningSessions\[session\.id\]\)\}/);
+  assert.match(sidebar, /disabled: Boolean\(runningSessions\[session\.id\]\)/);
   // A drag inside the same project group must not offer itself as a target.
   assert.match(
     sidebar,

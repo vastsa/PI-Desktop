@@ -90,6 +90,8 @@ echo "==> Packaging the desktop (Developer ID signed + notarized, $MAC_ARCH)"
 # `executing` line prints every spawned command with only its own stem list
 # redacted, which leaves `security set-key-partition-list -k <p12 password>`
 # in clear text on a terminal or in a log file.
+PI_STAPLER_MAX_ATTEMPTS="${PI_STAPLER_MAX_ATTEMPTS:-6}" \
+PI_STAPLER_RETRY_DELAY_SECONDS="${PI_STAPLER_RETRY_DELAY_SECONDS:-10}" \
 DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}" \
   node scripts/macos-signing-watchdog.mjs --label "release-macos-${MAC_ARCH}" -- \
   pnpm --filter @pi-desktop/desktop exec electron-builder --mac "--${MAC_ARCH}" \

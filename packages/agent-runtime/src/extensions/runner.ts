@@ -140,6 +140,8 @@ export type RegisteredTrustedExtensionAgent = {
 export interface TrustedExtensionBridge {
   sessionId: string;
   cwd: string;
+  /** Workspace is remote; implicit workspace exec must never spawn locally. */
+  remoteWorkspace?: boolean;
   getModel(): unknown;
   setModel(model: unknown, signal?: AbortSignal): Promise<boolean>;
   getThinkingLevel(): string;
@@ -550,7 +552,7 @@ export class TrustedExtensionRunner {
 
   /** Chain prompt replacements within this turn while keeping handler inputs isolated. */
   async emitBeforeAgentStart(prompt: string, systemPrompt: string): Promise<string | undefined> {
-    const payload = { type: "before_agent_start", prompt, systemPrompt, systemPromptOptions: {} };
+    const payload = { type: "before_agent_start", messageType: "user", prompt, systemPrompt, systemPromptOptions: {} };
     const result = await this.emit<{ systemPrompt?: string }>(
       "before_agent_start",
       payload,
@@ -666,6 +668,9 @@ export class TrustedExtensionRunner {
     options?: ExtensionExecOptions,
   ): Promise<ExtensionExecResult> {
     if (this.disposed) return Promise.reject(new DOMException("Extension disposed", "AbortError"));
+    if (this.bridge.remoteWorkspace && (!options?.cwd || options.cwd === this.bridge.cwd)) {
+      return Promise.reject(Object.assign(new Error("extension workspace exec is unavailable for a remote workspace"), { errorCode: "CAPABILITY_UNAVAILABLE" }));
+    }
     const pending = managedExec(command, args, this.bridge.cwd, this.lifecycle.operationSignal, options);
     this.processes.add(pending);
     void pending.then(() => this.processes.delete(pending), (error: unknown) => {

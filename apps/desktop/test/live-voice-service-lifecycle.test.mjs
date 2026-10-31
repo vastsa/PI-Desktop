@@ -200,3 +200,34 @@ test("a failed call logs one root cause with its code while the view keeps only 
   assert.equal(failures[0].data.stage, "handshake");
   assert.equal(failures[0].data.reason, secret, "the raw reason stays in the log channel, which redacts it");
 });
+
+test("adapter close diagnostics are logged once and never enter call views", async (t) => {
+  const { LiveCallService } = await loadModules(t);
+  const reason = 'Gemini Live socket closed (1007): Unknown name "additionalProperties"';
+  const records = [];
+  let service;
+  const { deps, state } = dependencies({
+    log: (level, message, data) => records.push({ level, message, data }),
+    sendControl: (_owner, control) => {
+      state.controls.push(control);
+      if (control.kind === "release-media") {
+        queueMicrotask(() => service.reportMedia(owner, { callId: control.callId, kind: "released" }));
+      }
+    },
+  });
+  service = new LiveCallService(deps);
+  t.after(() => service.endForLifecycle("app-quit", owner, true));
+  const prepared = await prepare(service);
+  await service.connect(owner, { callId: prepared.callId, offerSdp: "v=0\r\n" });
+  state.adapters[0].onEvent({ kind: "error", code: "LIVE_PROTOCOL_ERROR", reason });
+  state.adapters[0].onEvent({ kind: "error", code: "LIVE_NETWORK_ERROR", reason: "secondary failure" });
+  await service.endForLifecycle("app-quit", owner, true);
+
+  const status = await service.status();
+  assert.equal(status.call.error.code, "LIVE_PROTOCOL_ERROR");
+  assert.equal(status.call.error.retriable, false);
+  assert.equal(JSON.stringify({ status, events: state.events, controls: state.controls }).includes(reason), false);
+  const failures = records.filter((record) => record.message === "live voice call failed");
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].data.reason, reason);
+});

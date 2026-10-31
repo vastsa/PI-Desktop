@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   isUserSuppliedHostname,
+  type McpOAuthLoginErrorCode,
   type McpOAuthLoginEvent,
   type McpServerRecord,
   type McpServerStatus,
@@ -41,6 +42,18 @@ export type McpOAuthDeps = {
   onAuthorized?: (serverId: string, record?: McpServerRecord) => Promise<McpServerStatus>;
   newId?: () => string;
 };
+
+class McpOAuthError extends Error {
+  readonly errorCode: McpOAuthLoginErrorCode;
+
+  constructor(
+    errorCode: McpOAuthLoginErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.errorCode = errorCode;
+  }
+}
 
 export function secretRefForMcpOAuth(serverId: string): string {
   return `secret:mcp:${serverId}:oauth`;
@@ -677,7 +690,19 @@ export class McpOAuthManager {
               clientSecret = registered.clientSecret;
               redirectUrisToStore = registered.redirectUris;
             } else {
-              clientId = "pi-desktop";
+              // #1782: no Dynamic Client Registration endpoint means this
+              // server expects a pre-registered client id, and the app has
+              // none to give. The previous fallback opened the authorize URL
+              // with a literal `client_id=pi-desktop`, which no authorization
+              // server ever registered — the browser landed on a bare 404 and
+              // the user was left with no way forward and no explanation.
+              // Fail here, before opening anything, saying what is missing.
+              // The message must not promise a settings field that does not
+              // exist yet: it names the two real ways forward.
+              throw new McpOAuthError(
+                "MCP_OAUTH_DCR_UNAVAILABLE",
+                `MCP server "${session.serverId}" has no registered client id and does not support Dynamic Client Registration.`,
+              );
             }
 
             const authUrl = new URL(metadata.authorizationEndpoint);
@@ -764,6 +789,7 @@ export class McpOAuthManager {
           serverId: session.serverId,
           kind: "error",
           message,
+          ...(error instanceof McpOAuthError ? { errorCode: error.errorCode } : {}),
         });
       }
     } finally {

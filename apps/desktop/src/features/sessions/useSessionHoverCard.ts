@@ -12,6 +12,13 @@ export type SessionHoverCardData = {
 export function useSessionHoverCard() {
   const [card, setCard] = useState<SessionHoverCardData | null>(null);
   const requestRef = useRef<SessionHoverCardData | null>(null);
+  const dismissGuardRef = useRef<(() => boolean) | null>(null);
+  const registerDismissGuard = useCallback((guard: () => boolean) => {
+    dismissGuardRef.current = guard;
+    return () => {
+      if (dismissGuardRef.current === guard) dismissGuardRef.current = null;
+    };
+  }, []);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -36,7 +43,7 @@ export function useSessionHoverCard() {
     cancelDismiss();
     dismissTimerRef.current = setTimeout(() => {
       dismissTimerRef.current = undefined;
-      hide();
+      if (!dismissGuardRef.current?.()) hide();
     }, 160);
   }, [cancelDismiss, hide]);
 
@@ -80,5 +87,5 @@ export function useSessionHoverCard() {
     if (card && !card.target.isConnected) hide();
   });
 
-  return { card, show, hide, scheduleHide, keepVisible: cancelDismiss };
+  return { card, show, hide, scheduleHide, keepVisible: cancelDismiss, registerDismissGuard };
 }

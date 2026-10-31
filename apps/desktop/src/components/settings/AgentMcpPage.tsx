@@ -7,8 +7,15 @@ import {
   type McpServerStatus,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import {
+  capabilityQuery,
+  deriveProjectOverrides,
+  type CapabilityOverride,
+} from "../../lib/capability-scope";
 import { useAppStore } from "../../stores/app-store";
 import { useHostCollection } from "../../hooks/use-host-collection";
+import { useRowBusy } from "../../hooks/use-row-busy";
+import { mcpOAuthErrorTranslationKey } from "../../lib/mcp-oauth-error";
 import {
   AgentCapabilityPage,
   AgentProjectPicker,
@@ -43,6 +50,7 @@ import {
   IconPencil,
   IconPlay,
   IconPlus,
+  IconRefresh,
   IconServer,
   IconTerminal,
   IconTrash,
@@ -72,35 +80,58 @@ type McpCollection = {
   global: McpServerRecord[];
   project: McpServerRecord[];
   statuses: McpServerStatus[];
+  /** Stored per-project overrides on global rows, from the accepted fetch. */
+  globalOverrides: Record<string, CapabilityOverride>;
 };
 
-const EMPTY_MCP_COLLECTION: McpCollection = { global: [], project: [], statuses: [] };
+const EMPTY_MCP_COLLECTION: McpCollection = {
+  global: [],
+  project: [],
+  statuses: [],
+  globalOverrides: {},
+};
 
 export function AgentMcpPage() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
   const { selectedProjectPath, setSelectedProjectPath, options } = useAgentProjects();
   const fetchServers = useCallback(async (): Promise<McpCollection> => {
-    const [global, project] = await Promise.all([
-      api.listMcpServers({
-        level: "global",
-        ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-      }),
+    // The global list omits the selected project on purpose: its rows read the
+    // global default, the same scope the switch writes, so the two can never
+    // disagree (#1957). The project-scoped global query runs beside it only to
+    // surface stored overrides: the runtime gives them precedence, so a stale
+    // one written by the old UI must stay visible and resettable, not hidden.
+    const [global, project, globalEffective] = await Promise.all([
+      api.listMcpServers({ level: "global" }),
       selectedProjectPath
         ? api.listMcpServers({ level: "project", projectPath: selectedProjectPath })
         : Promise.resolve({
             servers: [] as McpServerRecord[],
             statuses: [] as McpServerStatus[],
           }),
+      selectedProjectPath
+        ? api.listMcpServers({ level: "global", projectPath: selectedProjectPath })
+        : Promise.resolve({
+            servers: [] as McpServerRecord[],
+            statuses: [] as McpServerStatus[],
+          }),
     ]);
+    // The derived map rides inside the collection: useHostCollection only
+    // accepts the newest request, so a late stale fetch can never repaint the
+    // override badges of the project the reader has since switched to.
     return {
       global: global.servers ?? [],
       project: project.servers ?? [],
       statuses: [...(global.statuses ?? []), ...(project.statuses ?? [])],
+      globalOverrides: selectedProjectPath
+        ? Object.fromEntries(
+            deriveProjectOverrides(global.servers ?? [], globalEffective.servers ?? []),
+          )
+        : {},
     };
   }, [selectedProjectPath]);
   const {
-    data: { global: globalServers, project: projectServers, statuses },
+    data: { global: globalServers, project: projectServers, statuses, globalOverrides },
     setData: setServers,
     loading,
     refreshing,
@@ -113,7 +144,7 @@ export function AgentMcpPage() {
   const [filter, setFilter] = useState<CapabilityFilter>("all");
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const rowBusy = useRowBusy();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editor, setEditor] = useState<McpEditorState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -131,10 +162,8 @@ export function AgentMcpPage() {
   const { armed, setArmed } = useArmedDelete();
 
   const rowKey = (level: AgentCapabilityLevel, id: string) => `${level}:${id}`;
-  const levelQuery = (level: AgentCapabilityLevel) => ({
-    level,
-    ...(selectedProjectPath ? { projectPath: selectedProjectPath } : {}),
-  });
+  const levelQuery = (level: AgentCapabilityLevel) =>
+    capabilityQuery(level, selectedProjectPath);
 
   const patchRow = (
     level: AgentCapabilityLevel,
@@ -208,13 +237,14 @@ export function AgentMcpPage() {
 
   const toggle = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, server.id);
-    if (busyId) return;
+    if (!rowBusy.begin(key)) return;
     const next = !server.enabled;
-    setBusyId(key);
     // Flip locally first: the host is the authority, but a round-trip of latency
     // on a switch reads as a broken control.
     patchRow(level, server.id, { enabled: next });
     try {
+      // The switch writes the row's own level scope: a global server records
+      // the global default, a project row records that project's override.
       await api.setMcpServerEnabled(server.id, next, levelQuery(level));
       showToast(
         t(next ? "settings.capabilityEnabled" : "settings.capabilityDisabled", {
@@ -226,7 +256,32 @@ export function AgentMcpPage() {
       patchRow(level, server.id, { enabled: server.enabled });
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
+    }
+  };
+
+  // A stored per-project override keeps runtime precedence over the global
+  // default, so it has to be visible and clearable, never just hidden. Writing
+  // the current default under the project's scope removes the key: the host
+  // drops a per-project entry whose value matches the default.
+  const resetProjectOverride = async (server: McpServerRecord) => {
+    if (!selectedProjectPath) return;
+    const key = rowKey("global", server.id);
+    if (!rowBusy.begin(key)) return;
+    try {
+      await api.setMcpServerEnabled(server.id, server.enabled, {
+        level: "global",
+        projectPath: selectedProjectPath,
+      });
+      showToast(
+        t("settings.capabilityOverrideReset", { name: server.label || server.id }),
+        { variant: "success" },
+      );
+      await load();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+    } finally {
+      rowBusy.end(key);
     }
   };
 
@@ -295,7 +350,11 @@ export function AgentMcpPage() {
         });
         cleanup();
       } else if (event.kind === "error") {
-        showToast(event.message || t("extensions.mcp.authFailed"), { variant: "error" });
+        const errorKey = mcpOAuthErrorTranslationKey(event.errorCode);
+        showToast(
+          (errorKey && t(errorKey)) || event.message || t("extensions.mcp.authFailed"),
+          { variant: "error" },
+        );
         cleanup();
       } else if (event.kind === "cancelled") {
         cleanup();
@@ -324,7 +383,7 @@ export function AgentMcpPage() {
 
   const remove = async (server: McpServerRecord, level: AgentCapabilityLevel) => {
     const key = rowKey(level, server.id);
-    setBusyId(key);
+    if (!rowBusy.begin(key)) return;
     try {
       await api.removeMcpServer(server.id, levelQuery(level));
       await load();
@@ -334,7 +393,7 @@ export function AgentMcpPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
       setArmed(null);
     }
   };
@@ -392,7 +451,7 @@ export function AgentMcpPage() {
       return;
     }
     const key = rowKey(level, server.id);
-    setBusyId(key);
+    if (!rowBusy.begin(key)) return;
     try {
       const result = await api.transferMcpServer({
         id: server.id,
@@ -415,7 +474,7 @@ export function AgentMcpPage() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
-      setBusyId(null);
+      rowBusy.end(key);
     }
   };
 
@@ -423,7 +482,7 @@ export function AgentMcpPage() {
     const key = rowKey(level, server.id);
     const name = server.label || server.id;
     const status = statusFor(statuses, server);
-    const busy = busyId === key;
+    const busy = rowBusy.isBusy(key);
     const testing = testingId === server.id;
     const authorizing = authorizingId === server.id;
     const isArmed = armed === key;
@@ -460,6 +519,20 @@ export function AgentMcpPage() {
               onSelect: () => {
                 setMenuFor(null);
                 void authorizeServer(server, level);
+              },
+            } satisfies CapabilityMenuItem,
+          ]
+        : []),
+      ...(level === "global" && selectedProjectPath && globalOverrides[server.id]
+        ? [
+            {
+              key: "reset-override",
+              label: t("settings.capabilityOverrideResetItem"),
+              icon: <IconRefresh size={14} />,
+              disabled: busy,
+              onSelect: () => {
+                setMenuFor(null);
+                void resetProjectOverride(server);
               },
             } satisfies CapabilityMenuItem,
           ]
@@ -518,6 +591,13 @@ export function AgentMcpPage() {
                 ? t("settings.capabilityFilterGlobal")
                 : t("settings.capabilityFilterProject")}
             </span>
+            {level === "global" && selectedProjectPath && globalOverrides[server.id] ? (
+              <span className="agent-capability-badge is-override">
+                {globalOverrides[server.id] === "off"
+                  ? t("settings.capabilityOverrideOff")
+                  : t("settings.capabilityOverrideOn")}
+              </span>
+            ) : null}
             <span className="agent-capability-badge">
               {server.transport === "http"
                 ? t("settings.transportHttp")
@@ -608,6 +688,7 @@ export function AgentMcpPage() {
 
   const marketButton = (
     <CapabilityButton
+      disabled={targetLevel === "project" && !selectedProjectPath}
       onClick={() => setView("market")}
     >
       <IconServer size={14} />
@@ -618,7 +699,9 @@ export function AgentMcpPage() {
   if (view === "market") {
     return (
       <McpMarketPanel
-        installedIds={[...globalServers, ...projectServers].map((server) => server.id)}
+        level={targetLevel}
+        projectPath={targetLevel === "project" ? selectedProjectPath ?? undefined : undefined}
+        installedIds={(targetLevel === "project" ? projectServers : globalServers).map((server) => server.id)}
         onBack={() => {
           setView("servers");
           void load();

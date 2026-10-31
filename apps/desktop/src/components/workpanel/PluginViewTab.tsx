@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../lib/api";
 import { pluginViewIcon } from "../../lib/plugin-view-icons";
@@ -41,6 +41,29 @@ export function PluginViewTab({
   locationRef.current = location;
   const viewLocation = pluginId === "pi.browser" && viewId === "browser" ? undefined : location;
   const [failed, setFailed] = useState(false);
+  const boundsFrameRef = useRef(0);
+  const reportBounds = useCallback(() => {
+    // Replacing a pending frame on every commit can starve bounds updates.
+    if (boundsFrameRef.current) return;
+    boundsFrameRef.current = requestAnimationFrame(() => {
+      boundsFrameRef.current = 0;
+      const surface = surfaceRef.current;
+      if (!surface || failed) return;
+      const rect = surface.getBoundingClientRect();
+      void api.pluginViewSetBounds({
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      });
+    });
+  }, [failed]);
+
+  // ResizeObserver does not cover position-only movement caused by an ancestor
+  // layout or transform. Every React layout commit supplies the final rect.
+  useLayoutEffect(() => {
+    reportBounds();
+  });
 
   // Create the view, and re-create it whenever the plugin's lifecycle changed
   // underneath us: a crash, a development reload, or a re-enable all destroy
@@ -80,29 +103,17 @@ export function PluginViewTab({
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface || failed) return;
-    let frame = 0;
-    const report = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const rect = surface.getBoundingClientRect();
-        void api.pluginViewSetBounds({
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-        });
-      });
-    };
-    const observer = new ResizeObserver(report);
+    const observer = new ResizeObserver(reportBounds);
     observer.observe(surface);
-    window.addEventListener("resize", report);
-    report();
+    window.addEventListener("resize", reportBounds);
+    reportBounds();
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", report);
-      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", reportBounds);
+      cancelAnimationFrame(boundsFrameRef.current);
+      boundsFrameRef.current = 0;
     };
-  }, [pluginId, viewId, failed]);
+  }, [pluginId, viewId, failed, reportBounds]);
 
   if (failed) {
     return (

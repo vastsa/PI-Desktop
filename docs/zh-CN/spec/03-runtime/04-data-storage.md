@@ -1,6 +1,34 @@
-# 04. 数据存储（架构 v23）
+# 04. 数据存储（架构 v27）
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
+
+
+
+### Lossless tool-image storage (#1868)
+
+Transcript format 2 uses an optional storage-private `binaryStorage` version 1
+envelope. Each recognized image/blob string appears once in its record; typed
+JSON paths and exact text templates reconstruct the original structured result
+and JSON mirror. Templates preserve key order, whitespace and escape spelling. Nested proven
+mirrors share text references when their outer JSON string token has canonical
+JSON spelling, as produced by `JSON.stringify`; other spellings stay literal.
+Arbitrary narrative text is never inferred to be an image or a result mirror.
+The public `UiMessage`, plugin card inputs, extension context, model history and
+existing RPC request/response objects contain the complete decoded values.
+
+Live transcripts, revisions, checkpoints, compaction tails and the Desktop
+outbox share the lossless representation. A first append/update converts an
+existing legacy file through a verified sibling temporary file and atomic
+replacement. Reading alone never converts files. Conversion failure preserves
+the original and propagates an error. Invalid references/unknown codec versions
+are errors; restoration must not continue with an empty history.
+
+New code reads both plain legacy records and encoded records. Database schema
+26 is a version-only migration with a schema-25 backup: it stops older applications
+from misreading a new encoded file. It does not alter user configuration or
+rewrite transcripts at startup. Downgrading to an old application requires a
+complete compatible backup, not merely swapping the SQLite file. No external
+blob directory, new file cleanup lifecycle or lossy image transform is added.
 
 
 ## 0. 所有权决定
@@ -64,12 +92,15 @@ host-core 之前被解析为绝对路径。
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
- └── scratch/<sessionId>/ # per-session agent temp files (D114), including
-                          # composer pasted files under pasted/ — deleted
-                          # with the session; startup sweep removes orphans
+ ├── scratch/<sessionId>/ # per-session agent temp files (D114), including
+ │                        # composer pasted files under pasted/ — deleted
+ │                        # with the session; startup sweep removes orphans
 
-                          # with the session; startup sweep removes orphans
-                          # and stale dirs
+ │                        # with the session; startup sweep removes orphans
+ │                        # and stale dirs
+ └── visualizations/<sessionId>/ # inline visualization .html fragments (D671) —
+                          # deleted with the session; startup sweep removes
+                          # orphans only, never by age
 ```
 
 一个数据库文件保持跨实体写入事务性（例如会话+
@@ -95,7 +126,7 @@ commit 不会删除历史审查证据。
 每条消息； `seq` 由行顺序隐含：
 
 ```jsonl
-{"type":"session","schema":1,"sessionId":"0b0e…","createdAt":"2026-07-26T09:00:00.000Z"}
+{"type":"session","schema":2,"sessionId":"0b0e…","createdAt":"2026-07-26T09:00:00.000Z"}
 {"type":"message","id":"m1","role":"user","createdAt":"…","blocks":[{"type":"text","text":"…"}]}
 {"type":"message","id":"m2","role":"tool","toolName":"Write","blocks":[{"type":"tool_call","callId":"c1","args":{},"result":{},"status":"success"}]}
 {"type":"message","id":"m3","role":"assistant","createdAt":"…","blocks":[{"type":"thinking","text":"…"},{"type":"text","text":"…"}],"meta":{"usage":{},"modelId":"…"}}
@@ -362,6 +393,8 @@ CREATE TABLE sessions (
                                           'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
+  fast_mode   INTEGER NOT NULL DEFAULT 0       -- ADR 0334: session /fast switch
+               CHECK (fast_mode IN (0, 1)),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
   deleted_at  INTEGER,                         -- plugin trash marker; null means active
   pinned      INTEGER NOT NULL DEFAULT 0,
@@ -374,14 +407,14 @@ CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NO
 CREATE INDEX idx_sessions_deleted ON sessions(deleted_at) WHERE deleted_at IS NOT NULL;
 ```
 
-`title_source` 记录 `legacy`、`default`、`manual` 或 `generated`。架构 v23 会将已有的
-已知占位标题归类为 `default`，其余标题归类为 `manual`，不改写标题。新建会话和手动重命名
+`title_source` 记录 `legacy`、`default`、`manual` 或 `generated`。v22→v23 迁移将已有标题
+保留为 `legacy`，不改写标题；已有 v23/v24 数据不会重新分类。新建会话和手动重命名
 会写入相应来源。`default` 表示“非用户选择、仍可替换”：它既覆盖新会话的占位标题，也覆盖
 确定性的首条提示兜底标题（host-core 只在存储标题仍是可识别占位标题时才写入）。占位标题在
-所有已发布的语言下都会被识别，因为渲染器创建会话时会写入本地化的 `chat.untitledTask` 文案。
-独立标题插件只能读取 `default` 会话的首轮文本，并且只能用精确标题比较并设置，因此并发手动
-重命名会胜出。
-会胜出。
+所有已发布的语言下都会被识别，因为渲染器创建会话时会写入本地化的 `chat.untitledTask` 文案；
+识别会先 trim 再转小写，并与占位标题集合比较。架构 v23 将已有的 v22 标题保留为 `legacy`，以防止
+其被自动替换，因为历史会话缺少来源元数据来区分未修改的占位符与同名的主动重命名。独立标题插件只能读取
+`default` 会话的首轮文本，并且只能用精确标题比较并设置，因此并发手动重命名会胜出。
 
 插件导入增加一个由主机拥有的来源 sidecar。它与核心会话身份分离，
 每次插件读写都必须匹配创建该行的 `plugin_id`：
@@ -459,6 +492,9 @@ CREATE INDEX idx_session_import_origins_plugin
   删除原任务不会删除子任务的副本。未引用文件、截断点之后独有的输入和其他
   scratch 输出不复制；已过期的文件仍不可用，不新增跨任务读取授权。
   分支失败时清理已复制的输入及子任务转录本。
+- 分支只把复制的转录本所引用的 `visualizations/<sourceId>/` 片段复制到
+  `visualizations/<childId>/`，并改写这些 `::visualize` 路径；未引用的片段不复制。
+  卡片总是从所属会话的目录加载，所以删除原会话不影响分支（D671）。
 
 ### 4.6 turns — 每次 agent 运行一行
 
@@ -774,6 +810,22 @@ meta.agentName?: string         // the definition name, e.g. "code-reviewer"
 无列、无表、无迁移：属性是有关消息的元数据，并且
 推广它会引起没人提出的疑问。
 
+assistant 行还可以带 `meta.providerReplay = { version: 1, blocks: [...] }`
+（#1972）。每个块按内容顺序记录为 `{ type: "thinking", length, signature?, redacted? }`
+或 `{ type: "text", length, signature? }`；`length` 是该块文本在行内拼接后的
+`thinking` 或正文中的 UTF-16 长度，文本本身不重复保存。签名就是 pi-ai 挂在内容块上
+的 provider 回放数据（Anthropic thinking 签名与 redacted 载荷、Responses 的
+reasoning item 与 message id、Gemini thought signature、Completions 推理字段名）。
+只有块上确实带签名时才写入；不渲染、不参与搜索、无需迁移，旧版本会忽略它。
+runtime 从转录重建时按原块和签名还原，使重放请求与在线请求一致，保住 provider 的
+prompt cache。长度对不上，或推理文本在回放时被清理过，就退回原来的纯文本重建。
+
+`meta.providerReplay.toolCalls = [{ id, signature }]` 按工具调用 id 保存 provider
+挂在函数调用上的签名（Gemini `thoughtSignature`）。工具调用从带同一 id 的工具行重建，
+并据此补回签名，这一步不依赖文本长度。只有函数调用、但带这类签名的回复即使没有文本
+也会持久化。来自不同 provider 或模型的行，pi-ai 仍会丢弃其签名。序列化后的回放数据
+超过 64 KiB 的行不保存该字段，改用纯文本重建，避免不透明载荷让转录无限增长。
+
 这两个字段都可以在重新加载后保存下来，这就是恢复会话嵌套的原因
 就像现场一样（`04-ux/08-component-spec.md` §9.9）。两位消费者阅读了它们：
 
@@ -896,7 +948,7 @@ CREATE INDEX idx_artifacts_time ON artifacts(updated_at DESC);
 由 host-core 在与 `tool_execute` 审计行相同的事务中更新插入
 每当 Write/Edit（或声明文件效果的插件工具）成功时 -
 重复编辑更新 Write/Edit/`op`，每个会话每个文件保留一行。
-写入会话暂存目录 (D114) 被排除：工件列表
+写入会话暂存目录 (D114) 或会话可视化目录 (D671) 被排除：工件列表
 仅工作区可交付成果。
 
 ### 4.11 scheduled_tasks + task_runs — 自动化
@@ -1120,6 +1172,9 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   条目，因为一次重写可能落在完全相同的长度上。
 - 撕裂的尾行（追加过程中崩溃）会同时被排除在偏移量和 `file_len` 之外，因此在
   写入方补全它之后，后续刷新会重新收录它。
+- 完整行中包含非法 UTF-8 时，有界与完整读取仍会尽力恢复：可解析记录中的坏字节会以
+  U+FFFD 替代；仍不符合 JSON 或记录结构的行会记录诊断并跳过。分页仍使用一致的物理
+  消息行位置。读取不会改写转录文件字节；实际文件 I/O 错误仍会返回错误。
 - 行分类通过一次感知深度的扫描读取 `type` 判别字段，绝不把整行解析成值。只有
   **顶层**的 `type` 键决定行的种类：工具结果与检查点详情是开放式 JSON，可能
   嵌套一个自身带 `type` 的对象，而该 `type` 恰好是某个行种类的名字。每条新行都
@@ -1157,7 +1212,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 - JSON 列在热路径上盲读（按原样发送到渲染器）；
   任何过滤或求和的内容都是按规则提升的列。
 
-## 7. 版本控制、v7 重置和 v8 到 v23 迁移
+## 7. 版本控制、v7 重置和 v8 到 v27 迁移
 
 - `PRAGMA user_version` 保留模式权限；未来的结构性变化
   再次添加有序的 Rust 迁移 fns，每个都在一个事务中，并带有一个
@@ -1168,7 +1223,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   旧文件中的会话、提供程序和设置不会保留；
   存档仍保留以供手动恢复。所有 v7 之前的迁移代码
   （v1 `settings.sqlite` 导入，v2→v6 链）被删除。
-- 全新安装直接运行完整的 v23 DDL。
+- 全新安装直接运行完整的 v27 DDL。
 - **架构 v15 是增量的。** 它增加 `turn_queue` 表及其两个索引（D386 / ADR 0213），使 Host
   拥有的回合队列在重启后存活；不改动任何已有行，迁移前保留 `pi.sqlite.v14.bak`。
 - **架构 v16 是增量的。** 它增加会话协作 link 和投递表、生命周期索引，以及可为空的
@@ -1177,10 +1232,19 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 - **架构 v17 是增量的。** 它增加可为空的 `providers.owner_plugin_id` 归属列及其部分索引
   （ADR 0259），从而把插件在 `contributes.providers` 中声明的 provider 行与用户创建的行区分开
   —— 所有 v17 之前的行保持 NULL 归属。该步骤之前保留 `pi.sqlite.v16.bak` 副本。
-- **架构 v23 是增量的。** 它增加 `sessions.title_source`，并将现有占位标题归类为
-  `default`；其余现有标题保持原样并归类为 `manual`。迁移前保留 v22 备份。
+- **架构 v23 是增量的。** 它增加 `sessions.title_source`，默认值为 `legacy`。已有
+  v22 标题保留为 `legacy`，防止主动重命名被自动覆盖。迁移前保留 v22 备份。
   v15→v16 会话协作步骤现在写入 `16`（它自己的版本）而不是最新的架构常量，
   因此 v15 文件可以在一次启动中走完两个步骤。
+- **架构 v24 是增量的。** 它为隔离会话增加 `worktrees` 登记表和
+  `projects.worktree_setup_command`（ADR 0329）。迁移前保留 v23 备份。
+- **架构 v25 是增量的。** 它增加可空的 `models.discovery_state`。迁移前保留 v24 备份。
+- **架构 v26 是增量的。** 它标记存储私有的无损工具图片信封（#1868）。这是只写版本的
+  迁移，保留 v25 备份：让旧版本应用拒绝读取已编码的转录文件，而不修改用户配置或
+  在启动时改写转录文件。
+- **架构 v27 是增量的。** 它增加 `sessions.fast_mode`（ADR 0334），即会话的 `/fast`
+  开关，所有已有会话默认为 `0`。fork 会复制该值；定时任务运行和委托子会话从 `0` 开始。
+  迁移前保留 v26 备份。
 - **架构 v7 首先到达 v8，然后使用受保护的路径。** v7→v8
   迁移之后是相同的受保护的 v8→v15 迁移；架构-v9 和
   schema-v10 数据库采用相同的受保护路径并接收精确的可读数据
@@ -1225,6 +1289,17 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 主机读取设置时会将缺失、格式错误或超出范围的值规范化为 600，设置写入则验证
 1–1,000,000 的整数范围。因此现有数据库会在读取时延迟获得默认值，不需要破坏性
 迁移或第二个设置存储。
+
+应用设置 JSON 还可选存储布尔值 `showThinking`，用于转录中的推理可见性。它是可移植的
+应用偏好，会像旧字段一样跨设备同步。缺失值回退到旧版 `thinkingDisplayMode` 字段
+（`compact` 隐藏，`detailed`／未知／缺失显示）；该旧字段仅为持久化设置兼容性保留，
+并作为该回退来源。应用设置 JSON 还可选存储 `transcriptDisplayMode`
+（`flat` | `command-first` | `fully-folded`），用于转录中的过程分组：`flat` 不渲染
+嵌套活动组，`command-first` 将 `Bash`／run 行作为活动组旁的独立行，`fully-folded`
+让每条命令留在其周围的组内。缺失或未知值在渲染层与主进程设置规范化中都归一化为
+`fully-folded`。它是可移植的应用偏好，只改变展示。已弃用的 `keepCommandsExpanded`
+布尔值仅为持久化设置兼容性保留；它不再在设置中暴露，也不再参与渲染读取。这些新增展示
+偏好既不重写已存推理，也不改变数据库 schema。
 
 应用设置 JSON 可能仍包含旧版本写入的提示词增强键。为支持回退和降级，宿主保留这些值，
 但不会再把它们作为有效偏好读取或写入。用户安装并授权独立的

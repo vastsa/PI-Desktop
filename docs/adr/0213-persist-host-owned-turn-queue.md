@@ -42,7 +42,8 @@ table and RPC surface, not a file the module writes.
    work.
 4. **The renderer's in-memory queue is retired.** The composer pushes
    through `agent/queue/push`, mirrors `agent/event/queueChanged`, and its
-   "send now" is `agent/queue/prioritize` followed by a graceful stop.
+   "send now" uses `agent/queue/prioritize` to deliver promoted input into the
+   current turn through steering (ADR 0265, issue #1607).
 5. **Schema v20 extends queued input provenance.** `user_message_id` preserves
    the stable user row across queue recovery, and `voice_origin_json` records
    the originating Live Voice call and operation. Both columns are nullable,

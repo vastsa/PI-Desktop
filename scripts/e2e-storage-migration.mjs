@@ -53,7 +53,7 @@ async function closeGracefully(host) {
 try {
   await Promise.all([mkdir(source.browser), mkdir(target), mkdir(pluginSource)]);
   await build({ entryPoints: [join(root, "apps/desktop/electron/main/storage/files.ts")],
-    outfile: storageBundle, bundle: true, platform: "node", format: "esm" });
+    outfile: storageBundle, bundle: true, platform: "node", format: "esm", alias: { "original-fs": "node:fs" } });
   const storage = await import(pathToFileURL(storageBundle).href);
   await sourceHost.start();
   const { session } = await sourceHost.call("session.create", { title: "Migration survives restart" });

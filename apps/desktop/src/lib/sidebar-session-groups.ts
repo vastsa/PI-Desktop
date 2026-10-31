@@ -85,35 +85,3 @@ export function getGlobalPinnedSessions(
     );
   });
 }
-
-type TimeGroup = "today" | "yesterday" | "thisWeek" | "older14d" | "archived";
-
-function getTimeGroup(dateStr: string | undefined, now: Date): TimeGroup {
-  if (!dateStr) return "older14d";
-  const ts = Date.parse(dateStr);
-  if (!Number.isFinite(ts)) return "older14d";
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - 86400000;
-  const startOfWeek = startOfToday - 6 * 86400000; // last 7 days
-  const startOf14d = startOfToday - 13 * 86400000;
-  if (ts >= startOfToday) return "today";
-  if (ts >= startOfYesterday) return "yesterday";
-  if (ts >= startOfWeek) return "thisWeek";
-  if (ts >= startOf14d) return "older14d";
-  return "archived"; // older than 14 days
-}
-
-const TIME_GROUP_ORDER: TimeGroup[] = ["today", "yesterday", "thisWeek", "older14d", "archived"];
-/** Group only normal history; callers remove global pins before any row limit. */
-export function groupSidebarSessionsByTime(sessions: SessionSummary[], now = new Date()) {
-  const grouped = new Map<TimeGroup, SessionSummary[]>();
-  for (const session of sessions) {
-    const group = getTimeGroup(session.updatedAt, now);
-    if (!grouped.has(group)) grouped.set(group, []);
-    grouped.get(group)!.push(session);
-  }
-  return TIME_GROUP_ORDER.flatMap((group) => {
-    const rows = grouped.get(group);
-    return rows?.length ? [{ group, sessions: rows }] : [];
-  });
-}

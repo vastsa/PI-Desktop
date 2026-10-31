@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
-import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
+import { AgentSession, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createAssistantMessageEventStream, PI_ATTRIBUTION, Type, type AssistantMessage } from "@earendil-works/pi-ai";
 import { NativePiSessionService } from "./native-pi-session.js";
 import {
   acquireNativePiSessionLease,
@@ -48,6 +48,20 @@ function fixture(options: { newline?: boolean } = {}) {
   return { root, agentDir, sessionRoot, project, file, text };
 }
 
+function sessionText(id: string, cwd: string, userText: string): string {
+  const entries = [
+    { type: "session", version: 3, id, timestamp: "2026-09-14T00:00:00.000Z", cwd },
+    {
+      type: "message",
+      id: `${id}-user`,
+      parentId: null,
+      timestamp: "2026-09-14T00:00:01.000Z",
+      message: { role: "user", content: [{ type: "text", text: userText }], timestamp: 1 },
+    },
+  ];
+  return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+}
+
 describe("NativePiSessionService", () => {
   it("lists and projects a native v3 tree without changing its bytes", async () => {
     const f = fixture();
@@ -59,6 +73,173 @@ describe("NativePiSessionService", () => {
     const detail = service.detail(sessions[0].id);
     expect(detail?.messages.map((message) => message.content)).toEqual(["hello", "active branch"]);
     expect(readFileSync(f.file)).toEqual(before);
+  });
+
+  it("lists and opens sessions stored in a project sessionDir (#1732)", async () => {
+    const f = fixture();
+    const customDir = join(f.project, ".pi", "sessions");
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(
+      join(f.project, ".pi", "settings.json"),
+      `${JSON.stringify({ sessionDir: ".pi/sessions" })}\n`,
+    );
+    const localText = sessionText("local-id", f.project, "project local session");
+    writeFileSync(join(customDir, "local.jsonl"), localText);
+    mkdirSync(join(customDir, "nested"));
+    writeFileSync(
+      join(customDir, "nested", "hidden.jsonl"),
+      sessionText("hidden-id", f.project, "nested hidden session"),
+    );
+    const outside = join(f.root, "outside.jsonl");
+    writeFileSync(outside, sessionText("outside-id", f.project, "outside session"));
+    // Windows without the symlink privilege cannot create the alias; the
+    // escape entry is then simply absent and the assertions below still hold.
+    try {
+      symlinkSync(outside, join(customDir, "escape.jsonl"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+    }
+
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const sessions = await service.list({ projectPaths: [f.project] });
+    const titles = sessions.map((session) => session.title);
+    expect(titles).toContain("project local session");
+    expect(titles).not.toContain("nested hidden session");
+    expect(titles).not.toContain("outside session");
+    expect(titles).toContain("hello");
+
+    const local = sessions.find((session) => session.title === "project local session");
+    expect(local?.projectPath).toBe(f.project);
+    expect(local?.readOnlyReason).toBe("project-untrusted");
+    expect(local?.capabilities?.canPrompt).toBe(false);
+    const detail = service.detail(local!.id);
+    expect(detail?.messages.map((message) => message.content)).toEqual(["project local session"]);
+    expect(readFileSync(join(customDir, "local.jsonl"), "utf8")).toBe(localText);
+
+    const forked = service.fork({ id: local!.id });
+    expect(forked.source).toBe("pi-native");
+    expect(forked.messages.map((message) => message.content)).toContain("project local session");
+    const published = readdirSync(customDir).filter((name) => name.endsWith(".jsonl") && name !== "local.jsonl" && name !== "escape.jsonl");
+    expect(published).toHaveLength(1);
+    expect(readFileSync(join(customDir, "local.jsonl"), "utf8")).toBe(localText);
+  });
+
+  it("lists sessions from an absolute global sessionDir without a project path (#1732)", async () => {
+    const f = fixture();
+    const customDir = join(f.root, "global-sessions");
+    mkdirSync(customDir);
+    writeFileSync(join(f.agentDir, "settings.json"), `${JSON.stringify({ sessionDir: customDir })}\n`);
+    const text = sessionText("global-id", f.project, "global session dir");
+    writeFileSync(join(customDir, "global.jsonl"), text);
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const sessions = await service.list();
+    expect(sessions.map((session) => session.title)).toContain("global session dir");
+    const found = sessions.find((session) => session.title === "global session dir");
+    expect(service.detail(found!.id)?.messages.map((message) => message.content)).toEqual(["global session dir"]);
+    expect(readFileSync(join(customDir, "global.jsonl"), "utf8")).toBe(text);
+  });
+
+  it("resolves a relative global sessionDir from each known project (#1732)", async () => {
+    const f = fixture();
+    writeFileSync(join(f.agentDir, "settings.json"), `${JSON.stringify({ sessionDir: ".pi/sessions" })}\n`);
+    const customDir = join(f.project, ".pi", "sessions");
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(join(customDir, "relative.jsonl"), sessionText("relative-id", f.project, "relative global session"));
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    expect((await service.list()).map((session) => session.title)).not.toContain("relative global session");
+    const sessions = await service.list({ projectPaths: [f.project, "remote-project:host/path"] });
+    expect(sessions.map((session) => session.title)).toContain("relative global session");
+  });
+
+  it("lists one openable row when a custom sessionDir aliases a file inside itself (#1732)", async () => {
+    const f = fixture();
+    const customDir = join(f.project, ".pi", "sessions");
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(join(f.project, ".pi", "settings.json"), `${JSON.stringify({ sessionDir: ".pi/sessions" })}\n`);
+    writeFileSync(join(customDir, "local.jsonl"), sessionText("local-id", f.project, "project local session"));
+    // Same Windows symlink-privilege caveat: without the alias the dedupe is
+    // exercised only on privileged runs, and one real row still lists.
+    try {
+      symlinkSync(join(customDir, "local.jsonl"), join(customDir, "latest.jsonl"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+    }
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const sessions = await service.list({ projectPaths: [f.project] });
+    const matches = sessions.filter((session) => session.title === "project local session");
+    expect(matches).toHaveLength(1);
+    expect(new Set(matches.map((session) => session.id)).size).toBe(1);
+    expect(service.detail(matches[0].id)?.messages.map((message) => message.content)).toEqual(["project local session"]);
+  });
+
+  it("opens a project sessionDir session after a later empty project list (#1732)", async () => {
+    const f = fixture();
+    const customDir = join(f.project, ".pi", "sessions");
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(join(f.project, ".pi", "settings.json"), `${JSON.stringify({ sessionDir: ".pi/sessions" })}\n`);
+    writeFileSync(join(customDir, "local.jsonl"), sessionText("local-id", f.project, "project local session"));
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const listed = await service.list({ projectPaths: [f.project] });
+    const local = listed.find((session) => session.title === "project local session");
+    expect(local).toBeTruthy();
+    const again = await service.list({ projectPaths: [] });
+    expect(again.map((session) => session.title)).not.toContain("project local session");
+    expect(service.detail(local!.id)?.messages.map((message) => message.content)).toEqual(["project local session"]);
+    expect(service.fork({ id: local!.id }).messages.map((message) => message.content)).toContain("project local session");
+  });
+
+  it("keeps interleaved list() calls on their own configured session dirs (#1732)", async () => {
+    const f = fixture();
+    const projectB = join(f.root, "project-b");
+    mkdirSync(projectB);
+    const dirA = join(f.project, ".pi", "sessions");
+    const dirB = join(projectB, ".pi", "sessions");
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+    const settings = `${JSON.stringify({ sessionDir: ".pi/sessions" })}\n`;
+    writeFileSync(join(f.project, ".pi", "settings.json"), settings);
+    writeFileSync(join(projectB, ".pi", "settings.json"), settings);
+    writeFileSync(join(dirA, "a.jsonl"), sessionText("id-a", f.project, "session from project a"));
+    writeFileSync(join(dirB, "b.jsonl"), sessionText("id-b", projectB, "session from project b"));
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const original = SettingsManager.create;
+    let other: Promise<Awaited<ReturnType<NativePiSessionService["list"]>>> | undefined;
+    let armInterleaving = true;
+    // Discovery reads settings before it walks project paths. A second list()
+    // that starts during that read must not replace the first call's roots.
+    vi.spyOn(SettingsManager, "create").mockImplementation((cwd, agentDir, options) => {
+      const manager = original.call(SettingsManager, cwd, agentDir, options);
+      if (armInterleaving) {
+        armInterleaving = false;
+        other = service.list({ projectPaths: [projectB] });
+      }
+      return manager;
+    });
+
+    const fromA = await service.list({ projectPaths: [f.project] });
+    const fromB = await other;
+    const titlesA = fromA.map((session) => session.title);
+    const titlesB = fromB?.map((session) => session.title) ?? [];
+    expect(titlesA).toContain("session from project a");
+    expect(titlesA).not.toContain("session from project b");
+    expect(titlesB).toContain("session from project b");
+    expect(titlesB).not.toContain("session from project a");
+  });
+
+  it("logs an unreadable sessionDir settings file once per path and still lists the default root (#1732)", async () => {
+    const f = fixture();
+    writeFileSync(join(f.agentDir, "settings.json"), "{");
+    mkdirSync(join(f.root, "other-project"));
+    const warnings: unknown[][] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warnings.push(args);
+    });
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    const sessions = await service.list({ projectPaths: [f.project, join(f.root, "other-project")] });
+    expect(sessions.map((session) => session.title)).toContain("hello");
+    const settingsWarnings = warnings.filter((args) => String(args[0]).includes("sessionDir settings unreadable"));
+    expect(settingsWarnings).toHaveLength(1);
+    expect(String(settingsWarnings[0]?.[1])).toContain("settings.json");
   });
 
   it("collapses copied session files onto one entry per native id (#1359)", async () => {
@@ -323,6 +504,33 @@ function fauxModelRuntime() {
 }
 
 describe("native continuation review regressions", () => {
+  it.each([true, false])("uses the native SDK telemetry preference for 1.4 attribution (%s)", async (enabled) => {
+    const f = await configuredFixture();
+    const settingsPath = join(f.agentDir, "settings.json");
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(settingsPath, JSON.stringify({ ...settings, enableInstallTelemetry: enabled }));
+    const identities: unknown[] = [];
+    vi.spyOn(ModelRuntime.prototype, "streamSimple").mockImplementation((_model, _context, options) => {
+      identities.push(options?.identity);
+      return fauxStream();
+    });
+    const service = new NativePiSessionService(f);
+    try {
+      const [summary] = await service.list();
+      expect(summary.capabilities?.canPrompt).toBe(true);
+      await service.prompt(summary.id, "check native client identity", () => {});
+      await expect.poll(() => identities).toHaveLength(1);
+      expect(identities).toHaveLength(1);
+      expect(identities[0]).toMatchObject({
+        userAgent: "detailed",
+        version: "1.4.0",
+        attribution: enabled ? PI_ATTRIBUTION : null,
+      });
+    } finally {
+      service.disposeAll();
+    }
+  });
+
   it("uses the real offline credential/catalog and reports missing exact auth/model", async () => {
     const f = await configuredFixture();
     const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
@@ -1111,8 +1319,14 @@ describe("independent native ownership, identity and tool regressions", () => {
     } finally { service.disposeAll(); }
   });
 
-  it("sends zero native tools to the model", async () => {
+  it.each([false, true])("sends zero native tools even with restored active tools: %s", async (restoreTools) => {
     const f = await configuredFixture();
+    if (restoreTools) {
+      SessionManager.open(f.file).appendMessage({
+        role: "system", content: "Previously active tools", timestamp: Date.now(),
+        toolsAdded: [{ name: "bash", description: "Native shell", parameters: Type.Object({ command: Type.String() }) }],
+      });
+    }
     const requests: unknown[] = [];
     vi.spyOn(ModelRuntime.prototype, "streamSimple").mockImplementation((_model, context) => { requests.push(context.tools ?? []); return fauxStream(); });
     const service = new NativePiSessionService(f);
@@ -1188,5 +1402,72 @@ describe("native settlement and reclaim boundaries", () => {
     writeFileSync(lockPath, JSON.stringify({ ...record, pid: 2147483647 }));
     writeFileSync(f.file, f.text.replace('"hello"', '"changed"'));
     expect((await service.list())[0].readOnlyReason).toBe("busy");
+  });
+});
+
+describe("native session list projection cache", () => {
+  it("reuses one file projection until the file identity changes", async () => {
+    const f = fixture();
+    const service = new NativePiSessionService({ agentDir: f.agentDir, sessionRoot: f.sessionRoot });
+    // inMemory() is the parse/project step list() performs per file, so its
+    // call count is the observable "did this row get re-derived" signal.
+    const inMemory = vi.spyOn(SessionManager, "inMemory");
+    try {
+      const first = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(1);
+
+      const second = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(1);
+      expect(second).toEqual(first);
+
+      writeFileSync(
+        f.file,
+        `${f.text}${JSON.stringify({
+          type: "message",
+          id: "later",
+          parentId: "future",
+          timestamp: "2026-09-14T00:00:10.000Z",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "later answer" }],
+            provider: "test-provider",
+            model: "test-model",
+            stopReason: "stop",
+            timestamp: 4,
+            usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          },
+        })}\n`,
+      );
+      const appended = await service.list();
+      expect(inMemory).toHaveBeenCalledTimes(2);
+      expect(appended[0].messageCount).toBe(first[0].messageCount + 1);
+      expect(appended[0].updatedAt).toBe("2026-09-14T00:00:10.000Z");
+    } finally {
+      inMemory.mockRestore();
+      service.disposeAll();
+    }
+  });
+
+  it("recomputes ownership so a live lease is still busy under a cached projection", async () => {
+    const f = await configuredFixture();
+    const service = new NativePiSessionService(f);
+    const [free] = await service.list();
+    expect(free.readOnlyReason).toBeUndefined();
+    expect(free.capabilities?.canPrompt).toBe(true);
+
+    const lease = acquireNativePiSessionLease(f.file);
+    try {
+      // The file bytes did not change, so the cached projection is reused;
+      // `busy` must still come from the live lease, never from that cache.
+      const [busy] = await service.list();
+      expect(busy.readOnlyReason).toBe("busy");
+      expect(busy.capabilities?.canPrompt).toBe(false);
+    } finally {
+      lease.release();
+    }
+
+    const [released] = await service.list();
+    expect(released.readOnlyReason).toBeUndefined();
+    expect(released.capabilities?.canPrompt).toBe(true);
   });
 });

@@ -235,6 +235,52 @@ describe("classifyAgentError", () => {
     });
   });
 
+  it("does not treat TLS authentication wording as an API-key rejection", () => {
+    expect(classifyAgentError(new Error("mutual TLS authentication failed")))
+      .toMatchObject({
+        code: "NETWORK_ERROR",
+        retriable: true,
+        details: { networkCategory: "tls" },
+      });
+
+    const handshake = classifyAgentError(
+      new Error("authentication handshake timed out"),
+    );
+    expect(handshake).not.toMatchObject({ code: "PROVIDER_UNAUTHORIZED" });
+    expect(handshake.retriable).toBe(true);
+    expect(["NETWORK_ERROR", "TIMEOUT"]).toContain(handshake.code);
+
+    expect(classifyAgentError(new Error("Invalid API key"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(new Error("unauthorized"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(new Error("permission denied"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+
+    // A real credential phrase still names the key or the credentials, and a
+    // certificate errno stays terminal even when the text says authentication.
+    expect(classifyAgentError(new Error("invalid authentication credentials")))
+      .toMatchObject({ code: "PROVIDER_UNAUTHORIZED", retriable: false });
+    expect(classifyAgentError(new Error("authentication failed"))).toMatchObject({
+      code: "PROVIDER_UNAUTHORIZED",
+      retriable: false,
+    });
+    expect(classifyAgentError(Object.assign(
+      new Error("mutual TLS authentication failed"),
+      { code: "CERT_HAS_EXPIRED" },
+    ))).toMatchObject({
+      code: "NETWORK_ERROR",
+      retriable: false,
+      details: { networkCategory: "tls", networkCode: "CERT_HAS_EXPIRED" },
+    });
+  });
+
   it("classifies pi-ai '<status>: <body>' errorMessage strings", () => {
     expect(classifyAgentError('429: {"error":{"type":"rate_limit_error"}}'))
       .toMatchObject({ code: "PROVIDER_RATE_LIMITED", retriable: true });
@@ -249,6 +295,141 @@ describe("classifyAgentError", () => {
   it("treats malformed requests as non-retriable provider errors", () => {
     expect(classifyAgentError('400: {"error":"unknown parameter"}'))
       .toMatchObject({ code: "PROVIDER_ERROR", retriable: false });
+  });
+
+  // @google/genai ApiError.message is JSON.stringify(errorBody). pi-ai does
+  // not prefix "<status>:", and the Google adapter never records
+  // providerResponseStatus, so the main session and subagents classify this
+  // assistant message through classifyProviderError with no status argument.
+  it.each([
+    [
+      "400 INVALID_ARGUMENT",
+      {
+        error: {
+          code: 400,
+          message: "User location is not supported for the API use.",
+          status: "INVALID_ARGUMENT",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 400 } },
+    ],
+    [
+      "404 NOT_FOUND",
+      {
+        error: {
+          code: 404,
+          message:
+            "models/gemini-3-pro-preview is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+          status: "NOT_FOUND",
+        },
+      },
+      {
+        code: "MODEL_NOT_CONFIGURED",
+        retriable: false,
+        details: { providerStatus: 404 },
+      },
+    ],
+    [
+      "429 RESOURCE_EXHAUSTED",
+      {
+        error: {
+          code: 429,
+          message: "Resource has been exhausted (e.g. check quota).",
+          status: "RESOURCE_EXHAUSTED",
+        },
+      },
+      {
+        code: "PROVIDER_RATE_LIMITED",
+        retriable: true,
+        details: { providerStatus: 429 },
+      },
+    ],
+    [
+      "429 billing exhaustion",
+      {
+        error: {
+          code: 429,
+          message:
+            "You exceeded your current quota, please check your plan and billing details.",
+          status: "RESOURCE_EXHAUSTED",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: false, details: { providerStatus: 429 } },
+    ],
+    [
+      "503 UNAVAILABLE",
+      {
+        error: {
+          code: 503,
+          message: "The service is currently unavailable.",
+          status: "UNAVAILABLE",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 503 } },
+    ],
+    [
+      "400 input token count",
+      {
+        error: {
+          code: 400,
+          message:
+            "The input token count exceeds the maximum number of tokens allowed.",
+          status: "INVALID_ARGUMENT",
+        },
+      },
+      {
+        code: "CONTEXT_TOO_LARGE",
+        retriable: false,
+        details: { providerStatus: 400 },
+      },
+    ],
+    [
+      "409 unknown 4xx",
+      {
+        error: {
+          code: 409,
+          message: "Resource already exists.",
+          status: "ALREADY_EXISTS",
+        },
+      },
+      { code: "PROVIDER_ERROR", retriable: true, details: { providerStatus: 409 } },
+    ],
+  ])(
+    "classifies an unprefixed Gemini JSON %s body",
+    (_label, body, expected) => {
+      const errorMessage = JSON.stringify(body);
+      const message = { role: "assistant", stopReason: "error", errorMessage };
+      expect(classifyAgentError(errorMessage)).toMatchObject(expected);
+      expect(classifyAgentError(new Error(errorMessage))).toMatchObject(expected);
+      expect(classifyAgentError(message)).toMatchObject(expected);
+      expect(classifyProviderError(message)).toMatchObject(expected);
+    },
+  );
+
+  it("does not treat a non-HTTP JSON code as a provider status", () => {
+    const cases = [
+      JSON.stringify({ error: { code: 123, message: "not an http status" } }),
+      JSON.stringify({ code: 400, message: "plain code is not an http status" }),
+      JSON.stringify({
+        error: {
+          code: "400",
+          message: "string code is not an http status",
+          status: "INVALID_ARGUMENT",
+        },
+      }),
+    ];
+    for (const errorMessage of cases) {
+      const classified = classifyProviderError({
+        role: "assistant",
+        stopReason: "error",
+        errorMessage,
+      });
+      expect(classified).toMatchObject({
+        code: "PROVIDER_ERROR",
+        retriable: true,
+      });
+      expect(classified.details?.providerStatus).toBeUndefined();
+    }
   });
 
   it("treats a request option an adapter refuses as non-retriable", () => {
@@ -313,6 +494,107 @@ describe("classifyAgentError", () => {
     };
     expect(isContextOverflow(message as AssistantMessage)).toBe(false);
     expect(classifyAgentError(message)).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+  });
+
+  // Spending, credit, billing, and disk quotas do not recover by backing off.
+  // A bare "quota" match used to mark them PROVIDER_RATE_LIMITED and retriable.
+  it.each([
+    "Your organization has exceeded its monthly spending quota",
+    "Your credit quota is exhausted. Please top up.",
+    "Billing quota exceeded for this project",
+    "disk quota exceeded",
+    "insufficient_quota",
+    '429: {"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}}',
+    '429: {"error":{"code":"organization_spend_limit_exceeded"}}',
+    '429: {"error":{"code":"organization_usage_limit_exceeded"}}',
+    "429: Billing quota exceeded",
+  ])("does not retry exhausted account or disk quota: %s", (message) => {
+    const classified = classifyAgentError(new Error(message));
+    expect(classified).not.toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+    expect(classified).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("classifies structured 429 quota errors before generic status handling", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("429: rate limit response"),
+      { status: 429, code: "credit_balance_exhausted" },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  // OpenRouter reports an empty balance as HTTP 402. Backing off cannot add
+  // credits, so the same-turn transient budget must not replay the request.
+  it.each([
+    "402 Insufficient credits. Add more using https://openrouter.ai/settings/credits",
+    "402 Payment Required",
+    "402 status code (no body)",
+    "402: gateway said something unexpected",
+    "This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 1000.",
+    "Insufficient credits",
+    "Payment Required",
+    '429: {"error":{"message":"Insufficient credits"}}',
+  ])("treats HTTP 402 and credit-exhaustion wording as terminal: %s", (message) => {
+    expect(classifyAgentError(new Error(message))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+    });
+  });
+
+  it("treats a structured HTTP 402 as a terminal provider error", () => {
+    expect(classifyAgentError(Object.assign(
+      new Error("Payment Required"),
+      { status: 402 },
+    ))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: false,
+      details: { providerStatus: 402 },
+    });
+  });
+
+  it("does not treat a bare credits mention or a 429 rate limit as credit exhaustion", () => {
+    expect(classifyAgentError(new Error("credits"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("credits remaining will reset"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    // "credentials" shares a prefix with "credits" and must stay out of the
+    // exhaustion matcher.
+    expect(classifyAgentError(new Error("insufficient credentials"))).toMatchObject({
+      code: "PROVIDER_ERROR",
+      retriable: true,
+    });
+    expect(classifyAgentError(
+      '429: {"error":{"type":"rate_limit_error","message":"credits remaining"}}',
+    )).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("429: Too many requests"))).toMatchObject({
+      code: "PROVIDER_RATE_LIMITED",
+      retriable: true,
+    });
+  });
+
+  it.each([
+    "Rate limit exceeded",
+    "Too many requests",
+    "quota exceeded",
+  ])("keeps throughput quota wording retryable: %s", (message) => {
+    expect(classifyAgentError(new Error(message))).toMatchObject({
       code: "PROVIDER_RATE_LIMITED",
       retriable: true,
     });
@@ -496,6 +778,50 @@ describe("classifyAgentError", () => {
     abortErr.name = "AbortError";
     expect(classifyAgentError(abortErr)).toMatchObject({ code: "TURN_ABORTED" });
     expect(classifyAgentError("Turn aborted while compacting context")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+  });
+
+  it("does not treat transport abort wording as a user Stop", () => {
+    // Socket and stream failures say "abort" without being a cancellation.
+    // They must stay retriable so provider retry runs and the UI does not
+    // show Stop.
+    expect(classifyAgentError(new Error("software caused connection abort"))).toMatchObject({
+      code: "NETWORK_ERROR",
+      retriable: true,
+      details: { networkCategory: "reset" },
+    });
+    expect(classifyAgentError(new Error("connection aborted"))).toMatchObject({
+      code: "NETWORK_ERROR",
+      retriable: true,
+      details: { networkCategory: "reset" },
+    });
+    expect(classifyAgentError(new Error("stream aborted"))).toMatchObject({
+      code: "STREAM_FAILED",
+      retriable: true,
+    });
+    expect(classifyAgentError(new Error("provider aborted the stream"))).toMatchObject({
+      code: "STREAM_FAILED",
+      retriable: true,
+    });
+
+    expect(classifyAgentError("Request aborted")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+    expect(classifyAgentError("The operation was aborted")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+    expect(classifyAgentError("Turn aborted while compacting context")).toMatchObject({
+      code: "TURN_ABORTED",
+      retriable: false,
+    });
+    const abortErr = Object.assign(new Error("The operation was aborted"), {
+      name: "AbortError",
+    });
+    expect(classifyAgentError(abortErr)).toMatchObject({
       code: "TURN_ABORTED",
       retriable: false,
     });

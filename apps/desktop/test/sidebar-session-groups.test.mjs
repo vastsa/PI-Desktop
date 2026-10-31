@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   groupSidebarSessions,
   getGlobalPinnedSessions,
-  groupSidebarSessionsByTime,
   normalizeProjectPath,
   projectPathsForNewSessions,
   sessionMatchesProject,
@@ -89,7 +88,7 @@ test("finds only newly imported project-bound sessions", () => {
   );
 });
 
-test("global pins include closed projects and temporary sessions without date buckets", () => {
+test("global pins include closed projects and temporary sessions", () => {
   const sessions = [
     session({ id: "today", projectPath: "/open", updatedAt: "2026-09-13T01:00:00Z" }),
     session({ id: "old-pin", projectPath: "/open", updatedAt: "2025-01-01T00:00:00Z" }),
@@ -102,16 +101,10 @@ test("global pins include closed projects and temporary sessions without date bu
     pins.map((row) => row.id),
     ["old-pin", "closed-pin", "temporary-pin"],
   );
-  for (const now of [new Date(2026, 8, 13, 12), new Date(2026, 8, 14, 12)]) {
-    const ids = new Set(pins.map((row) => row.id));
-    const history = groupSidebarSessionsByTime(
-      sessions.filter((row) => !ids.has(row.id)),
-      now,
-    );
-    const rendered = [...pins, ...history.flatMap((group) => group.sessions)].map((row) => row.id);
-    assert.deepEqual(rendered, ["old-pin", "closed-pin", "temporary-pin", "today"]);
-    assert.equal(new Set(rendered).size, sessions.length);
-  }
+  const ids = new Set(pins.map((row) => row.id));
+  const rendered = [...pins, ...sessions.filter((row) => !ids.has(row.id))].map((row) => row.id);
+  assert.deepEqual(rendered, ["old-pin", "closed-pin", "temporary-pin", "today"]);
+  assert.equal(new Set(rendered).size, sessions.length);
   assert.equal(sessions[1].projectPath, "/open", "pinning must not rebind a conversation");
 });
 
@@ -142,20 +135,5 @@ test("global pins honor session and project archives including normalized paths"
     getGlobalPinnedSessions(sessions, { ...meta, visible: { pinned: false } }, projects, false)
       .length,
     0,
-  );
-});
-
-test("ordinary date groups retain their order after pins are removed", () => {
-  const date = (day) => new Date(2026, 8, day, 1).toISOString();
-  const rows = [
-    session({ id: "old", updatedAt: "2025-01-01T00:00:00Z" }),
-    session({ id: "week", updatedAt: date(10) }),
-    session({ id: "today", updatedAt: date(13) }),
-    session({ id: "yesterday", updatedAt: date(12) }),
-    session({ id: "fortnight", updatedAt: date(3) }),
-  ];
-  assert.deepEqual(
-    groupSidebarSessionsByTime(rows, new Date(2026, 8, 13, 12)).map((group) => group.group),
-    ["today", "yesterday", "thisWeek", "older14d", "archived"],
   );
 });

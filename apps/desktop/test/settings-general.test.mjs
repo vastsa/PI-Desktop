@@ -203,6 +203,17 @@ test("language persists as part of shared app settings", () => {
 test("General Network card persists a custom HTTP or SOCKS5 proxy and the relaxed network mode", () => {
   assert.match(settingsPageSource, /<NetworkProxySection /);
   assert.match(networkProxySource, /settings\.networkRelaxedMode/);
+  // A mode switch saves the current drafts, even when the input blur save has
+  // not refreshed `saved` yet, so Custom restores the user's latest values.
+  assert.match(
+    networkProxySource,
+    /settingsForInactiveProxyMode\(mode, saved, urlDraft, bypassDraft\)/,
+  );
+  assert.match(
+    networkProxySource,
+    /resolveCustomProxyUrl\(urlDraft, saved\.url\)/,
+  );
+  assert.match(networkProxySource, /url: resolved\.url/);
   // Fake-IP tolerance belongs to the network mode now, not to the proxy payload.
   assert.doesNotMatch(networkProxySource, /allowFakeIp/);
   assert.match(settingsSearchSource, /settings\.proxy/);

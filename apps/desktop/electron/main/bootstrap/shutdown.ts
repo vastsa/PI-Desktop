@@ -9,6 +9,7 @@ import type { PersistenceOutbox } from "../persistence-outbox";
 import type { PluginPanelHost } from "../plugin-panel-host";
 import type { PluginRuntime } from "../plugin-runtime";
 import type { PluginViewHost } from "../plugin-view-host";
+import type { ComposerSuggestionRelay } from "../services/composer-suggestion";
 import type { AppUpdaterController } from "../updater";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { McpControlServer } from "../mcp-control";
@@ -45,6 +46,8 @@ export type ShutdownDependencies = {
   mcpOAuth?: Pick<McpOAuthManager, "disposeAll">;
   browserHost: Pick<BrowserHost, "dispose">;
   pluginViews: Pick<PluginViewHost, "dispose">;
+  /** Composer suggestions still waiting for an answer at quit (ADR 0333). */
+  composerSuggestion?: Pick<ComposerSuggestionRelay, "dispose">;
   updater: Pick<AppUpdaterController, "dispose" | "isInstallingUpdate">;
   logger: Pick<Logger, "app">;
   confirmQuitDialog: () => Promise<boolean>;
@@ -70,6 +73,7 @@ export function registerShutdownHandlers({
   mcpOAuth,
   browserHost,
   pluginViews,
+  composerSuggestion,
   updater,
   logger,
   confirmQuitDialog,
@@ -77,6 +81,7 @@ export function registerShutdownHandlers({
   liveCallService,
   disposeSystemProxyRelay,
 }: ShutdownDependencies): void {
+  let quitConfirmationPending = false;
   app.on("window-all-closed", () => {
     // The D216 tray is resident on every platform, so its presence says nothing
     // about whether the app should survive a closed window — the user's close
@@ -95,7 +100,7 @@ export function registerShutdownHandlers({
     if (!hasSingleInstanceLock) return;
     if (state.shutdownComplete) return;
     event.preventDefault();
-    if (state.shutdownPromise) return;
+    if (state.shutdownPromise || quitConfirmationPending) return;
 
     // Show a confirmation dialog on the first explicit quit (Cmd+Q, tray quit,
     // application-menu Quit). The data-saving shutdown runs after confirmation.
@@ -113,14 +118,25 @@ export function registerShutdownHandlers({
     const isUpdateRestart = updater.isInstallingUpdate();
     if (!state.quitConfirmed && !isAutomatedMode && !isUpdateRestart) {
       state.quitConfirmed = true;
-      void confirmQuitDialog().then((confirmed) => {
-        if (confirmed) {
+      quitConfirmationPending = true;
+      void confirmQuitDialog().then(
+        (confirmed) => {
+          quitConfirmationPending = false;
+          if (confirmed) {
+            app.quit();
+          } else {
+            // User cancelled: allow future quit requests to prompt again.
+            state.quitConfirmed = false;
+          }
+        },
+        (error: unknown) => {
+          quitConfirmationPending = false;
+          logger.app("lifecycle", "warn", "quit confirmation failed; allowing shutdown", {
+            data: String(error),
+          });
           app.quit();
-        } else {
-          // User cancelled: allow future quit requests to prompt again.
-          state.quitConfirmed = false;
-        }
-      });
+        },
+      );
       return;
     }
 
@@ -201,6 +217,7 @@ export function registerShutdownHandlers({
       userMcp.disposeAll();
       mcpOAuth?.disposeAll();
       browserHost.dispose();
+      composerSuggestion?.dispose();
       inflightCheckpointer.dispose();
 
       try {

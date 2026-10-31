@@ -189,7 +189,7 @@ main、渲染层或插件宿主进程中。
 | `project_trust` | v1 说明：不触发；按项目启用即信任决定 | 否 |
 | `resources_discover` | v1 说明：不触发；skills 与提示发现留在 Electron main | 不适用 |
 | `before_agent_start` | 回合内首个 provider 请求之前 | 是，仅替换系统提示词 |
-| `context` | `prepareNextTurn` | 是，替换消息列表 |
+| `context` | `transformContext`，在一次运行的每个 provider 请求之前触发（包括第一个） | 是，替换消息列表，只作用于该次请求；运行上下文和 transcript 保留原消息 |
 | `before_provider_request`、`before_provider_headers`、`after_provider_response` | provider 调用包装 | 请求采纳返回值；头部原地修改 payload |
 | `agent_start`、`agent_end`、`agent_settled` | Agent 循环边界 | 否 |
 | `turn_start`、`turn_end` | 回合边界 | 否 |
@@ -320,6 +320,9 @@ main 在 `logs/app/plugin.log` 审计每个提示 id。
   注册、处理器超时。
 - 页面溢出菜单中的“导入 pi 扩展”，前置一个说明授权含义的确认。
 
+显式本地包导入已支持 `pi.extensions` / `pi.skills` 与受限 registry-only 依赖准备，见 §3.2。
+这不等于通用 pi 包管理器或自动读取 CLI settings 的能力。
+
 ## 12. 分阶段
 
 | 阶段 | 内容 | 承诺 |
@@ -328,7 +331,7 @@ main 在 `logs/app/plugin.log` 审计每个提示 id。
 | v1.1 | 模块成为带 `agent.extension` 授权的 `contributes.agentExtensions`；把 pi CLI 扩展导入为开发插件；独立注册表和设置标签移除 | 已交付（D388） |
 | v2 | 自定义会话条目（`sendMessage`、`appendEntry`）含 schema 升版和通用渲染、`sessionManager` 只读 shim、`switchSession`、编辑器读写、补全 provider、`registerShortcut`、markdown 转换器 | 已规划，需先决定条目持久化与压缩 |
 | v2 | 自定义会话条目（`sendMessage`、`appendEntry`）与一次 schema 升级及通用渲染层、`sessionManager` 只读 shim、`switchSession`、编辑器读写、自动补全 provider、`registerShortcut`、markdown 转换器 | 计划中，需要就条目持久化与压缩作出决定 |
-| v3 | `pi` 包 manifest 与安装、pi CLI `settings.json` 的只读提示、统一 skill 与提示发现、提示的远程控制路由、市场列出 | 未排期 |
+| v3 | Read-only hints from the pi CLI's `settings.json`, unified skill and prompt discovery, remote-control routing for prompts, marketplace listing | Not scheduled |
 
 v1 交付顺序：打包 spike（E2E-245）、shared 协议类型，然后运行时、main、渲染层
 三条线并行。

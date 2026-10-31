@@ -59,13 +59,19 @@ export type RemoteHostSshMetadata = {
   remotePort: number;
   /** Release version the bootstrap installed, checked against `APP_VERSION`. */
   version: string;
+  /** Identity enrolled during bootstrap; absent on older descriptors. */
+  hostId?: string;
 };
+
+export type RemoteHostConnectionStatus = "connected" | "connecting" | "reconnecting" | "disconnected" | "action-required";
 
 export type RemoteHostSummary = {
   hostKey: string;
   label: string;
   url: string;
   connected: boolean;
+  /** Additive display state; absent on summaries produced by older desktop versions. */
+  status?: RemoteHostConnectionStatus;
   /** Absent on records written before the SSH bootstrap existed → `direct`. */
   transport?: RemoteHostTransport;
 };

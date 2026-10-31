@@ -99,9 +99,9 @@ does not turn temporary thread pressure into a host process exit.
 | `AGENT_SIDECAR_CRASHED` | no | the Node agent sidecar process died mid-turn; the owning turn settles as aborted with this code instead of an unrelated plan-approval code (issue #1077) |
 | `AGENT_SIDECAR_OOM` | no | the sidecar died after its JavaScript heap hit the configured cap, diagnosed from the V8 fatal-error banner in its stderr tail; the same turn fails the same way until the input shrinks (issue #1077) |
 | `MODEL_NOT_CONFIGURED` | no | no usable model selected, or provider rejects the selected model as unknown |
-| `PROVIDER_ERROR` | yes | upstream provider failure; a retryable one (5xx gateway) gets up to ten same-turn retries, while a malformed 400/422 request or a request option the adapter itself refuses (a custom `fetch` for the Google adapters, issue #1072) is terminal |
+| `PROVIDER_ERROR` | yes | upstream provider failure; retryable 5xx gateway errors get up to ten same-turn retries, while malformed 400/422 requests, adapter-refused options, HTTP 402, and explicit billing, credit, spend, usage, or disk exhaustion (including `insufficient_quota` and insufficient-credits wording) are terminal |
 | `PROVIDER_UNAUTHORIZED` | no | bad/missing provider credentials |
-| `PROVIDER_RATE_LIMITED` | yes | provider rate limited; runtime silently retries up to ten times across setup/stream before the terminal event |
+| `PROVIDER_RATE_LIMITED` | yes | temporary provider throughput limit; runtime retries up to ten times across setup/stream. Explicit billing/account exhaustion remains terminal `PROVIDER_ERROR`, including when returned with HTTP 429 |
 | `CONTEXT_TOO_LARGE` | no | prompt/context still exceeds the safe model budget after recovery, the second provider overflow occurred, or automatic recovery is disabled |
 | `CONTEXT_COMPACTION_FAILED` | no | automatic retained-tail recovery could not prepare, persist, or fit a checkpoint, or manual checkpoint summary generation / durable append failed; the guarded next provider request does not start |
 | `STREAM_FAILED` | yes | provider stream was terminated, closed prematurely, or otherwise ended before a complete response; up to ten same-turn retries may precede the terminal event |
@@ -121,6 +121,7 @@ does not turn temporary thread pressure into a host process exit.
 |---|---|---|
 | `WORKSPACE_REQUIRED` | no | no workspace bound |
 | `PATH_OUTSIDE_WORKSPACE` | no | path escapes sandbox before an explicit outside-path permission decision, or a prompt attachment is outside its session scratch/project/attachment roots |
+| `VISUALIZATION_HTML_ONLY` | no | a Write/Edit into the session visualization directory is not a direct-child `.html` fragment |
 | `WORKSPACE_PATH_DENIED` | no | an explicit `Read`/`Write`/`Edit` path hit the always-on security denylist (private keys, `.env` files, credential bundles, `.git/objects`); an outside-path grant does not lift it (spec 15 §3) |
 | `READ_PATH_IS_DIRECTORY` | no | `Read` was given a directory; the result carries a `Glob` suggestion |
 | `TOOL_BINARY_CONTENT` | no | `Read` refused to dump a binary file into the model context |
@@ -375,12 +376,25 @@ example DashScope/Qwen `Range of input length should be`, z.ai `Prompt
 exceeds max length`, xAI `maximum prompt length is`, Groq, llama.cpp, and
 Bedrock `Input is too long for requested model`. `CONTEXT_TOO_LARGE` is never
 replayed by either retry budget, and a delegate reports it as
-`SUBAGENT_CONTEXT_OVERFLOW`. Rate-limit wording, including Bedrock's
-`Throttling error: Too many tokens, please wait before trying again.`, is
-classified first and stays `PROVIDER_RATE_LIMITED`.
+`SUBAGENT_CONTEXT_OVERFLOW`. Explicit billing/account exhaustion codes and
+messages (including `insufficient_quota`, `credit_balance_exhausted`,
+organization/project spend-limit codes, `insufficient credits`, and
+`requires more credits`) map to terminal `PROVIDER_ERROR` even when the HTTP
+status is 429, and HTTP 402 is terminal `PROVIDER_ERROR` even when the body
+omits those phrases. Throughput rate-limit wording, including
+Bedrock's `Throttling error: Too many tokens, please wait before trying again.`,
+stays `PROVIDER_RATE_LIMITED`. An unprefixed JSON error body that carries an
+HTTP status in `error.code` (Gemini's `@google/genai` `ApiError.message`) is
+classified from that 400-599 code the same way as a `<status>:` message:
+400/422 stay terminal unless they report a context overflow, 404 is
+`MODEL_NOT_CONFIGURED`, and 429 / 5xx stay retryable.
 
 An exact `terminated` provider message and equivalent premature stream-close
-messages map to `STREAM_FAILED`. A request-setup or post-response
+messages map to `STREAM_FAILED`. A message is `TURN_ABORTED` only for a
+structured abort or the fixed phrases `Request aborted`, `The operation was
+aborted`, and `Turn aborted`; connection-abort wording such as `software
+caused connection abort` stays retriable `NETWORK_ERROR`, and `stream aborted`
+stays retriable `STREAM_FAILED`. A request-setup or post-response
 `PROVIDER_RATE_LIMITED` uses the shared runtime budget: ten retries after the
 initial attempt, with setup and stream failures counting together. Non-429
 transient failures — `STREAM_FAILED`, `NETWORK_ERROR`, `TIMEOUT`, and retryable

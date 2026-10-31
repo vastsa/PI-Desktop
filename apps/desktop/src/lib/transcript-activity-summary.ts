@@ -73,19 +73,19 @@ export function activityTimingInputs(items: readonly AssistantActivityItem[]) {
   }
   return { startedAt, recordedEnd, missingStartDuration };
 }
-export function cachedVisibleActivityItems(items: readonly AssistantActivityItem[], compact: boolean, active: boolean) {
-  return items.filter((item) => item.kind !== "thinking" || !compact ||
+export function cachedVisibleActivityItems(items: readonly AssistantActivityItem[], hideThinking: boolean, active: boolean) {
+  return items.filter((item) => item.kind !== "thinking" || !hideThinking ||
     (active && item.message.status === "streaming" && !messageContentFacts(item.message).hasContent));
 }
 
-export function cachedVisibleProcessSteps(parts: readonly AssistantTurnPart[], compact: boolean, active: boolean) {
+export function cachedVisibleProcessSteps(parts: readonly AssistantTurnPart[], hideThinking: boolean, active: boolean) {
   let count = 0;
   for (const part of parts) {
     if (part.kind === "message") {
       if (messageContentFacts(part.message).hasContent) count += 1;
     } else {
       for (const item of part.items) {
-        if (item.kind !== "thinking" || !compact ||
+        if (item.kind !== "thinking" || !hideThinking ||
           (active && item.message.status === "streaming" && !messageContentFacts(item.message).hasContent)) count += 1;
       }
     }

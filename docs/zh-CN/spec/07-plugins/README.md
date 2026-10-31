@@ -27,3 +27,23 @@
 | [14-plugin-roadmap.md](/zh-CN/spec/07-plugins/14-plugin-roadmap) | 插件路线图 |
 | [15-plugin-center.md](/zh-CN/spec/07-plugins/15-plugin-center) | 插件中心（发布侧） |
 | [16-trusted-extensions.md](/zh-CN/spec/07-plugins/16-trusted-extensions) | 受信任扩展（sidecar 内扩展面） |
+
+## 从契约回查代码
+
+每个可调用方法见[完整 SDK 索引](../../plugin-development.md#13-complete-sdk-surface-and-source-map)，
+授权见权限矩阵。SDK、安装器和运行时是独立校验层，指南明确指出差异，不能把宽松解析当成授权。
+
+| 范围 | 实现依据 |
+|---|---|
+| Manifest, permission vocabulary, host API | `packages/plugin-sdk/src/index.ts` |
+| Renderer slots, actions, drafts, attachments | `packages/plugin-sdk/src/renderer.ts`, `renderer-composer.ts` |
+| File/network/theme/MCP rules | SDK policy helpers and their unit tests |
+| Templates, checks, packing, submission preparation | `packages/plugin-devkit/src` and its tests |
+| Install, registry, marketplace, ownership | `crates/host-core/src/plugins` |
+| Broker dispatch, callbacks, cleanup, events | `apps/desktop/electron/main/plugin-runtime.ts`, `plugin-host-process.mjs` |
+| Panel bridge and command search | `apps/desktop/electron/preload/plugin-panel.ts`, `apps/desktop/electron/main/ipc/market-ipc.ts` |
+| Trusted extension subset | `packages/agent-runtime/src/extensions` and spec 16 |
+| Representative host/user paths | `apps/desktop/test/plugin-*.test.mjs`, repository example plugins |
+
+生命周期提案、无设备后端的后台音频、签名规划、中心服务架构，都与已实现的运行时 API 区分。
+`docs/plugin-plan` 的评审页可能包含尚未实现的钩子，不是额外公开 API。

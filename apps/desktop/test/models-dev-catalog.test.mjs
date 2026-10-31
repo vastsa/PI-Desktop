@@ -1956,3 +1956,168 @@ test("a generation name the catalog never publishes stays unmatched", async (t) 
     vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
   }), undefined);
 });
+
+test("a vendor's sibling keys answer for a family the primary key never states", async (t) => {
+  // `qwen3.8-flash` lives only on Alibaba's token-plan key, while the relay
+  // serves it under the family name. The primary key states nothing, so the
+  // vendor's own sibling key supplies the record rather than a reseller copy.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    alibaba: { models: { "qwen3.7-flash": {
+      id: "qwen3.7-flash", tool_call: true, limit: { context: 1_000_000, output: 131_072 },
+    } } },
+    "alibaba-token-plan": { models: { "qwen3.8-flash": {
+      id: "qwen3.8-flash", tool_call: true, limit: { context: 1_000_000, output: 131_072 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "qwen3.8-flash",
+  });
+  assert.equal(match?.providerKey, "alibaba-token-plan");
+  assert.equal(match?.limit.context, 1_000_000);
+  assert.equal(match?.limit.output, 131_072);
+});
+
+test("a sibling key that contradicts the primary key cannot suppress its answer", async (t) => {
+  // Alibaba's public key and token-plan key disagree about the same id. The
+  // token-plan key is only in the new widened tier, so it cannot veto the
+  // primary tier's answer.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    alibaba: { models: { "qwen3.8-flash": {
+      id: "qwen3.8-flash", tool_call: true, limit: { context: 512_000, output: 64_000 },
+    } } },
+    "alibaba-token-plan": { models: { "qwen3.8-flash": {
+      id: "qwen3.8-flash", tool_call: true, limit: { context: 1_000_000, output: 131_072 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "qwen3.8-flash",
+  });
+  assert.equal(match?.providerKey, "alibaba");
+  assert.equal(match?.limit.context, 512_000);
+  assert.equal(match?.limit.output, 64_000);
+});
+
+test("a corroborated canonical declaration translates a relay-only generation name", async (t) => {
+  // The relay serves `gemini-3-flash`, which its owner never publishes; two
+  // independent publishers carry it only under a vendor-prefixed id and both
+  // declare it canonical for `gemini-3-flash-preview`. Their own capability
+  // flags disagree — as resellers' do in the live catalog — so no shared
+  // reseller record answers and the owner path decides. The declaration only
+  // translates the name; the capacity stays Google's own.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: { "gemini-3-flash-preview": {
+      id: "gemini-3-flash-preview", tool_call: true,
+      limit: { context: 1_048_576, output: 65_536 },
+    } } },
+    neon: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000, output: 1 },
+    } } },
+    pioneer: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000, output: 2 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  });
+  assert.equal(match?.providerKey, "google", "the owner's own record answers");
+  assert.equal(match?.modelId, "gemini-3-flash-preview");
+  assert.equal(match?.limit.context, 1_048_576, "capacity comes from the owner, not the declarers");
+  assert.equal(match?.limit.output, 65_536);
+});
+
+test("one reseller's private alias is not evidence for a canonical translation", async (t) => {
+  // A single publisher's own naming choice must not rewrite the id: the served
+  // name keeps the record that reseller publishes for it, and the owner's
+  // preview record is never projected onto it.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: { "gemini-3-flash-preview": {
+      id: "gemini-3-flash-preview", tool_call: true, limit: { context: 1_048_576 },
+    } } },
+    "some-reseller": { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  });
+  assert.equal(match?.providerKey, "some-reseller", "the served id keeps its own publisher");
+  assert.equal(match?.limit.context, 1_000_000, "an uncorroborated alias never borrows the owner's capacity");
+});
+
+test("an ambiguous canonical translation stays unmatched", async (t) => {
+  // Two corroborated targets say the name maps two ways. The resellers disagree
+  // on capability flags, so no shared record answers either; nothing is claimed.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: {
+      "gemini-3-flash-preview": {
+        id: "gemini-3-flash-preview", tool_call: true, limit: { context: 1_048_576 },
+      },
+      "gemini-3-flash-lite": {
+        id: "gemini-3-flash-lite", tool_call: true, limit: { context: 1_000_000 },
+      },
+    } },
+    neon: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+    pioneer: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+    opencode: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      canonical_model_id: "google/gemini-3-flash-lite",
+      limit: { context: 1_000_000 },
+    } } },
+    vercel: { models: { "google/gemini-3-flash": {
+      id: "google/gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-lite",
+      limit: { context: 1_000_000 },
+    } } },
+  });
+  assert.equal(catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  }), undefined);
+});
+
+test("a canonical translation never displaces an id that already resolves", async (t) => {
+  // The relay's id is published outright by a reseller, so the ordinary lookup
+  // answers. A corroborated declaration pointing elsewhere must not override
+  // that: translation only fills a gap, it never rewrites a served name.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    google: { models: { "gemini-3-flash-preview": {
+      id: "gemini-3-flash-preview", tool_call: true, limit: { context: 1_048_576 },
+    } } },
+    neon: { models: { "gemini-3-flash": {
+      id: "gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+    pioneer: { models: { "gemini-3-flash": {
+      id: "gemini-3-flash", tool_call: true,
+      canonical_model_id: "google/gemini-3-flash-preview",
+      limit: { context: 1_000_000 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "gemini-3-flash",
+  });
+  assert.equal(match?.modelId, "gemini-3-flash", "the served id keeps its own record");
+});

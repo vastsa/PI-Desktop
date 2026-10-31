@@ -33,6 +33,7 @@ export type CaptureRigMethods = {
   setWorkPanelWidth: (width: number) => void;
   seedTranscript: (count?: number) => void;
   seedReviewChanges: (count?: number) => void;
+  seedTurnChanges: (files?: number) => void;
   seedRunRows: (count?: number) => void;
   seedDelegationRows: (count?: number) => void;
   seedPlugins: (count?: number) => void;
@@ -45,6 +46,7 @@ export type CaptureRigMethods = {
     completed: string;
     failed: string;
   } | null;
+  seedRadialMenu: (enabled: boolean) => void;
   ensureVisualFixtures: () => Promise<void>;
 };
 
@@ -285,6 +287,68 @@ export function installCaptureRig(): CaptureRig {
           },
         ],
       );
+      useAppStore.setState({ messages: messages as any });
+    },
+    seedTurnChanges: (files = 3) => {
+      // Capture-only per-turn changed-files fixture (D674 scenes): one
+      // finished turn whose tools wrote `files` workspace files, so the
+      // summary card renders under the reply. 0 restores the empty transcript.
+      if (!window.__PI_CAPTURE__) return;
+      if (files <= 0) {
+        useAppStore.setState({ messages: [] });
+        return;
+      }
+      const base = Date.parse("2026-10-28T09:00:00Z");
+      const at = (offset: number) => new Date(base + offset * 1_000).toISOString();
+      const dirs = ["apps/desktop/src/lib", "packages/i18n/src/locales/en", "docs/spec/04-ux"];
+      const tools = Array.from({ length: files }, (_, i) => {
+        const status = i === 0 ? "added" : i === files - 1 && files > 3 ? "deleted" : "modified";
+        const path = `${dirs[i % dirs.length]}/turn-change-${i + 1}.ts`;
+        return {
+          id: `capture-turn-tool-${i}`,
+          role: "tool" as const,
+          content: "",
+          createdAt: at(2 + i),
+          toolName: i === 0 ? "Write" : "Edit",
+          toolStatus: "success" as const,
+          toolArgs: { path },
+          toolResult: {
+            details: {
+              root: "workspace",
+              review: {
+                version: 1,
+                snapshotId: `capture-turn-snapshot-${i}`,
+                messageId: `capture-turn-tool-${i}`,
+                path,
+                operation: status === "added" ? "write" : status === "deleted" ? "delete" : "edit",
+                status,
+                state: i === 2 ? "rolledBack" : "active",
+                additions: status === "deleted" ? 0 : 3 + ((i * 7) % 29),
+                deletions: status === "added" ? 0 : (i * 3) % 11,
+                hunks: [],
+                reversible: true,
+              },
+            },
+          },
+        };
+      });
+      const messages = [
+        {
+          id: "capture-turn-user",
+          role: "user" as const,
+          content: "把发送按钮的禁用条件补上",
+          createdAt: at(0),
+          status: "complete" as const,
+        },
+        ...tools,
+        {
+          id: "capture-turn-reply",
+          role: "assistant" as const,
+          content: "已改：草稿为空或流式时禁用发送。",
+          createdAt: at(2 + files),
+          status: "complete" as const,
+        },
+      ];
       useAppStore.setState({ messages: messages as any });
     },
     seedRunRows: (count = 3) => {
@@ -1094,6 +1158,19 @@ export function installCaptureRig(): CaptureRig {
       } catch {
         // optional capture-only fixture
       }
+    },
+    seedRadialMenu: (enabled) => {
+      // Capture-only: flips the opt-in ring preference in the store the
+      // transcript reads, without touching the persisted settings file.
+      if (!window.__PI_CAPTURE__) return;
+      const settings = useAppStore.getState().settings;
+      if (!settings) return;
+      useAppStore.setState({
+        settings: {
+          ...settings,
+          radialMenu: { ...settings.radialMenu, enabled },
+        },
+      });
     },
   };
   return {

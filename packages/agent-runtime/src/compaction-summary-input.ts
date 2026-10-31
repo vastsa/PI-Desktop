@@ -181,6 +181,25 @@ export function compactionSummaryInputLimit(input: {
 }
 
 /**
+ * Room one chunk keeps for the summary its prompt carries. The first chunk
+ * carries `previousSummary`; every later chunk carries a summary no larger
+ * than the model's output budget. The carried text is measured with the same
+ * character estimate as {@link estimateSummaryPromptTokens}. Reserving it at
+ * four characters per token under-counts the guard by 12.5%, and the chunk
+ * margin applies only to what remains, so the first chunk can leave the window
+ * it was planned for.
+ */
+export function compactionSummaryReserveTokens(input: {
+  previousSummary?: string;
+  outputBudget: number;
+}): number {
+  return Math.max(
+    Math.ceil((input.previousSummary?.length ?? 0) / ESTIMATED_TEXT_CHARS_PER_TOKEN),
+    input.outputBudget,
+  );
+}
+
+/**
  * Split a summary input into contiguous chunks that each fit the request
  * budget, so a range too large for one prompt is still summarized instead of
  * skipped (issue #827).

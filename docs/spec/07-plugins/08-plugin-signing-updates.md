@@ -37,7 +37,7 @@ On failure:
 - Show "Integrity check failed"
 - Record an audit entry
 
-## 4. Signature scheme (implementation details to be frozen later)
+## 4. Signature scheme (planned, not enforced)
 
 Recommended:
 
@@ -64,7 +64,12 @@ type PluginSignature = {
 
 A failed verification rejects the install / update.
 
-## 5. Publisher trust
+Sections 4–5 describe proposed signing/key management. The current client
+verifies package SHA-256 and reads catalog trust/provenance metadata; it has no
+plugin-signing CLI, signature-verification gate, built-in signing key, or
+user-managed trusted-key store. A verified badge is not a cryptographic signature.
+
+## 5. Publisher trust (planned key management)
 
 ```ts
 type PublisherTrust = {

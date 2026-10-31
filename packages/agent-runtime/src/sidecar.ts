@@ -62,6 +62,11 @@ async function getNativePiService() {
   return nativePiServiceFactory();
 }
 
+function nativeProjectPaths(params: { projectPaths?: unknown } | undefined): string[] {
+  const value = params?.projectPaths;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 const runtimes: RuntimeMap = new Map();
 const hostProxy = new ParentHostProxy();
 const testRuntimeIds = new WeakMap<DesktopAgentRuntime, string>();
@@ -107,6 +112,8 @@ type RuntimeParams = {
   thinkingLevel?: SessionThinkingLevel;
   infiniteProviderRetry?: boolean;
   sessionMessagesInCurrentTurn?: boolean;
+  /** Session `/fast` switch AND the model's opt-in, resolved by main (ADR 0334). */
+  fastMode?: boolean;
   /** Opt-in TypeSafe classifier credential resolved by Electron main. */
   jevApiKey?: string;
   provider: RuntimeProviderConfig;
@@ -122,8 +129,13 @@ type RuntimeParams = {
   /** Opted-in override keys, separate from definition-only pinned bindings. */
   subagentModelKeys?: string[];
   scratchDir?: string;
+  /** Per-session visualization directory; omitted for remote sessions. */
+  visualizationsDir?: string;
   /** Session-bound workspace root supplied by Electron main. */
   projectPath?: string;
+  remoteWorkspace?: { hostKey: string; path: string };
+  /** An isolated session's worktree root, supplied by Electron main (ADR 0329). */
+  workspaceRoot?: string;
   customSystemPrompt?: CustomSystemPrompt;
   projectInstructions?: ProjectInstructions;
   projectMemory?: string;
@@ -222,7 +234,7 @@ async function runtimeFor(
       errorCode: "AGENT_BUSY",
     });
   }
-  const reusable = existing?.matches({
+  const config = {
     mode,
     provider,
     thinkingLevel,
@@ -237,11 +249,18 @@ async function runtimeFor(
     customSystemPrompt: params.customSystemPrompt,
     projectMemory: params.projectMemory,
     projectPath: params.projectPath,
+    remoteWorkspace: params.remoteWorkspace,
+    workspaceRoot: params.workspaceRoot,
     commandShell: params.commandShell,
-  })
-    ? existing
-    : undefined;
+  };
+  // Name the first field that disagrees so a cache-invalidating rebuild can be
+  // attributed to its cause (#1948) instead of surfacing only as a reset.
+  const mismatch = existing?.firstMismatch(config) ?? null;
+  const reusable = existing && mismatch === null ? existing : undefined;
   if (existing && !reusable) {
+    console.error(
+      `[runtime] rebuilding ${sessionId}: runtime config mismatch (${mismatch ?? "unknown"})`,
+    );
     await existing.dispose();
     runtimes.delete(sessionId);
   }
@@ -250,38 +269,38 @@ async function runtimeFor(
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
     reusable.setSessionMessagesInCurrentTurn(params.sessionMessagesInCurrentTurn === true);
+    reusable.setFastMode(params.fastMode === true);
     reusable.setMode(mode);
     return reusable;
   }
 
-  let history: UiMessage[] = [];
-  let compaction: ContextCompactionRecord | undefined;
-  try {
-    const detail = await hostProxy.call<{
-      session?: {
-        messages?: UiMessage[];
-        compaction?: ContextCompactionRecord;
-      } | null;
-    }>("session.get", { id: sessionId });
-    let restoredMessages = detail?.session?.messages ?? [];
-    // The current prompt is sent separately below. Exclude its persisted row
-    // before attachment hydration so it cannot consume the history byte budget.
-    if (currentPrompt !== undefined && params.userMessageId) {
-      restoredMessages = restoredMessages.filter((message) =>
-        message.role !== "user" || message.id !== params.userMessageId,
-      );
-    }
-    const supportsVision = visionFromModelConfig(params.provider.modelConfig);
-    history = await hydrateAttachmentHistory(restoredMessages, {
-      scratchDir: params.scratchDir,
-      projectPath: params.projectPath,
-      attachmentsDir: params.attachmentsDir,
-      supportsVision,
+  const detail = await hostProxy.call<{
+    session?: {
+      messages?: UiMessage[];
+      compaction?: ContextCompactionRecord;
+    } | null;
+  }>("session.get", { id: sessionId });
+  if (!detail?.session) {
+    throw Object.assign(new Error("session not found while restoring history"), {
+      errorCode: "SESSION_NOT_FOUND",
     });
-    compaction = detail?.session?.compaction;
-  } catch {
-    // History restore is best-effort; a prompt can still start cleanly.
   }
+  let restoredMessages = detail.session.messages ?? [];
+  // The current prompt is sent separately below. Exclude its persisted row
+  // before attachment hydration so it cannot consume the history byte budget.
+  if (currentPrompt !== undefined && params.userMessageId) {
+    restoredMessages = restoredMessages.filter((message) =>
+      message.role !== "user" || message.id !== params.userMessageId,
+    );
+  }
+  const supportsVision = visionFromModelConfig(params.provider.modelConfig);
+  let history = await hydrateAttachmentHistory(restoredMessages, {
+    scratchDir: params.scratchDir,
+    projectPath: params.remoteWorkspace ? undefined : params.projectPath,
+    attachmentsDir: params.attachmentsDir,
+    supportsVision,
+  });
+  const compaction = detail.session.compaction;
   // Older callers without a stable message id retain the previous content match.
   if (currentPrompt !== undefined && !params.userMessageId) {
     const last = history.at(-1);
@@ -299,6 +318,7 @@ async function runtimeFor(
     thinkingLevel,
     infiniteProviderRetry: params.infiniteProviderRetry === true,
     sessionMessagesInCurrentTurn: params.sessionMessagesInCurrentTurn === true,
+    fastMode: params.fastMode === true,
     jevApiKey: params.jevApiKey,
     history,
     compaction,
@@ -310,12 +330,18 @@ async function runtimeFor(
     subagentProviders,
     subagentModelKeys,
     projectPath: params.projectPath,
+    remoteWorkspace: params.remoteWorkspace,
+    workspaceRoot: params.workspaceRoot,
     customSystemPrompt: params.customSystemPrompt,
     projectInstructions: params.projectInstructions,
     projectMemory: params.projectMemory,
     scratchDir:
       typeof params.scratchDir === "string" && params.scratchDir
         ? params.scratchDir
+        : undefined,
+    visualizationsDir:
+      typeof params.visualizationsDir === "string" && params.visualizationsDir
+        ? params.visualizationsDir
         : undefined,
     onEvent: (envelope: AgentEventEnvelope) => notify("agent.event", envelope),
     onDiagnostic: (diagnostic) => notify("agent.diagnostic", diagnostic),
@@ -392,11 +418,13 @@ async function handle(method: string, params: any): Promise<unknown> {
       return { ok: true, runtimes: runtimes.size };
     case "native.session.list": {
       const service = await getNativePiService();
-      return { sessions: await service.list() };
+      return { sessions: await service.list({ projectPaths: nativeProjectPaths(params) }) };
     }
     case "native.session.search": {
       const service = await getNativePiService();
-      return service.search(String(params.query ?? ""));
+      return service.search(String(params?.query ?? ""), {
+        projectPaths: nativeProjectPaths(params),
+      });
     }
     case "native.session.get": {
       const service = await getNativePiService();
