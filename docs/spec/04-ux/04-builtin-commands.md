@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-Define the five first-party command palette entries available without plugins.
+Define the six first-party command palette entries available without plugins.
 The same entries are available in the composer `/` menu.
 
 Shortcut: **Cmd/Ctrl + Shift + P** (D014)
@@ -15,7 +15,7 @@ builtin.<domain>.<action>
 
 ## 3. Core builtin catalog
 
-The builtin registry intentionally contains exactly these five commands. Plugin
+The builtin registry intentionally contains exactly these six commands. Plugin
 commands extend the searchable command list dynamically; app navigation,
 project management, settings, plugin management, and diagnostics are not
 builtin command contracts.
@@ -27,10 +27,11 @@ builtin command contracts.
 | `builtin.mode.agent` | Switch to Agent | mode, agent | Session | low | set the idle session mode to Agent |
 | `builtin.mode.plan` | Switch to Plan | mode, plan, planning | Session | low | set the idle session mode to Plan |
 | `builtin.mode.goal` | Switch to Goal | mode, goal, objective, autonomous | Session | low | set the idle session mode to Goal |
+| `builtin.session.fast` | Toggle Fast mode | fast, speed, priority, service tier | Session | medium | toggle the session's OpenAI priority service tier (ADR 0334) |
 
 ## 4. Visibility and execution rules
 
-- The five IDs are the complete first-party registry. Removed IDs are not
+- The six IDs are the complete first-party registry. Removed IDs are not
   palette results and are not renderer dispatch cases; plugin commands remain
   independently discoverable.
 - `New Task` uses the current project or temporary group. It selects the
@@ -44,6 +45,15 @@ builtin command contracts.
   Agent/Plan/Goal chip. They update an idle session immediately. With no active
   session, they update the persisted default for the next session; a running
   session or pending approval is not changed.
+- `Toggle Fast mode` flips the session's persisted `fastMode` through the same
+  configuration path (ADR 0334). With no active session it records the switch on
+  the new-task draft, and the created session starts with it. The selected
+  model must allow Fast mode in Settings → Models → Advanced on a Responses
+  wire (Codex subscription or OpenAI Responses); otherwise, in either
+  direction, a warning toast points to that setting and nothing is stored. A
+  stored switch on an unconfigured model has no effect at launch. Remote
+  sessions refuse it. The risk is medium because the priority tier
+  spends plan limits faster or bills more per token.
 - `SubmitPlan` and `SubmitGoal` are model tools, not palette commands. There is
   no Chat mode or request-changes alias.
 - The former app/project/settings/plugin/log commands remain available through
@@ -62,7 +72,7 @@ type CommandExecutionResult =
 
 ## 6. Acceptance
 
-1. The builtin registry contains exactly five unique, prefixed IDs.
+1. The builtin registry contains exactly six unique, prefixed IDs.
 2. Palette search matches each title and keyword set.
 3. Mode switch commands update the idle session mode immediately; Plan, Goal,
    and Agent refer to the same pi Agent.
@@ -84,11 +94,12 @@ in the same registry that feeds palette search
 | `/agent-mode` | `builtin.mode.agent` |
 | `/plan-mode` | `builtin.mode.plan` |
 | `/goal-mode` | `builtin.mode.goal` |
+| `/fast` | `builtin.session.fast` |
 
 Aliases share one namespace with template and plugin command names; builtin
 aliases win collisions, then project templates, then user templates, then
-plugin commands. Selecting an alias inserts `/alias `; sending `/new` or
-`/compact` alone executes locally without creating an empty prompt. The
+plugin commands. Selecting an alias inserts `/alias `; sending `/new`,
+`/compact`, or `/fast` alone executes locally without creating an empty prompt. The
 Agent/Plan/Goal aliases also support a prompt body:
 `/agent-mode <prompt>`, `/plan-mode <prompt>`, or `/goal-mode <prompt>` switches
 the idle session (or the next-session default) and sends `<prompt>` through the

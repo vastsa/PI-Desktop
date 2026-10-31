@@ -1,13 +1,18 @@
 /**
  * The radial menu a right-click opens on the empty transcript background.
  *
- * Four directions, one action each, keyed by the pointer's direction from the
- * click point. It is not a replacement for `ContextMenu`: the list stays the
- * menu for rows, links, and file references, where the item count varies per
- * target. This surface only renders when the user opts in through
- * `AppSettings.radialMenu`, and it keeps the same floating-layer contract —
- * viewport-fixed portal, measured before reveal, clamped inside the window,
- * Escape and outside-press dismissal, and keyboard reachability.
+ * Four wedges, one action each, keyed by the pointer's direction from the
+ * click point. Every wedge carries its icon and label at rest, so the ring is
+ * readable without hovering; the wedge under the pointer or keyboard focus
+ * fills, and the hub stays a recessed center the click point sits in. It is
+ * not a replacement for `ContextMenu`: the list stays the menu for rows,
+ * links, and file references, where the item count varies per target. This
+ * surface only renders when the user opts in through `AppSettings.radialMenu`,
+ * and it keeps the same floating-layer contract — viewport-fixed portal,
+ * measured before reveal, clamped inside the window, Escape and outside-press
+ * dismissal, and keyboard reachability. The standard marking gesture works
+ * too: a right-press started while the ring is open runs the wedge it is
+ * released on, and releasing in the hub dismisses without running.
  */
 import {
   useCallback,
@@ -30,14 +35,16 @@ export type RadialMenuItem = {
 export type RadialMenuSlot = RadialMenuItem & { disabled?: boolean };
 
 /** Ring geometry, in CSS px. The four item slots sit on the ring's mid-line. */
-const OUTER_RADIUS = 160;
-const INNER_RADIUS = 56;
-const ITEM_RADIUS = 108;
-const ITEM_SIZE = 80;
+const OUTER_RADIUS = 124;
+const INNER_RADIUS = 40;
+/** Distance from the center to the middle of an item's icon-and-label stack. */
+const CONTENT_RADIUS = 85;
+const ITEM_WIDTH = 100;
+const ITEM_HEIGHT = 56;
 
 /** Clockwise from the top; matches `RADIAL_MENU_DIRECTIONS`. */
 const ITEM_ANGLES = [-90, 0, 90, 180] as const;
-const SECTOR_ANGLES = [
+const WEDGE_ANGLES = [
   [-135, -45],
   [-45, 45],
   [45, 135],
@@ -46,7 +53,7 @@ const SECTOR_ANGLES = [
 
 const rad = (degrees: number) => (degrees * Math.PI) / 180;
 
-function sectorPath(startAngle: number, endAngle: number): string {
+function wedgePath(startAngle: number, endAngle: number): string {
   const center = OUTER_RADIUS;
   const at = (radius: number, angle: number) => [
     center + radius * Math.cos(rad(angle)),
@@ -91,6 +98,13 @@ export function RadialMenu({
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
+  /*
+    The marking gesture only counts a right-button release that follows a
+    right-button press seen while the ring is open. The press that opened the
+    ring precedes the mount, so its trailing release (macOS fires
+    `contextmenu` on press-down) never runs an action by itself.
+  */
+  const rightPressedRef = useRef(false);
 
   const firstEnabledIndex = items.findIndex((item) => !item.disabled);
 
@@ -139,8 +153,28 @@ export function RadialMenu({
       event.stopPropagation();
       onClose();
     };
+    const resolveAtPoint = (event: PointerEvent): number | null => {
+      const rect = root?.getBoundingClientRect();
+      if (!rect) return null;
+      return slotAt(
+        event.clientX - rect.left - OUTER_RADIUS,
+        event.clientY - rect.top - OUTER_RADIUS,
+      );
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button === 2) rightPressedRef.current = true;
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.button !== 2 || !rightPressedRef.current) return;
+      rightPressedRef.current = false;
+      // A release on a wedge runs it; a release in the hub or the margin
+      // dismisses without running anything.
+      select(resolveAtPoint(event));
+    };
     window.addEventListener("pointerdown", onOutside, true);
     window.addEventListener("contextmenu", onOutside, true);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
     window.addEventListener("scroll", onClose, true);
     window.addEventListener("resize", onClose);
     window.addEventListener("blur", onClose);
@@ -148,12 +182,14 @@ export function RadialMenu({
     return () => {
       window.removeEventListener("pointerdown", onOutside, true);
       window.removeEventListener("contextmenu", onOutside, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("scroll", onClose, true);
       window.removeEventListener("resize", onClose);
       window.removeEventListener("blur", onClose);
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [onClose]);
+  }, [onClose, select]);
 
   // Focus the first actionable item; when every slot is empty, focus the menu
   // itself so keyboard dismissal remains available.
@@ -257,15 +293,15 @@ export function RadialMenu({
       }}
     >
       <svg
-        className="radial-menu-ring"
+        className="radial-menu-plate"
         viewBox={`0 0 ${width} ${width}`}
         aria-hidden="true"
       >
-        {SECTOR_ANGLES.map(([start, end], index) => (
+        {WEDGE_ANGLES.map(([start, end], index) => (
           <path
             key={start}
-            className={`radial-menu-sector${activeIndex === index ? " is-active" : ""}`}
-            d={sectorPath(start, end)}
+            className={`radial-menu-wedge${activeIndex === index ? " is-active" : ""}`}
+            d={wedgePath(start, end)}
           />
         ))}
         <circle
@@ -278,21 +314,13 @@ export function RadialMenu({
           className="radial-menu-dot"
           cx={OUTER_RADIUS}
           cy={OUTER_RADIUS}
-          r={4}
+          r={2.5}
         />
       </svg>
-      {/*
-        The sectors carry icons only: the four labels together are wider than
-        a sector, and truncated menu labels are worse than none. The active
-        action's full label sits in the hub under the pointer.
-      */}
-      <div className="radial-menu-hub-label" aria-hidden="true">
-        {activeIndex === null ? "" : items[activeIndex]?.label}
-      </div>
       {items.map((item, index) => {
         const angle = rad(ITEM_ANGLES[index] ?? -90);
-        const x = OUTER_RADIUS + Math.cos(angle) * ITEM_RADIUS;
-        const y = OUTER_RADIUS + Math.sin(angle) * ITEM_RADIUS;
+        const x = OUTER_RADIUS + Math.cos(angle) * CONTENT_RADIUS;
+        const y = OUTER_RADIUS + Math.sin(angle) * CONTENT_RADIUS;
         return (
           <button
             key={item.id}
@@ -308,8 +336,8 @@ export function RadialMenu({
             style={{
               left: `${x}px`,
               top: `${y}px`,
-              width: `${ITEM_SIZE}px`,
-              minHeight: `${ITEM_SIZE}px`,
+              width: `${ITEM_WIDTH}px`,
+              height: `${ITEM_HEIGHT}px`,
             }}
             onClick={(event) => {
               event.stopPropagation();
@@ -321,6 +349,7 @@ export function RadialMenu({
             <span className="radial-menu-icon" aria-hidden>
               {item.icon}
             </span>
+            <span className="radial-menu-label">{item.label}</span>
           </button>
         );
       })}

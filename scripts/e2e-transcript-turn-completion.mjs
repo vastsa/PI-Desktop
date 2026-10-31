@@ -56,13 +56,14 @@ const path = require("node:path");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
   const window = new BrowserWindow({
-    show: false,
+    // Linux virtual displays can throttle a never-shown window's animation
+    // frames to roughly 1 Hz even with backgroundThrottling disabled.
+    show: true,
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      // A hidden window still has to deliver ResizeObserver callbacks and
-      // animation frames, because that is what the product scroll logic uses.
+      // The product scroll logic needs ResizeObserver and animation frames.
       backgroundThrottling: false,
     },
   });

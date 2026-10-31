@@ -261,6 +261,7 @@ fn parse_message(
         agent_name: None,
         hosted_search: None,
         model_system: None,
+        provider_replay: None,
         session_message: None,
     })
 }

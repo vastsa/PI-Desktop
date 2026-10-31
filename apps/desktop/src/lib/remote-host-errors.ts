@@ -8,6 +8,7 @@ export function remoteHostErrorKey(error: unknown): string {
     case "REMOTE_PATH_NOT_FOUND": return "remote:pathUnavailable";
     case "REMOTE_PATH_FORBIDDEN": return "remote:pathForbidden";
     case "HOST_VERSION_MISMATCH": return "remote:upgradeRequired";
+    case "HOST_BOOTSTRAP_FAILED": return "remote:hostBootstrapFailed";
     case "HOST_AUTH_FAILED":
     case "SSH_AUTH_FAILED":
     case "TOKEN_INVALID":

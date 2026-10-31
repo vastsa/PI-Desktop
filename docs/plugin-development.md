@@ -481,10 +481,16 @@ Clicking a delivered notification restores and focuses the main window, but
 does not activate a session.
 
 The panel bridge also exposes `ui.showToast`, `ui.closePanel`,
-`plugin.getSettings`, and `workspace.get`. A channel the host does not implement
-itself is forwarded to your `onPanelInvoke(channel, payload)`, so a panel can
+`plugin.getSettings`, `workspace.get`, and `projects.list`. A channel the host
+does not implement itself is forwarded to your `onPanelInvoke(channel, payload)`, so a panel can
 talk to its own plugin over channels you define; a plugin that exports no
 `onPanelInvoke` gets `UNSUPPORTED` back.
+
+`pi.projects.list()` adds project-picker support without requiring an active
+session or a manifest permission. Entries use the decimal `projects.id` as
+`projectId`, include ungrouped projects, and always provide `primaryPath` and
+primary-first `roots`. A stopped or unavailable Host returns `[]`. See the
+[project API contract](spec/07-plugins/03-plugin-api.md#projects-workspace-fs).
 
 ### 6.5 File scope
 
@@ -1406,6 +1412,7 @@ unsupported. The panel bridge is a smaller surface listed in API spec §6.
 | `pi.project` | `create` |
 | `pi.providers.oauth` | `prompt`, `notify` |
 | `pi.workspace` | `get` |
+| `pi.projects` | `list` |
 | `pi.desktop` | `listOperations`, `invoke` |
 | `pi.audio` | `getInputDevices`, `openInput`, `closeInput`, `getCaptureState`, `onInputFrame`, `offInputFrame`, `openOutput`, `writeOutput`, `stopOutput`, `closeOutput` |
 | `pi.keyboard` | `registerGlobalShortcut`, `unregisterGlobalShortcut`, `listGlobalShortcuts` |

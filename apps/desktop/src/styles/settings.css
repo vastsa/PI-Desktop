@@ -2568,6 +2568,16 @@
   color: var(--ds-text-muted);
 }
 
+/*
+  A stored per-project override on a global row: the switch reads the global
+  default while this project keeps its own state, so the badge warns instead
+  of pretending the two agree (#1957).
+*/
+.agent-capability-badge.is-override {
+  background: color-mix(in oklab, var(--ds-warning) 13%, transparent);
+  color: var(--ds-warning);
+}
+
 /* Connection state is the only place capability rows carry color. */
 .agent-capability-status-dot {
   width: 5px;

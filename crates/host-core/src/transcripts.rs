@@ -40,6 +40,8 @@ pub(crate) mod binary_storage;
 mod binary_storage_tests;
 pub mod layout;
 #[cfg(test)]
+mod review_state_tests;
+#[cfg(test)]
 use layout::refresh_layout;
 pub use layout::TranscriptLayout;
 
@@ -64,6 +66,31 @@ pub struct MessageRecord {
     pub meta: Option<Value>,
     /// RFC3339; storage keeps the wire spelling so files stay human-readable.
     pub created_at: String,
+}
+
+/// Append-only metadata update for a review snapshot owned by a tool message.
+/// Keeping this separate from the message line preserves its physical position
+/// without copying the rest of a potentially very large transcript.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolReviewStateRecord {
+    pub message_id: String,
+    pub snapshot_id: String,
+    pub state: String,
+}
+
+fn parse_tool_review_state(
+    line: &str,
+    invalid_utf8: bool,
+) -> Result<Option<ToolReviewStateRecord>> {
+    match serde_json::from_str(line) {
+        Ok(record) => Ok(Some(record)),
+        Err(error) if invalid_utf8 || error.is_eof() => {
+            tracing::warn!(%error, "skipping torn tool review state line");
+            Ok(None)
+        }
+        Err(error) => Err(error).context("decode tool review state"),
+    }
 }
 
 /// Durable model-context checkpoint. The visible message transcript remains
@@ -183,6 +210,46 @@ pub struct TranscriptRead {
     pub compactions: Vec<CompactionRecord>,
 }
 
+fn apply_tool_review_states(messages: &mut [MessageRecord], updates: &[ToolReviewStateRecord]) {
+    let latest: std::collections::HashMap<_, _> = updates
+        .iter()
+        .map(|update| {
+            (
+                (update.message_id.as_str(), update.snapshot_id.as_str()),
+                update.state.as_str(),
+            )
+        })
+        .collect();
+    for message in messages.iter_mut().filter(|message| message.role == "tool") {
+        let Some(blocks) = message.blocks.as_array_mut() else {
+            continue;
+        };
+        for block in blocks {
+            if block.get("type").and_then(Value::as_str) != Some("tool_call") {
+                continue;
+            }
+            let Some(review) = block
+                .get_mut("result")
+                .and_then(Value::as_object_mut)
+                .and_then(|result| result.get_mut("details"))
+                .and_then(Value::as_object_mut)
+                .and_then(|details| details.get_mut("review"))
+                .and_then(Value::as_object_mut)
+            else {
+                continue;
+            };
+            let Some(state) = review
+                .get("snapshotId")
+                .and_then(Value::as_str)
+                .and_then(|snapshot_id| latest.get(&(message.id.as_str(), snapshot_id)))
+            else {
+                continue;
+            };
+            review.insert("state".into(), Value::String((*state).to_string()));
+        }
+    }
+}
+
 /// Resolve a stable ID without materializing historical message bodies. The
 /// reverse scan agrees with last-write-wins transcript deduplication.
 pub fn find_message_position(
@@ -201,8 +268,27 @@ pub fn find_message_position(
     let mut raw = Vec::new();
     let mut line = String::new();
     for (position, offset) in layout.message_offsets.iter().enumerate().rev() {
+        if layout
+            .message_ids
+            .get(position)
+            .and_then(Option::as_deref)
+            .is_some_and(|id| id != message_id)
+        {
+            continue;
+        }
         let invalid_utf8 = read_layout_line(&mut reader, *offset, "message", &mut raw, &mut line)?;
-        match serde_json::from_str::<Identity>(&line) {
+        let decoded = serde_json::from_str::<Identity>(&line);
+        if let Ok(identity) = &decoded {
+            if layout
+                .message_ids
+                .get(position)
+                .and_then(Option::as_deref)
+                .is_some_and(|cached| cached != identity.id)
+            {
+                return Err(layout::invalid_boundary());
+            }
+        }
+        match decoded {
             Ok(identity) if identity.id == message_id => return Ok(Some(position)),
             Ok(_) => {}
             Err(error) if invalid_utf8 => {
@@ -256,7 +342,23 @@ pub fn read_tool_call(
                 });
         if matches_call {
             match binary_storage::read(&line) {
-                Ok(record) => return Ok(Some(record)),
+                Ok(mut record) => {
+                    let mut updates = Vec::new();
+                    for offset in &layout.tool_review_state_offsets {
+                        let invalid_utf8 = read_layout_line(
+                            &mut reader,
+                            *offset,
+                            "tool_review_state",
+                            &mut raw,
+                            &mut line,
+                        )?;
+                        if let Some(update) = parse_tool_review_state(&line, invalid_utf8)? {
+                            updates.push(update);
+                        }
+                    }
+                    apply_tool_review_states(std::slice::from_mut(&mut record), &updates);
+                    return Ok(Some(record));
+                }
                 Err(error) if binary_storage::is_error(&error) => return Err(error),
                 Err(error) if invalid_utf8 => {
                     tracing::warn!(%error, "skipping invalid indexed tool-call message");
@@ -307,6 +409,8 @@ fn read_layout_line(
     raw: &mut Vec<u8>,
     line: &mut String,
 ) -> Result<bool> {
+    #[cfg(test)]
+    LAYOUT_LINE_READS.with(|reads| reads.set(reads.get() + 1));
     reader.seek(SeekFrom::Start(offset))?;
     let (read, invalid_utf8) = read_line_tolerant(reader, raw, line)?;
     if read == 0 {
@@ -316,6 +420,11 @@ fn read_layout_line(
         return Err(layout::invalid_boundary());
     }
     Ok(invalid_utf8)
+}
+
+#[cfg(test)]
+thread_local! {
+    static LAYOUT_LINE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Whether a JSON string for this value is the value itself.
@@ -427,6 +536,7 @@ fn sniff_line_kind(line: &str) -> Option<&'static str> {
                     b"session" => Some("session"),
                     b"revision" => Some("revision"),
                     b"revision_live" => Some("revision_live"),
+                    b"tool_review_state" => Some("tool_review_state"),
                     _ => None,
                 };
             }
@@ -796,6 +906,8 @@ fn append_line(path: &Path, header: Option<String>, line: String) -> Result<()> 
     }
     let fresh = !path.exists();
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    let before = file.metadata()?;
+    let before_stamp = layout::modification_stamp(path, &before);
     let mut buf = String::new();
     if fresh {
         buf.push_str(
@@ -817,7 +929,9 @@ fn append_line(path: &Path, header: Option<String>, line: String) -> Result<()> 
     file.flush()?;
     file.sync_data()
         .with_context(|| format!("flush {}", path.display()))?;
-    binary_integrity::appended(path, file)
+    binary_integrity::appended(path, file)?;
+    layout::note_append(path, &before, before_stamp.as_deref());
+    Ok(())
 }
 
 /// Whether a non-empty file ends in a newline; an empty file counts as
@@ -876,6 +990,30 @@ pub fn append_compaction(
         tagged("compaction", record)?,
     )
     .with_context(|| format!("append compaction {}", path.display()))
+}
+
+/// Append a review-state mutation without rewriting the message or transcript.
+pub fn append_tool_review_state(
+    data_dir: &Path,
+    session_id: &str,
+    message_id: &str,
+    snapshot_id: &str,
+    state: &str,
+) -> Result<()> {
+    let path = transcript_path(data_dir, session_id)?;
+    append_line(
+        &path,
+        None,
+        tagged(
+            "tool_review_state",
+            &ToolReviewStateRecord {
+                message_id: message_id.to_string(),
+                snapshot_id: snapshot_id.to_string(),
+                state: state.to_string(),
+            },
+        )?,
+    )
+    .with_context(|| format!("append tool review state {}", path.display()))
 }
 
 /// Load the live transcript. A missing file is an empty transcript; unknown
@@ -947,14 +1085,27 @@ pub fn read_transcript_window_with_layout(
     };
     // Every offset that has to be visited, in ascending file order, so one
     // forward-only reader can serve both kinds without seeking backwards.
-    let mut wanted: Vec<(u64, bool)> =
-        Vec::with_capacity(end.saturating_sub(start) + active_compactions.len());
+    let mut wanted: Vec<(u64, &str)> = Vec::with_capacity(
+        end.saturating_sub(start)
+            + active_compactions.len()
+            + layout.tool_review_state_offsets.len(),
+    );
     wanted.extend(
         layout.message_offsets[start..end]
             .iter()
-            .map(|offset| (*offset, true)),
+            .map(|offset| (*offset, "message")),
     );
-    wanted.extend(active_compactions.iter().map(|offset| (*offset, false)));
+    wanted.extend(
+        active_compactions
+            .iter()
+            .map(|offset| (*offset, "compaction")),
+    );
+    wanted.extend(
+        layout
+            .tool_review_state_offsets
+            .iter()
+            .map(|offset| (*offset, "tool_review_state")),
+    );
     if wanted.is_empty() {
         return Ok(out);
     }
@@ -968,22 +1119,21 @@ pub fn read_transcript_window_with_layout(
     let mut reader = BufReader::new(file);
     let mut raw = Vec::new();
     let mut line = String::new();
-    for (offset, is_message) in wanted {
-        let kind = if is_message { "message" } else { "compaction" };
+    let mut review_states = Vec::new();
+    for (offset, kind) in wanted {
         let invalid_utf8 = read_layout_line(&mut reader, offset, kind, &mut raw, &mut line)
             .with_context(|| format!("read indexed transcript line in {}", path.display()))?;
         let trimmed = line.trim();
-        if is_message {
-            match binary_storage::read::<MessageRecord>(trimmed) {
+        match kind {
+            "message" => match binary_storage::read::<MessageRecord>(trimmed) {
                 Ok(record) => out.messages.push(record),
                 Err(error) if binary_storage::is_error(&error) => return Err(error),
                 Err(error) if invalid_utf8 => {
                     tracing::warn!(path = %path.display(), %error, "skipping invalid indexed message line");
                 }
                 Err(error) => return Err(error).context("decode indexed transcript message"),
-            }
-        } else {
-            match binary_storage::read::<CompactionRecord>(trimmed) {
+            },
+            "compaction" => match binary_storage::read::<CompactionRecord>(trimmed) {
                 Ok(record) => out.compactions.push(record),
                 Err(error) if binary_storage::is_error(&error) => return Err(error),
                 Err(error) if invalid_utf8 => {
@@ -992,7 +1142,13 @@ pub fn read_transcript_window_with_layout(
                 Err(error) => {
                     return Err(error).context("decode indexed transcript compaction");
                 }
+            },
+            "tool_review_state" => {
+                if let Some(record) = parse_tool_review_state(trimmed, invalid_utf8)? {
+                    review_states.push(record);
+                }
             }
+            _ => unreachable!("layout only indexes supported transcript line kinds"),
         }
         if raw.capacity() > 1024 * 1024 {
             raw = Vec::new();
@@ -1001,6 +1157,7 @@ pub fn read_transcript_window_with_layout(
             line = String::new();
         }
     }
+    apply_tool_review_states(&mut out.messages, &review_states);
     Ok(out)
 }
 
@@ -1027,9 +1184,11 @@ pub fn read_transcript_window(
     let end = message_limit.map(|limit| message_start.saturating_add(limit));
     let mut message_index = 0usize;
     let mut out = TranscriptRead::default();
+    let mut review_states = Vec::new();
     loop {
         line.clear();
-        if read_line_tolerant(&mut reader, &mut raw, &mut line)?.0 == 0 {
+        let (read, invalid_utf8) = read_line_tolerant(&mut reader, &mut raw, &mut line)?;
+        if read == 0 {
             break;
         }
         // Classify by a bounded prefix scan: a full parse here walks every byte
@@ -1060,6 +1219,11 @@ pub fn read_transcript_window(
                     tracing::warn!(path = %path.display(), %error, "skipping invalid compaction line");
                 }
             },
+            "tool_review_state" => {
+                if let Some(record) = parse_tool_review_state(line.trim(), invalid_utf8)? {
+                    review_states.push(record);
+                }
+            }
             _ => {}
         }
         // A skipped 50 MB line must not leave its capacity attached to every
@@ -1069,6 +1233,7 @@ pub fn read_transcript_window(
             line = String::new();
         }
     }
+    apply_tool_review_states(&mut out.messages, &review_states);
     Ok(out)
 }
 

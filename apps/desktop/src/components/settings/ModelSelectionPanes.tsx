@@ -16,6 +16,7 @@ import {
   bindingForCustomModel,
   bindingForCustomModelInfo,
   bindingFromModelInfo,
+  fastModeBillingOn,
   formatTokenCount,
   modelMatchesFilter,
   nativeWebSearchSupportedOn,
@@ -309,6 +310,14 @@ export function ModelSelectionPanes({
   // Use the same published endpoint routing as the runtime. A disabled control
   // means this connection is not integrated, not that the vendor cannot search.
   const nativeWebSearchWireCapable = nativeWebSearchSupportedOn(apiStyle, lookupContext?.baseUrl);
+  // Fast mode rides the Responses `service_tier` field; the hint names what
+  // the priority tier costs on this wire (ADR 0334).
+  const fastModeBilling = fastModeBillingOn(apiStyle);
+  const fastModeHint = fastModeBilling === "subscription"
+    ? "settings.fastModeAllowedSubscriptionHint"
+    : fastModeBilling === "usage"
+      ? "settings.fastModeAllowedUsageHint"
+      : "settings.fastModeAllowedUnsupported";
 
   /**
    * The chosen list narrows with the discovered list's rule plus the binding's
@@ -1036,6 +1045,28 @@ export function ModelSelectionPanes({
                                 ? "settings.nativeWebSearchHint"
                                 : "settings.nativeWebSearchUnsupported",
                             )}
+                          >
+                            <IconHelp size={13} />
+                          </Tooltip>
+                        </span>
+                        <span className="provider-chosen-delegation">
+                          <label className="provider-chosen-capability">
+                            <input
+                              type="checkbox"
+                              checked={binding.fastModeAllowed === true}
+                              disabled={!fastModeBilling}
+                              onChange={(event) =>
+                                updateBinding(binding.id, {
+                                  fastModeAllowed: event.target.checked || undefined,
+                                })
+                              }
+                            />
+                            <span>{t("settings.fastModeAllowed")}</span>
+                          </label>
+                          <Tooltip
+                            className="provider-chosen-delegation-help"
+                            label={t(fastModeHint)}
+                            ariaLabel={t(fastModeHint)}
                           >
                             <IconHelp size={13} />
                           </Tooltip>

@@ -419,6 +419,14 @@ type PluginPermission =
 
 Unknown permission = validation failure.
 
+`pi.workspace.get()` reports the visible workspace; `pi.projects.list()` lists
+all durable project rows without selecting one. Both are read-only metadata
+and require no manifest permission. The list includes ungrouped projects with
+stable base-10 `projects.id` strings, display names, primary paths, and non-empty
+primary-first roots. Unavailable project lookup returns `[]`. See the
+[projects / workspace API](03-plugin-api.md#projects-workspace-fs) for ordering,
+group-root enrichment, and the distinction between project and group ids.
+
 `fs.read.workspace`, `fs.write.workspace` and `fs.delete.workspace` are the
 pre-scope names. They still validate, and the host rewrites them on load to the
 minimum safe equivalent (§5.2); new manifests must not use them.

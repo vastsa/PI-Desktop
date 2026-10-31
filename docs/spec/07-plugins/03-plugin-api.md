@@ -330,8 +330,17 @@ hold `project.create` when it supplies a project id. Omitting `projectId` keeps
 the imported session unbound; `projectPath` remains historical source metadata
 and never creates a project by itself.
 
-### workspace / fs
+### projects / workspace / fs
 ```ts
+pi.projects.list(): Promise<PluginProjectInfo[]>
+
+type PluginProjectInfo = {
+  projectId: string; // Base-10 projects.id, no prefix; stable for this row's lifetime.
+  name: string;
+  primaryPath: string;
+  roots: Array<{ path: string; name: string; primary: boolean }>;
+}
+
 pi.workspace.get(): Promise<{
   path: string;
   name: string;
@@ -372,6 +381,25 @@ pi.fs.list(pathFromRoot: string, options?: { workspacePath: string }): Promise<A
 pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 ```
+
+`projects.list` returns one entry per durable `projects` row, including rows
+without a group, ordered by `lastOpenedAt` descending (numeric id ascending on
+ties), independently of pinning. `projectId` is the base-10 database primary key
+without a prefix, always non-empty and stable across rename and restart while
+that row exists. It is distinct from the optional **group** id reported by
+`workspace.get`; it is the string form of `project.create`'s numeric project id.
+`name` uses the matching primary group's display name, falling back to the row's
+name. `primaryPath` is that row's path. `roots` always starts with that path marked
+primary, followed by any additional roots of the group whose primary matches
+the row, in group order. Secondary-folder rows keep their own identity and
+single root. Group lookup failure falls back to single roots; unavailable or
+failed project lookup returns `[]`, with a host diagnostic. A result from a
+replaced or stopped Host is discarded. Remote identities remain opaque
+`remote-project:` paths; no Host keys or credentials are returned.
+
+This read-only metadata needs no permission and is also available through the
+panel bridge channel `projects.list`. It never creates, opens, switches, or
+grants access to a project. Filesystem and session permissions are unchanged.
 
 `workspace.get` answers with the primary root — `path` and its leaf `name`,
 both unchanged — plus, when that folder belongs to a project group (ADR 0249),
@@ -1486,7 +1514,7 @@ which handles these built-in channels before falling back to `onPanelInvoke`:
 | `ui.showToast`, `ui.closePanel` | None beyond the loaded panel |
 | `ui.notify` | `notify` |
 | `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | `notify` |
-| `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
+| `plugin.getSettings`, `workspace.get`, `projects.list`, `app.getAppearance` | None |
 | `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list`, `themes.setVariables` | `ui.theme` |
 | `models.list` | `models.list` |
 | `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.openInBrowser`, `fs.reveal`, `fs.glob`, `fs.list`, `fs.requestDirectory`, `fs.registerDropped` | `fs.read` |

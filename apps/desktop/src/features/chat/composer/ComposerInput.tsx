@@ -37,7 +37,7 @@ export type ComposerInputProps = {
   onAcceptCompletion: (index: number) => void;
   onSubmit: (steering?: boolean) => void;
   onInsertNewline: () => void;
-  onInput: (source: string, caret: number) => void;
+  onInput: (source: string, caret: number, composing: boolean) => void;
   /** Terminal-style recall; returns true when the arrow key was consumed. */
   onHistoryNavigate: (direction: "older" | "newer") => boolean;
   onCompositionStart: () => void;
@@ -118,13 +118,20 @@ export function ComposerInput({
             const element = event.currentTarget;
             const source = readEditorValue(element);
             const { start } = editorSelectionRange(element);
+            const native = event.nativeEvent as InputEvent;
             // An input outside a composition proves the previous one ended,
             // even when the IME never sent compositionend (#929).
-            if (!(event.nativeEvent as InputEvent).isComposing) onSettledInput();
-            onInput(source, start);
+            if (!native.isComposing) onSettledInput();
+            onInput(source, start, native.isComposing);
           }}
           onCompositionStart={onCompositionStart}
-          onCompositionEnd={onCompositionEnd}
+          onCompositionEnd={(event) => {
+            const element = event.currentTarget;
+            const source = readEditorValue(element);
+            const { start } = editorSelectionRange(element);
+            onCompositionEnd(event);
+            onInput(source, start, false);
+          }}
           onFocus={onFocus}
           onBlur={onBlur}
           onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {

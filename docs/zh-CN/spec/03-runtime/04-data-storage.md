@@ -1,4 +1,4 @@
-# 04. 数据存储（架构 v26）
+# 04. 数据存储（架构 v27）
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
@@ -393,6 +393,8 @@ CREATE TABLE sessions (
                                           'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
+  fast_mode   INTEGER NOT NULL DEFAULT 0       -- ADR 0334: session /fast switch
+               CHECK (fast_mode IN (0, 1)),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
   deleted_at  INTEGER,                         -- plugin trash marker; null means active
   pinned      INTEGER NOT NULL DEFAULT 0,
@@ -808,6 +810,22 @@ meta.agentName?: string         // the definition name, e.g. "code-reviewer"
 无列、无表、无迁移：属性是有关消息的元数据，并且
 推广它会引起没人提出的疑问。
 
+assistant 行还可以带 `meta.providerReplay = { version: 1, blocks: [...] }`
+（#1972）。每个块按内容顺序记录为 `{ type: "thinking", length, signature?, redacted? }`
+或 `{ type: "text", length, signature? }`；`length` 是该块文本在行内拼接后的
+`thinking` 或正文中的 UTF-16 长度，文本本身不重复保存。签名就是 pi-ai 挂在内容块上
+的 provider 回放数据（Anthropic thinking 签名与 redacted 载荷、Responses 的
+reasoning item 与 message id、Gemini thought signature、Completions 推理字段名）。
+只有块上确实带签名时才写入；不渲染、不参与搜索、无需迁移，旧版本会忽略它。
+runtime 从转录重建时按原块和签名还原，使重放请求与在线请求一致，保住 provider 的
+prompt cache。长度对不上，或推理文本在回放时被清理过，就退回原来的纯文本重建。
+
+`meta.providerReplay.toolCalls = [{ id, signature }]` 按工具调用 id 保存 provider
+挂在函数调用上的签名（Gemini `thoughtSignature`）。工具调用从带同一 id 的工具行重建，
+并据此补回签名，这一步不依赖文本长度。只有函数调用、但带这类签名的回复即使没有文本
+也会持久化。来自不同 provider 或模型的行，pi-ai 仍会丢弃其签名。序列化后的回放数据
+超过 64 KiB 的行不保存该字段，改用纯文本重建，避免不透明载荷让转录无限增长。
+
 这两个字段都可以在重新加载后保存下来，这就是恢复会话嵌套的原因
 就像现场一样（`04-ux/08-component-spec.md` §9.9）。两位消费者阅读了它们：
 
@@ -1194,7 +1212,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 - JSON 列在热路径上盲读（按原样发送到渲染器）；
   任何过滤或求和的内容都是按规则提升的列。
 
-## 7. 版本控制、v7 重置和 v8 到 v23 迁移
+## 7. 版本控制、v7 重置和 v8 到 v27 迁移
 
 - `PRAGMA user_version` 保留模式权限；未来的结构性变化
   再次添加有序的 Rust 迁移 fns，每个都在一个事务中，并带有一个
@@ -1205,7 +1223,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   旧文件中的会话、提供程序和设置不会保留；
   存档仍保留以供手动恢复。所有 v7 之前的迁移代码
   （v1 `settings.sqlite` 导入，v2→v6 链）被删除。
-- 全新安装直接运行完整的 v23 DDL。
+- 全新安装直接运行完整的 v27 DDL。
 - **架构 v15 是增量的。** 它增加 `turn_queue` 表及其两个索引（D386 / ADR 0213），使 Host
   拥有的回合队列在重启后存活；不改动任何已有行，迁移前保留 `pi.sqlite.v14.bak`。
 - **架构 v16 是增量的。** 它增加会话协作 link 和投递表、生命周期索引，以及可为空的
@@ -1218,6 +1236,15 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   v22 标题保留为 `legacy`，防止主动重命名被自动覆盖。迁移前保留 v22 备份。
   v15→v16 会话协作步骤现在写入 `16`（它自己的版本）而不是最新的架构常量，
   因此 v15 文件可以在一次启动中走完两个步骤。
+- **架构 v24 是增量的。** 它为隔离会话增加 `worktrees` 登记表和
+  `projects.worktree_setup_command`（ADR 0329）。迁移前保留 v23 备份。
+- **架构 v25 是增量的。** 它增加可空的 `models.discovery_state`。迁移前保留 v24 备份。
+- **架构 v26 是增量的。** 它标记存储私有的无损工具图片信封（#1868）。这是只写版本的
+  迁移，保留 v25 备份：让旧版本应用拒绝读取已编码的转录文件，而不修改用户配置或
+  在启动时改写转录文件。
+- **架构 v27 是增量的。** 它增加 `sessions.fast_mode`（ADR 0334），即会话的 `/fast`
+  开关，所有已有会话默认为 `0`。fork 会复制该值；定时任务运行和委托子会话从 `0` 开始。
+  迁移前保留 v26 备份。
 - **架构 v7 首先到达 v8，然后使用受保护的路径。** v7→v8
   迁移之后是相同的受保护的 v8→v15 迁移；架构-v9 和
   schema-v10 数据库采用相同的受保护路径并接收精确的可读数据

@@ -272,6 +272,9 @@ function buildApi() {
     workspace: {
       get: () => call("workspace.get"),
     },
+    projects: {
+      list: () => call("projects.list"),
+    },
     desktop: {
       listOperations: () => call("desktop.listOperations"),
       invoke: (input) => call("desktop.invoke", [input ?? {}]),

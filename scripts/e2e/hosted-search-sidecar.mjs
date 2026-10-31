@@ -40,6 +40,7 @@ export class OfflineSidecar {
     this.closed = false;
     this.stopping = false;
     this.expectContextValidationError = false;
+    this.allowProviderRetries = false;
     child.on("error", (error) => this.fail(error));
     this.exit = new Promise((resolve) => child.once("close", (code, signal) => {
       this.closed = true;
@@ -123,7 +124,7 @@ export class OfflineSidecar {
       if (message.error && !expectedError(message.error)) this.fail(new Error(`message error: ${JSON.stringify(message.error)}`));
     }
     if (event.type === "error" && !expectedError(event.error)) this.fail(new Error(`agent error: ${JSON.stringify(event.error)}`));
-    if (event.type === "status" && event.status.activity?.phase === "retrying") {
+    if (!this.allowProviderRetries && event.type === "status" && event.status.activity?.phase === "retrying") {
       this.fail(new Error(`unexpected retry: ${JSON.stringify(event.status.activity.error)}`));
     }
   }

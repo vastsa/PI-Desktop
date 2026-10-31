@@ -3,6 +3,7 @@ import test from "node:test";
 import { register } from "node:module";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readMainModule, readMainSource } from "./helpers/source-contracts.mjs";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
@@ -37,7 +38,7 @@ const { genUiAssetFileFromUrl, loadGenUiKit, parseGenUiVendorManifest } = await 
   "../electron/main/gen-ui-kit.ts"
 );
 
-const KIT_DIR = new URL("../resources/gen-ui/", import.meta.url).pathname;
+const KIT_DIR = fileURLToPath(new URL("../resources/gen-ui/", import.meta.url));
 const kit = await loadGenUiKit(KIT_DIR);
 const loadKit = async () => kit;
 const D3_CDN = "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js";
@@ -86,6 +87,11 @@ test("shell wraps the fragment between the kit stylesheet/host runtime and the k
   assert.ok(fragment > html.indexOf("<body>"));
   assert.ok(html.indexOf("<body>") > html.indexOf("pi-genui:size"));
   assert.ok(html.indexOf('id="pi-desktop-visualization-tabs"') > fragment);
+  // The fragment sits inside the kit's #widget container, which spaces its
+  // top-level blocks; the kit runtime stays outside it.
+  const widget = html.indexOf('<div id="widget">');
+  assert.ok(widget > html.indexOf("<body>") && widget < fragment);
+  assert.ok(html.indexOf("</div>", fragment + '<div id="viz">hello</div>'.length) < html.indexOf('id="pi-desktop-visualization-tabs"'));
   assert.doesNotMatch(html, /__INLINE_VISUALIZATION_FRAGMENT__/);
   assert.doesNotMatch(html, /zcode-visualization|window\.zcode/);
   // No remote script URL survives; bundled libraries load from pi-genui://assets.
@@ -125,7 +131,7 @@ test("vendor manifest: only https URLs with plain .js file names are mapped", ()
     "/kit/vendor",
   );
   assert.deepEqual([...vendorUrls], [["https://a.example/x.js", "pi-genui://assets/x.js"]]);
-  assert.deepEqual([...vendorFiles], [["x.js", "/kit/vendor/x.js"]]);
+  assert.deepEqual([...vendorFiles], [["x.js", join("/kit/vendor", "x.js")]]);
   assert.deepEqual(
     [...kit.vendorFiles.keys()].sort(),
     ["d3-7.9.0.min.js", "floating-ui-core-1.7.3.min.js", "floating-ui-dom-1.7.4.min.js"],

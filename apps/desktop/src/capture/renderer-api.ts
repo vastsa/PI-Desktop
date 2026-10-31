@@ -55,6 +55,7 @@ const CAPTURE_RIG_METHODS = [
   "seedPluginThemes",
   "seedNotifications",
   "seedSidebarStatuses",
+  "seedRadialMenu",
   "ensureVisualFixtures",
 ] as const satisfies readonly CaptureRigMethod[];
 

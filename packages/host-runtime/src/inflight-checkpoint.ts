@@ -14,10 +14,10 @@ export type InflightCheckpoint = {
 };
 
 type SessionState = {
+  messageId: string;
   lastSavedAt: number;
   pending?: InflightCheckpoint;
   timer?: ReturnType<typeof setTimeout>;
-  inFlight?: Promise<void>;
 };
 
 /** Whether a streamed assistant message carries anything worth keeping. */
@@ -34,11 +34,13 @@ export function isCheckpointableMessage(message: UiMessage): boolean {
  * `observe` is fed every `message_update`; the newest snapshot wins and is
  * written at most once per interval, with a trailing write so the last update
  * of a burst is not lost to the throttle. `settle` drops whatever is pending
- * once the final row is on its way: the host's own append supersedes the
- * checkpoint, and a late write is a wasted round trip at best.
+ * once the final row is on its way. Issued writes stay tracked until they
+ * finish, so shutdown and later turns cannot overtake them.
  */
 export class InflightCheckpointer {
   private readonly sessions = new Map<string, SessionState>();
+  /** Physical writes outlive settlement of the message that started them. */
+  private readonly writes = new Map<string, Promise<void>>();
   private readonly save: (checkpoint: InflightCheckpoint) => Promise<unknown>;
   private readonly intervalMs: number;
   private readonly now: () => number;
@@ -58,19 +60,20 @@ export class InflightCheckpointer {
     if (this.disposed || !isCheckpointableMessage(checkpoint.message)) return;
     let state = this.sessions.get(checkpoint.sessionId);
     if (!state) {
-      state = { lastSavedAt: Number.NEGATIVE_INFINITY };
+      state = { messageId: checkpoint.message.id, lastSavedAt: Number.NEGATIVE_INFINITY };
       this.sessions.set(checkpoint.sessionId, state);
     }
+    state.messageId = checkpoint.message.id;
     state.pending = checkpoint;
-    if (state.timer || state.inFlight) return;
+    if (state.timer || this.writes.has(checkpoint.sessionId)) return;
     const due = state.lastSavedAt + this.intervalMs - this.now();
     if (due <= 0) {
-      this.flush(checkpoint.sessionId);
+      void this.writePending(checkpoint.sessionId);
       return;
     }
     state.timer = setTimeout(() => {
       state!.timer = undefined;
-      this.flush(checkpoint.sessionId);
+      void this.writePending(checkpoint.sessionId);
     }, due);
     state.timer.unref?.();
   }
@@ -83,7 +86,7 @@ export class InflightCheckpointer {
   settleIf(sessionId: string, messageId: string): void {
     const state = this.sessions.get(sessionId);
     if (!state) return;
-    if (state.pending && state.pending.message.id !== messageId) return;
+    if (state.messageId !== messageId) return;
     this.settle(sessionId);
   }
 
@@ -95,19 +98,19 @@ export class InflightCheckpointer {
     this.sessions.delete(sessionId);
   }
 
-  /** Sessions that still have an unsaved snapshot, for a shutdown flush. */
+  /** Sessions with a pending or still-writing snapshot, including settled turns. */
   pendingSessions(): string[] {
-    return [...this.sessions.entries()]
-      .filter(([, state]) => state.pending)
-      .map(([sessionId]) => sessionId);
+    return [...new Set([
+      ...this.writes.keys(),
+      ...[...this.sessions.entries()]
+        .filter(([, state]) => state.pending)
+        .map(([sessionId]) => sessionId),
+    ])];
   }
 
-  /** Write every pending snapshot now, ignoring the interval. */
+  /** Drain the work present at this barrier; callers quiesce producers before shutdown. */
   async flushAll(): Promise<void> {
-    const flushes = this.pendingSessions().map((sessionId) =>
-      this.flush(sessionId),
-    );
-    await Promise.allSettled(flushes);
+    await Promise.allSettled(this.pendingSessions().map((sessionId) => this.flush(sessionId)));
   }
 
   dispose(): void {
@@ -118,13 +121,24 @@ export class InflightCheckpointer {
     this.sessions.clear();
   }
 
-  /** Write the session's pending snapshot now, ignoring the interval. */
-  flush(sessionId: string): Promise<void> {
+  /** Drain this message's writes without forcing a later reply past its throttle. */
+  async flush(sessionId: string): Promise<void> {
+    const state = this.sessions.get(sessionId);
+    const messageId = state?.messageId;
+    const pending = state?.pending;
+    const inFlight = this.writes.get(sessionId);
+    if (inFlight) await inFlight;
+    if (pending && this.sessions.get(sessionId) === state && state?.messageId === messageId) {
+      await this.writePending(sessionId);
+    }
+  }
+
+  /** Start one write; ordinary streaming keeps the interval between writes. */
+  private writePending(sessionId: string): Promise<void> {
+    const inFlight = this.writes.get(sessionId);
+    if (inFlight) return inFlight;
     const state = this.sessions.get(sessionId);
     if (!state) return Promise.resolve();
-    // A write already running carries an older snapshot; the newer one goes
-    // right after it so a shutdown flush ends on the latest text.
-    if (state.inFlight) return state.inFlight.then(() => this.flush(sessionId));
     if (!state.pending) return Promise.resolve();
     if (state.timer) {
       clearTimeout(state.timer);
@@ -136,12 +150,12 @@ export class InflightCheckpointer {
     const run = this.save(checkpoint)
       .catch(() => undefined)
       .then(() => {
-        // The state object may have been replaced by settle + observe.
-        if (this.sessions.get(sessionId) !== state) return;
-        state.inFlight = undefined;
-        if (state.pending) this.observe(state.pending);
+        this.writes.delete(sessionId);
+        // Settlement may have replaced the logical state while this write ran.
+        const current = this.sessions.get(sessionId);
+        if (current?.pending) this.observe(current.pending);
       });
-    state.inFlight = run;
+    this.writes.set(sessionId, run);
     return run;
   }
 }

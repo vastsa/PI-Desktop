@@ -339,7 +339,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   standard 240px field-column cap. Labels stay on one line; when space is
   insufficient, the control moves below the title and whole options wrap
   within the available pane width without horizontal overflow.
-- **Radial context menu** is a card in AI after Defaults with one switch
+- **Radial context menu** is a card in General after Sidebar with one switch
   (**Enable on the transcript background**) and four direction pickers
   (**Up**, **Right**, **Down**, **Left**). The switch is off when
   `AppSettings.radialMenu.enabled` is absent or false, which keeps the vertical
@@ -758,7 +758,12 @@ system while preserving their different data ownership:
   opens inline on the MCP page. Imported servers follow the current Global /
   Project filter and selected project; secrets and header values are never
   shown in candidate rows.
-- MCP Market offers Retry after a failed query or partial source failure. It
+- MCP Market installs into the same destination as Add: Global under All or
+  Global, and the selected project under Project. Its installed badges reflect
+  only that destination, so an entry in another level can still be installed
+  here. Project installation requires a selected project and never falls back
+  to Global.
+  MCP Market offers Retry after a failed query or partial source failure. It
   repeats the current search through the existing market request path and
   announces loading while the request runs. After a successful load, a later
   failure keeps that list on screen with the time it was taken and still

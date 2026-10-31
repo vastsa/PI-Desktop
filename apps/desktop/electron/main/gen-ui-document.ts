@@ -270,7 +270,8 @@ function themeStyle(themeVars: Record<string, string> | undefined): string {
 
 /**
  * Wrap a validated fragment in the host shell: kit stylesheet and host runtime
- * in `<head>`, then the fragment, then the kit runtime so its tooltip and tab
+ * in `<head>`, then the fragment inside the kit's `#widget` container (which
+ * spaces its top-level blocks), then the kit runtime so its tooltip and tab
  * scripts see the fragment's markup. Pinned library URLs in the fragment
  * are rewritten to bundled copies.
  */
@@ -279,7 +280,7 @@ export function buildGenUiDocument(fragment: string, options: GenUiDocumentOptio
   return shell(
     `${kit.css}\n${SHELL_CSS}`,
     `${themeStyle(options.themeVars)}<script>${RUNTIME_SCRIPT}</script>${kit.head}`,
-    `${rewriteGenUiVendorUrls(stripPreloadedGenUiScripts(fragment), kit.vendorUrls)}\n${kit.runtime}`,
+    `<div id="widget">\n${rewriteGenUiVendorUrls(stripPreloadedGenUiScripts(fragment), kit.vendorUrls)}\n</div>\n${kit.runtime}`,
   );
 }
 

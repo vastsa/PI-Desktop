@@ -256,6 +256,12 @@ export type ModelBinding = {
    * knowledge of the endpoint is the only source.
    */
   nativeWebSearch?: boolean;
+  /**
+   * Opt-in that lets the session `/fast` switch ask OpenAI for the priority
+   * service tier on this model (ADR 0334). Absent/false keeps the default
+   * tier; only Responses wires carry it (`fastModeSupportedOn`).
+   */
+  fastModeAllowed?: boolean;
 };
 
 export const MODEL_MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;

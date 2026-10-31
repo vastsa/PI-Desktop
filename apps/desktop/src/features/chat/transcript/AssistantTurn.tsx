@@ -175,17 +175,23 @@ type TranscriptHistoryProps = {
   entries: TranscriptEntry[];
   isRunning: boolean;
   liveDelegations?: ReadonlyMap<string, true>;
+  /** The running session's live turn, when it renders inside the history list (#1949). */
+  liveTurnId?: string;
 };
 
 /**
  * Keep the completed transcript out of the streaming reconciliation path.
  * The projection is still rebuilt for correctness, but React can now bail out
- * before walking every historical row when only the active tail changed.
+ * before walking every historical row when only the active tail changed. A
+ * live turn that is not the tail entry still renders active via `liveTurnId`;
+ * its streaming rows rebuild the projection anyway, so the bail-out only ever
+ * skips settled rows.
  */
 export const TranscriptHistory = memo(function TranscriptHistory({
   entries,
   isRunning,
   liveDelegations,
+  liveTurnId,
 }: TranscriptHistoryProps) {
   return (
     <>
@@ -194,7 +200,7 @@ export const TranscriptHistory = memo(function TranscriptHistory({
           key={transcriptEntryKey(entry)}
           entry={entry}
           isRunning={isRunning}
-          isActive={false}
+          isActive={entry.kind === "assistant-turn" && entry.id === liveTurnId}
           delegationsLive={entry.kind === "assistant-turn" && liveDelegations?.has(entry.id)}
         />
       ))}
@@ -204,6 +210,7 @@ export const TranscriptHistory = memo(function TranscriptHistory({
   if (
     previous.isRunning !== next.isRunning ||
     previous.liveDelegations !== next.liveDelegations ||
+    previous.liveTurnId !== next.liveTurnId ||
     previous.entries.length !== next.entries.length
   ) {
     return false;

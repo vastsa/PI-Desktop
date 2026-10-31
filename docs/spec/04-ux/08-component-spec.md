@@ -858,6 +858,11 @@ reading surface of the workstation.
   collapses when the draft clears, indicator rows mount or unmount — are
   re-baselined and never cancel follow, so a pinned send stays at the latest
   turn even when the bottom reserve changes mid-turn
+- Transcript and delegated scrollers cancel browser-owned smooth navigation
+  only for input they own. Button Space activation, select keys and input
+  consumed by a nested scroller do not request ancestor cancellation. Normal
+  turn-completion prompt navigation retains its smooth motion when follow is
+  released after starting it (interaction patterns §2.2).
 - The tail runtime status owns one reserved lane. The transcript reserves the
   height of a single `Working…` / planning / run-activity row for the whole
   running turn, so the status appearing between two tool rows, or clearing when
@@ -904,7 +909,12 @@ of it, and a long turn collapses in one gesture. The answer, assistant errors,
 stopped trailing partial text and pending action cards remain outside, reachable
 without expanding the process. An untouched process closes on completion, leaving
 the final answer; with no final text, the process header and those surfaces
-remain.
+remain. Liveness follows the turn's rows, not the transcript's tail position:
+while the session runs, a turn whose rows are still streaming stays open and
+reads as running even when a steering message or a system row renders after
+it — both stay inside the run. An ordinary user message ends the run's
+boundary, so a turn left streaming by an earlier crash keeps reading as an
+unknown outcome.
 
 Within the process, the `Transcript display` mode decides the grouping.
 `fully-folded` (the default; absent or unknown values use it) forms ordinary

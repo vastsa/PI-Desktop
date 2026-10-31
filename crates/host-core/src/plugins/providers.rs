@@ -187,6 +187,7 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                 supports_documents: None,
                                 available_for_subagents: None,
                                 native_web_search: None,
+                                fast_mode_allowed: None,
                             })
                         })
                         .collect::<Vec<_>>()

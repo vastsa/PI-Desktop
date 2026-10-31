@@ -119,6 +119,7 @@ describe("output budget with superseded instruction snapshots", () => {
       commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
       host: {
         call: async <T>(method: string): Promise<T> => {
+          if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
           if (method === "session.appendMessage") return undefined as T;
           throw new Error(`Unexpected host method: ${method}`);
         },

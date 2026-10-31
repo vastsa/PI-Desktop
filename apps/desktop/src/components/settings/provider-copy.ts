@@ -49,6 +49,7 @@ export function copyProviderConfiguration(provider: ProviderPublic, name: string
       ...(model.supportsDocuments !== undefined ? { supportsDocuments: model.supportsDocuments } : {}),
       ...(model.availableForSubagents !== undefined ? { availableForSubagents: model.availableForSubagents } : {}),
       ...(model.nativeWebSearch !== undefined ? { nativeWebSearch: model.nativeWebSearch } : {}),
+      ...(model.fastModeAllowed !== undefined ? { fastModeAllowed: model.fastModeAllowed } : {}),
     })),
   };
 }

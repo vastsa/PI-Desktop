@@ -36,7 +36,7 @@ import {
   TRANSCRIPT_SCROLL_ROUNDING_TOLERANCE_PX,
   type ScrollInputType,
 } from "../../../../lib/transcript-scroll";
-import { readScrollInputContext } from "../../../../lib/scroll-input";
+import { readScrollInputContext, stopSmoothScroll } from "../../../../lib/scroll-input";
 import { useDisclosureAnchor } from "../../../../hooks/use-disclosure-anchor";
 import type { TranscriptSearchTarget } from "../../../../lib/transcript-reading";
 import { useTranscriptSearchFocus } from "../../../../hooks/use-transcript-search-focus";
@@ -144,6 +144,15 @@ export function useTranscriptScroll({
     onRestore: onRestoreReading, onMissing: readingPositionMissing,
   });
 
+  // State transition only: completion calls this after starting its own
+  // prompt navigation, which must be allowed to finish.
+  const leaveFollow = useCallback(() => {
+    cancelReadingPosition();
+    cancelFollowScroll();
+    pinnedRef.current = false;
+    setShowJump(true);
+  }, [cancelFollowScroll, cancelReadingPosition]);
+
   /*
     Leave follow mode. Every reader-driven move inside the transcript starts
     here: while the scroller is still pinned, a scroll that carries no input
@@ -151,11 +160,9 @@ export function useTranscriptScroll({
     the view one frame later and undoes the move.
   */
   const releaseFollow = useCallback(() => {
-    cancelReadingPosition();
-    cancelFollowScroll();
-    pinnedRef.current = false;
-    setShowJump(true);
-  }, [cancelFollowScroll, cancelReadingPosition]);
+    stopSmoothScroll(scrollRef.current);
+    leaveFollow();
+  }, [leaveFollow]);
 
   // A manual disclosure (a tool, thinking or activity title; #324) hands this
   // scroller the very title it was toggled from, before the expansion state
@@ -192,6 +199,10 @@ export function useTranscriptScroll({
         contentRef.current,
       );
       if (!isScrollGestureInput(event.type as ScrollInputType, input)) return;
+      // Minimap / jump navigation runs in the browser, independently of our
+      // follow rAF. Real input must retire that animation at its current offset
+      // before its queued frames can overwrite the reader's next movement.
+      stopSmoothScroll(scrollRef.current);
       cancelReadingPosition();
       lastScrollGestureAtRef.current = performance.now();
       // Real input takes the viewport back from a held disclosure position.
@@ -482,7 +493,7 @@ export function useTranscriptScroll({
   useTurnCompletionScroll({
     isRunning, paneVisible, readingWindow, messages, scrollRef, contentRef,
     isFollowing: () => pinnedRef.current && !isDisclosureAnchorHeld(),
-    onAnchored: releaseFollow,
+    onAnchored: leaveFollow,
   });
 
   useLayoutEffect(() => {
@@ -612,6 +623,7 @@ export function useTranscriptScroll({
   );
 
   const releaseSearchFollow = useCallback((fresh: boolean) => {
+    stopSmoothScroll(scrollRef.current);
     cancelReadingPosition();
     if (fresh) prependHeightRef.current = null;
     releaseDisclosureAnchor();

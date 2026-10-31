@@ -339,6 +339,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D675 | Inline images are admitted by pixel size as well as bytes | **Amend D361: an image whose PNG/JPEG/GIF/WebP header reports a longest edge above `MAX_INLINE_IMAGE_EDGE_PX` (8000) is never inlined. Host Read refuses it with `TOOL_FAILED`; prompt attachments and restored history take the existing `@path` fallback; and the runtime's last provider view replaces any such image block (user or tool result) with a text notice naming its size. The probe reads headers only (no decoder); unknown dimensions keep the byte-only rule. No protocol, schema, or persisted-format change.** | Issue #1913: a 1.89 MB, 780 x 14182 full-page screenshot passed every byte check, the provider rejected it with a non-retriable 400, and replay made every later request in that session fail. Dropping is deterministic for the same bytes, so the request prefix and prompt caching stay stable; resampling would need an image decoder and is deferred. |
 | D676 | A completed turn the reader followed ends at its prompt | **Amend the stream-completion rule: when a turn completes while the transcript is visible and still following the stream, the renderer scrolls that turn's newest user message to 16px below the titlebar band the transcript reserves at its top (smooth unless reduced motion), releases follow mode, and shows jump-to-latest. Nothing moves when the prompt is already in view, the reply failed or was aborted, the pane is hidden or in a reading window, a disclosure position is held, or a new run starts before the move. Renderer only; no setting, IPC, or persistence change.** | Issue #1889: after a long reply the reader sat at its last line and had to scroll back up to find where it began. |
 | D677 | DeepSeek reasoning replay uses one field per row and never covers real reasoning | **Amend ADR 0256 decision 3: the pi-ai fill pass takes the reasoning field from the newest assistant row that has real reasoning, normalizes every assistant row to that single field (moving real reasoning from another field name, deleting the others), and fills the placeholder only on rows with no reasoning. History rebuild and the thinking panel drop a leading echo of the placeholder (`withoutReasoningReplayPlaceholder`); stored text is not rewritten. No schema, IPC, or setting change.** | Issue #1945: rebuilt rows are stamped `reasoning_content` while a relay streams `reasoning_text`; the fill pass picked `reasoning_content` and wrote the placeholder over the live row's real reasoning, the model echoed it as its own thinking (13.6% of assistant rows in affected sessions), and the echo was persisted and replayed. |
+| D678 | Radial context menu rebuilt and moved to General | **The opt-in transcript radial menu gets at-rest icon-and-label sectors (the hover-only hub label is gone), one filled highlight for the active sector with no focus rectangle, a recessed hub carrying the click-point dot, a 248 px disc with hairline separators and the composer shadow, and shared motion tokens for hover and reveal. A right-press started while the ring is open runs the sector it is released on; releasing in the hub dismisses without running; the release trailing the opening right-click is inert. The settings card moves from the AI tab to General after Sidebar and the settings-search index follows. Action vocabulary, per-direction defaults, `AppSettings.radialMenu`, persistence, and IPC are unchanged.** | The icon-only ring could not be read without hovering every sector, the sector fill and button background painted two highlights over one target, and the ring's switch sat in the AI tab although the surface is a transcript-interaction preference. |
 
 
 ## M0. Model catalog decisions
@@ -8080,3 +8081,23 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - Covered by `reasoning-content-backfill.test.ts`, `runtime.test.ts`,
   `provider-presets.test.ts`, and `apps/desktop/test/assistant-turns.test.mjs`.
   See E2E-005E.
+
+## 2026-10-29 — Radial context menu rebuilt and moved to General (D678)
+
+- D678 reworks the opt-in transcript radial menu. Every sector shows its
+  action's icon and label at rest, so the ring reads without hovering; the
+  active sector fills as a single highlight (no button background, no focus
+  rectangle); the hub is a recessed well with the click-point dot; the disc
+  shrinks from 320 to 248 px with hairline separators and the composer shadow;
+  and hover and reveal motion follow the shared motion tokens.
+- The standard marking gesture joins click and keyboard: a right-press that
+  starts while the ring is open runs the sector it is released on, releasing
+  in the hub dismisses without running, and the release trailing the
+  right-click that opened the ring is inert.
+- The settings card moves from the AI tab to General (after Sidebar) with its
+  settings-search index; the action vocabulary, per-direction defaults,
+  `AppSettings.radialMenu` shape, persistence, and IPC are unchanged.
+- Covered by `apps/desktop/test/radial-menu.test.mjs`, the Chromium component
+  check `pnpm test:e2e:radial-menu`, and capture scenes `pi-radial` /
+  `pi-radial-dark`. See `04-ux/09-interaction-patterns.md` §1.11 and
+  E2E-CHAT-radial-background-menu.

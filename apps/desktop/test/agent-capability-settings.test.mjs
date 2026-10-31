@@ -259,6 +259,39 @@ test("toggling a capability flips locally and reverts only if the host refuses",
   }
 });
 
+test("a global row's toggle records the global default, never a per-project override", () => {
+  // The selected project legitimately scopes the project-list calls, but the
+  // switch and the global list must speak the global default's scope: the old
+  // helper attached the project everywhere, so toggling stored an override
+  // while the switch read as global (#1957). The pages delegate every query
+  // to the scope module, which attaches the path to project rows only.
+  for (const source of [skills, mcp]) {
+    assert.match(
+      source,
+      /const levelQuery = \(level: AgentCapabilityLevel\) =>\s*\n\s*capabilityQuery\(level, selectedProjectPath\)/,
+    );
+  }
+  // The global list reads the global default: same scope the switch writes,
+  // so the row and the switch can never disagree.
+  assert.match(mcp, /api\.listMcpServers\(\{ level: "global" \}\)/);
+  assert.match(skills, /api\.listUserSkills\(\{ level: "global" \}\)/);
+  // The scope rule itself: the path rides only on project-level rows.
+  const scope = read("../src/lib/capability-scope.ts");
+  assert.match(scope, /level === "project" && selectedProjectPath/);
+  // Stored overrides keep runtime precedence, so they are surfaced and
+  // resettable rather than hidden: the project-scoped global query runs beside
+  // the scope-free one, the difference gets a badge, and the row menu offers
+  // the reset (writing the default under the project's scope drops the key).
+  for (const source of [skills, mcp]) {
+    assert.match(source, /deriveProjectOverrides\(/);
+    assert.match(source, /level: "global", projectPath: selectedProjectPath/);
+    assert.match(source, /is-override/);
+    assert.match(source, /resetProjectOverride/);
+  }
+  // Subagents are global-only: no project scope exists to mix in.
+  assert.doesNotMatch(subagents, /projectPath/);
+});
+
 test("each capability page can create, edit, and delete without leaving settings", () => {
   assert.match(skills, /api\.createUserSkill/);
   assert.match(skills, /api\.updateUserSkill/);

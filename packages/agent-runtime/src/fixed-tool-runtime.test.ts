@@ -52,6 +52,7 @@ function runtimeFixture(history: UiMessage[] = [], tools = pluginTools, provider
     sessionId: "fixed-tools", mode, provider, thinkingLevel: "off", history: rows, pluginTools: tools,
     commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
     host: { call: async <T>(method: string, params?: unknown): Promise<T> => {
+      if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false } as T;
       if (method === "session.appendMessage") rows.push((params as { message: UiMessage }).message);
       else if (method === "tools.execute") {
         executed.push((params as { toolName: string }).toolName);

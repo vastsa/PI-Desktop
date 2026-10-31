@@ -1715,6 +1715,61 @@ export async function createWindow({
               `void window.__PI_DESKTOP__?.seedTranscript?.(0)`,
             );
             await new Promise((r) => setTimeout(r, 250));
+            // Radial menu scenes (D678): the opt-in ring on the transcript
+            // background, sector labels at rest, one sector hovered; light
+            // then dark.
+            await windowState.mainWindow!.webContents.executeJavaScript(`
+              void window.__PI_DESKTOP__?.seedTranscript?.(6);
+              window.__PI_DESKTOP__?.seedRadialMenu?.(true);
+            `);
+            await new Promise((r) => setTimeout(r, 500));
+            await setTheme("light");
+            const openRadialRing = async () => {
+              const opened = await windowState.mainWindow!.webContents.executeJavaScript(`(() => {
+                const scroller = document.querySelector(".thread-scroll");
+                if (!scroller) return false;
+                const rect = scroller.getBoundingClientRect();
+                scroller.dispatchEvent(new MouseEvent("contextmenu", {
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: rect.left + rect.width / 2,
+                  clientY: rect.top + rect.height - 150,
+                }));
+                return true;
+              })()`);
+              if (!opened) throw new Error("radial scene: transcript not found");
+              await new Promise((r) => setTimeout(r, 450));
+            };
+            const hoverRadialWedge = async (degrees: number) => {
+              await windowState.mainWindow!.webContents.executeJavaScript(`(() => {
+                const menu = document.querySelector(".radial-menu");
+                if (!menu) return false;
+                const rect = menu.getBoundingClientRect();
+                const radius = rect.width * 0.34;
+                const angle = ${(Math.PI / 180) * degrees};
+                menu.dispatchEvent(new PointerEvent("pointermove", {
+                  bubbles: true,
+                  clientX: rect.left + rect.width / 2 + Math.cos(angle) * radius,
+                  clientY: rect.top + rect.height / 2 + Math.sin(angle) * radius,
+                }));
+                return true;
+              })()`);
+              await new Promise((r) => setTimeout(r, 250));
+            };
+            await openRadialRing();
+            await hoverRadialWedge(90);
+            await shot("pi-radial");
+            await setTheme("dark");
+            await new Promise((r) => setTimeout(r, 250));
+            await hoverRadialWedge(0);
+            await shot("pi-radial-dark");
+            await windowState.mainWindow!.webContents.executeJavaScript(`
+              window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+              window.__PI_DESKTOP__?.seedRadialMenu?.(false);
+              void window.__PI_DESKTOP__?.seedTranscript?.(0);
+            `);
+            await setTheme("light");
+            await new Promise((r) => setTimeout(r, 250));
             // Notification inbox: mixed status, long title, read state, 99+ badge,
             // both themes, then the responsive fixed-position popover.
             const openNotificationFixture = async () => {

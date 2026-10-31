@@ -291,8 +291,12 @@ index is in the [development guide](../../plugin-development.md#13-complete-sdk-
 - `pi.ui.requestNotificationPermission()`
 - `pi.ui.showNativeNotification({ title, body? })`
 
-### Workspace (requires permission)
+### Workspace metadata and scoped files
+
+Metadata reads need no permission; file operations require their declared grants.
+
 - `pi.workspace.get()`
+- `pi.projects.list()` — read-only durable project metadata, including ungrouped rows
 - `pi.fs.readText(path)`
 - `pi.fs.openDefault(path)` // open the selected file with the OS-associated app
 - `pi.fs.openInBrowser(path)` // open an HTML file in the work-panel Browser

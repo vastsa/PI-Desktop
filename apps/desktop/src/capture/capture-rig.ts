@@ -46,6 +46,7 @@ export type CaptureRigMethods = {
     completed: string;
     failed: string;
   } | null;
+  seedRadialMenu: (enabled: boolean) => void;
   ensureVisualFixtures: () => Promise<void>;
 };
 
@@ -1157,6 +1158,19 @@ export function installCaptureRig(): CaptureRig {
       } catch {
         // optional capture-only fixture
       }
+    },
+    seedRadialMenu: (enabled) => {
+      // Capture-only: flips the opt-in ring preference in the store the
+      // transcript reads, without touching the persisted settings file.
+      if (!window.__PI_CAPTURE__) return;
+      const settings = useAppStore.getState().settings;
+      if (!settings) return;
+      useAppStore.setState({
+        settings: {
+          ...settings,
+          radialMenu: { ...settings.radialMenu, enabled },
+        },
+      });
     },
   };
   return {

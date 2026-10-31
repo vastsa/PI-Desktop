@@ -526,6 +526,9 @@ impl BackgroundTaskRegistry {
     }
 }
 
+#[cfg(all(windows, test))]
+mod windows_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,7 +536,7 @@ mod tests {
 
     /// A real session row, because a background spawn now refuses to start for
     /// a session that no longer exists.
-    fn new_session(st: &crate::state::AppState) -> String {
+    pub(super) fn new_session(st: &crate::state::AppState) -> String {
         crate::sessions::create_session(&st.db, Some("test".into()), None, None, None, None)
             .unwrap()
             .id

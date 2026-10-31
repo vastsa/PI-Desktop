@@ -1,5 +1,5 @@
 /**
- * Settings → AI → Radial context menu.
+ * Settings → General → Radial context menu.
  *
  * The ring is opt-in, and each direction is a user choice: the vocabulary is
  * fixed to actions the empty transcript background can actually perform, so a

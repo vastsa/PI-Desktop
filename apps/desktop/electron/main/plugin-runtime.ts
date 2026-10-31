@@ -71,6 +71,7 @@ import {
   type PluginProviderOAuthRequest,
   type PluginProviderContrib,
   type PluginRevealViewInput,
+  type PluginProjectInfo,
   type PluginServiceContrib,
   type PluginSettingContrib,
   type PluginComposerTransformInput,
@@ -322,6 +323,8 @@ export type PluginHostServices = {
    * it. Additive: `workspace.get` falls back to `getWorkspacePath` alone.
    */
   getWorkspaceInfo?: () => PluginWorkspaceInfo | null;
+  /** Durable project metadata only; unavailable hosts resolve to an empty list. */
+  listProjects?: () => Promise<PluginProjectInfo[]>;
   /**
    * The project the tool session behind this call belongs to, when the host
    * tracks one. Additive: an fs call falls back to `getWorkspacePath` -- the
@@ -583,6 +586,7 @@ const HOST_API_ALLOWLIST = new Set([
   "desktop.listOperations",
   "desktop.invoke",
   "workspace.get",
+  "projects.list",
   "fs.readText",
   "fs.stat",
   "fs.readRange",
@@ -2575,6 +2579,8 @@ export class PluginRuntime {
         return { ok: true };
       case "workspace.get":
         return api.workspace.get();
+      case "projects.list":
+        return api.projects.list();
       case "models.list":
         this.assertPermission(loaded, "models.list");
         return this.dispatchHostCall(loaded, "models.list", []);
@@ -5638,6 +5644,9 @@ export class PluginRuntime {
           if (!path) return null;
           return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
         },
+      },
+      projects: {
+        list: async () => this.services.listProjects?.() ?? [],
       },
       desktop: {
         listOperations: async () => {

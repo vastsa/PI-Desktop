@@ -285,3 +285,15 @@ test("the offered default and the saved default use one order", () => {
     /resolveBindingDefaultThinkingLevel\(\s*binding\.defaultThinkingLevel,\s*sortThinkingLevels\(next\),/,
   );
 });
+
+test("model settings let the user allow Fast mode per model on Responses wires", () => {
+  // ADR 0334: the opt-in lives on the binding; `/fast` is the per-session switch.
+  assert.match(pickerSource, /const fastModeBilling = fastModeBillingOn\(apiStyle\);/);
+  assert.match(pickerSource, /checked=\{binding\.fastModeAllowed === true\}/);
+  assert.match(pickerSource, /disabled=\{!fastModeBilling\}/);
+  assert.match(pickerSource, /fastModeAllowed: event\.target\.checked \|\| undefined/);
+  // Plan limits and per-token billing are different costs, so the hint differs.
+  assert.match(pickerSource, /"settings\.fastModeAllowedSubscriptionHint"/);
+  assert.match(pickerSource, /"settings\.fastModeAllowedUsageHint"/);
+  assert.match(pickerSource, /"settings\.fastModeAllowedUnsupported"/);
+});

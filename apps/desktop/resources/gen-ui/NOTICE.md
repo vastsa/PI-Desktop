@@ -29,6 +29,11 @@ Changes made for PI-Desktop:
 - The skill's chart guidance was rewritten around PI-Desktop's own `viz`
   helpers (`visualize-helpers.js`, not part of the upstream kit), and
   `visualize.css` gained styles for their axes, legends, and value labels.
+- The shell writes the fragment into the kit's `#widget` container, as the
+  upstream host does. `#widget` stacks top-level blocks with a 12px top
+  margin instead of a flex column, and the upstream reset of its direct
+  children (`margin`, `padding`, `border`, `!important`) was dropped so
+  fragment styling is kept.
 - Bundled library URLs are served by the `pi-genui:` protocol from `vendor/`
   instead of being fetched.
 

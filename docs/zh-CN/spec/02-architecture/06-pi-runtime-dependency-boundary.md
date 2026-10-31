@@ -16,7 +16,8 @@ Sidecar 将 `@earendil-works/pi-agent-core`、`pi-ai` 与 `pi-coding-agent` 精�
 - `@earendil-works/pi-agent-core` 提供 Agent 循环，以及稳定的 agent、event、tool
   类型。Agent Runtime 自行维护桌面专用的上下文投影、压缩和 prompt 模板展开。
 - `@earendil-works/pi-ai` 提供提供商传输、认证、消息类型、请求重试和 token 估算。
-  Hosted search 请求与估算行为继续由 PI-Desktop 的 pi-ai 补丁和契约测试覆盖。
+  Hosted search 请求与估算行为，以及为 Fast 模式让 `streamSimple` 转发 `serviceTier`
+  （ADR 0334），继续由 PI-Desktop 的 pi-ai 补丁和契约测试覆盖。
 - Agent Runtime 和 subagent 显式传入客户端身份：保留 pi-ai 的详细版本化
   `User-Agent`，并以 `attribution: null` 关闭 pi-agent-core 默认的 Pi 归属请求头。
 - Rust `host-core` 仍然是 SQLite 和权威持久会话状态的唯一所有者。Node sidecar

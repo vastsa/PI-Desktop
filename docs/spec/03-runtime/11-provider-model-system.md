@@ -360,6 +360,7 @@ type ModelBinding = {
   defaultThinkingLevel: SessionThinkingLevel | null
   thinkingProtocol?: "legacy" | "adaptive"
   availableForSubagents?: boolean // opt-in for AI-driven delegation
+  fastModeAllowed?: boolean // opt-in for the session /fast switch (ADR 0334)
 }
 
 type SelectedModelRef = {
@@ -391,6 +392,20 @@ runtime consumers. Conversation-level model switching and routing across the
 array remain future work. A legacy provider with only `defaultModelId` is
 materialized as one fallback binding on host read and upgraded to `models` on
 the next provider write.
+
+`ModelBinding.fastModeAllowed` (boolean, default false, ADR 0334): lets the
+session `/fast` switch request OpenAI's priority service tier
+(`service_tier: "priority"`) for this model. Model settings enable the checkbox
+only for Responses wires: `openai_codex_responses` (ChatGPT subscription; the
+tier spends plan limits faster) and `responses` (billed per token at the tier's
+higher price; a relay may ignore or rebill the field). The launcher sends
+`fastMode: true` to the sidecar only when the session switch is on and the
+stored binding allows it; the runtime adds the field to main-turn requests whose
+resolved wire is `openai-codex-responses` or `openai-responses`. Subagents,
+compaction, and one-shot requests keep the default tier. A trusted extension
+that moves the runtime to one of its own models clears the switch, because that
+model has no binding to opt in; the next launch re-applies it from the
+session's stored binding.
 
 `ModelBinding.availableForSubagents` (boolean, default false): opt-in flag that
 makes the model available for AI-driven subagent delegation. When enabled, the

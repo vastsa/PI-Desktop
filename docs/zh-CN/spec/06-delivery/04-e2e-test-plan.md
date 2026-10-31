@@ -2761,13 +2761,13 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
 
 #### E2E-CHAT-radial-background-menu：对话空白处的环形菜单
 
-- **前提条件**：设置 → AI → 环形右键菜单可用；会话中有一条已完成的用户提示、一条已完成的助手回答，且历史足以滚动。
-- **步骤**：1）关闭开关，右键最后一回合下方的空白处，确认弹出纵向对话菜单。2）打开开关，右键同一位置，检查四个扇区。3）让指针经过各扇区，点击复制整段对话。4）把「上」设为复制最后一条回复、「右」设为留空，重新打开环形菜单。5）不移动指针直接点击中心圆；再重新打开后依次按 Escape、点击外部、滚动、调整窗口尺寸。6）用 Shift+F10 打开，用方向键遍历扇区，按 Enter 执行一项。7）重启应用，确认开关和四个方向都保留；再把某个方向的未知动作写入设置文件，确认该方向回退到默认值。
-- **预期**：开关关闭时纵向菜单原样打开。开关开启后，以指针为圆心的四扇区环形菜单取代它，靠近窗口边缘时仍完整可见。指针所在扇区高亮；点击后执行该动作、关闭菜单，复制类动作照常弹出提示。「留空」方向渲染为禁用扇区且不执行任何动作；尚无回答文本时复制最后一条回复为禁用。打开浏览器会让工作面板显示一个空白浏览器标签页；工作面板方向是切换：面板收起时显示「打开工作面板」，打开后改为「关闭工作面板」，再点一次收起；打开项目文件夹会在系统文件管理器中打开会话所属项目，没有项目路径的会话为禁用。点击中心圆、外部按下、Escape、Tab、滚动和窗口尺寸变化都只关闭菜单。方向键移动高亮，Enter 执行当前动作。开关和四个方向在重启后保留，存储中的未知动作回退到该方向的默认值。消息行、链接、文件引用、侧边栏和工作面板仍使用各自的纵向菜单。
+- **前提条件**：设置 → 常规 → 环形右键菜单可用；会话中有一条已完成的用户提示、一条已完成的助手回答，且历史足以滚动。
+- **步骤**：1）关闭开关，右键最后一回合下方的空白处，确认弹出纵向对话菜单。2）打开开关，右键同一位置，检查四个扇区及其静止时显示的图标与动作名。3）让指针经过各扇区，点击复制整段对话；重新打开后，在某扇区上按下右键并原地松开，确认动作执行。4）把「上」设为复制最后一条回复、「右」设为留空，重新打开环形菜单。5）不移动指针直接点击中心圆；再重新打开后依次按 Escape、点击外部、滚动、调整窗口尺寸；再次打开后在扇区上按下右键、移到中心圆松开，确认不执行任何动作。6）用 Shift+F10 打开，用方向键遍历扇区，按 Enter 执行一项。7）重启应用，确认开关和四个方向都保留；再把某个方向的未知动作写入设置文件，确认该方向回退到默认值。
+- **预期**：开关关闭时纵向菜单原样打开。开关开启后，以指针为圆心的四扇区环形菜单取代它，靠近窗口边缘时仍完整可见。每个扇区在悬停前就显示该动作的图标与名称；指针所在扇区以整块填充高亮，不出现聚焦方框；点击后执行该动作、关闭菜单，复制类动作照常弹出提示。菜单打开时按下右键，在哪个扇区松开就执行哪个动作；在中心圆上松开只关闭、不执行动作，打开菜单那次右键尾随的松开不触发任何动作。「留空」方向渲染为禁用扇区且不执行任何动作；尚无回答文本时复制最后一条回复为禁用。打开浏览器会让工作面板显示一个空白浏览器标签页；工作面板方向是切换：面板收起时显示「打开工作面板」，打开后改为「关闭工作面板」，再点一次收起；打开项目文件夹会在系统文件管理器中打开会话所属项目，没有项目路径的会话为禁用。点击中心圆、外部按下、Escape、Tab、滚动和窗口尺寸变化都只关闭菜单。方向键移动高亮，Enter 执行当前动作。开关和四个方向在重启后保留，存储中的未知动作回退到该方向的默认值。消息行、链接、文件引用、侧边栏和工作面板仍使用各自的纵向菜单。
 - **关联规范**：`04-ux/09-interaction-patterns.md` §1.11、`04-ux/06-settings-ia.md`
 - **验收**：C（聊天流）、质量
 - **里程碑**：M5
-- **状态**：Chromium 组件检查（`node scripts/e2e-radial-menu.mjs`：扇区文案、指针高亮、点击/中心圆/禁用/Escape 路径、方向键焦点和视口限制）加单元覆盖（`radial-menu.test.mjs`、`settings-roundtrip.test.mjs`）；完整桌面旅程仍为草稿
+- **状态**：Chromium 组件检查（`node scripts/e2e-radial-menu.mjs`：静止扇区文案、指针高亮、点击/中心圆/禁用/Escape 路径、右键标记手势、方向键焦点和视口限制）加单元覆盖（`radial-menu.test.mjs`、`settings-roundtrip.test.mjs`）；完整桌面旅程仍为草稿
 
 #### E2E-CHAT-delete-turn-preserves-other-live-outputs：删除回合后保留其他实时输出
 
@@ -3933,6 +3933,10 @@ IPC 请求无法关闭。
     位于检查点覆盖的最后一条消息之后，并且
     恰好引发一个警告Toast。两个检查点产生两行，
     顺序，并且两行都不会替换或隐藏消息。
+  - 检查点安装后（包括第 9 步的手动 `/compact`），输入框的上下文圆环立即降到
+    检查点估计的下一次请求大小，不用等下一轮；面板里的供应商用量仍是最后一次真实
+    请求的数据。下一次请求报告的用量会替换这个估计值，重启后重新打开会话也显示
+    同一个估计值（#2015；单元测试见 `apps/desktop/test/compaction-context-usage.test.mjs`）。
   - `new_context` 调用显示为正常工具活动行，返回
     立即，并在下一个回合边界处创建检查点
     而不是中途回合。
@@ -8537,15 +8541,16 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 - **前提条件**：可用中文输入法；输入框草稿为空；至少存在一条斜杠条目（内置别名、模板、插件命令或 Skill）。
 - **步骤**：
-  1. 保持草稿为空，输入「、」并观察输入框。
+  1. 保持草稿为空，开始组字「、」，观察临时文本，再提交组合输入。
   2. 继续输入命令名并确认高亮行。
   3. 输入一段在其他字符之间包含「、」的草稿。
   4. 发送一段首字符为「、」且未确认任何行的草稿。
-- **预期**：「、」被就地改写为 `/`，普通斜杠菜单以与直接输入 `/` 相同的过滤和键盘行为打开，光标停留在替换后的字符之后。出现在草稿其他位置的「、」保持原样，`@` 文件菜单不会对该标点作出反应。
+  5. 取消组字后再次输入 `/`；另模拟丢失 `compositionend` 后删除文本，确认斜杠菜单仍能打开。
+- **预期**：提交的「、」被就地改写为 `/`，普通斜杠菜单以与直接输入 `/` 相同的过滤和键盘行为打开，光标停留在替换后的字符之后。出现在草稿其他位置的「、」保持原样，`@` 文件菜单不会对该标点作出反应。组字期间「、」保持原样，提交后结果为 `/`，不会出现 `/、`；普通中文组字和已有草稿中的标点不变。取消组字留下空白草稿，替换草稿会清除原有的空草稿组字起始状态。
 - **链接规格**：`04-ux/04-builtin-commands.md`（§9）、`04-ux/08-component-spec.md`（§11）、`08-meta/decisions-log.md`（D405）、ADR 0024、ADR 0231
 - **验收**：C（对话与流）、本地化、品质
 - **里程碑**：M2
-- **状态**：单元覆盖（`packages/shared/src/composer-trigger.test.ts`、`apps/desktop/test/composer-ime.test.mjs`）；渲染桌面旅程为草稿（除非明确要求，不本地运行 E2E）
+- **状态**：部分自动化。单元覆盖：`packages/shared/src/composer-trigger.test.ts`、`apps/desktop/test/composer-ime.test.mjs`。`node scripts/e2e-composer-ime-stack.mjs` 挂载生产输入框、草稿和补全组件，通过 CDP 驱动 Chromium 组合输入，覆盖别名提交、普通中文、取消组字、草稿替换、补全确认及丢失结束事件后的恢复。发送流程和真实操作系统输入法候选窗口仍需手动验证。
 
 #### E2E-CLONE-accepts-a-lan-remote-and-rejects-metadata
 
@@ -8843,10 +8848,21 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 | E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、云元数据、unspecified、multicast、reserved 及尾点绕过形态——即使由用户自己填写；对**第三方跳**（重定向目标、目录正文）拒绝回环、私网、special-use IPv4、v4-mapped、ULA、site-local 与 link-local；同一形态由用户填进源地址字段时被接受，明文 `http` 需 `networkPolicy.allowInsecureUserEndpoints`；direct/unknown 默认固定已检查的地址，完整 proxied 线路使用 session 传输，显式 `allowFakeIp` 可覆盖透明路由器 fake-IP 源但不允许真实私网答案 | 确定性 guard 断言；DNS pin、代理线路选择、fake-IP 选项范围与响应上限 source-contract 覆盖 |
 | E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义；远端 header 变量同时识别注册表的 `{name}` 与目录的 `${NAME}` 两种写法，仅为已声明的可编辑值显示输入，保留未声明花括号字面量，并按各 header 的作用域处理默认值、固定值与可选标记，不合并不同 header 的同名输入（ADR registry-header-variable-spelling） | 确定性映射断言 |
 | E2E-MCP-MARKET-INSTALL | 内置目录条目经 `resolveCatalogEntry` 解析并通过宿主 `mcp.upsert` RPC 安装；记录落盘 `~/.agents/servers/` | 真实宿主二进制，隔离临时 HOME |
+| E2E-MCP-MARKET-explicit-project-owner | 在 MCP 页选择 Project，打开市场并安装内置条目；请求携带所选项目，返回后显示项目记录。All 和 Global 保持全局安装，其他层级中的同名条目不阻止安装 | 隔离 Electron 中的真实 React 页面和市场；IPC 边界模拟（`apps/desktop/test/mcp-market-owner-user-path.test.mjs`） |
 | E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
 | E2E-MCP-MARKET-partial-header-bindings-stay-literal | Resolve a catalog with only Authorization bound and another header using the same `{token}` / `${token}`; an undeclared `${UNBOUND}` in a third header also remains literal through host upsert/list and disk persistence | real host binary, disabled remote entry, synthetic input and isolated temporary storage; no network call |
 | E2E-MARKET-CATALOG-RETRY | 技能市场和 MCP 市场查询全部失败后、以及部分来源失败时都显示重试；点击后播报加载、重跑当前查询，并在来源恢复后清除失败状态 | Electron 中的真实 React 组件使用确定性的模拟市场 API 响应；不访问公网 |
 
+
+#### E2E-MCP-MARKET-explicit-project-owner：市场安装遵循明确选择的 Project 筛选
+
+- **前提条件**：MCP 设置已选择项目；使用隔离 Electron 配置和确定性 IPC 响应，不访问真实市场或调用 MCP。
+- **步骤**：选择 Project，打开市场，安装内置条目后重新打开市场。分别验证 All、Global、All 下未选择项目，以及另一层级已存在同名条目的情况。未选择项目时选择 Project，再通过面板公开接口尝试安装。
+- **预期**：Project 请求携带 `level: "project"` 和所选 `projectPath`；All、Global 请求携带 `level: "global"`，不传项目归属。返回后显示已安装记录，重新打开市场时仅按目标层级标记已安装。其他层级中的记录不阻止安装。未选择项目时，Project 市场入口禁用，面板保护逻辑提示缺少项目且不写入。
+- **关联规格**：`04-ux/06-settings-ia.md`、ADR 0112。
+- **验收**：质量。
+- **里程碑**：M6+。
+- **状态**：已自动化（`node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs`）。
 
 #### E2E-SKILL-MARKET-NET-BOUNDARY：用户自填源可达局域网，第三方内容不行
 
@@ -10032,6 +10048,23 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **验收**：项目折叠时仍能回答“这里是否有正在运行的工作”，且两种提示可从持久化设置独立控制。
 - **状态**：草稿。现有 `apps/desktop/test/sidebar-project-runs.test.mjs` 覆盖数量分类、总开关与子开关门控、两种渲染入口，以及主题令牌和减少动态效果保证；它不覆盖设置 API 缺省值规范化或完整交互，相关场景仍需在可用环境手动验证。
 
+### E2E-FAST-MODE：`/fast` 只在允许的模型上请求优先档位
+
+- **前置条件**：一个 ChatGPT 订阅（Codex）账号和一个 Responses API key 提供商，各配置两个模型。
+  自动化路径不需要真实提供商；手动路径使用可捕获请求的本地端点或用户授权的账号。
+- **步骤**：
+  1. 在「设置 → 模型」中为每个提供商的一个模型勾选 **Fast 模式**；确认 Chat Completions 提供商上该勾选框不可用。
+  2. 在允许的 Codex 模型上新建任务，输入 `/fast`，发送一条提示。
+  3. 再次发送 `/fast`，然后再发送一条提示。
+  4. 把会话切换到未允许的模型，发送 `/fast`。
+  5. 在 Fast 开启时 fork 会话；重启应用后重新打开两个会话。
+- **预期**：第 1 步只在 binding 上保存 `fastModeAllowed`。第 2 步模型芯片显示 Fast 标识，请求体带有
+  `service_tier: "priority"`；Responses API key 模型改为提示按 token 计费的价格。第 3 步清除标识和该字段。
+  第 4 步给出模型设置提示并拒绝，不保存任何状态。第 5 步 fork 和重启后开关保持开启。子代理和压缩请求
+  从不携带该字段。远程会话拒绝 `/fast`。可信扩展把会话切到它自己的 Responses 模型后，下一条请求不携带该字段。
+- **关联规格**：`03-runtime/11-provider-model-system.md`、`03-runtime/04-data-storage.md`（v27）、
+  `04-ux/04-builtin-commands.md`、ADR 0334、issue #1657。
+- **状态**：自动化覆盖见英文版。完整的设置 → `/fast` → 捕获请求路径为手动验证场景。
 
 ### E2E-REMOTE-FILE-MANAGER：受限的插件远程读取
 

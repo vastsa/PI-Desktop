@@ -427,6 +427,43 @@ fn worktree_registry_enforces_one_row_per_owner_and_unique_ports() {
     );
 }
 
+/// v27 adds the per-session `/fast` column (ADR 0334). Existing sessions keep
+/// their configuration, default to the normal tier, and a backup remains.
+#[test]
+fn v25_database_gains_session_fast_mode_defaulting_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        let session = crate::sessions::create_session_with_thinking(
+            &db,
+            Some("Kept".into()),
+            None,
+            None,
+            None,
+            None,
+            Some("high".into()),
+        )
+        .unwrap();
+        db.conn()
+            .execute_batch("ALTER TABLE sessions DROP COLUMN fast_mode;")
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 25).unwrap();
+        session.id
+    };
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 25).exists());
+    let summary = crate::sessions::get_session(&db, &session_id)
+        .unwrap()
+        .unwrap()
+        .summary;
+    assert_eq!(summary.title, "Kept");
+    assert_eq!(summary.thinking_level, "high");
+    assert!(!summary.fast_mode);
+}
+
 /// v21 owns the session checklist. A real v20 database has neither the
 /// `sessions` stamps nor the `session_todo` table, so the upgrade must add
 /// both, keep the v20 rows, leave a readable pre-migration backup, and stay

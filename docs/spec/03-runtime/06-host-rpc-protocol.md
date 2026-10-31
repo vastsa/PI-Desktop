@@ -324,6 +324,8 @@ to later refresh and inference; the vendor picker does not collect them.
   `inheritPermissionFromSessionId`; when present, the host copies the existing
   session's persisted permission mode atomically, while omission preserves the
   existing `inherit` default. Missing/null thinking level defaults to `off`.
+  Optional boolean `fastMode` (ADR 0334) stores the session `/fast` switch;
+  missing/null means `false` and a non-boolean returns `INVALID_PARAMS`.
   Optional `isolated: true` (ADR 0329) also requires `projectPath` and gives
   the new session its own git worktree before it returns; if the worktree
   cannot be created the session is deleted again and the call fails with a
@@ -394,7 +396,9 @@ to later refresh and inference; the vendor picker does not collect them.
 - `session.configure` — atomically persists `mode`, `providerId`, `modelId`,
   and optional `thinkingLevel` (`off|minimal|low|medium|high|xhigh|max|omit`)
   for the next pi turn; omitting/null
-  `thinkingLevel` preserves the current value; invalid modes or levels return
+  `thinkingLevel` preserves the current value; optional boolean `fastMode`
+  (ADR 0334) follows the same rule, and a non-boolean is `INVALID_PARAMS`;
+  invalid modes or levels return
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running
   Plan or Goal record
@@ -1493,3 +1497,27 @@ metadata. Approval/rejection remain digest-bound. Only the new S3 format is
 supported; there is no old-data detection or migration. Disconnect removes
 only current S3 credentials, keys and local sync metadata/staging; unrelated
 files and remote objects remain intact. See `22-config-sync.md`.
+
+
+## Host file batch admission (version 1)
+
+The sidecar proxy explicitly allows tools.fileBatchCapabilities, tools.fileBatchRegister,
+tools.fileBatchSeal, tools.fileBatchAbandon and tools.fileBatchClose. No wildcard
+method authorization is added. Capabilities takes sessionId and returns
+{version:1,supported:boolean}; remote-workspace sessions return supported:false.
+Register takes sessionId, optional delegationId, batchId, ordinal, toolCallId,
+toolName and args, and returns {ticket}. Only builtin file tool names are
+accepted. Seal/Close take sessionId/batchId; Abandon takes sessionId/ticket.
+The latter methods return {ok:true}. Metadata is bounded (512 calls, 128 per
+batch, 32 MiB retained arguments), process-local and never grants permission.
+
+The additive tools.execute field fileBatchTicket binds the actual request to a
+sealed single-use registration. Session/delegation, call/name and args must
+match; replay, tampering and pre-seal execution fail. Existing callers without
+tickets still receive Host resource exclusion but cannot claim batch source
+order. Runtime only opens write parallelism after the capability handshake.
+Permissions, roots, leases and resource identities are recomputed by Host;
+clients never supply authoritative identities. A changed workspace binding
+reports TOOL_CONTEXT_CHANGED; an identity/address change fails before writing.
+Close/expiry cannot release a running disk task; no failed/uncertain write is
+automatically replayed. See the Host file admission ADR for lifecycle and limits.

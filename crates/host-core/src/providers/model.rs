@@ -173,6 +173,10 @@ pub struct ModelBinding {
     /// default because models.dev does not publish hosted-tool capability.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_web_search: Option<bool>,
+    /// Opt-in that lets the session `/fast` switch request OpenAI's priority
+    /// service tier for this model (ADR 0334). None/false keeps the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fast_mode_allowed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
